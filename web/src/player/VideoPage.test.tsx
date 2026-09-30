@@ -71,6 +71,7 @@ vi.mock("./VideoPlayer", () => ({
     userActive: true,
     ended: false,
     stalled: false,
+    positioned: false,
   },
 }));
 
@@ -119,6 +120,8 @@ const server = {
   grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
   /** PUT /api/videos/{id}/display-name の応答。 */
   displayName: vi.fn<(body: unknown) => Response>(),
+  /** PUT /api/videos/{id}/thumbnail-position の応答。 */
+  thumbnailPosition: vi.fn<(body: unknown) => Response | Promise<Response>>(),
   /** GET /api/auth/session が答える見る人の状態。 */
   session: "owner" as AuthState,
 };
@@ -135,6 +138,7 @@ function fakeControls(): PlayerControls {
     isFullscreen: vi.fn(() => false),
     menuOpen: vi.fn(() => false),
     wake: vi.fn(),
+    positionMs: vi.fn(() => 0),
   };
 }
 
@@ -209,6 +213,7 @@ describe("VideoPage", () => {
     server.open.mockReset();
     server.grouping.mockReset();
     server.displayName.mockReset();
+    server.thumbnailPosition.mockReset();
     fetchMock.mockReset();
     installFakeEventSource();
     server.session = "owner";
@@ -242,6 +247,10 @@ describe("VideoPage", () => {
       if (suffix === "/display-name" && method === "PUT") {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         return Promise.resolve(server.displayName(body));
+      }
+      if (suffix === "/thumbnail-position" && method === "PUT") {
+        const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        return Promise.resolve(server.thumbnailPosition(body));
       }
       const entry = server.videos.get(id);
       if (entry === undefined) {
@@ -520,6 +529,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       fireEvent.click(next);
@@ -544,6 +554,7 @@ describe("VideoPage", () => {
           userActive: false,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       expect(previous.className).toContain("opacity-0");
@@ -837,6 +848,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       expect(screen.getByText("Connection lost · Reconnecting")).toBeDefined();
@@ -849,6 +861,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       expect(screen.queryByText("Connection lost · Reconnecting")).toBeNull();
@@ -865,6 +878,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       const status = screen.getByRole("status");
@@ -878,6 +892,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: false,
+          positioned: true,
         }),
       );
       expect(screen.queryByRole("status")).toBeNull();
@@ -912,6 +927,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: true,
           stalled: false,
+          positioned: true,
         }),
       );
     }
@@ -1025,6 +1041,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: true,
           stalled: false,
+          positioned: true,
         }),
       );
     }
@@ -1512,6 +1529,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: true,
+          positioned: true,
           ...overrides,
         }),
       );
@@ -1858,6 +1876,139 @@ describe("VideoPage", () => {
     });
   });
 
+  describe("代表サムネイル（specs/029-video-overrides/ui-design.md「Thumbnail fact」）", () => {
+    const captureName = "Use current frame as thumbnail";
+    const clearName = "Use automatic thumbnail";
+
+    function report(overrides: Partial<PlayerStatus> = {}) {
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: false,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+          ...overrides,
+        }),
+      );
+    }
+
+    function captureButton() {
+      return screen.getByRole("button", { name: captureName });
+    }
+
+    it("最初の読み込みで位置が確定するまでは押せず、一時停止中の位置をミリ秒で送り、応答の動画で項目が出る（受け入れ条件 5）", async () => {
+      const controls = fakeControls();
+      vi.mocked(controls.positionMs).mockReturnValue(83_456.4);
+      playerMock.controls = controls;
+      server.thumbnailPosition.mockReturnValueOnce(
+        json({
+          ...video,
+          thumbnailPositionMs: 83_456,
+          thumbnailUrl: "/api/videos/7/thumbnail?v=2",
+        }),
+      );
+      renderPage();
+      await ready();
+      await screen.findByRole("button", { name: "Play" });
+      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(captureButton());
+      expect(server.thumbnailPosition).not.toHaveBeenCalled();
+      // 位置を指定していない動画には項目が無い。
+      expect(screen.queryByRole("button", { name: clearName })).toBeNull();
+
+      report();
+      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
+      fireEvent.click(captureButton());
+
+      const label = `Thumbnail at ${formatDuration(83_456)}`;
+      const image = await screen.findByRole("img", { name: label });
+      expect(image.getAttribute("src")).toBe("/api/videos/7/thumbnail?v=2");
+      expect(server.thumbnailPosition).toHaveBeenCalledTimes(1);
+      expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: 83_456 });
+      // 再生は止めない。
+      expect(controls.togglePlay).not.toHaveBeenCalled();
+      const facts = screen.getByRole("list", { name: "File details" });
+      expect(within(facts).getByTitle(label)).toBeDefined();
+      expect(within(facts).getByRole("button", { name: clearName })).toBeDefined();
+      // 時刻を数値で入力させる入口は無い。
+      expect(screen.queryByRole("spinbutton")).toBeNull();
+      expect(screen.queryByRole("textbox")).toBeNull();
+    });
+
+    it("送信中は回転の印で二重に送らず、失敗の理由を 1 行出して前の項目を残す（Edge Case「生成に失敗」）", async () => {
+      const controls = fakeControls();
+      vi.mocked(controls.positionMs).mockReturnValue(5_000);
+      playerMock.controls = controls;
+      const chosen: Video = { ...video, thumbnailPositionMs: 60_000 };
+      server.videos.set(7, [chosen]);
+      let answer: (response: Response) => void = () => undefined;
+      server.thumbnailPosition.mockReturnValueOnce(
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+      );
+      renderPage();
+      await ready();
+      await screen.findByRole("button", { name: "Play" });
+      report({ playing: true });
+
+      fireEvent.click(captureButton());
+      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
+      fireEvent.click(captureButton());
+      expect(server.thumbnailPosition).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        answer(json({ code: "conflict", reason: "thumbnail_frame_unavailable" }, 409));
+        await Promise.resolve();
+      });
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe(
+        "Couldn't change the thumbnail: No image could be made from this frame.",
+      );
+      expect(screen.getByTitle(`Thumbnail at ${formatDuration(60_000)}`)).toBeDefined();
+      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
+    });
+
+    it("× で解除を送り、応答で項目が消える（受け入れ条件 6）", async () => {
+      server.videos.set(7, [{ ...video, thumbnailPositionMs: 60_000 }]);
+      server.thumbnailPosition.mockReturnValueOnce(json(video));
+      renderPage();
+      await ready();
+      fireEvent.click(await screen.findByRole("button", { name: clearName }));
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: clearName })).toBeNull(),
+      );
+      expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: null });
+      expect(screen.queryByTitle(/^Thumbnail at/)).toBeNull();
+    });
+
+    it("再生終了の層・状態の層が映像を覆っている間は押せない", async () => {
+      renderPage();
+      await ready();
+      await screen.findByRole("button", { name: "Play" });
+      report({ ended: true });
+      expect(captureButton().getAttribute("aria-disabled")).toBe("true");
+      report();
+      expect(captureButton().getAttribute("aria-disabled")).toBeNull();
+      act(() => player().onError(1_000, "decode"));
+      await waitFor(() =>
+        expect(captureButton().getAttribute("aria-disabled")).toBe("true"),
+      );
+    });
+
+    it("ゲストにはボタンも項目も無い（受け入れ条件 9）", async () => {
+      server.session = "guest";
+      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("button", { name: captureName })).toBeNull();
+      expect(screen.queryByRole("button", { name: clearName })).toBeNull();
+    });
+  });
+
   describe("見る人", () => {
     function guestVideo(overrides: Partial<Video> = {}): Video {
       // ゲストの応答には location・progress・probeError が無く、tags は空である。
@@ -1990,6 +2141,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: true,
           stalled: false,
+          positioned: true,
         }),
       );
     }
@@ -2006,6 +2158,7 @@ describe("VideoPage", () => {
           userActive: true,
           ended: false,
           stalled: true,
+          positioned: true,
         }),
       );
       expect(screen.getByRole("button", { name: "⟦Dismiss⟧" })).toBeDefined();

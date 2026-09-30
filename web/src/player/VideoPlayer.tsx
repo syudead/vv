@@ -153,6 +153,13 @@ export interface PlayerStatus {
    * 再生の終わりと失敗で下ろす。
    */
   stalled: boolean;
+  /**
+   * この再生の最初のメタデータを受け、続きからの位置を当て終えた（直接再生はそのシークの
+   * seeked まで、変換は実際の開始位置の報告まで待つ）。論理上の再生位置が
+   * 見ている場面の位置として確定した合図で、今の場面を代表サムネイルにする操作はこれを
+   * 待つ（specs/029-video-overrides/ui-design.md「Capture button」）。一度立てたら下ろさない。
+   */
+  positioned: boolean;
 }
 
 export const initialPlayerStatus: PlayerStatus = {
@@ -162,6 +169,7 @@ export const initialPlayerStatus: PlayerStatus = {
   userActive: true,
   ended: false,
   stalled: false,
+  positioned: false,
 };
 
 interface Props {
@@ -287,6 +295,14 @@ export default function VideoPlayer(props: Props) {
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
+    // 論理上の位置が見ている場面の位置として確定するまでの待ち（PlayerStatus.positioned）。
+    // metadataAccepted は最初のメタデータを受け入れたこと、resumeSeekPending は直接再生で
+    // 続きからの位置へのシークが終わるのを待っていること、liveOffsetPending は変換の実際の
+    // 開始位置の報告を待っていること（その間の仲立ちは指定位置を返し、映っているのはそれより
+    // 前のキーフレームからの場面である）を表す。
+    let metadataAccepted = false;
+    let resumeSeekPending = false;
+    let liveOffsetPending = false;
     // 誤りからの回復（playbackRecovery.ts）。recovering は誤りを受けてから、読み込み直しの
     // メタデータが来るか、失敗・変換への切り替えを決めるまでの間である。その間の見る人の
     // 再生・一時停止・シークは壊れた source へ渡さず、attempt の意図と位置として覚える。
@@ -424,7 +440,8 @@ export default function VideoPlayer(props: Props) {
         merged.playing === status.playing &&
         merged.userActive === status.userActive &&
         merged.ended === status.ended &&
-        merged.stalled === status.stalled
+        merged.stalled === status.stalled &&
+        merged.positioned === status.positioned
       ) {
         return;
       }
@@ -432,6 +449,12 @@ export default function VideoPlayer(props: Props) {
       latest.current.onStatus(status);
     };
     latest.current.onStatus(status);
+    // markPositioned は確定の条件がそろったら positioned を立てる。一度立てたら下ろさない。
+    const markPositioned = () => {
+      if (metadataAccepted && !resumeSeekPending && !liveOffsetPending) {
+        setStatus({ positioned: true });
+      }
+    };
 
     // feedStall は出来事を途切れの判断へ渡し、データ待ちが始まったら 10 秒のタイマーを掛ける。
     const feedStall = (event: StallEvent) => {
@@ -463,8 +486,11 @@ export default function VideoPlayer(props: Props) {
 
     const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
     latest.current.onControls(
-      createPlayerControls(player as unknown as ControllablePlayer, menuOpen, () =>
-        subtitles.toggle(),
+      createPlayerControls(
+        player as unknown as ControllablePlayer,
+        menuOpen,
+        () => subtitles.toggle(),
+        () => reportPosition(),
       ),
     );
 
@@ -539,8 +565,18 @@ export default function VideoPlayer(props: Props) {
           latest.current.onPosition(attempt.logicalPositionMs);
         },
         attempt.quality === "original" ? undefined : attempt.quality,
-        (seconds) => subtitles.setOffset(seconds * 1000),
-        () => subtitles.setOffset(null),
+        (seconds) => {
+          subtitles.setOffset(seconds * 1000);
+          // 変換へ移ったので、直接再生のシークの完了はもう待たない。
+          resumeSeekPending = false;
+          liveOffsetPending = false;
+          markPositioned();
+        },
+        () => {
+          subtitles.setOffset(null);
+          resumeSeekPending = false;
+          liveOffsetPending = true;
+        },
       );
     const setLiveSource = (positionMs: number) => {
       player.src(liveSourceAt(positionMs));
@@ -566,22 +602,28 @@ export default function VideoPlayer(props: Props) {
       setHoldControlBar(false);
       if (pendingRecovery !== null) {
         finishRecovery();
-        return;
-      }
-      if (pendingSwitch !== null) {
+      } else if (pendingSwitch !== null) {
         finishSwitch();
-        return;
+      } else if (!resumeApplied && initialPositionMs > 0) {
+        resumeApplied = true;
+        if (attempt.route === "direct") {
+          resumeSeekPending = true;
+          player.currentTime(initialPositionMs / 1000);
+          latest.current.onPosition(initialPositionMs);
+        } else {
+          // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
+          // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
+          reportPosition();
+        }
       }
-      if (resumeApplied || initialPositionMs <= 0) return;
-      resumeApplied = true;
-      if (attempt.route === "direct") {
-        player.currentTime(initialPositionMs / 1000);
-        latest.current.onPosition(initialPositionMs);
-        return;
-      }
-      // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
-      // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
-      reportPosition();
+      // 直接再生の続きからのシークは seeked で、変換の開始位置は報告で確定する。
+      metadataAccepted = true;
+      markPositioned();
+    });
+    player.on("seeked", () => {
+      if (!resumeSeekPending) return;
+      resumeSeekPending = false;
+      markPositioned();
     });
     player.on("loadstart", () => {
       if (pendingSwitch !== null && mediaSourceIs(pendingSwitch.src)) {
@@ -636,6 +678,7 @@ export default function VideoPlayer(props: Props) {
     });
     const setDirectSource = () => {
       subtitles.setOffset(0);
+      liveOffsetPending = false;
       player.src({ src: streamUrl(source.id), type: directContentType(source) });
     };
 

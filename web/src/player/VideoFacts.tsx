@@ -1,15 +1,26 @@
 import {
   AlertCircle,
   CalendarPlus,
+  Camera,
   Clock,
   Copy,
   ExternalLink,
   HardDrive,
+  Image,
+  LoaderCircle,
   type LucideIcon,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { openVideoFile, type Video } from "../api/client";
+import {
+  isAborted,
+  openVideoFile,
+  RequestFailed,
+  setVideoThumbnailPosition,
+  type Video,
+} from "../api/client";
+import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, formatDate, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
@@ -29,25 +40,104 @@ export function useOpenFile(videoId: number): {
   failure: UiText | null;
 } {
   const [failure, setFailure] = useState<UiText | null>(null);
+  useEffect(() => setFailure(null), [videoId]);
+  const open = useOpenFileRequest(videoId, setFailure);
+  return { open, failure };
+}
+
+/**
+ * useOpenFileRequest は「ファイルを開く」の要求を送り、始めるときに `report(null)`、
+ * 開けなかったときにその文言を `report` へ渡す。失敗の行を他の操作と分け合う呼び出し側
+ * （VideoFacts）が、行の中身を自分で持つために使う。
+ */
+function useOpenFileRequest(
+  videoId: number,
+  report: (failure: UiText | null) => void,
+): () => void {
   const request = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    setFailure(null);
-    return () => request.current?.abort();
-  }, [videoId]);
+  useEffect(() => () => request.current?.abort(), [videoId]);
 
-  const open = useCallback(() => {
-    setFailure(null);
+  return useCallback(() => {
+    report(null);
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     void openVideoFile(videoId, controller.signal).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setFailure(t.player.facts.openFailed(errorText(error)));
+      report(t.player.facts.openFailed(errorText(error)));
     });
-  }, [videoId]);
+  }, [report, videoId]);
+}
 
-  return { open, failure };
+/**
+ * useThumbnailPosition は代表サムネイルの位置の指定と解除を送る
+ * （specs/029-video-overrides/ui-design.md「Thumbnail fact」）。送信中は次の要求を送らない。
+ * 始めるときに `report(null)`、失敗したときにその文言を `report` へ渡し、`404`
+ * （`video_not_found`・`file_unavailable`）では `onStale` で動画を取り直させる。
+ * 成功したら応答の動画を、送る直前に取った detailMark と一緒に `onChanged` で渡す。
+ */
+function useThumbnailPosition(
+  videoId: number,
+  report: (failure: UiText | null) => void,
+  onChanged: ((video: Video, mark: DetailMark) => void) | undefined,
+  onStale: (() => void) | undefined,
+): {
+  sending: "capture" | "clear" | null;
+  send: (positionMs: number | null) => void;
+} {
+  const [sending, setSending] = useState<"capture" | "clear" | null>(null);
+  // 同じ瞬間の二度押しも止めるため、状態とは別に持つ。
+  const busy = useRef(false);
+  const request = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      request.current?.abort();
+      busy.current = false;
+      setSending(null);
+    },
+    [videoId],
+  );
+
+  const send = (positionMs: number | null) => {
+    if (busy.current) return;
+    busy.current = true;
+    const controller = new AbortController();
+    request.current = controller;
+    const mark = detailMark();
+    report(null);
+    setSending(positionMs === null ? "clear" : "capture");
+    setVideoThumbnailPosition(videoId, positionMs, controller.signal)
+      .then(
+        (video) => {
+          if (controller.signal.aborted) return;
+          onChanged?.(video, mark);
+        },
+        (error: unknown) => {
+          if (isAborted(error) || controller.signal.aborted) return;
+          report(t.player.facts.thumbnailFailed(errorText(error)));
+          if (error instanceof RequestFailed && error.status === 404) onStale?.();
+        },
+      )
+      .finally(() => {
+        if (request.current !== controller) return;
+        request.current = null;
+        busy.current = false;
+        setSending(null);
+      });
+  };
+
+  return { sending, send };
+}
+
+/**
+ * ThumbnailCapture は「今の場面を代表サムネイルにする」ボタンに渡すプレイヤーの状態である。
+ * `enabled` は押せるか、`positionMs` は押した瞬間の論理上の再生位置（ミリ秒）を返す。
+ */
+export interface ThumbnailCapture {
+  enabled: boolean;
+  positionMs: () => number | null;
 }
 
 function Fact({
@@ -75,10 +165,31 @@ function Fact({
  * 「ファイルを開く」（開ける環境のときだけ）と「パスをコピー」を置く。2 行目は技術情報
  * （解像度・コンテナ・コーデック）で、いちばん小さく薄い文字にする。
  *
- * 開けなかったときは、1 行目のすぐ下に 1 行だけ出す。帯やトーストは使わない。
+ * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の 4 つ目の項目にその画像・位置・
+ * 解除の × を置き、`capture` があれば右端の操作の先頭に「今の場面を代表サムネイルにする」
+ * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。
+ *
+ * 開けなかったとき・サムネイルを変えられなかったときは、1 行目のすぐ下に 1 行だけ出す。
+ * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
-export default function VideoFacts({ video }: { video: Video }) {
-  const { open, failure } = useOpenFile(video.id);
+export default function VideoFacts({
+  video,
+  owner = false,
+  capture,
+  onChanged,
+  onStale,
+}: {
+  video: Video;
+  owner?: boolean;
+  /** 所有者でプレイヤーが出ているときだけ渡す。 */
+  capture?: ThumbnailCapture;
+  onChanged?: (video: Video, mark: DetailMark) => void;
+  onStale?: () => void;
+}) {
+  const [failure, setFailure] = useState<UiText | null>(null);
+  useEffect(() => setFailure(null), [video.id]);
+  const open = useOpenFileRequest(video.id, setFailure);
+  const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -112,10 +223,25 @@ export default function VideoFacts({ video }: { video: Video }) {
             label={t.player.facts.added}
             value={formatDate(video.addedAt)}
           />
+          {owner && video.thumbnailPositionMs !== undefined && (
+            <ThumbnailFact
+              url={video.thumbnailUrl}
+              positionMs={video.thumbnailPositionMs}
+              clearing={thumbnail.sending === "clear"}
+              onClear={() => thumbnail.send(null)}
+            />
+          )}
         </ul>
-        {location !== undefined && (
+        {(location !== undefined || (owner && capture !== undefined)) && (
           <div className="ml-auto flex shrink-0 items-center">
-            {location.openable && (
+            {owner && capture !== undefined && (
+              <CaptureButton
+                capture={capture}
+                sending={thumbnail.sending === "capture"}
+                onCapture={(positionMs) => thumbnail.send(positionMs)}
+              />
+            )}
+            {location?.openable === true && (
               <IconButton
                 label={t.player.facts.openFile}
                 size="sm"
@@ -125,14 +251,16 @@ export default function VideoFacts({ video }: { video: Video }) {
                 <ExternalLink aria-hidden="true" />
               </IconButton>
             )}
-            <IconButton
-              label={t.player.facts.copyPath}
-              size="sm"
-              onClick={copyPath}
-              className="text-fg-muted! hover:text-fg!"
-            >
-              <Copy aria-hidden="true" />
-            </IconButton>
+            {location !== undefined && (
+              <IconButton
+                label={t.player.facts.copyPath}
+                size="sm"
+                onClick={copyPath}
+                className="text-fg-muted! hover:text-fg!"
+              >
+                <Copy aria-hidden="true" />
+              </IconButton>
+            )}
           </div>
         )}
       </div>
@@ -144,6 +272,104 @@ export default function VideoFacts({ video }: { video: Video }) {
       )}
       <TechnicalLine summary={technical} />
     </div>
+  );
+}
+
+/**
+ * ThumbnailFact は情報の行の 4 つ目の項目で、指定した代表サムネイルの小さな画像・位置・
+ * 解除の × を並べる（ui-design「Item」）。画像を読み込めない間・失敗したときは空の箱にする。
+ */
+function ThumbnailFact({
+  url,
+  positionMs,
+  clearing,
+  onClear,
+}: {
+  url: string | undefined;
+  positionMs: number;
+  clearing: boolean;
+  onClear: () => void;
+}) {
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const label = t.player.facts.thumbnailAt(formatDuration(positionMs));
+  return (
+    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
+      <Image className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-surface">
+        {url !== undefined && url !== brokenUrl && (
+          <img
+            src={url}
+            alt={label}
+            onError={() => setBrokenUrl(url)}
+            className="size-full object-cover"
+          />
+        )}
+      </span>
+      <span className="sr-only">{label} </span>
+      {formatDuration(positionMs)}
+      <button
+        type="button"
+        aria-label={t.player.facts.useAutomaticThumbnail}
+        title={t.player.facts.useAutomaticThumbnail}
+        aria-disabled={clearing || undefined}
+        onClick={() => {
+          if (!clearing) onClear();
+        }}
+        className="flex size-6 shrink-0 items-center justify-center rounded-sm text-fg-muted hover:bg-hover-wash hover:text-fg aria-disabled:cursor-default"
+      >
+        {clearing ? (
+          <LoaderCircle
+            className="size-3 animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+        ) : (
+          <X className="size-3" aria-hidden="true" />
+        )}
+      </button>
+    </li>
+  );
+}
+
+/**
+ * CaptureButton は、押した瞬間の論理上の再生位置を代表サムネイルにするボタンである
+ * （ui-design「Capture button」）。再生は止めず、時刻を入力させない。押せないとき・
+ * 送信中は `aria-disabled` にし、押しても送らない。
+ */
+function CaptureButton({
+  capture,
+  sending,
+  onCapture,
+}: {
+  capture: ThumbnailCapture;
+  sending: boolean;
+  onCapture: (positionMs: number) => void;
+}) {
+  const unavailable = !capture.enabled && !sending;
+  return (
+    <IconButton
+      label={t.player.facts.useCurrentFrame}
+      size="sm"
+      aria-disabled={unavailable || sending || undefined}
+      onClick={() => {
+        if (!capture.enabled || sending) return;
+        const positionMs = capture.positionMs();
+        if (positionMs === null || !Number.isFinite(positionMs)) return;
+        onCapture(Math.max(0, Math.round(positionMs)));
+      }}
+      className={cn(
+        "text-fg-muted! hover:text-fg! aria-disabled:cursor-default",
+        unavailable && "opacity-50",
+      )}
+    >
+      {sending ? (
+        <LoaderCircle
+          aria-hidden="true"
+          className="animate-spin motion-reduce:animate-none"
+        />
+      ) : (
+        <Camera aria-hidden="true" />
+      )}
+    </IconButton>
   );
 }
 

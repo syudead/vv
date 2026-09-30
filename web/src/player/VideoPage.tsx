@@ -43,7 +43,7 @@ import {
   Unplayable,
 } from "./StatusOverlays";
 import TouchControls from "./TouchControls";
-import VideoFacts from "./VideoFacts";
+import VideoFacts, { type ThumbnailCapture } from "./VideoFacts";
 import VideoHeader from "./VideoHeader";
 import VideoPlayer, {
   canStartPlayback,
@@ -399,6 +399,21 @@ export default function VideoPage() {
     !status.ended &&
     !status.reconnecting;
 
+  // 今の場面を代表サムネイルにするボタンは、所有者でプレイヤーが出ているときだけ置く。
+  // 押せるのは、最初の読み込みで論理上の位置が確定し、映像を覆う状態の層・再生終了の層
+  // （と次の予告）が無いときである（specs/029-video-overrides/ui-design.md「Capture button」）。
+  const capture: ThumbnailCapture | undefined =
+    owner && showPlayer
+      ? {
+          enabled:
+            controls !== null &&
+            status.positioned &&
+            statusLayer === null &&
+            !status.ended,
+          positionMs: () => controls?.positionMs() ?? null,
+        }
+      : undefined;
+
   // 予告の間の Esc は取り消しにし、画面を閉じない（ui-design.md「Autoplay notice」）。
   useKeyboardShortcuts(
     showPlayer ? controls : null,
@@ -532,7 +547,15 @@ export default function VideoPage() {
                   )}
                 </div>
                 {/* ゲストの応答には location が無いので、開く・コピーの操作は出ない。 */}
-                <VideoFacts video={video} />
+                <VideoFacts
+                  // 別の動画へ移ったら、送信中の指定と失敗の行を持ち越さない。
+                  key={`facts:${String(video.id)}`}
+                  video={video}
+                  owner={owner}
+                  capture={capture}
+                  onChanged={replace}
+                  onStale={() => void refresh()}
+                />
               </>
             )}
           </div>

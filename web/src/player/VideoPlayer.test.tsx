@@ -776,6 +776,69 @@ describe("VideoPlayer", () => {
     );
   });
 
+  it("最初のメタデータで続きからの位置を当て終えたら positioned を知らせ、操作の入口は今の論理上の位置を返す", async () => {
+    const values = { ...props(), initialPositionMs: 12_000 };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(values.onControls).toHaveBeenCalled());
+    const controls = values.onControls.mock.calls.at(-1)?.[0] as
+      import("./playerControls").PlayerControls | null;
+    const player = mock.instances[0];
+    if (controls == null || player === undefined)
+      throw new Error("操作の入口がありません");
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: false }),
+    );
+
+    act(() => player.trigger("loadedmetadata"));
+    expect(player.time).toBe(12);
+    // 続きからの位置へのシークが終わるまでは、映っている場面がまだその位置ではない。
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: false }),
+    );
+    act(() => player.trigger("seeked"));
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: true }),
+    );
+    player.time = 83.4564;
+    expect(controls.positionMs()).toBe(83_456);
+    expect(values.onPosition).toHaveBeenLastCalledWith(controls.positionMs());
+  });
+
+  it("変換で続きから始めたときは、実際の開始位置の報告が届くまで positioned を立てない", async () => {
+    const values = { ...props({ playable: false }), initialPositionMs: 12_000 };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    const live = player.sources[0] as {
+      vvOffsetSettled?: (seconds: number) => void;
+      vvOffsetPending?: () => void;
+    };
+    // 仲立ちは source を設定した直後に報告を待ち始める。
+    act(() => live.vvOffsetPending?.());
+    act(() => player.trigger("loadedmetadata"));
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: false }),
+    );
+
+    act(() => live.vvOffsetSettled?.(8));
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: true }),
+    );
+  });
+
+  it("続きの位置が無ければ最初のメタデータで positioned を立てる", async () => {
+    const values = props();
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    act(() => player.trigger("loadedmetadata"));
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: true }),
+    );
+  });
+
   it("全画面は上に重ねる層ごと（渡した入れ物）にし、吹き出しもその中に描く", async () => {
     const frame = document.createElement("div");
     document.body.append(frame);
