@@ -733,8 +733,11 @@ export default function VideoPlayer(props: Props) {
     // 再生中なら続け、止めていたら止めたままにする。回復を待つ間でも、選んだ画質で
     // 読み込み直す。
     const changeQuality = (quality: PlaybackQuality) => {
-      if (player.isDisposed() || quality === attempt.quality) return;
+      if (player.isDisposed()) return;
+      // 今と同じ画質でも選んだことは覚える。覚えた画質がこの動画に使えず元の画質で再生して
+      // いるとき、「元の画質」を選び直せば覚えた画質を置き換える。
       writePlaybackQuality(quality);
+      if (quality === attempt.quality) return;
       if (attempt.state === "failed") {
         // 失敗の層が出ている。再試行はプレイヤーを作り直し、覚えた画質で始める。
         attempt = { ...attempt, quality };

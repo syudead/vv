@@ -1273,12 +1273,27 @@ describe("VideoPlayer", () => {
       expect(player.pausedValue).toBe(true);
     });
 
-    it("今と同じ画質を選んでも読み込み直さない", async () => {
+    it("今と同じ画質を選ぶと、読み込み直さずに選んだ画質を覚える", async () => {
       const values = props(hd);
       const player = await playerFor(values);
       select(player, "original");
       expect(player.sources).toHaveLength(1);
-      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBeNull();
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+        JSON.stringify("original"),
+      );
+    });
+
+    it("覚えた画質が使えず元の画質で再生しているとき、「元の画質」を選び直すと覚えた画質を置き換える", async () => {
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+      const values = props({ width: 640, height: 360 });
+      const player = await playerFor(values);
+      expect(player.qualityStates.at(-1)).toMatchObject({ current: "original" });
+
+      select(player, "original");
+      expect(player.sources).toHaveLength(1);
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+        JSON.stringify("original"),
+      );
     });
   });
 
