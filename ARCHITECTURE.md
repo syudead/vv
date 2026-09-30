@@ -401,6 +401,11 @@ compile:
   `Video` as `GET /api/videos/{id}`; guest responses carry the display name in `title`
   and omit `fileTitle`, `displayName` and `thumbnailPositionMs`
   (`specs/029-video-overrides/contracts/screen-api.md`).
+  `PUT /api/videos/{id}/thumbnail-position` instead goes through
+  `app.Ingest.SetThumbnailPosition` (the `httpapi.ThumbnailPicker` interface), which
+  regenerates the thumbnail under the same generation lock as the ingest job before
+  recording the position; the handler resolves the source file with the same rule as
+  `getVideoStream` and answers once generation has finished.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

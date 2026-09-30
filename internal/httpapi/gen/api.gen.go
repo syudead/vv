@@ -185,6 +185,7 @@ const (
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
 	ErrorReasonDisplayNameTooLong            ErrorReason = "display_name_too_long"
+	ErrorReasonDurationUnknown               ErrorReason = "duration_unknown"
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
@@ -209,6 +210,8 @@ const (
 	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
 	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
+	ErrorReasonThumbnailFrameUnavailable     ErrorReason = "thumbnail_frame_unavailable"
+	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
@@ -232,6 +235,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonDisplayNameControlCharacters:
 		return true
 	case ErrorReasonDisplayNameTooLong:
+		return true
+	case ErrorReasonDurationUnknown:
 		return true
 	case ErrorReasonEncoderUnavailable:
 		return true
@@ -280,6 +285,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonTagNameEmpty:
 		return true
 	case ErrorReasonTagNameTooLong:
+		return true
+	case ErrorReasonThumbnailFrameUnavailable:
+		return true
+	case ErrorReasonThumbnailPositionOutOfRange:
 		return true
 	case ErrorReasonTooManyTagFilters:
 		return true
@@ -1492,6 +1501,12 @@ type TagRef struct {
 	Name string `json:"name"`
 }
 
+// ThumbnailPositionUpdate defines model for ThumbnailPositionUpdate.
+type ThumbnailPositionUpdate struct {
+	// PositionMs 代表サムネイルにする場面の位置（ミリ秒）。null は解除して自動の位置に戻す
+	PositionMs *int64 `json:"positionMs"`
+}
+
 // TranscodeStart defines model for TranscodeStart.
 type TranscodeStart struct {
 	// StartMs 変換の出力の時間軸の 0 に当たる元動画の時刻（ミリ秒）
@@ -2139,6 +2154,9 @@ type SetVideoDisplayNameJSONRequestBody = DisplayNameUpdate
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
 
+// SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
+type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListApiTokens 発行した API トークンを返す
@@ -2294,6 +2312,9 @@ type ServerInterface interface {
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
+	// SetVideoThumbnailPosition 動画の代表サムネイルの位置を設定・解除する
+	// (PUT /api/videos/{id}/thumbnail-position)
+	SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id VideoId)
 	// GetTranscodeStart ライブ変換の実際の開始位置を返す
 	// (GET /api/videos/{id}/transcode-start)
 	GetTranscodeStart(w http.ResponseWriter, r *http.Request, id VideoId, params GetTranscodeStartParams)
@@ -3999,6 +4020,32 @@ func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// SetVideoThumbnailPosition operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoThumbnailPosition(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTranscodeStart operation middleware
 func (siw *ServerInterfaceWrapper) GetTranscodeStart(w http.ResponseWriter, r *http.Request) {
 
@@ -4252,6 +4299,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)

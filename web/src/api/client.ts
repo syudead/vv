@@ -500,6 +500,30 @@ export async function setVideoDisplayName(
   return video;
 }
 
+/**
+ * setVideoThumbnailPosition は動画の代表サムネイルを `positionMs`（ミリ秒）の場面で作り直す。
+ * `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返り、`getVideo` と
+ * 同じ形の動画で、新しい版の `thumbnailUrl` と `thumbnailPositionMs` が反映済みである
+ * （specs/029-video-overrides/contracts/screen-api.md §2）。
+ *
+ * 成功したら一覧の控えを捨てる。控えは離れた一覧のカードの `thumbnailUrl` を持ち、
+ * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
+ */
+export async function setVideoThumbnailPosition(
+  id: number,
+  positionMs: number | null,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-position`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionMs }),
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
 /** getRelatedVideos は動画詳細画面の関連動画（最大 20 件と次の動画の id）を取得する。 */
 export function getRelatedVideos(
   id: number,

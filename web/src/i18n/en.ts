@@ -176,6 +176,9 @@ const errorReasons = {
     limit === undefined
       ? "The name is too long."
       : `The name can't be longer than ${characters(limit)}.`,
+  duration_unknown: "The video's length isn't known yet.",
+  thumbnail_position_out_of_range: "The position is past the end of the video.",
+  thumbnail_frame_unavailable: "No image could be made from this frame.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

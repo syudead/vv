@@ -221,6 +221,8 @@ type Options struct {
 	Visibility Visibility
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
 	Overrides OverrideStore
+	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
+	ThumbnailPicker ThumbnailPicker
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
 	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
@@ -288,6 +290,7 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	overrides    OverrideStore
+	thumbnails   ThumbnailPicker
 	folders      Folders
 	folderGroups FolderGroups
 	library      LibraryItems
@@ -355,6 +358,7 @@ func NewRouter(opts Options) http.Handler {
 		tags:              opts.Tags,
 		visibility:        opts.Visibility,
 		overrides:         opts.Overrides,
+		thumbnails:        opts.ThumbnailPicker,
 		folders:           opts.Folders,
 		folderGroups:      opts.FolderGroups,
 		library:           opts.Library,
@@ -501,7 +505,7 @@ func requiresJSONBody(r *http.Request) bool {
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
 			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && (rest == "progress" || rest == "display-name")
+			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
 		}
 	case http.MethodPatch:
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
@@ -619,6 +623,9 @@ const (
 	reasonSubtitleUnavailable           = gen.ErrorReasonSubtitleUnavailable
 	reasonDisplayNameControlCharacters  = gen.ErrorReasonDisplayNameControlCharacters
 	reasonDisplayNameTooLong            = gen.ErrorReasonDisplayNameTooLong
+	reasonDurationUnknown               = gen.ErrorReasonDurationUnknown
+	reasonThumbnailPositionOutOfRange   = gen.ErrorReasonThumbnailPositionOutOfRange
+	reasonThumbnailFrameUnavailable     = gen.ErrorReasonThumbnailFrameUnavailable
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

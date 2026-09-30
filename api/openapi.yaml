@@ -972,6 +972,44 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/thumbnail-position:
+    put:
+      operationId: setVideoThumbnailPosition
+      summary: 動画の代表サムネイルの位置を設定・解除する
+      description: |
+        所有者だけ。`positionMs` の場面で代表サムネイルを作り直して公開し、位置を記録する。
+        `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返し、形は
+        `GET /api/videos/{id}` と同じ `Video` である（`thumbnailState: done`、新しい版の
+        `thumbnailUrl`、指定なら `thumbnailPositionMs`）。解析が終わっていないか尺が分からなければ
+        409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
+        尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
+        どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
+        最後に記録した位置の画像が残る。確定後に `/api/events` の `video` が流れる
+        （specs/029-video-overrides/contracts/screen-api.md §2）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ThumbnailPositionUpdate"
+      responses:
+        "200":
+          description: 反映後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/scans:
     post:
       operationId: startScan
@@ -2919,6 +2957,16 @@ components:
           type: string
           description: 新しい表示名。前後の空白を取り除いて空なら解除する
 
+    ThumbnailPositionUpdate:
+      type: object
+      required: [positionMs]
+      additionalProperties: false
+      properties:
+        positionMs:
+          type: [integer, "null"]
+          format: int64
+          description: 代表サムネイルにする場面の位置（ミリ秒）。null は解除して自動の位置に戻す
+
     ProgressUpdate:
       type: object
       required: [positionMs]
@@ -3283,3 +3331,6 @@ components:
         - subtitle_unavailable
         - display_name_control_characters
         - display_name_too_long
+        - duration_unknown
+        - thumbnail_position_out_of_range
+        - thumbnail_frame_unavailable
