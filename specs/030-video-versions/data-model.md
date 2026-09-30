@@ -48,11 +48,14 @@ create table video_version_dismissals (
 
 -- 以下は索引。内容の参照が無くなるときに消し、走査と取り込みで作り直せる。
 
--- 同じパスの中身が変わった後継の候補（R-5）。新しい中身の解析が終わったときに判定して消す。
+-- 同じパスの中身が変わった後継の候補（R-5）。記録した走査が閉じ、新しい中身の解析が終わったときに
+-- 判定して消す。
 create table video_successions (
     new_key         text    primary key,
     old_key         text    not null,
     old_duration_ms integer not null,
+    -- 記録のあとに走査が done で閉じたら 1。0 の間は前の中身が別のパスに現れうるので判定しない。
+    ready           integer not null default 0 check (ready in (0, 1)),
     created_at      integer not null
 ) without rowid;
 
@@ -60,7 +63,7 @@ create table video_successions (
 create table video_fingerprints (
     content_key text    primary key,
     version     integer not null,   -- domain.FingerprintVersion
-    interval_ms integer not null,   -- 作ったときのスプライトの配置の間隔
+    interval_ms integer not null,   -- 作ったときのスプライトの配置の間隔。コマの時刻を合わせるのに使う
     hashes      blob    not null,
     updated_at  integer not null
 ) without rowid;
@@ -105,7 +108,7 @@ create table video_version_candidates (
 | `FrameHash{Hash uint64, Flat bool}` | コマ 1 つのハッシュと、単色（比較から外す）の印 |
 | `Fingerprint{Version int, IntervalMs int64, Frames []FrameHash}` | `Encode() []byte`・`DecodeFingerprint([]byte, version, interval)`。1 コマ 9 バイト |
 | `HashFrame(luma [32][32]uint8) FrameHash` | 2 次元 DCT の低周波 8×8 の直流を除く 63 係数を中央値と比べたビット。輝度の分散が `FingerprintFlatVariance` 未満なら `Flat` |
-| `CompareFingerprints(a, b Fingerprint) (distance int, ok bool)` | 版と間隔が違えば `ok = false`。両方 `Flat` でない同じ番号のコマのハミング距離の中央値。比べたコマが `FingerprintMinComparableFrames`（3）未満なら `ok = false` |
+| `CompareFingerprints(a, b Fingerprint) (distance int, ok bool)` | 版が違えば `ok = false`。間隔は揃っていなくてよい: `a` のコマ `i` の区間の中央（`i*a.IntervalMs + a.IntervalMs/2`）を受け持つ `b` のコマ（`b` の配置の `FrameAt` と同じ規則、`b` のコマ数の外なら組にしない）と組にし、両方 `Flat` でない組のハミング距離の中央値をとる。405 秒を超える動画は間隔が `ceil(尺 / 81)` で、尺が数ミリ秒違うだけで間隔が違うため、番号ではなく時刻で合わせる。比べた組が `FingerprintMinComparableFrames`（3）未満なら `ok = false` |
 | `FingerprintMatchMaxDistance = 12` | 候補にする中央値の上限 |
 | `JobFingerprint JobKind = "fingerprint"` | `JobKinds` の最後。`ClaimConditionFor` は `RegisteredLocation` と新しい `SeekThumbnailFinished`（`seek_thumbnail_state = done`）。`ScanActivityKind` にも足す |
 | `VideoBundleChanged{VideoIDs []int64}` | 束ねの変化。`Event` を実装する（R-9） |
@@ -165,15 +168,26 @@ coalesce((select b.user_key from video_bundle_members m join video_bundles b on 
 
 1. 前の行を消す前に `duration_ms` を読む。null なら記録しない（解析が終わっていない・失敗した動画は
    対象外。Edge Case）。
-2. `video_successions` に `(new_key = file.ContentKey, old_key, old_duration_ms)` を書く（`new_key` の
-   既存の行は置き換える）。
+2. `video_successions` に `(new_key = file.ContentKey, old_key, old_duration_ms, ready = 0)` を書く
+   （`new_key` の既存の行は置き換える）。
 3. `newVideo` で作る鍵が `video_successions.old_key` に一致すれば、その行を消す（前の中身が別のパスに
    移った。Edge Case「ファイルの入れ替え」）。
 
-`applySuccession(tx, contentKey, durationMs)` を `ApplyProbe`・`ApplyProbeForJob` が、解析の結果を書いた
-あと同じ取引で呼ぶ:
+判定は、記録した走査が全パスを見終えるまで待つ。走査はパスを順に見て、新しい中身の解析の job は
+走査の途中でもワーカーが処理するので、前の中身が後から別のパスで見つかる（手順 3）より先に解析が
+終わりうる。そのとき判定すると取り消す記録が無くなり、Edge Case「ファイルの入れ替え」が順序で
+変わる。そこで次の 2 か所が同じ `applySuccession` を呼び、`ready = 1` の行だけを判定する:
 
-1. `new_key = contentKey` の行を読み、あれば消す。無ければ終わり。
+- `ScanStore.FinishScan` が `state = done` で走査を閉じる取引で、`video_successions` の全行を
+  `ready = 1` にし、`new_key` の動画の `duration_ms` が分かっている行をそれぞれ判定する。`failed` で
+  閉じた走査は全パスを見ていないので `ready` を変えない（次に `done` で閉じる走査が判定する）。
+- `ApplyProbe`・`ApplyProbeForJob` が、解析の結果を書いたあと同じ取引で（走査が閉じたあとに解析が
+  終わったとき）。
+
+`applySuccession(tx, contentKey, durationMs)`:
+
+1. `new_key = contentKey` かつ `ready = 1` の行を読み、あれば消す。無ければ終わり（`ready = 0` の行は
+   残す）。
 2. `DurationsMatch(old_duration_ms, durationMs)` でなければ終わり（別の動画で上書きされた。要件 8）。
 3. `old_key` を参照する動画があれば終わり。
 4. 引き継ぐ。`old_key` が `video_bundle_members` にあれば `content_key` を `new_key` に付け替え、
@@ -181,7 +195,10 @@ coalesce((select b.user_key from video_bundle_members m join video_bundles b on 
    `playback_progress`（`new_key` の行があれば `old_key` の行で置き換える）、`public_videos`（同じ）、
    `video_tags`（和）、`video_version_dismissals`（`old_key` を `new_key` に、並び替えて重複は 1 つ）。
    集まりのメンバーの場合も、`old_key` 自身のこれらの行（集まりに入る前の値）を同じく付け替える。
-5. `VideoBundleChanged{VideoIDs: [その動画]}` を確定後に発行する。
+5. `VideoBundleChanged` を確定後に発行する。`VideoIDs` は引き継いだ動画と、`old_key` が集まりの
+   メンバーだったならその集まりの全メンバーの動画の id（付け替えのあとに引く）。残りのメンバーの
+   `versions`（代表と本数）も変わるので、どのメンバーの動画ページも取り直す
+   （[contracts/screen-api.md §6](contracts/screen-api.md)）。
 
 解析が上限まで失敗しても行は残す。やり直し（`RetryProbe`）が成功したときに判定する。行は `new_key` の
 内容の参照が無くなるときに消える（§1）。
@@ -200,8 +217,14 @@ coalesce((select b.user_key from video_bundle_members m join video_bundles b on 
    §7 の候補を作り直す。
 
 シーク用サムネイルの完了（`SetSeekThumbnailStateForJob` の `done`）と `RequeueMissingSeekThumbnails` の
-作り直しの完了で `fingerprint` の job を `requeueJob` で積む。旧い 6 シートのスプライトから作った指紋は
-`interval_ms` が今の配置と違うので、今の配置の指紋とは比べない。
+作り直しの完了で `fingerprint` の job を `requeueJob` で積む。指紋は `videos` に状態の列を持たないので、
+job が上限まで失敗すると（成果物の読み出しの一時的な失敗など）上の 2 か所では二度と積まれない。
+そこで走査が整合を取り直す: `domain.IndexedVideo` に `FingerprintMissing`（`seek_thumbnail_state = done`
+で、今の `FingerprintVersion` の `video_fingerprints` の行が無い）を足し、`Scanner.ensurePendingJobs` は
+それが真なら `EnsureJob(JobFingerprint)` を呼ぶ。`EnsureJob` は `fingerprint` について、状態の列の
+`pending` の代わりにこの条件を使い、`failed` の行は捨てて積み直す（queued・running の行があれば積まない）。
+こうして失敗した指紋は次の走査で作り直され、版を上げたときも移行を待たずに追いつく。旧い 6 シートの
+スプライトから作った指紋も、コマを時刻で合わせる（§2 `CompareFingerprints`）ので今の配置の指紋と比べられる。
 
 ## 7. 候補
 
@@ -214,7 +237,7 @@ insert or ignore into video_version_candidates (key_a, key_b, distance, created_
 select min(?, f.content_key), max(?, f.content_key), vv_fingerprint_distance(?, f.hashes), ?
   from video_fingerprints f
   join videos v on v.content_key = f.content_key
- where f.content_key <> ? and f.version = ? and f.interval_ms = ?
+ where f.content_key <> ? and f.version = ?
    and v.duration_ms is not null and abs(v.duration_ms - ?) <= max(1000, max(v.duration_ms, ?) * 5 / 1000)
    and not exists (select 1 from video_version_dismissals d
                    where d.key_a = min(?, f.content_key) and d.key_b = max(?, f.content_key))
@@ -236,7 +259,7 @@ select min(?, f.content_key), max(?, f.content_key), vv_fingerprint_distance(?, 
 
 | 操作 | 規則 |
 | --- | --- |
-| `Bundle(videoIDs, representativeID) (VideoVersions, error)` | id をいまライブラリにある動画の `content_key` に引き直す（引けない id は `ErrNotFound`）。2 本未満は `ErrTooFewVersions`、代表が含まれなければ `ErrRepresentativeNotSelected`。新しい集まりを作り、各動画（既に集まりに属していればその集まりの全メンバー）を移す。値は代表の `UserKey`（代表が集まりに属していればその集まりの鍵）の `playback_progress`・`video_tags`・`public_videos` の行を新しい `user_key` へ写す。吸収した集まりの行と値は消さない（Edge Case「集まり同士を束ねる」。値はその鍵に残る）。同じ集まりになった組の候補を消し、`rebuildFolderIndex` を呼び、`VideoBundleChanged{全メンバー}` を発行する |
+| `Bundle(videoIDs, representativeID) (VideoVersions, error)` | id をいまライブラリにある動画の `content_key` に引き直す（引けない id は `ErrNotFound`）。2 本未満は `ErrTooFewVersions`、代表が含まれなければ `ErrRepresentativeNotSelected`。新しい集まりを作り、各動画（既に集まりに属していればその集まりの全メンバー）を移す。値は代表の `UserKey`（代表が集まりに属していればその集まりの鍵）の `playback_progress`・`video_tags`・`public_videos` の行を新しい `user_key` へ写す。メンバーを移し終えた吸収した集まりの `video_bundles` の行は消す（メンバーの無い集まりを残さない。§1 の不変条件）。吸収した集まりの鍵の 3 つの表の値は消さない（Edge Case「集まり同士を束ねる」。値はその鍵に残る）。同じ集まりになった組の候補を消し、`rebuildFolderIndex` を呼び、`VideoBundleChanged{全メンバー}` を発行する |
 | `MakeRepresentative(videoID) (VideoVersions, error)` | メンバーでなければ `ErrNotBundled`。`representative_key` を替える。値は触らない。`rebuildFolderIndex`、`VideoBundleChanged{全メンバー}` |
 | `Unbundle(videoID) (Video, error)` | メンバーでなければ `ErrNotBundled`。行を消す（その動画は自分の `content_key` の値に戻る）。代表だったなら、残りのうち実効の代表の規則（§4）で選んだ 1 本を代表にする。残りが 1 本なら集まりを解く: 集まりの鍵の 3 つの表の行を残った 1 本の `content_key` へ写し（既存の行は置き換える）、集まりの行を消す（メンバーは連鎖）。`rebuildFolderIndex`、`VideoBundleChanged{元の全メンバー}` |
 | `Versions(audience, videoID) (VideoVersions, error)` | 動画が見せられなければ `ErrNotFound`。メンバーでなければ自分 1 本。見せてよい所在を持つメンバーを代表を先頭に返す |

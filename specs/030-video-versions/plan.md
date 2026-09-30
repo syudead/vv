@@ -21,8 +21,8 @@
 - **一覧**: 一覧・検索・フォルダ・グループは「見せる動画」（束ねていない動画と、各集まりの実効の代表）だけを
   項目にし、検索式は集まりの全所在に、範囲は代表の所在に掛ける（[R-3](research.md)、[R-4](research.md)、
   [data-model.md §4](data-model.md)）。
-- **引き継ぎ**: `UpsertVideo` が同じパスの中身の変化を後継の候補として記録し、新しい中身の解析の結果を書く
-  取引で尺を比べて引き継ぐ（[R-5](research.md)、[data-model.md §5](data-model.md)）。
+- **引き継ぎ**: `UpsertVideo` が同じパスの中身の変化を後継の候補として記録し、記録した走査が閉じて新しい
+  中身の解析が終わったときに尺を比べて引き継ぐ（[R-5](research.md)、[data-model.md §5](data-model.md)）。
 - **検出**: シーク用スプライトのコマの pHash を指紋にする取り込みの段階 `fingerprint` を足し、指紋を書く
   取引の中で候補を求めて表に置く。「違う動画」の判断は利用者データとして残す（[R-6](research.md)、
   [R-7](research.md)、[data-model.md §6・§7](data-model.md)）。
@@ -198,7 +198,7 @@ A・B どちらの `UserKey` も同じ集まりの鍵になり、その鍵のタ
 （受け入れ条件 8 の保存の部分）。B を外すと B の `UserKey` が `content_key` に戻りタグ Y が引け、
 集まりのタグは X のまま（受け入れ条件 9）。残りが 1 本になると集まりの行が消え、残った 1 本の
 `content_key` に集まりの値が写る。集まり同士を束ねると 1 つの集まりになり、値は選んだ代表の集まりの
-もの。`SaveProgress` を B の `UserKey` に書くと A の `progress` が進む（受け入れ条件 7 の保存の部分）。
+もので、吸収した集まりの行は消える（その鍵の値は残る）。`SaveProgress` を B の `UserKey` に書くと A の `progress` が進む（受け入れ条件 7 の保存の部分）。
 `SetVideosPublic` が集まりの鍵に書き、返す鍵に全メンバーの `content_key` が入る。不変条件
 （代表はメンバー、メンバー 2 本未満の集まりは無い、`bundle:` で始まらない `user_key` は無い）が
 `invariants_test.go` で通る。確定後に `VideoBundleChanged` が 1 回発行される。
@@ -245,7 +245,8 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 ### スキャン時の同じパスの中身の引き継ぎ
 
 **Scope**: `video_successions`（[data-model.md §5](data-model.md)）、`UpsertVideo` での後継の記録と
-取り消し（前の中身が別のパスに現れたとき）、`ApplyProbe`・`ApplyProbeForJob` での尺の比較と引き継ぎ
+取り消し（前の中身が別のパスに現れたとき）、`FinishScan`（`done`）と `ApplyProbe`・`ApplyProbeForJob` での
+尺の比較と引き継ぎ
 （集まりのメンバーなら位置の引き継ぎ、そうでなければ 3 つの表の行の付け替え）、内容の参照が無くなる
 ときの行の削除、`domain.DurationsMatch`。ARCHITECTURE.md の走査の段落。
 
@@ -255,8 +256,10 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 `content_key` の違うファイルを upsert して解析を書くと、そのパスの動画にタグと再生位置が付いている
 （受け入れ条件 1）。尺が幅の外なら何も付かない（受け入れ条件 2）。前の中身が集まりの代表なら新しい
 中身が代表になり、代表以外なら同じ集まりのメンバーになる（Edge Case）。前の尺が null なら記録しない。
-同じ走査で前の中身が別のパスに現れると記録が消え、引き継がない（Edge Case）。解析が失敗しても記録は
-残り、やり直しで成功したときに判定する。
+同じ走査で前の中身が別のパスに現れると記録が消え、引き継がない（Edge Case）。新しい中身の解析が
+走査の途中で終わっても、走査が `done` で閉じるまで引き継がず、その後に前の中身が別のパスで見つかる
+順序でも引き継がない。解析が失敗しても記録は残り、やり直しで成功したときに判定する。引き継ぐと、
+前の中身が属していた集まりの全メンバーの `VideoBundleChanged` が発行される。
 
 ### シーク用スプライトから映像の指紋を作る取り込みの段階
 
@@ -265,17 +268,20 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 （[data-model.md §6](data-model.md)）、`media.SpriteFingerprint`（シートの JPEG から各コマの 32×32 の
 輝度）、`app.Ingest.Fingerprint`、`IngestStore.ApplyFingerprintForJob`（候補の算出は次の単位）、
 `video_fingerprints` と `jobs.kind` の移行（完成したスプライトの動画に job を積む）、シーク用サムネイルの
-完了の取引で job を積む、ワーカーと起床の配線、`ScanActivity` の種類と画面の文言。ARCHITECTURE.md の
+完了の取引で job を積む、走査での指紋の欠けの積み直し（`IndexedVideo.FingerprintMissing` と
+`EnsureJob`）、ワーカーと起床の配線、`ScanActivity` の種類と画面の文言。ARCHITECTURE.md の
 取り込みの段落。
 
 **Dependencies**: None
 
 **Acceptance**: `task check` が通る。domain の試験で、同じ画像の明るさ・コントラストを変えたものの
 ハミング距離が閾値の内、別の画像が外。media の試験（ffmpeg あり）で、同じ動画を解像度違いで
-再エンコードした 2 本のスプライトの指紋が `CompareFingerprints` で一致し、尺だけ同じ別の動画が
+再エンコードした 2 本のスプライトの指紋が `CompareFingerprints` で一致し（405 秒を超えて間隔が違う 2 本も
+コマを時刻で合わせて一致する）、尺だけ同じ別の動画が
 一致しない（受け入れ条件 3・4 の判定の部分）。app の試験で、job がスプライトを読んで指紋を書き、
 スプライトが無ければ失敗を返す。store の試験で、シーク用サムネイルの完了で `fingerprint` の job が
-積まれ、取り出しがシーク用サムネイルの完了を待ち、走査の残りの仕事に数えられる。
+積まれ、取り出しがシーク用サムネイルの完了を待ち、走査の残りの仕事に数えられる。上限まで失敗した
+`fingerprint` の job が、次の走査で積み直される。
 
 ### 候補の算出と候補の一覧・却下の API
 
