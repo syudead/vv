@@ -20,8 +20,14 @@ import (
 // tentative が真の add・replace で却下した名前に当たって飛ばした名前は skippedTags に返す
 // （specs/031-tentative-tags/contracts/external-api.md §1）。
 func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
-	var body extgen.VideoTagsRequest
-	if !e.readJSONBody(w, r, &body) {
+	var request videoTagsRequestBody
+	if !e.readJSONBody(w, r, &request) {
+		return
+	}
+	body := request.VideoTagsRequest
+	tentative, ok := request.tentative()
+	if !ok {
+		e.invalidRequest(w, nil, "tentative must be true or false.")
 		return
 	}
 	action := domain.VideoTagsAction(body.Action)
@@ -65,9 +71,6 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// tentative は省略時に偽（specs/031-tentative-tags/contracts/external-api.md §1）。真偽値で
-	// ない値は readJSONBody が本文の形の誤りとして 400 にしている。
-	tentative := body.Tentative != nil && *body.Tentative
 	outcome, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags, tentative)
 	if err != nil {
 		e.writeVideoTagsError(w, err)
@@ -89,6 +92,30 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, e.s.logger)
+}
+
+// videoTagsRequestBody は POST /api/v1/video-tags の本文である。生成した
+// extgen.VideoTagsRequest の Tentative（*bool）は省略と明示の null を区別できないので、
+// tentative だけ生のまま読み、tentative() で確かめる。外側の Tentative が埋め込んだ型の同名の
+// 項目を隠すので、知らない項目を誤りにする readJSONBody の扱いはそのまま効く。
+type videoTagsRequestBody struct {
+	extgen.VideoTagsRequest
+	Tentative json.RawMessage `json:"tentative"`
+}
+
+// tentative は本文の tentative を返す。省略は偽（specs/031-tentative-tags/contracts/external-api.md
+// §1）。null を含め真偽値でない値は ok = false にし、呼び出し側が 400 invalid_request を返す。
+func (b videoTagsRequestBody) tentative() (value, ok bool) {
+	if b.Tentative == nil {
+		return false, true
+	}
+	if string(b.Tentative) == "null" {
+		return false, false
+	}
+	if err := json.Unmarshal(b.Tentative, &value); err != nil {
+		return false, false
+	}
+	return value, true
 }
 
 // externalVideoRef は本文の動画の指定を domain.VideoRef にする。id・contentKey・path の

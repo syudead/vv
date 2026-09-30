@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/syudead/vv/internal/httpapi/extgen"
+	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
 // 外部連携 API の仮の付与（specs/031-tentative-tags/contracts/external-api.md §1）を、本物の
@@ -41,6 +42,20 @@ func (f externalTagsFixture) externalTagStates(t *testing.T) map[string]bool {
 	return out
 }
 
+// screenTagStates は画面の GET /api/tags の名前ごとの仮かどうかである（持ち主のセッション）。
+func (f externalTagsFixture) screenTagStates(t *testing.T) map[string]bool {
+	t.Helper()
+	rec := f.env.serve(authRequest{method: http.MethodGet, target: "/api/tags", cookies: []*http.Cookie{f.owner}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/tags: %d %s", rec.Code, rec.Body)
+	}
+	out := map[string]bool{}
+	for _, tag := range decode[gen.TagList](t, rec).Items {
+		out[tag.Name] = tag.Tentative
+	}
+	return out
+}
+
 // rejectByName は名前 name のタグを仮として作ってから却下し、却下した名前の一覧に入れる。
 func (f externalTagsFixture) rejectByName(t *testing.T, name string) {
 	t.Helper()
@@ -60,7 +75,7 @@ func (f externalTagsFixture) rejectByName(t *testing.T, name string) {
 }
 
 // 受け入れ条件 1: tentative: true で無い名前を送ると 200 で、その名前が仮のタグとして付き、
-// GET /api/v1/tags でも仮として出る。既存のタグは状態を変えずに付き、複数の動画に付く名前も
+// GET /api/v1/tags でも画面の GET /api/tags でも仮として出る。既存のタグは状態を変えずに付き、複数の動画に付く名前も
 // 作るのは 1 つ。
 func TestExternalVideoTagsTentativeCreatesTentativeTags(t *testing.T) {
 	f := newExternalTagsFixture(t)
@@ -82,6 +97,9 @@ func TestExternalVideoTagsTentativeCreatesTentativeTags(t *testing.T) {
 	}
 	if got := f.externalTagStates(t); len(got) != 2 || !got["犬"] || got["猫"] {
 		t.Errorf("GET /api/v1/tags = %v（犬を 1 つだけ仮で作る）", got)
+	}
+	if got := f.screenTagStates(t); len(got) != 2 || !got["犬"] || got["猫"] {
+		t.Errorf("GET /api/tags = %v（犬を 1 つだけ仮で作る）", got)
 	}
 }
 
@@ -144,17 +162,18 @@ func TestExternalVideoTagsTentativeSkipsRejectedNames(t *testing.T) {
 	}
 }
 
-// tentative が真偽値でなければ本文の形の誤りとして 400 invalid_request。
+// tentative が真偽値でなければ本文の形の誤りとして 400 invalid_request。明示の null も
+// 省略とは扱わず、確定したタグを作らずに断る。
 func TestExternalVideoTagsRejectsNonBooleanTentative(t *testing.T) {
 	f := newExternalTagsFixture(t)
-	for _, value := range []any{"true", 1, []any{}} {
+	for _, value := range []any{"true", 1, []any{}, json.RawMessage("null")} {
 		status, raw := f.post(t, tentativeTagsBody([]map[string]any{{"id": f.ids[0]}}, "add", []string{"猫"}, value))
 		var e extgen.Error
 		if err := json.Unmarshal(raw, &e); err != nil {
-			t.Fatalf("%v: %v: %s", value, err, raw)
+			t.Fatalf("%s: %v: %s", value, err, raw)
 		}
 		if status != http.StatusBadRequest || e.Code != extgen.ErrorCodeInvalidRequest || e.Reason != nil {
-			t.Errorf("tentative=%v: status = %d: %s", value, status, raw)
+			t.Errorf("tentative=%s: status = %d: %s", value, status, raw)
 		}
 	}
 	if tags, err := f.env.db.Tags().ListTags(context.Background()); err != nil || len(tags) != 0 {
