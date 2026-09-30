@@ -30,6 +30,11 @@ reason?, limit?, index? }` を本文に入れて返す。
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
+| `update_video_display_names` | `POST /api/v1/video-display-names` |
+| `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+
+最後の 2 つは 029 で足した（[specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-のツール)）。
+どちらも `null` で上書きを解除するので `destructiveHint: true`・`idempotentHint: true` にする。
 
 読み出しのツールには `readOnlyHint: true` を付ける。`update_video_tags` は `remove` と `replace` で
 既存のタグを外すので `destructiveHint: true`・`idempotentHint: true`、`start_scan` は

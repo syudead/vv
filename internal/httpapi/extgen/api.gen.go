@@ -16,6 +16,7 @@ import (
 
 // Defines values for ErrorCode.
 const (
+	ErrorCodeConflict                  ErrorCode = "conflict"
 	ErrorCodeInternal                  ErrorCode = "internal"
 	ErrorCodeInvalidRequest            ErrorCode = "invalid_request"
 	ErrorCodeMediaFoldersNotConfigured ErrorCode = "media_folders_not_configured"
@@ -26,6 +27,8 @@ const (
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeConflict:
+		return true
 	case ErrorCodeInternal:
 		return true
 	case ErrorCodeInvalidRequest:
@@ -43,19 +46,33 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for ErrorReason.
 const (
-	InvalidCursor            ErrorReason = "invalid_cursor"
-	NoScan                   ErrorReason = "no_scan"
-	TagNameControlCharacters ErrorReason = "tag_name_control_characters"
-	TagNameEmpty             ErrorReason = "tag_name_empty"
-	TagNameTooLong           ErrorReason = "tag_name_too_long"
-	TooManyTags              ErrorReason = "too_many_tags"
-	TooManyVideos            ErrorReason = "too_many_videos"
-	VideoNotFound            ErrorReason = "video_not_found"
+	DisplayNameControlCharacters ErrorReason = "display_name_control_characters"
+	DisplayNameTooLong           ErrorReason = "display_name_too_long"
+	DurationUnknown              ErrorReason = "duration_unknown"
+	FileUnavailable              ErrorReason = "file_unavailable"
+	InvalidCursor                ErrorReason = "invalid_cursor"
+	NoScan                       ErrorReason = "no_scan"
+	TagNameControlCharacters     ErrorReason = "tag_name_control_characters"
+	TagNameEmpty                 ErrorReason = "tag_name_empty"
+	TagNameTooLong               ErrorReason = "tag_name_too_long"
+	ThumbnailFrameUnavailable    ErrorReason = "thumbnail_frame_unavailable"
+	ThumbnailPositionOutOfRange  ErrorReason = "thumbnail_position_out_of_range"
+	TooManyTags                  ErrorReason = "too_many_tags"
+	TooManyVideos                ErrorReason = "too_many_videos"
+	VideoNotFound                ErrorReason = "video_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ErrorReason enum.
 func (e ErrorReason) Valid() bool {
 	switch e {
+	case DisplayNameControlCharacters:
+		return true
+	case DisplayNameTooLong:
+		return true
+	case DurationUnknown:
+		return true
+	case FileUnavailable:
+		return true
 	case InvalidCursor:
 		return true
 	case NoScan:
@@ -65,6 +82,10 @@ func (e ErrorReason) Valid() bool {
 	case TagNameEmpty:
 		return true
 	case TagNameTooLong:
+		return true
+	case ThumbnailFrameUnavailable:
+		return true
+	case ThumbnailPositionOutOfRange:
 		return true
 	case TooManyTags:
 		return true
@@ -130,7 +151,7 @@ type Error struct {
 	// Code 機械可読なエラー種別。
 	Code ErrorCode `json:"code"`
 
-	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、それ以外では videos の位置を 指す（contracts/external-api.md §4）
+	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイルの操作では items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
 	Index *int `json:"index,omitempty"`
 
 	// Limit reason の上限値。上限を持つ reason のときだけ入る
@@ -179,15 +200,24 @@ type ExternalVideo struct {
 	// ContentKey 内容から決まる識別子。ファイルが移動しても変わらない
 	ContentKey string `json:"contentKey"`
 
+	// DisplayName 表示名。未設定は null
+	DisplayName *string `json:"displayName"`
+
 	// DurationMs 長さ（ミリ秒）。解析前は null
 	DurationMs *int64 `json:"durationMs"`
-	Id         int64  `json:"id"`
+
+	// FileTitle 代表の所在の、拡張子を除いたファイル名
+	FileTitle string `json:"fileTitle"`
+	Id        int64  `json:"id"`
 
 	// Locations 登録フォルダの下の今の所在。パスの順で、代表が先頭
 	Locations []ExternalVideoLocation `json:"locations"`
 	Tags      []ExternalVideoTag      `json:"tags"`
 
-	// Title 代表の所在（locations の先頭）の題名
+	// ThumbnailPositionMs 代表サムネイルの位置（ミリ秒）。未設定は null（自動の位置）
+	ThumbnailPositionMs *int64 `json:"thumbnailPositionMs"`
+
+	// Title 有効な題名。表示名があればそれ、無ければ代表の所在（locations の先頭）の題名
 	Title string `json:"title"`
 }
 
@@ -236,6 +266,40 @@ type TagList struct {
 	Items []Tag `json:"items"`
 }
 
+// VideoDisplayNameChange defines model for VideoDisplayNameChange.
+type VideoDisplayNameChange struct {
+	// DisplayName 表示名。null、または前後の空白を除いて空なら解除する。制御文字を含めず、整えた後で 200 符号位置まで
+	DisplayName *string `json:"displayName"`
+
+	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	Video VideoRef `json:"video"`
+}
+
+// VideoDisplayNamesItem defines model for VideoDisplayNamesItem.
+type VideoDisplayNamesItem struct {
+	// DisplayName 反映後の表示名。解除したら null
+	DisplayName *string `json:"displayName"`
+
+	// FileTitle 代表の所在の、拡張子を除いたファイル名
+	FileTitle string `json:"fileTitle"`
+
+	// Title 反映後の有効な題名
+	Title string         `json:"title"`
+	Video VideoTagsVideo `json:"video"`
+}
+
+// VideoDisplayNamesRequest defines model for VideoDisplayNamesRequest.
+type VideoDisplayNamesRequest struct {
+	// Items 1〜20000 件。範囲外は `too_many_videos`
+	Items []VideoDisplayNameChange `json:"items"`
+}
+
+// VideoDisplayNamesResponse defines model for VideoDisplayNamesResponse.
+type VideoDisplayNamesResponse struct {
+	// Items items の順
+	Items []VideoDisplayNamesItem `json:"items"`
+}
+
 // VideoRef 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
 type VideoRef struct {
 	ContentKey *string `json:"contentKey,omitempty"`
@@ -277,6 +341,34 @@ type VideoTagsVideo struct {
 	Id         int64  `json:"id"`
 }
 
+// VideoThumbnailChange defines model for VideoThumbnailChange.
+type VideoThumbnailChange struct {
+	// PositionMs 代表サムネイルにする場面の位置（ミリ秒、0 以上で尺未満）。null なら解除し、自動の位置に戻す
+	PositionMs *int64 `json:"positionMs"`
+
+	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	Video VideoRef `json:"video"`
+}
+
+// VideoThumbnailsItem defines model for VideoThumbnailsItem.
+type VideoThumbnailsItem struct {
+	// ThumbnailPositionMs 反映後の位置。解除したら null
+	ThumbnailPositionMs *int64         `json:"thumbnailPositionMs"`
+	Video               VideoTagsVideo `json:"video"`
+}
+
+// VideoThumbnailsRequest defines model for VideoThumbnailsRequest.
+type VideoThumbnailsRequest struct {
+	// Items 1〜20 件。範囲外は `too_many_videos`
+	Items []VideoThumbnailChange `json:"items"`
+}
+
+// VideoThumbnailsResponse defines model for VideoThumbnailsResponse.
+type VideoThumbnailsResponse struct {
+	// Items items の順
+	Items []VideoThumbnailsItem `json:"items"`
+}
+
 // Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Internal = Error
 
@@ -301,8 +393,14 @@ type LookupVideoParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// UpdateVideoDisplayNamesJSONRequestBody defines body for UpdateVideoDisplayNames for application/json ContentType.
+type UpdateVideoDisplayNamesJSONRequestBody = VideoDisplayNamesRequest
+
 // UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
 type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
+
+// UpdateVideoThumbnailsJSONRequestBody defines body for UpdateVideoThumbnails for application/json ContentType.
+type UpdateVideoThumbnailsJSONRequestBody = VideoThumbnailsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -315,9 +413,15 @@ type ServerInterface interface {
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoDisplayNames 複数の動画の表示名を設定・解除する
+	// (POST /video-display-names)
+	UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request)
 	// UpdateVideoTags 複数の動画に名前で指定したタグを付ける・外す・置き換える
 	// (POST /video-tags)
 	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoThumbnails 複数の動画の代表サムネイルの位置を設定・解除する
+	// (POST /video-thumbnails)
+	UpdateVideoThumbnails(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧をページを分けて返す
 	// (GET /videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
@@ -377,11 +481,39 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateVideoDisplayNames operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoDisplayNames(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateVideoTags operation middleware
 func (siw *ServerInterfaceWrapper) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateVideoTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVideoThumbnails operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoThumbnails(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoThumbnails(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -619,6 +751,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos/lookup", wrapper.LookupVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-tags", wrapper.UpdateVideoTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-display-names", wrapper.UpdateVideoDisplayNames)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-thumbnails", wrapper.UpdateVideoThumbnails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)

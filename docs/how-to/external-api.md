@@ -83,8 +83,9 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 - 消えた動画は一覧に出なくなるだけで、消えたことを知らせる項目は無い。手元に持っている動画が
   まだあるかは `lookup` で確かめ、`404`（`video_not_found`）なら消えている。登録フォルダの外の所在だけが
   残った動画も、消えた動画と同じに扱う。
-- `locations` は登録フォルダの下の今の所在で、パスの順に並び、先頭が代表である（`title` は代表の
-  題名）。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
+- `locations` は登録フォルダの下の今の所在で、パスの順に並び、先頭が代表である。`title` は有効な
+  題名で、表示名（`displayName`）があればそれ、無ければ代表のファイル名由来の題名（`fileTitle`）である。
+  `displayName` と `thumbnailPositionMs`（代表サムネイルの位置、ミリ秒）は未設定なら `null`。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
   祖先のフォルダ名から付くタグである。
 
 ## 動画を 1 本引く
@@ -132,6 +133,53 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
   （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`）で、`index` は `tags` の
   何番目かを指す。
 
+## 表示名を付ける
+
+`POST /api/v1/video-display-names` は、複数の動画の表示名をまとめて設定・解除する。表示名は画面と
+この API の `title` に出て、並び替えと検索にも効く。元のファイルは変えない。
+
+```json
+{ "items": [{ "video": { "path": "/media/videos/clip.mp4" }, "displayName": "旅行 2024 夏" },
+            { "video": { "id": 12 }, "displayName": null }] }
+```
+
+- `items` の各要素の `video` は `id`・`contentKey`・`path` のちょうど 1 つを持つ（`video-tags` と同じ）。
+  `displayName` は必須で、`null` か、前後の空白を除いて空の文字列なら解除する（ファイル名由来の題名に
+  戻る）。1〜20000 件、本文は 32 MiB まで。
+- 表示名は内容（`contentKey`）に結ぶ。ファイルを移しても、同じ内容の別の所在にも同じ名前が出る。
+  他の動画と同じ名前も付けられる。
+- 応答は `{ items: [{ video: { id, contentKey }, title, fileTitle, displayName }] }` で、`items` の順に
+  反映後の値を返す。
+- 全体を 1 つのトランザクションで行う。引けない動画は `404`（`video_not_found`）、制御文字を含む名前は
+  `400`（`display_name_control_characters`）、200 文字を超える名前は `400`（`display_name_too_long`、
+  `limit: 200`）で、どれも `index` が `items` の何番目かを指し、何も反映しない。
+
+## 代表サムネイルの位置を変える
+
+`POST /api/v1/video-thumbnails` は、複数の動画の代表サムネイルを指定の場面で作り直す。
+
+```json
+{ "items": [{ "video": { "contentKey": "…" }, "positionMs": 12500 },
+            { "video": { "id": 12 }, "positionMs": null }] }
+```
+
+- `positionMs` は必須で、動画の先頭からのミリ秒（0 以上、尺未満）。`null` なら解除し、自動の位置で
+  作り直す。
+- 1 件ごとに画像を作るので、1 回の要求は 1〜20 件に区切る（超えると `400` `too_many_videos`、
+  `limit: 20`）。多くの動画を変えるときは 20 件ずつ順に送る。
+- 先に全件を確かめ、誤りがあれば何も作らない。引けない動画は `404`（`video_not_found`）、どの所在も
+  開けない動画は `404`（`file_unavailable`）、尺以上か負の位置は `400`（`thumbnail_position_out_of_range`、
+  `limit` にその動画の尺）、解析が終わっていない動画は `409`（`duration_unknown`）で、どれも `index` を返す。
+- 確かめたあと `items` の順に 1 件ずつ作る。途中の 1 件で画像を作れなければ `409`
+  （`thumbnail_frame_unavailable`）と `index` で止まる。`index` より前の項目は反映済みで、その項目と
+  後は反映されていない。続きは `index` の項目の位置を変えるか外し、`index` から後だけを送り直す
+  （反映済みの項目を送り直しても同じ位置で作り直すだけである）。
+- 作っている間に取り込みが動画や所在を変えることがあるので、各項目は作る直前に動画を読み直し、
+  所在を決め直す。そこで上の検証の誤り（`video_not_found`・`file_unavailable` など）や想定外の失敗
+  （`500`）になったときも、同じく `index` で止まり、`index` より前の項目は反映済みである。
+- 応答は `{ items: [{ video: { id, contentKey }, thumbnailPositionMs }] }`。応答は画像を作り終えてから
+  返るので、1 件につき数秒かかることがある。
+
 ## スクレイパーからの連携例
 
 新しく取り込んだ動画を外部のサイトで調べ、見つけたタグを付ける流れの例である。
@@ -143,6 +191,8 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 3. 新しい動画ごとに、`locations[].path` や `title` から外部のサイトで調べる。後で状態を確かめ直す
    ときは `GET /api/v1/videos/lookup?contentKey=…` で 1 本引く（`404` なら消えている）。
 4. 見つけた名前を `POST /api/v1/video-tags` で付ける。同じ名前の組を付ける動画はまとめて 1 回で送る。
+5. 外部のサイトの正式な題名が分かれば、`POST /api/v1/video-display-names` で表示名にする。ファイル名は
+   変えずに、画面での題名だけを整えられる。
 
 ```sh
 # 2. 一覧から contentKey と代表のパスを拾う（ページのたどり方は「動画の一覧を読む」）。
@@ -153,6 +203,11 @@ curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos?limit=200" |
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/v1/video-tags" \
   -d '{"videos":[{"contentKey":"…"}],"action":"add","tags":["猫","旅行"]}'
+
+# 5. 調べた題名を表示名にする。
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/video-display-names" \
+  -d '{"items":[{"video":{"contentKey":"…"},"displayName":"旅行 2024 夏"}]}'
 ```
 
 - 付けたタグを外部の結果にそろえ直したいときは `replace` を使う。画面で手で付けたタグも置き換わる
@@ -176,6 +231,8 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
+| `update_video_display_names` | `POST /api/v1/video-display-names` |
+| `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
 
 - ツールの引数は同じ操作の問い合わせ・本文と、結果（structured content）は応答の本文と同じ形である。
   操作の誤りは、ツールの結果の `isError: true` と、上の誤りの本文（`{ code, message, reason?, limit?,

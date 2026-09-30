@@ -74,6 +74,8 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Visibility: db.Visibility(),
 			Overrides:  db.Overrides(),
 			Library:    library,
+			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
+			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。
 			ThumbnailPicker: f.thumbnails,
 			Catalog:         app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),

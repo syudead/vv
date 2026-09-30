@@ -481,7 +481,8 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags":
+			"/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+			"/api/v1/video-display-names", "/api/v1/video-thumbnails":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
