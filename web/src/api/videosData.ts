@@ -95,12 +95,6 @@ export type VideosDataAction =
   | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
-  /**
-   * videoId が集まりの代表でなくなった（束ねられた・代表を替えた）ので、一覧の
-   * その 1 件を代表 representative に置き換える。代表が既に一覧に出ていれば、
-   * videoId の項目を外す（specs/030-video-versions/research.md R-9）。
-   */
-  | { type: "replaceWithRepresentative"; videoId: number; representative: Video }
   | { type: "refreshGroup"; folderKey: string; group: LibraryGroup }
   | { type: "removeGroup"; folderKey: string }
   | {
@@ -177,28 +171,6 @@ export function videosDataReducer(
         ...state,
         items: state.items.filter((item) => !isTarget(item)),
         total: Math.max(0, state.total - 1),
-      };
-    }
-    case "replaceWithRepresentative": {
-      const isTarget = (item: LibraryItem) =>
-        item.kind === "video" && item.video.id === action.videoId;
-      if (!state.items.some(isTarget)) return state;
-      const representativeShown = state.items.some(
-        (item) => item.kind === "video" && item.video.id === action.representative.id,
-      );
-      if (representativeShown) {
-        return {
-          ...state,
-          items: state.items.filter((item) => !isTarget(item)),
-          total: Math.max(0, state.total - 1),
-        };
-      }
-      // 題名も代表のものにする（要件 7: 一覧の 1 件は代表の題名とサムネイルを見せる）。
-      return {
-        ...state,
-        items: state.items.map((item) =>
-          isTarget(item) ? videoItem(action.representative) : item,
-        ),
       };
     }
     case "refreshGroup": {
