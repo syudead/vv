@@ -215,11 +215,14 @@ export type RelatedState =
  *
  * `rename` は、基準の動画の表示名を保存した応答を、グループのメンバーの並びにある
  * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
+ * `rethumb` は、基準の動画の代表サムネイルを指定・解除した応答を同じように写し、
+ * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
  */
 export function useRelatedVideos(id: number): {
   state: RelatedState;
   retry: () => void;
   rename: (video: Video) => void;
+  rethumb: (video: Video) => void;
 } {
   const [state, setState] = useState<RelatedState>({ kind: "loading", id });
   const [attempt, setAttempt] = useState(0);
@@ -248,26 +251,48 @@ export function useRelatedVideos(id: number): {
   }, [attempt, id]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  const rename = useCallback((video: Video) => {
+  // patchMember は、グループのメンバーの並びにある基準の動画 video.id の項目を patch で
+  // 書き換える。並びに無ければ何も変えない。
+  const patchMember = useCallback((video: Video, patch: (item: Video) => Video) => {
     setState((previous) => {
       if (previous.kind !== "ready" || previous.id !== video.id) return previous;
       const group = previous.related.group;
       if (group === undefined || !group.items.some((item) => item.id === video.id)) {
         return previous;
       }
-      const items = group.items.map((item) => {
-        if (item.id !== video.id) return item;
-        const renamed: Video = { ...item, title: video.title };
-        delete renamed.displayName;
-        if (video.fileTitle !== undefined) renamed.fileTitle = video.fileTitle;
-        if (video.displayName !== undefined) renamed.displayName = video.displayName;
-        return renamed;
-      });
+      const items = group.items.map((item) =>
+        item.id === video.id ? patch(item) : item,
+      );
       return {
         ...previous,
         related: { ...previous.related, group: { ...group, items } },
       };
     });
   }, []);
-  return { state, retry, rename };
+  const rename = useCallback(
+    (video: Video) =>
+      patchMember(video, (item) => {
+        const renamed: Video = { ...item, title: video.title };
+        delete renamed.displayName;
+        if (video.fileTitle !== undefined) renamed.fileTitle = video.fileTitle;
+        if (video.displayName !== undefined) renamed.displayName = video.displayName;
+        return renamed;
+      }),
+    [patchMember],
+  );
+  const rethumb = useCallback(
+    (video: Video) =>
+      patchMember(video, (item) => {
+        const updated: Video = { ...item };
+        delete updated.thumbnailUrl;
+        delete updated.thumbnailPositionMs;
+        if (video.thumbnailUrl !== undefined) updated.thumbnailUrl = video.thumbnailUrl;
+        if (video.thumbnailPositionMs !== undefined) {
+          updated.thumbnailPositionMs = video.thumbnailPositionMs;
+        }
+        return updated;
+      }),
+    [patchMember],
+  );
+  return { state, retry, rename, rethumb };
 }

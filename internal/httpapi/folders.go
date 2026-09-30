@@ -261,6 +261,7 @@ func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder
 	for _, preview := range folder.Previews {
 		videos = append(videos, domain.Video{
 			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
+			ThumbnailPositionMs: preview.ThumbnailPositionMs, ThumbnailRevision: preview.ThumbnailRevision,
 		})
 	}
 	previews := s.folderPreviews(ctx, videos)

@@ -92,6 +92,7 @@ export default function VideoPage() {
     state: relatedState,
     retry: retryRelated,
     rename: renameRelated,
+    rethumb: rethumbRelated,
   } = useRelatedVideos(id);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
@@ -553,7 +554,11 @@ export default function VideoPage() {
                   video={video}
                   owner={owner}
                   capture={capture}
-                  onChanged={replace}
+                  onChanged={(saved, mark) => {
+                    replace(saved, mark);
+                    // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
+                    rethumbRelated(saved);
+                  }}
                   onStale={() => void refresh()}
                 />
               </>

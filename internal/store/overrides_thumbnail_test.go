@@ -218,3 +218,42 @@ func TestThumbnailSourceCurrentRejectsReassignedLocation(t *testing.T) {
 		t.Fatalf("残った所在: current = %v, %v; want true", current, err)
 	}
 }
+
+// フォルダカードの所在にも位置と改版番号を載せ、サムネイルの URL の版を動画一覧と
+// そろえる。解除すれば載らない。
+func TestFolderLocationsCarryThumbnailRevision(t *testing.T) {
+	db, ids := overrideFixture(t)
+	alphaID := ids[fixturePath("/media/alpha.mp4")]
+	ctx := context.Background()
+
+	find := func() domain.FolderLocation {
+		t.Helper()
+		locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, fixturePath("/media"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, location := range locations {
+			if location.VideoID == alphaID {
+				return location
+			}
+		}
+		t.Fatalf("所在 %d が見つからない", alphaID)
+		return domain.FolderLocation{}
+	}
+
+	if location := find(); location.ThumbnailPositionMs != nil || location.ThumbnailRevision != 0 {
+		t.Fatalf("指定前 = %v, %d", location.ThumbnailPositionMs, location.ThumbnailRevision)
+	}
+	position := int64(0)
+	video := setThumbnailPosition(t, db, alphaID, &position)
+	location := find()
+	if location.ThumbnailPositionMs == nil || *location.ThumbnailPositionMs != position ||
+		location.ThumbnailRevision != video.ThumbnailRevision {
+		t.Fatalf("指定後 = %v, %d（want %d, %d）",
+			location.ThumbnailPositionMs, location.ThumbnailRevision, position, video.ThumbnailRevision)
+	}
+	setThumbnailPosition(t, db, alphaID, nil)
+	if location := find(); location.ThumbnailPositionMs != nil || location.ThumbnailRevision != 0 {
+		t.Fatalf("解除後 = %v, %d", location.ThumbnailPositionMs, location.ThumbnailRevision)
+	}
+}

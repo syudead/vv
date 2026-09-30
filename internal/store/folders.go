@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"runtime"
@@ -70,7 +71,11 @@ func directChildConditionFor(alias string, windows bool) string {
 // internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
 // 導いたフォルダと件数だけが現れる。
 func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state
+	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state,
+			(select ov.thumbnail_position_ms from video_overrides ov
+				where ov.content_key = videos.content_key and videos.content_key <> ''),
+			(select ov.thumbnail_revision from video_overrides ov
+				where ov.content_key = videos.content_key and videos.content_key <> '')
 		from video_locations l join videos on videos.id = l.video_id
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience),
 		folderPrefix(dir))
@@ -83,11 +88,17 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 	for rows.Next() {
 		var item domain.FolderLocation
 		var thumbnail, preview string
-		if err := rows.Scan(&item.Path, &item.VideoID, &item.ContentKey, &thumbnail, &preview); err != nil {
+		var position, revision sql.NullInt64
+		if err := rows.Scan(&item.Path, &item.VideoID, &item.ContentKey, &thumbnail, &preview, &position, &revision); err != nil {
 			return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 		}
 		item.ThumbnailState = domain.ThumbnailState(thumbnail)
 		item.PreviewState = domain.PreviewState(preview)
+		if position.Valid {
+			ms := position.Int64
+			item.ThumbnailPositionMs = &ms
+			item.ThumbnailRevision = revision.Int64
+		}
 		locations = append(locations, item)
 	}
 	if err := rows.Err(); err != nil {
