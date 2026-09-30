@@ -57,13 +57,22 @@ branch. `plan-to-issues` produces no PR.
 
 ## 4. Drive a feature PR to merge
 
-Handle each PR with one review-fix pass:
+Handle each PR in review rounds, at most three: the first review and up to two
+re-reviews. The round is read from GitHub, not remembered: it is the number of
+the PR's reviews whose body contains `<!-- pr-review:`.
 
-1. On the head first handled for this PR, wait for every check to complete and
-   for a review by someone other than the PR author (a GitHub review whose
-   `commit_id` is that head SHA), or for 20 minutes to pass without a review.
-   A check still pending an hour after the head was pushed is a stop.
-2. Start a fresh review fixer with the feature-PR brief. It handles every
+1. Request the automated review of the current head by adding the label
+   `ai-review`. A routine outside the repository answers it: it swaps the
+   label for `ai-reviewing`, posts one review of that head whose body ends
+   with `<!-- pr-review:<head SHA> -->`, and swaps the label for
+   `ai-reviewed`. Never add `ai-reviewing` or `ai-reviewed` yourself.
+2. Wait for every check on the head to complete and for the PR to carry
+   `ai-reviewed`. A review by anyone else does not end the wait. Stop and
+   report when `ai-reviewed` arrives without a review marked for this head
+   (the routine could not review it), when 45 minutes pass after the request
+   without `ai-reviewed`, or when a check is still pending an hour after the
+   head was pushed.
+3. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
    A fixer never returns `CLEAN` while a check on that head is not passing.
@@ -72,15 +81,17 @@ Handle each PR with one review-fix pass:
    parent or one of the parent's native children (for the integration PR, it
    is the feature branch's PR to `main` that `Closes` the parent). Otherwise
    it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
-3. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
-   conflict-free and mergeable, then merge with a merge commit and go to §5.
-   After `FIXED`, do not wait for checks or reviews on the new head or run
-   another fixer. If GitHub branch protection prevents the merge, stop and
-   report it; do not bypass the protection. `BLOCKED`: stop. `FOREIGN`: leave
-   the PR alone, never merge it, and name it in the final report; go to §1.
+4. After `FIXED` in the first or second round, go back to step 1 for the new
+   head. After `CLEAN`, or `FIXED` in the third round, confirm only that GitHub
+   reports the current PR conflict-free and mergeable, then merge with a merge
+   commit and go to §5; after that last `FIXED`, do not request another review,
+   wait for checks, or run another fixer. If GitHub branch protection prevents
+   the merge, stop and report it; do not bypass the protection. `BLOCKED`:
+   stop. `FOREIGN`: leave the PR alone, never merge it, and name it in the
+   final report; go to §1.
 
-After a restart, if GitHub state does not establish whether the one fixer pass
-already happened, stop and report that ambiguity instead of repeating it.
+After a restart, if GitHub state does not establish whether the latest round's
+fixer already ran, stop and report that ambiguity instead of repeating it.
 
 **Limits.** Stop when three integration-fix PRs have merged since the
 integration PR was opened, when its head has been refreshed from `main` twice
@@ -121,7 +132,8 @@ as `DONE` if it is picked again, and you close it then.
    step 1. `main` having moved on without either is not a reason: every
    refresh moves the head and gets the whole feature reviewed again. Conflicts
    with `main` are never a review fixer's job here.
-3. Drive the integration PR like §4, with two differences. The review fixer
+3. Drive the integration PR like §4 in a single review round, with two
+   differences. The review fixer
    uses the integration brief, and only blocking findings
    ([integrate.md](../../issue-handoff/references/integrate.md#review-of-the-integration-pr))
    are fixed: it answers and resolves the rest, and lists the real defects
