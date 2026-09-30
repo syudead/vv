@@ -121,6 +121,16 @@ the folder index is rebuilt only when its rule version is out of date or it is s
 (`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
 start), or when an interrupted scan was closed
 ([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
+When a path's content changes and the previous video row goes with it, `UpsertVideo` records
+the previous content key and duration in `video_successions` (not when that duration is
+unknown), and drops the record if the previous content shows up at another path. The record
+is judged only after a scan closes `done` — in `FinishScan`'s transaction, or in the
+transaction that writes the new content's probe result if that comes later — so a file swap
+is recognised whatever order the paths are walked in. When the durations match
+(`domain.DurationsMatch`) and no video still has the previous content, the new content takes
+over its tags, playback position, public flag and "different video" judgements, or its place
+in a version bundle, and `domain.VideoBundleChanged` is published after commit
+([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §5).
 The latest scan owns the set of videos that the current import has to prepare
 (`scan_videos`): every transaction that queues a job, or makes a queued job claimable again
 by adding or replacing a media folder, adds the video to the latest scan in the same
@@ -310,7 +320,8 @@ Stored data falls into three recovery categories. `videos`, `video_locations`
 (including their search keys), `location_search_fts`, `jobs`, `scans` (including
 `settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
-`video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
+`video_folder_names`, `folder_index_state`), `video_transcode_probes`, and the pending
+same-path successions (`video_successions`) are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail

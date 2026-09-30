@@ -80,9 +80,12 @@
 
 **Feature-specific context**:
 
-- 移行は 1 つ（`00022_video_versions.sql`）。利用者データの表 3 つ（`video_bundles`・`video_bundle_members`・
-  `video_version_dismissals`）と索引の表 3 つ（`video_successions`・`video_fingerprints`・
-  `video_version_candidates`）を足し、`jobs.kind` に `fingerprint` を足す。`videos`・`video_locations` と
+- 移行は表を足す単位ごとに 1 つ。`scripts/migrations-immutable.sh` が PR の基点にある移行の編集を
+  禁じるため、feature branch に入った移行は変えず、後の単位は新しい番号の移行を足す。
+  `00022_video_versions.sql` が利用者データの表 3 つ（`video_bundles`・`video_bundle_members`・
+  `video_version_dismissals`）、`00023_video_successions.sql` が `video_successions`、
+  `00024_video_fingerprints.sql` が `video_fingerprints` と `jobs.kind` の `fingerprint`、
+  `00025_video_version_candidates.sql` が `video_version_candidates` を足す（[data-model.md §1](data-model.md)）。`videos`・`video_locations` と
   既存の利用者データの表には列を足さない。
 - Go・npm とも依存は足さない。指紋は標準ライブラリの `image/jpeg` と DCT の数十行で作り、ffmpeg は
   1 回も余計に起動しない（R-6）。
@@ -162,7 +165,8 @@ specs/030-video-versions/
 
 **New paths**:
 
-- `internal/store/migrations/00022_video_versions.sql`、`internal/store/versions.go`（`VersionStore`）、
+- `internal/store/migrations/00022_video_versions.sql`・`00023_video_successions.sql`・
+  `00024_video_fingerprints.sql`・`00025_video_version_candidates.sql`、`internal/store/versions.go`（`VersionStore`）、
   `internal/store/user_keys.go`（鍵の式と見せる動画の CTE）、`internal/store/successions.go`、
   `internal/store/fingerprints.go`
 - `internal/domain/video_version.go`、`internal/domain/fingerprint.go`
@@ -244,7 +248,7 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 
 ### スキャン時の同じパスの中身の引き継ぎ
 
-**Scope**: `video_successions`（[data-model.md §5](data-model.md)）、`UpsertVideo` での後継の記録と
+**Scope**: `00023_video_successions.sql` の `video_successions`（[data-model.md §1・§5](data-model.md)）、`UpsertVideo` での後継の記録と
 取り消し（前の中身が別のパスに現れたとき）、`FinishScan`（`done`）と `ApplyProbe`・`ApplyProbeForJob` での
 尺の比較と引き継ぎ
 （集まりのメンバーなら位置の引き継ぎ、そうでなければ 3 つの表の行の付け替え）、内容の参照が無くなる
@@ -267,7 +271,8 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 `domain.Fingerprint`・`FrameHash`・`CompareFingerprints`・閾値と `FingerprintVersion`
 （[data-model.md §6](data-model.md)）、`media.SpriteFingerprint`（シートの JPEG から各コマの 32×32 の
 輝度）、`app.Ingest.Fingerprint`、`IngestStore.ApplyFingerprintForJob`（候補の算出は次の単位）、
-`video_fingerprints` と `jobs.kind` の移行（完成したスプライトの動画に job を積む）、シーク用サムネイルの
+`00024_video_fingerprints.sql` の `video_fingerprints` と `jobs.kind` の移行（完成したスプライトの動画に
+job を積む。[data-model.md §1](data-model.md)）、シーク用サムネイルの
 完了の取引で job を積む、走査での指紋の欠けの積み直し（`IndexedVideo.FingerprintMissing` と
 `EnsureJob`）、ワーカーと起床の配線、`ScanActivity` の種類と画面の文言。ARCHITECTURE.md の
 取り込みの段落。
@@ -285,7 +290,8 @@ GET はゲストも可、ほかは所有者だけ）。ARCHITECTURE.md の API �
 
 ### 候補の算出と候補の一覧・却下の API
 
-**Scope**: `video_version_candidates`・`vv_fingerprint_distance`・指紋を書く取引での候補の算出
+**Scope**: `00025_video_version_candidates.sql` の `video_version_candidates`（[data-model.md §1](data-model.md)）・
+`vv_fingerprint_distance`・指紋を書く取引での候補の算出
 （[data-model.md §7](data-model.md)）、束ねの操作での候補の削除、内容の参照が無くなるときの削除、
 `VersionStore.Candidates`・`Dismiss`、`GET /api/version-candidates`・`POST /api/version-candidates/dismiss`
 （[contracts/screen-api.md §5](contracts/screen-api.md)）、`api/openapi.yaml` と生成物、

@@ -119,12 +119,22 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 		string(state), time.Now().Unix(), reason, code, path, id); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
+	// 全パスを見終えた走査だけが、同じパスの中身の後継の記録を判定してよい状態にする
+	// （specs/030-video-versions/data-model.md §5）。failed で閉じた走査は見ていないパスに
+	// 前の中身が残りうるので触らず、次に done で閉じる走査に任せる。
+	var succeeded []int64
+	if state == domain.ScanDone {
+		if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
+			return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+		}
+	}
 	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
 	var c changes
 	c.remainingChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
+	s.db.publishEvents(successionEvents(succeeded)...)
 	return nil
 }
 
