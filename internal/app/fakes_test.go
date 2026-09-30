@@ -56,8 +56,17 @@ type fakeIngestStore struct {
 	previewsDone           int
 	// positions は SetThumbnailPosition に渡された位置（nil は解除）。
 	positions []*int64
-	// reads は GetVideo の呼び出し回数。
-	reads int
+	// setPositionErr があれば SetThumbnailPosition は記録せずにそれを返す。
+	setPositionErr error
+	// sourceChecks は ThumbnailSourceCurrent の呼び出しで、sourceLocations はそれに渡された所在。
+	// staleSourceAt が正なら、その回目の呼び出しから所在が別の内容へ付け替わったと答える。
+	sourceChecks    int
+	sourceLocations []string
+	staleSourceAt   int
+	// reads は GetVideo の呼び出し回数。afterRead があれば、読んだあとに錠を持ったまま
+	// 呼び出し回数で呼ぶ。
+	reads     int
+	afterRead func(reads int)
 	// order は、nil でなければシーク用サムネイルの状態の記録を生成の呼び出しと
 	// 同じ列へ書く。生成と記録の順を確かめるのに使う。
 	order *fakeGenerator
@@ -83,6 +92,9 @@ func (f *fakeIngestStore) GetVideo(_ context.Context, id int64) (domain.Video, e
 	defer f.mu.Unlock()
 	f.reads++
 	video, ok := f.videos[id]
+	if f.afterRead != nil {
+		f.afterRead(f.reads)
+	}
 	if !ok {
 		return domain.Video{}, domain.ErrNotFound
 	}
@@ -98,6 +110,17 @@ func (f *fakeIngestStore) ContentKeyCurrent(context.Context, int64, string) (boo
 }
 
 func (f *fakeIngestStore) PreviewSourceCurrent(context.Context, domain.Job) (bool, error) {
+	return !f.stale, nil
+}
+
+func (f *fakeIngestStore) ThumbnailSourceCurrent(_ context.Context, _ int64, _, locationPath string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sourceChecks++
+	f.sourceLocations = append(f.sourceLocations, locationPath)
+	if f.staleSourceAt > 0 && f.sourceChecks >= f.staleSourceAt {
+		return false, nil
+	}
 	return !f.stale, nil
 }
 
@@ -154,6 +177,9 @@ func (f *fakeIngestStore) SetThumbnailPosition(
 	video, ok := f.videos[videoID]
 	if !ok || f.gone {
 		return domain.Video{}, domain.ErrNotFound
+	}
+	if f.setPositionErr != nil {
+		return domain.Video{}, f.setPositionErr
 	}
 	f.positions = append(f.positions, positionMs)
 	if f.order != nil {
@@ -224,6 +250,8 @@ type fakeGenerator struct {
 
 	calls   []string
 	removed []string
+	// stashes は代表サムネイルの写し（stash）・戻し（restore）・捨て（discard）の列である。
+	stashes []string
 }
 
 func (f *fakeGenerator) record(call string) {
@@ -296,6 +324,27 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 		f.record("publish-thumbnail")
 	}
 	return nil
+}
+
+func (f *fakeGenerator) StashThumbnail(string) (func() error, func(), error) {
+	f.recordStash("stash")
+	restore := func() error {
+		f.recordStash("restore")
+		return nil
+	}
+	return restore, func() { f.recordStash("discard") }, nil
+}
+
+func (f *fakeGenerator) recordStash(call string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stashes = append(f.stashes, call)
+}
+
+func (f *fakeGenerator) stashCalls() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.stashes...)
 }
 
 func (f *fakeGenerator) PublishSeekThumbnails(

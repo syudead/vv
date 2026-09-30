@@ -32,15 +32,19 @@ type fakeThumbnailPicker struct {
 	fail error
 	// failVideos の動画は生成に失敗したとして何も記録しない（一括操作の途中の失敗）。
 	failVideos map[int64]bool
-	// paths は読む元として渡された所在である。
-	paths []string
+	// paths は読む元として渡された所在（辿った先）、locations は辿る前の所在である。
+	paths     []string
+	locations []string
+	// stale が真なら、所在を決めたあとに走査がそれを別の内容へ付け替えたとして、生成せずに
+	// domain.ErrMediaFileUnavailable を返す。偽なら本物の保存層で所在を確かめ直す。
+	stale bool
 	// afterSet があれば、記録を終えたあとに記録した動画の ID で呼ぶ（一括操作の途中で
 	// 動画や所在が変わる場合を作る）。
 	afterSet func(videoID int64)
 }
 
 func (p *fakeThumbnailPicker) SetThumbnailPosition(
-	ctx context.Context, videoID int64, path string, positionMs *int64,
+	ctx context.Context, videoID int64, location, path string, positionMs *int64,
 ) (domain.Video, error) {
 	video, err := p.db.Ingest().GetVideo(ctx, videoID)
 	if err != nil {
@@ -51,8 +55,17 @@ func (p *fakeThumbnailPicker) SetThumbnailPosition(
 			return domain.Video{}, err
 		}
 	}
+	current, err := p.db.Ingest().ThumbnailSourceCurrent(ctx, videoID, video.ContentKey, location)
+	if err != nil {
+		return domain.Video{}, err
+	}
 	p.mu.Lock()
+	if !current || p.stale {
+		p.mu.Unlock()
+		return domain.Video{}, domain.ErrMediaFileUnavailable
+	}
 	p.paths = append(p.paths, path)
+	p.locations = append(p.locations, location)
 	fail := p.fail
 	if p.failVideos[videoID] {
 		fail = errors.New("ffmpeg: no frame")
@@ -90,6 +103,18 @@ func (p *fakeThumbnailPicker) failVideo(videoID int64) {
 		p.failVideos = map[int64]bool{}
 	}
 	p.failVideos[videoID] = true
+}
+
+func (p *fakeThumbnailPicker) setStale(stale bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stale = stale
+}
+
+func (p *fakeThumbnailPicker) calledLocations() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.locations)
 }
 
 func (p *fakeThumbnailPicker) calledPaths() []string {
@@ -289,6 +314,14 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 		assertStatus(t, label, f.setThumbnailPosition("a", body, f.owner), http.StatusBadRequest)
 	}
 
+	// 所在を決めたあとに、走査がそれを別の内容へ付け替えた。
+	f.thumbnails.setStale(true)
+	rec = f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner)
+	assertErrorBody(t, "付け替わった所在", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable,
+	})
+	f.thumbnails.setStale(false)
+
 	// どの所在も開けない。
 	if err := os.Remove(filepath.Join(f.mediaDir, "pub", "b.mp4")); err != nil {
 		t.Fatal(err)
@@ -338,6 +371,10 @@ func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
 	}
 	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, target)}) {
 		t.Errorf("読む元 = %v, want 辿った先 %s", got, target)
+	}
+	// 確かめ直しには辿る前の所在（登録のパス）を渡す。
+	if got := f.thumbnails.calledLocations(); !slices.Equal(got, []string{aPath}) {
+		t.Errorf("所在 = %v, want 辿る前 %s", got, aPath)
 	}
 
 	outside := filepath.Join(t.TempDir(), "outside.mp4")

@@ -764,3 +764,57 @@ func TestRemoveContentRemovesSeekSprite(t *testing.T) {
 		t.Fatal("スプライトが残っている")
 	}
 }
+
+// StashThumbnail の restore は、置き換えた代表サムネイルを前の画像へ戻す。前の画像が無ければ
+// 置き換えた画像を消す。discard は写しだけを捨て、置き換えた画像を残す。
+func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
+	root := t.TempDir()
+	store := New(root)
+	thumbnail, _, _, _, _ := existingLayout(root)
+
+	restore, _, err := store.StashThumbnail(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PublishThumbnail(key, writer([]byte("first"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := restore(); err != nil {
+		t.Fatal(err)
+	}
+	if exists(thumbnail) {
+		t.Fatal("前の画像が無いのに、置き換えた画像が残った")
+	}
+
+	if err := store.PublishThumbnail(key, writer([]byte("old"))); err != nil {
+		t.Fatal(err)
+	}
+	restore, _, err = store.StashThumbnail(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PublishThumbnail(key, writer([]byte("new"))); err != nil {
+		t.Fatal(err)
+	}
+	if err := restore(); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(thumbnail); err != nil || string(got) != "old" {
+		t.Fatalf("戻した画像 = %q, %v; want old", got, err)
+	}
+
+	_, discard, err := store.StashThumbnail(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.PublishThumbnail(key, writer([]byte("kept"))); err != nil {
+		t.Fatal(err)
+	}
+	discard()
+	if got, err := os.ReadFile(thumbnail); err != nil || string(got) != "kept" {
+		t.Fatalf("残した画像 = %q, %v; want kept", got, err)
+	}
+	if entries, err := os.ReadDir(filepath.Join(root, temporaryDirName)); err != nil || len(entries) != 0 {
+		t.Fatalf("写しが一時置き場に残った: %v, %v", entries, err)
+	}
+}

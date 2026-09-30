@@ -18,6 +18,9 @@ type IngestStore interface {
 	ContentKeyCurrent(ctx context.Context, videoID int64, key string) (bool, error)
 	// PreviewSourceCurrent はプレビューの元が専有した時点と同じかを返す。
 	PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error)
+	// ThumbnailSourceCurrent は動画の内容が key のままで、所在 locationPath が今も内容 key の
+	// 動画の所在かを返す。
+	ThumbnailSourceCurrent(ctx context.Context, videoID int64, key, locationPath string) (bool, error)
 	// ApplyProbeForJob は解析の結果を書き、同じ取引で一覧用プレビューの仕事を積む。
 	ApplyProbeForJob(ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability) (bool, error)
 	// SetThumbnailStateForJob と SetSeekThumbnailStateForJob は、成功を書く取引で
@@ -50,6 +53,10 @@ type ArtifactStore interface {
 	ArtifactRemover
 	// PublishThumbnail は write に一時置き場のパスを渡して書かせ、公開する。
 	PublishThumbnail(contentKey string, write func(output string) error) error
+	// StashThumbnail は今の代表サムネイルを写しておき、PublishThumbnail で置き換えたあとに
+	// 前の画像へ戻す restore と、写しを捨てる discard を返す。前の画像が無ければ restore は
+	// 置き換えた画像を消す。
+	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
 	// PublishSeekThumbnails は完成したもの（配置情報のある置き場）があれば write を
 	// 呼ばない。write は一時置き場のディレクトリを受け、layout の配置でシートを書き、
 	// 全編の復号から作ったかを返す。配置情報の無い置き場（旧形式・途中で壊れたもの）は
@@ -260,16 +267,22 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 
 // SetThumbnailPosition は動画 videoID の代表サムネイルを positionMs の場面で作り直して
 // 公開し、位置を記録する。positionMs が nil なら位置を解除し、自動の位置で作り直す
-// （specs/029-video-overrides/research.md R-4）。path は読む元の動画の所在で、呼び出し側が
-// 開けることを確かめたものを渡す。
+// （specs/029-video-overrides/research.md R-4）。locationPath は読む元の動画の所在（登録の
+// パス）、path はそれを辿った先で、呼び出し側が開けることを確かめたものを渡す。
 //
 // 位置は domain.CheckThumbnailPosition で確かめ、解析前は domain.ErrDurationUnknown、尺の外は
 // domain.ErrThumbnailPositionOutOfRange を返す。生成と記録は取り込みの job と同じ生成の錠の
 // 中で行うので、同じ内容への指定と job は直列になり、最後に記録した位置の画像が残る。
 // 生成に失敗したら何も記録せず domain.ErrThumbnailFrameUnavailable を返す。置き場は
 // 一時置き場から置き換えるので、前の画像はそのまま残る。
+//
+// 走査は生成の錠を取らないので、要求が所在を決めたあとに、その所在が別の内容へ付け替わる
+// ことがある。生成の直前と記録の直前に、所在が今も動画の内容のものかを確かめ直し、違えば
+// 別の動画のコマを公開せずに domain.ErrMediaFileUnavailable を返す。公開のあとで記録
+// できなかったときは（確かめ直しの失敗・取引の失敗・要求の取り消し）、前の画像へ戻し、
+// 記録の位置と版に画像を揃える。
 func (i *Ingest) SetThumbnailPosition(
-	ctx context.Context, videoID int64, path string, positionMs *int64,
+	ctx context.Context, videoID int64, locationPath, path string, positionMs *int64,
 ) (domain.Video, error) {
 	video, err := i.store.GetVideo(ctx, videoID)
 	if err != nil {
@@ -287,6 +300,13 @@ func (i *Ingest) SetThumbnailPosition(
 
 	var saved domain.Video
 	err = i.artifacts.generate(ctx, video.ContentKey, artifactThumbnail, func() (bool, error) {
+		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
+			return false, err
+		}
+		restore, discard, err := i.files.StashThumbnail(video.ContentKey)
+		if err != nil {
+			return false, err
+		}
 		var generateErr error
 		if err := i.files.PublishThumbnail(video.ContentKey, func(output string) error {
 			if positionMs != nil {
@@ -296,16 +316,22 @@ func (i *Ingest) SetThumbnailPosition(
 			}
 			return generateErr
 		}); err != nil {
+			discard()
 			if generateErr != nil {
 				return false, errors.Join(domain.ErrThumbnailFrameUnavailable, generateErr)
 			}
 			return false, err
 		}
+		// 公開した画像は、記録できたときだけ残す。記録できなければ前の画像へ戻し、生成中に
+		// 動画が消えていたら、戻した画像も後始末で残さない。
+		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
+			return true, errors.Join(err, restore())
+		}
 		recorded, err := i.store.SetThumbnailPosition(ctx, videoID, positionMs)
 		if err != nil {
-			// 生成中に動画が消えていたら、書き終えた画像を後始末で残さない。
-			return true, err
+			return true, errors.Join(err, restore())
 		}
+		discard()
 		saved = recorded
 		return true, nil
 	})
@@ -313,6 +339,23 @@ func (i *Ingest) SetThumbnailPosition(
 		return domain.Video{}, err
 	}
 	return saved, nil
+}
+
+// checkThumbnailSource は、所在 locationPath が今も動画 videoID の内容 key のものかを確かめる。
+// 動画が消えていれば domain.ErrNotFound、所在が消えたか別の内容へ付け替わっていれば
+// domain.ErrMediaFileUnavailable を返す。
+func (i *Ingest) checkThumbnailSource(ctx context.Context, videoID int64, key, locationPath string) error {
+	current, err := i.store.ThumbnailSourceCurrent(ctx, videoID, key, locationPath)
+	if err != nil {
+		return err
+	}
+	if current {
+		return nil
+	}
+	if _, err := i.store.GetVideo(ctx, videoID); err != nil {
+		return err
+	}
+	return domain.ErrMediaFileUnavailable
 }
 
 // durationOf は動画の尺（ミリ秒）を返す。分からなければ 0。

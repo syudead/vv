@@ -390,3 +390,20 @@ func TestExternalVideoThumbnailsResolveEachSourceBeforeGenerating(t *testing.T) 
 		t.Errorf("b が反映された: %v", *looked.ThumbnailPositionMs)
 	}
 }
+
+// 所在を決めたあとに走査がそれを別の内容へ付け替えたら（internal/app が生成の錠の中で
+// domain.ErrMediaFileUnavailable を返す）、file_unavailable と index で止まり、その項目は
+// 反映しない。
+func TestExternalVideoThumbnailsStopAtReassignedSource(t *testing.T) {
+	f := newExternalOverridesFixture(t)
+	f.thumbnails.setStale(true)
+
+	rec := f.post(t, "/api/v1/video-thumbnails", map[string]any{"items": []any{
+		thumbnailItemBody(map[string]any{"id": f.ids["a"]}, 1_000),
+	}})
+	assertExternalError(t, "付け替わった所在", rec,
+		wantExternalError{http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.FileUnavailable, 0, 0})
+	if looked := f.lookup(t, "a"); looked.ThumbnailPositionMs != nil {
+		t.Errorf("a が反映された: %v", *looked.ThumbnailPositionMs)
+	}
+}

@@ -187,3 +187,34 @@ func TestSetThumbnailPositionUnknownVideo(t *testing.T) {
 		t.Fatalf("行 %d・events %v", overrideRowCount(t, db), recorder.events)
 	}
 }
+
+// ThumbnailSourceCurrent は、所在が今も動画の内容のものかを答える。走査が所在を別の内容へ
+// 付け替えたら、元の内容が別の所在に残っていても偽にする。
+func TestThumbnailSourceCurrentRejectsReassignedLocation(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	a, b := fixturePath("/media/a.mp4"), fixturePath("/media/b.mp4")
+	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(a, "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(b, "b", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{a, b} {
+		current, err := db.Ingest().ThumbnailSourceCurrent(ctx, video.ID, "key-a", path)
+		if err != nil || !current {
+			t.Fatalf("%s: current = %v, %v; want true", path, current, err)
+		}
+	}
+
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(a, "replacement", "key-b", 2048, time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if current, err := db.Ingest().ThumbnailSourceCurrent(ctx, video.ID, "key-a", a); err != nil || current {
+		t.Fatalf("付け替わった所在: current = %v, %v; want false", current, err)
+	}
+	if current, err := db.Ingest().ThumbnailSourceCurrent(ctx, video.ID, "key-a", b); err != nil || !current {
+		t.Fatalf("残った所在: current = %v, %v; want true", current, err)
+	}
+}
