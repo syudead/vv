@@ -352,3 +352,41 @@ func TestExternalVideoThumbnailsRejects(t *testing.T) {
 		cookies: []*http.Cookie{f.owner},
 	}))
 }
+
+// 前の項目を生成している間に後の項目の所在が開けなくなったら、検証のときに決めた所在を
+// 使わずに生成の直前に決め直し、file_unavailable と index で止まる。文言はそれより前の
+// 項目が反映済みであることを伝える。
+func TestExternalVideoThumbnailsResolveEachSourceBeforeGenerating(t *testing.T) {
+	f := newExternalOverridesFixture(t)
+	f.thumbnails.setAfterSet(func(videoID int64) {
+		if videoID != f.ids["a"] {
+			return
+		}
+		if err := os.Remove(filepath.Join(f.mediaDir, "pub", "b.mp4")); err != nil {
+			t.Error(err)
+		}
+	})
+
+	rec := f.post(t, "/api/v1/video-thumbnails", map[string]any{"items": []any{
+		thumbnailItemBody(map[string]any{"id": f.ids["a"]}, 1_000),
+		thumbnailItemBody(map[string]any{"id": f.ids["b"]}, 2_000),
+	}})
+	assertExternalError(t, "反映の途中で開けなくなった所在", rec,
+		wantExternalError{http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.FileUnavailable, 1, 0})
+	var got extgen.Error
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.Message, "Nothing was changed") || !strings.Contains(got.Message, "items before it were changed") {
+		t.Errorf("message = %q", got.Message)
+	}
+	if got := f.thumbnails.calledPaths(); len(got) != 1 {
+		t.Errorf("開けなくなった所在で生成を呼んだ: %v", got)
+	}
+	if looked := f.lookup(t, "a"); looked.ThumbnailPositionMs == nil || *looked.ThumbnailPositionMs != 1_000 {
+		t.Errorf("前の a が反映されていない: %v", looked.ThumbnailPositionMs)
+	}
+	if looked := f.lookup(t, "b"); looked.ThumbnailPositionMs != nil {
+		t.Errorf("b が反映された: %v", *looked.ThumbnailPositionMs)
+	}
+}

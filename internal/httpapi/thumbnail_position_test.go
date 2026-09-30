@@ -34,6 +34,9 @@ type fakeThumbnailPicker struct {
 	failVideos map[int64]bool
 	// paths は読む元として渡された所在である。
 	paths []string
+	// afterSet があれば、記録を終えたあとに記録した動画の ID で呼ぶ（一括操作の途中で
+	// 動画や所在が変わる場合を作る）。
+	afterSet func(videoID int64)
 }
 
 func (p *fakeThumbnailPicker) SetThumbnailPosition(
@@ -58,7 +61,20 @@ func (p *fakeThumbnailPicker) SetThumbnailPosition(
 	if fail != nil {
 		return domain.Video{}, errors.Join(domain.ErrThumbnailFrameUnavailable, fail)
 	}
-	return p.db.Overrides().SetThumbnailPosition(ctx, videoID, positionMs)
+	saved, err := p.db.Overrides().SetThumbnailPosition(ctx, videoID, positionMs)
+	p.mu.Lock()
+	afterSet := p.afterSet
+	p.mu.Unlock()
+	if err == nil && afterSet != nil {
+		afterSet(videoID)
+	}
+	return saved, err
+}
+
+func (p *fakeThumbnailPicker) setAfterSet(hook func(videoID int64)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.afterSet = hook
 }
 
 func (p *fakeThumbnailPicker) setFail(err error) {

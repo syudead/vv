@@ -174,6 +174,9 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
   （`thumbnail_frame_unavailable`）と `index` で止まる。`index` より前の項目は反映済みで、その項目と
   後は反映されていない。続きは `index` の項目の位置を変えるか外し、`index` から後だけを送り直す
   （反映済みの項目を送り直しても同じ位置で作り直すだけである）。
+- 作っている間に取り込みが動画や所在を変えることがあるので、各項目は作る直前に動画を読み直し、
+  所在を決め直す。そこで上の検証の誤り（`video_not_found`・`file_unavailable` など）や想定外の失敗
+  （`500`）になったときも、同じく `index` で止まり、`index` より前の項目は反映済みである。
 - 応答は `{ items: [{ video: { id, contentKey }, thumbnailPositionMs }] }`。応答は画像を作り終えてから
   返るので、1 件につき数秒かかることがある。
 
