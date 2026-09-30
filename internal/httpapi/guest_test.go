@@ -69,6 +69,8 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Playback:   db.Playback(),
 			Tags:       db.Tags(),
 			Visibility: db.Visibility(),
+			Overrides:  db.Overrides(),
+			Library:    library,
 			Catalog:    app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
 			Artifacts:  artifacts,
 			Transcoder: f.transcode,
@@ -192,7 +194,7 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 // assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる（guest-api.md §1）。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
-	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode"} {
+	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs"} {
 		if value, ok := video[field]; ok {
 			t.Errorf("%s: ゲストの応答に %s = %s", label, field, value)
 		}

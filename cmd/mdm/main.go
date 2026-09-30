@@ -258,6 +258,7 @@ func run() error {
 		MediaFolders: mediaFolders,
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
+		Overrides:    db.Overrides(),
 		Folders:      libraryStore,
 		FolderGroups: db.FolderGroups(),
 		Library:      libraryStore,

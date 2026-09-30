@@ -396,7 +396,11 @@ compile:
   publishes `domain.VideoOverrideChanged` after the commit. Every read that returns a video
   carries the override: `Video.Title` is the display name when set, `Video.FileTitle` the
   location's file-derived title. Releasing generated files (`RemoveContent`) never
-  touches `video_overrides`.
+  touches `video_overrides`. `PUT /api/videos/{id}/display-name` (owner only,
+  `internal/httpapi/video_overrides.go`) calls it directly and answers with the same
+  `Video` as `GET /api/videos/{id}`; guest responses carry the display name in `title`
+  and omit `fileTitle`, `displayName` and `thumbnailPositionMs`
+  (`specs/029-video-overrides/contracts/screen-api.md`).
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and
