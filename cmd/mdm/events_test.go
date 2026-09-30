@@ -86,6 +86,9 @@ func (probeOnlyGenerator) Probe(context.Context, string) (domain.Probe, error) {
 func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) (bool, error) {
 	return false, nil
 }
+func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string) error {
+	return nil
+}
 func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
 	return false, nil
 }

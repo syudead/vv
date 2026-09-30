@@ -558,9 +558,15 @@ func previewURL(video domain.Video) string {
 }
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
-// 内容が変われば URL も変わる。
+// 内容が変われば URL も変わる。所有者が位置を指定していれば、版に改版番号を
+// 足して `<内容鍵の先頭>-r<改版番号>` にし、位置を記録し直すたびに URL を変える
+// （specs/029-video-overrides/research.md R-6）。ゲストにも渡る URL なので、位置の値は
+// 入れない。
 func thumbnailURL(video domain.Video) string {
 	version := thumbnailVersion(video.ContentKey)
+	if video.ThumbnailPositionMs != nil {
+		version += "-r" + strconv.FormatInt(video.ThumbnailRevision, 10)
+	}
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/thumbnail?v=" + version
 }
 

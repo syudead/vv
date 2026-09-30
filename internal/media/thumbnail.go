@@ -58,6 +58,19 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 	return false, nil
 }
 
+// ThumbnailAt は動画の positionMs ミリ秒の場面を1枚取り出し、output へ書く。所有者が
+// 指定した位置の代表サムネイルに使う（specs/029-video-overrides/research.md R-4・R-5）。
+//
+// Thumbnail と違い、指定の位置で取れなくても先頭のコマで作り直さない。利用者が指した
+// 場面と違う画像を黙って置かず、失敗として返す。位置が尺の内側かは呼び出し側
+// （domain.CheckThumbnailPosition）が確かめる。
+func ThumbnailAt(ctx context.Context, videoPath string, positionMs int64, output string) error {
+	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
+	defer cancel()
+
+	return runThumbnail(ctx, videoPath, float64(max(positionMs, 0))/1000, output)
+}
+
 // runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。
 //
 // ffmpeg は指定した位置にフレームが無いとき、終了コード 0 のまま何も出力せずに

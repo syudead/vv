@@ -25,6 +25,9 @@ func (substitutingGenerator) Probe(context.Context, string) (domain.Probe, error
 func (substitutingGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
 	return true, os.WriteFile(output, []byte("jpeg"), 0o600)
 }
+func (substitutingGenerator) ThumbnailAt(_ context.Context, _ string, _ int64, output string) error {
+	return os.WriteFile(output, []byte("jpeg"), 0o600)
+}
 func (substitutingGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
 	return false, nil
 }

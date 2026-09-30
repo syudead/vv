@@ -53,6 +53,12 @@ func (a *Assets) Thumbnail(ctx context.Context, path string, durationMs int64, o
 	return Thumbnail(ctx, path, durationMs, output)
 }
 
+// ThumbnailAt はライブラリ用サムネイルを positionMs の場面で1枚 output へ書く。
+// 先頭のコマへの代用はしない。
+func (a *Assets) ThumbnailAt(ctx context.Context, path string, positionMs int64, output string) error {
+	return ThumbnailAt(ctx, path, positionMs, output)
+}
+
 // SeekSprite はシーク用プレビューのシートを layout の配置で outputDir へ書き、
 // 全編の復号から作ったかを返す。
 func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {

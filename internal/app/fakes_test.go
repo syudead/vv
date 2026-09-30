@@ -54,6 +54,10 @@ type fakeIngestStore struct {
 	thumbnailSubstitutions []domain.Substitution
 	seekSubstitutions      []domain.Substitution
 	previewsDone           int
+	// positions は SetThumbnailPosition に渡された位置（nil は解除）。
+	positions []*int64
+	// reads は GetVideo の呼び出し回数。
+	reads int
 	// order は、nil でなければシーク用サムネイルの状態の記録を生成の呼び出しと
 	// 同じ列へ書く。生成と記録の順を確かめるのに使う。
 	order *fakeGenerator
@@ -77,6 +81,7 @@ func (f *fakeIngestStore) ContentKeyReferenced(_ context.Context, key string) (b
 func (f *fakeIngestStore) GetVideo(_ context.Context, id int64) (domain.Video, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.reads++
 	video, ok := f.videos[id]
 	if !ok {
 		return domain.Video{}, domain.ErrNotFound
@@ -139,6 +144,37 @@ func (f *fakeIngestStore) SetSeekThumbnailStateForJob(
 	return true, nil
 }
 
+// SetThumbnailPosition は位置を記録し、その内容の動画を done にする。order が nil でなければ
+// 記録を生成の呼び出しと同じ列へ書く。
+func (f *fakeIngestStore) SetThumbnailPosition(
+	_ context.Context, videoID int64, positionMs *int64,
+) (domain.Video, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	video, ok := f.videos[videoID]
+	if !ok || f.gone {
+		return domain.Video{}, domain.ErrNotFound
+	}
+	f.positions = append(f.positions, positionMs)
+	if f.order != nil {
+		f.order.record("set-position")
+	}
+	for id, other := range f.videos {
+		if other.ContentKey != video.ContentKey {
+			continue
+		}
+		other.ThumbnailState = domain.ThumbnailStateDone
+		other.ThumbnailPositionMs = positionMs
+		if positionMs != nil {
+			other.ThumbnailRevision++
+		} else {
+			other.ThumbnailRevision = 0
+		}
+		f.videos[id] = other
+	}
+	return f.videos[videoID], nil
+}
+
 func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domain.Job) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -161,6 +197,12 @@ type fakeGenerator struct {
 	previewErr   error
 	thumbnailErr error
 	seekErr      error
+	// thumbnailAtErr は指定の位置の代表サムネイルの生成が返す誤り。
+	thumbnailAtErr error
+	// recordPublish が真なら、代表サムネイルの公開も呼び出しの列に書く。
+	recordPublish bool
+	// positions は ThumbnailAt に渡された位置。
+	positions []int64
 	// firstFrame と fullDecode は、代表サムネイルとシーク用サムネイルの生成が返す代用。
 	firstFrame bool
 	fullDecode bool
@@ -219,6 +261,16 @@ func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output s
 	return f.firstFrame, f.thumbnailErr
 }
 
+func (f *fakeGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int64, output string) error {
+	f.record("thumbnail-at")
+	f.recordOutput(output)
+	f.mu.Lock()
+	f.positions = append(f.positions, positionMs)
+	f.mu.Unlock()
+	f.pass("thumbnail-at")
+	return f.thumbnailAtErr
+}
+
 func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
 	f.record("seek")
 	f.recordOutput(outputDir)
@@ -237,7 +289,13 @@ func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) er
 }
 
 func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) error) error {
-	return write("tmp/thumbnail/" + contentKey)
+	if err := write("tmp/thumbnail/" + contentKey); err != nil {
+		return err
+	}
+	if f.recordPublish {
+		f.record("publish-thumbnail")
+	}
+	return nil
 }
 
 func (f *fakeGenerator) PublishSeekThumbnails(
