@@ -157,4 +157,94 @@ describe("CardTagRow", () => {
       expect(chip.textContent).toBe("京都 (from the folder name)");
     });
   });
+
+  // 受け入れ条件 4・5（specs/031-tentative-tags/ui-design.md「Tentative mark」
+  // 「Library card and group card」）: 仮のタグは名前の後ろに破線の丸を置き、
+  // 読み上げ名に「(tentative)」を添える。面・文字の色・高さは確定したタグと同じ。
+  describe("仮のタグ", () => {
+    const mixed: VideoTag[] = [
+      { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
+      { id: 2, name: "夏", manual: true, fromFolder: false, tentative: false },
+      { id: 3, name: "京都", manual: false, fromFolder: true, tentative: true },
+    ];
+
+    function mark(el: Element): Element | null {
+      return el.querySelector("svg.lucide-circle-dashed");
+    }
+
+    it("名前の後ろに目印を置き、面・文字の色・高さは確定したタグと同じ", () => {
+      renderRow({ tags: mixed });
+      const tentative = screen.getByRole("button", {
+        name: "Filter by 高画質 (tentative)",
+      });
+      const confirmed = screen.getByRole("button", { name: "Filter by 夏" });
+
+      const icon = mark(tentative);
+      expect(icon).not.toBeNull();
+      expect(icon?.getAttribute("aria-hidden")).toBe("true");
+      expect(icon?.getAttribute("class")).toContain("size-3");
+      expect(icon?.getAttribute("class")).toContain("shrink-0");
+      expect(icon?.getAttribute("class")).toContain("text-fg-subtle");
+      // 名前が先（主）で、目印はその後ろ。名前だけが省略される。
+      const name = tentative.firstElementChild;
+      expect(name?.textContent).toBe("高画質");
+      expect(name?.className).toContain("truncate");
+      expect(tentative.lastElementChild).toBe(icon);
+      expect(tentative.getAttribute("title")).toBe("高画質");
+
+      for (const chip of [tentative, confirmed]) {
+        expect(chip.className).toContain("bg-elevated");
+        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("text-xs");
+        expect(chip.className).toContain("text-fg-muted");
+      }
+      // 確定したタグには何も足さない。
+      expect(confirmed.querySelector("svg")).toBeNull();
+      expect(confirmed.textContent).toBe("夏");
+    });
+
+    it("フォルダ由来だけの仮のタグは Folder の目印 → 名前 → 仮の目印の順", () => {
+      renderRow({ tags: mixed });
+      const chip = screen.getByRole("button", {
+        name: "Filter by 京都 (from the folder name, tentative)",
+      });
+      const children = Array.from(chip.children);
+      expect(children).toHaveLength(3);
+      expect(children[0]?.getAttribute("class")).toContain("lucide-folder");
+      expect(children[1]?.textContent).toBe("京都");
+      expect(children[2]?.getAttribute("class")).toContain("lucide-circle-dashed");
+      expect(chip.className).toContain("border-dashed");
+    });
+
+    it("押したときの絞り込みは確定したタグと同じ", () => {
+      const { onPress } = renderRow({ tags: mixed });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Filter by 高画質 (tentative)" }),
+      );
+      expect(onPress).toHaveBeenCalledWith(mixed[0]);
+    });
+
+    it("選択中は押すとカードの選択を切り替え、読み上げには Tentative を添える", () => {
+      const { onToggleSelection, onPress } = renderRow({
+        tags: mixed.slice(0, 1),
+        selectionMode: true,
+      });
+      const chip = screen.getByTitle("高画質");
+      expect(chip.tagName).toBe("SPAN");
+      expect(mark(chip)).not.toBeNull();
+      expect(within(chip).getByText("Tentative").className).toContain("sr-only");
+      fireEvent.click(chip);
+      expect(onToggleSelection).toHaveBeenCalledTimes(1);
+      expect(onPress).not.toHaveBeenCalled();
+    });
+
+    it("測るための並びにも目印を置き、+N は目印の分を含めた幅で決まる", () => {
+      const { container } = renderRow({ tags: mixed });
+      const measure = container.querySelector("div[aria-hidden='true']");
+      expect(measure).not.toBeNull();
+      // 測るための並びは仮のタグ 2 つに目印を持つ（ポップオーバーの中は
+      // 見えているチップと同じ TagChip なので、上の試験で足りる）。
+      expect(measure?.querySelectorAll("svg.lucide-circle-dashed")).toHaveLength(2);
+    });
+  });
 });

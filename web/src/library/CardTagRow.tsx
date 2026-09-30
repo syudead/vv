@@ -6,6 +6,7 @@ import { isFolderOnly } from "../api/tagOrder";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import TentativeMark from "../ui/TentativeMark";
 import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
 
@@ -49,8 +50,9 @@ function chipClassName(
 ): string {
   return cn(
     "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-fg-muted",
+    "gap-1",
     folderOnly
-      ? "gap-1 border border-dashed border-border-strong"
+      ? "border border-dashed border-border-strong"
       : surface === "elevated"
         ? "bg-elevated"
         : "bg-field",
@@ -62,6 +64,20 @@ function chipClassName(
     pressable &&
       "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
   );
+}
+
+/**
+ * chipLabel は押せるチップの読み上げ名である。仮のタグは「(tentative)」を添える
+ * （specs/031-tentative-tags/ui-design.md「Tentative mark」「Words」）。
+ */
+function chipLabel(tag: VideoTag, folderOnly: boolean): string {
+  const row = t.library.tagRow;
+  if (folderOnly) {
+    return tag.tentative
+      ? row.filterByFromFolderTentative(tag.name)
+      : row.filterByFromFolder(tag.name);
+  }
+  return tag.tentative ? row.filterByTentative(tag.name) : row.filterBy(tag.name);
 }
 
 /** FolderMark は破線のチップの名前の前に置く目印である。 */
@@ -87,6 +103,7 @@ function TagChip({
     <>
       {folderOnly && <FolderMark />}
       <span className="min-w-0 truncate">{tag.name}</span>
+      {tag.tentative && <TentativeMark />}
     </>
   );
   if (!pressable) {
@@ -97,6 +114,7 @@ function TagChip({
       >
         {content}
         {folderOnly && <span className="sr-only"> {t.library.tagRow.fromFolder}</span>}
+        {tag.tentative && <span className="sr-only"> {t.library.tagRow.tentative}</span>}
       </span>
     );
   }
@@ -104,11 +122,7 @@ function TagChip({
     <button
       type="button"
       title={tag.name}
-      aria-label={
-        folderOnly
-          ? t.library.tagRow.filterByFromFolder(tag.name)
-          : t.library.tagRow.filterBy(tag.name)
-      }
+      aria-label={chipLabel(tag, folderOnly)}
       onClick={onPress}
       className={chipClassName(true, shrink, surface, folderOnly)}
     >
@@ -254,6 +268,7 @@ export default function CardTagRow({
             >
               {isFolderOnly(tag) && <FolderMark />}
               <span>{tag.name}</span>
+              {tag.tentative && <TentativeMark />}
             </span>
           ))}
         </div>

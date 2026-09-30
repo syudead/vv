@@ -371,6 +371,10 @@ export const en = {
       fromFolder: "(from the folder name)",
       filterBy: (name: string) => `Filter by ${name}`,
       filterByFromFolder: (name: string) => `Filter by ${name} (from the folder name)`,
+      tentative: "Tentative",
+      filterByTentative: (name: string) => `Filter by ${name} (tentative)`,
+      filterByFromFolderTentative: (name: string) =>
+        `Filter by ${name} (from the folder name, tentative)`,
       more: (count: number) => `+${formatNumber(count)}`,
       showMore: (count: number) =>
         selectPlural(count, {
@@ -767,6 +771,9 @@ export const en = {
       videoCount: videos,
       filterBy: (name: string) => `Filter by ${name}`,
       filterByFromFolder: (name: string) => `Filter by ${name} (from the folder name)`,
+      filterByTentative: (name: string) => `Filter by ${name} (tentative)`,
+      filterByFromFolderTentative: (name: string) =>
+        `Filter by ${name} (from the folder name, tentative)`,
       remove: (name: string) => `Remove ${name} from this video`,
       gone: (name: string) =>
         `The tag "${name}" no longer exists, so the tags were reloaded`,
