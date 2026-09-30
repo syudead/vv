@@ -33,7 +33,7 @@ func (s *TagStore) ListTags(ctx context.Context) ([]domain.Tag, error) {
 // 対応も返す。
 func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[int64]int, error) {
 	rows, err := q.QueryContext(ctx, `
-		select t.id, tn.name from tags t
+		select t.id, tn.name, t.tentative from tags t
 		  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot read tags: %w", err)
@@ -44,7 +44,7 @@ func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[in
 	index := make(map[int64]int)
 	for rows.Next() {
 		var tag domain.Tag
-		if err := rows.Scan(&tag.ID, &tag.Name); err != nil {
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative); err != nil {
 			return nil, nil, fmt.Errorf("cannot read tags: %w", err)
 		}
 		tag.Synonyms = []string{}

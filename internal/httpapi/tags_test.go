@@ -107,9 +107,29 @@ func (f *fakeTags) DetachTag(_ context.Context, videoIDs []int64, tagID int64) (
 	return f.detachRef, f.detachApplied, nil
 }
 
-func (f *fakeTags) ApplyVideoTags(_ context.Context, _ []domain.VideoRef, _ domain.VideoTagsAction, _ []string) ([]domain.VideoTagsResult, error) {
+func (f *fakeTags) ApplyVideoTags(_ context.Context, _ []domain.VideoRef, _ domain.VideoTagsAction, _ []string, _ bool) (domain.VideoTagsOutcome, error) {
 	f.operation = "apply-video-tags"
-	return nil, f.err
+	return domain.VideoTagsOutcome{}, f.err
+}
+
+func (f *fakeTags) ConfirmTag(_ context.Context, id int64) (domain.Tag, error) {
+	f.operation = "confirm"
+	return domain.Tag{ID: id}, f.err
+}
+
+func (f *fakeTags) RejectTag(context.Context, int64) (string, error) {
+	f.operation = "reject"
+	return "", f.err
+}
+
+func (f *fakeTags) ListRejectedTagNames(context.Context) ([]string, error) {
+	f.operation = "list-rejected"
+	return []string{}, f.err
+}
+
+func (f *fakeTags) ForgetRejectedTagName(context.Context, string) error {
+	f.operation = "forget-rejected"
+	return f.err
 }
 
 func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSummary, error) {

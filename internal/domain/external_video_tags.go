@@ -31,6 +31,15 @@ func (a VideoTagsAction) Valid() bool {
 	return false
 }
 
+// VideoTagsOutcome は一括操作の結果である（specs/031-tentative-tags/data-model.md §4）。
+type VideoTagsOutcome struct {
+	// Items は各動画の操作後のタグで、指定した動画の順。
+	Items []VideoTagsResult
+	// SkippedNames は仮の作成で却下した名前に当たって飛ばした名前（整えた形、指定の順、
+	// 重複なし）。無ければ空の配列。
+	SkippedNames []string
+}
+
 // VideoTagsResult は一括操作の後の動画 1 本のタグである。
 type VideoTagsResult struct {
 	VideoID    int64

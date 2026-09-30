@@ -63,13 +63,13 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	results, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags)
+	outcome, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags, false)
 	if err != nil {
 		e.writeVideoTagsError(w, err)
 		return
 	}
-	out := extgen.VideoTagsResponse{Items: make([]extgen.VideoTagsItem, 0, len(results))}
-	for _, result := range results {
+	out := extgen.VideoTagsResponse{Items: make([]extgen.VideoTagsItem, 0, len(outcome.Items))}
+	for _, result := range outcome.Items {
 		out.Items = append(out.Items, extgen.VideoTagsItem{
 			Video: extgen.VideoTagsVideo{Id: result.VideoID, ContentKey: result.ContentKey},
 			Tags:  toExternalVideoTags(result.Tags),
