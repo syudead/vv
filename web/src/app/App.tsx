@@ -21,6 +21,10 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+const DuplicatesPage = await deferredRoute(
+  () => import("../versions/DuplicatesPage"),
+  "/duplicates",
+);
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
 
@@ -66,6 +70,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <TagsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/duplicates"
+          element={
+            <AppShell>
+              <DuplicatesPage />
             </AppShell>
           }
         />

@@ -26,9 +26,12 @@ export function routePath(pathname: string): string {
   return lowered === "" ? "/" : lowered;
 }
 
-/** ownerOnlyPath は所有者だけの画面（設定・タグの管理）かを返す。pathname は routePath 済み。 */
+/**
+ * ownerOnlyPath は所有者だけの画面（設定・タグの管理・重複の候補）かを返す。pathname は
+ * routePath 済み。
+ */
 function ownerOnlyPath(pathname: string): boolean {
-  return ["/settings", "/tags"].some(
+  return ["/settings", "/tags", "/duplicates"].some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );
 }
