@@ -41,7 +41,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	present := func(ctx context.Context, videos []domain.Video) []gen.Video {
 		out := make([]gen.Video, 0, len(videos))
 		for _, view := range s.presentVideos(ctx, videos) {
-			item := withTags(withProgress(toAPIVideo(view), progress, view.Video.ContentKey), tags, view.Video.ContentKey)
+			item := withTags(withProgress(toAPIVideo(view), progress, view.Video.UserKey), tags, view.Video.UserKey)
 			out = append(out, forAudience(audience, item))
 		}
 		return out

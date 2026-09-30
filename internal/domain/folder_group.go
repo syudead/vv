@@ -13,7 +13,10 @@ import (
 // フォルダ名）を作る規則の版である。BuildFolderIndex か FolderKey の規則を
 // 変えたら上げる。起動時に保存した版と違えば索引を作り直す
 // （specs/017-folder-groups/data-model.md §3）。
-const FolderIndexVersion = 1
+//
+// 2: 束ねた動画（specs/030-video-versions）の代表以外のバージョンの所在を索引に入れない
+// 規則に合わせて作り直す（specs/030-video-versions/research.md R-4）。
+const FolderIndexVersion = 2
 
 // FolderGroupMode はフォルダごとの例外である。値は保存する
 // folder_group_overrides.mode と同じ。

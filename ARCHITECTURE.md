@@ -288,7 +288,9 @@ thumbnails and previews, the folder index (`folder_groups`, `folder_group_member
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
-positions, `specs/029-video-overrides/data-model.md` §1), `folder_group_overrides`,
+positions, `specs/029-video-overrides/data-model.md` §1), the version bundles
+(`video_bundles`, `video_bundle_members`) and the "different video" judgements
+(`video_version_dismissals`, `specs/030-video-versions/data-model.md` §1), `folder_group_overrides`,
 `account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
 `specs/025-hardware-encoding/data-model.md`), and `api_tokens` (issued API tokens, which
 must be issued again if lost, `specs/026-external-api/data-model.md` §1) are user or
@@ -298,7 +300,12 @@ must be registered again before scanning. `sessions` is transient and a fresh
 login restores it.
 That is why playback positions, tag assignments, public flags and video overrides are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
-key to `videos`. Grouping exceptions are keyed by the folder's absolute path
+key to `videos`. For a video that belongs to a bundle of versions, playback positions,
+tag assignments and public flags are keyed by the bundle's own `user_key`
+(`bundle:<id>`) instead; the one expression `userKeyExpr`
+(`internal/store/user_keys.go`) picks the key for every read and write, and every read that
+returns a video carries it as `Video.UserKey` (`specs/030-video-versions/data-model.md` §3).
+Video overrides and generated files stay keyed by the content identifier. Grouping exceptions are keyed by the folder's absolute path
 (`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
 survive rescans and media-folder changes.
 The single `account` row holds the username, Argon2id password hash and credential
@@ -343,8 +350,9 @@ compile:
   (`specs/016-single-account-auth/data-model.md` §3). The conditions used by ingest,
   jobs and tag counts stay owner-only. `LibraryStore` resolves which of a set of
   tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
-  video ids down to the currently-registered videos' content keys through
-  `registeredContentKeysForVideoIDs`; both are unexported package functions
+  video ids down to the currently-registered videos' user keys through
+  `userKeysForVideoIDs` (`OverrideStore` uses the content-key variant
+  `registeredContentKeysForVideoIDs`); these are unexported package functions
   (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
@@ -367,9 +375,10 @@ compile:
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
   synonym, the counted listing, and the startup refresh of tag-name search keys
   (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
-  set of video ids (resolved to the currently-registered videos' content keys),
+  set of video ids (resolved to the currently-registered videos' user keys, one per
+  bundle, through `userKeysForVideoIDs`),
   summarizes the tags on a selected set of videos, and looks up the tags on a set of
-  content keys in bulk for the video list (`TagsByContentKeys`, shaped like
+  user keys in bulk for the video list (`TagsByContentKeys`, shaped like
   `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
@@ -385,8 +394,8 @@ compile:
   `account_version` matches (`specs/026-external-api/data-model.md` §1). Like
   `PlaybackStore`, it holds only the SQL connection and publishes no domain event.
 - `VisibilityStore` — switching the public flag of a set of video ids (resolved to the
-  currently-registered videos' content keys, like tag attachment) in one transaction,
-  returning the content keys it applied to
+  currently-registered videos' user keys, like tag attachment) in one transaction,
+  returning the content keys it applied to (every member's content key for a bundle)
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
   SQL connection.
 - `OverrideStore` — an owner's display name for a video (resolved to its content key,
@@ -412,6 +421,14 @@ compile:
   restores the previous image
   (`artifacts.Store.StashThumbnail`), so the image always matches the recorded
   position and revision.
+- `VersionStore` — bundling videos as versions of the same video, changing a bundle's
+  representative, removing a video from its bundle, and reading a bundle's versions
+  (`specs/030-video-versions/data-model.md` §8). Bundling copies the representative's
+  user-keyed values to the new bundle's `user_key` and leaves each member's content-keyed
+  rows untouched, so a removed version returns to its own values; dissolving a bundle down
+  to one video copies the bundle's values onto that video's content key. Each operation is
+  one transaction that publishes `domain.VideoBundleChanged` after the commit, which the
+  screen subscription turns into a `video` notification per affected video.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

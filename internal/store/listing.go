@@ -183,8 +183,8 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 // listColumns は一覧の項目1件を domain.Video に写す列である。並びは scanVideo と
 // 対応させる。パス・題名・大きさ・更新時刻は chosen の所在のものを使う。
 // パスは後続の単位が Video.folder を組み立てるのに使う。
-const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
-	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
+var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
+	videos.added_at, videos.updated_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public, ` + overrideColumns
@@ -202,7 +202,8 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 		from += ` join video_locations loc on loc.path = chosen.path`
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
-	from += ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
+	// 鍵は利用者データの鍵（userKeyExpr、specs/030-video-versions/data-model.md §3）。
+	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	var conditions []string
 	if condition := watchCondition(spec.watch); condition != "" {
 		conditions = append(conditions, condition)

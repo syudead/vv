@@ -14,7 +14,8 @@ func relatedFixture() (*fakeLibrary, *fakeCatalog) {
 	videos := map[int64]domain.Video{}
 	for id, name := range map[int64]string{1: "ep 2", 2: "ep 10", 3: "ep 9", 4: "other"} {
 		video := sampleVideo(id, name)
-		video.Path = "/media/show/" + name + ".mp4"
+		video.ContentKey = name + ":1"
+		video.UserKey = video.ContentKey
 		video.ContentKey = name + ":1"
 		videos[id] = video
 	}
