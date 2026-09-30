@@ -585,6 +585,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画の集まりの全バージョンを返す
+         * @description この動画が属する集まり（同じ動画の別バージョン）のうち、見る人に見せてよい所在を持つ
+         *     バージョンを、実効の代表を先頭に、続きを題名の自然順（同じなら id）で返す。集まりに
+         *     属さなければ `items` はこの動画 1 本である。各項目は `GET /api/videos/{id}` と同じ形
+         *     （所有者には `location`、どちらにも `folder`）で、解像度・コーデック・`sizeBytes`・
+         *     `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`
+         *     （specs/030-video-versions/contracts/screen-api.md §1）。
+         */
+        get: operations["listVideoVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/make-representative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画をその集まりの代表にする
+         * @description 所有者だけ。要求の本文は無い。この動画を集まりの代表（一覧に出す 1 件）にし、集まりの
+         *     全バージョンを返す（既に代表でも同じ）。集まりのタグ・再生位置・公開の設定は変わらない。
+         *     集まりに属さなければ 400 `not_bundled`、無いか登録フォルダの下に所在が無ければ 404
+         *     `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる
+         *     （specs/030-video-versions/contracts/screen-api.md §3）。
+         */
+        post: operations["makeRepresentativeVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/unbundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画をその集まりから外す
+         * @description 所有者だけ。要求の本文は無い。外した動画を `GET /api/videos/{id}` と同じ形で返し、
+         *     `tags`・`progress`・`public` は束ねる前のこの動画の値で、`versions` は無い。残りが 1 本
+         *     なら集まりは解け、その 1 本が集まりの値を持つ。集まりに属さなければ 400 `not_bundled`、
+         *     無いか登録フォルダの下に所在が無ければ 404 `video_not_found`。確定後に `/api/events` の
+         *     `video` が元の全メンバーで流れる（specs/030-video-versions/contracts/screen-api.md §4）。
+         */
+        post: operations["unbundleVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -877,6 +950,33 @@ export interface paths {
          */
         put: operations["updateVideoVisibility"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画を同じ動画の別バージョンとして束ねる
+         * @description 所有者だけ。`videoIds` の動画を 1 つの集まりに束ね、`representativeId` を代表（一覧に出す
+         *     1 件）にする。集まりのタグ・再生位置・公開の設定は代表のものになる。既に集まりに属する
+         *     動画を含むときは、その集まりの全メンバーが新しい集まりに入る。`videoIds` の重複は 1 つと
+         *     数え、2 本未満なら 400 `too_few_videos`、20000 本を超えれば 400 `too_many_videos`
+         *     （`POST /api/video-tags` と同じ上限）、`representativeId` が `videoIds` に無ければ 400
+         *     `representative_not_selected`、どれかが無いか登録フォルダの下に所在が無ければ 404
+         *     `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる
+         *     （specs/030-video-versions/contracts/screen-api.md §2）。
+         */
+        post: operations["bundleVideos"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1638,6 +1738,7 @@ export interface components {
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
             group?: components["schemas"]["VideoGroupRef"];
+            versions?: components["schemas"]["VideoVersionsRef"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
              *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
@@ -1730,6 +1831,42 @@ export interface components {
             position: number;
             /** @description グループのメンバーの本数 */
             count: number;
+        };
+        /**
+         * @description 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
+         *     集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
+         *     （specs/030-video-versions/contracts/screen-api.md §0）
+         */
+        VideoVersionsRef: {
+            /** @description 見る人に見せてよい所在を持つバージョンの本数 */
+            count: number;
+            /**
+             * Format: int64
+             * @description 実効の代表（一覧に出ている 1 件）の動画の id
+             */
+            representativeId: number;
+        };
+        /** @description 集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1） */
+        VideoVersions: {
+            /**
+             * Format: int64
+             * @description 実効の代表の動画の id。集まりに属さなければその動画の id
+             */
+            representativeId: number;
+            /**
+             * @description 代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
+             *     同じ形
+             */
+            items: components["schemas"]["Video"][];
+        };
+        VideoBundleRequest: {
+            /** @description 束ねる動画。重複は 1 つと数え、2 本以上 */
+            videoIds: number[];
+            /**
+             * Format: int64
+             * @description 代表にする動画。videoIds の 1 つ
+             */
+            representativeId: number;
         };
         /**
          * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
@@ -1938,7 +2075,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2875,6 +3012,82 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listVideoVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    makeRepresentativeVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 反映後の集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    unbundleVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 外した動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     startScan: {
         parameters: {
             query?: never;
@@ -3400,6 +3613,33 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    bundleVideos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoBundleRequest"];
+            };
+        };
+        responses: {
+            /** @description 新しい集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listDirectories: {

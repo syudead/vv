@@ -312,6 +312,9 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 			}
 		}
 	}
+	// 集まりの要約も動画1件の応答にだけ載せる。ゲストには公開のバージョンだけで数えたものが
+	// 返る（specs/030-video-versions/contracts/screen-api.md §0）。
+	payload.Versions = apiVersionsRef(video.Versions)
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
