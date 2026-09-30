@@ -264,6 +264,27 @@ export function generateMediaFixtures(mediaDir) {
   for (const [name, codecs] of Object.entries(expected)) {
     assertFixture(file(name), codecs);
   }
+
+  // 隣に置いた字幕（specs/028-sidecar-subtitles）。ラベルの無い字幕と `ja` の字幕で、
+  // どちらも 0.5 秒から動画の終わりまで 1 つの cue を出す。
+  writeFileSync(
+    file("direct.srt"),
+    "1\r\n00:00:00,500 --> 00:00:06,000\r\nDefault subtitle cue\r\n",
+  );
+  writeFileSync(
+    file("direct.ja.srt"),
+    "1\n00:00:00,500 --> 00:00:06,000\n日本語の字幕\n",
+  );
+  // キーフレームが 0・8・16 秒の動画の隣の字幕。ライブ変換が 8 秒から始まったとき、
+  // 6〜7 秒の cue は出ず、9〜10 秒の cue が表示の 9〜10 秒台に出るかを見る（受け入れ条件 9）。
+  writeFileSync(
+    file("sparse-keyframes.srt"),
+    [
+      "1\n00:00:06,000 --> 00:00:07,000\nBefore keyframe cue\n",
+      "2\n00:00:09,000 --> 00:00:10,000\nAfter keyframe cue\n",
+      "3\n00:00:14,000 --> 00:00:15,000\nSeek target cue\n",
+    ].join("\n"),
+  );
 }
 
 /**

@@ -18,6 +18,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -71,6 +72,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Catalog:    app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
 			Artifacts:  artifacts,
 			Transcoder: f.transcode,
+			Subtitles:  media.NewSubtitleConverter(),
 		}
 	})
 	db := f.env.db
@@ -104,6 +106,11 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		}
 		content := []byte(strings.Repeat(file.name, 4096))
 		if err := os.WriteFile(file.path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// 動画ごとに隣へ字幕を 1 つ置く（<名前>.srt）。
+		subtitle := strings.TrimSuffix(file.path, ".mp4") + ".srt"
+		if err := os.WriteFile(subtitle, []byte("1\n00:00:01,000 --> 00:00:02,000\n"+file.name+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		key := "content-key-" + file.name
@@ -445,6 +452,34 @@ func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	assertSameResponse(t, "非公開の動画の開始位置", hidden, missing, http.StatusNotFound)
 	ownerStart := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode-start?attempt=guest-b"), cookies: []*http.Cookie{f.owner}})
 	assertStatus(t, "所有者の非公開の動画の開始位置", ownerStart, http.StatusOK)
+}
+
+// ゲストは公開の動画の字幕の一覧と字幕を取得でき、非公開の動画は両方の経路で存在しない
+// 動画と同じ 404 になる（specs/028-sidecar-subtitles/contracts/subtitles-api.md、受け入れ条件 11）。
+func TestGuestSubtitlesServeOnlyPublicVideos(t *testing.T) {
+	f := newGuestFixture(t, true)
+	env := f.env
+
+	list := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("a", "/subtitles")})
+	assertStatus(t, "公開の動画の字幕の一覧", list, http.StatusOK)
+	assertAudience(t, "公開の動画の字幕の一覧", list, "guest")
+	if body := strings.TrimSpace(readAll(t, list.Result())); body != `{"subtitles":[{"file":"a.srt","format":"srt","label":""}]}` {
+		t.Errorf("公開の動画の字幕の一覧: %s", body)
+	}
+	subtitle := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("a", "/subtitles/a.srt")})
+	assertStatus(t, "公開の動画の字幕", subtitle, http.StatusOK)
+	assertAudience(t, "公開の動画の字幕", subtitle, "guest")
+
+	for _, suffix := range []string{"/subtitles", "/subtitles/b.srt"} {
+		hidden := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", suffix)})
+		missing := env.serve(authRequest{method: http.MethodGet, target: "/api/videos/9999" + suffix})
+		assertSameResponse(t, "非公開の動画 "+suffix, hidden, missing, http.StatusNotFound)
+		owner := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", suffix), cookies: []*http.Cookie{f.owner}})
+		assertStatus(t, "所有者の非公開の動画 "+suffix, owner, http.StatusOK)
+	}
+	hidden := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/subtitles/b.srt")})
+	assertErrorBody(t, "非公開の動画の字幕", hidden.Code, hidden.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: codeNotFound, reason: reasonVideoNotFound})
 }
 
 // ゲストは所有者のデータに依る一覧の条件を使えない（guest-api.md §3）。

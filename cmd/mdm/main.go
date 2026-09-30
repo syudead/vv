@@ -272,11 +272,13 @@ func run() error {
 		Catalog:         catalog,
 		Opener:          fileOpener,
 		Files:           mediaFiles,
-		Events:          events,
-		Assets:          web.Dist(),
-		Logger:          logger,
-		Auth:            httpAuthenticator,
-		APITokens:       apiTokens,
+		// 字幕は要求 1 回で読んで変換して返すので、配信と同じく app を通さない。
+		Subtitles: media.NewSubtitleConverter(),
+		Events:    events,
+		Assets:    web.Dist(),
+		Logger:    logger,
+		Auth:      httpAuthenticator,
+		APITokens: apiTokens,
 		// 信頼するプロキシからの要求でだけ転送ヘッダーを読む。
 		TrustedProxies: cfg.TrustedProxies,
 	})

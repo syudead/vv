@@ -10,7 +10,13 @@ import {
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import { getAuthSession } from "../api/auth";
-import { reloadForViewerChange, reprobeVideo, RequestFailed } from "../api/client";
+import {
+  getVideoSubtitles,
+  reloadForViewerChange,
+  reprobeVideo,
+  RequestFailed,
+  type SubtitleTrack,
+} from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
@@ -46,6 +52,8 @@ import VideoPlayer, {
 import VideoTags from "./VideoTags";
 import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
+
+const noSubtitles: readonly SubtitleTrack[] = [];
 
 /** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
 interface Attempt {
@@ -155,6 +163,30 @@ export default function VideoPage() {
       document.title = previous;
     };
   }, [title]);
+
+  // --- 字幕 ---
+  // 動画を開くたびに隣の字幕の一覧を取り直す（specs/028-sidecar-subtitles contracts §3）。
+  // 取れなければ字幕無しとして扱い、再生は止めない。前の動画の一覧は次の動画に渡さない。
+  const [subtitleState, setSubtitleState] = useState<{
+    id: number;
+    tracks: readonly SubtitleTrack[];
+  }>({ id: 0, tracks: noSubtitles });
+  useEffect(() => {
+    if (id <= 0) return;
+    const controller = new AbortController();
+    getVideoSubtitles(id, controller.signal).then(
+      (tracks) => {
+        if (controller.signal.aborted) return;
+        setSubtitleState({ id, tracks: Array.isArray(tracks) ? tracks : noSubtitles });
+      },
+      () => {
+        if (controller.signal.aborted) return;
+        setSubtitleState({ id, tracks: noSubtitles });
+      },
+    );
+    return () => controller.abort();
+  }, [id]);
+  const subtitles = subtitleState.id === id ? subtitleState.tracks : noSubtitles;
 
   // --- 再生位置の保存（既存どおり） ---
   const { rememberProgress, savePlayerProgress } = useProgressSaving(id, owner);
@@ -405,6 +437,7 @@ export default function VideoPage() {
                 onStatus={onStatus}
                 onAspectRatio={setMediaAspect}
                 fullscreenTarget={fullscreenTarget}
+                subtitles={subtitles}
               />
             )}
             {showPlayer && (

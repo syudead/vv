@@ -699,6 +699,75 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/subtitles:
+    get:
+      operationId: listVideoSubtitles
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 動画の隣に置いた字幕ファイルの一覧を返す
+      description: |
+        配信が開く所在（`streamVideo` と同じ順で最初に開けたもの）のフォルダを要求のたびに読み、
+        `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` を返す。
+        ラベルの無いものが先頭で、続いてラベルの自然順。同じラベルの `.srt` と `.vtt` は `.vtt`
+        だけ、4 MiB を超えるファイルは載せない。中身は読まない。無ければ空の配列で、フォルダを
+        読めないときも空の配列を返す。応答は `Cache-Control: no-store`
+        （specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 字幕ファイルの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubtitleTrackList"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/subtitles/{file}:
+    get:
+      operationId: getVideoSubtitle
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 字幕ファイルを WebVTT にして返す
+      description: |
+        `file` が `listVideoSubtitles` と同じ一覧の 1 つと完全に一致するときだけ開き、文字コードを
+        判定して UTF-8 の WebVTT にし、すべての cue の時刻から `offsetMs` を引いて返す。
+        一覧に無い、開けない、上限を超える、読めない字幕は `404`（reason `subtitle_unavailable`）。
+        成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
+        一致すれば `304` を返す（specs/028-sidecar-subtitles/contracts/subtitles-api.md §2）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: file
+          in: path
+          required: true
+          description: "`listVideoSubtitles` が返した `file`"
+          schema:
+            type: string
+        - name: offsetMs
+          in: query
+          description: 再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）。cue の時刻からこの値を引く
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: UTF-8 の WebVTT
+          content:
+            text/vtt:
+              schema:
+                type: string
+        "304":
+          description: "`If-None-Match` が `ETag` と一致した"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/videos/{id}/thumbnail:
     get:
       operationId: getVideoThumbnail
@@ -2788,6 +2857,32 @@ components:
           format: int64
           minimum: 0
 
+    SubtitleTrackList:
+      type: object
+      required: [subtitles]
+      additionalProperties: false
+      properties:
+        subtitles:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubtitleTrack"
+
+    SubtitleTrack:
+      type: object
+      required: [file, label, format]
+      additionalProperties: false
+      properties:
+        file:
+          type: string
+          description: 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う
+        label:
+          type: string
+          description: ファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は空文字列
+        format:
+          type: string
+          enum: [srt, vtt]
+          description: 元のファイルの形式
+
     TranscodeStart:
       type: object
       required: [startMs]
@@ -3113,3 +3208,4 @@ components:
         - api_token_name_empty
         - api_token_name_control_characters
         - api_token_name_too_long
+        - subtitle_unavailable

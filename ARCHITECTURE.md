@@ -15,8 +15,9 @@ Expand the sections below as implementation lands.
 A single Go binary serves the JSON API, the embedded React SPA build, and
 byte-range video streaming (via `http.ServeContent`), backed by SQLite and by
 video files on a mounted volume. `ffmpeg`/`ffprobe` run as child processes for
-metadata, thumbnails, and subtitle conversion, driven by an in-process job
-worker. Everything ships as one container.
+metadata, thumbnails, previews and live transcoding, driven by an in-process job
+worker or by the request that needs them. Sidecar subtitles are converted to WebVTT
+in Go, without `ffmpeg`. Everything ships as one container.
 
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
@@ -242,13 +243,15 @@ resolve inside a configured media folder.
 read: a location may be opened only when its cleaned path is inside a registered media
 folder, the path its symbolic links resolve to is inside the same folder, and the file is
 a regular file (not a directory or a device). It opens or hands out the resolved path, so
-what was checked is what gets opened. Streaming, live transcoding, opening in the default
-app, registering a media folder (`CheckMediaFolder`: a readable directory reached without
+what was checked is what gets opened. Streaming, live transcoding, sidecar subtitles,
+opening in the default app, registering a media folder (`CheckMediaFolder`: a readable directory reached without
 symbolic links) and the server-side directory picker all use it through interfaces they
 declare. The containment checks themselves are pure functions in `internal/domain`
 (`PathInsideRoot`, `MediaFileInsideRoot`, `SamePath`), so they are tested without a
 filesystem; `internal/httpapi` only maps the result to a response, and a location that
-points outside is answered like a missing file.
+points outside is answered like a missing file. For subtitles it lists the regular files
+next to a location that passes the same rule (`ListSidecarFiles`) and opens only a name
+from that listing (`OpenSidecarFile`), so a request never builds a path.
 
 `internal/opener` launches the operating system's default app for a video's
 representative location (`explorer.exe`, `open` or `xdg-open`). It is kept apart from
@@ -406,7 +409,7 @@ Every request crosses an authentication boundary at the outermost layer of
 `internal/httpapi` (`auth.go`) before routing. It sorts each request into one of four
 kinds — Bearer (`/api/v1/…`, the external API, and `/mcp`; see below), anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
 `POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` for
-the SPA build), guests too (the video, stream, artifact and folder reads), and
+the SPA build), guests too (the video, stream, subtitle, artifact and folder reads), and
 owner only (everything else, including undefined `/api/*` paths) — by the
 `path.Clean`ed request path, so the classification matches each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Because `ServeMux` splits
@@ -480,7 +483,16 @@ otherwise uses the connecting address and TLS;
 the login attempt limit, authentication logs, the cookie name and `Secure`, the
 same-origin check and the loopback check for opening a file all use it.
 
-Not built yet: subtitles and multi-user support. Browser-incompatible
+Sidecar subtitles are found on every request: `GET /api/videos/{id}/subtitles` reads the
+folder of the first location streaming can open, and `domain.SubtitleSidecars` turns its
+entries into `<name>.srt`/`.vtt` and `<name>.<label>.srt`/`.vtt` tracks (no SQLite
+change, `no-store`). `GET /api/videos/{id}/subtitles/{file}` reopens only a listed name,
+and `internal/media`'s `SubtitleConverter` detects the character encoding, turns SRT into
+WebVTT and shifts cues by `offsetMs`; it is served `private, no-cache` with an `ETag`.
+Both are guest-too routes behind `lookupServedVideo`
+([sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md)).
+
+Not built yet: multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
 not persisted. The transcode route reuses the video's stored live-transcode probe when it
 still matches the opened file, and saves the one `internal/media` probed otherwise.

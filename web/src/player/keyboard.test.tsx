@@ -13,6 +13,7 @@ function fakeControls(overrides: Partial<PlayerControls> = {}): PlayerControls {
     restart: vi.fn(),
     toggleMute: vi.fn(),
     toggleFullscreen: vi.fn(),
+    toggleSubtitles: vi.fn(),
     isFullscreen: vi.fn(() => false),
     menuOpen: vi.fn(() => false),
     wake: vi.fn(),
@@ -53,7 +54,7 @@ describe("useKeyboardShortcuts", () => {
     });
   });
 
-  it("Space・F・M・0 がそれぞれの操作を起こし、←/→ では何もしない", () => {
+  it("Space・F・M・C・0 がそれぞれの操作を起こし、←/→ では何もしない", () => {
     const controls = fakeControls();
     setup(controls);
     const target = document.body;
@@ -65,8 +66,11 @@ describe("useKeyboardShortcuts", () => {
     fireEvent.keyDown(target, { key: "f" });
     fireEvent.keyDown(target, { key: "M" });
     fireEvent.keyDown(target, { key: "0" });
+    fireEvent.keyDown(target, { key: "c" });
+    fireEvent.keyDown(target, { key: "C", shiftKey: true });
 
     expect(controls.togglePlay).toHaveBeenCalledTimes(1);
+    expect(controls.toggleSubtitles).toHaveBeenCalledTimes(2);
     expect(controls.toggleFullscreen).toHaveBeenCalledTimes(1);
     expect(controls.toggleMute).toHaveBeenCalledTimes(1);
     expect(controls.seekTo).toHaveBeenCalledWith(0);
@@ -96,9 +100,10 @@ describe("useKeyboardShortcuts", () => {
     const controls = fakeControls();
     const { view, onClose } = setup(controls);
     const input = view.getByRole("textbox");
-    for (const key of [" ", "ArrowRight", "f", "m", "0", "Escape"]) {
+    for (const key of [" ", "ArrowRight", "f", "m", "c", "0", "Escape"]) {
       fireEvent.keyDown(input, { key });
     }
+    expect(controls.toggleSubtitles).not.toHaveBeenCalled();
     expect(controls.togglePlay).not.toHaveBeenCalled();
     expect(controls.seekTo).not.toHaveBeenCalled();
     expect(controls.toggleFullscreen).not.toHaveBeenCalled();
@@ -112,6 +117,8 @@ describe("useKeyboardShortcuts", () => {
     fireEvent.keyDown(document.body, { key: "f", ctrlKey: true });
     fireEvent.keyDown(document.body, { key: "0", altKey: true });
     fireEvent.keyDown(document.body, { key: "m", metaKey: true });
+    fireEvent.keyDown(document.body, { key: "c", ctrlKey: true });
+    expect(controls.toggleSubtitles).not.toHaveBeenCalled();
     expect(controls.toggleFullscreen).not.toHaveBeenCalled();
     expect(controls.seekTo).not.toHaveBeenCalled();
     expect(controls.toggleMute).not.toHaveBeenCalled();
