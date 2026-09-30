@@ -1,12 +1,14 @@
-import { Minus, Plus, X } from "lucide-react";
+import { Layers, Minus, Plus, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
+import { maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import { PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
 import RemoveTagPopover from "./RemoveTagPopover";
 import { overLimitMessage } from "./selectionErrors";
@@ -32,6 +34,11 @@ export interface SelectionBarProps {
    * 食い違わないよう選択を解除して一覧を取り直す（Devin の指摘4）。
    */
   onTagRemoved: (tagId: number) => void;
+  /**
+   * 「Bundle as versions」の窓で束ね終えたときに呼ぶ。呼び出し元（LibraryPage）は選択を
+   * 解除して一覧を取り直す（specs/030-video-versions/ui-design.md「Bundle dialog」）。
+   */
+  onBundled: (versions: VideoVersions) => void;
 }
 
 /** SelectionBar は 1 件以上選ぶと画面下部に浮く。 */
@@ -43,6 +50,7 @@ export default function SelectionBar({
   onSelectAll,
   onClear,
   onTagRemoved,
+  onBundled,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -55,6 +63,16 @@ export default function SelectionBar({
   const overLimitId = useId();
   const overLimit = count > maxVideoTagsSelection;
 
+  // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
+  // disabled にして理由を添える（specs/030-video-versions/ui-design.md「Bundle action」）。
+  // 窓を開いている間の背景は inert なので、開いたあとに選択が増えることはない。
+  const [bundleOpen, setBundleOpen] = useState(false);
+  const bundleOverLimitId = useId();
+  const canBundle = count >= 2;
+  const bundleOverLimit = count > maxBundleSelection;
+  // 窓に渡す id の並びは、開いた時点の選択で固定する。
+  const [bundleIds, setBundleIds] = useState<readonly number[]>([]);
+
   // count===0 のときはバーごと描かない（下の return null）が、SelectionBar
   // 自身は選択の間ずっと同じインスタンスのまま（アンマウントしない）ので、
   // addOpen・removeOpen をそのままにすると、選択を解除してまた選び直したときに
@@ -66,6 +84,7 @@ export default function SelectionBar({
     if (count === 0) {
       setAddOpen(false);
       setRemoveOpen(false);
+      setBundleOpen(false);
     }
   }, [count]);
 
@@ -83,6 +102,18 @@ export default function SelectionBar({
 
   if (count === 0) return null;
 
+  // 下の段が1行に収まらない幅の問い合わせ（上の JSX の説明を参照）。Tailwind が
+  // クラスを拾えるよう、幅ごとに文字列をそのまま書く。
+  const fit = canBundle
+    ? {
+        shrink: "max-sm:@max-[40rem]:flex-none",
+        right: "max-sm:@max-[40rem]:ml-auto",
+      }
+    : {
+        shrink: "max-sm:@max-[22.75rem]:flex-none",
+        right: "max-sm:@max-[22.75rem]:ml-auto",
+      };
+
   return (
     <div
       role="region"
@@ -90,13 +121,16 @@ export default function SelectionBar({
       className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
     >
       {/*
-       * sm 未満の2段では、下の段を「タグを付ける」「タグを外す」「公開」の3つで
-       * 等分する。3つが1行に収まらない幅（360px など）では、3つの幅を auto にし、
-       * 「公開」をアイコン + 文言のまま右端に置く（ui-design.md「Selection bar」）。
+       * sm 未満の2段では、下の段を「タグを付ける」「タグを外す」「公開」の3つ
+       * （2 本以上を選ぶと「Bundle as versions」を足した4つ）で等分する。
+       * 収まらない幅（360px など）では幅を auto にし、「公開」（4つのときは
+       * 「公開」と「Bundle as versions」）を次の段の右端に回す（ui-design.md
+       * 「Selection bar」、specs/030-video-versions/ui-design.md「Bundle action」）。
        * 収まるかどうかはこのバーの幅で決まるので、sm 未満でだけバーを
        * コンテナにして問い合わせる（sm 以上では幅が内容で決まるので、
        * コンテナにすると幅が 0 に潰れる）。22.75rem は3つの最小の幅と間隔の和
-       * （116px × 3 + 8px × 2）である。
+       * （116px × 3 + 8px × 2）、40rem は4つの和
+       * （いちばん広い「Bundle as versions」の 152px × 4 + 8px × 3 ≈ 633px）である。
        */}
       <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-border-strong bg-elevated p-1.5 shadow-elevated animate-slide-up motion-reduce:animate-none max-sm:@container sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
         <span
@@ -123,7 +157,7 @@ export default function SelectionBar({
               ref={addTriggerRef}
               variant="ghost"
               size="sm"
-              className="order-5 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-2"
+              className={cn("order-5 max-sm:flex-1 sm:order-2", fit.shrink)}
               disabled={overLimit}
               title={overLimit ? overLimitMessage() : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
@@ -145,7 +179,7 @@ export default function SelectionBar({
             <Button
               variant="ghost"
               size="sm"
-              className="order-6 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-3"
+              className={cn("order-6 max-sm:flex-1 sm:order-3", fit.shrink)}
               disabled={overLimit}
               title={overLimit ? overLimitMessage() : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
@@ -161,11 +195,21 @@ export default function SelectionBar({
             onRemoved={onTagRemoved}
           />
         </PopoverRoot>
+        {/*
+         * 4つが収まらない幅では、「公開」と「Bundle as versions」をそろって次の段の
+         * 右端に回す。3つのときは「公開」が収まらなければ折り返すだけなので要らない。
+         */}
+        {canBundle && (
+          <span
+            aria-hidden="true"
+            className="order-7 hidden h-0 basis-full max-sm:@max-[40rem]:block"
+          />
+        )}
         <VisibilityMenu
           selectedIds={selectedIds}
           overLimit={overLimit}
           overLimitId={overLimitId}
-          className="order-7 max-sm:flex-1 max-sm:@max-[22.75rem]:ml-auto max-sm:@max-[22.75rem]:flex-none sm:order-4"
+          className={cn("order-7 max-sm:flex-1 sm:order-4", fit.shrink, fit.right)}
         />
         {overLimit && (
           <span id={overLimitId} className="sr-only">
@@ -173,9 +217,46 @@ export default function SelectionBar({
           </span>
         )}
 
+        {canBundle && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("order-8 max-sm:flex-1 sm:order-5", fit.shrink)}
+            disabled={bundleOverLimit}
+            title={
+              bundleOverLimit
+                ? t.library.selection.bundleOverLimit(maxBundleSelection)
+                : undefined
+            }
+            aria-describedby={bundleOverLimit ? bundleOverLimitId : undefined}
+            onClick={() => {
+              setBundleIds(selectedIds);
+              setBundleOpen(true);
+            }}
+          >
+            <Layers aria-hidden="true" />
+            {t.library.selection.bundle}
+          </Button>
+        )}
+        {canBundle && bundleOverLimit && (
+          <span id={bundleOverLimitId} className="sr-only">
+            {t.library.selection.bundleOverLimit(maxBundleSelection)}
+          </span>
+        )}
+        {bundleOpen && (
+          <BundleDialog
+            videoIds={bundleIds}
+            onClose={() => setBundleOpen(false)}
+            onBundled={(versions) => {
+              setBundleOpen(false);
+              onBundled(versions);
+            }}
+          />
+        )}
+
         <span
           aria-hidden="true"
-          className={cn("hidden h-5 w-px bg-border-strong sm:order-5 sm:block")}
+          className={cn("hidden h-5 w-px bg-border-strong sm:order-6 sm:block")}
         />
 
         <Button
@@ -183,7 +264,7 @@ export default function SelectionBar({
           size="sm"
           onClick={onSelectAll}
           disabled={selectingAll || allSelected}
-          className="order-2 sm:order-6"
+          className="order-2 sm:order-7"
         >
           {selectingAll
             ? t.library.selection.selectingAll
@@ -193,7 +274,7 @@ export default function SelectionBar({
           label={t.library.selection.clear}
           size="sm"
           onClick={onClear}
-          className="order-3 sm:order-7"
+          className="order-3 sm:order-8"
         >
           <X />
         </IconButton>

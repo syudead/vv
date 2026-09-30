@@ -559,6 +559,14 @@ export function listVideoVersions(
 }
 
 /**
+ * maxBundleSelection は画面から一度に束ねる動画の上限である。束ねる窓は選んだ 1 本ごとに
+ * `GET /api/videos/{id}` を送り、代表の候補の行を並べるので、画面の側だけで絞る。サーバーの
+ * `too_many_videos` の上限（`POST /api/video-tags` と同じ）は変えない
+ * （specs/030-video-versions/ui-design.md「Bundle action」）。
+ */
+export const maxBundleSelection = 20;
+
+/**
  * bundleVideos は `videoIds` の動画を 1 つの集まりに束ね、`representativeId` を一覧に出す代表にする
  * （specs/030-video-versions/contracts/screen-api.md §2）。応答は新しい集まりの全バージョンである。
  *

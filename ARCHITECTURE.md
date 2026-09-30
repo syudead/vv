@@ -783,7 +783,10 @@ Japanese or fixed text outside `web/src/i18n/`; the details are in
 video-list pieces the library and folder screens share (list criteria and their URL hook,
 the condition labels and count summary, the video card, the empty/loading/error states and
 the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to
-neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
+neither screen, so neither screen imports from the other. `web/src/versions/` holds the
+pieces for bundling videos as versions of one video that more than one screen uses: the
+row's difference line (shared with the playback screen's versions list) and the dialog
+that picks the representative, which the library's selection bar opens. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
 right after "フォルダ" (Folders). Every sidebar entry links to a working screen. The library, folder, settings and tag screens use the shell: `app/App.tsx`
