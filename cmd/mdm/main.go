@@ -259,9 +259,11 @@ func run() error {
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
 		Overrides:    db.Overrides(),
-		Folders:      libraryStore,
-		FolderGroups: db.FolderGroups(),
-		Library:      libraryStore,
+		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。
+		ThumbnailPicker: ingest,
+		Folders:         libraryStore,
+		FolderGroups:    db.FolderGroups(),
+		Library:         libraryStore,
 		// 外部連携 API の動画の一覧と引き当ても、画面の一覧と同じ LibraryStore が読む。
 		ExternalVideos: libraryStore,
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),

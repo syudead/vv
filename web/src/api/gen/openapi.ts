@@ -546,6 +546,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/thumbnail-position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の代表サムネイルの位置を設定・解除する
+         * @description 所有者だけ。`positionMs` の場面で代表サムネイルを作り直して公開し、位置を記録する。
+         *     `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返し、形は
+         *     `GET /api/videos/{id}` と同じ `Video` である（`thumbnailState: done`、新しい版の
+         *     `thumbnailUrl`、指定なら `thumbnailPositionMs`）。解析が終わっていないか尺が分からなければ
+         *     409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
+         *     尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
+         *     どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
+         *     最後に記録した位置の画像が残る。確定後に `/api/events` の `video` が流れる
+         *     （specs/029-video-overrides/contracts/screen-api.md §2）。
+         */
+        put: operations["setVideoThumbnailPosition"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -1716,6 +1744,13 @@ export interface components {
             /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
             displayName: string;
         };
+        ThumbnailPositionUpdate: {
+            /**
+             * Format: int64
+             * @description 代表サムネイルにする場面の位置（ミリ秒）。null は解除して自動の位置に戻す
+             */
+            positionMs: number | null;
+        };
         ProgressUpdate: {
             /** Format: int64 */
             positionMs: number;
@@ -1881,7 +1916,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2785,6 +2820,37 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoThumbnailPosition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThumbnailPositionUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     startScan: {
