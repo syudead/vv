@@ -2,6 +2,7 @@ import { AlertCircle, FileVideo, LoaderCircle, Pencil } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { isAborted, RequestFailed, setVideoDisplayName, type Video } from "../api/client";
+import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
@@ -15,8 +16,8 @@ const titleType = "text-xl leading-snug font-semibold text-fg sm:text-2xl";
  * （specs/029-video-overrides/ui-design.md「Title editing」「File name line」）。
  * ゲストには今の `h1` だけを出す。
  *
- * 保存は `PUT /api/videos/{id}/display-name` を 1 回送り、応答の動画を `onSaved` で
- * 渡す（呼び出し側が手元の動画を差し替える）。失敗したら編集を続け、入力の下に理由を
+ * 保存は `PUT /api/videos/{id}/display-name` を 1 回送り、応答の動画を、送る直前に取った
+ * detailMark と一緒に `onSaved` で渡す（呼び出し側が手元の動画を差し替える）。失敗したら編集を続け、入力の下に理由を
  * 1 行出す。404 では `onStale` で動画を取り直させる。
  *
  * 別の動画へ移ったら編集と失敗の行を持ち越さないよう、呼び出し側が動画の id を `key` に
@@ -30,7 +31,7 @@ export default function VideoTitle({
 }: {
   video: Video;
   owner: boolean;
-  onSaved: (video: Video) => void;
+  onSaved: (video: Video, mark: DetailMark) => void;
   onStale: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -83,12 +84,17 @@ export default function VideoTitle({
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (sending) return;
-    // ファイル名と同じ表示名は作らない。
-    if (video.displayName === undefined && draft.trim() === video.title) {
+    // ファイル名と同じ表示名は作らない。前後に空白のあるファイル名の題名は、変えずに
+    // 保存しても送らない（送るとサーバーが空白を除いた表示名を作る）。
+    if (
+      video.displayName === undefined &&
+      (draft === video.title || draft.trim() === video.title)
+    ) {
       finish();
       return;
     }
     const mine = session.current;
+    const mark = detailMark();
     const controller = new AbortController();
     request.current?.abort();
     request.current = controller;
@@ -96,7 +102,7 @@ export default function VideoTitle({
     setSending(true);
     setVideoDisplayName(video.id, draft, controller.signal).then(
       (saved) => {
-        onSaved(saved);
+        onSaved(saved, mark);
         if (session.current === mine) finish();
       },
       (error: unknown) => {

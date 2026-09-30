@@ -21,7 +21,7 @@ vi.mock("./client", async (importOriginal) => ({
   getRelatedVideos,
 }));
 
-const { isProcessing, useRelatedVideos, useVideoDetail } =
+const { detailMark, isProcessing, useRelatedVideos, useVideoDetail } =
   await import("./useVideoDetail");
 
 const done: Video = {
@@ -136,8 +136,12 @@ describe("useVideoDetail", () => {
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(2);
 
+    const mark = detailMark();
     act(() =>
-      result.current.replace({ ...done, title: "新しい名前", displayName: "新しい名前" }),
+      result.current.replace(
+        { ...done, title: "新しい名前", displayName: "新しい名前" },
+        mark,
+      ),
     );
     expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
 
@@ -146,8 +150,63 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
 
     // 別の動画の応答は捨てる。
-    act(() => result.current.replace({ ...done, id: 8, title: "別の動画" }));
+    act(() => result.current.replace({ ...done, id: 8, title: "別の動画" }, mark));
     expect(result.current.state).toMatchObject({ id: 7, video: { title: "新しい名前" } });
+  });
+
+  it("replace は要求の間に反映した公開の切り替えを巻き戻さず、要求の後に始めた取り直しを残す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ applied: 1 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+    const { updateVideoVisibility } = await import("./visibility");
+    let answer: ((video: Video) => void) | undefined;
+    getVideo
+      .mockResolvedValueOnce(done)
+      .mockImplementationOnce(() => new Promise<Video>((resolve) => (answer = resolve)));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+    expect(result.current.state).toMatchObject({ video: { public: false } });
+
+    // 表示名の保存を送り、その応答の前に公開へ切り替わり、別の変化で取り直しが始まる。
+    const mark = detailMark();
+    await act(async () => {
+      await updateVideoVisibility([7], true);
+    });
+    await emitServerEvent("video", { id: 7 });
+    expect(getVideo).toHaveBeenCalledTimes(2);
+
+    // 表示名の応答は、切り替える前の public: false を読んでいる。
+    act(() =>
+      result.current.replace(
+        { ...done, public: false, title: "新しい名前", displayName: "新しい名前" },
+        mark,
+      ),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { public: true, title: "新しい名前" },
+    });
+
+    // 保存の後に始めた取り直しは打ち切らない。
+    await act(async () =>
+      answer?.({
+        ...done,
+        public: true,
+        title: "新しい名前",
+        displayName: "新しい名前",
+        previewState: "pending",
+      }),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { public: true, title: "新しい名前", previewState: "pending" },
+    });
   });
 
   it("公開を切り替える前に始めた取り直しが後から届いても、公開の表示を巻き戻さない", async () => {
@@ -334,6 +393,42 @@ describe("useVideoDetail", () => {
 
 describe("useRelatedVideos", () => {
   beforeEach(() => getRelatedVideos.mockReset());
+
+  it("rename は保存した表示名をグループのメンバーの並びにある同じ動画へ写す", async () => {
+    const folder = { rootId: 1, path: "series" };
+    const other: Video = { ...done, id: 8, title: "ep02" };
+    getRelatedVideos.mockResolvedValue({
+      items: [],
+      group: { folder, name: "series", items: [done, other] },
+    });
+    const { result } = renderHook(() => useRelatedVideos(7), { wrapper: OwnerAudience });
+    await act(async () => undefined);
+
+    act(() =>
+      result.current.rename({
+        ...done,
+        title: "夏の旅行",
+        fileTitle: "動画",
+        displayName: "夏の旅行",
+      }),
+    );
+    const named =
+      result.current.state.kind === "ready"
+        ? result.current.state.related.group?.items
+        : undefined;
+    expect(named?.map((item) => item.title)).toEqual(["夏の旅行", "ep02"]);
+    expect(named?.[0]).toMatchObject({ fileTitle: "動画", displayName: "夏の旅行" });
+
+    // 解除では displayName を消す。別の動画の応答は写さない。
+    act(() => result.current.rename({ ...done, fileTitle: "動画" }));
+    act(() => result.current.rename({ ...other, title: "別の動画" }));
+    const cleared =
+      result.current.state.kind === "ready"
+        ? result.current.state.related.group?.items
+        : undefined;
+    expect(cleared?.map((item) => item.title)).toEqual(["動画", "ep02"]);
+    expect(cleared?.[0]?.displayName).toBeUndefined();
+  });
 
   it("失敗したら retry で取り直す", async () => {
     getRelatedVideos

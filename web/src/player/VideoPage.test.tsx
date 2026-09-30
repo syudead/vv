@@ -1066,6 +1066,27 @@ describe("VideoPage", () => {
       expect(screen.getByTitle("series")).toBeDefined();
     });
 
+    it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
+      const user = userEvent.setup();
+      server.displayName.mockReturnValueOnce(
+        json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
+      );
+      await openMember();
+      const members = () => document.getElementById("group-heading")!.closest("section")!;
+      expect(within(members()).getByText("ep02")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const input = screen.getByRole("textbox", { name: "Display name" });
+      await user.clear(input);
+      await user.type(input, "第二話{Enter}");
+
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("第二話"),
+      );
+      expect(within(members()).getByText("第二話")).toBeDefined();
+      expect(within(members()).queryByText("ep02")).toBeNull();
+    });
+
     it("ゲストでは Group line を押せない文字の行にする", async () => {
       renderPage("12", "/", "guest");
       const title = await ready();

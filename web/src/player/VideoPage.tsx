@@ -88,7 +88,11 @@ export default function VideoPage() {
   const owner = audience === "owner";
 
   const { state: detailState, refresh, replace } = useVideoDetail(id);
-  const { state: relatedState, retry: retryRelated } = useRelatedVideos(id);
+  const {
+    state: relatedState,
+    retry: retryRelated,
+    rename: renameRelated,
+  } = useRelatedVideos(id);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
@@ -498,7 +502,11 @@ export default function VideoPage() {
                     key={`title:${String(video.id)}`}
                     video={video}
                     owner={owner}
-                    onSaved={replace}
+                    onSaved={(saved, mark) => {
+                      replace(saved, mark);
+                      // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
+                      renameRelated(saved);
+                    }}
                     onStale={() => void refresh()}
                   />
                   {owner && (

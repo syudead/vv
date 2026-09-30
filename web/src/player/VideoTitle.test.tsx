@@ -174,6 +174,18 @@ describe("VideoTitle", () => {
     expect(screen.getByRole("heading", { level: 1, name: "clip_0042" })).toBeDefined();
   });
 
+  it("前後に空白のあるファイル名の題名は、変えずに保存しても送らない", async () => {
+    const user = userEvent.setup();
+    const spaced: Video = { ...video, title: " clip_0042 ", fileTitle: " clip_0042 " };
+    renderTitle({ initial: spaced });
+    await user.click(editButton());
+    expect(nameInput().value).toBe(" clip_0042 ");
+    await user.keyboard("{Enter}");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(" clip_0042 ");
+    expect(screen.queryByTitle(/^File name/)).toBeNull();
+  });
+
   it("Esc と Cancel は送らずに題名へ戻し、編集ボタンへフォーカスを返す", async () => {
     const user = userEvent.setup();
     renderTitle({ initial: named });
