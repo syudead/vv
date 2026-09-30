@@ -10,6 +10,7 @@ function tags(...names: string[]): VideoTag[] {
     name,
     manual: true,
     fromFolder: false,
+    tentative: false,
   }));
 }
 
@@ -97,9 +98,9 @@ describe("CardTagRow", () => {
   // 読み上げ名に「フォルダ名から」を添える。手でも付いていれば今の形のまま。
   describe("フォルダ由来のタグ", () => {
     const mixed: VideoTag[] = [
-      { id: 1, name: "京都", manual: false, fromFolder: true },
-      { id: 2, name: "旅行", manual: true, fromFolder: true },
-      { id: 3, name: "夏", manual: true, fromFolder: false },
+      { id: 1, name: "京都", manual: false, fromFolder: true, tentative: false },
+      { id: 2, name: "旅行", manual: true, fromFolder: true, tentative: false },
+      { id: 3, name: "夏", manual: true, fromFolder: false, tentative: false },
     ];
 
     it("フォルダ由来だけのタグを破線の形で出し、ほかは面のある形のまま出す", () => {

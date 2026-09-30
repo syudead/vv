@@ -38,11 +38,17 @@ describe("compareNatural", () => {
 
 describe("compareTagRefs", () => {
   it("名前の自然順で比べ、同名はidで決着させる", () => {
-    expect(compareTagRefs({ id: 1, name: "2話" }, { id: 2, name: "10話" })).toBeLessThan(
-      0,
-    );
     expect(
-      compareTagRefs({ id: 2, name: "旅行" }, { id: 1, name: "旅行" }),
+      compareTagRefs(
+        { id: 1, name: "2話", tentative: false },
+        { id: 2, name: "10話", tentative: false },
+      ),
+    ).toBeLessThan(0);
+    expect(
+      compareTagRefs(
+        { id: 2, name: "旅行", tentative: false },
+        { id: 1, name: "旅行", tentative: false },
+      ),
     ).toBeGreaterThan(0);
   });
 });
@@ -53,17 +59,19 @@ describe("applyTagToTags", () => {
     name,
     manual: true,
     fromFolder: false,
+    tentative: false,
   });
   const folder = (id: number, name: string): VideoTag => ({
     id,
     name,
     manual: false,
     fromFolder: true,
+    tentative: false,
   });
 
   it("addは名前の自然順を保つ位置へ挿す", () => {
     const tags = [manual(1, "2話"), manual(3, "10話")];
-    const result = applyTagToTags(tags, { id: 2, name: "5話" }, "add");
+    const result = applyTagToTags(tags, { id: 2, name: "5話", tentative: false }, "add");
     expect(result).toEqual([manual(1, "2話"), manual(2, "5話"), manual(3, "10話")]);
     // 元の配列は変えない。
     expect(tags).toHaveLength(2);
@@ -71,7 +79,7 @@ describe("applyTagToTags", () => {
 
   it("addは既に付いていた同じidの行を、最新のnameで差し替える（N6）", () => {
     const tags = [manual(1, "Banana"), manual(2, "Cherry")];
-    const result = applyTagToTags(tags, { id: 1, name: "Date" }, "add");
+    const result = applyTagToTags(tags, { id: 1, name: "Date", tentative: false }, "add");
     // 改名で並びが変わる（"Date" は "Cherry" より後）ことも、この差し替えは
     // 正しく反映する。
     expect(result).toEqual([manual(2, "Cherry"), manual(1, "Date")]);
@@ -79,39 +87,84 @@ describe("applyTagToTags", () => {
 
   it("addで同じidかつ同じnameなら変えない（新しい配列でも中身は同じ）", () => {
     const tags = [manual(1, "旅行")];
-    const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "add");
+    const result = applyTagToTags(tags, { id: 1, name: "旅行", tentative: false }, "add");
     expect(result).toEqual(tags);
     expect(result).not.toBe(tags);
   });
 
   it("addはフォルダ名から付いている行に手で付けた分を足し、出所を両方持つ", () => {
-    const result = applyTagToTags([folder(1, "旅行")], { id: 1, name: "旅行" }, "add");
-    expect(result).toEqual([{ id: 1, name: "旅行", manual: true, fromFolder: true }]);
+    const result = applyTagToTags(
+      [folder(1, "旅行")],
+      { id: 1, name: "旅行", tentative: false },
+      "add",
+    );
+    expect(result).toEqual([
+      { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: false },
+    ]);
   });
 
   it("removeは同じidの行を取り除く", () => {
     const tags = [manual(1, "旅行"), manual(2, "観光")];
-    const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "remove");
+    const result = applyTagToTags(
+      tags,
+      { id: 1, name: "旅行", tentative: false },
+      "remove",
+    );
     expect(result).toEqual([manual(2, "観光")]);
   });
 
   it("removeはフォルダ名からも付いている行を残し、手で付けた分だけを外す", () => {
-    const tags: VideoTag[] = [{ id: 1, name: "旅行", manual: true, fromFolder: true }];
-    const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "remove");
+    const tags: VideoTag[] = [
+      { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: false },
+    ];
+    const result = applyTagToTags(
+      tags,
+      { id: 1, name: "旅行", tentative: false },
+      "remove",
+    );
     expect(result).toEqual([folder(1, "旅行")]);
+  });
+
+  it("removeでフォルダ名からの分が残る行は、返ったnameとtentativeを映す", () => {
+    const tags: VideoTag[] = [
+      { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: true },
+      folder(2, "観光"),
+    ];
+    const result = applyTagToTags(
+      tags,
+      { id: 1, name: "温泉", tentative: false },
+      "remove",
+    );
+    expect(result).toEqual([folder(1, "温泉"), folder(2, "観光")]);
   });
 
   it("removeで無いidを渡しても変えない", () => {
     const tags = [manual(1, "旅行")];
-    const result = applyTagToTags(tags, { id: 99, name: "無関係" }, "remove");
+    const result = applyTagToTags(
+      tags,
+      { id: 99, name: "無関係", tentative: false },
+      "remove",
+    );
     expect(result).toEqual(tags);
     expect(result).not.toBe(tags);
   });
 });
 
 describe("tagsReflectChange", () => {
-  const folderOnly: VideoTag = { id: 1, name: "Anime", manual: false, fromFolder: true };
-  const both: VideoTag = { id: 1, name: "Anime", manual: true, fromFolder: true };
+  const folderOnly: VideoTag = {
+    id: 1,
+    name: "Anime",
+    manual: false,
+    fromFolder: true,
+    tentative: false,
+  };
+  const both: VideoTag = {
+    id: 1,
+    name: "Anime",
+    manual: true,
+    fromFolder: true,
+    tentative: false,
+  };
 
   it("フォルダ名からだけ付いている行は、手で付けた結果をまだ映していない", () => {
     expect(tagsReflectChange([folderOnly], 1, "add")).toBe(false);

@@ -267,7 +267,9 @@ describe("FolderPage", () => {
       const page: VideoPage = {
         items: [
           video(1, "x", {
-            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+            tags: [
+              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+            ],
           }),
         ],
         total: 1,

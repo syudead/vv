@@ -2168,7 +2168,12 @@ describe("VideoPage", () => {
     it("通常の画面（帯・プレイヤーの操作・題名・タグ・情報・関連動画）の文言がカタログから出る", async () => {
       enablePseudoLocale();
       server.videos.set(7, [
-        { ...video, tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] },
+        {
+          ...video,
+          tags: [
+            { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          ],
+        },
       ]);
       const user = userEvent.setup();
       renderPage("7", "/?q=abc");

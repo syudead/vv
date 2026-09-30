@@ -8,6 +8,7 @@ export type Tag = components["schemas"]["Tag"];
 export type TagRef = components["schemas"]["TagRef"];
 export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
+export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
 
 /**
  * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
@@ -144,14 +145,17 @@ export function __resetTagsForTest(): void {
 
 /**
  * refreshOnStaleTagError は、古いタグを使った操作の誤り（`tag_not_found`・
- * `tag_merge_required`）を受けたときに共有の一覧を取り直す（別のタブでの削除・改名・統合に、
- * その場で気付けるようにする）。取り直しの完了は待たず、失敗しても揉み消して
+ * `tag_merge_required`・`tag_not_tentative`）を受けたときに共有の一覧を取り直す（別のタブでの
+ * 削除・改名・統合・確定に、その場で気付けるようにする。specs/031-tentative-tags/
+ * contracts/screen-api.md §2）。取り直しの完了は待たず、失敗しても揉み消して
  * 未処理の reject を残さない（B2）。誤りは常にそのまま投げ直す。
  */
 function refreshOnStaleTagError(error: unknown): never {
   if (
     error instanceof RequestFailed &&
-    (error.code === "tag_not_found" || error.code === "tag_merge_required")
+    (error.code === "tag_not_found" ||
+      error.code === "tag_merge_required" ||
+      error.code === "tag_not_tentative")
   ) {
     refreshTags().catch(() => undefined);
   }
@@ -288,6 +292,65 @@ export async function removeTagSynonym(
     refreshOnStaleTagError(await toRequestFailed(response));
   }
   afterTagChanged();
+}
+
+/**
+ * confirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
+ * specs/031-tentative-tags/contracts/screen-api.md §2）。既に確定していても今の状態が返る。
+ */
+export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag> {
+  const confirmed = await request<Tag>(`/api/tags/${String(id)}/confirm`, {
+    method: "POST",
+    signal,
+  }).catch(refreshOnStaleTagError);
+  afterTagChanged();
+  return confirmed;
+}
+
+/**
+ * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、contracts/screen-api.md §2）。
+ * タグは消え、付いていた動画から外れ、名前が却下した名前の一覧に入る。確定したタグは
+ * 409 `tag_not_tentative` になる。却下した名前の一覧は呼び出し側が
+ * `listRejectedTagNames` で取り直す。
+ */
+export async function rejectTag(id: number, signal?: AbortSignal): Promise<void> {
+  const response = await apiFetch(`/api/tags/${String(id)}/reject`, {
+    method: "POST",
+    signal,
+  });
+  if (!response.ok) {
+    refreshOnStaleTagError(await toRequestFailed(response));
+  }
+  afterTagChanged();
+}
+
+/**
+ * listRejectedTagNames は却下した名前を名前の自然順で返す
+ * （GET /api/tags/rejected-names、contracts/screen-api.md §3）。
+ */
+export function listRejectedTagNames(signal?: AbortSignal): Promise<string[]> {
+  return request<RejectedTagNameList>("/api/tags/rejected-names", { signal }).then(
+    (list) => list.items,
+  );
+}
+
+/**
+ * forgetRejectedTagName は名前を却下した名前の一覧から外す
+ * （DELETE /api/tags/rejected-names?name=…、contracts/screen-api.md §3）。一覧に無い名前でも
+ * 成功する。外した名前は、次に自動で付けたとき再び仮のタグとして作られる。
+ */
+export async function forgetRejectedTagName(
+  name: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const query = new URLSearchParams({ name });
+  const response = await apiFetch(`/api/tags/rejected-names?${query.toString()}`, {
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /**
