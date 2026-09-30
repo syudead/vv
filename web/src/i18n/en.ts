@@ -818,6 +818,33 @@ export const en = {
       bundled: (count: number, title: string) =>
         `Bundled ${formatNumber(count)} videos as versions of "${title}"`,
     },
+    duplicates: {
+      documentTitle: "Duplicates",
+      title: "Possible duplicates",
+      loading: "Loading…",
+      count: (shown: number, total: number) =>
+        shown < total
+          ? `Showing ${formatNumber(shown)} of ${formatNumber(total)} pairs`
+          : selectPlural(total, {
+              one: `${formatNumber(total)} pair`,
+              other: `${formatNumber(total)} pairs`,
+            }),
+      reason: "Same length · similar frames",
+      same: "Same video…",
+      sameFor: (first: string, second: string) =>
+        `Same video, for ${first} and ${second}`,
+      different: "Different videos",
+      differentFor: (first: string, second: string) =>
+        `Different videos, for ${first} and ${second}`,
+      dismissed: "Marked as different videos. They won't be suggested again",
+      gone: "This pair is no longer a candidate",
+      loadFailed: "Couldn't load the candidates",
+      empty: {
+        title: "No possible duplicates",
+        description:
+          "When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself.",
+      },
+    },
   },
   tagName: {
     required: "Enter a name",
@@ -868,6 +895,7 @@ export const en = {
       library: "Library",
       folders: "Folders",
       tags: "Tags",
+      duplicates: "Duplicates",
       settings: "Settings",
       login: "Sign in",
       logout: "Sign out",

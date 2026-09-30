@@ -140,6 +140,22 @@ describe("Sidebar", () => {
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
   });
+  it("所有者の上段は「タグ」の直後に「Duplicates」を置き、ゲストには出さない", () => {
+    const { unmount } = renderSidebar({ mode: "expanded" });
+    const main = screen.getByRole("complementary", { name: "Main navigation" });
+    const names = within(main)
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+    expect(names.slice(0, 4)).toEqual(["Library", "Folders", "Tags", "Duplicates"]);
+    expect(
+      within(main).getByRole("link", { name: "Duplicates" }).getAttribute("href"),
+    ).toBe("/duplicates");
+    unmount();
+
+    renderSidebar({ audience: "guest", mode: "expanded" });
+    expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();
+  });
+
   it.each<Audience>(["owner", "guest"])(
     "疑似ロケールで %s のサイドバーはカタログの文言だけを描く",
     (audience) => {

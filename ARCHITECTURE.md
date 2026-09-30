@@ -750,7 +750,7 @@ neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/auth/` is the gate in front of every route: `AuthGate` renders nothing until
 the session state is known, sends every URL to `/setup` while no account exists, sends a
-guest on an owner-only screen (`/settings`, `/tags`) to `/login?next=…`, and exposes the
+guest on an owner-only screen (`/settings`, `/tags`, `/duplicates`) to `/login?next=…`, and exposes the
 answer to the screens through `useAudience`. The first-run setup (`/setup`) and login
 (`/login`) screens live there too and sit outside the shell and its providers. When the
 viewer changes (setup, login, logout) the page is reloaded rather than re-rendered, so
@@ -785,12 +785,15 @@ the condition labels and count summary, the video card, the empty/loading/error 
 the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to
 neither screen, so neither screen imports from the other. `web/src/versions/` holds the
 pieces for bundling videos as versions of one video that more than one screen uses: the
-row's difference line (shared with the playback screen's versions list) and the dialog
-that picks the representative, which the library's selection bar opens. `web/src/tags/` is the tag
+row's difference line (shared with the playback screen's versions list), the dialog
+that picks the representative, which the library's selection bar and the candidates
+screen open, and the owner-only candidates screen (`/duplicates`), which lists the pairs
+a scan found to look like the same video, bundles a pair through that dialog or records
+it as different videos, and refetches on the `scan` notification. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
-right after "フォルダ" (Folders). Every sidebar entry links to a working screen. The library, folder, settings and tag screens use the shell: `app/App.tsx`
-puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
+right after "フォルダ" (Folders), followed by the owner-only "Duplicates" entry. Every sidebar entry links to a working screen. The library, folder, settings, tag and candidates screens use the shell: `app/App.tsx`
+puts `AppShell` around the `/`, `/folders/*`, `/settings`, `/tags` and `/duplicates` routes, and the
 playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
 two-pane screen of its own under its own header band (a logo that goes home, a
