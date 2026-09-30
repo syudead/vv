@@ -2327,6 +2327,23 @@ describe("VideoPage", () => {
       );
     });
 
+    it("開いて取れた一覧が 1 本だけなら、閉じて動画を取り直し項目を消す", async () => {
+      // 画面を開いた後に別のタブで外された、または見せてよい範囲が変わった。
+      server.videos.set(7, [versionA, { ...versionA, versions: undefined }]);
+      answerVersions([versionA]);
+      renderPage("7");
+      await ready();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: factName(3) }));
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: /versions of this video/ }),
+        ).toBeNull(),
+      );
+      expect(screen.queryByRole("list", { name: "Versions" })).toBeNull();
+      expect(screen.queryByText(/1 version/)).toBeNull();
+    });
+
     it("一覧を取れなければ失敗の 1 行と Retry を出す", async () => {
       server.videos.set(7, [versionA]);
       server.versions.mockImplementationOnce(() =>

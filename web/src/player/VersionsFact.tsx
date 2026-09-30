@@ -124,6 +124,11 @@ export default function VersionsFact({
     };
   }, []);
 
+  // 取れた一覧が 2 本未満なら、開いた後に集まりが変わっている（別のタブで外した、見せてよい
+  // 範囲が変わった）。項目の本数は古い `Video.versions.count` なので、閉じて動画を取り直し、
+  // 項目を消す（ui-design.md「Video page」の `count` 1 と「Unbundle」の残り 1 本と同じ扱い）。
+  const onDwindled = useRef<() => void>(() => undefined);
+
   const load = useCallback(
     (showLoading: boolean) => {
       request.current?.abort();
@@ -134,6 +139,7 @@ export default function VersionsFact({
         (versions) => {
           if (controller.signal.aborted) return;
           setList({ kind: "ready", versions });
+          if (versions.items.length < 2) onDwindled.current();
         },
         (error: unknown) => {
           if (isAborted(error) || controller.signal.aborted) return;
@@ -181,6 +187,11 @@ export default function VersionsFact({
     dissolving.current = true;
     changeOpen(false);
     onDissolved();
+  };
+
+  onDwindled.current = () => {
+    dissolve();
+    onRefresh();
   };
 
   const run = (target: Video, action: "representative" | "remove") => {
