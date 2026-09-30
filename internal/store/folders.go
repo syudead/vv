@@ -67,7 +67,9 @@ func directChildConditionFor(alias string, windows bool) string {
 }
 
 // FolderLocations はフォルダ配下（深さを問わない）の、見る人に見せてよい所在
-// （登録フォルダの下にあり、ゲストには公開の動画のもの）をすべて返す。集計は
+// （登録フォルダの下にあり、ゲストには公開の動画のもの）のうち、見せる動画
+// （shownVideoCondition、specs/030-video-versions/data-model.md §4）の所在をすべて返す。
+// 代表以外のバージョンだけがあるフォルダは、動画の無いフォルダになる。集計は
 // internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
 // 導いたフォルダと件数だけが現れる。
 func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
@@ -77,7 +79,8 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 			(select ov.thumbnail_revision from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> '')
 		from video_locations l join videos on videos.id = l.video_id
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience),
+		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+
+		` and `+shownVideoCondition("videos", audience),
 		folderPrefix(dir))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the folder contents: %w", err)
@@ -108,11 +111,13 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 }
 
 // HasFolderLocations はフォルダ配下（深さを問わない）に、見る人に見せてよい
-// 所在が1件でもあるかを返す。
+// 見せる動画の所在が1件でもあるかを返す（FolderLocations と同じ範囲）。
 func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	var found int
 	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+`)`,
+		join videos on videos.id = l.video_id
+		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+
+		` and `+shownVideoCondition("videos", audience)+`)`,
 		folderPrefix(dir)).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("cannot check whether the folder exists: %w", err)

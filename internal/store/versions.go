@@ -17,6 +17,9 @@ import (
 // 集まりのタグ・再生位置・公開の設定は video_tags・playback_progress・public_videos に
 // 集まりの user_key を鍵として置く。各メンバーの content_key の行は触らずに残すので、
 // 外したメンバーは束ねる前の値に戻る。
+//
+// 束ねる・代表を替える・外す操作は、見せる動画（data-model.md §4）が変わり、代表の所在の
+// フォルダの直下の本数が変わるので、同じ取引の中でフォルダの索引を作り直す（research.md R-4）。
 
 // userDataTables は利用者データの鍵で引く表と、鍵以外の列である。束ねる・解くときに
 // 値を別の鍵へ写すのに使う。
@@ -125,6 +128,9 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		}
 	}
 
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.VideoVersions{}, err
+	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
 	if err != nil {
 		return domain.VideoVersions{}, err
@@ -168,6 +174,9 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
 
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.VideoVersions{}, err
+	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, videoID)
 	if err != nil {
 		return domain.VideoVersions{}, err
@@ -246,6 +255,9 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		}
 	}
 
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.Video{}, err
+	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)
 	if err != nil {
 		return domain.Video{}, err

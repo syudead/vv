@@ -2,7 +2,8 @@ package store
 
 // フォルダのグループの索引と、フォルダごとの例外（specs/017-folder-groups/data-model.md §1〜§3）。
 // 例外の書き換えは FolderGroupStore、スキャンの後と起動時の作り直しは ScanIndexStore、
-// メディアフォルダの変更に伴う作り直しは SettingsStore が受け持ち、どれも
+// メディアフォルダの変更に伴う作り直しは SettingsStore、束ねの変更に伴う作り直しは
+// VersionStore（specs/030-video-versions/research.md R-4）が受け持ち、どれも
 // rebuildFolderIndex を自分の取引の中で呼ぶ。
 
 import (
@@ -271,8 +272,13 @@ func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
+// folderIndexLocations は索引の入力にする所在を返す。所有者から見た見せる動画
+// （shownVideoCondition、specs/030-video-versions/data-model.md §4、research.md R-4）の所在
+// だけで、集まりの代表以外のバージョンはグループにもフォルダ名の表にも入らない。
 func folderIndexLocations(ctx context.Context, tx *sql.Tx) ([]domain.FolderIndexLocation, error) {
-	rows, err := tx.QueryContext(ctx, `select video_id, path from video_locations`)
+	rows, err := tx.QueryContext(ctx, `select l.video_id, l.path from video_locations l
+		join videos on videos.id = l.video_id
+		where `+shownVideoCondition("videos", domain.AudienceOwner))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read locations: %w", err)
 	}
