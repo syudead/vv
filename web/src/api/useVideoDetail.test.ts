@@ -430,6 +430,43 @@ describe("useRelatedVideos", () => {
     expect(cleared?.[0]?.displayName).toBeUndefined();
   });
 
+  it("rethumb は指定したサムネイルをグループのメンバーの並びにある同じ動画へ写す", async () => {
+    const folder = { rootId: 1, path: "series" };
+    const other: Video = { ...done, id: 8, title: "ep02" };
+    getRelatedVideos.mockResolvedValue({
+      items: [],
+      group: { folder, name: "series", items: [done, other] },
+    });
+    const { result } = renderHook(() => useRelatedVideos(7), { wrapper: OwnerAudience });
+    await act(async () => undefined);
+
+    act(() =>
+      result.current.rethumb({
+        ...done,
+        thumbnailUrl: "/api/videos/7/thumbnail?v=abc-r2",
+        thumbnailPositionMs: 1500,
+      }),
+    );
+    const items = () =>
+      result.current.state.kind === "ready"
+        ? result.current.state.related.group?.items
+        : undefined;
+    expect(items()?.[0]).toMatchObject({
+      thumbnailUrl: "/api/videos/7/thumbnail?v=abc-r2",
+      thumbnailPositionMs: 1500,
+    });
+    expect(items()?.[1]).toBe(other);
+
+    // 解除では位置を消し、応答の URL にそろえる。別の動画の応答は写さない。
+    act(() =>
+      result.current.rethumb({ ...done, thumbnailUrl: "/api/videos/7/thumbnail?v=abc" }),
+    );
+    act(() => result.current.rethumb({ ...other, thumbnailUrl: "/x" }));
+    expect(items()?.[0]?.thumbnailUrl).toBe("/api/videos/7/thumbnail?v=abc");
+    expect(items()?.[0]?.thumbnailPositionMs).toBeUndefined();
+    expect(items()?.[1]).toBe(other);
+  });
+
   it("失敗したら retry で取り直す", async () => {
     getRelatedVideos
       .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))

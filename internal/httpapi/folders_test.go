@@ -413,3 +413,33 @@ func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
 		t.Errorf("requeued = %v, want the missing done preview 2 requeued", catalog.requeued)
 	}
 }
+
+// 所有者が代表サムネイルの位置を指定した動画は、フォルダカードでも動画一覧と同じく
+// 版に改版番号を足した URL にする。URL が変わらないと、ブラウザが前の画像を使い続ける
+// （specs/029-video-overrides/research.md R-6）。
+func TestFolderPreviewThumbnailURLCarriesRevision(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	folders := folderFixture()
+	position := int64(1500)
+	for i := range folders.locations {
+		if folders.locations[i].VideoID == 2 {
+			folders.locations[i].ThumbnailPositionMs = &position
+			folders.locations[i].ThumbnailRevision = 42
+		}
+	}
+	handler := newTestServer(t, Options{Folders: folders})
+
+	rec := do(t, handler, http.MethodGet, "/api/folders/3?path=A")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	listing := decode[gen.FolderListing](t, rec)
+	if len(listing.Folders) != 1 || len(listing.Folders[0].Previews) != 1 {
+		t.Fatalf("children = %+v", listing.Folders)
+	}
+	if got, want := listing.Folders[0].Previews[0].ThumbnailUrl, "/api/videos/2/thumbnail?v=abcdef012345-r42"; got != want {
+		t.Errorf("thumbnailUrl = %q, want %q", got, want)
+	}
+}
