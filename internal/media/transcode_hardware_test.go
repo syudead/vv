@@ -22,7 +22,7 @@ func TestVideoEncodeArgsSoftwareUnchanged(t *testing.T) {
 		{odd, "-c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset superfast -crf 23 -force_key_frames expr:gte(t,n_forced*2) -vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
 	} {
 		for _, encoder := range []domain.VideoEncoder{domain.VideoEncoderSoftware, "", "unknown"} {
-			if got := strings.Join(videoEncodeArgs(tc.stream, encoder), " "); got != tc.want {
+			if got := strings.Join(videoEncodeArgs(tc.stream, encoder, ""), " "); got != tc.want {
 				t.Errorf("encoder %q: args = %s, want %s", encoder, got, tc.want)
 			}
 		}
@@ -48,7 +48,7 @@ func TestTranscodeArgsForHardwareEncoders(t *testing.T) {
 		{domain.VideoEncoderVideoToolbox, []string{"-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p "}},
 	} {
 		t.Run(string(tc.encoder), func(t *testing.T) {
-			argv := buildTranscodeArgs("movie.mov", 0, metadata, false, false, tc.encoder)
+			argv := buildTranscodeArgs("movie.mov", 0, metadata, false, false, tc.encoder, "")
 			args := strings.Join(argv, " ")
 			common := []string{
 				"-an -i movie.mov -vn -i movie.mov -map 0:1 -map 1:2 ",
@@ -78,7 +78,7 @@ func TestTranscodeArgsForHardwareEncoders(t *testing.T) {
 func TestTranscodeArgsCopyIgnoresVideoEncoder(t *testing.T) {
 	for _, encoder := range domain.HardwareVideoEncoders {
 		for _, startMs := range []int64{0, 25000} {
-			args := strings.Join(buildTranscodeArgs("movie.mkv", startMs, compatibleMetadata(), false, true, encoder), " ")
+			args := strings.Join(buildTranscodeArgs("movie.mkv", startMs, compatibleMetadata(), false, true, encoder, ""), " ")
 			want := strings.Join(transcodeArgs("movie.mkv", startMs, compatibleMetadata(), false), " ")
 			if args != want || !strings.Contains(args, "-c:v copy") {
 				t.Errorf("%s at %d: args = %s, want %s", encoder, startMs, args, want)

@@ -845,6 +845,30 @@ func (e WatchFilter) Valid() bool {
 	}
 }
 
+// Defines values for TranscodeVideoParamsQuality.
+const (
+	N1080p TranscodeVideoParamsQuality = "1080p"
+	N360p  TranscodeVideoParamsQuality = "360p"
+	N480p  TranscodeVideoParamsQuality = "480p"
+	N720p  TranscodeVideoParamsQuality = "720p"
+)
+
+// Valid indicates whether the value is a known member of the TranscodeVideoParamsQuality enum.
+func (e TranscodeVideoParamsQuality) Valid() bool {
+	switch e {
+	case N1080p:
+		return true
+	case N360p:
+		return true
+	case N480p:
+		return true
+	case N720p:
+		return true
+	default:
+		return false
+	}
+}
+
 // APIToken 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
 type APIToken struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -2026,7 +2050,17 @@ type TranscodeVideoParams struct {
 	// Attempt プレイヤーが要求ごとに作る識別子。付けると、実際の開始位置を
 	// `getTranscodeStart` で引けるよう台帳に載る。形式が違えば 400。
 	Attempt *string `form:"attempt,omitempty" json:"attempt,omitempty"`
+
+	// Quality 縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
+	// あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
+	// 動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
+	// それ以外と寸法の無い動画は 400
+	// （specs/027-playback-quality/contracts/transcode-quality-api.md）。
+	Quality *TranscodeVideoParamsQuality `form:"quality,omitempty" json:"quality,omitempty"`
 }
+
+// TranscodeVideoParamsQuality defines parameters for TranscodeVideo.
+type TranscodeVideoParamsQuality string
 
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
@@ -3989,6 +4023,19 @@ func (siw *ServerInterfaceWrapper) TranscodeVideo(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "attempt"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "attempt", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "quality" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "quality", r.URL.Query(), &params.Quality, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "quality"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "quality", Err: err})
 		}
 		return
 	}

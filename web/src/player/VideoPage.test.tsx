@@ -64,7 +64,14 @@ vi.mock("./VideoPlayer", () => ({
     video.probeState === "done" &&
     (video.durationMs ?? 0) > 0 &&
     video.videoCodec !== undefined,
-  initialPlayerStatus: { loading: false, playing: false, userActive: true, ended: false },
+  initialPlayerStatus: {
+    loading: false,
+    reconnecting: false,
+    playing: false,
+    userActive: true,
+    ended: false,
+    stalled: false,
+  },
 }));
 
 const video: Video = {
@@ -505,6 +512,7 @@ describe("VideoPage", () => {
           playing: true,
           userActive: true,
           ended: false,
+          stalled: false,
         }),
       );
       fireEvent.click(next);
@@ -528,6 +536,7 @@ describe("VideoPage", () => {
           playing: true,
           userActive: false,
           ended: false,
+          stalled: false,
         }),
       );
       expect(previous.className).toContain("opacity-0");
@@ -820,6 +829,7 @@ describe("VideoPage", () => {
           playing: false,
           userActive: true,
           ended: false,
+          stalled: false,
         }),
       );
       expect(screen.getByText("Connection lost · Reconnecting")).toBeDefined();
@@ -831,6 +841,7 @@ describe("VideoPage", () => {
           playing: true,
           userActive: true,
           ended: false,
+          stalled: false,
         }),
       );
       expect(screen.queryByText("Connection lost · Reconnecting")).toBeNull();
@@ -846,6 +857,7 @@ describe("VideoPage", () => {
           playing: true,
           userActive: true,
           ended: false,
+          stalled: false,
         }),
       );
       const status = screen.getByRole("status");
@@ -858,6 +870,7 @@ describe("VideoPage", () => {
           playing: true,
           userActive: true,
           ended: false,
+          stalled: false,
         }),
       );
       expect(screen.queryByRole("status")).toBeNull();
@@ -891,6 +904,7 @@ describe("VideoPage", () => {
           playing: false,
           userActive: true,
           ended: true,
+          stalled: false,
         }),
       );
     }
@@ -1003,6 +1017,7 @@ describe("VideoPage", () => {
           playing: false,
           userActive: true,
           ended: true,
+          stalled: false,
         }),
       );
     }
@@ -1457,6 +1472,122 @@ describe("VideoPage", () => {
     });
   });
 
+  describe("途切れの警告", () => {
+    function report(overrides: Partial<PlayerStatus> = {}) {
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+          stalled: true,
+          ...overrides,
+        }),
+      );
+    }
+
+    function warning() {
+      return screen.queryByText("Slow connection is interrupting playback");
+    }
+
+    it("stalled で左上に知らせるだけの警告を出し、画質を変える操作を置かない", async () => {
+      renderPage();
+      await ready();
+      await screen.findByRole("button", { name: "Play" });
+      expect(warning()).toBeNull();
+      report();
+      const status = warning()?.closest("[role=status]");
+      if (!(status instanceof HTMLElement)) throw new Error("警告がありません");
+      expect(
+        within(status)
+          .getAllByRole("button")
+          .map((b) => b.ariaLabel),
+      ).toEqual(["Dismiss"]);
+      expect(within(status).queryByText(/Quality|480p|720p|360p/)).toBeNull();
+      // 入れ物は下の操作へ通し、× だけが押せる。状態表示の入れ物とは別の層にある。
+      const layer = status.closest("[data-stall-warning]");
+      expect(layer?.className).toContain("pointer-events-none");
+      expect(layer?.className).toContain("left-2");
+      expect(layer?.closest("[data-overlay-layer]")).toBeNull();
+      expect(within(status).getByRole("button", { name: "Dismiss" }).className).toContain(
+        "pointer-events-auto",
+      );
+    });
+
+    it("警告が出ていても、中央の操作と操作バーの操作の入口がそのまま使える", async () => {
+      const controls = fakeControls();
+      playerMock.controls = controls;
+      renderPage();
+      await ready();
+      report();
+      expect(warning()).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+      expect(controls.togglePlay).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId("video-player")).toBeDefined();
+    });
+
+    it("閉じると消え、同じ動画では再び出さず、別の動画へ移ると閉じた記録を忘れる", async () => {
+      server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+      server.related.set(8, { items: [related(7, "テスト動画")], prevId: 7 });
+      renderPage();
+      await ready();
+      report();
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+      expect(warning()).toBeNull();
+      report({ stalled: false });
+      report();
+      expect(warning()).toBeNull();
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Next video: 後続の動画" }),
+      );
+      await waitFor(() => expect(player().video.id).toBe(8));
+      expect(warning()).toBeNull();
+      report();
+      expect(warning()).not.toBeNull();
+    });
+
+    it("失敗から再試行しても、閉じた警告を出し直さない", async () => {
+      renderPage();
+      await ready();
+      report();
+      fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+      act(() => player().onError(1000, "network"));
+      fireEvent.click(await screen.findByRole("button", { name: /Try again/ }));
+      report();
+      expect(warning()).toBeNull();
+    });
+
+    it("再生終了・再接続中・失敗の層が出ている間は警告を出さない", async () => {
+      renderPage();
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "Related videos" });
+      report({ ended: true, playing: false });
+      expect(
+        screen.getByRole("heading", { level: 2, name: "Playback finished" }),
+      ).toBeDefined();
+      expect(warning()).toBeNull();
+      report({ reconnecting: true, playing: false });
+      expect(screen.getByText("Connection lost · Reconnecting")).toBeDefined();
+      expect(warning()).toBeNull();
+      report();
+      expect(warning()).not.toBeNull();
+      act(() => player().onError(1000, "decode"));
+      await screen.findByRole("alert");
+      expect(warning()).toBeNull();
+    });
+
+    it("データ待ちの読み込み中と同時なら、読み込み中の表示と警告を並べて出す", async () => {
+      renderPage();
+      await ready();
+      report({ loading: true });
+      const texts = screen.getAllByRole("status").map((status) => status.textContent);
+      expect(texts).toContain("Loading");
+      expect(texts).toContain("Slow connection is interrupting playback");
+    });
+  });
+
   describe("再生位置の保存", () => {
     it("playerの即時保存通知をprogress APIへ送る", async () => {
       renderPage();
@@ -1751,9 +1882,28 @@ describe("VideoPage", () => {
           playing: false,
           userActive: true,
           ended: true,
+          stalled: false,
         }),
       );
     }
+
+    it("途切れの警告の文と × の読み上げ名がカタログから出る", async () => {
+      enablePseudoLocale();
+      renderPage();
+      await ready();
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+          stalled: true,
+        }),
+      );
+      expect(screen.getByRole("button", { name: "⟦Dismiss⟧" })).toBeDefined();
+      expectCatalogTextOnly(document.body, userData);
+    });
 
     it("通常の画面（帯・プレイヤーの操作・題名・タグ・情報・関連動画）の文言がカタログから出る", async () => {
       enablePseudoLocale();

@@ -1,14 +1,15 @@
 import videojs from "video.js";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { rateMenuOpen } from "./playerControls";
+import { controlBarMenuOpen } from "./playerControls";
 import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 
 /**
  * 再生速度のメニューが開いているかを、本物の video.js が作る DOM の印で確かめる。
+ * 画質のメニューも同じ印で見分ける（qualityMenu.test.ts）。
  * video.js を上げて印の名前が変わると、ここが落ちて気付ける（Esc で画面を閉じてしまう）。
  */
-describe("rateMenuOpen", () => {
+describe("controlBarMenuOpen", () => {
   let player: ReturnType<typeof videojs> | undefined;
 
   afterEach(() => {
@@ -32,7 +33,7 @@ describe("rateMenuOpen", () => {
 
   it("閉じているときは偽", () => {
     const { host } = create();
-    expect(rateMenuOpen(host)).toBe(false);
+    expect(controlBarMenuOpen(host)).toBe(false);
   });
 
   it("押して開いたメニューを見分ける", () => {
@@ -43,9 +44,9 @@ describe("rateMenuOpen", () => {
       { pressButton(): void; unpressButton(): void } | undefined;
     if (menuButton === undefined) throw new Error("再生速度のボタンがありません");
     menuButton.pressButton();
-    expect(rateMenuOpen(host)).toBe(true);
+    expect(controlBarMenuOpen(host)).toBe(true);
     menuButton.unpressButton();
-    expect(rateMenuOpen(host)).toBe(false);
+    expect(controlBarMenuOpen(host)).toBe(false);
   });
 
   it("ポイントして開いたメニューを見分ける", () => {
@@ -53,9 +54,9 @@ describe("rateMenuOpen", () => {
     const trigger = button.querySelector("button");
     if (trigger === null) throw new Error("再生速度のボタンがありません");
     trigger.dispatchEvent(new MouseEvent("mouseenter"));
-    expect(rateMenuOpen(host)).toBe(true);
+    expect(controlBarMenuOpen(host)).toBe(true);
     button.dispatchEvent(new MouseEvent("mouseleave"));
-    expect(rateMenuOpen(host)).toBe(false);
+    expect(controlBarMenuOpen(host)).toBe(false);
   });
 
   it("字幕のメニューが開いているときも真にする", () => {
@@ -72,10 +73,10 @@ describe("rateMenuOpen", () => {
     const menuButton = player?.getChild("ControlBar")?.getChild("SubtitlesButton") as
       { pressButton(): void; unpressButton(): void } | undefined;
     if (menuButton === undefined) throw new Error("字幕のボタンがありません");
-    expect(rateMenuOpen(host)).toBe(false);
+    expect(controlBarMenuOpen(host)).toBe(false);
     menuButton.pressButton();
-    expect(rateMenuOpen(host)).toBe(true);
+    expect(controlBarMenuOpen(host)).toBe(true);
     menuButton.unpressButton();
-    expect(rateMenuOpen(host)).toBe(false);
+    expect(controlBarMenuOpen(host)).toBe(false);
   });
 });

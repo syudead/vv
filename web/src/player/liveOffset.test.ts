@@ -123,6 +123,26 @@ describe("live offset middleware", () => {
     expect(tech.pause).not.toHaveBeenCalled();
   });
 
+  it("画質を持つsourceは未buffer seekで作り直しても同じ画質を要求する", () => {
+    vi.useFakeTimers();
+    const { middleware, tech } = fixture();
+    const initial = liveSource(7, 120_000, 0, undefined, "480p");
+    expect(initial.src).toBe("/api/videos/7/transcode.mp4?quality=480p");
+    middleware.setSource(initial, () => undefined);
+
+    expect(middleware.setCurrentTime(70)).toBe(4);
+    vi.advanceTimersByTime(200);
+
+    const reloaded = tech.setSource.mock.calls[0]?.[0] as {
+      src: string;
+      vvQuality?: string;
+    };
+    expect(reloaded.vvQuality).toBe("480p");
+    const query = new URL(reloaded.src, "http://localhost").searchParams;
+    expect(query.get("startMs")).toBe("70000");
+    expect(query.get("quality")).toBe("480p");
+  });
+
   it("再生中のreloadは新sourceを直ちに読み始めて再生を継続する", () => {
     vi.useFakeTimers();
     const { middleware, tech, canPlay } = fixture();
@@ -396,7 +416,7 @@ describe("live offset middleware", () => {
       const pending = vi.fn();
       const { middleware } = fixture();
       middleware.setSource(
-        liveSource(7, 120_000, 14_000, undefined, settled, pending),
+        liveSource(7, 120_000, 14_000, undefined, undefined, settled, pending),
         () => undefined,
       );
       expect(pending).toHaveBeenCalledTimes(1);
@@ -411,7 +431,7 @@ describe("live offset middleware", () => {
       const settled = vi.fn();
       const { middleware } = fixture();
       middleware.setSource(
-        liveSource(7, 120_000, 14_000, undefined, settled),
+        liveSource(7, 120_000, 14_000, undefined, undefined, settled),
         () => undefined,
       );
       await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
@@ -423,7 +443,7 @@ describe("live offset middleware", () => {
       const pending = vi.fn();
       const { middleware } = fixture();
       middleware.setSource(
-        liveSource(7, 120_000, 0, undefined, settled, pending),
+        liveSource(7, 120_000, 0, undefined, undefined, settled, pending),
         () => undefined,
       );
       expect(settled).toHaveBeenCalledTimes(1);
@@ -439,7 +459,7 @@ describe("live offset middleware", () => {
       const pending = vi.fn();
       const { middleware } = fixture();
       middleware.setSource(
-        liveSource(7, 120_000, 0, undefined, settled, pending),
+        liveSource(7, 120_000, 0, undefined, undefined, settled, pending),
         () => undefined,
       );
       middleware.setCurrentTime(70);
@@ -458,11 +478,11 @@ describe("live offset middleware", () => {
       const settled = vi.fn();
       const { middleware } = fixture();
       middleware.setSource(
-        liveSource(7, 120_000, 30_000, undefined, settled),
+        liveSource(7, 120_000, 30_000, undefined, undefined, settled),
         () => undefined,
       );
       middleware.setSource(
-        liveSource(7, 120_000, 60_000, undefined, settled),
+        liveSource(7, 120_000, 60_000, undefined, undefined, settled),
         () => undefined,
       );
       reports[0]?.resolve(20_000);

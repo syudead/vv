@@ -26,6 +26,11 @@ type LiveTranscodeRequest struct {
 	// VideoEncoder は映像をエンコードするときに使う方式である。空なら software として
 	// 扱う。映像をコピーする要求では見ない（親 Issue #370 要件 12）。
 	VideoEncoder VideoEncoder
+	// Quality は縮める画質である。空なら元の画質で、今までどおり映像をコピーできれば
+	// コピーする。あれば映像と音声を必ずエンコードし、表示の短辺をこの画質に縮めて
+	// ビットレートに上限を付ける（specs/027-playback-quality/research.md R-2）。
+	// 動画に使える画質か（TranscodeQuality.Available）は呼び出し側が確かめる。
+	Quality TranscodeQuality
 }
 
 // LiveTranscode は最初のデータが出たライブ変換 1 本である。

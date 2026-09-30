@@ -22,6 +22,7 @@ Add each new document to this index.
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
+- [再生の画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [動画の隣に置いた字幕ファイル](sidecar-subtitles.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
@@ -37,3 +38,4 @@ Add each new document to this index.
 - [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
 - [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)
 - [フォルダのグループと続けて再生の UI](../../specs/017-folder-groups/ui-design.md)
+- [画質メニューと途切れの警告の UI](../../specs/027-playback-quality/ui-design.md)

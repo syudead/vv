@@ -31,6 +31,7 @@ import { playerAspectRatio } from "./aspect";
 import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos from "./RelatedVideos";
+import StallWarning from "./StallWarning";
 import {
   CreatingLine,
   LoadFailure,
@@ -115,6 +116,9 @@ export default function VideoPage() {
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
   const [autoplayPhase, setAutoplayPhase] = useState<AutoplayPhase>("notice");
+  // 途切れの警告を閉じた動画の id。同じ動画の再生の間（失敗からの再試行を含む）は出し直さず、
+  // 別の動画へ移れば忘れる（specs/027-playback-quality/research.md R-7、要件 10）。
+  const [stallDismissedId, setStallDismissedId] = useState<number | null>(null);
   // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -140,6 +144,7 @@ export default function VideoPage() {
     setStatus(initialPlayerStatus);
     setEndedTakesFocus(false);
     setAutoplayPhase("notice");
+    setStallDismissedId(null);
     setMediaAspect(null);
     setAttempt({ key: 0, startMs: null, autoplay: autoplayRequested(location.state) });
   }
@@ -379,6 +384,16 @@ export default function VideoPage() {
     );
   }
 
+  // 途切れの警告は入れ物とは別の層で、失敗・再生終了・次の予告・再接続中・取り込み中の
+  // 層が出ている間は出さない。データ待ちの読み込み中の輪とは並べて出す（R-7）。
+  const stallWarningShown =
+    showPlayer &&
+    status.stalled &&
+    stallDismissedId !== id &&
+    statusLayer === null &&
+    !status.ended &&
+    !status.reconnecting;
+
   // 予告の間の Esc は取り消しにし、画面を閉じない（ui-design.md「Autoplay notice」）。
   useKeyboardShortcuts(
     showPlayer ? controls : null,
@@ -424,6 +439,9 @@ export default function VideoPage() {
             >
               {layer}
             </div>
+            {stallWarningShown && (
+              <StallWarning onDismiss={() => setStallDismissedId(id)} />
+            )}
             {showPlayer && (
               <VideoPlayer
                 key={`${String(id)}:${String(attempt.key)}`}

@@ -596,6 +596,17 @@ export const en = {
       transcoding: "Converting for playback",
       transcodingDetail:
         "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
+      // 画質の名前（480p など）は翻訳しない（specs/027-playback-quality/ui-design.md「Words」）。
+      transcodingTo: (quality: string) => `Converting to ${quality}`,
+      transcodingToDetail: (quality: string) =>
+        `Playing a ${quality} version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds.`,
+      // 操作バーの画質メニュー（ui-design.md「Words」「Control bar: quality menu」）。
+      quality: "Quality",
+      qualityName: (quality: string) => quality,
+      qualityOriginal: "Original",
+      qualityOriginalOf: (quality: string) => `Original (${quality})`,
+      qualityOriginalShort: "Orig",
+      qualityNoSmaller: "No smaller sizes for this video",
     },
     // 字幕ボタンとメニュー（specs/028-sidecar-subtitles research.md R-10）。
     subtitles: {
@@ -611,6 +622,12 @@ export const en = {
     },
     loading: "Loading",
     reconnecting: "Connection lost · Reconnecting",
+    // 途切れの警告。知らせるだけで、画質を下げる勧めや切り替えは書かない
+    // （specs/027-playback-quality/ui-design.md「Words」）。
+    stallWarning: {
+      message: "Slow connection is interrupting playback",
+      dismiss: "Dismiss",
+    },
     playbackFailed: {
       network: {
         title: "Couldn't reach the server",

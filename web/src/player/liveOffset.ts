@@ -1,6 +1,6 @@
 import videojs from "video.js";
 
-import { getTranscodeStart, transcodeUrl } from "../api/client";
+import { getTranscodeStart, transcodeUrl, type TranscodeQuality } from "../api/client";
 import { clampTranscodeStart } from "./playbackAttempt";
 
 const reloadDelayMs = 200;
@@ -13,6 +13,7 @@ export interface LiveSource {
   vvDurationSeconds: number;
   vvOffsetSeconds: number;
   vvAttempt?: string;
+  vvQuality?: TranscodeQuality;
   vvOffsetChanged?: (seconds: number) => void;
   vvOffsetSettled?: (seconds: number) => void;
   vvOffsetPending?: () => void;
@@ -26,6 +27,7 @@ interface SourceObject {
   vvDurationSeconds?: number;
   vvOffsetSeconds?: number;
   vvAttempt?: string;
+  vvQuality?: TranscodeQuality;
   vvOffsetChanged?: (seconds: number) => void;
   vvOffsetSettled?: (seconds: number) => void;
   vvOffsetPending?: () => void;
@@ -60,7 +62,9 @@ function newAttempt(): string {
  * liveSource は元動画の startMs からのライブ変換の source を作る。途中から始めるときは
  * attempt を付け、仲立ちが実際の開始位置を引けるようにする。コピーで始めた変換は
  * 直前のキーフレームから始まり、指定位置とずれるためである
- * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §3）。
+ * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §3）。quality は縮める
+ * 画質で、source が vvQuality として持ち、未 buffer シークの作り直しが引き継ぐ
+ * （specs/027-playback-quality/research.md R-5）。
  *
  * offsetSettled は、再生の時間軸の 0 が元動画のどの時刻か（offset、秒）が決まるたびに
  * 1 回呼ばれる。attempt の無い source は指定位置で直ちに、ある source は報告が 200 なら
@@ -73,19 +77,21 @@ export function liveSource(
   durationMs: number,
   startMs: number,
   offsetChanged?: (seconds: number) => void,
+  quality?: TranscodeQuality,
   offsetSettled?: (seconds: number) => void,
   offsetPending?: () => void,
 ): LiveSource {
   const safeStart = clampTranscodeStart(startMs, durationMs);
   const attempt = safeStart > 0 ? newAttempt() : undefined;
   return {
-    src: transcodeUrl(videoId, safeStart, attempt),
+    src: transcodeUrl(videoId, safeStart, attempt, quality),
     type: "video/mp4",
     vvLive: true,
     vvVideoId: videoId,
     vvDurationSeconds: durationMs / 1000,
     vvOffsetSeconds: safeStart / 1000,
     vvAttempt: attempt,
+    vvQuality: quality,
     vvOffsetChanged: offsetChanged,
     vvOffsetSettled: offsetSettled,
     vvOffsetPending: offsetPending,
@@ -191,6 +197,7 @@ export function createLiveOffsetMiddleware(player: Player) {
         (source.vvDurationSeconds as number) * 1000,
         seconds * 1000,
         source.vvOffsetChanged,
+        source.vvQuality,
         source.vvOffsetSettled,
         source.vvOffsetPending,
       );

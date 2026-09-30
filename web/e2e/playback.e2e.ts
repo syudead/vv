@@ -73,7 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
       },
       { timeout: 60_000 },
     )
-    .toBe(11);
+    .toBe(12);
 }
 
 async function waitForSeekThumbnails(request: APIRequestContext) {
@@ -146,6 +146,49 @@ async function play(page: Page, item: Video) {
     );
   });
   expect(Date.now() - started).toBeLessThan(3000);
+}
+
+/**
+ * switchTo480p は直接再生を始め、再生中に操作バーの画質メニューから 480p を選ぶ。
+ * 480p の変換へ差し替わり、映像の高さが 480 になり、表示の時刻が戻らないことを確かめる。
+ */
+async function switchTo480p(page: Page, item: Video) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await play(page, item);
+  await page.waitForFunction(() => {
+    const element = document.querySelector("video");
+    return element !== null && element.currentTime > 2;
+  });
+  const height = () =>
+    page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
+  expect(await height()).toBe(1080);
+  const quality = page.locator(".vjs-control-bar > .vv-quality");
+  await page.locator(".video-js").hover();
+  await expect(quality.locator(".vv-quality-value")).toHaveText("1080p");
+  await expect(quality.getByRole("button", { name: "Quality" })).toBeVisible();
+
+  const transcode = page.waitForRequest((candidate) => {
+    const url = new URL(candidate.url());
+    return (
+      url.pathname === `/api/videos/${String(item.id)}/transcode.mp4` &&
+      url.searchParams.get("quality") === "480p"
+    );
+  });
+  const before = await displayedSeconds(page);
+  await quality.hover();
+  await page.getByRole("menuitemradio", { name: /^480p/ }).click();
+  const request = await transcode;
+  expect(
+    Number(new URL(request.url()).searchParams.get("startMs")),
+  ).toBeGreaterThanOrEqual((before - 1) * 1000);
+  await expect(quality.locator(".vv-quality-value")).toHaveText("480p");
+  await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
+  await expect.poll(height, { timeout: 15_000 }).toBe(480);
+  await page.waitForFunction(() => {
+    const element = document.querySelector("video");
+    return element !== null && !element.paused && element.readyState >= 2;
+  });
+  expect(await displayedSeconds(page)).toBeGreaterThanOrEqual(before);
 }
 
 function mediaRequests(page: Page): Request[] {
@@ -448,6 +491,193 @@ test.describe.serial("live MP4 playback", () => {
     expect(
       requests.filter((candidate) => candidate.url().includes("/stream")),
     ).toHaveLength(0);
+  });
+
+  test("覚えた480pで1080pの直接再生できる動画を変換で始め、未buffer seekのあとも480pを保つ", async ({
+    page,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 5・7。
+    test.setTimeout(45_000);
+    const item = video("hd-1080p");
+    expect(item.playable).toBe(true);
+    await page.goto("/");
+    await page.evaluate(() => {
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+    });
+    // 変換が再生より先に進みすぎて、シーク先まで読み込み済みにならないよう回線を絞る。
+    await throttle(page, 256 * 1024);
+    const requests = mediaRequests(page);
+    const initial = page.waitForRequest((candidate) =>
+      candidate
+        .url()
+        .endsWith(`/api/videos/${String(item.id)}/transcode.mp4?quality=480p`),
+    );
+    await page.goto(`/videos/${String(item.id)}`);
+    await initial;
+    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
+    await page.locator(".vjs-big-play-button").click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return (
+        element !== null &&
+        !element.paused &&
+        element.readyState >= 2 &&
+        element.currentTime > 0.1
+      );
+    });
+    const height = () =>
+      page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
+    expect(await height()).toBe(480);
+
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.75,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
+    const seekBar = page.locator(".vjs-progress-control");
+    const box = await seekBar.boundingBox();
+    if (box === null) throw new Error("seek bar is not visible");
+    const seekRequestPromise = page.waitForRequest((candidate) =>
+      candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+    );
+    await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
+    const seekRequest = await seekRequestPromise;
+    const query = new URL(seekRequest.url()).searchParams;
+    expect(Number(query.get("startMs"))).toBeGreaterThan(15_000);
+    expect(query.get("quality")).toBe("480p");
+    await expect.poll(async () => displayedSeconds(page)).toBeGreaterThanOrEqual(15);
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && element.readyState >= 2;
+    });
+    expect(await height()).toBe(480);
+    expect(
+      requests.filter((candidate) => candidate.url().includes("/stream")),
+    ).toHaveLength(0);
+  });
+
+  test("再生中に操作バーの画質で480pを選ぶと、同じ位置から480pで続く（所有者・ゲスト）", async ({
+    page,
+    browser,
+    request,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 2・4・8。
+    test.setTimeout(60_000);
+    const item = video("hd-1080p");
+    expect(item.playable).toBe(true);
+    await switchTo480p(page, item);
+
+    const published = await request.put("/api/video-visibility", {
+      headers: mutationHeaders,
+      data: { videoIds: [item.id], public: true },
+    });
+    expect(published.status()).toBe(200);
+    const guest = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      await switchTo480p(await guest.newPage(), item);
+    } finally {
+      await guest.close();
+      const restored = await request.put("/api/video-visibility", {
+        headers: mutationHeaders,
+        data: { videoIds: [item.id], public: false },
+      });
+      expect(restored.status()).toBe(200);
+    }
+  });
+
+  test("途切れの警告は左上に出て再生と操作を止めず、閉じると同じ動画では出ない（360・768・1280px・全画面）", async ({
+    page,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 9〜11、ui-design.md「Stall warning」。
+    // 回線の遅さはテストで再現できないので、再生中の要素にデータ待ちと再開の出来事を送る。
+    test.setTimeout(90_000);
+    const item = video("hd-1080p");
+    const warning = page.locator("[data-stall-warning]");
+    const stallThreeTimes = () =>
+      page.evaluate(() => {
+        const element = document.querySelector("video");
+        if (element === null) throw new Error("video がありません");
+        for (let i = 0; i < 3; i += 1) {
+          element.dispatchEvent(new Event("waiting"));
+          element.dispatchEvent(new Event("playing"));
+        }
+      });
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await play(page, item);
+      await expect(warning).toHaveCount(0);
+      await stallThreeTimes();
+      await expect(
+        warning.getByRole("status").filter({
+          hasText: "Slow connection is interrupting playback",
+        }),
+      ).toBeVisible();
+      // 左上に出て、操作バーに重ならない。
+      const frame = await page.locator("[data-player-frame]").boundingBox();
+      const box = await warning.getByRole("status").boundingBox();
+      if (frame === null || box === null) throw new Error("枠か警告が見えません");
+      const inset = width >= 640 ? 12 : 8;
+      expect(Math.round(box.x - frame.x)).toBe(inset);
+      expect(Math.round(box.y - frame.y)).toBe(inset);
+      expect(box.height).toBeLessThanOrEqual(32);
+      await page.locator(".video-js").hover();
+      const bar = await page.locator(".vjs-control-bar").boundingBox();
+      if (bar === null) throw new Error("操作バーが見えません");
+      expect(box.y + box.height).toBeLessThan(bar.y);
+      // 画質は変わらず、画質を変える操作も無い。
+      await expect(warning.getByRole("button")).toHaveCount(1);
+      await expect(page.locator(".vv-quality-value")).toHaveText("1080p");
+      expect(await page.evaluate(() => document.querySelector("video")?.paused)).toBe(
+        false,
+      );
+      if (screenshotDir !== undefined) {
+        await mkdir(screenshotDir, { recursive: true });
+        await page.screenshot({
+          path: path.join(screenshotDir, `20260929-stall-warning-${String(width)}.png`),
+        });
+      }
+      if (width === 1280) {
+        await page.locator(".vjs-control-bar .vjs-fullscreen-control").click();
+        await expect
+          .poll(() => page.evaluate(() => document.fullscreenElement !== null))
+          .toBe(true);
+        await expect(warning.getByRole("status")).toBeVisible();
+        const full = await warning.getByRole("status").boundingBox();
+        expect(Math.round(full?.x ?? -1)).toBe(12);
+        expect(Math.round(full?.y ?? -1)).toBe(12);
+        if (screenshotDir !== undefined) {
+          await page.screenshot({
+            path: path.join(screenshotDir, "20260929-stall-warning-fullscreen.png"),
+          });
+        }
+        await page.keyboard.press("f");
+        await expect
+          .poll(() => page.evaluate(() => document.fullscreenElement === null))
+          .toBe(true);
+      }
+      // 操作バーの再生はそのまま押せる。
+      await page.locator(".video-js").hover();
+      await page.locator(".vjs-control-bar > .vjs-play-control").click();
+      await expect
+        .poll(() => page.evaluate(() => document.querySelector("video")?.paused))
+        .toBe(true);
+      // 閉じると消え、同じ動画では再び条件を満たしても出ない。
+      await warning.getByRole("button", { name: "Dismiss" }).click();
+      await expect(warning).toHaveCount(0);
+      await page.locator(".vjs-control-bar > .vjs-play-control").click();
+      await page.waitForFunction(() => {
+        const element = document.querySelector("video");
+        return element !== null && !element.paused && element.readyState >= 2;
+      });
+      await stallThreeTimes();
+      await page.waitForTimeout(300);
+      await expect(warning).toHaveCount(0);
+    }
   });
 
   test("コピーで始めた変換は直前のキーフレームの時刻を表示し、再読み込みで同じ場面から再開する", async ({

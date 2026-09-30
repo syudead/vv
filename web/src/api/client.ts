@@ -1,5 +1,5 @@
 import { reloadPage } from "../auth/pageNavigation";
-import type { components } from "./gen/openapi";
+import type { components, operations } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 
@@ -30,6 +30,28 @@ export const videoSorts: readonly VideoSort[] = [
 /** isVideoSort は API が受け付ける並び順かどうかを返す。 */
 export function isVideoSort(value: unknown): value is VideoSort {
   return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
+}
+/**
+ * TranscodeQuality はライブ変換が縮める画質である
+ * （specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+ */
+export type TranscodeQuality = NonNullable<
+  NonNullable<operations["transcodeVideo"]["parameters"]["query"]>["quality"]
+>;
+
+/** transcodeQualities は API が受け付ける画質のすべてで、大きい順に並ぶ。 */
+export const transcodeQualities: readonly TranscodeQuality[] = [
+  "1080p",
+  "720p",
+  "480p",
+  "360p",
+];
+
+/** isTranscodeQuality は API が受け付ける画質かどうかを返す。 */
+export function isTranscodeQuality(value: unknown): value is TranscodeQuality {
+  return (
+    typeof value === "string" && (transcodeQualities as readonly string[]).includes(value)
+  );
 }
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
@@ -752,12 +774,19 @@ export function streamUrl(id: number): string {
 /**
  * transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。attempt を渡すと、
  * 実際の開始位置を getTranscodeStart で引けるよう URL に付ける
- * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §1）。
+ * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §1）。quality を渡すと
+ * その画質に縮めて変換する（specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
  */
-export function transcodeUrl(id: number, startMs = 0, attempt?: string): string {
+export function transcodeUrl(
+  id: number,
+  startMs = 0,
+  attempt?: string,
+  quality?: TranscodeQuality,
+): string {
   const query = new URLSearchParams();
   if (startMs > 0) query.set("startMs", String(Math.round(startMs)));
   if (attempt !== undefined) query.set("attempt", attempt);
+  if (quality !== undefined) query.set("quality", quality);
   const suffix = query.size === 0 ? "" : `?${query.toString()}`;
   return `/api/videos/${String(id)}/transcode.mp4${suffix}`;
 }

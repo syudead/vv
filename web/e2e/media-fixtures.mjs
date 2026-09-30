@@ -248,6 +248,28 @@ export function generateMediaFixtures(mediaDir) {
     file("sparse-keyframes.mkv"),
   ]);
 
+  // 覚えた画質で直接再生できる動画を変換で始めることの確かめ（specs/027-playback-quality）。
+  // 画質の選択肢は短辺で決まるので、480p を選べる 1080p の直接再生できる動画にする。
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=1920x1080:rate=15:duration=20",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=770:sample_rate=48000:duration=20",
+    ...h264,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-shortest",
+    "-movflags",
+    "+faststart",
+    file("hd-1080p.mp4"),
+  ]);
+
   const expected = {
     "direct.mp4": { video: "h264", audio: "aac" },
     "direct-fallback.mp4": { video: "h264", audio: "aac" },
@@ -260,6 +282,7 @@ export function generateMediaFixtures(mediaDir) {
     "portrait.mp4": { video: "h264", audio: undefined },
     "long-gop.mkv": { video: "h264", audio: "aac" },
     "sparse-keyframes.mkv": { video: "h264", audio: "aac" },
+    "hd-1080p.mp4": { video: "h264", audio: "aac" },
   };
   for (const [name, codecs] of Object.entries(expected)) {
     assertFixture(file(name), codecs);
