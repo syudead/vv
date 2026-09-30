@@ -35,10 +35,10 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, err
 	}
 	if found {
-		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+		return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 	}
 
-	id, err := insertTag(ctx, tx, normalized)
+	id, err := insertTag(ctx, tx, normalized, false)
 	if err != nil {
 		return domain.Tag{}, err
 	}
@@ -56,7 +56,8 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 }
 
 // RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の
-// 状態を返す。新しい名前が既にあれば（自分のシノニムでも）
+// 状態を返す。名前が変わるときは、同じ取引でタグを確定し、新しい名前を却下した名前から
+// 外す（specs/031-tentative-tags/data-model.md §3）。新しい名前が既にあれば（自分のシノニムでも）
 // *domain.TagNameConflict を返す。id が無ければ domain.ErrTagNotFound を返す。
 func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
 	normalized, err := domain.NormalizeTagName(name)
@@ -81,7 +82,7 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 			return domain.Tag{}, err
 		}
 		if found {
-			return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+			return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 		}
 		if _, err := tx.ExecContext(ctx, `
 			update tag_names set name = ?, search_key = ?, search_version = ?
@@ -89,6 +90,12 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 			normalized, domain.FoldForMatch(normalized), domain.SearchKeyVersion, id,
 		); err != nil {
 			return domain.Tag{}, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
+		}
+		if err := forgetRejectedName(ctx, tx, normalized); err != nil {
+			return domain.Tag{}, err
+		}
+		if err := confirmTagInTx(ctx, tx, id); err != nil {
+			return domain.Tag{}, err
 		}
 	}
 
@@ -146,7 +153,8 @@ func (s *TagStore) MergeTag(ctx context.Context, targetID, sourceID int64) (doma
 }
 
 // mergeTagInto は同じトランザクションの中で source を target へ統合する。
-// target と source が同じ id なら何もせず、今の target をそのまま返す。
+// target と source が同じ id なら何もせず、今の target をそのまま返す。統合したときは
+// target を確定したタグにする（specs/031-tentative-tags/data-model.md §3）。
 func mergeTagInto(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (domain.Tag, error) {
 	if _, err := canonicalNameByTagID(ctx, tx, targetID); err != nil {
 		return domain.Tag{}, err
@@ -175,22 +183,25 @@ func mergeTagInto(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (do
 	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, sourceID); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot delete the merged tag (id=%d): %w", sourceID, err)
 	}
+	if err := confirmTagInTx(ctx, tx, targetID); err != nil {
+		return domain.Tag{}, err
+	}
 
 	return tagByID(ctx, tx, targetID)
 }
 
 // findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ
-// トランザクションの中で作る。作ったかどうかも返す。名前でタグを付ける操作と、
-// グループをタグに変える操作（folder_groups.go）が共有する。
+// トランザクションの中で確定したタグとして作る。作ったかどうかも返す。名前でタグを付ける
+// 操作と、グループをタグに変える操作（folder_groups.go）が共有する。
 func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain.TagRef, bool, error) {
 	lookup, found, err := lookupTagName(ctx, tx, normalized)
 	if err != nil {
 		return domain.TagRef{}, false, err
 	}
 	if found {
-		return domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}, false, nil
+		return lookup.ref(), false, nil
 	}
-	id, err := insertTag(ctx, tx, normalized)
+	id, err := insertTag(ctx, tx, normalized, false)
 	if err != nil {
 		return domain.TagRef{}, false, err
 	}
@@ -198,9 +209,11 @@ func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain
 }
 
 // insertTag は整えた名前 normalized を元の名前に持つタグを作り、その id を返す。
+// tentative が真なら仮のタグとして作る（specs/031-tentative-tags/data-model.md §3）。
 // 名前がまだ無いことは呼び出し側が確かめる。
-func insertTag(ctx context.Context, tx *sql.Tx, normalized string) (int64, error) {
-	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+func insertTag(ctx context.Context, tx *sql.Tx, normalized string, tentative bool) (int64, error) {
+	res, err := tx.ExecContext(ctx, `insert into tags (created_at, tentative) values (?, ?)`,
+		time.Now().Unix(), boolToInt(tentative))
 	if err != nil {
 		return 0, fmt.Errorf("cannot create the tag: %w", err)
 	}

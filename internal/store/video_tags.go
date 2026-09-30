@@ -24,7 +24,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	name, err := canonicalNameByTagID(ctx, tx, tagID)
+	ref, err := tagRefByID(ctx, tx, tagID)
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
@@ -37,7 +37,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 	if err := tx.Commit(); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
-	return domain.TagRef{ID: tagID, Name: name}, applied, nil
+	return ref, applied, nil
 }
 
 // AttachTagByName は名前でタグを付ける。名前はシノニムを含めて引き、無ければ
@@ -80,7 +80,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	name, err := canonicalNameByTagID(ctx, tx, tagID)
+	ref, err := tagRefByID(ctx, tx, tagID)
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
@@ -93,7 +93,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 	if err := tx.Commit(); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot remove the tag: %w", err)
 	}
-	return domain.TagRef{ID: tagID, Name: name}, applied, nil
+	return ref, applied, nil
 }
 
 // attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画へ tagID を
@@ -165,9 +165,10 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 			  join tag_names folder_tn on folder_tn.name = vfn.name
 			 where v.content_key in (select content_key from selected) and v.content_key <> ''
 		)
-		select t.content_key, t.tag_id, tn.name, max(t.manual), max(t.from_folder)
+		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder)
 		  from tagged t
 		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
+		  join tags tg on tg.id = t.tag_id
 		 group by t.content_key, t.tag_id`, string(encoded),
 	)
 	if err != nil {
@@ -179,7 +180,7 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 	for rows.Next() {
 		var key string
 		var tag domain.VideoTag
-		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Manual, &tag.FromFolder); err != nil {
+		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Tentative, &tag.Manual, &tag.FromFolder); err != nil {
 			return nil, fmt.Errorf("cannot read item tags: %w", err)
 		}
 		out[key] = append(out[key], tag)
