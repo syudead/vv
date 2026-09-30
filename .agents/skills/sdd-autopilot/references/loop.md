@@ -59,11 +59,21 @@ branch. `plan-to-issues` produces no PR.
 
 Handle each PR with one review-fix pass:
 
-1. On the head first handled for this PR, wait for every check to complete and
-   for a review by someone other than the PR author (a GitHub review whose
-   `commit_id` is that head SHA), or for 20 minutes to pass without a review.
-   A check still pending an hour after the head was pushed is a stop.
-2. Start a fresh review fixer with the feature-PR brief. It handles every
+1. Request the automated review once per PR: only when the PR has no review
+   whose body contains `<!-- pr-review:` and carries none of `ai-review`,
+   `ai-reviewing` and `ai-reviewed`, add the label `ai-review`. Every wake
+   re-enters this step, so the condition is what keeps the PR from being
+   requested twice. A routine outside the repository answers the request: it
+   swaps the label for `ai-reviewing`, posts one review of the head whose body
+   ends with `<!-- pr-review:<head SHA> -->`, and swaps the label for
+   `ai-reviewed`. Never add `ai-reviewing` or `ai-reviewed` yourself.
+2. On the head first handled for this PR, wait for every check to complete and
+   for that marked review. A review by anyone else does not end the wait. Stop
+   and report when the PR carries `ai-reviewed` without a marked review (the
+   routine could not review it), when 45 minutes pass after the request
+   without that review, or when a check is still pending an hour after the
+   head was pushed.
+3. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
    A fixer never returns `CLEAN` while a check on that head is not passing.
@@ -72,12 +82,13 @@ Handle each PR with one review-fix pass:
    parent or one of the parent's native children (for the integration PR, it
    is the feature branch's PR to `main` that `Closes` the parent). Otherwise
    it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
-3. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
+4. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
    conflict-free and mergeable, then merge with a merge commit and go to §5.
-   After `FIXED`, do not wait for checks or reviews on the new head or run
-   another fixer. If GitHub branch protection prevents the merge, stop and
-   report it; do not bypass the protection. `BLOCKED`: stop. `FOREIGN`: leave
-   the PR alone, never merge it, and name it in the final report; go to §1.
+   After `FIXED`, do not request another review, wait for checks or reviews on
+   the new head, or run another fixer. If GitHub branch protection prevents
+   the merge, stop and report it; do not bypass the protection. `BLOCKED`:
+   stop. `FOREIGN`: leave the PR alone, never merge it, and name it in the
+   final report; go to §1.
 
 After a restart, if GitHub state does not establish whether the one fixer pass
 already happened, stop and report that ambiguity instead of repeating it.
