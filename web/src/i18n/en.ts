@@ -870,6 +870,7 @@ export const en = {
         thumbnail: "Creating the thumbnail",
         seekThumbnail: "Creating seek thumbnails",
         preview: "Creating the preview",
+        fingerprint: "Checking for duplicates",
       } satisfies Record<ScanActivityKind, string>,
       activityLine: (action: string, fileName: string) => `${action} · ${fileName}`,
       /** 登録フォルダの表示名 / 相対パス / ファイル名。省略した行の全体を示す。 */
@@ -946,6 +947,10 @@ export const en = {
           preview_failed: {
             impact: "No preview appears in the list.",
             reason: "The preview couldn't be created.",
+          },
+          fingerprint_failed: {
+            impact: "It isn't checked for possible duplicates.",
+            reason: "Its seek thumbnails couldn't be compared.",
           },
           thumbnail_first_frame: {
             impact: "The thumbnail uses the first frame instead.",

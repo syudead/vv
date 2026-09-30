@@ -15,6 +15,9 @@ const (
 	JobSeekThumbnail JobKind = "seek_thumbnail"
 	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
 	JobPreview JobKind = "preview"
+	// JobFingerprint はシーク用スプライトのコマからの映像の指紋の作成
+	// （specs/030-video-versions/research.md R-6）。ffmpeg を起動せず、元のファイルも読まない。
+	JobFingerprint JobKind = "fingerprint"
 )
 
 // MaxJobAttempts は諦めるまでの試行回数である。止めないと、壊れたファイル
@@ -44,7 +47,7 @@ type Job struct {
 
 // JobKinds は取り込みの段階の順に並べたジョブの種類である。段階ごとに
 // ワーカーを1本ずつ置くので、ここに無い種類は処理されない。
-var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview}
+var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, JobFingerprint}
 
 // JobState は待ち行列の行の状態である。値は jobs.state 列に対応する。
 type JobState string
@@ -105,6 +108,9 @@ type JobClaimCondition struct {
 	// running で、登録済みの所在がある thumbnail の行）が1件も無いことを求める。
 	// 解析待ちで今は取り出せない thumbnail も数える。
 	NoClaimableThumbnail bool
+	// SeekThumbnailFinished は、動画のシーク用スプライトが完成している
+	// （seek_thumbnail_state が done である）ことを求める。
+	SeekThumbnailFinished bool
 }
 
 // ClaimConditionFor は kind の仕事を取り出してよい条件を返す。
@@ -118,18 +124,24 @@ type JobClaimCondition struct {
 // 残っていないことを待つ。シーク用スプライトの重い仕事を代表サムネイルの流れと
 // 競わせず、代表サムネイルを先に揃えるためである。この条件は取り出しの
 // 時点だけで判断し、走っているシーク用サムネイルは止めない。
+//
+// 指紋はシーク用スプライトのコマから作るので、スプライトが完成するまで取り出さない。
 func ClaimConditionFor(kind JobKind) JobClaimCondition {
 	return JobClaimCondition{
-		RegisteredLocation:   true,
-		ProbeFinished:        kind == JobThumbnail || kind == JobSeekThumbnail,
-		NoClaimableThumbnail: kind == JobSeekThumbnail,
+		RegisteredLocation:    true,
+		ProbeFinished:         kind == JobThumbnail || kind == JobSeekThumbnail,
+		NoClaimableThumbnail:  kind == JobSeekThumbnail,
+		SeekThumbnailFinished: kind == JobFingerprint,
 	}
 }
 
 // Allows は、動画の今の状態でこの条件を満たすかを返す。hasRegisteredLocation は
 // 登録済みのメディアフォルダの下に所在が1つ以上あるか、probe は動画の解析の
-// 状態、claimableThumbnail は取り出せる代表サムネイルの仕事が1件以上あるかである。
-func (c JobClaimCondition) Allows(hasRegisteredLocation bool, probe ProbeState, claimableThumbnail bool) bool {
+// 状態、claimableThumbnail は取り出せる代表サムネイルの仕事が1件以上あるか、
+// seekThumbnail は動画のシーク用サムネイルの状態である。
+func (c JobClaimCondition) Allows(
+	hasRegisteredLocation bool, probe ProbeState, claimableThumbnail bool, seekThumbnail SeekThumbnailState,
+) bool {
 	if c.RegisteredLocation && !hasRegisteredLocation {
 		return false
 	}
@@ -137,6 +149,9 @@ func (c JobClaimCondition) Allows(hasRegisteredLocation bool, probe ProbeState, 
 		return false
 	}
 	if c.NoClaimableThumbnail && claimableThumbnail {
+		return false
+	}
+	if c.SeekThumbnailFinished && seekThumbnail != SeekThumbnailDone {
 		return false
 	}
 	return true

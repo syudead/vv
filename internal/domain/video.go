@@ -265,6 +265,10 @@ type IndexedVideo struct {
 	ThumbnailState     ThumbnailState
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
+	// FingerprintMissing は、シーク用スプライトが完成しているのに今の FingerprintVersion の
+	// 指紋が無いことを表す（specs/030-video-versions/data-model.md §6）。走査はこれで指紋の
+	// 仕事を積み直す。
+	FingerprintMissing bool
 }
 
 // MediaFolder is one independently managed scan root.

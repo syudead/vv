@@ -3289,8 +3289,9 @@ components:
       type: string
       description: >-
         今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を
-        読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
-      enum: [registering, probe, thumbnail, seekThumbnail, preview]
+        読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は
+        同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+      enum: [registering, probe, thumbnail, seekThumbnail, preview, fingerprint]
 
     ScanVideos:
       type: object
@@ -3388,6 +3389,7 @@ components:
         - thumbnail_failed
         - seek_thumbnail_failed
         - preview_failed
+        - fingerprint_failed
         - thumbnail_first_frame
         - seek_thumbnail_full_decode
 

@@ -163,7 +163,7 @@ after every file (no longer every 20 files) to the reporter it declares, and the
 report each job through the `Started` and `Finished` hooks of `internal/jobs`, which
 `cmd/mdm` wires to `Scans`. After a restart only what is running then is shown.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
-seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
+seek_thumbnail, preview, fingerprint — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
 adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, seek-preview sprite
 sheets from the keyframes an MP4/MOV index assigns to each interval or, for other inputs,
@@ -177,6 +177,15 @@ keyframes are read; other inputs use one input seek per frame. An interval witho
 reuses the previous frame, and only an ffmpeg failure falls back to the sequential decoder.
 Existing completed six-sheet sprites remain readable
 ([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
+The fingerprint stage turns a completed seek sprite into the video's visual fingerprint
+without starting `ffmpeg` or reading the source file again: `internal/app` reads the sprite's
+layout and sheets through its `ArtifactStore`, `internal/media` (`SpriteFingerprint`) cuts
+each frame, drops dark edge rows and columns and shrinks it to 32 × 32 luma, and
+`internal/domain` hashes each frame with a DCT-based pHash (`HashFrame`) and compares two
+fingerprints by pairing frames by time, not by index (`CompareFingerprints`), because the
+sprite interval differs between encodes of a video longer than 405 seconds. The result is
+stored per content key in `video_fingerprints` together with `domain.FingerprintVersion`
+([specs/030-video-versions/research.md](specs/030-video-versions/research.md) R-6).
 Two generation fallbacks are substitutions that the user is told about: a library thumbnail
 taken from the first frame because no frame was found at the chosen position, and a seek
 sprite rebuilt by decoding the whole video. `internal/media` returns them as values
@@ -200,7 +209,12 @@ no claimable thumbnail job remains, so after a scan every library thumbnail come
 up to four generation `ffmpeg` processes can run within one seek job. Hover preview and
 newly claimed thumbnail work may overlap; the condition applies only at claim time, and a
 running seek_thumbnail job is not
-stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
+stopped when new thumbnail jobs arrive. A fingerprint job is not claimed until its video's seek
+sprite is `done`; the transaction that records a finished seek sprite (including one rebuilt
+after `RequeueMissingSeekThumbnails`) queues it, so its worker needs no other wake-up.
+Rebuilding a missing sprite drops the waiting fingerprint job, and the next scan requeues a
+fingerprint that failed at the retry limit or was made by an older version
+(`IndexedVideo.FingerprintMissing` and `EnsureJob`). `internal/app` publishes `domain.VideoIngestChanged`
 with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's
 result is recorded, and the seek_thumbnail worker when a probe or thumbnail result is
 recorded or a video row is deleted. Removing a media folder also publishes
@@ -320,8 +334,8 @@ Stored data falls into three recovery categories. `videos`, `video_locations`
 (including their search keys), `location_search_fts`, `jobs`, `scans` (including
 `settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
-`video_folder_names`, `folder_index_state`), `video_transcode_probes`, and the pending
-same-path successions (`video_successions`) are
+`video_folder_names`, `folder_index_state`), `video_transcode_probes`, the pending
+same-path successions (`video_successions`), and the visual fingerprints (`video_fingerprints`) are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
@@ -360,7 +374,8 @@ compile:
 
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
-  retry of a failed probe and the rebuild of a missing preview. A probe's result also
+  retry of a failed probe and the rebuild of a missing preview, and replacing a content's
+  fingerprint (`ApplyFingerprintForJob`). A probe's result also
   upserts the video's live-transcode probe (`video_transcode_probes`: a versioned
   `domain.TranscodeProbe` JSON plus the probed file's size and nanosecond mtime) in the
   same transaction, and `SaveTranscodeProbe` upserts one probed at request time
@@ -610,8 +625,8 @@ way only. The packages under `internal/` fall into three layers:
   failed job returns to `queued` or stops as `failed` (`ClaimAttempts`,
   `JobStateAfterFailure`), which queued jobs may be claimed
   (`ClaimConditionFor`: a registered location, a finished probe for
-  thumbnails and seek thumbnails, and no claimable thumbnail job left for seek
-  thumbnails), and whether a media folder may be added, replaced or removed
+  thumbnails and seek thumbnails, no claimable thumbnail job left for seek
+  thumbnails, and a finished seek sprite for fingerprints), and whether a media folder may be added, replaced or removed
   (`CheckMediaFolderPlacement`, `CheckMediaFolderMutation`). `internal/store`
   translates these into SQL and writes their results; it re-reads the inputs
   inside its transaction, and the database constraints (one running scan, one
@@ -620,7 +635,7 @@ way only. The packages under `internal/` fall into three layers:
   SQLite driver, or any other `internal/*` package.
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
-  (`Scans`); processing one probe, thumbnail, seek-thumbnail or preview job — checking the claimed
+  (`Scans`); processing one probe, thumbnail, seek-thumbnail, preview or fingerprint job — checking the claimed
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state from its stored state and requeueing a `done`

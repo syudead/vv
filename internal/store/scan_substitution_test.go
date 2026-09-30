@@ -133,6 +133,8 @@ func TestSubstitutionClearedWhenRebuiltWithoutIt(t *testing.T) {
 	}
 
 	setStageDone(t, db, thumbnail, domain.SubstitutionNone)
+	// シーク用サムネイルの完了の記録は指紋の仕事を積み直すので、それを済ませてから確かめる。
+	runAllJobs(t, db)
 	if _, issues, progress := importIssues(t, db); len(issues) != 0 || progress.Status != domain.ImportDone {
 		t.Fatalf("問題 = %+v, 状態 = %+v, want なし・done", issues, progress)
 	}

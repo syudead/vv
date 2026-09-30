@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"reflect"
 	"slices"
 	"sync"
@@ -15,7 +16,7 @@ import (
 func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakePublisher) {
 	publisher := &fakePublisher{}
 	return NewIngest(IngestOptions{
-		Store: store, Generator: generator, Artifacts: generator, Publisher: publisher, Logger: discardLogger(),
+		Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Publisher: publisher, Logger: discardLogger(),
 	}), publisher
 }
 
@@ -653,5 +654,75 @@ func TestGenerationOfSameKindIsSerialized(t *testing.T) {
 	}
 	if err := waitJob(t, other); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 指紋の仕事は、置き場のスプライトの配置情報と全シートを読んで指紋を作り、記録する。
+// 元の動画は読まない。
+func TestIngestFingerprintReadsSpriteAndSavesFingerprint(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	layout := domain.NewSeekSpriteLayout(600_000)
+	generator := &fakeGenerator{
+		sprites: map[string]domain.SeekSprite{"a": {SeekSpriteLayout: layout, FrameWidth: 160, FrameHeight: 90}},
+		sheets:  map[string][][]byte{"a": {[]byte("sheet-0")}},
+	}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video)); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.fingerprints) != 1 {
+		t.Fatalf("記録した指紋 = %+v", store.fingerprints)
+	}
+	if got := store.fingerprints[0]; got.Version != domain.FingerprintVersion || got.IntervalMs != layout.IntervalMs ||
+		len(got.Frames) != 1 || got.Frames[0].Hash != uint64(len("sheet-0")) {
+		t.Fatalf("記録した指紋 = %+v", got)
+	}
+	if len(generator.fingerprintSheets) != 1 || string(generator.fingerprintSheets[0][0]) != "sheet-0" {
+		t.Fatalf("指紋に渡したシート = %q", generator.fingerprintSheets)
+	}
+	calls, _ := generator.snapshot()
+	if !slices.Equal(calls, []string{"fingerprint"}) {
+		t.Fatalf("呼び出し = %v（元の動画を読んではいけない）", calls)
+	}
+}
+
+// スプライトかシートが無ければ、指紋を記録せずに失敗を返す（再試行と上限は待ち行列が持つ）。
+func TestIngestFingerprintFailsWithoutSprite(t *testing.T) {
+	video := probedVideo(1, "a")
+	layout := domain.NewSeekSpriteLayout(600_000)
+	for name, generator := range map[string]*fakeGenerator{
+		"スプライトが無い": {},
+		"シートが無い": {
+			sprites: map[string]domain.SeekSprite{"a": {SeekSpriteLayout: layout, FrameWidth: 160, FrameHeight: 90}},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := newFakeIngestStore(video)
+			ingest, _ := newTestIngest(store, generator)
+			err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video))
+			if !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("err = %v", err)
+			}
+			if len(store.fingerprints) != 0 {
+				t.Fatalf("記録した指紋 = %+v", store.fingerprints)
+			}
+		})
+	}
+}
+
+// 専有した時点から内容や所在が変わっていれば、何も読まずに終える。
+func TestIngestFingerprintSkipsStaleJob(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.stale = true
+	generator := &fakeGenerator{}
+	ingest, _ := newTestIngest(store, generator)
+	if err := ingest.Handler(domain.JobFingerprint)(context.Background(), jobFor(domain.JobFingerprint, video)); err != nil {
+		t.Fatal(err)
+	}
+	if calls, _ := generator.snapshot(); len(calls) != 0 || len(store.fingerprints) != 0 {
+		t.Fatalf("呼び出し = %v、指紋 = %+v", calls, store.fingerprints)
 	}
 }
