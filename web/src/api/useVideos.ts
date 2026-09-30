@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
@@ -148,7 +148,13 @@ export function useVideos(
     [refreshGroupsWith],
   );
 
-  const itemRefresh = useItemRefresh(pageLoading, itemsRef, dispatch);
+  // 取り直しで表示中の動画が集まりに畳まれたと分かったときの読み直し（useItemRefresh）。
+  // useVideoPages の reload と同じく世代を進め、先頭のページから取り直す。
+  const resync = useCallback(() => {
+    resyncAttempted.current = false;
+    setGeneration((value) => value + 1);
+  }, []);
+  const itemRefresh = useItemRefresh(pageLoading, itemsRef, dispatch, resync);
   const {
     refreshQueue,
     refreshing,
