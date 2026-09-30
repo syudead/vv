@@ -17,6 +17,8 @@ import (
 // （POST /api/v1/video-tags、specs/026-external-api/contracts/external-api.md §4）。
 // 本文の形と件数の上限をここで確かめ、名前の規則と動画の引き当ては 1 つのトランザクションで
 // 行う保存先（TagStore.ApplyVideoTags、research.md R-7）に任せる。internal/app は通さない。
+// tentative が真の add・replace で却下した名前に当たって飛ばした名前は skippedTags に返す
+// （specs/031-tentative-tags/contracts/external-api.md §1）。
 func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 	var body extgen.VideoTagsRequest
 	if !e.readJSONBody(w, r, &body) {
@@ -63,12 +65,22 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	outcome, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags, false)
+	// tentative は省略時に偽（specs/031-tentative-tags/contracts/external-api.md §1）。真偽値で
+	// ない値は readJSONBody が本文の形の誤りとして 400 にしている。
+	tentative := body.Tentative != nil && *body.Tentative
+	outcome, err := e.s.tags.ApplyVideoTags(r.Context(), refs, action, body.Tags, tentative)
 	if err != nil {
 		e.writeVideoTagsError(w, err)
 		return
 	}
-	out := extgen.VideoTagsResponse{Items: make([]extgen.VideoTagsItem, 0, len(outcome.Items))}
+	skipped := outcome.SkippedNames
+	if skipped == nil {
+		skipped = []string{}
+	}
+	out := extgen.VideoTagsResponse{
+		Items:       make([]extgen.VideoTagsItem, 0, len(outcome.Items)),
+		SkippedTags: skipped,
+	}
 	for _, result := range outcome.Items {
 		out.Items = append(out.Items, extgen.VideoTagsItem{
 			Video: extgen.VideoTagsVideo{Id: result.VideoID, ContentKey: result.ContentKey},
