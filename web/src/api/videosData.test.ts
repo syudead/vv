@@ -92,4 +92,37 @@ describe("videosDataReducer", () => {
       videoItem({ ...refreshed, title: "動画 1", sizeBytes: 1024 }),
     ]);
   });
+
+  it("代表でなくなった動画は、代表が一覧に出ていれば外して total を1減らす", () => {
+    const next = videosDataReducer(state([1, 2, 3], 10), {
+      type: "replaceWithRepresentative",
+      videoId: 2,
+      representative: video(1),
+    });
+    expect(ids(next)).toEqual([1, 3]);
+    expect(next.total).toBe(9);
+  });
+
+  it("代表でなくなった動画は、代表が一覧に無ければ同じ位置で代表に置き換える", () => {
+    const representative = { ...video(7), title: "代表の題名" };
+    const next = videosDataReducer(state([1, 2, 3], 10), {
+      type: "replaceWithRepresentative",
+      videoId: 2,
+      representative,
+    });
+    expect(ids(next)).toEqual([1, 7, 3]);
+    expect(next.items[1]).toEqual(videoItem(representative));
+    expect(next.total).toBe(10);
+  });
+
+  it("一覧に無い動画の置き換えは同じ状態を返す", () => {
+    const before = state([1], 1);
+    expect(
+      videosDataReducer(before, {
+        type: "replaceWithRepresentative",
+        videoId: 2,
+        representative: video(3),
+      }),
+    ).toBe(before);
+  });
 });

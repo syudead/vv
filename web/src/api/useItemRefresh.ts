@@ -66,6 +66,20 @@ export function useItemRefresh(
           );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
+          // 代表でなくなった動画（別のタブで束ねた・代表を替えた）は、一覧では
+          // 集まりの代表の 1 件に畳まれる。取り直した値を重ねると、隠れるはずの
+          // バージョンが残る（specs/030-video-versions/research.md R-9）。
+          const representativeId = refreshed.versions?.representativeId;
+          if (representativeId !== undefined && representativeId !== id) {
+            const representative = withVisibilitySince(
+              await getVideo(representativeId, controller.signal),
+              mark,
+            );
+            if (controller.signal.aborted) return;
+            settleUncertain(id, started);
+            dispatch({ type: "replaceWithRepresentative", videoId: id, representative });
+            continue;
+          }
           settleUncertain(id, started);
           dispatch({ type: "refresh", videoId: id, video: refreshed });
         } catch (failure) {

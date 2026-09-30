@@ -717,6 +717,47 @@ describe("useVideos の準備の反映", () => {
     expect(result.current.total).toBe(99);
   });
 
+  it("別のタブで束ねられて代表でなくなった動画は、一覧から外す（030 R-9）", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+    getVideo.mockImplementation((id: number) =>
+      Promise.resolve({ ...item(id), versions: { count: 2, representativeId: 1 } }),
+    );
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() =>
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 3]),
+    );
+    expect(result.current.total).toBe(99);
+  });
+
+  it("代表を替えられた一覧の 1 件は、同じ位置で新しい代表に置き換える（030 R-9）", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+    getVideo.mockImplementation((id: number) =>
+      Promise.resolve({
+        ...item(id),
+        title: id === 9 ? "新しい代表" : `動画 ${String(id)}`,
+        versions: { count: 2, representativeId: 9 },
+      }),
+    );
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() =>
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([
+        1, 9, 3,
+      ]),
+    );
+    expect(itemVideos(result.current.items)[1]?.title).toBe("新しい代表");
+    expect(result.current.total).toBe(100);
+  });
+
   // issue 267: useVideos は tag の条件を listVideos へ渡し、続きのページの取得でも
   // 同じ条件を渡し続ける。
   it("tag の条件を最初の取得にも続きの取得にも渡す", async () => {
