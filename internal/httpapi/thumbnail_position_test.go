@@ -141,8 +141,8 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	if saved.Location == nil || saved.Progress == nil || len(saved.Tags) != 1 {
 		t.Errorf("設定の応答が詳細と同じ形でない: %+v", saved)
 	}
-	// 読む元は配信と同じ規則で開けた所在である。
-	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{filepath.Join(f.mediaDir, "pub", "a.mp4")}) {
+	// 読む元は配信と同じ規則で開けた所在の、symlink を辿った先である。
+	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, filepath.Join(f.mediaDir, "pub", "a.mp4"))}) {
 		t.Errorf("読む元 = %v", got)
 	}
 	if _, videos := sub.take(); !slices.Equal(videos, []int64{f.ids["a"]}) {
@@ -275,4 +275,57 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 	assertErrorBody(t, "無い動画", missing.Code, missing.Body.Bytes(), wantError{
 		status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound,
 	})
+}
+
+// resolvedPath は path の symlink を辿った先を返す。
+func resolvedPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
+// 所在が symlink なら、生成へは辿った先のパスを渡す。確かめた後に symlink を差し替えられても
+// ffmpeg が別の動画や登録フォルダの外を読まないためである。辿った先が登録フォルダの外なら、
+// 生成を呼ばずに 404 file_unavailable にする。
+func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
+	f := newGuestFixture(t, true)
+	position := int64(1_000)
+
+	aPath := filepath.Join(f.mediaDir, "pub", "a.mp4")
+	target := filepath.Join(f.mediaDir, "pub", "a-real.mp4")
+	if err := os.Rename(aPath, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, aPath); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("symlink の所在: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, target)}) {
+		t.Errorf("読む元 = %v, want 辿った先 %s", got, target)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.mp4")
+	if err := os.WriteFile(outside, []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bPath := filepath.Join(f.mediaDir, "pub", "b.mp4")
+	if err := os.Remove(bPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, bPath); err != nil {
+		t.Fatal(err)
+	}
+	rec = f.setThumbnailPosition("b", thumbnailPositionBody(&position), f.owner)
+	assertErrorBody(t, "外を指す所在", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable,
+	})
+	if got := f.thumbnails.calledPaths(); len(got) != 1 {
+		t.Errorf("外を指す所在で生成が呼ばれた: %v", got)
+	}
 }

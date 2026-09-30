@@ -134,14 +134,14 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	// 読む元は配信（getVideoStream）と同じ規則で決める。開けた所在のパスを渡し、
-	// 生成は ffmpeg がそのパスを読み直す。
-	file, _, path, ok := s.openMediaFile(r, video)
+	// 読む元は配信（getVideoStream）と同じ規則で決め、symlink を辿った先のパスを渡す。
+	// 辿る前のパスを渡すと、確かめた後に symlink を差し替えられたとき、ffmpeg が
+	// 登録フォルダの外や別の動画を読みうる。
+	path, ok := s.resolveMediaFile(r, video)
 	if !ok {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
-	_ = file.Close()
 
 	saved, err := s.thumbnails.SetThumbnailPosition(r.Context(), id, path, positionMs)
 	if err != nil {
