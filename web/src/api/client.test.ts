@@ -212,6 +212,28 @@ describe("setVideoDisplayName", () => {
       }),
     );
   });
+
+  it("成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", reason: "display_name_too_long" }, 400),
+    );
+    hold();
+    await expect(setVideoDisplayName(7, "x".repeat(201))).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ id: 7, title: "New", displayName: "New" }),
+    );
+    hold();
+    await setVideoDisplayName(7, "New");
+    expect(takeListSnapshot(key)).toBeUndefined();
+  });
 });
 
 describe("settings API client", () => {
