@@ -450,6 +450,9 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 		// failed は積み直さない。やり直しは読み取りのやり直し（RetryProbe）が受け持つ。
 		{kind: domain.JobSeekThumbnail, pending: video.SeekThumbnailState == domain.SeekThumbnailPending},
 		{kind: domain.JobPreview, pending: video.ProbeState == domain.ProbeStateDone && video.PreviewState == domain.PreviewStatePending},
+		// 指紋は状態の列を持たないので、上限まで失敗した分もここで積み直す
+		// （specs/030-video-versions/data-model.md §6）。
+		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
 	}
 	for _, state := range states {
 		if state.pending {

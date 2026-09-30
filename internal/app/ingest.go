@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 
 	"github.com/syudead/vv/internal/domain"
@@ -30,6 +31,9 @@ type IngestStore interface {
 	SetSeekThumbnailStateForJob(
 		ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution) (bool, error)
 	CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error)
+	// ApplyFingerprintForJob は専有した時点の内容と所在が今も同じときだけ、その内容の
+	// 映像の指紋を置き換え、反映したかを返す。
+	ApplyFingerprintForJob(ctx context.Context, job domain.Job, fingerprint domain.Fingerprint) (bool, error)
 	// SetThumbnailPosition は代表サムネイルの位置を記録し（nil は解除）、同じ取引でその内容の
 	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
 	// （specs/029-video-overrides/data-model.md §3）。
@@ -68,10 +72,14 @@ type ArtifactStore interface {
 	// 呼び、false なら公開せずに domain.ErrPreviewStale を返す。
 	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
 		current func(context.Context) (bool, error)) error
+	// SeekSprite は完成したシーク用スプライトの配置情報を読む。無ければ誤りを返す。
+	SeekSprite(contentKey string) (domain.SeekSprite, error)
+	// SeekSpriteSheet はシーク用スプライトのシート sheet（0 から）の JPEG を読む。
+	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
-// Generator は元の動画を読み、渡されたパスへ生成物を書く。internal/media の
-// *Assets がこれを満たす。
+// Generator は元の動画を読み、渡されたパスへ生成物を書く。生成物から映像の指紋も
+// 作る。internal/media の *Assets がこれを満たす。
 type Generator interface {
 	// CheckSource は元の動画が読める通常ファイルかを確かめる。
 	CheckSource(path string) error
@@ -86,6 +94,9 @@ type Generator interface {
 	// 区間ごとの抽出にも失敗して全編から作ったかを返す。
 	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
 	Preview(ctx context.Context, path, output string, durationMs int64) error
+	// SpriteFingerprint は完成したシーク用スプライトのシート（シート 0 から順の JPEG）から
+	// 映像の指紋を作る。ffmpeg は起動しない。
+	SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error)
 }
 
 // IngestOptions は取り込みの組み立てに必要な依存である。
@@ -100,7 +111,7 @@ type IngestOptions struct {
 }
 
 // Ingest は取り込みの各段階（解析・代表サムネイル・シーク用サムネイル・
-// プレビュー）のジョブの処理と、
+// プレビュー・映像の指紋）のジョブの処理と、
 // 参照の無くなった内容の生成物の削除を受け持つ。
 //
 // ジョブを取り出して成否を記録する進め方は internal/jobs が持ち、1件で何を
@@ -139,6 +150,8 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 		return i.SeekThumbnails
 	case domain.JobPreview:
 		return i.Preview
+	case domain.JobFingerprint:
+		return i.Fingerprint
 	}
 	return nil
 }
@@ -472,4 +485,35 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 		}
 		return false, nil
 	})
+}
+
+// Fingerprint は完成したシーク用スプライトから映像の指紋を作り、記録する
+// （specs/030-video-versions/data-model.md §6）。ffmpeg を起動せず、元の動画も読まない。
+//
+// スプライトが無い、またはシートが読めなければ誤りを返す。仕事は再試行し、上限まで
+// 失敗すると FailClaimedJob が問題として記録する。積み直しは次の走査が行う。
+func (i *Ingest) Fingerprint(ctx context.Context, job domain.Job) error {
+	current, err := i.store.JobIdentityCurrent(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return nil
+	}
+	sprite, err := i.files.SeekSprite(job.ContentKey)
+	if err != nil {
+		return fmt.Errorf("cannot read the seek sprite for the fingerprint: %w", err)
+	}
+	sheets := make([][]byte, sprite.SheetCount)
+	for sheet := range sheets {
+		if sheets[sheet], err = i.files.SeekSpriteSheet(job.ContentKey, sheet); err != nil {
+			return fmt.Errorf("cannot read seek sprite sheet %d for the fingerprint: %w", sheet, err)
+		}
+	}
+	fingerprint, err := i.generator.SpriteFingerprint(sprite, sheets)
+	if err != nil {
+		return err
+	}
+	_, err = i.store.ApplyFingerprintForJob(ctx, job, fingerprint)
+	return err
 }

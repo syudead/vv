@@ -18,6 +18,8 @@ const (
 	ActivitySeekThumbnail ScanActivityKind = "seekThumbnail"
 	// ActivityPreview は一覧用プレビューを作っている。
 	ActivityPreview ScanActivityKind = "preview"
+	// ActivityFingerprint は別バージョンを探すための映像の指紋を作っている。
+	ActivityFingerprint ScanActivityKind = "fingerprint"
 )
 
 // ActivityKindOf は仕事の種類を今の処理の種類にする。知らない種類なら false を返す。
@@ -31,6 +33,8 @@ func ActivityKindOf(kind JobKind) (ScanActivityKind, bool) {
 		return ActivitySeekThumbnail, true
 	case JobPreview:
 		return ActivityPreview, true
+	case JobFingerprint:
+		return ActivityFingerprint, true
 	}
 	return "", false
 }

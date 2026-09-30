@@ -1984,10 +1984,10 @@ export interface components {
             videoId?: number;
         };
         /**
-         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
          * @enum {string}
          */
-        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview";
+        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview" | "fingerprint";
         /** @description 取り込みの進み具合。status が finding のあいだは省く */
         ScanVideos: {
             /** @description 対象の本数。0 は変化が無かったことを示す */
@@ -2039,7 +2039,7 @@ export interface components {
          * @description 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
          * @enum {string}
          */
-        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
+        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "fingerprint_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
         /**
          * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}

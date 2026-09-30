@@ -477,6 +477,31 @@ func TestScanRequeuesOnlySeekThumbnailForPendingSeekThumbnail(t *testing.T) {
 	}
 }
 
+// スプライトが完成しているのに今の版の指紋が無い既存動画は、指紋の仕事だけを積み直す
+// （上限まで失敗した指紋も、次の走査で作り直す）。
+func TestScanRequeuesMissingFingerprint(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	var id int64
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailDone
+		row.PreviewState = domain.PreviewStateDone
+		row.FingerprintMissing = true
+		index.rows[path] = row
+		id = row.ID
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	want := []jobCall{{kind: domain.JobFingerprint, videoID: id}}
+	if !slices.Equal(index.jobs, want) {
+		t.Fatalf("requeued jobs = %+v, want %+v", index.jobs, want)
+	}
+}
+
 // シーク用サムネイルだけが終端失敗した既存動画は、走査で積み直さない。
 func TestScanDoesNotRequeueFailedSeekThumbnail(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})

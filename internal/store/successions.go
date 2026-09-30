@@ -58,9 +58,13 @@ func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.Dele
 	if err != nil {
 		return fmt.Errorf("cannot build content keys: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx,
-		`delete from video_successions where new_key in (select value from json_each(?))`, string(encoded)); err != nil {
-		return fmt.Errorf("cannot release the content index: %w", err)
+	for _, statement := range []string{
+		`delete from video_successions where new_key in (select value from json_each(?))`,
+		`delete from video_fingerprints where content_key in (select value from json_each(?))`,
+	} {
+		if _, err := tx.ExecContext(ctx, statement, string(encoded)); err != nil {
+			return fmt.Errorf("cannot release the content index: %w", err)
+		}
 	}
 	return nil
 }

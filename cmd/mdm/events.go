@@ -82,6 +82,9 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
+	// 指紋は完成したシーク用スプライトを待つ（domain.ClaimConditionFor）が、その仕事は
+	// シーク用サムネイルの完了を書く取引で積まれる（JobsQueued）ので、ほかの段階の成否で
+	// 起こし直す必要は無い。
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {
 			stop()
