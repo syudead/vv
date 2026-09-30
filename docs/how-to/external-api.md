@@ -86,7 +86,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 - `locations` は登録フォルダの下の今の所在で、パスの順に並び、先頭が代表である。`title` は有効な
   題名で、表示名（`displayName`）があればそれ、無ければ代表のファイル名由来の題名（`fileTitle`）である。
   `displayName` と `thumbnailPositionMs`（代表サムネイルの位置、ミリ秒）は未設定なら `null`。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
-  祖先のフォルダ名から付くタグである。
+  祖先のフォルダ名から付くタグ、`tentative` は仮のタグ（「仮のタグとして付ける」）である。
 
 ## 動画を 1 本引く
 
@@ -124,7 +124,7 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
     手で付けたタグをすべて外す。
 - `tags` はタグの名前で、シノニムも使える（シノニムは元のタグとして付く）。同じタグに当たる名前は
   1 つにまとめる。100 件まで。`add`・`remove` では 1 件以上。
-- 応答は `{ items: [{ video: { id, contentKey }, tags }] }` で、`videos` の順に各動画の操作後の
+- 応答は `{ items: [{ video: { id, contentKey }, tags }], skippedTags }` で、`videos` の順に各動画の操作後の
   タグを返す。`tags` の形は一覧の項目と同じである。
 - 全体を 1 つのトランザクションで行う。引けない動画が 1 つでもあれば `404`（`video_not_found`、
   `index` は `videos` の何番目か）で、何も反映しない（タグも作らない）。
@@ -132,6 +132,32 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 - 件数の誤りは `400`（`too_many_videos`・`too_many_tags`、`limit` に上限）。名前の誤りは `400`
   （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`）で、`index` は `tags` の
   何番目かを指す。
+
+### 仮のタグとして付ける
+
+本文に `"tentative": true` を足すと、`add`・`replace` で新しく作るタグを**仮のタグ**にする。仮のタグは
+画面のタグ一覧に仮として出て、利用者が管理画面で確定するか却下するまで仮のままである。
+
+```json
+{ "videos": [{ "path": "/media/videos/clip.mp4" }],
+  "action": "add",
+  "tags": ["猫", "高画質"],
+  "tentative": true }
+```
+
+- `tentative` は真偽値で、省くと `false`。真偽値でなければ `400`（`invalid_request`）。
+- 既存のタグの名前かシノニムに当たる名前は、`tentative` を問わずそのタグを付け、仮か確定かの状態は
+  変えない。
+- どのタグにも当たらない名前は、却下した名前（綴りの完全一致）でなければ仮のタグとして作る。
+  却下した名前はタグを作らず付けずに飛ばし、応答の `skippedTags` に整えた名前を `tags` の順で 1 回ずつ
+  返す。残りの名前は付き、要求は `200` で成功する。`replace` では飛ばした名前は置き換え後の集合に
+  入らない。
+- `remove` では `tentative` は何も変えない。
+- `tentative` を省く（`false`）と、無い名前は確定したタグとして作る。その名前が却下した名前なら、
+  却下した名前の一覧から消える。
+- 応答の `skippedTags` は常にあり、飛ばした名前が無ければ空の配列である。`tags` の各要素と
+  `GET /api/v1/tags` の各タグは、仮のタグかどうかを `tentative` で返す。
+- 仮のタグの確定・却下と、却下した名前の一覧を見る・消すのは画面の操作で、この API には無い。
 
 ## 表示名を付ける
 
@@ -191,6 +217,8 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 3. 新しい動画ごとに、`locations[].path` や `title` から外部のサイトで調べる。後で状態を確かめ直す
    ときは `GET /api/v1/videos/lookup?contentKey=…` で 1 本引く（`404` なら消えている）。
 4. 見つけた名前を `POST /api/v1/video-tags` で付ける。同じ名前の組を付ける動画はまとめて 1 回で送る。
+   LLM などが自動で出した名前は `"tentative": true` で付け、新しく作られたタグを利用者が管理画面で
+   確定・却下して片付ける。一度却下した名前は次からは作られず、`skippedTags` に返る。
 5. 外部のサイトの正式な題名が分かれば、`POST /api/v1/video-display-names` で表示名にする。ファイル名は
    変えずに、画面での題名だけを整えられる。
 
@@ -199,10 +227,10 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos?limit=200" |
   jq -r '.items[] | [.contentKey, .locations[0].path] | @tsv'
 
-# 4. 調べた結果のタグを付ける。
+# 4. 調べた結果のタグを付ける。自動で出した名前は仮のタグとして作る。
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/v1/video-tags" \
-  -d '{"videos":[{"contentKey":"…"}],"action":"add","tags":["猫","旅行"]}'
+  -d '{"videos":[{"contentKey":"…"}],"action":"add","tags":["猫","旅行"],"tentative":true}'
 
 # 5. 調べた題名を表示名にする。
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \

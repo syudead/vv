@@ -72,7 +72,7 @@ func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request) {
 			synonyms = []string{}
 		}
 		items = append(items, extgen.Tag{
-			Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount,
+			Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
 		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
