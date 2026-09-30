@@ -51,11 +51,14 @@ var jobStateColumns = map[domain.JobKind]string{
 //
 // 指紋は videos に状態の列を持たないので、pending の代わりに「シーク用スプライトが
 // 完成しているのに今の版の指紋が無い」を条件にする（fingerprintMissingCondition）。
-// 上限まで失敗した failed の行も捨てて積み直すので、失敗した指紋は次の走査で作り直され、
-// 版を上げたときも追いつく（specs/030-video-versions/data-model.md §6）。
+// 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
+// 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
+// done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6）。
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
 	var pending string
+	discarded := `state = 'failed'`
 	if kind == domain.JobFingerprint {
+		discarded = `state in ('done', 'failed')`
 		pending = `exists (select 1 from videos v where v.id = ? and ` + fingerprintMissingCondition("v") + `)`
 	} else {
 		column, ok := jobStateColumns[kind]
@@ -70,9 +73,9 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and `+discarded+` and `+pending,
 		string(kind), videoID, videoID); err != nil {
-		return fmt.Errorf("cannot discard legacy failure rows (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `

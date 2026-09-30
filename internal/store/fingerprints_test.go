@@ -257,6 +257,13 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 	if !missing() {
 		t.Fatal("旧い版の指紋が FingerprintMissing にならない")
 	}
+	// 完了した行が残っていても、版を上げたら積み直す。
+	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobCounts(t, db, videoID); !equalCounts(got, map[string]int{"fingerprint:queued": 1}) {
+		t.Fatalf("版を上げたあとの jobs = %v, want one queued fingerprint", got)
+	}
 }
 
 // シーク用サムネイルを作り直すときは、待っている指紋の仕事を捨てる。作り直しの完了で
