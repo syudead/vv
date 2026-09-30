@@ -17,9 +17,16 @@ export function autoplayRequested(state: unknown): boolean {
   return (state as { autoplay?: unknown } | null)?.autoplay === true;
 }
 
+/**
+ * resumePosition は再生を始める位置である。集まり（同じ動画の別バージョン）の再生位置は
+ * バージョンの間で共有するので、このバージョンの尺以上なら先頭から再生する
+ * （specs/030-video-versions/research.md R-11）。
+ */
 export function resumePosition(video: Video): number {
   const progress = video.progress;
-  return progress === undefined || progress.completed || progress.positionMs < minResumeMs
-    ? 0
-    : progress.positionMs;
+  if (progress === undefined || progress.completed || progress.positionMs < minResumeMs) {
+    return 0;
+  }
+  if (video.durationMs !== undefined && progress.positionMs >= video.durationMs) return 0;
+  return progress.positionMs;
 }

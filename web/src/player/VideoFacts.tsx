@@ -28,6 +28,7 @@ import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
 import { useToast } from "../ui/Toast";
 import { technicalSummary } from "./properties";
+import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 
 /**
  * useOpenFile はサーバーの PC で動画ファイルを開き、開けなかったときの文言を持つ。
@@ -169,6 +170,10 @@ function Fact({
  * 解除の × を置き、`capture` があれば右端の操作の先頭に「今の場面を代表サムネイルにする」
  * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。
  *
+ * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
+ * 追加日のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
+ * （specs/030-video-versions/ui-design.md「Versions fact」）。
+ *
  * 開けなかったとき・サムネイルを変えられなかったときは、1 行目のすぐ下に 1 行だけ出す。
  * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
@@ -178,6 +183,7 @@ export default function VideoFacts({
   capture,
   onChanged,
   onStale,
+  versions,
 }: {
   video: Video;
   owner?: boolean;
@@ -185,6 +191,12 @@ export default function VideoFacts({
   capture?: ThumbnailCapture;
   onChanged?: (video: Video, mark: DetailMark) => void;
   onStale?: () => void;
+  /** バージョンの一覧から別のバージョンへ移るときの値と、集まりが変わったときの動作。 */
+  versions?: {
+    navigation: VersionsNavigation;
+    onReplace: (video: Video, mark: DetailMark) => void;
+    onRefresh: () => void;
+  };
 }) {
   const [failure, setFailure] = useState<UiText | null>(null);
   useEffect(() => setFailure(null), [video.id]);
@@ -194,6 +206,8 @@ export default function VideoFacts({
   const location = video.location;
   const duration = formatDuration(video.durationMs);
   const technical = technicalSummary(video);
+  const actionsRef = useRef<HTMLDivElement | null>(null);
+  const versionCount = video.versions?.count ?? 0;
 
   const copyPath = () => {
     if (location === undefined) return;
@@ -223,6 +237,20 @@ export default function VideoFacts({
             label={t.player.facts.added}
             value={formatDate(video.addedAt)}
           />
+          {versions !== undefined && versionCount >= 2 && (
+            <VersionsFact
+              video={video}
+              count={versionCount}
+              owner={owner}
+              navigation={versions.navigation}
+              onReplace={versions.onReplace}
+              onRefresh={versions.onRefresh}
+              // 項目が消えるので、フォーカスを右端の操作の先頭へ移す。
+              onDissolved={() =>
+                actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
+              }
+            />
+          )}
           {owner && video.thumbnailPositionMs !== undefined && (
             <ThumbnailFact
               url={video.thumbnailUrl}
@@ -233,7 +261,7 @@ export default function VideoFacts({
           )}
         </ul>
         {(location !== undefined || (owner && capture !== undefined)) && (
-          <div className="ml-auto flex shrink-0 items-center">
+          <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}
