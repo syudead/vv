@@ -940,6 +940,38 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/display-name:
+    put:
+      operationId: setVideoDisplayName
+      summary: 動画の表示名を設定・解除する
+      description: |
+        所有者だけ。`displayName` の前後の空白を取り除き、空なら表示名を解除して元の題名に戻す。
+        制御文字を含む名前と 200 符号位置を超える名前は受け付けない。他の動画と同じ表示名も
+        受け付け、同時の変更は後勝ちである。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
+        `title`・`fileTitle`・`displayName` が反映済みである。確定後に `/api/events` の `video` が
+        流れる（specs/029-video-overrides/contracts/screen-api.md §1）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisplayNameUpdate"
+      responses:
+        "200":
+          description: 反映後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/scans:
     post:
       operationId: startScan
@@ -2602,8 +2634,10 @@ components:
     Video:
       type: object
       description: |
-        ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
-        （specs/016-single-account-auth/contracts/guest-api.md §1）。
+        ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+        `thumbnailPositionMs` を省き、`tags` を空の配列にする
+        （specs/016-single-account-auth/contracts/guest-api.md §1、
+        specs/029-video-overrides/contracts/screen-api.md §0）。
       required:
         [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState, tags, public]
       additionalProperties: false
@@ -2613,7 +2647,19 @@ components:
           format: int64
         title:
           type: string
-          description: 拡張子を除いたファイル名
+          description: |
+            有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名
+            （specs/029-video-overrides/contracts/screen-api.md §0）
+        fileTitle:
+          type: string
+          description: 拡張子を除いたファイル名。所有者の応答にだけ入る
+        displayName:
+          type: string
+          description: 所有者が付けた表示名。設定されているときだけ、所有者の応答にだけ入る
+        thumbnailPositionMs:
+          type: integer
+          format: int64
+          description: 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
         sizeBytes:
           type: integer
           format: int64
@@ -2863,6 +2909,15 @@ components:
             そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
         group:
           $ref: "#/components/schemas/RelatedGroup"
+
+    DisplayNameUpdate:
+      type: object
+      required: [displayName]
+      additionalProperties: false
+      properties:
+        displayName:
+          type: string
+          description: 新しい表示名。前後の空白を取り除いて空なら解除する
 
     ProgressUpdate:
       type: object
@@ -3226,3 +3281,5 @@ components:
         - api_token_name_control_characters
         - api_token_name_too_long
         - subtitle_unavailable
+        - display_name_control_characters
+        - display_name_too_long

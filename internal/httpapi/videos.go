@@ -156,7 +156,9 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 
 // forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
 // 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
-// （contracts/guest-api.md §1、親 Issue 要件 18）。所有者にはそのまま返す。
+// （contracts/guest-api.md §1、親 Issue 要件 18）。ファイル名由来の題名・表示名・代表サムネイルの
+// 位置も出さず、ゲストは title で表示名だけを受け取る（specs/029-video-overrides/contracts/screen-api.md §0）。
+// 所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
 		return video
@@ -166,6 +168,9 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.ProbeError = nil
 	video.ProbeErrorCode = nil
 	video.Tags = []gen.VideoTag{}
+	video.FileTitle = nil
+	video.DisplayName = nil
+	video.ThumbnailPositionMs = nil
 	return video
 }
 
@@ -275,7 +280,12 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	if !ok {
 		return
 	}
+	s.writeVideoDetail(w, r, video)
+}
 
+// writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
+// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。
+func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey), tags, video.ContentKey)
@@ -453,6 +463,21 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		Public:         video.Public,
 	}
 
+	// 上書きの項目（specs/029-video-overrides/contracts/screen-api.md §0）。title は有効な
+	// 題名で、ファイル名由来の題名・表示名・代表サムネイルの位置は forAudience がゲストの
+	// 応答から外す。
+	if video.FileTitle != "" {
+		fileTitle := video.FileTitle
+		out.FileTitle = &fileTitle
+	}
+	if video.DisplayName != "" {
+		displayName := video.DisplayName
+		out.DisplayName = &displayName
+	}
+	if video.ThumbnailPositionMs != nil {
+		position := *video.ThumbnailPositionMs
+		out.ThumbnailPositionMs = &position
+	}
 	if video.DurationMs != nil {
 		out.DurationMs = video.DurationMs
 	}
