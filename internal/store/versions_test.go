@@ -97,7 +97,7 @@ func listedIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 
 // タグ X の A とタグ Y の B を A を代表に束ねると、どちらの UserKey も同じ集まりの鍵になり、
 // その鍵のタグは X だけで、B の content_key の行にはタグ Y が残る（受け入れ条件 6 の保存の部分）。
-// タグの絞り込みも集まりの鍵で判定する。
+// タグの絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る（data-model.md §4）。
 func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	x := attachNamedTag(t, db, "X", ids["a"])
@@ -122,7 +122,7 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	if b.Versions == nil || b.Versions.Count != 2 || b.Versions.RepresentativeID != ids["a"] {
 		t.Errorf("B の Versions = %+v", b.Versions)
 	}
-	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{x}}); !slices.Equal(got, []int64{ids["a"], ids["b"]}) {
+	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{x}}); !slices.Equal(got, []int64{ids["a"]}) {
 		t.Errorf("タグ X で絞った動画 = %v", got)
 	}
 	if got := listedIDs(t, db, domain.VideoQuery{TagIDs: []int64{y}}); len(got) != 0 {
@@ -310,7 +310,7 @@ func TestBundleMergesBundles(t *testing.T) {
 }
 
 // SaveProgress を B の UserKey に書くと A の再生位置が進む（受け入れ条件 7 の保存の部分）。
-// 視聴状態の絞り込みも集まりの鍵で判定する。
+// 視聴状態の絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る。
 func TestSaveProgressOnBundleMember(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -327,7 +327,7 @@ func TestSaveProgressOnBundleMember(t *testing.T) {
 	if progress[a.UserKey].PositionMs != 3000 {
 		t.Errorf("A の再生位置 = %+v, want 3000", progress[a.UserKey])
 	}
-	if got := listedIDs(t, db, domain.VideoQuery{Watch: domain.WatchInProgress}); !slices.Equal(got, []int64{ids["a"], ids["b"]}) {
+	if got := listedIDs(t, db, domain.VideoQuery{Watch: domain.WatchInProgress}); !slices.Equal(got, []int64{ids["a"]}) {
 		t.Errorf("見かけの動画 = %v", got)
 	}
 }

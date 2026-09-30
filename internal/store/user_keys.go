@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // 利用者データの鍵（specs/030-video-versions/data-model.md §3、research.md R-2）。
@@ -100,4 +102,37 @@ func contentKeysForUserKeys(ctx context.Context, q queryExecer, userKeys []strin
 		return nil, fmt.Errorf("cannot map user keys to content keys: %w", err)
 	}
 	return keys, nil
+}
+
+// 見せる動画（specs/030-video-versions/data-model.md §4、research.md R-3）。
+//
+// 一覧・検索・フォルダ・関連・フォルダの索引・タグの本数は、集まりに属さない動画と、各集まりの
+// 実効の代表だけを対象にする。実効の代表は、representative_key の動画に見る人に見せてよい所在が
+// あればそれ、無ければ見せてよい所在を持つメンバーのうち videos.id の最小のもの。1 本も無ければ
+// 集まりは出ない。実効の代表は読み出しのたびに決め、どこにも書かない。詳細（getVideo）・所在・
+// 配信・字幕・バージョンの一覧は、代表以外のバージョンも返す。
+//
+// data-model.md §4 の「見せる動画の CTE」shown(video_id, bundle_id) は、動画ごとの条件
+// shownVideoCondition と、所在ごとに集まりを結ぶ chosenLocationsCTE の形で持つ。一覧は
+// 所在の範囲で見せてよいかを既に判定しているので、動画ごとの表にすると同じ判定を
+// 2 度行い、1 万件で一覧が 1.5 倍ほど遅くなるため。
+
+// effectiveRepresentativeExpr は、集まり（id が式 bundleID）の見る人から見た実効の代表の
+// videos.id を返す副問い合わせである。見せてよい所在を持つメンバーが無ければ NULL になる。
+// 並べ方は bundleVersionsRef と同じである。
+func effectiveRepresentativeExpr(bundleID string, audience domain.Audience) string {
+	return `(select rv.id from video_bundle_members rm
+		join video_bundles rb on rb.id = rm.bundle_id
+		join videos rv on rv.content_key = rm.content_key and rv.content_key <> ''
+		where rm.bundle_id = ` + bundleID + ` and ` + visibleVideoCondition("rv", audience) + `
+		order by rv.content_key = rb.representative_key desc, rv.id limit 1)`
+}
+
+// shownVideoCondition は、動画（別名 alias の videos）が集まりに属さないか、属する集まりの
+// 実効の代表であることを表す条件句を返す。見せてよい所在を持つかは含めないので、呼び出し側が
+// 所在の範囲（visibleLocationCondition）か visibleVideoCondition と合わせて使う。
+func shownVideoCondition(alias string, audience domain.Audience) string {
+	return `(not exists (select 1 from video_bundle_members sm where sm.content_key = ` + alias + `.content_key and ` +
+		alias + `.content_key <> '') or ` + alias + `.id = ` +
+		effectiveRepresentativeExpr(`(select sm.bundle_id from video_bundle_members sm where sm.content_key = `+alias+`.content_key)`, audience) + `)`
 }

@@ -148,15 +148,31 @@ func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience
 // まとめる `chosen(video_id, path)` を返す（contracts/list-api.md §4）。
 // 式は所在1行に対して評価するので、語ごとに別の所在で満たした動画は当たらない
 // （要件 9）。ゲストの検索はタグの名前に照合しない（searchExprCondition）。
+//
+// 範囲は見せる動画（集まりに属さない動画と各集まりの実効の代表、shownVideoCondition）の
+// 所在に掛ける。検索式は、集まりに属さない動画では自分の所在に、集まりの代表では同じ集まりの
+// どれかの動画の登録の所在に掛ける（specs/030-video-versions/data-model.md §4）。どの
+// バージョンの題名・パスに当たっても代表の1件が出て、chosen.path は範囲にある代表の所在の
+// パスの最小のまま。所在の範囲が見せてよい所在に限るので、見せる動画の判定は所在ごとに
+// 集まりの規則だけを足せばよく、動画ごとの見せてよいかの判定を重ねない。
 func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
-	clauses := []string{scopeClause}
+	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
+		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
 	if exprClause, exprArgs := searchExprCondition(expr, "l", scope.audience); exprClause != "" {
-		clauses = append(clauses, exprClause)
+		bundleClause, bundleArgs := searchExprCondition(expr, "bl", scope.audience)
+		clauses = append(clauses, `((sbm.bundle_id is null and `+exprClause+`) or (sbm.bundle_id is not null and exists (
+			select 1 from video_bundle_members bm
+			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
+			join video_locations bl on bl.video_id = bv.id
+			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+bundleClause+`)))`)
 		args = append(args, exprArgs...)
+		args = append(args, bundleArgs...)
 	}
 	return `with chosen as (
 		select l.video_id, min(l.path) as path from video_locations l
+		join videos sv on sv.id = l.video_id
+		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
 		where ` + strings.Join(clauses, " and ") + `
 		group by l.video_id)`, args
 }

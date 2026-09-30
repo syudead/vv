@@ -1,5 +1,7 @@
 package store
 
+import "github.com/syudead/vv/internal/domain"
+
 // フォルダ由来のタグ（017 の data-model.md §4）。
 //
 // 動画の祖先のフォルダ名（video_folder_names）が tag_names の名前（元の名前か
@@ -23,17 +25,18 @@ func videoHasTagCondition(alias string) string {
 		`where vfn.video_id = ` + alias + `.id and ` + alias + `.content_key <> '' and tn.tag_id = ?))`
 }
 
-// taggedVideosSQL は、いまライブラリにある動画とそれに付いたタグの組
+// taggedVideosSQL は、いまライブラリにある見せる動画（所有者から見た shownVideoCondition。
+// 集まりは実効の代表の1本、specs/030-video-versions/data-model.md §4）とそれに付いたタグの組
 // (tag_id, video_id) を、どちらかの出所で付いていれば1行ずつ（重複なしで）
 // 返す副問い合わせである。extra は両方の出所に足す条件（先頭に and を付けて
 // 渡す）で、その引数は呼び出し側が2回（手で付けた分、フォルダ名の分）渡す。
 func taggedVideosSQL(extra string) string {
 	return `select vt.tag_id as tag_id, v.id as video_id from videos v
 		join video_tags vt on vt.content_key = ` + userKeyExpr("v") + `
-		where v.content_key <> '' and ` + registeredVideoCondition("v") + extra + `
+		where v.content_key <> '' and ` + registeredVideoCondition("v") + ` and ` + shownVideoCondition("v", domain.AudienceOwner) + extra + `
 		union
 		select tn.tag_id as tag_id, v.id as video_id from video_folder_names vfn
 		join tag_names tn on tn.name = vfn.name
 		join videos v on v.id = vfn.video_id and v.content_key <> ''
-		where ` + registeredVideoCondition("v") + extra
+		where ` + registeredVideoCondition("v") + ` and ` + shownVideoCondition("v", domain.AudienceOwner) + extra
 }

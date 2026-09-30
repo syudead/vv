@@ -83,6 +83,21 @@ as that video, and "all members" counts public members only
 [specs/027-partial-group-search/contracts/library-api.md](specs/027-partial-group-search/contracts/library-api.md)).
 `GET /api/videos` stays a per-video list for the folder view's root search.
 
+Every list folds a bundle of versions of the same video to its effective
+representative: the representative when the viewer may see one of its
+locations, otherwise the lowest-id version the viewer may see; with none, the
+bundle is not listed. `chosenLocationsCTE` applies the scope (library, public,
+folder) to the representative's locations only and matches the search
+expression against the registered locations of any version in the bundle, and
+the folder view and folder counts, the related list, the tag counts and the
+folder-index input (`folderIndexLocations`) use the same rule
+(`shownVideoCondition` in `internal/store/user_keys.go`). A folder holding only
+non-representative versions is a folder with no videos, and those versions join
+no folder group. `VersionStore` rebuilds the folder index in the transaction
+that bundles, changes the representative or unbundles. `GET /api/videos/{id}`,
+locations, streaming and subtitles still serve every version
+([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §4).
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
@@ -368,7 +383,7 @@ compile:
   lookup and creation are the package-private `findOrCreateTag` and `insertTag`
   (`internal/store/tags.go`), shared with `TagStore`. The rebuild
   itself is the package-private `rebuildFolderIndex`, shared by `ScanIndexStore`,
-  `SettingsStore` and `FolderGroupStore`; the assignment rule is the pure
+  `SettingsStore`, `FolderGroupStore` and `VersionStore`; the assignment rule is the pure
   `domain.BuildFolderIndex` (`specs/017-folder-groups/data-model.md` §2).
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
@@ -427,8 +442,9 @@ compile:
   user-keyed values to the new bundle's `user_key` and leaves each member's content-keyed
   rows untouched, so a removed version returns to its own values; dissolving a bundle down
   to one video copies the bundle's values onto that video's content key. Each operation is
-  one transaction that publishes `domain.VideoBundleChanged` after the commit, which the
-  screen subscription turns into a `video` notification per affected video.
+  one transaction that rebuilds the folder index and publishes `domain.VideoBundleChanged`
+  after the commit, which the screen subscription turns into a `video` notification per
+  affected video.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and
