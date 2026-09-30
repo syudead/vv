@@ -122,6 +122,8 @@ const server = {
   displayName: vi.fn<(body: unknown) => Response>(),
   /** PUT /api/videos/{id}/thumbnail-position の応答。 */
   thumbnailPosition: vi.fn<(body: unknown) => Response | Promise<Response>>(),
+  /** 集まりの経路（GET …/versions・POST …/make-representative・POST …/unbundle）の応答。 */
+  versions: vi.fn<(method: string, id: number, suffix: string) => Response>(),
   /** GET /api/auth/session が答える見る人の状態。 */
   session: "owner" as AuthState,
 };
@@ -214,6 +216,7 @@ describe("VideoPage", () => {
     server.grouping.mockReset();
     server.displayName.mockReset();
     server.thumbnailPosition.mockReset();
+    server.versions.mockReset();
     fetchMock.mockReset();
     installFakeEventSource();
     server.session = "owner";
@@ -244,6 +247,13 @@ describe("VideoPage", () => {
         return Promise.resolve(server.probe());
       if (suffix === "/open" && method === "POST") return Promise.resolve(server.open());
       if (suffix === "/progress") return Promise.resolve(json({}));
+      if (
+        suffix === "/versions" ||
+        suffix === "/make-representative" ||
+        suffix === "/unbundle"
+      ) {
+        return Promise.resolve(server.versions(method, id, suffix));
+      }
       if (suffix === "/display-name" && method === "PUT") {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         return Promise.resolve(server.displayName(body));
@@ -2006,6 +2016,388 @@ describe("VideoPage", () => {
       await ready();
       expect(screen.queryByRole("button", { name: captureName })).toBeNull();
       expect(screen.queryByRole("button", { name: clearName })).toBeNull();
+    });
+  });
+
+  describe("バージョン（specs/030-video-versions/ui-design.md「Video page」）", () => {
+    const tagX = { id: 1, name: "X", manual: true, fromFolder: false };
+    const tagY = { id: 2, name: "Y", manual: true, fromFolder: false };
+    const folder = { rootId: 1, path: "movies", rootName: "Media" };
+    const versionA: Video = {
+      ...video,
+      title: "A",
+      folder,
+      tags: [tagX],
+      versions: { count: 3, representativeId: 7 },
+    };
+    const versionB: Video = {
+      ...video,
+      id: 20,
+      title: "B",
+      width: 1280,
+      height: 720,
+      container: "mkv",
+      videoCodec: "hevc",
+      sizeBytes: 1_048_576,
+      folder: { rootId: 1, path: "movies/small", rootName: "Media" },
+      location: { path: "/media/movies/small/B.mkv", openable: true },
+      tags: [tagX],
+      versions: { count: 3, representativeId: 7 },
+    };
+    const versionC: Video = {
+      ...video,
+      id: 21,
+      title: "C",
+      folder,
+      tags: [tagX],
+      versions: { count: 3, representativeId: 7 },
+    };
+    const factName = (count: number) =>
+      `${String(count)} versions of this video. Show versions`;
+    const rows = () =>
+      within(screen.getByRole("list", { name: "Versions" })).getAllByRole("listitem");
+
+    function versionsCalls(suffix: string) {
+      return server.versions.mock.calls.filter((call) => call[2] === suffix);
+    }
+
+    function answerVersions(items: Video[], representativeId = 7) {
+      server.versions.mockImplementation((method, _id, suffix) =>
+        method === "GET" && suffix === "/versions"
+          ? json({ representativeId, items })
+          : json({ code: "internal", message: "x" }, 500),
+      );
+    }
+
+    async function openVersions(count = 3) {
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: factName(count) }));
+      await screen.findByRole("list", { name: "Versions" });
+      return user;
+    }
+
+    it("束ねていない動画・見せてよいバージョンが 1 本の動画には項目を出さない", async () => {
+      server.videos.set(7, [
+        { ...versionA, versions: { count: 1, representativeId: 7 } },
+      ]);
+      renderPage("7");
+      await ready();
+      expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
+      server.videos.set(7, [video]);
+    });
+
+    it("情報の行の追加日のあとに本数の項目を出し、開くと各バージョンの違いを代表から並べる", async () => {
+      server.videos.set(7, [versionA]);
+      answerVersions([versionA, versionB, versionC]);
+      renderPage("7", "/?q=abc");
+      await ready();
+      const facts = within(screen.getByRole("list", { name: "File details" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
+      expect(facts.at(-1)).toBe("3 versions");
+      await openVersions();
+      expect(versionsCalls("/versions")).toHaveLength(1);
+
+      const [first, second, third] = rows();
+      // 今の動画の行はリンクにせず、印を持つ。
+      expect(first?.getAttribute("aria-current")).toBe("true");
+      expect(first?.textContent).toContain("Now playing");
+      expect(first?.textContent).toContain("Representative");
+      expect(within(first as HTMLElement).queryByRole("link")).toBeNull();
+      expect(second?.textContent).not.toContain("Representative");
+      const link = within(second as HTMLElement).getByRole("link");
+      expect(link.getAttribute("aria-label")).toBe(
+        `Play B, 1280×720 MKV H.265 ${formatBytes(1_048_576)} Media / movies/small`,
+      );
+      // 所有者は行の title で絶対パスを読める。
+      expect(
+        second?.querySelector('[title*="/media/movies/small/B.mkv"]'),
+      ).not.toBeNull();
+      expect(
+        within(third as HTMLElement)
+          .getByRole("link")
+          .getAttribute("aria-label"),
+      ).toBe(
+        `Play C, 1920×1080 MP4 H.264 ${formatBytes(video.sizeBytes)} Media / movies`,
+      );
+      // 開いたときのフォーカスは今の動画以外の最初の行。
+      await waitFor(() => expect(document.activeElement).toBe(link));
+    });
+
+    it("行を押すとそのバージョンのページへ移ってそのファイルを再生し、再生中なら再生を続ける（受け入れ条件 7）", async () => {
+      server.videos.set(7, [versionA]);
+      server.videos.set(20, [versionB]);
+      answerVersions([versionA, versionB, versionC]);
+      renderPage("7", "/?q=abc");
+      await ready();
+      await waitFor(() => expect(playerMock.props?.video.id).toBe(7));
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      const user = await openVersions();
+      await user.click(within(rows()[1] as HTMLElement).getByRole("link"));
+
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("B"),
+      );
+      await waitFor(() => expect(player().video.id).toBe(20));
+      expect(player().autoplay).toBe(true);
+      // 戻り先は変えない。
+      fireEvent.click(closeButton());
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=abc");
+    });
+
+    it("代表に替えると印がその行へ移り、一覧を差し替えて動画を取り直す（受け入れ条件 8）", async () => {
+      server.videos.set(7, [
+        versionA,
+        { ...versionA, versions: { count: 3, representativeId: 20 } },
+      ]);
+      let representative = 7;
+      server.versions.mockImplementation((method, id, suffix) => {
+        if (method === "POST" && suffix === "/make-representative" && id === 20) {
+          representative = 20;
+        }
+        return representative === 20
+          ? json({ representativeId: 20, items: [versionB, versionA, versionC] })
+          : json({ representativeId: 7, items: [versionA, versionB, versionC] });
+      });
+      renderPage("7");
+      await ready();
+      const user = await openVersions();
+      await user.click(
+        within(rows()[1] as HTMLElement).getByRole("button", {
+          name: "More actions for B",
+        }),
+      );
+      const menu = await screen.findByRole("menu");
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Make representative", "Remove from versions"]);
+      await user.click(
+        within(menu).getByRole("menuitem", { name: "Make representative" }),
+      );
+
+      await waitFor(() => expect(rows()[0]?.textContent).toContain("B"));
+      expect(rows()[0]?.textContent).toContain("Representative");
+      expect(rows()[1]?.textContent).not.toContain("Representative");
+      expect(versionsCalls("/make-representative")).toHaveLength(1);
+      // 代表の行のメニューには「Make representative」が無い。
+      await user.click(
+        within(rows()[0] as HTMLElement).getByRole("button", {
+          name: "More actions for B",
+        }),
+      );
+      const representativeMenu = await screen.findByRole("menu");
+      expect(
+        within(representativeMenu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Remove from versions"]);
+      // トーストは出さない。
+      expect(screen.queryByText(/Removed/)).toBeNull();
+    });
+
+    it("別の行を外すと行を消して本数を減らし、残り 1 本なら閉じて動画を取り直す（受け入れ条件 9）", async () => {
+      server.videos.set(7, [versionA, { ...versionA, versions: undefined }]);
+      server.versions.mockImplementation((method, id, suffix) => {
+        if (method === "POST" && suffix === "/unbundle") {
+          const removed = id === 21 ? versionC : versionB;
+          return json({ ...removed, versions: undefined, tags: [tagY] });
+        }
+        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
+      });
+      renderPage("7");
+      await ready();
+      const user = await openVersions();
+      await user.click(
+        within(rows()[2] as HTMLElement).getByRole("button", {
+          name: "More actions for C",
+        }),
+      );
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Remove from versions" }),
+      );
+
+      expect(await screen.findByText('Removed "C" from the versions')).toBeDefined();
+      await waitFor(() => expect(rows()).toHaveLength(2));
+      expect(screen.getByRole("button", { name: factName(2) })).toBeDefined();
+
+      await user.click(
+        within(rows()[1] as HTMLElement).getByRole("button", {
+          name: "More actions for B",
+        }),
+      );
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Remove from versions" }),
+      );
+      expect(await screen.findByText('Removed "B" from the versions')).toBeDefined();
+      await waitFor(() =>
+        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
+      );
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: /versions of this video/ }),
+        ).toBeNull(),
+      );
+    });
+
+    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグに戻す（受け入れ条件 9）", async () => {
+      server.videos.set(20, [versionB]);
+      server.versions.mockImplementation((method, id, suffix) => {
+        if (method === "POST" && suffix === "/unbundle" && id === 20) {
+          return json({ ...versionB, versions: undefined, tags: [tagY] });
+        }
+        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
+      });
+      renderPage("20");
+      await ready();
+      expect(screen.getByRole("link", { name: /X/ })).toBeDefined();
+      const user = await openVersions();
+      const current = rows()[1] as HTMLElement;
+      expect(current.getAttribute("aria-current")).toBe("true");
+      await user.click(
+        within(current).getByRole("button", { name: "More actions for B" }),
+      );
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Remove from versions" }),
+      );
+
+      expect(await screen.findByText('Removed "B" from the versions')).toBeDefined();
+      await waitFor(() =>
+        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
+      );
+      expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
+      expect(screen.getByRole("link", { name: /Y/ })).toBeDefined();
+      expect(screen.queryByRole("link", { name: /Filter by X/ })).toBeNull();
+    });
+
+    it("別のタブで先に変わった失敗は一覧の下に 1 行出し、一覧と動画を取り直す", async () => {
+      server.videos.set(7, [versionA]);
+      server.versions.mockImplementation((method, _id, suffix) => {
+        if (method === "POST" && suffix === "/make-representative") {
+          return json(
+            { code: "invalid_request", message: "x", reason: "not_bundled" },
+            400,
+          );
+        }
+        return json({ representativeId: 7, items: [versionA, versionB, versionC] });
+      });
+      renderPage("7");
+      await ready();
+      const user = await openVersions();
+      const before = fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === "/api/videos/7" && (init?.method ?? "GET") === "GET",
+      ).length;
+      await user.click(
+        within(rows()[1] as HTMLElement).getByRole("button", {
+          name: "More actions for B",
+        }),
+      );
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Make representative" }),
+      );
+
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe(
+        "Couldn't change the versions: This video isn't bundled with others.",
+      );
+      // 浮き出しは開いたまま。
+      expect(screen.getByRole("list", { name: "Versions" })).toBeDefined();
+      await waitFor(() =>
+        expect(versionsCalls("/versions").length).toBeGreaterThanOrEqual(2),
+      );
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.filter(
+            ([input, init]) =>
+              String(input) === "/api/videos/7" && (init?.method ?? "GET") === "GET",
+          ).length,
+        ).toBeGreaterThan(before),
+      );
+    });
+
+    it("一覧を取れなければ失敗の 1 行と Retry を出す", async () => {
+      server.videos.set(7, [versionA]);
+      server.versions.mockImplementationOnce(() =>
+        json({ code: "internal", message: "x" }, 500),
+      );
+      renderPage("7");
+      await ready();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole("button", { name: factName(3) }));
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "Couldn't load the versions",
+      );
+      server.versions.mockImplementation(() =>
+        json({ representativeId: 7, items: [versionA, versionB, versionC] }),
+      );
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+      expect(await screen.findByRole("list", { name: "Versions" })).toBeDefined();
+    });
+
+    it("開いている間の Esc は浮き出しだけを閉じ、画面は閉じない", async () => {
+      server.videos.set(7, [versionA]);
+      answerVersions([versionA, versionB, versionC]);
+      renderPage("7", "/?q=abc");
+      await ready();
+      const user = await openVersions();
+      await user.keyboard("{Escape}");
+      await waitFor(() =>
+        expect(screen.queryByRole("list", { name: "Versions" })).toBeNull(),
+      );
+      expect(screen.queryByTestId("screen")).toBeNull();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: factName(3) }),
+      );
+    });
+
+    it("ゲストにも項目と一覧を出し、再生の切り替えはできるが行の操作は無い（受け入れ条件 12）", async () => {
+      const guest = (value: Video): Video => ({
+        ...value,
+        location: undefined,
+        tags: [],
+      });
+      server.videos.set(7, [guest(versionA)]);
+      server.videos.set(20, [guest(versionB)]);
+      answerVersions([guest(versionA), guest(versionB), guest(versionC)]);
+      server.session = "guest";
+      renderPage("7", "/", "guest");
+      await ready();
+      const user = await openVersions();
+      expect(screen.queryByRole("button", { name: /More actions/ })).toBeNull();
+      const link = within(rows()[1] as HTMLElement).getByRole("link");
+      // ゲストの行の title は相対の置き場所だけ。
+      expect(rows()[1]?.querySelector('[title*="/media/"]')).toBeNull();
+      await user.click(link);
+      await waitFor(() => expect(player().video.id).toBe(20));
+    });
+
+    it("集まりの再生位置がこのバージョンの尺以上なら 0 から再生する", async () => {
+      server.videos.set(20, [
+        {
+          ...versionB,
+          durationMs: 60_000,
+          progress: {
+            positionMs: 90_000,
+            completed: false,
+            updatedAt: "2026-09-01T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("20");
+      await ready();
+      await waitFor(() => expect(player().initialPositionMs).toBe(0));
     });
   });
 

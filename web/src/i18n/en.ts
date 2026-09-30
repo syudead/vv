@@ -740,6 +740,30 @@ export const en = {
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
     },
+    versions: {
+      count: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} version`,
+          other: `${formatNumber(count)} versions`,
+        }),
+      show: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} version of this video. Show versions`,
+          other: `${formatNumber(count)} versions of this video. Show versions`,
+        }),
+      label: "Versions",
+      representative: "Representative",
+      nowPlaying: "Now playing",
+      play: (title: string, details: string) =>
+        details === "" ? `Play ${title}` : `Play ${title}, ${details}`,
+      more: (title: string) => `More actions for ${title}`,
+      makeRepresentative: "Make representative",
+      remove: "Remove from versions",
+      loadFailed: "Couldn't load the versions",
+      retry: "Retry",
+      changeFailed: (reason: string) => `Couldn't change the versions: ${reason}`,
+      removed: (title: string) => `Removed "${title}" from the versions`,
+    },
     title: {
       edit: "Edit name",
       input: "Display name",
