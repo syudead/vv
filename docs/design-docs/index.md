@@ -39,3 +39,4 @@ Add each new document to this index.
 - [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)
 - [フォルダのグループと続けて再生の UI](../../specs/017-folder-groups/ui-design.md)
 - [画質メニューと途切れの警告の UI](../../specs/027-playback-quality/ui-design.md)
+- [動画の表示名の編集と今の場面のサムネイル指定の UI](../../specs/029-video-overrides/ui-design.md)
