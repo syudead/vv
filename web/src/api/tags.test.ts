@@ -7,11 +7,15 @@ import {
   attachVideoTagByName,
   createTag,
   currentTags,
+  confirmTag,
   deleteTag,
   detachVideoTag,
+  forgetRejectedTagName,
   getTags,
+  listRejectedTagNames,
   mergeTag,
   refreshTags,
+  rejectTag,
   removeTagSynonym,
   renameTag,
   subscribeTags,
@@ -32,12 +36,14 @@ const tag = (
     name: string;
     synonyms: string[];
     videoCount: number;
+    tentative: boolean;
   }> = {},
 ) => ({
   id: overrides.id ?? 1,
   name: overrides.name ?? "旅行",
   synonyms: overrides.synonyms ?? ([] as string[]),
   videoCount: overrides.videoCount ?? 0,
+  tentative: overrides.tentative ?? false,
 });
 
 const key = { query: "", sort: "addedDesc" as const };
@@ -342,6 +348,81 @@ describe("タグの変更が成功した後の後始末", () => {
     // Vitest がこのテストを失敗させる。ここまで到達できれば揉み消せている。
     await flush();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts/screen-api.md §2・§3）", () => {
+  it("confirmTagはPOST /api/tags/{id}/confirmを送り、成功後に共有の一覧を取り直す", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(tag({ id: 4, name: "仮" })))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 4, name: "仮" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(confirmTag(4)).resolves.toEqual(tag({ id: 4, name: "仮" }));
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/4/confirm");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(takeListSnapshot(key)).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 4, name: "仮" })]);
+    });
+  });
+
+  it("rejectTagはPOST /api/tags/{id}/rejectを送り、成功後に共有の一覧を取り直す", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await rejectTag(4);
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/4/reject");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(takeListSnapshot(key)).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([]);
+    });
+  });
+
+  it("rejectTagがtag_not_tentativeを受けたら共有の一覧を取り直してから投げ直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "tag_not_tentative", message: "x" }, 409),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 4, name: "確定済み" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(rejectTag(4)).rejects.toMatchObject({ code: "tag_not_tentative" });
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 4, name: "確定済み" })]);
+    });
+  });
+
+  it("listRejectedTagNamesは却下した名前を返す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: ["Alpha", "Beta"] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(listRejectedTagNames()).resolves.toEqual(["Alpha", "Beta"]);
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/rejected-names");
+  });
+
+  it("forgetRejectedTagNameは名前をクエリで送るDELETEで、共有の一覧は取り直さない", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await forgetRejectedTagName("旅 行&x");
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `/api/tags/rejected-names?${new URLSearchParams({ name: "旅 行&x" }).toString()}`,
+    );
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("DELETE");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

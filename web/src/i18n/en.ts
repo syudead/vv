@@ -97,6 +97,7 @@ const errorCodes = {
     tagName === undefined
       ? "Another tag already has that name. Merge the tags instead."
       : `The tag "${tagName}" already has that name. Merge the tags instead.`,
+  tag_not_tentative: "The tag is already confirmed.",
   unauthenticated: "Sign in to continue.",
   invalid_credentials: "The username or password is incorrect.",
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",

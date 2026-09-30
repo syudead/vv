@@ -72,7 +72,7 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.VideoTagsResponse{
-		Tag:     gen.TagRef{Id: ref.ID, Name: ref.Name},
+		Tag:     toAPITagRef(ref),
 		Applied: applied,
 	}, s.logger)
 }
@@ -102,7 +102,7 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	items := make([]gen.VideoTagsSummaryItem, 0, len(summary.Items))
 	for _, item := range summary.Items {
 		items = append(items, gen.VideoTagsSummaryItem{
-			Tag:         gen.TagRef{Id: item.Tag.ID, Name: item.Tag.Name},
+			Tag:         toAPITagRef(item.Tag),
 			Count:       item.Count,
 			ManualCount: item.ManualCount,
 		})

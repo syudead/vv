@@ -96,6 +96,7 @@ export function applyTagToTags(
     name: tag.name,
     manual: true,
     fromFolder: existing?.fromFolder ?? false,
+    tentative: tag.tentative,
   };
   // 既に付いていた同じ id の行も、いったん外してから挿し直す。改名やシノニムから
   // の付与で名前が変わっていれば、その最新の名前が並びにも反映される。

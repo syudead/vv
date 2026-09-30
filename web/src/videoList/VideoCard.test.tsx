@@ -315,7 +315,11 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("tagsRow を渡すと、題名の下にそれを出す", () => {
     renderCard(
-      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      video({
+        tags: [
+          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        ],
+      }),
       {
         tagsRow: () => <p>タグの行</p>,
       },
@@ -325,7 +329,11 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("tagsRow はリンクの外、同じ article の中に置く", () => {
     renderCard(
-      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      video({
+        tags: [
+          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        ],
+      }),
       {
         tagsRow: () => <button type="button">tags</button>,
       },
@@ -345,7 +353,11 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("題名とタグの行の間隔は今の gap-1 と同じ（B3）", () => {
     renderCard(
-      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      video({
+        tags: [
+          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        ],
+      }),
       {
         tagsRow: () => <p>タグの行</p>,
       },
@@ -356,7 +368,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("同じ参照の props で親が再描画しても memo で再描画せず、tagsRow を呼び直さない（N4）", () => {
     const item = video({
-      tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }],
+      tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false }],
     });
     const stableTagsRow = vi.fn(() => <p>タグの行</p>);
     const props = {

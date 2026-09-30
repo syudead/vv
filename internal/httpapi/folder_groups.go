@@ -99,7 +99,7 @@ func (s *server) TagFolderGroup(w http.ResponseWriter, r *http.Request, rootID g
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FolderGroupTagResult{
-		Tag:      gen.TagRef{Id: result.Tag.ID, Name: result.Tag.Name},
+		Tag:      toAPITagRef(result.Tag),
 		Created:  result.Created,
 		Grouping: apiFolderGrouping(result.Grouping, rel),
 	}, s.logger)

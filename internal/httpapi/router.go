@@ -516,8 +516,10 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
 		}
 	case http.MethodPatch:
+		// /api/tags/rejected-names は {id} の段ではなく却下した名前の経路で、PATCH を持たない
+		// （specs/031-tentative-tags/contracts/screen-api.md §3）。
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
-			return id != "" && !strings.Contains(id, "/")
+			return id != "" && id != "rejected-names" && !strings.Contains(id, "/")
 		}
 	}
 	return false
@@ -589,6 +591,7 @@ const (
 	codeTagNotFound                 = gen.ErrorCodeTagNotFound
 	codeTagNameTaken                = gen.ErrorCodeTagNameTaken
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
+	codeTagNotTentative             = gen.ErrorCodeTagNotTentative
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

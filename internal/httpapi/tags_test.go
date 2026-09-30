@@ -30,6 +30,9 @@ type fakeTags struct {
 	detachApplied int
 	summary       domain.TagSummary
 	byContentKey  map[string][]domain.VideoTag
+
+	// 031: 却下した名前の一覧の決め打ち。nil なら nil を返す。
+	rejectedNames []string
 }
 
 func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
@@ -113,22 +116,22 @@ func (f *fakeTags) ApplyVideoTags(_ context.Context, _ []domain.VideoRef, _ doma
 }
 
 func (f *fakeTags) ConfirmTag(_ context.Context, id int64) (domain.Tag, error) {
-	f.operation = "confirm"
+	f.operation, f.lastID = "confirm", id
 	return domain.Tag{ID: id}, f.err
 }
 
-func (f *fakeTags) RejectTag(context.Context, int64) (string, error) {
-	f.operation = "reject"
+func (f *fakeTags) RejectTag(_ context.Context, id int64) (string, error) {
+	f.operation, f.lastID = "reject", id
 	return "", f.err
 }
 
 func (f *fakeTags) ListRejectedTagNames(context.Context) ([]string, error) {
 	f.operation = "list-rejected"
-	return []string{}, f.err
+	return f.rejectedNames, f.err
 }
 
-func (f *fakeTags) ForgetRejectedTagName(context.Context, string) error {
-	f.operation = "forget-rejected"
+func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
+	f.operation, f.lastName = "forget-rejected", name
 	return f.err
 }
 

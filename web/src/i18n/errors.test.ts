@@ -101,6 +101,12 @@ describe("errorText", () => {
     );
   });
 
+  it("says a tag is already confirmed for tag_not_tentative", () => {
+    expect(errorText(new RequestFailed(409, "tag_not_tentative", "x"))).toBe(
+      "The tag is already confirmed.",
+    );
+  });
+
   it("falls back to the code when the reason is unknown", () => {
     const failure = new RequestFailed(404, "not_found", "Gone.", { reason: "brand_new" });
     expect(errorText(failure)).toBe("It wasn't found.");

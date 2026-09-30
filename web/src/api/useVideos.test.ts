@@ -747,14 +747,16 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags(
         [2],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );
     });
     expect(
       itemVideos(result.current.items).find((video) => video.id === 2)?.tags,
-    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+    ).toEqual([
+      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
     expect(
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
     ).toEqual([]);
@@ -762,7 +764,7 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags(
         [2],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "remove",
         nextVideoTagsSequence(),
       );
@@ -792,7 +794,7 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags(
         [3],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );
@@ -806,7 +808,9 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() =>
       expect(
         itemVideos(result.current.items).find((video) => video.id === 3)?.tags,
-      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
+      ).toEqual([
+        { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      ]),
     );
   });
 
@@ -825,7 +829,7 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags(
         [1, 3],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );
@@ -833,14 +837,18 @@ describe("useVideos の準備の反映", () => {
     // 動画1は表示中なので、その場で反映される（従来どおり）。
     expect(
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
-    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+    ).toEqual([
+      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
 
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
       expect(
         itemVideos(result.current.items).find((video) => video.id === 3)?.tags,
-      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
+      ).toEqual([
+        { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      ]),
     );
   });
 
@@ -865,7 +873,7 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags(
         [121],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );
@@ -889,7 +897,9 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() =>
       expect(
         itemVideos(result.current.items).find((video) => video.id === 121)?.tags,
-      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
+      ).toEqual([
+        { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      ]),
     );
   });
 
@@ -909,7 +919,12 @@ describe("useVideos の準備の反映", () => {
 
     // 2番目に送った「外す」の応答が先に届く。
     act(() => {
-      recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "remove", second);
+      recordAppliedVideoTags(
+        [1],
+        { id: 5, name: "旅行", tentative: false },
+        "remove",
+        second,
+      );
     });
     expect(
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
@@ -917,7 +932,12 @@ describe("useVideos の準備の反映", () => {
 
     // 1番目に送った「付ける」の応答が遅れて届いても、2番目の結果を上書きしない。
     act(() => {
-      recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
+      recordAppliedVideoTags(
+        [1],
+        { id: 5, name: "旅行", tentative: false },
+        "add",
+        first,
+      );
     });
     expect(
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
@@ -1404,13 +1424,19 @@ describe("useVideos のグループの項目", () => {
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
     );
-    const tag = { id: 5, name: "旅行", manual: true, fromFolder: false };
+    const tag = {
+      id: 5,
+      name: "旅行",
+      manual: true,
+      fromFolder: false,
+      tentative: false,
+    };
     getFolderGroup.mockResolvedValueOnce(group({ tags: [tag] }));
 
     act(() => {
       recordAppliedVideoTags(
         [12],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );
@@ -1450,7 +1476,7 @@ describe("useVideos のグループの項目", () => {
       );
       recordAppliedVideoTags(
         [2],
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", tentative: false },
         "add",
         nextVideoTagsSequence(),
       );

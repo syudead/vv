@@ -173,12 +173,19 @@ describe("付け外しの結果の反映", () => {
   it("recordAppliedVideoTagsのaddで、対象の項目のtagsだけが変わる", () => {
     saveListSnapshot({ query: "" }, body([1, 2]));
 
-    recordAppliedVideoTags([2], { id: 5, name: "旅行" }, "add", nextVideoTagsSequence());
+    recordAppliedVideoTags(
+      [2],
+      { id: 5, name: "旅行", tentative: false },
+      "add",
+      nextVideoTagsSequence(),
+    );
 
     const restored = takeListSnapshot({ query: "" });
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 2)?.tags,
-    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+    ).toEqual([
+      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
     // 対象でない項目は変わらない。
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
@@ -195,11 +202,15 @@ describe("付け外しの結果の反映", () => {
         items: [
           videoItem({
             ...item(1),
-            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+            tags: [
+              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+            ],
           }),
           videoItem({
             ...item(2),
-            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+            tags: [
+              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+            ],
           }),
         ],
         total: 2,
@@ -211,7 +222,7 @@ describe("付け外しの結果の反映", () => {
 
     recordAppliedVideoTags(
       [2],
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", tentative: false },
       "remove",
       nextVideoTagsSequence(),
     );
@@ -223,7 +234,9 @@ describe("付け外しの結果の反映", () => {
     // 対象でない項目にはまだ付いている。
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
-    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+    ).toEqual([
+      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
   });
 });
 
@@ -275,11 +288,16 @@ describe("控えの中のグループの項目", () => {
     saveWithGroup();
     recordAppliedVideoTags(
       [10, 11],
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", tentative: false },
       "add",
       nextVideoTagsSequence(),
     );
-    recordAppliedVideoTags([11], { id: 6, name: "山" }, "add", nextVideoTagsSequence());
+    recordAppliedVideoTags(
+      [11],
+      { id: 6, name: "山", tentative: false },
+      "add",
+      nextVideoTagsSequence(),
+    );
 
     const restored = takeListSnapshot({ query: "" });
     expect(restored?.staleGroups).toEqual([{ rootId: 3, path: "A/B" }]);
