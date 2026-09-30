@@ -153,6 +153,12 @@ export interface PlayerStatus {
    * 再生の終わりと失敗で下ろす。
    */
   stalled: boolean;
+  /**
+   * この再生の最初のメタデータを受け、続きからの位置を当て終えた。論理上の再生位置が
+   * 見ている場面の位置として確定した合図で、今の場面を代表サムネイルにする操作はこれを
+   * 待つ（specs/029-video-overrides/ui-design.md「Capture button」）。一度立てたら下ろさない。
+   */
+  positioned: boolean;
 }
 
 export const initialPlayerStatus: PlayerStatus = {
@@ -162,6 +168,7 @@ export const initialPlayerStatus: PlayerStatus = {
   userActive: true,
   ended: false,
   stalled: false,
+  positioned: false,
 };
 
 interface Props {
@@ -424,7 +431,8 @@ export default function VideoPlayer(props: Props) {
         merged.playing === status.playing &&
         merged.userActive === status.userActive &&
         merged.ended === status.ended &&
-        merged.stalled === status.stalled
+        merged.stalled === status.stalled &&
+        merged.positioned === status.positioned
       ) {
         return;
       }
@@ -463,8 +471,11 @@ export default function VideoPlayer(props: Props) {
 
     const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
     latest.current.onControls(
-      createPlayerControls(player as unknown as ControllablePlayer, menuOpen, () =>
-        subtitles.toggle(),
+      createPlayerControls(
+        player as unknown as ControllablePlayer,
+        menuOpen,
+        () => subtitles.toggle(),
+        () => reportPosition(),
       ),
     );
 
@@ -566,22 +577,21 @@ export default function VideoPlayer(props: Props) {
       setHoldControlBar(false);
       if (pendingRecovery !== null) {
         finishRecovery();
-        return;
-      }
-      if (pendingSwitch !== null) {
+      } else if (pendingSwitch !== null) {
         finishSwitch();
-        return;
+      } else if (!resumeApplied && initialPositionMs > 0) {
+        resumeApplied = true;
+        if (attempt.route === "direct") {
+          player.currentTime(initialPositionMs / 1000);
+          latest.current.onPosition(initialPositionMs);
+        } else {
+          // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
+          // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
+          reportPosition();
+        }
       }
-      if (resumeApplied || initialPositionMs <= 0) return;
-      resumeApplied = true;
-      if (attempt.route === "direct") {
-        player.currentTime(initialPositionMs / 1000);
-        latest.current.onPosition(initialPositionMs);
-        return;
-      }
-      // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
-      // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
-      reportPosition();
+      // 続きからの位置を当て終えたので、論理上の位置は見ている場面の位置になった。
+      setStatus({ positioned: true });
     });
     player.on("loadstart", () => {
       if (pendingSwitch !== null && mediaSourceIs(pendingSwitch.src)) {

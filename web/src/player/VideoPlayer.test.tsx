@@ -776,6 +776,29 @@ describe("VideoPlayer", () => {
     );
   });
 
+  it("最初のメタデータで続きからの位置を当て終えたら positioned を知らせ、操作の入口は今の論理上の位置を返す", async () => {
+    const values = { ...props(), initialPositionMs: 12_000 };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(values.onControls).toHaveBeenCalled());
+    const controls = values.onControls.mock.calls.at(-1)?.[0] as
+      import("./playerControls").PlayerControls | null;
+    const player = mock.instances[0];
+    if (controls == null || player === undefined)
+      throw new Error("操作の入口がありません");
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: false }),
+    );
+
+    act(() => player.trigger("loadedmetadata"));
+    expect(player.time).toBe(12);
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: true }),
+    );
+    player.time = 83.4564;
+    expect(controls.positionMs()).toBe(83_456);
+    expect(values.onPosition).toHaveBeenLastCalledWith(controls.positionMs());
+  });
+
   it("全画面は上に重ねる層ごと（渡した入れ物）にし、吹き出しもその中に描く", async () => {
     const frame = document.createElement("div");
     document.body.append(frame);

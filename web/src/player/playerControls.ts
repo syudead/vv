@@ -25,6 +25,12 @@ export interface PlayerControls {
   menuOpen(): boolean;
   /** wake は操作バーを見せ続ける（video.js の user-active にする）。 */
   wake(): void;
+  /**
+   * positionMs は今の論理上の再生位置をミリ秒で返す。再生位置の保存へ伝える値と同じで、
+   * 今の場面を代表サムネイルにする操作が読む（specs/029-video-overrides/ui-design.md
+   * 「Capture button」）。
+   */
+  positionMs(): number;
 }
 
 /** ControllablePlayer は、ここで使う video.js の Player の部分である。 */
@@ -57,6 +63,7 @@ export function createPlayerControls(
   player: ControllablePlayer,
   menuOpen: () => boolean,
   toggleSubtitles: () => void = () => undefined,
+  positionMs: () => number = () => (player.currentTime() ?? 0) * 1000,
 ): PlayerControls {
   const play = () => {
     void player.play()?.catch(() => undefined);
@@ -87,5 +94,6 @@ export function createPlayerControls(
     wake() {
       player.userActive(true);
     },
+    positionMs,
   };
 }
