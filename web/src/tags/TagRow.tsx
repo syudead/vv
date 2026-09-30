@@ -151,20 +151,24 @@ export default function TagRow({
               名前は省略されても、仮の目印は shrink-0 で名前の後ろに残す
               （ui-design.md「Tentative mark」）。行を探す試験が名前の列の div を
               `closest("div")` で辿るので、ここの包みは span にする。
+              Link は文字の幅に縮むので、`after:` の疑似要素を包み（relative）
+              いっぱいに広げ、名前の列の空白を押しても絞り込んだ一覧が開くように
+              する。目印は relative で疑似要素の上に置き、Tooltip を受けられる
+              ようにする。
             */}
-            <span className="flex min-w-0 items-center gap-1">
+            <span className="relative flex min-w-0 items-center gap-1">
               <Link
                 ref={(node) => registerRefs(tag.id, { nameLink: node })}
                 to={`/?tag=${String(tag.id)}`}
                 title={tag.name}
                 aria-label={t.tags.row.open(tag.name)}
-                className="block min-w-0 truncate text-sm font-medium text-fg hover:text-link"
+                className="block min-w-0 truncate text-sm font-medium text-fg after:absolute after:inset-0 hover:text-link"
               >
                 {tag.name}
               </Link>
               {tag.tentative && (
                 <Tooltip content={t.tags.tentative}>
-                  <span className="inline-flex shrink-0">
+                  <span className="relative inline-flex shrink-0">
                     <TentativeMark size="row" />
                     <span className="sr-only">{t.tags.tentative}</span>
                   </span>
