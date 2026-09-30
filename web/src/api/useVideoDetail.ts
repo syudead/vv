@@ -54,13 +54,19 @@ export function isProcessing(video: Video): boolean {
  *   それ以外の一時的な失敗では、手元の控えを残す。
  *
  * `refresh` はすぐに取り直し、その取得が終わったら解決する。
+ *
+ * `replace` は、変更の要求の応答で受け取った動画をそのまま手元の 1 件にする（表示名の保存。
+ * specs/029-video-overrides/ui-design.md「Save」）。送信中の取り直しは打ち切る。変更の前に
+ * 始めた取り直しの応答で、変更した値を巻き戻さないためである。別の動画の応答は捨てる。
  */
 export function useVideoDetail(id: number): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
+  replace: (video: Video) => void;
 } {
   const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const replaceRef = useRef<(video: Video) => void>(() => undefined);
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
   const owner = useAudience() === "owner";
 
@@ -69,6 +75,7 @@ export function useVideoDetail(id: number): {
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
+      replaceRef.current = () => undefined;
       return;
     }
 
@@ -119,6 +126,15 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
+    replaceRef.current = (video) => {
+      if (!alive || video.id !== id) return;
+      controller?.abort();
+      controller = null;
+      current = video;
+      setState({ kind: "ready", id, video });
+      settle();
+    };
+
     // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
     // （issue 305。再生画面の切り替えは応答を受けてからこれで状態が変わる）。
     const unsubscribeVisibility = subscribeVideoVisibility((videoIds, isPublic) => {
@@ -156,7 +172,8 @@ export function useVideoDetail(id: number): {
   }, [id, owner]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
-  return { state, refresh };
+  const replace = useCallback((video: Video) => replaceRef.current(video), []);
+  return { state, refresh, replace };
 }
 
 export type RelatedState =

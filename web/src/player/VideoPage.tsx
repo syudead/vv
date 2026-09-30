@@ -51,6 +51,7 @@ import VideoPlayer, {
   type PlayerStatus,
 } from "./VideoPlayer";
 import VideoTags from "./VideoTags";
+import VideoTitle from "./VideoTitle";
 import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
 
@@ -86,7 +87,7 @@ export default function VideoPage() {
   const audience = useAudience();
   const owner = audience === "owner";
 
-  const { state: detailState, refresh } = useVideoDetail(id);
+  const { state: detailState, refresh, replace } = useVideoDetail(id);
   const { state: relatedState, retry: retryRelated } = useRelatedVideos(id);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
@@ -492,9 +493,14 @@ export default function VideoPage() {
                       }}
                     />
                   )}
-                  <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
-                    {video.title}
-                  </h1>
+                  <VideoTitle
+                    // 別の動画へ移ったら、編集中の入力と失敗の行を持ち越さない。
+                    key={`title:${String(video.id)}`}
+                    video={video}
+                    owner={owner}
+                    onSaved={replace}
+                    onStale={() => void refresh()}
+                  />
                   {owner && (
                     <VideoTags
                       // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id

@@ -122,6 +122,34 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { previewState: "done" } });
   });
 
+  it("replace は応答の動画を手元の 1 件にし、先に始めた取り直しの応答で巻き戻さない", async () => {
+    let answer: ((video: Video) => void) | undefined;
+    getVideo.mockResolvedValueOnce(done).mockImplementationOnce(
+      () =>
+        new Promise<Video>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+    await emitServerEvent("video", { id: 7 });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
+
+    act(() =>
+      result.current.replace({ ...done, title: "新しい名前", displayName: "新しい名前" }),
+    );
+    expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
+
+    answer?.(done);
+    await flush();
+    expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
+
+    // 別の動画の応答は捨てる。
+    act(() => result.current.replace({ ...done, id: 8, title: "別の動画" }));
+    expect(result.current.state).toMatchObject({ id: 7, video: { title: "新しい名前" } });
+  });
+
   it("公開を切り替える前に始めた取り直しが後から届いても、公開の表示を巻き戻さない", async () => {
     vi.stubGlobal(
       "fetch",
