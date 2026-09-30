@@ -494,6 +494,29 @@ export const en = {
     },
     noMatches: (query: string) => `No tags match "${query}"`,
     clearSearch: "Show all tags",
+    // 仮のタグ（specs/031-tentative-tags/ui-design.md「Words」）。
+    tentative: "Tentative",
+    tentativeOnly: "Tentative only",
+    tentativeOnlyHint: "Show only tags created by automatic tagging",
+    noTentative: {
+      title: "No tentative tags",
+      description:
+        "Tags created by automatic tagging appear here until you confirm or reject them.",
+    },
+    noTentativeMatches: (query: string) => `No tentative tags match "${query}"`,
+    confirmed: (name: string) => `Confirmed "${name}"`,
+    rejected: (name: string) => `Rejected "${name}"`,
+    alreadyConfirmed: "This tag was already confirmed, so the list was reloaded",
+    rejectedNames: {
+      heading: "Rejected names",
+      description:
+        "Automatic tagging won't create these tags. Remove a name to allow it again.",
+      empty: "No rejected names",
+      allow: (name: string) => `Allow "${name}" again`,
+      loadFailed: "Couldn't load the rejected names",
+      removeFailed: (name: string, reason: string) =>
+        `Couldn't remove "${name}": ${reason}`,
+    },
     search: {
       label: "Search tags",
       placeholder: "Search tags",
@@ -526,6 +549,17 @@ export const en = {
       more: "More actions",
       merge: "Merge into another tag…",
       delete: "Delete…",
+      confirm: "Confirm",
+      reject: "Reject…",
+    },
+    rejectDialog: {
+      title: (name: string) => `Reject "${name}"`,
+      unused: (name: string) =>
+        `This tag isn't on any videos. Automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+      used: (name: string, count: number) =>
+        `This tag will be removed from ${videos(count)}, and automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+      submit: "Reject",
+      submitting: "Rejecting…",
     },
     deleteDialog: {
       title: (name: string) => `Delete "${name}"`,
