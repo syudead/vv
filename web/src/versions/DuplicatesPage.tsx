@@ -1,5 +1,5 @@
 import { AlertCircle, Layers, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
@@ -62,11 +62,14 @@ export default function DuplicatesPage() {
   const [bundling, setBundling] = useState<Pair | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const differentButtons = useRef(new Map<string, HTMLButtonElement>());
-  // 送信の応答は後から届くので、そのときの一覧を読めるようにする。
+  // 送信の応答は後から届くので、そのときの一覧を読めるようにする。描画を待たずに ref も
+  // 更新するので、同じ描画の前に重なって届いた決定（別々の組の「Different videos」）も
+  // 互いの結果の上に重なり、先に消した組を戻さない。
   const pageRef = useRef(page);
-  useLayoutEffect(() => {
-    pageRef.current = page;
-  }, [page]);
+  const showPage = useCallback((next: Page) => {
+    pageRef.current = next;
+    setPage(next);
+  }, []);
 
   useEffect(() => {
     const previous = document.title;
@@ -101,18 +104,27 @@ export default function DuplicatesPage() {
           .filter((pair): pair is Pair => pair !== null);
         const items = pairs.filter((pair) => !decided.has(pair.key));
         const dropped = pairs.length - items.length;
-        setPage({ kind: "ready", items, total: Math.max(0, result.total - dropped) });
+        let total = Math.max(0, result.total - dropped);
+        if (items.length === 0 && total > 0) {
+          // 見せる組が尽きたが、上限 200 件の外に組が残っている。取得の間に決めた組で
+          // 尽きたのなら取り直して補う。応答が組を返さなかったのなら、見せる組は無い。
+          if (dropped > 0) again.current = true;
+          else total = 0;
+        }
+        showPage({ kind: "ready", items, total });
         if (again.current) load();
       },
       (error: unknown) => {
         if (isAborted(error) || controller.signal.aborted) return;
         fetching.current = null;
-        // 取り直しの失敗では今の一覧を残す。最初の取得の失敗だけを画面に出す。
-        setPage((current) => (current.kind === "ready" ? current : { kind: "failed" }));
+        // 取り直しの失敗では今の一覧を残す。見せる組が無いときの失敗だけを画面に出す。
+        const current = pageRef.current;
+        if (current.kind !== "ready" || current.items.length === 0)
+          showPage({ kind: "failed" });
         if (again.current) load();
       },
     );
-  }, []);
+  }, [showPage]);
 
   useEffect(() => {
     // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。
@@ -131,7 +143,7 @@ export default function DuplicatesPage() {
   }, [load]);
 
   function retry() {
-    setPage({ kind: "loading" });
+    showPage({ kind: "loading" });
     load();
   }
 
@@ -139,6 +151,9 @@ export default function DuplicatesPage() {
    * removePair は決めた組を一覧から消し、件数を減らし、フォーカスを次の組の「Different
    * videos」へ移す。無ければ前の組、1 組も無ければ見出しへ。窓を閉じたときの戻りのフォーカス
    * （ModalFrame が次のマイクロタスクで戻す）より後に移すため、タイマーで待つ。
+   *
+   * 見せていた組が尽きても `total` が残っていれば（候補が上限 200 件を超えていた）、一覧を
+   * 取り直して残りの組を出す。取り直しの間は読み込み中と同じ見え方にする。
    */
   function removePair(key: string) {
     decidedDuringFetch.current.add(key);
@@ -147,7 +162,9 @@ export default function DuplicatesPage() {
     const index = page.items.findIndex((item) => item.key === key);
     if (index < 0) return;
     const items = page.items.filter((_, position) => position !== index);
-    setPage({ kind: "ready", items, total: Math.max(0, page.total - 1) });
+    const total = Math.max(0, page.total - 1);
+    showPage({ kind: "ready", items, total });
+    if (items.length === 0 && total > 0) load();
     const next = items[index] ?? items[index - 1];
     const nextKey = next === undefined ? undefined : next.key;
     setTimeout(() => {
@@ -186,13 +203,15 @@ export default function DuplicatesPage() {
     );
   }
 
-  const count =
-    page.kind === "ready"
+  // 見せていた組が尽き、上限の外に残る組を取り直している間。
+  const refilling = page.kind === "ready" && page.items.length === 0 && page.total > 0;
+  const loading = page.kind === "loading" || refilling;
+  const count = loading
+    ? t.versions.duplicates.loading
+    : page.kind === "ready"
       ? t.versions.duplicates.count(page.items.length, page.total)
-      : page.kind === "loading"
-        ? t.versions.duplicates.loading
-        : null;
-  const empty = page.kind === "ready" && page.items.length === 0;
+      : null;
+  const empty = page.kind === "ready" && page.items.length === 0 && page.total === 0;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -209,7 +228,7 @@ export default function DuplicatesPage() {
       </p>
 
       <div className="mt-2">
-        {page.kind === "loading" && (
+        {loading && (
           <div className="space-y-4 py-4" aria-hidden="true">
             {Array.from({ length: 3 }, (_, index) => (
               <Skeleton key={index} className="h-24" />
@@ -234,7 +253,7 @@ export default function DuplicatesPage() {
           />
         )}
 
-        {page.kind === "ready" && !empty && (
+        {page.kind === "ready" && page.items.length > 0 && (
           <ul className="divide-y divide-border">
             {page.items.map((pair) => {
               const key = pair.key;

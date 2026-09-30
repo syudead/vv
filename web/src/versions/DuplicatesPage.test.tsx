@@ -69,6 +69,8 @@ const server = {
   dismissRequests: [] as number[][],
   dismissError: null as { status: number; body: unknown } | null,
   holdDismiss: null as ((response: Response) => void) | null,
+  /** 止めている却下の応答すべて（重なった決定を同じ時に返すため）。 */
+  heldDismisses: [] as ((response: Response) => void)[],
   hold: false,
   /** 一覧の応答を止めておく（取り直しの重なりを見るため）。 */
   holdList: [] as (() => void)[],
@@ -115,6 +117,7 @@ function install() {
       if (server.hold) {
         return new Promise<Response>((resolve) => {
           server.holdDismiss = resolve;
+          server.heldDismisses.push(resolve);
         }).then(respond);
       }
       return Promise.resolve(respond());
@@ -187,6 +190,7 @@ beforeEach(() => {
   server.dismissRequests = [];
   server.dismissError = null;
   server.holdDismiss = null;
+  server.heldDismisses = [];
   server.hold = false;
   server.holdList = [];
   server.holdingList = false;
@@ -368,6 +372,58 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
         }),
       ),
     );
+  });
+
+  it("別々の組の却下が同時に終わっても、先に消した組を戻さない", async () => {
+    const user = userEvent.setup();
+    server.hold = true;
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Different videos, for 劇場版 and 劇場版 720p",
+      }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Different videos, for 旅行 and 旅行 (1)" }),
+    );
+    expect(server.dismissRequests).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+
+    // 2 つの応答を同じ描画の前に返す。
+    for (const resolve of server.heldDismisses)
+      resolve(new Response(null, { status: 204 }));
+
+    expect(
+      await screen.findByRole("heading", { name: "No possible duplicates" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("list")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
+  });
+
+  it("見せていた組を決め尽くしても上限の外に組が残っていれば、取り直して出す", async () => {
+    const user = userEvent.setup();
+    server.candidates = [pair(movieA, movieB)];
+    server.total = 2;
+    renderPage();
+    expect(await screen.findByText("Showing 1 of 2 pairs")).toBeDefined();
+
+    // 上限の外にあった組は、見せていた組が減ると応答に入る。
+    const rest = pair(
+      video(5, { title: "残りの組" }),
+      video(6, { title: "残りの組 (2)" }),
+    );
+    server.hold = true;
+    await user.click(screen.getByRole("button", { name: /^Different videos/ }));
+    server.candidates = [rest];
+    server.total = undefined;
+    server.holdDismiss?.(new Response(null, { status: 204 }));
+
+    expect(await screen.findByText("残りの組")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe("1 pair");
+    expect(screen.queryByRole("heading", { name: "No possible duplicates" })).toBeNull();
+    expect(server.listCalls).toBe(2);
   });
 
   it("組が消えていた（404）ときは伝えて一覧を取り直す", async () => {
