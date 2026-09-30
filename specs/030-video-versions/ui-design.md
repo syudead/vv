@@ -102,6 +102,7 @@
 | 読み込み失敗 | Couldn't load the candidates / Retry |
 | `too_few_videos` | Select at least two videos |
 | `too_many_videos` | Too many videos selected（今の上限の文と同じ形） |
+| 選択バーの操作の無効の理由（`maxVideoTagsSelection` ではなく `maxBundleSelection` を超えたとき） | Bundle up to 20 videos at a time |
 | `representative_not_selected` | Pick which video to show in the library |
 | `not_bundled` | This video isn't bundled with others |
 
@@ -240,8 +241,13 @@
 - 選んだ本数が **2 本未満のときは出さない**（親 Issue の要件 11、plan の受け入れ条件「1 本の選択では
   出ない」）。`disabled` にして理由を添える案は、選択の大半（1 本）で常に灰色の操作が見えることに
   なるので採らない。2 本目を選んだときに現れる。
-- 上限（タグの操作と同じ `maxVideoTagsSelection`）を超える選択では、タグの操作と同じく `disabled`
-  にし同じ理由を添える（library-ui.md §6）。
+- 選んだ本数が **束ねる操作の上限 `maxBundleSelection`（20 本）を超えるとき**は、タグの操作の
+  上限と同じ扱いで `disabled` にし、理由「Bundle up to 20 videos at a time」を添える
+  （library-ui.md §6）。タグの操作の上限（`maxVideoTagsSelection`、20,000 本）はここでは使わない。
+  窓は選んだ 1 本ごとに `GET /api/videos/{id}` を送り、1 本ごとに代表の候補の行を並べるので、
+  「すべて選択」で数千本を選んだまま開くと、その本数の要求が一度に出て画面が固まる。代表を行の
+  並びから読んで選べるのも数十本までである。上限は画面の側だけのもので、契約 §2 のサーバーの
+  上限（`too_many_videos`）は変えない。
 - 押すと下の「Bundle dialog」を開く。ポップオーバーではなく窓なのは「Why here」のとおり。
 
 ### Bundle dialog
@@ -262,8 +268,8 @@
   - 行は `py-2`。6 本を超えたら `max-h-80 overflow-y-auto` で中だけをスクロールさせる。窓の
     残りの高さは `ModalFrame` の規則に従う。
   - 行の並びは、選択バーからは選んだ順（`selectedIds` の順）、候補の画面からは組の順（id の昇順）。
-- 一覧の中身は `GET /api/videos/{id}` を選んだ id ごとに取る（選択バーからは一覧の項目を
-  持たない id もあるため。候補の画面からは組の 2 本の `Video` をそのまま渡し、取らない）。取るまでは
+- 一覧の中身は `GET /api/videos/{id}` を選んだ id ごとに取る（多くて `maxBundleSelection` の 20 本。
+  選択バーからは一覧の項目を持たない id もあるため。候補の画面からは組の 2 本の `Video` をそのまま渡し、取らない）。取るまでは
   行の場所に `Skeleton`（`h-12`）。1 本でも取れなければ（404 を含む）、一覧の場所に `text-sm
   text-danger` の 1 行（`role="alert"`）「Couldn't load the selected videos」と ghost・`sm` の
   「Retry」を出し、「Bundle」を `disabled` にする。
@@ -421,7 +427,8 @@
   始まる。操作バーの位置が 0 で、文言や層は出ない。
 - **選択バー**: 1 本を選んだバーに「Bundle as versions」が無く、2 本目を選ぶと現れる。押した窓で
   代表を選ぶまで「Bundle」が押せず、選んで押すと一覧に代表の 1 件だけが残り、選択が解けている
-  （受け入れ条件 6）。360px で下の段が崩れず、横スクロールが出ない。
+  （受け入れ条件 6）。21 本以上を選ぶと「Bundle as versions」が押せず理由が読め、窓は開かない。
+  360px で下の段が崩れず、横スクロールが出ない。
 - **窓**: 説明の 1 段落 → 行の並び → 操作の順で、行に枠が無く、各行の 3 行目でどのタグが残るかが
   選ぶ前に分かる。既に束ねてある動画の行に「Already N versions — all of them join」が出る。
 - **候補の画面（階層と密度）**: 1 組を見て、まず右上の 2 つのボタンに目が行き、次に 2 本の
