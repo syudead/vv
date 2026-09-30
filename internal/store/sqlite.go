@@ -36,6 +36,11 @@ type DB struct {
 	path     string
 	folderMu sync.Mutex
 
+	// lastThumbnailRevision はこの接続で最後に配った代表サムネイルの改版番号である
+	// （nextThumbnailRevision）。
+	revisionMu            sync.Mutex
+	lastThumbnailRevision int64
+
 	// publisher は取引が確定した後に、その取引で起きた変化を受け取る。
 	publisherMu sync.RWMutex
 	publisher   Publisher

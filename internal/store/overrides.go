@@ -185,7 +185,7 @@ func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 // 食い違う。
 //
 // videoID は content_key へ引き直し、引けなければ domain.ErrNotFound にする。確定後に
-// domain.VideoOverrideChanged を1回発行する。
+// domain.VideoOverrideChanged を1回発行し、問題を消したときは domain.ScanChanged も発行する。
 func (s *OverrideStore) SetThumbnailPosition(
 	ctx context.Context, videoID int64, positionMs *int64,
 ) (domain.Video, error) {
@@ -203,10 +203,11 @@ func (s *OverrideStore) SetThumbnailPosition(
 		return domain.Video{}, domain.ErrNotFound
 	}
 	now := time.Now()
-	if err := writeThumbnailPosition(ctx, tx, keys[0], positionMs, now); err != nil {
+	if err := s.db.writeThumbnailPosition(ctx, tx, keys[0], positionMs, now); err != nil {
 		return domain.Video{}, err
 	}
-	if err := markThumbnailDoneForContent(ctx, tx, keys[0], now); err != nil {
+	issuesCleared, err := markThumbnailDoneForContent(ctx, tx, keys[0], now)
+	if err != nil {
 		return domain.Video{}, err
 	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)
@@ -216,7 +217,13 @@ func (s *OverrideStore) SetThumbnailPosition(
 	if err := tx.Commit(); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot update the thumbnail position: %w", err)
 	}
-	s.db.publishEvents(domain.VideoOverrideChanged{VideoID: videoID})
+	events := []domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}
+	if issuesCleared {
+		// 問題を消すと直近の取り込みの問題の一覧と状態（partial など）が変わる。仕事の成否の
+		// 記録（ProcessingChanged）を通らないので、ここで scan の知らせを出させる。
+		events = append(events, domain.ScanChanged{})
+	}
+	s.db.publishEvents(events...)
 	return video, nil
 }
 
@@ -233,7 +240,10 @@ func (s *IngestStore) SetThumbnailPosition(
 // 位置を書くときは改版番号を「今のミリ秒時刻と前の値 + 1 の大きい方」にし、同じ位置の
 // 指定し直しでも、行を消して作り直しても前の値と重ならないようにする（R-6）。解除では
 // 改版番号も null にし、表示名も無ければ行を消す。
-func writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string, positionMs *int64, now time.Time) error {
+//
+// 解除で行を消すと前の値は残らないので、同じミリ秒の中で解除と指定が続くと、時刻だけでは
+// 解除の前の値と重なる。この接続で最後に配った番号より大きくもして、それを防ぐ。
+func (db *DB) writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string, positionMs *int64, now time.Time) error {
 	if positionMs == nil {
 		if _, err := tx.ExecContext(ctx,
 			`update video_overrides set thumbnail_position_ms = null, thumbnail_revision = null, updated_at = ?
@@ -252,7 +262,7 @@ func writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string, positio
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("cannot read the thumbnail revision: %w", err)
 	}
-	revision := max(now.UnixMilli(), previous.Int64+1)
+	revision := db.nextThumbnailRevision(now, previous.Int64)
 	if _, err := tx.ExecContext(ctx,
 		`insert into video_overrides (content_key, thumbnail_position_ms, thumbnail_revision, updated_at)
 		 values (?, ?, ?, ?)
@@ -267,25 +277,39 @@ func writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string, positio
 	return nil
 }
 
+// nextThumbnailRevision は「今のミリ秒時刻・前の値 + 1・この接続で最後に配った番号 + 1」の
+// 最も大きい値を配り、最後に配った番号として覚える。取引が確定しなかった番号は使われずに
+// 飛ぶだけである。
+func (db *DB) nextThumbnailRevision(now time.Time, previous int64) int64 {
+	db.revisionMu.Lock()
+	defer db.revisionMu.Unlock()
+	revision := max(now.UnixMilli(), previous+1, db.lastThumbnailRevision+1)
+	db.lastThumbnailRevision = revision
+	return revision
+}
+
 // markThumbnailDoneForContent は内容 key の動画すべての thumbnail_state を done にし、
-// 代表サムネイルの代用と失敗の問題を消す。
-func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, now time.Time) error {
+// 代表サムネイルの代用と失敗の問題を消す。問題を1件でも消したかを返す。
+func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, now time.Time) (bool, error) {
 	ids, err := videoIDsForContentKey(ctx, tx, key)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if _, err := tx.ExecContext(ctx,
 		`update videos set thumbnail_state = ?, updated_at = ? where content_key = ?`,
 		string(domain.ThumbnailStateDone), now.Unix(), key,
 	); err != nil {
-		return fmt.Errorf("cannot record the thumbnail state: %w", err)
+		return false, fmt.Errorf("cannot record the thumbnail state: %w", err)
 	}
+	cleared := false
 	for _, id := range ids {
-		if err := clearScanIssues(ctx, tx, id, domain.IssueThumbnailFirstFrame, domain.IssueThumbnailFailed); err != nil {
-			return err
+		removed, err := removeScanIssues(ctx, tx, id, domain.IssueThumbnailFirstFrame, domain.IssueThumbnailFailed)
+		if err != nil {
+			return false, err
 		}
+		cleared = cleared || removed
 	}
-	return nil
+	return cleared, nil
 }
 
 // videoIDsForContentKey は内容 key の動画の id を返す。

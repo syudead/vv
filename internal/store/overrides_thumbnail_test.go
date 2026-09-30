@@ -6,6 +6,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -43,7 +44,8 @@ func readOverrideRow(t *testing.T, db *DB, id int64) (overrideRow, bool) {
 }
 
 // 記録の取引は位置と改版番号を書き、thumbnail_state を done にして、代表サムネイルの
-// 代用と失敗の問題を消す。確定後に VideoOverrideChanged を1回発行する。
+// 代用と失敗の問題を消す。確定後に VideoOverrideChanged を1回発行し、問題を消したので
+// 取り込みの画面に読み直させる ScanChanged も発行する。
 func TestSetThumbnailPositionMarksDoneAndClearsSubstitution(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -77,8 +79,56 @@ func TestSetThumbnailPositionMarksDoneAndClearsSubstitution(t *testing.T) {
 	if _, issues, _ := importIssues(t, db); len(issues) != 0 {
 		t.Fatalf("代用の問題が残った: %+v", issues)
 	}
-	if want := []domain.Event{domain.VideoOverrideChanged{VideoID: id}}; !slices.Equal(recorder.events, want) {
+	want := []domain.Event{domain.VideoOverrideChanged{VideoID: id}, domain.ScanChanged{}}
+	if !slices.Equal(recorder.events, want) {
 		t.Errorf("events = %v, want %v", recorder.events, want)
+	}
+
+	// 消す問題が無ければ、取り込みの知らせは出さない。
+	recorder.events = nil
+	setThumbnailPosition(t, db, id, &position)
+	if want := []domain.Event{domain.VideoOverrideChanged{VideoID: id}}; !slices.Equal(recorder.events, want) {
+		t.Errorf("問題の無い記録の events = %v, want %v", recorder.events, want)
+	}
+}
+
+// 同じミリ秒の中で指定・解除（行が消える）・指定と続いても、改版番号は解除の前の値と
+// 重ならない。重なると、知らせがまとまった画面は同じ URL を受け取り、古い画像を出し続ける。
+func TestThumbnailRevisionAcrossClearWithinOneMillisecond(t *testing.T) {
+	db, ids := overrideFixture(t)
+	ctx := context.Background()
+	id := ids[fixturePath("/media/alpha.mp4")]
+	var key string
+	if err := db.sql.QueryRow(`select content_key from videos where id = ?`, id).Scan(&key); err != nil {
+		t.Fatal(err)
+	}
+	now := time.UnixMilli(1_700_000_000_000)
+	position := int64(1_000)
+	write := func(positionMs *int64) {
+		t.Helper()
+		tx, err := db.sql.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = tx.Rollback() }()
+		if err := db.writeThumbnailPosition(ctx, tx, key, positionMs, now); err != nil {
+			t.Fatal(err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	write(&position)
+	before, _ := readOverrideRow(t, db, id)
+	write(nil)
+	if _, ok := readOverrideRow(t, db, id); ok {
+		t.Fatal("解除で行が消えていない")
+	}
+	write(&position)
+	after, _ := readOverrideRow(t, db, id)
+	if after.revision.Int64 <= before.revision.Int64 {
+		t.Fatalf("改版番号 %d → %d（解除の前より大きいはず）", before.revision.Int64, after.revision.Int64)
 	}
 }
 
