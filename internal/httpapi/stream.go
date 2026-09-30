@@ -75,18 +75,55 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 // MediaFiles が判定し、ここは所在と登録フォルダを渡すだけである。返すパスは
 // 所在のパス（辿る前）で、Content-Type とファイル名に使う。
 func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
+	var (
+		file *os.File
+		info os.FileInfo
+	)
+	path, ok := s.firstMediaLocation(r, video, func(roots []string, path string) error {
+		var err error
+		file, info, err = s.files.OpenMediaFile(roots, path)
+		return err
+	})
+	if !ok {
+		return nil, nil, "", false
+	}
+	return file, info, path, true
+}
+
+// resolveMediaFile は、openMediaFile と同じ規則・同じ順で所在を選び、開かずに
+// symlink を辿った先のパスを返す。ffmpeg など別のプロセスへ渡す読む元に使う。
+// 確かめたパスと読むパスを揃えるため、辿る前の所在のパスは読む元に使わない。
+// location は選んだ所在（辿る前の登録のパス）で、読む元が今もその動画のものかを
+// 確かめ直すのに使う。
+func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location, resolved string, ok bool) {
+	location, ok = s.firstMediaLocation(r, video, func(roots []string, path string) error {
+		var err error
+		resolved, err = s.files.ResolveMediaFile(roots, path)
+		return err
+	})
+	if !ok {
+		return "", "", false
+	}
+	return location, resolved, true
+}
+
+// firstMediaLocation は動画の所在を順に try へ渡し、最初に成功した所在のパス
+// （辿る前）を返す。
+func (s *server) firstMediaLocation(
+	r *http.Request, video domain.Video, try func(roots []string, path string) error,
+) (string, bool) {
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
-		return nil, nil, "", false
+		return "", false
 	}
 	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
-		return nil, nil, "", false
+		return "", false
 	}
 	for _, location := range locations {
-		file, info, err := s.files.OpenMediaFile(roots, location.Path)
+		err := try(roots, location.Path)
 		if err == nil {
-			return file, info, location.Path, true
+			return location.Path, true
 		}
 		if errors.Is(err, domain.ErrMediaFileOutsideRoot) {
 			s.logger.Warn("link target is outside the media folders",
@@ -95,7 +132,7 @@ func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, o
 			s.logger.Debug("cannot open the media file", slog.Int64("video", video.ID), slog.Any("error", err))
 		}
 	}
-	return nil, nil, "", false
+	return "", false
 }
 
 // mediaFolderPaths は登録フォルダのパスを返す。

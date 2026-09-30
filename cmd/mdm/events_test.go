@@ -86,6 +86,9 @@ func (probeOnlyGenerator) Probe(context.Context, string) (domain.Probe, error) {
 func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) (bool, error) {
 	return false, nil
 }
+func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string) error {
+	return nil
+}
 func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
 	return false, nil
 }
@@ -264,6 +267,9 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 		t.Fatal(err)
 	}
 	ingest.JobFinished(domain.Job{Kind: domain.JobProbe, VideoID: video.ID})
+	if _, err := db.Overrides().SetDisplayName(ctx, video.ID, "renamed"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{video.ID}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,6 +287,7 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 			return e == domain.VideoIngestChanged{VideoID: video.ID, Stage: domain.JobProbe}
 		},
 		"動画の行が消えたこと": func(e domain.Event) bool { return e == domain.VideoIngestChanged{VideoID: video.ID} },
+		"動画の上書きの変化":  func(e domain.Event) bool { return e == domain.VideoOverrideChanged{VideoID: video.ID} },
 		"content key の参照が無くなったこと": func(e domain.Event) bool {
 			released, ok := e.(domain.ContentUnreferenced)
 			return ok && slices.Equal(released.ContentKeys, []string{"key-movie"})

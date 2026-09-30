@@ -27,7 +27,7 @@ const videoColumnsTemplate = `videos.id,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
-	{public} as public`
+	{public} as public, ` + overrideColumns
 
 // registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
 // 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
@@ -238,13 +238,15 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		probeState, thumbnailState, previewState string
 		seekThumbnailState                       string
 		public                                   bool
+		displayName                              sql.NullString
+		thumbnailPositionMs, thumbnailRevision   sql.NullInt64
 	)
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
 		&video.ContentKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
-		&public,
+		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -281,6 +283,18 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.SeekThumbnailState = domain.SeekThumbnailState(seekThumbnailState)
 	video.PreviewState = domain.PreviewState(previewState)
 	video.Public = public
+	// 有効な題名は、表示名があればそれ、無ければ所在の題名（coalesce(ov.display_name,
+	// loc.title)。specs/029-video-overrides/research.md R-2）。
+	video.FileTitle = video.Title
+	if displayName.Valid && displayName.String != "" {
+		video.DisplayName = displayName.String
+		video.Title = displayName.String
+	}
+	if thumbnailPositionMs.Valid {
+		value := thumbnailPositionMs.Int64
+		video.ThumbnailPositionMs = &value
+	}
+	video.ThumbnailRevision = thumbnailRevision.Int64
 
 	return video, nil
 }

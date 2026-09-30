@@ -208,3 +208,26 @@ func TestThumbnailIgnoresIfModifiedSince(t *testing.T) {
 		t.Fatalf("If-Modified-Since だけの要求 = %d %x、新しい画像を返すべき", rec.Code, rec.Body.Bytes())
 	}
 }
+
+// 位置が指定されている動画の thumbnailUrl の版は `<内容鍵の先頭>-r<改版番号>` で、位置の値を
+// 含まない。未指定なら今までどおり内容鍵の先頭だけ（specs/029-video-overrides/research.md R-6）。
+func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
+	position := int64(123_456)
+	for _, tc := range []struct {
+		name  string
+		video domain.Video
+		want  string
+	}{
+		{name: "未指定", video: domain.Video{ID: 1, ContentKey: "abcdef0123456789"},
+			want: "/api/videos/1/thumbnail?v=abcdef012345"},
+		{name: "指定", video: domain.Video{ID: 1, ContentKey: "abcdef0123456789",
+			ThumbnailPositionMs: &position, ThumbnailRevision: 1_790_000_000_001},
+			want: "/api/videos/1/thumbnail?v=abcdef012345-r1790000000001"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := thumbnailURL(tc.video); got != tc.want {
+				t.Fatalf("thumbnailURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

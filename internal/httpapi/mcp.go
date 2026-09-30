@@ -141,6 +141,29 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "update_video_display_names",
+		Description: "Set or clear the display names of videos (POST /api/v1/video-display-names). " +
+			"A display name replaces the file-name title everywhere; null or a blank name clears it. " +
+			"Up to 20000 items in one transaction; if any item fails, nothing is changed.",
+		InputSchema: inputSchemaFor[extgen.VideoDisplayNamesRequest]("update_video_display_names"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.VideoDisplayNamesRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/video-display-names", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "update_video_thumbnails",
+		Description: "Set or clear the representative thumbnail position of videos in milliseconds " +
+			"(POST /api/v1/video-thumbnails). null returns to the automatic position. Up to 20 items. " +
+			"Every item is checked first; then thumbnails are made in order, and if one cannot be made " +
+			"the error's index tells where it stopped: the items before it were changed, that item and later ones were not.",
+		InputSchema: inputSchemaFor[extgen.VideoThumbnailsRequest]("update_video_thumbnails"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.VideoThumbnailsRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/video-thumbnails", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "start_scan",
 		Description: "Start scanning the media folders (POST /api/v1/scans). " +
 			"If a scan is already running, it returns that scan instead of starting another.",
@@ -167,6 +190,15 @@ func videoTagsInputSchema() *jsonschema.Schema {
 	}
 	if action := schema.Properties["action"]; action != nil {
 		action.Enum = []any{string(extgen.Add), string(extgen.Remove), string(extgen.Replace)}
+	}
+	return schema
+}
+
+// inputSchemaFor は一括操作のツールの入力の形を型から導く。
+func inputSchemaFor[T any](tool string) *jsonschema.Schema {
+	schema, err := jsonschema.For[T](nil)
+	if err != nil {
+		panic(fmt.Sprintf("%s input schema: %v", tool, err))
 	}
 	return schema
 }

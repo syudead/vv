@@ -36,6 +36,11 @@ type DB struct {
 	path     string
 	folderMu sync.Mutex
 
+	// lastThumbnailRevision はこの接続で最後に配った代表サムネイルの改版番号である
+	// （nextThumbnailRevision）。
+	revisionMu            sync.Mutex
+	lastThumbnailRevision int64
+
 	// publisher は取引が確定した後に、その取引で起きた変化を受け取る。
 	publisherMu sync.RWMutex
 	publisher   Publisher
@@ -52,7 +57,8 @@ type Publisher interface {
 // 発行するのは、仕事が積まれたこと（domain.JobsQueued）、段階ごとの残りが
 // 変わったこと（domain.ProcessingChanged）、動画の行が消えたこと
 // （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
-// （domain.ContentUnreferenced）である。どれも取引が確定した後にだけ発行し、
+// （domain.ContentUnreferenced）、動画の上書きが変わったこと
+// （domain.VideoOverrideChanged）である。どれも取引が確定した後にだけ発行し、
 // ロールバックした取引からは発行しない。
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
@@ -165,7 +171,12 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 // publish は集めた変化を発行する。commit を通らない書き込みから呼ぶときは、
 // 残りの仕事が変わる変化を含めないこと（完了の時刻が決め直されない）。
 func (db *DB) publish(c *changes) {
-	events := c.events()
+	db.publishEvents(c.events()...)
+}
+
+// publishEvents は確定した取引で起きた変化をそのまま発行する。changes に載らない変化
+// （domain.VideoOverrideChanged）を発行する役割が、取引の確定後に呼ぶ。
+func (db *DB) publishEvents(events ...domain.Event) {
 	if len(events) == 0 {
 		return
 	}

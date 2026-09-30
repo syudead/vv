@@ -134,6 +134,10 @@ func (e *Events) Handle(event domain.Event) {
 		e.ScanActivityChanged()
 	case domain.VideoIngestChanged:
 		e.VideoChanged(event.VideoID)
+	case domain.VideoOverrideChanged:
+		// 表示名・代表サムネイルの位置の変化も、一覧と動画ページに読み直させる
+		// （specs/029-video-overrides/research.md R-7）。
+		e.VideoChanged(event.VideoID)
 	}
 }
 

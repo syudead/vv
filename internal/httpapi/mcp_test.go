@@ -47,6 +47,12 @@ func newMCPFixture(t *testing.T, opts Options) mcpFixture {
 			opts.Tags = db.Tags()
 		}
 		opts.Videos, opts.ExternalVideos = library, library
+		if opts.Overrides == nil {
+			opts.Overrides = db.Overrides()
+		}
+		if opts.ThumbnailPicker == nil {
+			opts.ThumbnailPicker = &fakeThumbnailPicker{db: db}
+		}
 		return opts
 	})
 	f := mcpFixture{env: env, owner: env.setup()}
@@ -108,8 +114,8 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, o
 	return result.IsError
 }
 
-// SDK のクライアントから接続すると 6 つのツールが契約の注記つきで並び、update_video_tags の
-// 結果が REST の lookup に出る。
+// SDK のクライアントから接続すると 8 つのツールが契約の注記つきで並び、update_video_tags の
+// 結果が REST の lookup に、update_video_display_names の結果が get_video に出る。
 func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	scans := &fakeScans{}
 	f := newMCPFixture(t, Options{Scans: scans, Build: domain.BuildInfo{Version: "1.2.3"}})
@@ -130,6 +136,9 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		"get_current_scan":  {readOnly: true},
 		"update_video_tags": {destructive: true, idempotent: true},
 		"start_scan":        {},
+		// specs/029-video-overrides/contracts/external-api.md §3
+		"update_video_display_names": {destructive: true, idempotent: true},
+		"update_video_thumbnails":    {destructive: true, idempotent: true},
 	}
 	var names []string
 	for _, tool := range listed.Tools {
@@ -187,6 +196,35 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		video.Id != f.videoA || len(video.Locations) != 1 || video.Locations[0].Path != f.pathA {
 		t.Errorf("get_video = %+v", video)
 	}
+	if video.Title != "a" || video.FileTitle != "a" || video.DisplayName != nil || video.ThumbnailPositionMs != nil {
+		t.Errorf("get_video の上書きの項目 = title %q, fileTitle %q, displayName %v, thumbnailPositionMs %v",
+			video.Title, video.FileTitle, video.DisplayName, video.ThumbnailPositionMs)
+	}
+
+	// 表示名を付けると get_video と list_videos に出る。
+	var named extgen.VideoDisplayNamesResponse
+	if callTool(t, session, "update_video_display_names", map[string]any{"items": []any{
+		map[string]any{"video": map[string]any{"path": f.pathA}, "displayName": "From MCP"},
+	}}, &named) || len(named.Items) != 1 || named.Items[0].Title != "From MCP" || named.Items[0].FileTitle != "a" {
+		t.Errorf("update_video_display_names = %+v", named)
+	}
+	video = extgen.ExternalVideo{}
+	if callTool(t, session, "get_video", map[string]any{"id": f.videoA}, &video) ||
+		video.Title != "From MCP" || video.DisplayName == nil || *video.DisplayName != "From MCP" || video.FileTitle != "a" {
+		t.Errorf("表示名の後の get_video = %+v", video)
+	}
+	page = extgen.ExternalVideoPage{}
+	if callTool(t, session, "list_videos", nil, &page) || len(page.Items) != 1 || page.Items[0].Title != "From MCP" {
+		t.Errorf("表示名の後の list_videos = %+v", page)
+	}
+	// null で解除する。
+	named = extgen.VideoDisplayNamesResponse{}
+	if callTool(t, session, "update_video_display_names", map[string]any{"items": []any{
+		map[string]any{"video": map[string]any{"id": f.videoA}, "displayName": nil},
+	}}, &named) || len(named.Items) != 1 || named.Items[0].DisplayName != nil || named.Items[0].Title != "a" {
+		t.Errorf("update_video_display_names の解除 = %+v", named)
+	}
+
 	var tags extgen.TagList
 	if callTool(t, session, "list_tags", nil, &tags) ||
 		len(tags.Items) != 1 || tags.Items[0].Name != "from-mcp" || tags.Items[0].VideoCount != 1 {
@@ -240,6 +278,15 @@ func TestMCPToolErrorsUseExternalErrorBody(t *testing.T) {
 	if !callTool(t, session, "list_videos", map[string]any{"cursor": "nope"}, &body) ||
 		body.Reason == nil || *body.Reason != extgen.InvalidCursor {
 		t.Errorf("不正なカーソル: %+v", body)
+	}
+
+	// サムネイルの位置は解析前の動画を 409 duration_unknown と index で断る。
+	body = extgen.Error{}
+	if !callTool(t, session, "update_video_thumbnails", map[string]any{"items": []any{
+		map[string]any{"video": map[string]any{"id": f.videoA}, "positionMs": 1000},
+	}}, &body) || body.Code != extgen.ErrorCodeConflict || body.Reason == nil || *body.Reason != extgen.DurationUnknown ||
+		body.Index == nil || *body.Index != 0 {
+		t.Errorf("解析前のサムネイル: %+v", body)
 	}
 
 	body = extgen.Error{}

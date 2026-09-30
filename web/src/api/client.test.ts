@@ -21,6 +21,8 @@ import {
   updateMediaFolder,
   getVideo,
   getCurrentScan,
+  setVideoDisplayName,
+  setVideoThumbnailPosition,
 } from "./client";
 import { itemVideos, videoItem } from "./libraryItems";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
@@ -188,6 +190,105 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("setVideoDisplayName", () => {
+  it("表示名を PUT で送り、反映後の動画を返す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 7, title: "New", displayName: "New" }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(setVideoDisplayName(7, "New", signal)).resolves.toMatchObject({
+      id: 7,
+      title: "New",
+    });
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/videos/7/display-name",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ displayName: "New" }),
+        signal,
+      }),
+    );
+  });
+
+  it("成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", reason: "display_name_too_long" }, 400),
+    );
+    hold();
+    await expect(setVideoDisplayName(7, "x".repeat(201))).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ id: 7, title: "New", displayName: "New" }),
+    );
+    hold();
+    await setVideoDisplayName(7, "New");
+    expect(takeListSnapshot(key)).toBeUndefined();
+  });
+});
+
+describe("setVideoThumbnailPosition", () => {
+  it("位置を PUT で送り、null は解除として送る", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 7, thumbnailPositionMs: 83_000 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 7 }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(setVideoThumbnailPosition(7, 83_000, signal)).resolves.toMatchObject({
+      id: 7,
+      thumbnailPositionMs: 83_000,
+    });
+    await setVideoThumbnailPosition(7, null);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/videos/7/thumbnail-position",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ positionMs: 83_000 }),
+        signal,
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/videos/7/thumbnail-position",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ positionMs: null }),
+      }),
+    );
+  });
+
+  it("成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "conflict", reason: "thumbnail_frame_unavailable" }, 409),
+    );
+    hold();
+    await expect(setVideoThumbnailPosition(7, 1_000)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 7, thumbnailPositionMs: 1_000 }));
+    hold();
+    await setVideoThumbnailPosition(7, 1_000);
+    expect(takeListSnapshot(key)).toBeUndefined();
+  });
 });
 
 describe("settings API client", () => {

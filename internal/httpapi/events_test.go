@@ -238,6 +238,11 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if _, videos := sub.take(); !slices.Equal(videos, []int64{5, 6}) {
 		t.Fatalf("videos = %v, want [5 6]", videos)
 	}
+	// 上書きの変化も video に写す（specs/029-video-overrides/research.md R-7）。
+	events.Handle(domain.VideoOverrideChanged{VideoID: 7})
+	if _, videos := sub.take(); !slices.Equal(videos, []int64{7}) {
+		t.Fatalf("VideoOverrideChanged: videos = %v, want [7]", videos)
+	}
 }
 
 // lockedScans は、送信の goroutine が読むあいだにテストが今の処理を差し替える。

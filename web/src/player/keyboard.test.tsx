@@ -17,6 +17,7 @@ function fakeControls(overrides: Partial<PlayerControls> = {}): PlayerControls {
     isFullscreen: vi.fn(() => false),
     menuOpen: vi.fn(() => false),
     wake: vi.fn(),
+    positionMs: vi.fn(() => 0),
     ...overrides,
   };
 }

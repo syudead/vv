@@ -477,6 +477,53 @@ export function getVideo(id: number, signal?: AbortSignal): Promise<Video> {
   return request<Video>(`/api/videos/${id}`, { signal });
 }
 
+/**
+ * setVideoDisplayName は動画の表示名を設定する。前後の空白を除いて空なら解除し、元の題名に戻す。
+ * 応答は `getVideo` と同じ形の動画で、`title`・`fileTitle`・`displayName` が反映済みである
+ * （specs/029-video-overrides/contracts/screen-api.md §1）。
+ *
+ * 成功したら一覧の控えを捨てる。控えは離れた一覧の題名・並び・検索の当たりを持ち、
+ * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
+ */
+export async function setVideoDisplayName(
+  id: number,
+  displayName: string,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/videos/${String(id)}/display-name`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ displayName }),
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
+ * setVideoThumbnailPosition は動画の代表サムネイルを `positionMs`（ミリ秒）の場面で作り直す。
+ * `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返り、`getVideo` と
+ * 同じ形の動画で、新しい版の `thumbnailUrl` と `thumbnailPositionMs` が反映済みである
+ * （specs/029-video-overrides/contracts/screen-api.md §2）。
+ *
+ * 成功したら一覧の控えを捨てる。控えは離れた一覧のカードの `thumbnailUrl` を持ち、
+ * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
+ */
+export async function setVideoThumbnailPosition(
+  id: number,
+  positionMs: number | null,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-position`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionMs }),
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
 /** getRelatedVideos は動画詳細画面の関連動画（最大 20 件と次の動画の id）を取得する。 */
 export function getRelatedVideos(
   id: number,

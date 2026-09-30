@@ -79,8 +79,16 @@ func recordScanIssue(
 // clearScanIssues は直近の走査から、その動画の kinds の問題を消す。同じ段階が後で
 // 成功したとき、結果を書く取引で呼ぶ。消したときだけ番号を増やす。
 func clearScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ...domain.ScanIssueKind) error {
+	_, err := removeScanIssues(ctx, q, videoID, kinds...)
+	return err
+}
+
+// removeScanIssues は clearScanIssues と同じことをし、問題を1件でも消したかを返す。
+// 仕事の成否の記録を通らずに問題を消す書き手が、確定後に scan の知らせを出すかを
+// 決めるのに使う。
+func removeScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ...domain.ScanIssueKind) (bool, error) {
 	if len(kinds) == 0 {
-		return nil
+		return false, nil
 	}
 	args := []any{videoID}
 	for _, kind := range kinds {
@@ -90,16 +98,16 @@ func clearScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ..
 	res, err := q.ExecContext(ctx, `delete from scan_issues
 		where scan_id = (select max(id) from scans) and video_id = ? and kind in (`+placeholders+`)`, args...)
 	if err != nil {
-		return fmt.Errorf("cannot clear the import issues (video=%d): %w", videoID, err)
+		return false, fmt.Errorf("cannot clear the import issues (video=%d): %w", videoID, err)
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("cannot clear the import issues (video=%d): %w", videoID, err)
+		return false, fmt.Errorf("cannot clear the import issues (video=%d): %w", videoID, err)
 	}
 	if deleted == 0 {
-		return nil
+		return false, nil
 	}
-	return bumpIssuesRevision(ctx, q)
+	return true, bumpIssuesRevision(ctx, q)
 }
 
 // clearFailedIssue は job の段階の *_failed を消す。その段階の成功を書いた取引で呼ぶ。

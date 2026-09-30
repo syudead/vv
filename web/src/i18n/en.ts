@@ -171,6 +171,14 @@ const errorReasons = {
       ? "The name is too long."
       : `The name can be up to ${characters(limit)}.`,
   subtitle_unavailable: "The subtitle file can't be read.",
+  display_name_control_characters: "The name can't contain control characters.",
+  display_name_too_long: ({ limit }) =>
+    limit === undefined
+      ? "The name is too long."
+      : `The name can't be longer than ${characters(limit)}.`,
+  duration_unknown: "The video's length isn't known yet.",
+  thumbnail_position_out_of_range: "The position is past the end of the video.",
+  thumbnail_frame_unavailable: "No image could be made from this frame.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -721,9 +729,22 @@ export const en = {
       pathCopied: "Copied the path",
       copyFailed: "Couldn't copy the path",
       openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
+      thumbnailAt: (time: string) => `Thumbnail at ${time}`,
+      useCurrentFrame: "Use current frame as thumbnail",
+      useAutomaticThumbnail: "Use automatic thumbnail",
+      thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
+    },
+    title: {
+      edit: "Edit name",
+      input: "Display name",
+      save: "Save",
+      cancel: "Cancel",
+      fileName: "File name",
+      fileNameTitle: (name: string) => `File name: ${name}`,
+      saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
     },
     visibility: {
       label: "Show to people who aren't signed in",
