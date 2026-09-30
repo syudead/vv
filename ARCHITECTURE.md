@@ -405,7 +405,13 @@ compile:
   `app.Ingest.SetThumbnailPosition` (the `httpapi.ThumbnailPicker` interface), which
   regenerates the thumbnail under the same generation lock as the ingest job before
   recording the position; the handler resolves the source file with the same rule as
-  `getVideoStream` and answers once generation has finished.
+  `getVideoStream` and answers once generation has finished. Inside the lock it
+  rechecks, before generating, after generating but before publishing, and again
+  before recording, that the chosen location still belongs to the video's content
+  (a scan does not take that lock), and when recording fails after publishing it
+  restores the previous image
+  (`artifacts.Store.StashThumbnail`), so the image always matches the recorded
+  position and revision.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

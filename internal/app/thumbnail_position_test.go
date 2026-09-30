@@ -34,7 +34,7 @@ func TestSetThumbnailPositionPublishesThenRecords(t *testing.T) {
 			store.order = generator
 			ingest, _ := newTestIngest(store, generator)
 
-			saved, err := ingest.SetThumbnailPosition(context.Background(), video.ID, "/media/a.mp4", tc.position)
+			saved, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, "/media/a.mp4", tc.position)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,7 +70,7 @@ func TestSetThumbnailPositionGenerationFailure(t *testing.T) {
 			store := newFakeIngestStore(video)
 			ingest, _ := newTestIngest(store, tc.generator)
 
-			_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, "/media/a.mp4", tc.position)
+			_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, "/media/a.mp4", tc.position)
 			if !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 				t.Fatalf("err = %v, want ErrThumbnailFrameUnavailable", err)
 			}
@@ -102,7 +102,7 @@ func TestSetThumbnailPositionRejectsBeforeGenerating(t *testing.T) {
 			generator := &fakeGenerator{recordPublish: true}
 			ingest, _ := newTestIngest(store, generator)
 
-			_, err := ingest.SetThumbnailPosition(context.Background(), tc.video.ID, "/media/x.mp4", &tc.position)
+			_, err := ingest.SetThumbnailPosition(context.Background(), tc.video.ID, tc.video.Path, "/media/x.mp4", &tc.position)
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("err = %v, want %v", err, tc.want)
 			}
@@ -125,7 +125,7 @@ func TestSetThumbnailPositionHoldsGenerationLock(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, int64Ptr(5_000))
+		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000))
 		done <- err
 	}()
 	<-hold.started["thumbnail-at"]
@@ -220,7 +220,7 @@ func TestIngestThumbnailRereadsInsideLock(t *testing.T) {
 
 	picked := make(chan error, 1)
 	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, int64Ptr(9_000))
+		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(9_000))
 		picked <- err
 	}()
 	<-hold.started["thumbnail-at"]
@@ -255,5 +255,102 @@ func TestIngestThumbnailRereadsInsideLock(t *testing.T) {
 	}
 	if len(store.thumbnailStates) != 0 {
 		t.Fatalf("job が状態を書いた: %v", store.thumbnailStates)
+	}
+}
+
+// 公開のあとで記録に失敗したら（取引の失敗・要求の取り消し）、前の画像へ戻し、記録の位置と
+// 版に画像を揃える。記録できたときは写しを捨てる。
+func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.setPositionErr = errors.New("database is locked")
+	generator := &fakeGenerator{recordPublish: true}
+	ingest, _ := newTestIngest(store, generator)
+
+	_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(4_000))
+	if err == nil || !errors.Is(err, store.setPositionErr) {
+		t.Fatalf("err = %v, want 記録の失敗", err)
+	}
+	if got := generator.stashCalls(); !slices.Equal(got, []string{"stash", "restore"}) {
+		t.Fatalf("写しの操作 = %v, want [stash restore]", got)
+	}
+
+	store.setPositionErr = nil
+	generator.stashes = nil
+	if _, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(4_000)); err != nil {
+		t.Fatal(err)
+	}
+	if got := generator.stashCalls(); !slices.Equal(got, []string{"stash", "discard"}) {
+		t.Fatalf("写しの操作 = %v, want [stash discard]", got)
+	}
+}
+
+// 所在を決めたあとに走査がそれを別の内容へ付け替えたら、別の動画のコマをこの内容の画像として
+// 公開・記録せずに ErrMediaFileUnavailable を返す。生成の直前に付け替わっていれば生成しない。
+// 生成の間に付け替わっていれば、生成した画像を公開しない（並ぶ要求にも見せない）。公開と記録の
+// 間に付け替わっていれば、記録せずに前の画像へ戻す。
+func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		staleAt     int
+		wantCalls   []string
+		wantStashes []string
+	}{
+		{name: "生成の前", staleAt: 1, wantCalls: nil, wantStashes: nil},
+		{name: "生成の間", staleAt: 2,
+			wantCalls: []string{"thumbnail-at"}, wantStashes: []string{"stash", "discard"}},
+		{name: "公開と記録の間", staleAt: 3,
+			wantCalls: []string{"thumbnail-at", "publish-thumbnail"}, wantStashes: []string{"stash", "restore"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			video := probedVideo(1, "a")
+			store := newFakeIngestStore(video)
+			store.staleSourceAt = tc.staleAt
+			generator := &fakeGenerator{recordPublish: true}
+			ingest, _ := newTestIngest(store, generator)
+
+			_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, "/media/a.mp4", "/real/a.mp4", int64Ptr(4_000))
+			if !errors.Is(err, domain.ErrMediaFileUnavailable) {
+				t.Fatalf("err = %v, want ErrMediaFileUnavailable", err)
+			}
+			calls, _ := generator.snapshot()
+			if !slices.Equal(calls, tc.wantCalls) {
+				t.Fatalf("呼び出し = %v, want %v", calls, tc.wantCalls)
+			}
+			if got := generator.stashCalls(); !slices.Equal(got, tc.wantStashes) {
+				t.Fatalf("写しの操作 = %v, want %v", got, tc.wantStashes)
+			}
+			if len(store.positions) != 0 {
+				t.Fatalf("付け替わった所在で記録した: %v", store.positions)
+			}
+			for _, location := range store.sourceLocations {
+				if location != "/media/a.mp4" {
+					t.Fatalf("確かめ直した所在 = %v, want 辿る前の所在", store.sourceLocations)
+				}
+			}
+		})
+	}
+}
+
+// 生成の錠を待つ間に動画が消えていたら、所在の確かめ直しは ErrNotFound を返し、生成しない。
+func TestSetThumbnailPositionVideoGoneBeforeGenerating(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.staleSourceAt = 1
+	// 錠の外の最初の読み出しのあとに動画を消す。
+	store.afterRead = func(reads int) {
+		if reads == 1 {
+			delete(store.videos, video.ID)
+		}
+	}
+	generator := &fakeGenerator{recordPublish: true}
+	ingest, _ := newTestIngest(store, generator)
+
+	_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(4_000))
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if calls, _ := generator.snapshot(); len(calls) != 0 {
+		t.Fatalf("消えた動画で生成した: %v", calls)
 	}
 }

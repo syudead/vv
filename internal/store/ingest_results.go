@@ -310,6 +310,23 @@ func (s *IngestStore) PreviewSourceCurrent(ctx context.Context, job domain.Job) 
 	return current != 0, err
 }
 
+// ThumbnailSourceCurrent は、動画 videoID の内容が key のままで、所在 locationPath が今も
+// 内容 key の動画の所在かを返す。代表サムネイルの位置の指定で、要求が所在を決めてから
+// 生成するまでの間に、走査がその所在を別の内容へ付け替えていないかを確かめる
+// （specs/029-video-overrides/research.md R-4）。所在が消えていても偽を返す。
+func (s *IngestStore) ThumbnailSourceCurrent(
+	ctx context.Context, videoID int64, key, locationPath string,
+) (bool, error) {
+	var current int
+	err := s.db.sql.QueryRowContext(ctx, `select exists (
+		select 1 from videos where id = ? and content_key = ?
+	) and exists (
+		select 1 from video_locations l join videos v on v.id = l.video_id
+		where l.path = ? and v.content_key = ?
+	)`, videoID, key, locationPath, key).Scan(&current)
+	return current != 0, err
+}
+
 func (s *IngestStore) SetPreviewState(ctx context.Context, id int64, state domain.PreviewState) error {
 	_, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ? where id = ?`, string(state), time.Now().Unix(), id)
 	return err

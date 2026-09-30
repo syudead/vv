@@ -196,11 +196,12 @@ func (e *externalServer) UpdateVideoThumbnails(w http.ResponseWriter, r *http.Re
 	out := extgen.VideoThumbnailsResponse{Items: make([]extgen.VideoThumbnailsItem, 0, len(targets))}
 	for i, target := range targets {
 		step := thumbnailStep{index: i, applying: true}
-		video, path, ok := e.thumbnailSource(w, r, step, target)
+		video, source, ok := e.thumbnailSource(w, r, step, target)
 		if !ok {
 			return
 		}
-		saved, err := e.s.thumbnails.SetThumbnailPosition(r.Context(), video.ID, path, target.positionMs)
+		saved, err := e.s.thumbnails.SetThumbnailPosition(
+			r.Context(), video.ID, source.location, source.path, target.positionMs)
 		if err != nil {
 			e.writeThumbnailError(w, step, video, err)
 			return
@@ -256,35 +257,46 @@ func (e *externalServer) checkThumbnailTarget(
 	return target, true
 }
 
+// thumbnailFile は代表サムネイルの読む元である。location は辿る前の所在、path は辿った先。
+type thumbnailFile struct {
+	location string
+	path     string
+}
+
 // thumbnailSource は動画を読み直し、位置を確かめ、読む元の所在を決める。誤りなら応答を
 // 書いて ok = false を返す。順序は画面の経路と同じで、位置は所在を開く前に確かめる
 // （解析前や尺の外の指定で file_unavailable を返さない）。
 func (e *externalServer) thumbnailSource(
 	w http.ResponseWriter, r *http.Request, step thumbnailStep, target thumbnailTarget,
-) (domain.Video, string, bool) {
+) (domain.Video, thumbnailFile, bool) {
 	video, err := e.s.videos.GetVideo(r.Context(), domain.AudienceOwner, target.videoID)
 	if errors.Is(err, domain.ErrNotFound) {
 		e.videoNotFoundAt(w, step.index, step.outcome())
-		return domain.Video{}, "", false
+		return domain.Video{}, thumbnailFile{}, false
 	}
 	if err != nil {
 		e.internalErrorAt(w, step, "Could not load the video.", err)
-		return domain.Video{}, "", false
+		return domain.Video{}, thumbnailFile{}, false
 	}
 	if target.positionMs != nil {
 		if err := domain.CheckThumbnailPosition(video, *target.positionMs); err != nil {
 			e.writeThumbnailError(w, step, video, err)
-			return domain.Video{}, "", false
+			return domain.Video{}, thumbnailFile{}, false
 		}
 	}
 	// 読む元は配信と同じ規則で決め、symlink を辿った先のパスを渡す（画面の経路と同じ）。
-	path, ok := e.s.resolveMediaFile(r, video)
+	location, path, ok := e.s.resolveMediaFile(r, video)
 	if !ok {
-		e.writeItemError(w, http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.FileUnavailable, step.index, nil,
-			step.prefix()+"Cannot open this video's file. "+step.outcome())
-		return domain.Video{}, "", false
+		e.fileUnavailableAt(w, step)
+		return domain.Video{}, thumbnailFile{}, false
 	}
-	return video, path, true
+	return video, thumbnailFile{location: location, path: path}, true
+}
+
+// fileUnavailableAt は items の index 番目の読む元を開けないときの 404 を返す。
+func (e *externalServer) fileUnavailableAt(w http.ResponseWriter, step thumbnailStep) {
+	e.writeItemError(w, http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.FileUnavailable, step.index, nil,
+		step.prefix()+"Cannot open this video's file. "+step.outcome())
 }
 
 // writeThumbnailError は items の index 番目の位置の設定の失敗を応答にする。尺の外の limit
@@ -312,6 +324,9 @@ func (e *externalServer) writeThumbnailError(w http.ResponseWriter, step thumbna
 			slog.Int64("video", video.ID), slog.Int("index", step.index), slog.Any("error", err))
 		e.writeItemError(w, http.StatusConflict, extgen.ErrorCodeConflict, extgen.ThumbnailFrameUnavailable, step.index, nil,
 			prefix+"Cannot make a thumbnail from this position."+outcome)
+	case errors.Is(err, domain.ErrMediaFileUnavailable):
+		// 所在を決めたあとに、走査がそれを別の内容へ付け替えたか消した。
+		e.fileUnavailableAt(w, step)
 	case errors.Is(err, domain.ErrNotFound):
 		e.videoNotFoundAt(w, step.index, step.outcome())
 	default:

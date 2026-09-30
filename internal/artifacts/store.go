@@ -209,6 +209,66 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 	return nil
 }
 
+// StashThumbnail は今のライブラリ用サムネイルを一時置き場へ写し、それを戻す restore と、
+// 写しを捨てる discard を返す。PublishThumbnail で置き換えたあとに記録が失敗したとき、
+// restore で前の画像へ戻し、画像と記録（位置と版）が食い違わないようにする。前の画像が
+// 無ければ、restore は置き換えた画像を消す。
+//
+// 呼び出し側は、restore か discard の少なくとも一方を必ず呼ぶ。同じ内容の公開と削除を
+// 直列にする錠は呼び出し側（internal/app）が持つ。
+func (s *Store) StashThumbnail(contentKey string) (restore func() error, discard func(), err error) {
+	target, err := s.publishTarget(s.thumbnailPath, contentKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	source, err := os.Open(target)
+	if errors.Is(err, fs.ErrNotExist) {
+		restore = func() error {
+			if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return fmt.Errorf("cannot withdraw the thumbnail (%s): %w", contentKey, err)
+			}
+			return nil
+		}
+		return restore, func() {}, nil
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot read the current thumbnail (%s): %w", contentKey, err)
+	}
+	defer func() { _ = source.Close() }()
+
+	temporary, err := s.makeTemporaryDir("thumbnail-stash-*")
+	if err != nil {
+		return nil, nil, err
+	}
+	discard = func() { _ = os.RemoveAll(temporary) }
+	backup := filepath.Join(temporary, "thumbnail"+thumbnailExt)
+	if err := copyToFile(backup, source); err != nil {
+		discard()
+		return nil, nil, fmt.Errorf("cannot keep the current thumbnail (%s): %w", contentKey, err)
+	}
+	restore = func() error {
+		defer discard()
+		if err := os.Rename(backup, target); err != nil {
+			return fmt.Errorf("cannot restore the previous thumbnail (%s): %w", contentKey, err)
+		}
+		return nil
+	}
+	return restore, discard, nil
+}
+
+// copyToFile は source の中身を新しいファイル path へ書く。
+func copyToFile(path string, source io.Reader) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(file, source); err != nil {
+		_ = file.Close()
+		return err
+	}
+	return file.Close()
+}
+
 // PublishSeekThumbnails はシーク用プレビューのスプライトを公開する
 // （specs/021-seek-thumbnail-sprite/research.md R-3）。配置情報（sprite.json）の
 // ある完成した置き場がすでにあれば write を呼ばずに成功を返す。

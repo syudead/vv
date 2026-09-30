@@ -91,11 +91,15 @@ func (s *server) invalidDisplayName(w http.ResponseWriter, err error) {
 // これを満たす。
 type ThumbnailPicker interface {
 	// SetThumbnailPosition は動画 videoID の代表サムネイルを path の positionMs の場面で
-	// 作り直して公開し、位置を記録して反映後の動画を返す。positionMs が nil なら解除し、
+	// 作り直して公開し、位置を記録して反映後の動画を返す。location は path を辿る前の所在で、
+	// path が今もその動画のものかを確かめ直すのに使う。positionMs が nil なら解除し、
 	// 自動の位置で作り直す。解析前は domain.ErrDurationUnknown、尺の外は
 	// domain.ErrThumbnailPositionOutOfRange、生成の失敗は domain.ErrThumbnailFrameUnavailable、
+	// 所在が消えたか別の内容へ付け替わっていれば domain.ErrMediaFileUnavailable、
 	// 動画が無ければ domain.ErrNotFound を返す。
-	SetThumbnailPosition(ctx context.Context, videoID int64, path string, positionMs *int64) (domain.Video, error)
+	SetThumbnailPosition(
+		ctx context.Context, videoID int64, location, path string, positionMs *int64,
+	) (domain.Video, error)
 }
 
 // SetVideoThumbnailPosition は動画の代表サムネイルの位置を設定・解除する
@@ -142,13 +146,13 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 	// 読む元は配信（getVideoStream）と同じ規則で決め、symlink を辿った先のパスを渡す。
 	// 辿る前のパスを渡すと、確かめた後に symlink を差し替えられたとき、ffmpeg が
 	// 登録フォルダの外や別の動画を読みうる。
-	path, ok := s.resolveMediaFile(r, video)
+	location, path, ok := s.resolveMediaFile(r, video)
 	if !ok {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
 
-	saved, err := s.thumbnails.SetThumbnailPosition(r.Context(), id, path, positionMs)
+	saved, err := s.thumbnails.SetThumbnailPosition(r.Context(), id, location, path, positionMs)
 	if err != nil {
 		s.thumbnailPositionError(w, video, err)
 		return
@@ -174,6 +178,9 @@ func (s *server) thumbnailPositionError(w http.ResponseWriter, video domain.Vide
 		s.logger.Warn("cannot extract a frame for the thumbnail",
 			slog.Int64("video", video.ID), slog.Any("error", err))
 		s.conflictReason(w, reasonThumbnailFrameUnavailable, "Cannot make a thumbnail from this position.")
+	case errors.Is(err, domain.ErrMediaFileUnavailable):
+		// 所在を決めたあとに、走査がそれを別の内容へ付け替えたか消した。
+		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFoundReason(w, reasonVideoNotFound, "Video not found.")
 	default:

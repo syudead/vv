@@ -92,17 +92,19 @@ func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, o
 
 // resolveMediaFile は、openMediaFile と同じ規則・同じ順で所在を選び、開かずに
 // symlink を辿った先のパスを返す。ffmpeg など別のプロセスへ渡す読む元に使う。
-// 確かめたパスと読むパスを揃えるため、辿る前の所在のパスは渡さない。
-func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (string, bool) {
-	var resolved string
-	if _, ok := s.firstMediaLocation(r, video, func(roots []string, path string) error {
+// 確かめたパスと読むパスを揃えるため、辿る前の所在のパスは読む元に使わない。
+// location は選んだ所在（辿る前の登録のパス）で、読む元が今もその動画のものかを
+// 確かめ直すのに使う。
+func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location, resolved string, ok bool) {
+	location, ok = s.firstMediaLocation(r, video, func(roots []string, path string) error {
 		var err error
 		resolved, err = s.files.ResolveMediaFile(roots, path)
 		return err
-	}); !ok {
-		return "", false
+	})
+	if !ok {
+		return "", "", false
 	}
-	return resolved, true
+	return location, resolved, true
 }
 
 // firstMediaLocation は動画の所在を順に try へ渡し、最初に成功した所在のパス
