@@ -148,15 +148,18 @@ export interface paths {
         /**
          * ライブラリの項目（動画とグループ）の一覧を返す
          * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
-         *     （specs/017-folder-groups/contracts/library-api.md §1・data-model.md §5）。
-         *     グループのメンバーは1件のグループの項目に、それ以外は動画の項目になる。
-         *     `query`・`playable`・`tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、
-         *     当たったメンバーが1本以上あればグループが出る。グループの値は、当たったかどうかに
-         *     関わらず全メンバーから数える。`watch` は項目の視聴状態に掛け、並べ替えは項目の値で
-         *     行う。`total` は絞り込み後の項目（カード）の数。カーソルの形は `listVideos` と同じ。
+         *     （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
+         *     specs/017-folder-groups/data-model.md §5）。
+         *     `query` と `tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+         *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
+         *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
+         *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
+         *     数える。`playable` は項目に掛け（グループはメンバーのどれか1本が再生できれば残る）、
+         *     `watch` は項目の視聴状態に掛け、並べ替えは項目の値で行う。`total` は絞り込み後の
+         *     項目（カード）の数。カーソルの形は `listVideos` と同じ。
          *
-         *     ゲストでは公開のメンバーだけを数え、公開のメンバーが1本のグループは動画の項目に
-         *     し、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
+         *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
+         *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
          *     `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
          */
         get: operations["listLibrary"];
@@ -179,7 +182,9 @@ export interface paths {
          * 絞り込みに合う項目の動画の id を返す
          * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
-         *     並びは決めない。「すべて選択」用（specs/017-folder-groups/contracts/library-api.md §2）。
+         *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
+         *     だけが入る。並びは決めない。「すべて選択」用
+         *     （specs/027-partial-group-search/contracts/library-api.md §2）。
          */
         get: operations["listLibraryIds"];
         put?: never;
@@ -366,6 +371,55 @@ export interface paths {
          *     `Cache-Control: no-store`（specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
          */
         get: operations["getTranscodeStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/subtitles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画の隣に置いた字幕ファイルの一覧を返す
+         * @description 配信が開く所在（`streamVideo` と同じ順で最初に開けたもの）のフォルダを要求のたびに読み、
+         *     `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` を返す。
+         *     ラベルの無いものが先頭で、続いてラベルの自然順。同じラベルの `.srt` と `.vtt` は `.vtt`
+         *     だけ、4 MiB を超えるファイルは載せない。中身は読まない。無ければ空の配列で、フォルダを
+         *     読めないときも空の配列を返す。応答は `Cache-Control: no-store`
+         *     （specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+         */
+        get: operations["listVideoSubtitles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/subtitles/{file}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 字幕ファイルを WebVTT にして返す
+         * @description `file` が `listVideoSubtitles` と同じ一覧の 1 つと完全に一致するときだけ開き、文字コードを
+         *     判定して UTF-8 の WebVTT にし、すべての cue の時刻から `offsetMs` を引いて返す。
+         *     一覧に無い、開けない、上限を超える、読めない字幕は `404`（reason `subtitle_unavailable`）。
+         *     成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
+         *     一致すれば `304` を返す（specs/028-sidecar-subtitles/contracts/subtitles-api.md §2）。
+         */
+        get: operations["getVideoSubtitle"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1624,6 +1678,20 @@ export interface components {
             /** Format: int64 */
             positionMs: number;
         };
+        SubtitleTrackList: {
+            subtitles: components["schemas"]["SubtitleTrack"][];
+        };
+        SubtitleTrack: {
+            /** @description 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う */
+            file: string;
+            /** @description ファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は空文字列 */
+            label: string;
+            /**
+             * @description 元のファイルの形式
+             * @enum {string}
+             */
+            format: "srt" | "vtt";
+        };
         TranscodeStart: {
             /**
              * Format: int64
@@ -1771,7 +1839,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2419,6 +2487,67 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["TranscodeStart"];
                 };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVideoSubtitles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 字幕ファイルの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubtitleTrackList"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getVideoSubtitle: {
+        parameters: {
+            query?: {
+                /** @description 再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）。cue の時刻からこの値を引く */
+                offsetMs?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description `listVideoSubtitles` が返した `file` */
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description UTF-8 の WebVTT */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/vtt": string;
+                };
+            };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];

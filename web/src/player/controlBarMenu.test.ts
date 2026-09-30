@@ -2,6 +2,7 @@ import videojs from "video.js";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { controlBarMenuOpen } from "./playerControls";
+import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 
 /**
  * 再生速度のメニューが開いているかを、本物の video.js が作る DOM の印で確かめる。
@@ -55,6 +56,27 @@ describe("controlBarMenuOpen", () => {
     trigger.dispatchEvent(new MouseEvent("mouseenter"));
     expect(controlBarMenuOpen(host)).toBe(true);
     button.dispatchEvent(new MouseEvent("mouseleave"));
+    expect(controlBarMenuOpen(host)).toBe(false);
+  });
+
+  it("字幕のメニューが開いているときも真にする", () => {
+    registerSubtitlesButton();
+    const element = document.createElement("video-js");
+    document.body.append(element);
+    player = videojs(element, {
+      controls: true,
+      textTrackSettings: false,
+      controlBar: { children: ["playToggle", subtitlesButtonName] },
+    });
+    player.addRemoteTextTrack({ kind: "subtitles", label: "ja", default: false }, true);
+    const host = player.el();
+    const menuButton = player?.getChild("ControlBar")?.getChild("SubtitlesButton") as
+      { pressButton(): void; unpressButton(): void } | undefined;
+    if (menuButton === undefined) throw new Error("字幕のボタンがありません");
+    expect(controlBarMenuOpen(host)).toBe(false);
+    menuButton.pressButton();
+    expect(controlBarMenuOpen(host)).toBe(true);
+    menuButton.unpressButton();
     expect(controlBarMenuOpen(host)).toBe(false);
   });
 });

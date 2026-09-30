@@ -408,4 +408,91 @@ describe("live offset middleware", () => {
     await Promise.resolve();
     expect(changed).not.toHaveBeenCalled();
   });
+
+  describe("offsetの確定の通知（字幕の時刻合わせ）", () => {
+    it("報告が200なら実際の開始位置で1回知らせ、待つ間は未決を知らせる", async () => {
+      const reports = deferredReports();
+      const settled = vi.fn();
+      const pending = vi.fn();
+      const { middleware } = fixture();
+      middleware.setSource(
+        liveSource(7, 120_000, 14_000, undefined, undefined, settled, pending),
+        () => undefined,
+      );
+      expect(pending).toHaveBeenCalledTimes(1);
+      expect(settled).not.toHaveBeenCalled();
+
+      reports[0]?.resolve(8_000);
+      await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(settled).toHaveBeenCalledWith(8);
+    });
+
+    it("報告が404か誤りなら指定位置で1回知らせる", async () => {
+      const settled = vi.fn();
+      const { middleware } = fixture();
+      middleware.setSource(
+        liveSource(7, 120_000, 14_000, undefined, undefined, settled),
+        () => undefined,
+      );
+      await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(settled).toHaveBeenCalledWith(14);
+    });
+
+    it("attemptの無いsourceは指定位置で直ちに1回知らせ、未決は知らせない", () => {
+      const settled = vi.fn();
+      const pending = vi.fn();
+      const { middleware } = fixture();
+      middleware.setSource(
+        liveSource(7, 120_000, 0, undefined, undefined, settled, pending),
+        () => undefined,
+      );
+      expect(settled).toHaveBeenCalledTimes(1);
+      expect(settled).toHaveBeenCalledWith(0);
+      expect(pending).not.toHaveBeenCalled();
+      expect(transcodeStart).not.toHaveBeenCalled();
+    });
+
+    it("sourceを作り直すシークでも未決と確定を知らせる", async () => {
+      vi.useFakeTimers();
+      const reports = deferredReports();
+      const settled = vi.fn();
+      const pending = vi.fn();
+      const { middleware } = fixture();
+      middleware.setSource(
+        liveSource(7, 120_000, 0, undefined, undefined, settled, pending),
+        () => undefined,
+      );
+      middleware.setCurrentTime(70);
+      vi.advanceTimersByTime(200);
+      expect(pending).toHaveBeenCalledTimes(1);
+      expect(settled).toHaveBeenCalledTimes(1);
+
+      reports[0]?.resolve(64_000);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(settled).toHaveBeenCalledTimes(2);
+      expect(settled).toHaveBeenLastCalledWith(64);
+    });
+
+    it("sourceを差し替えたあとに届いた古い報告では知らせない", async () => {
+      const reports = deferredReports();
+      const settled = vi.fn();
+      const { middleware } = fixture();
+      middleware.setSource(
+        liveSource(7, 120_000, 30_000, undefined, undefined, settled),
+        () => undefined,
+      );
+      middleware.setSource(
+        liveSource(7, 120_000, 60_000, undefined, undefined, settled),
+        () => undefined,
+      );
+      reports[0]?.resolve(20_000);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(settled).not.toHaveBeenCalled();
+
+      reports[1]?.resolve(56_000);
+      await vi.waitFor(() => expect(settled).toHaveBeenCalledTimes(1));
+      expect(settled).toHaveBeenCalledWith(56);
+    });
+  });
 });

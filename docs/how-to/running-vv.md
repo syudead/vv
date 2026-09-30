@@ -44,6 +44,29 @@ During and after a scan:
   when conversion succeeds; and
 - titles can be searched from the first character.
 
+## Subtitles
+
+VVMDM shows subtitle files placed next to a video. There is nothing to
+register and no rescan is needed: add or remove a file, then reopen the
+video's page. Name the file after the video, without the video's extension:
+
+| Video       | Subtitle files                                         |
+| ----------- | ------------------------------------------------------ |
+| `movie.mp4` | `movie.srt` or `movie.vtt` (listed as "Default")       |
+| `movie.mp4` | `movie.<label>.srt` or `movie.<label>.vtt`, such as `movie.ja.srt` or `movie.en.forced.vtt` |
+
+- Names and extensions match case-insensitively. When the same label has both
+  an `.srt` and a `.vtt`, only the `.vtt` is used.
+- Supported formats are SubRip (`.srt`) and WebVTT (`.vtt`). Text may be UTF-8
+  (with or without a BOM), UTF-16 with a BOM, or Shift_JIS.
+- Files larger than 4 MiB are ignored.
+- Only the folder of the file that is played is searched; a `Subs/` folder is
+  not.
+
+When a video has subtitles, the player shows a subtitles button next to the
+playback speed. Press `C` to turn subtitles on or off. The browser remembers
+the last choice, and a video with the same label starts with it turned on.
+
 ## Runtime settings
 
 | Variable              | Default | Purpose                                                                                         |

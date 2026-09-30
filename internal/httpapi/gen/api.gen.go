@@ -203,6 +203,7 @@ const (
 	ErrorReasonRootGroupNotTaggable          ErrorReason = "root_group_not_taggable"
 	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
 	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
+	ErrorReasonSubtitleUnavailable           ErrorReason = "subtitle_unavailable"
 	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
 	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
@@ -265,6 +266,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonSearchTooLong:
 		return true
 	case ErrorReasonSeekPreviewGenerating:
+		return true
+	case ErrorReasonSubtitleUnavailable:
 		return true
 	case ErrorReasonTagNameControlCharacters:
 		return true
@@ -563,6 +566,24 @@ func (e ScanStatus) Valid() bool {
 	case ScanStatusPartial:
 		return true
 	case ScanStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SubtitleTrackFormat.
+const (
+	Srt SubtitleTrackFormat = "srt"
+	Vtt SubtitleTrackFormat = "vtt"
+)
+
+// Valid indicates whether the value is a known member of the SubtitleTrackFormat enum.
+func (e SubtitleTrackFormat) Valid() bool {
+	switch e {
+	case Srt:
+		return true
+	case Vtt:
 		return true
 	default:
 		return false
@@ -1407,6 +1428,26 @@ type SetupRequest struct {
 	Username string `json:"username"`
 }
 
+// SubtitleTrack defines model for SubtitleTrack.
+type SubtitleTrack struct {
+	// File 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う
+	File string `json:"file"`
+
+	// Format 元のファイルの形式
+	Format SubtitleTrackFormat `json:"format"`
+
+	// Label ファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は空文字列
+	Label string `json:"label"`
+}
+
+// SubtitleTrackFormat 元のファイルの形式
+type SubtitleTrackFormat string
+
+// SubtitleTrackList defines model for SubtitleTrackList.
+type SubtitleTrackList struct {
+	Subtitles []SubtitleTrack `json:"subtitles"`
+}
+
 // Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
 type Tag struct {
 	Id   int64  `json:"id"`
@@ -1984,6 +2025,12 @@ type GetVideoSeekThumbnailSheetParams struct {
 	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
+// GetVideoSubtitleParams defines parameters for GetVideoSubtitle.
+type GetVideoSubtitleParams struct {
+	// OffsetMs 再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）。cue の時刻からこの値を引く
+	OffsetMs *int64 `form:"offsetMs,omitempty" json:"offsetMs,omitempty"`
+}
+
 // GetVideoThumbnailParams defines parameters for GetVideoThumbnail.
 type GetVideoThumbnailParams struct {
 	// V 一覧・詳細が返した URL に含まれる版
@@ -2206,6 +2253,12 @@ type ServerInterface interface {
 	// StreamVideo 動画本体を配信する
 	// (GET /api/videos/{id}/stream)
 	StreamVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ListVideoSubtitles 動画の隣に置いた字幕ファイルの一覧を返す
+	// (GET /api/videos/{id}/subtitles)
+	ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetVideoSubtitle 字幕ファイルを WebVTT にして返す
+	// (GET /api/videos/{id}/subtitles/{file})
+	GetVideoSubtitle(w http.ResponseWriter, r *http.Request, id VideoId, file string, params GetVideoSubtitleParams)
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
@@ -3769,6 +3822,83 @@ func (siw *ServerInterfaceWrapper) StreamVideo(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ListVideoSubtitles operation middleware
+func (siw *ServerInterfaceWrapper) ListVideoSubtitles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideoSubtitles(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideoSubtitle operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoSubtitle(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "file" -------------
+	var file string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "file", r.PathValue("file"), &file, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "file", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoSubtitleParams
+
+	// ------------- Optional query parameter "offsetMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offsetMs", r.URL.Query(), &params.OffsetMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offsetMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offsetMs", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoSubtitle(w, r, id, file, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetVideoThumbnail operation middleware
 func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *http.Request) {
 
@@ -4057,6 +4187,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/preview", wrapper.GetVideoPreview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/transcode.mp4", wrapper.TranscodeVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/transcode-start", wrapper.GetTranscodeStart)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/subtitles", wrapper.ListVideoSubtitles)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/subtitles/{file}", wrapper.GetVideoSubtitle)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/thumbnail", wrapper.GetVideoThumbnail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail", wrapper.GetVideoSeekThumbnail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)

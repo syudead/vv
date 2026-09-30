@@ -153,6 +153,20 @@
   white-space: normal;
 }
 
+/*
+ * 字幕は操作バーと重ねない（specs/028-sidecar-subtitles 要件 10）。操作バーが見えている間は、
+ * 字幕の下端を操作バー（3em）とその上の再生バー（2em）の上に置く。操作バーが隠れる間
+ * （再生中に操作が無い）は video.js の既定どおり下へ戻す。
+ */
+.vv-video-player .video-js .vjs-text-track-display {
+  bottom: 5em;
+}
+
+.vv-video-player .video-js.vjs-user-inactive.vjs-playing .vjs-text-track-display,
+.vv-video-player .video-js.vjs-controls-disabled .vjs-text-track-display {
+  bottom: 1em;
+}
+
 /* 読み込み中は video.js の輪ではなく、プレイヤーの上の層の輪を出す。 */
 .vv-video-player .video-js .vjs-loading-spinner {
   display: none;

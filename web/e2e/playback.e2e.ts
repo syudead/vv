@@ -760,6 +760,112 @@ test.describe.serial("live MP4 playback", () => {
     expect(shown).toBeLessThan(seekStart / 1000);
   });
 
+  test("ライブ変換の字幕は実際の開始位置の offset で取り直し、元動画の時刻に出る", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(60_000);
+    const item = video("sparse-keyframes");
+    expect(item.playable).toBe(false);
+    await saveProgress(request, item, 0);
+    // ラベルの無い字幕をオンにしておく。
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        "vv.subtitles.v1",
+        JSON.stringify({ enabled: true, label: "" }),
+      );
+    });
+    // 表示に出た字幕の文字をすべて記録する（6〜7 秒の cue が一瞬でも出ないことを見る）。
+    await page.addInitScript(() => {
+      const seen: string[] = [];
+      (window as unknown as { vvSeenCues: string[] }).vvSeenCues = seen;
+      new MutationObserver(() => {
+        const text = document.querySelector(".vjs-text-track-display")?.textContent;
+        if (text) seen.push(text);
+      }).observe(document, { subtree: true, childList: true, characterData: true });
+    });
+    const seenCues = () =>
+      page.evaluate(() => (window as unknown as { vvSeenCues: string[] }).vvSeenCues);
+    const subtitleRequests: { url: string; afterReport: boolean }[] = [];
+    let reported = false;
+    page.on("response", (response) => {
+      if (response.url().includes("/transcode-start?")) reported = true;
+    });
+    page.on("request", (candidate) => {
+      if (candidate.url().includes(`/api/videos/${String(item.id)}/subtitles/`)) {
+        subtitleRequests.push({ url: candidate.url(), afterReport: reported });
+      }
+    });
+    await play(page, item);
+
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.6,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    const seekBar = page.locator(".vjs-progress-control");
+    const box = await seekBar.boundingBox();
+    if (box === null) throw new Error("seek bar is not visible");
+    const seekRequestPromise = page.waitForRequest((candidate) =>
+      candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+    );
+    const shiftedPromise = page.waitForRequest((candidate) =>
+      /\/subtitles\/sparse-keyframes\.srt\?offsetMs=\d+$/.test(candidate.url()),
+    );
+    await page.mouse.click(box.x + box.width * (14 / 24), box.y + box.height / 2);
+    const seekRequest = await seekRequestPromise;
+    const actualStart = await reportedStart(page, seekRequest);
+    expect(actualStart).toBeGreaterThan(7_900);
+    expect(actualStart).toBeLessThan(8_100);
+    const shifted = await shiftedPromise;
+    expect(new URL(shifted.url()).searchParams.get("offsetMs")).toBe(String(actualStart));
+    expect(
+      subtitleRequests.find((entry) => entry.url === shifted.url())?.afterReport,
+    ).toBe(true);
+
+    // 9〜10 秒の cue が、表示の 9〜10 秒台に出る。
+    const display = page.locator(".vjs-text-track-display");
+    await expect(display).toContainText("After keyframe cue", { timeout: 10_000 });
+    const shownAt = await displayedSeconds(page);
+    expect(shownAt).toBeGreaterThanOrEqual(9);
+    expect(shownAt).toBeLessThanOrEqual(10);
+    expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
+
+    // 止めて位置を保存し、再読み込みで再開位置から始めても同じ offset で取り直す。
+    const progress = page.waitForRequest(
+      (candidate) =>
+        candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`) &&
+        candidate.method() === "PUT",
+    );
+    await page.locator(".vjs-play-control").click();
+    const saved = ((await progress).postDataJSON() as { positionMs: number }).positionMs;
+    const resumedPromise = page.waitForRequest((candidate) =>
+      candidate
+        .url()
+        .includes(
+          `/api/videos/${String(item.id)}/transcode.mp4?startMs=${String(saved)}`,
+        ),
+    );
+    const resumedSubtitle = page.waitForRequest((candidate) =>
+      candidate
+        .url()
+        .endsWith(`/subtitles/sparse-keyframes.srt?offsetMs=${String(actualStart)}`),
+    );
+    reported = false;
+    await page.reload();
+    const resumed = await resumedPromise;
+    expect(await reportedStart(page, resumed)).toBe(actualStart);
+    await resumedSubtitle;
+    await page.locator(".vjs-big-play-button").click();
+    await expect(display).toContainText("After keyframe cue", { timeout: 10_000 });
+    const resumedAt = await displayedSeconds(page);
+    expect(resumedAt).toBeGreaterThanOrEqual(9);
+    expect(resumedAt).toBeLessThanOrEqual(10);
+    expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
+  });
+
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
     browser,
   }) => {
@@ -1085,6 +1191,71 @@ test.describe.serial("live MP4 playback", () => {
         fullPage: true,
       });
     }
+  });
+
+  test("隣の字幕をメニューで選ぶと cue の時刻に出て、「オフ」で消え、選択を再読み込みの後も覚える", async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    const item = video("direct");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/videos/${String(item.id)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+
+    // 字幕ボタンは再生速度の前に出る。一度も選んでいないのでオフで始まる。
+    const button = page.locator(".vjs-control-bar > .vjs-subs-caps-button");
+    await expect(button).toBeVisible();
+    await expect(button.locator("button")).toHaveAttribute("title", "Subtitles (C)");
+    await expect(button.locator("button")).toHaveAttribute("aria-keyshortcuts", "C");
+    await expect(
+      page.locator(".vjs-control-bar > .vjs-subs-caps-button + .vjs-playback-rate"),
+    ).toHaveCount(1);
+    const items = button.locator(".vjs-menu-item .vjs-menu-item-text");
+    await expect(items).toHaveText(["Off", "Default", "ja"]);
+    await expect(button.locator(".vjs-texttrack-settings")).toHaveCount(0);
+    const display = page.locator(".vjs-text-track-display");
+    await expect(display).not.toContainText("Default subtitle cue");
+
+    // cue は 0.5 秒から。再生して 0.5 秒を過ぎると、選んだ字幕の文字が出る。
+    await page.evaluate(() => {
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      if (element === null) throw new Error("video is missing");
+      element.muted = true;
+      void element.play();
+    });
+    await page.locator(".video-js").hover();
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^Default/ }).click();
+    await expect(display).toContainText("Default subtitle cue");
+
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^Off/ }).click();
+    await expect(display).not.toContainText("Default subtitle cue");
+
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^ja/ }).click();
+    await expect(display).toContainText("日本語の字幕");
+
+    // 再読み込みしても ja がオンのまま始まる。
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+    await expect(
+      button.locator(".vjs-menu-item", { hasText: /^ja/ }).first(),
+    ).toHaveAttribute("aria-checked", "true");
+    await page.evaluate(() => {
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      if (element === null) throw new Error("video is missing");
+      element.muted = true;
+      void element.play();
+    });
+    await expect(display).toContainText("日本語の字幕");
+
+    // c キーでオフにし、もう一度で最後に選んだ ja に戻る。
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("c");
+    await expect(display).not.toContainText("日本語の字幕");
+    await page.keyboard.press("c");
+    await expect(display).toContainText("日本語の字幕");
   });
 
   test("関連動画から移ったあとの × と Esc は最初の一覧へ戻る", async ({ page }) => {

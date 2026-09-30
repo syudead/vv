@@ -24,6 +24,7 @@ Add each new document to this index.
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [再生の画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
+- [動画の隣に置いた字幕ファイル](sidecar-subtitles.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
 - [画面の文言と書式（i18n）](i18n.md)
 - [VVMDM ブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)

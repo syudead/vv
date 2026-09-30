@@ -213,13 +213,13 @@ func TestListLibraryForOwner(t *testing.T) {
 		}
 	}
 
-	// 受け入れ条件 11: 1本のメンバーだけが検索語に当たっても、グループは全メンバーで出る。
+	// 027 の受け入れ条件 1: 1本のメンバーだけが検索語に当たれば、その動画が動画の項目で出る。
 	hit := decode[gen.LibraryPage](t, f.env.get("/api/library?query=ep10", f.owner))
-	if names := libraryItemNames(hit); !slices.Equal(names, []string{"group:show"}) || hit.Total != 1 {
-		t.Fatalf("ep10 の検索 = %v", names)
+	if names := libraryItemNames(hit); !slices.Equal(names, []string{"ep10"}) || hit.Total != 1 {
+		t.Fatalf("ep10 の検索 = %v・total %d", names, hit.Total)
 	}
-	if got := libraryGroupNamed(t, hit, "show").VideoCount; got != 3 {
-		t.Errorf("ep10 の検索のグループの本数 = %d, want 3", got)
+	if item := hit.Items[0]; item.Kind != gen.LibraryItemKindVideo || item.Video == nil || item.Group != nil || item.Video.Id != f.ids["ep10"] {
+		t.Errorf("ep10 の検索の項目 = %+v, want ep10 の動画の項目", item)
 	}
 
 	// 視聴状態の絞り込みは項目の視聴状態に掛かる。
@@ -298,19 +298,25 @@ func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	}
 }
 
-// 「すべて選択」の id は当たったグループの全メンバーを含む（要件 21）。
-func TestListLibraryIdsIncludesAllMembers(t *testing.T) {
+// 「すべて選択」の id は一覧の項目に合わせる。一部だけが当たったグループは当たった
+// メンバーの id だけで、全メンバーが当たったグループは全メンバーの id である
+// （027 の受け入れ条件 7）。
+func TestListLibraryIdsFollowItems(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library/ids?query=ep10&tag=999", f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	got := decode[gen.VideoIdsResponse](t, rec)
-	slices.Sort(got.Ids)
+	if !slices.Equal(got.Ids, []int64{f.ids["ep10"]}) {
+		t.Errorf("ep10 の ids = %v, want [%d]", got.Ids, f.ids["ep10"])
+	}
+	whole := decode[gen.VideoIdsResponse](t, f.env.get("/api/library/ids?query=show", f.owner))
+	slices.Sort(whole.Ids)
 	want := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
 	slices.Sort(want)
-	if !slices.Equal(got.Ids, want) {
-		t.Errorf("ids = %v, want %v", got.Ids, want)
+	if !slices.Equal(whole.Ids, want) {
+		t.Errorf("show の ids = %v, want %v", whole.Ids, want)
 	}
 	if got.MissingTagIds == nil || !slices.Equal(*got.MissingTagIds, []int64{999}) {
 		t.Errorf("missingTagIds = %v", got.MissingTagIds)

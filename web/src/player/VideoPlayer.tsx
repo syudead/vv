@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
 
-import { streamUrl, type Video } from "../api/client";
+import { streamUrl, type SubtitleTrack, type Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 import {
   readPlaybackQuality,
@@ -46,6 +46,12 @@ import {
   type StallEvent,
   type StallState,
 } from "./stallMonitor";
+import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
+import {
+  createSubtitleTracks,
+  type SubtitlePlayer,
+  type SubtitleTracks,
+} from "./subtitleTracks";
 
 const saveIntervalMs = 5000;
 /**
@@ -59,10 +65,13 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 /**
  * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
- * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は画質の
- * 前へ差し込む。画質は再生速度の前に置く（specs/027-playback-quality/ui-design.md
- * 「Control bar: quality menu」）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に
- * 置く（NeighborArrows）。
+ * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は画質・
+ * 字幕・再生速度の前へ差し込む。画質は字幕の前、字幕ボタンは再生速度の前に置く
+ * （specs/027-playback-quality/ui-design.md「Control bar: quality menu」、
+ * specs/028-sidecar-subtitles research.md R-10）。字幕ボタンはトラックが無ければ video.js が
+ * 隠し、video.js の `SubsCapsButton` に字幕の名前を言語の表に通さない手直しを加えたもの
+ * （subtitleMenu.ts）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く
+ * （NeighborArrows）。
  */
 const controlBarChildren = [
   "playToggle",
@@ -73,6 +82,7 @@ const controlBarChildren = [
   "progressControl",
   "customControlSpacer",
   "qualityMenuButton",
+  subtitlesButtonName,
   "playbackRateMenuButton",
   "pictureInPictureToggle",
   "fullscreenToggle",
@@ -91,6 +101,7 @@ export const playerLanguage = "en-x-vv";
 /** playerDictionary は video.js の文言からカタログの英語への表である。作るたびにカタログを引く。 */
 export function playerDictionary(): Record<string, string> {
   const c = t.player.controls;
+  const s = t.player.subtitles;
   return {
     Play: c.withKey(c.play, "Space"),
     Pause: c.withKey(c.pause, "Space"),
@@ -108,6 +119,14 @@ export function playerDictionary(): Record<string, string> {
     "Progress Bar": c.progressBar,
     "Volume Level": c.volumeLevel,
     "Video Player": c.videoPlayer,
+    ", selected": c.menuItemSelected,
+    // 字幕ボタンとメニュー。プレイヤーの言語は英語の地域でないので、video.js は
+    // 「subtitles」の文言を使う。captions の文言も同じ名前にそろえる。
+    Subtitles: c.withKey(s.button, "C"),
+    Captions: c.withKey(s.button, "C"),
+    "subtitles off": s.off,
+    "captions off": s.off,
+    "captions and subtitles off": s.off,
   };
 }
 
@@ -116,6 +135,7 @@ const keyShortcuts: [string, string][] = [
   [".vjs-play-control", "Space"],
   [".vjs-mute-control", "M"],
   [".vjs-fullscreen-control", "F"],
+  ["button.vjs-subs-caps-button", "C"],
 ];
 
 /** PlayerStatus は、プレイヤーの上に重ねる層を決めるための状態である。 */
@@ -166,7 +186,14 @@ interface Props {
    * 既定どおりプレイヤーだけを全画面にする。
    */
   fullscreenTarget?: () => HTMLElement | null;
+  /**
+   * 動画の隣に置いた字幕の一覧（specs/028-sidecar-subtitles contracts §3）。無い・まだ
+   * 取れていないときは空。一覧が変わったら、プレイヤーを作り直さずにトラックだけ付け直す。
+   */
+  subtitles?: readonly SubtitleTrack[];
 }
+
+const noSubtitles: readonly SubtitleTrack[] = [];
 
 /** FullscreenPlayer は、全画面の先を差し替えるために触る video.js の Player の部分である。 */
 interface FullscreenPlayer {
@@ -191,6 +218,7 @@ export default function VideoPlayer(props: Props) {
   const latest = useRef(props);
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
   const popoverOpen = useRef(false);
+  const subtitlesRef = useRef<SubtitleTracks | null>(null);
   const [indicatorSlot, setIndicatorSlot] = useState<HTMLElement | null>(null);
   const [restartSlot, setRestartSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
@@ -221,6 +249,7 @@ export default function VideoPlayer(props: Props) {
 
     // 言語はプレイヤーを作るときにカタログから作り直す（テストの疑似ロケールも届く）。
     videojs.addLanguage(playerLanguage, playerDictionary());
+    registerSubtitlesButton();
     const element = document.createElement("video-js");
     element.classList.add("video-js", "vjs-big-play-centered");
     host.appendChild(element);
@@ -235,6 +264,8 @@ export default function VideoPlayer(props: Props) {
       // 失敗はプレイヤーの上の層で伝える。video.js 自身の誤りの面は出さない。
       errorDisplay: false,
       playbackRates,
+      // 字幕の見た目の設定（文字の大きさ・色）は出さない（親 Issue の UI 品質）。
+      textTrackSettings: false,
       controlBar: {
         children: controlBarChildren,
         remainingTimeDisplay: false,
@@ -250,6 +281,9 @@ export default function VideoPlayer(props: Props) {
       });
     });
     playerRef.current = player;
+    const subtitles = createSubtitleTracks(player as unknown as SubtitlePlayer);
+    subtitles.replace(source.id, current.subtitles ?? noSubtitles);
+    subtitlesRef.current = subtitles;
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
@@ -429,7 +463,9 @@ export default function VideoPlayer(props: Props) {
 
     const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
     latest.current.onControls(
-      createPlayerControls(player as unknown as ControllablePlayer, menuOpen),
+      createPlayerControls(player as unknown as ControllablePlayer, menuOpen, () =>
+        subtitles.toggle(),
+      ),
     );
 
     // 画質メニューへ選択肢と今の画質を渡す（qualityMenu.ts）。
@@ -444,6 +480,7 @@ export default function VideoPlayer(props: Props) {
     player.ready(() => {
       if (player.isDisposed()) return;
       setPlayerReady(true);
+      subtitles.start();
       for (const [selector, keys] of keyShortcuts) {
         host.querySelector(selector)?.setAttribute("aria-keyshortcuts", keys);
       }
@@ -458,9 +495,13 @@ export default function VideoPlayer(props: Props) {
       if (bar !== null) {
         slot = document.createElement("div");
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
+        // 字幕ボタンを再生速度の隣に保つため、「変換して再生中」は画質・字幕・再生速度の
+        // うち先頭のものの前に置く。
         bar.insertBefore(
           slot,
-          bar.querySelector(":scope > .vv-quality, :scope > .vjs-playback-rate"),
+          bar.querySelector(
+            ":scope > .vv-quality, :scope > .vjs-subs-caps-button, :scope > .vjs-playback-rate",
+          ),
         );
         setIndicatorSlot(slot);
       }
@@ -482,6 +523,9 @@ export default function VideoPlayer(props: Props) {
     // 変換の source は attempt の画質を持つ。最初の読み込み・直接再生からの切り替え・
     // 通信の失敗からの読み込み直し（reload）はどれもここを通り、未 buffer のシークは
     // liveOffset.ts の reloadAt が source の画質を引き継ぐ（要件 7）。
+    // 字幕は再生の時間軸（変換の出力）で cue を選ぶので、変換の offset が決まるたびに
+    // その offset でトラックを付け直し、報告を待つ間は外す（specs/028-sidecar-subtitles
+    // research.md R-6）。直接再生の offset は 0 のまま。
     const liveSourceAt = (positionMs: number) =>
       liveSource(
         source.id,
@@ -495,6 +539,8 @@ export default function VideoPlayer(props: Props) {
           latest.current.onPosition(attempt.logicalPositionMs);
         },
         attempt.quality === "original" ? undefined : attempt.quality,
+        (seconds) => subtitles.setOffset(seconds * 1000),
+        () => subtitles.setOffset(null),
       );
     const setLiveSource = (positionMs: number) => {
       player.src(liveSourceAt(positionMs));
@@ -589,6 +635,7 @@ export default function VideoPlayer(props: Props) {
       latest.current.onProgress(reportPosition(), true);
     });
     const setDirectSource = () => {
+      subtitles.setOffset(0);
       player.src({ src: streamUrl(source.id), type: directContentType(source) });
     };
 
@@ -894,11 +941,19 @@ export default function VideoPlayer(props: Props) {
       setRestartSlot(null);
       popoverOpen.current = false;
       latest.current.onControls(null);
+      subtitles.dispose();
+      subtitlesRef.current = null;
       attempt = { ...attempt, state: "disposed" };
       playerRef.current = null;
       if (!player.isDisposed()) player.dispose();
     };
   }, [video.id, video.probeState, video.durationMs, video.playable]);
+
+  // 字幕の一覧は動画を開いたあとに届く。プレイヤーは作り直さず、トラックだけ付け直す。
+  const subtitleList = props.subtitles ?? noSubtitles;
+  useEffect(() => {
+    subtitlesRef.current?.replace(video.id, subtitleList);
+  }, [video.id, subtitleList]);
 
   // シーク位置サムネイルは、処理中の取り直しで後から URL が来ることもある。プレイヤーは
   // 作り直さず、再生バーへの取り付けだけをやり直す。URL は同じでも、生成が終わって

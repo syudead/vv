@@ -16,6 +16,11 @@ export interface PlayerControls {
   toggleMute(): void;
   toggleFullscreen(): void;
   isFullscreen(): boolean;
+  /**
+   * toggleSubtitles は字幕のオン・オフを切り替える（`c` キー）。字幕の無い動画では何もしない
+   * （specs/028-sidecar-subtitles research.md R-11）。
+   */
+  toggleSubtitles(): void;
   /** menuOpen は、Esc を自分で扱う吹き出しやメニューが開いているかを返す。 */
   menuOpen(): boolean;
   /** wake は操作バーを見せ続ける（video.js の user-active にする）。 */
@@ -37,9 +42,9 @@ export interface ControllablePlayer {
 }
 
 /**
- * controlBarMenuOpen は、video.js の操作バーのメニュー（画質・再生速度）のどれかが開いて
- * いるかを返す。押して開いたメニューには `vjs-lock-showing`、ポイントして開いたメニューの
- * ボタンには `vjs-hover` が付く。開いている間の Esc はメニューを閉じるだけにする。
+ * controlBarMenuOpen は、video.js の操作バーのメニュー（画質・再生速度・字幕）のどれかが
+ * 開いているかを返す。押して開いたメニューには `vjs-lock-showing`、ポイントして開いた
+ * メニューのボタンには `vjs-hover` が付く。開いている間の Esc はメニューを閉じるだけにする。
  */
 export function controlBarMenuOpen(root: ParentNode): boolean {
   return (
@@ -51,6 +56,7 @@ export function controlBarMenuOpen(root: ParentNode): boolean {
 export function createPlayerControls(
   player: ControllablePlayer,
   menuOpen: () => boolean,
+  toggleSubtitles: () => void = () => undefined,
 ): PlayerControls {
   const play = () => {
     void player.play()?.catch(() => undefined);
@@ -76,6 +82,7 @@ export function createPlayerControls(
       else void player.requestFullscreen();
     },
     isFullscreen: () => player.isFullscreen(),
+    toggleSubtitles,
     menuOpen,
     wake() {
       player.userActive(true);

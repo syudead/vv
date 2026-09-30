@@ -15,6 +15,8 @@ export interface LiveSource {
   vvAttempt?: string;
   vvQuality?: TranscodeQuality;
   vvOffsetChanged?: (seconds: number) => void;
+  vvOffsetSettled?: (seconds: number) => void;
+  vvOffsetPending?: () => void;
 }
 
 interface SourceObject {
@@ -27,6 +29,8 @@ interface SourceObject {
   vvAttempt?: string;
   vvQuality?: TranscodeQuality;
   vvOffsetChanged?: (seconds: number) => void;
+  vvOffsetSettled?: (seconds: number) => void;
+  vvOffsetPending?: () => void;
 }
 
 interface OffsetTech {
@@ -61,6 +65,12 @@ function newAttempt(): string {
  * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §3）。quality は縮める
  * 画質で、source が vvQuality として持ち、未 buffer シークの作り直しが引き継ぐ
  * （specs/027-playback-quality/research.md R-5）。
+ *
+ * offsetSettled は、再生の時間軸の 0 が元動画のどの時刻か（offset、秒）が決まるたびに
+ * 1 回呼ばれる。attempt の無い source は指定位置で直ちに、ある source は報告が 200 なら
+ * 実際の開始位置、404 や誤りなら指定位置で呼ばれる。offsetPending は attempt のある source を
+ * 設定して報告を待ち始めたときに呼ばれる。字幕はこの 2 つで付け直す
+ * （specs/028-sidecar-subtitles research.md R-6）。source を作り直すシークも同じ経路で知らせる。
  */
 export function liveSource(
   videoId: number,
@@ -68,6 +78,8 @@ export function liveSource(
   startMs: number,
   offsetChanged?: (seconds: number) => void,
   quality?: TranscodeQuality,
+  offsetSettled?: (seconds: number) => void,
+  offsetPending?: () => void,
 ): LiveSource {
   const safeStart = clampTranscodeStart(startMs, durationMs);
   const attempt = safeStart > 0 ? newAttempt() : undefined;
@@ -81,6 +93,8 @@ export function liveSource(
     vvAttempt: attempt,
     vvQuality: quality,
     vvOffsetChanged: offsetChanged,
+    vvOffsetSettled: offsetSettled,
+    vvOffsetPending: offsetPending,
   };
 }
 
@@ -119,10 +133,14 @@ export function createLiveOffsetMiddleware(player: Player) {
   const awaitActualStart = (current: SourceObject) => {
     startReport?.abort();
     startReport = undefined;
+    if (!current.vvLive) return;
     const attempt = current.vvAttempt;
-    if (!current.vvLive || attempt === undefined || current.vvVideoId === undefined)
-      return;
     const requested = current.vvOffsetSeconds ?? 0;
+    if (attempt === undefined || current.vvVideoId === undefined) {
+      current.vvOffsetSettled?.(requested);
+      return;
+    }
+    current.vvOffsetPending?.();
     pendingOffsetSeconds = requested;
     const controller = new AbortController();
     startReport = controller;
@@ -134,6 +152,7 @@ export function createLiveOffsetMiddleware(player: Player) {
         startReport = undefined;
         const actual = startMs / 1000;
         offsetSeconds = actual;
+        current.vvOffsetSettled?.(actual);
         if (reloadTimer !== undefined) {
           // 未 buffer シークの予約中は、選んだ位置を保存する位置として保つ。古い開始位置を
           // 通知すると、予約の実行前に離れたとき選んだ位置ではなくその位置から再開する。
@@ -147,6 +166,7 @@ export function createLiveOffsetMiddleware(player: Player) {
       () => {
         if (!isCurrent()) return;
         startReport = undefined;
+        current.vvOffsetSettled?.(requested);
         if (pendingOffsetSeconds === requested) pendingOffsetSeconds = undefined;
         tech?.trigger("timeupdate");
       },
@@ -178,6 +198,8 @@ export function createLiveOffsetMiddleware(player: Player) {
         seconds * 1000,
         source.vvOffsetChanged,
         source.vvQuality,
+        source.vvOffsetSettled,
+        source.vvOffsetPending,
       );
       tech.one("canplay", () => {
         if (disposed || tech === undefined || generation !== reloadGeneration) return;
