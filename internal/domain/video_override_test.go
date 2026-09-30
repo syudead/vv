@@ -58,3 +58,35 @@ func TestDisplayNameAtErrorUnwraps(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// 位置は解析済みで尺の内側（0 以上、尺未満）だけを受け付け、解析前と尺の外を分けて返す
+// （specs/029-video-overrides/research.md R-11）。
+func TestCheckThumbnailPosition(t *testing.T) {
+	duration := int64(60_000)
+	zero := int64(0)
+	probed := Video{ProbeState: ProbeStateDone, DurationMs: &duration}
+	cases := []struct {
+		name     string
+		video    Video
+		position int64
+		want     error
+	}{
+		{name: "先頭", video: probed, position: 0},
+		{name: "尺の直前", video: probed, position: 59_999},
+		{name: "尺ちょうど", video: probed, position: 60_000, want: ErrThumbnailPositionOutOfRange},
+		{name: "負", video: probed, position: -1, want: ErrThumbnailPositionOutOfRange},
+		{name: "解析前", video: Video{ProbeState: ProbeStatePending, DurationMs: &duration}, position: 0,
+			want: ErrDurationUnknown},
+		{name: "解析失敗", video: Video{ProbeState: ProbeStateFailed}, position: 0, want: ErrDurationUnknown},
+		{name: "尺が無い", video: Video{ProbeState: ProbeStateDone}, position: 0, want: ErrDurationUnknown},
+		{name: "尺が 0", video: Video{ProbeState: ProbeStateDone, DurationMs: &zero}, position: 0,
+			want: ErrDurationUnknown},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := CheckThumbnailPosition(tc.video, tc.position); !errors.Is(err, tc.want) || (tc.want == nil && err != nil) {
+				t.Fatalf("CheckThumbnailPosition = %v, want %v", err, tc.want)
+			}
+		})
+	}
+}

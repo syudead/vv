@@ -105,3 +105,30 @@ type VideoOverrideChanged struct {
 }
 
 func (VideoOverrideChanged) event() {}
+
+// ErrDurationUnknown は、解析が終わっていないか尺が分からず、代表サムネイルの位置を
+// 確かめられないことを表す。入力ではなく動画の今の状態の問題で、API では conflict（409）
+// になる（specs/029-video-overrides/research.md R-11）。
+var ErrDurationUnknown = errors.New("the video duration is not known yet")
+
+// ErrThumbnailPositionOutOfRange は代表サムネイルの位置が 0 未満か尺以上であることを表す。
+// API では invalid_request（400）になり、limit に尺を載せる（R-11）。
+var ErrThumbnailPositionOutOfRange = errors.New("thumbnail position is outside the video")
+
+// ErrThumbnailFrameUnavailable は指定の位置（解除では自動の位置）で代表サムネイルを
+// 作れなかったことを表す。前の画像と前の位置はそのまま残る。internal/app が生成の失敗を
+// これで包み、API では conflict（409）になる（R-4・R-11）。
+var ErrThumbnailFrameUnavailable = errors.New("cannot extract a frame for the thumbnail")
+
+// CheckThumbnailPosition は positionMs が video の代表サムネイルの位置として使えるかを
+// 確かめる（R-11）。解析が終わっていないか尺が無い・0 なら ErrDurationUnknown、
+// positionMs が 0 未満か尺以上なら ErrThumbnailPositionOutOfRange を返す。
+func CheckThumbnailPosition(video Video, positionMs int64) error {
+	if video.ProbeState != ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 {
+		return ErrDurationUnknown
+	}
+	if positionMs < 0 || positionMs >= *video.DurationMs {
+		return ErrThumbnailPositionOutOfRange
+	}
+	return nil
+}
