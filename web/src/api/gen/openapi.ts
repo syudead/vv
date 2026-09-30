@@ -983,6 +983,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 「同じ動画かもしれない」候補の一覧を返す
+         * @description 所有者だけ。映像の指紋が一致し尺がほぼ同じ 2 本の組のうち、どちらも登録フォルダの下に
+         *     所在を持つものを新しい順に最大 200 組返す。`total` は全件の数。「違う動画」と記録した組と
+         *     同じ集まりの 2 本は出ない。候補は `fingerprint` の取り込みの段階で増減し、`/api/events` の
+         *     `scan` で取り直す（specs/030-video-versions/contracts/screen-api.md §5・§6）。
+         */
+        get: operations["listVersionCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-candidates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 2 本の動画を「違う動画」と記録する
+         * @description 所有者だけ。2 本の組を「違う動画」と記録し、その組の候補を消す。候補に無い組でも記録し、
+         *     記録した組は以後候補に出ない。`videoIds` が 2 つでないか同じなら 400 `invalid_request`、
+         *     どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない
+         *     （specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+         *     `POST /api/video-bundles` に 2 本と代表を渡す。
+         */
+        post: operations["dismissVersionCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -1867,6 +1914,23 @@ export interface components {
              * @description 代表にする動画。videoIds の 1 つ
              */
             representativeId: number;
+        };
+        /** @description 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5） */
+        VersionCandidate: {
+            /** @description 2 本の動画。id の小さい順で、各項目は GET /api/videos/{id} と同じ形 */
+            videos: components["schemas"]["Video"][];
+            /** @description 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている） */
+            distance: number;
+        };
+        VersionCandidatePage: {
+            /** @description 新しい順、最大 200 組 */
+            items: components["schemas"]["VersionCandidate"][];
+            /** @description 候補の全件の数 */
+            total: number;
+        };
+        VersionCandidateDismissRequest: {
+            /** @description 「違う動画」と記録する 2 本。同じ id は受け付けない */
+            videoIds: number[];
         };
         /**
          * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
@@ -3636,6 +3700,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["VideoVersions"];
                 };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVersionCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 候補の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionCandidatePage"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    dismissVersionCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionCandidateDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description 記録した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];

@@ -1591,6 +1591,51 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/version-candidates:
+    get:
+      operationId: listVersionCandidates
+      summary: 「同じ動画かもしれない」候補の一覧を返す
+      description: |
+        所有者だけ。映像の指紋が一致し尺がほぼ同じ 2 本の組のうち、どちらも登録フォルダの下に
+        所在を持つものを新しい順に最大 200 組返す。`total` は全件の数。「違う動画」と記録した組と
+        同じ集まりの 2 本は出ない。候補は `fingerprint` の取り込みの段階で増減し、`/api/events` の
+        `scan` で取り直す（specs/030-video-versions/contracts/screen-api.md §5・§6）。
+      responses:
+        "200":
+          description: 候補の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionCandidatePage"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/version-candidates/dismiss:
+    post:
+      operationId: dismissVersionCandidate
+      summary: 2 本の動画を「違う動画」と記録する
+      description: |
+        所有者だけ。2 本の組を「違う動画」と記録し、その組の候補を消す。候補に無い組でも記録し、
+        記録した組は以後候補に出ない。`videoIds` が 2 つでないか同じなら 400 `invalid_request`、
+        どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない
+        （specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+        `POST /api/video-bundles` に 2 本と代表を渡す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VersionCandidateDismissRequest"
+      responses:
+        "204":
+          description: 記録した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/directories:
     get:
       operationId: listDirectories
@@ -3089,6 +3134,55 @@ components:
           type: integer
           format: int64
           description: 代表にする動画。videoIds の 1 つ
+
+    VersionCandidate:
+      type: object
+      required: [videos, distance]
+      additionalProperties: false
+      description: |
+        「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
+      properties:
+        videos:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: 2 本の動画。id の小さい順で、各項目は GET /api/videos/{id} と同じ形
+          items:
+            $ref: "#/components/schemas/Video"
+        distance:
+          type: integer
+          minimum: 0
+          description: 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている）
+
+    VersionCandidatePage:
+      type: object
+      required: [items, total]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          description: 新しい順、最大 200 組
+          items:
+            $ref: "#/components/schemas/VersionCandidate"
+        total:
+          type: integer
+          minimum: 0
+          description: 候補の全件の数
+
+    VersionCandidateDismissRequest:
+      type: object
+      required: [videoIds]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: 「違う動画」と記録する 2 本。同じ id は受け付けない
+          items:
+            type: integer
+            format: int64
 
     RelatedGroup:
       type: object

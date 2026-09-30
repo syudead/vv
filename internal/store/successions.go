@@ -61,6 +61,8 @@ func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.Dele
 	for _, statement := range []string{
 		`delete from video_successions where new_key in (select value from json_each(?))`,
 		`delete from video_fingerprints where content_key in (select value from json_each(?))`,
+		`delete from video_version_candidates where key_a in (select value from json_each(?1))
+		    or key_b in (select value from json_each(?1))`,
 	} {
 		if _, err := tx.ExecContext(ctx, statement, string(encoded)); err != nil {
 			return fmt.Errorf("cannot release the content index: %w", err)
@@ -173,6 +175,11 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		return nil, err
 	}
 	if err := moveDismissals(ctx, tx, oldKey, contentKey); err != nil {
+		return nil, err
+	}
+	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる（data-model.md §1 の
+	// 不変条件）。
+	if err := pruneVersionCandidates(ctx, tx); err != nil {
 		return nil, err
 	}
 
