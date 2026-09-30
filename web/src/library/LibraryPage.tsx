@@ -381,9 +381,11 @@ export default function LibraryPage() {
       // ここでは見送り、選択を解除しない（ui-design.md「Combobox」）。
       if (event.key !== "Escape" || event.defaultPrevented) return;
       // 選択バーから開いた窓（「Bundle as versions」）の Esc は窓を閉じるだけにし、
-      // 選択を残す（specs/030-video-versions/ui-design.md「Bundle dialog」）。
-      if (event.target instanceof Element && event.target.closest('[aria-modal="true"]'))
-        return;
+      // 選択を残す（specs/030-video-versions/ui-design.md「Bundle dialog」）。窓が開いて
+      // いるかはフォーカスの位置によらずに見る。送る間は押したボタンが disabled になって
+      // フォーカスが body に落ちるので、event.target で見ると選択を解除して窓ごと消し、
+      // 送り終えた後の一覧の取り直しとトーストまで失ってしまうため。
+      if (document.querySelector('[aria-modal="true"]') !== null) return;
       clearSelection();
     };
     document.addEventListener("keydown", onKey);

@@ -2353,4 +2353,47 @@ describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md
     expect(screen.getByText("2 videos selected")).toBeDefined();
     expect(bundleRequests).toEqual([]);
   });
+
+  it("送る間にフォーカスが body に落ちても、Esc で選択を解除せず窓を残す", async () => {
+    const user = userEvent.setup();
+    const base = fetchMock.getMockImplementation()!;
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/video-bundles") await held;
+      return base(input, init);
+    });
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    await user.click(await within(dialog).findByRole("radio", { name: /動画 2/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Bundle" }));
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Bundle" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    // ブラウザは disabled になったボタンからフォーカスを外し body に落とすので、Esc の
+    // 対象は body になる（jsdom はフォーカスを残すため、対象を body にして送る）。
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Bundle as versions" })).toBeDefined();
+    expect(screen.getByText("2 videos selected")).toBeDefined();
+
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "動画 1" })).toBeNull(),
+    );
+    expect(bundleRequests).toEqual([{ videoIds: [1, 2], representativeId: 2 }]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      await screen.findByText('Bundled 2 videos as versions of "動画 2"'),
+    ).toBeDefined();
+  });
 });
