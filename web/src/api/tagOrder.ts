@@ -75,8 +75,9 @@ export function compareTagRefs(a: TagRef, b: TagRef): number {
  * - `add`: 手で付けた分を立てる。既に付いていた（同じ id の）行は、サーバーが
  *   返した最新の name で差し替える（改名やシノニムからの付与直後に古い表示名が
  *   残らないようにする）。無ければ名前の自然順を保つ位置へ挿す。
- * - `remove`: 手で付けた分を外す。フォルダ名からも付いている行は残し、そうで
- *   なければ取り除く。無ければ変えない。
+ * - `remove`: 手で付けた分を外す。フォルダ名からも付いている行は同じ位置に残して
+ *   サーバーが返した最新の name と tentative を映し、そうでなければ取り除く。
+ *   無ければ変えない。
  */
 export function applyTagToTags(
   tags: readonly VideoTag[],
@@ -87,8 +88,12 @@ export function applyTagToTags(
   const withoutExisting = tags.filter((candidate) => candidate.id !== tag.id);
   if (action === "remove") {
     if (existing?.fromFolder !== true) return withoutExisting;
+    // 残る行も同じ位置のまま、サーバーが返した最新の name と tentative を映す
+    // （別のタブで確定された直後などに古い仮の表示が残らないようにする）。
     return tags.map((candidate) =>
-      candidate.id === tag.id ? { ...candidate, manual: false } : candidate,
+      candidate.id === tag.id
+        ? { ...candidate, name: tag.name, manual: false, tentative: tag.tentative }
+        : candidate,
     );
   }
   const added: VideoTag = {

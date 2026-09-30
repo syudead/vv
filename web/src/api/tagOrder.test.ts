@@ -125,6 +125,19 @@ describe("applyTagToTags", () => {
     expect(result).toEqual([folder(1, "旅行")]);
   });
 
+  it("removeでフォルダ名からの分が残る行は、返ったnameとtentativeを映す", () => {
+    const tags: VideoTag[] = [
+      { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: true },
+      folder(2, "観光"),
+    ];
+    const result = applyTagToTags(
+      tags,
+      { id: 1, name: "温泉", tentative: false },
+      "remove",
+    );
+    expect(result).toEqual([folder(1, "温泉"), folder(2, "観光")]);
+  });
+
   it("removeで無いidを渡しても変えない", () => {
     const tags = [manual(1, "旅行")];
     const result = applyTagToTags(
