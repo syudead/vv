@@ -421,6 +421,8 @@ export const en = {
       madePublic: (count: number) => `Made ${videos(count)} public`,
       madePrivate: (count: number) => `Made ${videos(count)} private`,
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
+      bundle: "Bundle as versions",
+      bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
     },
   },
   folders: {
@@ -798,6 +800,23 @@ export const en = {
         `The tag "${name}" no longer exists, so the tags were reloaded`,
       attachFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
       detachFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
+    },
+  },
+  versions: {
+    bundle: {
+      title: "Bundle as versions",
+      description: (count: number) =>
+        `These ${formatNumber(count)} videos become versions of one video. Pick the one to show in the library. The library keeps that video's tags, position and visibility; the others' are set aside and come back if you remove them.`,
+      representative: "Representative",
+      row: (title: string, details: string) =>
+        details === "" ? title : `${title}, ${details}`,
+      alreadyBundled: (count: number) =>
+        `Already ${formatNumber(count)} versions — all of them join`,
+      submit: "Bundle",
+      loadFailed: "Couldn't load the selected videos",
+      failed: (reason: string) => `Couldn't bundle: ${reason}`,
+      bundled: (count: number, title: string) =>
+        `Bundled ${formatNumber(count)} videos as versions of "${title}"`,
     },
   },
   tagName: {

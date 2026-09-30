@@ -2200,3 +2200,200 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
     expectCatalogTextOnly(document.body);
   });
 });
+
+describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md「Selection bar」）", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  /** 一覧に出る動画の id。束ねると代表以外が消える。 */
+  let listed: number[];
+  let bundleRequests: { videoIds: number[]; representativeId: number }[];
+  const group: LibraryGroup = {
+    folder: { rootId: 3, path: "連続もの" },
+    name: "連続もの",
+    videoCount: 2,
+    watchedCount: 0,
+    watchState: "unwatched",
+    durationMs: 5 * 60_000,
+    sizeBytes: 5 * 1024 * 1024,
+    addedAt: "2026-09-02T00:00:00Z",
+    previews: [{ videoId: 11, thumbnailUrl: "/api/videos/11/thumbnail" }],
+    openVideoId: 11,
+    videoIds: [11, 12],
+    tags: [],
+  };
+  let withGroup: boolean;
+
+  beforeEach(() => {
+    __resetTagsForTest();
+    clearListSnapshot();
+    listed = [1, 2, 3];
+    bundleRequests = [];
+    withGroup = false;
+    vi.stubGlobal("fetch", libraryFetch(fetchMock));
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    fetchMock.mockImplementation((input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      const method = init?.method ?? "GET";
+      if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+      if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url.pathname === "/api/processing") {
+        return Promise.resolve(
+          json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }),
+        );
+      }
+      if (url.pathname === "/api/library") {
+        const items: unknown[] = listed.map((id) => ({
+          kind: "video",
+          video: video(id),
+        }));
+        if (withGroup) items.push({ kind: "group", group });
+        return Promise.resolve(json({ items, total: items.length }));
+      }
+      const detail = /^\/api\/videos\/(\d+)$/.exec(url.pathname);
+      if (detail !== null) return Promise.resolve(json(video(Number(detail[1]))));
+      if (url.pathname === "/api/video-bundles" && method === "POST") {
+        const body = JSON.parse(String(init?.body)) as {
+          videoIds: number[];
+          representativeId: number;
+        };
+        bundleRequests.push(body);
+        listed = listed.filter(
+          (id) => id === body.representativeId || !body.videoIds.includes(id),
+        );
+        if (body.videoIds.some((id) => group.videoIds.includes(id))) withGroup = false;
+        return Promise.resolve(
+          json({
+            representativeId: body.representativeId,
+            items: [
+              video(body.representativeId),
+              ...body.videoIds
+                .filter((id) => id !== body.representativeId)
+                .map((id) => video(id)),
+            ],
+          }),
+        );
+      }
+      throw new Error(`unexpected request: ${method} ${url.toString()}`);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("2 本を選んで代表を選び束ねると、一覧に代表の 1 件だけが残り選択が解ける", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    // 1 本の選択では出さない。
+    expect(screen.queryByRole("button", { name: "Bundle as versions" })).toBeNull();
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    await user.click(await within(dialog).findByRole("radio", { name: /動画 2/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Bundle" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "動画 1" })).toBeNull(),
+    );
+    expect(bundleRequests).toEqual([{ videoIds: [1, 2], representativeId: 2 }]);
+    expect(screen.getByRole("link", { name: "動画 2" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "動画 3" })).toBeDefined();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
+    expect(
+      await screen.findByText('Bundled 2 videos as versions of "動画 2"'),
+    ).toBeDefined();
+    // バーは消えるので、フォーカスは一覧の最初のカードへ移る。
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("link", { name: "動画 2" })),
+    );
+  });
+
+  it("グループの選択はメンバーに広げて送る", async () => {
+    const user = userEvent.setup();
+    withGroup = true;
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "連続もの"' }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    const radios = await within(dialog).findAllByRole("radio");
+    expect(radios).toHaveLength(3);
+    await user.click(within(dialog).getByRole("radio", { name: /^動画 1,/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Bundle" }));
+
+    await waitFor(() => expect(bundleRequests).toHaveLength(1));
+    expect([...bundleRequests[0]!.videoIds].sort((a, b) => a - b)).toEqual([1, 11, 12]);
+    expect(bundleRequests[0]!.representativeId).toBe(1);
+  });
+
+  it("窓の Esc は窓だけを閉じ、選択を残す", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 3"' }));
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+    await screen.findAllByRole("radio");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("region", { name: "Selection actions" })).toBeDefined();
+    expect(screen.getByText("2 videos selected")).toBeDefined();
+    expect(bundleRequests).toEqual([]);
+  });
+
+  it("送る間にフォーカスが body に落ちても、Esc で選択を解除せず窓を残す", async () => {
+    const user = userEvent.setup();
+    const base = fetchMock.getMockImplementation()!;
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/video-bundles") await held;
+      return base(input, init);
+    });
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    await user.click(await within(dialog).findByRole("radio", { name: /動画 2/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Bundle" }));
+    await waitFor(() =>
+      expect(
+        (within(dialog).getByRole("button", { name: "Bundle" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    // ブラウザは disabled になったボタンからフォーカスを外し body に落とすので、Esc の
+    // 対象は body になる（jsdom はフォーカスを残すため、対象を body にして送る）。
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Bundle as versions" })).toBeDefined();
+    expect(screen.getByText("2 videos selected")).toBeDefined();
+
+    release();
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "動画 1" })).toBeNull(),
+    );
+    expect(bundleRequests).toEqual([{ videoIds: [1, 2], representativeId: 2 }]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      await screen.findByText('Bundled 2 videos as versions of "動画 2"'),
+    ).toBeDefined();
+  });
+});

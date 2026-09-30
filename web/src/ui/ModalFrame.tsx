@@ -3,6 +3,7 @@ import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 import { t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { isComposingNativeKeyEvent } from "./Combobox";
 import IconButton from "./IconButton";
 
@@ -23,11 +24,14 @@ export function ModalFrame({
   onClose,
   children,
   initialFocus,
+  width = "sm:max-w-2xl",
 }: {
   title: UiText;
   onClose: () => void;
   children: ReactNode;
   initialFocus?: RefObject<HTMLElement | null>;
+  /** `sm` 以上の窓の最大幅（Tailwind の `sm:max-w-*`）。`sm` 未満は画面幅いっぱい。 */
+  width?: "sm:max-w-2xl" | "sm:max-w-lg";
 }) {
   const panel = useRef<HTMLDivElement>(null);
   const overlay = useRef<HTMLDivElement>(null);
@@ -109,7 +113,10 @@ export function ModalFrame({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex min-h-0 w-full flex-col bg-elevated shadow-elevated sm:max-h-[calc(100dvh-3rem)] sm:max-w-2xl sm:rounded-lg sm:border sm:border-border-strong"
+        className={cn(
+          "flex min-h-0 w-full flex-col bg-elevated shadow-elevated sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg sm:border sm:border-border-strong",
+          width,
+        )}
       >
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
           <h2 id={titleId} className="min-w-0 flex-1 truncate text-base font-semibold">

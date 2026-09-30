@@ -22,14 +22,17 @@ import {
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { formatBytes, formatResolution } from "../lib/format";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
-import { formatCodec } from "./properties";
+import {
+  VersionDetailsLine,
+  versionDetails,
+  versionDetailsText,
+} from "../versions/VersionDetails";
 
 /** VersionsNavigation は、一覧の行から別のバージョンへ移るときに渡す値である。 */
 export interface VersionsNavigation {
@@ -41,28 +44,6 @@ export interface VersionsNavigation {
 
 type ListState =
   { kind: "loading" } | { kind: "ready"; versions: VideoVersions } | { kind: "failed" };
-
-/** 一覧の行の 2 行目の値（specs/030-video-versions/ui-design.md「Versions list」）。 */
-interface VersionDetails {
-  /** 解像度・コンテナ・映像コーデック・サイズ。分からない値は省く。 */
-  specs: string[];
-  /** 「登録フォルダの表示名 / 相対パス」。分からなければ空。 */
-  place: string;
-}
-
-export function versionDetails(video: Video): VersionDetails {
-  const specs = [
-    formatResolution(video),
-    video.container?.toUpperCase(),
-    video.videoCodec === undefined ? undefined : formatCodec(video.videoCodec),
-    video.probeState === "done" ? formatBytes(video.sizeBytes) : undefined,
-  ].filter((value): value is string => value !== undefined && value !== "");
-  const parts: string[] = [];
-  if (video.folder?.rootName !== undefined) parts.push(video.folder.rootName);
-  if (video.folder !== undefined && video.folder.path !== "")
-    parts.push(video.folder.path);
-  return { specs, place: t.shell.scan.location(parts) };
-}
 
 /** failureIsStale は、別のタブで先に集まりが変わった失敗（取り直しが要る）かを返す。 */
 function failureIsStale(error: unknown): boolean {
@@ -370,8 +351,8 @@ function VersionRow({
   // 所有者は行の title で絶対パスを読める。ゲストは相対の置き場所だけ
   // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
   const fullPlace = owner ? (item.location?.path ?? details.place) : details.place;
-  const detailsTitle = [...details.specs, fullPlace].filter((v) => v !== "").join(" · ");
-  const spoken = [...details.specs, details.place].filter((v) => v !== "").join(" ");
+  const detailsTitle = versionDetailsText(details, " · ", fullPlace);
+  const spoken = versionDetailsText(details, " ");
 
   const text = (
     <>
@@ -386,37 +367,7 @@ function VersionRow({
           </span>
         )}
       </span>
-      <span
-        className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-fg-muted tabular-nums"
-        title={detailsTitle}
-      >
-        {details.specs.map((value, index) => (
-          <span
-            key={`${String(index)}:${value}`}
-            className="flex shrink-0 items-center gap-1.5"
-          >
-            {index > 0 && (
-              <span className="text-fg-subtle" aria-hidden="true">
-                ·
-              </span>
-            )}
-            {value}
-          </span>
-        ))}
-        {details.place !== "" && (
-          <>
-            {details.specs.length > 0 && (
-              <span className="shrink-0 text-fg-subtle" aria-hidden="true">
-                ·
-              </span>
-            )}
-            {/* 置き場所は末尾（ファイルに近い側）を優先して残す。 */}
-            <span dir="rtl" className="min-w-0 truncate text-left">
-              <bdi dir="ltr">{details.place}</bdi>
-            </span>
-          </>
-        )}
-      </span>
+      <VersionDetailsLine details={details} title={detailsTitle} />
     </>
   );
 

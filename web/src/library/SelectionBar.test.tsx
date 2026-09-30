@@ -190,6 +190,7 @@ function renderBar(props: Partial<React.ComponentProps<typeof SelectionBar>> = {
   const onSelectAll = vi.fn();
   const onClear = vi.fn();
   const onTagRemoved = vi.fn();
+  const onBundled = vi.fn();
   const result = render(
     barElement({
       count: 3,
@@ -199,10 +200,11 @@ function renderBar(props: Partial<React.ComponentProps<typeof SelectionBar>> = {
       onSelectAll,
       onClear,
       onTagRemoved,
+      onBundled,
       ...props,
     }),
   );
-  return { ...result, onSelectAll, onClear, onTagRemoved };
+  return { ...result, onSelectAll, onClear, onTagRemoved, onBundled };
 }
 
 beforeEach(() => {
@@ -263,6 +265,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
     expect(
@@ -352,6 +355,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
 
@@ -384,6 +388,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
 
@@ -422,6 +427,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
 
@@ -772,6 +778,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
 
@@ -804,6 +811,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
     await waitFor(() => expect(server.summaryQueue).toHaveLength(2));
@@ -847,6 +855,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
     expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
@@ -861,6 +870,7 @@ describe("SelectionBar", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
 
@@ -966,6 +976,7 @@ describe("SelectionBar の英語の文言", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
     expect(screen.getByText("2 videos selected")).toBeDefined();
@@ -1030,6 +1041,7 @@ describe("SelectionBar の英語の文言", () => {
         onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
       }),
     );
     expectCatalogTextOnly(document.body, tagNames);
@@ -1050,5 +1062,89 @@ describe("SelectionBar の英語の文言", () => {
     await user.click(screen.getByRole("button", { name: /Retry/ }));
     await screen.findByText(/no tags that can be removed/);
     expectCatalogTextOnly(document.body);
+  });
+});
+
+describe("SelectionBar の束ねる操作（specs/030-video-versions/ui-design.md「Bundle action」）", () => {
+  it("1 本の選択では出さず、2 本目を選ぶと現れる", () => {
+    install();
+    const { rerender } = renderBar({ count: 1, selectedIds: [1] });
+    expect(screen.queryByRole("button", { name: /Bundle as versions/ })).toBeNull();
+
+    rerender(
+      barElement({
+        count: 2,
+        allSelected: false,
+        selectedIds: [1, 2],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
+      }),
+    );
+    const bundle = screen.getByRole("button", { name: "Bundle as versions" });
+    expect((bundle as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("20 本を超えると押せず、理由を添える（タグの上限は使わない）", () => {
+    install();
+    renderBar({
+      count: 21,
+      selectedIds: Array.from({ length: 21 }, (_, i) => i + 1),
+    });
+    const bundle = screen.getByRole("button", { name: "Bundle as versions" });
+    expect((bundle as HTMLButtonElement).disabled).toBe(true);
+    expect(bundle.getAttribute("title")).toBe("Bundle up to 20 videos at a time");
+    const describedBy = bundle.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy!)?.textContent).toBe(
+      "Bundle up to 20 videos at a time",
+    );
+    // タグと公開の操作は上限（20,000 本）の内なので押せる。
+    expect(
+      (screen.getByRole("button", { name: /Add tag/ }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("押すと選んだ順の id で窓を開き、Esc は窓だけを閉じて引き金へ戻す", async () => {
+    const fetchMock = install();
+    const detail = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) => {
+      const match = /^\/api\/videos\/(\d+)$/.exec(String(input));
+      if (match !== null) {
+        return Promise.resolve(
+          jsonResponse({
+            id: Number(match[1]),
+            title: `動画 ${match[1]!}`,
+            public: false,
+            sizeBytes: 1,
+            addedAt: "2026-09-01T00:00:00Z",
+            playable: true,
+            probeState: "done",
+            thumbnailState: "done",
+            previewState: "done",
+            tags: [],
+          }),
+        );
+      }
+      return detail(input, init);
+    });
+    const user = userEvent.setup();
+    const { onClear } = renderBar({ count: 2, selectedIds: [7, 3] });
+    const trigger = screen.getByRole("button", { name: "Bundle as versions" });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
+    const radios = await within(dialog).findAllByRole("radio");
+    expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([
+      expect.stringContaining("動画 7"),
+      expect.stringContaining("動画 3"),
+    ]);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onClear).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 });
