@@ -202,6 +202,18 @@ type Video struct {
 	// Public は公開フラグが立っているか（specs/016-single-account-auth/data-model.md §1）。
 	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
 	Public bool
+
+	// FileTitle はファイル名由来の題名（代表の所在の video_locations.title）である。
+	// Title は有効な題名で、表示名があればそれ、無ければ FileTitle と同じになる
+	// （specs/029-video-overrides/research.md R-2）。
+	FileTitle string
+	// DisplayName は所有者が付けた表示名。未設定は空である。
+	DisplayName string
+	// ThumbnailPositionMs は代表サムネイルにする場面の位置（ミリ秒）。未設定は nil。
+	ThumbnailPositionMs *int64
+	// ThumbnailRevision は位置を記録するたびに書く改版番号（R-6）。未設定は 0。
+	// thumbnailUrl の版だけに使い、応答の項目にはしない。
+	ThumbnailRevision int64
 }
 
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。

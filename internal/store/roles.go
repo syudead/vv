@@ -60,6 +60,13 @@ type AuthStore struct{ sql *sql.DB }
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
 type VisibilityStore struct{ sql *sql.DB }
 
+// OverrideStore は動画の上書き（表示名）を、その内容の動画の全所在の照合用の鍵の
+// 書き直しと同じ取引で保存する（overrides.go、specs/029-video-overrides/data-model.md §3）。
+// 動画を返す読み出しがそれを Video.Title などへ写すのは、各役割の読み出しである。
+// VisibilityStore と同じく SQL 接続を使うが、確定後に domain.VideoOverrideChanged を
+// 発行するため、発行先を持つ *DB を通して使う。ライブラリ索引の型には依存しない。
+type OverrideStore struct{ db *DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -72,3 +79,4 @@ func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}
 }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
+func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
