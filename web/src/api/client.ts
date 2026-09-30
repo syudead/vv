@@ -80,6 +80,8 @@ export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
 export type VideoVersions = components["schemas"]["VideoVersions"];
 export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
+export type VersionCandidate = components["schemas"]["VersionCandidate"];
+export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
@@ -609,6 +611,38 @@ export async function unbundleVideo(id: number, signal?: AbortSignal): Promise<V
   });
   clearListSnapshot();
   return video;
+}
+
+/**
+ * listVersionCandidates は「同じ動画かもしれない」候補の組を新しい順に取得する（最大 200 組、`total` は
+ * 全件）。各組の `videos` は id の小さい順で、`getVideo` と同じ形である
+ * （specs/030-video-versions/contracts/screen-api.md §5）。候補は取り込みで増減するので、`scan` の
+ * 通知で取り直す（§6）。
+ */
+export function listVersionCandidates(
+  signal?: AbortSignal,
+): Promise<VersionCandidatePage> {
+  return request<VersionCandidatePage>("/api/version-candidates", { signal });
+}
+
+/**
+ * dismissVersionCandidate は 2 本の動画を「違う動画」と記録し、その組を候補から外す。記録した組は
+ * 以後候補に出ない（specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+ * `bundleVideos` に 2 本と代表を渡す。
+ */
+export async function dismissVersionCandidate(
+  videoIds: readonly [number, number],
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch("/api/version-candidates/dismiss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds }),
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /** openVideoFile はサーバーの PC で、動画の代表の所在を既定のアプリで開く。 */

@@ -44,7 +44,7 @@ type bundleRef struct {
 // 既に集まりに属する動画は、その集まりの全メンバーごと新しい集まりへ移す。集まりの値は
 // 代表の利用者データの鍵（代表が集まりに属していればその集まりの鍵）の行を新しい鍵へ写す。
 // メンバーを移し終えた吸収した集まりの行は消すが、その鍵の値は消さない（Edge Case
-// 「集まり同士を束ねる」）。全体を 1 つの取引で行い、確定後に domain.VideoBundleChanged を
+// 「集まり同士を束ねる」）。同じ集まりになった組の候補を消す。全体を 1 つの取引で行い、確定後に domain.VideoBundleChanged を
 // 1 回発行する。
 func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representativeID int64) (domain.VideoVersions, error) {
 	ids := uniqueIDs(videoIDs)
@@ -126,6 +126,10 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		if _, err := tx.ExecContext(ctx, `delete from video_bundles where id = ?`, id); err != nil {
 			return domain.VideoVersions{}, fmt.Errorf("cannot remove the absorbed bundle: %w", err)
 		}
+	}
+	// 同じ集まりになった組は候補から消す（data-model.md §7）。
+	if err := pruneVersionCandidates(ctx, tx); err != nil {
+		return domain.VideoVersions{}, err
 	}
 
 	if err := rebuildFolderIndex(ctx, tx); err != nil {

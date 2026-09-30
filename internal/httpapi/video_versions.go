@@ -11,7 +11,7 @@ import (
 )
 
 // 同じ動画の別バージョンの集まり（specs/030-video-versions/contracts/screen-api.md §0〜§4、
-// research.md R-8）。集まりは動画の id で指し、集まりの id は応答に出さない。どの操作も
+// research.md R-8）。候補の一覧と却下は version_candidates.go。集まりは動画の id で指し、集まりの id は応答に出さない。どの操作も
 // 1 つの取引で済むので internal/app は通さず、internal/store の *VersionStore を直接呼ぶ。
 // 確定後の /api/events の video は、保存層が発行する domain.VideoBundleChanged から流れる
 // （events.go）。
@@ -31,6 +31,12 @@ type VersionStore interface {
 	// Unbundle は videoID の動画をその集まりから外し、外した動画を返す。集まりに属さなければ
 	// domain.ErrNotBundled、引けなければ domain.ErrNotFound。
 	Unbundle(ctx context.Context, videoID int64) (domain.Video, error)
+	// Candidates は「同じ動画かもしれない」候補のうち、どちらも登録フォルダの下に所在を持つ組を
+	// 新しい順に最大 domain.MaxVersionCandidates 組返す。所有者だけの経路が使う。
+	Candidates(ctx context.Context) (domain.VersionCandidatePage, error)
+	// Dismiss は 2 本を「違う動画」と記録し、その組の候補を消す。どちらかが引けなければ
+	// domain.ErrNotFound で、何も変えない。
+	Dismiss(ctx context.Context, videoIDs [2]int64) error
 }
 
 // maxBundleVideoIDs は束ねる経路が受け付ける videoIds の最大件数である。
@@ -120,30 +126,34 @@ func (s *server) checkVersionsError(w http.ResponseWriter, err error, message st
 	return false
 }
 
-// writeVideoVersions は集まりの全バージョンを VideoVersions の形で書く。各項目は
-// GET /api/videos/{id} と同じく、再生位置・タグ・所在・置かれたフォルダ（登録フォルダの
-// 表示名つき）・集まりの要約を持ち、見る人に合わせて省く（forAudience）。グループと
-// シーク用プレビューの状態は、項目ごとに問い合わせが要るので載せない。
+// writeVideoVersions は集まりの全バージョンを VideoVersions の形で書く（項目は versionItems）。
 func (s *server) writeVideoVersions(w http.ResponseWriter, r *http.Request, versions domain.VideoVersions) {
+	payload := gen.VideoVersions{RepresentativeId: versions.RepresentativeID, Items: s.versionItems(r, versions.Items)}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// versionItems は動画を GET /api/videos/{id} と同じ形の項目にする。再生位置・タグ・所在・置かれた
+// フォルダ（登録フォルダの表示名つき）・集まりの要約を持ち、見る人に合わせて省く（forAudience）。
+// グループとシーク用プレビューの状態は、項目ごとに問い合わせが要るので載せない。
+func (s *server) versionItems(r *http.Request, videos []domain.Video) []gen.Video {
 	ctx := r.Context()
 	audience := audienceFrom(ctx)
-	progress := s.progressFor(ctx, versions.Items)
-	tags := s.tagsFor(ctx, versions.Items)
+	progress := s.progressFor(ctx, videos)
+	tags := s.tagsFor(ctx, videos)
 	roots := s.registeredRoots(ctx)
 	openable := s.canOpen(r)
 
-	payload := gen.VideoVersions{RepresentativeId: versions.RepresentativeID, Items: make([]gen.Video, 0, len(versions.Items))}
-	for _, view := range s.presentVideos(ctx, versions.Items) {
+	items := make([]gen.Video, 0, len(videos))
+	for _, view := range s.presentVideos(ctx, videos) {
 		video := view.Video
 		item := withTags(withProgress(toAPIVideo(view), progress, video.UserKey), tags, video.UserKey)
 		item.Location = &gen.VideoLocation{Path: video.Path, Openable: openable}
 		item.Folder = detailFolder(roots, video.Path)
 		item.Versions = apiVersionsRef(video.Versions)
-		payload.Items = append(payload.Items, forAudience(audience, item))
+		items = append(items, forAudience(audience, item))
 	}
-
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
+	return items
 }
 
 // apiVersionsRef は集まりの要約を契約の形へ写す。集まりのメンバーでなければ nil。

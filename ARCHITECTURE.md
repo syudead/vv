@@ -108,6 +108,13 @@ The owner-only `POST /api/video-bundles` (`videoIds`, `representativeId`, the sa
 `POST /api/videos/{id}/unbundle` call `VersionStore` directly and map its errors to the
 `too_few_videos`, `representative_not_selected` and `not_bundled` reasons
 ([specs/030-video-versions/contracts/screen-api.md](specs/030-video-versions/contracts/screen-api.md) §0–§4).
+The owner-only `GET /api/version-candidates` lists up to 200 "possibly the same video"
+pairs, newest first, each video shaped like `GET /api/videos/{id}`, and
+`POST /api/version-candidates/dismiss` records a pair as different videos
+(`internal/httpapi/version_candidates.go`, §5). "Same video" goes through
+`POST /api/video-bundles`. Candidates change with fingerprint jobs, whose
+`ProcessingChanged` already reaches the screen as the `scan` event, so no new event kind
+is added (§6).
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
@@ -186,6 +193,13 @@ fingerprints by pairing frames by time, not by index (`CompareFingerprints`), be
 sprite interval differs between encodes of a video longer than 405 seconds. The result is
 stored per content key in `video_fingerprints` together with `domain.FingerprintVersion`
 ([specs/030-video-versions/research.md](specs/030-video-versions/research.md) R-6).
+The transaction that stores a fingerprint also rebuilds that content's rows in
+`video_version_candidates`: other contents with a fingerprint of the same version whose
+duration is within `DurationsMatch` and whose distance, computed by the deterministic SQLite
+function `vv_fingerprint_distance` (registered like `vv_shuffle_key` and calling
+`CompareFingerprints`), is at most `FingerprintMatchMaxDistance`. Pairs recorded as different
+(`video_version_dismissals`) and pairs in the same bundle are left out; candidates are never
+bundled automatically (R-7).
 Two generation fallbacks are substitutions that the user is told about: a library thumbnail
 taken from the first frame because no frame was found at the chosen position, and a seek
 sprite rebuilt by decoding the whole video. `internal/media` returns them as values
@@ -335,7 +349,8 @@ Stored data falls into three recovery categories. `videos`, `video_locations`
 `settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
 `video_folder_names`, `folder_index_state`), `video_transcode_probes`, the pending
-same-path successions (`video_successions`), and the visual fingerprints (`video_fingerprints`) are
+same-path successions (`video_successions`), the visual fingerprints (`video_fingerprints`), and the
+version candidates (`video_version_candidates`) are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
@@ -375,7 +390,7 @@ compile:
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
   retry of a failed probe and the rebuild of a missing preview, and replacing a content's
-  fingerprint (`ApplyFingerprintForJob`). A probe's result also
+  fingerprint and its version candidates (`ApplyFingerprintForJob`). A probe's result also
   upserts the video's live-transcode probe (`video_transcode_probes`: a versioned
   `domain.TranscodeProbe` JSON plus the probed file's size and nanosecond mtime) in the
   same transaction, and `SaveTranscodeProbe` upserts one probed at request time
@@ -482,6 +497,10 @@ compile:
   one transaction that rebuilds the folder index and publishes `domain.VideoBundleChanged`
   after the commit, which the screen subscription turns into a `video` notification per
   affected video.
+  It also lists the version candidates whose two contents both have a registered
+  location (`Candidates`) and records a pair as different videos (`Dismiss`), which removes
+  the pair's candidate. Bundling, and a same-path succession that moves bundle members or
+  dismissals to a new key, drop candidates that became same-bundle or dismissed pairs.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

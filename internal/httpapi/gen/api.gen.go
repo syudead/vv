@@ -1558,6 +1558,30 @@ type UpdateTranscodingSettingsRequest struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// VersionCandidate 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
+type VersionCandidate struct {
+	// Distance 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている）
+	Distance int `json:"distance"`
+
+	// Videos 2 本の動画。id の小さい順で、各項目は GET /api/videos/{id} と同じ形
+	Videos []Video `json:"videos"`
+}
+
+// VersionCandidateDismissRequest defines model for VersionCandidateDismissRequest.
+type VersionCandidateDismissRequest struct {
+	// VideoIds 「違う動画」と記録する 2 本。同じ id は受け付けない
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// VersionCandidatePage defines model for VersionCandidatePage.
+type VersionCandidatePage struct {
+	// Items 新しい順、最大 200 組
+	Items []VersionCandidate `json:"items"`
+
+	// Total 候補の全件の数
+	Total int `json:"total"`
+}
+
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
 // `thumbnailPositionMs` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
@@ -2189,6 +2213,9 @@ type MergeTagJSONRequestBody = MergeTagRequest
 // AddTagSynonymJSONRequestBody defines body for AddTagSynonym for application/json ContentType.
 type AddTagSynonymJSONRequestBody = AddTagSynonymRequest
 
+// DismissVersionCandidateJSONRequestBody defines body for DismissVersionCandidate for application/json ContentType.
+type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
+
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
@@ -2314,6 +2341,12 @@ type ServerInterface interface {
 	// AddTagSynonym 名前をidのタグのシノニムにする
 	// (POST /api/tags/{id}/synonyms)
 	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// ListVersionCandidates 「同じ動画かもしれない」候補の一覧を返す
+	// (GET /api/version-candidates)
+	ListVersionCandidates(w http.ResponseWriter, r *http.Request)
+	// DismissVersionCandidate 2 本の動画を「違う動画」と記録する
+	// (POST /api/version-candidates/dismiss)
+	DismissVersionCandidate(w http.ResponseWriter, r *http.Request)
 	// BundleVideos 動画を同じ動画の別バージョンとして束ねる
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
@@ -3483,6 +3516,34 @@ func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListVersionCandidates operation middleware
+func (siw *ServerInterfaceWrapper) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVersionCandidates(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissVersionCandidate operation middleware
+func (siw *ServerInterfaceWrapper) DismissVersionCandidate(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissVersionCandidate(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BundleVideos operation middleware
 func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -4481,6 +4542,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

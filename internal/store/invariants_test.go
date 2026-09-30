@@ -32,6 +32,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTagCanonicalNameInvariant(t, db)
 		assertVideoOverrideInvariant(t, db)
 		assertVideoBundleInvariant(t, db)
+		assertVersionCandidateInvariant(t, db)
 	})
 	return db
 }
@@ -139,6 +140,40 @@ func assertVideoBundleInvariant(t *testing.T, db *DB) {
 		var count int
 		if err := db.sql.QueryRow(query).Scan(&count); err != nil {
 			t.Fatalf("集まりの不変条件を検査できない: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("%sが %d 件ある", name, count)
+		}
+	}
+}
+
+// assertVersionCandidateInvariant は候補の不変条件を確かめる（specs/030-video-versions/
+// data-model.md §1）。候補の組は「違う動画」と記録した組（video_version_dismissals）に無く、
+// 同じ集まりの 2 本でもない。候補を作る取引が除き、束ねる操作・却下・スキャン時の引き継ぎが
+// 消す。
+func assertVersionCandidateInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_version_candidates'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("候補の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	for name, query := range map[string]string{
+		"却下した組の候補": `select count(*) from video_version_candidates c where exists (
+			select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)`,
+		"同じ集まりの 2 本の候補": `select count(*) from video_version_candidates c where exists (
+			select 1 from video_bundle_members ma join video_bundle_members mb on mb.bundle_id = ma.bundle_id
+			 where ma.content_key = c.key_a and mb.content_key = c.key_b)`,
+	} {
+		var count int
+		if err := db.sql.QueryRow(query).Scan(&count); err != nil {
+			t.Fatalf("候補の不変条件を検査できない: %v", err)
 		}
 		if count != 0 {
 			t.Errorf("%sが %d 件ある", name, count)

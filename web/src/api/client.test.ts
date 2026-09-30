@@ -27,6 +27,8 @@ import {
   bundleVideos,
   makeRepresentativeVersion,
   unbundleVideo,
+  listVersionCandidates,
+  dismissVersionCandidate,
 } from "./client";
 import { itemVideos, videoItem } from "./libraryItems";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
@@ -311,6 +313,40 @@ describe("バージョンと束ねの経路", () => {
       await run();
       expect(takeListSnapshot(key)).toBeUndefined();
     }
+  });
+});
+
+describe("候補の経路", () => {
+  it("候補を GET し、「違う動画」を POST で送る", async () => {
+    const page = { items: [{ videos: [{ id: 7 }, { id: 8 }], distance: 2 }], total: 1 };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(page))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "not_found", reason: "video_not_found" }, 404),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(listVersionCandidates(signal)).resolves.toEqual(page);
+    await expect(dismissVersionCandidate([8, 7], signal)).resolves.toBeUndefined();
+    await expect(dismissVersionCandidate([8, 9])).rejects.toThrow();
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/version-candidates",
+      expect.objectContaining({ signal }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/version-candidates/dismiss",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ videoIds: [8, 7] }),
+        signal,
+      }),
+    );
   });
 });
 

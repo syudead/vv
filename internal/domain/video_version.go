@@ -77,3 +77,20 @@ func DurationsMatch(a, b int64) bool {
 	}
 	return diff <= max(successionToleranceMinMs, max(a, b)*5/1000)
 }
+
+// MaxVersionCandidates は候補の一覧が一度に返す組の上限である（data-model.md §7）。
+const MaxVersionCandidates = 200
+
+// VersionCandidate は「同じ動画かもしれない」候補の 1 組である（research.md R-7）。Videos は
+// id の小さい順で、Distance は 2 本の指紋のハミング距離の中央値（CompareFingerprints）。
+type VersionCandidate struct {
+	Videos   [2]Video
+	Distance int
+}
+
+// VersionCandidatePage は候補の一覧である。Items は新しい順で最大 MaxVersionCandidates 組、
+// Total は全件の数。
+type VersionCandidatePage struct {
+	Items []VersionCandidate
+	Total int
+}

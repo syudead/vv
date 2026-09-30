@@ -485,7 +485,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/video-bundles", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails":
 			return true
 		}
