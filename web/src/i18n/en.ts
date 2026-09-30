@@ -733,6 +733,15 @@ export const en = {
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
     },
+    title: {
+      edit: "Edit name",
+      input: "Display name",
+      save: "Save",
+      cancel: "Cancel",
+      fileName: "File name",
+      fileNameTitle: (name: string) => `File name: ${name}`,
+      saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
+    },
     visibility: {
       label: "Show to people who aren't signed in",
       public: "Public",

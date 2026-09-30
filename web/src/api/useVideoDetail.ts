@@ -44,6 +44,20 @@ export function isProcessing(video: Video): boolean {
   );
 }
 
+/** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
+let loadsStarted = 0;
+
+/**
+ * DetailMark は、変更の要求を送る直前の時点を表す印である。応答で動画を差し替える
+ * `replace` に渡し、要求より前に始まったものと後に起きたものを分ける。
+ */
+export type DetailMark = { load: number; visibility: number };
+
+/** detailMark は変更の要求（表示名の保存）を送る直前に呼び、その時点の印を返す。 */
+export function detailMark(): DetailMark {
+  return { load: loadsStarted, visibility: visibilityMark() };
+}
+
 /**
  * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
  * 取り直す。一定間隔では問い合わせない。
@@ -54,13 +68,24 @@ export function isProcessing(video: Video): boolean {
  *   それ以外の一時的な失敗では、手元の控えを残す。
  *
  * `refresh` はすぐに取り直し、その取得が終わったら解決する。
+ *
+ * `replace` は、変更の要求の応答で受け取った動画を手元の 1 件にする（表示名の保存。
+ * specs/029-video-overrides/ui-design.md「Save」）。`mark` は要求を送る直前に取った
+ * detailMark である。
+ * - 要求より前に始めた取り直しは打ち切る。その応答で、変更した値を巻き戻さないため。
+ *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
+ * - 要求の間に反映した公開の切り替えは、応答の `public` より優先する。切り替えは
+ *   サーバーから知らせが来ないので、ここで巻き戻すと直らない。
+ * - 別の動画の応答は捨てる。
  */
 export function useVideoDetail(id: number): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
+  replace: (video: Video, mark: DetailMark) => void;
 } {
   const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const replaceRef = useRef<(video: Video, mark: DetailMark) => void>(() => undefined);
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
   const owner = useAudience() === "owner";
 
@@ -69,11 +94,14 @@ export function useVideoDetail(id: number): {
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
+      replaceRef.current = () => undefined;
       return;
     }
 
     let alive = true;
     let controller: AbortController | null = null;
+    // 送信中の取り直しを始めたときの loadsStarted の値。
+    let started = 0;
     let current: Video | undefined;
     const waiters: (() => void)[] = [];
 
@@ -85,6 +113,8 @@ export function useVideoDetail(id: number): {
       controller?.abort();
       const mine = new AbortController();
       controller = mine;
+      loadsStarted += 1;
+      started = loadsStarted;
       // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
       // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
       const mark = visibilityMark();
@@ -118,6 +148,18 @@ export function useVideoDetail(id: number): {
         waiters.push(resolve);
         void load();
       });
+
+    replaceRef.current = (saved, mark) => {
+      if (!alive || saved.id !== id) return;
+      if (controller !== null && started <= mark.load) {
+        controller.abort();
+        controller = null;
+        settle();
+      }
+      const video = withVisibilitySince(saved, mark.visibility);
+      current = video;
+      setState({ kind: "ready", id, video });
+    };
 
     // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
     // （issue 305。再生画面の切り替えは応答を受けてからこれで状態が変わる）。
@@ -156,7 +198,11 @@ export function useVideoDetail(id: number): {
   }, [id, owner]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
-  return { state, refresh };
+  const replace = useCallback(
+    (video: Video, mark: DetailMark) => replaceRef.current(video, mark),
+    [],
+  );
+  return { state, refresh, replace };
 }
 
 export type RelatedState =
@@ -164,10 +210,16 @@ export type RelatedState =
   | { kind: "ready"; id: number; related: RelatedVideos }
   | { kind: "failed"; id: number };
 
-/** useRelatedVideos は関連動画を 1 回取得する。失敗したら `retry` で取り直せる。 */
+/**
+ * useRelatedVideos は関連動画を 1 回取得する。失敗したら `retry` で取り直せる。
+ *
+ * `rename` は、基準の動画の表示名を保存した応答を、グループのメンバーの並びにある
+ * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
+ */
 export function useRelatedVideos(id: number): {
   state: RelatedState;
   retry: () => void;
+  rename: (video: Video) => void;
 } {
   const [state, setState] = useState<RelatedState>({ kind: "loading", id });
   const [attempt, setAttempt] = useState(0);
@@ -196,5 +248,26 @@ export function useRelatedVideos(id: number): {
   }, [attempt, id]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  return { state, retry };
+  const rename = useCallback((video: Video) => {
+    setState((previous) => {
+      if (previous.kind !== "ready" || previous.id !== video.id) return previous;
+      const group = previous.related.group;
+      if (group === undefined || !group.items.some((item) => item.id === video.id)) {
+        return previous;
+      }
+      const items = group.items.map((item) => {
+        if (item.id !== video.id) return item;
+        const renamed: Video = { ...item, title: video.title };
+        delete renamed.displayName;
+        if (video.fileTitle !== undefined) renamed.fileTitle = video.fileTitle;
+        if (video.displayName !== undefined) renamed.displayName = video.displayName;
+        return renamed;
+      });
+      return {
+        ...previous,
+        related: { ...previous.related, group: { ...group, items } },
+      };
+    });
+  }, []);
+  return { state, retry, rename };
 }

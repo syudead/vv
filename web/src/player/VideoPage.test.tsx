@@ -117,6 +117,8 @@ const server = {
   open: vi.fn<() => Response>(),
   /** フォルダのまとめ方の経路（PUT …/grouping・POST …/grouping/tag）の応答。 */
   grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
+  /** PUT /api/videos/{id}/display-name の応答。 */
+  displayName: vi.fn<(body: unknown) => Response>(),
   /** GET /api/auth/session が答える見る人の状態。 */
   session: "owner" as AuthState,
 };
@@ -206,6 +208,7 @@ describe("VideoPage", () => {
     server.probe.mockReset();
     server.open.mockReset();
     server.grouping.mockReset();
+    server.displayName.mockReset();
     fetchMock.mockReset();
     installFakeEventSource();
     server.session = "owner";
@@ -221,7 +224,7 @@ describe("VideoPage", () => {
         return Promise.resolve(server.grouping(method, url, body));
       }
       if (url === "/api/tags") return Promise.resolve(json([]));
-      const match = /^\/api\/videos\/(\d+)(\/[a-z]+)?$/.exec(url);
+      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
       const suffix = match[2];
@@ -236,6 +239,10 @@ describe("VideoPage", () => {
         return Promise.resolve(server.probe());
       if (suffix === "/open" && method === "POST") return Promise.resolve(server.open());
       if (suffix === "/progress") return Promise.resolve(json({}));
+      if (suffix === "/display-name" && method === "PUT") {
+        const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        return Promise.resolve(server.displayName(body));
+      }
       const entry = server.videos.get(id);
       if (entry === undefined) {
         return Promise.resolve(
@@ -1047,7 +1054,9 @@ describe("VideoPage", () => {
     it("題名の上にグループ名と何本目かの1行を出す。所有者ではまとめ方のメニューの引き金にする", async () => {
       await openMember();
       const title = screen.getByRole("heading", { level: 1 });
-      const line = title.previousElementSibling;
+      // 所有者の題名は編集ボタンと 1 行に並び、ファイル名の行とまとまりを作る
+      // （specs/029-video-overrides/ui-design.md「File name line」）。その前の行である。
+      const line = title.parentElement?.parentElement?.previousElementSibling;
       expect(line?.textContent).toBe("series·2 / 3");
       expect(line?.tagName).toBe("BUTTON");
       expect(line?.getAttribute("aria-label")).toBe(
@@ -1055,6 +1064,27 @@ describe("VideoPage", () => {
       );
       expect(within(line as HTMLElement).queryByRole("link")).toBeNull();
       expect(screen.getByTitle("series")).toBeDefined();
+    });
+
+    it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
+      const user = userEvent.setup();
+      server.displayName.mockReturnValueOnce(
+        json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
+      );
+      await openMember();
+      const members = () => document.getElementById("group-heading")!.closest("section")!;
+      expect(within(members()).getByText("ep02")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const input = screen.getByRole("textbox", { name: "Display name" });
+      await user.clear(input);
+      await user.type(input, "第二話{Enter}");
+
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("第二話"),
+      );
+      expect(within(members()).getByText("第二話")).toBeDefined();
+      expect(within(members()).queryByText("ep02")).toBeNull();
     });
 
     it("ゲストでは Group line を押せない文字の行にする", async () => {
@@ -1748,6 +1778,83 @@ describe("VideoPage", () => {
       renderPage("7", undefined, "guest");
       await ready();
       expect(screen.queryByRole("switch")).toBeNull();
+    });
+  });
+
+  describe("表示名（specs/029-video-overrides/ui-design.md「Title editing」）", () => {
+    const fileTitle = "テスト動画";
+    const named: Video = {
+      ...video,
+      title: "夏の旅行",
+      fileTitle,
+      displayName: "夏の旅行",
+    };
+
+    it("動画ページから移動せずに表示名を保存すると題名が置き換わり、元のファイル名が従の行で見え、解除で戻る（受け入れ条件 1・2・7）", async () => {
+      const user = userEvent.setup();
+      server.videos.set(7, [{ ...video, fileTitle }]);
+      server.displayName
+        .mockReturnValueOnce(json(named))
+        .mockReturnValueOnce(json({ ...video, fileTitle }));
+      renderPage();
+      await ready();
+      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const input = screen.getByRole<HTMLInputElement>("textbox", {
+        name: "Display name",
+      });
+      await user.clear(input);
+      await user.type(input, "夏の旅行{Enter}");
+
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行"),
+      );
+      expect(server.displayName).toHaveBeenCalledWith({ displayName: "夏の旅行" });
+      expect(screen.getByTitle(`File name: ${fileTitle}`).textContent).toBe(
+        `File name ${fileTitle}`,
+      );
+      expect(document.title).toBe("夏の旅行 · VVMDM");
+      // 画面は移っていない。
+      expect(screen.queryByTestId("screen")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.clear(screen.getByRole("textbox", { name: "Display name" }));
+      await user.keyboard("{Enter}");
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(fileTitle),
+      );
+      expect(server.displayName).toHaveBeenLastCalledWith({ displayName: "" });
+      expect(screen.queryByTitle(`File name: ${fileTitle}`)).toBeNull();
+    });
+
+    it("入力中は再生画面のキー操作が効かず、入力の中の Esc は編集の取り消しで画面を閉じない", async () => {
+      const user = userEvent.setup();
+      renderPage("7", "/?q=abc");
+      await ready();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      await user.type(
+        screen.getByRole("textbox", { name: "Display name" }),
+        " fm0{Escape}",
+      );
+      const controls = playerMock.controls!;
+      expect(controls.togglePlay).not.toHaveBeenCalled();
+      expect(controls.toggleFullscreen).not.toHaveBeenCalled();
+      expect(controls.toggleMute).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("screen")).toBeNull();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("テスト動画");
+      expect(server.displayName).not.toHaveBeenCalled();
+    });
+
+    it("ゲストの動画ページには編集の入口もファイル名の行も無い（受け入れ条件 9）", async () => {
+      server.videos.set(7, [
+        { ...video, title: "夏の旅行", location: undefined, public: true },
+      ]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("夏の旅行");
+      expect(screen.queryByRole("button", { name: "Edit name" })).toBeNull();
+      expect(screen.queryByTitle(/^File name/)).toBeNull();
     });
   });
 
