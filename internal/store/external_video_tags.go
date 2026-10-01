@@ -213,9 +213,12 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 }
 
 // applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
-// 書き換え、行が実際に変わった鍵を重複なく返す（delete・insert or ignore の returning）。
-// 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する 1〜2 文で済ませる。上限の
+// 書き換え、行が実際に変わる鍵を重複なく keys の順で返す。
+// 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する文の数を一定に保つ。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
+// 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える
+// （specs/033-video-dates/research.md R-3）。書き込みは同じ取引で行うので、求めた鍵と実際に
+// 変わる行は食い違わない。
 func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, now time.Time) ([]string, error) {
 	encodedKeys, err := json.Marshal(keys)
 	if err != nil {
@@ -225,64 +228,81 @@ func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action doma
 	if err != nil {
 		return nil, fmt.Errorf("cannot build tag ids: %w", err)
 	}
-	changed := changedKeys{seen: map[string]bool{}}
+	changed, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags))
+	if err != nil {
+		return nil, err
+	}
 	switch action {
 	case domain.VideoTagsReplace:
-		if err := changed.collect(ctx, tx,
+		if _, err := tx.ExecContext(ctx,
 			`delete from video_tags
 			 where content_key in (select value from json_each(?))
-			   and tag_id not in (select value from json_each(?))
-			 returning content_key`,
+			   and tag_id not in (select value from json_each(?))`,
 			string(encodedKeys), string(encodedTags),
 		); err != nil {
 			return nil, fmt.Errorf("cannot replace the video tags: %w", err)
 		}
 		fallthrough
 	case domain.VideoTagsAdd:
-		if err := changed.collect(ctx, tx,
+		if _, err := tx.ExecContext(ctx,
 			`insert or ignore into video_tags (content_key, tag_id, created_at)
-			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t where true
-			 returning content_key`,
+			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t`,
 			now.Unix(), string(encodedKeys), string(encodedTags),
 		); err != nil {
 			return nil, fmt.Errorf("cannot add the video tags: %w", err)
 		}
 	case domain.VideoTagsRemove:
-		if err := changed.collect(ctx, tx,
+		if _, err := tx.ExecContext(ctx,
 			`delete from video_tags
 			 where content_key in (select value from json_each(?))
-			   and tag_id in (select value from json_each(?))
-			 returning content_key`,
+			   and tag_id in (select value from json_each(?))`,
 			string(encodedKeys), string(encodedTags),
 		); err != nil {
 			return nil, fmt.Errorf("cannot remove the video tags: %w", err)
 		}
 	}
-	return changed.keys, nil
+	return changed, nil
 }
 
-// changedKeys は書き込みの returning が返した鍵を、重複なく現れた順に集める。
-type changedKeys struct {
-	seen map[string]bool
-	keys []string
-}
-
-// collect は query を実行し、返った鍵を足す。
-func (c *changedKeys) collect(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
-	rows, err := tx.QueryContext(ctx, query, args...)
+// changedManualTagKeys は、鍵の集合 encodedKeys（JSON の配列）のうち、action の書き込みで
+// 手で付けたタグの行が変わる鍵を、書き込みの前に 1 文で返す（1 鍵につき高々 1 行）。
+// add はタグの集合 encodedTags に付いていないタグがある鍵、remove は集合のタグが付いている鍵、
+// replace はその両方に加えて集合に無いタグが付いている鍵である。
+func changedManualTagKeys(ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string) ([]string, error) {
+	const missing = `exists (select 1 from json_each(:tags) t where not exists
+		(select 1 from video_tags vt where vt.content_key = k.value and vt.tag_id = t.value))`
+	const present = `exists (select 1 from video_tags vt where vt.content_key = k.value
+		and vt.tag_id in (select value from json_each(:tags)))`
+	const extra = `exists (select 1 from video_tags vt where vt.content_key = k.value
+		and vt.tag_id not in (select value from json_each(:tags)))`
+	var condition string
+	switch action {
+	case domain.VideoTagsAdd:
+		condition = missing
+	case domain.VideoTagsRemove:
+		condition = present
+	case domain.VideoTagsReplace:
+		condition = missing + ` or ` + extra
+	default:
+		return nil, fmt.Errorf("unknown video tags action %q", action)
+	}
+	rows, err := tx.QueryContext(ctx,
+		`select k.value from json_each(:keys) k where `+condition+` order by k.key`,
+		sql.Named("keys", encodedKeys), sql.Named("tags", encodedTags))
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("cannot read the changed video tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	var keys []string
 	for rows.Next() {
 		var key string
 		if err := rows.Scan(&key); err != nil {
-			return err
+			return nil, fmt.Errorf("cannot read the changed video tags: %w", err)
 		}
-		if !c.seen[key] {
-			c.seen[key] = true
-			c.keys = append(c.keys, key)
-		}
+		keys = append(keys, key)
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the changed video tags: %w", err)
+	}
+	return keys, nil
 }

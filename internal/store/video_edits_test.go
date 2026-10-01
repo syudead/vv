@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"io/fs"
 	"testing"
 	"time"
@@ -258,6 +260,80 @@ func TestBulkTaggingAdvancesOnlyChangedVideos(t *testing.T) {
 	}
 	assertEditedSince(t, db, alpha, start)
 	assertEditedAt(t, db, beta, staleEditedAt)
+}
+
+// 名前での一括の置き換え・外すは、手で付けたタグが実際に変わる動画だけを進める（R-3）。
+// 置き換えは足すだけ・外すだけのどちらで変わっても進め、同じ集合なら進めない。
+func TestApplyVideoTagsReplaceAndRemoveAdvanceOnlyChanged(t *testing.T) {
+	ctx := context.Background()
+	db, ids := overrideFixture(t)
+	alpha := ids[fixturePath("/media/alpha.mp4")]
+	beta := ids[fixturePath("/media/beta.mp4")]
+	gamma := ids[fixturePath("/media/gamma.mp4")]
+	apply := func(action domain.VideoTagsAction, names []string, videos ...int64) {
+		t.Helper()
+		refs := make([]domain.VideoRef, 0, len(videos))
+		for _, id := range videos {
+			refs = append(refs, domain.VideoRef{ID: id})
+		}
+		if _, err := db.Tags().ApplyVideoTags(ctx, refs, action, names, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(domain.VideoTagsAdd, []string{"好き"}, alpha)     // 同じ集合
+	apply(domain.VideoTagsAdd, []string{"好き", "別"}, beta) // 集合に無いタグがある
+	resetEditedAt(t, db)                                  // gamma はタグなし（足すだけで変わる）
+	start := time.Now()
+	apply(domain.VideoTagsReplace, []string{"好き"}, alpha, beta, gamma)
+	assertEditedAt(t, db, alpha, staleEditedAt)
+	assertEditedSince(t, db, beta, start)
+	assertEditedSince(t, db, gamma, start)
+
+	resetEditedAt(t, db)
+	apply(domain.VideoTagsAdd, []string{"別"}, beta)
+	resetEditedAt(t, db)
+	start = time.Now()
+	apply(domain.VideoTagsRemove, []string{"別", "無い名前"}, alpha, beta)
+	assertEditedAt(t, db, alpha, staleEditedAt)
+	assertEditedSince(t, db, beta, start)
+}
+
+// 変わる鍵を求める問い合わせは、鍵ごとに高々 1 行を返す。鍵 × タグの組の数だけ行を
+// 返さないので、上限の一括操作でも書き込みの取引の中で受け取る行は鍵の数までである。
+func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
+	ctx := context.Background()
+	db := migratedDB(t)
+	keys := make([]string, 0, 500)
+	for i := range 500 {
+		keys = append(keys, fmt.Sprintf("key-%d", i))
+	}
+	tagIDs := make([]int64, 0, 100)
+	for i := range 100 {
+		tagIDs = append(tagIDs, int64(i+1))
+	}
+	encodedKeys, _ := json.Marshal(keys)
+	encodedTags, _ := json.Marshal(tagIDs)
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, action := range []domain.VideoTagsAction{domain.VideoTagsAdd, domain.VideoTagsReplace} {
+		got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(keys) || got[0] != keys[0] || got[len(got)-1] != keys[len(keys)-1] {
+			t.Errorf("%s: %d 行, want 鍵ごとに 1 行・鍵の順の %d 行", action, len(got), len(keys))
+		}
+	}
+	got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), domain.VideoTagsRemove, string(encodedTags))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Errorf("remove: %d 行, want 0（どの鍵にもタグが無い）", len(got))
+	}
 }
 
 // 集まりのメンバーへのタグ付け・公開の設定は、集まりの全メンバーを進める（R-1）。

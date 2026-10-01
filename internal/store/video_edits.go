@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -19,19 +20,23 @@ const editedAtColumn = `coalesce((select e.edited_at from video_edits e
 		where e.content_key = videos.content_key and videos.content_key <> ''), videos.added_at) as edited_at`
 
 // touchEditedAt は contentKeys の更新日時を now にする。空の内容の識別子は飛ばす。now は
-// 操作の取引を始めた時刻で、同じ取引の対象はすべて同じ値になる。
+// 操作の取引を始めた時刻で、同じ取引の対象はすべて同じ値になる。鍵の数によらず 1 文で書く
+// （一括のタグ付けで 2 万件を進めても、書き込みの取引の中の文は増えない）。
 func touchEditedAt(ctx context.Context, tx *sql.Tx, contentKeys []string, now time.Time) error {
-	for _, key := range contentKeys {
-		if key == "" {
-			continue
-		}
-		if _, err := tx.ExecContext(ctx,
-			`insert into video_edits (content_key, edited_at) values (?, ?)
-			 on conflict (content_key) do update set edited_at = excluded.edited_at`,
-			key, now.Unix(),
-		); err != nil {
-			return fmt.Errorf("cannot record the edited time: %w", err)
-		}
+	if len(contentKeys) == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(contentKeys)
+	if err != nil {
+		return fmt.Errorf("cannot build content keys: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx,
+		`insert into video_edits (content_key, edited_at)
+		 select distinct value, ? from json_each(?) where value <> ''
+		 on conflict (content_key) do update set edited_at = excluded.edited_at`,
+		now.Unix(), string(encoded),
+	); err != nil {
+		return fmt.Errorf("cannot record the edited time: %w", err)
 	}
 	return nil
 }
