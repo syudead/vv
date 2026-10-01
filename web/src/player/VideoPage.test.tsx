@@ -561,6 +561,30 @@ describe("VideoPage", () => {
       expect(previous.className).toContain("pointer-events-none");
     });
 
+    it("中央の再生/一時停止はタップで残るフォーカスがあっても再生中の無操作で隠す", async () => {
+      renderPage();
+      await ready();
+      const toggle = await screen.findByRole("button", { name: "Play" });
+      // タップした後のようにフォーカスが残った状態にする。
+      act(() => toggle.focus());
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: false,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      const layer = document.querySelector<HTMLElement>("[data-touch-controls]");
+      expect(layer?.className).toContain("opacity-0");
+      // キーボードの輪郭のときだけ見せ、ただのフォーカスでは見せない。
+      expect(layer?.className).not.toContain("focus-within:opacity-100");
+      expect(layer?.className).toContain("has-[button:focus-visible]:opacity-100");
+    });
+
     it("全画面の間は、前後の矢印の題名の吹き出しを全画面の入れ物の中に描く", async () => {
       renderPage();
       await ready();
