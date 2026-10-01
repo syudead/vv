@@ -56,6 +56,16 @@ describe("保存できる並び順", () => {
     }
   });
 
+  it("作成日の並び順（createdDesc・createdAsc）を戻す", () => {
+    for (const sort of ["createdDesc", "createdAsc"] as const) {
+      expect(isListSort(sort)).toBe(true);
+      expect(
+        readViewPreferences(fake(() => JSON.stringify({ zoom: 1, view: "grid", sort })))
+          .sort,
+      ).toBe(sort);
+    }
+  });
+
   it("メニューに種類が無い並び順は既定に戻す", () => {
     for (const sort of videoSorts.filter((value) => !isListSort(value))) {
       expect(

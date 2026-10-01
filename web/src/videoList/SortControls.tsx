@@ -6,6 +6,7 @@ import {
   CalendarClock,
   ChevronDown,
   Dices,
+  FileClock,
   HardDrive,
   History,
   type LucideIcon,
@@ -44,6 +45,7 @@ import {
 export const sortIcons: Record<SortKind, LucideIcon> = {
   added: CalendarArrowDown,
   modified: CalendarClock,
+  created: FileClock,
   title: ArrowDownAZ,
   duration: Timer,
   size: HardDrive,
@@ -52,7 +54,7 @@ export const sortIcons: Record<SortKind, LucideIcon> = {
 };
 
 /**
- * sortOptions は並べ替えの7種を、選んだときの並び順とともに並べる。
+ * sortOptions は並べ替えの8種を、選んだときの並び順とともに並べる。
  * value は種類を選んだときの値（向きは種類ごとの既定）である。
  */
 export const sortOptions = sortKinds.map((info) => ({

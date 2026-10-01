@@ -74,8 +74,10 @@ describe("parseListCriteria（URL の解釈）", () => {
 
   it("メニューに種類がある並び順をすべて読む", () => {
     const listed = videoSorts.filter((sort) => isListSort(sort));
-    // 作成日（created*）を除く 13 の値。種類を足すとここも増える。
-    expect(listed.length).toBeGreaterThanOrEqual(13);
+    // 8 つの種類の 15 の値（ランダムは向きを持たない）。
+    expect(listed).toHaveLength(15);
+    expect(listed).toContain("createdDesc");
+    expect(listed).toContain("createdAsc");
     for (const sort of listed) {
       expect(parse(`?sort=${sort}&seed=5`).criteria.sort).toBe(sort);
     }
@@ -195,10 +197,11 @@ describe("parseSeed と newSeed", () => {
 });
 
 describe("並べ替えの種類と向き", () => {
-  it("7 つの種類と、選んだときの向き", () => {
+  it("8 つの種類と、選んだときの向き", () => {
     expect(sortKinds.map((info) => [sortKindLabel(info.kind), info.initial])).toEqual([
       ["Date added", "addedDesc"],
       ["Date modified", "modifiedDesc"],
+      ["Date created", "createdDesc"],
       ["Title", "titleAsc"],
       ["Length", "durationDesc"],
       ["File size", "sizeDesc"],
@@ -214,6 +217,20 @@ describe("並べ替えの種類と向き", () => {
     expect(sortDirection("playedAsc")).toBe("asc");
     expect(sortDirection("random")).toBeUndefined();
     expect(sortKindOf("sizeAsc").kind).toBe("size");
+    expect(withDirection("createdDesc", "asc")).toBe("createdAsc");
+    expect(withDirection("createdAsc", "desc")).toBe("createdDesc");
+    expect(sortKindOf("createdAsc").kind).toBe("created");
+  });
+
+  it("既存の「Date modified」は名前と値が変わらない", () => {
+    const modified = sortKinds.find((info) => info.kind === "modified");
+    expect(modified).toEqual({
+      kind: "modified",
+      initial: "modifiedDesc",
+      asc: "modifiedAsc",
+      desc: "modifiedDesc",
+    });
+    expect(sortKindLabel("modified")).toBe("Date modified");
   });
 
   it("向きの読み上げ名は今の向きと押したときの向きを含む", () => {
@@ -224,6 +241,12 @@ describe("並べ替えの種類と向き", () => {
       "Ascending (shortest first). Press for descending",
     );
     expect(directionToggleLabel("titleAsc")).toBe("Ascending. Press for descending");
+    expect(directionToggleLabel("createdDesc")).toBe(
+      "Descending (newest first). Press for ascending",
+    );
+    expect(directionToggleLabel("createdAsc")).toBe(
+      "Ascending (oldest first). Press for descending",
+    );
   });
 });
 

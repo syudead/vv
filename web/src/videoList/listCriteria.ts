@@ -39,7 +39,7 @@ const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "
 
 /** SortKind は並べ替えの種類である（向きを除いたもの）。 */
 export type SortKind =
-  "added" | "modified" | "title" | "duration" | "size" | "played" | "random";
+  "added" | "modified" | "created" | "title" | "duration" | "size" | "played" | "random";
 
 export type SortDirection = "asc" | "desc";
 
@@ -53,12 +53,13 @@ export interface SortKindInfo {
 }
 
 /**
- * sortKinds はメニューに並べる7つの種類である。順はメニューの順と同じ。表示名は
+ * sortKinds はメニューに並べる8つの種類である。順はメニューの順と同じ。表示名は
  * sortKindLabel で描画のたびにカタログから引く。
  */
 export const sortKinds: readonly SortKindInfo[] = [
   { kind: "added", initial: "addedDesc", asc: "addedAsc", desc: "addedDesc" },
   { kind: "modified", initial: "modifiedDesc", asc: "modifiedAsc", desc: "modifiedDesc" },
+  { kind: "created", initial: "createdDesc", asc: "createdAsc", desc: "createdDesc" },
   { kind: "title", initial: "titleAsc", asc: "titleAsc", desc: "titleDesc" },
   { kind: "duration", initial: "durationDesc", asc: "durationAsc", desc: "durationDesc" },
   { kind: "size", initial: "sizeDesc", asc: "sizeAsc", desc: "sizeDesc" },
