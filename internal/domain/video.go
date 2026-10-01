@@ -174,6 +174,10 @@ type Video struct {
 	// data-model.md §2）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
 	// UpdatedAt（索引の行の更新時刻）とは別の値である。
 	EditedAt time.Time
+	// FileCreatedAt は一覧に出す所在のファイルの作成日時（specs/033-video-dates/data-model.md §2）。
+	// 保存層が coalesce(video_locations.file_created_at, mtime) で埋めるので、作成日時が
+	// 取れなかった所在では MTime と同じになる。
+	FileCreatedAt time.Time
 
 	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
 	// 再生位置とサムネイルの名前もこれで決まる。
@@ -251,7 +255,9 @@ type VideoFile struct {
 	ContentKey string
 	SizeBytes  int64
 	MTime      time.Time
-	Container  string
+	// FileCreatedAt は走査が読んだファイルの作成日時。ゼロ値は取れなかった。
+	FileCreatedAt time.Time
+	Container     string
 	// AddedAt はゼロ値なら取り込み時刻を使う。新規のときだけ効く。
 	AddedAt time.Time
 }
@@ -259,12 +265,14 @@ type VideoFile struct {
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
 // これを突き合わせる。
 type IndexedVideo struct {
-	ID                 int64
-	ContentKey         string
-	LocationID         int64
-	LocationVersion    int64
-	SizeBytes          int64
-	MTime              time.Time
+	ID              int64
+	ContentKey      string
+	LocationID      int64
+	LocationVersion int64
+	SizeBytes       int64
+	MTime           time.Time
+	// FileCreatedAt は索引に入っているファイルの作成日時。ゼロ値は null（取れなかった）。
+	FileCreatedAt      time.Time
 	ProbeState         ProbeState
 	ThumbnailState     ThumbnailState
 	SeekThumbnailState SeekThumbnailState
@@ -293,8 +301,10 @@ type VideoLocation struct {
 	Title     string
 	SizeBytes int64
 	MTime     time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// FileCreatedAt はファイルの作成日時。ゼロ値は null（取れなかった）。
+	FileCreatedAt time.Time
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。

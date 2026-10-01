@@ -76,11 +76,11 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	}
 
 	if locationExists {
-		_, err = tx.ExecContext(ctx, `update video_locations set video_id = ?, version = version + 1, title = ?, size_bytes = ?, mtime = ?, updated_at = ? where id = ?`,
-			videoID, file.Title, file.SizeBytes, file.MTime.Unix(), now, locationID)
+		_, err = tx.ExecContext(ctx, `update video_locations set video_id = ?, version = version + 1, title = ?, size_bytes = ?, mtime = ?, file_created_at = ?, updated_at = ? where id = ?`,
+			videoID, file.Title, file.SizeBytes, file.MTime.Unix(), nullableUnix(file.FileCreatedAt), now, locationID)
 	} else {
-		_, err = tx.ExecContext(ctx, `insert into video_locations(video_id, path, version, title, size_bytes, mtime, created_at, updated_at) values (?, ?, 1, ?, ?, ?, ?, ?)`,
-			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), now, now)
+		_, err = tx.ExecContext(ctx, `insert into video_locations(video_id, path, version, title, size_bytes, mtime, file_created_at, created_at, updated_at) values (?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), nullableUnix(file.FileCreatedAt), now, now)
 	}
 	if err != nil {
 		return domain.UpsertResult{}, fmt.Errorf("cannot save the video location (%s): %w", file.Path, err)
@@ -253,10 +253,22 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	return s.db.commit(ctx, tx, &c)
 }
 
+// UpdateLocationCreatedAt は所在 locationID のファイルの作成日時を createdAt にする（秒で持ち、
+// ゼロ値なら null に戻して読み出しを mtime に倒す。specs/033-video-dates/data-model.md §5）。
+// 走査が変わっていないファイルの作成日時の違いを見つけたときに呼ぶ。所在の事実を直すだけなので
+// updated_at・version は動かさず、イベントも発行しない。所在が無ければ何もしない。
+func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
+	if _, err := s.db.sql.ExecContext(ctx, `update video_locations set file_created_at = ? where id = ?`,
+		nullableUnix(createdAt), locationID); err != nil {
+		return fmt.Errorf("cannot update the file creation time (location=%d): %w", locationID, err)
+	}
+	return nil
+}
+
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
+	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, l.file_created_at, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
 		`+fingerprintMissingCondition("v")+`
 		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
@@ -269,10 +281,12 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		var path string
 		var video domain.IndexedVideo
 		var mtime int64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing); err != nil {
+		var fileCreatedAt sql.NullInt64
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &fileCreatedAt, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing); err != nil {
 			return nil, fmt.Errorf("cannot read the index: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)
+		video.FileCreatedAt = unixOrZero(fileCreatedAt)
 		out[path] = video
 	}
 	if err := rows.Err(); err != nil {

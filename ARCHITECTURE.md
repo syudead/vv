@@ -427,6 +427,12 @@ compile:
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
   locations, removing missing ones and the videos they orphan), rebuilding the folder
   index before a scan closes, and the startup refresh of an out-of-date folder index.
+  A location also records the file's creation time in `video_locations.file_created_at`
+  (Unix seconds, null when the filesystem does not provide one; reads fall back to
+  `mtime`). `UpsertVideo` writes it with the rest of a changed or new location, and
+  `UpdateLocationCreatedAt` rewrites only that column for an unchanged file, leaving
+  `updated_at` and `version` alone and publishing no event
+  (`specs/033-video-dates/data-model.md` §5).
 - `SettingsStore` — registering, replacing and removing media folders, rebuilding the
   folder index in the same transaction; and reading and saving owner settings in the
   `settings` table (the live-transcode video encoder choice, returned uninterpreted).

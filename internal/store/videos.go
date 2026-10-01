@@ -24,6 +24,7 @@ const videoColumnsTemplate = `videos.id,
 	(select title from video_locations l where video_id = videos.id and {visible} order by path limit 1) as title,
 	(select size_bytes from video_locations l where video_id = videos.id and {visible} order by path limit 1) as size_bytes,
 	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
+	(select coalesce(l.file_created_at, l.mtime) from video_locations l where video_id = videos.id and {visible} order by path limit 1) as file_created_at,
 	videos.added_at, videos.updated_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
@@ -77,7 +78,7 @@ func videoColumns(audience domain.Audience) string {
 // VideoLocations は動画の所在をパスの順にすべて返す。配信と既定アプリで開く
 // 操作が、登録フォルダの内側にある実体を選ぶのに使う。
 func (s *LibraryStore) VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select id, video_id, path, version, title, size_bytes, mtime, created_at, updated_at
+	rows, err := s.db.sql.QueryContext(ctx, `select id, video_id, path, version, title, size_bytes, mtime, file_created_at, created_at, updated_at
 		from video_locations where video_id = ? order by path`, videoID)
 	if err != nil {
 		return nil, err
@@ -87,11 +88,13 @@ func (s *LibraryStore) VideoLocations(ctx context.Context, videoID int64) ([]dom
 	for rows.Next() {
 		var item domain.VideoLocation
 		var mtime, createdAt, updatedAt int64
+		var fileCreatedAt sql.NullInt64
 		if err := rows.Scan(&item.ID, &item.VideoID, &item.Path, &item.Version, &item.Title,
-			&item.SizeBytes, &mtime, &createdAt, &updatedAt); err != nil {
+			&item.SizeBytes, &mtime, &fileCreatedAt, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
 		item.MTime = time.Unix(mtime, 0)
+		item.FileCreatedAt = unixOrZero(fileCreatedAt)
 		item.CreatedAt = time.Unix(createdAt, 0)
 		item.UpdatedAt = time.Unix(updatedAt, 0)
 		locations = append(locations, item)
@@ -237,7 +240,7 @@ type rowScanner interface {
 func scanVideo(row rowScanner) (domain.Video, error) {
 	var (
 		video                                    domain.Video
-		mtime, addedAt, updatedAt                int64
+		mtime, fileCreatedAt, addedAt, updatedAt int64
 		durationMs                               sql.NullInt64
 		width, height                            sql.NullInt64
 		displayAspectRatio                       sql.NullFloat64
@@ -254,7 +257,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	)
 
 	err := row.Scan(
-		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
+		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &fileCreatedAt, &addedAt, &updatedAt,
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
 		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision, &editedAt,
@@ -264,6 +267,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	}
 
 	video.MTime = time.Unix(mtime, 0)
+	video.FileCreatedAt = time.Unix(fileCreatedAt, 0)
 	video.AddedAt = time.Unix(addedAt, 0)
 	video.UpdatedAt = time.Unix(updatedAt, 0)
 	video.EditedAt = time.Unix(editedAt, 0)
@@ -309,6 +313,28 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.ThumbnailRevision = thumbnailRevision.Int64
 
 	return video, nil
+}
+
+// fileCreatedAtExpr は所在（別名 alias）のファイルの作成日時の式である。作成日時が取れなかった
+// 所在は mtime に倒す（specs/033-video-dates/data-model.md §4）。
+func fileCreatedAtExpr(alias string) string {
+	return `coalesce(` + alias + `.file_created_at, ` + alias + `.mtime)`
+}
+
+// nullableUnix は時刻を Unix 秒で書き込み、ゼロ値なら null にする。
+func nullableUnix(t time.Time) any {
+	if t.IsZero() {
+		return nil
+	}
+	return t.Unix()
+}
+
+// unixOrZero は null を許す Unix 秒を時刻へ写し、null ならゼロ値にする。
+func unixOrZero(value sql.NullInt64) time.Time {
+	if !value.Valid {
+		return time.Time{}
+	}
+	return time.Unix(value.Int64, 0)
 }
 
 // nullableString は空文字を null として書き込む。「値が無い」と「空文字」を

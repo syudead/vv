@@ -21,7 +21,8 @@ type itemFile struct {
 	size     int64
 	duration *int64
 	progress *domain.Progress
-	played   int64 // playback_progress.updated_at（Unix 秒）。progress があるときだけ使う
+	played   int64  // playback_progress.updated_at（Unix 秒）。progress があるときだけ使う
+	created  *int64 // 所在の file_created_at（分）。nil は取れなかった（並びは mtime に倒す）
 }
 
 // itemFiles は、グループ show（3本）と pair（2本）、グループにならない動画3本
@@ -29,16 +30,16 @@ type itemFile struct {
 // である。値の同じ項目を混ぜ、id での決着も確かめる。
 var itemFiles = []itemFile{
 	{path: fixturePath("/media/show/ep10.mp4"), added: 9, mtime: 1, size: 100, duration: ptr(1000),
-		progress: &domain.Progress{PositionMs: 500}, played: 300},
+		progress: &domain.Progress{PositionMs: 500}, played: 300, created: ptr(7)},
 	{path: fixturePath("/media/show/ep1.mp4"), added: 2, mtime: 4, size: 200, duration: ptr(2000),
 		progress: &domain.Progress{PositionMs: 2000, Completed: true}, played: 100},
 	{path: fixturePath("/media/show/ep2.mp4"), added: 3, mtime: 2, size: 300, duration: nil,
 		progress: &domain.Progress{PositionMs: 0}, played: 200},
-	{path: fixturePath("/media/pair/p1.mp4"), added: 1, mtime: 8, size: 50, duration: nil},
+	{path: fixturePath("/media/pair/p1.mp4"), added: 1, mtime: 8, size: 50, duration: nil, created: ptr(0)},
 	{path: fixturePath("/media/pair/p2.mp4"), added: 5, mtime: 3, size: 50, duration: nil},
 	{path: fixturePath("/media/solo.mp4"), added: 9, mtime: 8, size: 600, duration: ptr(3000),
-		progress: &domain.Progress{PositionMs: 3000, Completed: true}, played: 300},
-	{path: fixturePath("/media/mixed/x.mp4"), added: 4, mtime: 8, size: 100, duration: ptr(3000)},
+		progress: &domain.Progress{PositionMs: 3000, Completed: true}, played: 300, created: ptr(2)},
+	{path: fixturePath("/media/mixed/x.mp4"), added: 4, mtime: 8, size: 100, duration: ptr(3000), created: ptr(2)},
 	{path: fixturePath("/media/mixed/sub/y.mp4"), added: 6, mtime: 5, size: 700, duration: ptr(100),
 		progress: &domain.Progress{PositionMs: 50}, played: 50},
 }
@@ -51,9 +52,13 @@ func itemsFixture(t *testing.T) (*DB, map[string]int64) {
 	ids := map[string]int64{}
 	for _, file := range itemFiles {
 		key := "key" + file.path
+		var created time.Time
+		if file.created != nil {
+			created = fixedTime.Add(time.Duration(*file.created) * time.Minute)
+		}
 		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path: file.path, Title: titleOf(file.path), ContentKey: key, SizeBytes: file.size,
-			MTime:   fixedTime.Add(time.Duration(file.mtime) * time.Minute),
+			MTime: fixedTime.Add(time.Duration(file.mtime) * time.Minute), FileCreatedAt: created,
 			AddedAt: fixedTime.Add(time.Duration(file.added) * time.Minute), Container: "mp4",
 		})
 		if err != nil {
@@ -292,8 +297,9 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 }
 
 // itemSortValue は項目の並べ替えの値を、ListLibrary が返した項目から Go で作る
-// （data-model.md §5 の 3）。played は動画の id から再生の時刻を引く。
-func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played map[int64]int64) (isNull bool, num int64, text string) {
+// （data-model.md §5 の 3）。played は動画の id から再生の時刻を、created は動画の id から
+// 作成日の値（file_created_at、取れなければ mtime。specs/033-video-dates/data-model.md §4）を引く。
+func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created map[int64]int64) (isNull bool, num int64, text string) {
 	nullable := func(v *int64) (bool, int64, string) {
 		if v == nil {
 			return true, 0, ""
@@ -308,6 +314,13 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 			var latest int64
 			for _, member := range group.Members {
 				latest = max(latest, member.MTime.Unix())
+			}
+			return false, latest, ""
+		case domain.SortCreatedAsc, domain.SortCreatedDesc:
+			// グループはメンバーの作成日の最大。
+			var latest int64
+			for _, member := range group.Members {
+				latest = max(latest, created[member.ID])
 			}
 			return false, latest, ""
 		case domain.SortTitleAsc, domain.SortTitleDesc:
@@ -330,6 +343,8 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 		return false, video.AddedAt.Unix(), ""
 	case domain.SortModifiedAsc, domain.SortModifiedDesc:
 		return false, video.MTime.Unix(), ""
+	case domain.SortCreatedAsc, domain.SortCreatedDesc:
+		return false, created[video.ID], ""
 	case domain.SortTitleAsc, domain.SortTitleDesc:
 		return false, 0, domain.NaturalSortKey(video.Title)
 	case domain.SortDurationAsc, domain.SortDurationDesc:
@@ -345,15 +360,21 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 	return false, domain.ShuffleKey(seed, video.ID), ""
 }
 
-// 受け入れ条件 10: 13 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
+// 受け入れ条件 10: 15 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
 // 重複と抜けが無く、total が項目の数と一致する。
 func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	played := map[int64]int64{}
+	created := map[int64]int64{}
 	for _, file := range itemFiles {
 		if file.progress != nil {
 			played[ids[file.path]] = file.played
 		}
+		minutes := int64(file.mtime)
+		if file.created != nil {
+			minutes = *file.created
+		}
+		created[ids[file.path]] = fixedTime.Add(time.Duration(minutes) * time.Minute).Unix()
 	}
 	all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 
@@ -362,8 +383,8 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		want := slices.Clone(all)
 		desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
 		slices.SortFunc(want, func(a, b domain.LibraryItem) int {
-			aNull, aNum, aText := itemSortValue(sort, seed, a, played)
-			bNull, bNum, bText := itemSortValue(sort, seed, b, played)
+			aNull, aNum, aText := itemSortValue(sort, seed, a, played, created)
+			bNull, bNum, bText := itemSortValue(sort, seed, b, played, created)
 			if aNull != bNull {
 				if aNull {
 					return 1
