@@ -12,6 +12,7 @@ import type { Video } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isNarrowVideo, unplayableText } from "../lib/format";
+import { ScrubFrame, type ScrubFrameData } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 
 /**
@@ -212,9 +213,19 @@ export function useCardPreview({
 
 /**
  * CardMedia はカードのサムネイルと、その上に重ねるプレビューの動画である。
- * サムネイルが無いときは代わりの表示を出す。
+ * サムネイルが無いときは代わりの表示を出す。スクラブの帯にいる間のコマ（scrubFrame）は
+ * サムネイルとループの動画の前に、同じ media 層の中で重ねる
+ * （specs/032-card-scrub-preview/ui-design.md「Frame」）。
  */
-export function CardMedia({ video, preview }: { video: Video; preview: CardPreview }) {
+export function CardMedia({
+  video,
+  preview,
+  scrubFrame = null,
+}: {
+  video: Video;
+  preview: CardPreview;
+  scrubFrame?: ScrubFrameData | null;
+}) {
   const { attempting, previewActive, showingPreview, setVideoElement, setPlaying } =
     preview;
   return (
@@ -266,6 +277,8 @@ export function CardMedia({ video, preview }: { video: Video; preview: CardPrevi
           )}
         />
       )}
+
+      <ScrubFrame frame={scrubFrame} />
     </div>
   );
 }
