@@ -53,8 +53,18 @@ func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name 
 	if len(keys) == 0 {
 		return domain.Video{}, domain.ErrNotFound
 	}
-	if err := writeDisplayName(ctx, tx, keys[0], normalized, time.Now()); err != nil {
+	now := time.Now()
+	before, err := displayNamesOf(ctx, tx, keys)
+	if err != nil {
 		return domain.Video{}, err
+	}
+	if err := writeDisplayName(ctx, tx, keys[0], normalized, now); err != nil {
+		return domain.Video{}, err
+	}
+	if before[keys[0]] != normalized {
+		if err := touchEditedAt(ctx, tx, keys, now); err != nil {
+			return domain.Video{}, err
+		}
 	}
 	if err := refreshSearchKeysForContentKeys(ctx, tx, keys); err != nil {
 		return domain.Video{}, err
@@ -101,12 +111,29 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 		return nil, err
 	}
 	now := time.Now()
+	keys := uniqueContentKeys(targets)
+	before, err := displayNamesOf(ctx, tx, keys)
+	if err != nil {
+		return nil, err
+	}
+	final := make(map[string]string, len(keys))
 	for i, target := range targets {
 		if err := writeDisplayName(ctx, tx, target.contentKey, names[i], now); err != nil {
 			return nil, err
 		}
+		final[target.contentKey] = names[i]
 	}
-	keys := uniqueContentKeys(targets)
+	// 更新日時は取引の初めと最後に残る名前を比べて進める。1 回ずつの書き込みの前後では
+	// 比べないので、一括で A→B→A と書いた内容は進まない（research.md R-3）。
+	edited := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if before[key] != final[key] {
+			edited = append(edited, key)
+		}
+	}
+	if err := touchEditedAt(ctx, tx, edited, now); err != nil {
+		return nil, err
+	}
 	if err := refreshSearchKeysForContentKeys(ctx, tx, keys); err != nil {
 		return nil, err
 	}
@@ -143,6 +170,23 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 		events = append(events, domain.VideoOverrideChanged{VideoID: id})
 	}
 	s.db.publishEvents(events...)
+	return out, nil
+}
+
+// displayNamesOf は内容の識別子 keys の今の表示名を返す。未設定の内容は空文字になる
+// （書く側も未設定を空文字で表すので、そのまま比べられる）。
+func displayNamesOf(ctx context.Context, tx *sql.Tx, keys []string) (map[string]string, error) {
+	out := make(map[string]string, len(keys))
+	for _, key := range keys {
+		var name sql.NullString
+		err := tx.QueryRowContext(ctx,
+			`select display_name from video_overrides where content_key = ?`, key,
+		).Scan(&name)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("cannot read the display name: %w", err)
+		}
+		out[key] = name.String
+	}
 	return out, nil
 }
 
@@ -203,8 +247,19 @@ func (s *OverrideStore) SetThumbnailPosition(
 		return domain.Video{}, domain.ErrNotFound
 	}
 	now := time.Now()
+	positionChanged, err := thumbnailPositionDiffers(ctx, tx, keys[0], positionMs)
+	if err != nil {
+		return domain.Video{}, err
+	}
 	if err := s.db.writeThumbnailPosition(ctx, tx, keys[0], positionMs, now); err != nil {
 		return domain.Video{}, err
+	}
+	// 同じ位置の指定し直しでも画像は作り直すが、更新日時は位置が変わったときだけ進める
+	// （research.md R-3）。
+	if positionChanged {
+		if err := touchEditedAt(ctx, tx, keys, now); err != nil {
+			return domain.Video{}, err
+		}
 	}
 	issuesCleared, err := markThumbnailDoneForContent(ctx, tx, keys[0], now)
 	if err != nil {
@@ -234,6 +289,22 @@ func (s *IngestStore) SetThumbnailPosition(
 	ctx context.Context, videoID int64, positionMs *int64,
 ) (domain.Video, error) {
 	return (&OverrideStore{db: s.db}).SetThumbnailPosition(ctx, videoID, positionMs)
+}
+
+// thumbnailPositionDiffers は内容 key の今の代表サムネイルの位置が positionMs（nil は解除）と
+// 違うかを返す。解除どうしは同じである。
+func thumbnailPositionDiffers(ctx context.Context, tx *sql.Tx, key string, positionMs *int64) (bool, error) {
+	var current sql.NullInt64
+	err := tx.QueryRowContext(ctx,
+		`select thumbnail_position_ms from video_overrides where content_key = ?`, key,
+	).Scan(&current)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, fmt.Errorf("cannot read the thumbnail position: %w", err)
+	}
+	if positionMs == nil {
+		return current.Valid, nil
+	}
+	return !current.Valid || current.Int64 != *positionMs, nil
 }
 
 // writeThumbnailPosition は内容 key の代表サムネイルの位置を positionMs（nil は解除）にする。

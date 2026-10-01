@@ -58,7 +58,14 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	}
 
 	keys := uniqueUserKeys(targets)
-	if err := applyManualTags(ctx, tx, keys, action, tagIDs); err != nil {
+	now := time.Now()
+	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, now)
+	if err != nil {
+		return domain.VideoTagsOutcome{}, err
+	}
+	// 更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを進める
+	// （specs/033-video-dates/research.md R-3）。
+	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
 
@@ -206,46 +213,76 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 }
 
 // applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
-// 書き換える。
+// 書き換え、行が実際に変わった鍵を重複なく返す（delete・insert or ignore の returning）。
 // 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する 1〜2 文で済ませる。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
-func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64) error {
+func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, now time.Time) ([]string, error) {
 	encodedKeys, err := json.Marshal(keys)
 	if err != nil {
-		return fmt.Errorf("cannot build content keys: %w", err)
+		return nil, fmt.Errorf("cannot build content keys: %w", err)
 	}
 	encodedTags, err := json.Marshal(tagIDs)
 	if err != nil {
-		return fmt.Errorf("cannot build tag ids: %w", err)
+		return nil, fmt.Errorf("cannot build tag ids: %w", err)
 	}
+	changed := changedKeys{seen: map[string]bool{}}
 	switch action {
 	case domain.VideoTagsReplace:
-		if _, err := tx.ExecContext(ctx,
+		if err := changed.collect(ctx, tx,
 			`delete from video_tags
 			 where content_key in (select value from json_each(?))
-			   and tag_id not in (select value from json_each(?))`,
+			   and tag_id not in (select value from json_each(?))
+			 returning content_key`,
 			string(encodedKeys), string(encodedTags),
 		); err != nil {
-			return fmt.Errorf("cannot replace the video tags: %w", err)
+			return nil, fmt.Errorf("cannot replace the video tags: %w", err)
 		}
 		fallthrough
 	case domain.VideoTagsAdd:
-		if _, err := tx.ExecContext(ctx,
+		if err := changed.collect(ctx, tx,
 			`insert or ignore into video_tags (content_key, tag_id, created_at)
-			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t`,
-			time.Now().Unix(), string(encodedKeys), string(encodedTags),
+			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t where true
+			 returning content_key`,
+			now.Unix(), string(encodedKeys), string(encodedTags),
 		); err != nil {
-			return fmt.Errorf("cannot add the video tags: %w", err)
+			return nil, fmt.Errorf("cannot add the video tags: %w", err)
 		}
 	case domain.VideoTagsRemove:
-		if _, err := tx.ExecContext(ctx,
+		if err := changed.collect(ctx, tx,
 			`delete from video_tags
 			 where content_key in (select value from json_each(?))
-			   and tag_id in (select value from json_each(?))`,
+			   and tag_id in (select value from json_each(?))
+			 returning content_key`,
 			string(encodedKeys), string(encodedTags),
 		); err != nil {
-			return fmt.Errorf("cannot remove the video tags: %w", err)
+			return nil, fmt.Errorf("cannot remove the video tags: %w", err)
 		}
 	}
-	return nil
+	return changed.keys, nil
+}
+
+// changedKeys は書き込みの returning が返した鍵を、重複なく現れた順に集める。
+type changedKeys struct {
+	seen map[string]bool
+	keys []string
+}
+
+// collect は query を実行し、返った鍵を足す。
+func (c *changedKeys) collect(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return err
+		}
+		if !c.seen[key] {
+			c.seen[key] = true
+			c.keys = append(c.keys, key)
+		}
+	}
+	return rows.Err()
 }

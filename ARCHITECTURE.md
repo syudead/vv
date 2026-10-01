@@ -135,7 +135,7 @@ is judged only after a scan closes `done` — in `FinishScan`'s transaction, or 
 transaction that writes the new content's probe result if that comes later — so a file swap
 is recognised whatever order the paths are walked in. When the durations match
 (`domain.DurationsMatch`) and no video still has the previous content, the new content takes
-over its tags, playback position, public flag and "different video" judgements, or its place
+over its tags, playback position, public flag, edited time and "different video" judgements, or its place
 in a version bundle, and `domain.VideoBundleChanged` is published after commit
 ([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §5).
 The latest scan owns the set of videos that the current import has to prepare
@@ -355,7 +355,8 @@ rebuildable from registered media folders by scanning and processing the files a
 `playback_progress`, the tag tables (`tags` including its `tentative` flag, `tag_names`,
 `video_tags`, and `rejected_tag_names`, `specs/031-tentative-tags/data-model.md` §1),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
-positions, `specs/029-video-overrides/data-model.md` §1), the version bundles
+positions, `specs/029-video-overrides/data-model.md` §1), `video_edits` (when the owner last
+edited a video's information in vv, `specs/033-video-dates/data-model.md` §1), the version bundles
 (`video_bundles`, `video_bundle_members`) and the "different video" judgements
 (`video_version_dismissals`, `specs/030-video-versions/data-model.md` §1), `folder_group_overrides`,
 `account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
@@ -455,6 +456,11 @@ compile:
   (`specs/031-tentative-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
+  Attaching and detaching manual tags (including the external API's bulk operation)
+  advances the edited time (`video_edits`, read as `Video.EditedAt`) of every content key
+  whose tags actually changed, expanded to all members for a bundle key, in the same
+  transaction through `touchEditedAt`; operations on tags themselves never advance it
+  (`specs/033-video-dates/data-model.md` §3).
 - `AuthStore` — the single account, its login sessions and its API tokens: first-run
   setup (the account row and the first session in one transaction, so concurrent setups
   resolve by the primary key), changing the username or password (bumping
@@ -470,11 +476,14 @@ compile:
   currently-registered videos' user keys, like tag attachment) in one transaction,
   returning the content keys it applied to (every member's content key for a bundle)
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
-  SQL connection.
+  SQL connection, and it advances the edited time of the content keys whose flag actually
+  changed in the same transaction.
 - `OverrideStore` — an owner's display name for a video (resolved to its content key,
   like tag attachment), one video or an external-API batch in one transaction, together
   with rewriting the `title_key` and `search_key` of every location of that content
-  (`specs/029-video-overrides/data-model.md` §3, §4). It uses the SQL connection and
+  (`specs/029-video-overrides/data-model.md` §3, §4). A display name or thumbnail position
+  that differs from the value at the start of the transaction advances that content's
+  edited time (`video_edits`) in the same transaction. It uses the SQL connection and
   publishes `domain.VideoOverrideChanged` after the commit. Every read that returns a video
   carries the override: `Video.Title` is the display name when set, `Video.FileTitle` the
   location's file-derived title. Releasing generated files (`RemoveContent`) never

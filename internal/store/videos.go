@@ -27,7 +27,7 @@ const videoColumnsTemplate = `videos.id,
 	videos.added_at, videos.updated_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
-	{public} as public, ` + overrideColumns
+	{public} as public, ` + overrideColumns + `, ` + editedAtColumn
 
 // registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
 // 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
@@ -250,13 +250,14 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		public                                   bool
 		displayName                              sql.NullString
 		thumbnailPositionMs, thumbnailRevision   sql.NullInt64
+		editedAt                                 int64
 	)
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
-		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision,
+		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision, &editedAt,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -265,6 +266,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.MTime = time.Unix(mtime, 0)
 	video.AddedAt = time.Unix(addedAt, 0)
 	video.UpdatedAt = time.Unix(updatedAt, 0)
+	video.EditedAt = time.Unix(editedAt, 0)
 	if durationMs.Valid {
 		value := durationMs.Int64
 		video.DurationMs = &value
