@@ -138,14 +138,16 @@ afterEach(() => {
 
 function Harness({
   item = video(),
+  selectionMode = false,
   onSuspend,
   onResume,
 }: {
   item?: Video;
+  selectionMode?: boolean;
   onSuspend?: () => void;
   onResume?: () => void;
 }) {
-  const scrub = useScrubPreview({ video: item, onSuspend, onResume });
+  const scrub = useScrubPreview({ video: item, selectionMode, onSuspend, onResume });
   return (
     <div data-testid="card" ref={scrub.cardRef} onPointerLeave={scrub.leaveCard}>
       <span data-testid="above">thumbnail</span>
@@ -466,5 +468,17 @@ describe("useScrubPreview", () => {
     }
     render(<Selecting />);
     expect(document.querySelector("[data-scrub-band]")).toBeNull();
+  });
+
+  it("取得中に帯が無効になったら中断し、後から終わってもシートを取らない", async () => {
+    const { rerender } = render(<Harness />);
+    enterBand(200);
+    rerender(<Harness selectionMode />);
+    expect(document.querySelector("[data-scrub-band]")).toBeNull();
+    expect(sprites[0]?.signal.aborted).toBe(true);
+
+    await settle(sprites[0], twoHourSprite());
+    expect(sheets).toHaveLength(0);
+    expect(fetchSeekThumbnailSheet).not.toHaveBeenCalled();
   });
 });

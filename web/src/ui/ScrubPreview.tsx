@@ -232,10 +232,11 @@ export function useScrubPreview({
     unavailable.current = false;
   }, [abortRequests]);
 
-  // 選択モードに入るなどで帯が無くなったら、帯にいる状態を終える。
+  // 選択モードに入るなどで帯が無くなったら、帯にいる状態を終え、最後の位置も捨てて
+  // 進行中の取得を打ち切る。帯を出てカードの中にいるときと違い、取得を続ける先が無い。
   useEffect(() => {
-    if (!enabled) reset();
-  }, [enabled, reset]);
+    if (!enabled) leaveCard();
+  }, [enabled, leaveCard]);
 
   // unmount と、別のスプライトを指すようになったときに、持っているシートを捨てる。
   useEffect(() => () => releaseAll(), [releaseAll, spriteUrl]);
