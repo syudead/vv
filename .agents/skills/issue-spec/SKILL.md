@@ -122,11 +122,13 @@ what this stage adds.
 - **Accessibility is not a requirement here.** Do not write screen-reader,
   ARIA, reading-name, contrast-ratio or other accessibility requirements,
   acceptance criteria or edge cases unless the requester asks for them.
-- **Labels are the requester's call.** Create the Issue with no labels, and
-  add only the ones the requester names. Do not copy labels from other Issues.
-  `ui` is the only label with workflow meaning — it decides whether the
+- **Labels are the requester's call, except `spec`.** Create the Issue with
+  the `spec` label, which marks it as a parent (specification) Issue, and add
+  only the other labels the requester names. Do not copy labels from other
+  Issues. `ui` is the only label with workflow meaning — it decides whether the
   `design` stage runs — so when the Issue changes the UI and the requester has
-  not said, ask before filing (step 2 makes this a discussion condition). The `sdd` label is retired; do not add it.
+  not said, ask before filing (step 2 makes this a discussion condition). The
+  `sdd` label is retired; do not add it.
 
 ## Preflight
 
