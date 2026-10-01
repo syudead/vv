@@ -239,7 +239,12 @@ export function useScrubPreview({
   }, [enabled, leaveCard]);
 
   // unmount と、別のスプライトを指すようになったときに、持っているシートを捨てる。
-  useEffect(() => () => releaseAll(), [releaseAll, spriteUrl]);
+  // 取り直しで URL が変わったときにまだ位置を持っていれば（帯の中、または帯を出て
+  // カードの中）、ポインタが動くのを待たずに新しい URL から取り直す。
+  useEffect(() => {
+    if (positionRef.current !== null) ensure();
+    return () => releaseAll();
+  }, [ensure, releaseAll]);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const cardRef = useCallback(

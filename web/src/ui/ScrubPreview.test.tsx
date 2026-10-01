@@ -481,4 +481,33 @@ describe("useScrubPreview", () => {
     expect(sheets).toHaveLength(0);
     expect(fetchSeekThumbnailSheet).not.toHaveBeenCalled();
   });
+
+  it("帯にいる間にスプライトのURLが変わったら、ポインタが動かなくても新しいURLから取り直す", async () => {
+    const { rerender } = render(<Harness />);
+    enterBand(110);
+    await settle(sprites[0], twoHourSprite());
+    await settle(sheets[0], sheet());
+    expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-1")');
+    // 新しい URL の取得が始まる前に、古いシートの取得を待つ状態にしておく。
+    moveBand(300);
+    const stale = sheets[1];
+
+    rerender(
+      <Harness item={video({ seekThumbnailUrl: "/api/videos/1/seek-thumbnail?v=d" })} />,
+    );
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:sheet-1");
+    expect(stale?.signal.aborted).toBe(true);
+    expect(screen.getByTestId("position").textContent).not.toBe("none");
+    expect(sprites).toHaveLength(2);
+    expect(sprites[1]?.url).toBe("/api/videos/1/seek-thumbnail?v=d");
+
+    // 古い取得が後から終わっても、新しい URL のシートに混ざらない。
+    await settle(stale, sheet());
+    expect(frameImage()).toBeNull();
+
+    await settle(sprites[1], twoHourSprite());
+    await settle(sheets[2], sheet());
+    expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-2")');
+    expect(fetchSeekThumbnailSprite).toHaveBeenCalledTimes(2);
+  });
 });
