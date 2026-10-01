@@ -10,11 +10,14 @@ export const cardWidth: Record<Zoom, string> = {
   3: "var(--spacing-card-3)",
 };
 
-/** Grid はカードの格子である。ライブラリとフォルダ画面が同じ幅・同じ間隔で使う。 */
+/**
+ * Grid はカードの格子である。ライブラリとフォルダ画面が同じ幅・同じ間隔で使う。
+ * sm 未満の狭い幅では表示倍率によらず 1 列の全幅にする（どの倍率でも 2 枚は並ばないため）。
+ */
 export function Grid({ zoom, children }: { zoom: Zoom; children: ReactNode }) {
   return (
     <div
-      className="flex flex-wrap justify-center gap-2.5 [&>*]:w-[min(var(--card),100%)]"
+      className="flex flex-wrap justify-center gap-2.5 [&>*]:w-full sm:[&>*]:w-[min(var(--card),100%)]"
       style={{ "--card": cardWidth[zoom] } as CSSProperties}
     >
       {children}
