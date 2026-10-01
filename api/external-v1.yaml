@@ -445,7 +445,10 @@ components:
     ExternalVideo:
       type: object
       required:
-        [id, contentKey, title, fileTitle, displayName, thumbnailPositionMs, durationMs, addedAt, locations, tags]
+        [
+          id, contentKey, title, fileTitle, displayName, thumbnailPositionMs, durationMs, addedAt, updatedAt,
+          fileCreatedAt, locations, tags,
+        ]
       additionalProperties: false
       description: 動画 1 本。見る人は常に所有者で、非公開の動画も返す
       properties:
@@ -475,6 +478,18 @@ components:
         addedAt:
           type: string
           format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          description: |
+            vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
+            一度も編集していなければ addedAt と同じ。この API の video-tags・display-names も進める
+        fileCreatedAt:
+          type: string
+          format: date-time
+          description: |
+            代表の所在（locations の先頭）のファイルの作成日時。ファイルシステムから取れないときは
+            そのファイルの更新日時（mtime）
         locations:
           type: array
           description: 登録フォルダの下の今の所在。パスの順で、代表が先頭
