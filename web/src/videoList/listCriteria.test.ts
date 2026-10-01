@@ -5,6 +5,7 @@ import {
   directionToggleLabel,
   guestListCriteria,
   hasConditions,
+  isListSort,
   MAX_SEED,
   newSeed,
   parseListCriteria,
@@ -71,9 +72,32 @@ describe("parseListCriteria（URL の解釈）", () => {
     expect(parse("?sort=titleDesc", "sizeAsc").criteria.sort).toBe("titleDesc");
   });
 
-  it("13 の並び順をすべて読む", () => {
-    for (const sort of videoSorts) {
+  it("メニューに種類がある並び順をすべて読む", () => {
+    const listed = videoSorts.filter((sort) => isListSort(sort));
+    // 作成日（created*）を除く 13 の値。種類を足すとここも増える。
+    expect(listed.length).toBeGreaterThanOrEqual(13);
+    for (const sort of listed) {
       expect(parse(`?sort=${sort}&seed=5`).criteria.sort).toBe(sort);
+    }
+  });
+
+  it("読む並び順はメニューの種類と向きで表せる（ランダムと取り違えない）", () => {
+    for (const sort of videoSorts.filter((value) => isListSort(value))) {
+      const info = sortKindOf(sort);
+      expect(info.kind === "random").toBe(sort === "random");
+      if (sort !== "random") {
+        const direction = sortDirection(sort);
+        expect(direction).toBeDefined();
+        expect(withDirection(sort, direction === "asc" ? "desc" : "asc")).not.toBe(sort);
+      }
+    }
+  });
+
+  it("メニューに種類が無い並び順は端末に保存した並び順に戻る", () => {
+    for (const sort of videoSorts.filter((value) => !isListSort(value))) {
+      const parsed = parse(`?sort=${sort}`, "durationDesc");
+      expect(parsed.criteria.sort).toBe("durationDesc");
+      expect(parsed.hasExplicitSort).toBe(false);
     }
   });
 
