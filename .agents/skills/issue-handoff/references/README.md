@@ -51,8 +51,11 @@ or any other stage record to the parent body. An older parent may still carry an
 `## SDD` section; ignore it and leave it alone unless the user asks otherwise.
 
 The `ui` label is the only label with workflow meaning: a parent carrying it
-goes through `design` between `plan` and `plan-to-issues`. The `sdd` label is
-retired. Never add or remove labels on your own.
+goes through `design` between `plan` and `plan-to-issues`. The `spec` (parent)
+and `task` (child) labels only tell the two kinds of Issue apart at a glance;
+`issue-spec` and `plan-to-issues` add them when they create an Issue, and
+stage selection never reads them. The `sdd` label is retired. Apart from those
+two, never add or remove labels on your own.
 
 ## Selecting the stage
 

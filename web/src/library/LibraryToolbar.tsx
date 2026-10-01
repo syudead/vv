@@ -140,7 +140,7 @@ export default function LibraryToolbar({
             </fieldset>
 
             {view === "grid" && (
-              <fieldset className="xl:hidden">
+              <fieldset className="hidden sm:block xl:hidden">
                 <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
                   {t.list.cardSize}
                 </legend>

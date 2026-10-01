@@ -50,8 +50,10 @@ in the parent Issue or the approved artifacts the statement comes from.
    Issue does not have leaves the specification behind the implementation.
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
-6. Create each missing Issue and attach it to the parent through GitHub's native
-   sub-issue API. Do not create an ordinary unparented Issue as a fallback.
+6. Create each missing Issue with the `task` label, which marks it as a child
+   (implementation) Issue, and attach it to the parent through GitHub's native
+   sub-issue API. Add no other label. Do not create an ordinary unparented
+   Issue as a fallback.
 7. Do not update or close existing children unless the user explicitly names
    those Issues.
 8. After all missing children are attached, stop. Do not edit the parent body,
