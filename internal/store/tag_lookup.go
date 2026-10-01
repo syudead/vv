@@ -24,6 +24,8 @@ type nameLookup struct {
 	// シノニムのときは、name とは異なる。
 	canonicalName string
 	isCanonical   bool
+	// tentative はその名前を持つタグが仮のタグであること（specs/031-tentative-tags/data-model.md §5）。
+	tentative bool
 }
 
 // lookupTagName は名前からタグを引く（data-model.md §3）。元の名前でも
@@ -32,11 +34,12 @@ func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool,
 	var lookup nameLookup
 	var canonicalInt int
 	err := q.QueryRowContext(ctx, `
-		select tn.tag_id, tn.canonical, canon.name
+		select tn.tag_id, tn.canonical, canon.name, t.tentative
 		  from tag_names tn
 		  join tag_names canon on canon.tag_id = tn.tag_id and canon.canonical = 1
+		  join tags t on t.id = tn.tag_id
 		 where tn.name = ?`, name,
-	).Scan(&lookup.tagID, &canonicalInt, &lookup.canonicalName)
+	).Scan(&lookup.tagID, &canonicalInt, &lookup.canonicalName, &lookup.tentative)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nameLookup{}, false, nil
 	}
@@ -45,6 +48,28 @@ func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool,
 	}
 	lookup.isCanonical = canonicalInt != 0
 	return lookup, true, nil
+}
+
+// ref は引いた名前のタグを TagRef にする（名前は元の名前）。
+func (l nameLookup) ref() domain.TagRef {
+	return domain.TagRef{ID: l.tagID, Name: l.canonicalName, Tentative: l.tentative}
+}
+
+// tagRefByID はタグ id の元の名前と仮かどうかを返す。無ければ domain.ErrTagNotFound を返す。
+func tagRefByID(ctx context.Context, q rowQueryer, id int64) (domain.TagRef, error) {
+	ref := domain.TagRef{ID: id}
+	err := q.QueryRowContext(ctx, `
+		select tn.name, t.tentative
+		  from tags t
+		  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1
+		 where t.id = ?`, id).Scan(&ref.Name, &ref.Tentative)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.TagRef{}, domain.ErrTagNotFound
+	}
+	if err != nil {
+		return domain.TagRef{}, fmt.Errorf("cannot read the tag (id=%d): %w", id, err)
+	}
+	return ref, nil
 }
 
 // canonicalNameByTagID はタグ id の元の名前を返す。無ければ
@@ -64,7 +89,7 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 // tagByID はタグ1件を、シノニムと本数を添えて返す。無ければ
 // domain.ErrTagNotFound を返す。
 func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
-	name, err := canonicalNameByTagID(ctx, q, id)
+	ref, err := tagRefByID(ctx, q, id)
 	if err != nil {
 		return domain.Tag{}, err
 	}
@@ -76,7 +101,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	return domain.Tag{ID: id, Name: name, Synonyms: synonyms, VideoCount: count}, nil
+	return domain.Tag{ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative}, nil
 }
 
 // videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
@@ -114,7 +139,8 @@ func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, er
 }
 
 // insertTagName は tag_names に1行足し、照合用の鍵を同じトランザクションで
-// 書く（data-model.md §7）。
+// 書く（data-model.md §7）。同じ取引でその名前を却下した名前から外す
+// （specs/031-tentative-tags/research.md R-3）。
 func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
 	if _, err := tx.ExecContext(ctx, `
 		insert into tag_names (name, tag_id, canonical, search_key, search_version)
@@ -122,6 +148,23 @@ func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, ca
 		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.SearchKeyVersion,
 	); err != nil {
 		return fmt.Errorf("cannot save the tag name (%s): %w", name, err)
+	}
+	return forgetRejectedName(ctx, tx, name)
+}
+
+// forgetRejectedName は name を却下した名前から外す。無ければ何もしない。
+func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
+	if _, err := tx.ExecContext(ctx, `delete from rejected_tag_names where name = ?`, name); err != nil {
+		return fmt.Errorf("cannot forget the rejected tag name (%s): %w", name, err)
+	}
+	return nil
+}
+
+// confirmTagInTx はタグ id を確定したタグにする（tentative = 0）。既に 0 なら何も変えない
+// （specs/031-tentative-tags/research.md R-4）。
+func confirmTagInTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	if _, err := tx.ExecContext(ctx, `update tags set tentative = 0 where id = ? and tentative = 1`, id); err != nil {
+		return fmt.Errorf("cannot confirm the tag (id=%d): %w", id, err)
 	}
 	return nil
 }

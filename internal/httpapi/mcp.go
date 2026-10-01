@@ -133,7 +133,9 @@ func (t *mcpTools) register(server *mcp.Server) {
 		Name: "update_video_tags",
 		Description: "Add, remove or replace tags on videos by tag name or synonym (POST /api/v1/video-tags). " +
 			"add creates missing tags; replace makes the manually added tags exactly the given set. " +
-			"If any video cannot be found, nothing is changed.",
+			"If any video cannot be found, nothing is changed. " +
+			"With tentative: true, add and replace create new tags as tentative tags and skip rejected names, " +
+			"returning them in skippedTags.",
 		InputSchema: videoTagsInputSchema(),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.VideoTagsRequest) (*mcp.CallToolResult, any, error) {

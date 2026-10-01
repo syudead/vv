@@ -17,7 +17,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, ...overrides };
+  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
 }
 
 /** server はタグの一覧と付け外しの経路だけを扱う偽のサーバーである。 */
@@ -66,7 +66,7 @@ function install() {
         if (body.action === "remove" && server.detachFails) {
           return jsonResponse({ code: "internal", message: "失敗しました" }, 500);
         }
-        let resolvedTag: { id: number; name: string };
+        let resolvedTag: { id: number; name: string; tentative: boolean };
         if ("id" in requestedTag) {
           const found = server.tags.find((t) => t.id === requestedTag.id);
           if (found === undefined) {
@@ -75,20 +75,20 @@ function install() {
               409,
             );
           }
-          resolvedTag = { id: found.id, name: found.name };
+          resolvedTag = { id: found.id, name: found.name, tentative: found.tentative };
         } else {
           const found = server.tags.find(
             (t) => t.name === requestedTag.name || t.synonyms.includes(requestedTag.name),
           );
           if (found !== undefined) {
-            resolvedTag = { id: found.id, name: found.name };
+            resolvedTag = { id: found.id, name: found.name, tentative: found.tentative };
           } else {
             const created = tag({
               id: server.tags.length + 100,
               name: requestedTag.name,
             });
             server.tags.push(created);
-            resolvedTag = { id: created.id, name: created.name };
+            resolvedTag = { id: created.id, name: created.name, tentative: false };
           }
         }
         return jsonResponse({ tag: resolvedTag, applied: body.videoIds.length });
@@ -169,7 +169,9 @@ describe("VideoTags", () => {
 
   it("外すボタンを押すとタグが消える。読み上げ名は「<名>をこの動画から外す」（受け入れ条件2）", async () => {
     install();
-    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
+    renderTags(7, [
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
 
     const removeButton = await screen.findByRole("button", {
       name: "Remove 旅行 from this video",
@@ -181,7 +183,9 @@ describe("VideoTags", () => {
 
   it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
     install();
-    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
+    renderTags(7, [
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
 
     const link = await screen.findByRole("link", { name: "Filter by 旅行" });
     expect(link.getAttribute("href")).toBe("/?tag=1");
@@ -193,8 +197,8 @@ describe("VideoTags", () => {
     install();
     server.detachFails = true;
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false },
-      { id: 2, name: "Anime", manual: true, fromFolder: false },
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -215,8 +219,8 @@ describe("VideoTags", () => {
     install();
     server.attachDelay = () => undefined;
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false },
-      { id: 2, name: "Anime", manual: true, fromFolder: false },
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -240,8 +244,8 @@ describe("VideoTags", () => {
     install();
     server.attachDelay = () => undefined;
     renderTags(7, [
-      { id: 2, name: "Anime", manual: true, fromFolder: true },
-      { id: 1, name: "旅行", manual: true, fromFolder: false },
+      { id: 2, name: "Anime", manual: true, fromFolder: true, tentative: false },
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -260,12 +264,106 @@ describe("VideoTags", () => {
   });
 
   // 017 の ui-design.md「Folder-derived tag chip」・受け入れ条件 6・9。
+  // 受け入れ条件 4・5（specs/031-tentative-tags/ui-design.md「Tentative mark」
+  // 「Video page」）: 仮のタグは名前の部分（Link）の中で名前の後ろに破線の丸を
+  // 置く。縦線と × は今のまま。
+  describe("仮のタグ", () => {
+    function mark(el: Element): Element | null {
+      return el.querySelector("svg.lucide-circle-dashed");
+    }
+
+    it("名前の後ろに目印を置き、面・高さ・× は確定したタグと同じ", async () => {
+      install();
+      renderTags(7, [
+        { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
+        { id: 2, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      ]);
+
+      const link = await screen.findByRole("link", {
+        name: "Filter by 高画質 (tentative)",
+      });
+      expect(link.getAttribute("href")).toBe("/?tag=1");
+      const icon = mark(link);
+      expect(icon).not.toBeNull();
+      expect(icon?.getAttribute("aria-hidden")).toBe("true");
+      expect(icon?.getAttribute("class")).toContain("size-3");
+      expect(icon?.getAttribute("class")).toContain("text-fg-subtle");
+      expect(link.firstElementChild?.textContent).toBe("高画質");
+      expect(link.firstElementChild?.className).toContain("truncate");
+      expect(link.lastElementChild).toBe(icon);
+
+      const tentativeChip = screen.getByTitle("高画質");
+      const confirmedChip = screen.getByTitle("旅行");
+      for (const chip of [tentativeChip, confirmedChip]) {
+        expect(chip.className).toContain("bg-elevated");
+        expect(chip.className).toContain("h-6");
+        expect(chip.className).toContain("text-fg");
+      }
+      expect(
+        screen.getByRole("button", { name: "Remove 高画質 from this video" }),
+      ).toBeDefined();
+
+      // 確定したタグは今と同じ（目印も子要素も足さない）。
+      const confirmedLink = screen.getByRole("link", { name: "Filter by 旅行" });
+      expect(confirmedLink.querySelector("svg")).toBeNull();
+      expect(confirmedLink.children).toHaveLength(0);
+      expect(confirmedLink.className).toContain("truncate");
+    });
+
+    it("× で仮のタグを今と同じに外せる", async () => {
+      install();
+      renderTags(7, [
+        { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
+      ]);
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Remove 高画質 from this video" }),
+      );
+      await waitFor(() => expect(screen.queryByTitle("高画質")).toBeNull());
+    });
+
+    it("フォルダ由来だけの仮のタグは Folder の目印 → 名前 → 仮の目印の順", async () => {
+      install();
+      renderTags(7, [
+        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: true },
+      ]);
+      const link = await screen.findByRole("link", {
+        name: "Filter by 京都 (from the folder name, tentative)",
+      });
+      const children = Array.from(link.children);
+      expect(children).toHaveLength(3);
+      expect(children[0]?.getAttribute("class")).toContain("lucide-folder");
+      expect(children[1]?.textContent).toBe("京都");
+      expect(children[2]?.getAttribute("class")).toContain("lucide-circle-dashed");
+      expect(link.className).toContain("border-dashed");
+    });
+
+    it("候補の仮のタグを選ぶと目印付きで並び、新しく作ったタグには目印が出ない", async () => {
+      const user = userEvent.setup();
+      install();
+      server.tags.push(tag({ id: 9, name: "高画質", tentative: true }));
+      renderTags(7, []);
+
+      await user.click(addInput());
+      await user.type(addInput(), "高画質");
+      await user.click(await screen.findByRole("option", { name: /高画質/ }));
+      const link = await screen.findByRole("link", {
+        name: "Filter by 高画質 (tentative)",
+      });
+      expect(mark(link)).not.toBeNull();
+
+      await user.type(addInput(), "新しい名前");
+      await user.keyboard("{Enter}");
+      const created = await screen.findByRole("link", { name: "Filter by 新しい名前" });
+      expect(created.querySelector("svg")).toBeNull();
+    });
+  });
+
   describe("フォルダ由来のタグ", () => {
     it("フォルダ由来だけのタグは×を出さず、破線の形のリンクで出す（受け入れ条件6）", async () => {
       install();
       renderTags(7, [
-        { id: 4, name: "京都", manual: false, fromFolder: true },
-        { id: 1, name: "旅行", manual: true, fromFolder: false },
+        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
+        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
       ]);
 
       const link = await screen.findByRole("link", {
@@ -296,9 +394,9 @@ describe("VideoTags", () => {
       install();
       server.attachDelay = () => undefined;
       renderTags(7, [
-        { id: 2, name: "Anime", manual: true, fromFolder: false },
-        { id: 1, name: "旅行", manual: true, fromFolder: true },
-        { id: 3, name: "Drama", manual: true, fromFolder: false },
+        { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
+        { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: false },
+        { id: 3, name: "Drama", manual: true, fromFolder: false, tentative: false },
       ]);
 
       fireEvent.click(
@@ -331,9 +429,9 @@ describe("VideoTags", () => {
     it("外した後のフォーカスは破線のチップを飛ばして次の×へ移る", async () => {
       install();
       renderTags(7, [
-        { id: 2, name: "Anime", manual: true, fromFolder: false },
-        { id: 4, name: "京都", manual: false, fromFolder: true },
-        { id: 1, name: "旅行", manual: true, fromFolder: false },
+        { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
+        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
+        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
       ]);
 
       fireEvent.click(
@@ -348,9 +446,9 @@ describe("VideoTags", () => {
     it("次にも前にも×が無ければ、破線のチップを飛ばして「タグを追加」の入力へ移る", async () => {
       install();
       renderTags(7, [
-        { id: 4, name: "京都", manual: false, fromFolder: true },
-        { id: 1, name: "旅行", manual: true, fromFolder: false },
-        { id: 5, name: "夏", manual: false, fromFolder: true },
+        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
+        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        { id: 5, name: "夏", manual: false, fromFolder: true, tentative: false },
       ]);
 
       fireEvent.click(
@@ -364,8 +462,8 @@ describe("VideoTags", () => {
       const user = userEvent.setup();
       install();
       renderTags(7, [
-        { id: 1, name: "旅行", manual: false, fromFolder: true },
-        { id: 3, name: "Drama", manual: true, fromFolder: false },
+        { id: 1, name: "旅行", manual: false, fromFolder: true, tentative: false },
+        { id: 3, name: "Drama", manual: true, fromFolder: false, tentative: false },
       ]);
 
       await user.click(addInput());
@@ -429,7 +527,9 @@ describe("VideoTags", () => {
     expect(screen.getByTitle("旅行")).toBeDefined();
 
     // 付与を映した情報が届いた後は、その後の情報に従う（別の画面で外された）。
-    rerenderWith([{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
+    rerenderWith([
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
     rerenderWith([]);
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
   });
@@ -659,7 +759,15 @@ describe("VideoTags", () => {
     const onStaleVideo = vi.fn();
     renderTags(
       7,
-      [{ id: 99, name: "もう無いタグ", manual: true, fromFolder: false }],
+      [
+        {
+          id: 99,
+          name: "もう無いタグ",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
+      ],
       onStaleVideo,
     );
 
@@ -679,7 +787,9 @@ describe("VideoTags", () => {
   it("すでに付いているタグは候補に出ない", async () => {
     const user = userEvent.setup();
     install();
-    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
+    renderTags(7, [
+      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+    ]);
 
     await user.click(addInput());
     await screen.findByRole("option", { name: /Anime/ });

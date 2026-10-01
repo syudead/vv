@@ -2059,6 +2059,24 @@ describe("VideoPage", () => {
       expect(progressCalls).toHaveLength(0);
     });
 
+    it("ゲストには仮のタグも確定したタグも出さない（031 受け入れ条件4）", async () => {
+      // サーバーはゲストに tags を空で返すが、画面の側も所有者でなければタグの
+      // 並びを描かない。
+      server.videos.set(7, [
+        guestVideo({
+          tags: [
+            { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
+            { id: 2, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          ],
+        }),
+      ]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("heading", { name: "Tags" })).toBeNull();
+      expect(screen.queryByRole("link", { name: /^Filter by/ })).toBeNull();
+      expect(document.querySelector("svg.lucide-circle-dashed")).toBeNull();
+    });
+
     it("所有者にはタグの並びとファイルの操作を出す", async () => {
       renderPage();
       await ready();
@@ -2192,7 +2210,12 @@ describe("VideoPage", () => {
     it("通常の画面（帯・プレイヤーの操作・題名・タグ・情報・関連動画）の文言がカタログから出る", async () => {
       enablePseudoLocale();
       server.videos.set(7, [
-        { ...video, tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] },
+        {
+          ...video,
+          tags: [
+            { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          ],
+        },
       ]);
       const user = userEvent.setup();
       renderPage("7", "/?q=abc");

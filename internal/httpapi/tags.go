@@ -150,13 +150,97 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ConfirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
+// specs/031-tentative-tags/contracts/screen-api.md §2）。既に確定したタグでも
+// 何も変えずに今の状態を返す。
+func (s *server) ConfirmTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	tag, err := s.tags.ConfirmTag(r.Context(), id)
+	if err != nil {
+		s.writeTagError(w, err, "")
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, toAPITag(tag), s.logger)
+}
+
+// RejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、
+// specs/031-tentative-tags/contracts/screen-api.md §2）。確定したタグは
+// 409 tag_not_tentative で何も変えない。却下した名前は応答に載せず、画面は
+// 却下した名前の一覧を取り直す。
+func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	if _, err := s.tags.RejectTag(r.Context(), id); err != nil {
+		s.writeTagError(w, err, "")
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ListRejectedTagNames は却下した名前を名前の自然順で返す
+// （GET /api/tags/rejected-names、specs/031-tentative-tags/contracts/screen-api.md §3）。
+func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	names, err := s.tags.ListRejectedTagNames(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not load rejected tag names.", err)
+		return
+	}
+	if names == nil {
+		names = []string{}
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.RejectedTagNameList{Items: names}, s.logger)
+}
+
+// ForgetRejectedTagName は名前を却下した名前の一覧から外す
+// （DELETE /api/tags/rejected-names?name=…、specs/031-tentative-tags/contracts/screen-api.md §3）。
+// 一覧に無い名前や整えられない入力でも、何も変えずに 204 を返す。整え方は
+// store.ForgetRejectedTagName が登録時と同じ domain.NormalizeTagName で行う。
+func (s *server) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params gen.ForgetRejectedTagNameParams) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	if err := s.tags.ForgetRejectedTagName(r.Context(), params.Name); err != nil {
+		s.internalError(w, "Could not update rejected tag names.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func toAPITag(tag domain.Tag) gen.Tag {
 	synonyms := tag.Synonyms
 	if synonyms == nil {
 		synonyms = []string{}
 	}
 	return gen.Tag{
-		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount,
+		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
+	}
+}
+
+// toAPITagRef は動画に付いたタグ1件を応答の形にする。仮かどうかも載せる
+// （specs/031-tentative-tags/contracts/screen-api.md §0）。
+func toAPITagRef(ref domain.TagRef) gen.TagRef {
+	return gen.TagRef{Id: ref.ID, Name: ref.Name, Tentative: ref.Tentative}
+}
+
+// toAPIVideoTag は動画に付いたタグ1件を出所つきで応答の形にする。フォルダ由来だけで
+// 付いているタグも、そのタグの仮かどうかを出す（contracts/screen-api.md §0）。
+func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
+	return gen.VideoTag{
+		Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
 	}
 }
 
@@ -182,6 +266,8 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 		s.invalidTagName(w, err, "")
 	case errors.Is(err, domain.ErrTagNotFound):
 		s.writeError(w, http.StatusNotFound, codeTagNotFound, "Tag not found.")
+	case errors.Is(err, domain.ErrTagNotTentative):
+		s.writeError(w, http.StatusConflict, codeTagNotTentative, "The tag is already confirmed.")
 	case errors.As(err, &nameConflict):
 		s.writeTagNameTaken(w, submittedName, nameConflict.Tag)
 	case errors.As(err, &mergeRequired):

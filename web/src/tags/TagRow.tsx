@@ -1,4 +1,13 @@
-import { Ellipsis, Merge, Pencil, Tags as SynonymsIcon, Trash2 } from "lucide-react";
+import {
+  Ban,
+  Check,
+  Ellipsis,
+  LoaderCircle,
+  Merge,
+  Pencil,
+  Tags as SynonymsIcon,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { Link } from "react-router";
 
@@ -8,6 +17,8 @@ import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
+import TentativeMark from "../ui/TentativeMark";
+import Tooltip from "../ui/Tooltip";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 export interface TagRowRefs {
@@ -25,6 +36,11 @@ export interface TagRowRefs {
  * 出さず「その他の操作」のメニューへ置く（UI品質「削除と統合を、作成・改名
  * より目立たせない」）。「シノニム」は改名の右に直接置き、「別のタグへ
  * 統合…」は「その他の操作」の先頭・区切り線の上に置く（ui-design.md「Rows」）。
+ *
+ * 仮のタグ（`tentative`）の行は、名前の後ろに仮の目印を付け、操作の一群の
+ * 先頭に「確定する」を置き、メニューの「削除…」を「却下する…」に置き換える
+ * （specs/031-tentative-tags/ui-design.md「Row」）。行の高さ・本数の列・改名の
+ * 入力は確定した行と同じ。
  */
 export default function TagRow({
   tag,
@@ -39,6 +55,9 @@ export default function TagRow({
   onOpenSynonyms,
   onOpenMerge,
   onDelete,
+  confirming = false,
+  onConfirm,
+  onReject,
   onDraftChange,
 }: {
   tag: Tag;
@@ -54,6 +73,10 @@ export default function TagRow({
   onOpenSynonyms: (tag: Tag) => void;
   onOpenMerge: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
+  /** 仮のタグの確定の要求が届いている間 true。「確定する」は次の押下を無視する。 */
+  confirming?: boolean;
+  onConfirm?: (tag: Tag) => void;
+  onReject?: (tag: Tag) => void;
   /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
 }) {
@@ -124,15 +147,34 @@ export default function TagRow({
           />
         ) : (
           <>
-            <Link
-              ref={(node) => registerRefs(tag.id, { nameLink: node })}
-              to={`/?tag=${String(tag.id)}`}
-              title={tag.name}
-              aria-label={t.tags.row.open(tag.name)}
-              className="block truncate text-sm font-medium text-fg hover:text-link"
-            >
-              {tag.name}
-            </Link>
+            {/*
+              名前は省略されても、仮の目印は shrink-0 で名前の後ろに残す
+              （ui-design.md「Tentative mark」）。行を探す試験が名前の列の div を
+              `closest("div")` で辿るので、ここの包みは span にする。
+              Link は文字の幅に縮むので、`after:` の疑似要素を包み（relative）
+              いっぱいに広げ、名前の列の空白を押しても絞り込んだ一覧が開くように
+              する。目印は relative で疑似要素の上に置き、Tooltip を受けられる
+              ようにする。
+            */}
+            <span className="relative flex min-w-0 items-center gap-1">
+              <Link
+                ref={(node) => registerRefs(tag.id, { nameLink: node })}
+                to={`/?tag=${String(tag.id)}`}
+                title={tag.name}
+                aria-label={t.tags.row.open(tag.name)}
+                className="block min-w-0 truncate text-sm font-medium text-fg after:absolute after:inset-0 hover:text-link"
+              >
+                {tag.name}
+              </Link>
+              {tag.tentative && (
+                <Tooltip content={t.tags.tentative}>
+                  <span className="relative inline-flex shrink-0">
+                    <TentativeMark size="row" />
+                    <span className="sr-only">{t.tags.tentative}</span>
+                  </span>
+                </Tooltip>
+              )}
+            </span>
             {tag.synonyms.length > 0 && (
               <p
                 title={t.tags.row.synonyms(tag.synonyms.join(" · "))}
@@ -169,12 +211,34 @@ export default function TagRow({
         {t.tags.row.videoCount(tag.videoCount)}
       </span>
       <div className="flex shrink-0 items-center gap-1">
+        {tag.tentative && (
+          <IconButton
+            label={t.tags.row.confirm}
+            size="sm"
+            aria-busy={confirming || undefined}
+            aria-disabled={confirming || undefined}
+            onClick={() => {
+              // 送信中は disabled にせず（押した本人のボタンのフォーカスを
+              // 保つため）、次の押下を無視して要求を1回だけにする（ui-design.md
+              // 「Confirm」）。
+              if (confirming) return;
+              onConfirm?.(tag);
+            }}
+            disabled={renaming}
+          >
+            {confirming ? (
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+            ) : (
+              <Check />
+            )}
+          </IconButton>
+        )}
         <IconButton
           ref={(node) => registerRefs(tag.id, { renameButton: node })}
           label={t.tags.row.rename}
           size="sm"
           onClick={() => onStartRename(tag)}
-          disabled={renaming || blockStart}
+          disabled={renaming || blockStart || confirming}
         >
           <Pencil />
         </IconButton>
@@ -193,7 +257,7 @@ export default function TagRow({
               ref={(node) => registerRefs(tag.id, { menuButton: node })}
               label={t.tags.row.more}
               size="sm"
-              disabled={renaming || blockStart}
+              disabled={renaming || blockStart || confirming}
             >
               <Ellipsis />
             </IconButton>
@@ -204,10 +268,17 @@ export default function TagRow({
               {t.tags.row.merge}
             </MenuItem>
             <MenuSeparator />
-            <MenuItem tone="danger" onSelect={() => onDelete(tag)}>
-              <Trash2 />
-              {t.tags.row.delete}
-            </MenuItem>
+            {tag.tentative ? (
+              <MenuItem tone="danger" onSelect={() => onReject?.(tag)}>
+                <Ban />
+                {t.tags.row.reject}
+              </MenuItem>
+            ) : (
+              <MenuItem tone="danger" onSelect={() => onDelete(tag)}>
+                <Trash2 />
+                {t.tags.row.delete}
+              </MenuItem>
+            )}
           </MenuContent>
         </MenuRoot>
       </div>

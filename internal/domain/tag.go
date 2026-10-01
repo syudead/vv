@@ -75,11 +75,18 @@ var ErrTagNameTaken = errors.New("name is already in use")
 // 統合の承諾が要るタグが分かる。
 var ErrTagMergeRequired = errors.New("merge confirmation is required")
 
+// ErrTagNotTentative は仮でないタグを却下しようとしたことを表す。API では
+// tag_not_tentative（409）になる（specs/031-tentative-tags/research.md R-5）。
+var ErrTagNotTentative = errors.New("tag is not tentative")
+
 // TagRef は動画に付いたタグ1件である。Name は常に元の名前
 // （contracts/tags-api.md §1 の TagRef）。
 type TagRef struct {
 	ID   int64
 	Name string
+	// Tentative は仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）である
+	// こと（specs/031-tentative-tags/data-model.md §4）。
+	Tentative bool
 }
 
 // VideoTag は動画に付いたタグ1件と、その出所である（017 の
@@ -102,6 +109,8 @@ type Tag struct {
 	Synonyms []string
 	// VideoCount はいまライブラリにある動画の本数（data-model.md §5）。
 	VideoCount int
+	// Tentative は仮のタグであること（specs/031-tentative-tags/data-model.md §4）。
+	Tentative bool
 }
 
 // TagSummaryItem は選んだ動画のタグの要約1件である

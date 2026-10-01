@@ -774,6 +774,95 @@ test.describe.serial("video tags", () => {
       ).toBeVisible();
     });
 
+    test("16b: 仮のタグの行も名前の列の空白を押すと絞り込んだ一覧が開き、長い名前でも目印と操作が行に残る", async ({
+      page,
+      request,
+    }) => {
+      // 仮のタグは外部連携 API の tentative でだけ作れる（specs/031-tentative-tags）。
+      const issued = await request.post("/api/api-tokens", {
+        headers: mutationHeaders,
+        data: { name: "e2e仮のタグ" },
+      });
+      expect(issued.status()).toBe(201);
+      const { secret } = (await issued.json()) as { secret: string };
+      const shortName = "e2e仮移動先";
+      const longName = `e2e仮長い名前${"あ".repeat(80)}`;
+      const a = video("タグ動画A");
+      await clearVideoTags(request, a.id);
+      const tagged = await request.post("/api/v1/video-tags", {
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          "Content-Type": "application/json",
+        },
+        data: {
+          videos: [{ id: a.id }],
+          action: "add",
+          tags: [shortName, longName],
+          tentative: true,
+        },
+      });
+      expect(tagged.ok()).toBe(true);
+
+      // 名前の列が最も狭くなる 360px でも確かめる（ui-design.md「Responsive behaviour」）。
+      for (const width of [1280, 360]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto("/tags");
+        for (const name of [shortName, longName]) {
+          const row = tagRowByName(page, name);
+          const link = row.getByRole("link", {
+            name: `Open the library filtered by ${name}`,
+            exact: true,
+          });
+          const mark = row.locator("svg.lucide-circle-dashed");
+          await expect(mark).toBeVisible();
+          // 目印は名前の直後（gap-1）にある。
+          const linkBox = await link.boundingBox();
+          const markBox = await mark.boundingBox();
+          if (linkBox === null || markBox === null) throw new Error("no layout");
+          expect(markBox.x - (linkBox.x + linkBox.width)).toBeGreaterThanOrEqual(0);
+          expect(markBox.x - (linkBox.x + linkBox.width)).toBeLessThanOrEqual(8);
+          // 長い名前でも操作は行の中に収まる。
+          const rowBox = await row.boundingBox();
+          const moreBox = await row
+            .getByRole("button", { name: "More actions" })
+            .boundingBox();
+          if (rowBox === null || moreBox === null) throw new Error("no layout");
+          expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
+        }
+        // 長い名前は省略される。
+        const longLink = tagRowByName(page, longName).getByRole("link", {
+          name: `Open the library filtered by ${longName}`,
+          exact: true,
+        });
+        expect(
+          await longLink.evaluate((node) => node.scrollWidth > node.clientWidth),
+        ).toBe(true);
+        // 横スクロールは出ない。
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
+
+      // 短い名前の行で、名前と目印より右の空白を押す。
+      const row = tagRowByName(page, shortName);
+      const link = row.getByRole("link", {
+        name: `Open the library filtered by ${shortName}`,
+        exact: true,
+      });
+      const href = await link.getAttribute("href");
+      const column = link.locator("xpath=..");
+      const columnBox = await column.boundingBox();
+      const markBox = await row.locator("svg.lucide-circle-dashed").boundingBox();
+      if (columnBox === null || markBox === null) throw new Error("no layout");
+      const x = columnBox.width - 4;
+      expect(columnBox.x + x).toBeGreaterThan(markBox.x + markBox.width + 8);
+      await column.click({ position: { x, y: columnBox.height / 2 } });
+      await expect(page).toHaveURL(`${origin}${String(href)}`);
+    });
+
     test("18: 検索は名前とシノニムに大文字小文字を区別せず当たり、消すと全件に戻る", async ({
       page,
       request,

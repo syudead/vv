@@ -127,6 +127,8 @@ paths:
         付くタグは残る（`replace` の後も）。名前はシノニムを含めて引き、`add`・`replace` では無い名前の
         タグを作る。`remove` ではどのタグにも当たらない名前は何もしない。同じタグに当たる名前は 1 つに
         まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない（contracts/external-api.md §4）。
+        `tentative` が真の `add`・`replace` では、新しく作るタグを仮のタグにし、却下した名前を飛ばして
+        `skippedTags` に返す（specs/031-tentative-tags/contracts/external-api.md §1）。
       requestBody:
         required: true
         content:
@@ -410,7 +412,7 @@ components:
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount]
+      required: [id, name, synonyms, videoCount, tentative]
       additionalProperties: false
       properties:
         id:
@@ -426,6 +428,9 @@ components:
         videoCount:
           type: integer
           description: いまライブラリにある動画の本数
+        tentative:
+          type: boolean
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
 
     TagList:
       type: object
@@ -494,7 +499,7 @@ components:
 
     ExternalVideoTag:
       type: object
-      required: [id, name, manual, fromFolder]
+      required: [id, name, manual, fromFolder, tentative]
       additionalProperties: false
       properties:
         id:
@@ -508,6 +513,9 @@ components:
         fromFolder:
           type: boolean
           description: 祖先のフォルダ名から付く（この API では外れない）
+        tentative:
+          type: boolean
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
 
     ExternalVideoPage:
       type: object
@@ -559,10 +567,17 @@ components:
             タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
           items:
             type: string
+        tentative:
+          type: boolean
+          default: false
+          description: >-
+            真なら add・replace で、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして作る。
+            却下した名前（綴りの完全一致）は作らず付けずに飛ばし、skippedTags に返す。既存のタグに
+            当たる名前はそのタグを付け、その状態を変えない。remove では何も変えない
 
     VideoTagsResponse:
       type: object
-      required: [items]
+      required: [items, skippedTags]
       additionalProperties: false
       properties:
         items:
@@ -570,6 +585,13 @@ components:
           description: videos の順
           items:
             $ref: "#/components/schemas/VideoTagsItem"
+        skippedTags:
+          type: array
+          description: >-
+            tentative が真の add・replace で、却下した名前に当たって飛ばした名前。整えた形で tags の順に
+            1 回ずつ。無ければ空の配列
+          items:
+            type: string
 
     VideoTagsItem:
       type: object

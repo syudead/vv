@@ -11,6 +11,7 @@ function tags(...names: string[]): VideoTag[] {
     name,
     manual: true,
     fromFolder: false,
+    tentative: false,
   }));
 }
 

@@ -36,7 +36,7 @@ function takenResponse(submitted: string, ownerName: string): Response {
 }
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, ...overrides };
+  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
 }
 
 /** server はタグの管理経路（GET・POST・PATCH・DELETE /api/tags*）を扱う偽のサーバーである。 */
@@ -73,7 +73,25 @@ const server = {
    * （自分で消費して null に戻る）。API エラーの英語の説明を確かめるためのもの。
    */
   nextError: null as { status: number; body: Record<string, unknown> } | null,
+  /** 却下した名前の一覧（GET・DELETE /api/tags/rejected-names）。 */
+  rejectedNames: [] as string[],
+  /** true にすると、以後の GET /api/tags/rejected-names をすべて 500 で失敗させる。 */
+  failRejectedGets: false,
+  /** 確定・却下・却下した名前の取り外しの要求の回数。 */
+  confirmCalls: 0,
 };
+
+/**
+ * holdRejectedGets を true にした間の GET /api/tags/rejected-names は、release を
+ * 呼ぶまで応答しない。応答の中身は要求を受けた時点の `server.rejectedNames` を
+ * 写し取って持つ（取り外しの前に始まった取り直しの古い応答を再現する）。
+ */
+let holdRejectedGets = false;
+const rejectedGetReleases: (() => void)[] = [];
+
+/** holdConfirms を true にした間の POST /api/tags/{id}/confirm は、release() を呼ぶまで応答しない。 */
+let holdConfirms = false;
+const confirmReleases: (() => void)[] = [];
 
 /** holdNextMutation を true にした次の POST・PATCH は、release() を呼ぶまで応答しない（B3）。 */
 let holdNextMutation = false;
@@ -121,6 +139,21 @@ function install() {
       return Promise.resolve(jsonResponse({ items: snapshot }));
     }
 
+    if (path === "/api/tags/rejected-names" && method === "GET") {
+      if (server.failRejectedGets) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const snapshot = [...server.rejectedNames];
+      if (holdRejectedGets) {
+        return new Promise((resolve) => {
+          rejectedGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+        });
+      }
+      return Promise.resolve(jsonResponse({ items: snapshot }));
+    }
+
     if (method !== "GET" && server.nextError !== null) {
       const { status, body } = server.nextError;
       server.nextError = null;
@@ -133,6 +166,52 @@ function install() {
       return new Promise((resolve) => {
         release = () => resolve(respond());
       });
+    }
+
+    if (path === "/api/tags/rejected-names" && method === "DELETE") {
+      const name = url.searchParams.get("name") ?? "";
+      server.rejectedNames = server.rejectedNames.filter((item) => item !== name);
+      return Promise.resolve(jsonResponse(null, 204));
+    }
+
+    const confirmMatch = /^\/api\/tags\/(\d+)\/confirm$/.exec(path);
+    if (confirmMatch && method === "POST") {
+      server.confirmCalls += 1;
+      const found = server.tags.find((t) => t.id === Number(confirmMatch[1]));
+      if (found === undefined) {
+        return Promise.resolve(
+          jsonResponse({ code: "tag_not_found", message: "Tag not found." }, 404),
+        );
+      }
+      const respond = () => {
+        found.tentative = false;
+        return jsonResponse(found);
+      };
+      if (!holdConfirms) return Promise.resolve(respond());
+      return new Promise((resolve) => {
+        confirmReleases.push(() => resolve(respond()));
+      });
+    }
+
+    const rejectMatch = /^\/api\/tags\/(\d+)\/reject$/.exec(path);
+    if (rejectMatch && method === "POST") {
+      const found = server.tags.find((t) => t.id === Number(rejectMatch[1]));
+      if (found === undefined) {
+        return Promise.resolve(
+          jsonResponse({ code: "tag_not_found", message: "Tag not found." }, 404),
+        );
+      }
+      if (!found.tentative) {
+        return Promise.resolve(
+          jsonResponse(
+            { code: "tag_not_tentative", message: "Tag is not tentative." },
+            409,
+          ),
+        );
+      }
+      server.tags = server.tags.filter((t) => t.id !== found.id);
+      server.rejectedNames = [...server.rejectedNames, found.name].sort();
+      return Promise.resolve(jsonResponse(null, 204));
     }
 
     if (path === "/api/tags" && method === "POST") {
@@ -153,6 +232,7 @@ function install() {
       server.nextId += 1;
       return maybeHold(() => {
         server.tags.push(created);
+        server.rejectedNames = server.rejectedNames.filter((n) => n !== body.name);
         return jsonResponse(created, 201);
       });
     }
@@ -180,7 +260,9 @@ function install() {
         return maybeHold(() => takenResponse(body.name, conflict.name));
       }
       return maybeHold(() => {
+        if (found.name !== body.name) found.tentative = false;
         found.name = body.name;
+        server.rejectedNames = server.rejectedNames.filter((n) => n !== body.name);
         return jsonResponse(found);
       });
     }
@@ -217,6 +299,7 @@ function install() {
       return maybeHold(() => {
         target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
         target.videoCount += source.videoCount;
+        target.tentative = false;
         server.tags = server.tags.filter((t) => t.id !== source.id);
         return jsonResponse(target);
       });
@@ -294,6 +377,8 @@ function install() {
       }
       return maybeHold(() => {
         target.synonyms = [...target.synonyms, body.name];
+        target.tentative = false;
+        server.rejectedNames = server.rejectedNames.filter((n) => n !== body.name);
         return jsonResponse(target);
       });
     }
@@ -358,6 +443,13 @@ beforeEach(() => {
   synonymDeleteReleases.length = 0;
   holdGetsFrom = null;
   heldGetReleases.length = 0;
+  server.rejectedNames = [];
+  server.failRejectedGets = false;
+  server.confirmCalls = 0;
+  holdConfirms = false;
+  confirmReleases.length = 0;
+  holdRejectedGets = false;
+  rejectedGetReleases.length = 0;
 });
 
 afterEach(() => {
@@ -1828,7 +1920,7 @@ describe("TagsPage の英語の文言", () => {
 
     await user.clear(search);
     await user.type(search, "存在しない語");
-    await screen.findByRole("heading", { level: 2 });
+    await screen.findByRole("heading", { level: 2, name: /match/ });
     expectCatalogTextOnly(document.body, userData);
     await user.clear(search);
     await screen.findByTitle("旅行");
@@ -1921,7 +2013,7 @@ describe("TagsPage の英語の文言", () => {
     __resetTagsForTest();
     server.failAllGets = true;
     const failed = renderPage();
-    await screen.findByRole("heading", { level: 2 });
+    await screen.findByRole("heading", { level: 2, name: /load/ });
     expectCatalogTextOnly(document.body, userData);
     failed.unmount();
 
@@ -1929,7 +2021,7 @@ describe("TagsPage の英語の文言", () => {
     server.failAllGets = false;
     server.tags = [];
     renderPage();
-    await screen.findByRole("heading", { level: 2 });
+    await screen.findByRole("heading", { level: 2, name: /No tags yet/ });
     expectCatalogTextOnly(document.body, userData);
   });
 
@@ -2076,5 +2168,603 @@ describe("TagsPage の英語の文言", () => {
     expect((await within(dialog).findByRole("alert")).textContent).toBe(
       "A tag can't be merged into itself.",
     );
+  });
+});
+
+describe("TagsPage 仮のタグ", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("div")!.parentElement!;
+  }
+
+  function tentativeOnlyButton(): HTMLElement {
+    return screen.getByRole("button", { name: "Tentative only" });
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 2, name: "Beta", tentative: true }),
+      tag({ id: 3, name: "Cat", tentative: true }),
+      tag({ id: 4, name: "Gamma", synonyms: ["ガンマ"], videoCount: 5 }),
+    ];
+  });
+
+  it("仮のタグの行は目印と「確定する」を持ち、確定したタグの行は持たない（受け入れ条件5）", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const alpha = rowOf("Alpha");
+    expect(within(alpha).getByText("Tentative")).toBeDefined();
+    expect(within(alpha).getByRole("button", { name: "Confirm" })).toBeDefined();
+
+    const gamma = rowOf("Gamma");
+    expect(within(gamma).queryByText("Tentative")).toBeNull();
+    expect(within(gamma).queryByRole("button", { name: "Confirm" })).toBeNull();
+    // 確定した行の操作は今と同じ3つ。
+    expect(within(gamma).getAllByRole("button")).toHaveLength(3);
+  });
+
+  it("「Tentative only」で仮のタグだけが並び、件数は全タグを分母にする（受け入れ条件6）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Gamma");
+
+    const toggle = tentativeOnlyButton();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await user.click(toggle);
+
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByText("3 of 4 tags")).toBeDefined();
+    expect(screen.queryByTitle("Gamma")).toBeNull();
+    expect(screen.getByTitle("Alpha")).toBeDefined();
+
+    // 検索と重ねられる。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "be");
+    expect(await screen.findByText("1 of 4 tags")).toBeDefined();
+    expect(screen.getByTitle("Beta")).toBeDefined();
+    expect(screen.queryByTitle("Alpha")).toBeNull();
+
+    await user.click(toggle);
+    expect(await screen.findByText("1 of 4 tags")).toBeDefined();
+  });
+
+  it("確定するとその行が確定したタグになり、同じ行の「改名」へフォーカスが移る（受け入れ条件7）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    await waitFor(() =>
+      expect(
+        within(rowOf("Alpha")).queryByRole("button", { name: "Confirm" }),
+      ).toBeNull(),
+    );
+    expect(within(rowOf("Alpha")).queryByText("Tentative")).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Alpha")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Delete…" })).toBeDefined();
+  });
+
+  it("確定の送信中は二度押しを無視し、同じ行の「改名」「その他の操作」がdisabledになる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    holdConfirms = true;
+    const confirm = within(rowOf("Alpha")).getByRole("button", { name: "Confirm" });
+    await user.click(confirm);
+    await user.click(confirm);
+    await user.keyboard("{Enter}");
+
+    expect(server.confirmCalls).toBe(1);
+    expect(confirm.getAttribute("aria-busy")).toBe("true");
+    expect(confirm.getAttribute("aria-disabled")).toBe("true");
+    expect(confirm.hasAttribute("disabled")).toBe(false);
+    const alpha = rowOf("Alpha");
+    expect(
+      within(alpha).getByRole("button", { name: "Rename" }).hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      within(alpha)
+        .getByRole("button", { name: "More actions" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    // ほかの行はそのまま。
+    expect(
+      within(rowOf("Beta"))
+        .getByRole("button", { name: "Rename" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+
+    confirmReleases.forEach((resolve) => resolve());
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    expect(server.confirmCalls).toBe(1);
+  });
+
+  it("「Tentative only」中に確定すると、その行が外れて次の行の「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.queryByTitle("Alpha")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Beta")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+    expect(screen.getByText("2 of 4 tags")).toBeDefined();
+  });
+
+  it("仮のタグの行のメニューは「削除…」の代わりに「却下する…」を持ち、確定したタグの行は今のまま（受け入れ条件12）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Merge into another tag…",
+      "Reject…",
+    ]);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+
+    await user.click(
+      within(rowOf("Gamma")).getByRole("button", { name: "More actions" }),
+    );
+    const confirmedItems = await screen.findAllByRole("menuitem");
+    expect(confirmedItems.map((item) => item.textContent)).toEqual([
+      "Merge into another tag…",
+      "Delete…",
+    ]);
+  });
+
+  it("却下すると行が消えて却下した名前の一覧に出る（受け入れ条件8）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const heading = screen.getByRole("button", { name: /Rejected names/ });
+    expect(heading.getAttribute("aria-expanded")).toBe("false");
+    await waitFor(() => expect(heading.textContent).toContain("0"));
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    expect(
+      within(dialog).getByText(
+        'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from the rejected names below.',
+      ),
+    ).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(screen.queryByTitle("Alpha")).toBeNull());
+    expect(await screen.findByText('Rejected "Alpha"')).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Beta")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+    await waitFor(() => expect(heading.textContent).toContain("1"));
+
+    await user.click(heading);
+    expect(heading.getAttribute("aria-expanded")).toBe("true");
+    const list = screen.getByRole("list", { name: "Rejected names" });
+    expect(within(list).getByTitle("Alpha")).toBeDefined();
+  });
+
+  it("0本の仮のタグの却下の確認は、どの動画にも付いていないと出す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Beta");
+
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Reject "Beta"' });
+    expect(
+      within(dialog).getByText(
+        "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from the rejected names below.",
+      ),
+    ).toBeDefined();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Beta")).getByRole("button", { name: "More actions" }),
+      ),
+    );
+  });
+
+  it("却下の前に別のタブで確定されていると、窓を閉じて一覧を取り直す（Edge Case「操作の競合」）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+
+    // 窓を開いたあと、別のタブで先に確定されたことにする。
+    server.tags = server.tags.map((item) =>
+      item.id === 1 ? { ...item, tentative: false } : item,
+    );
+    const getsBefore = server.getCalls;
+    await user.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    expect(
+      await screen.findByText("This tag was already confirmed, so the list was reloaded"),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.getCalls).toBeGreaterThan(getsBefore);
+    await waitFor(() =>
+      expect(
+        within(rowOf("Alpha")).queryByRole("button", { name: "Confirm" }),
+      ).toBeNull(),
+    );
+    expect(server.rejectedNames).toEqual([]);
+  });
+
+  it("却下の一般の失敗は窓の中のalertで伝え、窓は開いたまま", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    server.nextError = { status: 500, body: { code: "internal", message: "x" } };
+    await user.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    expect(await within(dialog).findByRole("alert")).toBeDefined();
+    expect(screen.getByRole("dialog", { name: 'Reject "Alpha"' })).toBeDefined();
+  });
+
+  it("却下した名前を×で一覧から外せる。最後の1つなら見出しへフォーカスが移る（受け入れ条件13）", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old", "Stale"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const heading = screen.getByRole("button", { name: /Rejected names/ });
+    await user.click(heading);
+    const list = await screen.findByRole("list", { name: "Rejected names" });
+    expect(
+      screen.getByText(
+        "Automatic tagging won't create these tags. Remove a name to allow it again.",
+      ),
+    ).toBeDefined();
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
+    await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
+    expect(server.rejectedNames).toEqual(["Stale"]);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(list).getByRole("button", { name: 'Allow "Stale" again' }),
+      ),
+    );
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Stale" again' }));
+    expect(await screen.findByText("No rejected names")).toBeDefined();
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.textContent).toContain("0");
+  });
+
+  it("却下した名前を取れなかったら理由を出し、再試行できる", async () => {
+    const user = userEvent.setup();
+    server.failRejectedGets = true;
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
+
+    server.failRejectedGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Old" again' }),
+    ).toBeDefined();
+  });
+
+  it("取り外しの前から待っていた取り直しの古い応答で、外した名前が戻らない", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old", "Stale"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const list = await screen.findByRole("list", { name: "Rejected names" });
+
+    // 却下で取り直しが始まり、その応答は取り外しの前の並びを持ったまま止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    expect(rejectedGetReleases).toHaveLength(1);
+    holdRejectedGets = false;
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
+    await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
+
+    rejectedGetReleases.forEach((resolve) => resolve());
+    // 取り外しのあとの取り直しが却下した Beta を並べ、古い応答の Old は戻らない。
+    expect(
+      await within(list).findByRole("button", { name: 'Allow "Beta" again' }),
+    ).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(within(list).queryByTitle("Old")).toBeNull();
+  });
+
+  it("一覧を持ったあとの取り直しに失敗しても、古い並びを残さず理由と再試行を出す", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Old" again' }),
+    ).toBeDefined();
+
+    server.failRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+
+    expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
+    expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
+
+    server.failRejectedGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Beta" again' }),
+    ).toBeDefined();
+  });
+
+  it("「Tentative only」中に作成を取り消すと、「新しいタグ」へフォーカスが戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    const newTag = screen.getByRole("button", { name: "New tag" });
+    await user.click(newTag);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(newTag));
+  });
+
+  it("確定の送信中に「Tentative only」を外すと、確定した行はそのまま出て、その行の「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    holdConfirms = true;
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+    await user.click(tentativeOnlyButton());
+    expect(tentativeOnlyButton().getAttribute("aria-pressed")).toBe("false");
+
+    confirmReleases.forEach((resolve) => resolve());
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Alpha")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「Tentative only」中に並行した確定が逆の順で終わっても、残った次の行へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    holdConfirms = true;
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "Confirm" }));
+    expect(confirmReleases).toHaveLength(2);
+
+    // 後から押した Beta が先に終わり、そのあとで Alpha が終わる。
+    const [releaseAlpha, releaseBeta] = confirmReleases;
+    releaseBeta!();
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    releaseAlpha!();
+    await waitFor(() => expect(screen.queryByTitle("Alpha")).toBeNull());
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Cat")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「新しいタグ」で却下した名前を作ると、却下した名前の一覧から消える（受け入れ条件14）", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Old" again' }),
+    ).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Old");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("No rejected names")).toBeDefined();
+    expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
+  });
+
+  it("「Tentative only」中の仮のタグどうしの統合は、「新しいタグ」へ落ちず次の行へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Alpha"' });
+    await user.type(
+      within(dialog).getByRole("combobox", { name: "Tag to merge into" }),
+      "Beta",
+    );
+    await user.click(await within(dialog).findByRole("option", { name: /Beta/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    expect(await screen.findByText('Merged "Alpha" into "Beta"')).toBeDefined();
+    // 統合元（Alpha）は消え、統合先（Beta）は確定になって絞り込みから外れる。
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Cat")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「Tentative only」中に唯一のタグを却下すると、「Tentative only」が押せるまま、そこにフォーカスがある", async () => {
+    const user = userEvent.setup();
+    server.tags = [tag({ id: 1, name: "Alpha", tentative: true })];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const toggle = tentativeOnlyButton();
+    await user.click(toggle);
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    await user.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    expect(await screen.findByText("No tentative tags")).toBeDefined();
+    expect(toggle.hasAttribute("disabled")).toBe(false);
+    await waitFor(() => expect(document.activeElement).toBe(toggle));
+
+    // 「Show all tags」で外すとタグが 0 なので、フォーカスは「新しいタグ」へ。
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    expect(await screen.findByText("No tags yet")).toBeDefined();
+    expect(toggle.hasAttribute("disabled")).toBe(true);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getAllByRole("button", { name: "New tag" })[0],
+      ),
+    );
+  });
+
+  it("「Tentative only」中に唯一の仮のタグへシノニムを足すと、入力にフォーカスが残り、閉じると「Tentative only」へ移る", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true }),
+      tag({ id: 4, name: "Gamma" }),
+    ];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const toggle = tentativeOnlyButton();
+    await user.click(toggle);
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Synonyms" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Alpha"' });
+    const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
+    await user.type(input, "アルファ");
+    await user.keyboard("{Enter}");
+
+    expect(await within(dialog).findByText("アルファ")).toBeDefined();
+    expect(document.activeElement).toBe(input);
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByTitle("Alpha")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(toggle));
+  });
+
+  it("「Tentative only」と検索で一致が無いときは、両方を外して検索の入力へ戻れる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+    const search = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(search, "Gamma");
+
+    expect(await screen.findByText('No tentative tags match "Gamma"')).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(tentativeOnlyButton().getAttribute("aria-pressed")).toBe("false");
+    expect(await screen.findByText("4 tags")).toBeDefined();
+  });
+
+  it("疑似ロケールで、仮のタグの行・絞り込み・却下の窓・却下した名前の文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const userData = ["Alpha", "Beta", "Cat", "Gamma", "ガンマ", "Old"];
+    expectCatalogTextOnly(document.body, userData);
+
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    await screen.findByRole("list");
+    expectCatalogTextOnly(document.body, userData);
+
+    await user.click(screen.getByRole("button", { name: /Tentative only/ }));
+    await waitFor(() => expect(screen.queryByTitle("Gamma")).toBeNull());
+    expectCatalogTextOnly(document.body, userData);
+
+    await user.click(
+      within(rowOf("Alpha")).getByRole("button", { name: /More actions/ }),
+    );
+    await screen.findByRole("menu");
+    expectCatalogTextOnly(document.body, userData);
+    await user.click(screen.getByRole("menuitem", { name: /Reject/ }));
+    await screen.findByRole("dialog");
+    expectCatalogTextOnly(document.body, userData);
   });
 });
