@@ -78,15 +78,15 @@ no quota.
 | Node | Sent as |
 | --- | --- |
 | Paragraph, heading, table cell, list-item paragraph, blockquote paragraph | One segment each |
-| Image `alt` text | One segment |
 | Mermaid label: `["…"]`, `("…")`, `{"…"}`, unquoted `[…]`, edge `\|…\|`, `participant X as …` | One segment each |
 
 Inside a segment, inline code, link destinations, autolinks, HTML, and
 identifier-like runs (paths, `snake_case`, `CamelCase` with a dot or slash) are
 replaced with numbered `<sN>` placeholders, sent through the model's
-formatted-translation template. Link text is translated, but the link is kept as
-a paired `<sN>…</sN>`, so its destination never reaches the model. Fenced code (except Mermaid labels), front
-matter, and HTML blocks are copied verbatim.
+formatted-translation template. Link text and image `alt` text are translated
+inside their containing segment, as a paired `<sN>…</sN>`. The destination never
+reaches the model, and no source span is replaced twice. Fenced code (except
+Mermaid labels), front matter, and HTML blocks are copied verbatim.
 
 The translated file is the English source with each segment's source span
 replaced by its translation. Nothing is re-serialised, so headings, tables,
@@ -154,20 +154,30 @@ edits them there (requirement 3).
 
 ```mermaid
 flowchart LR
-  push[push to main, nightly schedule] --> build[job: build and deploy]
-  push --> tr[job: translate]
-  ja[(branch docs-ja)] --> build
+  push[push to main] --> docs[workflow docs.yml: build and deploy]
+  ja[(branch docs-ja)] --> docs
+  push --> tr[workflow docs-translate.yml: translate]
+  sched[nightly schedule, workflow_dispatch] --> tr
   tr -->|commit| ja
-  tr -->|success or failure| rebuild[job: rebuild and deploy]
+  tr -->|success or failure| rebuild[docs-translate.yml: build and deploy]
   ja --> rebuild
-  build --> pages[GitHub Pages: / and /ja/]
+  docs --> pages[GitHub Pages: / and /ja/]
   rebuild --> pages
 ```
 
-The English site deploys at once and never waits for the translation, which can
-run for hours on the first pass. When `translate` ends, a second build deploys
-whatever `docs-ja` then holds. Both deploys share the existing `pages`
-concurrency group, so they run in order.
+Translation runs in its own workflow, `docs-translate.yml`, with its own
+concurrency group (`docs-translate`, no cancellation). `docs.yml` keeps its
+`docs-${{ github.ref }}` group, which holds only the short build. A later push
+to `main` therefore builds and deploys the English site at once, even while a
+translation from an earlier push runs for hours. Pushes that arrive while a
+translation runs collapse into one pending run, which translates whatever is out
+of date at that point. When translation ends, its workflow builds the site
+again and deploys whatever `docs-ja` then holds. Both workflows' deploy jobs
+share the existing `pages` concurrency group, so deploys run in order.
+
+Both workflows trigger on `docs/**`, `specs/**`, `ARCHITECTURE.md` and
+`docs-site/**` (R-5), so an edit to any published file rebuilds and
+retranslates.
 
 | Situation | Behaviour |
 | --- | --- |
@@ -184,7 +194,9 @@ concurrency group, so they run in order.
 The next push, the nightly `schedule`, or a manual `workflow_dispatch` retries
 every file whose hashes differ, so a failed run catches up without a human edit (requirement 4).
 
-**Alternatives considered**: committing translations to `main` through a bot PR
+**Alternatives considered**: a `translate` job inside `docs.yml` (the
+workflow-level concurrency group would hold every later push's build until the
+translation ended); committing translations to `main` through a bot PR
 (needs a human or auto-merge per change, puts editable copies beside the
 source); generating at build time with only the Actions cache (the cache is
 evicted after seven days unused, so the whole set would be retranslated, about

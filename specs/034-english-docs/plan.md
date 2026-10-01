@@ -27,7 +27,7 @@ decisions, scope, validation and open items as tables.
 | Engine | `HY-MT1.5-1.8B` on the runner via `llama.cpp` | `HY-MT1.5-7B`, `TranslateGemma`, `plamo-2-translate`, `PLaMo翻訳` API, DeepL, Google, Azure, Amazon, general LLM, classic MT | [R-1](research.md#r-1-translation-engine) |
 | Structure | Translate mdast text segments in place; pin English heading slugs | Whole-file translation | [R-2](research.md#r-2-segment-translation-over-the-markdown-ast) |
 | Terms | `glossary.tsv` through the model's terminology template; UI labels stay English as on screen | Japanese UI terms; whole glossary in every prompt | [R-3](research.md#r-3-glossary-and-product-terms) |
-| Storage | Orphan branch `docs-ja` with a segment memory, site locale `/ja/` | Bot PRs into `main`; Actions cache | [R-4](research.md#r-4-where-translations-live-and-how-they-follow-the-english-source) |
+| Storage | Orphan branch `docs-ja` with a segment memory, written by its own workflow; site locale `/ja/` | Bot PRs into `main`; Actions cache; a job inside `docs.yml` | [R-4](research.md#r-4-where-translations-live-and-how-they-follow-the-english-source) |
 | Translation scope | Site's published set, plus `ARCHITECTURE.md` | Every requirement-1 path | [R-5](research.md#r-5-translation-scope-and-the-sites-published-set) |
 | Rewrite guard | Japanese-in-prose check with a shrinking pending list; anchor check | Check only at the end | [R-6](research.md#r-6-guarding-the-english-rewrite-while-it-is-in-progress) |
 | Types | One skeleton per kind beside its skill; `writing-quality.md` for shared rules | One template directory | [R-7](research.md#r-7-document-types) |
@@ -107,12 +107,13 @@ systems changes.
 | --- | --- |
 | `scripts/sddguard/` | Japanese-in-prose guard, pending list, anchor guard |
 | `docs-site/` | `translate/` script and glossary, `/ja/` locale, banners, English root locale, `ARCHITECTURE.md` published |
-| `.github/workflows/docs.yml` | `translate` job; `build` reads `docs-ja` |
+| `.github/workflows/` | New `docs-translate.yml`; `docs.yml` reads `docs-ja`; both trigger on `ARCHITECTURE.md` |
 | `.agents/skills/` | Skeletons per kind, stage PR body, English rewrite of the remaining Japanese |
 | `docs/`, `specs/`, `ARCHITECTURE.md`, `README.md`, `AGENTS.md` | English rewrite to the types |
 
 **New paths**: `docs/design-docs/writing-quality.md`,
-`docs-site/translate/`, `scripts/sddguard/japanese-pending.txt`,
+`docs-site/translate/`, `.github/workflows/docs-translate.yml`,
+`scripts/sddguard/japanese-pending.txt`,
 `.agents/skills/issue-handoff/references/stage-pr-body.md`, and the skeletons in
 [R-7](research.md#r-7-document-types).
 
@@ -205,11 +206,15 @@ the four sections as tables in its body, without opening the artifact
   templates, segment memory, assembler, placeholder and structure validators,
   term check, `model.json`, and `glossary.tsv`. The client is replaceable by a
   fake engine in tests.
-- `docs.yml`: a `translate` job on `main`, a nightly `schedule` and
-  `workflow_dispatch`. It downloads and verifies the pinned binary and model
-  (cached), honours a 5-hour budget, commits to `docs-ja`, and writes a run
-  summary. The site deploys at once from the current `docs-ja`, and deploys
-  again when `translate` ends, whether it succeeds or fails.
+- `docs-translate.yml`: a new workflow on pushes to `main`, a nightly
+  `schedule` and `workflow_dispatch`, in its own `docs-translate` concurrency
+  group. It downloads and verifies the pinned binary and model (cached),
+  honours a 5-hour budget, commits to `docs-ja`, writes a run summary, then
+  builds and deploys the site whether translation succeeded or failed.
+- `docs.yml`: builds from the current `docs-ja`, so the site deploys at once and
+  never waits for translation.
+- Both workflows add `ARCHITECTURE.md` to their `push` and `pull_request` path
+  filters.
 - `config.mts`: English root locale, `/ja/` locale with today's labels and
   tokenizer, stale and untranslated banners, and `ARCHITECTURE.md` in the
   published set.
@@ -237,6 +242,8 @@ documents.
 
 `task docs-build` with a fixture `docs-ja` produces `/ja/` pages, a stale banner
 on a hash mismatch, and an untranslated banner when the translation is missing.
+In both workflow files, `ARCHITECTURE.md` is in the path filters, and
+`docs.yml` has no job that waits on translation.
 A run of the real model on the runner, over a fixed sample of five documents,
 records tokens per second and the translated sample in the PR. The maintainer
 reads the sample to judge quality before merge; if it falls short, the

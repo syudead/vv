@@ -17,7 +17,8 @@ integration PR is merged.
 
 | Step | Expected result |
 | --- | --- |
-| Run the `Docs site` workflow with `workflow_dispatch` on `main` | The English site deploys at once; `translate` commits to `docs-ja` and its summary lists translated files, English-kept segments, glossary misses and remaining files; a second deploy follows |
+| Run `docs-translate.yml` with `workflow_dispatch` on `main` | It commits to `docs-ja`; its summary lists translated files, English-kept segments, glossary misses and remaining files; it then deploys the site |
+| Push an English document change while that run is in progress | `docs.yml` deploys the English change at once, without waiting for the translation run |
 | Open `https://syudead.github.io/vv/ja/` | Translated pages have the same headings, tables, lists and Mermaid diagrams as the English pages; code, paths and URLs are unchanged; untranslated pages carry the banner |
 | Wait for nightly runs until the summary lists no remaining files | Every published page under `/ja/` is translated |
 | From a `/ja/` page, follow a link to a heading in another document | It lands on the heading |
