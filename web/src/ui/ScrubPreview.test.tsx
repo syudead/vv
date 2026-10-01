@@ -41,7 +41,7 @@ function video(extra: Partial<Video> = {}): Video {
 
 // 2 時間の動画の配置情報（12 秒間隔・600 コマ・10×10 の 6 シート）。帯の左半分は
 // シート 0〜2、真ん中から右はシート 3〜5 になる。
-function twoHourSprite(): SeekThumbnailSprite {
+function twoHourSprite(version = "c"): SeekThumbnailSprite {
   return {
     intervalMs: 12_000,
     frameCount: 600,
@@ -50,7 +50,7 @@ function twoHourSprite(): SeekThumbnailSprite {
     frameWidth: 320,
     frameHeight: 180,
     sheets: [0, 1, 2, 3, 4, 5].map(
-      (n) => `/api/videos/1/seek-thumbnail/${String(n)}?v=c`,
+      (n) => `/api/videos/1/seek-thumbnail/${String(n)}?v=${version}`,
     ),
   };
 }
@@ -505,9 +505,26 @@ describe("useScrubPreview", () => {
     await settle(stale, sheet());
     expect(frameImage()).toBeNull();
 
-    await settle(sprites[1], twoHourSprite());
+    await settle(sprites[1], twoHourSprite("d"));
+    expect(sheets[2]?.url).toBe("/api/videos/1/seek-thumbnail/3?v=d");
     await settle(sheets[2], sheet());
     expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-2")');
     expect(fetchSeekThumbnailSprite).toHaveBeenCalledTimes(2);
+  });
+
+  it("viewportから外れて解放した後にURLが変わっても取り直さない", async () => {
+    const { rerender } = render(<Harness />);
+    enterBand(110);
+    await settle(sprites[0], twoHourSprite());
+    await settle(sheets[0], sheet());
+
+    act(() => intersect?.(false));
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:sheet-1");
+
+    rerender(
+      <Harness item={video({ seekThumbnailUrl: "/api/videos/1/seek-thumbnail?v=d" })} />,
+    );
+    expect(fetchSeekThumbnailSprite).toHaveBeenCalledTimes(1);
+    expect(fetchSeekThumbnailSheet).toHaveBeenCalledTimes(1);
   });
 });
