@@ -125,6 +125,13 @@ export interface paths {
          *     `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
          *     ページングとは独立に返る。
          *
+         *     同じ動画の別バージョンの集まりは、実効の代表（代表に見せてよい所在が無ければ、
+         *     見せてよい所在を持つバージョンのうち id の最小のもの）の1件だけを返し、代表以外の
+         *     バージョンは返さない。`query` は集まりのどれかのバージョンの所在に当たれば代表の
+         *     1件を返し、タグ・視聴状態・並び順は集まりの値で判定する
+         *     （specs/030-video-versions/data-model.md §4）。代表以外のバージョンも
+         *     `GET /api/videos/{id}` では引ける。
+         *
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
          *     `playedDesc`、`tag`）は `400` `invalid_request` にする（guest-api.md §3）。
@@ -157,6 +164,10 @@ export interface paths {
          *     数える。`playable` は項目に掛け（グループはメンバーのどれか1本が再生できれば残る）、
          *     `watch` は項目の視聴状態に掛け、並べ替えは項目の値で行う。`total` は絞り込み後の
          *     項目（カード）の数。カーソルの形は `listVideos` と同じ。
+         *
+         *     同じ動画の別バージョンの集まりは `listVideos` と同じく実効の代表の1件だけを
+         *     項目にし、代表以外のバージョンは出ない。代表以外のバージョンはフォルダの
+         *     グループのメンバーにもならない（specs/030-video-versions/data-model.md §4）。
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
@@ -574,6 +585,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画の集まりの全バージョンを返す
+         * @description この動画が属する集まり（同じ動画の別バージョン）のうち、見る人に見せてよい所在を持つ
+         *     バージョンを、実効の代表を先頭に、続きを題名の自然順（同じなら id）で返す。集まりに
+         *     属さなければ `items` はこの動画 1 本である。各項目は `GET /api/videos/{id}` と同じ形
+         *     （所有者には `location`、どちらにも `folder`）で、解像度・コーデック・`sizeBytes`・
+         *     `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`
+         *     （specs/030-video-versions/contracts/screen-api.md §1）。
+         */
+        get: operations["listVideoVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/make-representative": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画をその集まりの代表にする
+         * @description 所有者だけ。要求の本文は無い。この動画を集まりの代表（一覧に出す 1 件）にし、集まりの
+         *     全バージョンを返す（既に代表でも同じ）。集まりのタグ・再生位置・公開の設定は変わらない。
+         *     集まりに属さなければ 400 `not_bundled`、無いか登録フォルダの下に所在が無ければ 404
+         *     `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる
+         *     （specs/030-video-versions/contracts/screen-api.md §3）。
+         */
+        post: operations["makeRepresentativeVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/unbundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画をその集まりから外す
+         * @description 所有者だけ。要求の本文は無い。外した動画を `GET /api/videos/{id}` と同じ形で返し、
+         *     `tags`・`progress`・`public` は束ねる前のこの動画の値で、`versions` は無い。残りが 1 本
+         *     なら集まりは解け、その 1 本が集まりの値を持つ。集まりに属さなければ 400 `not_bundled`、
+         *     無いか登録フォルダの下に所在が無ければ 404 `video_not_found`。確定後に `/api/events` の
+         *     `video` が元の全メンバーで流れる（specs/030-video-versions/contracts/screen-api.md §4）。
+         */
+        post: operations["unbundleVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans": {
         parameters: {
             query?: never;
@@ -940,6 +1024,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画を同じ動画の別バージョンとして束ねる
+         * @description 所有者だけ。`videoIds` の動画を 1 つの集まりに束ね、`representativeId` を代表（一覧に出す
+         *     1 件）にする。集まりのタグ・再生位置・公開の設定は代表のものになる。既に集まりに属する
+         *     動画を含むときは、その集まりの全メンバーが新しい集まりに入る。`videoIds` の重複は 1 つと
+         *     数え、2 本未満なら 400 `too_few_videos`、20000 本を超えれば 400 `too_many_videos`
+         *     （`POST /api/video-tags` と同じ上限）、`representativeId` が `videoIds` に無ければ 400
+         *     `representative_not_selected`、どれかが無いか登録フォルダの下に所在が無ければ 404
+         *     `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる
+         *     （specs/030-video-versions/contracts/screen-api.md §2）。
+         */
+        post: operations["bundleVideos"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 「同じ動画かもしれない」候補の一覧を返す
+         * @description 所有者だけ。映像の指紋が一致し尺がほぼ同じ 2 本の組のうち、どちらも登録フォルダの下に
+         *     所在を持つものを新しい順に最大 200 組返す。`total` は全件の数。「違う動画」と記録した組と
+         *     同じ集まりの 2 本は出ない。候補は `fingerprint` の取り込みの段階で増減し、`/api/events` の
+         *     `scan` で取り直す（specs/030-video-versions/contracts/screen-api.md §5・§6）。
+         */
+        get: operations["listVersionCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/version-candidates/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 2 本の動画を「違う動画」と記録する
+         * @description 所有者だけ。2 本の組を「違う動画」と記録し、その組の候補を消す。候補に無い組でも記録し、
+         *     記録した組は以後候補に出ない。`videoIds` が 2 つでないか同じなら 400 `invalid_request`、
+         *     どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない
+         *     （specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+         *     `POST /api/video-bundles` に 2 本と代表を渡す。
+         */
+        post: operations["dismissVersionCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -968,6 +1126,9 @@ export interface paths {
          * フォルダ画面の最上位（登録済みメディアフォルダ）を返す
          * @description フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
          *     メディアフォルダは、動画が無くても含む。並びは名前の自然順。
+         *     同じ動画の別バージョンの集まりは実効の代表の所在だけを数え、代表以外の
+         *     バージョンだけがあるフォルダは動画の無いフォルダとして扱う
+         *     （specs/030-video-versions/data-model.md §4）。
          *
          *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まない登録フォルダは
          *     省く（guest-api.md §2）。
@@ -991,7 +1152,8 @@ export interface paths {
         /**
          * フォルダ1件と、その直下の子フォルダを返す
          * @description フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
-         *     指す。子フォルダは直下だけを名前の自然順で返す。
+         *     指す。子フォルダは直下だけを名前の自然順で返す。本数は `listRootFolders` と
+         *     同じく、同じ動画の別バージョンの集まりを実効の代表の所在だけで数える。
          *
          *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まないフォルダは、
          *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする（guest-api.md §2）。
@@ -1021,6 +1183,13 @@ export interface paths {
          *     `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
          *     昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
          *     フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
+         *
+         *     同じ動画の別バージョンの集まりは、実効の代表の所在がこの範囲にあるときだけ
+         *     1件として出て、代表以外のバージョンはそのファイルのあるフォルダにも出ない。
+         *     代表以外のバージョンだけがあるフォルダは動画の無いフォルダである。集まりの
+         *     `query` は集まりのどれかのバージョンの所在に当たればよく、`title` と `sizeBytes`
+         *     は範囲にある代表の所在のうちパスの昇順で最初のもの
+         *     （specs/030-video-versions/data-model.md §4）。
          *
          *     ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
          *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
@@ -1694,6 +1863,7 @@ export interface components {
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
             group?: components["schemas"]["VideoGroupRef"];
+            versions?: components["schemas"]["VideoVersionsRef"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
              *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
@@ -1786,6 +1956,59 @@ export interface components {
             position: number;
             /** @description グループのメンバーの本数 */
             count: number;
+        };
+        /**
+         * @description 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
+         *     集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
+         *     （specs/030-video-versions/contracts/screen-api.md §0）
+         */
+        VideoVersionsRef: {
+            /** @description 見る人に見せてよい所在を持つバージョンの本数 */
+            count: number;
+            /**
+             * Format: int64
+             * @description 実効の代表（一覧に出ている 1 件）の動画の id
+             */
+            representativeId: number;
+        };
+        /** @description 集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1） */
+        VideoVersions: {
+            /**
+             * Format: int64
+             * @description 実効の代表の動画の id。集まりに属さなければその動画の id
+             */
+            representativeId: number;
+            /**
+             * @description 代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
+             *     同じ形
+             */
+            items: components["schemas"]["Video"][];
+        };
+        VideoBundleRequest: {
+            /** @description 束ねる動画。重複は 1 つと数え、2 本以上 */
+            videoIds: number[];
+            /**
+             * Format: int64
+             * @description 代表にする動画。videoIds の 1 つ
+             */
+            representativeId: number;
+        };
+        /** @description 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5） */
+        VersionCandidate: {
+            /** @description 2 本の動画。id の小さい順で、各項目は GET /api/videos/{id} と同じ形 */
+            videos: components["schemas"]["Video"][];
+            /** @description 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている） */
+            distance: number;
+        };
+        VersionCandidatePage: {
+            /** @description 新しい順、最大 200 組 */
+            items: components["schemas"]["VersionCandidate"][];
+            /** @description 候補の全件の数 */
+            total: number;
+        };
+        VersionCandidateDismissRequest: {
+            /** @description 「違う動画」と記録する 2 本。同じ id は受け付けない */
+            videoIds: number[];
         };
         /**
          * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
@@ -1903,10 +2126,10 @@ export interface components {
             videoId?: number;
         };
         /**
-         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
          * @enum {string}
          */
-        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview";
+        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview" | "fingerprint";
         /** @description 取り込みの進み具合。status が finding のあいだは省く */
         ScanVideos: {
             /** @description 対象の本数。0 は変化が無かったことを示す */
@@ -1958,7 +2181,7 @@ export interface components {
          * @description 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
          * @enum {string}
          */
-        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
+        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "fingerprint_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
         /**
          * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
@@ -1994,7 +2217,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2931,6 +3154,82 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    listVideoVersions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    makeRepresentativeVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 反映後の集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    unbundleVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 外した動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     startScan: {
         parameters: {
             query?: never;
@@ -3548,6 +3847,79 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    bundleVideos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoBundleRequest"];
+            };
+        };
+        responses: {
+            /** @description 新しい集まりの全バージョン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVersions"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVersionCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 候補の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionCandidatePage"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    dismissVersionCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VersionCandidateDismissRequest"];
+            };
+        };
+        responses: {
+            /** @description 記録した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listDirectories: {

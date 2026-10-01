@@ -174,6 +174,13 @@ type Video struct {
 	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
 	// 再生位置とサムネイルの名前もこれで決まる。
 	ContentKey string
+	// UserKey は利用者データ（タグ・再生位置・公開の設定）の鍵である
+	// （specs/030-video-versions/data-model.md §3）。集まりのメンバーなら集まりの
+	// user_key、そうでなければ ContentKey と同じ。保存層が埋め、空の ContentKey の動画では空。
+	UserKey string
+	// Versions は集まりのメンバーのときだけ、詳細の読み出しが埋める集まりの要約である。
+	// 一覧の読み出しでは nil。
+	Versions *VideoVersionsRef
 
 	DurationMs *int64
 	Width      *int
@@ -258,6 +265,10 @@ type IndexedVideo struct {
 	ThumbnailState     ThumbnailState
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
+	// FingerprintMissing は、シーク用スプライトが完成しているのに今の FingerprintVersion の
+	// 指紋が無いことを表す（specs/030-video-versions/data-model.md §6）。走査はこれで指紋の
+	// 仕事を積み直す。
+	FingerprintMissing bool
 }
 
 // MediaFolder is one independently managed scan root.

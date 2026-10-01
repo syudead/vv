@@ -180,6 +180,9 @@ const errorReasons = {
   duration_unknown: "The video's length isn't known yet.",
   thumbnail_position_out_of_range: "The position is past the end of the video.",
   thumbnail_frame_unavailable: "No image could be made from this frame.",
+  too_few_videos: "Select at least two videos.",
+  representative_not_selected: "Pick which video to show in the library.",
+  not_bundled: "This video isn't bundled with others.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -423,6 +426,8 @@ export const en = {
       madePublic: (count: number) => `Made ${videos(count)} public`,
       madePrivate: (count: number) => `Made ${videos(count)} private`,
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
+      bundle: "Bundle as versions",
+      bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
     },
   },
   folders: {
@@ -776,6 +781,30 @@ export const en = {
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
     },
+    versions: {
+      count: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} version`,
+          other: `${formatNumber(count)} versions`,
+        }),
+      show: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} version of this video. Show versions`,
+          other: `${formatNumber(count)} versions of this video. Show versions`,
+        }),
+      label: "Versions",
+      representative: "Representative",
+      nowPlaying: "Now playing",
+      play: (title: string, details: string) =>
+        details === "" ? `Play ${title}` : `Play ${title}, ${details}`,
+      more: (title: string) => `More actions for ${title}`,
+      makeRepresentative: "Make representative",
+      remove: "Remove from versions",
+      loadFailed: "Couldn't load the versions",
+      retry: "Retry",
+      changeFailed: (reason: string) => `Couldn't change the versions: ${reason}`,
+      removed: (title: string) => `Removed "${title}" from the versions`,
+    },
     title: {
       edit: "Edit name",
       input: "Display name",
@@ -813,6 +842,50 @@ export const en = {
         `The tag "${name}" no longer exists, so the tags were reloaded`,
       attachFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
       detachFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
+    },
+  },
+  versions: {
+    bundle: {
+      title: "Bundle as versions",
+      description: (count: number) =>
+        `These ${formatNumber(count)} videos become versions of one video. Pick the one to show in the library. The library keeps that video's tags, position and visibility; the others' are set aside and come back if you remove them.`,
+      representative: "Representative",
+      row: (title: string, details: string) =>
+        details === "" ? title : `${title}, ${details}`,
+      alreadyBundled: (count: number) =>
+        `Already ${formatNumber(count)} versions — all of them join`,
+      submit: "Bundle",
+      loadFailed: "Couldn't load the selected videos",
+      failed: (reason: string) => `Couldn't bundle: ${reason}`,
+      bundled: (count: number, title: string) =>
+        `Bundled ${formatNumber(count)} videos as versions of "${title}"`,
+    },
+    duplicates: {
+      documentTitle: "Duplicates",
+      title: "Possible duplicates",
+      loading: "Loading…",
+      count: (shown: number, total: number) =>
+        shown < total
+          ? `Showing ${formatNumber(shown)} of ${formatNumber(total)} pairs`
+          : selectPlural(total, {
+              one: `${formatNumber(total)} pair`,
+              other: `${formatNumber(total)} pairs`,
+            }),
+      reason: "Same length · similar frames",
+      same: "Same video…",
+      sameFor: (first: string, second: string) =>
+        `Same video, for ${first} and ${second}`,
+      different: "Different videos",
+      differentFor: (first: string, second: string) =>
+        `Different videos, for ${first} and ${second}`,
+      dismissed: "Marked as different videos. They won't be suggested again",
+      gone: "This pair is no longer a candidate",
+      loadFailed: "Couldn't load the candidates",
+      empty: {
+        title: "No possible duplicates",
+        description:
+          "When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself.",
+      },
     },
   },
   tagName: {
@@ -864,6 +937,7 @@ export const en = {
       library: "Library",
       folders: "Folders",
       tags: "Tags",
+      duplicates: "Duplicates",
       settings: "Settings",
       login: "Sign in",
       logout: "Sign out",
@@ -909,6 +983,7 @@ export const en = {
         thumbnail: "Creating the thumbnail",
         seekThumbnail: "Creating seek thumbnails",
         preview: "Creating the preview",
+        fingerprint: "Checking for duplicates",
       } satisfies Record<ScanActivityKind, string>,
       activityLine: (action: string, fileName: string) => `${action} · ${fileName}`,
       /** 登録フォルダの表示名 / 相対パス / ファイル名。省略した行の全体を示す。 */
@@ -985,6 +1060,10 @@ export const en = {
           preview_failed: {
             impact: "No preview appears in the list.",
             reason: "The preview couldn't be created.",
+          },
+          fingerprint_failed: {
+            impact: "It isn't checked for possible duplicates.",
+            reason: "Its seek thumbnails couldn't be compared.",
           },
           thumbnail_first_frame: {
             impact: "The thumbnail uses the first frame instead.",

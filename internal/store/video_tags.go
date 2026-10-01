@@ -96,10 +96,11 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 	return ref, applied, nil
 }
 
-// attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画へ tagID を
-// insert or ignore で付け、反映した本数を返す。
+// attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画の利用者データの鍵
+// （userKeysForVideoIDs。同じ集まりは 1 つ）へ tagID を insert or ignore で付け、反映した
+// 本数を返す。
 func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
-	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -118,7 +119,7 @@ func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagI
 // detachTagFromVideoIDs は videoIDs のうちいまライブラリにある動画から tagID
 // を外し、反映した本数を返す。
 func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
-	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return 0, err
 	}
@@ -132,7 +133,8 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 	return len(keys), nil
 }
 
-// TagsByContentKeys は content_key の集合からそれぞれのタグ（元の名前、
+// TagsByContentKeys は利用者データの鍵（Video.UserKey、specs/030-video-versions/data-model.md §3）の
+// 集合からそれぞれのタグ（元の名前、
 // domain.CompareNatural の順、同じなら id）を出所つきでまとめて引く。手で
 // 付けた分とフォルダ名から付いている分の和で、同じタグが両方から付けば1件に
 // まとめて出所を両方持つ（017 の data-model.md §4）。タグの無い content_key は
@@ -143,7 +145,8 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 	return tagsByContentKeys(ctx, s.sql, contentKeys)
 }
 
-// tagsByContentKeys は TagStore.TagsByContentKeys の本体で、呼び出し側の取引の中でも
+// tagsByContentKeys は TagStore.TagsByContentKeys の本体で、手で付けた分は鍵で、フォルダ名から
+// 付く分はその鍵を持つ動画（集まりの鍵ならメンバーの動画）の videos.id から引く。呼び出し側の取引の中でも
 // 読めるように問い合わせ先を取る（外部連携 API の一覧が同じスナップショットで読む）。
 func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string) (map[string][]domain.VideoTag, error) {
 	if len(contentKeys) == 0 {
@@ -156,14 +159,23 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 
 	rows, err := q.QueryContext(ctx, `
 		with selected(content_key) as (select value from json_each(?)),
+		keyed_videos(user_key, video_id) as (
+			select v.content_key, v.id from videos v
+			 where v.content_key in (select content_key from selected) and v.content_key <> ''
+			   and not exists (select 1 from video_bundle_members m where m.content_key = v.content_key)
+			union all
+			select b.user_key, v.id from video_bundles b
+			  join video_bundle_members m on m.bundle_id = b.id
+			  join videos v on v.content_key = m.content_key
+			 where b.user_key in (select content_key from selected)
+		),
 		tagged(content_key, tag_id, manual, from_folder) as (
 			select vt.content_key, vt.tag_id, 1, 0 from video_tags vt
 			 where vt.content_key in (select content_key from selected)
 			union all
-			select v.content_key, folder_tn.tag_id, 0, 1 from videos v
-			  join video_folder_names vfn on vfn.video_id = v.id
+			select k.user_key, folder_tn.tag_id, 0, 1 from keyed_videos k
+			  join video_folder_names vfn on vfn.video_id = k.video_id
 			  join tag_names folder_tn on folder_tn.name = vfn.name
-			 where v.content_key in (select content_key from selected) and v.content_key <> ''
 		)
 		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder)
 		  from tagged t

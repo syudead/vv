@@ -17,7 +17,9 @@ type waker interface {
 type eventSubscribers struct {
 	// Screen は画面へ送る知らせ（/api/events）へ変化を渡す。動画の上書きの変化
 	// （domain.VideoOverrideChanged）もここで video の知らせになり、ワーカーの起床には
-	// 結ばない（specs/029-video-overrides/research.md R-7）。
+	// 結ばない（specs/029-video-overrides/research.md R-7）。束ねの変化
+	// （domain.VideoBundleChanged）は、影響した各動画の video の知らせになる
+	// （specs/030-video-versions/research.md R-9）。
 	Screen func(domain.Event)
 	// Workers は段階ごとのワーカーである。
 	Workers map[domain.JobKind]waker
@@ -80,6 +82,9 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
+	// 指紋は完成したシーク用スプライトを待つ（domain.ClaimConditionFor）が、その仕事は
+	// シーク用サムネイルの完了を書く取引で積まれる（JobsQueued）ので、ほかの段階の成否で
+	// 起こし直す必要は無い。
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {
 			stop()

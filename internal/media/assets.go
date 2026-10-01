@@ -69,3 +69,9 @@ func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout 
 func (a *Assets) Preview(ctx context.Context, path, output string, durationMs int64) error {
 	return GeneratePreview(ctx, path, output, durationMs)
 }
+
+// SpriteFingerprint は完成したシーク用スプライトのシートから映像の指紋を作る。
+// ffmpeg は起動しない。
+func (a *Assets) SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
+	return SpriteFingerprint(sprite, sheets)
+}

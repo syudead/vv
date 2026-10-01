@@ -24,7 +24,7 @@ const videoColumnsTemplate = `videos.id,
 	(select title from video_locations l where video_id = videos.id and {visible} order by path limit 1) as title,
 	(select size_bytes from video_locations l where video_id = videos.id and {visible} order by path limit 1) as size_bytes,
 	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
-	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
+	videos.added_at, videos.updated_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	{public} as public, ` + overrideColumns
@@ -70,6 +70,7 @@ func videoColumns(audience domain.Audience) string {
 	return strings.NewReplacer(
 		"{visible}", visibleLocationCondition("l", audience),
 		"{public}", publicColumn,
+		"{userKey}", userKeyExpr("videos"),
 	).Replace(videoColumnsTemplate)
 }
 
@@ -120,6 +121,15 @@ func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id in
 	}
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("cannot read the video (id=%d): %w", id, err)
+	}
+	// 詳細の読み出しだけが集まりの要約を埋める（specs/030-video-versions/data-model.md §8）。
+	// 利用者データの鍵が内容の識別子と違うのは集まりのメンバーだけなので、束ねていない
+	// 動画には問い合わせを足さない。
+	if video.UserKey != video.ContentKey {
+		video.Versions, err = bundleVersionsRef(ctx, q, audience, video.ContentKey)
+		if err != nil {
+			return domain.Video{}, err
+		}
 	}
 	return video, nil
 }
@@ -244,7 +254,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
-		&video.ContentKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
+		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
 		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision,
 	)

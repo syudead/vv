@@ -57,7 +57,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 
-	keys := uniqueContentKeys(targets)
+	keys := uniqueUserKeys(targets)
 	if err := applyManualTags(ctx, tx, keys, action, tagIDs); err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
@@ -73,7 +73,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	out := make([]domain.VideoTagsResult, 0, len(targets))
 	for _, target := range targets {
 		result := domain.VideoTagsResult{VideoID: target.id, ContentKey: target.contentKey, Tags: []domain.VideoTag{}}
-		if got := tags[target.contentKey]; got != nil {
+		if got := tags[target.userKey]; got != nil {
 			result.Tags = got
 		}
 		out = append(out, result)
@@ -81,10 +81,12 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	return domain.VideoTagsOutcome{Items: out, SkippedNames: skipped}, nil
 }
 
-// taggableVideo は一括操作の対象に引き当てた動画である。
+// taggableVideo は一括操作の対象に引き当てた動画である。userKey は利用者データの鍵
+// （specs/030-video-versions/data-model.md §3）で、タグはこの鍵に書き、この鍵で読む。
 type taggableVideo struct {
 	id         int64
 	contentKey string
+	userKey    string
 }
 
 // resolveTaggableVideos は videos の各指定を、登録フォルダの下に所在を持ち内容の識別子の
@@ -103,14 +105,15 @@ func resolveTaggableVideos(ctx context.Context, tx *sql.Tx, videos []domain.Vide
 		if err != nil {
 			return nil, err
 		}
-		var key string
-		if err := tx.QueryRowContext(ctx, `select content_key from videos where id = ?`, id).Scan(&key); err != nil {
+		var key, userKey string
+		if err := tx.QueryRowContext(ctx, `select v.content_key, `+userKeyExpr("v")+` from videos v where v.id = ?`, id).
+			Scan(&key, &userKey); err != nil {
 			return nil, fmt.Errorf("cannot read the content key (video=%d): %w", id, err)
 		}
 		if key == "" {
 			return nil, &domain.VideoRefNotFoundError{Index: i}
 		}
-		out = append(out, taggableVideo{id: id, contentKey: key})
+		out = append(out, taggableVideo{id: id, contentKey: key, userKey: userKey})
 	}
 	return out, nil
 }
@@ -175,7 +178,7 @@ func isRejectedTagName(ctx context.Context, q rowQueryer, name string) (bool, er
 	return n > 0, nil
 }
 
-// uniqueContentKeys は対象の content_key を重複なく最初に現れた順で返す。
+// uniqueContentKeys は対象の content_key を重複なく最初に現れた順で返す（表示名の一括操作）。
 func uniqueContentKeys(targets []taggableVideo) []string {
 	seen := make(map[string]bool, len(targets))
 	keys := make([]string, 0, len(targets))
@@ -188,7 +191,22 @@ func uniqueContentKeys(targets []taggableVideo) []string {
 	return keys
 }
 
-// applyManualTags は keys の動画の手で付けたタグ（video_tags の行）を action の通りに書き換える。
+// uniqueUserKeys は対象の利用者データの鍵を重複なく最初に現れた順で返す。同じ集まりの
+// 動画は 1 つの鍵になる。
+func uniqueUserKeys(targets []taggableVideo) []string {
+	seen := make(map[string]bool, len(targets))
+	keys := make([]string, 0, len(targets))
+	for _, target := range targets {
+		if !seen[target.userKey] {
+			seen[target.userKey] = true
+			keys = append(keys, target.userKey)
+		}
+	}
+	return keys
+}
+
+// applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
+// 書き換える。
 // 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する 1〜2 文で済ませる。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
 func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64) error {

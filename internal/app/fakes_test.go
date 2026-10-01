@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io"
+	"io/fs"
 	"log/slog"
 	"sync"
 	"time"
@@ -54,6 +55,8 @@ type fakeIngestStore struct {
 	thumbnailSubstitutions []domain.Substitution
 	seekSubstitutions      []domain.Substitution
 	previewsDone           int
+	// fingerprints は ApplyFingerprintForJob に渡された指紋。
+	fingerprints []domain.Fingerprint
 	// positions は SetThumbnailPosition に渡された位置（nil は解除）。
 	positions []*int64
 	// setPositionErr があれば SetThumbnailPosition は記録せずにそれを返す。
@@ -167,6 +170,18 @@ func (f *fakeIngestStore) SetSeekThumbnailStateForJob(
 	return true, nil
 }
 
+func (f *fakeIngestStore) ApplyFingerprintForJob(
+	_ context.Context, _ domain.Job, fingerprint domain.Fingerprint,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone {
+		return false, nil
+	}
+	f.fingerprints = append(f.fingerprints, fingerprint)
+	return true, nil
+}
+
 // SetThumbnailPosition は位置を記録し、その内容の動画を done にする。order が nil でなければ
 // 記録を生成の呼び出しと同じ列へ書く。
 func (f *fakeIngestStore) SetThumbnailPosition(
@@ -243,6 +258,13 @@ type fakeGenerator struct {
 	// seekLayouts と publishedLayouts は、シーク用サムネイルの生成と公開に渡した配置。
 	seekLayouts      []domain.SeekSpriteLayout
 	publishedLayouts []domain.SeekSpriteLayout
+
+	// sprites は置き場にある完成したシーク用スプライトの配置情報、sheets はそのシートで、
+	// どちらも内容の識別子ごとである。
+	sprites map[string]domain.SeekSprite
+	sheets  map[string][][]byte
+	// fingerprintSheets は SpriteFingerprint に渡されたシート。
+	fingerprintSheets [][][]byte
 
 	// gate は生成（thumbnail・seek・preview）の途中で呼ばれる。生成を止めておく
 	// テストが使う。
@@ -381,6 +403,45 @@ func (f *fakeGenerator) PublishPreview(
 		return domain.ErrPreviewStale
 	}
 	return nil
+}
+
+// fakeArtifactStore は fakeGenerator を生成物の置き場として使う。スプライトの読み出しは
+// 生成（Generator.SeekSprite）と名前が重なるので、ここで置き場の側を答える。
+type fakeArtifactStore struct {
+	*fakeGenerator
+}
+
+func (f fakeArtifactStore) SeekSprite(contentKey string) (domain.SeekSprite, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sprite, ok := f.sprites[contentKey]
+	if !ok {
+		return domain.SeekSprite{}, fs.ErrNotExist
+	}
+	return sprite, nil
+}
+
+func (f fakeArtifactStore) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	sheets := f.sheets[contentKey]
+	if sheet < 0 || sheet >= len(sheets) {
+		return nil, fs.ErrNotExist
+	}
+	return sheets[sheet], nil
+}
+
+// SpriteFingerprint はシートの数だけコマを持つ指紋を返す。コマのハッシュはシートの長さ。
+func (f *fakeGenerator) SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
+	f.record("fingerprint")
+	f.mu.Lock()
+	f.fingerprintSheets = append(f.fingerprintSheets, sheets)
+	f.mu.Unlock()
+	frames := make([]domain.FrameHash, 0, len(sheets))
+	for _, sheet := range sheets {
+		frames = append(frames, domain.FrameHash{Hash: uint64(len(sheet))})
+	}
+	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: sprite.IntervalMs, Frames: frames}, nil
 }
 
 func (f *fakeGenerator) RemoveContent(contentKey string) error {

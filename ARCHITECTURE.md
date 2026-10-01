@@ -25,7 +25,8 @@ embedded goose migrations at startup, then starts the job worker. It serves `GET
 the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
 carries its representative location, the folder that holds it (with the registered folder's
 display name, for the playback page's breadcrumb), seek-preview state and, for a folder-group
-member, the group and its position in it, and
+member, the group and its position in it, and, for a member of a bundle of versions, the
+number of versions the viewer may see and the effective representative (`versions`), and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
 also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
@@ -36,7 +37,7 @@ startup check result), the read-only folder browsing API
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
 `/api/video-tags/summary` to summarize which tags apply to a selection),
-the library items API (`/api/library*`, below), byte-range streaming,
+the library items API (`/api/library*`, below), the versions API (below), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
@@ -83,6 +84,38 @@ as that video, and "all members" counts public members only
 [specs/027-partial-group-search/contracts/library-api.md](specs/027-partial-group-search/contracts/library-api.md)).
 `GET /api/videos` stays a per-video list for the folder view's root search.
 
+Every list folds a bundle of versions of the same video to its effective
+representative: the representative when the viewer may see one of its
+locations, otherwise the lowest-id version the viewer may see; with none, the
+bundle is not listed. `chosenLocationsCTE` applies the scope (library, public,
+folder) to the representative's locations only and matches the search
+expression against the registered locations of any version in the bundle, and
+the folder view and folder counts, the related list, the tag counts and the
+folder-index input (`folderIndexLocations`) use the same rule
+(`shownVideoCondition` in `internal/store/user_keys.go`). A folder holding only
+non-representative versions is a folder with no videos, and those versions join
+no folder group. `VersionStore` rebuilds the folder index in the transaction
+that bundles, changes the representative or unbundles. `GET /api/videos/{id}`,
+locations, streaming and subtitles still serve every version
+([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §4).
+
+The versions API addresses a bundle by any of its videos' ids and never exposes the
+bundle's own id. `GET /api/videos/{id}/versions` (owner and guest) returns the versions the
+viewer may see, the effective representative first and the rest in natural title order,
+each shaped like `GET /api/videos/{id}`; a video outside any bundle returns itself alone.
+The owner-only `POST /api/video-bundles` (`videoIds`, `representativeId`, the same
+20,000-id cap as `/api/video-tags`), `POST /api/videos/{id}/make-representative` and
+`POST /api/videos/{id}/unbundle` call `VersionStore` directly and map its errors to the
+`too_few_videos`, `representative_not_selected` and `not_bundled` reasons
+([specs/030-video-versions/contracts/screen-api.md](specs/030-video-versions/contracts/screen-api.md) §0–§4).
+The owner-only `GET /api/version-candidates` lists up to 200 "possibly the same video"
+pairs, newest first, each video shaped like `GET /api/videos/{id}`, and
+`POST /api/version-candidates/dismiss` records a pair as different videos
+(`internal/httpapi/version_candidates.go`, §5). "Same video" goes through
+`POST /api/video-bundles`. Candidates change with fingerprint jobs, whose
+`ProcessingChanged` already reaches the screen as the `scan` event, so no new event kind
+is added (§6).
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
@@ -95,6 +128,16 @@ the folder index is rebuilt only when its rule version is out of date or it is s
 (`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
 start), or when an interrupted scan was closed
 ([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
+When a path's content changes and the previous video row goes with it, `UpsertVideo` records
+the previous content key and duration in `video_successions` (not when that duration is
+unknown), and drops the record if the previous content shows up at another path. The record
+is judged only after a scan closes `done` — in `FinishScan`'s transaction, or in the
+transaction that writes the new content's probe result if that comes later — so a file swap
+is recognised whatever order the paths are walked in. When the durations match
+(`domain.DurationsMatch`) and no video still has the previous content, the new content takes
+over its tags, playback position, public flag and "different video" judgements, or its place
+in a version bundle, and `domain.VideoBundleChanged` is published after commit
+([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §5).
 The latest scan owns the set of videos that the current import has to prepare
 (`scan_videos`): every transaction that queues a job, or makes a queued job claimable again
 by adding or replacing a media folder, adds the video to the latest scan in the same
@@ -127,7 +170,7 @@ after every file (no longer every 20 files) to the reporter it declares, and the
 report each job through the `Started` and `Finished` hooks of `internal/jobs`, which
 `cmd/mdm` wires to `Scans`. After a restart only what is running then is shown.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
-seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
+seek_thumbnail, preview, fingerprint — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
 adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, seek-preview sprite
 sheets from the keyframes an MP4/MOV index assigns to each interval or, for other inputs,
@@ -141,6 +184,22 @@ keyframes are read; other inputs use one input seek per frame. An interval witho
 reuses the previous frame, and only an ffmpeg failure falls back to the sequential decoder.
 Existing completed six-sheet sprites remain readable
 ([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
+The fingerprint stage turns a completed seek sprite into the video's visual fingerprint
+without starting `ffmpeg` or reading the source file again: `internal/app` reads the sprite's
+layout and sheets through its `ArtifactStore`, `internal/media` (`SpriteFingerprint`) cuts
+each frame, drops dark edge rows and columns and shrinks it to 32 × 32 luma, and
+`internal/domain` hashes each frame with a DCT-based pHash (`HashFrame`) and compares two
+fingerprints by pairing frames by time, not by index (`CompareFingerprints`), because the
+sprite interval differs between encodes of a video longer than 405 seconds. The result is
+stored per content key in `video_fingerprints` together with `domain.FingerprintVersion`
+([specs/030-video-versions/research.md](specs/030-video-versions/research.md) R-6).
+The transaction that stores a fingerprint also rebuilds that content's rows in
+`video_version_candidates`: other contents with a fingerprint of the same version whose
+duration is within `DurationsMatch` and whose distance, computed by the deterministic SQLite
+function `vv_fingerprint_distance` (registered like `vv_shuffle_key` and calling
+`CompareFingerprints`), is at most `FingerprintMatchMaxDistance`. Pairs recorded as different
+(`video_version_dismissals`) and pairs in the same bundle are left out; candidates are never
+bundled automatically (R-7).
 Two generation fallbacks are substitutions that the user is told about: a library thumbnail
 taken from the first frame because no frame was found at the chosen position, and a seek
 sprite rebuilt by decoding the whole video. `internal/media` returns them as values
@@ -164,7 +223,12 @@ no claimable thumbnail job remains, so after a scan every library thumbnail come
 up to four generation `ffmpeg` processes can run within one seek job. Hover preview and
 newly claimed thumbnail work may overlap; the condition applies only at claim time, and a
 running seek_thumbnail job is not
-stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
+stopped when new thumbnail jobs arrive. A fingerprint job is not claimed until its video's seek
+sprite is `done`; the transaction that records a finished seek sprite (including one rebuilt
+after `RequeueMissingSeekThumbnails`) queues it, so its worker needs no other wake-up.
+Rebuilding a missing sprite drops the waiting fingerprint job, and the next scan requeues a
+fingerprint that failed at the retry limit or was made by an older version
+(`IndexedVideo.FingerprintMissing` and `EnsureJob`). `internal/app` publishes `domain.VideoIngestChanged`
 with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's
 result is recorded, and the seek_thumbnail worker when a probe or thumbnail result is
 recorded or a video row is deleted. Removing a media folder also publishes
@@ -284,12 +348,16 @@ Stored data falls into three recovery categories. `videos`, `video_locations`
 (including their search keys), `location_search_fts`, `jobs`, `scans` (including
 `settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
-`video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
+`video_folder_names`, `folder_index_state`), `video_transcode_probes`, the pending
+same-path successions (`video_successions`), the visual fingerprints (`video_fingerprints`), and the
+version candidates (`video_version_candidates`) are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags` including its `tentative` flag, `tag_names`,
 `video_tags`, and `rejected_tag_names`, `specs/031-tentative-tags/data-model.md` §1),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
-positions, `specs/029-video-overrides/data-model.md` §1), `folder_group_overrides`,
+positions, `specs/029-video-overrides/data-model.md` §1), the version bundles
+(`video_bundles`, `video_bundle_members`) and the "different video" judgements
+(`video_version_dismissals`, `specs/030-video-versions/data-model.md` §1), `folder_group_overrides`,
 `account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
 `specs/025-hardware-encoding/data-model.md`), and `api_tokens` (issued API tokens, which
 must be issued again if lost, `specs/026-external-api/data-model.md` §1) are user or
@@ -299,7 +367,12 @@ must be registered again before scanning. `sessions` is transient and a fresh
 login restores it.
 That is why playback positions, tag assignments, public flags and video overrides are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
-key to `videos`. Grouping exceptions are keyed by the folder's absolute path
+key to `videos`. For a video that belongs to a bundle of versions, playback positions,
+tag assignments and public flags are keyed by the bundle's own `user_key`
+(`bundle:<id>`) instead; the one expression `userKeyExpr`
+(`internal/store/user_keys.go`) picks the key for every read and write, and every read that
+returns a video carries it as `Video.UserKey` (`specs/030-video-versions/data-model.md` §3).
+Video overrides and generated files stay keyed by the content identifier. Grouping exceptions are keyed by the folder's absolute path
 (`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
 survive rescans and media-folder changes.
 The single `account` row holds the username, Argon2id password hash and credential
@@ -317,7 +390,8 @@ compile:
 
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
-  retry of a failed probe and the rebuild of a missing preview. A probe's result also
+  retry of a failed probe and the rebuild of a missing preview, and replacing a content's
+  fingerprint and its version candidates (`ApplyFingerprintForJob`). A probe's result also
   upserts the video's live-transcode probe (`video_transcode_probes`: a versioned
   `domain.TranscodeProbe` JSON plus the probed file's size and nanosecond mtime) in the
   same transaction, and `SaveTranscodeProbe` upserts one probed at request time
@@ -344,8 +418,9 @@ compile:
   (`specs/016-single-account-auth/data-model.md` §3). The conditions used by ingest,
   jobs and tag counts stay owner-only. `LibraryStore` resolves which of a set of
   tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
-  video ids down to the currently-registered videos' content keys through
-  `registeredContentKeysForVideoIDs`; both are unexported package functions
+  video ids down to the currently-registered videos' user keys through
+  `userKeysForVideoIDs` (`OverrideStore` uses the content-key variant
+  `registeredContentKeysForVideoIDs`); these are unexported package functions
   (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
@@ -361,16 +436,17 @@ compile:
   lookup and creation are the package-private `findOrCreateTag` and `insertTag`
   (`internal/store/tags.go`), shared with `TagStore`. The rebuild
   itself is the package-private `rebuildFolderIndex`, shared by `ScanIndexStore`,
-  `SettingsStore` and `FolderGroupStore`; the assignment rule is the pure
+  `SettingsStore`, `FolderGroupStore` and `VersionStore`; the assignment rule is the pure
   `domain.BuildFolderIndex` (`specs/017-folder-groups/data-model.md` §2).
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
   synonym, the counted listing, and the startup refresh of tag-name search keys
   (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
-  set of video ids (resolved to the currently-registered videos' content keys),
+  set of video ids (resolved to the currently-registered videos' user keys, one per
+  bundle, through `userKeysForVideoIDs`),
   summarizes the tags on a selected set of videos, and looks up the tags on a set of
-  content keys in bulk for the video list (`TagsByContentKeys`, shaped like
+  user keys in bulk for the video list (`TagsByContentKeys`, shaped like
   `PlaybackStore.ProgressByContentKeys`). The external API's bulk by-name operation can
   create new tags as tentative, skipping names the owner rejected; the store confirms a
   tentative tag, rejects it (deleting it and remembering its name in
@@ -391,8 +467,8 @@ compile:
   `account_version` matches (`specs/026-external-api/data-model.md` §1). Like
   `PlaybackStore`, it holds only the SQL connection and publishes no domain event.
 - `VisibilityStore` — switching the public flag of a set of video ids (resolved to the
-  currently-registered videos' content keys, like tag attachment) in one transaction,
-  returning the content keys it applied to
+  currently-registered videos' user keys, like tag attachment) in one transaction,
+  returning the content keys it applied to (every member's content key for a bundle)
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
   SQL connection.
 - `OverrideStore` — an owner's display name for a video (resolved to its content key,
@@ -418,6 +494,19 @@ compile:
   restores the previous image
   (`artifacts.Store.StashThumbnail`), so the image always matches the recorded
   position and revision.
+- `VersionStore` — bundling videos as versions of the same video, changing a bundle's
+  representative, removing a video from its bundle, and reading a bundle's versions
+  (`specs/030-video-versions/data-model.md` §8). Bundling copies the representative's
+  user-keyed values to the new bundle's `user_key` and leaves each member's content-keyed
+  rows untouched, so a removed version returns to its own values; dissolving a bundle down
+  to one video copies the bundle's values onto that video's content key. Each operation is
+  one transaction that rebuilds the folder index and publishes `domain.VideoBundleChanged`
+  after the commit, which the screen subscription turns into a `video` notification per
+  affected video.
+  It also lists the version candidates whose two contents both have a registered
+  location (`Candidates`) and records a pair as different videos (`Dismiss`), which removes
+  the pair's candidate. Bundling, and a same-path succession that moves bundle members or
+  dismissals to a new key, drop candidates that became same-bundle or dismissed pairs.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and
@@ -561,8 +650,8 @@ way only. The packages under `internal/` fall into three layers:
   failed job returns to `queued` or stops as `failed` (`ClaimAttempts`,
   `JobStateAfterFailure`), which queued jobs may be claimed
   (`ClaimConditionFor`: a registered location, a finished probe for
-  thumbnails and seek thumbnails, and no claimable thumbnail job left for seek
-  thumbnails), and whether a media folder may be added, replaced or removed
+  thumbnails and seek thumbnails, no claimable thumbnail job left for seek
+  thumbnails, and a finished seek sprite for fingerprints), and whether a media folder may be added, replaced or removed
   (`CheckMediaFolderPlacement`, `CheckMediaFolderMutation`). `internal/store`
   translates these into SQL and writes their results; it re-reads the inputs
   inside its transaction, and the database constraints (one running scan, one
@@ -571,7 +660,7 @@ way only. The packages under `internal/` fall into three layers:
   SQLite driver, or any other `internal/*` package.
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
-  (`Scans`); processing one probe, thumbnail, seek-thumbnail or preview job — checking the claimed
+  (`Scans`); processing one probe, thumbnail, seek-thumbnail, preview or fingerprint job — checking the claimed
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state from its stored state and requeueing a `done`
@@ -644,7 +733,10 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 paging and request cancellation for the library list and re-fetches a listed video in
 place when a `video` event names it (its paging, per-item and per-group re-fetch,
 list-data reducer and criteria keying live in `useVideoPages.ts`, `useItemRefresh.ts`,
-`useGroupRefresh.ts`, `videosData.ts` and `videosCriteria.ts`). Its items are `LibraryItem`s (a video or a folder
+`useGroupRefresh.ts`, `videosData.ts` and `videosCriteria.ts`). A re-fetched video
+that is no longer its bundle's representative is dropped when the representative is
+already listed; otherwise the list reloads from its first page, because only the
+server knows whether the representative belongs to this list's folder and filters. Its items are `LibraryItem`s (a video or a folder
 group, `libraryItems.ts`); a group item is re-fetched from `GET /api/folders/{rootId}/group`
 when a member's progress, tags or `video` event changes, and dropped on 404; a group
 whose re-fetch has not settled is kept in the list snapshot's `staleGroups` and
@@ -667,7 +759,7 @@ neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/auth/` is the gate in front of every route: `AuthGate` renders nothing until
 the session state is known, sends every URL to `/setup` while no account exists, sends a
-guest on an owner-only screen (`/settings`, `/tags`) to `/login?next=…`, and exposes the
+guest on an owner-only screen (`/settings`, `/tags`, `/duplicates`) to `/login?next=…`, and exposes the
 answer to the screens through `useAudience`. The first-run setup (`/setup`) and login
 (`/login`) screens live there too and sit outside the shell and its providers. When the
 viewer changes (setup, login, logout) the page is reloaded rather than re-rendered, so
@@ -700,11 +792,17 @@ Japanese or fixed text outside `web/src/i18n/`; the details are in
 video-list pieces the library and folder screens share (list criteria and their URL hook,
 the condition labels and count summary, the video card, the empty/loading/error states and
 the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to
-neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
+neither screen, so neither screen imports from the other. `web/src/versions/` holds the
+pieces for bundling videos as versions of one video that more than one screen uses: the
+row's difference line (shared with the playback screen's versions list), the dialog
+that picks the representative, which the library's selection bar and the candidates
+screen open, and the owner-only candidates screen (`/duplicates`), which lists the pairs
+a scan found to look like the same video, bundles a pair through that dialog or records
+it as different videos, and refetches on the `scan` notification. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
-right after "フォルダ" (Folders). Every sidebar entry links to a working screen. The library, folder, settings and tag screens use the shell: `app/App.tsx`
-puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
+right after "フォルダ" (Folders), followed by the owner-only "Duplicates" entry. Every sidebar entry links to a working screen. The library, folder, settings, tag and candidates screens use the shell: `app/App.tsx`
+puts `AppShell` around the `/`, `/folders/*`, `/settings`, `/tags` and `/duplicates` routes, and the
 playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
 two-pane screen of its own under its own header band (a logo that goes home, a

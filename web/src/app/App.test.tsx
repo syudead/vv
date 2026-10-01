@@ -226,7 +226,14 @@ describe("App", () => {
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
-    expect(names).toEqual(["Library", "Folders", "Tags", "Settings", "Sign out"]);
+    expect(names).toEqual([
+      "Library",
+      "Folders",
+      "Tags",
+      "Duplicates",
+      "Settings",
+      "Sign out",
+    ]);
     expect(screen.getByRole("button", { name: "Scanning" })).toBeDefined();
   });
 });

@@ -717,6 +717,49 @@ describe("useVideos の準備の反映", () => {
     expect(result.current.total).toBe(99);
   });
 
+  it("別のタブで束ねられて代表でなくなった動画は、代表が出ていれば一覧から外す（030 R-9）", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+    getVideo.mockImplementation((id: number) =>
+      Promise.resolve({ ...item(id), versions: { count: 2, representativeId: 1 } }),
+    );
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() =>
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 3]),
+    );
+    expect(result.current.total).toBe(99);
+    expect(calls).toHaveLength(1);
+  });
+
+  // 代表がこの一覧のフォルダ・絞り込みに入るかは画面では分からないので、代表を
+  // 差し込まず、サーバーから一覧を読み直す（PR 612 のレビュー）。
+  it("代表が一覧に出ていない動画が畳まれたら、代表を差し込まずに一覧を読み直す（030 R-9）", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+    getVideo.mockImplementation((id: number) =>
+      Promise.resolve({ ...item(id), versions: { count: 2, representativeId: 9 } }),
+    );
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.params.cursor).toBeUndefined();
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).not.toContain(9);
+    await act(async () => calls[1]?.resolve({ items: [item(1), item(3)], total: 2 }));
+
+    await waitFor(() =>
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 3]),
+    );
+    expect(result.current.total).toBe(2);
+  });
+
   // issue 267: useVideos は tag の条件を listVideos へ渡し、続きのページの取得でも
   // 同じ条件を渡し続ける。
   it("tag の条件を最初の取得にも続きの取得にも渡す", async () => {

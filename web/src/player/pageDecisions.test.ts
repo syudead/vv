@@ -53,3 +53,19 @@ describe("resumePosition", () => {
     ).toBe(0);
   });
 });
+
+describe("resumePosition（集まりのバージョン）", () => {
+  const updatedAt = "2026-01-01T00:00:00Z";
+  const version = (durationMs: number | undefined, positionMs: number): Video =>
+    ({ durationMs, progress: { positionMs, completed: false, updatedAt } }) as Video;
+
+  it("集まりの位置がこのバージョンの尺以上なら先頭から再生する（R-11）", () => {
+    expect(resumePosition(version(60_000, 60_000))).toBe(0);
+    expect(resumePosition(version(60_000, 90_000))).toBe(0);
+  });
+
+  it("尺より手前なら続きから、尺が分からなければ位置のまま再生する", () => {
+    expect(resumePosition(version(60_000, 59_999))).toBe(59_999);
+    expect(resumePosition(version(undefined, 90_000))).toBe(90_000);
+  });
+});

@@ -73,6 +73,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Tags:       db.Tags(),
 			Visibility: db.Visibility(),
 			Overrides:  db.Overrides(),
+			Versions:   db.Versions(),
 			Library:    library,
 			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
 			ExternalVideos: library,
@@ -420,6 +421,7 @@ func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 	}{
 		{"", nil, http.StatusOK},
 		{"/related", nil, http.StatusOK},
+		{"/versions", nil, http.StatusOK},
 		{"/stream", map[string]string{"Range": "bytes=0-9"}, http.StatusPartialContent},
 		{"/thumbnail?v=abc", nil, http.StatusOK},
 		{"/seek-thumbnail?v=abc", nil, http.StatusOK},

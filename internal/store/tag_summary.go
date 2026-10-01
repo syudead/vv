@@ -13,7 +13,7 @@ import (
 // 付いているタグごとの本数（Items）を、名前の自然順で返す
 // （contracts/tags-api.md §4 の summary）。
 func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error) {
-	// videoIDs → content_key の解決と本数の集計を同じ読み取りスナップショットで
+	// videoIDs → 利用者データの鍵の解決と本数の集計を同じ読み取りスナップショットで
 	// 行う。別々に読むと、その間の付け外しで Total と Items の本数が食い違いうる。
 	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -21,7 +21,9 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	// 動画の数は利用者データの鍵の数で、同じ集まりの動画は 1 本と数える
+	// （specs/030-video-versions/data-model.md §3）。
+	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return domain.TagSummary{}, err
 	}
@@ -30,31 +32,33 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return summary, nil
 	}
 
-	encoded, err := json.Marshal(keys)
+	encodedIDs, err := json.Marshal(videoIDs)
 	if err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot build content_key values: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
 	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の
 	// data-model.md §4）。1本の動画に同じタグが複数のフォルダ名（元の名前と
 	// シノニムなど）から当たりうるので、content_key の重複を除いて数える。
 	rows, err := tx.QueryContext(ctx, `
-		with selected(content_key) as (select value from json_each(?)),
+		with selected(video_id, content_key) as (
+			select v.id, `+userKeyExpr("v")+` from videos v
+			 where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
+		registeredVideoCondition("v")+`),
 		tagged(content_key, tag_id, manual) as (
 			select vt.content_key, vt.tag_id, 1 from video_tags vt
 			 where vt.content_key in (select content_key from selected)
 			union all
-			select v.content_key, folder_tn.tag_id, 0 from videos v
-			  join video_folder_names vfn on vfn.video_id = v.id
+			select s.content_key, folder_tn.tag_id, 0 from selected s
+			  join video_folder_names vfn on vfn.video_id = s.video_id
 			  join tag_names folder_tn on folder_tn.name = vfn.name
-			 where v.content_key in (select content_key from selected)
 		)
 		select t.tag_id, tn.name, tg.tentative, count(distinct t.content_key),
 		       count(distinct case when t.manual = 1 then t.content_key end)
 		  from tagged t
 		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
 		  join tags tg on tg.id = t.tag_id
-		 group by t.tag_id`, string(encoded),
+		 group by t.tag_id`, string(encodedIDs),
 	)
 	if err != nil {
 		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)

@@ -379,7 +379,14 @@ export default function LibraryPage() {
       // 選択バーのタグ操作の Combobox・ポップオーバーが Esc を自分の操作として
       // 使ったとき（候補の一覧や吹き出しを閉じる）は、preventDefault 済みなので
       // ここでは見送り、選択を解除しない（ui-design.md「Combobox」）。
-      if (event.key === "Escape" && !event.defaultPrevented) clearSelection();
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // 選択バーから開いた窓（「Bundle as versions」）の Esc は窓を閉じるだけにし、
+      // 選択を残す（specs/030-video-versions/ui-design.md「Bundle dialog」）。窓が開いて
+      // いるかはフォーカスの位置によらずに見る。送る間は押したボタンが disabled になって
+      // フォーカスが body に落ちるので、event.target で見ると選択を解除して窓ごと消し、
+      // 送り終えた後の一覧の取り直しとトーストまで失ってしまうため。
+      if (document.querySelector('[aria-modal="true"]') !== null) return;
+      clearSelection();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -404,6 +411,35 @@ export default function LibraryPage() {
     // もう一度合わせる（フォルダ画面と同じ）。
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [items.length]);
+
+  // 選択バーの「Bundle as versions」で束ね終えたら、選択を解除して一覧を取り直す。代表以外の
+  // バージョンが一覧から消える（specs/030-video-versions/ui-design.md「Bundle dialog」、
+  // 受け入れ条件 6）。取り直しても格子の位置は保つ（下のスクロールの復元に今の位置を渡す）。
+  // バーは消えるので、取り直した後のフォーカスは見えている最初の項目へ移す。
+  // 取り直しを待つ間は "requested"、読み込みが始まったら "loading" にし、読み終えたら移す。
+  const focusFirstItem = useRef<"idle" | "requested" | "loading">("idle");
+  const onBundled = useCallback(() => {
+    clearSelection();
+    pendingScroll.current = window.scrollY;
+    focusFirstItem.current = "requested";
+    reload();
+  }, [clearSelection, reload]);
+  useEffect(() => {
+    if (focusFirstItem.current === "idle") return;
+    if (loading) {
+      focusFirstItem.current = "loading";
+      return;
+    }
+    if (focusFirstItem.current !== "loading") return;
+    focusFirstItem.current = "idle";
+    const links = Array.from(
+      list.current?.querySelectorAll<HTMLElement>("a[href]") ?? [],
+    );
+    const target =
+      links.find((link) => link.getBoundingClientRect().top >= 0) ?? links[0];
+    // 位置を保ったまま移す（見えている項目なのでスクロールは要らない）。
+    target?.focus({ preventScroll: true });
+  }, [items, list, loading]);
 
   const listUrl = `${location.pathname}${location.search}`;
 
@@ -722,6 +758,7 @@ export default function LibraryPage() {
           onSelectAll={selectAll}
           onClear={clearSelection}
           onTagRemoved={onTagRemoved}
+          onBundled={onBundled}
         />
       )}
     </div>

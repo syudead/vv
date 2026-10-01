@@ -91,7 +91,7 @@ type Tags interface {
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
 	DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error)
-	// TagsByContentKeys は content_key の集合からそれぞれのタグを引く。
+	// TagsByContentKeys は利用者データの鍵（Video.UserKey）の集合からそれぞれのタグを引く。
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
@@ -230,6 +230,8 @@ type Options struct {
 	Overrides OverrideStore
 	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
 	ThumbnailPicker ThumbnailPicker
+	// Versions は同じ動画の別バージョンの集まりの保存先。nilならバージョンと束ねの経路は500を返す。
+	Versions VersionStore
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
 	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
@@ -298,6 +300,7 @@ type server struct {
 	visibility   Visibility
 	overrides    OverrideStore
 	thumbnails   ThumbnailPicker
+	versions     VersionStore
 	folders      Folders
 	folderGroups FolderGroups
 	library      LibraryItems
@@ -366,6 +369,7 @@ func NewRouter(opts Options) http.Handler {
 		visibility:        opts.Visibility,
 		overrides:         opts.Overrides,
 		thumbnails:        opts.ThumbnailPicker,
+		versions:          opts.Versions,
 		folders:           opts.Folders,
 		folderGroups:      opts.FolderGroups,
 		library:           opts.Library,
@@ -488,7 +492,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails":
 			return true
 		}
@@ -637,6 +641,9 @@ const (
 	reasonDurationUnknown               = gen.ErrorReasonDurationUnknown
 	reasonThumbnailPositionOutOfRange   = gen.ErrorReasonThumbnailPositionOutOfRange
 	reasonThumbnailFrameUnavailable     = gen.ErrorReasonThumbnailFrameUnavailable
+	reasonTooFewVideos                  = gen.ErrorReasonTooFewVideos
+	reasonRepresentativeNotSelected     = gen.ErrorReasonRepresentativeNotSelected
+	reasonNotBundled                    = gen.ErrorReasonNotBundled
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

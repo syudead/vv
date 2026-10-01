@@ -164,7 +164,7 @@ func (s *server) itemLookups(ctx context.Context, shown, tagged []domain.Video) 
 // 一覧に出す所在のフォルダを載せ、見る人に合わせる。
 func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, video domain.Video) gen.Video {
 	view := l.s.presentVideos(ctx, []domain.Video{video})[0]
-	item := withTags(withProgress(toAPIVideo(view), l.progress, video.ContentKey), l.tags, video.ContentKey)
+	item := withTags(withProgress(toAPIVideo(view), l.progress, video.UserKey), l.tags, video.UserKey)
 	if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 		item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 	}
@@ -232,7 +232,7 @@ func unionMemberTags(members []domain.Video, tags map[string][]domain.VideoTag) 
 	index := map[int64]int{}
 	var out []domain.VideoTag
 	for _, member := range members {
-		for _, tag := range tags[member.ContentKey] {
+		for _, tag := range tags[member.UserKey] {
 			if i, ok := index[tag.ID]; ok {
 				out[i].Manual = out[i].Manual || tag.Manual
 				out[i].FromFolder = out[i].FromFolder || tag.FromFolder

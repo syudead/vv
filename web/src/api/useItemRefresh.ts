@@ -3,7 +3,7 @@ import { type Dispatch, type RefObject, useCallback, useRef } from "react";
 import { getVideo, isAborted, type LibraryItem, RequestFailed } from "./client";
 import { itemVideos } from "./libraryItems";
 import { isProcessing } from "./useVideoDetail";
-import type { VideosDataAction } from "./videosData";
+import { shownVideoIds, type VideosDataAction } from "./videosData";
 import { visibilityMark, withVisibilitySince } from "./visibility";
 
 /** useItemRefresh は useVideos の動画の項目を1件ずつ取り直す。 */
@@ -11,6 +11,9 @@ export function useItemRefresh(
   pageLoading: RefObject<boolean>,
   itemsRef: RefObject<LibraryItem[]>,
   dispatch: Dispatch<VideosDataAction>,
+  // resync は一覧を先頭から読み直す。表示中の項目が畳まれて、代わりに何が出るかを
+  // 画面では決められないときに使う。
+  resync: () => void,
 ) {
   // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
   // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
@@ -66,6 +69,21 @@ export function useItemRefresh(
           );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
+          // 代表でなくなった動画（束ねた・代表を替えた）は、一覧では集まりの代表の
+          // 1 件に畳まれる（specs/030-video-versions/research.md R-9）。代表が既に
+          // 出ていれば、この 1 件を外せば一覧はサーバーと合う。出ていなければ、代表が
+          // この一覧のフォルダ・絞り込みに入るかはサーバーにしか分からないので、
+          // 一覧を先頭から読み直す（代表をそのまま差し込むと、範囲の外の動画が出る）。
+          const representativeId = refreshed.versions?.representativeId;
+          if (representativeId !== undefined && representativeId !== id) {
+            settleUncertain(id, started);
+            if (shownVideoIds(itemsRef.current).includes(representativeId)) {
+              dispatch({ type: "remove", videoId: id });
+              continue;
+            }
+            resync();
+            return;
+          }
           settleUncertain(id, started);
           dispatch({ type: "refresh", videoId: id, video: refreshed });
         } catch (failure) {
@@ -83,7 +101,7 @@ export function useItemRefresh(
       if (refreshing.current === controller) refreshing.current = null;
       notifyIfIdle();
     }
-  }, [dispatch, notifyIfIdle, settleUncertain]);
+  }, [dispatch, itemsRef, notifyIfIdle, resync, settleUncertain]);
   const refreshItems = useCallback(
     (ids: Iterable<number>) => {
       for (const id of ids) refreshQueue.current.add(id);

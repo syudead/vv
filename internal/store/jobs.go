@@ -48,21 +48,34 @@ var jobStateColumns = map[domain.JobKind]string{
 // 動画が failed なら積まない。動画が pending のまま failed の行だけが残って
 // いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
 // 直す。残すと、次の手動の取り込みでも直らない。
+//
+// 指紋は videos に状態の列を持たないので、pending の代わりに「シーク用スプライトが
+// 完成しているのに今の版の指紋が無い」を条件にする（fingerprintMissingCondition）。
+// 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
+// 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
+// done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6）。
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
-	column, ok := jobStateColumns[kind]
-	if !ok {
-		return fmt.Errorf("unknown job kind: %s", kind)
+	var pending string
+	discarded := `state = 'failed'`
+	if kind == domain.JobFingerprint {
+		discarded = `state in ('done', 'failed')`
+		pending = `exists (select 1 from videos v where v.id = ? and ` + fingerprintMissingCondition("v") + `)`
+	} else {
+		column, ok := jobStateColumns[kind]
+		if !ok {
+			return fmt.Errorf("unknown job kind: %s", kind)
+		}
+		pending = `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 	}
-	pending := `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and `+discarded+` and `+pending,
 		string(kind), videoID, videoID); err != nil {
-		return fmt.Errorf("cannot discard legacy failure rows (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `
@@ -211,6 +224,10 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	if c.ProbeFinished {
 		cond += ` and exists (select 1 from videos v where v.id = ` + alias + `.video_id and v.probe_state <> '` +
 			string(domain.ProbeStatePending) + `')`
+	}
+	if c.SeekThumbnailFinished {
+		cond += ` and exists (select 1 from videos v where v.id = ` + alias + `.video_id and v.seek_thumbnail_state = '` +
+			string(domain.SeekThumbnailDone) + `')`
 	}
 	if c.NoClaimableThumbnail {
 		// 取り出せる thumbnail の仕事は残りの仕事（remainingJobCondition）と同じ範囲で、解析待ちで
@@ -407,6 +424,18 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}
 		updated = res
+	case domain.JobFingerprint:
+		// 指紋は動画に状態の列を持たない。専有した時点の内容と所在が今も同じときだけ、
+		// 問題として記録する。積み直しは次の走査が行う（EnsureJob）。
+		var current int
+		if err := tx.QueryRowContext(ctx, `select exists (select 1 from videos where `+identity+`)`,
+			identityArgs...).Scan(&current); err != nil {
+			return fmt.Errorf("cannot check the fingerprint job identity (job=%d): %w", job.ID, err)
+		}
+		if current != 1 {
+			return nil
+		}
+		return recordFailedIssue(ctx, tx, job, now)
 	case domain.JobPreview:
 		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
 			where `+identity, append([]any{now}, identityArgs...)...)

@@ -46,10 +46,11 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 		durationMs = *video.DurationMs
 	}
 
-	// 記録の鍵は content_key（videos.id ではない）。ファイルを移動・改名・
-	// 置き直しても再生位置が引き継がれる。
+	// 記録の鍵は利用者データの鍵（videos.id ではない）。ファイルを移動・改名・
+	// 置き直しても再生位置が引き継がれ、束ねた動画では集まりの再生位置になる
+	// （specs/030-video-versions/data-model.md §3）。尺は再生したバージョンのもの。
 	saved, err := s.playback.SaveProgress(
-		r.Context(), video.ContentKey, domain.EvaluateProgress(positionMs, durationMs))
+		r.Context(), video.UserKey, domain.EvaluateProgress(positionMs, durationMs))
 	if err != nil {
 		s.internalError(w, "Could not save playback progress.", err)
 		return

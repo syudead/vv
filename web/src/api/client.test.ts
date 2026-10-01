@@ -23,6 +23,12 @@ import {
   getCurrentScan,
   setVideoDisplayName,
   setVideoThumbnailPosition,
+  listVideoVersions,
+  bundleVideos,
+  makeRepresentativeVersion,
+  unbundleVideo,
+  listVersionCandidates,
+  dismissVersionCandidate,
 } from "./client";
 import { itemVideos, videoItem } from "./libraryItems";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
@@ -234,6 +240,113 @@ describe("setVideoDisplayName", () => {
     hold();
     await setVideoDisplayName(7, "New");
     expect(takeListSnapshot(key)).toBeUndefined();
+  });
+});
+
+describe("バージョンと束ねの経路", () => {
+  it("バージョンを GET し、束ねる・代表を替える・外すを POST で送る", async () => {
+    const versions = { representativeId: 7, items: [{ id: 7 }, { id: 8 }] };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(versions))
+      .mockResolvedValueOnce(jsonResponse(versions))
+      .mockResolvedValueOnce(jsonResponse({ ...versions, representativeId: 8 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 8 }));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(listVideoVersions(8, signal)).resolves.toEqual(versions);
+    await expect(bundleVideos([7, 8], 7, signal)).resolves.toEqual(versions);
+    await expect(makeRepresentativeVersion(8, signal)).resolves.toMatchObject({
+      representativeId: 8,
+    });
+    await expect(unbundleVideo(8, signal)).resolves.toMatchObject({ id: 8 });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/videos/8/versions",
+      expect.objectContaining({ signal }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/video-bundles",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ videoIds: [7, 8], representativeId: 7 }),
+        signal,
+      }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/videos/8/make-representative",
+      expect.objectContaining({ method: "POST", signal }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      4,
+      "/api/videos/8/unbundle",
+      expect.objectContaining({ method: "POST", signal }),
+    );
+  });
+
+  it("束ねる・代表を替える・外すが成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", reason: "not_bundled" }, 400),
+    );
+    hold();
+    await expect(unbundleVideo(8)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    const versions = { representativeId: 7, items: [{ id: 7 }, { id: 8 }] };
+    for (const run of [
+      () => bundleVideos([7, 8], 7),
+      () => makeRepresentativeVersion(7),
+      () => unbundleVideo(8),
+    ]) {
+      fetch.mockResolvedValueOnce(jsonResponse(versions));
+      hold();
+      await run();
+      expect(takeListSnapshot(key)).toBeUndefined();
+    }
+  });
+});
+
+describe("候補の経路", () => {
+  it("候補を GET し、「違う動画」を POST で送る", async () => {
+    const page = { items: [{ videos: [{ id: 7 }, { id: 8 }], distance: 2 }], total: 1 };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(page))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "not_found", reason: "video_not_found" }, 404),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(listVersionCandidates(signal)).resolves.toEqual(page);
+    await expect(dismissVersionCandidate([8, 7], signal)).resolves.toBeUndefined();
+    await expect(dismissVersionCandidate([8, 9])).rejects.toThrow();
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/version-candidates",
+      expect.objectContaining({ signal }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/version-candidates/dismiss",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ videoIds: [8, 7] }),
+        signal,
+      }),
+    );
   });
 });
 

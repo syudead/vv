@@ -560,6 +560,14 @@ export default function VideoPage() {
                     rethumbRelated(saved);
                   }}
                   onStale={() => void refresh()}
+                  versions={{
+                    navigation: {
+                      backTo,
+                      autoplay: status.playing || status.ended,
+                    },
+                    onReplace: replace,
+                    onRefresh: () => void refresh(),
+                  }}
                 />
               </>
             )}

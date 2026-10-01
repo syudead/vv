@@ -101,15 +101,36 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 		return domain.UpsertResult{}, err
 	}
+	// 前の中身が別のパスの動画として現れたら、それを前の中身とする後継の記録は取り消す
+	// （specs/030-video-versions/data-model.md §5 の手順 3）。
+	if newVideo {
+		if err := cancelSuccessionsFrom(ctx, tx, file.ContentKey); err != nil {
+			return domain.UpsertResult{}, err
+		}
+	}
 	var released []domain.DeletedVideo
 	if locationExists && oldVideoID != videoID {
 		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
+			return domain.UpsertResult{}, err
+		}
+		// 前の行を消すと尺を読めなくなるので、後継の記録に写す尺を先に読む。
+		var oldDurationMs sql.NullInt64
+		if err := tx.QueryRowContext(ctx, `select duration_ms from videos where id = ?`, oldVideoID).Scan(&oldDurationMs); err != nil {
 			return domain.UpsertResult{}, err
 		}
 		released, err = collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)
 			returning id, content_key`, oldVideoID, oldVideoID))
 		if err != nil {
 			return domain.UpsertResult{}, err
+		}
+		if err := releaseContentIndex(ctx, tx, released); err != nil {
+			return domain.UpsertResult{}, err
+		}
+		// 同じパスの中身が変わり、前の動画の行が消えたときだけ後継の候補を記録する（手順 1・2）。
+		if newVideo && oldKey != file.ContentKey && len(released) == 1 {
+			if err := recordSuccession(ctx, tx, file.ContentKey, oldKey, oldDurationMs, now); err != nil {
+				return domain.UpsertResult{}, err
+			}
 		}
 	}
 	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
@@ -166,6 +187,9 @@ func (s *ScanIndexStore) DeleteVideos(ctx context.Context, ids []int64) error {
 	released, err := collectDeletedVideos(tx.QueryContext(ctx,
 		`delete from videos where id in (`+placeholders+`) returning id, content_key`, args...))
 	if err != nil {
+		return fmt.Errorf("cannot delete videos: %w", err)
+	}
+	if err := releaseContentIndex(ctx, tx, released); err != nil {
 		return fmt.Errorf("cannot delete videos: %w", err)
 	}
 	var c changes
@@ -232,7 +256,8 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state
+	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
+		`+fingerprintMissingCondition("v")+`
 		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the index: %w", err)
@@ -244,7 +269,7 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		var path string
 		var video domain.IndexedVideo
 		var mtime int64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState); err != nil {
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing); err != nil {
 			return nil, fmt.Errorf("cannot read the index: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)

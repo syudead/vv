@@ -78,6 +78,10 @@ export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
+export type VideoVersions = components["schemas"]["VideoVersions"];
+export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
+export type VersionCandidate = components["schemas"]["VersionCandidate"];
+export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
@@ -540,6 +544,113 @@ export function getRelatedVideos(
  */
 export function reprobeVideo(id: number, signal?: AbortSignal): Promise<Video> {
   return request<Video>(`/api/videos/${String(id)}/probe`, { method: "POST", signal });
+}
+
+/**
+ * listVideoVersions は動画の集まり（同じ動画の別バージョン）の全バージョンを、代表を先頭に取得する。
+ * 集まりに属さなければ `items` はその 1 本である
+ * （specs/030-video-versions/contracts/screen-api.md §1）。
+ */
+export function listVideoVersions(
+  id: number,
+  signal?: AbortSignal,
+): Promise<VideoVersions> {
+  return request<VideoVersions>(`/api/videos/${String(id)}/versions`, { signal });
+}
+
+/**
+ * maxBundleSelection は画面から一度に束ねる動画の上限である。束ねる窓は選んだ 1 本ごとに
+ * `GET /api/videos/{id}` を送り、代表の候補の行を並べるので、画面の側だけで絞る。サーバーの
+ * `too_many_videos` の上限（`POST /api/video-tags` と同じ）は変えない
+ * （specs/030-video-versions/ui-design.md「Bundle action」）。
+ */
+export const maxBundleSelection = 20;
+
+/**
+ * bundleVideos は `videoIds` の動画を 1 つの集まりに束ね、`representativeId` を一覧に出す代表にする
+ * （specs/030-video-versions/contracts/screen-api.md §2）。応答は新しい集まりの全バージョンである。
+ *
+ * 成功したら一覧の控えを捨てる。代表以外のバージョンが一覧から消え、一覧が外れている間の
+ * `video` 通知では控えの項目の数と並びが直らないので、戻ったときは読み直す。
+ */
+export async function bundleVideos(
+  videoIds: readonly number[],
+  representativeId: number,
+  signal?: AbortSignal,
+): Promise<VideoVersions> {
+  const versions = await request<VideoVersions>("/api/video-bundles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds, representativeId }),
+    signal,
+  });
+  clearListSnapshot();
+  return versions;
+}
+
+/**
+ * makeRepresentativeVersion は動画をその集まりの代表（一覧に出す 1 件）にする。応答は集まりの
+ * 全バージョンである（specs/030-video-versions/contracts/screen-api.md §3）。
+ *
+ * 成功したら一覧の控えを捨てる（一覧の 1 件が別の動画に替わる）。
+ */
+export async function makeRepresentativeVersion(
+  id: number,
+  signal?: AbortSignal,
+): Promise<VideoVersions> {
+  const versions = await request<VideoVersions>(
+    `/api/videos/${String(id)}/make-representative`,
+    { method: "POST", signal },
+  );
+  clearListSnapshot();
+  return versions;
+}
+
+/**
+ * unbundleVideo は動画をその集まりから外す。応答は `getVideo` と同じ形の外した動画で、タグ・
+ * 再生位置・公開の設定は束ねる前の値である（specs/030-video-versions/contracts/screen-api.md §4）。
+ *
+ * 成功したら一覧の控えを捨てる（外した動画が一覧に戻る）。
+ */
+export async function unbundleVideo(id: number, signal?: AbortSignal): Promise<Video> {
+  const video = await request<Video>(`/api/videos/${String(id)}/unbundle`, {
+    method: "POST",
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
+ * listVersionCandidates は「同じ動画かもしれない」候補の組を新しい順に取得する（最大 200 組、`total` は
+ * 全件）。各組の `videos` は id の小さい順で、`getVideo` と同じ形である
+ * （specs/030-video-versions/contracts/screen-api.md §5）。候補は取り込みで増減するので、`scan` の
+ * 通知で取り直す（§6）。
+ */
+export function listVersionCandidates(
+  signal?: AbortSignal,
+): Promise<VersionCandidatePage> {
+  return request<VersionCandidatePage>("/api/version-candidates", { signal });
+}
+
+/**
+ * dismissVersionCandidate は 2 本の動画を「違う動画」と記録し、その組を候補から外す。記録した組は
+ * 以後候補に出ない（specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+ * `bundleVideos` に 2 本と代表を渡す。
+ */
+export async function dismissVersionCandidate(
+  videoIds: readonly [number, number],
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch("/api/version-candidates/dismiss", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds }),
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /** openVideoFile はサーバーの PC で、動画の代表の所在を既定のアプリで開く。 */

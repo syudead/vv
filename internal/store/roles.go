@@ -41,7 +41,7 @@ type PlaybackStore struct{ sql *sql.DB }
 
 // TagStore はタグそのもの（作成・改名・削除・統合・シノニムの登録と解除・
 // 本数つきの一覧）、動画への付与・取り外し・選んだ動画のタグの要約
-// （AttachTagByID・AttachTagByName・DetachTag・Summary）、content_key の集合から
+// （AttachTagByID・AttachTagByName・DetachTag・Summary）、利用者データの鍵の集合から
 // 項目のタグをまとめて引く操作（TagsByContentKeys）、タグ名の照合用の鍵の
 // 作り直しを保存する（tags.go）。PlaybackStore と同じく、共有する SQLite
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
@@ -67,6 +67,13 @@ type VisibilityStore struct{ sql *sql.DB }
 // 発行するため、発行先を持つ *DB を通して使う。ライブラリ索引の型には依存しない。
 type OverrideStore struct{ db *DB }
 
+// VersionStore は同じ動画の別バージョンの集まりを束ねる・代表を替える・外す操作と、
+// 集まりのバージョンの読み出しを受け持つ（versions.go、specs/030-video-versions/data-model.md §8）。
+// 集まりは利用者データで、集まりの値は利用者データの鍵（user_keys.go の userKeyExpr）で
+// 既存の表に置く。確定後に domain.VideoBundleChanged を発行するため、発行先を持つ *DB を
+// 通して使う。
+type VersionStore struct{ db *DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -80,3 +87,4 @@ func (db *DB) Visibility() *VisibilityStore {
 }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
+func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }

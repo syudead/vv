@@ -222,6 +222,7 @@ func sampleVideo(id int64, title string) domain.Video {
 		SizeBytes:      1024,
 		AddedAt:        time.Unix(1_757_000_000, 0),
 		ContentKey:     "abcdef0123456789abcdef:1024",
+		UserKey:        "abcdef0123456789abcdef:1024",
 		DurationMs:     &duration,
 		Width:          &width,
 		Height:         &height,
