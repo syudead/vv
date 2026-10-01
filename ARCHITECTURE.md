@@ -43,7 +43,7 @@ thumbnails, playback progress, and the SPA embedded from `web/dist`.
 The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
-watch-state and playable filters, thirteen sort orders and a shuffle `seed`.
+watch-state and playable filters, fifteen sort orders and a shuffle `seed`.
 `internal/httpapi` validates those parameters at the entry and hands them to
 the store as `domain.VideoQuery` / `domain.FolderVideoQuery`; `total` counts
 every match after all of them apply, and each item carries the folder of the

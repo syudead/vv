@@ -1604,14 +1604,15 @@ export interface components {
         };
         /**
          * @description 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
-         *     所在の更新日時、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+         *     所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
+         *     specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
          *     動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
          *     最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
          *     動画の識別子から作る順。値が同じなら識別子で決着させる
          * @default addedDesc
          * @enum {string}
          */
-        VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "random";
+        VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "random";
         /**
          * @description 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
          *     watched = 視聴済み
@@ -1802,6 +1803,18 @@ export interface components {
             sizeBytes: number;
             /** Format: date-time */
             addedAt: string;
+            /**
+             * Format: date-time
+             * @description vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
+             *     一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
+             */
+            updatedAt: string;
+            /**
+             * Format: date-time
+             * @description 一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
+             *     更新日時（mtime）（specs/033-video-dates/research.md R-4）
+             */
+            fileCreatedAt: string;
             /**
              * Format: int64
              * @description 尺。解析前・取得不能の場合は省略される
