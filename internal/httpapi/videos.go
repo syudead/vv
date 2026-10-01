@@ -457,6 +457,8 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		Title:          video.Title,
 		SizeBytes:      video.SizeBytes,
 		AddedAt:        video.AddedAt,
+		UpdatedAt:      video.EditedAt,
+		FileCreatedAt:  video.FileCreatedAt,
 		Playable:       video.PlayableInBrowser(),
 		ProbeState:     gen.VideoProbeState(video.ProbeState),
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),

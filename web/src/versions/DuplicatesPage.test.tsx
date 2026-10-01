@@ -17,6 +17,8 @@ function video(id: number, extra: Partial<Video> = {}): Video {
     public: false,
     sizeBytes: 1024 * 1024 * 100,
     addedAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    fileCreatedAt: "2026-09-01T00:00:00Z",
     playable: true,
     probeState: "done",
     thumbnailState: "done",

@@ -14,6 +14,8 @@ const video: Video = {
   public: false,
   sizeBytes: 100,
   addedAt: "2026-09-01T00:00:00Z",
+  updatedAt: "2026-09-01T00:00:00Z",
+  fileCreatedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   previewState: "pending",

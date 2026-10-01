@@ -23,6 +23,8 @@ function item(id: number, isPublic = false): Video {
     public: isPublic,
     sizeBytes: 1024,
     addedAt: "2026-09-13T00:00:00Z",
+    updatedAt: "2026-09-13T00:00:00Z",
+    fileCreatedAt: "2026-09-13T00:00:00Z",
     playable: true,
     probeState: "done",
     thumbnailState: "done",

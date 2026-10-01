@@ -66,6 +66,21 @@ export const sortKinds: readonly SortKindInfo[] = [
   { kind: "random", initial: "random" },
 ];
 
+/**
+ * isListSort は、画面の一覧の条件（URL と端末の設定）に使える並び順かを返す。
+ * API が受け付ける並び順のうち、メニューに種類があるものに限る。メニューに無い値を
+ * 受け付けると、並べ替えの表示が別の種類（ランダム）になり、向きも切り替えられない
+ * （specs/033-video-dates/contracts/screen-api.md §3）。
+ */
+export function isListSort(value: unknown): value is VideoSort {
+  return (
+    isVideoSort(value) &&
+    sortKinds.some(
+      (info) => info.initial === value || info.asc === value || info.desc === value,
+    )
+  );
+}
+
 /** sortKindLabel は並べ替えの種類の表示名である。 */
 export function sortKindLabel(kind: SortKind): UiText {
   return t.list.sort.kinds[kind];
@@ -152,14 +167,14 @@ export interface ParsedCriteria {
  * parseListCriteria は URL のクエリを一覧の条件にする。
  *
  * 解釈できない値は既定として扱い、誤りを出さない。sort が無いか解釈できない
- * ときは、端末に保存した並び順（preferredSort）を使う。
+ * （メニューに種類が無い値を含む）ときは、端末に保存した並び順（preferredSort）を使う。
  */
 export function parseListCriteria(
   params: URLSearchParams,
   preferredSort: VideoSort = DEFAULT_SORT,
 ): ParsedCriteria {
   const rawSort = params.get("sort");
-  const hasExplicitSort = isVideoSort(rawSort);
+  const hasExplicitSort = isListSort(rawSort);
   const sort: VideoSort = hasExplicitSort ? rawSort : preferredSort;
   const rawWatch = params.get("watch");
   const watch =

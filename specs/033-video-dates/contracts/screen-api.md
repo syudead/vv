@@ -50,6 +50,9 @@ VideoSort:
 
 ## 3. `web/src/api` の差分
 
-- `videoSorts` に `createdAsc`・`createdDesc` を足す（`isVideoSort` と `listCriteria` の往復がそれを
-  受け付ける）。
+- `videoSorts` に `createdAsc`・`createdDesc` を足す（`isVideoSort` がそれを受け付ける）。
+- 画面の一覧の条件（`listCriteria` の URL の往復と `viewPreferences` の端末の設定）は、`videoSorts` のうち
+  `sortKinds` に種類があるもの（`isListSort`）だけを受け付け、無い値は解釈できない sort と同じく端末の設定や
+  既定に戻す。メニューに無い値を受け付けると、並べ替えの表示がランダムになり向きも切り替えられないからである。
+  `created*` は「一覧の並び順に「作成日」を足す」で `sortKinds` に `created` を足したときに受け付けられる。
 - 生成された `Video` 型で `updatedAt`・`fileCreatedAt` が必須になるので、Vitest の fixture を追従させる。
