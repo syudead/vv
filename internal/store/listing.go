@@ -200,7 +200,7 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 // 対応させる。パス・題名・大きさ・更新時刻は chosen の所在のものを使う。
 // パスは後続の単位が Video.folder を組み立てるのに使う。
 var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
-	videos.added_at, videos.updated_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
+	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.updated_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public, ` + overrideColumns + `, ` + editedAtColumn
@@ -417,6 +417,9 @@ var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortAddedDesc:    {value: `videos.added_at`, desc: true},
 	domain.SortModifiedAsc:  {value: `loc.mtime`},
 	domain.SortModifiedDesc: {value: `loc.mtime`, desc: true},
+	// 作成日は所在の作成日時、取れなかった所在は更新日時（specs/033-video-dates/data-model.md §4）。
+	domain.SortCreatedAsc:  {value: fileCreatedAtExpr("loc")},
+	domain.SortCreatedDesc: {value: fileCreatedAtExpr("loc"), desc: true},
 	// 題名は保存した title_key のバイト順で、自然順になる（data-model.md §4）。
 	domain.SortTitleAsc:     {value: `loc.title_key`, kind: sortText},
 	domain.SortTitleDesc:    {value: `loc.title_key`, kind: sortText, desc: true},

@@ -13,9 +13,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// allSorts は contracts/list-api.md §3 の 13 通りの並び順である。
+// allSorts は contracts/list-api.md §3 の 13 通りと specs/033-video-dates/data-model.md §4 の
+// 作成日の 2 通りを合わせた 15 通りの並び順である。
 var allSorts = []domain.VideoSort{
 	domain.SortAddedAsc, domain.SortAddedDesc, domain.SortModifiedAsc, domain.SortModifiedDesc,
+	domain.SortCreatedAsc, domain.SortCreatedDesc,
 	domain.SortTitleAsc, domain.SortTitleDesc, domain.SortDurationAsc, domain.SortDurationDesc,
 	domain.SortSizeAsc, domain.SortSizeDesc, domain.SortPlayedAsc, domain.SortPlayedDesc, domain.SortRandom,
 }
@@ -29,18 +31,19 @@ type sortRow struct {
 	size     int64
 	duration *int64
 	played   *int64 // playback_progress.updated_at（Unix 秒）
+	created  *int64 // 所在の file_created_at（分）。nil は取れなかった（並びは mtime に倒す）
 }
 
 func ptr(v int64) *int64 { return &v }
 
 var sortRows = []sortRow{
-	{"10話", 3, 5, 300, nil, nil},
-	{"2話", 1, 2, 100, ptr(5000), ptr(100)},
-	{"b", 5, 2, 300, ptr(3000), nil},
-	{"A", 2, 9, 200, nil, ptr(300)},
-	{"1話", 4, 1, 500, ptr(5000), ptr(200)},
-	{"2話", 3, 7, 100, ptr(1000), ptr(100)},
-	{"ア", 0, 5, 400, nil, nil},
+	{"10話", 3, 5, 300, nil, nil, ptr(1)},
+	{"2話", 1, 2, 100, ptr(5000), ptr(100), nil},
+	{"b", 5, 2, 300, ptr(3000), nil, ptr(4)},
+	{"A", 2, 9, 200, nil, ptr(300), ptr(2)},
+	{"1話", 4, 1, 500, ptr(5000), ptr(200), nil},
+	{"2話", 3, 7, 100, ptr(1000), ptr(100), ptr(0)},
+	{"ア", 0, 5, 400, nil, nil, ptr(4)},
 }
 
 // sortFixture は sortRows を取り込み、行の順に動画の id を返す。
@@ -51,10 +54,15 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	ids := make([]int64, 0, len(sortRows))
 	for i, row := range sortRows {
 		key := fmt.Sprintf("key-%d", i)
+		var created time.Time
+		if row.created != nil {
+			created = fixedTime.Add(time.Duration(*row.created) * time.Minute)
+		}
 		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path: fmt.Sprintf(fixturePath("/media/%d-%s.mp4"), i, row.title), Title: row.title, ContentKey: key,
 			SizeBytes: row.size, MTime: fixedTime.Add(time.Duration(row.mtime) * time.Minute),
-			AddedAt: fixedTime.Add(time.Duration(row.added) * time.Minute), Container: "mp4",
+			FileCreatedAt: created,
+			AddedAt:       fixedTime.Add(time.Duration(row.added) * time.Minute), Container: "mp4",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -100,6 +108,12 @@ func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 			e.num = int64(row.added)
 		case domain.SortModifiedAsc, domain.SortModifiedDesc:
 			e.num = int64(row.mtime)
+		case domain.SortCreatedAsc, domain.SortCreatedDesc:
+			// 作成日時が取れなかった所在は mtime に倒す（受け入れ条件 5・6）。
+			e.num = int64(row.mtime)
+			if row.created != nil {
+				e.num = *row.created
+			}
 		case domain.SortTitleAsc, domain.SortTitleDesc:
 			e.text = domain.NaturalSortKey(row.title)
 		case domain.SortDurationAsc, domain.SortDurationDesc:
@@ -156,7 +170,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return nil
 }
 
-// 13 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
+// 15 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
 func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, sort := range allSorts {
@@ -172,7 +186,7 @@ func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 // フォルダの一覧も同じ並び順と seed で並ぶ。
 func TestListFolderVideosSortsWithSeed(t *testing.T) {
 	db, ids := sortFixture(t)
-	for _, sort := range []domain.VideoSort{domain.SortRandom, domain.SortDurationDesc} {
+	for _, sort := range []domain.VideoSort{domain.SortRandom, domain.SortDurationDesc, domain.SortCreatedAsc, domain.SortCreatedDesc} {
 		var got []int64
 		cursor := ""
 		for range 20 {

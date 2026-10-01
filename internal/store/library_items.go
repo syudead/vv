@@ -61,11 +61,17 @@ func tagConditions(spec listSpec) ([]string, []any) {
 // representativeLocationValue は動画（別名 alias の video_id を持つ行）の代表の所在
 // （見せてよい所在のうちパスの最小）の列 column を返す副問い合わせである。
 func representativeLocationValue(alias, column string, audience domain.Audience) string {
-	return `(select rl.` + column + ` from video_locations rl where rl.video_id = ` + alias + `.video_id and ` +
+	return representativeLocationExpr(alias, `rl.`+column, audience)
+}
+
+// representativeLocationExpr は representativeLocationValue の、列の代わりに代表の所在
+// （別名 rl）に対する式 expr を返す版である。
+func representativeLocationExpr(alias, expr string, audience domain.Audience) string {
+	return `(select ` + expr + ` from video_locations rl where rl.video_id = ` + alias + `.video_id and ` +
 		visibleLocationCondition("rl", audience) + ` order by rl.path limit 1)`
 }
 
-// libraryItemsCTE は項目の表 `items(group_id, id, path, added_at, mtime, title_key,
+// libraryItemsCTE は項目の表 `items(group_id, id, path, added_at, mtime, created_at, title_key,
 // duration_ms, size_bytes, played_at, watch_state)` と、見せてよいグループのメンバー
 // `gm(group_id, video_id, position)`・グループとして見せるもの `live(group_id)` を
 // 定める with 句と、その引数を返す。group_id は動画の項目では NULL である。id は
@@ -119,6 +125,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	mv as (
 		select gm.group_id, gm.video_id, gm.position, v.added_at, v.duration_ms,
 			` + representativeLocationValue("gm", "mtime", audience) + ` as mtime,
+			` + representativeLocationExpr("gm", fileCreatedAtExpr("rl"), audience) + ` as created_at,
 			` + representativeLocationValue("gm", "size_bytes", audience) + ` as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
@@ -126,7 +133,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		join videos v on v.id = gm.video_id` + progressJoin("v") + `),
 	items as (
 		select null as group_id, videos.id as id, matched.path as path,
-			videos.added_at as added_at, loc.mtime as mtime, loc.title_key as title_key,
+			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
+			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
 			case when p.completed = 1 then 'watched'
 				when p.content_key is null or p.position_ms = 0 then 'unwatched'
@@ -137,7 +145,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoPlayable + `
 		union all
 		select g.id, (select f.video_id from gm f where f.group_id = g.id order by f.position limit 1), null,
-			max(mv.added_at), max(mv.mtime), g.title_key,
+			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
 			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at),
 			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
 				when sum(mv.completed = 1) = count(*) then 'watched'
@@ -163,6 +171,7 @@ func itemWatchCondition(filter domain.WatchFilter) (string, []any) {
 var itemOrderValues = map[domain.VideoSort]string{
 	domain.SortAddedAsc: `added_at`, domain.SortAddedDesc: `added_at`,
 	domain.SortModifiedAsc: `mtime`, domain.SortModifiedDesc: `mtime`,
+	domain.SortCreatedAsc: `created_at`, domain.SortCreatedDesc: `created_at`,
 	domain.SortTitleAsc: `title_key`, domain.SortTitleDesc: `title_key`,
 	domain.SortDurationAsc: `duration_ms`, domain.SortDurationDesc: `duration_ms`,
 	domain.SortSizeAsc: `size_bytes`, domain.SortSizeDesc: `size_bytes`,
