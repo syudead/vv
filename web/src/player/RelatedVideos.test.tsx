@@ -1,10 +1,21 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Video } from "../api/client";
+import {
+  fetchSeekThumbnailSheet,
+  fetchSeekThumbnailSprite,
+  type SeekThumbnailSprite,
+  type Video,
+} from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
 import RelatedVideos from "./RelatedVideos";
+
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
+  fetchSeekThumbnailSprite: vi.fn(),
+  fetchSeekThumbnailSheet: vi.fn(),
+}));
 
 function item(id: number, overrides: Partial<Video> = {}): Video {
   return {
@@ -324,5 +335,286 @@ describe("RelatedVideos", () => {
         Element.prototype.scrollIntoView = original;
       }
     });
+  });
+});
+
+describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", () => {
+  const play = vi.fn(() => Promise.resolve());
+  const pause = vi.fn();
+  const sprite: SeekThumbnailSprite = {
+    intervalMs: 1_000,
+    frameCount: 65,
+    columns: 10,
+    rows: 10,
+    frameWidth: 160,
+    frameHeight: 90,
+    sheets: ["/api/videos/2/seek-thumbnail/0?v=c"],
+  };
+  let resolveSprite: ((value: SeekThumbnailSprite) => void) | undefined;
+  let resolveSheet: ((value: Blob) => void) | undefined;
+
+  function scrubItem(id: number, overrides: Partial<Video> = {}): Video {
+    return item(id, {
+      seekThumbnailUrl: `/api/videos/${String(id)}/seek-thumbnail?v=c`,
+      previewUrl: `/api/videos/${String(id)}/preview?v=a`,
+      ...overrides,
+    });
+  }
+
+  const bands = () =>
+    Array.from(document.querySelectorAll<HTMLElement>("[data-scrub-band]"));
+  const scrubBar = () => document.querySelector<HTMLElement>("[data-scrub-bar]");
+
+  function bandOf(link: HTMLElement): HTMLElement {
+    const band = link.querySelector<HTMLElement>("[data-scrub-band]");
+    if (band === null) throw new Error("no band");
+    return band;
+  }
+
+  // React は要素の間の移動を pointerout から pointerenter / pointerleave にするので、
+  // リンクから帯へ移る pointerout を送る。帯の矩形は左 100px・幅 400px で、
+  // clientX 300 は真ん中（65 秒の動画の 0:32）。
+  function enterBand(link: HTMLElement, clientX: number): HTMLElement {
+    const band = bandOf(link);
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    fireEvent.pointerOut(link, { pointerType: "mouse", clientX, relatedTarget: band });
+    return band;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(play);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(pause);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(vi.fn());
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      width: 400,
+      right: 500,
+      top: 200,
+      bottom: 220,
+      height: 20,
+      x: 100,
+      y: 200,
+      toJSON: () => ({}),
+    });
+    vi.mocked(fetchSeekThumbnailSprite).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSprite = resolve;
+        }),
+    );
+    vi.mocked(fetchSeekThumbnailSheet).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSheet = resolve;
+        }),
+    );
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:sheet"),
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), configurable: true });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.mocked(fetchSeekThumbnailSprite).mockReset();
+    vi.mocked(fetchSeekThumbnailSheet).mockReset();
+    play.mockClear();
+    pause.mockClear();
+    vi.useRealTimers();
+  });
+
+  it("帯にいる間だけ長さの表示とバーが差し替わり、帯を出ると戻る", () => {
+    renderList({
+      kind: "ready",
+      id: 1,
+      related: {
+        items: [
+          scrubItem(2, {
+            progress: { positionMs: 13_000, completed: false, updatedAt: "" },
+          }),
+        ],
+      },
+    });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    const progress = within(link).getByRole("progressbar");
+    expect(within(link).getByText("1:05")).toBeDefined();
+    expect(scrubBar()).toBeNull();
+
+    const band = enterBand(link, 300);
+    expect(within(link).getByText("0:32 / 1:05")).toBeDefined();
+    expect(scrubBar()?.getAttribute("aria-hidden")).toBe("true");
+    expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 50%");
+    // 視聴位置のバーは値を保ったまま見た目だけ隠す。
+    expect(progress.classList.contains("opacity-0")).toBe(true);
+    expect(progress.getAttribute("aria-valuenow")).toBe("20");
+    // リンクの読み上げ名は変わらない。
+    expect(link.getAttribute("aria-label")).toBe("関連 2 1:05");
+    expect(band.getAttribute("aria-hidden")).toBe("true");
+
+    fireEvent.pointerMove(band, { pointerType: "mouse", clientX: 500 });
+    expect(within(link).getByText("1:04 / 1:05")).toBeDefined();
+    expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 100%");
+
+    fireEvent.pointerLeave(band, { pointerType: "mouse", relatedTarget: link });
+    expect(within(link).getByText("1:05")).toBeDefined();
+    expect(scrubBar()).toBeNull();
+    expect(progress.classList.contains("opacity-0")).toBe(false);
+  });
+
+  it("未視聴の動画でも帯にいる間はバーを出し、コマは揃ってから出す", async () => {
+    renderList({ kind: "ready", id: 1, related: { items: [scrubItem(2)] } });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    expect(within(link).queryByRole("progressbar")).toBeNull();
+    enterBand(link, 300);
+    expect(scrubBar()).not.toBeNull();
+    expect(document.querySelector("[data-scrub-frame]")).toBeNull();
+
+    await act(async () => resolveSprite?.(sprite));
+    await act(async () => resolveSheet?.(new Blob()));
+    const frame = document.querySelector("[data-scrub-frame]");
+    expect(frame?.getAttribute("aria-hidden")).toBe("true");
+    expect(link.contains(frame)).toBe(true);
+  });
+
+  it("タッチ・ペンでは帯が反応しない", () => {
+    renderList({ kind: "ready", id: 1, related: { items: [scrubItem(2)] } });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    const band = bandOf(link);
+    for (const pointerType of ["touch", "pen"]) {
+      fireEvent.pointerOut(link, { pointerType, clientX: 300, relatedTarget: band });
+      fireEvent.pointerMove(band, { pointerType, clientX: 300 });
+      expect(scrubBar()).toBeNull();
+    }
+    expect(fetchSeekThumbnailSprite).not.toHaveBeenCalled();
+  });
+
+  it("ループ再生中に帯へ入ると止め、帯から上へ出ると再開し、リンクの外へ出ると解放する", () => {
+    renderList({ kind: "ready", id: 1, related: { items: [scrubItem(2)] } });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(play).toHaveBeenCalledTimes(1);
+
+    const band = bandOf(link);
+    fireEvent.pointerOut(link, {
+      pointerType: "mouse",
+      clientX: 200,
+      relatedTarget: band,
+    });
+    expect(pause).toHaveBeenCalledTimes(1);
+    fireEvent.pointerLeave(band, { pointerType: "mouse", relatedTarget: link });
+    expect(play).toHaveBeenCalledTimes(2);
+
+    // 帯から下へリンクの外に出たときは再開せずに解放する。
+    fireEvent.pointerOut(link, {
+      pointerType: "mouse",
+      clientX: 200,
+      relatedTarget: band,
+    });
+    fireEvent.pointerLeave(band, { pointerType: "mouse", relatedTarget: document.body });
+    fireEvent.pointerLeave(link, { pointerType: "mouse", relatedTarget: document.body });
+    expect(play).toHaveBeenCalledTimes(2);
+    expect(document.querySelector("video")).toBeNull();
+    expect(scrubBar()).toBeNull();
+  });
+
+  it("帯にいるまま窓の大きさが変わると、帯から出たのと同じに戻してループを解放する", () => {
+    renderList({
+      kind: "ready",
+      id: 1,
+      related: {
+        items: [
+          scrubItem(2, {
+            progress: { positionMs: 13_000, completed: false, updatedAt: "" },
+          }),
+        ],
+      },
+    });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    const progress = within(link).getByRole("progressbar");
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(document.querySelector("video")).not.toBeNull();
+    const band = bandOf(link);
+    fireEvent.pointerOut(link, {
+      pointerType: "mouse",
+      clientX: 300,
+      relatedTarget: band,
+    });
+    expect(within(link).getByText("0:32 / 1:05")).toBeDefined();
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(within(link).getByText("1:05")).toBeDefined();
+    expect(scrubBar()).toBeNull();
+    expect(progress.classList.contains("opacity-0")).toBe(false);
+    expect(document.querySelector("video")).toBeNull();
+    // 解放したので、帯に残ったままでも止めたループを再開しない。
+    act(() => vi.advanceTimersByTime(400));
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
+  it("帯の上のクリックはその動画へ移る", () => {
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <RelatedVideos
+                state={{ kind: "ready", id: 1, related: { items: [scrubItem(2)] } }}
+                backTo="/"
+                onRetry={vi.fn()}
+              />
+            }
+          />
+          <Route path="/videos/:id" element={<p>player</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const band = enterBand(screen.getByRole("link", { name: "関連 2 1:05" }), 300);
+    fireEvent.click(band);
+    expect(screen.getByText("player")).toBeDefined();
+  });
+
+  it("スプライトや長さの無い動画には帯が無い", () => {
+    renderList({
+      kind: "ready",
+      id: 1,
+      related: {
+        items: [
+          scrubItem(2),
+          scrubItem(3, { seekThumbnailUrl: undefined }),
+          scrubItem(4, { durationMs: 0 }),
+        ],
+      },
+    });
+    const links = screen.getAllByRole("link");
+    expect(links.map((link) => link.querySelector("[data-scrub-band]") !== null)).toEqual(
+      [true, false, false],
+    );
+  });
+
+  it("グループのメンバーの行と関連動画には帯を付け、今見ているメンバーの行には付けない", () => {
+    const { container } = renderList({
+      kind: "ready",
+      id: 12,
+      related: {
+        items: [scrubItem(2)],
+        group: {
+          folder: { rootId: 1, path: "series" },
+          name: "series",
+          items: [scrubItem(11), scrubItem(12), scrubItem(13)],
+        },
+      },
+    });
+    const current = container.querySelector("[aria-current]");
+    expect(current?.querySelector("[data-scrub-band]")).toBeNull();
+    expect(bands()).toHaveLength(3);
+    for (const band of bands()) expect(band.closest("a")).not.toBeNull();
   });
 });

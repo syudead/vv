@@ -1,5 +1,13 @@
 import { AlertTriangle, Check, Folder, Globe } from "lucide-react";
-import { memo, type MouseEvent, type ReactNode } from "react";
+import {
+  memo,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+} from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -16,6 +24,7 @@ import {
   watchedRatio,
 } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
+import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import { CardMedia, useCardPreview } from "./cardPreview";
 
@@ -115,6 +124,85 @@ function SelectCheck({
 }
 
 /**
+ * useCardScrub はカードのスクラブの帯をループ再生（useCardPreview）とつなぐ
+ * （specs/032-card-scrub-preview/research.md R-2、ui-design.md「Pointer rules」）。
+ *
+ * - 帯への出入りでループを一時停止・再開する。帯から下へカードの外に出たときは再開せず、
+ *   カードの pointerleave の解放に任せる。
+ * - 並び替えなどの reset（previewResetEpoch）、別のカードのプレビューの開始
+ *   （activePreviewId）、解放（release）で、帯から出たのと同じに戻し取得を打ち切る。
+ *   選択モードでは useScrubPreview が帯を外す。
+ */
+function useCardScrub({
+  video,
+  selectionMode,
+  activePreviewId,
+  previewResetEpoch,
+  preview,
+}: {
+  video: Video;
+  selectionMode: boolean;
+  activePreviewId?: number | null;
+  previewResetEpoch?: number;
+  preview: ReturnType<typeof useCardPreview>;
+}) {
+  const { releasePreview, suspendPreview, resumePreview } = preview;
+  const scrub = useScrubPreview({
+    video,
+    selectionMode,
+    onSuspend: suspendPreview,
+    onResume: resumePreview,
+  });
+  const { leaveCard } = scrub;
+  const articleRef = useRef<HTMLElement | null>(null);
+  const { cardRef } = scrub;
+  const setArticle = useCallback(
+    (element: HTMLElement | null) => {
+      articleRef.current = element;
+      cardRef(element);
+    },
+    [cardRef],
+  );
+
+  const bandLeave = scrub.bandHandlers.onPointerLeave;
+  const onBandLeave = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const next = event.relatedTarget;
+      const card = articleRef.current;
+      if (card !== null && !(next instanceof Node && card.contains(next))) {
+        leaveCard();
+        return;
+      }
+      bandLeave(event);
+    },
+    [bandLeave, leaveCard],
+  );
+
+  const release = useCallback(() => {
+    releasePreview();
+    leaveCard();
+  }, [leaveCard, releasePreview]);
+
+  const observed = useRef({ previewResetEpoch, activePreviewId });
+  useEffect(() => {
+    const previous = observed.current;
+    observed.current = { previewResetEpoch, activePreviewId };
+    const otherStarted =
+      previous.activePreviewId !== activePreviewId &&
+      activePreviewId !== undefined &&
+      activePreviewId !== null &&
+      activePreviewId !== video.id;
+    if (previous.previewResetEpoch !== previewResetEpoch || otherStarted) leaveCard();
+  }, [activePreviewId, leaveCard, previewResetEpoch, video.id]);
+
+  const band: ScrubPreview = {
+    ...scrub,
+    bandHandlers: { ...scrub.bandHandlers, onPointerLeave: onBandLeave },
+  };
+  return { scrub: band, release, setArticle };
+}
+
+/**
  * VideoCard は箱型。サムネイルはカードの端まで、右下に再生時間、下に題名。
  */
 function VideoCard(props: VideoCardProps) {
@@ -144,13 +232,24 @@ function VideoCard(props: VideoCardProps) {
     previewResetEpoch,
     onPreviewStart,
   });
-  const { showingPreview, releasePreview, startPreview } = preview;
+  const { showingPreview, startPreview } = preview;
+  const { scrub, release, setArticle } = useCardScrub({
+    video,
+    selectionMode,
+    activePreviewId,
+    previewResetEpoch,
+    preview,
+  });
+  // 帯にいる間のポインタの位置。時刻の表示とスクラブ位置のバーを差し替える
+  // （ui-design.md「Time and bar」）。
+  const scrubPosition = scrub.position;
 
   return (
     <article
+      ref={setArticle}
       data-video-id={video.id}
       onPointerEnter={startPreview}
-      onPointerLeave={releasePreview}
+      onPointerLeave={release}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart",
         // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
@@ -170,7 +269,7 @@ function VideoCard(props: VideoCardProps) {
           selectionMode={selectionMode}
           onSelect={onSelect}
           previewing={showingPreview}
-          onPreviewCancel={releasePreview}
+          onPreviewCancel={release}
         />
       )}
 
@@ -194,12 +293,21 @@ function VideoCard(props: VideoCardProps) {
         className="flex min-w-0 flex-1 flex-col outline-none"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-navbar">
-          <CardMedia video={video} preview={preview} />
+          <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
           {(publicMark || duration !== "") && (
             <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-navbar/90 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
               {publicMark && <PublicMark />}
-              {duration !== "" && <span>{duration}</span>}
+              {duration !== "" && (
+                <span>
+                  {scrubPosition === null
+                    ? duration
+                    : t.list.card.scrubTime(
+                        formatDuration(scrubPosition.positionMs),
+                        duration,
+                      )}
+                </span>
+              )}
             </span>
           )}
 
@@ -210,7 +318,11 @@ function VideoCard(props: VideoCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label={t.list.card.watchedRatio}
-              className="absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90"
+              // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
+              className={cn(
+                "absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90",
+                scrubPosition !== null && "opacity-0",
+              )}
             >
               <span
                 className="block h-full bg-accent"
@@ -218,6 +330,22 @@ function VideoCard(props: VideoCardProps) {
               />
             </span>
           )}
+
+          {scrubPosition !== null && (
+            <span
+              aria-hidden="true"
+              data-scrub-bar=""
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90"
+            >
+              <span
+                className="block h-full bg-fg"
+                style={{ width: `${String(scrubPosition.ratio * 100)}%` }}
+              />
+            </span>
+          )}
+
+          {/* 帯は時刻の表示とバーより前、全面の警告と選択のチェックより後ろ（R-5）。 */}
+          <ScrubBand scrub={scrub} />
 
           {rawUnplayable !== null && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-overlay text-warning">

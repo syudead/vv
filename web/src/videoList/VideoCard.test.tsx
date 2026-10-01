@@ -1,10 +1,21 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Video } from "../api/client";
+import {
+  fetchSeekThumbnailSheet,
+  fetchSeekThumbnailSprite,
+  type SeekThumbnailSprite,
+  type Video,
+} from "../api/client";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import VideoCard, { VideoRow } from "./VideoCard";
+
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
+  fetchSeekThumbnailSprite: vi.fn(),
+  fetchSeekThumbnailSheet: vi.fn(),
+}));
 
 function video(extra: Partial<Video> = {}): Video {
   return {
@@ -513,4 +524,290 @@ describe("VideoCard の表示（issue 308）", () => {
       expect(screen.getByText("1:05")).toBeDefined();
     },
   );
+});
+
+describe("VideoCard のスクラブの帯（specs/032-card-scrub-preview）", () => {
+  const play = vi.fn(() => Promise.resolve());
+  const pause = vi.fn();
+  const sprite: SeekThumbnailSprite = {
+    intervalMs: 1_000,
+    frameCount: 60,
+    columns: 10,
+    rows: 10,
+    frameWidth: 160,
+    frameHeight: 90,
+    sheets: ["/api/videos/1/seek-thumbnail/0?v=c"],
+  };
+  let resolveSprite: ((value: SeekThumbnailSprite) => void) | undefined;
+  let resolveSheet: ((value: Blob) => void) | undefined;
+
+  function scrubVideo(extra: Partial<Video> = {}): Video {
+    return video({
+      playable: true,
+      seekThumbnailUrl: "/api/videos/1/seek-thumbnail?v=c",
+      ...extra,
+    });
+  }
+
+  const band = () => document.querySelector<HTMLElement>("[data-scrub-band]");
+  const timeBox = () => screen.getByText(/^\d+:\d\d( \/ \d+:\d\d)?$/);
+  const scrubBar = () => document.querySelector<HTMLElement>("[data-scrub-bar]");
+
+  // React は要素の間の移動を pointerout から pointerenter / pointerleave にするので、
+  // リンクから帯へ移る pointerout を送る。
+  function moveFromLinkToBand(element: HTMLElement, clientX: number) {
+    fireEvent.pointerOut(screen.getByRole("link"), {
+      pointerType: "mouse",
+      clientX,
+      relatedTarget: element,
+    });
+  }
+
+  // 帯の矩形は左 100px・幅 400px。clientX 300 で真ん中（60 秒の動画の 0:30）。
+  function enterBand(clientX: number) {
+    const element = band();
+    if (element === null) throw new Error("no band");
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    moveFromLinkToBand(element, clientX);
+    return element;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(play);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(pause);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(vi.fn());
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      left: 100,
+      width: 400,
+      right: 500,
+      top: 200,
+      bottom: 220,
+      height: 20,
+      x: 100,
+      y: 200,
+      toJSON: () => ({}),
+    });
+    vi.mocked(fetchSeekThumbnailSprite).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSprite = resolve;
+        }),
+    );
+    vi.mocked(fetchSeekThumbnailSheet).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSheet = resolve;
+        }),
+    );
+    Object.defineProperty(URL, "createObjectURL", {
+      value: vi.fn(() => "blob:sheet"),
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), configurable: true });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.mocked(fetchSeekThumbnailSprite).mockReset();
+    vi.mocked(fetchSeekThumbnailSheet).mockReset();
+    vi.useRealTimers();
+  });
+
+  it("帯にいる間だけ時刻とバーが差し替わり、帯を出ると戻る", () => {
+    renderCard(
+      scrubVideo({ progress: { positionMs: 15_000, completed: false, updatedAt: "" } }),
+    );
+    const progress = screen.getByRole("progressbar");
+    expect(timeBox().textContent).toBe("1:00");
+    expect(scrubBar()).toBeNull();
+
+    const element = enterBand(300);
+    expect(timeBox().textContent).toBe("0:30 / 1:00");
+    expect(scrubBar()?.getAttribute("aria-hidden")).toBe("true");
+    expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 50%");
+    // 視聴位置のバーは値を保ったまま見た目だけ隠す。
+    expect(progress.classList.contains("opacity-0")).toBe(true);
+    expect(progress.getAttribute("aria-valuenow")).toBe("25");
+
+    fireEvent.pointerMove(element, { pointerType: "mouse", clientX: 500 });
+    expect(timeBox().textContent).toBe("0:59 / 1:00");
+    expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 100%");
+
+    fireEvent.pointerLeave(element, {
+      pointerType: "mouse",
+      relatedTarget: screen.getByRole("link"),
+    });
+    expect(timeBox().textContent).toBe("1:00");
+    expect(scrubBar()).toBeNull();
+    expect(progress.classList.contains("opacity-0")).toBe(false);
+  });
+
+  it("未視聴の動画でも帯にいる間はバーを出し、コマは揃ってから出す", async () => {
+    renderCard(scrubVideo());
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    enterBand(300);
+    expect(scrubBar()).not.toBeNull();
+    expect(document.querySelector("[data-scrub-frame]")).toBeNull();
+
+    await act(async () => resolveSprite?.(sprite));
+    expect(fetchSeekThumbnailSheet).toHaveBeenCalledTimes(1);
+    await act(async () => resolveSheet?.(new Blob()));
+    const frame = document.querySelector("[data-scrub-frame]");
+    expect(frame?.closest("[data-preview-media]")).not.toBeNull();
+    expect(frame?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("ループ再生中に帯へ入ると止め、帯から上へ出ると再開する", () => {
+    renderCard(scrubVideo());
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(play).toHaveBeenCalledTimes(1);
+
+    const element = band();
+    if (element === null) throw new Error("no band");
+    moveFromLinkToBand(element, 200);
+    expect(pause).toHaveBeenCalledTimes(1);
+    fireEvent.pointerLeave(element, {
+      pointerType: "mouse",
+      relatedTarget: screen.getByRole("link"),
+    });
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
+  it("帯から下へカードの外に出ると、ループを再開せずに解放する", () => {
+    renderCard(scrubVideo());
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    const element = band();
+    if (element === null) throw new Error("no band");
+    moveFromLinkToBand(element, 200);
+    fireEvent.pointerLeave(element, {
+      pointerType: "mouse",
+      relatedTarget: document.body,
+    });
+    fireEvent.pointerLeave(screen.getByRole("article"), { pointerType: "mouse" });
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("video")).toBeNull();
+    expect(scrubBar()).toBeNull();
+  });
+
+  it("並び替えなどの reset と別のカードのプレビューの開始で、帯から出たのと同じに戻る", () => {
+    const item = scrubVideo();
+    const card = (props: Partial<React.ComponentProps<typeof VideoCard>>) => (
+      <MemoryRouter>
+        <VideoCard
+          video={item}
+          backTo="/"
+          selected={false}
+          selectionMode={false}
+          onSelect={vi.fn()}
+          activePreviewId={null}
+          previewResetEpoch={0}
+          onPreviewStart={vi.fn()}
+          {...props}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(card({}));
+    enterBand(300);
+    expect(timeBox().textContent).toBe("0:30 / 1:00");
+    rerender(card({ previewResetEpoch: 1 }));
+    expect(timeBox().textContent).toBe("1:00");
+    expect(scrubBar()).toBeNull();
+
+    enterBand(300);
+    expect(scrubBar()).not.toBeNull();
+    rerender(card({ previewResetEpoch: 1, activePreviewId: 2 }));
+    expect(scrubBar()).toBeNull();
+  });
+
+  it("帯の上のクリックは通常どおり再生画面へ遷移する", () => {
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <VideoCard
+                video={scrubVideo()}
+                backTo="/"
+                selected={false}
+                selectionMode={false}
+                onSelect={vi.fn()}
+              />
+            }
+          />
+          <Route path="/videos/:id" element={<p>player</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const element = enterBand(300);
+    fireEvent.click(element);
+    expect(screen.getByText("player")).not.toBeNull();
+  });
+
+  it("帯は aria-hidden で、リンクの読み上げ名を変えない", () => {
+    renderCard(scrubVideo());
+    const element = enterBand(300);
+    expect(element.getAttribute("aria-hidden")).toBe("true");
+    expect(element.closest("a")).not.toBeNull();
+    expect(element.closest("[data-preview-media]")).toBeNull();
+    expect(screen.getByRole("link").getAttribute("aria-label")).toBe("動画 1");
+  });
+
+  it("選択モード・警告の出る動画・スプライトや長さの無い動画・リスト表示には帯が無い", () => {
+    const cases: Array<[Video, boolean]> = [
+      [scrubVideo(), true],
+      [scrubVideo({ playable: false, probeState: "failed" }), false],
+      [scrubVideo({ seekThumbnailUrl: undefined }), false],
+      [scrubVideo({ durationMs: 0 }), false],
+    ];
+    for (const [item, expected] of cases) {
+      renderCard(item);
+      expect(band() !== null).toBe(expected);
+      cleanup();
+    }
+
+    renderCard(scrubVideo(), { selectionMode: true });
+    expect(band()).toBeNull();
+    cleanup();
+
+    render(
+      <MemoryRouter>
+        <table>
+          <tbody>
+            <VideoRow
+              video={scrubVideo()}
+              backTo="/"
+              selected={false}
+              selectionMode={false}
+              onSelect={vi.fn()}
+            />
+          </tbody>
+        </table>
+      </MemoryRouter>,
+    );
+    expect(band()).toBeNull();
+  });
+
+  it("帯にいる間に選択モードに入ると、帯ごと外して時刻を戻す", () => {
+    const { rerender } = renderCard(scrubVideo());
+    enterBand(300);
+    expect(timeBox().textContent).toBe("0:30 / 1:00");
+    rerender(
+      <MemoryRouter>
+        <VideoCard
+          video={scrubVideo()}
+          backTo="/"
+          selected={false}
+          selectionMode
+          onSelect={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(band()).toBeNull();
+    expect(timeBox().textContent).toBe("1:00");
+  });
 });

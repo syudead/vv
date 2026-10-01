@@ -336,6 +336,9 @@ export const en = {
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
       watchedRatio: "Watched portion",
+      // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
+      // （specs/032-card-scrub-preview/ui-design.md「Words」）。
+      scrubTime: (position: string, duration: string) => `${position} / ${duration}`,
       watched: "Watched",
       noImage: "No image",
       preparing: "Preparing",

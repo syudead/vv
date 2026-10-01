@@ -802,7 +802,12 @@ state nor subscribe to `/api/events` for a guest.
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,
 `web/src/tags/`, and `web/src/player/` own their respective product flows, while reusable
 primitives live in `web/src/ui/` and locale-independent formatting helpers (duration,
-size, resolution) live in `web/src/lib/`. User-facing text, the locale-dependent formatting
+size, resolution) live in `web/src/lib/`. The seek-thumbnail sprite's frame selection and
+sheet cropping live in `web/src/lib/seekSprite.ts`, so the player's seek bar and the
+cards' scrub band pick the same frame for the same position, and the scrub band's hook
+and parts (`useScrubPreview`, `ScrubBand`, `ScrubFrame`) live in
+`web/src/ui/ScrubPreview.tsx`, shared by the video cards and the playback screen's related
+videos and fetching the sprite through `web/src/api/client.ts`. User-facing text, the locale-dependent formatting
 (numbers, dates, relative time, plurals) and the display of API errors live in
 `web/src/i18n/`: an English catalog that components import statically as `t`, whose values
 are the branded `UiText` type that `web/src/ui/` props require, and `errorText`, which

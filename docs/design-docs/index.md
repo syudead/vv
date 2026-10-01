@@ -42,4 +42,5 @@ Add each new document to this index.
 - [動画の表示名の編集と今の場面のサムネイル指定の UI](../../specs/029-video-overrides/ui-design.md)
 - [同じ動画の別バージョンを束ねる UI](../../specs/030-video-versions/ui-design.md)
 - [仮のタグの目印と、確定・却下・却下した名前の UI](../../specs/031-tentative-tags/ui-design.md)
+- [一覧のカードのサムネイル下端をなぞるスクラブの UI](../../specs/032-card-scrub-preview/ui-design.md)
 - [動画ページの更新日時・作成日時と「作成日」の並び順の UI](../../specs/033-video-dates/ui-design.md)

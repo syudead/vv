@@ -4,6 +4,14 @@ import {
   type SeekThumbnailSprite,
 } from "../api/client";
 import { formatDuration } from "../lib/format";
+import {
+  seekPosition,
+  seekSpriteCell,
+  type SpriteCell,
+  spriteCellBackground,
+} from "../lib/seekSprite";
+
+export { seekSpriteCell, type SpriteCell };
 
 /** 取得に失敗した配置情報・シートを始め直すまでの待ち時間。 */
 const unavailableRetryMs = 5000;
@@ -21,51 +29,17 @@ export interface PreviewTarget {
   leftPx: number;
 }
 
-/** SpriteCell は位置を受け持つコマと、それが載るシートの中の升目である。 */
-export interface SpriteCell {
-  frame: number;
-  sheet: number;
-  column: number;
-  row: number;
-}
-
 export function seekPreviewTarget(
   clientX: number,
   rect: Pick<DOMRect, "left" | "width">,
   durationMs: number,
   previewWidth: number,
 ): PreviewTarget {
-  const localX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
-  const ratio = rect.width > 0 ? localX / rect.width : 0;
-  const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
-  const positionMs = Math.min(lastPositionMs, Math.round(ratio * durationMs));
+  const { localX, positionMs } = seekPosition(clientX, rect, durationMs);
   const halfWidth = Math.min(previewWidth / 2, rect.width / 2);
   return {
     positionMs,
     leftPx: Math.min(Math.max(localX, halfWidth), rect.width - halfWidth),
-  };
-}
-
-/**
- * seekSpriteCell は元動画の論理時刻 positionMs（ミリ秒）のコマを、配置情報の間隔で
- * 決める（specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。間隔を
- * 固定値としては持たない。
- */
-export function seekSpriteCell(
-  sprite: Pick<SeekThumbnailSprite, "intervalMs" | "frameCount" | "columns" | "rows">,
-  positionMs: number,
-): SpriteCell {
-  const frame = Math.min(
-    Math.max(0, Math.floor(positionMs / sprite.intervalMs)),
-    sprite.frameCount - 1,
-  );
-  const perSheet = sprite.columns * sprite.rows;
-  const index = frame % perSheet;
-  return {
-    frame,
-    sheet: Math.floor(frame / perSheet),
-    column: index % sprite.columns,
-    row: Math.floor(index / sprite.columns),
   };
 }
 
@@ -161,13 +135,12 @@ export function attachSeekPreview(
     loadSheet(sprite, cell.sheet);
   };
 
-  // 枠を 1 コマの箱とし、シートを横 columns 倍・縦 rows 倍で敷いて、列と行の分だけ
-  // ずらす。背景の位置の割合は（箱 − シート）の大きさに対する割合なので、
-  // column / (columns − 1) で箱の整数倍のずれになる。
+  // 枠を 1 コマの箱とし、シートを敷いて列と行の分だけずらす（lib/seekSprite.ts）。
   const showCell = (url: string, cell: SpriteCell, layout: SeekThumbnailSprite) => {
+    const background = spriteCellBackground(cell, layout);
     image.style.backgroundImage = `url("${url}")`;
-    image.style.backgroundSize = `${String(layout.columns * 100)}% ${String(layout.rows * 100)}%`;
-    image.style.backgroundPosition = `${String(offsetPercent(cell.column, layout.columns))}% ${String(offsetPercent(cell.row, layout.rows))}%`;
+    image.style.backgroundSize = background.backgroundSize;
+    image.style.backgroundPosition = background.backgroundPosition;
     setState("ready");
   };
 
@@ -301,8 +274,4 @@ export function attachSeekPreview(
     interactionTarget.removeEventListener("pointercancel", onPointerEnd);
     preview.remove();
   };
-}
-
-function offsetPercent(index: number, count: number): number {
-  return count > 1 ? (index / (count - 1)) * 100 : 0;
 }
