@@ -1,5 +1,5 @@
 import { Check, ImageOff } from "lucide-react";
-import { type Ref, useLayoutEffect, useRef } from "react";
+import { type PointerEvent, type Ref, useCallback, useLayoutEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -10,6 +10,12 @@ import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import Button from "../ui/Button";
+import {
+  ScrubBand,
+  ScrubFrame,
+  type ScrubPreview,
+  useScrubPreview,
+} from "../ui/ScrubPreview";
 import Skeleton from "../ui/Skeleton";
 
 /**
@@ -26,19 +32,27 @@ export function videoLinkLabel(video: Video): string {
 /**
  * VideoThumbnail は関連動画と「次の動画」のサムネイルである。無いときは一覧のカードと
  * 同じ代わりの表示にし、右下に長さ、途中まで見た動画だけ下端に進捗バーを出す。
+ *
+ * scrub を渡すと下端にスクラブの帯を置き、帯にいる間はコマを出して長さの表示とバーを
+ * スクラブ位置に差し替える（specs/032-card-scrub-preview/ui-design.md）。
  */
 export function VideoThumbnail({
   video,
   className,
   preview,
+  scrub,
 }: {
   video: Video;
   className?: string;
   /** マウスを乗せたときの一覧用プレビュー。関連動画の列だけが渡す。 */
   preview?: HoverPreview;
+  /** スクラブの帯。関連動画の列のリンクだけが渡す。 */
+  scrub?: ScrubPreview;
 }) {
   const duration = formatDuration(video.durationMs);
   const ratio = watchedRatio(video);
+  // 帯にいる間のポインタの位置（ui-design.md「Time and bar」）。
+  const scrubPosition = scrub?.position ?? null;
   return (
     <div
       className={cn(
@@ -89,9 +103,12 @@ export function VideoThumbnail({
           )}
         />
       )}
+      <ScrubFrame frame={scrub?.frame ?? null} />
       {duration !== "" && (
         <span className="absolute right-1 bottom-1 rounded-sm bg-overlay px-1 text-xs text-fg tabular-nums">
-          {duration}
+          {scrubPosition === null
+            ? duration
+            : t.list.card.scrubTime(formatDuration(scrubPosition.positionMs), duration)}
         </span>
       )}
       {ratio !== null && (
@@ -101,7 +118,11 @@ export function VideoThumbnail({
           aria-valuemax={100}
           aria-valuenow={Math.round(ratio * 100)}
           aria-label={t.list.card.watchedRatio}
-          className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50"
+          // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
+          className={cn(
+            "absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50",
+            scrubPosition !== null && "opacity-0",
+          )}
         >
           <span
             className="block h-full bg-accent"
@@ -109,6 +130,20 @@ export function VideoThumbnail({
           />
         </span>
       )}
+      {scrubPosition !== null && (
+        <span
+          aria-hidden="true"
+          data-scrub-bar=""
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50"
+        >
+          <span
+            className="block h-full bg-fg"
+            style={{ width: `${String(scrubPosition.ratio * 100)}%` }}
+          />
+        </span>
+      )}
+      {/* 帯は長さの表示とバーより前に置く（R-5）。 */}
+      {scrub !== undefined && <ScrubBand scrub={scrub} />}
     </div>
   );
 }
@@ -326,6 +361,57 @@ export function memberLinkLabel(video: Video): string | UiText {
   return video.progress?.completed === true ? t.player.related.watchedLink(label) : label;
 }
 
+/**
+ * useRelatedScrub は関連動画の行のスクラブの帯をループ再生（useHoverPreview）とつなぐ
+ * （specs/032-card-scrub-preview/research.md R-2、ui-design.md「Pointer rules」）。
+ *
+ * - 帯への出入りでループを一時停止・再開する。帯からリンクの外へ出たときは再開せず、
+ *   リンクの pointerleave の解放に任せる。
+ * - リンクから出たら、帯から出たのと同じに戻し、進行中の取得を打ち切る。
+ */
+function useRelatedScrub(video: Video, preview: HoverPreview) {
+  const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;
+  const scrub = useScrubPreview({
+    video,
+    onSuspend: suspendPreview,
+    onResume: resumePreview,
+  });
+  const { leaveCard, cardRef } = scrub;
+  const linkRef = useRef<HTMLAnchorElement | null>(null);
+  const setLink = useCallback(
+    (element: HTMLAnchorElement | null) => {
+      linkRef.current = element;
+      cardRef(element);
+    },
+    [cardRef],
+  );
+
+  const bandLeave = scrub.bandHandlers.onPointerLeave;
+  const onBandLeave = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const next = event.relatedTarget;
+      const link = linkRef.current;
+      if (link !== null && !(next instanceof Node && link.contains(next))) {
+        leaveCard();
+        return;
+      }
+      bandLeave(event);
+    },
+    [bandLeave, leaveCard],
+  );
+
+  const release = useCallback(() => {
+    releasePreview();
+    leaveCard();
+  }, [leaveCard, releasePreview]);
+
+  const band: ScrubPreview = {
+    ...scrub,
+    bandHandlers: { ...scrub.bandHandlers, onPointerLeave: onBandLeave },
+  };
+  return { scrub: band, release, setLink };
+}
+
 function MemberItem({
   video,
   position,
@@ -336,18 +422,20 @@ function MemberItem({
   backTo: string;
 }) {
   const preview = useHoverPreview(video);
+  const { scrub, release, setLink } = useRelatedScrub(video, preview);
   return (
     <li>
       <Link
+        ref={setLink}
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={memberLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
-        onPointerLeave={preview.onPointerLeave}
+        onPointerLeave={release}
         className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
       >
         <MemberNumber position={position} />
-        <VideoThumbnail video={video} className="w-40" preview={preview} />
+        <VideoThumbnail video={video} className="w-40" preview={preview} scrub={scrub} />
         <MemberTitle video={video} />
       </Link>
     </li>
@@ -382,17 +470,19 @@ function CurrentMember({
 
 function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
   const preview = useHoverPreview(video);
+  const { scrub, release, setLink } = useRelatedScrub(video, preview);
   return (
     <li>
       <Link
+        ref={setLink}
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={videoLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
-        onPointerLeave={preview.onPointerLeave}
+        onPointerLeave={release}
         className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
       >
-        <VideoThumbnail video={video} className="w-40" preview={preview} />
+        <VideoThumbnail video={video} className="w-40" preview={preview} scrub={scrub} />
         <span className="line-clamp-2 min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
           {video.title}
         </span>
