@@ -31,6 +31,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertRepresentativeInvariant(t, db)
 		assertTagCanonicalNameInvariant(t, db)
 		assertVideoOverrideInvariant(t, db)
+		assertVideoEditInvariant(t, db)
 		assertVideoBundleInvariant(t, db)
 		assertVersionCandidateInvariant(t, db)
 		assertTentativeTagInvariant(t, db)
@@ -146,6 +147,30 @@ func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 		if count != 0 {
 			t.Errorf("video_overrides に%sが %d 行ある", name, count)
 		}
+	}
+}
+
+// assertVideoEditInvariant は video_edits の行の不変条件を確かめる
+// （specs/033-video-dates/data-model.md §1）。空の content_key の行は無い（touchEditedAt が飛ばす）。
+func assertVideoEditInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_edits'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("更新日時の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from video_edits where content_key = ''`).Scan(&count); err != nil {
+		t.Fatalf("更新日時の不変条件を検査できない: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("video_edits に空の content_key の行が %d 行ある", count)
 	}
 }
 

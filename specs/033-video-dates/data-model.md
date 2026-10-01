@@ -54,8 +54,9 @@ Down はそれぞれ表と列を落とす。
 ## 3. 更新日時を進める規則
 
 パッケージ内の 1 つの関数 `touchEditedAt(ctx, tx, contentKeys []string, now time.Time) error` が
-`insert into video_edits (content_key, edited_at) values (?, ?) on conflict (content_key) do update set
-edited_at = excluded.edited_at` を、空でない内容の識別子にだけ書く。役割の型は自分の取引の中でこれを呼び、
+`insert into video_edits (content_key, edited_at) select distinct value, ? from json_each(?) where value <> ''
+on conflict (content_key) do update set edited_at = excluded.edited_at` を、空でない内容の識別子にだけ、
+鍵の数によらず 1 文で書く。役割の型は自分の取引の中でこれを呼び、
 他の役割の公開メソッドは呼ばない。
 
 | 操作 | 進める内容の識別子（[R-2](research.md#r-2-更新日時を進めるのは動画の情報を書く-4-種の操作だけでタグ自体集まり取り込みでは進めない)・[R-3](research.md#r-3-変わらなかった編集は進めず進める対象は書き込みが実際に変えた内容の識別子だけにする)） |
@@ -64,7 +65,7 @@ edited_at = excluded.edited_at` を、空でない内容の識別子にだけ書
 | `OverrideStore.SetThumbnailPosition` | 書く前の `thumbnail_position_ms` と指定（nil = 解除）が違う内容の識別子 |
 | `VisibilityStore.SetVideosPublic` | `insert or ignore` / `delete` が行を変えた利用者データの鍵を `contentKeysForUserKeys` で広げたもの |
 | `TagStore.AttachTagByID` / `AttachTagByName` / `DetachTag` | 同上（`attachTagToVideoIDs` / `detachTagFromVideoIDs` が変えた鍵） |
-| `TagStore.ApplyVideoTags`（`applyManualTags`） | `delete … returning content_key` と `insert or ignore … returning content_key` が返した鍵を広げたもの |
+| `TagStore.ApplyVideoTags`（`applyManualTags`） | 書き込みの前に 1 文で求めた、行が変わる鍵（add は集合に付いていないタグがある鍵、remove は集合のタグが付いている鍵、replace はそのどちらかか集合に無いタグが付いている鍵。鍵ごとに高々 1 行）を広げたもの。`returning` で変わった行ごとには受け取らない |
 
 `now` は操作の取引を始めた時刻（同じ取引の対象はすべて同じ値）。それ以外の書き込みは `video_edits` に
 触れない（R-2）。

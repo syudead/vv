@@ -170,6 +170,10 @@ type Video struct {
 	MTime     time.Time
 	AddedAt   time.Time
 	UpdatedAt time.Time
+	// EditedAt は vv 上で動画の情報を最後に編集した日時（更新日時。specs/033-video-dates/
+	// data-model.md §2）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
+	// UpdatedAt（索引の行の更新時刻）とは別の値である。
+	EditedAt time.Time
 
 	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
 	// 再生位置とサムネイルの名前もこれで決まる。

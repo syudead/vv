@@ -53,13 +53,19 @@
   識別子（集まりなら全メンバー）にだけ `touchEditedAt`（[data-model.md §3](data-model.md#3-更新日時を進める規則)）を
   書く。変わったかどうかは次で決める。
   - `video_tags`・`public_videos`: `insert or ignore` と `delete` の `RowsAffected`（1 鍵ずつ書く経路）、
-    json_each で集合に書く `applyManualTags` は `returning content_key` で変わった鍵を受け取る
-    （modernc.org/sqlite は SQLite 3.35 以降で `RETURNING` を持つ）。
+    json_each で集合に書く `applyManualTags` は、同じ取引で書き込みの前に 1 文で変わる鍵を求める
+    （add は集合に付いていないタグがある鍵、remove は集合のタグが付いている鍵、replace はそのどちらかか
+    集合に無いタグが付いている鍵）。`returning content_key` で受け取ると変わった行ごと（上限の
+    20000 件 × 100 件で約 200 万行）を書き込みの取引の中で受け取ることになるので、使わない。
   - 表示名: 取引の初めに対象の今の `display_name` を読み、取引の最後に残る名前（`SetDisplayNames` の一括で
     同じ内容の識別子を何度か書いたときは最後の名前）と同じ（未設定どうしを含む）なら進めない。1 回ずつの
     書き込みの前後で比べると、A→B→A の一括で値が変わらないのに進んでしまう。
   - 代表サムネイルの位置: 書く前に今の `thumbnail_position_ms` を読み、同じ（解除どうしを含む）なら
     進めない。画像の作り直し自体はこれまでどおり行う。
+
+  書く文の数は鍵の数によらず一定にする（`touchEditedAt` は json_each で渡した集合を 1 文で書く）。上限の
+  一括操作でも書き込みの取引の中で受け取る行は鍵の数まで、文は数個で、他の書き込みを待たせる時間を
+  SQLite の中の処理だけに抑える。
 
   書き込みが失敗して取引が戻れば、同じ取引に書く `video_edits` も戻る（Edge Case「編集が失敗したとき」）。
 - **Rationale**: Edge Case「編集の前後で値が変わらなかったときは、更新日時を進めない」と「一括操作では
