@@ -24,9 +24,15 @@ import { cn } from "../lib/cn";
 export default function VisibilitySwitch({
   videoId,
   isPublic,
+  onChanged,
 }: {
   videoId: number;
   isPublic: boolean;
+  /**
+   * 切り替えが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す
+   * （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+   */
+  onChanged?: () => void;
 }) {
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -36,6 +42,7 @@ export default function VisibilitySwitch({
     setFailure(null);
     setSending(true);
     updateVideoVisibility([videoId], !isPublic)
+      .then(() => onChanged?.())
       .catch((error: unknown) => setFailure(t.player.visibility.failed(errorText(error))))
       .finally(() => setSending(false));
   }

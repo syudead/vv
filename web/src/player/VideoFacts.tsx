@@ -5,10 +5,12 @@ import {
   Clock,
   Copy,
   ExternalLink,
+  FileClock,
   HardDrive,
   Image,
   LoaderCircle,
   type LucideIcon,
+  PencilLine,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -21,11 +23,12 @@ import {
   type Video,
 } from "../api/client";
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
-import { errorText, formatDate, t, type UiText } from "../i18n";
+import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { technicalSummary } from "./properties";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
@@ -160,9 +163,58 @@ function Fact({
 }
 
 /**
+ * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である
+ * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、名前と時刻は
+ * `title` と、押して開く吹き出しで読む（ポイントできない端末でも届くように）。
+ * 見た目は `Fact` と同じで、引き金であることは hover の地だけで示す。
+ */
+function DateFact({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: UiText;
+  value: string;
+}) {
+  const date = formatDate(value);
+  const dateTime = formatDateTime(value);
+  return (
+    <li className="flex items-center whitespace-nowrap">
+      <PopoverRoot>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            // 読み上げ名は隠した名前 + 値（ui-design「Accessibility」）。中の文字の空白の扱いに
+            // 依らないよう、明示する。
+            aria-label={`${label} ${date}`}
+            title={t.player.facts.dateDetail(label, dateTime)}
+            className="-mx-1 flex items-center gap-1.5 rounded-sm px-1 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+          >
+            <Icon className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+            <span className="sr-only">{label} </span>
+            {date}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="start"
+          className="w-auto px-3 py-2 text-sm whitespace-nowrap"
+          // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <span className="text-fg">{label}</span>{" "}
+          <span className="text-fg-muted tabular-nums">{dateTime}</span>
+        </PopoverContent>
+      </PopoverRoot>
+    </li>
+  );
+}
+
+/**
  * VideoFacts は題名とタグの下の 2 行である（ui-design「Video facts」）。
  *
- * 1 行目はファイルの情報（長さ・サイズ・追加日）をアイコンを添えて並べ、右端に
+ * 1 行目はファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）をアイコンを添えて並べ、右端に
  * 「ファイルを開く」（開ける環境のときだけ）と「パスをコピー」を置く。2 行目は技術情報
  * （解像度・コンテナ・コーデック）で、いちばん小さく薄い文字にする。
  *
@@ -232,10 +284,20 @@ export default function VideoFacts({
             label={t.player.facts.size}
             value={formatBytes(video.sizeBytes)}
           />
-          <Fact
+          <DateFact
             icon={CalendarPlus}
             label={t.player.facts.added}
-            value={formatDate(video.addedAt)}
+            value={video.addedAt}
+          />
+          <DateFact
+            icon={PencilLine}
+            label={t.player.facts.edited}
+            value={video.updatedAt}
+          />
+          <DateFact
+            icon={FileClock}
+            label={t.player.facts.created}
+            value={video.fileCreatedAt}
           />
           {versions !== undefined && versionCount >= 2 && (
             <VersionsFact

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
+import { formatDateTime } from "../i18n";
 import { TooltipProvider } from "../ui/Tooltip";
 import { formatCodec, technicalSummary } from "./properties";
 import VideoFacts from "./VideoFacts";
@@ -58,12 +59,14 @@ describe("VideoFacts", () => {
     fetchMock.mockReset();
   });
 
-  it("ファイルの情報は長さ・サイズ・追加日の順で、最後に見た日時は出さない", () => {
+  it("ファイルの情報は長さ・サイズ・追加日・更新日時・作成日時の順で、最後に見た日時は出さない", () => {
     renderFacts(video);
     expect(listText("File details")).toEqual([
       "Length 4:02",
       "Size 80.4 MB",
       "Added Sep 20, 2026",
+      "Edited Sep 20, 2026",
+      "Created Sep 20, 2026",
     ]);
     expect(document.body.textContent).not.toContain("2026/09/21");
   });
@@ -89,7 +92,12 @@ describe("VideoFacts", () => {
       audioCodec: undefined,
     };
     const view = renderFacts(pending);
-    expect(listText("File details")).toEqual(["Size 80.4 MB", "Added Sep 20, 2026"]);
+    expect(listText("File details")).toEqual([
+      "Size 80.4 MB",
+      "Added Sep 20, 2026",
+      "Edited Sep 20, 2026",
+      "Created Sep 20, 2026",
+    ]);
     expect(screen.getByText("Reading technical details…")).toBeDefined();
     view.unmount();
 
@@ -107,7 +115,8 @@ describe("VideoFacts", () => {
 
   it("所在が無ければ操作を置かない", () => {
     renderFacts({ ...video, location: undefined });
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
   });
 
   it("「パスをコピー」は所在の絶対パスをクリップボードへ書く", async () => {
@@ -184,6 +193,83 @@ describe("VideoFacts", () => {
     );
     fireEvent.click(button);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  describe("日付の項目（specs/033-video-dates/ui-design.md「Video facts」）", () => {
+    // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
+    const added = new Date(2026, 8, 20, 12, 0).toISOString();
+    const edited = new Date(2026, 8, 27, 15, 4).toISOString();
+    const created = new Date(2026, 6, 3, 9, 30).toISOString();
+    const dated: Video = {
+      ...video,
+      addedAt: added,
+      updatedAt: edited,
+      fileCreatedAt: created,
+    };
+
+    function dateButton(name: string | RegExp): HTMLElement {
+      return within(screen.getByRole("list", { name: "File details" })).getByRole(
+        "button",
+        { name },
+      );
+    }
+
+    it("3 つの日付は同じ日付だけの書式で、読み上げ名で区別でき、title に名前と時刻を持つ（要件 4、UI品質）", () => {
+      renderFacts(dated);
+      expect(listText("File details")).toEqual([
+        "Length 4:02",
+        "Size 80.4 MB",
+        "Added Sep 20, 2026",
+        "Edited Sep 27, 2026",
+        "Created Jul 3, 2026",
+      ]);
+      expect(dateButton("Added Sep 20, 2026").title).toBe(
+        `Added ${formatDateTime(added)}`,
+      );
+      expect(dateButton("Edited Sep 27, 2026").title).toBe(
+        `Edited ${formatDateTime(edited)}`,
+      );
+      expect(dateButton("Created Jul 3, 2026").title).toBe(
+        `Created ${formatDateTime(created)}`,
+      );
+      // 長さとサイズは引き金にしない。
+      expect(
+        within(screen.getByRole("list", { name: "File details" })).getAllByRole("button"),
+      ).toHaveLength(3);
+    });
+
+    it("3 つの日付のアイコンはそれぞれ違う", () => {
+      renderFacts(dated);
+      const icons = ["Added", "Edited", "Created"].map(
+        (name) =>
+          dateButton(new RegExp(`^${name} `))
+            .querySelector("svg")
+            ?.getAttribute("class") ?? "",
+      );
+      expect(icons[0]).toContain("lucide-calendar-plus");
+      expect(icons[1]).toContain("lucide-pencil-line");
+      expect(icons[2]).toContain("lucide-file-clock");
+    });
+
+    it("押すと名前と日時の吹き出しを開き、Esc で閉じてフォーカスを引き金に戻す", async () => {
+      renderFacts(dated);
+      const trigger = dateButton("Edited Sep 27, 2026");
+      trigger.focus();
+      fireEvent.click(trigger);
+      const bubble = await screen.findByRole("dialog");
+      expect(bubble.textContent).toBe(`Edited ${formatDateTime(edited)}`);
+      expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    it("ゲストの動画（所在が無い）でも更新日時と作成日時を出す", () => {
+      renderFacts({ ...dated, location: undefined });
+      expect(listText("File details")).toContain("Edited Sep 27, 2026");
+      expect(listText("File details")).toContain("Created Jul 3, 2026");
+    });
   });
 });
 
