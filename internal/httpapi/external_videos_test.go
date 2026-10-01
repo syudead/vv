@@ -36,14 +36,18 @@ func newExternalVideosFixture(t *testing.T) externalVideosFixture {
 	}
 	f := externalVideosFixture{env: env, secret: env.createAPIToken(cookie, "scraper").Secret,
 		nfdPath: filepath.Join(mediaDir, "が.mp4")}
-	for i, file := range []struct{ path, title, key string }{
-		{filepath.Join(mediaDir, "a.mp4"), "a", "key-a"},
-		{f.nfdPath, "が", "key-nfd"},
-		{filepath.Join(mediaDir, "c.mp4"), "c", "key-c"},
+	// c.mp4 だけ作成日時が取れ、ほかは取れない（fileCreatedAt は mtime になる）。
+	for i, file := range []struct {
+		path, title, key string
+		created          time.Time
+	}{
+		{filepath.Join(mediaDir, "a.mp4"), "a", "key-a", time.Time{}},
+		{f.nfdPath, "が", "key-nfd", time.Time{}},
+		{filepath.Join(mediaDir, "c.mp4"), "c", "key-c", time.Unix(500, 0)},
 	} {
 		result, err := env.db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path: file.path, Title: file.title, ContentKey: file.key, SizeBytes: 1,
-			MTime: time.Unix(0, 0), AddedAt: time.Unix(int64(1000+i), 0), Container: "mp4",
+			MTime: time.Unix(0, 0), FileCreatedAt: file.created, AddedAt: time.Unix(int64(1000+i), 0), Container: "mp4",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -152,6 +156,29 @@ func TestExternalListVideosPagesThroughAll(t *testing.T) {
 	if string(items[0]["durationMs"]) != "null" || string(items[0]["tags"]) != "[]" {
 		t.Errorf("解析前の長さとタグの無い動画: %s", body)
 	}
+
+	// 受け入れ条件 7（specs/033-video-dates/contracts/external-api.md §0）: どの動画にも
+	// updatedAt・fileCreatedAt が入る。
+	for i, item := range items {
+		for _, key := range []string{"updatedAt", "fileCreatedAt"} {
+			if _, ok := item[key]; !ok {
+				t.Errorf("items[%d] に %s が無い: %s", i, key, body)
+			}
+		}
+	}
+	// 編集していない c.mp4 の更新日時は追加日時で、作成日時は取れた値。
+	unedited := page.Items[2]
+	if !unedited.UpdatedAt.Equal(unedited.AddedAt) || !unedited.FileCreatedAt.Equal(time.Unix(500, 0)) {
+		t.Errorf("編集していない動画: updatedAt %v, addedAt %v, fileCreatedAt %v",
+			unedited.UpdatedAt, unedited.AddedAt, unedited.FileCreatedAt)
+	}
+	// 公開にした a.mp4 とタグを付けた が.mp4 は更新日時が進み、作成日時が取れないので mtime。
+	for _, edited := range page.Items[:2] {
+		if !edited.UpdatedAt.After(edited.AddedAt) || !edited.FileCreatedAt.Equal(time.Unix(0, 0)) {
+			t.Errorf("動画 %d: updatedAt %v, addedAt %v, fileCreatedAt %v",
+				edited.Id, edited.UpdatedAt, edited.AddedAt, edited.FileCreatedAt)
+		}
+	}
 }
 
 func TestExternalListVideosRejectsBadParameters(t *testing.T) {
@@ -185,6 +212,10 @@ func TestExternalLookupVideo(t *testing.T) {
 		}
 		if video.Id != id || len(video.Tags) != 1 {
 			t.Errorf("%s: %s", query, body)
+		}
+		// タグを付けたので更新日時が進み、作成日時は取れないので mtime（受け入れ条件 7）。
+		if !video.UpdatedAt.After(video.AddedAt) || !video.FileCreatedAt.Equal(time.Unix(0, 0)) {
+			t.Errorf("%s: updatedAt・fileCreatedAt: %s", query, body)
 		}
 	}
 

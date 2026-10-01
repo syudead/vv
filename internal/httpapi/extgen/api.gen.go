@@ -206,6 +206,10 @@ type ExternalVideo struct {
 	// DurationMs 長さ（ミリ秒）。解析前は null
 	DurationMs *int64 `json:"durationMs"`
 
+	// FileCreatedAt 代表の所在（locations の先頭）のファイルの作成日時。ファイルシステムから取れないときは
+	// そのファイルの更新日時（mtime）
+	FileCreatedAt time.Time `json:"fileCreatedAt"`
+
 	// FileTitle 代表の所在の、拡張子を除いたファイル名
 	FileTitle string `json:"fileTitle"`
 	Id        int64  `json:"id"`
@@ -219,6 +223,10 @@ type ExternalVideo struct {
 
 	// Title 有効な題名。表示名があればそれ、無ければ代表の所在（locations の先頭）の題名
 	Title string `json:"title"`
+
+	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
+	// 一度も編集していなければ addedAt と同じ。この API の video-tags・display-names も進める
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // ExternalVideoLocation defines model for ExternalVideoLocation.
