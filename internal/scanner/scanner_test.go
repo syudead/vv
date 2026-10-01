@@ -36,6 +36,36 @@ type fakeIndex struct {
 	issueErr error
 	// reports は進みと今のファイルの報告を、届いた順に並べたものである。
 	reports []string
+	// createdAtCalls は所在の作成日時だけを書き直した呼び出し、createdAtErr はその失敗である。
+	createdAtCalls []createdAtCall
+	createdAtErr   error
+}
+
+type createdAtCall struct {
+	locationID int64
+	createdAt  time.Time
+}
+
+func (f *fakeIndex) UpdateLocationCreatedAt(_ context.Context, locationID int64, createdAt time.Time) error {
+	if f.createdAtErr != nil {
+		return f.createdAtErr
+	}
+	f.createdAtCalls = append(f.createdAtCalls, createdAtCall{locationID: locationID, createdAt: createdAt})
+	for path, row := range f.rows {
+		if row.LocationID == locationID {
+			row.FileCreatedAt = indexedCreatedAt(createdAt)
+			f.rows[path] = row
+		}
+	}
+	return nil
+}
+
+// indexedCreatedAt は保存層と同じく作成日時を秒で持つ。ゼロ値は null。
+func indexedCreatedAt(t time.Time) time.Time {
+	if t.IsZero() {
+		return time.Time{}
+	}
+	return time.Unix(t.Unix(), 0)
 }
 
 type failingInfoEntry struct {
@@ -75,7 +105,8 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 			delete(f.rows, path)
 			f.rows[file.Path] = domain.IndexedVideo{
 				ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-				ProbeState: row.ProbeState, ThumbnailState: row.ThumbnailState,
+				FileCreatedAt: indexedCreatedAt(file.FileCreatedAt),
+				ProbeState:    row.ProbeState, ThumbnailState: row.ThumbnailState,
 				SeekThumbnailState: row.SeekThumbnailState, PreviewState: row.PreviewState,
 			}
 			outcome := domain.OutcomeMoved
@@ -89,7 +120,8 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	if row, ok := f.rows[file.Path]; ok {
 		f.rows[file.Path] = domain.IndexedVideo{
 			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+			FileCreatedAt: indexedCreatedAt(file.FileCreatedAt),
+			ProbeState:    domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
 			SeekThumbnailState: domain.SeekThumbnailPending, PreviewState: domain.PreviewStatePending,
 		}
 		return domain.UpsertResult{
@@ -101,7 +133,8 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	f.nextID++
 	f.rows[file.Path] = domain.IndexedVideo{
 		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+		FileCreatedAt: indexedCreatedAt(file.FileCreatedAt),
+		ProbeState:    domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
 		SeekThumbnailState: domain.SeekThumbnailPending, PreviewState: domain.PreviewStatePending,
 	}
 	return domain.UpsertResult{

@@ -119,8 +119,14 @@ is added (§6).
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
-not duplicate rows, and queues the heavy work. Only a user-started scan walks the
-media folders. Just before a scan closes (done or failed), `internal/app` asks
+not duplicate rows, and queues the heavy work. It also reads each media file's creation
+time per OS (`statx` with `STATX_BTIME` on Linux, the birth time on darwin and the BSDs, the
+creation time on Windows); an unreadable creation time is not a failure. A new or changed
+file passes it to `UpsertVideo`, and an unchanged file whose creation time differs from the
+index (compared in seconds) gets only its location's column rewritten through
+`UpdateLocationCreatedAt`, without rehashing or requeueing
+([specs/033-video-dates/research.md](specs/033-video-dates/research.md) R-5, R-6). Only a
+user-started scan walks the media folders. Just before a scan closes (done or failed), `internal/app` asks
 `ScanIndexStore.RebuildFolderIndex` to rebuild the folder index — folder groups and each
 video's ancestor folder names — by reading every location row in SQLite, never the
 filesystem; a failed rebuild does not fail the scan but marks the index stale. At startup
