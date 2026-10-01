@@ -12,6 +12,7 @@ import type { Video } from "../api/client";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isNarrowVideo, unplayableText } from "../lib/format";
+import { ScrubFrame, type ScrubFrameData } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 
 /**
@@ -38,6 +39,16 @@ export interface CardPreview {
   setPlaying: (playing: boolean) => void;
   releasePreview: () => void;
   startPreview: (event: PointerEvent<HTMLElement>) => void;
+  /**
+   * suspendPreview はスクラブの帯に入ったときに、400ms の待ちを止め、再生中・読み込み中の
+   * 動画を src と要素を保ったまま止める（specs/032-card-scrub-preview/research.md R-2）。
+   */
+  suspendPreview: () => void;
+  /**
+   * resumePreview は帯からカードの中へ出たときに、待ちを 400ms から数え直し、止めた
+   * 動画をその場面から再生し直す。
+   */
+  resumePreview: () => void;
 }
 
 /**
@@ -60,6 +71,9 @@ export function useCardPreview({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lifecycle = useRef(0);
+  // 帯にいる間の一時停止。waiting は待ちの途中で止めたことを表す。
+  const suspended = useRef(false);
+  const waiting = useRef(false);
   const observedResetEpoch = useRef(previewResetEpoch);
   const [attempting, setAttempting] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -80,6 +94,8 @@ export function useCardPreview({
 
   const releasePreview = useCallback(() => {
     lifecycle.current += 1;
+    suspended.current = false;
+    waiting.current = false;
     if (timer.current !== null) {
       clearTimeout(timer.current);
       timer.current = null;
@@ -104,20 +120,38 @@ export function useCardPreview({
   // can still pause the element and release its resource.
   useLayoutEffect(() => () => releasePreview(), [releasePreview]);
 
+  // play の失敗は、その後に解放・一時停止されていなければプレビューを解放する。
+  // 一時停止の pause() が読み込み中の play() を打ち切った失敗では解放しない。
+  const playElement = useCallback(
+    (element: HTMLVideoElement) => {
+      const currentLifecycle = lifecycle.current;
+      try {
+        const result = element.play();
+        result?.catch(() => {
+          if (lifecycle.current === currentLifecycle) releasePreview();
+        });
+      } catch {
+        releasePreview();
+      }
+    },
+    [releasePreview],
+  );
+
   useEffect(() => {
-    if (!attempting) return;
+    if (!attempting || suspended.current) return;
     const element = videoRef.current;
     if (element === null) return;
-    const currentLifecycle = lifecycle.current;
-    try {
-      const result = element.play();
-      result?.catch(() => {
-        if (lifecycle.current === currentLifecycle) releasePreview();
-      });
-    } catch {
-      releasePreview();
-    }
-  }, [attempting, releasePreview]);
+    playElement(element);
+  }, [attempting, playElement]);
+
+  const scheduleStart = useCallback(() => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      onPreviewStart?.(video.id);
+      setAttempting(true);
+    }, 400);
+  }, [onPreviewStart, video.id]);
 
   const startPreview = useCallback(
     (event: PointerEvent<HTMLElement>) => {
@@ -131,15 +165,38 @@ export function useCardPreview({
         releasePreview();
         return;
       }
-      if (timer.current !== null) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        onPreviewStart?.(video.id);
-        setAttempting(true);
-      }, 400);
+      scheduleStart();
     },
-    [eligible, onPreviewStart, releasePreview, selectionMode, video.id],
+    [eligible, releasePreview, scheduleStart, selectionMode],
   );
+
+  const suspendPreview = useCallback(() => {
+    if (suspended.current) return;
+    suspended.current = true;
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+      waiting.current = true;
+    }
+    const element = videoRef.current;
+    if (element !== null) {
+      // 読み込み中の play() が pause() で打ち切られても解放しないよう、世代を進める。
+      lifecycle.current += 1;
+      element.pause();
+    }
+  }, []);
+
+  const resumePreview = useCallback(() => {
+    if (!suspended.current) return;
+    suspended.current = false;
+    if (waiting.current) {
+      waiting.current = false;
+      scheduleStart();
+      return;
+    }
+    const element = videoRef.current;
+    if (element !== null) playElement(element);
+  }, [playElement, scheduleStart]);
 
   return {
     attempting,
@@ -149,14 +206,26 @@ export function useCardPreview({
     setPlaying,
     releasePreview,
     startPreview,
+    suspendPreview,
+    resumePreview,
   };
 }
 
 /**
  * CardMedia はカードのサムネイルと、その上に重ねるプレビューの動画である。
- * サムネイルが無いときは代わりの表示を出す。
+ * サムネイルが無いときは代わりの表示を出す。スクラブの帯にいる間のコマ（scrubFrame）は
+ * サムネイルとループの動画の前に、同じ media 層の中で重ねる
+ * （specs/032-card-scrub-preview/ui-design.md「Frame」）。
  */
-export function CardMedia({ video, preview }: { video: Video; preview: CardPreview }) {
+export function CardMedia({
+  video,
+  preview,
+  scrubFrame = null,
+}: {
+  video: Video;
+  preview: CardPreview;
+  scrubFrame?: ScrubFrameData | null;
+}) {
   const { attempting, previewActive, showingPreview, setVideoElement, setPlaying } =
     preview;
   return (
@@ -208,6 +277,8 @@ export function CardMedia({ video, preview }: { video: Video; preview: CardPrevi
           )}
         />
       )}
+
+      <ScrubFrame frame={scrubFrame} />
     </div>
   );
 }

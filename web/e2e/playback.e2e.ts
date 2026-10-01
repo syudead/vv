@@ -1258,6 +1258,122 @@ test.describe.serial("live MP4 playback", () => {
     await expect(display).toContainText("日本語の字幕");
   });
 
+  test("関連動画のサムネイルの帯で、シークバーの吹き出しと同じコマを出し、押すとその動画へ移る（768・1280px）", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(90_000);
+    // 帯の対象は関連動画の direct、開いておく動画は同じフォルダの container-only
+    // （specs/032-card-scrub-preview、親 Issue #616 の要件 8・受け入れ条件 3）。
+    const target = video("direct");
+    const durationMs = target.durationMs ?? 0;
+    if (target.seekThumbnailUrl === undefined) throw new Error("no sprite");
+    const sprite = (await (await request.get(target.seekThumbnailUrl)).json()) as {
+      intervalMs: number;
+      frameCount: number;
+    };
+    expect(sprite.frameCount).toBeGreaterThan(1);
+    const sample = Math.floor(sprite.frameCount / 2);
+    const ratio = ((sample + 0.5) * sprite.intervalMs) / durationMs;
+
+    // プレイヤーのシークバーの吹き出しが、同じ割合の位置で出す背景の位置。
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await play(page, target);
+    const seekBar = await page.locator(".vjs-progress-holder").boundingBox();
+    if (seekBar === null) throw new Error("seek bar is not visible");
+    await page.mouse.move(
+      seekBar.x + seekBar.width * ratio,
+      seekBar.y + seekBar.height / 2,
+    );
+    const bubble = page.locator('.vv-seek-preview[data-state="ready"]');
+    await expect(bubble).toBeVisible({ timeout: 5000 });
+    const playerPosition = await bubble
+      .locator(".vv-seek-preview-image")
+      .evaluate((element) => getComputedStyle(element).backgroundPosition);
+
+    const targetPath = `/api/videos/${String(target.id)}/seek-thumbnail`;
+    for (const width of [768, 1280]) {
+      await test.step(String(width), async () => {
+        await page.setViewportSize({ width, height: 800 });
+        // 開いた動画のプレイヤーも自分のスプライトを取るので、帯の対象の要求だけを数える。
+        const requests: string[] = [];
+        const onRequest = (sent: Request) => {
+          if (new URL(sent.url()).pathname.startsWith(targetPath))
+            requests.push(sent.url());
+        };
+        page.on("request", onRequest);
+        await page.goto(`/videos/${String(video("container-only").id)}`);
+        const link = page.locator("aside").getByRole("link", { name: /^direct \d/ });
+        await expect(link).toBeVisible({ timeout: 10_000 });
+        await link.scrollIntoViewIfNeeded();
+        const band = link.locator("[data-scrub-band]");
+        const face = link.locator("[data-scrub-band] >> xpath=..");
+        const faceBox = await face.boundingBox();
+        if (faceBox === null) throw new Error("thumbnail is not visible");
+        const layout = () =>
+          link.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const column = element.closest("aside")?.getBoundingClientRect();
+            return [rect.x, rect.y, rect.width, rect.height, column?.width ?? 0];
+          });
+
+        // 帯に入らずにサムネイルを横と縦に通り過ぎるだけでは取得しない。
+        await page.mouse.move(faceBox.x - 20, faceBox.y + faceBox.height * 0.3);
+        await page.mouse.move(
+          faceBox.x + faceBox.width + 20,
+          faceBox.y + faceBox.height * 0.3,
+          { steps: 10 },
+        );
+        await page.mouse.move(faceBox.x + faceBox.width / 2, faceBox.y - 10);
+        await page.mouse.move(
+          faceBox.x + faceBox.width / 2,
+          faceBox.y + faceBox.height * 0.6,
+          { steps: 10 },
+        );
+        await page.waitForTimeout(300);
+        expect(requests).toHaveLength(0);
+        const before = await layout();
+
+        // 帯の同じ割合の位置で、吹き出しと同じシート・同じ背景の位置になる（受け入れ条件 3）。
+        const bandBox = await band.boundingBox();
+        if (bandBox === null) throw new Error("band is not visible");
+        const point = {
+          x: Math.min(bandBox.x + bandBox.width * ratio, bandBox.x + bandBox.width - 0.5),
+          y: bandBox.y + bandBox.height / 2,
+        };
+        await page.mouse.move(point.x, point.y);
+        const image = link.locator("[data-scrub-frame-image]");
+        await expect(image).toBeVisible({ timeout: 5000 });
+        expect(
+          await image.evaluate((element) => getComputedStyle(element).backgroundPosition),
+        ).toBe(playerPosition);
+        expect(
+          await image.evaluate((element) => getComputedStyle(element).backgroundImage),
+        ).toMatch(/^url\("blob:/);
+        await expect(link.locator("[data-scrub-bar]")).toBeVisible();
+        await expect(link.getByText(/^\d+:\d\d \/ \d+:\d\d$/)).toBeVisible();
+        // 帯の出入りで行の高さと列の幅が変わらない。
+        expect(await layout()).toEqual(before);
+        expect(requests.filter((url) => /\/seek-thumbnail\/\d+/.test(url))).toHaveLength(
+          1,
+        );
+        if (screenshotDir !== undefined) {
+          await mkdir(screenshotDir, { recursive: true });
+          await page.screenshot({
+            path: path.join(screenshotDir, `20261001-related-scrub-${String(width)}.png`),
+            fullPage: false,
+          });
+        }
+        page.off("request", onRequest);
+
+        // 帯の上のクリックでその動画へ移る。
+        await page.mouse.click(point.x, point.y);
+        await expect(page).toHaveURL(new RegExp(`/videos/${String(target.id)}$`));
+        await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+      });
+    }
+  });
+
   test("関連動画から移ったあとの × と Esc は最初の一覧へ戻る", async ({ page }) => {
     test.setTimeout(30_000);
     await page.setViewportSize({ width: 1280, height: 800 });
