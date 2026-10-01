@@ -519,6 +519,43 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
     expect(scrubBar()).toBeNull();
   });
 
+  it("帯にいるまま窓の大きさが変わると、帯から出たのと同じに戻してループを解放する", () => {
+    renderList({
+      kind: "ready",
+      id: 1,
+      related: {
+        items: [
+          scrubItem(2, {
+            progress: { positionMs: 13_000, completed: false, updatedAt: "" },
+          }),
+        ],
+      },
+    });
+    const link = screen.getByRole("link", { name: "関連 2 1:05" });
+    const progress = within(link).getByRole("progressbar");
+    fireEvent.pointerEnter(link, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(document.querySelector("video")).not.toBeNull();
+    const band = bandOf(link);
+    fireEvent.pointerOut(link, {
+      pointerType: "mouse",
+      clientX: 300,
+      relatedTarget: band,
+    });
+    expect(within(link).getByText("0:32 / 1:05")).toBeDefined();
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(within(link).getByText("1:05")).toBeDefined();
+    expect(scrubBar()).toBeNull();
+    expect(progress.classList.contains("opacity-0")).toBe(false);
+    expect(document.querySelector("video")).toBeNull();
+    // 解放したので、帯に残ったままでも止めたループを再開しない。
+    act(() => vi.advanceTimersByTime(400));
+    expect(play).toHaveBeenCalledTimes(1);
+  });
+
   it("帯の上のクリックはその動画へ移る", () => {
     render(
       <MemoryRouter>

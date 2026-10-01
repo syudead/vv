@@ -1,5 +1,12 @@
 import { Check, ImageOff } from "lucide-react";
-import { type PointerEvent, type Ref, useCallback, useLayoutEffect, useRef } from "react";
+import {
+  type PointerEvent,
+  type Ref,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -368,6 +375,8 @@ export function memberLinkLabel(video: Video): string | UiText {
  * - 帯への出入りでループを一時停止・再開する。帯からリンクの外へ出たときは再開せず、
  *   リンクの pointerleave の解放に任せる。
  * - リンクから出たら、帯から出たのと同じに戻し、進行中の取得を打ち切る。
+ * - 窓の大きさが変わったら、一覧の usePreviewCoordination と同じくループを解放し、
+ *   帯から出たのと同じに戻す（ui-design.md「Responsive」）。
  */
 function useRelatedScrub(video: Video, preview: HoverPreview) {
   const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;
@@ -404,6 +413,11 @@ function useRelatedScrub(video: Video, preview: HoverPreview) {
     releasePreview();
     leaveCard();
   }, [leaveCard, releasePreview]);
+
+  useEffect(() => {
+    window.addEventListener("resize", release);
+    return () => window.removeEventListener("resize", release);
+  }, [release]);
 
   const band: ScrubPreview = {
     ...scrub,
