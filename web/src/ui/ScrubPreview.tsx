@@ -74,6 +74,7 @@ export interface ScrubPreview {
  * - カードを出たら進行中の取得を打ち切る。帯を出てカードの中にいる間は取得を続ける。
  * - 失敗したら、カードを出て入り直すまで取り直さない。
  * - カードが viewport から外れたときと unmount で、object URL と配置情報を捨てる。
+ *   viewport から外れたときは最後の位置も捨てる。
  */
 export function useScrubPreview({
   video,
@@ -239,7 +240,12 @@ export function useScrubPreview({
   }, [enabled, leaveCard]);
 
   // unmount と、別のスプライトを指すようになったときに、持っているシートを捨てる。
-  useEffect(() => () => releaseAll(), [releaseAll, spriteUrl]);
+  // 取り直しで URL が変わったときにまだ位置を持っていれば（帯の中、または帯を出て
+  // カードの中）、ポインタが動くのを待たずに新しい URL から取り直す。
+  useEffect(() => {
+    if (positionRef.current !== null) ensure();
+    return () => releaseAll();
+  }, [ensure, releaseAll]);
 
   const observer = useRef<IntersectionObserver | null>(null);
   const cardRef = useCallback(
@@ -249,7 +255,11 @@ export function useScrubPreview({
       if (element === null || typeof IntersectionObserver === "undefined") return;
       observer.current = new IntersectionObserver(
         (entries) => {
-          if (entries.some((entry) => !entry.isIntersecting)) releaseAll();
+          if (!entries.some((entry) => !entry.isIntersecting)) return;
+          // 最後の位置も捨てる。残すと、外れている間に URL が変わったときに取り直し、
+          // 次に外れるまで解放されない。
+          positionRef.current = null;
+          releaseAll();
         },
         { rootMargin: "100%" },
       );
