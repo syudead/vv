@@ -72,7 +72,8 @@
 
 **Feature-specific context**:
 
-- 移行は 1 つ（`00027_video_dates.sql`: `video_edits` の表と `video_locations.file_created_at` の列）。
+- 移行は 2 つ（`00027_video_edits.sql`: `video_edits` の表、`00028_video_file_created_at.sql`:
+  `video_locations.file_created_at` の列）。それぞれを足す実装単位が持つ。
 - Go の直接依存に `golang.org/x/sys` を足す（今は間接依存。`internal/scanner` の Linux 向けファイルだけが使う）。
   npm の依存は足さない。
 - ドメインイベントは足さない（R-8）。`SearchKeyVersion` は上げない。
@@ -137,8 +138,11 @@ specs/033-video-dates/
 
 **New paths**:
 
-- `internal/store/migrations/00027_video_dates.sql`、`internal/store/video_edits.go`（`touchEditedAt`）
-- `internal/scanner/file_created_at_linux.go`・`_darwin.go`（darwin・freebsd・netbsd）・`_windows.go`・`_other.go`
+- `internal/store/migrations/00027_video_edits.sql`・`00028_video_file_created_at.sql`、`internal/store/video_edits.go`
+  （`touchEditedAt`）
+- `internal/scanner/file_created_at_linux.go`・`file_created_at_bsd.go`（`//go:build darwin || freebsd || netbsd`。
+  ファイル名の `_darwin` は GOOS の制約になり freebsd・netbsd を外すので使わない）・`file_created_at_windows.go`・
+  `file_created_at_other.go`（`//go:build !linux && !darwin && !freebsd && !netbsd && !windows`）
 
 **Structure decision**: 更新日時の書き込みは新しい役割の型にせず、変化を起こす 3 つの役割がそれぞれの取引の中で
 パッケージ内の `touchEditedAt` を呼ぶ。変わった行だけを進める（R-3）には書き込みと同じ取引で変化を知る
@@ -148,29 +152,43 @@ specs/033-video-dates/
 
 ## Implementation Work
 
-### 更新日時と作成日時を保存し、編集で更新日時を進め、動画の読み出しに両方を載せる
+### 編集で動画の更新日時を進め、動画の読み出しに載せる
 
-**Scope**: `00027_video_dates.sql`、`domain` の値（[data-model.md §2](data-model.md#2-domain-に足す値)）、
-`touchEditedAt` と 4 種の書き込みでの呼び出しと変化の判定（[§3](data-model.md#3-更新日時を進める規則)）、
-`moveUserData` への追加、動画を返す読み出しの 2 列と `VideoLocations`（[§4](data-model.md#4-読み出し)）、
-`UpsertVideo` の `file_created_at` と `IndexedVideosByPath`・新設の `UpdateLocationCreatedAt`
-（[§5](data-model.md#5-走査と所在の書き込み)。走査からの呼び出しは次の単位）、`invariants_test.go` の不変条件。
-ARCHITECTURE.md の利用者データの一覧と、`TagStore`・`VisibilityStore`・`OverrideStore`・`ScanIndexStore` の段落。
-一覧の並び順の値（`createdAsc`・`createdDesc` の `listOrders`・`itemOrderValues`・`VideoSort.Valid`）。
+**Scope**: `00027_video_edits.sql`（[data-model.md §1](data-model.md#1-マイグレーション)）、`domain` の `Video.EditedAt`
+（[§2](data-model.md#2-domain-に足す値)）、`touchEditedAt` と 4 種の書き込みでの呼び出しと変化の判定
+（[§3](data-model.md#3-更新日時を進める規則)）、`moveUserData` への追加、動画を返す読み出しの `edited_at` 列
+（[§4](data-model.md#4-読み出し)）、`invariants_test.go` の不変条件。ARCHITECTURE.md の利用者データの一覧と、
+`TagStore`・`VisibilityStore`・`OverrideStore` の段落。
 
 **Dependencies**: None
 
 **Acceptance**: `task check` が通る。store の試験で、`SetDisplayName`・`SetThumbnailPosition`・`SetVideosPublic`・
 `AttachTagByID`・`DetachTag`・`ApplyVideoTags` のあと `GetVideo` の `EditedAt` が操作の時刻になる（受け入れ条件 1）。
-同じ表示名・同じ位置・既に付いているタグ・既に同じ公開の設定では変わらない（Edge Case）。一括のタグ付けで
-変わった動画だけが進む（Edge Case）。再生位置の保存・`UpsertVideo`・解析の結果・タグの改名と削除・束ねる操作では
-変わらない（受け入れ条件 2、R-2）。編集していない動画の `EditedAt` が `AddedAt` と等しい（受け入れ条件 3）。
-集まりのメンバーへのタグ付けで全メンバーが進む。同じパスの引き継ぎで新しい内容の `EditedAt` が前の値になる
-（Edge Case）。`UpsertVideo` の `FileCreatedAt` が所在に入り、ゼロ値なら `FileCreatedAt` が `MTime` と等しい
-（受け入れ条件 5）。`createdAsc`・`createdDesc` が `ListVideos`・`ListFolderVideos`・`ListLibrary`（グループは
-メンバーの最大）で `coalesce(file_created_at, mtime)` の順に並び、同じ値は id で決着し、`modifiedAsc`・
-`modifiedDesc` の順が `listing_sort_test.go` で変わらない（受け入れ条件 6・8）。移行のあと `video_edits` が空で、
-既存の所在の `file_created_at` が null である。
+同じ表示名・同じ位置・既に付いているタグ・既に同じ公開の設定では変わらず、`SetDisplayNames` の 1 回の一括で
+同じ動画を A→B→A と書いたときも変わらない（Edge Case）。一括のタグ付けで変わった動画だけが進む（Edge Case）。
+再生位置の保存・`UpsertVideo`・解析の結果・タグの改名と削除・束ねる操作では変わらない（受け入れ条件 2、R-2）。
+編集していない動画の `EditedAt` が `AddedAt` と等しい（受け入れ条件 3）。集まりのメンバーへのタグ付けで全メンバーが
+進む。同じパスの引き継ぎで新しい内容の `EditedAt` が前の値になる（Edge Case）。移行のあと `video_edits` が空である。
+
+### 所在にファイルの作成日時を保存し、動画の読み出しと「作成日」の並び順に使う
+
+**Scope**: `00028_video_file_created_at.sql`（[data-model.md §1](data-model.md#1-マイグレーション)）、`domain` の
+`Video`・`VideoFile`・`IndexedVideo`・`VideoLocation` の `FileCreatedAt` と `VideoSort` の 2 値
+（[§2](data-model.md#2-domain-に足す値)）、動画を返す読み出しの `file_created_at` 列と `VideoLocations`
+（[§4](data-model.md#4-読み出し)）、一覧の並び順の値（`createdAsc`・`createdDesc` の `listOrders`・
+`itemOrderValues`・`libraryItemsCTE`・`VideoSort.Valid`）、`UpsertVideo` の `file_created_at` と
+`IndexedVideosByPath`・新設の `UpdateLocationCreatedAt`（[§5](data-model.md#5-走査と所在の書き込み)。走査からの
+呼び出しは次の単位）。ARCHITECTURE.md の `ScanIndexStore` の段落。
+
+**Dependencies**: `編集で動画の更新日時を進め、動画の読み出しに載せる`（移行の番号と、動画を返す読み出しの列と
+`scanVideo` を順に足すため）
+
+**Acceptance**: `task check` が通る。store の試験で、`UpsertVideo` の `FileCreatedAt` が所在に入り、ゼロ値なら
+`FileCreatedAt` が `MTime` と等しい（受け入れ条件 5）。`UpdateLocationCreatedAt` のゼロ値で列が null に戻り、
+`updated_at`・`version` が変わらない。`createdAsc`・`createdDesc` が `ListVideos`・`ListFolderVideos`・
+`ListLibrary`（グループはメンバーの最大）で `coalesce(file_created_at, mtime)` の順に並び、同じ値は id で決着し、
+`modifiedAsc`・`modifiedDesc` の順が `listing_sort_test.go` で変わらない（受け入れ条件 6・8）。移行のあと既存の
+所在の `file_created_at` が null である。
 
 ### 走査がファイルの作成日時を読み、所在に記録する
 
@@ -180,11 +198,12 @@ ARCHITECTURE.md の利用者データの一覧と、`TagStore`・`VisibilityStor
 [data-model.md §5](data-model.md#5-走査と所在の書き込み)）、`scanner.Index` interface の追加とテストの偽物の追従。
 ARCHITECTURE.md の `internal/scanner` の段落。[quickstart.md](quickstart.md) の確認。
 
-**Dependencies**: 更新日時と作成日時を保存し、編集で更新日時を進め、動画の読み出しに両方を載せる
+**Dependencies**: `所在にファイルの作成日時を保存し、動画の読み出しと「作成日」の並び順に使う`
 
 **Acceptance**: `task check` が通る（`build-windows-check` を含む）。scanner の試験で、新しいファイルの
 `UpsertVideo` に作成日時が渡り（作成日時を持つ OS ではゼロ値でない）、索引の値と違う変わっていないファイルで
-`UpdateLocationCreatedAt` が呼ばれ、同じなら呼ばれず、`UpsertVideo` も job の積み直しも起きない（Edge Case
+`UpdateLocationCreatedAt` が呼ばれ、秒が同じなら（端数だけ違っても）呼ばれず、索引に値があるのに読めなく
+なったファイルではゼロ値で呼ばれ、`UpsertVideo` も job の積み直しも起きない（Edge Case
 「既に登録済みの動画」）。作成日時を読めないときも失敗にならない。quickstart.md の手順 1〜4 の結果を PR の本文に
 残す（受け入れ条件 4・5）。
 
@@ -195,13 +214,13 @@ ARCHITECTURE.md の `internal/scanner` の段落。[quickstart.md](quickstart.md
 検査（ゲストにも許す）、`web/src/api` の `videoSorts` と Vitest の fixture の追従（[§3](contracts/screen-api.md#3-websrcapi-の差分)）。
 ARCHITECTURE.md の「thirteen sort orders」。
 
-**Dependencies**: 更新日時と作成日時を保存し、編集で更新日時を進め、動画の読み出しに両方を載せる
+**Dependencies**: `編集で動画の更新日時を進め、動画の読み出しに載せる`、
+`所在にファイルの作成日時を保存し、動画の読み出しと「作成日」の並び順に使う`
 
 **Acceptance**: `task check` が通る。httpapi の試験で、`GET /api/videos/{id}`・一覧・関連・バージョンの `Video` に
 `updatedAt`・`fileCreatedAt` が入り、編集前は `updatedAt` が `addedAt` と等しく、`PUT /api/videos/{id}/display-name`
 の応答で進む（受け入れ条件 1・3）。ゲストの応答にも入る。`sort=createdDesc`・`createdAsc` が `GET /api/videos`・
-`GET /api/folders/{rootId}/videos`・`GET /api/library`・`GET /api/library/ids` で受け付けられ、ゲストでも `400`
-にならない（要件 5）。`openapi_routes_test.go` と生成物の検査が通る。
+`GET /api/folders/{rootId}/videos`・`GET /api/library` で受け付けられ、ゲストでも `400` にならない（要件 5）。`openapi_routes_test.go` と生成物の検査が通る。
 
 ### 外部連携 API の動画に更新日時と作成日時を含める
 
@@ -209,7 +228,8 @@ ARCHITECTURE.md の「thirteen sort orders」。
 `internal/httpapi/external_videos.go` の変換（[contracts/external-api.md](contracts/external-api.md)）、
 `docs/how-to/external-api.md`「動画の一覧を読む」の説明。
 
-**Dependencies**: 更新日時と作成日時を保存し、編集で更新日時を進め、動画の読み出しに両方を載せる
+**Dependencies**: `編集で動画の更新日時を進め、動画の読み出しに載せる`、
+`所在にファイルの作成日時を保存し、動画の読み出しと「作成日」の並び順に使う`
 
 **Acceptance**: `task check` が通る。httpapi の試験で、トークン付きの `GET /api/v1/videos` と
 `GET /api/v1/videos/lookup` の動画に `updatedAt`・`fileCreatedAt` が入り（受け入れ条件 7）、
@@ -223,7 +243,7 @@ MCP の `lookup_video` の出力に 2 項目が出る。
 （[R-8](research.md#r-8-再生画面はタグと公開の設定を変えたあと動画を取り直し新しいドメインイベントは足さない)）、
 英語のカタログの文言。
 
-**Dependencies**: 画面の API で更新日時と作成日時を返し、「作成日」の並び順を受け付ける
+**Dependencies**: `画面の API で更新日時と作成日時を返し、「作成日」の並び順を受け付ける`
 
 **Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest の試験で、情報欄に追加日と
 同じ形式で更新日時と作成日時が出て、読み上げ名で 3 つが区別できる（要件 4、UI 品質）。ゲストでも出る。表示名の
@@ -238,7 +258,7 @@ MCP の `lookup_video` の出力に 2 項目が出る。
 ライブラリとフォルダの両画面は `SortControls` を共有する（要件 5）。`docs/design-docs/library-ui.md` の
 ツールバーの説明に並び順の種類が増えることを足す。
 
-**Dependencies**: 画面の API で更新日時と作成日時を返し、「作成日」の並び順を受け付ける
+**Dependencies**: `画面の API で更新日時と作成日時を返し、「作成日」の並び順を受け付ける`
 
 **Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest の試験で、並び順の
 メニューに「作成日」が出て、選ぶと `sort=createdDesc` で一覧を取り、向きの切り替えで `createdAsc` になり、

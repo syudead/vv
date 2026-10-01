@@ -7,7 +7,9 @@
 
 ## 1. マイグレーション
 
-`00027_video_dates.sql` として足す（`main` の最後は `00026_video_version_candidates.sql`）。
+2 つに分け、それぞれを足す実装単位が持つ（`main` の最後は `00026_video_version_candidates.sql`）。
+
+`00027_video_edits.sql`:
 
 ```sql
 -- vv 上で動画の情報を最後に編集した日時（specs/033-video-dates/research.md R-1）。
@@ -17,13 +19,17 @@ create table video_edits (
     content_key text    primary key,
     edited_at   integer not null
 ) without rowid;
+```
 
+`00028_video_file_created_at.sql`:
+
+```sql
 -- 一覧に出す所在のファイルの作成日時（Unix 秒）。ファイルシステムが持たなければ null
 -- （research.md R-4）。
 alter table video_locations add column file_created_at integer;
 ```
 
-Down は列と表を落とす。
+Down はそれぞれ表と列を落とす。
 
 不変条件（`internal/store/invariants_test.go` に足す）: `video_edits` に空の `content_key` の行は無い。
 
@@ -54,7 +60,7 @@ edited_at = excluded.edited_at` を、空でない内容の識別子にだけ書
 
 | 操作 | 進める内容の識別子（[R-2](research.md#r-2-更新日時を進めるのは動画の情報を書く-4-種の操作だけでタグ自体集まり取り込みでは進めない)・[R-3](research.md#r-3-変わらなかった編集は進めず進める対象は書き込みが実際に変えた内容の識別子だけにする)） |
 | --- | --- |
-| `OverrideStore.SetDisplayName` / `SetDisplayNames` | 書く前の `display_name` と整えた名前が違う内容の識別子 |
+| `OverrideStore.SetDisplayName` / `SetDisplayNames` | 取引を始める前の `display_name` と、取引の最後に残る名前（一括で同じ内容の識別子を何度か書いたときは最後の名前）が違う内容の識別子。1 回ずつの書き込みの前後では比べない |
 | `OverrideStore.SetThumbnailPosition` | 書く前の `thumbnail_position_ms` と指定（nil = 解除）が違う内容の識別子 |
 | `VisibilityStore.SetVideosPublic` | `insert or ignore` / `delete` が行を変えた利用者データの鍵を `contentKeysForUserKeys` で広げたもの |
 | `TagStore.AttachTagByID` / `AttachTagByName` / `DetachTag` | 同上（`attachTagToVideoIDs` / `detachTagFromVideoIDs` が変えた鍵） |
@@ -100,11 +106,14 @@ edited_at = excluded.edited_at` を、空でない内容の識別子にだけ書
 
 | 経路 | 書くこと |
 | --- | --- |
-| `ScanIndexStore.UpsertVideo`（中身が変わった・新しいパス） | 所在の `insert` / `update` に `file_created_at`（ゼロ値なら null）を含める |
-| `ScanIndexStore.UpdateLocationCreatedAt(ctx, locationID int64, createdAt time.Time) error`（新設。`scanner.Index` に足す） | `update video_locations set file_created_at = ? where id = ?`。`updated_at`・`version` は動かさず、イベントも発行しない |
+| `ScanIndexStore.UpsertVideo`（中身が変わった・新しいパス） | 所在の `insert` / `update` に `file_created_at`（`Unix()` の秒。ゼロ値なら null）を含める |
+| `ScanIndexStore.UpdateLocationCreatedAt(ctx, locationID int64, createdAt time.Time) error`（新設。`scanner.Index` に足す） | `update video_locations set file_created_at = ? where id = ?`（`Unix()` の秒。ゼロ値なら null）。`updated_at`・`version` は動かさず、イベントも発行しない |
 | `ScanIndexStore.IndexedVideosByPath` | `IndexedVideo.FileCreatedAt` を載せる |
 
-走査は変わっていないファイル（大きさと mtime が同じ）について、読めた作成日時と `IndexedVideo.FileCreatedAt`
-が違うときだけ `UpdateLocationCreatedAt` を呼ぶ（[R-6](research.md#r-6-登録済みの所在は変わっていないファイルでも作成日時が違えば次の走査で書き直す)）。
+走査は変わっていないファイル（大きさと mtime が同じ）について、読んだ作成日時（読めなければゼロ値）と
+`IndexedVideo.FileCreatedAt`（null はゼロ値）を、mtime と同じく `Unix()` の秒で比べ（ゼロ値どうしは同じ）、
+違うときだけ `UpdateLocationCreatedAt` を呼ぶ。列は秒で持つので、端数のある作成日時でも毎回書き直さない。
+索引に値があるのに読めなくなった（作成日時を持たないファイルシステムへ移した）所在はゼロ値で呼び、列を
+null に戻して読み出しを mtime に倒す（[R-6](research.md#r-6-登録済みの所在は変わっていないファイルでも作成日時が違えば次の走査で書き直す)）。
 失敗は `ensurePendingJobs` の失敗と同じく `register_failed` として報告する。読めなかった作成日時は失敗に
 しない。

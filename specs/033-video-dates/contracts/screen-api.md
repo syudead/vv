@@ -39,8 +39,8 @@ VideoSort:
     （取れなければ mtime）、…
 ```
 
-`GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library`、`GET /api/library/ids` の
-`sort` で受け付ける。ゲストにも許す。`modifiedAsc`・`modifiedDesc` は名前も並びも変えない（要件 7）。
+`GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library` の `sort` で受け付ける。
+`GET /api/library/ids`（所有者だけの「すべて選択」）は `sort` を持たず並びを決めないので、変わらない。ゲストにも許す。`modifiedAsc`・`modifiedDesc` は名前も並びも変えない（要件 7）。
 
 ## 2. 変わらない経路
 

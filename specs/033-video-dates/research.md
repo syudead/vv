@@ -55,7 +55,9 @@
   - `video_tags`・`public_videos`: `insert or ignore` と `delete` の `RowsAffected`（1 鍵ずつ書く経路）、
     json_each で集合に書く `applyManualTags` は `returning content_key` で変わった鍵を受け取る
     （modernc.org/sqlite は SQLite 3.35 以降で `RETURNING` を持つ）。
-  - 表示名: 書く前に今の `display_name` を読み、整えた名前と同じ（未設定どうしを含む）なら進めない。
+  - 表示名: 取引の初めに対象の今の `display_name` を読み、取引の最後に残る名前（`SetDisplayNames` の一括で
+    同じ内容の識別子を何度か書いたときは最後の名前）と同じ（未設定どうしを含む）なら進めない。1 回ずつの
+    書き込みの前後で比べると、A→B→A の一括で値が変わらないのに進んでしまう。
   - 代表サムネイルの位置: 書く前に今の `thumbnail_position_ms` を読み、同じ（解除どうしを含む）なら
     進めない。画像の作り直し自体はこれまでどおり行う。
 
@@ -69,7 +71,9 @@
 ## R-4: ファイルの作成日時は所在の列 `video_locations.file_created_at` に持ち、取れなければ null にして読み出しで mtime に倒す
 
 - **Decision**: `video_locations` に nullable の `file_created_at`（Unix 秒）を足す。走査が読めた作成日時を
-  書き、ファイルシステムが持たなければ null のまま。動画を返す読み出しと並べ替えは、一覧に出す所在の
+  書き、ファイルシステムが持たなければ null にする（前の走査で入った値も、読めなくなれば null に戻す。
+  [R-6](#r-6-登録済みの所在は変わっていないファイルでも作成日時が違えば次の走査で書き直す)）。値は
+  `mtime` と同じく秒で持つ。動画を返す読み出しと並べ替えは、一覧に出す所在の
   `coalesce(file_created_at, mtime)` を `Video.FileCreatedAt` と `createdAsc`/`createdDesc` の値にする
   （要件 3・5、Edge Case「既に登録済みの動画」）。
 - **Rationale**: 作成日時はファイルの事実なので、`mtime`・`size_bytes` と同じ所在の列である（作り直せる
@@ -86,9 +90,11 @@
   build tag で分ける。
   - Linux: `unix.Statx` に `STATX_BTIME` を求め、`Mask` に立っているときだけ返す。
     `golang.org/x/sys` を直接依存にする（今は間接依存）。
-  - darwin・freebsd・netbsd: `info.Sys().(*syscall.Stat_t)` の birthtime。
+  - darwin・freebsd・netbsd: `info.Sys().(*syscall.Stat_t)` の `Birthtimespec`。1 つのファイル
+    `file_created_at_bsd.go` に `//go:build darwin || freebsd || netbsd` で置く（`_darwin.go` という名前は
+    GOOS の暗黙の制約になり、freebsd・netbsd では読まれない）。
   - windows: `info.Sys().(*syscall.Win32FileAttributeData).CreationTime`。
-  - それ以外: 常に取れない。
+  - それ以外（`file_created_at_other.go`、上の OS を除く build tag）: 常に取れない。
 
   読めなかったことは失敗にせず、作成日時無しとして登録する。`domain` はこの関数を知らない。
 - **Rationale**: 標準ライブラリの `os.FileInfo` は Linux で作成日時を出さず、vv の主な配置先は
@@ -106,13 +112,19 @@
   （`IndexedVideo.FileCreatedAt`。無ければゼロ値）と違えば `Index.UpdateLocationCreatedAt(ctx, locationID,
   createdAt)` で所在の列だけを書く。中身の識別子は計算し直さず、job も積まず、`videos.updated_at` も
   イベントも動かさない。中身が変わったファイルは `UpsertVideo` が `VideoFile.FileCreatedAt` を他の
-  事実と一緒に書く（Edge Case「同じパスで差し替えられて作成日時が変わった」）。
+  事実と一緒に書く（Edge Case「同じパスで差し替えられて作成日時が変わった」）。比べるのは `mtime` と同じく
+  秒で、読めなかったときはゼロ値として比べる（索引に値があれば null に戻す、R-4）。
 - **Rationale**: 既存の動画に作成日時を入れるのは「次のスキャンで」（Edge Case）であり、メディア
-  フォルダを歩くのは利用者が始めた走査だけである（ARCHITECTURE.md）。走査はその時点で `stat` を
-  済ませているので、追加の読み取りは無い。
+  フォルダを歩くのは利用者が始めた走査だけである（ARCHITECTURE.md）。費用: darwin・BSD・Windows は
+  走査が既に読んだ `entry.Info()` から取れるので増えない。Linux は `entry.Info()`（lstat）が作成日時を
+  持たないので、メディアファイルごとに `statx` を 1 回足す。中身は読まないメタデータの問い合わせだが、
+  ネットワークのマウントでは 1 ファイルあたりの往復が増える。要件 3 と Edge Case「既に登録済みの動画」は
+  変わっていないファイルにも作成日時を求めるので、この費用を受け入れる。
 - **Alternatives considered**:
   - 起動時に全所在を `stat` して埋める。利用者が始めた走査以外でメディアフォルダに触れる経路を
     1 つ足す。却下。
+  - Linux で索引に値がある変わっていないファイルは `statx` を省く。読めなくなった所在を null に戻せず、
+    大きさと mtime を保った差し替え（`cp -p` など）で作成日時が古いまま残る。却下。
   - 作成日時の違いを「変わった」として `UpsertVideo` に通す。中身の識別子（先頭・末尾 1 MiB の
     sha256）を全ファイルで読み直すことになる。却下。
 
