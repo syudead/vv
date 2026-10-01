@@ -30,7 +30,9 @@ its link and the 概要 line.
    - a question remains that meets Q-6 (it changes what the user gets, the
      sources above do not settle it, and getting it wrong is costly);
    - the request conflicts with existing behaviour and does not say which
-     wins.
+     wins;
+   - the feature changes the UI and the requester has not said whether the
+     Issue gets the `ui` label.
 
    Otherwise go straight to step 4. Tell the requester in one line which way
    you went and why.
@@ -41,7 +43,7 @@ its link and the 概要 line.
    - ask at most three questions, each with concrete options and your
      recommendation first (use the question tool when one is available);
      never ask what step 1 can answer;
-   - fold the answers in and check the four conditions again.
+   - fold the answers in and check the conditions again.
 
    End when no condition holds, or when the requester explicitly agrees to
    proceed with a stated ambiguity — then record it in the Issue as such.
@@ -124,8 +126,7 @@ what this stage adds.
   add only the ones the requester names. Do not copy labels from other Issues.
   `ui` is the only label with workflow meaning — it decides whether the
   `design` stage runs — so when the Issue changes the UI and the requester has
-  not said, ask instead of setting it (during the discussion when there is
-  one). The `sdd` label is retired; do not add it.
+  not said, ask before filing (step 2 makes this a discussion condition). The `sdd` label is retired; do not add it.
 
 ## Preflight
 
