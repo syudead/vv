@@ -27,7 +27,8 @@ export default function TouchControls({
         visible
           ? "opacity-100"
           : // 見えない間は押せなくする。Tab でフォーカスが来たら見せ、輪郭を隠さない。
-            "pointer-events-none opacity-0 focus-within:opacity-100 [&_button]:pointer-events-none",
+            // タップで残るフォーカスでは見せない（focus-within だと再生中も消えなくなる）。
+            "pointer-events-none opacity-0 has-[button:focus-visible]:opacity-100 [&_button]:pointer-events-none",
       )}
     >
       <button
