@@ -33,6 +33,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertVideoOverrideInvariant(t, db)
 		assertVideoBundleInvariant(t, db)
 		assertVersionCandidateInvariant(t, db)
+		assertTentativeTagInvariant(t, db)
 	})
 	return db
 }
@@ -77,6 +78,41 @@ func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("タグの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertTentativeTagInvariant は仮のタグと却下した名前の不変条件を確かめる
+// （specs/031-tentative-tags/data-model.md §1）。仮のタグはシノニムを持たず（シノニムを
+// 足すと確定する。R-4）、却下した名前は tag_names に無い（名前を書く入口が同じ取引で
+// 外す。R-3）。
+func assertTentativeTagInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	// down migration を検査するテストは、この時点で表を落としている。
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'rejected_tag_names'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("仮のタグの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	for name, query := range map[string]string{
+		"シノニムを持つ仮のタグ": `select count(*) from tags t
+			 where t.tentative = 1
+			   and exists (select 1 from tag_names tn where tn.tag_id = t.id and tn.canonical = 0)`,
+		"tag_names にもある却下した名前": `select count(*) from rejected_tag_names r
+			 join tag_names tn on tn.name = r.name`,
+	} {
+		var count int
+		if err := db.sql.QueryRow(query).Scan(&count); err != nil {
+			t.Fatalf("仮のタグの不変条件を検査できない: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("%sが %d 件ある", name, count)
+		}
 	}
 }
 

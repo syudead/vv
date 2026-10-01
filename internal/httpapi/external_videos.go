@@ -138,7 +138,9 @@ func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 func toExternalVideoTags(tags []domain.VideoTag) []extgen.ExternalVideoTag {
 	out := make([]extgen.ExternalVideoTag, 0, len(tags))
 	for _, tag := range tags {
-		out = append(out, extgen.ExternalVideoTag{Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder})
+		out = append(out, extgen.ExternalVideoTag{
+			Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
+		})
 	}
 	return out
 }

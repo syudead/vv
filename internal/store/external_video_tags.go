@@ -19,50 +19,55 @@ import (
 // ApplyVideoTags は videos の各動画に、names のタグを action の通りに付ける・外す・置き換え、
 // 各動画の操作後のタグを videos の順に返す（同じ動画を 2 度指せば 2 度返す）。
 //
+// tentative が真の add・replace は、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして
+// 作る。その名前が却下した名前なら作らず付けず、飛ばした名前として返す（replace の置き換え後の
+// 集合にも入らない）。tentative が偽なら確定したタグとして作る。既存のタグに当たる名前は
+// tentative を問わずそのタグを付け、その状態を変えない（specs/031-tentative-tags/data-model.md §3）。
+//
 // 全体を 1 つのトランザクションで行う。videos の指定のうち、登録フォルダの下に所在を持つ
 // 今の動画へ引けないもの（内容を読めていない動画を含む）が 1 つでもあれば
 // *domain.VideoRefNotFoundError（domain.ErrNotFound を包む）で失敗し、何も反映しない。
 // names は domain.NormalizeTagName で整え、規則に合わないものは *domain.TagNameAtError。
 // 同じタグに当たる名前は 1 つにまとめる。件数の上限は呼び出し側が確かめる。
-func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error) {
+func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool) (domain.VideoTagsOutcome, error) {
 	if !action.Valid() {
-		return nil, fmt.Errorf("unknown video tags action %q", action)
+		return domain.VideoTagsOutcome{}, fmt.Errorf("unknown video tags action %q", action)
 	}
 	normalized := make([]string, 0, len(names))
 	for i, name := range names {
 		n, err := domain.NormalizeTagName(name)
 		if err != nil {
-			return nil, &domain.TagNameAtError{Index: i, Err: err}
+			return domain.VideoTagsOutcome{}, &domain.TagNameAtError{Index: i, Err: err}
 		}
 		normalized = append(normalized, n)
 	}
 
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return domain.VideoTagsOutcome{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	targets, err := resolveTaggableVideos(ctx, tx, videos)
 	if err != nil {
-		return nil, err
+		return domain.VideoTagsOutcome{}, err
 	}
-	tagIDs, err := resolveTagNames(ctx, tx, action, normalized)
+	tagIDs, skipped, err := resolveTagNames(ctx, tx, action, normalized, tentative)
 	if err != nil {
-		return nil, err
+		return domain.VideoTagsOutcome{}, err
 	}
 
 	keys := uniqueUserKeys(targets)
 	if err := applyManualTags(ctx, tx, keys, action, tagIDs); err != nil {
-		return nil, err
+		return domain.VideoTagsOutcome{}, err
 	}
 
 	tags, err := tagsByContentKeys(ctx, tx, keys)
 	if err != nil {
-		return nil, err
+		return domain.VideoTagsOutcome{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("cannot update the video tags: %w", err)
+		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
 	}
 
 	out := make([]domain.VideoTagsResult, 0, len(targets))
@@ -73,7 +78,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		}
 		out = append(out, result)
 	}
-	return out, nil
+	return domain.VideoTagsOutcome{Items: out, SkippedNames: skipped}, nil
 }
 
 // taggableVideo は一括操作の対象に引き当てた動画である。userKey は利用者データの鍵
@@ -114,35 +119,63 @@ func resolveTaggableVideos(ctx context.Context, tx *sql.Tx, videos []domain.Vide
 }
 
 // resolveTagNames は整えた名前をシノニムを含めてタグの id へ引く。add・replace は無い名前の
-// タグを作り（findOrCreateTag）、remove はどのタグにも当たらない名前を飛ばす。同じタグに
+// タグを作り、remove はどのタグにも当たらない名前を飛ばす（tentative は読まない）。同じタグに
 // 当たる名前は 1 つにまとめる。
-func resolveTagNames(ctx context.Context, tx *sql.Tx, action domain.VideoTagsAction, names []string) ([]int64, error) {
+//
+// 作るタグは tentative が真なら仮のタグで、名前が却下した名前なら作らずに skipped へ入れる
+// （names の順、重複なし）。偽なら確定したタグで、名前を却下した名前から外す
+// （specs/031-tentative-tags/data-model.md §3）。判定は名前の引き当てと同じ取引で行う（R-6）。
+func resolveTagNames(ctx context.Context, tx *sql.Tx, action domain.VideoTagsAction, names []string, tentative bool) ([]int64, []string, error) {
 	seen := make(map[int64]bool, len(names))
 	ids := make([]int64, 0, len(names))
+	skipped := []string{}
+	skippedSeen := make(map[string]bool)
 	for _, name := range names {
+		lookup, found, err := lookupTagName(ctx, tx, name)
+		if err != nil {
+			return nil, nil, err
+		}
 		var id int64
-		if action == domain.VideoTagsRemove {
-			lookup, found, err := lookupTagName(ctx, tx, name)
+		switch {
+		case found:
+			id = lookup.tagID
+		case action == domain.VideoTagsRemove:
+			continue
+		case tentative:
+			rejected, err := isRejectedTagName(ctx, tx, name)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			if !found {
+			if rejected {
+				if !skippedSeen[name] {
+					skippedSeen[name] = true
+					skipped = append(skipped, name)
+				}
 				continue
 			}
-			id = lookup.tagID
-		} else {
-			ref, _, err := findOrCreateTag(ctx, tx, name)
-			if err != nil {
-				return nil, err
+			if id, err = insertTag(ctx, tx, name, true); err != nil {
+				return nil, nil, err
 			}
-			id = ref.ID
+		default:
+			if id, err = insertTag(ctx, tx, name, false); err != nil {
+				return nil, nil, err
+			}
 		}
 		if !seen[id] {
 			seen[id] = true
 			ids = append(ids, id)
 		}
 	}
-	return ids, nil
+	return ids, skipped, nil
+}
+
+// isRejectedTagName は name が却下した名前かどうかを返す。
+func isRejectedTagName(ctx context.Context, q rowQueryer, name string) (bool, error) {
+	var n int
+	if err := q.QueryRowContext(ctx, `select count(*) from rejected_tag_names where name = ?`, name).Scan(&n); err != nil {
+		return false, fmt.Errorf("cannot read rejected tag names (%s): %w", name, err)
+	}
+	return n > 0, nil
 }
 
 // uniqueContentKeys は対象の content_key を重複なく最初に現れた順で返す（表示名の一括操作）。

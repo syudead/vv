@@ -884,6 +884,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tags/{id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 仮のタグを確定する
+         * @description 仮のタグを確定したタグにする。付いている動画・名前・シノニムは変えない。既に確定した
+         *     タグなら何も変えずに今の状態を返す（specs/031-tentative-tags/contracts/screen-api.md §2）。
+         */
+        post: operations["confirmTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 仮のタグを却下する
+         * @description 仮のタグを消し、付いていた動画から外し、元の名前を却下した名前の一覧に入れる。
+         *     確定したタグには 409 tag_not_tentative を返し、何も変えない
+         *     （specs/031-tentative-tags/contracts/screen-api.md §2）。
+         */
+        post: operations["rejectTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/rejected-names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 却下した名前を一覧する
+         * @description 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+         */
+        get: operations["listRejectedTagNames"];
+        put?: never;
+        post?: never;
+        /**
+         * 却下した名前を一覧から外す
+         * @description name を登録時と同じく整えてから照合する。一覧に無い名前・整えられない入力でも、
+         *     何も変えずに 204 を返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+         */
+        delete: operations["forgetRejectedTagName"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-tags": {
         parameters: {
             query?: never;
@@ -1419,6 +1487,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
+            tentative: boolean;
         };
         /**
          * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
@@ -1433,6 +1503,8 @@ export interface components {
             manual: boolean;
             /** @description 祖先のフォルダ名がこのタグの名前かシノニムに一致する */
             fromFolder: boolean;
+            /** @description そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す */
+            tentative: boolean;
         };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
@@ -1443,9 +1515,15 @@ export interface components {
             synonyms: string[];
             /** @description いまライブラリにある動画の本数 */
             videoCount: number;
+            /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
+            tentative: boolean;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
+        };
+        RejectedTagNameList: {
+            /** @description 却下した名前。名前の自然順 */
+            items: string[];
         };
         CreateTagRequest: {
             name: string;
@@ -2126,7 +2204,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -3593,6 +3671,98 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    confirmTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確定したタグ（tentative は偽） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 却下した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listRejectedTagNames: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 却下した名前の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RejectedTagNameList"];
+                };
+            };
+        };
+    };
+    forgetRejectedTagName: {
+        parameters: {
+            query: {
+                /** @description 外す名前 */
+                name: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 外した、またはもともと一覧に無かった */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     updateVideoTags: {

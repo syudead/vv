@@ -421,10 +421,11 @@ func TestExternalVideoTagsUseBundleKey(t *testing.T) {
 	ctx := context.Background()
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
 
-	results, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: ids["b"]}}, domain.VideoTagsAdd, []string{"X"})
+	outcome, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: ids["b"]}}, domain.VideoTagsAdd, []string{"X"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	results := outcome.Items
 	if len(results) != 1 || results[0].ContentKey != "key-b" || len(results[0].Tags) != 1 {
 		t.Fatalf("results = %+v", results)
 	}

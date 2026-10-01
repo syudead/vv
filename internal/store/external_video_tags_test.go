@@ -27,6 +27,12 @@ func tagNames(tags []domain.VideoTag) []string {
 	return out
 }
 
+// applyVideoTags は tentative を偽にした一括操作で、各動画の結果だけを返す。
+func applyVideoTags(ctx context.Context, db *DB, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error) {
+	outcome, err := db.Tags().ApplyVideoTags(ctx, videos, action, names, false)
+	return outcome.Items, err
+}
+
 func countTags(t *testing.T, db *DB) int {
 	t.Helper()
 	var count int
@@ -59,7 +65,7 @@ func TestApplyVideoTagsAddCreatesAndResolvesSynonyms(t *testing.T) {
 	}
 
 	for round := range 2 {
-		got, err := db.Tags().ApplyVideoTags(ctx, refs, domain.VideoTagsAdd, []string{" 犬 ", "ねこ", "猫"})
+		got, err := applyVideoTags(ctx, db, refs, domain.VideoTagsAdd, []string{" 犬 ", "ねこ", "猫"})
 		if err != nil {
 			t.Fatalf("round %d: %v", round, err)
 		}
@@ -93,11 +99,11 @@ func TestApplyVideoTagsRemoveIgnoresUnknownNames(t *testing.T) {
 	ctx := context.Background()
 	upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 	ref := []domain.VideoRef{{ContentKey: "key-a"}}
-	if _, err := db.Tags().ApplyVideoTags(ctx, ref, domain.VideoTagsAdd, []string{"猫", "犬"}); err != nil {
+	if _, err := applyVideoTags(ctx, db, ref, domain.VideoTagsAdd, []string{"猫", "犬"}); err != nil {
 		t.Fatal(err)
 	}
 	for round := range 2 {
-		got, err := db.Tags().ApplyVideoTags(ctx, ref, domain.VideoTagsRemove, []string{"猫", "無い名前"})
+		got, err := applyVideoTags(ctx, db, ref, domain.VideoTagsRemove, []string{"猫", "無い名前"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -120,11 +126,11 @@ func TestApplyVideoTagsReplaceKeepsFolderTags(t *testing.T) {
 	upsertFolderVideo(t, db, fixturePath("/media/Anime/1.mp4"), "k1")
 	rebuildIndexForTest(t, db)
 	ref := []domain.VideoRef{{ContentKey: "k1"}}
-	if _, err := db.Tags().ApplyVideoTags(ctx, ref, domain.VideoTagsAdd, []string{"猫", "犬", "Anime"}); err != nil {
+	if _, err := applyVideoTags(ctx, db, ref, domain.VideoTagsAdd, []string{"猫", "犬", "Anime"}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := db.Tags().ApplyVideoTags(ctx, ref, domain.VideoTagsReplace, []string{"犬", "鳥"})
+	got, err := applyVideoTags(ctx, db, ref, domain.VideoTagsReplace, []string{"犬", "鳥"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +138,7 @@ func TestApplyVideoTagsReplaceKeepsFolderTags(t *testing.T) {
 		t.Errorf("replace の後 = %v", names)
 	}
 
-	got, err = db.Tags().ApplyVideoTags(ctx, ref, domain.VideoTagsReplace, []string{})
+	got, err = applyVideoTags(ctx, db, ref, domain.VideoTagsReplace, []string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,17 +158,17 @@ func TestApplyVideoTagsChangesOnlyRequestedVideos(t *testing.T) {
 		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 2),
 	)
 	all := []domain.VideoRef{{ContentKey: "key-a"}, {ContentKey: "key-b"}, {ContentKey: "key-c"}}
-	if _, err := db.Tags().ApplyVideoTags(ctx, all, domain.VideoTagsAdd, []string{"猫", "犬"}); err != nil {
+	if _, err := applyVideoTags(ctx, db, all, domain.VideoTagsAdd, []string{"猫", "犬"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Tags().ApplyVideoTags(ctx, all[:2], domain.VideoTagsReplace, []string{"鳥", "猫"}); err != nil {
+	if _, err := applyVideoTags(ctx, db, all[:2], domain.VideoTagsReplace, []string{"鳥", "猫"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Tags().ApplyVideoTags(ctx, all[:1], domain.VideoTagsRemove, []string{"鳥"}); err != nil {
+	if _, err := applyVideoTags(ctx, db, all[:1], domain.VideoTagsRemove, []string{"鳥"}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := db.Tags().ApplyVideoTags(ctx, all, domain.VideoTagsAdd, []string{"猫"})
+	got, err := applyVideoTags(ctx, db, all, domain.VideoTagsAdd, []string{"猫"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +200,7 @@ func TestApplyVideoTagsFailsWholeRequestOnMissingVideo(t *testing.T) {
 		{"登録外の動画の id", []domain.VideoRef{{ContentKey: "key-a"}, {ID: outside[fixturePath("/elsewhere/b.mp4")]}}, 1},
 		{"形の誤り", []domain.VideoRef{{ContentKey: "key-a"}, {ContentKey: "key-a", Path: fixturePath("/media/a.mp4")}}, 1},
 	} {
-		_, err := db.Tags().ApplyVideoTags(ctx, tc.refs, domain.VideoTagsAdd, []string{"猫"})
+		_, err := applyVideoTags(ctx, db, tc.refs, domain.VideoTagsAdd, []string{"猫"})
 		var notFound *domain.VideoRefNotFoundError
 		if !errors.As(err, &notFound) || notFound.Index != tc.index || !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("%s: err = %v, want index %d", tc.name, err, tc.index)
@@ -225,7 +231,7 @@ func TestApplyVideoTagsRejectsInvalidNamesWithIndex(t *testing.T) {
 		{[]string{"a\tb"}, 0, domain.TagNameControlCharacters},
 		{[]string{"猫", "犬", string(long)}, 2, domain.TagNameTooLong},
 	} {
-		_, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ContentKey: "key-a"}}, domain.VideoTagsReplace, tc.names)
+		_, err := applyVideoTags(ctx, db, []domain.VideoRef{{ContentKey: "key-a"}}, domain.VideoTagsReplace, tc.names)
 		var at *domain.TagNameAtError
 		var invalid *domain.InvalidTagNameError
 		if !errors.As(err, &at) || at.Index != tc.index || !errors.As(err, &invalid) || invalid.Problem != tc.problem {

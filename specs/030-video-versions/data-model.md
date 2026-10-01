@@ -19,15 +19,15 @@
 
 | 移行 | 足すもの | 単位 |
 | --- | --- | --- |
-| `00022_video_versions.sql` | `video_bundles`・`video_bundle_members`・`video_version_dismissals` | 集まりの保存と利用者データの鍵の引き直し |
-| `00023_video_successions.sql` | `video_successions` | スキャン時の同じパスの中身の引き継ぎ |
-| `00024_video_fingerprints.sql` | `video_fingerprints`、`jobs.kind` の `fingerprint` と job の積み込み | シーク用スプライトから映像の指紋を作る取り込みの段階 |
-| `00025_video_version_candidates.sql` | `video_version_candidates` | 候補の算出と候補の一覧・却下の API |
+| `00023_video_versions.sql` | `video_bundles`・`video_bundle_members`・`video_version_dismissals` | 集まりの保存と利用者データの鍵の引き直し |
+| `00024_video_successions.sql` | `video_successions` | スキャン時の同じパスの中身の引き継ぎ |
+| `00025_video_fingerprints.sql` | `video_fingerprints`、`jobs.kind` の `fingerprint` と job の積み込み | シーク用スプライトから映像の指紋を作る取り込みの段階 |
+| `00026_video_version_candidates.sql` | `video_version_candidates` | 候補の算出と候補の一覧・却下の API |
 
 各移行の Down は、その移行が足したものだけを戻す。表の定義は次のとおり（移行ごとに見出しの注釈で分ける）。
 
 ```sql
--- 00022_video_versions.sql
+-- 00023_video_versions.sql
 -- 同じ動画の別バージョンの集まり（specs/030-video-versions/research.md R-1）。作り直せない
 -- 利用者データで、videos への外部キーを張らない。集まりのタグ・再生位置・公開の設定は
 -- video_tags・playback_progress・public_videos に user_key を鍵として置く。
@@ -59,7 +59,7 @@ create table video_version_dismissals (
 
 -- 以下は索引。内容の参照が無くなるときに消し、走査と取り込みで作り直せる。
 
--- 00023_video_successions.sql
+-- 00024_video_successions.sql
 -- 同じパスの中身が変わった後継の候補（R-5）。記録した走査が閉じ、新しい中身の解析が終わったときに
 -- 判定して消す。
 create table video_successions (
@@ -71,7 +71,7 @@ create table video_successions (
     created_at      integer not null
 ) without rowid;
 
--- 00024_video_fingerprints.sql
+-- 00025_video_fingerprints.sql
 -- 映像の指紋（R-6）。hashes はコマごとの 9 バイト（印 1 バイト + ハッシュ 8 バイト big endian）。
 create table video_fingerprints (
     content_key text    primary key,
@@ -81,7 +81,7 @@ create table video_fingerprints (
     updated_at  integer not null
 ) without rowid;
 
--- 00025_video_version_candidates.sql
+-- 00026_video_version_candidates.sql
 -- 「同じ動画かもしれない」候補（R-7）。key_a < key_b。
 create table video_version_candidates (
     key_a      text    not null,
@@ -93,7 +93,7 @@ create table video_version_candidates (
 ) without rowid;
 ```
 
-`00024_video_fingerprints.sql` は続けて、`00014` と同じ手順で `jobs` を作り直し、`kind` の検査に
+`00025_video_fingerprints.sql` は続けて、`00014` と同じ手順で `jobs` を作り直し、`kind` の検査に
 `'fingerprint'` を足す。完成したスプライトの動画（`seek_thumbnail_state = 'done'` で登録の所在がある）に
 `fingerprint` の job を積む（`00015` の積み方と同じ）。その Down は job を消して `jobs` を戻し、
 `video_fingerprints` を落とす。

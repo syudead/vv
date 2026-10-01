@@ -1474,6 +1474,80 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/tags/{id}/confirm:
+    post:
+      operationId: confirmTag
+      summary: 仮のタグを確定する
+      description: |
+        仮のタグを確定したタグにする。付いている動画・名前・シノニムは変えない。既に確定した
+        タグなら何も変えずに今の状態を返す（specs/031-tentative-tags/contracts/screen-api.md §2）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "200":
+          description: 確定したタグ（tentative は偽）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tags/{id}/reject:
+    post:
+      operationId: rejectTag
+      summary: 仮のタグを却下する
+      description: |
+        仮のタグを消し、付いていた動画から外し、元の名前を却下した名前の一覧に入れる。
+        確定したタグには 409 tag_not_tentative を返し、何も変えない
+        （specs/031-tentative-tags/contracts/screen-api.md §2）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "204":
+          description: 却下した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tags/rejected-names:
+    get:
+      operationId: listRejectedTagNames
+      summary: 却下した名前を一覧する
+      description: 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+      responses:
+        "200":
+          description: 却下した名前の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RejectedTagNameList"
+    delete:
+      operationId: forgetRejectedTagName
+      summary: 却下した名前を一覧から外す
+      description: |
+        name を登録時と同じく整えてから照合する。一覧に無い名前・整えられない入力でも、
+        何も変えずに 204 を返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: 外す名前
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 外した、またはもともと一覧に無かった
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/video-tags:
     post:
       operationId: updateVideoTags
@@ -2308,7 +2382,7 @@ components:
 
     TagRef:
       type: object
-      required: [id, name]
+      required: [id, name, tentative]
       additionalProperties: false
       description: 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
       properties:
@@ -2317,10 +2391,13 @@ components:
           format: int64
         name:
           type: string
+        tentative:
+          type: boolean
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
 
     VideoTag:
       type: object
-      required: [id, name, manual, fromFolder]
+      required: [id, name, manual, fromFolder, tentative]
       additionalProperties: false
       description: |
         動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
@@ -2338,10 +2415,13 @@ components:
         fromFolder:
           type: boolean
           description: 祖先のフォルダ名がこのタグの名前かシノニムに一致する
+        tentative:
+          type: boolean
+          description: そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount]
+      required: [id, name, synonyms, videoCount, tentative]
       additionalProperties: false
       description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
       properties:
@@ -2358,6 +2438,9 @@ components:
         videoCount:
           type: integer
           description: いまライブラリにある動画の本数
+        tentative:
+          type: boolean
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
 
     TagList:
       type: object
@@ -2368,6 +2451,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+
+    RejectedTagNameList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: 却下した名前。名前の自然順
+          items:
+            type: string
 
     CreateTagRequest:
       type: object
@@ -3552,6 +3646,7 @@ components:
             - tag_not_found
             - tag_name_taken
             - tag_merge_required
+            - tag_not_tentative
             - unauthenticated
             - invalid_credentials
             - login_throttled

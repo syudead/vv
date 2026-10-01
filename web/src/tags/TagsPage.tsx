@@ -1,13 +1,24 @@
-import { AlertCircle, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertCircle, CircleDashed, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { RequestFailed } from "../api/client";
 import { compareTagRefs } from "../api/tagOrder";
 import {
+  confirmTag,
   createTag,
   currentTags,
   deleteTag,
+  forgetRejectedTagName,
+  listRejectedTagNames,
   refreshTags,
+  rejectTag,
   renameTag,
   subscribeTags,
   type Tag,
@@ -16,10 +27,13 @@ import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
+import Tooltip from "../ui/Tooltip";
 import { EmptyState } from "../videoList/states";
 import CreateTagRow from "./CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
 import MergeTagDialog from "./MergeTagDialog";
+import RejectedNames from "./RejectedNames";
+import RejectTagDialog from "./RejectTagDialog";
 import SynonymsDialog from "./SynonymsDialog";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
@@ -27,6 +41,10 @@ import TagSearchBox from "./TagSearchBox";
 
 function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";
+}
+
+function isTagNotTentative(error: unknown): boolean {
+  return error instanceof RequestFailed && error.code === "tag_not_tentative";
 }
 
 type FocusTarget = "rename" | "synonyms" | "name" | "menu";
@@ -41,12 +59,18 @@ type FocusTarget = "rename" | "synonyms" | "name" | "menu";
  * `renameTag`・`deleteTag` 自体が共有の保持をバックグラウンドで取り直すので、
  * 二重の取得にはならない）。タグがもう無いとき（`tag_not_found`）だけ、
  * ほかのタグも変わっているかもしれないので `reload` で取り直す。
+ *
+ * 仮のタグ（specs/031-tentative-tags/ui-design.md「Tag management page」）:
+ * 「Tentative only」の絞り込み（この画面の状態で URL には載せない）、仮の行の
+ * 確定・却下、一覧の下の却下した名前の一覧と取り外しも持つ。却下した名前の
+ * 一覧はこの画面だけが読むので、共有の保持ではなくここで取る（research.md R-8）。
  */
 export default function TagsPage() {
   const toast = useToast();
   const [tags, setTags] = useState<Tag[] | undefined>(currentTags());
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [search, setSearch] = useState("");
+  const [tentativeOnly, setTentativeOnly] = useState(false);
 
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
@@ -62,9 +86,25 @@ export default function TagsPage() {
 
   const [mergingTag, setMergingTag] = useState<Tag | null>(null);
   const [synonymsTagId, setSynonymsTagId] = useState<number | null>(null);
+  /** シノニムの窓を開いたときの並び。閉じたときに行が外れていればここから次の行を探す。 */
+  const synonymsOrderRef = useRef<readonly Tag[]>([]);
+
+  const [confirming, setConfirming] = useState<ReadonlySet<number>>(new Set());
+  const confirmingRef = useRef(new Set<number>());
+
+  const [rejectingTag, setRejectingTag] = useState<Tag | null>(null);
+  const [rejectPending, setRejectPending] = useState(false);
+  const [rejectError, setRejectError] = useState<UiText | null>(null);
+
+  const [rejectedNames, setRejectedNames] = useState<string[] | undefined>(undefined);
+  const [rejectedError, setRejectedError] = useState<UiText | null>(null);
+  const rejectedGeneration = useRef(0);
+  /** 取り直しの応答を待っている世代。待っていなければ null。 */
+  const rejectedInFlight = useRef<number | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
+  const tentativeButtonRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
@@ -78,17 +118,31 @@ export default function TagsPage() {
   }, []);
 
   /**
-   * focusRow はタグの行のフォーカス先へ移す。id が無ければ「新しいタグ」へ
-   * 移す。「新しいタグ」は作成中に disabled になるので、`creating` を false に
-   * 戻す更新が DOM に反映されたあとで移す必要がある（ほかの行への移動と同じく
-   * setTimeout(0) で1呼吸置く。settings/SettingsPage.tsx の focusFolderAction
-   * と同じ）。
+   * filtersRef は今描いている検索と「Tentative only」である。要求の応答を
+   * 待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
+   * 閉じ込めた（押した時点の）値ではなくこれで決める。
    */
-  const focusRow = useCallback((id: number | undefined, part: FocusTarget) => {
-    if (id === undefined) {
-      setTimeout(() => createButtonRef.current?.focus(), 0);
-      return;
-    }
+  const filtersRef = useRef({ query: "", tentativeOnly: false });
+
+  /**
+   * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
+   * 「新しいタグ」、「Tentative only」を押している間はそのボタン（次の操作が
+   * 「絞り込みを外す」だから。specs/031-tentative-tags/ui-design.md「Toolbar」）。
+   */
+  function fallbackFocus() {
+    (filtersRef.current.tentativeOnly
+      ? tentativeButtonRef
+      : createButtonRef
+    ).current?.focus();
+  }
+
+  /**
+   * focusRow はタグの行のフォーカス先へ移す。その行がもう無ければ
+   * `fallbackFocus` へ移す。行の差し替えが DOM に反映されたあとで移す必要が
+   * あるので setTimeout(0) で1呼吸置く（settings/SettingsPage.tsx の
+   * focusFolderAction と同じ）。
+   */
+  function focusRow(id: number, part: FocusTarget) {
     setTimeout(() => {
       const refs = rowRefs.current.get(id);
       const target =
@@ -99,26 +153,81 @@ export default function TagsPage() {
             : part === "menu"
               ? refs?.menuButton
               : refs?.nameLink;
-      if (target === null || target === undefined) createButtonRef.current?.focus();
+      if (target === null || target === undefined) fallbackFocus();
       else target.focus();
     }, 0);
+  }
+
+  /**
+   * focusAfterRemoval は、行が一覧から消えた（削除・却下、tag_not_found の
+   * 取り直しで消えた、または「Tentative only」の絞り込みから外れた）あとの
+   * フォーカス先を決める。次の行の「改名」、無ければ前の行、1つも無ければ
+   * `fallbackFocus`（ui-design.md「Merge and delete」、031 の「Toolbar」）。
+   * order は消える前の（絞り込み後の）並びで、`alsoGone` は同時に一覧から
+   * 外れるほかの行（統合先が確定になって絞り込みから外れるときなど）である。
+   *
+   * 候補は、移す時点でまだ描かれていて押せる「改名」に限る。ほかの行の確定が
+   * 並行していると、order を控えたあとにその行も外れていたり、送信中で
+   * 「改名」が disabled だったりするので、それを飛ばして次の行へ進む。
+   */
+  function focusAfterRemoval(
+    order: readonly Tag[],
+    removedId: number,
+    alsoGone: ReadonlySet<number> = new Set(),
+  ) {
+    const index = order.findIndex((tag) => tag.id === removedId);
+    const stays = (tag: Tag) => tag.id !== removedId && !alsoGone.has(tag.id);
+    const candidates = [
+      ...order.slice(index + 1).filter(stays),
+      ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
+    ];
+    setTimeout(() => {
+      const target = candidates
+        .map((tag) => rowRefs.current.get(tag.id)?.renameButton)
+        .find((button) => button?.isConnected === true && !button.disabled);
+      if (target === null || target === undefined) fallbackFocus();
+      else target.focus();
+    }, 0);
+  }
+
+  /**
+   * reloadRejectedNames は却下した名前の一覧を取り直す。却下・作成・改名・
+   * シノニムの追加のあと（どれも一覧を変えうる。要件 15、受け入れ条件 14）と、
+   * 画面を開いたときに呼ぶ。追い越された古い取得の結果は捨てる。取り直しの
+   * 失敗は、最初の読み込みの失敗と同じ見え方（件数を出さず、「Couldn't load
+   * the rejected names」と Retry。ui-design.md「Rejected names」）にする。
+   * 古い一覧を黙って残すと、却下や作成で変わったはずの並びを正しいものとして
+   * 見せ続けてしまう。
+   */
+  const reloadRejectedNames = useCallback(() => {
+    rejectedGeneration.current += 1;
+    const generation = rejectedGeneration.current;
+    rejectedInFlight.current = generation;
+    setRejectedError(null);
+    listRejectedTagNames()
+      .then((names) => {
+        if (generation !== rejectedGeneration.current) return;
+        rejectedInFlight.current = null;
+        setRejectedNames(names);
+      })
+      .catch((failure: unknown) => {
+        if (generation !== rejectedGeneration.current) return;
+        rejectedInFlight.current = null;
+        setRejectedNames(undefined);
+        setRejectedError(errorText(failure));
+      });
   }, []);
 
   /**
-   * focusAfterRemoval は、行が一覧から消えた（削除、または tag_not_found の
-   * 取り直しで消えた）あとのフォーカス先を決める。次の行の「改名」、無ければ
-   * 前の行、1つも無ければ「新しいタグ」（ui-design.md「Merge and delete」）。
-   * order は消える前の（絞り込み後の）並びである。
+   * forgetRejectedName は × の取り外しである。取り外しの前から待っている
+   * 取り直しがあれば、その応答は取り外す前の並び（外した名前を含む）かも
+   * しれないので捨て、取り外しのあとで取り直す。
    */
-  const focusAfterRemoval = useCallback(
-    (order: readonly Tag[], removedId: number) => {
-      const index = order.findIndex((tag) => tag.id === removedId);
-      const remaining = order.filter((tag) => tag.id !== removedId);
-      const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
-      focusRow(next?.id, "rename");
-    },
-    [focusRow],
-  );
+  async function forgetRejectedName(name: string) {
+    await forgetRejectedTagName(name);
+    setRejectedNames((current) => current?.filter((item) => item !== name));
+    if (rejectedInFlight.current !== null) reloadRejectedNames();
+  }
 
   const reload = useCallback(() => {
     setLoadError(null);
@@ -143,6 +252,10 @@ export default function TagsPage() {
   }, []);
 
   useEffect(() => {
+    reloadRejectedNames();
+  }, [reloadRejectedNames]);
+
+  useEffect(() => {
     let alive = true;
     void reload();
     const unsubscribe = subscribeTags((loaded) => {
@@ -163,14 +276,23 @@ export default function TagsPage() {
   }, [tags]);
 
   const normalizedQuery = search.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    if (normalizedQuery === "") return sorted;
-    return sorted.filter(
-      (tag) =>
-        tag.name.toLowerCase().includes(normalizedQuery) ||
-        tag.synonyms.some((synonym) => synonym.toLowerCase().includes(normalizedQuery)),
-    );
-  }, [sorted, normalizedQuery]);
+  const filtered = useMemo(
+    () => sorted.filter((tag) => matchesFilters(tag, normalizedQuery, tentativeOnly)),
+    [sorted, normalizedQuery, tentativeOnly],
+  );
+
+  useLayoutEffect(() => {
+    filtersRef.current = { query: normalizedQuery, tentativeOnly };
+  }, [normalizedQuery, tentativeOnly]);
+
+  /**
+   * shown は、その1件が今の検索と「Tentative only」の絞り込みで一覧に出るかで
+   * ある。要求の応答のあとで呼ぶので、`filtersRef` の今の値で決める。
+   */
+  function shown(tag: Tag): boolean {
+    const { query, tentativeOnly: onlyTentative } = filtersRef.current;
+    return matchesFilters(tag, query, onlyTentative);
+  }
 
   /**
    * visibleRows は実際に並べる行である。改名中の行は、検索を変えて一致しなく
@@ -194,7 +316,7 @@ export default function TagsPage() {
   const countText =
     tags === undefined
       ? t.tags.loading
-      : searching
+      : searching || tentativeOnly
         ? t.tags.filteredCount(filtered.length, total)
         : t.tags.count(total);
 
@@ -214,6 +336,43 @@ export default function TagsPage() {
     searchInputRef.current?.focus();
   }
 
+  /**
+   * toggleTentativeOnly は「Tentative only」を押す・外す。外した結果タグが
+   * 1つも無ければボタンは disabled になるので、フォーカスを「新しいタグ」へ
+   * 移す（031 の ui-design.md「Toolbar」）。
+   */
+  function toggleTentativeOnly() {
+    if (tentativeOnly && total === 0) {
+      setTimeout(() => createButtonRef.current?.focus(), 0);
+    }
+    setTentativeOnly((value) => !value);
+  }
+
+  /**
+   * showAllFromTentative は「No tentative tags」の「Show all tags」である。
+   * 絞り込みを外し、「Tentative only」へ（タグが 0 なら「新しいタグ」へ）移す。
+   */
+  function showAllFromTentative() {
+    setTentativeOnly(false);
+    setTimeout(
+      () => (total === 0 ? createButtonRef : tentativeButtonRef).current?.focus(),
+      0,
+    );
+  }
+
+  /**
+   * showAllFromTentativeSearch は「No tentative tags match」の「Show all tags」
+   * である。絞り込みと検索の両方を外し、検索の入力へ移す。
+   */
+  function showAllFromTentativeSearch() {
+    setTentativeOnly(false);
+    setSearch("");
+    setTimeout(
+      () => (total === 0 ? createButtonRef : searchInputRef).current?.focus(),
+      0,
+    );
+  }
+
   async function submitCreate(name: string) {
     setCreateError(null);
     setCreatePending(true);
@@ -221,6 +380,7 @@ export default function TagsPage() {
       const created = await createTag(name);
       setTags((current) => (current === undefined ? [created] : [...current, created]));
       setCreating(false);
+      reloadRejectedNames();
       focusRow(created.id, "name");
     } catch (failure) {
       setCreateError(tagFieldError(failure, { submitted: name }));
@@ -232,16 +392,20 @@ export default function TagsPage() {
   async function submitRename(tag: Tag, name: string) {
     setRenameError(null);
     setRenamePending(true);
+    const order = visibleRows;
     try {
       const updated = await renameTag(tag.id, name);
       setTags((current) =>
         current?.map((item) => (item.id === updated.id ? updated : item)),
       );
       setRenamingId(null);
-      focusRow(tag.id, "rename");
+      reloadRejectedNames();
+      // 改名で確定になった仮のタグは「Tentative only」から外れる（031 の
+      // ui-design.md「Toolbar」）。検索に一致しなくなったときも同じ扱い。
+      if (shown(updated)) focusRow(tag.id, "rename");
+      else focusAfterRemoval(order, tag.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
-        const order = visibleRows;
         setRenamingId(null);
         toast(t.tags.gone);
         await reload();
@@ -280,6 +444,87 @@ export default function TagsPage() {
     }
   }
 
+  /**
+   * submitConfirm は仮の行の「確定する」を扱う（031 の ui-design.md「Confirm」）。
+   * 送信中の行は二度押しを無視する（`confirmingRef` は同じ呼吸の連打も
+   * 止める）。成功したら行を差し替え、同じ行の「改名」へ、絞り込みから
+   * 外れたら次の行の「改名」へフォーカスを移す。
+   */
+  async function submitConfirm(tag: Tag) {
+    if (confirmingRef.current.has(tag.id)) return;
+    confirmingRef.current.add(tag.id);
+    setConfirming(new Set(confirmingRef.current));
+    const order = visibleRows;
+    try {
+      const updated = await confirmTag(tag.id);
+      setTags((current) =>
+        current?.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      toast(t.tags.confirmed(updated.name));
+      if (shown(updated)) focusRow(updated.id, "rename");
+      else focusAfterRemoval(order, updated.id);
+    } catch (failure) {
+      if (isTagNotFound(failure)) {
+        toast(t.tags.gone);
+        await reload();
+        focusAfterRemoval(order, tag.id);
+        return;
+      }
+      // 行の中に失敗の1行を置く場所が無いので、トーストで伝える。
+      toast(errorText(failure));
+    } finally {
+      confirmingRef.current.delete(tag.id);
+      setConfirming(new Set(confirmingRef.current));
+    }
+  }
+
+  /** performReject は却下の窓の「Reject」である（031 の ui-design.md「Reject」）。 */
+  async function performReject() {
+    if (rejectingTag === null) return;
+    const target = rejectingTag;
+    const order = visibleRows;
+    setRejectError(null);
+    setRejectPending(true);
+    try {
+      await rejectTag(target.id);
+      setTags((current) => current?.filter((item) => item.id !== target.id));
+      setRejectingTag(null);
+      toast(t.tags.rejected(target.name));
+      reloadRejectedNames();
+      focusAfterRemoval(order, target.id);
+    } catch (failure) {
+      if (isTagNotFound(failure)) {
+        setRejectingTag(null);
+        toast(t.tags.gone);
+        await reload();
+        focusAfterRemoval(order, target.id);
+        return;
+      }
+      if (isTagNotTentative(failure)) {
+        // 別のタブや API で先に確定された（Edge Case「操作の競合」）。
+        // 行は確定したタグとして残り、「Tentative only」中は一覧から外れる。
+        setRejectingTag(null);
+        toast(t.tags.alreadyConfirmed);
+        await reload();
+        if (filtersRef.current.tentativeOnly) focusAfterRemoval(order, target.id);
+        else focusRow(target.id, "menu");
+        return;
+      }
+      setRejectError(errorText(failure));
+    } finally {
+      setRejectPending(false);
+    }
+  }
+
+  /** cancelReject は却下の窓を何も変えずに閉じ、その行の「その他の操作」へ戻す。 */
+  function cancelReject() {
+    if (rejectPending || rejectingTag === null) return;
+    const target = rejectingTag;
+    setRejectingTag(null);
+    setRejectError(null);
+    focusRow(target.id, "menu");
+  }
+
   function cancelDelete() {
     if (deletePending || deletingTag === null) return;
     const target = deletingTag;
@@ -311,6 +556,7 @@ export default function TagsPage() {
   function performMerge(merged: Tag) {
     const source = mergingTag;
     if (source === null) return;
+    const order = visibleRows;
     setTags((current) =>
       current
         ?.filter((item) => item.id !== source.id)
@@ -318,7 +564,11 @@ export default function TagsPage() {
     );
     setMergingTag(null);
     toast(t.tags.merged(source.name, merged.name));
-    focusRow(merged.id, "name");
+    // 統合先は確定になるので、「Tentative only」を押している間は統合元・
+    // 統合先のどちらも一覧に無い。そのときは統合元の位置から次の行へ
+    // （031 の ui-design.md「Merge」）。
+    if (shown(merged)) focusRow(merged.id, "name");
+    else focusAfterRemoval(order, source.id, new Set([merged.id]));
   }
 
   /**
@@ -338,13 +588,24 @@ export default function TagsPage() {
   /**
    * cancelSynonyms はシノニムの窓を閉じる。「シノニム」はその行に直接置いた
    * ボタンなので（メニューの項目ではない）、その行の「シノニム」へ明示的に
-   * 戻す。
+   * 戻す。シノニムの追加で確定になり「Tentative only」から外れていれば、
+   * 窓を開いたときの並びから次の行の「改名」へ移す（031 の ui-design.md
+   * 「Toolbar」。窓を開いている間はフォーカスを窓の中に残す）。
    */
   function cancelSynonyms() {
     if (synonymsTagId === null) return;
     const id = synonymsTagId;
     setSynonymsTagId(null);
-    focusRow(id, "synonyms");
+    if (filtered.some((tag) => tag.id === id)) {
+      focusRow(id, "synonyms");
+      return;
+    }
+    const visibleIds = new Set(filtered.map((tag) => tag.id));
+    const order = synonymsOrderRef.current;
+    const gone = new Set(
+      order.filter((tag) => !visibleIds.has(tag.id)).map((tag) => tag.id),
+    );
+    focusAfterRemoval(order, id, gone);
   }
 
   /**
@@ -368,6 +629,8 @@ export default function TagsPage() {
           : current.filter((item) => item.id !== removedId);
       return withoutRemoved.map((item) => (item.id === updated.id ? updated : item));
     });
+    // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
+    reloadRejectedNames();
   }
 
   /**
@@ -400,9 +663,13 @@ export default function TagsPage() {
     void reload().then(() => focusAfterRemoval(order, id));
   }
 
-  const showEmptyTags = tags !== undefined && tags.length === 0 && !creating;
-  const showNoMatch =
-    tags !== undefined && tags.length > 0 && visibleRows.length === 0 && !creating;
+  const showEmptyTags =
+    tags !== undefined && tags.length === 0 && !creating && !tentativeOnly;
+  const nothingShown =
+    tags !== undefined && visibleRows.length === 0 && !creating && !showEmptyTags;
+  const showNoTentative = nothingShown && tentativeOnly && !searching;
+  const showNoTentativeMatch = nothingShown && tentativeOnly && searching;
+  const showNoMatch = nothingShown && !tentativeOnly;
   const showRows =
     tags !== undefined && (visibleRows.length > 0 || creating) && !showEmptyTags;
 
@@ -424,16 +691,37 @@ export default function TagsPage() {
           disabled={tags !== undefined && tags.length === 0}
           className="w-full min-w-0 sm:max-w-sm sm:flex-1"
         />
-        <Button
-          ref={createButtonRef}
-          variant="primary"
-          className="w-full sm:w-auto"
-          onClick={openCreate}
-          disabled={tags === undefined || creating || createPending || renamePending}
-        >
-          <Plus />
-          {t.tags.newTag}
-        </Button>
+        {/*
+          sm 未満は「Tentative only」と「新しいタグ」を2行目に半分ずつ、sm 以上は
+          検索の右に「Tentative only」、右端に「新しいタグ」（031 の ui-design.md
+          「Toolbar」）。
+        */}
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:items-center sm:justify-between sm:gap-3">
+          <Tooltip content={t.tags.tentativeOnlyHint}>
+            <Button
+              ref={tentativeButtonRef}
+              aria-pressed={tentativeOnly}
+              className="w-full aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link sm:w-auto"
+              onClick={toggleTentativeOnly}
+              // 押している間は、タグが 0 になっても disabled にしない
+              // （フォーカスの行き先で、絞り込みを外す唯一の手でもある）。
+              disabled={tags === undefined || (!tentativeOnly && tags.length === 0)}
+            >
+              <CircleDashed />
+              {t.tags.tentativeOnly}
+            </Button>
+          </Tooltip>
+          <Button
+            ref={createButtonRef}
+            variant="primary"
+            className="w-full sm:w-auto"
+            onClick={openCreate}
+            disabled={tags === undefined || creating || createPending || renamePending}
+          >
+            <Plus />
+            {t.tags.newTag}
+          </Button>
+        </div>
       </div>
 
       <p
@@ -476,6 +764,25 @@ export default function TagsPage() {
           />
         )}
 
+        {showNoTentative && (
+          <EmptyState
+            icon={CircleDashed}
+            title={t.tags.noTentative.title}
+            description={t.tags.noTentative.description}
+            action={<Button onClick={showAllFromTentative}>{t.tags.clearSearch}</Button>}
+          />
+        )}
+
+        {showNoTentativeMatch && (
+          <EmptyState
+            icon={SearchX}
+            title={t.tags.noTentativeMatches(search)}
+            action={
+              <Button onClick={showAllFromTentativeSearch}>{t.tags.clearSearch}</Button>
+            }
+          />
+        )}
+
         {showNoMatch && (
           <EmptyState
             icon={SearchX}
@@ -497,7 +804,10 @@ export default function TagsPage() {
                   if (createPending) return;
                   setCreating(false);
                   setCreateError(null);
-                  focusRow(undefined, "name");
+                  // 作成を始めた「新しいタグ」へ戻す（「Tentative only」を
+                  // 押していても。そちらは行が外れたときの行き先である）。
+                  // creating が false になって押せるようになってから移す。
+                  setTimeout(() => createButtonRef.current?.focus(), 0);
                 }}
                 onSubmit={(name) => void submitCreate(name)}
                 onDraftChange={() => setCreateError(null)}
@@ -528,11 +838,20 @@ export default function TagsPage() {
                   focusRow(tag.id, "rename");
                 }}
                 onSubmitRename={(target, name) => void submitRename(target, name)}
-                onOpenSynonyms={(target) => setSynonymsTagId(target.id)}
+                onOpenSynonyms={(target) => {
+                  synonymsOrderRef.current = visibleRows;
+                  setSynonymsTagId(target.id);
+                }}
                 onOpenMerge={(target) => setMergingTag(target)}
                 onDelete={(target) => {
                   setDeleteError(null);
                   setDeletingTag(target);
+                }}
+                confirming={confirming.has(tag.id)}
+                onConfirm={(target) => void submitConfirm(target)}
+                onReject={(target) => {
+                  setRejectError(null);
+                  setRejectingTag(target);
                 }}
                 onDraftChange={() => setRenameError(null)}
               />
@@ -541,6 +860,20 @@ export default function TagsPage() {
         )}
       </div>
 
+      {/*
+        却下した名前は、タグの一覧をまだ一度も取れていない間（読み込み中・
+        読み込み失敗）は置かない。「タグはまだありません」のときは置く
+        （031 の ui-design.md「Rejected names」）。
+      */}
+      {tags !== undefined && (
+        <RejectedNames
+          names={rejectedNames}
+          error={rejectedError}
+          onRetry={reloadRejectedNames}
+          onForget={forgetRejectedName}
+        />
+      )}
+
       {deletingTag !== null && (
         <DeleteTagDialog
           tag={deletingTag}
@@ -548,6 +881,16 @@ export default function TagsPage() {
           error={deleteError}
           onClose={cancelDelete}
           onDelete={() => void performDelete()}
+        />
+      )}
+
+      {rejectingTag !== null && (
+        <RejectTagDialog
+          tag={rejectingTag}
+          pending={rejectPending}
+          error={rejectError}
+          onClose={cancelReject}
+          onReject={() => void performReject()}
         />
       )}
 
@@ -579,5 +922,22 @@ export default function TagsPage() {
           );
         })()}
     </div>
+  );
+}
+
+/**
+ * matchesFilters は、タグが検索（名前かシノニムの部分一致、大文字小文字を
+ * 区別しない）と「Tentative only」の両方に一致するかである。
+ */
+function matchesFilters(
+  tag: Tag,
+  normalizedQuery: string,
+  tentativeOnly: boolean,
+): boolean {
+  if (tentativeOnly && !tag.tentative) return false;
+  if (normalizedQuery === "") return true;
+  return (
+    tag.name.toLowerCase().includes(normalizedQuery) ||
+    tag.synonyms.some((synonym) => synonym.toLowerCase().includes(normalizedQuery))
   );
 }

@@ -22,6 +22,7 @@ import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
+import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
 /**
@@ -270,23 +271,45 @@ export default function VideoTags({
               <Link
                 to={`/?tag=${String(tag.id)}`}
                 title={tag.name}
-                aria-label={t.player.tags.filterByFromFolder(tag.name)}
+                aria-label={
+                  tag.tentative
+                    ? t.player.tags.filterByFromFolderTentative(tag.name)
+                    : t.player.tags.filterByFromFolder(tag.name)
+                }
                 className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-dashed border-border-strong px-2 text-xs text-fg hover:border-solid hover:text-fg"
               >
                 <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />
                 <span className="min-w-0 truncate">{tag.name}</span>
+                {tag.tentative && <TentativeMark />}
               </Link>
             ) : (
               <span
                 title={tag.name}
                 className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
               >
+                {/* 仮のタグは名前の後ろに目印を置く。名前が省略されても目印は
+                    残るよう、名前だけを truncate にする（031 の ui-design.md
+                    「Tentative mark」「Video page」）。 */}
                 <Link
                   to={`/?tag=${String(tag.id)}`}
-                  aria-label={t.player.tags.filterBy(tag.name)}
-                  className="min-w-0 truncate hover:text-link"
+                  aria-label={
+                    tag.tentative
+                      ? t.player.tags.filterByTentative(tag.name)
+                      : t.player.tags.filterBy(tag.name)
+                  }
+                  className={cn(
+                    "min-w-0 hover:text-link",
+                    tag.tentative ? "inline-flex items-center gap-1" : "truncate",
+                  )}
                 >
-                  {tag.name}
+                  {tag.tentative ? (
+                    <>
+                      <span className="min-w-0 truncate">{tag.name}</span>
+                      <TentativeMark />
+                    </>
+                  ) : (
+                    tag.name
+                  )}
                 </Link>
                 <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
                 <button

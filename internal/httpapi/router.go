@@ -97,8 +97,15 @@ type Tags interface {
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
 	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md
 	// R-7）。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
-	// *domain.TagNameAtError で失敗し、何も反映しない。
-	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error)
+	// *domain.TagNameAtError で失敗し、何も反映しない。tentative が真なら無い名前を仮のタグとして
+	// 作り、却下した名前を飛ばす（specs/031-tentative-tags/data-model.md §3）。
+	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool) (domain.VideoTagsOutcome, error)
+
+	// 仮のタグの確定・却下と、却下した名前（specs/031-tentative-tags/data-model.md §5）。
+	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
+	RejectTag(ctx context.Context, id int64) (string, error)
+	ListRejectedTagNames(ctx context.Context) ([]string, error)
+	ForgetRejectedTagName(ctx context.Context, name string) error
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。internal/media の
@@ -513,8 +520,10 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
 		}
 	case http.MethodPatch:
+		// /api/tags/rejected-names は {id} の段ではなく却下した名前の経路で、PATCH を持たない
+		// （specs/031-tentative-tags/contracts/screen-api.md §3）。
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
-			return id != "" && !strings.Contains(id, "/")
+			return id != "" && id != "rejected-names" && !strings.Contains(id, "/")
 		}
 	}
 	return false
@@ -586,6 +595,7 @@ const (
 	codeTagNotFound                 = gen.ErrorCodeTagNotFound
 	codeTagNameTaken                = gen.ErrorCodeTagNameTaken
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
+	codeTagNotTentative             = gen.ErrorCodeTagNotTentative
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

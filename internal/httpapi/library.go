@@ -206,7 +206,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		out.LastPlayedAt = &played
 	}
 	for _, tag := range unionMemberTags(group.Members, l.tags) {
-		out.Tags = append(out.Tags, gen.VideoTag{Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder})
+		out.Tags = append(out.Tags, toAPIVideoTag(tag))
 	}
 	return out, true
 }

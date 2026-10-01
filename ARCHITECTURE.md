@@ -352,7 +352,8 @@ thumbnails and previews, the folder index (`folder_groups`, `folder_group_member
 same-path successions (`video_successions`), the visual fingerprints (`video_fingerprints`), and the
 version candidates (`video_version_candidates`) are
 rebuildable from registered media folders by scanning and processing the files again.
-`playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
+`playback_progress`, the tag tables (`tags` including its `tentative` flag, `tag_names`,
+`video_tags`, and `rejected_tag_names`, `specs/031-tentative-tags/data-model.md` §1),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
 positions, `specs/029-video-overrides/data-model.md` §1), the version bundles
 (`video_bundles`, `video_bundle_members`) and the "different video" judgements
@@ -446,7 +447,12 @@ compile:
   bundle, through `userKeysForVideoIDs`),
   summarizes the tags on a selected set of videos, and looks up the tags on a set of
   user keys in bulk for the video list (`TagsByContentKeys`, shaped like
-  `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
+  `PlaybackStore.ProgressByContentKeys`). The external API's bulk by-name operation can
+  create new tags as tentative, skipping names the owner rejected; the store confirms a
+  tentative tag, rejects it (deleting it and remembering its name in
+  `rejected_tag_names`), lists and forgets rejected names, and every entry that writes a
+  name into `tag_names` removes it from the rejected names in the same transaction
+  (`specs/031-tentative-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
 - `AuthStore` — the single account, its login sessions and its API tokens: first-run

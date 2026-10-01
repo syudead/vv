@@ -25,7 +25,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, ...overrides };
+  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
 }
 
 /** server はタグの一覧・付け外し・要約の経路だけを扱う偽のサーバーである。 */

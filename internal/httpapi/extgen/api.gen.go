@@ -247,6 +247,9 @@ type ExternalVideoTag struct {
 	// Manual 手で付けた（この API の付け外しの対象）
 	Manual bool   `json:"manual"`
 	Name   string `json:"name"`
+
+	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+	Tentative bool `json:"tentative"`
 }
 
 // Tag defines model for Tag.
@@ -256,6 +259,9 @@ type Tag struct {
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`
+
+	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+	Tentative bool `json:"tentative"`
 
 	// VideoCount いまライブラリにある動画の本数
 	VideoCount int `json:"videoCount"`
@@ -322,6 +328,9 @@ type VideoTagsRequest struct {
 	// Tags タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
 	Tags []string `json:"tags"`
 
+	// Tentative 真なら add・replace で、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして作る。 却下した名前（綴りの完全一致）は作らず付けずに飛ばし、skippedTags に返す。既存のタグに 当たる名前はそのタグを付け、その状態を変えない。remove では何も変えない
+	Tentative *bool `json:"tentative,omitempty"`
+
 	// Videos 1〜20000 件。範囲外は `too_many_videos`
 	Videos []VideoRef `json:"videos"`
 }
@@ -333,6 +342,9 @@ type VideoTagsRequestAction string
 type VideoTagsResponse struct {
 	// Items videos の順
 	Items []VideoTagsItem `json:"items"`
+
+	// SkippedTags tentative が真の add・replace で、却下した名前に当たって飛ばした名前。整えた形で tags の順に 1 回ずつ。無ければ空の配列
+	SkippedTags []string `json:"skippedTags"`
 }
 
 // VideoTagsVideo defines model for VideoTagsVideo.

@@ -291,7 +291,7 @@ func TestRequeueMissingSeekThumbnailsDropsWaitingFingerprint(t *testing.T) {
 	}
 }
 
-// 00024 は完成したスプライトの登録された動画に指紋の仕事を積み、既存の仕事を残す。Down は
+// 00025 は完成したスプライトの登録された動画に指紋の仕事を積み、既存の仕事を残す。Down は
 // 指紋の仕事と表を消し、ほかの仕事を戻す。
 func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
 	db, err := Open(t.TempDir())
@@ -308,7 +308,7 @@ func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 23); err != nil {
+	if _, err := provider.UpTo(ctx, 24); err != nil {
 		t.Fatal(err)
 	}
 	ids := map[string]int64{}
@@ -344,7 +344,7 @@ func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 24); err != nil {
+	if _, err := provider.UpTo(ctx, 25); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, ids["done"]); !equalCounts(got, map[string]int{"fingerprint:queued": 1}) {
@@ -365,7 +365,7 @@ func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.DownTo(ctx, 23); err != nil {
+	if _, err := provider.DownTo(ctx, 24); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, ids["done"]); len(got) != 0 {

@@ -124,8 +124,8 @@ beforeEach(() => {
         location: { path: "/media/movies/anime/劇場版.mkv", openable: true },
         container: "matroska",
         tags: [
-          { id: 1, name: "アニメ", manual: true, fromFolder: false },
-          { id: 2, name: "anime", manual: false, fromFolder: true },
+          { id: 1, name: "アニメ", manual: true, fromFolder: false, tentative: false },
+          { id: 2, name: "anime", manual: false, fromFolder: true, tentative: false },
         ],
       }),
     ],
