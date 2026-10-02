@@ -226,6 +226,53 @@ export function applyVisibilityToListSnapshot(
 }
 
 /**
+ * applyFavoritesToListSnapshot はお気に入りの付け外しの結果を控えへ反映する
+ * （specs/035-favorites/research.md R-6）。動画の項目は `favorite` を差し替え、グループの
+ * 項目は戻ったときに取り直す印を付ける（グループの値はサーバーから取り直す）。
+ * お気に入りのみで絞った一覧でも、その場では項目を外さない。
+ */
+export function applyFavoritesToListSnapshot(
+  videoIds: readonly number[],
+  folders: readonly FolderRef[],
+  favorite: boolean,
+): void {
+  if (held === undefined) return;
+  let next = held;
+  const targets = new Set(videoIds);
+  if (
+    next.items.some(
+      (item) =>
+        item.kind === "video" &&
+        targets.has(item.video.id) &&
+        item.video.favorite !== favorite,
+    )
+  ) {
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.kind === "video" && targets.has(item.video.id)
+          ? { kind: "video", video: { ...item.video, favorite } }
+          : item,
+      ),
+    };
+  }
+  const wanted = new Set(folders.map(folderRefKey));
+  const stale = next.items.flatMap((item) => {
+    if (item.kind !== "group") return [];
+    const folder = { rootId: item.group.folder.rootId, path: item.group.folder.path };
+    return wanted.has(folderRefKey(folder)) ? [folder] : [];
+  });
+  if (stale.length > 0) {
+    const merged = new Map(
+      (next.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder]),
+    );
+    for (const folder of stale) merged.set(folderRefKey(folder), folder);
+    next = { ...next, staleGroups: [...merged.values()] };
+  }
+  held = next;
+}
+
+/**
  * clearListSnapshot は控えを捨てる。取り込みが終わって一覧を読み直すときに
  * 呼ぶ — 取り込む前の一覧に戻してはならない（data-model.md 2.）。
  */

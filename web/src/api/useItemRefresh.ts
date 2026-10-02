@@ -4,6 +4,7 @@ import { getVideo, isAborted, type LibraryItem, RequestFailed } from "./client";
 import { itemVideos } from "./libraryItems";
 import { isProcessing } from "./useVideoDetail";
 import { shownVideoIds, type VideosDataAction } from "./videosData";
+import { favoriteMark, withFavoriteSince } from "./favorites";
 import { visibilityMark, withVisibilitySince } from "./visibility";
 
 /** useItemRefresh は useVideos の動画の項目を1件ずつ取り直す。 */
@@ -63,9 +64,10 @@ export function useItemRefresh(
         const started = staleNotices.current;
         try {
           const mark = visibilityMark();
-          const refreshed = withVisibilitySince(
-            await getVideo(id, controller.signal),
-            mark,
+          const favoriteSince = favoriteMark();
+          const refreshed = withFavoriteSince(
+            withVisibilitySince(await getVideo(id, controller.signal), mark),
+            favoriteSince,
           );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;

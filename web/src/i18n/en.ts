@@ -335,6 +335,10 @@ export const en = {
       select: (title: string) => `Select "${title}"`,
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
+      // お気に入りの付け外しの読み上げ名と、変えられなかったときのトースト
+      // （specs/035-favorites/ui-design.md「Words」）。
+      favorite: (title: string) => `Favorite "${title}"`,
+      favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -393,6 +397,7 @@ export const en = {
     group: {
       count: videos,
       select: (name: string) => `Select the group "${name}"`,
+      favorite: (name: string) => `Favorite group "${name}"`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`

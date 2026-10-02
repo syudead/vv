@@ -418,7 +418,7 @@ test.describe.serial("guest", () => {
     await context.close();
   });
 
-  test("ゲストの画面に設定・スキャン・タグ・選択・公開の切り替え・再生位置が出ない", async ({
+  test("ゲストの画面に設定・スキャン・タグ・選択・公開の切り替え・お気に入り・再生位置が出ない", async ({
     browser,
   }) => {
     const context = await guestContext(browser);
@@ -434,6 +434,8 @@ test.describe.serial("guest", () => {
     await expect(page.getByRole("checkbox")).toHaveCount(0);
     await page.locator("article[data-group-root]").first().hover();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
+    // お気に入りの印と付け外しも出さない（specs/035-favorites/ui-design.md「Guest degradation」）。
+    await expect(page.getByRole("button", { name: /^Favorite/ })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Filter", exact: true }).click();
     const filter = page.getByRole("dialog");
@@ -455,6 +457,7 @@ test.describe.serial("guest", () => {
       "Select",
       "Add tag",
       "Refresh library",
+      "Favorite",
     ]) {
       expect(tree).not.toContain(name);
     }
@@ -479,7 +482,7 @@ test.describe.serial("guest", () => {
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
 
     const ownerOnly = requests.filter((request) =>
-      /\/api\/(events|scans|processing|media-folders|tags|video-tags|video-visibility)|\/progress$/.test(
+      /\/api\/(events|scans|processing|media-folders|tags|video-tags|video-visibility|favorites)|\/progress$/.test(
         request,
       ),
     );

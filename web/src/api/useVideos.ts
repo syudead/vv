@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
 import type { TagRef } from "./client";
+import { subscribeFavorites, subscribeFavoritesStale } from "./favorites";
 import { folderRefKey, groupRef } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
@@ -181,7 +182,9 @@ export function useVideos(
   useEffect(() => {
     const waiters = idleWaiters.current;
     const pending = uncertain.current;
-    const unsubscribe = subscribeVideoVisibilityStale((videoIds) => {
+    // お気に入りの付け外しが一部の動画にしか反映されなかったときも同じに取り直す
+    // （specs/035-favorites/research.md R-6）。
+    const onStale = (videoIds: readonly number[]) => {
       const targets = new Set(videoIds);
       staleNotices.current += 1;
       const notice = staleNotices.current;
@@ -202,9 +205,12 @@ export function useVideos(
       refreshItems(shown);
       notifyIfIdle();
       return settled;
-    });
+    };
+    const unsubscribeVisibility = subscribeVideoVisibilityStale(onStale);
+    const unsubscribeFavorites = subscribeFavoritesStale(onStale);
     return () => {
-      unsubscribe();
+      unsubscribeVisibility();
+      unsubscribeFavorites();
       pending.clear();
       for (const resolve of waiters.splice(0)) resolve();
     };
@@ -228,6 +234,28 @@ export function useVideos(
         notifyIfIdle();
       }),
     [notifyIfIdle, uncertain],
+  );
+
+  // お気に入りの付け外しの結果も一覧を読み直さずに反映する（specs/035-favorites/research.md R-6）。
+  // 動画の項目は `favorite` をその場で差し替える。メンバーの付け外しはグループの値を
+  // 変えないので、グループは取り直さない（要件 4）。付け外したグループの項目は
+  // `GET /api/folders/{rootId}/group` で取り直し、404 なら外す（useGroupRefresh）。
+  // お気に入りのみで絞った一覧や「Date favorited」の並びでも、その場では外さず並べ替えない。
+  useEffect(
+    () =>
+      subscribeFavorites(({ videoIds, folders, favorite }) => {
+        if (videoIds.length > 0) dispatch({ type: "favorite", videoIds, favorite });
+        if (folders.length === 0) return;
+        const wanted = new Set(folders.map(folderRefKey));
+        refreshGroups(
+          itemsRef.current.flatMap((item) =>
+            item.kind === "group" && wanted.has(folderRefKey(groupRef(item.group)))
+              ? [groupRef(item.group)]
+              : [],
+          ),
+        );
+      }),
+    [refreshGroups],
   );
 
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない

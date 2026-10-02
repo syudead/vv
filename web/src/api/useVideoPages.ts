@@ -18,6 +18,7 @@ import {
   RequestFailed,
   type TagRef,
 } from "./client";
+import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favorites";
 import { groupsWithMembers, videoItem } from "./libraryItems";
 import type { useGroupRefresh } from "./useGroupRefresh";
 import type { useItemRefresh } from "./useItemRefresh";
@@ -128,6 +129,7 @@ export function useVideoPages({
       }
 
       const mark = visibilityMark();
+      const favoriteSince = favoriteMark();
       try {
         const target = folderRef.current;
         const current = criteriaRef.current;
@@ -151,10 +153,20 @@ export function useVideoPages({
           items: fetched.items.map((item): LibraryItem => {
             if ("kind" in item) {
               return item.kind === "video"
-                ? videoItem(withVisibilitySince(item.video, mark))
-                : item;
+                ? videoItem(
+                    withFavoriteSince(
+                      withVisibilitySince(item.video, mark),
+                      favoriteSince,
+                    ),
+                  )
+                : {
+                    kind: "group",
+                    group: withGroupFavoriteSince(item.group, favoriteSince),
+                  };
             }
-            return videoItem(withVisibilitySince(item, mark));
+            return videoItem(
+              withFavoriteSince(withVisibilitySince(item, mark), favoriteSince),
+            );
           }),
         };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、

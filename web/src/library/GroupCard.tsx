@@ -3,11 +3,14 @@ import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
+import { updateFavorites } from "../api/favorites";
+import { groupRef } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
+import FavoriteToggle from "../videoList/FavoriteToggle";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -73,6 +76,28 @@ export function groupLinkLabel(
   return t.library.group.label(name, videoCount, watchedCount);
 }
 
+/**
+ * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
+ * specs/035-favorites/ui-design.md「Card」）。グループのフォルダを送り、メンバーには付けない。
+ */
+function GroupFavorite({
+  group,
+  variant,
+}: {
+  group: LibraryGroup;
+  variant: "card" | "row";
+}) {
+  const favorite = group.favorite === true;
+  return (
+    <FavoriteToggle
+      favorite={favorite}
+      label={t.library.group.favorite(group.name)}
+      onToggle={() => updateFavorites([], [groupRef(group)], !favorite)}
+      variant={variant}
+    />
+  );
+}
+
 function groupPath(group: LibraryGroup): string {
   return `/videos/${String(group.openVideoId)}`;
 }
@@ -97,6 +122,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     tagsRow,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
 
@@ -192,6 +218,13 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           </h3>
         </div>
       </Link>
+      {owner && (
+        // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
+        // （ui-design.md「Placement」）。
+        <div className="absolute top-2 right-2 z-30 flex">
+          <GroupFavorite group={group} variant="card" />
+        </div>
+      )}
       {showTagsRow && (
         <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
       )}
@@ -206,6 +239,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
+  const owner = useAudience() === "owner";
   // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
   const cover = group.previews[0];
 
@@ -277,6 +311,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           {groupCountText(group.videoCount)}
         </span>
       </td>
+      {owner && (
+        <td className="w-8">
+          <GroupFavorite group={group} variant="row" />
+        </td>
+      )}
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check

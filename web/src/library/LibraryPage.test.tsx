@@ -2060,7 +2060,7 @@ describe("LibraryPage", () => {
       expect(within(row).getByText("12 videos")).toBeDefined();
       expect(within(row).getByText("3 / 12")).toBeDefined();
       expect(within(row).getByText("12:00")).toBeDefined();
-      expect(within(row).getAllByRole("cell")).toHaveLength(8);
+      expect(within(row).getAllByRole("cell")).toHaveLength(9);
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {

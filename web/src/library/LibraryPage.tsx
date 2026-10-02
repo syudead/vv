@@ -714,6 +714,7 @@ export default function LibraryPage() {
                   {owner && <th className="w-10" />}
                   <th className="w-32 py-2" />
                   <th className="py-2 pr-4 font-medium">{t.library.columns.title}</th>
+                  {owner && <th className="w-8 py-2" />}
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
                   <th className="w-20 py-2 pr-4 text-right font-medium">
                     {t.library.columns.duration}
