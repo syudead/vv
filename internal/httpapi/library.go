@@ -116,7 +116,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	groups, err := s.libraryGroupIDs(r.Context(), selection.Groups)
+	groups, err := libraryGroupIDs(selection.Roots, selection.Groups)
 	if err != nil {
 		s.internalError(w, "Could not load the ids.", err)
 		return
@@ -125,16 +125,12 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 }
 
 // libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。フォルダは
-// GET /api/library の LibraryGroup.folder と同じく登録フォルダから求める。登録フォルダの
-// 下に無いグループは、ListLibrary と同じく索引の不整合として誤りにする（黙って
-// 落とすと ids と groups が食い違う）。
-func (s *server) libraryGroupIDs(ctx context.Context, groups []domain.LibraryGroupSelection) ([]gen.LibraryGroupIds, error) {
+// GET /api/library の LibraryGroup.folder と同じく、選択と同じスナップショットの登録フォルダ
+// roots から求める。その下に無いグループは、ListLibrary と同じく索引の不整合として誤りにする
+// （黙って落とすと ids と groups が食い違う）。
+func libraryGroupIDs(roots []domain.MediaFolder, groups []domain.LibraryGroupSelection) ([]gen.LibraryGroupIds, error) {
 	if len(groups) == 0 {
 		return nil, nil
-	}
-	roots, err := s.listRegisteredRoots(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("read media folders: %w", err)
 	}
 	out := make([]gen.LibraryGroupIds, 0, len(groups))
 	for _, group := range groups {

@@ -494,7 +494,8 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 // 動画の項目の id と、グループの項目ごとのフォルダとメンバーの id に分けて、ページングせずに
 // 返す（GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2、
 // specs/035-favorites/data-model.md §5）。動画の項目とグループの並びは決めず、グループの
-// メンバーはグループの中の並びで返す。「すべて選択」は所有者だけの操作なので、所有者として読む。
+// メンバーはグループの中の並びで返す。登録フォルダも同じスナップショットから読んで返す。
+// 「すべて選択」は所有者だけの操作なので、所有者として読む。
 func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (domain.LibrarySelection, []int64, error) {
 	selection := domain.LibrarySelection{VideoIDs: []int64{}, Groups: []domain.LibraryGroupSelection{}}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -557,9 +558,14 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (dom
 	if err := rows.Close(); err != nil {
 		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
+	roots, err := listMediaFolders(ctx, tx)
+	if err != nil {
+		return domain.LibrarySelection{}, nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot finish reading ids: %w", err)
 	}
+	selection.Roots = roots
 	return selection, missingTagIDs, nil
 }
 

@@ -136,6 +136,20 @@ func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
 	if len(selection.VideoIDs) != 3 {
 		t.Errorf("動画の項目の id = %v, want 3 本", selection.VideoIDs)
 	}
+
+	// 登録フォルダは選択と同じスナップショットから返り、どのグループのフォルダもその下にある。
+	roots, err := db.Library().ListMediaFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(selection.Roots, roots) {
+		t.Errorf("登録フォルダ = %+v, want %+v", selection.Roots, roots)
+	}
+	for _, group := range selection.Groups {
+		if _, ok := domain.LocateFolder(selection.Roots, group.Path); !ok {
+			t.Errorf("グループ %s が登録フォルダの下に無い", group.Path)
+		}
+	}
 }
 
 // 要件 11: ListVideos・ListFolderVideos の FavoriteOnly はお気に入りの動画だけを返す。

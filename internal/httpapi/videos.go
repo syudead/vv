@@ -183,24 +183,21 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 // 引けなかった場合は一覧を諦めず、folder を省く。folder は置き場所の手がかりで
 // あって、無いと動画を見渡せなくなるものではない（progressFor と同じ扱い）。
 func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
-	roots, err := s.listRegisteredRoots(ctx)
+	var list func(context.Context) ([]domain.MediaFolder, error)
+	switch {
+	case s.folders != nil:
+		list = s.folders.ListMediaFolders
+	case s.mediaFolders != nil:
+		list = s.mediaFolders.ListMediaFolders
+	default:
+		return nil
+	}
+	roots, err := list(ctx)
 	if err != nil {
 		s.logger.Warn("could not read media folders", slog.Any("error", err))
 		return nil
 	}
 	return roots
-}
-
-// listRegisteredRoots は登録フォルダの一覧を引く。問い合わせ先が無ければ空である。
-func (s *server) listRegisteredRoots(ctx context.Context) ([]domain.MediaFolder, error) {
-	switch {
-	case s.folders != nil:
-		return s.folders.ListMediaFolders(ctx)
-	case s.mediaFolders != nil:
-		return s.mediaFolders.ListMediaFolders(ctx)
-	default:
-		return nil, nil
-	}
 }
 
 // listFilterParams は2つの一覧の経路が共通に受ける絞り込みと並び順である。
