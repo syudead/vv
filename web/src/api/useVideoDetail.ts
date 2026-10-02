@@ -10,6 +10,13 @@ import {
   type RelatedVideos,
   type Video,
 } from "./client";
+import {
+  favoriteMark,
+  subscribeFavorites,
+  subscribeFavoritesStale,
+  updateFavorites,
+  withFavoriteSince,
+} from "./favorites";
 import { subscribeServerEvents } from "./serverEvents";
 import {
   subscribeVideoVisibility,
@@ -51,11 +58,11 @@ let loadsStarted = 0;
  * DetailMark は、変更の要求を送る直前の時点を表す印である。応答で動画を差し替える
  * `replace` に渡し、要求より前に始まったものと後に起きたものを分ける。
  */
-export type DetailMark = { load: number; visibility: number };
+export type DetailMark = { load: number; visibility: number; favorite: number };
 
 /** detailMark は変更の要求（表示名の保存）を送る直前に呼び、その時点の印を返す。 */
 export function detailMark(): DetailMark {
-  return { load: loadsStarted, visibility: visibilityMark() };
+  return { load: loadsStarted, visibility: visibilityMark(), favorite: favoriteMark() };
 }
 
 /**
@@ -74,18 +81,27 @@ export function detailMark(): DetailMark {
  * detailMark である。
  * - 要求より前に始めた取り直しは打ち切る。その応答で、変更した値を巻き戻さないため。
  *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
- * - 要求の間に反映した公開の切り替えは、応答の `public` より優先する。切り替えは
- *   サーバーから知らせが来ないので、ここで巻き戻すと直らない。
+ * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
+ *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
  * - 別の動画の応答は捨てる。
+ *
+ * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
+ * 取り直して、その取得が終わったら解決する（specs/035-favorites/ui-design.md「Video page」）。
+ * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
+ * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
  */
 export function useVideoDetail(id: number): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
   replace: (video: Video, mark: DetailMark) => void;
+  setFavorite: (favorite: boolean) => Promise<void>;
 } {
   const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replaceRef = useRef<(video: Video, mark: DetailMark) => void>(() => undefined);
+  const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
+    Promise.resolve(),
+  );
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
   const owner = useAudience() === "owner";
 
@@ -95,6 +111,7 @@ export function useVideoDetail(id: number): {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
       replaceRef.current = () => undefined;
+      setFavoriteRef.current = () => Promise.resolve();
       return;
     }
 
@@ -104,6 +121,8 @@ export function useVideoDetail(id: number): {
     let started = 0;
     let current: Video | undefined;
     const waiters: (() => void)[] = [];
+    // この画面の付け外しを送っている数。その間に届く付け外しの結果の知らせは重ねない。
+    let ownFavorites = 0;
 
     const settle = () => {
       for (const resolve of waiters.splice(0)) resolve();
@@ -117,9 +136,14 @@ export function useVideoDetail(id: number): {
       started = loadsStarted;
       // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
       // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
+      // お気に入りの付け外しも同じ（specs/035-favorites/research.md R-6）。
       const mark = visibilityMark();
+      const favorite = favoriteMark();
       try {
-        const video = withVisibilitySince(await getVideo(id, mine.signal), mark);
+        const video = withFavoriteSince(
+          withVisibilitySince(await getVideo(id, mine.signal), mark),
+          favorite,
+        );
         if (!alive || controller !== mine) return;
         current = video;
         setState({ kind: "ready", id, video });
@@ -156,9 +180,22 @@ export function useVideoDetail(id: number): {
         controller = null;
         settle();
       }
-      const video = withVisibilitySince(saved, mark.visibility);
+      const video = withFavoriteSince(
+        withVisibilitySince(saved, mark.visibility),
+        mark.favorite,
+      );
       current = video;
       setState({ kind: "ready", id, video });
+    };
+
+    setFavoriteRef.current = async (favorite) => {
+      ownFavorites += 1;
+      try {
+        await updateFavorites([id], [], favorite);
+      } finally {
+        ownFavorites -= 1;
+      }
+      await refreshRef.current();
     };
 
     // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
@@ -173,6 +210,21 @@ export function useVideoDetail(id: number): {
     // この1件を取り直してサーバーの状態を表示する（Devin の指摘、PR 292）。
     // 再生画面は一覧の控えを取らないので、取り直しの決着は知らせない。
     const unsubscribeStale = subscribeVideoVisibilityStale((videoIds) => {
+      if (videoIds.includes(id)) void load();
+      return undefined;
+    });
+
+    // お気に入りの付け外しの結果も、取り直さずに手元の1件へ重ねる。ゲストの応答には
+    // `favorite` が無いので、無いものは足さない（specs/035-favorites/research.md R-6）。
+    // この画面の付け外しは setFavorite の取り直しで確かめるので、ここでは重ねない。
+    const unsubscribeFavorites = subscribeFavorites((change) => {
+      if (ownFavorites > 0) return;
+      if (current === undefined || !change.videoIds.includes(id)) return;
+      if (current.favorite === undefined || current.favorite === change.favorite) return;
+      current = { ...current, favorite: change.favorite };
+      setState({ kind: "ready", id, video: current });
+    });
+    const unsubscribeFavoritesStale = subscribeFavoritesStale((videoIds) => {
       if (videoIds.includes(id)) void load();
       return undefined;
     });
@@ -193,6 +245,8 @@ export function useVideoDetail(id: number): {
       unsubscribe();
       unsubscribeVisibility();
       unsubscribeStale();
+      unsubscribeFavorites();
+      unsubscribeFavoritesStale();
       settle();
     };
   }, [id, owner]);
@@ -202,7 +256,11 @@ export function useVideoDetail(id: number): {
     (video: Video, mark: DetailMark) => replaceRef.current(video, mark),
     [],
   );
-  return { state, refresh, replace };
+  const setFavorite = useCallback(
+    (favorite: boolean) => setFavoriteRef.current(favorite),
+    [],
+  );
+  return { state, refresh, replace, setFavorite };
 }
 
 export type RelatedState =

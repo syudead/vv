@@ -12,6 +12,7 @@ import {
   type Video,
 } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { updateFavorites } from "../api/favorites";
 import { saveListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
@@ -1850,6 +1851,300 @@ describe("VideoPage", () => {
       renderPage("7", undefined, "guest");
       await ready();
       expect(screen.queryByRole("switch")).toBeNull();
+    });
+  });
+
+  describe("お気に入り（specs/035-favorites/ui-design.md「Video page」）", () => {
+    const owned: Video = { ...video, favorite: false };
+
+    /** holdFavorites は PUT /api/favorites の応答を 1 つずつ返す。 */
+    function holdFavorites() {
+      const answers: ((response: Response) => void)[] = [];
+      const bodies: unknown[] = [];
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) !== "/api/favorites") return answered!(input, init);
+        const body = JSON.parse(String(init?.body)) as {
+          videoIds: number[];
+          folders: unknown[];
+          favorite: boolean;
+        };
+        bodies.push(body);
+        return new Promise<Response>((resolve) =>
+          answers.push((response) => {
+            // 成功したら、付け外しの後に取り直す動画もサーバーと同じ値にする。
+            if (response.ok) {
+              for (const id of body.videoIds) {
+                const entry = server.videos.get(id);
+                if (!Array.isArray(entry)) continue;
+                const last = entry[entry.length - 1]!;
+                server.videos.set(id, [{ ...last, favorite: body.favorite }]);
+              }
+            }
+            resolve(response);
+          }),
+        );
+      });
+      return { answers, bodies };
+    }
+
+    function favoriteButton() {
+      return screen.getByRole("button", { name: "Favorite" });
+    }
+
+    function videoRequests(id: number) {
+      return fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === `/api/videos/${String(id)}` &&
+          (init?.method ?? "GET") === "GET",
+      ).length;
+    }
+
+    const applied = () => json({ appliedVideos: 1, appliedFolders: 0 });
+
+    it("右端の操作の先頭（撮るボタンの左）に置く", async () => {
+      server.videos.set(7, [owned]);
+      renderPage();
+      await ready();
+      const button = favoriteButton();
+      const capture = screen.getByRole("button", {
+        name: "Use current frame as thumbnail",
+      });
+      expect(button.parentElement?.firstElementChild).toBe(button);
+      expect(
+        button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+    });
+
+    it("所在が無くプレイヤーの出ていない動画でも、付け外しだけで右端の一群を出す", async () => {
+      server.videos.set(7, [
+        { ...owned, location: undefined, probeState: "failed", playable: false },
+      ]);
+      renderPage();
+      await ready();
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      expect(screen.queryByRole("button", { name: "Copy path" })).toBeNull();
+    });
+
+    it("押すと videoIds: [id] を 1 回だけ送り、応答の後に取り直して塗りに変わる（受け入れ条件 1）", async () => {
+      server.videos.set(7, [owned]);
+      const { answers, bodies } = holdFavorites();
+      renderPage();
+      await ready();
+      const before = videoRequests(7);
+
+      fireEvent.click(favoriteButton());
+      // 送信中は aria-disabled で、重ねて送らず、状態は前のまま。
+      expect(favoriteButton().getAttribute("aria-disabled")).toBe("true");
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(favoriteButton());
+      expect(bodies).toEqual([{ videoIds: [7], folders: [], favorite: true }]);
+
+      await act(async () => answers[0]!(applied()));
+      await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-pressed")).toBe("true"),
+      );
+      expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
+      expect(favoriteButton().getAttribute("data-active")).toBe("true");
+      // トーストも失敗の行も出さない。
+      expect(screen.queryByRole("status")).toBeNull();
+      expect(screen.queryByRole("alert")).toBeNull();
+
+      // もう一度押すと外す。
+      fireEvent.click(favoriteButton());
+      expect(bodies[1]).toEqual({ videoIds: [7], folders: [], favorite: false });
+      await act(async () => answers[1]!(applied()));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-pressed")).toBe("false"),
+      );
+    });
+
+    it("失敗したら状態を変えずに情報の行の直下に理由を出し、次に押すと消える", async () => {
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+
+      fireEvent.click(favoriteButton());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe(
+        "Couldn't change the favorite: Something went wrong on the server.",
+      );
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
+      // トーストは出さない。
+      expect(screen.queryByRole("status")).toBeNull();
+
+      fireEvent.click(favoriteButton());
+      expect(screen.queryByRole("alert")).toBeNull();
+      await act(async () => answers[1]!(applied()));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-pressed")).toBe("true"),
+      );
+    });
+
+    it("付け外しの成功後も、取り直しが終わるまでと取り直しに失敗したときは前の状態のまま", async () => {
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      const before = videoRequests(7);
+      // 付け外しの後の取り直しは失敗する。
+      server.videos.set(7, () => json({ code: "internal", message: "失敗" }, 500));
+
+      fireEvent.click(favoriteButton());
+      await act(async () => answers[0]!(applied()));
+      // 取り直しが終わるまで送信中のままで、塗りは前のまま。
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-disabled")).toBeNull(),
+      );
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      expect(favoriteButton().getAttribute("data-active")).toBeNull();
+    });
+
+    it("付け外しに失敗した行は、続けて「パスをコピー」を押すと消える", async () => {
+      const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      fireEvent.click(favoriteButton());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      await screen.findByRole("alert");
+
+      fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+      expect(screen.queryByRole("alert")).toBeNull();
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+    });
+
+    it("別の動画へ移ると失敗の行を持ち越さない", async () => {
+      server.videos.set(7, [owned]);
+      server.videos.set(8, [{ ...owned, id: 8, title: "後続の動画" }]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      fireEvent.click(favoriteButton());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      await screen.findByRole("alert");
+
+      fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画"),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("付けた結果は一覧の控えにも反映され、戻ったカードの印が変わる（受け入れ条件 1）", async () => {
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      saveListSnapshot(
+        { query: "" },
+        {
+          items: [
+            { kind: "video", video: { ...owned, favorite: true } },
+            { kind: "video", video: { ...owned, id: 8, favorite: true } },
+          ],
+          total: 2,
+          hasMore: false,
+          scrollY: 0,
+        },
+      );
+      server.videos.set(7, [{ ...owned, favorite: true }]);
+      renderPage();
+      await ready();
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("true");
+
+      fireEvent.click(favoriteButton());
+      await act(async () => answers[0]!(applied()));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-pressed")).toBe("false"),
+      );
+      // お気に入りのみの一覧の控えでも、外した動画は同じ位置に線のハートで残る。
+      const snapshot = takeListSnapshot({ query: "" });
+      expect(
+        snapshot?.items.map((item) =>
+          item.kind === "video" ? [item.video.id, item.video.favorite] : undefined,
+        ),
+      ).toEqual([
+        [7, false],
+        [8, true],
+      ]);
+    });
+
+    it("一覧側で変えた結果を、取り直さずに再生画面の 1 件へ重ねる", async () => {
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      const before = videoRequests(7);
+
+      let done: Promise<unknown> | undefined;
+      act(() => {
+        done = updateFavorites([7], [], true);
+      });
+      await act(async () => {
+        answers[0]!(applied());
+        await done;
+      });
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-pressed")).toBe("true"),
+      );
+      expect(videoRequests(7)).toBe(before);
+    });
+
+    it("見終わった動画でも印が残り、先頭から再生する（受け入れ条件 6）", async () => {
+      server.videos.set(7, [
+        {
+          ...owned,
+          favorite: true,
+          progress: {
+            positionMs: 242_000,
+            completed: true,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage();
+      await ready();
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("true");
+      expect(player().initialPositionMs).toBe(0);
+    });
+
+    it("グループのメンバーでも、グループの行にお気に入りを置かない", async () => {
+      server.videos.set(7, [
+        {
+          ...owned,
+          group: {
+            folder: { rootId: 1, path: "series" },
+            name: "series",
+            position: 1,
+            count: 3,
+          },
+        },
+      ]);
+      renderPage();
+      await ready();
+      expect(screen.getAllByRole("button", { name: /Favorite/ })).toHaveLength(1);
+    });
+
+    it("ゲストには印も付け外しも出さない（受け入れ条件 10）", async () => {
+      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("button", { name: "Favorite" })).toBeNull();
+      expect(screen.queryByRole("button", { name: /Favorite/ })).toBeNull();
     });
   });
 
