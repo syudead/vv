@@ -56,7 +56,7 @@ FavoritesRequest:
 FavoritesResponse:
   required: [appliedVideos, appliedFolders]
   properties:
-    appliedVideos:  { type: integer }   # videoIds のうちいまライブラリにある動画の数（集まりは 1 つ）
+    appliedVideos:  { type: integer }   # videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数える）
     appliedFolders: { type: integer }   # folders のうちいまグループのフォルダの数
 ```
 
@@ -94,7 +94,9 @@ VideoSort:
 `GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library` の `sort` で受け付ける。
 `GET /api/library/ids` は `sort` を持たず、変わらない。
 
-ゲスト（[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件) の表に足す）:
+ゲスト（[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件) の表に足す）。
+ゲストが読める `GET /api/videos`・`GET /api/folders/{rootId}/videos`・`GET /api/library` の 3 経路に掛かる。
+`GET /api/library/ids` は所有者だけの経路で、ゲストには条件によらず今までどおり `401` を返す:
 
 | 条件 | ゲストでの扱い |
 | --- | --- |

@@ -55,7 +55,7 @@ Down は 2 つの表を落とす。
 | `VideoQuery.FavoriteOnly`・`FolderVideoQuery.FavoriteOnly` | `bool`。お気に入りのみに絞る（§5） |
 | `SortFavoritedAsc` / `SortFavoritedDesc` | `VideoSort` の `favoritedAsc` / `favoritedDesc`。`Valid` に足す |
 | `FavoriteChange` | `FavoriteStore.SetFavorites` の入力。`VideoIDs []int64`、`FolderPaths []string`（絶対パス）、`Favorite bool` |
-| `FavoriteApplied` | 結果。`Videos int`（引き直せた鍵の数）、`Folders int`（今グループで書いたフォルダの数） |
+| `FavoriteApplied` | 結果。`Videos int`（`VideoIDs` のうち鍵を引けた異なる id の数。同じ集まりの id も 1 本ずつ数える）、`Folders int`（今グループで書いたフォルダの数） |
 | `Audience.CheckVideoQuery` | ゲストでは `FavoriteOnly` と `favorited*` を `ErrGuestQueryNotAllowed` にする（[research.md R-5](research.md#r-5-ゲストにはお気に入りを出さず絞り込みと並び順は視聴状態と同じ-400-にする)） |
 
 `favorited_at` は `domain` に出さない。並び順は保存層の SQL だけが使い、応答にも載せない
@@ -83,7 +83,10 @@ SQLite 接続だけを持ち、索引の型・通知・他の役割の公開メ�
 途中で失敗したら何も残さない。
 
 1. `change.VideoIDs` を `userKeysForVideoIDs` で、いまライブラリにある動画の利用者データの鍵へ引き直す
-   （同じ集まりは 1 つ、引けない id と空の `content_key` は含めない）。鍵の数が `Videos`。
+   （同じ集まりは 1 つ、引けない id と空の `content_key` は含めない）。`Videos` は鍵の数でなく、鍵を引けた
+   異なる id の数（`userKeysForVideoIDs` と同じ条件で `count(distinct v.id)` を同じ取引で数える）。同じ集まりの
+   2 本を送っても 2 で、画面が「異なる id の数より少ない＝一部にしか反映されなかった」と取り違えない
+   （`api/visibility.ts` の判定と同じ比べ方、[contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)）。
 2. `change.FolderPaths` の各パスを `domain.FolderKey` にし、`folder_groups.path_key` にあるものだけを残す
    （所有者から見て今グループのフォルダ）。残った数が `Folders`。同じフォルダの重複は 1 つに数える。
 3. `Favorite` が真なら `insert or ignore into video_favorites (content_key, favorited_at)` と
@@ -91,7 +94,11 @@ SQLite 接続だけを持ち、索引の型・通知・他の役割の公開メ�
    それぞれ `delete`。鍵の数によらず json_each で 1 文ずつ書く（`touchEditedAt` と同じ形）。
 4. `video_edits` には触れない（[research.md R-8](research.md#r-8-お気に入りの付け外しは動画の更新日時video_editsを進めない)）。
 
-`favorited_at` は取引を始めた時刻の Unix 秒で、同じ取引の対象はすべて同じ値になる。
+`favorited_at` は Unix ミリ秒で、取引の中で `max(今の時刻, 2 表の favorited_at の最大値 + 1)` を 1 度だけ求め、
+同じ取引の対象はすべてその値にする。書き込みの取引は SQLite で直列になるので、別々の付け外しは必ず後のものが
+大きい値を持ち、同じ秒・同じミリ秒の続けての操作や時計の巻き戻りでも「最後に付けたものが先頭」「外して
+付け直すと先頭」が `id` の決着に頼らずに成り立つ（2 表の最大値を取るのは、ライブラリの項目が動画とグループの
+値を同じ列で並べるため）。
 
 ## 5. 読み出しと一覧
 

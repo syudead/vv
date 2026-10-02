@@ -166,7 +166,9 @@ ARCHITECTURE.md の利用者データの一覧と役割の型の一覧。
 の `Video.Favorite` と `ListLibrary`・`FolderGroup` の `LibraryGroup.Favorite` が真になり、外すと偽に戻る
 （受け入れ条件 1）。グループに付けてもメンバーの `Favorite` は偽、メンバーに付けてもグループは偽
 （受け入れ条件 3、要件 4）。ライブラリに無い id・今グループでないフォルダ・登録フォルダの外のパスは
-`Applied` に数えず誤りにならず、既に同じ状態のものは数えて日時を変えない（Edge Case）。付けた動画の
+`Applied` に数えず誤りにならず、既に同じ状態のものは数えて日時を変えない（Edge Case）。同じ集まりの 2 本の
+id を送ると `Applied.Videos` は 2（鍵の数でなく id の数、data-model.md §4）。時計を止めた試験で、続けて
+付けた 2 回の `favorited_at` が後のほうが大きい。付けた動画の
 `EditedAt` は変わらない（R-8）。同じ内容の所在を別のフォルダへ移して `UpsertVideo` と所在の削除をしても
 `Favorite` は真のまま（受け入れ条件 2）。再生位置を完了にしても真のまま（受け入れ条件 6）。束ねると集まりの
 全バージョンが真になり、外したバージョンは自分の値に戻る。同じパスの引き継ぎで新しい内容に移る。
@@ -191,7 +193,8 @@ G に付けないと 3 本の動画の項目（要件 9）; 2 本だけに付い
 （受け入れ条件 9）; `WatchUnwatched` と組み合わさる（要件 8）; `LibraryIDs` が同じ項目の id とグループの
 フォルダ・メンバーを返す。`ListVideos`・`ListFolderVideos` の `FavoriteOnly` がお気に入りの動画だけを返す
 （要件 11）。`favoritedDesc` で最後に付けたものが先頭、お気に入りでない項目は昇順・降順のどちらでも末尾で、
-カーソルをまたいでも並びが保たれる（受け入れ条件 8、Edge Case）。外して付け直すと先頭に来る。ゲストの
+カーソルをまたいでも並びが保たれる（受け入れ条件 8、Edge Case）。外して付け直すと先頭に来る。同じ時刻
+（止めた時計）に別々の取引で付けた 2 本でも、後に付けたほうが `favoritedDesc` の先頭に来る。ゲストの
 `CheckVideoQuery` が `FavoriteOnly` と `favorited*` を `ErrGuestQueryNotAllowed` にする。
 
 ### `PUT /api/favorites` と応答の `favorite` を足す
@@ -229,7 +232,9 @@ id は数えない。ゲストの `PUT` は `401`、ゲストの `GET /api/video
 （受け入れ条件 9）、`GET /api/library/ids?favorite=true` の `ids` と `groups` が同じ項目から作られ、グループの
 `folder` が `GET /api/library` の `group.folder` と一致する。`GET /api/videos`・`GET /api/folders/{rootId}/videos`
 の `favorite=true` と `sort=favoritedDesc` が効く（要件 11、受け入れ条件 8）。ゲストの `favorite=true` と
-`sort=favoritedAsc`・`favoritedDesc` が 4 経路で `400 guest_filter_not_allowed`（受け入れ条件 10）。`openapi_routes_test.go`
+`sort=favoritedAsc`・`favoritedDesc` が `GET /api/videos`・`GET /api/folders/{rootId}/videos`・`GET /api/library`
+の 3 経路で `400 guest_filter_not_allowed`（受け入れ条件 10）。所有者だけの `GET /api/library/ids` はゲストの
+`favorite=true` でも今までどおり `401`（contracts/screen-api.md §2）。`openapi_routes_test.go`
 と生成物の検査が通る。
 
 ### ライブラリとフォルダ画面のカードにお気に入りの印と付け外しを置く
@@ -276,7 +281,11 @@ id は数えない。ゲストの `PUT` は `401`、ゲストの `GET /api/video
 （[R-7](research.md#r-7-複数選択は選んだグループをグループとして覚え一括のお気に入りではグループのメンバーを動画として送らない)）。
 `SelectionBar` にお気に入りの操作（付ける・外す。形は `ui-design.md`「Selection bar」に従う）を置き、
 `videoIds`（選んだ id のうち選んだグループのメンバーでないもの）と `folders` を `updateFavorites` に送り、
-トーストで結果を伝えて選択は残す。上限（20000）の扱いはタグ・公開と同じ。英語のカタログの文言。
+トーストで結果を伝えて選択は残す。上限（20000）は送る `videoIds` と `folders` の合計で判定する（選択の
+本数 `count` はグループのメンバーを全部数えるので、タグ・公開の `overLimit` をそのまま使うと 20000 本を
+超えるグループ 1 つでも付けられなくなる）。「すべて選択」が済んでいるか（`allSelected`）は、動画の id の
+集合に加えて選んだグループが応答の `groups` と一致するかでも判定する（メンバーを 1 本外して戻すと id は
+そろってもグループはグループとして選ばれていないので、もう一度「すべて選択」を押せる）。英語のカタログの文言。
 `docs/design-docs/library-ui.md` §6 の選択バーの説明。
 
 **Dependencies**: `一覧 API に favorite の絞り込み・favorited* の並び順・ids の groups を足す`、
@@ -288,12 +297,16 @@ id は数えない。ゲストの `PUT` は `401`、ゲストの `GET /api/video
 グループのメンバーを 1 本外してから付けると、残ったメンバーは `videoIds` に入りグループは `folders` に
 入らない; 「すべて選択」のあとの一括は応答の `groups` を `folders` に、残りを `videoIds` に送る; 既に
 お気に入りのものを含めても誤りにならず、トーストに `appliedVideos + appliedFolders` が出る（Edge Case）;
-「外す」も同じ分け方で送る。タグ・公開・束ねる操作の送る内容は変わらない。
+「外す」も同じ分け方で送る。メンバーが 20000 本を超えるグループ 1 つだけを選ぶと、タグ・公開は上限で
+押せないままで、お気に入りの付ける・外すは押せて `folders` 1 つを送る; 「すべて選択」のあとグループの
+メンバーを 1 本外して戻すと「すべて選択」が押せ、押すとグループが選んだグループに戻る。タグ・公開・束ねる
+操作の送る内容は変わらない。
 
 ### ライブラリとフォルダ画面にお気に入りのみの絞り込みと「お気に入りにした日時」の並び順を足す
 
 **Scope**: `listCriteria` の `favorite`（URL は `fav=1`、`hasConditions`・`clearConditions`・`guestListCriteria` の
-丸め、`criteriaKey`）、`sortKinds` の `favorited`（選んだときの向きは降順、`ownerOnlySort` に足す）、
+丸め、`criteriaKey`）、`api/listSnapshot.ts` の `ListKey.favorite` と `normalize`（`LibraryPage`・
+`FolderView` が条件を広げて渡す鍵に入れ、お気に入りのみの一覧と絞らない一覧の控えを取り違えない）、`sortKinds` の `favorited`（選んだときの向きは降順、`ownerOnlySort` に足す）、
 `FilterMenu` のお気に入りのみ（所有者だけ。数字に数える）、`SortControls` の種類（名前・アイコン・`md` 未満の
 まとめは `ui-design.md`「Filter menu」「Sort and direction」に従う）、`viewPreferences` の往復、`useConditions`・
 `LibraryPage`・`FolderPage` の配線（`listLibrary`・`listLibraryIds`・`listFolderVideos` に `favorite` を渡す）、
@@ -308,4 +321,5 @@ id は数えない。ゲストの `PUT` は `401`、ゲストの `GET /api/video
 並び順のメニューに「お気に入りにした日時」が出て、選ぶと `sort=favoritedDesc`、向きの切り替えで
 `favoritedAsc` になり、URL と端末の設定に往復する（要件 10、受け入れ条件 8）; フォルダ画面でも同じ絞り込みと
 並び順が使える（要件 11）; ゲストにはどちらも出ず、URL に残っていれば既定に丸めてから要求する
-（受け入れ条件 10）。
+（受け入れ条件 10）; `fav=1` の一覧から動画を開いて戻ると `fav=1` の控えが、ほかの条件が同じ絞らない
+一覧へ移ると控えは使われずに取り直す（`listSnapshot` の鍵、`takeListSnapshot` の試験）。
