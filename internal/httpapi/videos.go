@@ -39,6 +39,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
+		favorite: params.Favorite,
 	})
 	if !ok {
 		return
@@ -69,6 +70,7 @@ type videoQueryParams struct {
 	cursor   *string
 	limit    *int
 	tag      *[]int64
+	favorite *bool
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -83,6 +85,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 		return domain.VideoQuery{}, false
 	}
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	query.FavoriteOnly = params.favorite != nil && *params.favorite
 
 	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
 	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
@@ -148,7 +151,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 // データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
-		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status or tags, or to sort by last played.")
+		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
 		return false
 	}
 	return true

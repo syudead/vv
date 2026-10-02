@@ -787,21 +787,23 @@ func (e VideoEncoderChoice) Valid() bool {
 
 // Defines values for VideoSort.
 const (
-	AddedAsc     VideoSort = "addedAsc"
-	AddedDesc    VideoSort = "addedDesc"
-	CreatedAsc   VideoSort = "createdAsc"
-	CreatedDesc  VideoSort = "createdDesc"
-	DurationAsc  VideoSort = "durationAsc"
-	DurationDesc VideoSort = "durationDesc"
-	ModifiedAsc  VideoSort = "modifiedAsc"
-	ModifiedDesc VideoSort = "modifiedDesc"
-	PlayedAsc    VideoSort = "playedAsc"
-	PlayedDesc   VideoSort = "playedDesc"
-	Random       VideoSort = "random"
-	SizeAsc      VideoSort = "sizeAsc"
-	SizeDesc     VideoSort = "sizeDesc"
-	TitleAsc     VideoSort = "titleAsc"
-	TitleDesc    VideoSort = "titleDesc"
+	AddedAsc      VideoSort = "addedAsc"
+	AddedDesc     VideoSort = "addedDesc"
+	CreatedAsc    VideoSort = "createdAsc"
+	CreatedDesc   VideoSort = "createdDesc"
+	DurationAsc   VideoSort = "durationAsc"
+	DurationDesc  VideoSort = "durationDesc"
+	FavoritedAsc  VideoSort = "favoritedAsc"
+	FavoritedDesc VideoSort = "favoritedDesc"
+	ModifiedAsc   VideoSort = "modifiedAsc"
+	ModifiedDesc  VideoSort = "modifiedDesc"
+	PlayedAsc     VideoSort = "playedAsc"
+	PlayedDesc    VideoSort = "playedDesc"
+	Random        VideoSort = "random"
+	SizeAsc       VideoSort = "sizeAsc"
+	SizeDesc      VideoSort = "sizeDesc"
+	TitleAsc      VideoSort = "titleAsc"
+	TitleDesc     VideoSort = "titleDesc"
 )
 
 // Valid indicates whether the value is a known member of the VideoSort enum.
@@ -818,6 +820,10 @@ func (e VideoSort) Valid() bool {
 	case DurationAsc:
 		return true
 	case DurationDesc:
+		return true
+	case FavoritedAsc:
+		return true
+	case FavoritedDesc:
 		return true
 	case ModifiedAsc:
 		return true
@@ -1183,7 +1189,7 @@ type LibraryGroup struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -1223,6 +1229,20 @@ type LibraryGroup struct {
 // LibraryGroupWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
 // inProgress。所有者の応答にだけ入る
 type LibraryGroupWatchState string
+
+// LibraryGroupIds GET /api/library/ids のグループの項目 1 件
+type LibraryGroupIds struct {
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// VideoIds グループの全メンバーの id
+	VideoIds []int64 `json:"videoIds"`
+}
 
 // LibraryItem ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
 type LibraryItem struct {
@@ -1307,7 +1327,7 @@ type RelatedGroup struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -1391,7 +1411,7 @@ type ScanActivity struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -1417,7 +1437,7 @@ type ScanIssue struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -1667,7 +1687,7 @@ type Video struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -1796,7 +1816,7 @@ type VideoEncoderChoice string
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 // 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 // 今の処理のファイルのフォルダを指す。
-// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 // グループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
@@ -1822,7 +1842,7 @@ type VideoGroupRef struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -1835,7 +1855,11 @@ type VideoGroupRef struct {
 
 // VideoIdsResponse defines model for VideoIdsResponse.
 type VideoIdsResponse struct {
-	Ids []int64 `json:"ids"`
+	// Groups 条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+	// listLibraryIds の応答にだけ入り、1 つも無ければ省略される
+	// （specs/035-favorites/contracts/screen-api.md §3）
+	Groups *[]LibraryGroupIds `json:"groups,omitempty"`
+	Ids    []int64            `json:"ids"`
 
 	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
@@ -1871,7 +1895,9 @@ type VideoPage struct {
 // 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
 // specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
 // 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
-// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
+// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
+// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
+// お気に入りにした日時）、random = `seed` と
 // 動画の識別子から作る順。値が同じなら識別子で決着させる
 type VideoSort string
 
@@ -2068,6 +2094,10 @@ type ListFolderVideosParams struct {
 	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
+	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
 	// Sort 並び順
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
 
@@ -2098,6 +2128,10 @@ type ListLibraryParams struct {
 	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
+	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
 	// Sort 並び順
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
 
@@ -2122,6 +2156,10 @@ type ListLibraryIdsParams struct {
 	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
 	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
 	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
@@ -2171,6 +2209,10 @@ type ListVideosParams struct {
 
 	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Sort 並び順
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
@@ -2972,6 +3014,19 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -3097,6 +3152,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -3217,6 +3285,19 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
 		}
 		return
 	}
@@ -3844,6 +3925,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
 		}
 		return
 	}

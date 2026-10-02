@@ -36,6 +36,9 @@ type LibrarySelection struct {
 	VideoIDs []int64
 	// Groups はグループの項目ごとのフォルダとメンバー。
 	Groups []LibraryGroupSelection
+	// Roots は登録フォルダの一覧である。LibraryPage.Roots と同じく選択と同じ読み取り
+	// スナップショットから読むので、Groups のフォルダはどれもこの中の登録フォルダの下にある。
+	Roots []MediaFolder
 }
 
 // LibraryGroupSelection はグループの項目 1 件のフォルダとメンバーである。

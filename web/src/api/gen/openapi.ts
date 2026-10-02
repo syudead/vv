@@ -134,7 +134,8 @@ export interface paths {
          *
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`、`tag`）は `400` `invalid_request` にする（guest-api.md §3）。
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true）は
+         *     `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listVideos"];
         put?: never;
@@ -165,13 +166,18 @@ export interface paths {
          *     `watch` は項目の視聴状態に掛け、並べ替えは項目の値で行う。`total` は絞り込み後の
          *     項目（カード）の数。カーソルの形は `listVideos` と同じ。
          *
+         *     `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
+         *     グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
+         *     動画の項目になる（specs/035-favorites/contracts/screen-api.md §2）。
+         *
          *     同じ動画の別バージョンの集まりは `listVideos` と同じく実効の代表の1件だけを
          *     項目にし、代表以外のバージョンは出ない。代表以外のバージョンはフォルダの
          *     グループのメンバーにもならない（specs/030-video-versions/data-model.md §4）。
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true は `400` `invalid_request` にする
+         *     （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listLibrary"];
         put?: never;
@@ -191,11 +197,16 @@ export interface paths {
         };
         /**
          * 絞り込みに合う項目の動画の id を返す
-         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
          *     （specs/027-partial-group-search/contracts/library-api.md §2）。
+         *     グループの項目は `groups` にも、フォルダと全メンバーの id として入る。
+         *
+         *     `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
+         *     グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
+         *     動画の項目になる（specs/035-favorites/contracts/screen-api.md §2・§3）。
          */
         get: operations["listLibraryIds"];
         put?: never;
@@ -1220,7 +1231,8 @@ export interface paths {
          *
          *     ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
          *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
-         *     以外と、`sort` が `playedAsc`・`playedDesc` は `400` `invalid_request` にする
+         *     以外、`sort` が `playedAsc`・`playedDesc`・`favoritedAsc`・`favoritedDesc`、`favorite` が true は
+         *     `400` `invalid_request` にする
          *     （guest-api.md §2・§3）。
          */
         get: operations["listFolderVideos"];
@@ -1636,6 +1648,18 @@ export interface components {
             ids: number[];
             /** @description tag のうち存在しなかった id。1つも無ければ省略される */
             missingTagIds?: number[];
+            /**
+             * @description 条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+             *     listLibraryIds の応答にだけ入り、1 つも無ければ省略される
+             *     （specs/035-favorites/contracts/screen-api.md §3）
+             */
+            groups?: components["schemas"]["LibraryGroupIds"][];
+        };
+        /** @description GET /api/library/ids のグループの項目 1 件 */
+        LibraryGroupIds: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description グループの全メンバーの id */
+            videoIds: number[];
         };
         DirectoryEntry: {
             name: string;
@@ -1651,12 +1675,14 @@ export interface components {
          *     所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
          *     specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
          *     動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
-         *     最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
+         *     最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
+         *     した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
+         *     お気に入りにした日時）、random = `seed` と
          *     動画の識別子から作る順。値が同じなら識別子で決着させる
          * @default addedDesc
          * @enum {string}
          */
-        VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "random";
+        VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "favoritedAsc" | "favoritedDesc" | "random";
         /**
          * @description 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
          *     watched = 視聴済み
@@ -1982,7 +2008,7 @@ export interface components {
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
          *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
          *     今の処理のファイルのフォルダを指す。
-         *     LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+         *     LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
          *     グループのフォルダそのものを指す
          */
         VideoFolder: {
@@ -2524,6 +2550,11 @@ export interface operations {
                 watch?: components["schemas"]["WatchFilter"];
                 /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
                 playable?: boolean;
+                /**
+                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+                 *     ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+                 */
+                favorite?: boolean;
                 /** @description 並び順 */
                 sort?: components["schemas"]["VideoSort"];
                 /**
@@ -2576,6 +2607,11 @@ export interface operations {
                 watch?: components["schemas"]["WatchFilter"];
                 /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
                 playable?: boolean;
+                /**
+                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+                 *     ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+                 */
+                favorite?: boolean;
                 /** @description 並び順 */
                 sort?: components["schemas"]["VideoSort"];
                 /**
@@ -2618,6 +2654,11 @@ export interface operations {
                 query?: string;
                 watch?: components["schemas"]["WatchFilter"];
                 playable?: boolean;
+                /**
+                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+                 *     ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+                 */
+                favorite?: boolean;
                 /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
                 tag?: number[];
             };
@@ -4113,6 +4154,11 @@ export interface operations {
                 watch?: components["schemas"]["WatchFilter"];
                 /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
                 playable?: boolean;
+                /**
+                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
+                 *     ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+                 */
+                favorite?: boolean;
                 /** @description 並び順 */
                 sort?: components["schemas"]["VideoSort"];
                 /**
