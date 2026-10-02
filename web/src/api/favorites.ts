@@ -112,6 +112,22 @@ export function subscribeFavoritesStale(listener: StaleListener): () => void {
   };
 }
 
+/**
+ * noteFavoriteOf は、サーバーから読んだ `favorite` を、要求を送らずに `videoIds` の動画へ
+ * 反映した付け外しとして知らせる（一覧の項目・控え・取得中の補正）。
+ *
+ * お気に入りは利用者データの鍵に結ぶので、同じ集まりのバージョンは値を共有する
+ * （specs/035-favorites/research.md R-1）。一方、一覧に出るのは代表だけで、代表以外の
+ * バージョンを再生画面で付け外しても、知らせる id は一覧に無い。再生画面は付け外しの後に
+ * 取り直した動画の `versions.representativeId` と `favorite` でこれを呼び、一覧の代表を
+ * 揃える。送った付け外しより後の通し番号を使うので、それより前の応答で巻き戻さない。
+ */
+export function noteFavoriteOf(videoIds: readonly number[], favorite: boolean): void {
+  if (videoIds.length === 0) return;
+  sent += 1;
+  record(Array.from(new Set(videoIds)), [], [], true, favorite, sent);
+}
+
 /** favoriteMark は取りに行く直前に呼び、その時点までに反映した付け外しの印を返す。 */
 export function favoriteMark(): number {
   return changes;

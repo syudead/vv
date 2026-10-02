@@ -12,6 +12,7 @@ import {
 } from "./client";
 import {
   favoriteMark,
+  noteFavoriteOf,
   subscribeFavorites,
   subscribeFavoritesStale,
   updateFavorites,
@@ -196,6 +197,18 @@ export function useVideoDetail(id: number): {
         ownFavorites -= 1;
       }
       await refreshRef.current();
+      // 代表以外のバージョンの付け外しは集まりの値を変えるが、一覧に出ているのは代表なので、
+      // 取り直した値で代表の項目と一覧の控えを揃える（noteFavoriteOf）。
+      const representative = current?.versions?.representativeId;
+      if (
+        alive &&
+        current !== undefined &&
+        current.favorite !== undefined &&
+        representative !== undefined &&
+        representative !== id
+      ) {
+        noteFavoriteOf([representative], current.favorite);
+      }
     };
 
     // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる

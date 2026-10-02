@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LibraryGroup, Video } from "./client";
 import {
   favoriteMark,
+  noteFavoriteOf,
   subscribeFavorites,
   subscribeFavoritesStale,
   updateFavorites,
@@ -175,5 +176,42 @@ describe("updateFavorites", () => {
     expect(withGroupFavoriteSince(fetched, mark).favorite).toBe(true);
     // 付け外しの後に取った値はそのまま。
     expect(withFavoriteSince(item(21), favoriteMark()).favorite).toBe(false);
+  });
+});
+
+describe("noteFavoriteOf", () => {
+  it("要求を送らずに、代表の項目・控え・取得中の補正へ読んだ値を知らせる", () => {
+    saveListSnapshot(
+      { query: "" },
+      { items: [videoItem(item(11))], total: 1, hasMore: false, scrollY: 0 },
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeFavorites(listener);
+    const mark = favoriteMark();
+
+    noteFavoriteOf([11], true);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(listener).toHaveBeenCalledWith({
+      videoIds: [11],
+      folders: [],
+      favorite: true,
+    });
+    expect(takeListSnapshot({ query: "" })?.items[0]).toEqual(videoItem(item(11, true)));
+    expect(withFavoriteSince(item(11), mark).favorite).toBe(true);
+    unsubscribe();
+  });
+
+  it("先に送った付け外しの後から届く応答で、知らせた値を巻き戻さない", async () => {
+    let answer: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    const pending = updateFavorites([31], [], true);
+    noteFavoriteOf([31], false);
+    const mark = favoriteMark();
+    answer!(json({ appliedVideos: 1, appliedFolders: 0 }));
+    await pending;
+    expect(withFavoriteSince(item(31, true), mark - 1).favorite).toBe(false);
   });
 });
