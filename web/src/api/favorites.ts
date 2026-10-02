@@ -38,6 +38,12 @@ const staleListeners = new Set<StaleListener>();
 /** sent は要求を送る直前に払い出す通し番号で、送った順に増える。 */
 let sent = 0;
 
+/**
+ * settledThrough は決着した（応答を受けたか失敗した）付け外しのうち最後の通し番号である。
+ * 付け外しは 1 本ずつ順に送るので、これ以下の付け外しはすべて決着している。
+ */
+let settledThrough = 0;
+
 /** applied は動画ごとに、反映済みの要求の通し番号を持つ（古い応答で巻き戻さない）。 */
 const applied = new Map<number, number>();
 
@@ -120,12 +126,28 @@ export function subscribeFavoritesStale(listener: StaleListener): () => void {
  * （specs/035-favorites/research.md R-1）。一方、一覧に出るのは代表だけで、代表以外の
  * バージョンを再生画面で付け外しても、知らせる id は一覧に無い。再生画面は付け外しの後に
  * 取り直した動画の `versions.representativeId` と `favorite` でこれを呼び、一覧の代表を
- * 揃える。送った付け外しより後の通し番号を使うので、それより前の応答で巻き戻さない。
+ * 揃える。
+ *
+ * `sequence` は読んだ GET を始める直前に取った favoriteReadMark である。その GET は、それまでに
+ * 決着した付け外しを読んでいるが、まだ決着していない付け外しは読んでいないことがある。この番号で
+ * 知らせるので、GET の後に応答が届いた付け外しの値を古い読みで覆わず、GET より前に決着した
+ * 付け外しの値は読んだ値で上書きする。
  */
-export function noteFavoriteOf(videoIds: readonly number[], favorite: boolean): void {
+export function noteFavoriteOf(
+  videoIds: readonly number[],
+  favorite: boolean,
+  sequence: number,
+): void {
   if (videoIds.length === 0) return;
-  sent += 1;
-  record(Array.from(new Set(videoIds)), [], [], true, favorite, sent);
+  record(Array.from(new Set(videoIds)), [], [], true, favorite, sequence);
+}
+
+/**
+ * favoriteReadMark は GET を始める直前に呼び、その時点までに決着した付け外しの通し番号を返す。
+ * 読んだ値を noteFavoriteOf で知らせるときに渡す。
+ */
+export function favoriteReadMark(): number {
+  return settledThrough;
 }
 
 /** favoriteMark は取りに行く直前に呼び、その時点までに反映した付け外しの印を返す。 */
@@ -171,6 +193,13 @@ export function updateFavorites(
   sent += 1;
   const sequence = sent;
   const send = async () => {
+    try {
+      return await put();
+    } finally {
+      settledThrough = Math.max(settledThrough, sequence);
+    }
+  };
+  const put = async () => {
     const result = await request<FavoritesResponse>("/api/favorites", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OwnerAudience } from "../testing/audience";
 import { RequestFailed, type Video } from "./client";
-import { type FavoritesChange, subscribeFavorites } from "./favorites";
+import { type FavoritesChange, subscribeFavorites, updateFavorites } from "./favorites";
 import {
   currentEventSource,
   emitServerEvent,
@@ -423,6 +423,43 @@ describe("useVideoDetail", () => {
 
     expect(result.current.state).toMatchObject({ video: { id: 12, favorite: true } });
     expect(changes).toContainEqual({ videoIds: [11], folders: [], favorite: true });
+    unsubscribe();
+  });
+
+  it("付け外しの後の取り直しが失敗したら、古い値を代表へ知らせない", async () => {
+    const version: Video = {
+      ...done,
+      id: 12,
+      favorite: false,
+      versions: { count: 2, representativeId: 11 },
+    };
+    getVideo
+      .mockResolvedValueOnce(version)
+      .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ appliedVideos: 1, appliedFolders: 0 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+    // 前に別の動画の付け外しが決着していて、最初の取得はその後に読んだ。
+    await updateFavorites([99], [], true);
+    const changes: FavoritesChange[] = [];
+    const unsubscribe = subscribeFavorites((change) => changes.push(change));
+    const { result } = renderHook(() => useVideoDetail(12), { wrapper: OwnerAudience });
+    await flush();
+
+    await act(async () => {
+      await result.current.setFavorite(true);
+    });
+
+    expect(result.current.state).toMatchObject({ video: { id: 12, favorite: false } });
+    expect(changes).toEqual([{ videoIds: [12], folders: [], favorite: true }]);
     unsubscribe();
   });
 

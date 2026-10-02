@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LibraryGroup, Video } from "./client";
 import {
   favoriteMark,
+  favoriteReadMark,
   noteFavoriteOf,
   subscribeFavorites,
   subscribeFavoritesStale,
@@ -189,7 +190,7 @@ describe("noteFavoriteOf", () => {
     const unsubscribe = subscribeFavorites(listener);
     const mark = favoriteMark();
 
-    noteFavoriteOf([11], true);
+    noteFavoriteOf([11], true, favoriteReadMark());
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledWith({
@@ -202,16 +203,43 @@ describe("noteFavoriteOf", () => {
     unsubscribe();
   });
 
-  it("先に送った付け外しの後から届く応答で、知らせた値を巻き戻さない", async () => {
+  it("読む前に決着した付け外しの値は、読んだ値で上書きする", async () => {
+    fetchMock.mockResolvedValueOnce(json({ appliedVideos: 1, appliedFolders: 0 }));
+    await updateFavorites([31], [], true);
+    // 同じ集まりの別のバージョン（30）を外した後に、代表（31）を読んだ。
+    fetchMock.mockResolvedValueOnce(json({ appliedVideos: 1, appliedFolders: 0 }));
+    await updateFavorites([30], [], false);
+    const read = favoriteReadMark();
+    const mark = favoriteMark();
+    noteFavoriteOf([31], false, read);
+    expect(withFavoriteSince(item(31, true), mark).favorite).toBe(false);
+  });
+
+  it("読んだ時点で決着していない付け外しの応答は、後から届いても知らせた値より優先する", async () => {
     let answer: ((response: Response) => void) | undefined;
     fetchMock.mockImplementation(
       () => new Promise<Response>((resolve) => (answer = resolve)),
     );
-    const pending = updateFavorites([31], [], true);
-    noteFavoriteOf([31], false);
+    const read = favoriteReadMark();
     const mark = favoriteMark();
+    const pending = updateFavorites([32], [], true);
+    // GET は付け外しの前の値（false）を読んだ。
+    noteFavoriteOf([32], false, read);
     answer!(json({ appliedVideos: 1, appliedFolders: 0 }));
     await pending;
-    expect(withFavoriteSince(item(31, true), mark - 1).favorite).toBe(false);
+    expect(withFavoriteSince(item(32, false), mark).favorite).toBe(true);
+  });
+
+  it("読んだ後に反映した付け外しを、古い読みで覆わない", async () => {
+    const read = favoriteReadMark();
+    fetchMock.mockResolvedValueOnce(json({ appliedVideos: 1, appliedFolders: 0 }));
+    await updateFavorites([33], [], true);
+    const mark = favoriteMark();
+    const listener = vi.fn();
+    const unsubscribe = subscribeFavorites(listener);
+    noteFavoriteOf([33], false, read);
+    expect(listener).not.toHaveBeenCalled();
+    expect(withFavoriteSince(item(33, false), mark - 1).favorite).toBe(true);
+    unsubscribe();
   });
 });
