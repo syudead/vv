@@ -87,6 +87,11 @@ interface Server {
   libraryRequests: number;
   /** 次の PUT /api/favorites の appliedFolders を上書きする。 */
   appliedFolders?: number;
+  /** 受け取った `PUT /api/video-visibility`・`POST /api/video-tags` の videoIds。 */
+  visibilityRequests: number[][];
+  tagRequests: number[][];
+  /** `GET /api/videos/{id}`（束ねる窓）で取りに来た id。 */
+  detailRequests: number[];
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -101,6 +106,9 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
     group,
     favoriteRequests: [],
     libraryRequests: 0,
+    visibilityRequests: [],
+    tagRequests: [],
+    detailRequests: [],
   };
   fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), "http://localhost");
@@ -112,7 +120,42 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
         json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }),
       );
     }
-    if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
+    if (url.pathname === "/api/tags") {
+      return Promise.resolve(
+        json({
+          items: [{ id: 1, name: "旅行", synonyms: [], videoCount: 1, tentative: false }],
+        }),
+      );
+    }
+    if (url.pathname === "/api/library/ids") {
+      // 「すべて選択」: 動画の項目とグループのメンバーの id、グループの項目の groups。
+      const ids = items.flatMap((item) =>
+        item.kind === "video" ? [item.video.id] : item.group.videoIds,
+      );
+      const groups =
+        server.group === undefined
+          ? []
+          : [{ folder: server.group.folder, videoIds: server.group.videoIds }];
+      return Promise.resolve(json({ ids: Array.from(new Set(ids)), groups }));
+    }
+    if (url.pathname === "/api/video-visibility" && method === "PUT") {
+      const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+      server.visibilityRequests.push(body.videoIds);
+      return Promise.resolve(json({ applied: body.videoIds.length }));
+    }
+    if (url.pathname === "/api/video-tags" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+      server.tagRequests.push(body.videoIds);
+      return Promise.resolve(
+        json({ tag: { id: 1, name: "旅行" }, applied: body.videoIds.length }),
+      );
+    }
+    const detail = /^\/api\/videos\/(\d+)$/.exec(url.pathname);
+    if (detail !== null && method === "GET") {
+      const id = Number(detail[1]);
+      server.detailRequests.push(id);
+      return Promise.resolve(json(server.videos.get(id) ?? video(id)));
+    }
     if (url.pathname === "/api/library") {
       server.libraryRequests += 1;
       return Promise.resolve(
@@ -575,5 +618,328 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
       expect(pressed(toggle)).toBe("true");
       expect(server.libraryRequests).toBe(1);
     });
+  });
+});
+
+describe("選択バーの一括のお気に入り（specs/035-favorites/ui-design.md「Selection bar」）", () => {
+  const seriesFolder = { rootId: 3, path: "series" };
+
+  async function favoriteSelection(user: ReturnType<typeof userEvent.setup>, add = true) {
+    await user.click(screen.getByRole("button", { name: "Favorite" }));
+    const items = await screen.findAllByRole("menuitem");
+    // 今の状態は示さず、2 つとも常に押せる。
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Add to favorites",
+      "Remove from favorites",
+    ]);
+    await user.click(
+      screen.getByRole("menuitem", {
+        name: add ? "Add to favorites" : "Remove from favorites",
+      }),
+    );
+  }
+
+  it("動画 2 本とグループ 1 つを付けると、videoIds は 2 本・folders は 1 つで、3 枚の印が付く（受け入れ条件 7）", async () => {
+    const group = seriesGroup();
+    const server = install(
+      [
+        { kind: "video", video: video(1) },
+        { kind: "video", video: video(2) },
+        { kind: "group", group },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
+    expect(screen.getByText("5 videos selected")).toBeDefined();
+
+    // 「Remove tag」の直後、「Visibility」の前。
+    const bar = screen.getByRole("region", { name: "Selection actions" });
+    const names = within(bar)
+      .getAllByRole("button")
+      .map((button) => button.textContent);
+    expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
+    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 1);
+
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [1, 2], folders: [seriesFolder], favorite: true },
+    ]);
+    await waitFor(() =>
+      expect(
+        pressed(screen.getByRole("button", { name: 'Favorite group "series"' })),
+      ).toBe("true"),
+    );
+    expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 1"' }))).toBe(
+      "true",
+    );
+    expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 2"' }))).toBe(
+      "true",
+    );
+    // 選択は残る。
+    expect(screen.getByText("5 videos selected")).toBeDefined();
+  });
+
+  it("グループのメンバーを 1 本外してから付けると、残ったメンバーを動画として送り、グループは送らない", async () => {
+    const group = seriesGroup();
+    const server = install(
+      [
+        { kind: "group", group },
+        { kind: "video", video: video(101) },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 101"' }));
+    expect(screen.getByText("2 videos selected")).toBeDefined();
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 2 items to favorites")).toBeDefined();
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [102, 103], folders: [], favorite: true },
+    ]);
+  });
+
+  it("「すべて選択」のあとは、応答の groups を folders に、残りを videoIds に送る", async () => {
+    const group = seriesGroup();
+    const server = install(
+      [
+        { kind: "video", video: video(1) },
+        { kind: "group", group },
+        { kind: "video", video: video(2) },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+    expect(await screen.findByText("5 videos selected")).toBeDefined();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true),
+    );
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [1, 2], folders: [seriesFolder], favorite: true },
+    ]);
+  });
+
+  it("既にお気に入りのものを含めても誤りにならず、トーストは appliedVideos + appliedFolders を数える（Edge Case）", async () => {
+    const group = seriesGroup({ favorite: true });
+    install(
+      [
+        { kind: "video", video: video(1, { favorite: true }) },
+        { kind: "group", group },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 2 items to favorites")).toBeDefined();
+    expect(screen.queryByText(/^Couldn't change the favorites/)).toBeNull();
+  });
+
+  it("1 件ならトーストの単位は item で、外すときも同じ分け方で送る", async () => {
+    const group = seriesGroup({ favorite: true });
+    const server = install(
+      [
+        { kind: "video", video: video(1, { favorite: true }) },
+        { kind: "group", group },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
+    );
+    await favoriteSelection(user, false);
+    expect(await screen.findByText("Removed 1 item from favorites")).toBeDefined();
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
+    await favoriteSelection(user, false);
+    expect(await screen.findByText("Removed 2 items from favorites")).toBeDefined();
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [], folders: [seriesFolder], favorite: false },
+      { videoIds: [1], folders: [seriesFolder], favorite: false },
+    ]);
+    await waitFor(() =>
+      expect(
+        pressed(screen.getByRole("button", { name: 'Favorite group "series"' })),
+      ).toBe("false"),
+    );
+    expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 1"' }))).toBe(
+      "false",
+    );
+  });
+
+  it("失敗したらトーストで理由を伝え、選択を残す", async () => {
+    install([{ kind: "video", video: video(1) }]);
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === "/api/favorites"
+        ? Promise.resolve(json({ code: "internal", message: "boom" }, 500))
+        : base!(input, init),
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await favoriteSelection(user);
+    expect(await screen.findByText(/^Couldn't change the favorites: /)).toBeDefined();
+    expect(screen.getByText("1 video selected")).toBeDefined();
+    expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 1"' }))).toBe(
+      "false",
+    );
+  });
+
+  it("メンバーが 20,000 本を超えるグループ 1 つは、タグ・公開は押せず、お気に入りは folders 1 つとして押せる", async () => {
+    const huge = Array.from({ length: 20_001 }, (_, index) => 100_000 + index);
+    const group = seriesGroup({ videoIds: huge, videoCount: huge.length });
+    const server = install([{ kind: "group", group }], group);
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
+    );
+    expect(screen.getByText("20,001 videos selected")).toBeDefined();
+    for (const name of ["Add tag", "Remove tag", "Visibility"]) {
+      expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+    }
+    const favorite = screen.getByRole("button", {
+      name: "Favorite",
+    }) as HTMLButtonElement;
+    expect(favorite.disabled).toBe(false);
+    expect(favorite.getAttribute("aria-describedby")).toBeNull();
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 1 item to favorites")).toBeDefined();
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [], folders: [seriesFolder], favorite: true },
+    ]);
+  });
+
+  it("送る数が 20,000 を超えると、タグ・公開と同じ理由で押せない", async () => {
+    const huge = Array.from({ length: 20_001 }, (_, index) => 100_000 + index);
+    const group = seriesGroup({ videoIds: huge, videoCount: huge.length });
+    install(
+      [
+        { kind: "group", group },
+        { kind: "video", video: video(100_000) },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
+    );
+    // メンバーを 1 本外すと、残りの 20,000 本は動画として送るので上限に収まる。
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 100000"' }));
+    const favorite = screen.getByRole("button", {
+      name: "Favorite",
+    }) as HTMLButtonElement;
+    expect(favorite.disabled).toBe(false);
+    // 戻しても、グループとしては選ばれていないので 20,001 本の動画になり、押せない。
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 100000"' }));
+    expect(favorite.disabled).toBe(true);
+    expect(favorite.title).toBe("Select between 1 and 20,000 videos.");
+    const describedBy = favorite.getAttribute("aria-describedby");
+    expect(document.getElementById(describedBy ?? "")?.textContent).toBe(
+      "Select between 1 and 20,000 videos.",
+    );
+  });
+
+  it("「すべて選択」のあとメンバーを 1 本外して戻すと「すべて選択」が押せ、押すとグループに戻る", async () => {
+    const group = seriesGroup();
+    const server = install(
+      [
+        { kind: "group", group },
+        { kind: "video", video: video(101) },
+        { kind: "video", video: video(1) },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    const selectAll = () =>
+      screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement;
+    await user.click(selectAll());
+    await waitFor(() => expect(selectAll().disabled).toBe(true));
+
+    const member = screen.getByRole("checkbox", { name: 'Select "動画 101"' });
+    await user.click(member);
+    expect(selectAll().disabled).toBe(false);
+    await user.click(member);
+    // id はそろったが、グループはグループとして選ばれていない。
+    expect(screen.getByText("4 videos selected")).toBeDefined();
+    expect(selectAll().disabled).toBe(false);
+    await favoriteSelection(user);
+    expect(await screen.findByText("Added 4 items to favorites")).toBeDefined();
+    expect(server.favoriteRequests[0]).toEqual({
+      videoIds: [102, 103, 1, 101],
+      folders: [],
+      favorite: true,
+    });
+
+    await user.click(selectAll());
+    await waitFor(() => expect(selectAll().disabled).toBe(true));
+    await favoriteSelection(user);
+    await waitFor(() => expect(server.favoriteRequests).toHaveLength(2));
+    expect(server.favoriteRequests[1]).toEqual({
+      videoIds: [1],
+      folders: [seriesFolder],
+      favorite: true,
+    });
+  });
+
+  it("タグ・公開・束ねる操作は今までどおりメンバーを含む動画の id を送る", async () => {
+    const group = seriesGroup();
+    const server = install(
+      [
+        { kind: "video", video: video(1) },
+        { kind: "group", group },
+      ],
+      group,
+    );
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
+    const expected = [1, 101, 102, 103];
+
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Make public" }));
+    expect(await screen.findByText("Made 4 videos public")).toBeDefined();
+    expect(server.visibilityRequests).toEqual([expected]);
+
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
+    await user.type(input, "旅行");
+    await screen.findByRole("option", { name: /旅行/ });
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText('Added "旅行" to 4 videos')).toBeDefined();
+    expect(server.tagRequests).toEqual([expected]);
+
+    await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
+    await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect([...server.detailRequests].sort((a, b) => a - b)).toEqual(expected),
+    );
+    expect(server.favoriteRequests).toEqual([]);
   });
 });
