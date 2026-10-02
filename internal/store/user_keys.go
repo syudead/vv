@@ -10,9 +10,9 @@ import (
 
 // 利用者データの鍵（specs/030-video-versions/data-model.md §3、research.md R-2）。
 //
-// 動画のタグ・再生位置・公開の設定（video_tags・playback_progress・public_videos）は、
-// 集まりのメンバーなら集まりの user_key（'bundle:<id>'）に、そうでなければ content_key に
-// 置く。読み書きのどこか 1 か所でも content_key のまま残ると「タグは見えるのに絞ると
+// 動画のタグ・再生位置・公開の設定・お気に入り（video_tags・playback_progress・public_videos・
+// video_favorites）は、集まりのメンバーなら集まりの user_key（'bundle:<id>'）に、そうでなければ
+// content_key に置く。読み書きのどこか 1 か所でも content_key のまま残ると「タグは見えるのに絞ると
 // 出ない」といった食い違いになるので、鍵は userKeyExpr の 1 つの式で決める。
 // 表示名とサムネイルの位置（video_overrides）、生成物は内容ごとで、content_key のまま。
 

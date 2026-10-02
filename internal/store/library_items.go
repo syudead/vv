@@ -412,8 +412,9 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		progressColumns = `p.position_ms, p.duration_ms, p.completed, p.updated_at`
 		progressJoin = ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	}
-	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, `+progressColumns+`
+	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, ff.path is not null, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id
+		left join folder_favorites ff on ff.path = g.path_key
 		join videos on videos.id = m.video_id`+progressJoin+`
 		where g.id in (select value from json_each(?)) and `+visibleVideoCondition("videos", audience)+`
 		order by g.id, m.position`, string(encoded))
@@ -424,6 +425,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 
 	type collected struct {
 		path, name string
+		favorite   bool
 		members    []domain.Video
 		progress   []*domain.Progress
 	}
@@ -432,17 +434,18 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	for rows.Next() {
 		var groupID int64
 		var path, name string
+		var favorite bool
 		var position, duration, updatedAt sql.NullInt64
 		var completed sql.NullBool
 		video, err := scanVideo(extraScanner{rows: rows, extra: []any{
-			&groupID, &path, &name, &position, &duration, &completed, &updatedAt,
+			&groupID, &path, &name, &favorite, &position, &duration, &completed, &updatedAt,
 		}})
 		if err != nil {
 			return nil, fmt.Errorf("cannot read group members: %w", err)
 		}
 		group := groups[groupID]
 		if group == nil {
-			group = &collected{path: path, name: name}
+			group = &collected{path: path, name: name, favorite: favorite}
 			groups[groupID] = group
 			order = append(order, groupID)
 		}
@@ -461,7 +464,9 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	}
 	for _, id := range order {
 		group := groups[id]
-		out[id] = domain.NewLibraryGroup(group.path, group.name, group.members, group.progress)
+		item := domain.NewLibraryGroup(group.path, group.name, group.members, group.progress)
+		item.Favorite = group.favorite
+		out[id] = item
 	}
 	return out, nil
 }
