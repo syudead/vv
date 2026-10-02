@@ -12,6 +12,8 @@ import {
 } from "./client";
 import {
   favoriteMark,
+  favoriteReadMark,
+  noteFavoriteOf,
   subscribeFavorites,
   subscribeFavoritesStale,
   updateFavorites,
@@ -120,6 +122,9 @@ export function useVideoDetail(id: number): {
     // 送信中の取り直しを始めたときの loadsStarted の値。
     let started = 0;
     let current: Video | undefined;
+    // current を読んだ取得を始めたときの loadsStarted の値と favoriteReadMark の値。
+    let currentLoad = 0;
+    let currentRead = 0;
     const waiters: (() => void)[] = [];
     // この画面の付け外しを送っている数。その間に届く付け外しの結果の知らせは重ねない。
     let ownFavorites = 0;
@@ -139,6 +144,8 @@ export function useVideoDetail(id: number): {
       // お気に入りの付け外しも同じ（specs/035-favorites/research.md R-6）。
       const mark = visibilityMark();
       const favorite = favoriteMark();
+      const read = favoriteReadMark();
+      const loadStarted = started;
       try {
         const video = withFavoriteSince(
           withVisibilitySince(await getVideo(id, mine.signal), mark),
@@ -146,6 +153,8 @@ export function useVideoDetail(id: number): {
         );
         if (!alive || controller !== mine) return;
         current = video;
+        currentLoad = loadStarted;
+        currentRead = read;
         setState({ kind: "ready", id, video });
         settle();
       } catch (failure) {
@@ -185,6 +194,8 @@ export function useVideoDetail(id: number): {
         mark.favorite,
       );
       current = video;
+      // 保存の応答はいつ読んだ値か分からないので、代表へは知らせない（setFavorite）。
+      currentLoad = 0;
       setState({ kind: "ready", id, video });
     };
 
@@ -195,7 +206,23 @@ export function useVideoDetail(id: number): {
       } finally {
         ownFavorites -= 1;
       }
+      // 付け外しの後に始めた取得で読んだ値だけを代表へ知らせる。取り直しが失敗したときの
+      // current は付け外しの前の値なので、知らせると代表を古い値で上書きしてしまう。
+      const after = loadsStarted;
       await refreshRef.current();
+      // 代表以外のバージョンの付け外しは集まりの値を変えるが、一覧に出ているのは代表なので、
+      // 取り直した値で代表の項目と一覧の控えを揃える（noteFavoriteOf）。
+      const representative = current?.versions?.representativeId;
+      if (
+        alive &&
+        current !== undefined &&
+        currentLoad > after &&
+        current.favorite !== undefined &&
+        representative !== undefined &&
+        representative !== id
+      ) {
+        noteFavoriteOf([representative], current.favorite, currentRead);
+      }
     };
 
     // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
