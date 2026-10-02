@@ -140,6 +140,7 @@ export function useVideoPages({
           query: current.query,
           watch: current.watch === "all" ? undefined : current.watch,
           playable: current.playable,
+          favorite: current.favorite,
           sort: current.sort,
           seed: current.sort === "random" ? current.seed : undefined,
           cursor: from,

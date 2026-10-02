@@ -427,10 +427,164 @@ describe("LibraryPage", () => {
       "Length",
       "File size",
       "Recently played",
+      "Date favorited",
       "Random",
     ]);
     await user.click(screen.getByRole("menuitemradio", { name: "File size" }));
     expect(screen.getByTestId("location").textContent).toBe("?sort=sizeDesc");
+  });
+
+  describe("お気に入りのみと「Date favorited」（specs/035-favorites/ui-design.md「Filter menu」「Sort and direction」）", () => {
+    it("「Favorites only」を入れると favorite=true で読み、URL に fav=1 が付き、ボタンの数字に数え、「Clear filters」で外れる（要件 8）", async () => {
+      const user = userEvent.setup();
+      renderLibrary("/?sort=titleAsc");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const filter = await screen.findByRole("dialog");
+      // 視聴状態の直下、「Playable only」の上に置く。
+      const checks = within(filter)
+        .getAllByRole("checkbox")
+        .map((check) => check.closest("label")?.textContent);
+      expect(checks).toEqual(["Favorites only", "Playable only"]);
+      await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
+
+      expect(screen.getByTestId("location").textContent).toBe("?fav=1&sort=titleAsc");
+      await waitFor(() =>
+        expect(listRequests(fetchMock).at(-1)?.searchParams.get("favorite")).toBe("true"),
+      );
+      expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "Filter (1 applied)" }).className,
+      ).toContain("bg-accent-soft");
+
+      await user.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
+      await waitFor(() =>
+        expect(listRequests(fetchMock).at(-1)?.searchParams.has("favorite")).toBe(false),
+      );
+      expect(screen.getByRole("button", { name: "Filter" })).toBeDefined();
+    });
+
+    it("タグの絞り込みと同時に使うと両方を送る（受け入れ条件 9）", async () => {
+      renderLibrary("/?fav=1&sort=addedDesc&tag=3");
+      await screen.findByRole("link", { name: "動画 1" });
+      const last = listRequests(fetchMock).at(-1);
+      expect(last?.searchParams.get("favorite")).toBe("true");
+      expect(last?.searchParams.getAll("tag")).toEqual(["3"]);
+    });
+
+    it("「すべて選択」もお気に入りのみの条件で全件を取る", async () => {
+      const base = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const url = new URL(String(input), "http://localhost");
+        if (url.pathname === "/api/library/ids") {
+          return Promise.resolve(json({ ids: [1, 2, 3] }));
+        }
+        return base?.(input, init) ?? Promise.reject(new Error("unexpected"));
+      });
+      const user = userEvent.setup();
+      renderLibrary("/?fav=1&sort=addedDesc");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
+      await user.click(screen.getByRole("button", { name: "Select all" }));
+      expect(await screen.findByText("3 videos selected")).toBeDefined();
+      const ids = fetchMock.mock.calls
+        .map(([input]) => new URL(String(input), "http://localhost"))
+        .find((url) => url.pathname === "/api/library/ids");
+      expect(ids?.searchParams.get("favorite")).toBe("true");
+    });
+
+    it("「Date favorited」は新しい順で読み、向きの切り替えで古い順になり、URL と端末の設定に残る（要件 10、受け入れ条件 8）", async () => {
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: "Date favorited" }),
+      );
+      expect(screen.getByTestId("location").textContent).toBe("?sort=favoritedDesc");
+      await waitFor(() =>
+        expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe(
+          "favoritedDesc",
+        ),
+      );
+      expect(
+        screen.getByRole("button", { name: "Sort by: Date favorited" }),
+      ).toBeDefined();
+      expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+        sort: "favoritedDesc",
+      });
+
+      await user.click(
+        screen.getByRole("button", {
+          name: "Descending (newest first). Press for ascending",
+        }),
+      );
+      expect(screen.getByTestId("location").textContent).toBe("?sort=favoritedAsc");
+      await waitFor(() =>
+        expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe(
+          "favoritedAsc",
+        ),
+      );
+      expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+        sort: "favoritedAsc",
+      });
+    });
+
+    it("端末に保存した「Date favorited」で開く", async () => {
+      localStorage.setItem(
+        "vv.view.v2",
+        JSON.stringify({ zoom: 1, view: "grid", sort: "favoritedAsc" }),
+      );
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe(
+        "favoritedAsc",
+      );
+      expect(
+        screen.getByRole("button", { name: "Sort by: Date favorited" }),
+      ).toBeDefined();
+    });
+
+    it("fav=1 の一覧から動画を開くと fav=1 の鍵で控え、絞らない一覧の鍵では取れない", async () => {
+      const { takeListSnapshot } = await import("../api/listSnapshot");
+      renderLibrary("/?fav=1&sort=addedDesc");
+      await screen.findByRole("link", { name: "動画 1" });
+      fireEvent.click(screen.getByRole("link", { name: "動画 1" }));
+      await screen.findByText("再生画面");
+
+      expect(
+        takeListSnapshot({ query: "", favorite: true, sort: "addedDesc", tags: [] }),
+      ).toBeDefined();
+      expect(
+        takeListSnapshot({ query: "", favorite: false, sort: "addedDesc", tags: [] }),
+      ).toBeUndefined();
+    });
+
+    it("fav=1 の控えは fav=1 の一覧で使い、ほかの条件が同じ絞らない一覧では使わずに取り直す", async () => {
+      const { saveListSnapshot } = await import("../api/listSnapshot");
+      saveListSnapshot(
+        { query: "", favorite: true, sort: "addedDesc" },
+        {
+          items: [videoItem(video(9, { title: "控えの動画" }))],
+          total: 1,
+          hasMore: false,
+          scrollY: 0,
+        },
+      );
+      const first = renderLibrary("/?fav=1&sort=addedDesc");
+      expect(await screen.findByRole("link", { name: "控えの動画" })).toBeDefined();
+      expect(listRequests(fetchMock)).toHaveLength(0);
+      first.unmount();
+
+      renderLibrary("/?sort=addedDesc");
+      expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
+      expect(listRequests(fetchMock).length).toBeGreaterThan(0);
+    });
   });
 
   it("「Date created」は新しい順で読み、向きの切り替えで古い順になり、URL と端末の設定に残る", async () => {
@@ -1696,6 +1850,70 @@ describe("LibraryPage", () => {
       await waitFor(() =>
         expect(screen.getByTestId("location").textContent).toBe("?q=ab&sort=addedDesc"),
       );
+    });
+
+    it("「Favorites only」と「Date favorited」を出さない（受け入れ条件 10）", async () => {
+      const user = userEvent.setup();
+      renderLibrary("/", "guest");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const filter = await screen.findByRole("dialog");
+      expect(
+        within(filter).queryByRole("checkbox", { name: "Favorites only" }),
+      ).toBeNull();
+      await user.keyboard("{Escape}");
+
+      await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).queryByText("Date favorited")).toBeNull();
+      expect(
+        within(menu)
+          .getAllByRole("menuitemradio")
+          .map((item) => item.textContent),
+      ).toEqual([
+        "Date added",
+        "Date modified",
+        "Date created",
+        "Title",
+        "Length",
+        "File size",
+        "Random",
+      ]);
+    });
+
+    it("URL に残った fav=1 と favorited* は既定に丸めて要求し、URL も直す（受け入れ条件 10）", async () => {
+      for (const sort of ["favoritedDesc", "favoritedAsc"]) {
+        fetchMock.mockClear();
+        const view = renderLibrary(`/?q=ab&fav=1&sort=${sort}`, "guest");
+        await screen.findByRole("link", { name: "動画 1" });
+        const requests = listRequests(fetchMock);
+        expect(requests.length).toBeGreaterThan(0);
+        for (const url of requests) {
+          expect(url.searchParams.has("favorite")).toBe(false);
+          expect(url.searchParams.get("sort")).toBe("addedDesc");
+          expect(url.searchParams.get("query")).toBe("ab");
+        }
+        await waitFor(() =>
+          expect(screen.getByTestId("location").textContent).toBe("?q=ab&sort=addedDesc"),
+        );
+        view.unmount();
+      }
+    });
+
+    it("端末に保存した並び順が「Date favorited」でも既定で要求し、保存値は書き換えない", async () => {
+      localStorage.setItem(
+        "vv.view.v2",
+        JSON.stringify({ zoom: 1, view: "grid", sort: "favoritedDesc" }),
+      );
+      renderLibrary("/", "guest");
+      await screen.findByRole("link", { name: "動画 1" });
+      for (const url of listRequests(fetchMock)) {
+        expect(url.searchParams.get("sort")).toBe("addedDesc");
+      }
+      expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+        sort: "favoritedDesc",
+      });
     });
 
     it("端末に保存した並び順が最近再生した順でも既定で要求し、保存値は書き換えない", async () => {

@@ -73,6 +73,24 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeUndefined();
   });
 
+  it("favorite を含む鍵は、絞らない鍵と一致しない（/?fav=1 と / の控えを区別する）", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", favorite: true }, body([1]));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", favorite: false }),
+    ).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", favorite: true }),
+    ).toBeDefined();
+
+    saveListSnapshot({ query: "", sort: "addedDesc", favorite: false }, body([2]));
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeDefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", favorite: true }),
+    ).toBeUndefined();
+  });
+
   it("tags を含む鍵は、tags の無い鍵や別の tags の鍵と一致しない（/?tag=1 と / の控えを区別する）", () => {
     saveListSnapshot({ query: "", sort: "addedDesc", tags: [1] }, body([1]));
 

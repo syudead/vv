@@ -16,7 +16,7 @@ import {
 import { useListCriteria } from "../videoList/useListCriteria";
 
 /**
- * useConditions は一覧の条件（検索語・視聴状態・再生可否・並べ替え・seed）を
+ * useConditions は一覧の条件（検索語・視聴状態・再生可否・お気に入りのみ・並べ替え・seed）を
  * URL から読み書きする口である。ライブラリと同じ `videoList/listCriteria`・
  * `useListCriteria` を使う。端末に保存するのは
  * 並べ替えだけで、フォルダ画面もライブラリと同じ保存値を読み書きする。
@@ -59,6 +59,10 @@ export function useConditions() {
     (next: boolean) => update({ ...criteria, playable: next }),
     [criteria, update],
   );
+  const changeFavorite = useCallback(
+    (next: boolean) => update({ ...criteria, favorite: next }),
+    [criteria, update],
+  );
   const commitQuery = useCallback(
     (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
     [criteria, update],
@@ -80,6 +84,7 @@ export function useConditions() {
     shuffle,
     changeWatch,
     changePlayable,
+    changeFavorite,
     commitQuery,
     clearAll,
     changeZoom,

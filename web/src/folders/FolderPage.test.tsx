@@ -36,6 +36,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import FolderCard from "./FolderCard";
 import FolderPage from "./FolderPage";
+import { folderKey } from "./folderPath";
 
 function summary(extra: Partial<FolderSummary>): FolderSummary {
   return {
@@ -693,6 +694,77 @@ describe("FolderPage", () => {
     expect(screen.getByRole("button", { name: "Sort by: Date created" })).toBeDefined();
   });
 
+  it("フォルダ画面でも「Favorites only」と「Date favorited」が使え、URL に往復する（要件 11）", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const filter = await screen.findByRole("dialog");
+    await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/folders/3/A?fav=1&sort=addedDesc",
+    );
+    await waitFor(() =>
+      expect(
+        requests.some((url) =>
+          url.includes("videos?path=A&favorite=true&sort=addedDesc"),
+        ),
+      ).toBe(true),
+    );
+    expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Date favorited" }),
+    );
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/folders/3/A?fav=1&sort=favoritedDesc",
+    );
+    await waitFor(() =>
+      expect(
+        requests.some((url) =>
+          url.includes("videos?path=A&favorite=true&sort=favoritedDesc"),
+        ),
+      ).toBe(true),
+    );
+    expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+      sort: "favoritedDesc",
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (newest first). Press for ascending",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        requests.some((url) =>
+          url.includes("videos?path=A&favorite=true&sort=favoritedAsc"),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("fav=1 のフォルダから動画を開いて戻ると fav=1 の控えで復元し、絞らないフォルダでは使わない", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?fav=1&sort=addedDesc");
+    await user.click(await screen.findByRole("link", { name: "x" }));
+    const folder = folderKey({ rootId: 3, path: "A" });
+    expect(
+      takeListSnapshot({ query: "", favorite: true, sort: "addedDesc", folder }),
+    ).toBeDefined();
+    expect(
+      takeListSnapshot({ query: "", favorite: false, sort: "addedDesc", folder }),
+    ).toBeUndefined();
+    await user.click(await screen.findByRole("button", { name: "戻る" }));
+    expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
+    expect(
+      requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
+    ).toBe(1);
+  });
+
   it("見つからないフォルダでは空の格子ではなく案内と最上位への導線を出す", async () => {
     renderFolders("/folders/3/missing");
     expect(await screen.findByText("This folder wasn't found")).toBeDefined();
@@ -1260,6 +1332,37 @@ describe("FolderPage", () => {
         ).toEqual(["Folders"]),
       );
       expect(within(nav).getByText("A").getAttribute("aria-current")).toBe("page");
+    });
+
+    it("「Favorites only」を出さず、URL に残った fav=1 と favorited* は既定に丸めて要求し、URL も直す", async () => {
+      guestResponses();
+      const user = userEvent.setup();
+      renderFolders("/folders/3/A?fav=1&sort=favoritedDesc", "guest");
+      await screen.findByRole("link", { name: "x" });
+      const videoRequests = requests
+        .filter((url) => url.startsWith("/api/folders/3/videos?"))
+        .map((url) => new URL(url, "http://localhost").searchParams);
+      expect(videoRequests.length).toBeGreaterThan(0);
+      for (const params of videoRequests) {
+        expect(params.has("favorite")).toBe(false);
+        expect(params.get("sort")).toBe("addedDesc");
+      }
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          "/folders/3/A?sort=addedDesc",
+        ),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const filter = await screen.findByRole("dialog");
+      expect(
+        within(filter).queryByRole("checkbox", { name: "Favorites only" }),
+      ).toBeNull();
+      await user.keyboard("{Escape}");
+      await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(7);
+      expect(within(menu).queryByText("Date favorited")).toBeNull();
     });
 
     it("URL に残った watch と最近再生した順は既定に丸めて要求し、URL も直す", async () => {

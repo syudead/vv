@@ -32,6 +32,7 @@ export default function RootView() {
     shuffle,
     changeWatch,
     changePlayable,
+    changeFavorite,
     commitQuery,
     clearAll,
     changeZoom: saveZoom,
@@ -101,6 +102,8 @@ export default function RootView() {
           onWatchChange={changeWatch}
           playable={criteria.playable}
           onPlayableChange={changePlayable}
+          favorite={criteria.favorite}
+          onFavoriteChange={changeFavorite}
           canClear={hasConditions(criteria)}
           onClear={clearAll}
           disabled={!searching}

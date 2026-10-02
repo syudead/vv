@@ -98,7 +98,7 @@ export default function LibraryPage() {
   // 含めない。useListCriteria の画面固有の
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
-  const { query, watch, playable, sort } = criteria;
+  const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
   // タグの操作の関数とカードの memo を保つ。ゲストはタグで絞り込めない（URL に残った
   // `tag` は useListCriteria が取り除く）。
@@ -149,6 +149,10 @@ export default function LibraryPage() {
   );
   const changePlayable = useCallback(
     (next: boolean) => update({ ...criteria, playable: next }),
+    [criteria, update],
+  );
+  const changeFavorite = useCallback(
+    (next: boolean) => update({ ...criteria, favorite: next }),
     [criteria, update],
   );
   const commitQuery = useCallback(
@@ -219,7 +223,7 @@ export default function LibraryPage() {
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
   useEffect(() => {
     resetPreview();
-  }, [items, playable, query, resetPreview, sort, view, watch, zoom]);
+  }, [favorite, items, playable, query, resetPreview, sort, view, watch, zoom]);
 
   // --- 選択 ---
   // 選択は動画の id の集合と、グループとして選んだグループ（フォルダとメンバー）を持つ
@@ -310,7 +314,7 @@ export default function LibraryPage() {
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, tag: tagIds })
+    listLibraryIds({ query, watch, playable, favorite, tag: tagIds })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -341,7 +345,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [apply, playable, query, tagIds, toast, watch]);
+  }, [apply, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -636,6 +640,8 @@ export default function LibraryPage() {
           onWatchChange={changeWatch}
           playable={playable}
           onPlayableChange={changePlayable}
+          favorite={favorite}
+          onFavoriteChange={changeFavorite}
           canClear={conditioned}
           onClear={clearAll}
           view={view}

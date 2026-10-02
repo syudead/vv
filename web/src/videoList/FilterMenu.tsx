@@ -14,26 +14,36 @@ export interface FilterMenuProps {
   onWatchChange: (value: WatchFilter) => void;
   playable: boolean;
   onPlayableChange: (value: boolean) => void;
-  /** 検索語・視聴状態・再生可否のどれかが効いているか（「条件を解除」を出す）。 */
+  /** お気に入りのみ（所有者だけ。specs/035-favorites/ui-design.md「Filter menu」）。 */
+  favorite: boolean;
+  onFavoriteChange: (value: boolean) => void;
+  /**
+   * 検索語・視聴状態・再生可否・お気に入りのみのどれかが効いているか
+   * （「条件を解除」を出す）。
+   */
   canClear: boolean;
-  /** 検索語・視聴状態・再生可否を外す。並べ替えは残す。 */
+  /** 検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えは残す。 */
   onClear: () => void;
   disabled?: boolean;
 }
 
 /**
  * FilterMenu は絞り込みのボタンとポップオーバーである（ui-design.md「Filter menu」）。
- * ボタンの数字は視聴状態と再生可否の数だけを数える。検索語は検索欄に見えている。
+ * ボタンの数字は視聴状態・お気に入りのみ・再生可否の数だけを数える。検索語は検索欄に
+ * 見えている。
  *
- * ゲストには「視聴状態」を出さない（再生位置は所有者のもの。
- * specs/016-single-account-auth/ui-design.md「Guest degradation」）。そのときボタンの
- * 数字は再生可否だけを数える。
+ * ゲストには「視聴状態」と「お気に入りのみ」を出さない（再生位置とお気に入りは
+ * 所有者のもの。specs/016-single-account-auth/ui-design.md「Guest degradation」、
+ * specs/035-favorites/ui-design.md「Guest degradation」）。そのときボタンの数字は
+ * 再生可否だけを数える。
  */
 export default function FilterMenu({
   watch,
   onWatchChange,
   playable,
   onPlayableChange,
+  favorite,
+  onFavoriteChange,
   canClear,
   onClear,
   disabled,
@@ -41,7 +51,8 @@ export default function FilterMenu({
   const [open, setOpen] = useState(false);
   const owner = useAudience() === "owner";
   const watchCount = owner && watch !== "all" ? 1 : 0;
-  const filterCount = disabled ? 0 : watchCount + (playable ? 1 : 0);
+  const favoriteCount = owner && favorite ? 1 : 0;
+  const filterCount = disabled ? 0 : watchCount + favoriteCount + (playable ? 1 : 0);
 
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
@@ -93,15 +104,29 @@ export default function FilterMenu({
           </fieldset>
         )}
 
-        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={playable}
-            onChange={(event) => onPlayableChange(event.target.checked)}
-            className="size-4 accent-accent"
-          />
-          {t.list.filter.playableOnly}
-        </label>
+        {/* 2 つのチェックは同じ性質の行なので、視聴状態の下の mb-4 より詰めた gap-2 で並べる。 */}
+        <div className="flex flex-col gap-2">
+          {owner && (
+            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
+              <input
+                type="checkbox"
+                checked={favorite}
+                onChange={(event) => onFavoriteChange(event.target.checked)}
+                className="size-4 accent-accent"
+              />
+              {t.list.filter.favoritesOnly}
+            </label>
+          )}
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={playable}
+              onChange={(event) => onPlayableChange(event.target.checked)}
+              className="size-4 accent-accent"
+            />
+            {t.list.filter.playableOnly}
+          </label>
+        </div>
 
         {canClear && (
           <Button

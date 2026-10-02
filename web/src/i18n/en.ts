@@ -300,6 +300,7 @@ export const en = {
         watched: "Watched",
       },
       playableOnly: "Playable only",
+      favoritesOnly: "Favorites only",
       clear: "Clear filters",
     },
     sort: {
@@ -313,6 +314,7 @@ export const en = {
         duration: "Length",
         size: "File size",
         played: "Recently played",
+        favorited: "Date favorited",
         random: "Random",
       },
       wording: {
@@ -322,6 +324,7 @@ export const en = {
         duration: { asc: "shortest first", desc: "longest first" },
         size: { asc: "smallest first", desc: "largest first" },
         played: { asc: "least recently played", desc: "most recently played" },
+        favorited: { asc: "oldest first", desc: "newest first" },
       },
       asc: "Ascending",
       desc: "Descending",

@@ -19,7 +19,7 @@ import { applyTagToTags } from "./tagOrder";
 const defaultSort: VideoSort = "addedDesc";
 
 /**
- * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・並び順・
+ * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・お気に入りのみ・並び順・
  * seed、フォルダ画面ではフォルダも。specs/013-library-search/contracts/list-url.md）。
  */
 export interface ListKey {
@@ -29,6 +29,11 @@ export interface ListKey {
   watch?: WatchFilter;
   /** 再生できるものだけか。省略すると偽と同じ鍵になる。 */
   playable?: boolean;
+  /**
+   * お気に入りのみか。省略すると偽と同じ鍵になる。お気に入りのみの一覧と絞らない一覧の
+   * 控えを取り違えない（specs/035-favorites/ui-design.md「Filter menu」）。
+   */
+  favorite?: boolean;
   /** 並び順。省略すると既定値と同じ鍵になる。 */
   sort?: VideoSort;
   /** sort=random の並びを決める値。ほかの並び順では鍵に入れない。 */
@@ -106,6 +111,7 @@ function normalize(key: ListKey): string {
     key.query.trim(),
     key.watch ?? "all",
     key.playable === true ? "1" : "",
+    key.favorite === true ? "1" : "",
     sort,
     seed,
     tags,
