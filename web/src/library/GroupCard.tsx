@@ -26,10 +26,11 @@ export interface GroupCardProps {
   selected: boolean;
   selectionMode: boolean;
   /**
-   * 全メンバー（`videoIds`）を選択に入れる・外す。選択を持たない見る人（ゲスト）では
+   * 全メンバー（`videoIds`）を選択に入れる・外す。呼び出し元はグループとしても覚える
+   * （specs/035-favorites/research.md R-7）。選択を持たない見る人（ゲスト）では
    * 省き、チェックを描かない。
    */
-  onSelect?: (videoIds: readonly number[], selected: boolean) => void;
+  onSelect?: (group: LibraryGroup, selected: boolean) => void;
   /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
   activePreviewId?: number | null;
   previewResetEpoch?: number;
@@ -151,7 +152,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         >
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group.videoIds, next)}
+            onCheckedChange={(next) => onSelect(group, next)}
             label={t.library.group.select(group.name)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
@@ -166,7 +167,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
-            onSelect(group.videoIds, !selected);
+            onSelect(group, !selected);
           }
         }}
         className="flex min-w-0 flex-1 flex-col outline-none"
@@ -256,7 +257,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         <td className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group.videoIds, next)}
+            onCheckedChange={(next) => onSelect(group, next)}
             label={t.library.group.select(group.name)}
             className={cn(
               "transition-opacity",
@@ -296,7 +297,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           onClick={(event) => {
             if (selectionMode) {
               event.preventDefault();
-              onSelect?.(group.videoIds, !selected);
+              onSelect?.(group, !selected);
             }
           }}
           className={cn(
