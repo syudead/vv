@@ -44,3 +44,4 @@ Add each new document to this index.
 - [仮のタグの目印と、確定・却下・却下した名前の UI](../../specs/031-tentative-tags/ui-design.md)
 - [一覧のカードのサムネイル下端をなぞるスクラブの UI](../../specs/032-card-scrub-preview/ui-design.md)
 - [動画ページの更新日時・作成日時と「作成日」の並び順の UI](../../specs/033-video-dates/ui-design.md)
+- [動画とグループのお気に入りの印・付け外し・絞り込み・並び順の UI](../../specs/035-favorites/ui-design.md)
