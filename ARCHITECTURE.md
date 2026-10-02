@@ -589,7 +589,7 @@ get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
 Guest-too requests without a valid session are handled as a guest: handlers pass the
 audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
 from them) appear, hidden videos and folders answer the same `404` as missing ones,
-guest responses omit `location`, `progress`, `probeError`, `probeErrorCode` and `rootPath` and carry
+guest responses omit `location`, `progress`, `probeError`, `probeErrorCode`, `favorite` and `rootPath` and carry
 empty `tags`, and list conditions that depend on owner data (`watch`, played-at
 sorts, `tag`) are `400`
 ([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
@@ -605,7 +605,12 @@ flag through `VisibilityStore`; after the switch commits, making videos private 
 the in-flight guest stream, live-transcode and hover-preview responses of their content
 keys, which a second in-memory ledger (`visibility.go`) tracks, while owner responses
 continue. Switches run one at a time from commit to cut-off, so a later re-publish
-cannot be cut off by an earlier switch to private. `POST /api/auth/setup` creates the first account and logs in,
+cannot be cut off by an earlier switch to private. `PUT /api/favorites` (owner only)
+marks or unmarks videos and group folders as favorites through `FavoriteStore` and sends
+no `/api/events` notice; `Video.favorite` and `LibraryGroup.favorite` appear only in owner
+responses
+([specs/035-favorites/contracts/screen-api.md](specs/035-favorites/contracts/screen-api.md)).
+`POST /api/auth/setup` creates the first account and logs in,
 `POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
 `GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
 ([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).

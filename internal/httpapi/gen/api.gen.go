@@ -1036,6 +1036,28 @@ type ErrorCode string
 // ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ErrorReason string
 
+// FavoritesRequest defines model for FavoritesRequest.
+type FavoritesRequest struct {
+	// Favorite true でお気に入りにし、false で外す
+	Favorite bool `json:"favorite"`
+
+	// Folders お気に入りを付け外しするグループのフォルダ
+	Folders *[]VideoFolder `json:"folders,omitempty"`
+
+	// VideoIds お気に入りを付け外しする動画の id
+	VideoIds *[]int64 `json:"videoIds,omitempty"`
+}
+
+// FavoritesResponse defines model for FavoritesResponse.
+type FavoritesResponse struct {
+	// AppliedFolders folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む）
+	AppliedFolders int `json:"appliedFolders"`
+
+	// AppliedVideos videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数え、
+	// 既に同じ状態だったものを含む）
+	AppliedVideos int `json:"appliedVideos"`
+}
+
 // FolderGroupTagResult defines model for FolderGroupTagResult.
 type FolderGroupTagResult struct {
 	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
@@ -1145,13 +1167,17 @@ type HealthStatus string
 // LibraryGroup グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
 // （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
 // グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-// `lastPlayedAt` を省き、`tags` を空の配列にする。
+// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 type LibraryGroup struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
 
 	// DurationMs 長さの分かっているメンバーの合計。1本も分からなければ省く
 	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Favorite 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
+	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+	Favorite *bool `json:"favorite,omitempty"`
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
@@ -1203,7 +1229,7 @@ type LibraryItem struct {
 	// Group グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
 	// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
 	// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-	// `lastPlayedAt` を省き、`tags` を空の配列にする。
+	// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
@@ -1625,6 +1651,10 @@ type Video struct {
 
 	// DurationMs 尺。解析前・取得不能の場合は省略される
 	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Favorite 所有者がお気に入りにした動画か。所有者の応答にだけ入る
+	// （specs/035-favorites/data-model.md §3）
+	Favorite *bool `json:"favorite,omitempty"`
 
 	// FileCreatedAt 一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
 	// 更新日時（mtime）（specs/033-video-dates/research.md R-4）
@@ -2225,6 +2255,9 @@ type LoginJSONRequestBody = LoginRequest
 // SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
 type SetupAccountJSONRequestBody = SetupRequest
 
+// UpdateFavoritesJSONRequestBody defines body for UpdateFavorites for application/json ContentType.
+type UpdateFavoritesJSONRequestBody = FavoritesRequest
+
 // SetFolderGroupingJSONRequestBody defines body for SetFolderGrouping for application/json ContentType.
 type SetFolderGroupingJSONRequestBody = FolderGroupingRequest
 
@@ -2305,6 +2338,9 @@ type ServerInterface interface {
 	// StreamEvents 取り込みと動画の変化を Server-Sent Events で送る
 	// (GET /api/events)
 	StreamEvents(w http.ResponseWriter, r *http.Request)
+	// UpdateFavorites 動画とグループのお気に入りを付け外しする
+	// (PUT /api/favorites)
+	UpdateFavorites(w http.ResponseWriter, r *http.Request)
 	// ListRootFolders フォルダ画面の最上位（登録済みメディアフォルダ）を返す
 	// (GET /api/folders)
 	ListRootFolders(w http.ResponseWriter, r *http.Request)
@@ -2648,6 +2684,20 @@ func (siw *ServerInterfaceWrapper) StreamEvents(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StreamEvents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFavorites operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFavorites(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4695,6 +4745,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
