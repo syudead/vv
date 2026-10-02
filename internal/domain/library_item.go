@@ -50,6 +50,9 @@ type LibraryGroup struct {
 	AddedAt time.Time
 	// LastPlayedAt はメンバーの最後に再生した時刻の最大。記録が無ければ nil。
 	LastPlayedAt *time.Time
+	// Favorite はグループのフォルダの鍵が folder_favorites にあるか（specs/035-favorites/
+	// data-model.md §2）。メンバーの Video.Favorite とは独立である。保存層が埋める。
+	Favorite bool
 }
 
 // NewLibraryGroup は並んだメンバーと、それぞれの再生の記録（無ければ nil）から

@@ -28,7 +28,7 @@ const videoColumnsTemplate = `videos.id,
 	videos.added_at, videos.updated_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
-	{public} as public, ` + overrideColumns + `, ` + editedAtColumn
+	{public} as public, {favorite} as favorite, ` + overrideColumns + `, ` + editedAtColumn
 
 // registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
 // 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
@@ -71,6 +71,7 @@ func videoColumns(audience domain.Audience) string {
 	return strings.NewReplacer(
 		"{visible}", visibleLocationCondition("l", audience),
 		"{public}", publicColumn,
+		"{favorite}", favoriteColumn,
 		"{userKey}", userKeyExpr("videos"),
 	).Replace(videoColumnsTemplate)
 }
@@ -250,7 +251,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		playable                                 int
 		probeState, thumbnailState, previewState string
 		seekThumbnailState                       string
-		public                                   bool
+		public, favorite                         bool
 		displayName                              sql.NullString
 		thumbnailPositionMs, thumbnailRevision   sql.NullInt64
 		editedAt                                 int64
@@ -260,7 +261,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &fileCreatedAt, &addedAt, &updatedAt,
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
-		&public, &displayName, &thumbnailPositionMs, &thumbnailRevision, &editedAt,
+		&public, &favorite, &displayName, &thumbnailPositionMs, &thumbnailRevision, &editedAt,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -299,6 +300,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.SeekThumbnailState = domain.SeekThumbnailState(seekThumbnailState)
 	video.PreviewState = domain.PreviewState(previewState)
 	video.Public = public
+	video.Favorite = favorite
 	// 有効な題名は、表示名があればそれ、無ければ所在の題名（coalesce(ov.display_name,
 	// loc.title)。specs/029-video-overrides/research.md R-2）。
 	video.FileTitle = video.Title

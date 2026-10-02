@@ -14,8 +14,8 @@ import (
 
 // 同じ動画の別バージョンの集まり（specs/030-video-versions/data-model.md §1・§3・§8、
 // research.md R-1）。集まりは利用者データの表 video_bundles・video_bundle_members に置き、
-// 集まりのタグ・再生位置・公開の設定は video_tags・playback_progress・public_videos に
-// 集まりの user_key を鍵として置く。各メンバーの content_key の行は触らずに残すので、
+// 集まりのタグ・再生位置・公開の設定・お気に入りは video_tags・playback_progress・public_videos・
+// video_favorites に集まりの user_key を鍵として置く。各メンバーの content_key の行は触らずに残すので、
 // 外したメンバーは束ねる前の値に戻る。
 //
 // 束ねる・代表を替える・外す操作は、見せる動画（data-model.md §4）が変わり、代表の所在の
@@ -27,6 +27,7 @@ var userDataTables = []struct{ table, columns string }{
 	{"playback_progress", "position_ms, duration_ms, completed, updated_at"},
 	{"video_tags", "tag_id, created_at"},
 	{"public_videos", "published_at"},
+	{"video_favorites", "favorited_at"},
 }
 
 // bundleRef は動画が属する集まりである。
@@ -435,7 +436,7 @@ func videoIDsForContentKeys(ctx context.Context, tx *sql.Tx, keys []string) ([]i
 	return ids, nil
 }
 
-// copyUserData は利用者データの鍵 from の 3 つの表の行を、鍵 to の行として写す。to に行が
+// copyUserData は利用者データの鍵 from の userDataTables の表の行を、鍵 to の行として写す。to に行が
 // あれば残す（新しい集まりの鍵には行が無い）。
 func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
@@ -448,7 +449,7 @@ func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return nil
 }
 
-// replaceUserData は鍵 to の 3 つの表の行を消し、鍵 from の行で置き換える。
+// replaceUserData は鍵 to の userDataTables の表の行を消し、鍵 from の行で置き換える。
 func replaceUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
 		if _, err := tx.ExecContext(ctx, `delete from `+t.table+` where content_key = ?`, to); err != nil {

@@ -362,7 +362,9 @@ rebuildable from registered media folders by scanning and processing the files a
 `video_tags`, and `rejected_tag_names`, `specs/031-tentative-tags/data-model.md` §1),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
 positions, `specs/029-video-overrides/data-model.md` §1), `video_edits` (when the owner last
-edited a video's information in vv, `specs/033-video-dates/data-model.md` §1), the version bundles
+edited a video's information in vv, `specs/033-video-dates/data-model.md` §1), the favorites
+(`video_favorites` keyed by the user key, `folder_favorites` keyed by the `domain.FolderKey`
+of a group's folder, `specs/035-favorites/data-model.md` §1), the version bundles
 (`video_bundles`, `video_bundle_members`) and the "different video" judgements
 (`video_version_dismissals`, `specs/030-video-versions/data-model.md` §1), `folder_group_overrides`,
 `account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
@@ -490,6 +492,15 @@ compile:
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
   SQL connection, and it advances the edited time of the content keys whose flag actually
   changed in the same transaction.
+- `FavoriteStore` — marking or unmarking a set of video ids (resolved to the
+  currently-registered videos' user keys, like the public flag) and group folders (kept only
+  while the folder is currently a group) as favorites in one transaction, returning how many
+  distinct video ids and folders it applied to (`specs/035-favorites/data-model.md` §4). Like
+  `VisibilityStore`, it holds only the SQL connection and publishes no domain event; it does
+  not advance the edited time. Every read that returns a video carries `Video.Favorite`, and
+  every group read carries `LibraryGroup.Favorite`; the two are independent. Same-path
+  successions and bundling move `video_favorites` with the other user data, while
+  `folder_favorites` follows no rename or move of a folder.
 - `OverrideStore` — an owner's display name for a video (resolved to its content key,
   like tag attachment), one video or an external-API batch in one transaction, together
   with rewriting the `title_key` and `search_key` of every location of that content
