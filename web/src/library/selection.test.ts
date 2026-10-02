@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import type { LibraryGroup, LibraryItem, Video } from "../api/client";
 import {
   emptySelection,
   favoriteTargets,
   fromSelectAll,
+  reconcileGroups,
   sameSelection,
   setGroup,
   setVideo,
@@ -13,6 +15,15 @@ import {
 
 /** 選択の持ち方（specs/035-favorites/research.md R-7）。 */
 const series = { folder: { rootId: 3, path: "series" }, videoIds: [101, 102, 103] };
+
+function videoItem(id: number): LibraryItem {
+  return { kind: "video", video: { id } as Video };
+}
+
+function groupItem(videoIds: number[]): LibraryItem {
+  const group = { folder: { rootId: 3, path: "series" }, videoIds } as LibraryGroup;
+  return { kind: "group", group };
+}
 
 describe("LibrarySelection", () => {
   it("グループのチェックはメンバーを入れてグループとして覚え、お気に入りではグループだけを送る", () => {
@@ -49,5 +60,40 @@ describe("LibrarySelection", () => {
       sameSelection(all, setGroup(setVideo(emptySelection, 1, true), series, true)),
     ).toBe(true);
     expect(sameSelection(all, fromSelectAll([1, 101, 102, 103], []))).toBe(false);
+  });
+
+  it("取り直した一覧でメンバーが動画の項目なら、グループから外してメンバーを動画として送る", () => {
+    const selection = setGroup(setVideo(emptySelection, 1, true), series, true);
+    const reconciled = reconcileGroups(selection, [
+      videoItem(1),
+      videoItem(101),
+      videoItem(102),
+    ]);
+    expect(Array.from(reconciled.ids)).toEqual([1, 101, 102, 103]);
+    expect(favoriteTargets(reconciled)).toEqual({
+      videoIds: [1, 101, 102, 103],
+      folders: [],
+    });
+  });
+
+  it("取り直したグループのメンバーが減っても全員選択中ならグループのまま覚え直し、増えたら外す", () => {
+    const selection = setGroup(emptySelection, series, true);
+    const shrunk = reconcileGroups(selection, [groupItem([101, 102])]);
+    expect(shrunk.groups.get("3\0series")?.videoIds).toEqual([101, 102]);
+    expect(favoriteTargets(shrunk)).toEqual({
+      videoIds: [103],
+      folders: [{ rootId: 3, path: "series" }],
+    });
+    const grown = reconcileGroups(selection, [groupItem([101, 102, 103, 104])]);
+    expect(grown.groups.size).toBe(0);
+    expect(favoriteTargets(grown).videoIds).toEqual([101, 102, 103]);
+  });
+
+  it("変化が無ければ同じ選択を返す", () => {
+    const selection = setGroup(setVideo(emptySelection, 1, true), series, true);
+    expect(reconcileGroups(selection, [videoItem(1), groupItem([101, 102, 103])])).toBe(
+      selection,
+    );
+    expect(reconcileGroups(selection, [])).toBe(selection);
   });
 });

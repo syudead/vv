@@ -168,7 +168,9 @@ jsdom は CSS を適用しないので、`position: fixed` もメディアクエ
   公開メニューの中身は [016 の UI 設計「Selection bar」](../../specs/016-single-account-auth/ui-design.md#selection-bar)、
   「Favorite」のメニューと折り返しの規則は [035 の UI 設計「Selection bar」](../../specs/035-favorites/ui-design.md#selection-bar) に記す。
   「Favorite」はグループのカードのチェックや「すべて選択」の応答で選んだグループを
-  グループとして送り、そのメンバーを動画としては送らない。
+  グループとして送り、そのメンバーを動画としては送らない。選択を残したまま一覧を取り直して
+  （取り込みの完了など）そのフォルダのメンバーが動画の項目として載ったときや、グループの
+  メンバーが増えて全員が選択に入っていないときは、グループとしては送らずメンバーを動画として送る。
 - **操作状態**: 通常・hover・focus-visible・active・selected・disabled を部品ごとにばらばらに
   せず明確に分ける。キーボードフォーカスはアクセント色の外側輪郭で示す。検索欄は内側の
   `input` ではなく外枠にフォーカスを出し、二重輪郭を避ける。

@@ -64,6 +64,7 @@ import {
   favoriteTargets,
   fromSelectAll,
   type LibrarySelection,
+  reconcileGroups,
   sameSelection,
   setGroup,
   setVideo,
@@ -364,6 +365,13 @@ export default function LibraryPage() {
   // まだ読み込んでいない id まで巻き込んで削ってしまっていた（B1）。条件
   // （検索語・視聴状態・再生可否・タグ）が変わったときの解除は、下の
   // conditionsSignature の効果が別に担う。
+
+  // 選択を残したまま一覧を取り直したとき（取り込みの完了など）、選んだグループが
+  // もうグループでなくなっていたりメンバーが変わっていたりすれば、読み込んだ項目に
+  // 合わせて選んだグループだけを直す（selection.ts の reconcileGroups）。id は削らない。
+  useEffect(() => {
+    setSelection((current) => reconcileGroups(current, items));
+  }, [items]);
 
   // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する
   // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない

@@ -1,5 +1,5 @@
-import type { FolderRef } from "../api/client";
-import { folderRefKey } from "../api/libraryItems";
+import type { FolderRef, LibraryItem } from "../api/client";
+import { folderRefKey, groupRef } from "../api/libraryItems";
 
 /**
  * SelectedGroup はグループのカードのチェック（または「すべて選択」の応答の `groups`）で
@@ -103,6 +103,54 @@ export function fromSelectAll(
     });
   }
   return { ids: new Set(ids), groups: selected };
+}
+
+/**
+ * reconcileGroups は、読み込んだ項目から分かったグループの変化を選んだグループに映す。
+ * 選択を解かずに一覧を取り直す（取り込みの完了など）と、選んだフォルダがもうグループでなく
+ * なったり、メンバーが変わったりする。そのまま `folders` に載せると、サーバーはグループで
+ * ないフォルダを飛ばし、メンバーは `videoIds` から除かれているので何も付かない。
+ *
+ * - 選んだグループのメンバーが動画の項目として載っていれば、そのフォルダは今の一覧では
+ *   グループでない（同じグループのカードとそのメンバーの項目は同時に出ない。
+ *   specs/027-partial-group-search/contracts/library-api.md §1）。グループから外し、
+ *   メンバーは選んだ動画として残す。
+ * - 同じフォルダのグループの項目が載っていれば、そのメンバーで覚え直す。全メンバーが
+ *   選択に入っていなければ（メンバーが増えた）グループから外す（removeIds と同じ考え方）。
+ *
+ * id の集合は変えない（読み込んでいない項目の選択を削らない）。変化が無ければ同じ選択を返す。
+ */
+export function reconcileGroups(
+  selection: LibrarySelection,
+  items: readonly LibraryItem[],
+): LibrarySelection {
+  if (selection.groups.size === 0) return selection;
+  const memberOf = new Map<number, string>();
+  for (const [key, group] of selection.groups) {
+    for (const id of group.videoIds) memberOf.set(id, key);
+  }
+  let groups: Map<string, SelectedGroup> | null = null;
+  const edit = () => (groups ??= new Map(selection.groups));
+  for (const item of items) {
+    if (item.kind === "video") {
+      const key = memberOf.get(item.video.id);
+      if (key !== undefined && (groups ?? selection.groups).has(key)) edit().delete(key);
+      continue;
+    }
+    const key = folderRefKey(groupRef(item.group));
+    const current = (groups ?? selection.groups).get(key);
+    if (current === undefined) continue;
+    const observed = item.group.videoIds;
+    if (!observed.every((id) => selection.ids.has(id))) {
+      edit().delete(key);
+    } else if (
+      observed.length !== current.videoIds.length ||
+      observed.some((id, index) => current.videoIds[index] !== id)
+    ) {
+      edit().set(key, { folder: current.folder, videoIds: observed });
+    }
+  }
+  return groups === null ? selection : { ids: selection.ids, groups };
 }
 
 /** sameSelection は動画の id の集合と選んだグループの両方が同じとき true を返す。 */
