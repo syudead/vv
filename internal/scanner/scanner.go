@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"golang.org/x/text/unicode/norm"
@@ -57,6 +58,10 @@ type Index interface {
 	UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error)
 	// DeleteVideoLocations removes missing filesystem locations and orphan videos.
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
+	// UpdateLocationCreatedAt は所在のファイルの作成日時だけを書き直す。ゼロ値は取れなかった
+	// （null に戻す）。変わっていないファイルの作成日時が索引と違うときに呼ぶ
+	// （specs/033-video-dates/data-model.md §5）。
+	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 }
 
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。
@@ -113,6 +118,8 @@ type Scanner struct {
 	contentKey func(string) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
 	lstat      func(string) (fs.FileInfo, error)
+	// createdAt はファイルの作成日時を読む。試験で差し替える。
+	createdAt func(string, fs.FileInfo) (time.Time, bool)
 }
 
 type scanTarget struct {
@@ -133,6 +140,7 @@ func New(opts Options) *Scanner {
 		contentKey: ContentKey,
 		walkDir:    filepath.WalkDir,
 		lstat:      os.Lstat,
+		createdAt:  fileCreatedAt,
 	}
 }
 
@@ -228,13 +236,16 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			if existing, ok := indexed[path]; ok &&
 				existing.SizeBytes == info.Size() &&
 				existing.MTime.Unix() == info.ModTime().Unix() {
-				// 変わっていないファイルは取り込み対象に含めない。欠落した
-				// pending jobだけを補い、terminal failureは復活させない。
-				if err := s.ensurePendingJobs(ctx, existing); err != nil {
+				// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
+				// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
+				// failureは復活させない。
+				createdErr := s.refreshCreatedAt(ctx, path, info, existing)
+				jobsErr := s.ensurePendingJobs(ctx, existing)
+				if err := errors.Join(createdErr, jobsErr); err != nil {
 					if ctx.Err() != nil {
 						return err
 					}
-					s.logger.Warn("could not check the jobs of an indexed file",
+					s.logger.Warn("could not update an indexed file",
 						slog.String("path", path), slog.Any("error", err))
 					result.Total++
 					result.Failed++
@@ -403,6 +414,10 @@ func (s *Scanner) ingest(
 		MTime:      info.ModTime(),
 		Container:  domain.ContainerFromPath(target.path),
 	}
+	// 読めなかった作成日時はゼロ値のまま登録する（失敗にしない）。
+	if createdAt, ok := s.createdAt(target.path, info); ok {
+		file.FileCreatedAt = createdAt
+	}
 
 	upserted, err := s.index.UpsertVideo(ctx, file)
 	if err != nil {
@@ -435,6 +450,34 @@ func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
 		return nil, fmt.Errorf("%w (%s)", errNotRegular, path)
 	}
 	return info, nil
+}
+
+// refreshCreatedAt は変わっていないファイルの作成日時を読み、索引の値と秒で違うときだけ
+// 所在の列を書き直す。読めなかったときはゼロ値として比べるので、索引に値があれば null に
+// 戻る（specs/033-video-dates/research.md R-6）。中身の識別子も job も触らない。
+func (s *Scanner) refreshCreatedAt(
+	ctx context.Context, path string, info fs.FileInfo, existing domain.IndexedVideo,
+) error {
+	createdAt, ok := s.createdAt(path, info)
+	if !ok {
+		createdAt = time.Time{}
+	}
+	if sameCreatedAt(createdAt, existing.FileCreatedAt) {
+		return nil
+	}
+	locationID := existing.LocationID
+	if locationID == 0 {
+		locationID = existing.ID
+	}
+	return s.index.UpdateLocationCreatedAt(ctx, locationID, createdAt)
+}
+
+// sameCreatedAt は作成日時を、索引が持つ秒で比べる。ゼロ値どうしは同じである。
+func sameCreatedAt(a, b time.Time) bool {
+	if a.IsZero() || b.IsZero() {
+		return a.IsZero() == b.IsZero()
+	}
+	return a.Unix() == b.Unix()
 }
 
 func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo) error {

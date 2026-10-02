@@ -308,6 +308,7 @@ export const en = {
       kinds: {
         added: "Date added",
         modified: "Date modified",
+        created: "Date created",
         title: "Title",
         duration: "Length",
         size: "File size",
@@ -317,6 +318,7 @@ export const en = {
       wording: {
         added: { asc: "oldest first", desc: "newest first" },
         modified: { asc: "oldest first", desc: "newest first" },
+        created: { asc: "oldest first", desc: "newest first" },
         duration: { asc: "shortest first", desc: "longest first" },
         size: { asc: "smallest first", desc: "largest first" },
         played: { asc: "least recently played", desc: "most recently played" },
@@ -771,6 +773,10 @@ export const en = {
       duration: "Length",
       size: "Size",
       added: "Added",
+      edited: "Edited",
+      created: "Created",
+      /** 日付の項目の `title` と吹き出しの文字（例: Edited Sep 27, 2026, 3:04 PM）。 */
+      dateDetail: (name: string, dateTime: string) => `${name} ${dateTime}`,
       openFile: "Open file",
       copyPath: "Copy path",
       pathCopied: "Copied the path",

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { videoSorts } from "../api/client";
+import { isListSort } from "../videoList/listCriteria";
 import { defaults, readViewPreferences, writeViewPreferences } from "./viewPreferences";
 
 const storageKey = "vv.view.v2";
@@ -46,12 +47,31 @@ describe("readViewPreferences", () => {
 });
 
 describe("保存できる並び順", () => {
-  it("API の 13 の並び順をすべて戻す", () => {
-    for (const sort of videoSorts) {
+  it("メニューに種類がある並び順をすべて戻す", () => {
+    for (const sort of videoSorts.filter((value) => isListSort(value))) {
       expect(
         readViewPreferences(fake(() => JSON.stringify({ zoom: 1, view: "grid", sort })))
           .sort,
       ).toBe(sort);
+    }
+  });
+
+  it("作成日の並び順（createdDesc・createdAsc）を戻す", () => {
+    for (const sort of ["createdDesc", "createdAsc"] as const) {
+      expect(isListSort(sort)).toBe(true);
+      expect(
+        readViewPreferences(fake(() => JSON.stringify({ zoom: 1, view: "grid", sort })))
+          .sort,
+      ).toBe(sort);
+    }
+  });
+
+  it("メニューに種類が無い並び順は既定に戻す", () => {
+    for (const sort of videoSorts.filter((value) => !isListSort(value))) {
+      expect(
+        readViewPreferences(fake(() => JSON.stringify({ zoom: 1, view: "grid", sort })))
+          .sort,
+      ).toBe(defaults.sort);
     }
   });
 });

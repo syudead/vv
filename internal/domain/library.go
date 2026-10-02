@@ -48,6 +48,11 @@ const (
 	SortModifiedAsc VideoSort = "modifiedAsc"
 	// SortModifiedDesc は一覧に出す所在の更新日時が新しい順。
 	SortModifiedDesc VideoSort = "modifiedDesc"
+	// SortCreatedAsc は一覧に出す所在のファイルの作成日時が古い順。作成日時が取れなかった
+	// 所在は更新日時を使う（specs/033-video-dates/data-model.md §4）。
+	SortCreatedAsc VideoSort = "createdAsc"
+	// SortCreatedDesc は一覧に出す所在のファイルの作成日時が新しい順。
+	SortCreatedDesc VideoSort = "createdDesc"
 	// SortTitleAsc は題名の自然順（NaturalSortKey の昇順）。
 	SortTitleAsc VideoSort = "titleAsc"
 	// SortTitleDesc は題名の自然順の逆。
@@ -72,7 +77,7 @@ const (
 func (s VideoSort) Valid() bool {
 	switch s {
 	case SortAddedAsc, SortAddedDesc, SortModifiedAsc, SortModifiedDesc,
-		SortTitleAsc, SortTitleDesc, SortDurationAsc, SortDurationDesc,
+		SortCreatedAsc, SortCreatedDesc, SortTitleAsc, SortTitleDesc, SortDurationAsc, SortDurationDesc,
 		SortSizeAsc, SortSizeDesc, SortPlayedAsc, SortPlayedDesc, SortRandom:
 		return true
 	default:

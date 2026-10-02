@@ -64,6 +64,8 @@ function video(id: number, title: string, extra: Partial<Video> = {}): Video {
     public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    fileCreatedAt: "2026-09-01T00:00:00Z",
     playable: true,
     probeState: "done",
     thumbnailState: "done",
@@ -673,6 +675,22 @@ describe("FolderPage", () => {
     );
     expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(before);
     expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
+  });
+
+  it("フォルダ画面でも「Date created」を選ぶと作成日の新しい順で動画を読む", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Date created" }));
+
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes("videos?path=A&sort=createdDesc"))).toBe(
+        true,
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Sort by: Date created" })).toBeDefined();
   });
 
   it("見つからないフォルダでは空の格子ではなく案内と最上位への導線を出す", async () => {

@@ -144,6 +144,40 @@ func TestExternalVideoTagsAddByPathShowsInScreenAPI(t *testing.T) {
 	}
 }
 
+// specs/033-video-dates/data-model.md §3: video-tags で付けると lookup の updatedAt が進み、
+// 同じタグをもう一度付けても（行が変わらないので）進まない。
+func TestExternalVideoTagsAdvanceUpdatedAt(t *testing.T) {
+	f := newExternalTagsFixture(t)
+	lookup := func() extgen.ExternalVideo {
+		t.Helper()
+		rec := f.env.serve(authRequest{
+			method: http.MethodGet, target: "/api/v1/videos/lookup?id=" + strconv.FormatInt(f.ids[0], 10), header: bearer(f.secret),
+		})
+		if rec.Code != http.StatusOK {
+			t.Fatalf("lookup: %d %s", rec.Code, rec.Body)
+		}
+		var video extgen.ExternalVideo
+		if err := json.Unmarshal(rec.Body.Bytes(), &video); err != nil {
+			t.Fatal(err)
+		}
+		return video
+	}
+	before := lookup()
+	if !before.UpdatedAt.Equal(before.AddedAt) {
+		t.Fatalf("編集前の updatedAt = %v, addedAt = %v", before.UpdatedAt, before.AddedAt)
+	}
+	body := videoTagsBody([]map[string]any{{"id": f.ids[0]}}, "add", []string{"犬"})
+	f.apply(t, body)
+	tagged := lookup()
+	if !tagged.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("付けた後の updatedAt = %v, 前 = %v", tagged.UpdatedAt, before.UpdatedAt)
+	}
+	f.apply(t, body)
+	if again := lookup(); !again.UpdatedAt.Equal(tagged.UpdatedAt) {
+		t.Errorf("同じタグの後の updatedAt = %v, want %v", again.UpdatedAt, tagged.UpdatedAt)
+	}
+}
+
 // replace の後、手で付けたタグはちょうど指定の集合になり、フォルダ由来のタグは残る。
 // remove は当たらない名前を飛ばす。
 func TestExternalVideoTagsReplaceAndRemove(t *testing.T) {

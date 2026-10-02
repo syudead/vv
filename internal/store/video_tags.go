@@ -29,7 +29,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, tagID)
+	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, tagID, time.Now())
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
@@ -60,7 +60,7 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID)
+	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID, time.Now())
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
@@ -85,7 +85,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID)
+	applied, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID, time.Now())
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
@@ -98,37 +98,57 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 
 // attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画の利用者データの鍵
 // （userKeysForVideoIDs。同じ集まりは 1 つ）へ tagID を insert or ignore で付け、反映した
-// 本数を返す。
-func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
+// 本数を返す。実際に付いた鍵（集まりなら全メンバー）の更新日時を now にする
+// （specs/033-video-dates/research.md R-3）。
+func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, error) {
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return 0, err
 	}
-	now := time.Now().Unix()
+	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
-		if _, err := tx.ExecContext(ctx,
+		result, err := tx.ExecContext(ctx,
 			`insert or ignore into video_tags (content_key, tag_id, created_at) values (?, ?, ?)`,
-			key, tagID, now,
-		); err != nil {
+			key, tagID, now.Unix(),
+		)
+		if err != nil {
 			return 0, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		}
+		if affected, err := result.RowsAffected(); err != nil {
+			return 0, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
+		} else if affected > 0 {
+			changed = append(changed, key)
+		}
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
+		return 0, err
 	}
 	return len(keys), nil
 }
 
 // detachTagFromVideoIDs は videoIDs のうちいまライブラリにある動画から tagID
-// を外し、反映した本数を返す。
-func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
+// を外し、反映した本数を返す。実際に外れた鍵（集まりなら全メンバー）の更新日時を now にする。
+func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, error) {
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return 0, err
 	}
+	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
-		if _, err := tx.ExecContext(ctx,
+		result, err := tx.ExecContext(ctx,
 			`delete from video_tags where content_key = ? and tag_id = ?`, key, tagID,
-		); err != nil {
+		)
+		if err != nil {
 			return 0, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		}
+		if affected, err := result.RowsAffected(); err != nil {
+			return 0, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
+		} else if affected > 0 {
+			changed = append(changed, key)
+		}
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
+		return 0, err
 	}
 	return len(keys), nil
 }

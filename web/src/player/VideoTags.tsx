@@ -35,11 +35,17 @@ export default function VideoTags({
   videoId,
   tags: initialTags,
   onStaleVideo,
+  onChanged,
 }: {
   videoId: number;
   tags: readonly VideoTag[];
   /** タグがもう無い（tag_not_found）ときに、この動画を取り直すために呼ぶ。 */
   onStaleVideo: () => void;
+  /**
+   * 付け外しが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す
+   * （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+   */
+  onChanged?: () => void;
 }) {
   const toast = useToast();
 
@@ -200,7 +206,10 @@ export default function VideoTags({
         ? attachVideoTagByID([videoId], tag.id)
         : attachVideoTagByName([videoId], tag.name);
     void request
-      .then(() => setInputValue((current) => (current === submittedValue ? "" : current)))
+      .then(() => {
+        setInputValue((current) => (current === submittedValue ? "" : current));
+        onChanged?.();
+      })
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
           toast(t.player.tags.gone(displayName));
@@ -229,6 +238,7 @@ export default function VideoTags({
     setOpError(null);
     setRemovingIds((current) => new Set(current).add(tag.id));
     void detachVideoTag([videoId], tag.id)
+      .then(() => onChanged?.())
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
           toast(t.player.tags.gone(tag.name));

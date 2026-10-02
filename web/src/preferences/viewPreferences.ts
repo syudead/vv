@@ -1,5 +1,5 @@
 import type { VideoSort } from "../api/client";
-import { isVideoSort } from "../api/client";
+import { isListSort } from "../videoList/listCriteria";
 
 /** Zoom はカードの大きさ。0 が最小、3 が最大の 4 段階。 */
 export type Zoom = 0 | 1 | 2 | 3;
@@ -17,8 +17,9 @@ const storageKey = "vv.view.v2";
 
 export const defaults: ViewPreferences = { zoom: 1, view: "grid", sort: "addedDesc" };
 
-// 保存から戻す並び順は、API の VideoSort の 13 の値のどれかに限る
-// （specs/013-library-search/contracts/list-api.md §3）。random を保存しても
+// 保存から戻す並び順は、API の VideoSort の値のうちメニューに種類があるものに限る
+// （specs/013-library-search/contracts/list-api.md §3、
+// specs/033-video-dates/contracts/screen-api.md §3）。random を保存しても
 // seed は保存しない。開くたびに画面が新しい seed を作る（list-url.md §3）。
 const views: Record<ViewMode, true> = { grid: true, list: true };
 
@@ -57,7 +58,7 @@ export function readViewPreferences(storage?: Storage): ViewPreferences {
   return {
     zoom: isZoom(value.zoom) ? value.zoom : defaults.zoom,
     view: isKeyOf(views, value.view) ? value.view : defaults.view,
-    sort: isVideoSort(value.sort) ? value.sort : defaults.sort,
+    sort: isListSort(value.sort) ? value.sort : defaults.sort,
   };
 }
 

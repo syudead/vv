@@ -87,6 +87,10 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
   題名で、表示名（`displayName`）があればそれ、無ければ代表のファイル名由来の題名（`fileTitle`）である。
   `displayName` と `thumbnailPositionMs`（代表サムネイルの位置、ミリ秒）は未設定なら `null`。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
   祖先のフォルダ名から付くタグ、`tentative` は仮のタグ（「仮のタグとして付ける」）である。
+- `updatedAt` は vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時で、
+  一度も編集していなければ `addedAt` と同じ。この API の `video-tags`・`display-names` で変えたときも進み、
+  何も変わらなかった要求では進まない。`fileCreatedAt` は代表の所在（`locations` の先頭）のファイルの
+  作成日時で、ファイルシステムから取れないときはそのファイルの更新日時（mtime）である。
 
 ## 動画を 1 本引く
 

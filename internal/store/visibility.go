@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -78,17 +79,31 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now().Unix()
+	now := time.Now()
+	changed := make([]string, 0, len(userKeys))
 	for _, key := range userKeys {
+		var result sql.Result
 		if public {
-			_, err = tx.ExecContext(ctx,
-				`insert or ignore into public_videos (content_key, published_at) values (?, ?)`, key, now)
+			result, err = tx.ExecContext(ctx,
+				`insert or ignore into public_videos (content_key, published_at) values (?, ?)`, key, now.Unix())
 		} else {
-			_, err = tx.ExecContext(ctx, `delete from public_videos where content_key = ?`, key)
+			result, err = tx.ExecContext(ctx, `delete from public_videos where content_key = ?`, key)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("cannot update the public flag: %w", err)
 		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("cannot update the public flag: %w", err)
+		}
+		if affected > 0 {
+			changed = append(changed, key)
+		}
+	}
+	// 更新日時は公開の設定が実際に変わった鍵（集まりなら全メンバー）だけを進める
+	// （specs/033-video-dates/research.md R-3）。
+	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
+		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("cannot update the public flag: %w", err)

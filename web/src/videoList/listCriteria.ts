@@ -39,7 +39,7 @@ const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "
 
 /** SortKind は並べ替えの種類である（向きを除いたもの）。 */
 export type SortKind =
-  "added" | "modified" | "title" | "duration" | "size" | "played" | "random";
+  "added" | "modified" | "created" | "title" | "duration" | "size" | "played" | "random";
 
 export type SortDirection = "asc" | "desc";
 
@@ -53,18 +53,34 @@ export interface SortKindInfo {
 }
 
 /**
- * sortKinds はメニューに並べる7つの種類である。順はメニューの順と同じ。表示名は
+ * sortKinds はメニューに並べる8つの種類である。順はメニューの順と同じ。表示名は
  * sortKindLabel で描画のたびにカタログから引く。
  */
 export const sortKinds: readonly SortKindInfo[] = [
   { kind: "added", initial: "addedDesc", asc: "addedAsc", desc: "addedDesc" },
   { kind: "modified", initial: "modifiedDesc", asc: "modifiedAsc", desc: "modifiedDesc" },
+  { kind: "created", initial: "createdDesc", asc: "createdAsc", desc: "createdDesc" },
   { kind: "title", initial: "titleAsc", asc: "titleAsc", desc: "titleDesc" },
   { kind: "duration", initial: "durationDesc", asc: "durationAsc", desc: "durationDesc" },
   { kind: "size", initial: "sizeDesc", asc: "sizeAsc", desc: "sizeDesc" },
   { kind: "played", initial: "playedDesc", asc: "playedAsc", desc: "playedDesc" },
   { kind: "random", initial: "random" },
 ];
+
+/**
+ * isListSort は、画面の一覧の条件（URL と端末の設定）に使える並び順かを返す。
+ * API が受け付ける並び順のうち、メニューに種類があるものに限る。メニューに無い値を
+ * 受け付けると、並べ替えの表示が別の種類（ランダム）になり、向きも切り替えられない
+ * （specs/033-video-dates/contracts/screen-api.md §3）。
+ */
+export function isListSort(value: unknown): value is VideoSort {
+  return (
+    isVideoSort(value) &&
+    sortKinds.some(
+      (info) => info.initial === value || info.asc === value || info.desc === value,
+    )
+  );
+}
 
 /** sortKindLabel は並べ替えの種類の表示名である。 */
 export function sortKindLabel(kind: SortKind): UiText {
@@ -152,14 +168,14 @@ export interface ParsedCriteria {
  * parseListCriteria は URL のクエリを一覧の条件にする。
  *
  * 解釈できない値は既定として扱い、誤りを出さない。sort が無いか解釈できない
- * ときは、端末に保存した並び順（preferredSort）を使う。
+ * （メニューに種類が無い値を含む）ときは、端末に保存した並び順（preferredSort）を使う。
  */
 export function parseListCriteria(
   params: URLSearchParams,
   preferredSort: VideoSort = DEFAULT_SORT,
 ): ParsedCriteria {
   const rawSort = params.get("sort");
-  const hasExplicitSort = isVideoSort(rawSort);
+  const hasExplicitSort = isListSort(rawSort);
   const sort: VideoSort = hasExplicitSort ? rawSort : preferredSort;
   const rawWatch = params.get("watch");
   const watch =

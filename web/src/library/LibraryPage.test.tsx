@@ -33,6 +33,8 @@ function video(id: number, extra: Partial<Video> = {}): Video {
     public: false,
     sizeBytes: 1024 * 1024 * id,
     addedAt: "2026-09-01T00:00:00Z",
+    updatedAt: "2026-09-01T00:00:00Z",
+    fileCreatedAt: "2026-09-01T00:00:00Z",
     playable: true,
     probeState: "done",
     thumbnailState: "done",
@@ -420,6 +422,7 @@ describe("LibraryPage", () => {
     expect(items.map((item) => item.textContent)).toEqual([
       "Date added",
       "Date modified",
+      "Date created",
       "Title",
       "Length",
       "File size",
@@ -428,6 +431,52 @@ describe("LibraryPage", () => {
     ]);
     await user.click(screen.getByRole("menuitemradio", { name: "File size" }));
     expect(screen.getByTestId("location").textContent).toBe("?sort=sizeDesc");
+  });
+
+  it("「Date created」は新しい順で読み、向きの切り替えで古い順になり、URL と端末の設定に残る", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Date created" }));
+    expect(screen.getByTestId("location").textContent).toBe("?sort=createdDesc");
+    await waitFor(() =>
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe(
+        "createdDesc",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Sort by: Date created" })).toBeDefined();
+    expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+      sort: "createdDesc",
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (newest first). Press for ascending",
+      }),
+    );
+    expect(screen.getByTestId("location").textContent).toBe("?sort=createdAsc");
+    await waitFor(() =>
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe("createdAsc"),
+    );
+    expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+      sort: "createdAsc",
+    });
+  });
+
+  it("URL の sort=createdAsc を読み、作成日の古い順で要求する", async () => {
+    renderLibrary("/?sort=createdAsc");
+    await screen.findByRole("link", { name: "動画 1" });
+    await waitFor(() =>
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe("createdAsc"),
+    );
+    expect(screen.getByRole("button", { name: "Sort by: Date created" })).toBeDefined();
+    expect(
+      screen.getByRole("button", {
+        name: "Ascending (oldest first). Press for descending",
+      }),
+    ).toBeDefined();
   });
 
   it("検索語の入力は一続きで履歴を1つだけ増やす", async () => {
@@ -1620,8 +1669,11 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("button", { name: /^Sort by:/ }));
       const menu = await screen.findByRole("menu");
-      expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(6);
+      expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(7);
       expect(within(menu).queryByText("Recently played")).toBeNull();
+      expect(
+        within(menu).getByRole("menuitemradio", { name: "Date created" }),
+      ).toBeDefined();
 
       const paths = fetchMock.mock.calls.map(
         ([input]) => new URL(String(input), "http://localhost").pathname,

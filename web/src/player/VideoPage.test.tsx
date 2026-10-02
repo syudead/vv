@@ -81,6 +81,8 @@ const video: Video = {
   public: false,
   sizeBytes: 84_331_821,
   addedAt: "2026-09-01T00:00:00Z",
+  updatedAt: "2026-09-01T00:00:00Z",
+  fileCreatedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
   thumbnailState: "done",
@@ -1740,8 +1742,26 @@ describe("VideoPage", () => {
       const answered = fetchMock.getMockImplementation();
       fetchMock.mockImplementation((input, init) => {
         if (String(input) !== "/api/video-visibility") return answered!(input, init);
-        bodies.push(JSON.parse(String(init?.body)));
-        return new Promise<Response>((resolve) => answers.push(resolve));
+        const body = JSON.parse(String(init?.body)) as {
+          videoIds: number[];
+          public: boolean;
+        };
+        bodies.push(body);
+        return new Promise<Response>((resolve) =>
+          answers.push((response) => {
+            // 成功したら、切り替えの後に取り直す動画（033 の「Refresh after edits」）も
+            // サーバーと同じく切り替わった値にする。
+            if (response.ok) {
+              for (const id of body.videoIds) {
+                const entry = server.videos.get(id);
+                if (!Array.isArray(entry)) continue;
+                const last = entry[entry.length - 1]!;
+                server.videos.set(id, [{ ...last, public: body.public }]);
+              }
+            }
+            resolve(response);
+          }),
+        );
       });
       return { answers, bodies };
     }
@@ -2040,6 +2060,194 @@ describe("VideoPage", () => {
       await ready();
       expect(screen.queryByRole("button", { name: captureName })).toBeNull();
       expect(screen.queryByRole("button", { name: clearName })).toBeNull();
+    });
+  });
+
+  describe("更新日時（specs/033-video-dates/ui-design.md「Refresh after edits」）", () => {
+    // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
+    const before = new Date(2026, 8, 1, 12, 0).toISOString();
+    const after = new Date(2026, 8, 28, 12, 0).toISOString();
+    const tag = {
+      id: 5,
+      name: "旅行",
+      manual: true,
+      fromFolder: false,
+      tentative: false,
+    };
+
+    /** current は GET /api/videos/7 が今返す動画である。 */
+    let current: Video;
+    let failRefetch = false;
+
+    beforeEach(() => {
+      current = { ...video, addedAt: before, updatedAt: before };
+      failRefetch = false;
+      server.videos.set(7, () =>
+        failRefetch ? json({ code: "internal", message: "失敗" }, 500) : json(current),
+      );
+      const answered = fetchMock.getMockImplementation()!;
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/video-tags" && init?.method === "POST") {
+          const body = JSON.parse(String(init.body)) as {
+            action: "add" | "remove";
+            tag: { id: number } | { name: string };
+          };
+          const tags = body.action === "add" ? [tag] : [];
+          current = { ...current, tags, updatedAt: after };
+          return Promise.resolve(
+            json({ tag: { id: tag.id, name: tag.name }, applied: 1 }),
+          );
+        }
+        if (url === "/api/video-visibility") {
+          current = { ...current, public: !current.public, updatedAt: after };
+          return Promise.resolve(json({ applied: 1 }));
+        }
+        return answered(input, init);
+      });
+    });
+
+    function edited(): HTMLElement {
+      return within(screen.getByRole("list", { name: "File details" })).getByRole(
+        "button",
+        { name: /^Edited / },
+      );
+    }
+
+    async function expectEditedAfter() {
+      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 28, 2026"));
+    }
+
+    it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
+      renderPage();
+      await ready();
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(edited().title).toBe(
+        screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
+      );
+      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
+    });
+
+    it("ゲストにも更新日時と作成日時を出す", async () => {
+      server.session = "guest";
+      current = { ...current, location: undefined, public: true };
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
+    });
+
+    it("表示名を保存すると応答の更新日時になる（受け入れ条件 1）", async () => {
+      const user = userEvent.setup();
+      server.displayName.mockImplementation(() =>
+        json({
+          ...current,
+          title: "夏の旅行",
+          displayName: "夏の旅行",
+          updatedAt: after,
+        }),
+      );
+      renderPage();
+      await ready();
+      await user.click(screen.getByRole("button", { name: "Edit name" }));
+      const input = screen.getByRole("textbox", { name: "Display name" });
+      await user.clear(input);
+      await user.type(input, "夏の旅行{Enter}");
+      await expectEditedAfter();
+    });
+
+    it("タグを付けると動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
+      const user = userEvent.setup();
+      renderPage();
+      await ready();
+      const input = screen.getByRole("combobox", { name: "Add tag" });
+      await user.click(input);
+      await user.type(input, "旅行{Enter}");
+      await expectEditedAfter();
+    });
+
+    it("タグを外すと動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
+      current = { ...current, tags: [tag] };
+      renderPage();
+      await ready();
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
+      );
+      await expectEditedAfter();
+    });
+
+    it("公開を切り替えると動画を取り直して更新日時が進む（受け入れ条件 1）", async () => {
+      renderPage();
+      await ready();
+      fireEvent.click(
+        screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
+      );
+      await expectEditedAfter();
+      expect(
+        screen
+          .getByRole("switch", { name: "Show to people who aren't signed in" })
+          .getAttribute("aria-checked"),
+      ).toBe("true");
+    });
+
+    it("代表サムネイルを指定・解除すると応答の更新日時になる（受け入れ条件 1）", async () => {
+      const controls = fakeControls();
+      vi.mocked(controls.positionMs).mockReturnValue(5_000);
+      playerMock.controls = controls;
+      server.thumbnailPosition
+        .mockImplementationOnce(() =>
+          json({ ...current, thumbnailPositionMs: 5_000, updatedAt: after }),
+        )
+        .mockImplementationOnce(() =>
+          json({ ...current, thumbnailPositionMs: undefined, updatedAt: before }),
+        );
+      renderPage();
+      await ready();
+      await screen.findByRole("button", { name: "Play" });
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: false,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Use current frame as thumbnail" }),
+      );
+      await expectEditedAfter();
+
+      fireEvent.click(screen.getByRole("button", { name: "Use automatic thumbnail" }));
+      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 1, 2026"));
+    });
+
+    it("取り直しが失敗しても失敗の行を出さず、前の値のまま置く", async () => {
+      renderPage();
+      await ready();
+      failRefetch = true;
+      fireEvent.click(
+        screen.getByRole("switch", { name: "Show to people who aren't signed in" }),
+      );
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("switch", { name: "Show to people who aren't signed in" })
+            .getAttribute("aria-checked"),
+        ).toBe("true"),
+      );
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/7"),
+        ).toHaveLength(2),
+      );
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(screen.queryByRole("alert")).toBeNull();
     });
   });
 

@@ -16,6 +16,8 @@ export const videoSorts: readonly VideoSort[] = [
   "addedDesc",
   "modifiedAsc",
   "modifiedDesc",
+  "createdAsc",
+  "createdDesc",
   "titleAsc",
   "titleDesc",
   "durationAsc",

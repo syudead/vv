@@ -223,10 +223,10 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・タグを鍵 to へ付け替える。再生位置と公開の
-// 設定は from に行があれば to の行を置き換え、タグは和にする。
+// moveUserData は鍵 from の再生位置・公開の設定・更新日時・タグを鍵 to へ付け替える。再生位置・
+// 公開の設定・更新日時は from に行があれば to の行を置き換え、タグは和にする。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
-	for _, table := range []string{"playback_progress", "public_videos"} {
+	for _, table := range []string{"playback_progress", "public_videos", "video_edits"} {
 		if _, err := tx.ExecContext(ctx, `delete from `+table+` where content_key = ?
 			and exists (select 1 from `+table+` where content_key = ?)`, to, from); err != nil {
 			return fmt.Errorf("cannot move the %s values: %w", table, err)

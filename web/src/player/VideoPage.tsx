@@ -535,6 +535,9 @@ export default function VideoPage() {
                       videoId={video.id}
                       tags={video.tags}
                       onStaleVideo={() => void refresh()}
+                      // 更新日時が進むので取り直す。取り直しの間と失敗したときは前の値のまま
+                      // （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+                      onChanged={() => void refresh()}
                     />
                   )}
                   {owner && (
@@ -544,6 +547,7 @@ export default function VideoPage() {
                       key={`visibility:${String(video.id)}`}
                       videoId={video.id}
                       isPublic={video.public}
+                      onChanged={() => void refresh()}
                     />
                   )}
                 </div>

@@ -201,6 +201,19 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 			video.Title, video.FileTitle, video.DisplayName, video.ThumbnailPositionMs)
 	}
 
+	// 構造化された出力に updatedAt・fileCreatedAt が出る（specs/033-video-dates/contracts/
+	// external-api.md §1）。
+	var rawVideo map[string]json.RawMessage
+	callTool(t, session, "get_video", map[string]any{"id": f.videoA}, &rawVideo)
+	for _, key := range []string{"updatedAt", "fileCreatedAt"} {
+		if _, ok := rawVideo[key]; !ok {
+			t.Errorf("get_video の出力に %s が無い: %v", key, rawVideo)
+		}
+	}
+	if !video.UpdatedAt.After(video.AddedAt) || !video.FileCreatedAt.Equal(time.Unix(0, 0)) {
+		t.Errorf("get_video: updatedAt %v, addedAt %v, fileCreatedAt %v", video.UpdatedAt, video.AddedAt, video.FileCreatedAt)
+	}
+
 	// 表示名を付けると get_video と list_videos に出る。
 	var named extgen.VideoDisplayNamesResponse
 	if callTool(t, session, "update_video_display_names", map[string]any{"items": []any{

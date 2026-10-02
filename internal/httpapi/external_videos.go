@@ -124,6 +124,8 @@ func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 		ThumbnailPositionMs: item.Video.ThumbnailPositionMs,
 		DurationMs:          item.Video.DurationMs,
 		AddedAt:             item.Video.AddedAt.UTC(),
+		UpdatedAt:           item.Video.EditedAt.UTC(),
+		FileCreatedAt:       item.Video.FileCreatedAt.UTC(),
 		Locations:           make([]extgen.ExternalVideoLocation, 0, len(item.Locations)),
 		Tags:                toExternalVideoTags(item.Tags),
 	}
