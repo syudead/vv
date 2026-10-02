@@ -28,6 +28,33 @@ type LibraryPage struct {
 	Roots []MediaFolder
 }
 
+// LibrarySelection は一覧の条件に合う項目の、ページングしない選択である
+// （GET /api/library/ids、specs/035-favorites/data-model.md §5）。動画の項目の id と、
+// グループの項目ごとのフォルダとメンバーの id を分けて持つ。
+type LibrarySelection struct {
+	// VideoIDs は動画の項目の id。
+	VideoIDs []int64
+	// Groups はグループの項目ごとのフォルダとメンバー。
+	Groups []LibraryGroupSelection
+}
+
+// LibraryGroupSelection はグループの項目 1 件のフォルダとメンバーである。
+type LibraryGroupSelection struct {
+	// Path はグループのフォルダの絶対パス。
+	Path string
+	// VideoIDs はグループの見せてよいメンバーの id。
+	VideoIDs []int64
+}
+
+// AllVideoIDs は動画の項目の id とグループのメンバーの id の和を、この順に返す。
+func (s LibrarySelection) AllVideoIDs() []int64 {
+	ids := append([]int64{}, s.VideoIDs...)
+	for _, group := range s.Groups {
+		ids = append(ids, group.VideoIDs...)
+	}
+	return ids
+}
+
 // LibraryGroup はグループの項目である。値はどれも、絞り込みに関係なく、見る人に
 // 見せてよいメンバーの全部から作る（data-model.md §5 の 3・§7）。
 type LibraryGroup struct {

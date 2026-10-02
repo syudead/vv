@@ -260,10 +260,11 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})); !slices.Equal(names, []string{"ep2"}) {
 		t.Errorf("タグ two の未視聴 = %v, want [ep2]", names)
 	}
-	got, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})
+	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := selection.AllVideoIDs()
 	if !slices.Equal(got, []int64{ep2}) {
 		t.Errorf("タグ two の未視聴の ids = %v, want [%d]", got, ep2)
 	}
@@ -299,7 +300,15 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 // itemSortValue は項目の並べ替えの値を、ListLibrary が返した項目から Go で作る
 // （data-model.md §5 の 3）。played は動画の id から再生の時刻を、created は動画の id から
 // 作成日の値（file_created_at、取れなければ mtime。specs/033-video-dates/data-model.md §4）を引く。
-func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created map[int64]int64) (isNull bool, num int64, text string) {
+// favorited は動画の id から、groupFavorited はグループのフォルダのパスから、お気に入りにした
+// 日時を引く（無ければお気に入りでない。specs/035-favorites/data-model.md §5）。
+func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created, favorited map[int64]int64, groupFavorited map[string]int64) (isNull bool, num int64, text string) {
+	lookup := func(value int64, ok bool) (bool, int64, string) {
+		if !ok {
+			return true, 0, ""
+		}
+		return false, value, ""
+	}
 	nullable := func(v *int64) (bool, int64, string) {
 		if v == nil {
 			return true, 0, ""
@@ -334,6 +343,9 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 				return true, 0, ""
 			}
 			return false, group.LastPlayedAt.Unix(), ""
+		case domain.SortFavoritedAsc, domain.SortFavoritedDesc:
+			value, ok := groupFavorited[group.Path]
+			return lookup(value, ok)
 		}
 		return false, domain.ShuffleKey(seed, itemKey(item)), ""
 	}
@@ -356,11 +368,14 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 			return false, value, ""
 		}
 		return true, 0, ""
+	case domain.SortFavoritedAsc, domain.SortFavoritedDesc:
+		value, ok := favorited[video.ID]
+		return lookup(value, ok)
 	}
 	return false, domain.ShuffleKey(seed, video.ID), ""
 }
 
-// 受け入れ条件 10: 15 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
+// 受け入れ条件 10: 17 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
 // 重複と抜けが無く、total が項目の数と一致する。
 func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
@@ -376,6 +391,25 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		}
 		created[ids[file.path]] = fixedTime.Add(time.Duration(minutes) * time.Minute).Unix()
 	}
+	// お気に入りにした日時（specs/035-favorites/data-model.md §5）。動画とグループが同じ値で
+	// 並び、同じ値は id で決着する。show・mixed/sub の y・ep1 はお気に入りでない。
+	favorited := map[int64]int64{
+		ids[fixturePath("/media/solo.mp4")]:     30,
+		ids[fixturePath("/media/mixed/x.mp4")]:  10,
+		ids[fixturePath("/media/show/ep1.mp4")]: 50, // show はグループの項目なので使われない
+	}
+	groupFavorited := map[string]int64{fixturePath("/media/pair"): 30}
+	for id, at := range favorited {
+		if _, err := db.sql.Exec(`insert into video_favorites (content_key, favorited_at)
+			select content_key, ? from videos where id = ?`, at, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for path, at := range groupFavorited {
+		if _, err := db.sql.Exec(`insert into folder_favorites (path, favorited_at) values (?, ?)`, domain.FolderKey(path), at); err != nil {
+			t.Fatal(err)
+		}
+	}
 	all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 
 	for _, sort := range allSorts {
@@ -383,8 +417,8 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		want := slices.Clone(all)
 		desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
 		slices.SortFunc(want, func(a, b domain.LibraryItem) int {
-			aNull, aNum, aText := itemSortValue(sort, seed, a, played, created)
-			bNull, bNum, bText := itemSortValue(sort, seed, b, played, created)
+			aNull, aNum, aText := itemSortValue(sort, seed, a, played, created, favorited, groupFavorited)
+			bNull, bNum, bText := itemSortValue(sort, seed, b, played, created, favorited, groupFavorited)
 			if aNull != bNull {
 				if aNull {
 					return 1
@@ -506,10 +540,11 @@ func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Pr
 func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ep10 := ids[fixturePath("/media/show/ep10.mp4")]
-	got, missing, err := db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10 OR solo", TagIDs: []int64{999}})
+	selection, missing, err := db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10 OR solo", TagIDs: []int64{999}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := selection.AllVideoIDs()
 	// 存在しないタグは条件から落ちる。
 	if !slices.Equal(missing, []int64{999}) {
 		t.Errorf("missing = %v", missing)
@@ -521,18 +556,20 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 		t.Errorf("ids = %v, want %v", got, want)
 	}
 
-	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10"})
+	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got = selection.AllVideoIDs()
 	if !slices.Equal(got, []int64{ep10}) {
 		t.Errorf("ep10 の ids = %v, want [%d]", got, ep10)
 	}
 
-	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "show"})
+	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "show"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got = selection.AllVideoIDs()
 	slices.Sort(got)
 	want = []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ep10}
 	slices.Sort(want)
@@ -540,10 +577,11 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 		t.Errorf("show の ids = %v, want %v", got, want)
 	}
 
-	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Watch: domain.WatchUnwatched})
+	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Watch: domain.WatchUnwatched})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got = selection.AllVideoIDs()
 	slices.Sort(got)
 	want = []int64{ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")], ids[fixturePath("/media/mixed/x.mp4")]}
 	slices.Sort(want)

@@ -162,6 +162,9 @@ func TestCheckVideoQuery(t *testing.T) {
 		{Sort: SortPlayedDesc},
 		{Sort: SortPlayedAsc},
 		{TagIDs: []int64{1}},
+		{FavoriteOnly: true},
+		{Sort: SortFavoritedAsc},
+		{Sort: SortFavoritedDesc},
 	}
 	for _, q := range allowed {
 		if err := AudienceGuest.CheckVideoQuery(q); err != nil {

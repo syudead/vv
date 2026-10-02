@@ -43,7 +43,9 @@ thumbnails, playback progress, and the SPA embedded from `web/dist`.
 The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
-watch-state and playable filters, fifteen sort orders and a shuffle `seed`.
+watch-state, playable and favorites-only filters, seventeen sort orders
+(including the time a video was made a favorite, with non-favorites last in
+either direction) and a shuffle `seed`.
 `internal/httpapi` validates those parameters at the entry and hands them to
 the store as `domain.VideoQuery` / `domain.FolderVideoQuery`; `total` counts
 every match after all of them apply, and each item carries the folder of the
@@ -75,9 +77,16 @@ tag filter every group matches in full. A group's values (count, total
 duration and size, latest dates, watch state and the member to open, decided by
 `domain.GroupWatch` and `domain.GroupOpenIndex`) come from all of its members,
 and the playable filter, watch filter, sort and `total` apply to items (a group
-is playable when any member is). `GET /api/library/ids`
-returns the ids of the listed video items plus every member of listed groups
-(owner only), and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+is playable when any member is). The favorites-only filter applies while items
+are built: a group is an item only when its folder is a favorite, and the
+favorite members of a matching group that is not a favorite are listed as video
+items; the favorited-time sorts use the video's or the group folder's own
+favorite time
+([specs/035-favorites/data-model.md](specs/035-favorites/data-model.md) §5).
+`GET /api/library/ids` returns the ids of the listed video items plus every
+member of listed groups (owner only; the store returns them as
+`domain.LibrarySelection`, video items and each group's folder and members
+apart), and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
 groups built from public members only; a group with one public member is listed
 as that video, and "all members" counts public members only
 ([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md),
