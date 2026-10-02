@@ -36,6 +36,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
+		favorite: params.Favorite,
 	})
 	if !ok {
 		return
@@ -99,13 +100,14 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 }
 
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
-// 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。
+// 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
+// 項目は groups にもフォルダとメンバーとして書く（specs/035-favorites/contracts/screen-api.md §3）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
 		return
 	}
-	query, ok := s.parseIDsQuery(w, params.Query, params.Watch, params.Playable, params.Tag)
+	query, ok := s.parseIDsQuery(w, params.Query, params.Watch, params.Playable, params.Tag, params.Favorite)
 	if !ok {
 		return
 	}
@@ -114,7 +116,42 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs)
+	groups, err := s.libraryGroupIDs(r.Context(), selection.Groups)
+	if err != nil {
+		s.internalError(w, "Could not load the ids.", err)
+		return
+	}
+	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, groups)
+}
+
+// libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。フォルダは
+// GET /api/library の LibraryGroup.folder と同じく登録フォルダから求める。登録フォルダの
+// 下に無いグループは、ListLibrary と同じく索引の不整合として誤りにする（黙って
+// 落とすと ids と groups が食い違う）。
+func (s *server) libraryGroupIDs(ctx context.Context, groups []domain.LibraryGroupSelection) ([]gen.LibraryGroupIds, error) {
+	if len(groups) == 0 {
+		return nil, nil
+	}
+	roots, err := s.listRegisteredRoots(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read media folders: %w", err)
+	}
+	out := make([]gen.LibraryGroupIds, 0, len(groups))
+	for _, group := range groups {
+		folder, ok := domain.LocateFolder(roots, group.Path)
+		if !ok {
+			return nil, fmt.Errorf("group folder is not under any media folder: %s", group.Path)
+		}
+		ids := group.VideoIDs
+		if ids == nil {
+			ids = []int64{}
+		}
+		out = append(out, gen.LibraryGroupIds{
+			Folder:   gen.VideoFolder{RootId: folder.RootID, Path: folder.Path},
+			VideoIds: ids,
+		})
+	}
+	return out, nil
 }
 
 // GetFolderGroup はフォルダのグループ1件を返す（GET /api/folders/{rootId}/group、

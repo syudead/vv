@@ -86,7 +86,9 @@ favorite time
 `GET /api/library/ids` returns the ids of the listed video items plus every
 member of listed groups (owner only; the store returns them as
 `domain.LibrarySelection`, video items and each group's folder and members
-apart), and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+apart; the response also lists each group item's folder and members as `groups`,
+[specs/035-favorites/contracts/screen-api.md](specs/035-favorites/contracts/screen-api.md) §3),
+and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
 groups built from public members only; a group with one public member is listed
 as that video, and "all members" counts public members only
 ([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md),
@@ -590,8 +592,8 @@ Guest-too requests without a valid session are handled as a guest: handlers pass
 audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
 from them) appear, hidden videos and folders answer the same `404` as missing ones,
 guest responses omit `location`, `progress`, `probeError`, `probeErrorCode`, `favorite` and `rootPath` and carry
-empty `tags`, and list conditions that depend on owner data (`watch`, played-at
-sorts, `tag`) are `400`
+empty `tags`, and list conditions that depend on owner data (`watch`, played-at and
+favorited-at sorts, `tag`, `favorite`) are `400`
 ([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
 Thumbnails, seek previews and hover previews are served `private, no-cache` with an
 `ETag` (`304` on a match) to owners and guests alike, so neither a shared cache nor

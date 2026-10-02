@@ -39,6 +39,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
+		favorite: params.Favorite,
 	})
 	if !ok {
 		return
@@ -69,6 +70,7 @@ type videoQueryParams struct {
 	cursor   *string
 	limit    *int
 	tag      *[]int64
+	favorite *bool
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -83,6 +85,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 		return domain.VideoQuery{}, false
 	}
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	query.FavoriteOnly = params.favorite != nil && *params.favorite
 
 	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
 	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
@@ -148,7 +151,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 // データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
-		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status or tags, or to sort by last played.")
+		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
 		return false
 	}
 	return true
@@ -180,21 +183,24 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 // 引けなかった場合は一覧を諦めず、folder を省く。folder は置き場所の手がかりで
 // あって、無いと動画を見渡せなくなるものではない（progressFor と同じ扱い）。
 func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
-	var list func(context.Context) ([]domain.MediaFolder, error)
-	switch {
-	case s.folders != nil:
-		list = s.folders.ListMediaFolders
-	case s.mediaFolders != nil:
-		list = s.mediaFolders.ListMediaFolders
-	default:
-		return nil
-	}
-	roots, err := list(ctx)
+	roots, err := s.listRegisteredRoots(ctx)
 	if err != nil {
 		s.logger.Warn("could not read media folders", slog.Any("error", err))
 		return nil
 	}
 	return roots
+}
+
+// listRegisteredRoots は登録フォルダの一覧を引く。問い合わせ先が無ければ空である。
+func (s *server) listRegisteredRoots(ctx context.Context) ([]domain.MediaFolder, error) {
+	switch {
+	case s.folders != nil:
+		return s.folders.ListMediaFolders(ctx)
+	case s.mediaFolders != nil:
+		return s.mediaFolders.ListMediaFolders(ctx)
+	default:
+		return nil, nil
+	}
 }
 
 // listFilterParams は2つの一覧の経路が共通に受ける絞り込みと並び順である。

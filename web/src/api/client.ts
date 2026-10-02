@@ -26,6 +26,8 @@ export const videoSorts: readonly VideoSort[] = [
   "sizeDesc",
   "playedAsc",
   "playedDesc",
+  "favoritedAsc",
+  "favoritedDesc",
   "random",
 ];
 
@@ -57,6 +59,7 @@ export function isTranscodeQuality(value: unknown): value is TranscodeQuality {
 }
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
+export type LibraryGroupIds = components["schemas"]["LibraryGroupIds"];
 export type VideoTag = components["schemas"]["VideoTag"];
 export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
@@ -286,6 +289,11 @@ export interface ListFilterParams {
   watch?: WatchFilter;
   /** true ならブラウザで再生できる動画だけにする。false は既定なので送らない。 */
   playable?: boolean;
+  /**
+   * true ならお気に入りの項目だけにする。false は既定なので送らない
+   * （specs/035-favorites/contracts/screen-api.md §2）。
+   */
+  favorite?: boolean;
   sort?: VideoSort;
   /** sort=random の並びを決める値（0 以上 2147483647 以下）。 */
   seed?: number;
@@ -315,6 +323,7 @@ function setListFilters(query: URLSearchParams, params: ListFilterParams): void 
   }
   if (params.watch !== undefined) query.set("watch", params.watch);
   if (params.playable === true) query.set("playable", "true");
+  if (params.favorite === true) query.set("favorite", "true");
   if (params.sort !== undefined) query.set("sort", params.sort);
   if (params.seed !== undefined) query.set("seed", String(params.seed));
   if (params.cursor !== undefined && params.cursor !== "") {
@@ -389,6 +398,8 @@ export interface ListLibraryIdsParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
+  /** true ならお気に入りの項目だけにする。false は既定なので送らない。 */
+  favorite?: boolean;
   tag?: number[];
   signal?: AbortSignal;
 }
@@ -396,7 +407,8 @@ export interface ListLibraryIdsParams {
 /**
  * listLibraryIds は listLibrary と同じ条件に合う項目の動画の id（グループは全メンバー）を、
  * ページングせずに取得する（「すべて選択」用。
- * specs/017-folder-groups/contracts/library-api.md §2）。
+ * specs/017-folder-groups/contracts/library-api.md §2）。グループの項目は `groups` にも
+ * フォルダと全メンバーの id として入る（specs/035-favorites/contracts/screen-api.md §3）。
  */
 export function listLibraryIds(
   params: ListLibraryIdsParams = {},
@@ -407,6 +419,7 @@ export function listLibraryIds(
   }
   if (params.watch !== undefined) query.set("watch", params.watch);
   if (params.playable === true) query.set("playable", "true");
+  if (params.favorite === true) query.set("favorite", "true");
   setTagFilter(query, params.tag);
   return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,

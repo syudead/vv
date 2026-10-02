@@ -145,7 +145,7 @@ const errorReasons = {
       ? "Select fewer videos."
       : `Select between 1 and ${videos(limit)}.`,
   guest_filter_not_allowed:
-    "Sign in to filter by watch status or tags, or to sort by last played.",
+    "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.",
   invalid_cursor: "The list changed while loading. Reload it.",
   invalid_folder_path: "That folder path isn't valid.",
   relative_directory_path: "The path must be absolute.",
