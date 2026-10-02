@@ -40,16 +40,41 @@ its link and the 概要 line.
    mid-discussion. Each round:
    - state your current understanding in two or three lines — what the user
      gets, and what is in and out;
-   - ask at most three questions, each with concrete options and your
-     recommendation first (use the question tool when one is available);
-     never ask what step 1 can answer;
+   - ask at most three questions, and never ask what step 1 can answer or
+     what the requester has already answered in this discussion;
    - fold the answers in and check the conditions again.
+
+   Settle the purpose before the shape:
+   - **Purpose first, open-ended.** While the problem, who will use the
+     feature, or the situation it is used in is unclear, ask only about
+     those, as open questions without options. A motive is not in the code
+     or the docs, so do not infer it, and do not offer choices of
+     implementation form before it is known: the options would frame the
+     answer. When an answer changes the purpose, drop or revisit what was
+     decided on the old one.
+   - **Then choices.** Once the purpose is settled, ask about the remaining
+     forks with concrete options and your recommendation first (use the
+     question tool when one is available). One decision per question; do
+     not combine unrelated decisions into one set of options.
+   - **Ask about consequences, not details.** Spend questions on what changes
+     what the user gets and is costly to undo, not on behaviour plan or
+     design can settle and later change cheaply.
+   - **State costs as they are.** When a trade-off rests on a fact about a
+     platform or a tool, check it and give its real size; an overstated
+     hurdle steers the answer.
+   - **Answer how-questions briefly.** When the requester asks whether or how
+     something can be built, answer in a few lines — enough to show the
+     requirement is feasible — and keep the choice of how for plan.
 
    End when no condition holds, or when the requester explicitly agrees to
    proceed with a stated ambiguity — then record it in the Issue as such.
+   Before filing, show a short summary — what the user gets, what is out of
+   scope, and every decision you made yourself rather than the requester —
+   and file only after the requester agrees.
 4. **Write and file.** Write the body below and create (or edit) the Issue
-   directly; do not show a draft first. Corrections are made by editing the
-   Issue afterwards.
+   directly; do not show a full draft first. Corrections are made by editing
+   the Issue afterwards. In the reply, list the decisions you made yourself
+   that the summary did not cover.
 
 ## Body
 
