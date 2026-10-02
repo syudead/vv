@@ -11,6 +11,7 @@ import {
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
+import { updateFavorites } from "../api/favorites";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t } from "../i18n";
 import { cn } from "../lib/cn";
@@ -27,6 +28,7 @@ import Checkbox from "../ui/Checkbox";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import { CardMedia, useCardPreview } from "./cardPreview";
+import FavoriteToggle from "./FavoriteToggle";
 
 export interface VideoCardProps {
   video: Video;
@@ -77,6 +79,31 @@ function useCardState(video: Video) {
  */
 function usePublicMark(video: Video): boolean {
   return useAudience() === "owner" && video.public;
+}
+
+/**
+ * VideoFavorite は動画のカード・行のお気に入りの付け外しである（所有者だけ。
+ * specs/035-favorites/ui-design.md「Card」）。ゲストには描かない（「Guest degradation」）。
+ */
+function VideoFavorite({
+  video,
+  variant,
+  previewing,
+}: {
+  video: Video;
+  variant: "card" | "row";
+  previewing?: boolean;
+}) {
+  const favorite = video.favorite === true;
+  return (
+    <FavoriteToggle
+      favorite={favorite}
+      label={t.list.card.favorite(video.title)}
+      onToggle={() => updateFavorites([video.id], [], !favorite)}
+      variant={variant}
+      previewing={previewing}
+    />
+  );
 }
 
 /** PublicMark は公開の印（地球のアイコンと、読み上げ用の「公開」）である。 */
@@ -224,6 +251,7 @@ function VideoCard(props: VideoCardProps) {
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
   const tagsRowNode = tagsRow?.(video);
   const publicMark = usePublicMark(video);
+  const owner = useAudience() === "owner";
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const preview = useCardPreview({
     video,
@@ -385,6 +413,18 @@ function VideoCard(props: VideoCardProps) {
           )}
         </div>
       </Link>
+      {owner && (
+        // お気に入りはサムネイルの右上、リンクの外に置く（チェックと同じ。DOM の順は
+        // チェック → リンク → 付け外し → タグの行。ui-design.md「Placement」）。ポインタが
+        // 入ったらホバープレビューを止め、ここからはプレビューを始めない。
+        <div
+          data-preview-checkbox="true"
+          onPointerEnter={release}
+          className="absolute top-2 right-2 z-20 flex"
+        >
+          <VideoFavorite video={video} variant="card" previewing={showingPreview} />
+        </div>
+      )}
       {showTagsRow && (
         // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
         // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
@@ -401,6 +441,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const { video, backTo, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
+  const owner = useAudience() === "owner";
 
   return (
     <tr
@@ -474,6 +515,12 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           </span>
         )}
       </td>
+      {/* お気に入りは題名の列の直後の列（ui-design.md「List view row」）。ゲストには列ごと描かない。 */}
+      {owner && (
+        <td className="w-8">
+          <VideoFavorite video={video} variant="row" />
+        </td>
+      )}
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check

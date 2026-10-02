@@ -93,6 +93,7 @@ export type VideosDataAction =
       action: "add" | "remove";
     }
   | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
+  | { type: "favorite"; videoIds: readonly number[]; favorite: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | { type: "refreshGroup"; folderKey: string; group: LibraryGroup }
@@ -152,6 +153,17 @@ export function videosDataReducer(
         state.items,
         (video) => targets.has(video.id) && video.public !== action.isPublic,
         (video) => ({ ...video, public: action.isPublic }),
+      );
+      return items === state.items ? state : { ...state, items };
+    }
+    // お気に入りは動画そのものの印で、メンバーの付け外しはグループの値を変えない
+    // （specs/035-favorites 要件 4）。グループの項目の付け外しは useVideos が取り直す。
+    case "favorite": {
+      const targets = new Set(action.videoIds);
+      const items = mapVideos(
+        state.items,
+        (video) => targets.has(video.id) && video.favorite !== action.favorite,
+        (video) => ({ ...video, favorite: action.favorite }),
       );
       return items === state.items ? state : { ...state, items };
     }
