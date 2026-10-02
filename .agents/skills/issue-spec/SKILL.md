@@ -17,12 +17,24 @@ its link and the 概要 line.
 
 ## Steps
 
-1. **Investigate before asking.** Read the request, then answer what you can
-   yourself in Q-6's order: the repository's design documents and specs, the
-   existing screens and code, the request itself, and the form comparable
-   current products have converged on. Search open and closed Issues for a
-   duplicate or a related feature; when one exists, say so and ask whether to
-   revise it instead.
+1. **Survey the current state, lightly.** Before deciding anything, find out
+   how the product handles this today and what stands in the way, in
+   minutes rather than hours:
+   - what a user has to do today to get what is asked, and where that falls
+     short — read the relevant design documents, how-to guides and code
+     paths, not just their titles;
+   - the constraints the request runs into in the existing system (what
+     already works, what is missing, what would conflict);
+   - facts about the platform or tools the request depends on — check them
+     rather than recalling them;
+   - open and closed Issues for a duplicate or a related feature; when one
+     exists, say so and ask whether to revise it instead.
+
+   Write the result as a 現状 note of a few lines, with links. It opens the
+   discussion in step 3 and becomes the Issue's 背景. Then answer what you
+   can yourself in Q-6's order: the repository's design documents and
+   specs, the existing screens and code, the request itself, and the form
+   comparable current products have converged on.
 2. **Decide whether to discuss first (壁打ち).** Discuss when any of these
    holds after step 1:
    - what the user gets, or the problem being solved, is not stated;
@@ -37,7 +49,8 @@ its link and the 概要 line.
    Otherwise go straight to step 4. Tell the requester in one line which way
    you went and why.
 3. **Discuss until the requirement is settled.** Do not file the Issue
-   mid-discussion. Each round:
+   mid-discussion. Open the first round with the 現状 note from step 1, so
+   the requester answers knowing what exists today. Each round:
    - state your current understanding in two or three lines — what the user
      gets, and what is in and out;
    - ask at most three questions, and never ask what step 1 can answer or
@@ -53,9 +66,14 @@ its link and the 概要 line.
      answer. When an answer changes the purpose, drop or revisit what was
      decided on the old one.
    - **Then choices.** Once the purpose is settled, ask about the remaining
-     forks with concrete options and your recommendation first (use the
-     question tool when one is available). One decision per question; do
-     not combine unrelated decisions into one set of options.
+     forks with concrete options and your recommendation first. One decision
+     per question; do not combine unrelated decisions into one set of
+     options.
+   - **Ask in plain text.** Write questions in the reply, where the
+     requester can answer freely, push back or reframe. Use a
+     multiple-choice question tool only at the end, when the purpose and
+     shape are settled and what remains is a pick between options the
+     requester already understands.
    - **Ask about consequences, not details.** Spend questions on what changes
      what the user gets and is costly to undo, not on behaviour plan or
      design can settle and later change cheaply.
