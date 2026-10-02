@@ -27,7 +27,13 @@ function parse(search: string, preferred?: Parameters<typeof parseListCriteria>[
 describe("parseListCriteria（URL の解釈）", () => {
   it("何も無ければ既定の条件になる", () => {
     expect(parse("")).toEqual({
-      criteria: { query: "", watch: "all", playable: false, sort: "addedDesc" },
+      criteria: {
+        query: "",
+        watch: "all",
+        playable: false,
+        favorite: false,
+        sort: "addedDesc",
+      },
       needsSeed: false,
       hasExplicitSort: false,
     });
@@ -38,6 +44,7 @@ describe("parseListCriteria（URL の解釈）", () => {
       query: "京都",
       watch: "all",
       playable: false,
+      favorite: false,
       sort: "addedDesc",
     });
     expect(parse("?sort=titleAsc").criteria.sort).toBe("titleAsc");
@@ -45,21 +52,23 @@ describe("parseListCriteria（URL の解釈）", () => {
 
   it("すべてのパラメータを読む", () => {
     expect(
-      parse("?q=a+b&watch=inProgress&playable=1&sort=random&seed=123").criteria,
+      parse("?q=a+b&watch=inProgress&playable=1&fav=1&sort=random&seed=123").criteria,
     ).toEqual({
       query: "a b",
       watch: "inProgress",
       playable: true,
+      favorite: true,
       sort: "random",
       seed: 123,
     });
   });
 
   it("解釈できない値は既定として扱い、誤りにしない", () => {
-    expect(parse("?watch=bogus&playable=true&sort=nope").criteria).toEqual({
+    expect(parse("?watch=bogus&playable=true&fav=true&sort=nope").criteria).toEqual({
       query: "",
       watch: "all",
       playable: false,
+      favorite: false,
       sort: "addedDesc",
     });
     // 未知の sort は端末に保存した並び順に戻る。
@@ -74,8 +83,10 @@ describe("parseListCriteria（URL の解釈）", () => {
 
   it("メニューに種類がある並び順をすべて読む", () => {
     const listed = videoSorts.filter((sort) => isListSort(sort));
-    // 8 つの種類の 15 の値（ランダムは向きを持たない）。
-    expect(listed).toHaveLength(15);
+    // 9 つの種類の 17 の値（ランダムは向きを持たない）。
+    expect(listed).toHaveLength(17);
+    expect(listed).toContain("favoritedAsc");
+    expect(listed).toContain("favoritedDesc");
     expect(listed).toContain("createdDesc");
     expect(listed).toContain("createdAsc");
     for (const sort of listed) {
@@ -148,6 +159,7 @@ describe("serializeListCriteria（URL への書き出し）", () => {
         query: "",
         watch: "all",
         playable: false,
+        favorite: false,
         sort: "addedDesc",
       }).toString(),
     ).toBe("sort=addedDesc");
@@ -158,11 +170,13 @@ describe("serializeListCriteria（URL への書き出し）", () => {
       query: "京都 2024",
       watch: "unwatched" as const,
       playable: true,
+      favorite: true,
       sort: "random" as const,
       seed: 99,
     };
     const params = serializeListCriteria(criteria);
-    expect([...params.keys()]).toEqual(["q", "watch", "playable", "sort", "seed"]);
+    expect([...params.keys()]).toEqual(["q", "watch", "playable", "fav", "sort", "seed"]);
+    expect(params.get("fav")).toBe("1");
     expect(params.get("playable")).toBe("1");
     expect(parseListCriteria(params).criteria).toEqual(criteria);
   });
@@ -173,6 +187,7 @@ describe("serializeListCriteria（URL への書き出し）", () => {
         query: "",
         watch: "all",
         playable: false,
+        favorite: false,
         sort: "titleAsc",
         seed: 3,
       }).has("seed"),
@@ -197,7 +212,7 @@ describe("parseSeed と newSeed", () => {
 });
 
 describe("並べ替えの種類と向き", () => {
-  it("8 つの種類と、選んだときの向き", () => {
+  it("9 つの種類と、選んだときの向き", () => {
     expect(sortKinds.map((info) => [sortKindLabel(info.kind), info.initial])).toEqual([
       ["Date added", "addedDesc"],
       ["Date modified", "modifiedDesc"],
@@ -206,6 +221,7 @@ describe("並べ替えの種類と向き", () => {
       ["Length", "durationDesc"],
       ["File size", "sizeDesc"],
       ["Recently played", "playedDesc"],
+      ["Date favorited", "favoritedDesc"],
       ["Random", "random"],
     ]);
   });
@@ -247,15 +263,29 @@ describe("並べ替えの種類と向き", () => {
     expect(directionToggleLabel("createdAsc")).toBe(
       "Ascending (oldest first). Press for descending",
     );
+    expect(directionToggleLabel("favoritedDesc")).toBe(
+      "Descending (newest first). Press for ascending",
+    );
+    expect(directionToggleLabel("favoritedAsc")).toBe(
+      "Ascending (oldest first). Press for descending",
+    );
+  });
+
+  it("「Date favorited」は降順で始まり、向きを切り替えると昇順になる", () => {
+    expect(sortKindOf("favoritedDesc").kind).toBe("favorited");
+    expect(sortKindOf("favoritedAsc").kind).toBe("favorited");
+    expect(withDirection("favoritedDesc", "asc")).toBe("favoritedAsc");
+    expect(withDirection("favoritedAsc", "desc")).toBe("favoritedDesc");
   });
 });
 
 describe("条件を解除", () => {
-  it("検索語・視聴状態・再生可否を外し、並べ替えと seed は残す", () => {
+  it("検索語・視聴状態・再生可否・お気に入りのみを外し、並べ替えと seed は残す", () => {
     const criteria = {
       query: "京都",
       watch: "watched" as const,
       playable: true,
+      favorite: true,
       sort: "random" as const,
       seed: 5,
     };
@@ -265,10 +295,23 @@ describe("条件を解除", () => {
       query: "",
       watch: "all",
       playable: false,
+      favorite: false,
       sort: "random",
       seed: 5,
     });
     expect(hasConditions(cleared)).toBe(false);
+  });
+
+  it("お気に入りのみだけでも外せる条件になる", () => {
+    const criteria = {
+      query: "",
+      watch: "all" as const,
+      playable: false,
+      favorite: true,
+      sort: "addedDesc" as const,
+    };
+    expect(hasConditions(criteria)).toBe(true);
+    expect(clearConditions(criteria).favorite).toBe(false);
   });
 });
 
@@ -296,9 +339,56 @@ describe("guestListCriteria（ゲストが使えない条件の丸め）", () =>
   it("視聴状態と最近再生した順を既定に丸め、ほかの条件は残す", () => {
     for (const sort of ["playedAsc", "playedDesc"] as const) {
       expect(
-        guestListCriteria({ query: "ab", watch: "watched", playable: true, sort }),
-      ).toEqual({ query: "ab", watch: "all", playable: true, sort: "addedDesc" });
+        guestListCriteria({
+          query: "ab",
+          watch: "watched",
+          playable: true,
+          favorite: false,
+          sort,
+        }),
+      ).toEqual({
+        query: "ab",
+        watch: "all",
+        playable: true,
+        favorite: false,
+        sort: "addedDesc",
+      });
     }
+  });
+
+  it("お気に入りのみとお気に入りにした日時を既定に丸める", () => {
+    for (const sort of ["favoritedAsc", "favoritedDesc"] as const) {
+      expect(
+        guestListCriteria({
+          query: "ab",
+          watch: "all",
+          playable: false,
+          favorite: true,
+          sort,
+        }),
+      ).toEqual({
+        query: "ab",
+        watch: "all",
+        playable: false,
+        favorite: false,
+        sort: "addedDesc",
+      });
+    }
+    expect(
+      guestListCriteria({
+        query: "",
+        watch: "all",
+        playable: false,
+        favorite: true,
+        sort: "titleAsc",
+      }),
+    ).toEqual({
+      query: "",
+      watch: "all",
+      playable: false,
+      favorite: false,
+      sort: "titleAsc",
+    });
   });
 
   it("丸めるものが無ければ同じ値を返す", () => {
@@ -306,6 +396,7 @@ describe("guestListCriteria（ゲストが使えない条件の丸め）", () =>
       query: "",
       watch: "all",
       playable: false,
+      favorite: false,
       sort: "random",
       seed: 5,
     } as const;

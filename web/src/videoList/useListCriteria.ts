@@ -36,9 +36,10 @@ export interface ListCriteriaState {
  * すべての経路（apply・seed の補完・sort を確定する置き換え）で値を残す。省略する
  * 画面（フォルダ画面）では、そのパラメータには一切触れない。
  *
- * ゲストとして描くときは、所有者のデータに依る条件（視聴状態・最近再生した順・
- * `extraParam` のタグ）を既定に丸めて返す。URL に残っていたら履歴を増やさずに
- * URL も直す。端末に保存した並び順（preferredSort）が最近再生した順のときも丸めるが、
+ * ゲストとして描くときは、所有者のデータに依る条件（視聴状態・お気に入りのみ・
+ * 最近再生した順・お気に入りにした日時・`extraParam` のタグ）を既定に丸めて返す。
+ * URL に残っていたら履歴を増やさずに URL も直す。端末に保存した並び順
+ * （preferredSort）が所有者だけの並び順のときも丸めるが、
  * 保存値そのものは書き換えない（specs/016-single-account-auth/ui-design.md
  * 「Guest degradation」、contracts/guest-api.md §3）。
  */
@@ -56,6 +57,7 @@ export function useListCriteria(
   const guestLeftovers =
     guest &&
     (parsed.criteria.watch !== "all" ||
+      parsed.criteria.favorite ||
       (parsed.hasExplicitSort && ownerOnlySort(parsed.criteria.sort)) ||
       rawExtra.length > 0);
   const extra = guest ? [] : rawExtra;

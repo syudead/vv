@@ -106,8 +106,17 @@ jsdom は CSS を適用しないので、`position: fixed` もメディアクエ
   どの倍率でもカードが 1 列にしか並ばないので、格子は全幅の 1 列にし、表示倍率は出さない。件数は
   ライブラリと検索結果では格子の上の行に、フォルダ画面の直下の表示では一群の見出しに出る。
   並び順の種類は追加日・更新日（ファイル）・作成日（ファイル）・題名・長さ・ファイルサイズ・
-  最近再生した順・ランダムの 8 つで、ゲストには最近再生した順を除く 7 つを出す。作成日は
-  033 で足し、日付の 3 種を隣り合わせる（specs/033-video-dates/ui-design.md「Sort and direction」）。
+  最近再生した順・お気に入りにした日時（Date favorited）・ランダムの 9 つで、ゲストには所有者だけの
+  最近再生した順とお気に入りにした日時を除く 7 つを出す。作成日は 033 で足し、日付の 3 種を
+  隣り合わせる（specs/033-video-dates/ui-design.md「Sort and direction」）。お気に入りにした日時は
+  035 で最近再生した順の直後に足し、選ぶと新しい順になる。`md` 未満の「表示と並び順」のまとめでは
+  2 列のラジオに行優先で流し込み、所有者で 5 行、ゲストで 4 行になる
+  （specs/035-favorites/ui-design.md「Sort and direction」）。
+  絞り込みのポップオーバーは視聴状態・お気に入りのみ（Favorites only、URL は `fav=1`）・再生可否の
+  順で、視聴状態とお気に入りのみは所有者だけに出す。お気に入りのみは「Clear filters」で
+  ほかの絞り込みと一緒に外れ、並べ替えは残る。ゲストの URL に `fav=1` や `sort=favorited*` が
+  残っていれば、既定に丸めてから要求し URL も直す（specs/035-favorites/ui-design.md
+  「Filter menu」「Guest degradation」）。
 - **カード**（`web/src/videoList/VideoCard.tsx`）: サムネイル、その右下の再生時間、
   下端の再生進捗、題名を描く。ライブラリの格子表示とフォルダ画面では、題名の下にその
   動画のタグの行を足し、タグの無い動画では足さない（specs/014-video-tags/ui-design.md

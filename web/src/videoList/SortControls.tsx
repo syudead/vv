@@ -4,6 +4,7 @@ import {
   ArrowUpNarrowWide,
   CalendarArrowDown,
   CalendarClock,
+  CalendarHeart,
   ChevronDown,
   Dices,
   FileClock,
@@ -32,6 +33,7 @@ import Tooltip from "../ui/Tooltip";
 import {
   directionLabel,
   directionToggleLabel,
+  ownerOnlySortKinds,
   type SortDirection,
   type SortKind,
   sortDirection,
@@ -50,11 +52,12 @@ export const sortIcons: Record<SortKind, LucideIcon> = {
   duration: Timer,
   size: HardDrive,
   played: History,
+  favorited: CalendarHeart,
   random: Shuffle,
 };
 
 /**
- * sortOptions は並べ替えの8種を、選んだときの並び順とともに並べる。
+ * sortOptions は並べ替えの9種を、選んだときの並び順とともに並べる。
  * value は種類を選んだときの値（向きは種類ごとの既定）である。
  */
 export const sortOptions = sortKinds.map((info) => ({
@@ -65,12 +68,15 @@ export const sortOptions = sortKinds.map((info) => ({
 
 /**
  * useSortOptions は今描いている相手に出す並べ替えの種類である。ゲストには
- * 「最近再生した順」を出さない（再生位置は所有者のもの。
- * specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+ * 「最近再生した順」と「お気に入りにした日時」を出さない（再生位置とお気に入りは
+ * 所有者のもの。specs/016-single-account-auth/ui-design.md「Guest degradation」、
+ * specs/035-favorites/ui-design.md「Guest degradation」）。ゲストは7種になる。
  */
 function useSortOptions(): typeof sortOptions {
   const owner = useAudience() === "owner";
-  return owner ? sortOptions : sortOptions.filter((option) => option.kind !== "played");
+  return owner
+    ? sortOptions
+    : sortOptions.filter((option) => !ownerOnlySortKinds.includes(option.kind));
 }
 
 export interface SortControlProps {

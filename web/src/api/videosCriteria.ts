@@ -12,13 +12,16 @@ export type VideosSource = "videos" | "library" | FolderRef;
 
 /**
  * VideosCriteria は一覧を取りに行く条件である
- * （specs/013-library-search/contracts/list-url.md の q・watch・playable・sort・seed）。
+ * （specs/013-library-search/contracts/list-url.md の q・watch・playable・sort・seed と、
+ * specs/035-favorites の fav）。
  * 省略した項目はサーバーの既定になる。
  */
 export interface VideosCriteria {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
+  /** true ならお気に入りの項目だけにする（specs/035-favorites/contracts/screen-api.md §2）。 */
+  favorite?: boolean;
   sort: VideoSort;
   /** sort=random のときだけ送る。 */
   seed?: number;
@@ -40,6 +43,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.query ?? "",
     criteria.watch ?? "all",
     criteria.playable === true,
+    criteria.favorite === true,
     criteria.sort,
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
     criteria.scope ?? "direct",
