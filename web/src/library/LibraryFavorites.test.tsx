@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryGroup, LibraryItem, Video } from "../api/client";
 import { updateFavorites } from "../api/favorites";
+import { updateVideoVisibility } from "../api/visibility";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
@@ -462,5 +463,117 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
         pressed(screen.getByRole("button", { name: 'Favorite group "series"' })),
       ).toBe("true"),
     );
+  });
+  it("ページの取得中に付け外したグループが、もうグループでなければ、届いたページから外す", async () => {
+    const server = install([{ kind: "group", group: seriesGroup() }], seriesGroup());
+    const base = fetchMock.getMockImplementation();
+    let answerPage: (() => void) | undefined;
+    fetchMock.mockImplementation((input, init) => {
+      if (new URL(String(input), "http://localhost").pathname === "/api/library") {
+        // 付け外しの前に読まれた、古いグループを含むページ。
+        return new Promise<Response>((resolve) => {
+          answerPage = () =>
+            resolve(json({ items: [{ kind: "group", group: seriesGroup() }], total: 1 }));
+        });
+      }
+      return base!(input, init);
+    });
+    renderLibrary();
+    await waitFor(() => expect(answerPage).toBeDefined());
+    // ページが届く前に、もうグループでないフォルダを付け外す（appliedFolders: 0）。
+    server.group = undefined;
+    server.appliedFolders = 0;
+    await act(async () => {
+      await updateFavorites([], [{ rootId: 3, path: "series" }], true);
+    });
+    act(() => answerPage?.());
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input]) =>
+            new URL(String(input), "http://localhost").pathname ===
+            "/api/folders/3/group",
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: 'Favorite group "series"' }),
+      ).toBeNull(),
+    );
+  });
+
+  describe("一部しか反映されず取り直しに失敗した動画（確かでない理由は別々に持つ）", () => {
+    function installPartial() {
+      const server = install([{ kind: "video", video: video(1) }]);
+      const base = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const path = new URL(String(input), "http://localhost").pathname;
+        if (path === "/api/videos/1") {
+          return Promise.resolve(json({ code: "internal", message: "boom" }, 500));
+        }
+        if (path === "/api/video-visibility") {
+          return Promise.resolve(json({ applied: 1 }));
+        }
+        if (path === "/api/favorites" && server.favoriteRequests.length === 0) {
+          // 最初の付け外しは反映の数が足りない（サーバーでは付いている）。
+          return base!(input, init).then(() =>
+            json({ appliedVideos: 0, appliedFolders: 0 }),
+          );
+        }
+        return base!(input, init);
+      });
+      return server;
+    }
+
+    async function partialFavorite() {
+      await act(async () => {
+        await updateFavorites([1], [], true);
+      });
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            ([input]) =>
+              new URL(String(input), "http://localhost").pathname === "/api/videos/1",
+          ),
+        ).toBe(true),
+      );
+    }
+
+    async function openAndReturn(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("link", { name: "動画 1" }));
+      await screen.findByText("再生画面");
+      await user.click(screen.getByRole("button", { name: "一覧へ戻る" }));
+      return screen.findByRole("button", { name: 'Favorite "動画 1"' });
+    }
+
+    it("全件に反映された公開の切り替えでは、お気に入りの印は確かにならず、古い控えを戻さない", async () => {
+      const server = installPartial();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("button", { name: 'Favorite "動画 1"' });
+      await partialFavorite();
+      await act(async () => {
+        await updateVideoVisibility([1], true);
+      });
+      const toggle = await openAndReturn(user);
+      // 控えは取られず、一覧を読み直してサーバーの印を出す。
+      await waitFor(() => expect(server.libraryRequests).toBe(2));
+      await waitFor(() => expect(pressed(toggle)).toBe("true"));
+    });
+
+    it("全件に反映されたお気に入りの結果が届けば確かになり、控えから戻す", async () => {
+      const server = installPartial();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("button", { name: 'Favorite "動画 1"' });
+      await partialFavorite();
+      await act(async () => {
+        await updateFavorites([1], [], true);
+      });
+      const toggle = await openAndReturn(user);
+      expect(pressed(toggle)).toBe("true");
+      expect(server.libraryRequests).toBe(1);
+    });
   });
 });
