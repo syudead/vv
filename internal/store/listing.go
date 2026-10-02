@@ -82,10 +82,12 @@ type listSpec struct {
 	// （ListVideos）が resolveTagIDs で存在しない id を落としたうえで
 	// 渡す。
 	tagIDs []int64
-	sort   domain.VideoSort
-	seed   int64
-	cursor string
-	limit  int
+	// favoriteOnly はお気に入りだけにする（specs/035-favorites/data-model.md §5）。
+	favoriteOnly bool
+	sort         domain.VideoSort
+	seed         int64
+	cursor       string
+	limit        int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -113,7 +115,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	}
 	page, err := listVideoPageTx(ctx, tx, listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
 	if err != nil {
@@ -132,7 +134,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
 	return s.listVideoPage(ctx, listSpec{
 		scope: folderScope(q.Dir, q.Scope, audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly,
+		watch: q.Watch, playableOnly: q.PlayableOnly, favoriteOnly: q.FavoriteOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
 }
@@ -220,9 +222,14 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
 	// 鍵は利用者データの鍵（userKeyExpr、specs/030-video-versions/data-model.md §3）。
 	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
+	// お気に入りも同じ鍵に結ぶ（specs/035-favorites/data-model.md §5）。並べ替えの値にも使う。
+	from += ` left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	var conditions []string
 	if condition := watchCondition(spec.watch); condition != "" {
 		conditions = append(conditions, condition)
+	}
+	if spec.favoriteOnly {
+		conditions = append(conditions, `fav.content_key is not null`)
 	}
 	// 再生可否とタグ（data-model.md §6）。タグの存在の確認は呼び出し側
 	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
@@ -430,6 +437,10 @@ var listOrders = map[domain.VideoSort]listOrder{
 	// 再生の記録は filteredFrom の left join（p）から取る。記録が無ければ NULL。
 	domain.SortPlayedAsc:  {value: `p.updated_at`, nullable: true},
 	domain.SortPlayedDesc: {value: `p.updated_at`, desc: true, nullable: true},
+	// お気に入りにした日時は filteredFrom の left join（fav）から取る。お気に入りでなければ NULL
+	// （specs/035-favorites/research.md R-4）。
+	domain.SortFavoritedAsc:  {value: `fav.favorited_at`, nullable: true},
+	domain.SortFavoritedDesc: {value: `fav.favorited_at`, desc: true, nullable: true},
 	// ランダムは seed と id だけで決まる値の昇順で、値が同じなら id の昇順。
 	domain.SortRandom: {value: shuffleFunction + `(?, videos.id)`, seeded: true},
 }

@@ -17,8 +17,9 @@ type LibraryItems interface {
 	// ListLibrary は見る人に見せる項目1ページを返す（GET /api/library）。
 	ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error)
 	// LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目の、
-	// 動画の id とグループの全メンバーの id を返す（GET /api/library/ids、所有者だけ）。
-	LibraryIDs(ctx context.Context, q domain.VideoQuery) (ids, missingTagIDs []int64, err error)
+	// 動画の項目の id と、グループの項目ごとのフォルダと全メンバーの id を返す
+	// （GET /api/library/ids、所有者だけ）。
+	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
 	// FolderGroup はフォルダ dir（絶対パス）のグループを、見せてよい全メンバーから作って
 	// 返す。今グループでなければ domain.ErrNotFound である。
 	FolderGroup(ctx context.Context, audience domain.Audience, dir string) (domain.LibraryGroup, error)
@@ -108,12 +109,12 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 	if !ok {
 		return
 	}
-	ids, missingTagIDs, err := s.library.LibraryIDs(r.Context(), query)
+	selection, missingTagIDs, err := s.library.LibraryIDs(r.Context(), query)
 	if err != nil {
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	s.writeVideoIDs(w, ids, missingTagIDs)
+	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs)
 }
 
 // GetFolderGroup はフォルダのグループ1件を返す（GET /api/folders/{rootId}/group、

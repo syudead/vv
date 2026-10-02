@@ -98,6 +98,8 @@ type FolderVideoQuery struct {
 	Seed   int64
 	Cursor string
 	Limit  int
+	// FavoriteOnly はお気に入りの動画だけにする。
+	FavoriteOnly bool
 }
 
 // ValidateFolderPath は登録フォルダからの相対パスを検査する。空文字は登録
