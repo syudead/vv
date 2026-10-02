@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -100,23 +101,41 @@ func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 }
 
 func (s *server) readJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
+	return s.decodeJSONBody(w, r, io.LimitReader(r.Body, 1<<20), target)
+}
+
+// readLargeJSONBody は readJSONBody と同じく本文を読むが、上限を limit バイトにする。
+// 上限を超えた本文は、途中で切れた JSON の誤りとしてではなく、上限を超えたことを示して断る。
+func (s *server) readLargeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, target any) bool {
+	return s.decodeJSONBody(w, r, http.MaxBytesReader(w, r.Body, limit), target)
+}
+
+func (s *server) decodeJSONBody(w http.ResponseWriter, r *http.Request, body io.Reader, target any) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
 		s.invalidRequest(w, "Content-Type must be application/json.")
 		return false
 	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
+	decoder := json.NewDecoder(body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		s.invalidRequest(w, "Cannot parse the JSON body.")
+		s.invalidBody(w, err, "Cannot parse the JSON body.")
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		s.invalidRequest(w, "The body must contain exactly one JSON value.")
+		s.invalidBody(w, err, "The body must contain exactly one JSON value.")
 		return false
 	}
 	return true
+}
+
+// invalidBody は本文を読めなかったときの 400 invalid_request を書く。
+func (s *server) invalidBody(w http.ResponseWriter, err error, message string) {
+	if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+		message = fmt.Sprintf("The body must be at most %d bytes. Split the items into smaller requests.", tooLarge.Limit)
+	}
+	s.invalidRequest(w, message)
 }
 
 func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool {

@@ -19,6 +19,11 @@ type Favorites interface {
 	SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error)
 }
 
+// favoritesBodyLimit は PUT /api/favorites が読む本文の上限（バイト）である。folders の上限
+// 20000 件を深いパスで指定しても収まるよう、外部連携 API の externalBodyLimit と同じ大きさにする
+// （1 件あたり 1.6 KB 程度）。画面の API の既定の 1 MiB では、上限内の件数でも収まらない。
+const favoritesBodyLimit = externalBodyLimit
+
 // UpdateFavorites は動画とグループのお気に入りを付け外しする（PUT /api/favorites）。
 // videoIds と folders の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
 // 登録フォルダに無い rootId のフォルダは誤りにせず、保存層へ渡さない（数えない）。
@@ -31,7 +36,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 		Folders  []gen.VideoFolder `json:"folders"`
 		Favorite *bool             `json:"favorite"`
 	}
-	if !s.readJSONBody(w, r, &body) {
+	if !s.readLargeJSONBody(w, r, favoritesBodyLimit, &body) {
 		return
 	}
 	videoIDs := uniqueInt64s(body.VideoIds)
@@ -117,14 +122,20 @@ func uniqueInt64s(values []int64) []int64 {
 }
 
 // uniqueVideoFolders は rootId と path の組で、最初に現れた順に重複を除く。
+// rootName は同一性に含めない（値が同じでも別のポインタになり、別のものに数えてしまう）。
 func uniqueVideoFolders(folders []gen.VideoFolder) []gen.VideoFolder {
-	seen := make(map[gen.VideoFolder]struct{}, len(folders))
+	type folderKey struct {
+		rootID int64
+		path   string
+	}
+	seen := make(map[folderKey]struct{}, len(folders))
 	out := make([]gen.VideoFolder, 0, len(folders))
 	for _, folder := range folders {
-		if _, ok := seen[folder]; ok {
+		key := folderKey{rootID: folder.RootId, path: folder.Path}
+		if _, ok := seen[key]; ok {
 			continue
 		}
-		seen[folder] = struct{}{}
+		seen[key] = struct{}{}
 		out = append(out, folder)
 	}
 	return out

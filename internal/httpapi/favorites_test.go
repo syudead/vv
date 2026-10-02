@@ -301,3 +301,46 @@ func TestFavoriteInRelatedVideos(t *testing.T) {
 		assertGuestVideo(t, "ゲストの関連の項目", item)
 	}
 }
+
+// folders の上限 20000 件を深いパスで送っても、本文の大きさで断らない。rootName が違うだけの
+// 同じフォルダは 1 つに数える（rootId と path の組が同一性）。
+func TestUpdateFavoritesAcceptsFullFolderBatch(t *testing.T) {
+	f := newFavoritesFixture(t)
+	rootName := "Library"
+	folders := make([]gen.VideoFolder, 0, maxVideoTagsIDs+1)
+	for i := range maxVideoTagsIDs {
+		folders = append(folders, gen.VideoFolder{RootId: f.rootID, Path: fmt.Sprintf("season/collection/episode-%05d", i)})
+	}
+	folders[0].Path = "show"
+	// 上限ちょうどの 20000 件に、rootName だけが違う重複を足す。
+	folders = append(folders, gen.VideoFolder{RootId: f.rootID, Path: "show", RootName: &rootName})
+	body := favoritesBody(true, nil, folders...)
+	if len(body) <= 1<<20 {
+		t.Fatalf("本文 %d バイトが既定の上限 1 MiB に収まり、確かめにならない", len(body))
+	}
+	rec := f.putFavorites(body, f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 0 || got.AppliedFolders != 1 {
+		t.Errorf("応答 = %+v, want 0・1", got)
+	}
+	if !f.groupFavorite(t, "show") {
+		t.Error("show の favorite が false")
+	}
+}
+
+// 上限を超えた本文は、上限を示して断る。
+func TestUpdateFavoritesRejectsOversizedBody(t *testing.T) {
+	f := newFavoritesFixture(t)
+	body := fmt.Sprintf(`{"videoIds":[%d],"favorite":true,"folders":[{"rootId":%d,"path":"%s"}]}`,
+		f.ids["p1"], f.rootID, strings.Repeat("a", favoritesBodyLimit))
+	rec := f.putFavorites(body, f.owner)
+	assertStatus(t, "大きすぎる本文", rec, http.StatusBadRequest)
+	if !strings.Contains(rec.Body.String(), strconv.Itoa(favoritesBodyLimit)) {
+		t.Errorf("上限を示していない: %s", rec.Body)
+	}
+	if f.videoFavorite(t, "p1") {
+		t.Error("断った要求で p1 がお気に入りになった")
+	}
+}
