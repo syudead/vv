@@ -791,6 +791,10 @@ export const en = {
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",
       thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
+      // 右端の一群の先頭のお気に入りの付け外しと、変えられなかった 1 行
+      // （specs/035-favorites/ui-design.md「Words」「Video page」）。
+      favorite: "Favorite",
+      favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",

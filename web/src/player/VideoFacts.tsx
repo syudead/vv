@@ -22,12 +22,14 @@ import {
   setVideoThumbnailPosition,
   type Video,
 } from "../api/client";
+import { updateFavorites } from "../api/favorites";
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
+import FavoriteToggle from "../videoList/FavoriteToggle";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { technicalSummary } from "./properties";
@@ -226,7 +228,12 @@ function DateFact({
  * 追加日のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
  * （specs/030-video-versions/ui-design.md「Versions fact」）。
  *
- * 開けなかったとき・サムネイルを変えられなかったときは、1 行目のすぐ下に 1 行だけ出す。
+ * 所有者には、右端の操作の先頭（撮るボタンの左）にお気に入りの付け外しを置く
+ * （specs/035-favorites/ui-design.md「Video page」）。ゲストの応答には `favorite` が無く、出ない。
+ * 成功したら `onFavoriteChanged` で動画を取り直させる。
+ *
+ * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
+ * 1 行目のすぐ下に 1 行だけ出す。
  * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
 export default function VideoFacts({
@@ -235,6 +242,7 @@ export default function VideoFacts({
   capture,
   onChanged,
   onStale,
+  onFavoriteChanged,
   versions,
 }: {
   video: Video;
@@ -243,6 +251,8 @@ export default function VideoFacts({
   capture?: ThumbnailCapture;
   onChanged?: (video: Video, mark: DetailMark) => void;
   onStale?: () => void;
+  /** お気に入りの付け外しが成功したとき（取り直しに使う）。 */
+  onFavoriteChanged?: () => void;
   /** バージョンの一覧から別のバージョンへ移るときの値と、集まりが変わったときの動作。 */
   versions?: {
     navigation: VersionsNavigation;
@@ -260,6 +270,7 @@ export default function VideoFacts({
   const technical = technicalSummary(video);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const versionCount = video.versions?.count ?? 0;
+  const favorite = owner ? video.favorite : undefined;
 
   const copyPath = () => {
     if (location === undefined) return;
@@ -322,8 +333,24 @@ export default function VideoFacts({
             />
           )}
         </ul>
-        {(location !== undefined || (owner && capture !== undefined)) && (
+        {(location !== undefined ||
+          (owner && capture !== undefined) ||
+          favorite !== undefined) && (
           <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
+            {favorite !== undefined && (
+              <FavoriteToggle
+                variant="page"
+                favorite={favorite}
+                label={t.player.facts.favorite}
+                onToggle={async () => {
+                  setFailure(null);
+                  await updateFavorites([video.id], [], !favorite);
+                  // 塗りは取り直した `favorite` で確かめる（R-6、033「Refresh after edits」）。
+                  onFavoriteChanged?.();
+                }}
+                onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
+              />
+            )}
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}

@@ -564,6 +564,9 @@ export default function VideoPage() {
                     rethumbRelated(saved);
                   }}
                   onStale={() => void refresh()}
+                  // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
+                  // （specs/035-favorites/ui-design.md「Video page」）。
+                  onFavoriteChanged={() => void refresh()}
                   versions={{
                     navigation: {
                       backTo,
