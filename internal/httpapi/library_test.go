@@ -59,6 +59,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 		return adjust(Options{
 			Videos: library, Folders: library, Library: library, FolderGroups: db.FolderGroups(),
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
+			Favorites: db.Favorites(), Versions: db.Versions(),
 		})
 	})
 	db := f.env.db
@@ -364,7 +365,7 @@ func TestListLibraryForGuest(t *testing.T) {
 		if err := json.Unmarshal(item["group"], &group); err != nil {
 			t.Fatal(err)
 		}
-		for _, field := range []string{"watchedCount", "watchState", "lastPlayedAt"} {
+		for _, field := range []string{"watchedCount", "watchState", "lastPlayedAt", "favorite"} {
 			if value, ok := group[field]; ok {
 				t.Errorf("ゲストのグループに %s = %s", field, value)
 			}

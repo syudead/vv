@@ -1024,6 +1024,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/favorites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画とグループのお気に入りを付け外しする
+         * @description 所有者だけ。`videoIds` の動画と `folders` のグループのお気に入りを `favorite` にそろえる。
+         *     `videoIds` と `folders` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
+         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）、`folders` の `path` が不正なら 400
+         *     `invalid_folder_path` で、何も変えない。ライブラリに無い id、登録フォルダに無い `rootId`、
+         *     今グループでないフォルダは誤りにせず数えない。既に同じ状態のものは誤りにせず数え、付いている
+         *     ものに付けてもお気に入りにした日時は変えない。`folders` にグループを入れてもメンバーの動画には
+         *     付かない。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
+         *     `/api/events` の知らせは無い（specs/035-favorites/contracts/screen-api.md §1）。
+         */
+        put: operations["updateFavorites"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-bundles": {
         parameters: {
             query?: never;
@@ -1569,6 +1596,23 @@ export interface components {
             /** @description true で公開、false で非公開にする */
             public: boolean;
         };
+        FavoritesRequest: {
+            /** @description お気に入りを付け外しする動画の id */
+            videoIds?: number[];
+            /** @description お気に入りを付け外しするグループのフォルダ */
+            folders?: components["schemas"]["VideoFolder"][];
+            /** @description true でお気に入りにし、false で外す */
+            favorite: boolean;
+        };
+        FavoritesResponse: {
+            /**
+             * @description videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数え、
+             *     既に同じ状態だったものを含む）
+             */
+            appliedVideos: number;
+            /** @description folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む） */
+            appliedFolders: number;
+        };
         VideoVisibilityResponse: {
             /** @description videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む） */
             applied: number;
@@ -1661,7 +1705,7 @@ export interface components {
          * @description グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
          *     （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
          *     グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-         *     `lastPlayedAt` を省き、`tags` を空の配列にする。
+         *     `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
          */
         LibraryGroup: {
             folder: components["schemas"]["VideoFolder"];
@@ -1712,6 +1756,11 @@ export interface components {
             videoIds: number[];
             /** @description メンバーのタグの和集合。同じタグの出所は和にする */
             tags: components["schemas"]["VideoTag"][];
+            /**
+             * @description 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
+             *     所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+             */
+            favorite?: boolean;
         };
         FolderPreview: {
             /** Format: int64 */
@@ -1889,6 +1938,11 @@ export interface components {
              *     （specs/016-single-account-auth/contracts/guest-api.md §4）
              */
             public: boolean;
+            /**
+             * @description 所有者がお気に入りにした動画か。所有者の応答にだけ入る
+             *     （specs/035-favorites/data-model.md §3）
+             */
+            favorite?: boolean;
             /**
              * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
@@ -3857,6 +3911,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoVisibilityResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    updateFavorites: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FavoritesRequest"];
+            };
+        };
+        responses: {
+            /** @description 適用結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FavoritesResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

@@ -202,6 +202,8 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 	state := gen.LibraryGroupWatchState(group.WatchState)
 	watched := group.WatchedCount
 	out.WatchState, out.WatchedCount = &state, &watched
+	favorite := group.Favorite
+	out.Favorite = &favorite
 	if group.LastPlayedAt != nil {
 		played := *group.LastPlayedAt
 		out.LastPlayedAt = &played

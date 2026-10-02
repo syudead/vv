@@ -171,6 +171,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.FileTitle = nil
 	video.DisplayName = nil
 	video.ThumbnailPositionMs = nil
+	video.Favorite = nil
 	return video
 }
 
@@ -465,6 +466,10 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 		Public:         video.Public,
 	}
+	// お気に入りは所有者の応答にだけ入る。ゲストの応答からは forAudience が外す
+	// （specs/035-favorites/contracts/screen-api.md §0）。
+	favorite := video.Favorite
+	out.Favorite = &favorite
 
 	// 上書きの項目（specs/029-video-overrides/contracts/screen-api.md §0）。title は有効な
 	// 題名で、ファイル名由来の題名・表示名・代表サムネイルの位置は forAudience がゲストの
