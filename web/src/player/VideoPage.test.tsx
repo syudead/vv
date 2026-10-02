@@ -1988,6 +1988,45 @@ describe("VideoPage", () => {
       );
     });
 
+    it("付け外しの成功後も、取り直しが終わるまでと取り直しに失敗したときは前の状態のまま", async () => {
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      const before = videoRequests(7);
+      // 付け外しの後の取り直しは失敗する。
+      server.videos.set(7, () => json({ code: "internal", message: "失敗" }, 500));
+
+      fireEvent.click(favoriteButton());
+      await act(async () => answers[0]!(applied()));
+      // 取り直しが終わるまで送信中のままで、塗りは前のまま。
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
+      await waitFor(() =>
+        expect(favoriteButton().getAttribute("aria-disabled")).toBeNull(),
+      );
+      expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
+      expect(favoriteButton().getAttribute("data-active")).toBeNull();
+    });
+
+    it("付け外しに失敗した行は、続けて「パスをコピー」を押すと消える", async () => {
+      const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
+      vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+      server.videos.set(7, [owned]);
+      const { answers } = holdFavorites();
+      renderPage();
+      await ready();
+      fireEvent.click(favoriteButton());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      await screen.findByRole("alert");
+
+      fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
+      expect(screen.queryByRole("alert")).toBeNull();
+      await waitFor(() => expect(writeText).toHaveBeenCalled());
+    });
+
     it("別の動画へ移ると失敗の行を持ち越さない", async () => {
       server.videos.set(7, [owned]);
       server.videos.set(8, [{ ...owned, id: 8, title: "後続の動画" }]);

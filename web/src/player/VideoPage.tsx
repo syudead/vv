@@ -87,7 +87,7 @@ export default function VideoPage() {
   const audience = useAudience();
   const owner = audience === "owner";
 
-  const { state: detailState, refresh, replace } = useVideoDetail(id);
+  const { state: detailState, refresh, replace, setFavorite } = useVideoDetail(id);
   const {
     state: relatedState,
     retry: retryRelated,
@@ -566,7 +566,7 @@ export default function VideoPage() {
                   onStale={() => void refresh()}
                   // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
                   // （specs/035-favorites/ui-design.md「Video page」）。
-                  onFavoriteChanged={() => void refresh()}
+                  onFavorite={setFavorite}
                   versions={{
                     navigation: {
                       backTo,
