@@ -203,3 +203,49 @@ GUI の exe には標準出力も標準エラーも無い。起動に失敗し�
 - 設定をデータの置き場のファイルに持つ。保存の仕組みが 2 つになる。却下（R-14）。
 
 ## 配布
+
+### Context
+
+利用者が取れる配布物の置き場が要る（親 Issue 要件 1）。今の CI は `main` への push で Docker イメージを
+出すだけである。zip だけで動くには `ffmpeg` を同梱し（要件 2）、置き換えて更新できる形にする（要件 10）。
+高 DPI の画面で WebView2 の表示がぼやけないことと、閉じる確認の TaskDialog（Common Controls v6）には
+exe の manifest が要る。
+
+### Decision
+
+- **zip**: `VVMDM-<版>-windows-amd64.zip`。根に同じ名前のフォルダを 1 つ持ち、`VVMDM.exe`、`README.txt`
+  （展開して実行すること・SmartScreen の通し方・データの場所・更新の仕方）、`ffmpeg\`（`ffmpeg.exe`・
+  `ffprobe.exe`・`LICENSE.txt`・版とソースの入手先の `README.txt`）を入れる。`<版>` はタグから `v` を除いた
+  もの、タグが無ければ commit の `sha-<12 桁>`。README は Windows のメモ帳向けに CRLF で書く。対象は
+  `windows/amd64` だけ。
+- **組み立て**: `task build-windows-app`（`scripts/build -windows-app`）が SPA を組み、`go-winres` で
+  `cmd/mdm/winres/`（アイコンと、DPI 対応 per monitor v2・Common Controls v6 の manifest）から
+  `cmd/mdm/rsrc_windows_amd64.syso` を作り、`GOOS=windows GOARCH=amd64 CGO_ENABLED=0`、
+  `-tags desktop -ldflags "-H=windowsgui -X main.version=<版>"` で `VVMDM.exe` を組んで `dist/` に zip を書く。
+  `.syso` は同じ `GOOS`/`GOARCH` の `cmd/mdm` の全ビルドに入るので、組み立ての間だけ置いて消し、版管理に
+  入れない。版が数（`a.b.c.d` まで）なら exe の版情報にも入れる。`go-winres` の版は `tools/go.mod` が固定する。
+- **FFmpeg**: `GyanD/codexffmpeg` の GitHub Releases の `ffmpeg-<版>-essentials_build.zip` を、
+  `scripts/build/windows_app.go` に固定した版と SHA-256 で取る。取ったものは `dist/cache/` に置き、使うたびに
+  SHA-256 を確かめ、合わなければ消してビルドを失敗させる（期待値と実際の値を示す）。zip から取り出すのは
+  `bin\ffmpeg.exe`・`bin\ffprobe.exe`・`LICENSE` だけである。Windows のハードウェアエンコーダは
+  [hardware-encoding.md](hardware-encoding.md) の NVENC と QSV のままで、AMF は足さない。
+- **workflow** `.github/workflows/windows-app.yml`: `v*` のタグの push と手動実行で動く。
+  - Linux のジョブが `task build-windows-app` で zip を組み、workflow の成果物 `windows-app` に残す。
+  - Windows のジョブが zip を展開し、中身の並びと、同梱の `ffmpeg -hide_banner -encoders` に `h264_nvenc` と
+    `h264_qsv` があることを確かめる。無ければ失敗する。ランナーに GPU は無いので、確かめるのは
+    エンコーダが組み込まれていることまでで、実際の GPU での変換は実機で確かめる
+    （[quickstart.md](../../specs/037-windows-app/quickstart.md)）。
+  - タグのときだけ、両方が通ったあとに GitHub Release に zip を添付する。Release が無ければ作り、あれば
+    zip を差し替える。
+- exe は署名しない。初回の SmartScreen の通し方は zip の `README.txt` と
+  [running-vv.md](../how-to/running-vv.md#windows-app) に書く。
+
+### Alternatives considered
+
+- `main` への push ごとに zip を作る。利用者向けの版の区切りが無い。却下（R-13）。
+- `windows/arm64` も作る。固定できる `ffmpeg` の arm64 版が無く、x64 の exe はエミュレーションで動く。
+  却下（R-13）。
+- BtbN/FFmpeg-Builds の `ffmpeg` を同梱する。版ごとの固定の Release が残らず、固定した版を後から取れない。
+  却下（R-12）。
+- `.syso` を版管理に入れる。タグなしの Windows 向けビルド（`mdm.exe`）にもアイコンと manifest が入り、
+  版情報も古いまま残る。却下。
