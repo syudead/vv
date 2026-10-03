@@ -24,6 +24,7 @@ var directive = regexp.MustCompile(`(?i)^\s*nolint\b`)
 // skippedDirs は Go のソースを持たない、または手元の依存物を置く場所である。
 var skippedDirs = map[string]bool{
 	".git":         true,
+	".local":       true,
 	"node_modules": true,
 }
 
