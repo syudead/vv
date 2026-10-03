@@ -844,7 +844,9 @@ collapse into one labelled "Actions" menu, switched by CSS alone. The list holds
 draws only the rows in and near the viewport (`@tanstack/react-virtual`'s
 `useWindowVirtualizer`, used nowhere else; the document stays the scroll owner), keeps the
 focused row drawn, and hands Tab across the edge of the drawn range so keyboard order follows
-every row (`docs/design-docs/library-ui.md` §3). `web/src/shell/navigation.ts` puts its sidebar entry
+every row (`docs/design-docs/library-ui.md` §3). The toolbar and count line stay pinned under
+the top bar as one sticky band, and row scrolling subtracts its measured height; the rejected
+names open in a dialog from the count line (`RejectedNames`). `web/src/shell/navigation.ts` puts its sidebar entry
 right after "フォルダ" (Folders), followed by the owner-only "Duplicates" entry. Every sidebar entry links to a working screen. The library, folder, settings, tag and candidates screens use the shell: `app/App.tsx`
 puts `AppShell` around the `/`, `/folders/*`, `/settings`, `/tags` and `/duplicates` routes, and the
 playback screen

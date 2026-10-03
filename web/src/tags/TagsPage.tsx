@@ -206,6 +206,8 @@ export default function TagsPage() {
   const unusedButtonRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
   const listRef = useRef<HTMLDivElement | null>(null);
+  /** listBoxRef は帯の下の一覧の箱（作成の行・行・空の状態を入れる）である。 */
+  const listBoxRef = useRef<HTMLDivElement | null>(null);
   /**
    * pinnedRowId は、見えている範囲の外でも描き続ける行である。フォーカスを
    * 持つ行（行から開いたメニューにあるときも含む）と、これからフォーカスを移す
@@ -231,6 +233,14 @@ export default function TagsPage() {
   }, [afterCommitTick]);
   /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
   const [scrollMargin, setScrollMargin] = useState(0);
+  /**
+   * bandRef は上部バーの下に留める帯（操作の行と件数の行）で、stuckBottom は
+   * 留まったときの帯の下端の表示域の中での位置（`top` の上部バーの高さ＋帯の
+   * 高さ、px）である。行へスクロールするときに、行が帯の下に隠れないよう
+   * これを差し引く（ui-design.md「Band」）。帯の高さは幅で変わるので測り直す。
+   */
+  const bandRef = useRef<HTMLDivElement | null>(null);
+  const [stuckBottom, setStuckBottom] = useState(0);
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
     const current = rowRefs.current.get(id) ?? {
@@ -633,6 +643,7 @@ export default function TagsPage() {
     estimateSize: () => ROW_ESTIMATE,
     overscan: ROW_OVERSCAN,
     scrollMargin,
+    scrollPaddingStart: stuckBottom,
     rangeExtractor,
     getItemKey,
   });
@@ -650,6 +661,31 @@ export default function TagsPage() {
     observer.observe(document.body);
     return () => observer.disconnect();
   }, [hasList]);
+
+  // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅で 1 行・2 行に折り返す。
+  useLayoutEffect(() => {
+    const band = bandRef.current;
+    if (band === null) return;
+    const measure = () => {
+      const top = Number.parseFloat(getComputedStyle(band).top);
+      setStuckBottom((Number.isFinite(top) ? top : 0) + band.offsetHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(band);
+    return () => observer.disconnect();
+  }, []);
+
+  // ブラウザがフォーカスした要素を表示域へ寄せるときも、帯の下に隠さない。
+  // 文書のスクロールはこの画面のものではないので、離れるときに戻す。
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.style.scrollPaddingTop;
+    root.style.scrollPaddingTop = `${String(stuckBottom)}px`;
+    return () => {
+      root.style.scrollPaddingTop = previous;
+    };
+  }, [stuckBottom]);
 
   /**
    * handleListFocus は、フォーカスを持った行を描き続ける行にする。スクロール
@@ -722,6 +758,12 @@ export default function TagsPage() {
     // renamePending はボタンの disabled 条件に含めているので、ここは主に
     // キーボード操作などボタンを介さない呼び出しへの保険である）。
     if (renamePending) return;
+    // 作成の行はいつも一覧の先頭に入るので、一覧の先頭が帯の下に隠れていれば
+    // 先に先頭まで戻す（見えない位置に入力を作らない。ui-design.md「Band」）。
+    const listTop = listBoxRef.current?.getBoundingClientRect().top;
+    if (listTop !== undefined && listTop < stuckBottom) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + listTop - stuckBottom) });
+    }
     setCreating(true);
     setCreateError(null);
     setRenamingId(null);
@@ -1374,112 +1416,135 @@ export default function TagsPage() {
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-xl font-semibold">{t.tags.title}</h1>
       {/*
-        h1・操作の行・件数の行の間隔は ui-design.md が固定していない（固定するのは
-        本文の外側の余白と行の py-2 だけ）。「1280×800 でシノニムの行を持つタグと
-        持たないタグが半々のとき、12 行以上が1画面に見える」（ui-design.md「Visual
-        review criteria」情報密度）を満たすため、ここを詰める（B5）。
+        帯（specs/036-tag-admin-scale/ui-design.md「Band」）。操作の行と件数の行を
+        上部バーの下に留め、h1 と一覧は本文と一緒に流れる。面は不透明の bg-bg で、
+        下を流れる行が透けない。z-20 は選択バー（z-30）と上部バー（z-40）の下。
+        h1 との間（pt-3）・操作の行と件数の行の間（mt-2）・件数の行と最初の行の
+        間（pb-2）は、帯を入れる前の mt-3・mt-2・mt-2 と同じ。間隔を帯の中の余白に
+        するのは、留まったときに操作の行が上部バーに接しないためである。
       */}
-
-      {/*
-        操作の行（specs/036-tag-admin-scale/ui-design.md「Controls」「Responsive
-        behaviour」）。lg 以上は 1 行で 検索 →「Tentative only」→「Unused only」→
-        並び順 → 右端に「新しいタグ」。lg 未満は 2 行で、1 行目が 検索 →「新しい
-        タグ」、2 行目が絞り込みと並び順。幅の出し分けは CSS だけで行い、Tab の
-        順は DOM の順（lg 以上の見た目の順）のままにする。
-      */}
-      <div className="mt-3 flex flex-wrap items-center gap-2 sm:gap-3">
-        <TagSearchBox
-          value={search}
-          onChange={setSearch}
-          inputRef={searchInputRef}
-          disabled={tags !== undefined && tags.length === 0}
-          className="order-1 min-w-0 flex-1 sm:max-w-sm"
-        />
-        <div className="order-3 flex w-full items-center gap-2 sm:gap-3 lg:order-2 lg:w-auto">
-          <Tooltip content={t.tags.tentativeOnlyHint}>
-            <Button
-              ref={tentativeButtonRef}
-              aria-pressed={tentativeOnly}
-              className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
-              onClick={toggleTentativeOnly}
-              // 押している間は、タグが 0 になっても disabled にしない
-              // （フォーカスの行き先で、絞り込みを外す唯一の手でもある）。
-              disabled={tags === undefined || (!tentativeOnly && tags.length === 0)}
-            >
-              <CircleDashed className="max-sm:hidden" />
-              {t.tags.tentativeOnly}
-            </Button>
-          </Tooltip>
-          <Tooltip content={t.tags.unusedOnlyHint}>
-            <Button
-              ref={unusedButtonRef}
-              aria-pressed={unusedOnly}
-              className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
-              onClick={toggleUnusedOnly}
-              // 「Tentative only」と同じく、押している間は disabled にしない。
-              disabled={tags === undefined || (!unusedOnly && tags.length === 0)}
-            >
-              <VideoOff className="max-sm:hidden" />
-              {t.tags.unusedOnly}
-            </Button>
-          </Tooltip>
-          <TagSortMenu
-            sort={sort}
-            onSortChange={changeSort}
-            disabled={sortDisabled}
-            className="max-sm:hidden"
+      <div
+        ref={bandRef}
+        className="sticky top-navbar z-20 border-b border-border bg-bg pt-3 pb-2"
+      >
+        {/*
+          操作の行（specs/036-tag-admin-scale/ui-design.md「Controls」「Responsive
+          behaviour」）。lg 以上は 1 行で 検索 →「Tentative only」→「Unused only」→
+          並び順 → 右端に「新しいタグ」。lg 未満は 2 行で、1 行目が 検索 →「新しい
+          タグ」、2 行目が絞り込みと並び順。幅の出し分けは CSS だけで行い、Tab の
+          順は DOM の順（lg 以上の見た目の順）のままにする。
+        */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <TagSearchBox
+            value={search}
+            onChange={setSearch}
+            inputRef={searchInputRef}
+            disabled={tags !== undefined && tags.length === 0}
+            className="order-1 min-w-0 flex-1 sm:max-w-sm"
           />
-          <TagCompactSort
-            sort={sort}
-            onSortChange={changeSort}
-            disabled={sortDisabled}
-            className="ml-auto sm:hidden"
-          />
+          <div className="order-3 flex w-full items-center gap-2 sm:gap-3 lg:order-2 lg:w-auto">
+            <Tooltip content={t.tags.tentativeOnlyHint}>
+              <Button
+                ref={tentativeButtonRef}
+                aria-pressed={tentativeOnly}
+                className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
+                onClick={toggleTentativeOnly}
+                // 押している間は、タグが 0 になっても disabled にしない
+                // （フォーカスの行き先で、絞り込みを外す唯一の手でもある）。
+                disabled={tags === undefined || (!tentativeOnly && tags.length === 0)}
+              >
+                <CircleDashed className="max-sm:hidden" />
+                {t.tags.tentativeOnly}
+              </Button>
+            </Tooltip>
+            <Tooltip content={t.tags.unusedOnlyHint}>
+              <Button
+                ref={unusedButtonRef}
+                aria-pressed={unusedOnly}
+                className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
+                onClick={toggleUnusedOnly}
+                // 「Tentative only」と同じく、押している間は disabled にしない。
+                disabled={tags === undefined || (!unusedOnly && tags.length === 0)}
+              >
+                <VideoOff className="max-sm:hidden" />
+                {t.tags.unusedOnly}
+              </Button>
+            </Tooltip>
+            <TagSortMenu
+              sort={sort}
+              onSortChange={changeSort}
+              disabled={sortDisabled}
+              className="max-sm:hidden"
+            />
+            <TagCompactSort
+              sort={sort}
+              onSortChange={changeSort}
+              disabled={sortDisabled}
+              className="ml-auto sm:hidden"
+            />
+          </div>
+          <Button
+            ref={createButtonRef}
+            variant="primary"
+            className="order-2 ml-auto lg:order-3"
+            onClick={openCreate}
+            disabled={tags === undefined || creating || createPending || renamePending}
+          >
+            <Plus />
+            {t.tags.newTag}
+          </Button>
         </div>
-        <Button
-          ref={createButtonRef}
-          variant="primary"
-          className="order-2 ml-auto lg:order-3"
-          onClick={openCreate}
-          disabled={tags === undefined || creating || createPending || renamePending}
-        >
-          <Plus />
-          {t.tags.newTag}
-        </Button>
+
+        {/*
+          件数の行（ui-design.md「Count line」）。先頭のチェックは行のチェックと同じ列
+          （行の px-2 と size-8 の包み）に置き、行の高さは h-5 のまま。
+        */}
+        <div className="group mt-2 flex h-5 items-center gap-2 pl-2 sm:gap-3">
+          <div className="-my-1.5 flex size-8 shrink-0 items-center justify-center">
+            <Checkbox
+              ref={selectAllRef}
+              checked={selectAllState}
+              onCheckedChange={toggleSelectAll}
+              label={
+                selectAllState === true ? t.tags.clearSelection : t.tags.selectAllShown
+              }
+              disabled={tags === undefined || selectableCount === 0 || overLimit}
+              className={cn(
+                "transition-opacity",
+                selected.size > 0
+                  ? "opacity-100"
+                  : "opacity-40 group-focus-within:opacity-100 group-hover:opacity-100",
+              )}
+            />
+          </div>
+          <p
+            role="status"
+            aria-live="polite"
+            className="text-xs text-fg-muted tabular-nums"
+          >
+            {countText}
+          </p>
+          {/*
+          却下した名前の入口（ui-design.md「Count line」）。タグの一覧をまだ一度も
+          取れていない間（読み込み中・読み込み失敗）は置かない。「タグはまだ
+          ありません」のときは置く（031 の ui-design.md「Rejected names」）。
+        */}
+          {tags !== undefined && (
+            <RejectedNames
+              names={rejectedNames}
+              error={rejectedError}
+              onRetry={reloadRejectedNames}
+              onForget={forgetRejectedName}
+              className="-my-1.5 ml-auto"
+            />
+          )}
+        </div>
       </div>
 
-      {/*
-        件数の行（ui-design.md「Count line」）。先頭のチェックは行のチェックと同じ列
-        （行の px-2 と size-8 の包み）に置き、行の高さは h-5 のまま。
-      */}
-      <div className="group mt-2 flex h-5 items-center gap-2 pl-2 sm:gap-3">
-        <div className="-my-1.5 flex size-8 shrink-0 items-center justify-center">
-          <Checkbox
-            ref={selectAllRef}
-            checked={selectAllState}
-            onCheckedChange={toggleSelectAll}
-            label={
-              selectAllState === true ? t.tags.clearSelection : t.tags.selectAllShown
-            }
-            disabled={tags === undefined || selectableCount === 0 || overLimit}
-            className={cn(
-              "transition-opacity",
-              selected.size > 0
-                ? "opacity-100"
-                : "opacity-40 group-focus-within:opacity-100 group-hover:opacity-100",
-            )}
-          />
-        </div>
-        <p
-          role="status"
-          aria-live="polite"
-          className="text-xs text-fg-muted tabular-nums"
-        >
-          {countText}
-        </p>
-      </div>
-
-      <div className={cn("mt-2", selected.size > 0 && "pb-16")}>
+      <div
+        ref={listBoxRef}
+        className={cn(!showRows && "mt-2", selected.size > 0 && "pb-16")}
+      >
         {tags === undefined && loadError === null && (
           <div className="space-y-2" aria-hidden="true">
             {Array.from({ length: 6 }, (_, index) => (
@@ -1633,20 +1698,6 @@ export default function TagsPage() {
           </div>
         )}
       </div>
-
-      {/*
-        却下した名前は、タグの一覧をまだ一度も取れていない間（読み込み中・
-        読み込み失敗）は置かない。「タグはまだありません」のときは置く
-        （031 の ui-design.md「Rejected names」）。
-      */}
-      {tags !== undefined && (
-        <RejectedNames
-          names={rejectedNames}
-          error={rejectedError}
-          onRetry={reloadRejectedNames}
-          onForget={forgetRejectedName}
-        />
-      )}
 
       <TagSelectionBar
         count={selected.size}
