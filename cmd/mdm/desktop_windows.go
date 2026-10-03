@@ -122,9 +122,10 @@ func runDesktop() int {
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
 	requestStop := func() { stopOnce.Do(func() { close(stopRequested) }) }
-	done := make(chan error, 1)
-	go func() {
-		done <- run(runOptions{
+	// 終わりは閉じる操作の goroutine と WebView2 の失敗の処理の両方が待つので、
+	// 1 つの値を受け合う channel でなく、全員に届く知らせにする。
+	server := startServer(func() error {
+		return run(runOptions{
 			Config:      cfg,
 			LogOutput:   logOutput,
 			Listener:    newReopenableListener(),
@@ -133,11 +134,12 @@ func runDesktop() int {
 				return stopRequested, nil
 			},
 		})
-	}()
+	})
 
 	select {
 	case <-listening:
-	case err := <-done:
+	case <-server.Done():
+		err := server.Err()
 		logger.Error("could not start the server", slog.Any("error", err))
 		desktop.ShowError(startupFailureMessage(err, port, paths.LogFile))
 		return 1
@@ -154,7 +156,7 @@ func runDesktop() int {
 			desktop.ShowError(desktop.MessageFailed(err, paths.LogFile))
 			requestStop()
 			select {
-			case <-done:
+			case <-server.Done():
 			case <-time.After(fatalStopGrace):
 				logger.Warn("the server did not stop within the grace period")
 			}
@@ -165,21 +167,19 @@ func runDesktop() int {
 	if err != nil {
 		logger.Error("cannot open the window", slog.Any("error", err))
 		requestStop()
-		stopErr := <-done
+		stopErr := server.Err()
 		desktop.ShowError(desktop.MessageFailed(errors.Join(err, stopErr), paths.LogFile))
 		return 1
 	}
 
 	// 停止を終えたら（閉じる操作でも、待ち受けを失ったときでも）ウィンドウを壊す。
-	result := make(chan error, 1)
 	go func() {
-		err := <-done
-		result <- err
+		<-server.Done()
 		window.Destroy()
 	}()
 	window.Run()
 
-	if err := <-result; err != nil {
+	if err := server.Err(); err != nil {
 		logger.Error("the server stopped with an error", slog.Any("error", err))
 		desktop.ShowError(desktop.MessageFailed(err, paths.LogFile))
 		return 1

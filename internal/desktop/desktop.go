@@ -121,12 +121,12 @@ func PrepareDirs(paths Paths) error {
 
 // OpenLog は前回のログを PreviousLogFile へ移し、今回のログを新しく開く（research.md R-10）。
 // 前々回のログは消える。
+//
+// 前々回のログは先に消さず、rename で置き換える（Go の os.Rename は Windows でも
+// 移し先を置き換える）。今回のログを移せなかったとき（別のプロセスが開いたままの
+// ときなど）は、前回のログがそのまま残る。
 func OpenLog(paths Paths) (*os.File, error) {
 	if _, err := os.Stat(paths.LogFile); err == nil {
-		// Windows の rename は移し先があると失敗するので、先に消す。
-		if err := os.Remove(paths.PreviousLogFile); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("cannot remove the previous log: %w", err)
-		}
 		if err := os.Rename(paths.LogFile, paths.PreviousLogFile); err != nil {
 			return nil, fmt.Errorf("cannot keep the previous log: %w", err)
 		}

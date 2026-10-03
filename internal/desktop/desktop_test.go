@@ -135,6 +135,30 @@ func TestOpenLogKeepsOnlyThePreviousRun(t *testing.T) {
 	assertContent(t, paths.PreviousLogFile, "second")
 }
 
+// 今回のログを移せなかったときに、前回のログを消してしまわない。移せない場合は
+// 今回のログの場所を中身のあるフォルダにして作る（Windows で別のプロセスが
+// ログを開いたままのときに相当する）。
+func TestOpenLogKeepsThePreviousRunWhenRotationFails(t *testing.T) {
+	paths, err := ResolvePaths(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := PrepareDirs(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.PreviousLogFile, []byte("previous"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(paths.LogFile, "busy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if file, err := OpenLog(paths); err == nil {
+		_ = file.Close()
+		t.Fatal("OpenLog succeeded; want an error when the current log cannot be moved")
+	}
+	assertContent(t, paths.PreviousLogFile, "previous")
+}
+
 func assertContent(t *testing.T, path, want string) {
 	t.Helper()
 	got, err := os.ReadFile(path)
