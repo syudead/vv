@@ -44,8 +44,10 @@ type PlaybackStore struct{ sql *sql.DB }
 // （AttachTagByID・AttachTagByName・DetachTag・Summary）、利用者データの鍵の集合から
 // 項目のタグをまとめて引く操作（TagsByContentKeys）、タグ名の照合用の鍵の
 // 作り直しを保存する（tags.go）。PlaybackStore と同じく、共有する SQLite
-// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
-type TagStore struct{ sql *sql.DB }
+// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。ページの読み出しは件数と行を
+// 同じスナップショットから返すため、書き込みの枠を取らない読み取り用の接続 read
+// （deferred）で取引を開く。
+type TagStore struct{ sql, read *sql.DB }
 
 // AuthStore は唯一のアカウントとログインセッションと API トークンを保存する（auth.go・
 // api_tokens.go）。初回設定、資格情報の書き換え、セッションの追加・有効性の確認・削除・
@@ -86,7 +88,7 @@ func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
 func (db *DB) ScanIndex() *ScanIndexStore { return &ScanIndexStore{db: db} }
 func (db *DB) Settings() *SettingsStore   { return &SettingsStore{db: db} }
 func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql} }
-func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql} }
+func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql, read: db.read} }
 func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql} }
 func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}

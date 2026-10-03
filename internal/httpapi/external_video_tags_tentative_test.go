@@ -120,8 +120,8 @@ func TestExternalVideoTagsWithoutTentativeCreatesConfirmedTags(t *testing.T) {
 	if got := f.externalTagStates(t); len(got) != 2 || got["高画質"] || got["犬"] {
 		t.Errorf("GET /api/v1/tags = %v", got)
 	}
-	rejected, err := f.env.db.Tags().ListRejectedTagNames(context.Background())
-	if err != nil || len(rejected) != 0 {
+	rejected, err := f.env.db.Tags().ListRejectedTagNames(context.Background(), "", 0)
+	if err != nil || len(rejected.Items) != 0 || rejected.Total != 0 {
 		t.Errorf("却下した名前 = %v, err=%v（確定で作った名前は一覧から消える）", rejected, err)
 	}
 }

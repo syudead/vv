@@ -34,6 +34,9 @@ type fakeTags struct {
 
 	// 031: 却下した名前の一覧の決め打ち。nil なら nil を返す。
 	rejectedNames []string
+	// 036: 却下した名前の一覧に渡ったカーソルと件数。
+	lastCursor string
+	lastLimit  int
 
 	// 036: まとめての操作と確認の数の決め打ち。
 	lastBatchAction  domain.TagBatchAction
@@ -138,9 +141,9 @@ func (f *fakeTags) RejectTag(_ context.Context, id int64) (string, error) {
 	return "", f.err
 }
 
-func (f *fakeTags) ListRejectedTagNames(context.Context) ([]string, error) {
-	f.operation = "list-rejected"
-	return f.rejectedNames, f.err
+func (f *fakeTags) ListRejectedTagNames(_ context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error) {
+	f.operation, f.lastCursor, f.lastLimit = "list-rejected", cursor, limit
+	return domain.RejectedTagNamePage{Items: f.rejectedNames, Total: len(f.rejectedNames)}, f.err
 }
 
 func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
