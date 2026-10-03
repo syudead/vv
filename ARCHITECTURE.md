@@ -253,7 +253,13 @@ recorded or a video row is deleted. Removing a media folder also publishes
 being claimable even when the video row survives through an unregistered location.
 Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
-generation output is removed at the next startup. When a video row is deleted (a scan finds its last
+generation output is removed at the next startup. Once the workers run, that startup
+also starts one new scan when the latest scan ended `failed` with the reason
+`interrupted` (stopped by shutdown, or closed because it was left running), with every
+launch method; the scan passes over files whose size and mtime are unchanged, so starting
+again continues where the interrupted scan stopped. That new scan takes over the
+interrupted import's videos and its job failures and substitutions, since jobs that
+failed up to their limit are not queued again for unchanged files. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` publishes the released content keys (`domain.ContentUnreferenced`) after
 commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek sprite and hover preview unless another video still

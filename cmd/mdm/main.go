@@ -216,6 +216,12 @@ func run() error {
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
+	// 前回の停止で中断した走査を、ワーカーを動かしてから始め直す
+	// （specs/037-windows-app/research.md R-9）。始め直せなくても起動は止めず、
+	// 利用者が取り込みを始められる。
+	if _, err := scans.ResumeInterrupted(backgroundCtx); err != nil {
+		logger.Warn("could not resume the interrupted scan", slog.Any("error", err))
+	}
 
 	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
 	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
