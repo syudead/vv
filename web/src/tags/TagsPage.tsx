@@ -1498,8 +1498,13 @@ export default function TagsPage() {
         {/*
           件数の行（ui-design.md「Count line」）。先頭のチェックは行のチェックと同じ列
           （行の px-2 と size-8 の包み）に置き、行の高さは h-5 のまま。
+          狭い幅で件数（「1,000 of 1,000 tags」）と入口（「Rejected names 1,000」）が
+          1 行に収まらないときは、件数を折り返さずに入口を次の行の右端へ送る。
+          どちらも省略しない（入口は却下した名前への唯一の入口）。行の間の gap-y-3 は、
+          チェックの包みと入口の -my-1.5（上下 6px ずつ）が重ならない幅。帯の高さが
+          変わっても、ResizeObserver が測り直してスクロール位置に渡す。
         */}
-        <div className="group mt-2 flex h-5 items-center gap-2 pl-2 sm:gap-3">
+        <div className="group mt-2 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-3 pl-2 sm:gap-x-3">
           <div className="-my-1.5 flex size-8 shrink-0 items-center justify-center">
             <Checkbox
               ref={selectAllRef}
@@ -1520,7 +1525,7 @@ export default function TagsPage() {
           <p
             role="status"
             aria-live="polite"
-            className="text-xs text-fg-muted tabular-nums"
+            className="text-xs whitespace-nowrap text-fg-muted tabular-nums"
           >
             {countText}
           </p>

@@ -900,6 +900,71 @@ test.describe.serial("video tags", () => {
       await expect(page).toHaveURL(`${origin}${String(href)}`);
     });
 
+    test("狭い幅でも件数の行は件数を折り返さず、却下した名前の入口を省略せずに本文の中に収める", async ({
+      page,
+    }) => {
+      // 4 桁の件数と 4 桁の却下した名前で、件数の行が最も長くなる形を作る
+      // （ui-design.md「Count line」「Responsive behaviour」）。
+      const createdAt = "2026-01-01T00:00:00Z";
+      const items = Array.from({ length: 1000 }, (_, index) => ({
+        id: 900000 + index,
+        name: `e2e狭い幅${String(index).padStart(4, "0")}`,
+        synonyms: [],
+        videoCount: 0,
+        tentative: true,
+        createdAt,
+      }));
+      await page.route("**/api/tags", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({ json: { items } })
+          : route.fallback(),
+      );
+      await page.route("**/api/tags/rejected-names", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                items: Array.from(
+                  { length: 1000 },
+                  (_, index) => `e2e却下${String(index)}`,
+                ),
+              },
+            })
+          : route.fallback(),
+      );
+      for (const width of [320, 360]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto("/tags");
+        await page.getByRole("button", { name: "Tentative only", exact: true }).click();
+        const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
+        await expect(count).toBeVisible();
+        const entry = page.getByRole("button", { name: /^Rejected names/ });
+        await expect(entry).toBeVisible();
+        await expect(entry).toContainText("1,000");
+        const countBox = await count.boundingBox();
+        const entryBox = await entry.boundingBox();
+        if (countBox === null || entryBox === null) throw new Error("no layout");
+        // 件数は 1 行のまま（text-xs の行の高さは 16px）。
+        expect(countBox.height).toBeLessThanOrEqual(16);
+        // 入口は本文の中にあり、件数と重ならない。
+        expect(entryBox.x + entryBox.width).toBeLessThanOrEqual(width - 16);
+        const sameLine = entryBox.y < countBox.y + countBox.height;
+        if (sameLine) {
+          expect(entryBox.x).toBeGreaterThanOrEqual(countBox.x + countBox.width);
+        }
+        // 横スクロールは出ない。
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+        // 入口は押せる。
+        await entry.click();
+        await expect(page.getByRole("dialog", { name: "Rejected names" })).toBeVisible();
+        await page.keyboard.press("Escape");
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
+    });
+
     test("18: 検索は名前とシノニムに大文字小文字を区別せず当たり、消すと全件に戻る", async ({
       page,
       request,
