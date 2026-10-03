@@ -30,6 +30,11 @@ interface MergeConfirm {
   /** タグ S の元の名前（API の tagName。確認の文言に出す）。 */
   sourceName: string;
   sourceId: number;
+  /**
+   * 確かめ直したときのタグ S（統合の前の状態）。統合したら呼び出し元へ渡し、読み込んで
+   * いない S でも今の条件に合っていたかで件数を数え直せるようにする（TagsPage）。
+   */
+  source: Tag;
   videoCount: number;
   hasSynonyms: boolean;
 }
@@ -58,10 +63,10 @@ export default function SynonymsDialog({
   onClose: () => void;
   /**
    * 登録・シノニム登録に伴う統合が成功したときに、タグの最新の状態を渡す。
-   * `removedId` は統合元の id で、統合元がタグの一覧から消えたことを
+   * `removed` は統合元の統合の前の状態で、統合元がタグの一覧から消えたことを
    * 呼び出し元へ伝える（渡さなければ何も消えていない。TagsPage 参照）。
    */
-  onTagUpdated: (tag: Tag, removedId?: number) => void;
+  onTagUpdated: (tag: Tag, removed?: Tag) => void;
   /**
    * シノニムの解除が成功したときに呼ぶ。呼び出し元は、この呼び出し時点の
    * 最新の一覧からその名前だけを取り除く（`tag` prop の閉じ込めではなく）。
@@ -218,6 +223,7 @@ export default function SynonymsDialog({
         name,
         sourceName: found.name,
         sourceId: found.id,
+        source: found,
         videoCount: found.videoCount,
         hasSynonyms: found.synonyms.length > 0,
       });
@@ -278,7 +284,7 @@ export default function SynonymsDialog({
       // 呼び出し元（TagsPage）へその id を渡し、一覧から取り除いてもらう
       // （渡さないと、統合元が背景の取り直しか、それが失敗すれば永久に
       // 一覧へ残ってしまう）。
-      onTagUpdated(updated, confirm.sourceId);
+      onTagUpdated(updated, confirm.source);
       setConfirm(null);
       if (fieldValueRef.current === submittedValue) field.setValue("");
     } catch (failure) {

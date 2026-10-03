@@ -17,6 +17,7 @@ export default function Checkbox({
   className,
   onClick,
   disabled,
+  describedBy,
   ref,
 }: {
   checked: boolean | "indeterminate";
@@ -25,6 +26,8 @@ export default function Checkbox({
   className?: string;
   onClick?: (event: MouseEvent) => void;
   disabled?: boolean;
+  /** 押せない理由などを添える要素の id（`aria-describedby`）。 */
+  describedBy?: string;
   ref?: Ref<HTMLButtonElement>;
 }) {
   return (
@@ -33,6 +36,7 @@ export default function Checkbox({
       checked={checked}
       onCheckedChange={(value) => onCheckedChange(value === true)}
       aria-label={label}
+      aria-describedby={describedBy}
       onClick={onClick}
       disabled={disabled}
       className={cn(

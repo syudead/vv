@@ -1,5 +1,4 @@
-import { compareTagRefs } from "../api/tagOrder";
-import type { Tag, TagSort } from "../api/tags";
+import type { TagSort } from "../api/tags";
 
 /**
  * TagListSort はタグ管理画面の一覧の並び順である
@@ -74,39 +73,4 @@ export function withTagSortDirection(
     case "created":
       return direction === "desc" ? "createdDesc" : "createdAsc";
   }
-}
-
-/**
- * sortTags はタグを並び順に並べた新しい配列を返す。値が同じタグどうしは
- * 名前の自然順（`compareTagRefs`）で並べる（research.md R-7・R-8）。
- * 「作った日」は `createdAt` を時刻として比べ、比べる値は並べる前に1回だけ
- * 読む。
- */
-export function sortTags(tags: readonly Tag[], sort: TagListSort): Tag[] {
-  const sorted = [...tags];
-  switch (sort) {
-    case "name":
-      return sorted.sort(compareTagRefs);
-    case "countDesc":
-    case "countAsc": {
-      const sign = sort === "countDesc" ? -1 : 1;
-      return sorted.sort(
-        (a, b) => sign * (a.videoCount - b.videoCount) || compareTagRefs(a, b),
-      );
-    }
-    case "createdDesc":
-    case "createdAsc": {
-      const sign = sort === "createdDesc" ? -1 : 1;
-      const times = new Map(sorted.map((tag) => [tag, createdTime(tag)]));
-      return sorted.sort(
-        (a, b) => sign * (times.get(a)! - times.get(b)!) || compareTagRefs(a, b),
-      );
-    }
-  }
-}
-
-/** createdTime は作った日時のミリ秒である。読めなければ 0（最も古い）とする。 */
-function createdTime(tag: Tag): number {
-  const time = Date.parse(tag.createdAt);
-  return Number.isNaN(time) ? 0 : time;
 }
