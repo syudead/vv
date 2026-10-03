@@ -1,143 +1,172 @@
-# Contract: 一覧 API の検索・絞り込み・並べ替え
+# Contract: Search, filters and sort in the list APIs
 
-親 Issue: #195。
+Parent Issue: #195.
 
-API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は
-`listVideos`（`GET /api/videos`）と `listFolderVideos`
-（`GET /api/folders/{rootId}/videos`）に対する差分だけを書く。ほかの経路と、既存の
-パラメータ（`cursor`・`limit`、`listFolderVideos` の `path`）の意味は変えない。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
+describes only the changes to `listVideos` (`GET /api/videos`) and
+`listFolderVideos` (`GET /api/folders/{rootId}/videos`). Other endpoints, and the
+meaning of the existing parameters (`cursor`, `limit`, and `path` on
+`listFolderVideos`), do not change.
 
-## 1. 検索語の書き方
+## 1. Query syntax
 
-`query` は2つの経路で同じ書き方をとる。最大 100 文字は今のまま保つ。解釈は
-`internal/domain` の1つの関数が行い、どの入力でも誤りを返さない（要件 5）。
+`query` uses the same syntax on both endpoints. The maximum of 100 characters
+stays. One function in `internal/domain` interprets it, and it returns no error
+for any input (requirement 5).
 
-1. 入力全体を NFKC に正規化する。全角の空白・`＂`・`－`・`｜` もこれで半角になる。
-2. 空白（Unicode の White_Space）で区切る。語の先頭（除外の `-` の直後を含む）の `"` から次の `"` までは、空白を含めて1語
-   （フレーズ）とする。閉じていない `"` は字面の文字として語に含める。
-3. 先頭の `-` に続けて語かフレーズがあるものは除外語とする。`-` だけの語は字面の `-` を
-   探す語とする。
-4. 単独の `OR`（大文字）と `|` は、直前が語で直後にも語があるときだけ OR の演算子とする。
-   そうでない `OR`（先頭・末尾・演算子の直後）は字面の語とし（受け入れ条件 5）、そうでない
-   `|` は捨てる（Edge Case「`|` だけの入力は全件」）。`a|b` のように空白の無い `|` は語の
-   一部である。空白の無い `|` でも区切る案は、Unix のファイル名に現れる `|` を探せなくなり、
-   `OR` と振る舞いが揃わないので採らない。
-5. 空のフレーズ（`""`・`-""`）と、空白だけのフレーズは捨てる。
-6. 各語に照合形への変換（`fold`、[data-model.md §3](../data-model.md#3-search_key-の規則)）を
-   掛ける。
-7. 語は先頭から 16 個までを使う。17 個目以降の語と、それに掛かる演算子は無視する。
-   先頭から数えるのは、打った順に効くと利用者が推測できるからである。16 は、覚えている
-   断片を並べる用途に十分で、1つの問い合わせの条件句と引数を小さく保てる数として選んだ。
-   上限を設けず SQLite の式の深さや引数の上限で誤りを返す案は、Edge Case（誤りを返さない）
-   に反するので採らない。
-8. 意味は次のとおりである。
-   - 空白で並んだ項は、すべてを満たす（AND）。
-   - OR で結ばれた語の連なりは1つの項で、どれかを満たす。OR は空白より強く結び付く。
-   - 除外語は「含まない」ことを満たす。OR の中にある除外語も同じ。
-   - 語が1つも残らなければ絞り込まない。
-9. 1つの動画は、登録メディアフォルダの下にある所在のうち1つが、式全体を満たせば当たる
-   （要件 9）。照合の対象はその所在の `search_key` である。
-10. 照合形で3文字以上の語は `location_search_fts` への `MATCH`（語全体を1つのフレーズと
-    して引用）、1〜2文字の語は `search_key` への `instr` で調べる。どちらも部分一致で、
-    利用者が打った記号はすべて字面として扱う。
+1. Normalise the whole input to NFKC. This also turns full-width spaces, `＂`,
+   `－` and `｜` into their half-width forms.
+2. Split on white space (Unicode White_Space). From a `"` at the start of a term
+   (including right after the exclusion `-`) to the next `"` is one term, spaces
+   included (a phrase). An unclosed `"` is kept in the term as a literal
+   character.
+3. A `-` followed by a term or phrase makes an excluded term. A term that is only
+   `-` searches for a literal `-`.
+4. A standalone `OR` (upper case) or `|` is the OR operator only when a term
+   precedes it and a term follows it. Any other `OR` (at the start, at the end, or
+   right after an operator) is a literal term (acceptance criterion 5), and any
+   other `|` is dropped (Edge Case "input that is only `|` lists everything"). A
+   `|` without surrounding spaces, as in `a|b`, is part of the term. Splitting on
+   `|` without spaces too was rejected: it would make it impossible to search for
+   `|`, which appears in Unix file names, and its behaviour would not match `OR`.
+5. Drop empty phrases (`""`, `-""`) and phrases that contain only spaces.
+6. Apply the conversion to the match form (`fold`,
+   [data-model.md §3](../data-model.md#3-search_key-rules)) to each term.
+7. Use the first 16 terms. The 17th term onwards, and the operators attached to
+   them, are ignored. Counting from the start lets the user predict that terms
+   take effect in the order typed. 16 was chosen as enough for listing the
+   fragments a user remembers, while keeping the condition clauses and arguments
+   of one query small. Having no limit and returning an error at SQLite's
+   expression-depth or argument limit was rejected because it violates the Edge
+   Case (never return an error).
+8. Meaning:
 
-例（受け入れ条件 1〜5 の題名に対して）:
+   | Construct | Meaning |
+   | --- | --- |
+   | Terms separated by spaces | All must match (AND) |
+   | Terms joined by OR | One item; any of them matches. OR binds tighter than a space |
+   | Excluded term | Matches when the text does not contain it; the same inside an OR |
+   | No term left | No filtering |
 
-| 入力 | 意味 |
+9. A video matches when one of its locations under a registered media folder
+   satisfies the whole expression (requirement 9). The match target is that
+   location's `search_key`.
+10. Terms of three or more characters in match form are checked with `MATCH`
+    against `location_search_fts` (the whole term quoted as one phrase); terms of
+    one or two characters with `instr` on `search_key`. Both are substring
+    matches, and every symbol the user typed is treated literally.
+
+Examples (against the titles of acceptance criteria 1 to 5):
+
+| Input | Meaning |
 | --- | --- |
-| `京都 2024` | 「京都」と「2024」を含む |
-| `"京都旅行 2024"` | 「京都旅行 2024」を含む |
-| `京都 -2023` | 「京都」を含み、「2023」を含まない |
-| `2024 京都 OR 奈良` | 「2024」を含み、「京都」か「奈良」を含む |
-| `OR` / `-` / `"京都` | 字面の「or」・「-」・「"京都」を含む |
-| `|` / `""` / 空白だけ | 絞り込まない |
+| `京都 2024` | Contains `京都` and `2024` |
+| `"京都旅行 2024"` | Contains `京都旅行 2024` |
+| `京都 -2023` | Contains `京都` and does not contain `2023` |
+| `2024 京都 OR 奈良` | Contains `2024`, and contains `京都` or `奈良` |
+| `OR` / `-` / `"京都` | Contains the literal `or`, `-` or `"京都` |
+| `|` / `""` / spaces only | No filtering |
 
-## 2. 追加するパラメータ
+## 2. Added parameters
 
-2つの経路の両方に足す。
+Added to both endpoints:
 
-| 名前 | 型 | 既定 | 意味 |
+| Name | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `watch` | `all` \| `unwatched` \| `inProgress` \| `watched` | `all` | 視聴状態で絞る。定義は [data-model.md §6](../data-model.md#6-視聴状態の導き方) |
-| `playable` | boolean | `false` | `true` なら `playable = true` の動画だけにする |
-| `seed` | integer（0 以上 2147483647 以下） | `0` | `sort=random` の並びを決める。ほかの並びでは無視する |
+| `watch` | `all` \| `unwatched` \| `inProgress` \| `watched` | `all` | Filters by watch state. Defined in [data-model.md §6](../data-model.md#6-deriving-watch-state) |
+| `playable` | boolean | `false` | When `true`, only videos with `playable = true` |
+| `seed` | integer (0 to 2147483647) | `0` | Decides the order for `sort=random`. Ignored for other sorts |
 
-`listFolderVideos` だけに足す。
+Added to `listFolderVideos` only:
 
-| 名前 | 型 | 既定 | 意味 |
+| Name | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `query` | string（最大 100 文字） | 空 | §1 の書き方で絞る |
-| `scope` | `direct` \| `subtree` | `direct` | `direct` はフォルダ直下の所在だけ、`subtree` はフォルダとその配下すべての所在を対象にする |
+| `query` | string (max 100 characters) | empty | Filters with the syntax in §1 |
+| `scope` | `direct` \| `subtree` | `direct` | `direct` covers only locations directly in the folder; `subtree` covers locations in the folder and everything below it |
 
-`scope` と `query` は独立している。画面は検索語があるときだけ `subtree` を使う
-（[list-url.md](list-url.md)）。照合（§1-9）はその範囲にある所在だけを対象にする。
+`scope` and `query` are independent. The screen uses `subtree` only when there is
+a query ([list-url.md](list-url.md)). Matching (§1, item 9) covers only the
+locations in that scope.
 
-`total` は、検索語・`watch`・`playable`・範囲をすべて適用した全件の数である（要件 13）。
+`total` is the count of all items after the query, `watch`, `playable` and the
+scope are applied (requirement 13).
 
-## 3. `VideoSort` の値
+## 3. `VideoSort` values
 
-既存の `addedDesc` と `titleAsc` は同じ名前のまま残し、次の値を足す。既定は
-`addedDesc` のまま。
+The existing `addedDesc` and `titleAsc` keep their names, and the following
+values are added. The default stays `addedDesc`.
 
-| 並べ替え | 昇順 | 降順 | 使う値 |
+| Sort | Ascending | Descending | Value used |
 | --- | --- | --- | --- |
-| 追加日 | `addedAsc` | `addedDesc` | `videos.added_at` |
-| 更新日時 | `modifiedAsc` | `modifiedDesc` | 一覧に出す所在（§4）の `mtime` |
-| 題名 | `titleAsc` | `titleDesc` | 一覧に出す所在の `title_key`（自然順） |
-| 長さ | `durationAsc` | `durationDesc` | `videos.duration_ms`。無い動画は向きに関係なく末尾 |
-| ファイルサイズ | `sizeAsc` | `sizeDesc` | 一覧に出す所在の `size_bytes` |
-| 最近再生した順 | `playedAsc` | `playedDesc` | `playback_progress.updated_at`。記録の無い動画は向きに関係なく末尾 |
-| ランダム | `random` | — | `seed` と `id` から作る値 |
+| Date added | `addedAsc` | `addedDesc` | `videos.added_at` |
+| Date modified | `modifiedAsc` | `modifiedDesc` | `mtime` of the listed location (§4) |
+| Title | `titleAsc` | `titleDesc` | `title_key` of the listed location (natural order) |
+| Duration | `durationAsc` | `durationDesc` | `videos.duration_ms`. Videos without it go last in either direction |
+| File size | `sizeAsc` | `sizeDesc` | `size_bytes` of the listed location |
+| Recently played | `playedAsc` | `playedDesc` | `playback_progress.updated_at`. Videos without a record go last in either direction |
+| Random | `random` | — | A value made from `seed` and `id` |
 
-`titleAsc` の意味は、バイト順から自然順に変わる（要件 14）。どの並びも、値が同じなら
-`id` で決着させる（昇順なら `id` の昇順、降順なら降順。`random` は `id` の昇順）。
+The meaning of `titleAsc` changes from byte order to natural order
+(requirement 14). Every sort breaks ties on `id` (ascending `id` for ascending
+sorts, descending for descending sorts, and ascending `id` for `random`).
 
-`random` の値は `seed` と `id` だけで決まる。同じ `seed` なら、ページをまたいでも、
-取り込みで行が増減しても、同じ動画が2度出ない（要件 15、Edge Case「ランダムと取り込み」）。
+The `random` value depends only on `seed` and `id`. With the same `seed`, the
+same video never appears twice, across pages and even when a scan adds or
+removes rows (requirement 15, Edge Case "random order and scans").
 
-## 4. 一覧に出す所在と `Video.folder`
+## 4. Listed location and `Video.folder`
 
-1つの動画に対して、一覧の項目の `title`・`sizeBytes`・並べ替えの値は、次の所在のうち
-パスの昇順で最初のものから取る。
+For one video, the list item's `title`, `sizeBytes` and sort value come from the
+first location, in ascending path order, among the locations that:
 
-- 対象の範囲にある（ライブラリなら登録メディアフォルダの下、フォルダなら `scope` の範囲）
-- 検索語があれば、§1 の式全体を満たす
+- are in the scope (under a registered media folder for the library; within the
+  `scope` range for a folder)
+- satisfy the whole §1 expression, when there is a query
 
-検索語が無いライブラリの一覧では、今の「登録フォルダの下で最初の所在」と同じである。
-検索語があると、当たった所在の題名が出る。
+In the library list without a query, this is the same as today's "first
+location under a registered folder". With a query, the title of the matching
+location is shown.
 
-2つの経路の項目に、次の任意の欄を足す。`GET /api/videos/{id}` にも、代表の所在のフォルダとして
-入る（再生画面の見出しのパンくず。そのときだけ登録フォルダの表示名 `rootName` も入る）。
+The following optional field is added to the items of both endpoints. It is also
+set on `GET /api/videos/{id}` as the folder of the representative location (for
+the breadcrumb in the player screen heading; only there it also carries
+`rootName`, the display name of the registered folder).
 
 ```yaml
 VideoFolder:
   type: object
   required: [rootId, path]
   properties:
-    rootId: { type: integer, format: int64 }   # 所在を含む登録メディアフォルダ
-    path:   { type: string }                    # そこからフォルダまでの `/` 区切りの相対パス。直下は空文字
-    rootName: { type: string }                  # 登録フォルダの表示名。GET /api/videos/{id} だけ
+    rootId: { type: integer, format: int64 }   # registered media folder that contains the location
+    path:   { type: string }                    # `/`-separated relative path from there to the folder; empty when directly in it
+    rootName: { type: string }                  # display name of the registered folder; GET /api/videos/{id} only
 ```
 
-`Video.folder` は上の所在が置かれたフォルダを指す。フォルダ画面は、開いているフォルダ
-からの相対的な置き場所をこれから作る（要件 19）。
+`Video.folder` points at the folder that holds the location above. The folder
+screen builds the location relative to the open folder from it
+(requirement 19).
 
-## 5. カーソルと誤り
+## 5. Cursor and errors
 
-- ページ送りの途中で取り込みが走ったときの保証は、今の keyset 方式と同じ範囲に留める。
-  1ページ目を取った時点で条件に合い、並べ替えの値が変わらない動画は、ほかの行が増減しても
-  重複も取りこぼしも起きない。途中で初めて条件に合った動画（新しく取り込まれた動画や、
-  当たる所在が足された既存の動画）は、カーソルより後ろに並べば続きのページに出て、前に
-  並べば出ない。値が途中で変わる動画は、次のページに再び出ることも、どのページにも出ない
-  こともある。例えば、
-  パスが前に来る所在が足されて題名・大きさ・更新日時が変わる場合や、解析が終わって長さが
-  入る場合である。再び出る側は、画面の `useVideos` が続きのページを足すときに `id` で
-  重複を捨てる。出ない側は、どれも次の検索・再表示で反映する（Edge Case「取り込み中」）。
-  `random` と `addedAsc`・`addedDesc` の値は途中で変わらない。
-
-- カーソルは並び順の名前・並べ替えの値（無い値を表す印を含む）・`id` を包む。別の並び順や
-  別の `seed` で作ったカーソルを渡すと `400`（`ErrInvalidCursor`）を返す。
-- `watch`・`scope`・`sort` の未知の値と範囲外の `seed` は、今の `sort` と同じく
-  `internal/httpapi` の入口で検査して `400` にする。画面は送る前に既定へ戻す（[list-url.md](list-url.md)）。
-- `listFolderVideos` でフォルダが無いときは、`scope`・`query` に関係なく今と同じ `404`
-  （「そのフォルダは見つかりません」）を返す。
+- The guarantee when a scan runs while paging stays within what the current
+  keyset approach gives. A video that matched the conditions when the first page
+  was fetched, and whose sort value does not change, is neither duplicated nor
+  missed, even when other rows are added or removed. A video that starts matching
+  midway (a newly scanned video, or an existing video that gains a matching
+  location) appears in a later page if it sorts after the cursor, and does not
+  appear if it sorts before. A video whose value changes midway may appear again
+  on the next page, or on no page at all; for example, when a location with an
+  earlier path is added and changes the title, size or modification time, or when
+  analysis finishes and fills in the duration. Duplicates are dropped by `id` when
+  the screen's `useVideos` appends the next page. Missed videos show up on the
+  next search or reload (Edge Case "during a scan"). The values for `random`,
+  `addedAsc` and `addedDesc` never change midway.
+- The cursor wraps the sort name, the sort value (including a marker for a
+  missing value) and `id`. Passing a cursor made with a different sort or a
+  different `seed` returns `400` (`ErrInvalidCursor`).
+- Unknown values of `watch`, `scope` and `sort`, and an out-of-range `seed`, are
+  checked at the `internal/httpapi` entry and return `400`, as `sort` does today.
+  The screen resets them to the defaults before sending
+  ([list-url.md](list-url.md)).
+- When the folder does not exist, `listFolderVideos` returns the same `404` as
+  today (`そのフォルダは見つかりません`), regardless of `scope` and `query`.
