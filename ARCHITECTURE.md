@@ -38,7 +38,10 @@ also every member in group order, with next/previous inside the group), retry a 
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the live-transcode video encoder setting
 (`/api/settings/transcoding`: the saved choice, the encoder in use and each hardware encoder's
-startup check result), the read-only folder browsing API
+startup check result), the desktop app's LAN access setting (`/api/settings/network`:
+whether devices on the LAN may connect, the listening port and, while allowed, the URL for
+each non-loopback IPv4 address; switching reopens the listener on `0.0.0.0` or `127.0.0.1`
+before saving, and the route returns `404` outside the desktop app), the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and

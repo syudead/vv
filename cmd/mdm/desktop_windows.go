@@ -156,16 +156,13 @@ func runDesktop() int {
 	// 終わりは閉じる操作の goroutine と WebView2 の失敗の処理の両方が待つので、
 	// 1 つの値を受け合う channel でなく、全員に届く知らせにする。
 	server := startServer(func() error {
-		return run(runOptions{
-			Config:      cfg,
-			LogOutput:   logOutput,
-			Listener:    newReopenableListener(),
-			OnListening: func() { close(listening) },
-			OnBusyProbe: func(busy func(context.Context) (bool, error)) { busyProbe.Store(&busy) },
-			NotifyStop: func() (<-chan struct{}, func()) {
-				return stopRequested, nil
-			},
-		})
+		return run(desktopRunOptions(
+			cfg,
+			logOutput,
+			func() { close(listening) },
+			func(busy func(context.Context) (bool, error)) { busyProbe.Store(&busy) },
+			stopRequested,
+		))
 	})
 
 	select {
@@ -245,8 +242,9 @@ func closeNeedsConfirmation(probe *func(context.Context) (bool, error), logger *
 	return busy
 }
 
-// desktopConfig はデスクトップ版の設定を組み立てる。待ち受けはループバックだけで、
-// 前に逆プロキシは無いので転送ヘッダを読まない（MDM_TRUSTED_PROXIES=none 相当、R-14）。
+// desktopConfig はデスクトップ版の設定を組み立てる。待ち受けのホストは run が LAN からの
+// 接続の許可の保存値で決め直す（既定はループバックだけ）。前に逆プロキシは無いので
+// 転送ヘッダを読まない（MDM_TRUSTED_PROXIES=none 相当、R-14）。
 func desktopConfig(paths desktop.Paths, port int) Config {
 	return Config{
 		Addr:           net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),

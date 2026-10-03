@@ -162,4 +162,44 @@ GUI の exe には標準出力も標準エラーも無い。起動に失敗し�
 
 ## LAN からの接続
 
+### Context
+
+デスクトップ版は既定でその PC からしか開けないが、所有者が許可すれば同じ LAN のスマートフォンや別の PC からも
+使えるようにしたい（親 Issue 要件 8・9、受け入れ条件 7）。許可していない間は LAN から TCP の接続そのものが
+できないこと、最初の起動で Windows ファイアウォールの許可ダイアログを出さないことが要る。
+
+### Decision
+
+- **保存**: 既存の `settings` 表の鍵 `desktop.lan_access`（値 `true`/`false`）。行が無いか `true` でなければ
+  偽。移行は足さない（`internal/store` の `SettingsStore.LANAccess`・`SaveLANAccess`）。
+- **起動時**: `run` は `runOptions.Desktop` が真のとき、DB を開いて移行したあと、ジョブや待ち受けを動かす前に
+  保存値を読み、真なら `0.0.0.0:<ポート>`、偽なら `127.0.0.1:<ポート>` で待ち受ける（`cmd/mdm` の
+  `startNetworkSettings`、アドレスは `domain.LANListenAddr`）。読めなければ DB の段階の起動の失敗にする。
+- **経路**: 所有者だけの `GET`/`PUT /api/settings/network`（`NetworkSettings`: `lanAccess`・`port`・`addresses`）。
+  認証と同じオリジンの確認は `/api/settings/transcoding` と同じ境界で、デスクトップ版でない起動（タグなしの
+  `main`）は `httpapi.Options.NetworkSettings` を渡さないので、経路は `404` `not_found` を返す。SPA はこれを
+  「節を出さない」と読む
+  （[contracts/network-settings-api.md](../../specs/037-windows-app/contracts/network-settings-api.md)）。
+- **切り替え**（`internal/app` の `NetworkSettings.SetLANAccess`）: 切り替えを 1 つずつにする錠の中で、今と
+  同じ値なら何もしない。違えば `cmd/mdm` の開き直せる待ち受けで新しいアドレスへ開き直し、開けたら保存する。
+  - 新しいアドレスで開けなければ、待ち受けの部品が元のアドレスへ戻し、保存値は変えずに
+    `domain.ErrListenFailed` を返す。経路は `409` `conflict`・reason `listen_failed` にする。
+  - 開き直せたが保存に失敗したら、待ち受けを元のアドレスへ開き直して `500` `internal` にする。
+  - 保存は要求の取り消しを継がない（`context.WithoutCancel`）。開き直したあとに要求が切れても、待ち受けと
+    保存値を食い違わせない。
+  - 開き直しは今の待ち受けを閉じて同じ `http.Server` で新しい待ち受けを `Serve` するので、確立済みの接続
+    （この要求、`/api/events` の SSE、配信中の動画）は切れない。許可をやめたあと、LAN からの新しい接続は
+    TCP の段で拒まれる。
+- **`addresses`**: 許可中だけ、上がっているネットワークインターフェースのループバックでない IPv4 アドレスごとに
+  `http://<アドレス>:<ポート>/` を返す（`cmd/mdm` の `lanAddresses`）。偽なら空。インターフェースを読めない
+  ときは許可を効かせたまま空にし、記録に残す。
+
+### Alternatives considered
+
+- 常に `0.0.0.0` で待ち受け、許可していない間は非ループバックの接続をすぐ切る。最初の起動でファイアウォールの
+  ダイアログが出る。却下（R-14）。
+- 許可したときに `0.0.0.0` の待ち受けを `127.0.0.1` と並べて足す。同じポートのワイルドカードと特定アドレスの
+  同時の待ち受けは Windows のソケットの設定に依存する。却下（R-14）。
+- 設定をデータの置き場のファイルに持つ。保存の仕組みが 2 つになる。却下（R-14）。
+
 ## 配布
