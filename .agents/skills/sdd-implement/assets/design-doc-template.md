@@ -5,27 +5,25 @@
   and the policy in docs/design-docs/index.md: write what is true now and why,
   not restrictions. Add the document to docs/design-docs/index.md.
 
-  One `##` section per decision. Delete the sub-headings a section does not
-  need.
+  One `##` section per decision. Delete the parts a section does not need.
+  Record the rule and its reason, not how the code implements it (W-10).
+  Budget per section: W-11.
 -->
 
-[One or two sentences: what this subsystem does and where its code lives.]
+[One sentence: what this subsystem does and where its code lives.]
 
 <!-- DIAGRAM (Mermaid) of the components and the flow between them, when there
      is more than one component. -->
 
 ## [Decision]
 
-### Context
+[The rule, in one sentence. Link the file that implements it.]
 
-[The constraint or problem that forced a choice.]
+[Why, in at most three sentences: the constraint that forced the choice.]
 
-### Decision
+<!-- TABLE for cases, modes, or settings and the behaviour a user or caller
+     sees in each. Not a list of functions. -->
 
-[What the code does now, naming files and functions.]
-
-<!-- TABLE for cases, modes, or settings and the behaviour of each. -->
-
-### Trade-offs
-
-[What this costs, and the alternative rejected with its reason.]
+| Rejected | Why |
+| --- | --- |
+| [Alternative] | [One sentence] |

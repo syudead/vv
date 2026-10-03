@@ -68,12 +68,12 @@ miss, not a feeling.
 
 ### W-6: Concrete over abstract
 
-Name the file, the function, the endpoint, the number. Describe present
+Give the number, the limit, the status code, the setting. Describe present
 behaviour in the present tense and the active voice.
 
 | Write | Not |
 | --- | --- |
-| `seekSpriteCell` clamps the position to `frameCount - 1`. | The position is handled appropriately at the boundaries. |
+| A subtitle file over 4 MiB is not listed. | Large files are handled appropriately. |
 
 ### W-7: Tables and diagrams for structure, prose for reasons
 
@@ -104,6 +104,29 @@ A heading is a noun phrase or a decision (`R-3: Glossary and product terms`),
 not a question or a sentence fragment. Headings are link targets: changing one
 changes its anchor, and the change has to update every inbound link
 (`task check-docs` fails on a broken anchor).
+
+### W-10: Write what the code cannot say
+
+A document records what a reader cannot get from the code: the rule, the
+reason, the rejected alternative, and the behaviour a user or caller sees. It
+does not walk through the code. Name a file or function only to say where a
+rule lives, once per section, not to narrate which function calls which.
+
+| Write | Not |
+| --- | --- |
+| Only files next to the location used for playback are listed ([`mediafs`](../../internal/mediafs)). | `internal/httpapi/subtitles.go` tries the locations in the order `openMediaFile` does. `ListSidecarFiles` in `internal/mediafs` returns the names and sizes of regular files in that location's folder, only when the location opens under the same rules as `OpenMediaFile`. |
+
+### W-11: Length budget
+
+| Unit | Budget |
+| --- | --- |
+| A decision (`##` section of a design document, `R-N` of research) | One sentence of rule, at most three sentences of reason, one table when there are cases |
+| A table cell | One statement |
+| A design document | Fits on two screens; split it when it does not |
+| A how-to step | One action |
+
+Over budget means the section holds code walk-through (W-10) or a point said
+twice (W-4). Cut those before splitting.
 
 ## Document types
 

@@ -6,7 +6,8 @@
 
   One `## R-N` section per decision this feature adds. A choice the repository
   already settles is linked from plan.md, not re-derived here. Keep each R-N
-  heading stable: plan.md, contracts and data-model.md link to it.
+  heading stable: plan.md, contracts and data-model.md link to it. Budget per
+  R-N: W-11. Record the decision, not the implementation (W-10).
 -->
 
 Inherited decisions: [links to the canonical documents this feature builds on].
@@ -14,8 +15,7 @@ This file records only the decisions this feature adds.
 
 ## R-1: [Decision as a short noun phrase]
 
-**Decision**: [What was chosen, in one or two sentences, naming files, tables
-or endpoints.]
+**Decision**: [What was chosen, in one sentence.]
 
 <!-- TABLE when more than one alternative was weighed on the same attributes. -->
 
@@ -24,9 +24,7 @@ or endpoints.]
 | **[Chosen]** | | | Chosen |
 | [Alternative] | | | Rejected: [reason in this repository's terms] |
 
-**Rationale**: [Why the chosen option wins here. Prose.]
+**Rationale**: [Why the chosen option wins here, in at most three sentences.
+Do not repeat the table.]
 
 <!-- DIAGRAM (Mermaid) when the decision is about a flow between components. -->
-
-**Alternatives considered**: [Each rejected option and why, when the table
-above does not already say it.]

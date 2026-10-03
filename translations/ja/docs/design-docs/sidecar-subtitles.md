@@ -1,59 +1,68 @@
 ---
 source: docs/design-docs/sidecar-subtitles.md
-sourceHash: 0c83fc0510f2eb6dbda0df3a9ea0892e8df5ea4e79be40d6f68747cd10b4ba60
+sourceHash: e057b548b8a3428490dbe51f28da7b00a8830e6958dc968be38fc48a91a2f31f
 ---
 
 # 隣の字幕ファイル {#sidecar-subtitle-files}
 
-- 状態: 採用
-- 範囲: 動画のフォルダにある SRT と WebVTT の字幕ファイルの見つけ方、WebVTT への変換、`GET /api/videos/{id}/subtitles` と `GET /api/videos/{id}/subtitles/{file}` のアクセス制御、ライブ変換での再生中の字幕の時刻
-- 背景: [specs/028-sidecar-subtitles/research.md](../../specs/028-sidecar-subtitles/research.md)。契約: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)
+VVMDM は、動画の隣に置かれた SRT と WebVTT のファイルを字幕として表示し、リクエストのたびに WebVTT へ変換する ([`internal/httpapi/subtitles.go`](../../internal/httpapi/subtitles.go))。背景: [research.md](../../specs/028-sidecar-subtitles/research.md)。API: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)。
 
 ## 検出 {#discovery}
 
-字幕はインデックスせず、リクエストのたびにフォルダを読んで見つける。SQLite のテーブルも取り込みジョブも使わない。フォルダに字幕を追加・削除すると、再スキャンなしで次の一覧に反映される。
+字幕はインデックスせず、リクエストのたびに動画のフォルダを読んで見つける ([`domain.SubtitleSidecars`](../../internal/domain))。
 
-1. `internal/httpapi/subtitles.go` は、配信 (`openMediaFile`) と同じ順で動画の所在を試す。`internal/mediafs` の `ListSidecarFiles` は、所在が `OpenMediaFile` と同じ規則で開けるときに限り、その所在のフォルダ(シンボリックリンクをたどる前のパス)にある通常ファイルの名前とサイズを返す。サブフォルダとシンボリックリンクは除く。使うのは最初に開けた所在のフォルダだけなので、動画が複数の場所にあるときは、再生に使う所在の隣にあるファイルだけが対象になる。
-2. `domain.SubtitleSidecars` は、動画のファイル名とエントリから字幕一覧を組み立てる純粋関数だ。
-   - `<name>` は動画ファイル名から最後の拡張子を除いたもの。候補は `<name>.srt`、`<name>.vtt`、`<name>.<label>.srt`、`<name>.<label>.vtt` で、`<name>` と拡張子は NFC 正規化したうえで大文字と小文字を区別せずに比較する。ラベルはドットを含んでよい (`en.forced`)。
-   - `domain.SubtitleFileLimit`(4 MiB)より大きいエントリは候補にしない。
-   - 同じラベルの `.srt` と `.vtt` があるときは、`.vtt` だけを残す。
-   - ラベルのないエントリを先頭に置き、続けてラベルを自然順に並べる。
-3. 一覧を作るときは内容を読まない。壊れたファイルも一覧に載り、取得すると 404 を返す。
+そのため、ファイルを追加・削除すると再スキャンなしで次の一覧に反映され、フォルダと同期させておくテーブルやジョブも要らない。一覧では名前とサイズだけを読むので、負荷は小さいままだ。
 
-| 状況 | 一覧の応答 |
+| 規則 | 動作 |
 | --- | --- |
-| 開ける所在がない | 404 `file_unavailable`(配信と同じ) |
-| 所在は開けるが、そのフォルダを読めない | 字幕がない場合と同じく空の一覧。理由はログに記録する |
+| 対象のフォルダ | 再生に使う所在のフォルダだけ |
+| 対象のファイル | `<name>.srt`、`<name>.vtt`、`<name>.<label>.srt`、`<name>.<label>.vtt`。`<name>` は動画名から拡張子を除いたもので、NFC 正規化したうえで大文字と小文字を区別せずに比較する |
+| サイズ | 4 MiB を超えるものは一覧に載せない |
+| 同じラベルの `.srt` と `.vtt` | `.vtt` だけを載せる |
+| 順序 | ラベルのないものを先頭に置き、続けてラベルを自然順に並べる |
+| 壊れたファイル | 一覧に載る。取得すると 404 を返す |
+| 開ける所在がない | 404 `file_unavailable` |
+| フォルダを読めない | 空の一覧。理由はログに記録する |
 
-一覧の応答には `Cache-Control: no-store` が付く。
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| スキャン中に字幕をインデックスする | 後から追加した字幕は、再スキャンしないと表示されない |
 
 ## 取得と変換 {#fetching-and-conversion}
 
-`GET /api/videos/{id}/subtitles/{file}` は一覧を組み立て直し、`file` が一覧の名前のいずれかと文字列として完全に一致するときに限り、`OpenSidecarFile` でそのファイルを開く。`OpenSidecarFile` も一覧にある名前しか受け付けず、開く前に `OpenMediaFile` の規則を再び適用する。そのため、一覧を作った後にファイルがシンボリックリンクに置き換えられても、登録済みのフォルダの外にあるものは開かない。パスをリクエストの文字列から組み立てることはないので、`..` や区切り文字の検査は要らない。一覧を作った後にファイルが大きくなっても、読むのは上限 (4 MiB) までだ。
+ファイルは、その名前が新たに組み立てた一覧にあるときに限り返す。変換は `ffmpeg` を使わずに Go で実行する ([`internal/media`](../../internal/media))。
 
-`internal/media` の `SubtitleConverter` は Go だけで変換し、`ffmpeg` を起動しない。`internal/httpapi` は自身が宣言する `SubtitleConverter` インターフェース経由で変換器を受け取り、`cmd/mdm` が配線する。1 つのリクエストの中で読み込み、変換し、返すので、`internal/app` は関与しない。
+一覧と照合するので、リクエストの文字列がパスになることはなく、`..` でメディアフォルダの外に出ることはできない。開くときにメディアフォルダの規則を再び確認するので、一覧を作った後にシンボリックリンクに置き換えられたファイルはたどらない。
 
-- 文字コード: BOM(UTF-8、UTF-16 LE/BE)があれば BOM で決める。なければ次の順に判定する: 字幕で使われる文字体系の文字だけから成る妥当な UTF-8、`U+FFFD` も C1 制御文字も生じない Shift_JIS、妥当な UTF-8。どれにも当てはまらなければ、ファイルは読めないものとする。
-- SRT: 連番の行を捨て、時刻行を WebVTT の形式に書き換え、キューのテキストはそのまま通す。時刻行を読めないキューは捨てる。WebVTT はヘッダーを確認したうえでそのまま通す。
-- `offsetMs`(既定値 0)をすべてのキューの時刻から引く。終了が 0 以下になるキューは返さず、開始が負になるキューは 0 から始める。これで字幕をライブ変換の出力の時間軸に合わせる。プレーヤーは実際の開始位置を渡す。
-
-応答には `Content-Type: text/vtt; charset=utf-8`、`Cache-Control: private, no-cache`、変換後の本文のダイジェストである `ETag` が付く。一致する `If-None-Match` には 304 を返す。
-
-| 場合 | 応答 |
+| 入力 | 動作 |
 | --- | --- |
-| 一覧にない名前、`.vtt` に隠された `.srt`、上限を超えるファイル、開けない・読めないファイル | 404 `subtitle_unavailable`。理由は `Warn` でログに記録する |
-| `offsetMs` が負、または整数でない | 400 `invalid_request` |
+| 文字コード | BOM があれば BOM に従う。なければ UTF-8、次に Shift_JIS を試し、どちらでもなければ失敗する |
+| SRT | WebVTT に書き換える。時刻を読めないキューは捨てる |
+| `offsetMs` | すべてのキューから引く。終了が 0 以下になるキューは捨てる |
+| 一覧にない名前、`.vtt` に隠された `.srt`、4 MiB 超、読めない | 404 `subtitle_unavailable` |
+| 不正な `offsetMs` | 400 `invalid_request` |
+| 一致する `If-None-Match` | 304 |
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| `ffmpeg` で変換する | 文字コードを判定しないので、いずれにせよ Go で判定する必要がある。残るのは小さなテキストの書き換えで、リクエストごとにプロセスを起動するほどの価値はない |
 
 ## アクセス制御 {#access-control}
 
-どちらのルートも「ゲストも可」のルートで(`api/openapi.yaml` の `security` が所有者とゲストを許可し、`internal/httpapi/auth.go` の `accessRoutes` がそれと揃えてある)、`lookupServedVideo` で動画を引く。ゲストが公開されていない動画を求めると、存在しない動画と同じ 404 `video_not_found` が返る。ゲストのリクエストは配信と同じ台帳に記録するので、動画を非公開にすると処理中のリクエストも打ち切られる。
+ゲストは、再生してよい動画の字幕を、動画そのものと同じ規則で取得してよい ([`internal/httpapi/auth.go`](../../internal/httpapi/auth.go))。
+
+ゲストが非公開の動画を求めると、存在しない動画と同じく 404 `video_not_found` が返る。動画を非公開にすると、処理中のリクエストも打ち切られる。
 
 ## ライブ変換の時刻合わせ {#live-transcoding-time-alignment}
 
-Video.js は、エミュレーションでもブラウザーのネイティブトラックでも、`<video>` 要素の `currentTime`、つまり変換出力の時間軸で字幕のキューを選ぶ。`liveOffset.ts` の仲介役が現在時刻に加えるオフセットは字幕には効かない。そのため、サーバーは `offsetMs` だけずらした WebVTT を返し、プレーヤーはオフセットが確定するたびにトラックを付け直す ([research.md R-6](../../specs/028-sidecar-subtitles/research.md))。
+ライブ変換中は、サーバーが字幕を `offsetMs` だけずらし、プレーヤーは開始位置が確定するたびにトラックを付け直す ([`subtitleTracks.ts`](../../web/src/player/subtitleTracks.ts))。
 
-- `liveSource` のソースは、元の動画のどの時刻を再生時間軸の 0 とするかが確定するたびに、`vvOffsetSettled(seconds)` を 1 回呼ぶ。`attempt` のないソース(先頭から)は要求した位置ですぐに呼ぶ。`attempt` のあるソースは、`transcode-start` の報告が 200 を返したときは実際の開始位置で、404 またはエラーのときは要求した位置で呼ぶ。報告を待ち始めるときには `vvOffsetPending()` を呼ぶ。バッファーにない位置へのシークによる作り直し (`reloadAt`) も同じ経路を通り、ソースが置き換えられた後に届いた古い報告では何も呼ばない ([live-transcode-seek.md の開始位置の報告](live-transcode-seek.md#start-position-report))。
-- `VideoPlayer.tsx` は両方を `subtitleTracks.ts` の `setOffset` に渡す。未確定 (`null`) の間は、ずれた字幕が一瞬でも表示されないようにトラックを外す。確定したら `subtitleUrl(id, file, offsetMs)` でトラックを付け直し、直前に表示していたラベルを `showing` にする。付け直しは利用者の選択ではないので、保存値を上書きしない。何を表示するかを保存値で決めるのは、一覧が変わった後の最初の取り付けだけだ。
-- 直接再生ではオフセットを 0 のままにする。直接再生から変換への切り替え (`fallbackToTranscode`) も `liveSource` を通るので、同じ経路で時刻を合わせる。
-- 付け直しは、変換が再開するとき(どのみち数秒かかる)にだけ起こる。その間はトラックがないので、字幕ボタンも隠れる。
+プレーヤーは、シーク位置を 0 として始まる変換後のストリームの時刻でキューを選ぶ。プレーヤーが自分の時計に加えるオフセットは字幕には届かないので、サーバーが字幕をずらす必要がある ([research.md R-6](../../specs/028-sidecar-subtitles/research.md))。
+
+| 状態 | トラック |
+| --- | --- |
+| 直接再生 | オフセット 0 |
+| 開始位置を待っている | 外す。そのため、ずれた字幕は表示されない |
+| 開始位置が確定した | 新しいオフセットで付け直す。直前に表示していたラベルを引き続き表示する |
+
+付け直しは変換が再開するときにだけ起こり、それにはどのみち数秒かかる。その間、字幕ボタンは隠れる。
