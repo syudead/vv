@@ -527,8 +527,6 @@ test.describe.serial("live MP4 playback", () => {
     const height = () =>
       page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
     expect(await height()).toBe(480);
-    // 操作バーは再生を始めるまで出ない（video.js の vjs-has-started）ので、始めてから確かめる。
-    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
 
     const playerBox = await page.locator(".video-js").boundingBox();
     if (playerBox === null) throw new Error("player is not visible");
@@ -538,6 +536,9 @@ test.describe.serial("live MP4 playback", () => {
       { steps: 3 },
     );
     await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
+    // 操作バーは再生を始めるまで出ない（video.js の vjs-has-started）ので、再生を始めて
+    // ポインターで操作バーを出してから確かめる。
+    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
     const seekBar = page.locator(".vjs-progress-control");
     const box = await seekBar.boundingBox();
     if (box === null) throw new Error("seek bar is not visible");
