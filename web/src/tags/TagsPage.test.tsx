@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -138,6 +138,10 @@ const server = {
   rejectedNames: [] as string[],
   /** true にすると、以後の GET /api/tags/rejected-names をすべて 500 で失敗させる。 */
   failRejectedGets: false,
+  /** true にすると、以後の cursor 付きの GET /api/tags/rejected-names（続き）を 500 で失敗させる。 */
+  failRejectedMoreGets: false,
+  /** GET /api/tags/rejected-names が受けたクエリ。 */
+  rejectedGetRequests: [] as URLSearchParams[],
   /** 確定・却下・却下した名前の取り外しの要求の回数。 */
   confirmCalls: 0,
   /** POST /api/tags/batch・/api/tags/impact が受けた本文。 */
@@ -158,6 +162,13 @@ const server = {
  */
 let holdRejectedGets = false;
 const rejectedGetReleases: (() => void)[] = [];
+
+/**
+ * holdRejectedDeletes を true にした間の DELETE /api/tags/rejected-names は、release を
+ * 呼ぶまでサーバーの並びを変えず、応答もしない。
+ */
+let holdRejectedDeletes = false;
+const rejectedDeleteReleases: (() => void)[] = [];
 
 /** holdConfirms を true にした間の POST /api/tags/{id}/confirm は、release() を呼ぶまで応答しない。 */
 let holdConfirms = false;
@@ -236,8 +247,27 @@ function install() {
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
       }
+      server.rejectedGetRequests.push(url.searchParams);
+      const cursor = url.searchParams.get("cursor");
+      if (cursor !== null && server.failRejectedMoreGets) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      // 実際のサーバーと同じく、cursor は前のページの最後の名前の次から、limit 件ずつ返す
+      // （名前は昇順で持つ）。
       const snapshot = [...server.rejectedNames];
-      const page = { items: snapshot, total: snapshot.length };
+      const limit = Number(url.searchParams.get("limit") ?? "100");
+      const start = cursor === null ? 0 : snapshot.findIndex((name) => name > cursor);
+      const from = start < 0 ? snapshot.length : start;
+      const items = snapshot.slice(from, from + limit);
+      const page = {
+        items,
+        total: snapshot.length,
+        ...(from + limit < snapshot.length
+          ? { nextCursor: items[items.length - 1] }
+          : {}),
+      };
       if (holdRejectedGets) {
         return new Promise((resolve) => {
           rejectedGetReleases.push(() => resolve(jsonResponse(page)));
@@ -318,8 +348,16 @@ function install() {
 
     if (path === "/api/tags/rejected-names" && method === "DELETE") {
       const name = url.searchParams.get("name") ?? "";
-      server.rejectedNames = server.rejectedNames.filter((item) => item !== name);
-      return Promise.resolve(jsonResponse(null, 204));
+      const respond = () => {
+        server.rejectedNames = server.rejectedNames.filter((item) => item !== name);
+        return jsonResponse(null, 204);
+      };
+      if (holdRejectedDeletes) {
+        return new Promise((resolve) => {
+          rejectedDeleteReleases.push(() => resolve(respond()));
+        });
+      }
+      return Promise.resolve(respond());
     }
 
     const confirmMatch = /^\/api\/tags\/(\d+)\/confirm$/.exec(path);
@@ -606,6 +644,8 @@ beforeEach(() => {
   heldGetReleases.length = 0;
   server.rejectedNames = [];
   server.failRejectedGets = false;
+  server.failRejectedMoreGets = false;
+  server.rejectedGetRequests = [];
   server.confirmCalls = 0;
   server.batchCalls = [];
   server.impactCalls = [];
@@ -616,6 +656,8 @@ beforeEach(() => {
   confirmReleases.length = 0;
   holdRejectedGets = false;
   rejectedGetReleases.length = 0;
+  holdRejectedDeletes = false;
+  rejectedDeleteReleases.length = 0;
   // 一覧の仮想化（useWindowVirtualizer）は文書をスクロールする。jsdom には
   // window.scrollTo が無いので、何もしない実装に置き換える。
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -4850,5 +4892,318 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     } finally {
       unsubscribe();
     }
+  });
+});
+
+describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/research.md R-13）", () => {
+  /** 見張っている番兵（IntersectionObserver）。窓の中身を末尾までスクロールしたことにする。 */
+  const observers = new Set<{
+    callback: IntersectionObserverCallback;
+    target: Element | null;
+  }>();
+
+  function scrollRejectedToEnd(skip: ReadonlySet<object> = new Set()) {
+    act(() => {
+      for (const observer of [...observers]) {
+        if (observer.target === null || skip.has(observer)) continue;
+        observer.callback(
+          [
+            {
+              isIntersecting: true,
+              target: observer.target,
+            } as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+  }
+
+  const names = Array.from(
+    { length: 250 },
+    (_, index) => `Name${String(index).padStart(3, "0")}`,
+  );
+
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    observers.clear();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        private entry: { callback: IntersectionObserverCallback; target: Element | null };
+        constructor(callback: IntersectionObserverCallback) {
+          this.entry = { callback, target: null };
+        }
+        observe(target: Element) {
+          this.entry.target = target;
+          observers.add(this.entry);
+        }
+        disconnect() {
+          observers.delete(this.entry);
+        }
+      },
+    );
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 2, name: "Beta", tentative: true }),
+    ];
+    server.rejectedNames = [...names];
+  });
+
+  async function openRejected(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    return within(dialog).getByRole("list", { name: "Rejected names" });
+  }
+
+  it("開くと先頭の1ページだけを limit=100 で読み、入口に total を出す。窓を開くために読み直さない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    expect(server.rejectedGetRequests).toHaveLength(1);
+    expect(server.rejectedGetRequests[0]?.get("limit")).toBe("100");
+    expect(server.rejectedGetRequests[0]?.has("cursor")).toBe(false);
+
+    const list = await openRejected(user);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    expect(server.rejectedGetRequests).toHaveLength(1);
+  });
+
+  it("窓の中身を末尾までスクロールすると cursor 付きで続きを読み、名前を足す。閉じても続きは残る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    expect(server.rejectedGetRequests[1]?.get("cursor")).toBe("Name099");
+    expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
+    expect(list.getAttribute("aria-busy")).toBeNull();
+
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(250));
+    expect(within(list).getByTitle("Name249")).toBeDefined();
+    // 末尾まで読んだら、もう番兵は見張らない。
+    expect(observers.size).toBe(0);
+    const requests = server.rejectedGetRequests.length;
+
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const reopened = await openRejected(user);
+    expect(within(reopened).getAllByRole("listitem")).toHaveLength(250);
+    expect(server.rejectedGetRequests).toHaveLength(requests);
+  });
+
+  it("×で外すと DELETE を送り、その名前が消えて入口の件数が1減る。一覧は取り直さない", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    const list = await openRejected(user);
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Name000" again' }));
+    await waitFor(() => expect(within(list).queryByTitle("Name000")).toBeNull());
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          init?.method === "DELETE" &&
+          String(input).startsWith("/api/tags/rejected-names?"),
+      ),
+    ).toBe(true);
+    expect(entry.textContent).toContain("249");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(99);
+    expect(server.rejectedGetRequests).toHaveLength(1);
+  });
+
+  it("まとめての却下のあと、先頭の1ページだけを取り直し、窓の並びが先頭のページに戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const before = server.rejectedGetRequests.length;
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const reject = within(dialog).getByRole("button", { name: "Reject" });
+    await waitFor(() => expect((reject as HTMLButtonElement).disabled).toBe(false));
+    await user.click(reject);
+    expect(await screen.findByText("Rejected 1 tag")).toBeDefined();
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    const reloads = server.rejectedGetRequests.slice(before);
+    expect(reloads).toHaveLength(1);
+    expect(reloads[0]?.has("cursor")).toBe(false);
+    expect(reloads[0]?.get("limit")).toBe("100");
+
+    const reopened = await openRejected(user);
+    expect(within(reopened).getAllByRole("listitem")).toHaveLength(100);
+    expect(within(reopened).getByTitle("Alpha")).toBeDefined();
+  });
+
+  it("続きの読み込みに失敗しても読み込んだ名前を残し、Retry で同じカーソルから読み直す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    server.failRejectedMoreGets = true;
+    scrollRejectedToEnd();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Couldn't load more rejected names");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    // 失敗の間は番兵で読み直さない。
+    expect(observers.size).toBe(0);
+
+    server.failRejectedMoreGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    const more = server.rejectedGetRequests.filter((params) => params.has("cursor"));
+    expect(more.map((params) => params.get("cursor"))).toEqual(["Name099", "Name099"]);
+    expect(screen.queryByText("Couldn't load more rejected names")).toBeNull();
+  });
+  it("読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく続きの失敗と Retry を残す", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = names.slice(0, 101);
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    server.failRejectedMoreGets = true;
+    scrollRejectedToEnd();
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Couldn't load more rejected names",
+    );
+    for (const name of names.slice(0, 100)) {
+      fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+    }
+    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    expect(screen.queryByText("No rejected names")).toBeNull();
+
+    server.failRejectedMoreGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await within(list).findByTitle("Name100")).toBeDefined();
+  });
+
+  it("読み込んだ名前をすべて外しても続きが残っていれば、番兵で続きを読む", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = names.slice(0, 101);
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    for (const name of names.slice(0, 100)) {
+      fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+    }
+    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    expect(screen.queryByText("No rejected names")).toBeNull();
+
+    scrollRejectedToEnd();
+    expect(await within(list).findByTitle("Name100")).toBeDefined();
+  });
+
+  it("先頭のページの取り直しの間に番兵が見えても、取り直しのあとで見張り直して続きを読む", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // 却下で先頭のページの取り直しが始まり、その応答は止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(rejectedGetReleases).toHaveLength(1));
+    holdRejectedGets = false;
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const reopened = await openRejected(user);
+    // 取り直しの間の通知は無視される。
+    scrollRejectedToEnd();
+    expect(
+      server.rejectedGetRequests.filter((params) => params.has("cursor")),
+    ).toHaveLength(0);
+    expect(list.isConnected).toBe(false);
+
+    // 取り直しの応答も 100 件で、件数は変わらない。番兵は見えたままなので、今の
+    // 見張りにはもう通知が来ない。見張り直したときの最初の通知だけで続きを読む。
+    const watching = new Set(observers);
+    act(() => rejectedGetReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    await waitFor(() =>
+      expect([...observers].some((observer) => !watching.has(observer))).toBe(true),
+    );
+    scrollRejectedToEnd(watching);
+    await waitFor(() =>
+      expect(within(reopened).getAllByRole("listitem")).toHaveLength(200),
+    );
+  });
+
+  it("取り直しと重なった続きの名前の取り外しのあと、取り直して入口の件数を合わせる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const list = await openRejected(user);
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // 却下で先頭のページの取り直しが始まり、その応答（取り外しの前の 251 件）は止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(rejectedGetReleases).toHaveLength(1));
+    holdRejectedGets = false;
+
+    // 古い続きに残る名前を外す。DELETE の応答も止める。
+    const reopened = await openRejected(user);
+    holdRejectedDeletes = true;
+    await user.click(
+      within(reopened).getByRole("button", { name: 'Allow "Name150" again' }),
+    );
+    await waitFor(() => expect(rejectedDeleteReleases).toHaveLength(1));
+    holdRejectedDeletes = false;
+
+    // 取り直しの応答が DELETE の応答より先に届く。
+    act(() => rejectedGetReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    const before = server.rejectedGetRequests.length;
+
+    act(() => rejectedDeleteReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    expect(server.rejectedGetRequests.length).toBe(before + 1);
+    expect(server.rejectedGetRequests.at(-1)?.has("cursor")).toBe(false);
   });
 });
