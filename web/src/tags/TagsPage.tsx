@@ -158,7 +158,14 @@ export default function TagsPage() {
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
 
-  const [mergingTag, setMergingTag] = useState<Tag | null>(null);
+  /**
+   * merging は統合の窓の統合元である。行の「別のタグへ統合…」は 1 件、選択バーの
+   * 「Merge into one tag…」は選んだタグ（`fromSelection`）。開いた時点で固定する。
+   */
+  const [merging, setMerging] = useState<{
+    sources: readonly Tag[];
+    fromSelection: boolean;
+  } | null>(null);
   const [synonymsTagId, setSynonymsTagId] = useState<number | null>(null);
   /** シノニムの窓を開いたときの並び。閉じたときに行が外れていればここから次の行を探す。 */
   const synonymsOrderRef = useRef<readonly Tag[]>([]);
@@ -965,52 +972,91 @@ export default function TagsPage() {
 
   /**
    * cancelMerge は統合の確認の窓を、何も変えずに閉じる（キャンセル・Esc）。
-   * 「別のタグへ統合…」は「その他の操作」のメニューの項目から開いたので、
-   * cancelDelete と同じくその行の「その他の操作」へ明示的に戻す（B2）。
+   * 行の「別のタグへ統合…」は「その他の操作」のメニューの項目から開いたので、
+   * cancelDelete と同じくその行の「その他の操作」へ明示的に戻す（B2）。選択バーから
+   * 開いたときはバーの「More」へ戻す。
    */
   function cancelMerge() {
-    if (mergingTag === null) return;
-    const target = mergingTag;
-    setMergingTag(null);
-    focusRow(target.id, "menu");
+    if (merging === null) return;
+    const { sources, fromSelection } = merging;
+    setMerging(null);
+    if (fromSelection) afterCommit(() => barMoreRef.current?.focus());
+    else focusRow(sources[0]!.id, "menu");
   }
 
   /**
    * performMerge は統合が成功したときに呼ぶ。統合元は一覧から消え、統合先は
-   * サーバーが返した最新の状態（シノニムに統合元の名前を含む）に差し替わる
-   * （ui-design.md「Merge and delete」、受け入れ条件 12）。
+   * サーバーが返した最新の状態（シノニムに統合元の名前を含み、本数が合算）に差し
+   * 替わる。選択から開いたときは選択を空にする。トーストの数は実際に統合した数で、
+   * もう無かった統合元があれば一覧を取り直す（specs/036-tag-admin-scale/ui-design.md
+   * 「Confirmation」、014 の受け入れ条件 12）。
    */
-  function performMerge(merged: Tag) {
-    const source = mergingTag;
-    if (source === null) return;
+  function performMerge(
+    merged: Tag,
+    sourceIds: readonly number[],
+    notFoundIds: readonly number[],
+  ) {
+    if (merging === null) return;
+    const { sources, fromSelection } = merging;
     const order = visibleRows;
+    const removed = new Set(sourceIds);
     setTags((current) =>
       current
-        ?.filter((item) => item.id !== source.id)
+        ?.filter((item) => !removed.has(item.id))
         .map((item) => (item.id === merged.id ? merged : item)),
     );
-    setMergingTag(null);
-    toast(t.tags.merged(source.name, merged.name));
+    if (fromSelection) setSelected(new Set());
+    else setSelected((current) => withoutIds(current, removed));
+    setMerging(null);
+    const missing = new Set(notFoundIds);
+    const done = sources.filter((item) => removed.has(item.id) && !missing.has(item.id));
+    toast(
+      done.length === 1
+        ? t.tags.merged(done[0]!.name, merged.name)
+        : t.tags.selection.merged(done.length, merged.name),
+    );
+    afterStale(notFoundIds);
     // 統合先は確定になるので、「Tentative only」を押している間は統合元・
-    // 統合先のどちらも一覧に無い。そのときは統合元の位置から次の行へ
+    // 統合先のどちらも一覧に無い。そのときは最初の統合元の位置から次の行へ
     // （031 の ui-design.md「Merge」）。
-    if (shown(merged)) focusRow(merged.id, "name");
-    else focusAfterRemoval(order, source.id, new Set([merged.id]));
+    if (shown(merged)) {
+      focusRow(merged.id, "name");
+      return;
+    }
+    const first = order.find((item) => removed.has(item.id));
+    if (first === undefined) afterCommit(fallbackFocus);
+    else focusAfterRemoval(order, first.id, new Set([...removed, merged.id]));
   }
 
   /**
-   * staleMerge は統合元・統合先のどちらかがもう無かった（統合先は tag_not_found、
-   * 統合元は応答の notFoundIds）ときに
-   * 呼ぶ。ほかの操作の tag_not_found と同じく、窓を閉じてトーストを出し、
-   * 一覧を取り直す（ui-design.md「States」）。
+   * staleMerge は統合先がもう無かった（tag_not_found）か、統合元がすべてもう無かった
+   * （応答の notFoundIds）ときに呼ぶ。ほかの操作の tag_not_found と同じく、窓を閉じて
+   * トーストを出し、一覧を取り直す（ui-design.md「States」「Confirmation」）。
    */
   function staleMerge() {
-    const source = mergingTag;
-    if (source === null) return;
+    if (merging === null) return;
+    const { sources, fromSelection } = merging;
     const order = filtered;
-    setMergingTag(null);
-    toast(t.tags.gone);
-    void reload().then(() => focusAfterRemoval(order, source.id));
+    setMerging(null);
+    toast(fromSelection ? t.tags.selection.stale : t.tags.gone);
+    void reload().then(() => {
+      if (fromSelection) {
+        const more = barMoreRef.current;
+        if (more?.isConnected === true && !more.disabled) more.focus();
+        else focusSelectAllOr(fallbackFocus);
+        return;
+      }
+      focusAfterRemoval(order, sources[0]!.id);
+    });
+  }
+
+  /** openMergeSelected は選択バーの「Merge into one tag…」である。 */
+  function openMergeSelected() {
+    if (bulkPending !== null || selected.size === 0) return;
+    setMerging({
+      sources: visibleRows.filter((tag) => selected.has(tag.id)),
+      fromSelection: true,
+    });
   }
 
   /**
@@ -1272,7 +1318,7 @@ export default function TagsPage() {
         synonymsOrderRef.current = visibleRows;
         setSynonymsTagId(target.id);
       },
-      onOpenMerge: (target) => setMergingTag(target),
+      onOpenMerge: (target) => setMerging({ sources: [target], fromSelection: false }),
       onDelete: (target) => {
         setDeleteError(null);
         setDeletingTag(target);
@@ -1612,6 +1658,7 @@ export default function TagsPage() {
         onConfirm={() => void submitBulkConfirm()}
         onReject={() => openBulkDialog("reject")}
         onDelete={() => openBulkDialog("delete")}
+        onMerge={openMergeSelected}
         onClear={clearSelection}
         confirmRef={barConfirmRef}
         moreRef={barMoreRef}
@@ -1648,9 +1695,10 @@ export default function TagsPage() {
         />
       )}
 
-      {mergingTag !== null && tags !== undefined && (
+      {merging !== null && tags !== undefined && (
         <MergeTagDialog
-          source={mergingTag}
+          sources={merging.sources}
+          fromSelection={merging.fromSelection}
           tags={tags}
           onClose={cancelMerge}
           onMerged={performMerge}
