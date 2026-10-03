@@ -833,7 +833,12 @@ it as different videos, and refetches on the `scan` notification. `web/src/tags/
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, "Tentative only" and "Unused only" filters, a sort by name, video count or
 creation date (only the sort is kept per device, in `web/src/preferences/tagListPreferences.ts`),
-create, rename and delete. The list holds every tag from one `GET /api/tags` but
+create, rename and delete. Rows carry a checkbox; selecting any shows a bottom selection bar
+(`TagSelectionBar`) that confirms, rejects or deletes the selected tags together through one
+`POST /api/tags/batch`, after a confirmation that counts the affected videos with
+`POST /api/tags/impact` (`BulkTagDialog`; bulk confirm asks nothing). The selection is page
+state, kept to the rows currently shown. On touch devices and below `sm`, a row's actions
+collapse into one labelled "Actions" menu, switched by CSS alone. The list holds every tag from one `GET /api/tags` but
 draws only the rows in and near the viewport (`@tanstack/react-virtual`'s
 `useWindowVirtualizer`, used nowhere else; the document stays the scroll owner), keeps the
 focused row drawn, and hands Tab across the edge of the drawn range so keyboard order follows
