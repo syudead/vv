@@ -628,6 +628,7 @@ export const en = {
       empty: "No rejected names",
       allow: (name: string) => `Allow "${name}" again`,
       loadFailed: "Couldn't load the rejected names",
+      loadMoreFailed: "Couldn't load more rejected names",
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
     },
