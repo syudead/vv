@@ -1,3 +1,8 @@
+import {
+  defaultRangeExtractor,
+  useWindowVirtualizer,
+  type Range,
+} from "@tanstack/react-virtual";
 import { AlertCircle, CircleDashed, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
 import {
   useCallback,
@@ -6,7 +11,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent,
+  type KeyboardEvent,
 } from "react";
+import { flushSync } from "react-dom";
 
 import { RequestFailed } from "../api/client";
 import { compareTagRefs } from "../api/tagOrder";
@@ -24,6 +32,7 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { foldForMatch } from "../lib/foldForMatch";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
@@ -49,6 +58,39 @@ function isTagNotTentative(error: unknown): boolean {
 }
 
 type FocusTarget = "rename" | "synonyms" | "name" | "menu";
+
+/**
+ * ROW_ESTIMATE は、まだ描いていない行の高さの見積り（px）である。行（`py-2` と
+ * `size-8` の操作、下の線 1px）の高さで、シノニムの行・改名の失敗の文言を持つ
+ * 行は描いたあとに測った高さ（`measureElement`）で置き換わる。
+ */
+const ROW_ESTIMATE = 49;
+
+/** ROW_OVERSCAN は、表示域の前後に余分に描く行の数である。 */
+const ROW_OVERSCAN = 8;
+
+/** 行の中で Tab が止まる要素。 */
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function rowFocusables(row: Element): HTMLElement[] {
+  return [...row.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (element) => element.tabIndex >= 0,
+  );
+}
+
+/** RowHandlers は行へ渡す操作である。行の再描画を減らすため、同じ関数を渡し続ける。 */
+interface RowHandlers {
+  onStartRename: (tag: Tag) => void;
+  onCancelRename: (tag: Tag) => void;
+  onSubmitRename: (tag: Tag, name: string) => void;
+  onOpenSynonyms: (tag: Tag) => void;
+  onOpenMerge: (tag: Tag) => void;
+  onDelete: (tag: Tag) => void;
+  onConfirm: (tag: Tag) => void;
+  onReject: (tag: Tag) => void;
+  onDraftChange: () => void;
+}
 
 /**
  * TagsPage はサイドバーの「タグ」から開く管理画面である（ui-design.md「Tag
@@ -107,6 +149,32 @@ export default function TagsPage() {
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
   const tentativeButtonRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
+  const listRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * pinnedRowId は、見えている範囲の外でも描き続ける行である。フォーカスを
+   * 持つ行（行から開いたメニューにあるときも含む）と、これからフォーカスを移す
+   * 行を指す。フォーカスが一覧の外へ出たら外す（`handleListBlur`。
+   * specs/036-tag-admin-scale/ui-design.md「Keyboard across virtualized rows」）。
+   */
+  const [pinnedRowId, setPinnedRowId] = useState<number | null>(null);
+  /**
+   * focusInListRef は、フォーカスが一覧（React の木での一覧で、行から開いた
+   * メニューを含む）の中にあるかである。`handleListBlur` が見る。
+   */
+  const focusInListRef = useRef(false);
+  /** afterCommitQueue は `afterCommit` が描き終えるのを待たせている処理である。 */
+  const afterCommitQueue = useRef<(() => void)[]>([]);
+  const [afterCommitTick, setAfterCommitTick] = useState(0);
+  useEffect(() => {
+    if (afterCommitQueue.current.length === 0) return;
+    const queued = afterCommitQueue.current;
+    afterCommitQueue.current = [];
+    setTimeout(() => {
+      for (const fn of queued) fn();
+    }, 0);
+  }, [afterCommitTick]);
+  /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
+  const [scrollMargin, setScrollMargin] = useState(0);
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
     const current = rowRefs.current.get(id) ?? {
@@ -135,16 +203,68 @@ export default function TagsPage() {
       ? tentativeButtonRef
       : createButtonRef
     ).current?.focus();
+    // 候補を確かめるために描かせた行（`renderRow`）を Tab の順に残さない。
+    releasePinIfFocusOutside();
+  }
+
+  /**
+   * releasePinIfFocusOutside は、フォーカスが一覧の外にあれば、行を描き続ける
+   * のをやめる（`pinnedRowId`）。フォーカスを持つ要素は外さない。
+   */
+  function releasePinIfFocusOutside() {
+    if (focusInListRef.current) return;
+    if (listRef.current?.contains(document.activeElement)) return;
+    setPinnedRowId(null);
+  }
+
+  /**
+   * afterCommit は、いま置いた状態（応答で変えたタグの一覧や送信中の印）を
+   * React が描き終えてから、さらに setTimeout(0) で1呼吸置いて fn を呼ぶ
+   * （settings/SettingsPage.tsx の focusFolderAction と同じ1呼吸）。
+   * setTimeout(0) だけでは、応答のあとの再描画より先に走ることがあり、
+   * 新しい行がまだ一覧に無い、送信中で「新しいタグ」が押せない、といった
+   * 古い画面でフォーカス先を決めてしまう。
+   */
+  function afterCommit(fn: () => void) {
+    afterCommitQueue.current.push(fn);
+    setAfterCommitTick((tick) => tick + 1);
+  }
+
+  /**
+   * renderRow は、一覧にあるのに描いていない（見えている範囲の外の）行を
+   * 描かせる。描く範囲にその行を足して同期で描き直す（`pinnedRowId`）。
+   * 描いていなかった行なら一覧での位置を返し、もう描いていた行や一覧に無い
+   * 行なら -1 を返す。
+   */
+  function renderRow(id: number): number {
+    const index = visibleRowsRef.current.findIndex((tag) => tag.id === id);
+    if (index === -1) return -1;
+    const drawn = listRef.current?.querySelector(`[data-tag-id="${String(id)}"]`);
+    if (drawn !== null && drawn !== undefined) return -1;
+    flushSync(() => setPinnedRowId(id));
+    return index;
+  }
+
+  /**
+   * revealRow は、描いていない行を描かせてその行の位置へスクロールする。
+   * フォーカスを見えている範囲の外の行へ移す前に呼ぶ（行が描かれていなければ
+   * 移せない）。もう描いている行は、フォーカスを移すとブラウザが表示域へ
+   * 寄せる。
+   */
+  function revealRow(id: number) {
+    const index = renderRow(id);
+    if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
   }
 
   /**
    * focusRow はタグの行のフォーカス先へ移す。その行がもう無ければ
    * `fallbackFocus` へ移す。行の差し替えが DOM に反映されたあとで移す必要が
-   * あるので setTimeout(0) で1呼吸置く（settings/SettingsPage.tsx の
-   * focusFolderAction と同じ）。
+   * あるので、同時に置いた状態を描き終えてから1呼吸置く（`afterCommit`）。
+   * 行が描かれていなければ、先にその行の位置へスクロールする（`revealRow`）。
    */
   function focusRow(id: number, part: FocusTarget) {
-    setTimeout(() => {
+    afterCommit(() => {
+      revealRow(id);
       const refs = rowRefs.current.get(id);
       const target =
         part === "rename"
@@ -154,9 +274,10 @@ export default function TagsPage() {
             : part === "menu"
               ? refs?.menuButton
               : refs?.nameLink;
-      if (target === null || target === undefined) fallbackFocus();
-      else target.focus();
-    }, 0);
+      if (target === null || target === undefined || !target.isConnected) {
+        fallbackFocus();
+      } else target.focus();
+    });
   }
 
   /**
@@ -167,9 +288,11 @@ export default function TagsPage() {
    * order は消える前の（絞り込み後の）並びで、`alsoGone` は同時に一覧から
    * 外れるほかの行（統合先が確定になって絞り込みから外れるときなど）である。
    *
-   * 候補は、移す時点でまだ描かれていて押せる「改名」に限る。ほかの行の確定が
+   * 候補は、移す時点でまだ一覧にあって押せる「改名」に限る。ほかの行の確定が
    * 並行していると、order を控えたあとにその行も外れていたり、送信中で
    * 「改名」が disabled だったりするので、それを飛ばして次の行へ進む。
+   * 候補が見えている範囲の外で描かれていなければ、描かせてから確かめ、移す
+   * 前にその行の位置へスクロールする。
    */
   function focusAfterRemoval(
     order: readonly Tag[],
@@ -182,13 +305,20 @@ export default function TagsPage() {
       ...order.slice(index + 1).filter(stays),
       ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
     ];
-    setTimeout(() => {
-      const target = candidates
-        .map((tag) => rowRefs.current.get(tag.id)?.renameButton)
-        .find((button) => button?.isConnected === true && !button.disabled);
-      if (target === null || target === undefined) fallbackFocus();
-      else target.focus();
-    }, 0);
+    afterCommit(() => {
+      const listed = new Set(visibleRowsRef.current.map((tag) => tag.id));
+      for (const tag of candidates) {
+        if (!listed.has(tag.id)) continue;
+        const index = renderRow(tag.id);
+        const button = rowRefs.current.get(tag.id)?.renameButton;
+        if (button?.isConnected === true && !button.disabled) {
+          if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
+          button.focus();
+          return;
+        }
+      }
+      fallbackFocus();
+    });
   }
 
   /**
@@ -321,6 +451,115 @@ export default function TagsPage() {
     const at = insertAt === -1 ? filtered.length : insertAt;
     return [...filtered.slice(0, at), renamingTag, ...filtered.slice(at)];
   }, [filtered, sorted, renamingId]);
+
+  const visibleRowsRef = useRef<readonly Tag[]>(visibleRows);
+  useLayoutEffect(() => {
+    visibleRowsRef.current = visibleRows;
+  }, [visibleRows]);
+
+  // 一覧は表示域と前後の少数の行だけを描く（specs/036-tag-admin-scale/research.md
+  // R-2）。スクロールの持ち主は文書で、行の高さは描いた要素を測る。
+  const pinnedIndex = useMemo(
+    () =>
+      pinnedRowId === null ? -1 : visibleRows.findIndex((tag) => tag.id === pinnedRowId),
+    [visibleRows, pinnedRowId],
+  );
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      if (
+        pinnedIndex < 0 ||
+        pinnedIndex >= range.count ||
+        indexes.includes(pinnedIndex)
+      ) {
+        return indexes;
+      }
+      return [...indexes, pinnedIndex].sort((a, b) => a - b);
+    },
+    [pinnedIndex],
+  );
+  const getItemKey = useCallback(
+    (index: number) => visibleRows[index]!.id,
+    [visibleRows],
+  );
+  const virtualizer = useWindowVirtualizer({
+    count: visibleRows.length,
+    estimateSize: () => ROW_ESTIMATE,
+    overscan: ROW_OVERSCAN,
+    scrollMargin,
+    rangeExtractor,
+    getItemKey,
+  });
+
+  // 一覧の上端は作成の行の有無やツールバーの折り返しで動くので、文書の
+  // 大きさが変わるたびに測り直す。
+  const hasList = tags !== undefined && visibleRows.length > 0;
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!hasList || list === null) return;
+    const measure = () =>
+      setScrollMargin(list.getBoundingClientRect().top + window.scrollY);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    return () => observer.disconnect();
+  }, [hasList]);
+
+  /**
+   * handleListFocus は、フォーカスを持った行を描き続ける行にする。スクロール
+   * で画面の外へ出ても、その行は外れず、フォーカスが `body` へ落ちない。
+   */
+  function handleListFocus(event: FocusEvent<HTMLDivElement>) {
+    focusInListRef.current = true;
+    const row = (event.target as Element).closest<HTMLElement>("[data-tag-id]");
+    if (row === null || !event.currentTarget.contains(row)) return;
+    setPinnedRowId(Number(row.dataset.tagId));
+  }
+
+  /**
+   * handleListBlur は、フォーカスが一覧の外へ出たら行を描き続けるのをやめる。
+   * 残すと、表示域から遠い行が Tab の順に残り、ツールバーなどからの Tab が
+   * その行へ飛んで表示域が動く。フォーカスが決まったあとで見て、行の中や
+   * 行の間の移動、行から開いたメニュー（React の木では一覧の中なので focus が
+   * 一覧まで届く）への移動では外さない。ウィンドウ自体がフォーカスを失った
+   * ときは `document.activeElement` が一覧の中に残るので外さない。フォーカスを
+   * 持つ要素は外さない。
+   */
+  function handleListBlur() {
+    focusInListRef.current = false;
+    setTimeout(releasePinIfFocusOutside, 0);
+  }
+
+  /**
+   * handleListKeyDown は、描いている範囲の端の Tab を次の（Shift+Tab は前の）
+   * 行へ渡す。描いていない行は DOM に無いので、既定の Tab では一覧の外へ
+   * 飛んでしまう。全件の最後の行の Tab、最初の行の Shift+Tab は既定のまま
+   * 一覧の外へ進める（ui-design.md「Keyboard across virtualized rows」）。
+   */
+  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.defaultPrevented) return;
+    const list = event.currentTarget;
+    const target = event.target as HTMLElement;
+    const row = target.closest<HTMLElement>("[data-index]");
+    if (row === null || !list.contains(row)) return;
+    const focusables = rowFocusables(row);
+    const edge = event.shiftKey ? focusables[0] : focusables[focusables.length - 1];
+    if (target !== edge) return;
+    const nextIndex = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
+    const next = visibleRows[nextIndex];
+    if (next === undefined) return;
+    if (list.querySelector(`[data-index="${String(nextIndex)}"]`) !== null) return;
+    event.preventDefault();
+    revealRow(next.id);
+    const nextRow = list.querySelector(`[data-index="${String(nextIndex)}"]`);
+    if (nextRow === null) return;
+    const nextFocusables = rowFocusables(nextRow);
+    const into = event.shiftKey
+      ? nextFocusables[nextFocusables.length - 1]
+      : nextFocusables[0];
+    into?.focus();
+  }
 
   const searching = normalizedQuery !== "";
   const total = tags?.length ?? 0;
@@ -675,6 +914,62 @@ export default function TagsPage() {
     void reload().then(() => focusAfterRemoval(order, id));
   }
 
+  /**
+   * rowHandlersRef は、行の操作の今の実体である。行へは `rowHandlers`（同じ
+   * 関数を渡し続ける包み）を渡し、`React.memo` の行が操作のたびに描き直され
+   * ないようにする。実体は描くたびに差し替える。
+   */
+  const rowHandlersRef = useRef<RowHandlers | null>(null);
+  useLayoutEffect(() => {
+    rowHandlersRef.current = {
+      onStartRename: (target) => {
+        // ほかの行の改名や作成が送信中は、新しく改名を始めない
+        // （B2 と同じ規則）。行の「改名」自体も blockStart で
+        // disabled だが、ここでも二重に守る。
+        if (createPending || renamePending) return;
+        setCreating(false);
+        setRenameError(null);
+        setRenamingId(target.id);
+      },
+      onCancelRename: (target) => {
+        if (renamePending) return;
+        setRenamingId(null);
+        setRenameError(null);
+        focusRow(target.id, "rename");
+      },
+      onSubmitRename: (target, name) => void submitRename(target, name),
+      onOpenSynonyms: (target) => {
+        synonymsOrderRef.current = visibleRows;
+        setSynonymsTagId(target.id);
+      },
+      onOpenMerge: (target) => setMergingTag(target),
+      onDelete: (target) => {
+        setDeleteError(null);
+        setDeletingTag(target);
+      },
+      onConfirm: (target) => void submitConfirm(target),
+      onReject: (target) => {
+        setRejectError(null);
+        setRejectingTag(target);
+      },
+      onDraftChange: () => setRenameError(null),
+    };
+  });
+  const rowHandlers = useMemo<RowHandlers>(
+    () => ({
+      onStartRename: (tag) => rowHandlersRef.current?.onStartRename(tag),
+      onCancelRename: (tag) => rowHandlersRef.current?.onCancelRename(tag),
+      onSubmitRename: (tag, name) => rowHandlersRef.current?.onSubmitRename(tag, name),
+      onOpenSynonyms: (tag) => rowHandlersRef.current?.onOpenSynonyms(tag),
+      onOpenMerge: (tag) => rowHandlersRef.current?.onOpenMerge(tag),
+      onDelete: (tag) => rowHandlersRef.current?.onDelete(tag),
+      onConfirm: (tag) => rowHandlersRef.current?.onConfirm(tag),
+      onReject: (tag) => rowHandlersRef.current?.onReject(tag),
+      onDraftChange: () => rowHandlersRef.current?.onDraftChange(),
+    }),
+    [],
+  );
+
   const showEmptyTags =
     tags !== undefined && tags.length === 0 && !creating && !tentativeOnly;
   const nothingShown =
@@ -825,49 +1120,51 @@ export default function TagsPage() {
                 onDraftChange={() => setCreateError(null)}
               />
             )}
-            {visibleRows.map((tag) => (
-              <TagRow
-                key={tag.id}
-                tag={tag}
-                renaming={renamingId === tag.id}
-                pending={renamingId === tag.id && renamePending}
-                blockStart={createPending || (renamePending && renamingId !== tag.id)}
-                error={renamingId === tag.id ? renameError : null}
-                registerRefs={registerRefs}
-                onStartRename={(target) => {
-                  // ほかの行の改名や作成が送信中は、新しく改名を始めない
-                  // （B2 と同じ規則）。行の「改名」自体も blockStart で
-                  // disabled だが、ここでも二重に守る。
-                  if (createPending || renamePending) return;
-                  setCreating(false);
-                  setRenameError(null);
-                  setRenamingId(target.id);
-                }}
-                onCancelRename={() => {
-                  if (renamePending) return;
-                  setRenamingId(null);
-                  setRenameError(null);
-                  focusRow(tag.id, "rename");
-                }}
-                onSubmitRename={(target, name) => void submitRename(target, name)}
-                onOpenSynonyms={(target) => {
-                  synonymsOrderRef.current = visibleRows;
-                  setSynonymsTagId(target.id);
-                }}
-                onOpenMerge={(target) => setMergingTag(target)}
-                onDelete={(target) => {
-                  setDeleteError(null);
-                  setDeletingTag(target);
-                }}
-                confirming={confirming.has(tag.id)}
-                onConfirm={(target) => void submitConfirm(target)}
-                onReject={(target) => {
-                  setRejectError(null);
-                  setRejectingTag(target);
-                }}
-                onDraftChange={() => setRenameError(null)}
-              />
-            ))}
+            {visibleRows.length > 0 && (
+              // 行は文書の中の位置へ置き（`translateY`）、高さを持つ包みが全件の
+              // 高さを保つ。行の間の線は `divide-y` と同じ色・太さを各行に付ける
+              // （全件の最後の行には付けない）。
+              <div
+                ref={listRef}
+                className="relative"
+                style={{ height: virtualizer.getTotalSize() }}
+                onFocus={handleListFocus}
+                onBlur={handleListBlur}
+                onKeyDown={handleListKeyDown}
+              >
+                {virtualizer.getVirtualItems().map((item) => {
+                  const tag = visibleRows[item.index]!;
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={item.index}
+                      ref={virtualizer.measureElement}
+                      className={cn(
+                        "absolute inset-x-0 top-0",
+                        item.index < visibleRows.length - 1 &&
+                          "*:border-b *:border-border",
+                      )}
+                      style={{
+                        transform: `translateY(${String(item.start - virtualizer.options.scrollMargin)}px)`,
+                      }}
+                    >
+                      <TagRow
+                        tag={tag}
+                        renaming={renamingId === tag.id}
+                        pending={renamingId === tag.id && renamePending}
+                        blockStart={
+                          createPending || (renamePending && renamingId !== tag.id)
+                        }
+                        error={renamingId === tag.id ? renameError : null}
+                        registerRefs={registerRefs}
+                        confirming={confirming.has(tag.id)}
+                        {...rowHandlers}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </div>

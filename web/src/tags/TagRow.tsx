@@ -8,7 +8,7 @@ import {
   Tags as SynonymsIcon,
   Trash2,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useRef } from "react";
+import { memo, useEffect, useEffectEvent, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
@@ -41,8 +41,14 @@ export interface TagRowRefs {
  * 先頭に「確定する」を置き、メニューの「削除…」を「却下する…」に置き換える
  * （specs/031-tentative-tags/ui-design.md「Row」）。行の高さ・本数の列・改名の
  * 入力は確定した行と同じ。
+ *
+ * 一覧は見えている行だけを描き、スクロールや検索のたびに行を描き直すので、
+ * `React.memo` で包む（specs/036-tag-admin-scale/research.md R-2）。呼び出し元は
+ * 行の props（関数を含む）を安定させる。
  */
-export default function TagRow({
+export default memo(TagRow);
+
+function TagRow({
   tag,
   renaming,
   pending,
@@ -68,7 +74,7 @@ export default function TagRow({
   error: TagFieldError | null;
   registerRefs: (id: number, refs: Partial<TagRowRefs>) => void;
   onStartRename: (tag: Tag) => void;
-  onCancelRename: () => void;
+  onCancelRename: (tag: Tag) => void;
   onSubmitRename: (tag: Tag, name: string) => void;
   onOpenSynonyms: (tag: Tag) => void;
   onOpenMerge: (tag: Tag) => void;
@@ -105,7 +111,7 @@ export default function TagRow({
     // のボタンは無い。ui-design.md「Create and rename」）。閉じたあとに届いた
     // 応答が、もう無いこの行や別の行の状態を書き換えることを防ぐ。
     if (pending) return;
-    onCancelRename();
+    onCancelRename(tag);
   }
 
   const reasonId = `tag-rename-reason-${String(tag.id)}`;
