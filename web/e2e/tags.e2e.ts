@@ -625,6 +625,35 @@ test.describe.serial("video tags", () => {
         .locator("xpath=ancestor::div[@data-tag-id][1]");
     }
 
+    /**
+     * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
+     * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
+     * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
+     */
+    async function revealTagRow(page: Page, name: string) {
+      const row = tagRowByName(page, name);
+      await expect(
+        page.getByRole("link", { name: /^Open the library filtered by / }).first(),
+      ).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      for (let step = 0; step < 200 && (await row.count()) === 0; step += 1) {
+        const moved = await page.evaluate(() => {
+          const before = window.scrollY;
+          window.scrollBy(0, 400);
+          return window.scrollY !== before;
+        });
+        if (!moved) break;
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            }),
+        );
+      }
+      await row.scrollIntoViewIfNeeded();
+      return row;
+    }
+
     test("9: 新しいタグを作ると本数0で一覧に並び、再生画面の候補にも出る", async ({
       page,
     }) => {
@@ -657,6 +686,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理改名前");
       await tagRowByName(page, "e2e管理改名前")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -681,6 +711,7 @@ test.describe.serial("video tags", () => {
       // 既存のタグ名と重なる改名は拒否され、理由が画面に出る。
       await createTag(request, "e2e管理既存名");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理改名後");
       await tagRowByName(page, "e2e管理改名後")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -706,6 +737,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理削除対象");
       const row = tagRowByName(page, "e2e管理削除対象");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
@@ -738,6 +770,7 @@ test.describe.serial("video tags", () => {
       expect(detached.ok()).toBe(true);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理残留");
       await expect(tagRowByName(page, "e2e管理残留")).toContainText("0 videos");
 
       await page.goto(`/videos/${String(a.id)}`);
@@ -757,6 +790,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理移動先");
       await tagRowByName(page, "e2e管理移動先").click();
       await expect(page).toHaveURL(
         new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(created.id)}$`),
@@ -808,6 +842,7 @@ test.describe.serial("video tags", () => {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
         for (const name of [shortName, longName]) {
+          await revealTagRow(page, name);
           const row = tagRowByName(page, name);
           const link = row.getByRole("link", {
             name: `Open the library filtered by ${name}`,
@@ -830,6 +865,7 @@ test.describe.serial("video tags", () => {
           expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
         }
         // 長い名前は省略される。
+        await revealTagRow(page, longName);
         const longLink = tagRowByName(page, longName).getByRole("link", {
           name: `Open the library filtered by ${longName}`,
           exact: true,
@@ -847,6 +883,7 @@ test.describe.serial("video tags", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
 
       // 短い名前の行で、名前と目印より右の空白を押す。
+      await revealTagRow(page, shortName);
       const row = tagRowByName(page, shortName);
       const link = row.getByRole("link", {
         name: `Open the library filtered by ${shortName}`,
@@ -886,7 +923,9 @@ test.describe.serial("video tags", () => {
       await expect(tagRowByName(page, "e2eXyz9Drama管理")).toHaveCount(0);
 
       await search.fill("");
+      await revealTagRow(page, "e2eXyz9Anime管理");
       await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
+      await revealTagRow(page, "e2eXyz9Drama管理");
       await expect(tagRowByName(page, "e2eXyz9Drama管理")).toBeVisible();
     });
 
@@ -912,6 +951,7 @@ test.describe.serial("video tags", () => {
       await page.getByRole("button", { name: "Show all tags" }).click();
       await expect(search).toBeFocused();
       await expect(search).toHaveValue("");
+      await revealTagRow(page, "e2e管理キーボード対象");
       await expect(tagRowByName(page, "e2e管理キーボード対象")).toBeVisible();
     });
 
@@ -950,9 +990,11 @@ test.describe.serial("video tags", () => {
       for (const width of [360, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
+        await revealTagRow(page, "e2e画像Anime");
         await expect(tagRowByName(page, "e2e画像Anime")).toBeVisible();
         await page.screenshot({ path: path.join(dir, `tags-list-${String(width)}.png`) });
 
+        await revealTagRow(page, "e2e画像旅行");
         await tagRowByName(page, "e2e画像旅行")
           .getByRole("button", { name: "More actions" })
           .click();
@@ -965,6 +1007,7 @@ test.describe.serial("video tags", () => {
         });
         await page.keyboard.press("Escape");
 
+        await revealTagRow(page, "e2e画像Anime");
         await tagRowByName(page, "e2e画像Anime")
           .getByRole("button", { name: "Synonyms" })
           .click();
@@ -983,6 +1026,7 @@ test.describe.serial("video tags", () => {
     test("削除確認の窓でEscを押すと何も変わらない", async ({ page, request }) => {
       await createTag(request, "e2e管理Esc確認");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理Esc確認");
       const row = tagRowByName(page, "e2e管理Esc確認");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
@@ -1001,6 +1045,7 @@ test.describe.serial("video tags", () => {
     }) => {
       const created = await createTag(request, "e2e管理消滅");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理消滅");
       await tagRowByName(page, "e2e管理消滅")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -1027,6 +1072,7 @@ test.describe.serial("video tags", () => {
     }) => {
       await createTag(request, "e2e管理統合メニュー");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合メニュー");
       const row = tagRowByName(page, "e2e管理統合メニュー");
 
       // 行に直接出るのは「改名」と「シノニム」だけで、統合は行に出ない。
@@ -1054,6 +1100,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, y.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合元X");
       const row = tagRowByName(page, "e2e管理統合元X");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1104,6 +1151,7 @@ test.describe.serial("video tags", () => {
       await createTag(request, "e2e管理統合候補元");
       await createTag(request, "e2e管理統合候補先");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合候補元");
       const row = tagRowByName(page, "e2e管理統合候補元");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1136,6 +1184,7 @@ test.describe.serial("video tags", () => {
       }
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2eB3統合元");
       const row = tagRowByName(page, "e2eB3統合元");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1172,6 +1221,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, lower.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2eXyz17Anime");
       await tagRowByName(page, "e2eXyz17Anime")
         .getByRole("button", { name: "Synonyms" })
         .click();
@@ -1193,7 +1243,9 @@ test.describe.serial("video tags", () => {
       await expect(dialog.getByText(/is a tag on/)).toHaveCount(0);
       await expect(input).toHaveValue("e2eXyz17anime");
       await dialog.getByRole("button", { name: "Close" }).click();
+      await revealTagRow(page, "e2eXyz17anime");
       await expect(tagRowByName(page, "e2eXyz17anime")).toBeVisible();
+      await revealTagRow(page, "e2eXyz17Anime");
 
       // もう一度、今度は承諾する。
       await tagRowByName(page, "e2eXyz17Anime")
@@ -1209,6 +1261,7 @@ test.describe.serial("video tags", () => {
       await expect(dialog2.getByText("e2eXyz17anime", { exact: true })).toBeVisible();
       await dialog2.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toHaveCount(0);
+      await revealTagRow(page, "e2eXyz17Anime");
       await expect(tagRowByName(page, "e2eXyz17Anime")).toContainText(
         "Synonyms: e2eXyz17anime",
       );
@@ -1234,6 +1287,7 @@ test.describe.serial("video tags", () => {
       await createTag(request, "e2e管理衝突Drama");
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理衝突Drama");
       await tagRowByName(page, "e2e管理衝突Drama")
         .getByRole("button", { name: "Synonyms" })
         .click();
@@ -1254,6 +1308,7 @@ test.describe.serial("video tags", () => {
       await addSynonym(request, anime.id, "e2e管理解除アニメ");
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理解除Anime");
       await tagRowByName(page, "e2e管理解除Anime")
         .getByRole("button", { name: "Synonyms" })
         .click();
