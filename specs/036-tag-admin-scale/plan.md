@@ -6,34 +6,58 @@
 
 ## Summary
 
-タグ管理画面（`/tags`）を、タグが数千個あっても開いてすぐ一覧が出て、検索・スクロール・行の操作で
-固まらないようにし、並び順（名前・本数・作った日）と 0 本のタグの絞り込み、複数の行を選んでの
+タグ管理画面（`/tags`）を、タグが数千〜数万個あっても開いてすぐ一覧が出て、検索・スクロール・行の
+操作で固まらないようにし、並び順（名前・本数・作った日）と 0 本のタグの絞り込み、複数の行を選んでの
 まとめての確定・却下・削除・統合を足す。却下した名前と、検索・絞り込み・並び順・まとめての操作には、
 一覧をスクロールしても手が届くようにする。
 
-- **描画**: サーバーの一覧はページングせず、画面が全件を持ったまま、見えている行だけを描く
-  （[research.md R-1](research.md#r-1-一覧は-get-apitags-の全件を今までどおり-1-回で受け画面の側で見えている行だけを描く)、
-  [R-2](research.md#r-2-行の仮想化は-tanstackreact-virtual-の-usewindowvirtualizer-で行う)）。
-- **検索**: `domain.FoldForMatch` を TypeScript に移植し、同じ入力の組で両方を検査する
-  （[R-3](research.md#r-3-一覧の検索は-domainfoldformatch-を-typescript-に移植して照合し同じ入力の組で両方を検査する)）。
-- **まとめての操作**: `POST /api/tags/batch`（確定・却下・削除）が 1 つの取引で受け、働かない・無いタグは
-  数えて飛ばす。統合は `POST /api/tags/{id}/merge` の本文を `sourceIds` にして 1 件も複数も同じ経路にする。
-  確認の「影響を受ける動画の本数」は `POST /api/tags/impact` が重複を除いて数える
-  （[R-4](research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かないないタグは数えて飛ばす)、
-  [R-5](research.md#r-5-統合は-post-apitagsidmerge-の本文を-sourceids1-件以上にし1-件の統合もこれを使う)、
-  [R-6](research.md#r-6-確認に出す影響を受ける動画の本数は-post-apitagsimpact-が重複を除いて数える)、
-  [contracts/screen-api.md](contracts/screen-api.md)）。
-- **並び順と絞り込み**: 画面の側で並べ替え・絞り込み、並び順だけを端末の設定に残す。「作った日」は今ある
-  `tags.created_at` を `Tag.createdAt` として載せる
-  （[R-7](research.md#r-7-並び順はこの画面の端末の設定として-localstorage-に持ち絞り込みは今までどおり画面の状態に留める)、
-  [R-8](research.md#r-8-作った日は-tagscreated_at-を-tagcreatedat-として載せ同じ秒のタグは名前の順にする)）。
-- **計測**: 規模のデータを作る `scripts/tagsbench` と Playwright の計測スクリプトで、受け入れ条件の数値を
-  本番ビルドで測る（[R-9](research.md#r-9-受け入れ条件の計測は作り置きの規模のデータを-scriptstagsbench-が作りplaywright-の計測スクリプトが本番ビルドに対して測る)、
-  [quickstart.md](quickstart.md)）。
-- `ui` ラベルがあるので、並び順・絞り込みの操作の形（ライブラリのツールバー「表示と並び替え」にそろえる）、
-  行の選択とまとめての操作の帯、確認の窓の文言、却下した名前への入口、スクロール中も届くツールバーの
-  形、行の操作の文字の出し方（タッチの端末）、統合の窓の入力の幅は、次の design 段階の `ui-design.md` が
-  親 Issue の「UI品質」を基準に決める。
+### この改訂で変わること
+
+親 Issue が改訂され（画面は表示に要る分だけを読み込み、スクロールで続きを読む。検索・並び順・
+絞り込みは読み込んでいないタグも含めた全部に効く。「すべて選ぶ」は読み込んだ行だけ。規模にタグ
+30,000 個が加わり、却下した名前も表示に要る分だけ読む）、改訂前の Plan の R-1「全件を 1 回で受け、
+画面で絞り、見えている行だけ描く」がこれと相反する。子 Issue #678〜#687 はすべて feature branch に
+merge 済みで、そのうち次はそのまま残る。
+
+- **残る**: `Tag.createdAt`（R-8）、`POST /api/tags/batch`・`POST /api/tags/impact`（R-4・R-6）、
+  `POST /api/tags/{id}/merge` の `sourceIds`（R-5）、行の仮想化（R-2）、並び順の端末への保存（R-7）、
+  行のチェックと選択バー、統合の窓の幅、上部バーの下に留まる帯と却下した名前の窓、計測の道具
+  （R-9）、`FoldForMatch` の移植と共有の検査（R-3。役割は変わる）。
+- **置き換える**: 一覧の読み方（全件 → サーバーのページ。[research.md R-1](research.md#r-1-一覧はサーバーのページで受け検索絞り込み並び順はサーバーが全部のタグに掛ける)）、
+  検索・絞り込み・並び替えの場所（画面 → サーバー）、件数の行の数（画面の数 → 応答の `total`・
+  `totalAll`）、「見えているものをすべて選ぶ」の対象（絞り込み後の全件 → 読み込んだ行）、却下した
+  名前の読み方（全件 → ページ。[R-13](research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)）、
+  統合の窓の統合先の候補の出どころ（画面の全件 → サーバーの検索。[R-14](research.md#r-14-統合の窓の統合先の候補は-get-apitagsqlimit-で引く)）。
+- **足す**: 名前の自然順の鍵 `sort_key` と移行（[R-10](research.md#r-10-名前の自然順の鍵-sort_key-を-tag_names-と-rejected_tag_names-に持ち起動時の鍵の埋め直しで作る)）、
+  続きの読み込みと重複・食い違い・失敗の扱い（[R-11](research.md#r-11-続きは画面の末尾に近づいたら-100-件ずつ読みid-で重複を捨て件数が食い違えば知らせて取り直させる)）、
+  操作のあとの反映を読み込んだ行の中で行う規則と `NaturalSortKey` の移植（[R-12](research.md#r-12-操作のあとの反映は読み込んだ行の中で行い並びの位置は-naturalsortkey-の移植で決める)）、
+  計測の規模 30,000 と場面（R-9）。
+
+`## Implementation Work` は merge 済みの単位を再掲せず、今の feature branch の上に要る差分だけを
+単位にする（`plan-to-issues` は既にある子 Issue を飛ばす）。改訂前の単位の記録は子 Issue #678〜#687
+と git の履歴にある。
+
+- **一覧**: `GET /api/tags` に `q`・`tentative`・`unused`・`sort`・`cursor`・`limit` を足し、画面は
+  100 件ずつ受けてスクロールで続きを読む。`limit` を省いた全件は候補・絞り込みの確かめ・外部連携 API の
+  ために残す（R-1、[contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-のパラメータ)）。
+  名前の順の keyset には `tag_names.sort_key`（`NaturalSortKey`）を足し、起動時の鍵の埋め直しで
+  埋める（R-10、[data-model.md §0](data-model.md#0-マイグレーション)）。
+- **描画**: 読み込んだ行は末尾まで読めば総数まで増えるので、見えている行だけを描く仮想化は残す
+  （[R-2](research.md#r-2-行の仮想化は-tanstackreact-virtual-の-usewindowvirtualizer-で行う)）。
+- **検索**: サーバーが `search_key`（`FoldForMatch`）で照らす。画面の移植は、操作したあとの 1 行が今の
+  条件にまだ合うかをその場で決めるために使う
+  （[R-3](research.md#r-3-照合形-foldformatch-の-typescript-移植は画面が読み込んだ行をその場で判定するために使う)）。
+- **操作のあと**: 一覧を取り直さず読み込んだ行の中で書き換え、位置は `NaturalSortKey` の移植で決める。
+  共有の保持の取り直しは購読者がいるときだけ（R-12）。
+- **まとめての操作**: merge 済みのまま（R-4〜R-6）。対象は読み込んだ行で、上限 20,000 件を超えて
+  読んだ一覧では disabled。
+- **却下した名前**: `GET /api/tags/rejected-names` をページにし、窓の中で続きを読む（R-13、
+  [contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-のパラメータ)）。
+- **計測**: `scripts/tagsbench` に規模 30,000（動画 30,000 本）と、開いたときの転送量・続きを読み込み
+  ながらのスクロールの場面を足す（R-9、[quickstart.md](quickstart.md)）。
+- `ui` ラベルがあるので、続きの読み込み中・失敗・食い違いの行、件数の行の文言（読み込んだ行の
+  「すべて選ぶ」）、却下した名前の窓の続きの読み込み、統合の窓の候補の読み込み中の見え方は、
+  `design` 段階が `ui-design.md` を改訂して決める。今の `ui-design.md` は改訂前の Plan に基づく。
 
 ## Technical Context
 
@@ -44,61 +68,68 @@
 - タグの表・名前の規則・本数の数え方・検索欄での照合: [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、
   [specs/014-video-tags/contracts/tags-api.md](../014-video-tags/contracts/tags-api.md)、
   [internal/store/tags.go](../../internal/store/tags.go)・[tag_listing.go](../../internal/store/tag_listing.go)・
-  [tag_lookup.go](../../internal/store/tag_lookup.go)・[folder_tags.go](../../internal/store/folder_tags.go)（`taggedVideosSQL`）、
-  [internal/domain/tag.go](../../internal/domain/tag.go)、[internal/domain/search.go](../../internal/domain/search.go)（`FoldForMatch`）
+  [tag_lookup.go](../../internal/store/tag_lookup.go)・[tag_search_keys.go](../../internal/store/tag_search_keys.go)・
+  [folder_tags.go](../../internal/store/folder_tags.go)（`taggedVideosSQL`）、
+  [internal/domain/tag.go](../../internal/domain/tag.go)、[internal/domain/search.go](../../internal/domain/search.go)
+  （`FoldForMatch`・`NaturalSortKey`・`SearchKeyVersion`）
 - 仮のタグと却下した名前: [specs/031-tentative-tags/data-model.md](../031-tentative-tags/data-model.md)、
   [specs/031-tentative-tags/contracts/screen-api.md](../031-tentative-tags/contracts/screen-api.md)、
-  [specs/031-tentative-tags/research.md](../031-tentative-tags/research.md)、
   [internal/store/tentative_tags.go](../../internal/store/tentative_tags.go)
+- keyset のページとカーソル、題名の鍵 `title_key`: [specs/013-library-search/contracts/list-api.md](../013-library-search/contracts/list-api.md)、
+  [specs/013-library-search/data-model.md](../013-library-search/data-model.md)（§4・§5）、
+  [internal/store/listing.go](../../internal/store/listing.go)（`listOrder`・`encodeCursor`・`decodeCursor`）、
+  [internal/store/search_keys.go](../../internal/store/search_keys.go)（起動時の鍵の埋め直し）
 - 画面の API と変換: [api/openapi.yaml](../../api/openapi.yaml)、[internal/httpapi/tags.go](../../internal/httpapi/tags.go)、
   [internal/httpapi/router.go](../../internal/httpapi/router.go)（`Tags`）、
-  [internal/httpapi/video_tags.go](../../internal/httpapi/video_tags.go)（`json_each` に渡す id の集合の前例）
+  [internal/httpapi/external.go](../../internal/httpapi/external.go)（`listTags` の全件の呼び手）
 - 画面: [web/src/tags/](../../web/src/tags/)、[web/src/api/tags.ts](../../web/src/api/tags.ts)（共有の保持）、
-  [web/src/api/tagOrder.ts](../../web/src/api/tagOrder.ts)（`compareTagRefs`）、
-  [web/src/preferences/viewPreferences.ts](../../web/src/preferences/viewPreferences.ts)（端末の設定の形）、
-  [web/src/videoList/SortControls.tsx](../../web/src/videoList/SortControls.tsx)・[FilterMenu.tsx](../../web/src/videoList/FilterMenu.tsx)
-  （ライブラリの「表示と並び替え」）、[web/src/library/SelectionBar.tsx](../../web/src/library/SelectionBar.tsx)（一括操作の帯と上限の扱い）、
-  [web/src/ui/Combobox.tsx](../../web/src/ui/Combobox.tsx)（`frameClassName`）、[web/src/i18n/en.ts](../../web/src/i18n/en.ts)
+  [web/src/api/videosData.ts](../../web/src/api/videosData.ts)（`appendUnique`・`inconsistent`）、
+  [web/src/lib/foldForMatch.ts](../../web/src/lib/foldForMatch.ts)、
+  [web/src/preferences/tagListPreferences.ts](../../web/src/preferences/tagListPreferences.ts)、
+  [web/src/ui/Combobox.tsx](../../web/src/ui/Combobox.tsx)、[web/src/i18n/en.ts](../../web/src/i18n/en.ts)
 - 画面の見た目の規則と仮想スクロールの判断: [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)
-  （§3・§6）、[specs/014-video-tags/ui-design.md](../014-video-tags/ui-design.md)「Tag management page」、
-  [specs/031-tentative-tags/ui-design.md](../031-tentative-tags/ui-design.md)「Tag management page」
-- 計測の前例: [docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md)、[scripts/previewbench](../../scripts/previewbench/)
+  （§3・§6）、[ui-design.md](ui-design.md)（改訂前の Plan に基づく。`design` が改訂する）
+- 計測: [docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md)、
+  [scripts/tagsbench](../../scripts/tagsbench/)、[web/bench/](../../web/bench/)
 - 生成と検査の入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task generate`・`task test-e2e`）
 
 **Feature-specific context**:
 
-- 移行は無い。`tags.created_at` は既にあり、新しい表も列も要らない（[data-model.md](data-model.md)）。
-- npm の依存を 1 つ足す: `@tanstack/react-virtual`（R-2）。Go の依存は足さない。ドメインイベントと
-  `/api/events` の種類は足さない（タグの変更は副作用を持たない。今のまま）。
-- 性能の予算は親 Issue の受け入れ条件 1〜3（最初の行まで 1 秒、操作後の固まりが 0.2 秒以内、
-  スクロール中に 50ms を超えるフレームが続かない）で、規模はタグ 3,000 個・動画 30,000 本まで。
-  `task check` では確かめられないので、[quickstart.md](quickstart.md) の手順で測る。
-- 外部連携 API（`api/external-v1.yaml`）と MCP は変えない。`listTags` の応答に `createdAt` は載せない（R-8）。
-- `ui-design.md` は次の design 段階が作る。
+- 移行を 1 つ足す（`00030_tag_sort_keys.sql`。[data-model.md §0](data-model.md#0-マイグレーション)）。
+  派生の鍵の列だけで、表の意味は変えない。改訂前の「移行は無い」は変わる。
+- npm・Go の依存は足さない（`@tanstack/react-virtual` は merge 済み）。ドメインイベントと `/api/events` の
+  種類は足さない。
+- 性能の予算は親 Issue の受け入れ条件 1〜4（最初の行まで 1 秒、開いたときの受け取る数と転送量が規模で
+  変わらない、操作後の固まりが 0.2 秒以内、続きを読みながらのスクロールで 50ms を超えるフレームが
+  続かない）で、規模はタグ 30,000 個まで。`task check` では確かめられないので、[quickstart.md](quickstart.md)
+  の手順で測る。
+- 外部連携 API（`api/external-v1.yaml`）と MCP は変えない。`GET /api/v1/tags` は `TagListQuery{}`（全件）で
+  同じ結果を返す。
+- `GET /api/tags` の `limit` を省いた全件は、候補・絞り込みの確かめ（`web/src/library/`・`web/src/player/`）の
+  ために残す。それらを全件から外すのは親 Issue の「対象外」（#674・#675）。
 
 ## Constitution Check
 
-- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。`internal/domain` は値と純関数
-  `TagBatchApplies`。`internal/store` は `TagStore` の 3 操作と `created_at` の読み。`internal/httpapi` は経路の
-  追加と変換。`internal/app`・`cmd/mdm` は触らない。`scripts/tagsbench` は `scripts/previewbench` と同じく
-  `internal/` の公開の操作だけを呼ぶ。
-- **役割の型は他の役割の公開メソッドを呼ばない、SQL は `internal/store` の中**: 合格。新しい操作はすべて
-  `TagStore` で、`taggedVideosSQL`・`mergeTagInto`・`json_each` の前例を使う。計測の道具は役割の型の
-  公開の操作で行を書き、SQL を持たない（R-9）。
-- **API の正本と生成物**（AGENTS.md）: 合格。`api/openapi.yaml` を直して `task generate`。新しい経路は
-  所有者だけの既定の分類に入り、`openapi_routes_test.go` が `security` と突き合わせる。`/api/tags/batch`・
-  `/api/tags/impact` が `{id}` に取られないことの検査を足す。
-- **仮想スクロールを使わない判断**（library-ui.md §3）: 判断の前提（折り返す格子、60 件ずつ読む）が
-  この一覧には当たらず、同じ節が求める計測が親 Issue にある。§3 をタグ管理画面の一覧について書き直す
-  （R-2）。格子の一覧は変えない。
-- **依存の追加**: `@tanstack/react-virtual` を足す。実行時の依存を持たず、Renovate の運用に乗る。
-  自前の窓切りを採らない理由は R-2。
-- **サーバーの出力は英語、画面の文言はカタログ**（`.golangci.yml` の gosmopolitan、i18n.md）: 合格。
-  新しい文言はすべて `web/src/i18n/en.ts`。
-- **ゲストは所有者のデータを見ない**: 合格。`/tags` は所有者だけの画面で、新しい経路も所有者だけ。
+- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。`internal/domain` は値
+  （`TagSort`・`TagListQuery`・`TagPage`・`RejectedTagNamePage`）と純関数（`NaturalSortKey` は既存）。
+  `internal/store` は `TagStore` の `ListTags`・`ListRejectedTagNames` の置き換えと `sort_key` の書き。
+  `internal/httpapi` はパラメータの解釈と変換。`internal/app`・`cmd/mdm` は触らない。
+- **役割の型は他の役割の公開メソッドを呼ばない、SQL は `internal/store` の中**: 合格。鍵の埋め直しは
+  `TagStore.RefreshSearchKeys` の中で、起動の呼び手（`cmd/mdm`）は変わらない。カーソルの包み方は
+  `listing.go` のものを共有する。
+- **API の正本と生成物**（AGENTS.md）: 合格。`api/openapi.yaml` を直して `task generate`。`TagList` と
+  `RejectedTagNameList` に `required` の項目を足すのは画面の契約で、呼び手は `web/src/api/tags.ts` だけ。
+- **移行の規則**（`task migrations-check`、[014 の data-model.md §1](../014-video-tags/data-model.md#1-マイグレーション) の
+  書き方）: 合格。`00030` は列の追加と `search_version` の戻しだけで、Down は列を落とす。鍵は作り直せる
+  派生の値で、`SearchKeyVersion` の仕組みに乗る（[013 の data-model.md §5](../013-library-search/data-model.md#5-鍵を作る時点と-search_version)）。
+- **仮想スクロールの判断**（library-ui.md §3）: 合格。ページで読んでも読み込んだ行は総数まで増えるので
+  判断は変わらない（R-2）。§3 の「全件を 1 回で受けて持っている」の記述を直す。
+- **サーバーの出力は英語、画面の文言はカタログ**（gosmopolitan、i18n.md）: 合格。新しい文言はすべて
+  `web/src/i18n/en.ts`。
+- **ゲストは所有者のデータを見ない**: 合格。`/tags` と新しいパラメータは所有者だけの経路の中。
 - **設計文書は今どうなっているかを書く**（docs/design-docs/index.md）: 合格。各単位が ARCHITECTURE.md
   （`TagStore` の段落、`web/src/tags/` の段落）、`docs/design-docs/library-ui.md` §3、
-  `docs/how-to/README.md` の自分の部分を直す。
+  `docs/how-to/tags-admin-benchmark.md` の自分の部分を直す。
 
 Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
 
@@ -110,236 +141,229 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/036-tag-admin-scale/
 ├── plan.md               # This file
 │                         # No spec.md — the parent Issue is the specification
-├── research.md           # R-1〜R-9
-├── data-model.md         # domain の値、TagStore の操作、画面の側の状態の規則（移行なし）
-├── quickstart.md         # 規模のデータで受け入れ条件 1〜3 を測る手順と期待
+├── research.md           # R-1〜R-14（R-1 は改訂で置き換え、R-10〜R-14 は改訂で足した）
+├── data-model.md         # 移行 00030、domain の値、TagStore の操作、画面の側の状態の規則
+├── quickstart.md         # 規模のデータで受け入れ条件 1〜4 を測る手順と期待
+├── ui-design.md          # design 段階の成果物。改訂前の Plan に基づき、design が改訂する
 └── contracts/
-    └── screen-api.md     # Tag.createdAt、POST /api/tags/batch、merge の変更、POST /api/tags/impact
+    └── screen-api.md     # Tag.createdAt、GET /api/tags のパラメータ、POST /api/tags/batch、merge の変更、
+                          # POST /api/tags/impact、GET /api/tags/rejected-names のパラメータ
 ```
-
-`ui-design.md` は次の design 段階が作る（`ui` ラベル）。
 
 ### Source Code
 
-**Affected boundaries**:
+**Affected boundaries**（改訂の差分。merge 済みの境界は子 Issue #678〜#687 のとおり）:
 
-- `internal/domain`（`Tag.CreatedAt`、`TagBatchAction`・`TagBatchOutcome`・`TagMergeOutcome`・`TagImpactAction`・
-  `TagImpact`、`TagBatchApplies`・`TagImpactApplies`、`MaxTagBatch`）
-- `internal/store`（`TagStore.BatchTags`・`MergeTags`・`TagImpact`、`listCanonicalTags`・`tagByID` の
-  `created_at`、`CreateTag` の戻り値、`mergeTagInto` から `mergeTagsInto` への置き換え、`MergeTag` の削除、
-  不変条件の試験）
-- `internal/httpapi`（`tags.go` の 2 経路と `MergeTag` の本文・応答、`toAPITag` の `createdAt`、`router.go` の
-  `Tags`、`openapi_routes_test.go`）、`api/openapi.yaml` と生成物
-- `web/src/api`（`tags.ts` の `batchTags`・`mergeTag`・`tagImpact`）、`web/src/lib`（`foldForMatch.ts`）、
-  `web/src/preferences`（`tagListPreferences.ts`）、`web/src/tags`（一覧の仮想化、並び順・絞り込み、選択と
-  まとめての操作、統合の窓、ツールバーと却下した名前の置き場所）、`web/src/i18n`、`web/package.json`
+- `internal/domain`（`TagSort`・`TagListQuery`・`TagPage`・`RejectedTagNamePage`・`MaxTagPageLimit`、
+  `NaturalSortKey` の共有の検査の組）
+- `internal/store`（`00030` の移行、`tag_names`・`rejected_tag_names` の `sort_key` の書き、
+  `RefreshSearchKeys` の拡張、`ListTags(query)` と `ListRejectedTagNames(cursor, limit)` への置き換え、
+  カーソルの共有、不変条件の試験）
+- `internal/httpapi`（`tags.go` の `ListTags`・`ListRejectedTagNames` のパラメータ、`external.go` の呼び方、
+  `router.go` の `Tags`）、`api/openapi.yaml` と生成物
+- `web/src/api`（`tags.ts` の `listTagPage`・`listRejectedTagNamePage`・`tagPageLimit`、`afterTagChanged`）、
+  `web/src/lib`（`naturalSortKey.ts`）、`web/src/tags`（`TagsPage` のページ読みと反映、`RejectedNames` の
+  続き、`MergeTagDialog` の候補）、`web/src/i18n`
 - `scripts/tagsbench`、`web/bench/`、`docs/how-to/tags-admin-benchmark.md`
-- `ARCHITECTURE.md`、`docs/design-docs/library-ui.md`、`docs/how-to/README.md`
+- `ARCHITECTURE.md`、`docs/design-docs/library-ui.md`
 
 **New paths**:
 
-- `internal/domain/testdata/fold_for_match.json`（Go と Vitest が共に読む照合形の組。R-3）
-- `web/src/lib/foldForMatch.ts`、`web/src/preferences/tagListPreferences.ts`、
-  `web/src/tags/tagListOrder.ts`（並び順の比較。名前は `ui-design.md` に従って変えてよい）
-- `scripts/tagsbench/main.go`、`web/bench/tags-admin.bench.ts`、`web/bench/playwright.config.ts`、
-  `docs/how-to/tags-admin-benchmark.md`
+- `internal/store/migrations/00030_tag_sort_keys.sql`
+- `internal/domain/testdata/natural_sort_key.json`（Go と Vitest が共に読む鍵の組。R-12）
+- `web/src/lib/naturalSortKey.ts`
 
-**Structure decision**: まとめての操作は `TagStore` に置き、新しい役割の型は作らない。確定・却下・削除・統合は
-今ある 1 件の取引の繰り返しで、どれも `tags`・`tag_names`・`video_tags`・`rejected_tag_names` の中で
-完結する（R-4・R-5）。画面は `TagsPage` が全件・絞り込み・並び替え・選択を持ち、描く行の決定だけを仮想化に
-任せる（[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。照合形の移植は `web/src/lib/`（locale に
-依存しない整形の置き場）に置き、`web/src/api/` には置かない（サーバーを呼ばない純関数のため）。計測の
-道具は製品のコードに入れず、`scripts/` と `web/bench/` に置く（R-9）。
+**Structure decision**: 一覧のページは `TagStore.ListTags` に置き、新しい役割の型は作らない。本数の
+集計・絞り込み・並び替え・カーソルは 1 つの問い合わせで済み、`tags`・`tag_names`・`video_tags`・
+`video_folder_names` の中で完結する（R-1・R-10）。カーソルの包み方と keyset の条件の組み立ては
+`listing.go` のものを共有し、タグの側で書き直さない。画面は `TagsPage` が条件・ページ・選択を持ち、
+描く行の決定だけを仮想化に任せる（[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。鍵の移植は
+`foldForMatch.ts` と同じ `web/src/lib/` に置く（サーバーを呼ばない純関数）。計測の道具は製品のコードに
+入れず、`scripts/` と `web/bench/` に置く（R-9）。
 
 ## Implementation Work
 
-### `GET /api/tags` の応答に `createdAt` を載せる
+merge 済みの単位（#678〜#687）は再掲しない。次の単位は、今の feature branch の上に要る差分である。
 
-**Scope**: `domain.Tag.CreatedAt`、`listCanonicalTags`・`tagByID` の `created_at` の読み、`CreateTag` の戻り値を
-`tagByID` で読み直す形への変更（[data-model.md §2](data-model.md#2-保存層の操作)「既存の操作の変更」）、`api/openapi.yaml` の
-`Tag.createdAt` と生成物、`toAPITag`（[contracts/screen-api.md §0](contracts/screen-api.md#0-スキーマの差分)、
-[data-model.md §1](data-model.md#1-domain-に足す値)）。外部連携 API の `listTags` は変えない（R-8）。
+### 名前の自然順の鍵 `sort_key` を `tag_names` と `rejected_tag_names` に持たせ、起動時に埋める
 
-**Dependencies**: None
-
-**Acceptance**: `task check` が通る。store の試験で、`CreateTag` の戻り値の `CreatedAt` がゼロでなく作成時刻（秒）と
-一致し、続く `ListTags` の同じタグの `CreatedAt` と等しい; `ListTags` の全件と `RenameTag`・`ConfirmTag`・`AddSynonym`・
-`MergeTags` の戻り値に載る。httpapi の試験で、
-`GET /api/tags` の各件と `POST /api/tags` の応答に `createdAt`（RFC 3339）が入り、`POST /api/tags` の応答の値と
-続く `GET /api/tags` の同じタグの値が等しく、
-`GET /api/v1/tags` の応答には入らない。生成物の検査が通る。
-
-### まとめての確定・却下・削除の `POST /api/tags/batch` と確認用の `POST /api/tags/impact` を足す
-
-**Scope**: `domain` の `TagBatchAction`・`TagBatchOutcome`・`TagImpactAction`・`TagImpact`・`TagBatchApplies`・
-`TagImpactApplies`・`MaxTagBatch`、
-`TagStore.BatchTags`・`TagImpact`（[data-model.md §1・§2](data-model.md#1-domain-に足す値)）、
-`api/openapi.yaml` の 2 経路・4 スキーマ・`too_many_tags` と生成物、`internal/httpapi/tags.go` の経路、
-`router.go` の `Tags`、`openapi_routes_test.go`（[contracts/screen-api.md §1・§3](contracts/screen-api.md#1-post-apitagsbatch)）、
-`web/src/api/tags.ts` の `batchTags`・`tagImpact`・`maxTagBatch`、`errorText` の `too_many_tags`
-（[§4](contracts/screen-api.md#4-websrcapi-の関数)）。ARCHITECTURE.md の `TagStore` の段落。
+**Scope**: `internal/store/migrations/00030_tag_sort_keys.sql`（[data-model.md §0](data-model.md#0-マイグレーション)）、
+名前の行を書く操作（`insertTagName`、改名、`RejectTag`・`BatchTags(reject)` の `rejected_tag_names` への
+挿入）で `sort_key = domain.NaturalSortKey(name)` を同じ文で書く、`TagStore.RefreshSearchKeys` が
+`search_key` と一緒に `sort_key` を埋め、`rejected_tag_names` も埋める（[data-model.md §2](data-model.md#2-保存層の操作)、
+[research.md R-10](research.md#r-10-名前の自然順の鍵-sort_key-を-tag_names-と-rejected_tag_names-に持ち起動時の鍵の埋め直しで作る)）、
+`invariants_test.go` の不変条件の追加。ARCHITECTURE.md の `TagStore` の段落（鍵の埋め直しが 2 つの鍵を
+扱うこと）。一覧の並びはまだ変えない。
 
 **Dependencies**: None
 
-**Acceptance**: `task check` が通る。store の試験で、仮 3 個・確定 2 個・無い id 1 個を `confirm` すると
-`AppliedIDs` が仮の 3 個、`NotApplicableIDs` が確定の 2 個、`NotFoundIDs` が 1 個で、3 個の `tentative` が
-偽になる; `reject` で仮のタグが消えて元の名前が `rejected_tag_names` に入り、確定したタグは残る; `delete`
-で確定したタグが消え、仮のタグは残る; どの操作のあとも 031 の不変条件が通る。`TagImpact` で、同じ動画に
-付いた 2 つのタグを渡すと `VideoCount` が 1（重複なし）、フォルダ名からだけ付いている動画も数え、
-ライブラリに無い動画は数えない（受け入れ条件 11）; 100 本に付いた仮のタグと、別の 1 本に付いた確定した
-タグを渡すと、`delete` では `TagCount` 1・`VideoCount` 1、`reject` では `TagCount` 1・`VideoCount` 100、
-`merge` では `TagCount` 2・`VideoCount` 101。httpapi の試験で、`POST /api/tags/batch` が 3 つの配列を
-`ids` の順で返し、`ids` が空と 20,001 件は `400`（後者は `too_many_tags` と `limit`）、`action` が 3 値以外は
-`400`; `POST /api/tags/impact` が `action` ごとに働くタグだけの `tagCount`・`videoCount` を返し、`action` が
-3 値以外は `400`; 2 経路が `{id}` に取られない; ゲストは `401`。
-生成物の検査が通る。
+**Acceptance**: `task check`（`migrations-check` を含む）が通る。store の試験で、移行後の既存の行（`sort_key`
+が空、`search_version` が 0）が `RefreshSearchKeys` で `NaturalSortKey(name)` になり、戻り値が
+`tag_names` と `rejected_tag_names` の書き直した行の合計になる; `CreateTag`・`AddSynonym`・`RenameTag`・
+`ApplyVideoTags`（仮のタグの作成）・`RejectTag`・`BatchTags(reject)` のあと、書いた行の `sort_key` が
+`NaturalSortKey(name)` と一致し、`search_version` が現在の版である; 統合で `tag_id` を付け替えた行の
+`sort_key` は変わらない; 不変条件の検査が、既存の試験のあとと、まとめての操作のあとに通る。
 
-### `POST /api/tags/{id}/merge` を複数の統合元を受ける形にする
+### `GET /api/tags` に検索・絞り込み・並び順・ページを足す
 
-**Scope**: `domain.TagMergeOutcome`、`TagStore.MergeTags` と `MergeTag` の削除、`mergeTagInto` を統合元の集合を
-1 回の文で扱う `mergeTagsInto` に置き換えることと `AddSynonym` の呼び出しの変更（[data-model.md §2](data-model.md#2-保存層の操作)、
-[research.md R-5](research.md#r-5-統合は-post-apitagsidmerge-の本文を-sourceids1-件以上にし1-件の統合もこれを使う)）、
-`api/openapi.yaml` の `MergeTagRequest.sourceIds`・`TagMergeResponse` と生成物、`internal/httpapi/tags.go`、
-`router.go` の `Tags`（[contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-の変更)）、
-`web/src/api/tags.ts` の `mergeTag(id, sourceIds)` と、1 件の統合の呼び手 `MergeTagDialog`・`TagsPage.performMerge`
-の応答の読み替え（`tag` を使い、`notFoundIds` が空でなければ今の `tag_not_found` と同じ扱い）、
-`web/e2e/tags.e2e.ts` が統合の API を直接呼んでいればその本文。
+**Scope**: `domain` の `TagSort`・`TagListQuery`・`TagPage`・`MaxTagPageLimit`（[data-model.md §1](data-model.md#1-domain-に足す値)）、
+`TagStore.ListTags(ctx, query)` への置き換え（本数の集計の CTE、`search_key` への `instr`、`tentative`・
+0 本の絞り込み、5 つの並び順と keyset の条件、`Limit + 1` 件の読みと `NextCursor`、`Total`・`TotalAll`、
+`Limit` 0 の全件。[data-model.md §2](data-model.md#2-保存層の操作)、
+[research.md R-1](research.md#r-1-一覧はサーバーのページで受け検索絞り込み並び順はサーバーが全部のタグに掛ける)）、
+`listing.go` のカーソルの包みの共有、`api/openapi.yaml` の `listTags` のパラメータ・`TagSort`・`TagList` の
+`total`・`totalAll`・`nextCursor` と生成物、`internal/httpapi/tags.go` のパラメータの解釈と `400`、
+`external.go` の呼び方、`router.go` の `Tags`（[contracts/screen-api.md §0・§5](contracts/screen-api.md#5-get-apitags-のパラメータ)）、
+`web/src/api/tags.ts` の `listTagPage`・`tagPageLimit`・`TagSort` の型（`tagListOrder.ts` の `TagListSort` を
+生成物の `TagSort` に寄せる。[§4](contracts/screen-api.md#4-websrcapi-の関数)）。画面はまだ変えない。
+
+**Dependencies**: `名前の自然順の鍵 sort_key を tag_names と rejected_tag_names に持たせ、起動時に埋める`
+
+**Acceptance**: `task check` が通る。store の試験で、タグ 250 個（名前に `tag 2`・`tag 10`・全角・かなを
+含む）を `Limit` 100 で 3 ページ読むと、重複も抜けも無く全件が `sort_key, id` の順で並び、3 ページ目の
+`NextCursor` が空で、各ページの `Total`・`TotalAll` が 250; `Search` に `ＡＣＴＩＯＮ` を渡すと名前が
+`action` のタグとシノニムに `Action Movie` を持つタグが当たり `Total` がその数（受け入れ条件 9）;
+`UnusedOnly` で `Total` が 0 本のタグの数、`Items` の本数がすべて 0、`TentativeOnly`・`Search` と
+組み合わさる（受け入れ条件 8、要件 6）; `countDesc` で最多のタグが先頭・0 本が末尾、同数は名前の順
+（受け入れ条件 5）; `createdDesc` で新しく作ったタグが先頭（受け入れ条件 6）; 本数と作った日の並びで
+ページの境目の前後が同じ値のタグでも重複も抜けも無い; 別の並び順のカーソルは `ErrInvalidCursor`;
+`Limit` 0 で全件が返り `NextCursor` が空; `ListTags` の既存の試験（本数・シノニム・`CreatedAt`）が
+`TagListQuery{}` で通り続ける。httpapi の試験で、`GET /api/tags?limit=100&sort=countDesc` が `items` 100 件と
+`total`・`totalAll`・`nextCursor` を返し、`cursor` で続きが読め、`limit=0`・`limit=201`・`sort=foo`・壊れた
+`cursor`・101 文字の `q` は `400 invalid_request`、パラメータ無しは全件で `nextCursor` 無し、
+`GET /api/v1/tags` の応答は変わらない; ゲストは `401`。生成物の検査が通る。
+
+### `GET /api/tags/rejected-names` をページにし、件数を返す
+
+**Scope**: `domain.RejectedTagNamePage`、`TagStore.ListRejectedTagNames(ctx, cursor, limit)` への置き換え
+（`sort_key, name` の順、`Total`。[data-model.md §2](data-model.md#2-保存層の操作)）、`api/openapi.yaml` の
+`listRejectedTagNames` の `cursor`・`limit` と `RejectedTagNameList` の `total`・`nextCursor` と生成物、
+`internal/httpapi/tags.go`、`router.go` の `Tags`（[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-のパラメータ)、
+[research.md R-13](research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)）、
+`web/src/api/tags.ts` の `listRejectedTagNamePage`（今の `listRejectedTagNames` の呼び手 `TagsPage` は
+`items` だけを使う形で通し、窓の続きは別の単位）。
+
+**Dependencies**: `名前の自然順の鍵 sort_key を tag_names と rejected_tag_names に持たせ、起動時に埋める`
+
+**Acceptance**: `task check` が通る。store の試験で、却下した名前 250 個を `limit` 100 で 3 ページ読むと
+名前の自然順（`name 2` が `name 10` の前）で重複も抜けも無く、`Total` が 250、3 ページ目の `NextCursor` が
+空; × で外した（`ForgetRejectedTagName`）あとの `Total` が減る。httpapi の試験で、
+`GET /api/tags/rejected-names?limit=2` が `items` 2 件・`total`・`nextCursor` を返し、`cursor` で続きが
+読め、`limit=0`・壊れた `cursor` は `400`、パラメータ無しは 100 件まで; `DELETE` の既存の試験が通り
+続ける。Vitest で、今の `TagsPage.test.tsx` の却下した名前の試験が通り続ける。
+
+### `NaturalSortKey` を TypeScript に移植する
+
+**Scope**: `web/src/lib/naturalSortKey.ts`（`foldForMatch` の上に、ASCII の数字の連続を「先頭の 0 を除いた
+桁数を 10 進 4 桁で表した接頭辞 + 数字」に置き換える。`internal/domain/search.go` の `NaturalSortKey` と
+同じ手順）、`compareNaturalSortKeys(a, b)`（符号位置の順で比べる。UTF-16 のコード単位では比べない）、
+`internal/domain/testdata/natural_sort_key.json` と、それを読む Go の試験（`NaturalSortKey`）と Vitest の
+試験（[research.md R-12](research.md#r-12-操作のあとの反映は読み込んだ行の中で行い並びの位置は-naturalsortkey-の移植で決める)「移植の検査」。
+`fold_for_match.json` と同じ要領）。
 
 **Dependencies**: None
 
-**Acceptance**: `task check` が通る。store の試験で、統合元 3 個（うち 1 個は無い id）を統合すると、残り
-2 個の付与（重複は 1 本）・元の名前・シノニムが統合先に移り、2 個が消え、統合先が確定になり、
-`NotFoundIDs` が 1 個; 統合先が無ければ `ErrTagNotFound`; 統合元 20,000 個（`MaxTagBatch`）を 1 回で統合すると、
-すべての付与と名前が統合先に移って 031 の不変条件が通り、`mergeTagsInto` の文の数は統合元の数によらず、
-統合先の `tagByID` は 1 回だけ走る; `AddSynonym` の承諾した統合の既存の試験が通り続ける。httpapi の試験で、`{ sourceIds: [a, b] }` が
-`{ tag, notFoundIds }` を返し、`sourceIds` に `{id}` を含むと `400 merge_same_tag`、空は `400`、統合先が無いと
-`404 tag_not_found`、統合元が全部無いと `200` で `tag` は変わらない。Vitest で、行の「別のタグへ統合…」が
-`sourceIds: [source.id]` を送り、応答の `tag` で一覧が差し替わる（今の試験が通り続ける）。
+**Acceptance**: `task check` が通る。共有の組に、`tag 2` と `tag 10`（`2` → `00012`、`10` → `000210`）、
+`0`・`00`（→ `0000`）、数字と文字の混在、全角の数字（NFKC で半角になる）、かな、サロゲートペアを含む
+名前が入り、Go と Vitest の両方で同じ鍵になる。Vitest で、鍵の順が Go の `strings.Compare` の順
+（共有の組に並べた順）と一致し、`compareNaturalSortKeys` が U+FFFF より大きい符号位置を U+E000〜U+FFFF
+の後ろに置く（`<` では前に来る組を試験に入れる）。
 
-### タグ管理画面の検索を照合形（`FoldForMatch`）で照らす
+### タグ管理画面の一覧を、条件ごとにサーバーから読み、スクロールで続きを読む
 
-**Scope**: `web/src/lib/foldForMatch.ts`、`internal/domain/testdata/fold_for_match.json` と、それを読む Go の試験
-（`FoldForMatch`）と Vitest の試験（`foldForMatch`）、`TagsPage` の `matchesFilters` を照合形の部分一致に変え、
-タグごとの照合形をタグの配列から記憶する（[research.md R-3](research.md#r-3-一覧の検索は-domainfoldformatch-を-typescript-に移植して照合し同じ入力の組で両方を検査する)、
-[data-model.md §4](data-model.md#4-画面の側で持つ状態)「検索」）。候補（combobox）の照合は変えない。
+**Scope**: `TagsPage` を共有の保持（`getTags`・`subscribeTags`・`currentTags`）から外し、条件（検索語・
+「Tentative only」・「Unused only」・並び順）が変わるたびに `listTagPage` で先頭のページを読み直す
+（進行中の要求の打ち切り、世代の番号、選択を空にする、届くまで前の行を残す）、仮想化が描く最後の
+行が末尾に近づいたら `nextCursor` で続きを足す（`id` の重複を捨てる、同時に 1 つ、失敗の行と「Retry」、
+`totalAll` の食い違いの 1 行と「取り直す」）、件数の行を `total`・`totalAll` で出す、先頭のチェックを
+「読み込んだものをすべて選ぶ」にする、1 件とまとめての操作のあとの反映を読み込んだ行の中で行う
+（`naturalSortKey` と並び順の値で位置を決め、`foldForMatch`・`tentative`・`videoCount` で条件に合うかを
+決め、`total`・`totalAll` を局所で増減する）、改名中の行を条件の変更で消さない、`afterTagChanged` を
+購読者がいるときだけ取り直す形にする、`sortTags`（画面の並べ替え）と `matchesFilters` の全件への適用を
+外す（[data-model.md §4](data-model.md#4-画面の側で持つ状態)、
+[research.md R-1・R-3・R-11・R-12](research.md#r-11-続きは画面の末尾に近づいたら-100-件ずつ読みid-で重複を捨て件数が食い違えば知らせて取り直させる)）。
+英語のカタログの文言（続きの読み込み中・失敗・食い違い、読み込んだ行の「すべて選ぶ」。形は改訂した
+`ui-design.md` に従う）。ARCHITECTURE.md の `web/src/tags/` の段落、`docs/design-docs/library-ui.md` §3 の
+「全件を 1 回で受けて持っている」の記述。
 
-**Dependencies**: None
+**Dependencies**: `GET /api/tags に検索・絞り込み・並び順・ページを足す`、`NaturalSortKey を TypeScript に移植する`
 
-**Acceptance**: `task check` が通る。共有の組に、全角・半角（`ＡＣＴＩＯＮ` と `action`）、ひらがな・カタカナ
-（`あくしょん` と `アクション`）、NFD と NFC、大文字小文字、`İ`（→ `i`）、語末の Σ（`ΟΔΟΣ` → `οδοσ`）が入り、
-Go と Vitest の両方で同じ結果になる。Go の試験で、共有の小文字化の表が全符号位置の `unicode.ToLower` と
-一致し、Vitest の試験で、`lowerCodePoint` が表のすべての組で Go と同じ符号位置を返す（R-3「小文字化の全数の検査」）。
-Vitest で、`ＡＣＴＩＯＮ` の検索で `action` のタグが見つかり（受け入れ条件 8）、シノニムでも見つかり、
-一致しない語で「No tags match」が出る。
+**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、開くと
+`GET /api/tags` が `limit=100&sort=name` で 1 回だけ送られ、`getTags` の全件は送られない; 検索に
+`ＡＣＴＩＯＮ` を入れると `q=ＡＣＴＩＯＮ` で先頭から読み直され、応答の行だけが並ぶ（受け入れ条件 9）;
+「Unused only」で `unused=true` が送られ、件数の行が「〈total〉 of 〈totalAll〉」になる（受け入れ条件 8）;
+並び順を変えると `sort=countDesc` で読み直され、選択が空になる（Edge Case）; 描く範囲が末尾に近づくと
+`cursor` 付きの要求が 1 回送られ、応答の行が末尾に足され、重複する `id` は捨てられる; 続きの応答の
+`totalAll` が違えば「一覧が変わった」の行が出て続きが止まり、「取り直す」で先頭から読み直す; 続きの
+失敗で読み込んだ行が残り「Retry」で同じ `cursor` が送られる（Edge Case）; 続きを待つ間に検索を変えると
+古い応答は捨てられる（Edge Case）; 先頭のチェックが読み込んだ行だけを選び、`nextCursor` があっても
+それ以上は選ばない（要件 10）; 「Tentative only」で読み込んだ仮のタグをすべて選んで確定すると
+`POST /api/tags/batch` が 1 回送られ、応答のあと行から仮の目印が消え、一覧の取り直しは送られない
+（受け入れ条件 10）; 名前の順で作成したタグが鍵の位置に差し込まれ、`createdDesc` では先頭に出る
+（受け入れ条件 6）; 検索中に改名して一致しなくなった行が取り除かれ、`total` が減る; 改名中に並び順を
+変えても改名中の行が残り入力中の値を失わない（Edge Case）; 操作のあと `getTags` の購読者が無ければ
+全件の `GET /api/tags` は送られず、購読者がいれば送られる; 先頭のページの失敗で、一覧をまだ持って
+いなければ失敗の表示と「Retry」、持っていればその一覧が残る（Edge Case）; 今の `TagsPage.test.tsx` の
+行の操作・選択バー・統合・却下した名前の試験が通り続ける。`web/e2e/tags.e2e.ts` の管理画面の試験
+（検索 18、16・16b、9〜12、14、17 など）が通り続ける。`tagsbench` の 3 つの規模で、最初の行まで
+1 秒以内、開いたときの `items` が 100 件で応答の大きさが規模で変わらず、検索の 1 文字目・Esc・
+1 件の確定・改名の後の最長タスクが 0.2 秒以内（受け入れ条件 1〜3）。
 
-### 規模のデータを作って測る道具を足す
+### 却下した名前の窓を、開いたときに表示に要る分だけ読む
 
-**Scope**: `scripts/tagsbench`（規模のデータを `.local/tagsbench/<規模>/` に役割の型で書き、ビルド済みの
-バイナリをそのデータで起動して計測スクリプトを走らせる）、`web/bench/tags-admin.bench.ts` と
-`web/bench/playwright.config.ts`（[quickstart.md](quickstart.md) の場面を測り、表で出す。`task test-e2e` と CI
-には入れない）、`docs/how-to/tags-admin-benchmark.md` と `docs/how-to/README.md` の索引
-（[research.md R-9](research.md#r-9-受け入れ条件の計測は作り置きの規模のデータを-scriptstagsbench-が作りplaywright-の計測スクリプトが本番ビルドに対して測る)）。
-`tsconfig.e2e.json` と ESLint の対象に `web/bench/` を入れる。
+**Scope**: `TagsPage` の却下した名前の状態を先頭の 1 ページ（`items`・`total`・`nextCursor`）にし、入口の
+件数を `total` で出す、`RejectedNames` の窓で中身を末尾までスクロールしたら `listRejectedTagNamePage` で
+続きを足す（読み込み中・失敗・「Retry」の見え方は改訂した `ui-design.md`「Rejected names」に従う）、
+× で外した名前を局所で取り除き `total` を減らす、031 のきっかけ（却下・作成・改名・シノニムの追加、
+まとめての却下）での取り直しは先頭の 1 ページだけ
+（[data-model.md §4](data-model.md#4-画面の側で持つ状態)「却下した名前」、
+[research.md R-13](research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)）。
+英語のカタログの文言。
 
-**Dependencies**: None
+**Dependencies**: `GET /api/tags/rejected-names をページにし、件数を返す`、
+`タグ管理画面の一覧を、条件ごとにサーバーから読み、スクロールで続きを読む`
 
-**Acceptance**: `task check` と `task check-docs` が通る。`go run ./scripts/tagsbench -scale 1000` が
-タグ 1,000 個（約 90 個が 0 本、半数が仮）・動画 10,000 本のデータを作り、起動した本番ビルドの
-`GET /api/tags` が 1,000 件を返し、計測の表（quickstart.md の 7 場面）が出る。`-scale 3000` も同じ。
-変更前の `main` で測った値を PR の本文に表で残し、親 Issue の表と同じ傾向（1,000 個で最初の行まで
-数秒）が出ることを確かめる。
+**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、開くと
+`GET /api/tags/rejected-names` が `limit=100` で 1 回送られ、入口に `total`（応答の `items` より大きい数）が
+出る; 窓を開いて末尾までスクロールすると `cursor` 付きの要求が送られ名前が足される; × で外すと
+`DELETE` が送られ、その名前が消えて入口の件数が 1 減る; まとめての却下のあと先頭の 1 ページが取り直
+される; 続きの失敗で読み込んだ名前が残り「Retry」が出る。`tagsbench` の 1,000 個の規模で、`/tags` を
+開いた直後にスクロールせず却下した名前の窓を開ける（受け入れ条件 13）。
 
-### タグ管理画面の一覧を見えている行だけ描くようにする
+### 統合の窓の統合先の候補をサーバーの検索で引く
 
-**Scope**: `web/package.json` に `@tanstack/react-virtual`、`TagsPage` の行の描画を `useWindowVirtualizer` に
-載せ替え（`measureElement` で行の高さを測る。作成の行・改名中の行・シノニムの行を含む）、`TagRow` を
-`React.memo` にして行の props を安定させる、`focusRow`・`focusAfterRemoval` が描かれていない行へ移すときに
-先にその位置へスクロールする、1 件の確定・改名・削除・却下・統合のあとの反映を今のまま保つ
-（[research.md R-1・R-2](research.md#r-1-一覧は-get-apitags-の全件を今までどおり-1-回で受け画面の側で見えている行だけを描く)、
-[data-model.md §4](data-model.md#4-画面の側で持つ状態)「描く行」）。`docs/design-docs/library-ui.md` §3 と
-ARCHITECTURE.md の `web/src/tags/` の段落。
+**Scope**: `MergeTagDialog` の `tags` の prop を外し、入力が変わるたびに `listTagPage({ q, limit })` で候補を
+引く（統合元を除く、進行中の要求を打ち切る、届くまで前の候補を残す、読み込み中・失敗の見え方は改訂した
+`ui-design.md`「Merge dialog」に従う）、候補の並びはサーバーの名前の順、入力と完全に一致する名前・
+シノニムの扱い（`exactOption`）は応答の中から決める、`TagsPage` の呼び方
+（[research.md R-14](research.md#r-14-統合の窓の統合先の候補は-get-apitagsqlimit-で引く)、
+[data-model.md §4](data-model.md#4-画面の側で持つ状態)「統合の窓の候補」）。英語のカタログの文言。
+ARCHITECTURE.md の `web/src/tags/` の段落（統合先を「全部のタグから」選ぶ仕組み）。
 
-**Dependencies**: `規模のデータを作って測る道具を足す`
+**Dependencies**: `GET /api/tags に検索・絞り込み・並び順・ページを足す`
 
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る。見た目は変えない）。`task check` が通る。
-Vitest で、今の `TagsPage.test.tsx` が通り続ける（jsdom では表示域の高さが無いので、仮想化が全行を
-描く設定、または試験用の高さの指定で行う）。描かれていない行の確定・削除のあとフォーカスが次の行へ
-移る。`go run ./scripts/tagsbench` の 2 つの規模で、最初の行まで 1 秒以内、検索の 1 文字目・Esc・
-1 件の確定・改名の後の最長タスクが 0.2 秒以内、スクロール中に 50ms を超えるフレームが続かない
-（受け入れ条件 1〜3）。変更前後の表を PR の本文に残す。
+**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、窓を開くと
+`GET /api/tags?limit=8`（空の `q`）が送られ、統合元を除いた応答が候補に並ぶ; `ａｃｔ` と入れると
+`q=ａｃｔ` で送られ、読み込んでいないタグ `Action` が候補に出る（要件 9）; 入力を続けて変えると前の要求が
+打ち切られ、最後の応答だけが候補になる; 選んだ中から統合先を選ぶと `sourceIds` からその id が外れ、
+統合元が統合先だけなら実行が押せない（Edge Case、merge 済みの試験が通り続ける）; `MergeTagDialog.test.tsx` の
+既存の試験が `tags` の prop 無しで通る。`web/e2e/tags.e2e.ts` の 12・17・B3 と統合の試験が通り続ける。
 
-### タグ管理画面に並び順と 0 本の絞り込みを足し、並び順を端末に残す
+### 計測の道具に規模 30,000 と、開いたときの転送量・続きを読み込みながらのスクロールの場面を足す
 
-**Scope**: `web/src/tags/tagListOrder.ts`（5 値の比較、同値は `compareTagRefs`）、
-`web/src/preferences/tagListPreferences.ts`（並び順だけを保存する総関数）、`TagsPage` のツールバーに
-並び順と「0 本のみ」の操作（形は `ui-design.md` に従い、ライブラリの「表示と並び替え」にそろえる）、
-件数の行の「〈見えている数〉 of 〈全体〉」、改名中の行を並び順・絞り込みの変更で消さない
-（[research.md R-7・R-8](research.md#r-7-並び順はこの画面の端末の設定として-localstorage-に持ち絞り込みは今までどおり画面の状態に留める)、
-[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。英語のカタログの文言。
+**Scope**: `scripts/tagsbench` に `-videos N`（省けば `-scale` の 10 倍）を足し、規模 30,000・動画 30,000 本の
+データを作れるようにする、`web/bench/tags-admin.bench.ts` に「開いたときに受け取るタグ」（開いたときの
+`GET /api/tags` の `items` の数と応答のバイト数）と、スクロールの場面を「続きを読み込みながら末尾まで」
+（`nextCursor` が尽きるまで送り続ける）に変える、`docs/how-to/tags-admin-benchmark.md` と
+[quickstart.md](quickstart.md) の表（[research.md R-9](research.md#r-9-受け入れ条件の計測は作り置きの規模のデータを-scriptstagsbench-が作りplaywright-の計測スクリプトが本番ビルドに対して測る)
+「改訂で足す規模と場面」）。`task test-e2e` と CI には入れない。
 
-**Dependencies**: `GET /api/tags の応答に createdAt を載せる`、`タグ管理画面の一覧を見えている行だけ描くようにする`
+**Dependencies**: `タグ管理画面の一覧を、条件ごとにサーバーから読み、スクロールで続きを読む`
 
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、「本数」の
-多い順で最多のタグが先頭・0 本が末尾（受け入れ条件 4）、本数が同じなら名前の順（Edge Case）;
-「作った日」の新しい順で作成したタグが先頭に出る（受け入れ条件 5）; 並び順を変えて `TagsPage` を
-unmount・mount し直すと同じ並び順で開き、`localStorage` が壊れていれば名前の順（受け入れ条件 6、
-Edge Case）; 「0 本のみ」で件数の行が「〈0 本の数〉 of 〈全体〉」になり、出る行の本数がすべて 0 で、
-「Tentative only」と検索と並び順と組み合わさる（受け入れ条件 7、要件 5）; 改名中の行は並び順・絞り込みを
-変えても残り入力中の値を失わない（Edge Case）。
-
-### タグ管理画面で複数の行を選び、まとめて確定・却下・削除する
-
-**Scope**: `TagsPage` の選択（`Set<number>`、見えなくなった行の選択を外す、「見えているものをすべて選ぶ」）、
-行のチェックとまとめての操作の帯（形は `ui-design.md`「Selection」に従う。選んでいる間だけ前に出る）、
-まとめての確定（確認なし）、却下・削除の確認（`tagImpact` の数を出し、届くまで実行を押せない）、応答の
-反映（`appliedIds` を選択から外し一覧へその場で反映、`notApplicableIds` の数をトーストで伝え、
-`notFoundIds` があれば取り直す）、却下のあとの却下した名前の取り直し、上限（`maxTagBatch`）での disabled
-（[data-model.md §4](data-model.md#4-画面の側で持つ状態)「選択」「まとめての操作の結果」、
-[contracts/screen-api.md §1・§3](contracts/screen-api.md#1-post-apitagsbatch)）。英語のカタログの文言。
-ARCHITECTURE.md の `web/src/tags/` の段落。
-
-**Dependencies**: `まとめての確定・却下・削除の POST /api/tags/batch と確認用の POST /api/tags/impact を足す`、
-`タグ管理画面の一覧を見えている行だけ描くようにする`
-
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、「Tentative only」
-で見えているタグをすべて選んで確定すると `POST /api/tags/batch` に `confirm` と全 id が 1 回送られ、応答の
-あとすべての行から仮の目印が消え、選択が空になる（受け入れ条件 9）; 仮と確定を混ぜて削除すると確認に
-`tagImpact('delete', ids)` の `tagCount` と `videoCount`（確定したタグとその動画だけ）が出て（受け入れ条件 11）、
-実行後に `notApplicableIds` の数がトーストに出る（Edge Case）; `notFoundIds` があると一覧を取り直す; 失敗すると選択が残る; 検索を変えて
-見えなくなった行の選択が外れる（Edge Case）; 見えている行が上限を超えるとまとめての操作が押せない。
-`tagsbench` の規模で、見えている仮のタグ全部の確定で最長タスクが 0.2 秒以内（受け入れ条件 9）。
-
-### 選んだタグをまとめて 1 つのタグへ統合し、統合の窓の入力を窓の幅に合わせる
-
-**Scope**: まとめての操作の帯からの「統合…」（`MergeTagDialog` を複数の統合元で開く。統合先は選んだ中からも
-選んでいないタグからも選べ、統合先を選んだ中から選んだときは統合元から外し、統合元が無くなれば実行できない。
-確認に、統合先を外した統合元についての `tagImpact('merge', ids)` の数を出す）、応答の反映（統合元を取り除き、統合先を `tag` に差し替え、`notFoundIds` が
-あれば取り直す）、統合の窓の Combobox に `frameClassName="w-full"`（今は既定の `w-40`。幅の規則は
-`ui-design.md`「Merge dialog」に従う。要件 13）
-（[contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-の変更)、
-[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。英語のカタログの文言。
-
-**Dependencies**: `POST /api/tags/{id}/merge を複数の統合元を受ける形にする`、
-`タグ管理画面で複数の行を選び、まとめて確定・却下・削除する`
-
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、4 個を選んで
-「Action」へ統合すると `sourceIds` が 4 個で送られ、応答のあと 4 個が一覧から消え「Action」の本数が応答の
-`videoCount` になる（受け入れ条件 10）; 統合先を選んだ中から選ぶと `sourceIds` からその id が外れ、統合元が
-統合先だけなら実行が押せない（Edge Case）; 確認に `tagCount`・`videoCount` が出る（要件 10）; 窓の中の
-統合先の入力が窓の内側の幅いっぱいに広がる（要件 13、1 件の統合でも同じ）。
-
-### スクロール中もツールバーと却下した名前に届くようにする
-
-**Scope**: 検索・絞り込み・並び順・まとめての操作の帯を、一覧をスクロールしても画面に残す（文書のスクロールは
-変えず、`position: sticky` で上部バーの下に留める。形と高さは `ui-design.md`「Toolbar」に従う）、却下した
-名前の一覧への入口を一覧の上から届く位置に置く（置き場所と開き方は `ui-design.md`「Rejected names」に
-従う。中身・取り外し・取り直しの規則は 031 のまま）、仮想化のスクロール位置の計算に留めた帯の高さを
-入れる。`docs/design-docs/library-ui.md` の該当箇所。英語のカタログの文言。
-
-**Dependencies**: `タグ管理画面の一覧を見えている行だけ描くようにする`
-
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、却下した名前の
-入口が一覧の先頭より上（ツールバー側）にあり、押すと今と同じ一覧と取り外しが開く（受け入れ条件 12）。
-`tagsbench` の 1,000 個の規模で、`/tags` を開いた直後にスクロールせず却下した名前の一覧を開け、一覧の
-末尾までスクロールしても検索・絞り込み・並び順・まとめての操作が表示域に残る（要件 12）。1280×800 で
-12 行以上が一画面に見える（親 Issue「UI品質」情報密度）。
+**Acceptance**: `task check` と `task check-docs` が通る。`go run ./scripts/tagsbench -scale 30000 -videos 30000` が
+タグ 30,000 個・動画 30,000 本のデータを作り、起動した本番ビルドの `GET /api/tags?limit=100` が 100 件を
+返し、計測の表（quickstart.md の 8 場面）が出る。3 つの規模で、開いたときに受け取る `items` が 100 件で
+応答の大きさが ±5% に収まり（受け入れ条件 2）、30,000 個の一覧を末尾まで続きを読み込みながら
+スクロールしても 50ms を超えるフレームが 2 つ続かない（受け入れ条件 4）。改訂前（feature branch の
+改訂前の先頭）と改訂後を同じ環境で測った表を PR の本文に残し、`GET /api/tags` の応答時間を別に出す
+（quickstart.md「内訳の切り分け」）。
