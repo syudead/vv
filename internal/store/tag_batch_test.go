@@ -41,12 +41,14 @@ func batchIDs(ids map[string]int64, missing int64) []int64 {
 	return []int64{ids["t1"], ids["c1"], missing, ids["t2"], ids["c2"], ids["t3"], ids["t1"]}
 }
 
-// assertTagInvariantsNow は 031 の不変条件（と各タグがちょうど 1 つの元の名前を持つこと）を、
-// テストの終わりを待たずにその場で確かめる。
+// assertTagInvariantsNow は 031 の不変条件（と各タグがちょうど 1 つの元の名前を持つこと）と
+// 名前の自然順の鍵の不変条件（036 の data-model.md §2）を、テストの終わりを待たずにその場で
+// 確かめる。
 func assertTagInvariantsNow(t *testing.T, db *DB) {
 	t.Helper()
 	assertTagCanonicalNameInvariant(t, db)
 	assertTentativeTagInvariant(t, db)
+	assertTagSortKeyInvariant(t, db)
 }
 
 func tagExists(t *testing.T, db *DB, id int64) bool {

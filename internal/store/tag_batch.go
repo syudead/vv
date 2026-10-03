@@ -70,13 +70,8 @@ func (s *TagStore) BatchTags(ctx context.Context, action domain.TagBatchAction, 
 		}
 	case domain.TagBatchReject:
 		// 名前は消す前に写す。消したあとでは tag_names の行が連鎖して消えている。
-		if _, err := tx.ExecContext(ctx, `
-			insert or ignore into rejected_tag_names (name, created_at)
-			select name, ? from tag_names
-			 where canonical = 1 and tag_id in (select value from json_each(?))`,
-			time.Now().Unix(), string(encoded),
-		); err != nil {
-			return domain.TagBatchOutcome{}, fmt.Errorf("cannot remember the rejected tag names: %w", err)
+		if err := rememberRejectedNames(ctx, tx, string(encoded)); err != nil {
+			return domain.TagBatchOutcome{}, err
 		}
 		if err := deleteTagsByIDs(ctx, tx, string(encoded)); err != nil {
 			return domain.TagBatchOutcome{}, err
@@ -191,4 +186,52 @@ func deleteTagsByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 		return fmt.Errorf("cannot delete the tags: %w", err)
 	}
 	return nil
+}
+
+// rememberRejectedNames は encodedIDs（JSON の id の配列）のタグの元の名前を、名前の自然順の鍵
+// （domain.NaturalSortKey）と現在の版を添えて却下した名前に insert or ignore する
+// （specs/036-tag-admin-scale/data-model.md §0・§2）。鍵は SQL で作れないので、名前を 1 回で読んで
+// Go で鍵を作り、名前と鍵の組を json_each に 1 つの引数で渡して 1 つの文で書く。
+func rememberRejectedNames(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
+	pairs, err := rejectedNamePairs(ctx, tx, encodedIDs)
+	if err != nil {
+		return fmt.Errorf("cannot read the rejected tag names: %w", err)
+	}
+	if len(pairs) == 0 {
+		return nil
+	}
+
+	encoded, err := json.Marshal(pairs)
+	if err != nil {
+		return fmt.Errorf("cannot build the rejected tag names: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		insert or ignore into rejected_tag_names (name, sort_key, search_version, created_at)
+		select json_extract(value, '$[0]'), json_extract(value, '$[1]'), ?, ?
+		  from json_each(?)`,
+		domain.SearchKeyVersion, time.Now().Unix(), string(encoded),
+	); err != nil {
+		return fmt.Errorf("cannot remember the rejected tag names: %w", err)
+	}
+	return nil
+}
+
+// rejectedNamePairs は encodedIDs のタグの元の名前と、その名前の自然順の鍵の組を返す。
+func rejectedNamePairs(ctx context.Context, tx *sql.Tx, encodedIDs string) ([][2]string, error) {
+	rows, err := tx.QueryContext(ctx, `
+		select name from tag_names
+		 where canonical = 1 and tag_id in (select value from json_each(?))`, encodedIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var pairs [][2]string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		pairs = append(pairs, [2]string{name, domain.NaturalSortKey(name)})
+	}
+	return pairs, rows.Err()
 }

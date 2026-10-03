@@ -467,8 +467,12 @@ compile:
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
-  synonym, the counted listing, and the startup refresh of tag-name search keys
-  (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
+  synonym, the counted listing, and the startup refresh of the two per-name keys, the
+  match key `search_key` and the natural-order key `sort_key`, for the `tag_names` rows
+  and the `sort_key` for the `rejected_tag_names` rows whose `search_version` is older
+  than `domain.SearchKeyVersion` (`specs/014-video-tags/data-model.md`,
+  `specs/036-tag-admin-scale/data-model.md` §0). Every entry that writes a name row
+  writes both keys in the same statement. It also attaches and detaches a tag across a
   set of video ids (resolved to the currently-registered videos' user keys, one per
   bundle, through `userKeysForVideoIDs`),
   summarizes the tags on a selected set of videos, and looks up the tags on a set of

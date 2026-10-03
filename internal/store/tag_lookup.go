@@ -146,14 +146,14 @@ func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, er
 	return names, nil
 }
 
-// insertTagName は tag_names に1行足し、照合用の鍵を同じトランザクションで
-// 書く（data-model.md §7）。同じ取引でその名前を却下した名前から外す
+// insertTagName は tag_names に1行足し、照合用の鍵と名前の自然順の鍵を同じ文で
+// 書く（data-model.md §7、specs/036-tag-admin-scale/data-model.md §0）。同じ取引でその名前を却下した名前から外す
 // （specs/031-tentative-tags/research.md R-3）。
 func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
 	if _, err := tx.ExecContext(ctx, `
-		insert into tag_names (name, tag_id, canonical, search_key, search_version)
-		values (?, ?, ?, ?, ?)`,
-		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.SearchKeyVersion,
+		insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+		values (?, ?, ?, ?, ?, ?)`,
+		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.NaturalSortKey(name), domain.SearchKeyVersion,
 	); err != nil {
 		return fmt.Errorf("cannot save the tag name (%s): %w", name, err)
 	}
