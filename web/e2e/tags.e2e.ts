@@ -626,6 +626,15 @@ test.describe.serial("video tags", () => {
     }
 
     /**
+     * rowMenuName は、幅ごとに行の右端のメニューの読み上げ名を返す。`sm`（640px）
+     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる
+     * （specs/036-tag-admin-scale/ui-design.md「Actions on touch and narrow widths」）。
+     */
+    function rowMenuName(width: number) {
+      return width < 640 ? "Actions" : "More actions";
+    }
+
+    /**
      * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
      * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
      * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
@@ -856,10 +865,10 @@ test.describe.serial("video tags", () => {
           if (linkBox === null || markBox === null) throw new Error("no layout");
           expect(markBox.x - (linkBox.x + linkBox.width)).toBeGreaterThanOrEqual(0);
           expect(markBox.x - (linkBox.x + linkBox.width)).toBeLessThanOrEqual(8);
-          // 長い名前でも操作は行の中に収まる。
+          // 長い名前でも操作は行の中に収まる（`sm` 未満では「Actions」1 つ）。
           const rowBox = await row.boundingBox();
           const moreBox = await row
-            .getByRole("button", { name: "More actions" })
+            .getByRole("button", { name: rowMenuName(width) })
             .boundingBox();
           if (rowBox === null || moreBox === null) throw new Error("no layout");
           expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
@@ -1061,7 +1070,7 @@ test.describe.serial("video tags", () => {
 
         await revealTagRow(page, "e2e画像旅行");
         await tagRowByName(page, "e2e画像旅行")
-          .getByRole("button", { name: "More actions" })
+          .getByRole("button", { name: rowMenuName(width) })
           .click();
         await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
         const dialog = page.getByRole("dialog", { name: 'Merge "e2e画像旅行"' });
@@ -1073,9 +1082,17 @@ test.describe.serial("video tags", () => {
         await page.keyboard.press("Escape");
 
         await revealTagRow(page, "e2e画像Anime");
-        await tagRowByName(page, "e2e画像Anime")
-          .getByRole("button", { name: "Synonyms" })
-          .click();
+        if (width < 640) {
+          // `sm` 未満では「シノニム」も「Actions」のメニューの項目になる。
+          await tagRowByName(page, "e2e画像Anime")
+            .getByRole("button", { name: rowMenuName(width) })
+            .click();
+          await page.getByRole("menuitem", { name: "Synonyms" }).click();
+        } else {
+          await tagRowByName(page, "e2e画像Anime")
+            .getByRole("button", { name: "Synonyms" })
+            .click();
+        }
         const synonyms = page.getByRole("dialog", { name: 'Synonyms of "e2e画像Anime"' });
         await synonyms.getByRole("textbox", { name: "Add synonym" }).fill("e2e画像旅行");
         await page.keyboard.press("Enter");
