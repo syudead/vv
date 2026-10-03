@@ -151,14 +151,25 @@ jobs:
             --shard ${{ matrix.shard }} --shards "$SHARDS" \
             --budget-seconds 18000 --summary "$GITHUB_STEP_SUMMARY"
 
+      # Only the files this shard wrote: every shard starts from the same
+      # docs-ja, so uploading the whole tree would let one shard's old copies
+      # overwrite another shard's new translations when they are merged.
+      - name: Collect this shard's translations
+        if: always() && steps.work.outputs.count != '0'
+        run: |
+          mkdir -p upload
+          if [ -e .docs-ja/.git ]; then
+            git -C .docs-ja ls-files -z -m -o --exclude-standard
+          else
+            (cd .docs-ja && find . -type f -print0)
+          fi | (cd .docs-ja && xargs -0 -r cp --parents -t ../upload)
+
       - name: Keep this shard's translations
         if: always() && steps.work.outputs.count != '0'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: docs-ja-${{ matrix.shard }}
-          path: |
-            .docs-ja/
-            !.docs-ja/.git
+          path: upload/
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 3

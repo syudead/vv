@@ -69,6 +69,11 @@ tasks:
     cmds:
       - npm --prefix docs-site run build
 
+  docs-test:
+    desc: Test the Japanese translation pipeline in docs-site/translate, as CI does.
+    cmds:
+      - npm --prefix docs-site test
+
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
     cmds:
