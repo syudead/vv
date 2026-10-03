@@ -363,7 +363,7 @@ func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, aPath); err != nil {
-		t.Fatal(err)
+		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	rec := f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner)
 	if rec.Code != http.StatusOK {
@@ -386,7 +386,7 @@ func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, bPath); err != nil {
-		t.Fatal(err)
+		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	rec = f.setThumbnailPosition("b", thumbnailPositionBody(&position), f.owner)
 	assertErrorBody(t, "外を指す所在", rec.Code, rec.Body.Bytes(), wantError{
