@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
-import { mergeTag } from "../api/tags";
+import { mergeTag, tagImpact } from "../api/tags";
 import { t } from "../i18n";
 import { TooltipProvider } from "../ui/Tooltip";
 import MergeTagDialog from "./MergeTagDialog";
@@ -12,6 +12,7 @@ import MergeTagDialog from "./MergeTagDialog";
 vi.mock("../api/tags", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/tags")>()),
   mergeTag: vi.fn(),
+  tagImpact: vi.fn(),
 }));
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
@@ -81,6 +82,7 @@ async function failOnce() {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.mocked(mergeTag).mockReset();
+  vi.mocked(tagImpact).mockReset();
 });
 
 describe("MergeTagDialog の失敗後のフォーカス", () => {
@@ -144,5 +146,52 @@ describe("MergeTagDialog の幅", () => {
     const listbox = await within(modal).findByRole("listbox");
     expect(listbox.className).toContain("w-full");
     expect(listbox.className).not.toContain("w-64");
+  });
+});
+
+describe("MergeTagDialog の数え直し", () => {
+  it("選択から開いた窓で同じ統合先を選び直しても、数え直す（ui-design.md「Confirmation」）", async () => {
+    const user = userEvent.setup();
+    vi.mocked(tagImpact)
+      .mockResolvedValueOnce({ tagCount: 2, videoCount: 5 })
+      .mockResolvedValueOnce({ tagCount: 2, videoCount: 7 });
+    const sources = [source, tag({ id: 3, name: "Drama", videoCount: 4 })];
+    render(
+      <TooltipProvider>
+        <MergeTagDialog
+          sources={sources}
+          fromSelection
+          tags={initialTags()}
+          onClose={() => {}}
+          onMerged={() => {}}
+          onStale={() => {}}
+        />
+      </TooltipProvider>,
+    );
+    const modal = await screen.findByRole("dialog", {
+      name: t.tags.mergeDialog.titleMany(2),
+    });
+    const combo = within(modal).getByRole("combobox", {
+      name: t.tags.mergeDialog.target,
+    });
+    await user.type(combo, "Anime");
+    await user.click(await within(modal).findByRole("option", { name: /Anime/ }));
+    expect(
+      await within(modal).findByText(t.tags.mergeDialog.warningMany(2, 5, "Anime")),
+    ).toBeDefined();
+
+    await user.click(combo);
+    await user.keyboard("{ArrowDown}");
+    await user.click(await within(modal).findByRole("option", { name: /Anime/ }));
+
+    expect(
+      await within(modal).findByText(t.tags.mergeDialog.warningMany(2, 7, "Anime")),
+    ).toBeDefined();
+    expect(vi.mocked(tagImpact)).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(tagImpact)).toHaveBeenLastCalledWith(
+      "merge",
+      [1, 3],
+      expect.any(AbortSignal),
+    );
   });
 });

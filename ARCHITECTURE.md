@@ -836,7 +836,9 @@ creation date (only the sort is kept per device, in `web/src/preferences/tagList
 create, rename and delete. Rows carry a checkbox; selecting any shows a bottom selection bar
 (`TagSelectionBar`) that confirms, rejects or deletes the selected tags together through one
 `POST /api/tags/batch`, after a confirmation that counts the affected videos with
-`POST /api/tags/impact` (`BulkTagDialog`; bulk confirm asks nothing). The selection is page
+`POST /api/tags/impact` (`BulkTagDialog`; bulk confirm asks nothing), or merges them into
+one tag chosen from every tag through `POST /api/tags/{id}/merge` (`MergeTagDialog`, the
+same dialog a row's merge opens, counting with `POST /api/tags/impact`). The selection is page
 state, kept to the rows currently shown. On touch devices and below `sm`, a row's actions
 collapse into one labelled "Actions" menu, switched by CSS alone. The list holds every tag from one `GET /api/tags` but
 draws only the rows in and near the viewport (`@tanstack/react-virtual`'s

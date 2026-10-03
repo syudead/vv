@@ -61,6 +61,8 @@ export default function MergeTagDialog({
   const [error, setError] = useState<UiText | null>(null);
   const [impact, setImpact] = useState<TagImpactResponse | null>(null);
   const [countError, setCountError] = useState<UiText | null>(null);
+  // 数え直しのきっかけ。「Retry」と、統合先を選ぶたび（同じタグを選び直したときも。
+  // targetId と effective が変わらないので、これが無いと前の数が残る）に進める。
   const [attempt, setAttempt] = useState(0);
   // 選んだ直後（フォーカスをまだ動かしていない）かを持つ。統合先を選ぶと
   // 「統合する」へフォーカスを移すが、それは候補を選んだ直後の1回だけで、
@@ -141,6 +143,8 @@ export default function MergeTagDialog({
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
+    // 統合先を選び直すたびに数え直す（ui-design.md「Confirmation」）。
+    setAttempt((current) => current + 1);
     setValue(found.name);
     setError(null);
   }
