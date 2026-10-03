@@ -69,17 +69,25 @@ export function MenuItem({
   onSelect,
   disabled,
   tone = "default",
+  title,
+  describedBy,
 }: {
   children: ReactNode;
   onSelect?: () => void;
   disabled?: boolean;
   tone?: keyof typeof itemTone;
+  /** 押せない理由などの補足（`title`）。 */
+  title?: string;
+  /** 補足の要素の id（`aria-describedby`）。 */
+  describedBy?: string;
 }) {
   return (
     <Dropdown.Item
       className={cn(itemBase, itemTone[tone])}
       onSelect={onSelect}
       disabled={disabled}
+      title={title}
+      aria-describedby={describedBy}
     >
       {children}
     </Dropdown.Item>

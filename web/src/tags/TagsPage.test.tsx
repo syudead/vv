@@ -85,6 +85,15 @@ const server = {
   failRejectedGets: false,
   /** 確定・却下・却下した名前の取り外しの要求の回数。 */
   confirmCalls: 0,
+  /** POST /api/tags/batch・/api/tags/impact が受けた本文。 */
+  batchCalls: [] as { action: string; ids: number[] }[],
+  impactCalls: [] as { action: string; ids: number[] }[],
+  /** 設定すると、POST /api/tags/impact の videoCount をこの値にする（重複を除いた数の代わり）。 */
+  impactVideoCount: null as number | null,
+  /** true にすると、以後の POST /api/tags/impact を 500 で失敗させる。 */
+  failImpact: false,
+  /** true にすると、次の POST /api/tags/batch を 500 で失敗させる。 */
+  failNextBatch: false,
 };
 
 /**
@@ -172,6 +181,62 @@ function install() {
       return new Promise((resolve) => {
         release = () => resolve(respond());
       });
+    }
+
+    if (path === "/api/tags/batch" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      server.batchCalls.push(body);
+      if (server.failNextBatch) {
+        server.failNextBatch = false;
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const appliedIds: number[] = [];
+      const notFoundIds: number[] = [];
+      const notApplicableIds: number[] = [];
+      for (const id of body.ids) {
+        const found = server.tags.find((t) => t.id === id);
+        if (found === undefined) notFoundIds.push(id);
+        else if (found.tentative === (body.action === "delete"))
+          notApplicableIds.push(id);
+        else appliedIds.push(id);
+      }
+      const applied = new Set(appliedIds);
+      if (body.action === "confirm") {
+        for (const item of server.tags) if (applied.has(item.id)) item.tentative = false;
+      } else {
+        if (body.action === "reject") {
+          server.rejectedNames = [
+            ...server.rejectedNames,
+            ...server.tags.filter((t) => applied.has(t.id)).map((t) => t.name),
+          ].sort();
+        }
+        server.tags = server.tags.filter((t) => !applied.has(t.id));
+      }
+      return maybeHold(() => jsonResponse({ appliedIds, notFoundIds, notApplicableIds }));
+    }
+
+    if (path === "/api/tags/impact" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      server.impactCalls.push(body);
+      if (server.failImpact) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const counted = server.tags.filter(
+        (t) =>
+          body.ids.includes(t.id) &&
+          (body.action === "merge" || t.tentative === (body.action === "reject")),
+      );
+      return Promise.resolve(
+        jsonResponse({
+          tagCount: counted.length,
+          videoCount:
+            server.impactVideoCount ?? counted.reduce((sum, t) => sum + t.videoCount, 0),
+        }),
+      );
     }
 
     if (path === "/api/tags/rejected-names" && method === "DELETE") {
@@ -461,6 +526,11 @@ beforeEach(() => {
   server.rejectedNames = [];
   server.failRejectedGets = false;
   server.confirmCalls = 0;
+  server.batchCalls = [];
+  server.impactCalls = [];
+  server.impactVideoCount = null;
+  server.failImpact = false;
+  server.failNextBatch = false;
   holdConfirms = false;
   confirmReleases.length = 0;
   holdRejectedGets = false;
@@ -2286,8 +2356,13 @@ describe("TagsPage 仮のタグ", () => {
     const gamma = rowOf("Gamma");
     expect(within(gamma).queryByText("Tentative")).toBeNull();
     expect(within(gamma).queryByRole("button", { name: "Confirm" })).toBeNull();
-    // 確定した行の操作は今と同じ3つ。
-    expect(within(gamma).getAllByRole("button")).toHaveLength(3);
+    // 確定した行の操作は今と同じ3つ（マウスの端末）と、タッチ・狭い幅でそれを
+    // まとめる「Actions」（CSS でどちらか一方だけを描く）。
+    expect(
+      within(gamma)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Actions", "Rename", "Synonyms", "More actions"]);
   });
 
   it("「Tentative only」で仮のタグだけが並び、件数は全タグを分母にする（受け入れ条件6）", async () => {
@@ -2928,15 +3003,18 @@ describe("TagsPage 見えている行だけ描く", () => {
     renderPage();
     await screen.findByTitle(name(0));
 
+    // 描いた次の行のチェックへ移る（ui-design.md「Keyboard across virtualized rows」）。
     const next = await tabPastRange(user);
     expect(document.activeElement).toBe(
-      screen.getByRole("link", { name: `Open the library filtered by ${name(next)}` }),
+      screen.getByRole("checkbox", { name: `Select "${name(next)}"` }),
     );
 
     // その行の最後の操作から、まだ描いていない次の行へ。
     within(wrapperOf(next)).getByRole("button", { name: "More actions" }).focus();
     await user.tab();
-    expect(document.activeElement).toBe(screen.getByTitle(name(next + 1)));
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: `Select "${name(next + 1)}"` }),
+    );
     // フォーカスを移した行だけを描き続け、前の行は描いていない。
     expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull();
 
@@ -3365,4 +3443,333 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     await screen.findByTitle("Beta");
     expectCatalogTextOnly(container, ["Alpha", "Beta", "Cat", "Delta", "Echo"]);
   });
+});
+
+describe("TagsPage まとめての操作", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function selectAll(): HTMLElement {
+    return screen.getByRole("checkbox", { name: "Select all shown tags" });
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 2, name: "Beta", tentative: true }),
+      tag({ id: 3, name: "Cat", videoCount: 4 }),
+      tag({ id: 4, name: "Gamma", synonyms: ["ガンマ"], videoCount: 5 }),
+    ];
+  });
+
+  it("「Tentative only」で見えているものをすべて選んで確定すると、全 id を 1 回送り、仮の目印と選択が消える（受け入れ条件9）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await user.click(selectAll());
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    expect(screen.getByRole("checkbox", { name: "Clear selection" })).toBeDefined();
+
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull(),
+    );
+    expect(server.batchCalls).toEqual([{ action: "confirm", ids: [1, 2] }]);
+    expect(await screen.findByText("Confirmed 2 tags")).toBeDefined();
+    // 確定した行は「Tentative only」から外れ、空になれば「Tentative only」へ移る。
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Tentative only" }),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await screen.findByTitle("Alpha");
+    expect(screen.queryByText("Tentative")).toBeNull();
+  });
+
+  it("仮と確定を混ぜて確定すると、既に確定していた分を数えて伝え、それを選んだまま残す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+
+    expect(
+      await screen.findByText("Confirmed 2 tags. 2 were already confirmed."),
+    ).toBeDefined();
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    // 残った選択は確定したタグだけなので「Confirm」は押せず、フォーカスは「More」へ。
+    const confirm = within(bar()).getByRole("button", { name: "Confirm" });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect(confirm.getAttribute("title")).toBe("No tentative tags are selected");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(bar()).getByRole("button", { name: "More" }),
+      ),
+    );
+  });
+
+  it("仮と確定を混ぜて削除すると、確認に確定したタグの数と動画の本数が出て、外した数をトーストで伝える（受け入れ条件11）", async () => {
+    const user = userEvent.setup();
+    server.impactVideoCount = 7;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete selected tags" });
+    expect(server.impactCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
+    expect(
+      await within(dialog).findByText(
+        "2 of the 4 selected tags are confirmed. They will be removed from 7 videos. This can't be undone. The 2 tentative tags are left as they are. Reject them instead.",
+      ),
+    ).toBeDefined();
+
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(
+      await screen.findByText("Deleted 2 tags. 2 tentative tags were skipped."),
+    ).toBeDefined();
+    expect(server.batchCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
+    expect(screen.queryByTitle("Cat")).toBeNull();
+    expect(screen.queryByTitle("Gamma")).toBeNull();
+    // 働かなかった仮のタグは選んだまま。
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+  });
+
+  it("確認の数が届くまで実行できず、数えられなければ理由と再試行を出す", async () => {
+    const user = userEvent.setup();
+    server.failImpact = true;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const reject = within(dialog).getByRole("button", { name: "Reject" });
+    expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+    expect(
+      (await within(dialog).findByRole("alert")).textContent?.startsWith(
+        "Couldn't count the affected videos:",
+      ),
+    ).toBe(true);
+    expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+    server.failImpact = false;
+    await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+    expect(
+      await within(dialog).findByText(
+        "The selected tag will be removed from 2 videos, and automatic tagging won't create its name again. You can allow a name again from Rejected names.",
+      ),
+    ).toBeDefined();
+    await user.click(reject);
+    expect(await screen.findByText("Rejected 1 tag")).toBeDefined();
+    expect(screen.queryByTitle("Alpha")).toBeNull();
+  });
+
+  it("対象の一部がもう無ければ一覧を取り直し、失敗すれば選択を残す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(rowOf("Beta")).getByRole("checkbox"));
+
+    // 失敗は何も変えず、選択は残る。
+    server.failNextBatch = true;
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText(/Something went wrong/)).toBeDefined();
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    expect(within(rowOf("Alpha")).getByText("Tentative")).toBeDefined();
+
+    // 別のタブで Beta が消えていた。
+    server.tags = server.tags.filter((item) => item.id !== 2);
+    const gets = server.getCalls;
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    expect(server.getCalls).toBeGreaterThan(gets);
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+  });
+
+  it("検索を変えて見えなくなった行の選択は外れ、並び順だけの変更では残る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    expect(within(bar()).getByText("4 tags selected")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    expect(within(bar()).getByText("4 tags selected")).toBeDefined();
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "a");
+    // 「a」は Alpha・Beta・Cat・Gamma のすべてに一致するので、変わらない。
+    expect(within(bar()).getByText("4 tags selected")).toBeDefined();
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "lp");
+    await waitFor(() => expect(within(bar()).getByText("1 tag selected")).toBeDefined());
+    expect(
+      screen
+        .getByRole("checkbox", { name: "Clear selection" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+
+    await user.clear(screen.getByRole("searchbox", { name: "Search tags" }));
+    await screen.findByTitle("Beta");
+    // 選んだ 1 件は残り、ほかは外れたまま（中間の状態）。
+    expect(within(bar()).getByText("1 tag selected")).toBeDefined();
+    expect(selectAll().getAttribute("aria-checked")).toBe("mixed");
+  });
+
+  it("選んでいる行の改名を始めると選択から外れ、改名中の行のチェックは押せない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Rename" }));
+    await screen.findByRole("textbox", { name: 'New name for "Alpha"' });
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    const check = screen.getByRole("checkbox", { name: 'Select "Alpha"' });
+    expect((check as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("×で選択を解くとバーが消え、先頭のチェックへフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Cat")).getByRole("checkbox"));
+    const more = within(bar()).getByRole("button", { name: "More" });
+    await user.click(more);
+    const reject = await screen.findByRole("menuitem", { name: "Reject…" });
+    expect(reject.getAttribute("aria-disabled")).toBe("true");
+    expect(reject.getAttribute("title")).toBe("No tentative tags are selected");
+    await user.keyboard("{Escape}");
+
+    await user.click(within(bar()).getByRole("button", { name: "Clear selection" }));
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(selectAll()));
+  });
+
+  it("タッチ・狭い幅の「Actions」は文字を持つ項目を並べ、「Confirm」は行の「確定する」と同じ結果になる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Actions" }));
+    const items = (await screen.findAllByRole("menuitem")).map(
+      (item) => item.textContent,
+    );
+    expect(items).toEqual([
+      "Confirm",
+      "Rename",
+      "Synonyms",
+      "Merge into another tag…",
+      "Reject…",
+    ]);
+    await user.click(screen.getByRole("menuitem", { name: "Confirm" }));
+
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    expect(server.confirmCalls).toBe(1);
+    await waitFor(() =>
+      expect(within(rowOf("Alpha")).queryByText("Tentative")).toBeNull(),
+    );
+
+    await user.click(within(rowOf("Cat")).getByRole("button", { name: "Actions" }));
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent),
+    ).toEqual(["Rename", "Synonyms", "Merge into another tag…", "Delete…"]);
+  });
+
+  it("疑似ロケールで、選択・選択バー・まとめての確認の文言がカタログから出る", async () => {
+    const user = userEvent.setup();
+    enablePseudoLocale();
+    install();
+    const { container } = renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(container.querySelector<HTMLElement>('[role="checkbox"]')!);
+    await user.click(within(screen.getByRole("region")).getAllByRole("button")[1]!);
+    const items = await screen.findAllByRole("menuitem");
+    await user.click(items[1]!);
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(server.impactCalls).toHaveLength(1));
+    await within(dialog).findByText(/videos|video/i);
+    expectCatalogTextOnly(document.body, ["Alpha", "Beta", "Cat", "Gamma", "ガンマ"]);
+  });
+});
+
+describe("TagsPage まとめての操作の上限", () => {
+  let originalOffsetHeight: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-index") ? 40 : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    if (originalOffsetHeight !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    }
+  });
+
+  it("見えている行が上限を超えると、先頭のチェックとまとめての操作が押せない", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 20001 }, (_, index) =>
+      tag({ id: index + 1, name: `T${String(index).padStart(5, "0")}`, tentative: true }),
+    );
+    install();
+    renderPage();
+    await screen.findByTitle("T00000");
+
+    const header = screen.getByRole("checkbox", { name: "Select all shown tags" });
+    expect((header as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole("checkbox", { name: 'Select "T00000"' }));
+    const region = screen.getByRole("region", { name: "Selected tags" });
+    const reason =
+      "Too many tags are shown to act on them together (limit 20,000). Narrow the list with search or a filter.";
+    for (const name of ["Confirm", "More"]) {
+      const button = within(region).getByRole("button", { name });
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(button.getAttribute("title")).toBe(reason);
+    }
+    expect(within(region).getByText(reason)).toBeDefined();
+  }, 30000);
 });

@@ -25,12 +25,14 @@ import { flushSync } from "react-dom";
 
 import { RequestFailed } from "../api/client";
 import {
+  batchTags,
   confirmTag,
   createTag,
   currentTags,
   deleteTag,
   forgetRejectedTagName,
   listRejectedTagNames,
+  maxTagBatch,
   refreshTags,
   rejectTag,
   renameTag,
@@ -45,10 +47,12 @@ import {
   writeTagListPreferences,
 } from "../preferences/tagListPreferences";
 import Button from "../ui/Button";
+import Checkbox from "../ui/Checkbox";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
 import Tooltip from "../ui/Tooltip";
 import { EmptyState } from "../videoList/states";
+import BulkTagDialog, { type BulkTagAction } from "./BulkTagDialog";
 import CreateTagRow from "./CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
 import MergeTagDialog from "./MergeTagDialog";
@@ -59,6 +63,7 @@ import { sortTags, type TagListSort } from "./tagListOrder";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import TagSearchBox from "./TagSearchBox";
+import TagSelectionBar from "./TagSelectionBar";
 import { TagCompactSort, TagSortMenu } from "./TagSortControls";
 
 function isTagNotFound(error: unknown): boolean {
@@ -85,9 +90,19 @@ const ROW_OVERSCAN = 8;
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/**
+ * isShown は、要素が描かれている（CSS で隠れていない）かである。行の操作は
+ * タッチの端末と `sm` 未満で「Actions」1 つにまとめ、残りを CSS で隠すので、
+ * フォーカスの行き先を選ぶときに見る。`checkVisibility` の無い環境（jsdom）は
+ * 描かれているものとして扱う。
+ */
+function isShown(element: HTMLElement): boolean {
+  return "checkVisibility" in element ? element.checkVisibility() : true;
+}
+
 function rowFocusables(row: Element): HTMLElement[] {
   return [...row.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (element) => element.tabIndex >= 0,
+    (element) => element.tabIndex >= 0 && isShown(element),
   );
 }
 
@@ -102,6 +117,7 @@ interface RowHandlers {
   onConfirm: (tag: Tag) => void;
   onReject: (tag: Tag) => void;
   onDraftChange: () => void;
+  onSelect: (tag: Tag, selected: boolean) => void;
 }
 
 /**
@@ -154,6 +170,23 @@ export default function TagsPage() {
   const [rejectPending, setRejectPending] = useState(false);
   const [rejectError, setRejectError] = useState<UiText | null>(null);
 
+  /**
+   * selected は選んだ行の id である。見えている行の部分集合で、検索・絞り込みを
+   * 変えて見えなくなった行と改名中の行は外す（specs/036-tag-admin-scale/data-model.md
+   * §4「選択」）。
+   */
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  /** まとめての操作の送信中。`confirm` はバーの「Confirm」、`dialog` は確認の窓から。 */
+  const [bulkPending, setBulkPending] = useState<"confirm" | "dialog" | null>(null);
+  const [bulkDialog, setBulkDialog] = useState<{
+    action: BulkTagAction;
+    ids: readonly number[];
+  } | null>(null);
+  const [bulkError, setBulkError] = useState<UiText | null>(null);
+  const selectAllRef = useRef<HTMLButtonElement | null>(null);
+  const barConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const barMoreRef = useRef<HTMLButtonElement | null>(null);
+
   const [rejectedNames, setRejectedNames] = useState<string[] | undefined>(undefined);
   const [rejectedError, setRejectedError] = useState<UiText | null>(null);
   const rejectedGeneration = useRef(0);
@@ -198,6 +231,7 @@ export default function TagsPage() {
       renameButton: null,
       synonymsButton: null,
       menuButton: null,
+      actionsButton: null,
     };
     rowRefs.current.set(id, { ...current, ...refs });
   }, []);
@@ -285,7 +319,7 @@ export default function TagsPage() {
     afterCommit(() => {
       revealRow(id);
       const refs = rowRefs.current.get(id);
-      const target =
+      const preferred =
         part === "rename"
           ? refs?.renameButton
           : part === "synonyms"
@@ -293,6 +327,7 @@ export default function TagsPage() {
             : part === "menu"
               ? refs?.menuButton
               : refs?.nameLink;
+      const target = rowActionTarget(refs, preferred);
       if (target === null || target === undefined || !target.isConnected) {
         fallbackFocus();
       } else target.focus();
@@ -317,6 +352,7 @@ export default function TagsPage() {
     order: readonly Tag[],
     removedId: number,
     alsoGone: ReadonlySet<number> = new Set(),
+    fallback: () => void = fallbackFocus,
   ) {
     const index = order.findIndex((tag) => tag.id === removedId);
     const stays = (tag: Tag) => tag.id !== removedId && !alsoGone.has(tag.id);
@@ -329,15 +365,31 @@ export default function TagsPage() {
       for (const tag of candidates) {
         if (!listed.has(tag.id)) continue;
         const index = renderRow(tag.id);
-        const button = rowRefs.current.get(tag.id)?.renameButton;
-        if (button?.isConnected === true && !button.disabled) {
+        const refs = rowRefs.current.get(tag.id);
+        const button = rowActionTarget(refs, refs?.renameButton);
+        if (button?.isConnected === true && !(button as HTMLButtonElement).disabled) {
           if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
           button.focus();
           return;
         }
       }
-      fallbackFocus();
+      fallback();
     });
+  }
+
+  /**
+   * rowActionTarget は、行の操作へフォーカスを移すときの実際の行き先である。
+   * タッチの端末と `sm` 未満では行の `IconButton` が隠れて「Actions」1 つに
+   * まとまるので、隠れている操作の代わりに「Actions」を指す（ui-design.md
+   * 「Actions on touch and narrow widths」）。名前のリンクは隠れない。
+   */
+  function rowActionTarget(
+    refs: TagRowRefs | undefined,
+    preferred: HTMLElement | null | undefined,
+  ): HTMLElement | null | undefined {
+    if (preferred === null || preferred === undefined) return preferred;
+    if (preferred === refs?.nameLink || !preferred.isConnected) return preferred;
+    return isShown(preferred) ? preferred : refs?.actionsButton;
   }
 
   /**
@@ -487,6 +539,50 @@ export default function TagsPage() {
   useLayoutEffect(() => {
     visibleRowsRef.current = visibleRows;
   }, [visibleRows]);
+
+  // 選択は見えている行の部分集合に保つ。検索・絞り込みを変えて見えなくなった行と、
+  // 改名中の行を外す。並び順だけの変更では行は見えたままなので残る
+  // （specs/036-tag-admin-scale/data-model.md §4「選択」）。
+  useLayoutEffect(() => {
+    setSelected((current) => {
+      if (current.size === 0) return current;
+      const visible = new Set(visibleRows.map((tag) => tag.id));
+      const next = new Set<number>();
+      for (const id of current) {
+        if (visible.has(id) && id !== renamingId) next.add(id);
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleRows, renamingId]);
+
+  /**
+   * selectableCount は「見えているものをすべて選ぶ」の対象の数である。改名中の行は
+   * 入らない（ui-design.md「Count line」）。
+   */
+  const selectableCount =
+    visibleRows.length -
+    (renamingId !== null && visibleRows.some((tag) => tag.id === renamingId) ? 1 : 0);
+  /** overLimit は見えている数がまとめての操作の上限を超えるかである。 */
+  const overLimit = visibleRows.length > maxTagBatch;
+  const selection = useMemo(() => {
+    let tentative = false;
+    let confirmed = false;
+    if (selected.size > 0) {
+      for (const tag of visibleRows) {
+        if (!selected.has(tag.id)) continue;
+        if (tag.tentative) tentative = true;
+        else confirmed = true;
+        if (tentative && confirmed) break;
+      }
+    }
+    return { tentative, confirmed };
+  }, [selected, visibleRows]);
+  const selectAllState: boolean | "indeterminate" =
+    selected.size === 0
+      ? false
+      : selected.size >= selectableCount
+        ? true
+        : "indeterminate";
 
   // 一覧は表示域と前後の少数の行だけを描く（specs/036-tag-admin-scale/research.md
   // R-2）。スクロールの持ち主は文書で、行の高さは描いた要素を測る。
@@ -996,6 +1092,156 @@ export default function TagsPage() {
   }
 
   /**
+   * toggleSelectAll は件数の行の先頭のチェックである。空・中間なら見えている行の
+   * うち選べる行をすべて選び、全部なら選択を解く（要件 9、ui-design.md「Count line」）。
+   */
+  function toggleSelectAll() {
+    if (selectAllState === true) {
+      setSelected(new Set());
+      return;
+    }
+    setSelected(
+      new Set(visibleRows.filter((tag) => tag.id !== renamingId).map((tag) => tag.id)),
+    );
+  }
+
+  function clearSelection() {
+    setSelected(new Set());
+    // バーが消えるので、フォーカスを件数の行の先頭のチェックへ移す。
+    afterCommit(() => {
+      const header = selectAllRef.current;
+      if (header !== null && !header.disabled) header.focus();
+      else fallbackFocus();
+    });
+  }
+
+  /** withoutIds は選択から ids を外した集合を返す。 */
+  function withoutIds(current: ReadonlySet<number>, ids: ReadonlySet<number>) {
+    const next = new Set(current);
+    for (const id of ids) next.delete(id);
+    return next;
+  }
+
+  /**
+   * afterStale は、まとめての操作の対象の一部がもう無かったときに一覧を取り直す
+   * （data-model.md §4「まとめての操作の結果」）。
+   */
+  function afterStale(notFoundIds: readonly number[]) {
+    if (notFoundIds.length === 0) return;
+    toast(t.tags.selection.stale);
+    void reload();
+  }
+
+  /**
+   * submitBulkConfirm はバーの「Confirm」である。確認なしで選んだ id 全部を 1 回
+   * 送り、確定した行を差し替えて選択から外す。既に確定していた行は選んだまま
+   * 残す。失敗したら何も変えない（ui-design.md「Bulk confirm」）。
+   */
+  async function submitBulkConfirm() {
+    if (bulkPending !== null || selected.size === 0) return;
+    const ids = [...selected];
+    setBulkPending("confirm");
+    try {
+      const result = await batchTags("confirm", ids);
+      const applied = new Set(result.appliedIds);
+      setTags((current) =>
+        current?.map((item) =>
+          applied.has(item.id) ? { ...item, tentative: false } : item,
+        ),
+      );
+      setSelected((current) => withoutIds(current, applied));
+      toast(t.tags.selection.confirmed(applied.size, result.notApplicableIds.length));
+      afterStale(result.notFoundIds);
+      afterCommit(focusAfterBulkConfirm);
+    } catch (failure) {
+      toast(errorText(failure));
+    } finally {
+      setBulkPending(null);
+    }
+  }
+
+  /**
+   * focusAfterBulkConfirm はまとめての確定のあとのフォーカス先である。「Tentative
+   * only」中に一覧が空になればそのボタン、バーが残れば押せる「Confirm」、押せな
+   * ければ「More」、バーが消えれば件数の行の先頭のチェックへ（ui-design.md
+   * 「Bulk confirm」）。押せないボタンへは置かない。
+   */
+  function focusAfterBulkConfirm() {
+    if (filtersRef.current.tentativeOnly && visibleRowsRef.current.length === 0) {
+      tentativeButtonRef.current?.focus();
+      return;
+    }
+    for (const candidate of [barConfirmRef.current, barMoreRef.current]) {
+      if (candidate?.isConnected === true && !candidate.disabled) {
+        candidate.focus();
+        return;
+      }
+    }
+    focusSelectAllOr(fallbackFocus);
+  }
+
+  function focusSelectAllOr(otherwise: () => void) {
+    const header = selectAllRef.current;
+    if (header?.isConnected === true && !header.disabled) header.focus();
+    else otherwise();
+  }
+
+  function openBulkDialog(action: BulkTagAction) {
+    if (bulkPending !== null || selected.size === 0) return;
+    setBulkError(null);
+    setBulkDialog({ action, ids: [...selected] });
+  }
+
+  /**
+   * performBulk は確認の窓の「Reject」「Delete」である。処理した行を一覧から消して
+   * 選択から外し、働かない種類だった行は選んだまま残す。失敗は窓の中に出し、窓と
+   * 選択を残す（ui-design.md「Bulk reject and delete」）。
+   */
+  async function performBulk() {
+    if (bulkDialog === null || bulkPending !== null) return;
+    const { action, ids } = bulkDialog;
+    const order = visibleRows;
+    setBulkError(null);
+    setBulkPending("dialog");
+    try {
+      const result = await batchTags(action, ids);
+      const applied = new Set(result.appliedIds);
+      setTags((current) => current?.filter((item) => !applied.has(item.id)));
+      setSelected((current) => withoutIds(current, applied));
+      setBulkDialog(null);
+      const skipped = result.notApplicableIds.length;
+      toast(
+        action === "reject"
+          ? t.tags.selection.rejected(applied.size, skipped)
+          : t.tags.selection.deleted(applied.size, skipped),
+      );
+      if (action === "reject") reloadRejectedNames();
+      afterStale(result.notFoundIds);
+      // 消えた行の位置の次の行の「改名」、無ければ前の行。1 つも無ければ
+      // 「Tentative only」を押していればそのボタン、押していなければ先頭のチェック。
+      const fallback = () => {
+        if (filtersRef.current.tentativeOnly) tentativeButtonRef.current?.focus();
+        else focusSelectAllOr(fallbackFocus);
+      };
+      const first = order.find((tag) => applied.has(tag.id));
+      if (first === undefined) afterCommit(fallback);
+      else focusAfterRemoval(order, first.id, applied, fallback);
+    } catch (failure) {
+      setBulkError(errorText(failure));
+    } finally {
+      setBulkPending(null);
+    }
+  }
+
+  /** cancelBulk は確認の窓を何も変えずに閉じ、フォーカスを「More」へ戻す。 */
+  function cancelBulk() {
+    if (bulkPending !== null) return;
+    setBulkDialog(null);
+    setBulkError(null);
+    afterCommit(() => barMoreRef.current?.focus());
+  }
+
+  /**
    * rowHandlersRef は、行の操作の今の実体である。行へは `rowHandlers`（同じ
    * 関数を渡し続ける包み）を渡し、`React.memo` の行が操作のたびに描き直され
    * ないようにする。実体は描くたびに差し替える。
@@ -1011,6 +1257,9 @@ export default function TagsPage() {
         setCreating(false);
         setRenameError(null);
         setRenamingId(target.id);
+        // 選んでいる行の改名を始めると、その行を選択から外す（ui-design.md
+        // 「Row checkbox」）。
+        setSelected((current) => withoutIds(current, new Set([target.id])));
       },
       onCancelRename: (target) => {
         if (renamePending) return;
@@ -1034,6 +1283,16 @@ export default function TagsPage() {
         setRejectingTag(target);
       },
       onDraftChange: () => setRenameError(null),
+      onSelect: (target, next) => {
+        if (target.id === renamingId) return;
+        setSelected((current) => {
+          if (current.has(target.id) === next) return current;
+          const updated = new Set(current);
+          if (next) updated.add(target.id);
+          else updated.delete(target.id);
+          return updated;
+        });
+      },
     };
   });
   const rowHandlers = useMemo<RowHandlers>(
@@ -1047,6 +1306,7 @@ export default function TagsPage() {
       onConfirm: (tag) => rowHandlersRef.current?.onConfirm(tag),
       onReject: (tag) => rowHandlersRef.current?.onReject(tag),
       onDraftChange: () => rowHandlersRef.current?.onDraftChange(),
+      onSelect: (tag, next) => rowHandlersRef.current?.onSelect(tag, next),
     }),
     [],
   );
@@ -1142,15 +1402,38 @@ export default function TagsPage() {
         </Button>
       </div>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="mt-2 text-xs text-fg-muted tabular-nums"
-      >
-        {countText}
-      </p>
+      {/*
+        件数の行（ui-design.md「Count line」）。先頭のチェックは行のチェックと同じ列
+        （行の px-2 と size-8 の包み）に置き、行の高さは h-5 のまま。
+      */}
+      <div className="group mt-2 flex h-5 items-center gap-2 pl-2 sm:gap-3">
+        <div className="-my-1.5 flex size-8 shrink-0 items-center justify-center">
+          <Checkbox
+            ref={selectAllRef}
+            checked={selectAllState}
+            onCheckedChange={toggleSelectAll}
+            label={
+              selectAllState === true ? t.tags.clearSelection : t.tags.selectAllShown
+            }
+            disabled={tags === undefined || selectableCount === 0 || overLimit}
+            className={cn(
+              "transition-opacity",
+              selected.size > 0
+                ? "opacity-100"
+                : "opacity-40 group-focus-within:opacity-100 group-hover:opacity-100",
+            )}
+          />
+        </div>
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-xs text-fg-muted tabular-nums"
+        >
+          {countText}
+        </p>
+      </div>
 
-      <div className="mt-2">
+      <div className={cn("mt-2", selected.size > 0 && "pb-16")}>
         {tags === undefined && loadError === null && (
           <div className="space-y-2" aria-hidden="true">
             {Array.from({ length: 6 }, (_, index) => (
@@ -1292,6 +1575,8 @@ export default function TagsPage() {
                         error={renamingId === tag.id ? renameError : null}
                         registerRefs={registerRefs}
                         confirming={confirming.has(tag.id)}
+                        selected={selected.has(tag.id)}
+                        selectionActive={selected.size > 0}
                         {...rowHandlers}
                       />
                     </div>
@@ -1314,6 +1599,32 @@ export default function TagsPage() {
           error={rejectedError}
           onRetry={reloadRejectedNames}
           onForget={forgetRejectedName}
+        />
+      )}
+
+      <TagSelectionBar
+        count={selected.size}
+        hasTentative={selection.tentative}
+        hasConfirmed={selection.confirmed}
+        overLimit={overLimit}
+        busy={bulkPending !== null}
+        confirming={bulkPending === "confirm"}
+        onConfirm={() => void submitBulkConfirm()}
+        onReject={() => openBulkDialog("reject")}
+        onDelete={() => openBulkDialog("delete")}
+        onClear={clearSelection}
+        confirmRef={barConfirmRef}
+        moreRef={barMoreRef}
+      />
+
+      {bulkDialog !== null && (
+        <BulkTagDialog
+          action={bulkDialog.action}
+          ids={bulkDialog.ids}
+          pending={bulkPending === "dialog"}
+          error={bulkError}
+          onClose={cancelBulk}
+          onSubmit={() => void performBulk()}
         />
       )}
 

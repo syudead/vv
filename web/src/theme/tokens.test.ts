@@ -82,6 +82,10 @@ describe("contrast", () => {
     ["link", "elevated", 3],
     ["link", "field", 3],
     ["link", "accent-soft", 4.5],
+    // タグ管理画面の選んだ行の面の上の名前と本数・シノニム
+    // （specs/036-tag-admin-scale/ui-design.md「Colour」）。
+    ["fg", "accent-soft", 4.5],
+    ["fg-muted", "accent-soft", 4.5],
     ["danger", "danger-soft", 4.5],
     ["warning", "warning-soft", 4.5],
     ["success", "success-soft", 4.5],
