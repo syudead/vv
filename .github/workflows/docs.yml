@@ -1,5 +1,7 @@
-# 文書サイト（docs-site/、VitePress）を作り、main では GitHub Pages へ公開する。
-# PR では作れることだけを確かめる。公開するのは docs/ と specs/ の文書である。
+# Builds the documentation site (docs-site/, VitePress) and, on main, deploys
+# it to GitHub Pages. Pull requests only check that it builds. The site
+# publishes docs/, specs/ and ARCHITECTURE.md, and their Japanese translations
+# from the docs-ja branch under /ja/ (written by docs-translate.yml).
 name: Docs site
 
 on:
@@ -8,12 +10,14 @@ on:
     paths:
       - "docs/**"
       - "specs/**"
+      - "ARCHITECTURE.md"
       - "docs-site/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "specs/**"
+      - "ARCHITECTURE.md"
       - "docs-site/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch: {}
@@ -45,6 +49,13 @@ jobs:
 
       - name: 依存を入れる
         run: npm --prefix docs-site ci
+
+      - name: 和訳の仕組みを検査する
+        run: npm --prefix docs-site test
+
+      # 和訳はまだ無いこともある。無ければ /ja/ の全ページが「未翻訳」になる。
+      - name: docs-ja を取り出す
+        run: git fetch --depth=1 origin docs-ja && git worktree add --detach .docs-ja FETCH_HEAD || echo "docs-ja はまだ無い"
 
       - name: サイトを作る
         run: npm --prefix docs-site run build

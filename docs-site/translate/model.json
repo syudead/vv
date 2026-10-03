@@ -1,0 +1,8 @@
+{
+  "family": "hy",
+  "repo": "tencent/HY-MT1.5-7B-GGUF",
+  "revision": "main",
+  "file": "HY-MT1.5-7B-Q4_K_M.gguf",
+  "sha256": "",
+  "llamaCpp": "b11371"
+}

@@ -55,3 +55,7 @@ __pycache__/
 .venv/
 
 *.tsbuildinfo
+
+# docs-site/translate/site.mjs が作る和訳のページと、docs-ja ブランチの checkout。
+/ja/
+/.docs-ja/

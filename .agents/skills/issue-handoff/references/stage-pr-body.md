@@ -35,5 +35,5 @@ states it designed, as rows of `## 検証の方法`.
 
 | 決めたこと | 採らなかった案 | 理由 | 詳細 |
 | --- | --- | --- | --- |
-| 字幕はフォルダを要求のたびに読む | SQLite に索引を置く | ファイルの追加をすぐ反映できる | [R-1](specs/028-sidecar-subtitles/research.md#r-1-...) |
+| 字幕はフォルダを要求のたびに読む | SQLite に索引を置く | ファイルの追加をすぐ反映できる | [R-1](https://github.com/syudead/vv/blob/main/specs/028-sidecar-subtitles/research.md) |
 ```

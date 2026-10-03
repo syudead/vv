@@ -1,0 +1,42 @@
+# English term<TAB>Japanese rendering. One rendering per term (W-8 in
+# docs/design-docs/writing-quality.md). A term that maps to itself is a UI
+# label: the screen is English, so the translation keeps the label as shown.
+# Changing a line retranslates only the segments that contain the term.
+feature branch	feature ブランチ
+pull request	プルリクエスト
+parent Issue	親 Issue
+child Issue	子 Issue
+acceptance criterion	受け入れ条件
+acceptance criteria	受け入れ条件
+requirement	要件
+design document	設計文書
+how-to guide	手順書
+documentation site	文書サイト
+implementation unit	実装単位
+live transcode	ライブ変換
+live transcoding	ライブ変換
+hardware encoding	ハードウェアエンコード
+seek bar	シークバー
+seek thumbnail	シーク用サムネイル
+sprite sheet	スプライトシート
+hover preview	ホバープレビュー
+scrub	スクラブ
+tentative tag	仮のタグ
+synonym	シノニム
+folder group	フォルダのグループ
+media folder	メディアフォルダ
+sidecar subtitle	隣の字幕ファイル
+owner	所有者
+guest	ゲスト
+external API	外部連携 API
+content key	内容の鍵
+Library	Library
+Folders	Folders
+Tags	Tags
+Settings	Settings
+Versions	Versions
+Favorites	Favorites
+Duplicates	Duplicates
+Media folders	Media folders
+Up next	Up next
+Now playing	Now playing
