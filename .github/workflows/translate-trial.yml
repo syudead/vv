@@ -1,0 +1,63 @@
+# 和訳に使う翻訳特化モデルの候補を、本番と同じ GitHub-hosted runner で試す。
+# 一時的な検証用で、モデルを決めたら消す。
+name: Translate trial
+
+on:
+  pull_request:
+    paths:
+      - ".github/translate-trial/**"
+      - ".github/workflows/translate-trial.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    name: Trial ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: HY-MT1.5-1.8B, family: hy, query: HY-MT1.5-1.8B, author: tencent, quants: "Q8_0,Q6_K,Q4_K_M" }
+          - { name: HY-MT1.5-7B, family: hy, query: HY-MT1.5-7B, author: tencent, quants: "Q4_K_M,Q5_K_M,Q8_0" }
+          - { name: TranslateGemma-4B, family: gemma, query: translategemma-4b, author: google, quants: "Q8_0,Q4_K_M" }
+          - { name: plamo-2-translate, family: plamo, query: plamo-2-translate, author: pfnet, quants: "Q4_K_M,Q5_K_M,Q8_0" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: llama.cpp の配布物を入れる
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          url=$(gh api repos/ggml-org/llama.cpp/releases/latest \
+            --jq '.assets[] | select(.name | test("bin-ubuntu-x64\\.(zip|tar\\.gz)$")) | .browser_download_url' | head -1)
+          echo "llama.cpp: $url"
+          curl -sSfL -o llama.pkg "$url"
+          mkdir -p llama-extract
+          case "$url" in
+            *.zip) unzip -q llama.pkg -d llama-extract ;;
+            *) tar -xzf llama.pkg -C llama-extract ;;
+          esac
+          server=$(find llama-extract -name llama-server -type f | head -1)
+          mkdir -p llama
+          cp -r "$(dirname "$server")"/. llama/
+          chmod +x llama/llama-server
+          ./llama/llama-server --version || true
+
+      - name: 試す
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/llama
+        run: python3 .github/translate-trial/trial.py "${{ matrix.name }}" "${{ matrix.family }}" "${{ matrix.query }}" "${{ matrix.author }}" "${{ matrix.quants }}"
+
+      - name: 結果を残す
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trial-${{ matrix.name }}
+          path: |
+            report.md
+            server.log
+          if-no-files-found: ignore
