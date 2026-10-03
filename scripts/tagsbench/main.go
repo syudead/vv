@@ -36,8 +36,10 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// videosPerTag は規模（タグの数）に対する動画の数の倍率である（親 Issue #651 の
-// 「タグ 1,000 個・動画 10,000 本」「タグ 3,000 個・動画 30,000 本」）。
+// videosPerTag は -videos を省いたときの、規模（タグの数）に対する動画の数の倍率である
+// （親 Issue #651 の「タグ 1,000 個・動画 10,000 本」「タグ 3,000 個・動画 30,000 本」）。
+// タグ 30,000 個の規模は -videos 30000 で動画を 3,000 個の規模と同じにし、違いをタグの
+// 数だけにする（research.md R-9）。
 const videosPerTag = 10
 
 // unusedEvery は本数 0 のタグの間隔である。11 個に 1 個（約 9%）で、親 Issue の
@@ -52,7 +54,9 @@ const maxLightCount = 60
 
 // config はコマンドラインの解釈結果である。
 type config struct {
-	scale     int
+	scale int
+	// videos は動画の数。-videos を省けば scale の videosPerTag 倍。
+	videos    int
 	skipBuild bool
 	chromium  string
 }
@@ -64,10 +68,11 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	flags := flag.NewFlagSet("tagsbench", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		_, _ = fmt.Fprintln(stderr, "使い方: go run ./scripts/tagsbench -scale N [-skip-build] [-chromium PATH]")
+		_, _ = fmt.Fprintln(stderr, "使い方: go run ./scripts/tagsbench -scale N [-videos N] [-skip-build] [-chromium PATH]")
 		flags.PrintDefaults()
 	}
-	scale := flags.Int("scale", 0, "規模の名前（タグの数）。動画はこの 10 倍（例: 1000、3000）")
+	scale := flags.Int("scale", 0, "規模の名前（タグの数）（例: 1000、3000、30000）")
+	videos := flags.Int("videos", 0, "動画の数。省けば -scale の 10 倍（例: -scale 30000 -videos 30000）")
 	skipBuild := flags.Bool("skip-build", false, "bin/mdm をビルドし直さずに使う")
 	chromium := flags.String("chromium", "", "Playwright が持つものの代わりに使う Chromium の実行ファイル")
 	if err := flags.Parse(args); err != nil {
@@ -79,7 +84,23 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	if *scale < 1 {
 		return config{}, fmt.Errorf("%w: -scale は 1 以上にしてください（%d）", errUsage, *scale)
 	}
-	return config{scale: *scale, skipBuild: *skipBuild, chromium: *chromium}, nil
+	videoCount := *videos
+	if videoCount == 0 {
+		videoCount = *scale * videosPerTag
+	}
+	if videoCount < 1 {
+		return config{}, fmt.Errorf("%w: -videos は 1 以上にしてください（%d）", errUsage, *videos)
+	}
+	return config{scale: *scale, videos: videoCount, skipBuild: *skipBuild, chromium: *chromium}, nil
+}
+
+// dataName は規模のデータのディレクトリ名である。動画が既定の数（規模の 10 倍）なら
+// 規模だけ、そうでなければ動画の数を添え、作り方の違うデータを取り違えない。
+func (c config) dataName() string {
+	if c.videos == c.scale*videosPerTag {
+		return fmt.Sprint(c.scale)
+	}
+	return fmt.Sprintf("%d-videos-%d", c.scale, c.videos)
 }
 
 // tagPlan は作るタグ 1 つである。videos は付ける動画の番号（0 から）で、空なら本数 0。
@@ -97,10 +118,10 @@ var nameWords = []string{
 	"mystery", "ニュース", "western", "子ども", "musical", "歴史", "sci-fi", "インタビュー",
 }
 
-// planTags は規模 scale のタグの作り方を決める。同じ scale なら毎回同じ結果になる。
-// 偶数番目は確定、奇数番目は仮のタグで（半数が仮）、unusedEvery 個に 1 個は本数 0 にする。
-func planTags(scale int) []tagPlan {
-	videoCount := scale * videosPerTag
+// planTags は規模 scale・動画 videoCount 本のタグの作り方を決める。同じ引数なら毎回同じ
+// 結果になる。偶数番目は確定、奇数番目は仮のタグで（半数が仮）、unusedEvery 個に 1 個は
+// 本数 0 にする。
+func planTags(scale, videoCount int) []tagPlan {
 	rng := rand.New(rand.NewPCG(uint64(scale), 36))
 	plans := make([]tagPlan, 0, scale)
 	for i := range scale {
@@ -144,7 +165,7 @@ type seedSummary struct {
 
 // seed は dataDir に規模 scale のデータを書く。mediaDir を登録フォルダにし、その直下に
 // 動画の所在の行だけを書く（直下に置くのは、祖先のフォルダ名から付くタグを作らないため）。
-func seed(ctx context.Context, dataDir, mediaDir string, scale int, progress io.Writer) (seedSummary, error) {
+func seed(ctx context.Context, dataDir, mediaDir string, scale, videoCount int, progress io.Writer) (seedSummary, error) {
 	db, err := store.OpenContext(ctx, dataDir)
 	if err != nil {
 		return seedSummary{}, err
@@ -157,7 +178,6 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale int, progress io.
 		return seedSummary{}, fmt.Errorf("登録フォルダを書けません: %w", err)
 	}
 
-	videoCount := scale * videosPerTag
 	ids := make([]int64, videoCount)
 	base := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	for i := range videoCount {
@@ -182,7 +202,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale int, progress io.
 
 	summary := seedSummary{videos: videoCount}
 	tags := db.Tags()
-	for i, plan := range planTags(scale) {
+	for i, plan := range planTags(scale, videoCount) {
 		refs := make([]domain.VideoRef, 0, max(len(plan.videos), 1))
 		for _, v := range plan.videos {
 			refs = append(refs, domain.VideoRef{ID: ids[v]})
@@ -199,7 +219,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale int, progress io.
 				return seedSummary{}, fmt.Errorf("タグを外せません (%s): %w", plan.name, err)
 			}
 		}
-		if (i+1)%500 == 0 {
+		if (i+1)%5000 == 0 || (scale <= 5000 && (i+1)%500 == 0) {
 			_, _ = fmt.Fprintf(progress, "  タグ %d / %d\n", i+1, scale)
 		}
 	}
@@ -226,7 +246,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale int, progress io.
 
 // ensureSeed は規模のデータを用意する。既にあれば作り直さない。途中で止まっても半端な
 // データを本物と取り違えないよう、別名で作ってから移す。
-func ensureSeed(ctx context.Context, scaleDir string, scale int, stdout io.Writer) (string, error) {
+func ensureSeed(ctx context.Context, scaleDir string, scale, videoCount int, stdout io.Writer) (string, error) {
 	seedDir := filepath.Join(scaleDir, "seed")
 	if _, err := os.Stat(seedDir); err == nil {
 		_, _ = fmt.Fprintln(stdout, "規模のデータを使う:", seedDir)
@@ -243,9 +263,9 @@ func ensureSeed(ctx context.Context, scaleDir string, scale int, stdout io.Write
 	if err := os.MkdirAll(partial, 0o755); err != nil {
 		return "", err
 	}
-	_, _ = fmt.Fprintf(stdout, "規模のデータを作る（タグ %d 個・動画 %d 本）: %s\n", scale, scale*videosPerTag, seedDir)
+	_, _ = fmt.Fprintf(stdout, "規模のデータを作る（タグ %d 個・動画 %d 本）: %s\n", scale, videoCount, seedDir)
 	started := time.Now()
-	summary, err := seed(ctx, partial, mediaDir, scale, stdout)
+	summary, err := seed(ctx, partial, mediaDir, scale, videoCount, stdout)
 	if err != nil {
 		return "", err
 	}
@@ -390,6 +410,7 @@ func runBench(ctx context.Context, root string, cfg config, baseURL, resultPath 
 	cmd.Env = append(os.Environ(),
 		"TAGSBENCH_BASE_URL="+baseURL,
 		fmt.Sprintf("TAGSBENCH_SCALE=%d", cfg.scale),
+		fmt.Sprintf("TAGSBENCH_VIDEOS=%d", cfg.videos),
 		"TAGSBENCH_RESULT="+resultPath,
 	)
 	if cfg.chromium != "" {
@@ -424,8 +445,8 @@ func bench(ctx context.Context, cfg config, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	scaleDir := filepath.Join(root, ".local", "tagsbench", fmt.Sprint(cfg.scale))
-	seedDir, err := ensureSeed(ctx, scaleDir, cfg.scale, stdout)
+	scaleDir := filepath.Join(root, ".local", "tagsbench", cfg.dataName())
+	seedDir, err := ensureSeed(ctx, scaleDir, cfg.scale, cfg.videos, stdout)
 	if err != nil {
 		return err
 	}

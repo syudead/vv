@@ -19,11 +19,24 @@ func TestParseArgs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := config{scale: 1000, skipBuild: true, chromium: "/opt/chrome"}
+	want := config{scale: 1000, videos: 10000, skipBuild: true, chromium: "/opt/chrome"}
 	if cfg != want {
 		t.Fatalf("parseArgs = %+v, want %+v", cfg, want)
 	}
-	for _, args := range [][]string{{}, {"-scale", "0"}, {"-scale", "10", "extra"}} {
+	if name := cfg.dataName(); name != "1000" {
+		t.Errorf("dataName = %q, want 1000", name)
+	}
+	cfg, err = parseArgs([]string{"-scale", "30000", "-videos", "30000"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (config{scale: 30000, videos: 30000}); cfg != want {
+		t.Fatalf("parseArgs = %+v, want %+v", cfg, want)
+	}
+	if name := cfg.dataName(); name != "30000-videos-30000" {
+		t.Errorf("dataName = %q, want 30000-videos-30000", name)
+	}
+	for _, args := range [][]string{{}, {"-scale", "0"}, {"-scale", "10", "extra"}, {"-scale", "10", "-videos", "-1"}} {
 		if _, err := parseArgs(args, io.Discard); !errors.Is(err, errUsage) {
 			t.Errorf("parseArgs(%q) = %v, want errUsage", args, err)
 		}
@@ -31,8 +44,9 @@ func TestParseArgs(t *testing.T) {
 }
 
 func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
-	for _, scale := range []int{1000, 3000} {
-		plans := planTags(scale)
+	for _, shape := range []struct{ scale, videos int }{{1000, 10000}, {3000, 30000}, {30000, 30000}} {
+		scale := shape.scale
+		plans := planTags(scale, shape.videos)
 		if len(plans) != scale {
 			t.Fatalf("scale %d: %d tags", scale, len(plans))
 		}
@@ -51,7 +65,7 @@ func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
 			}
 			seen := make(map[int]bool, len(plan.videos))
 			for _, v := range plan.videos {
-				if v < 0 || v >= scale*videosPerTag || seen[v] {
+				if v < 0 || v >= shape.videos || seen[v] {
 					t.Fatalf("scale %d: tag %q has a bad video %d", scale, plan.name, v)
 				}
 				seen[v] = true
@@ -65,7 +79,7 @@ func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
 			t.Errorf("scale %d: %d tentative tags, want %d", scale, tentative, scale/2)
 		}
 	}
-	if !reflect.DeepEqual(planTags(100), planTags(100)) {
+	if !reflect.DeepEqual(planTags(100, 1000), planTags(100, 1000)) {
 		t.Error("planTags is not deterministic")
 	}
 }
@@ -75,11 +89,12 @@ func TestSeedWritesTheTagsThroughTheStore(t *testing.T) {
 	dataDir := t.TempDir()
 	mediaDir := filepath.Join(t.TempDir(), "media")
 	const scale = 33
-	summary, err := seed(ctx, dataDir, mediaDir, scale, io.Discard)
+	const videos = 50
+	summary, err := seed(ctx, dataDir, mediaDir, scale, videos, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := seedSummary{tags: scale, unused: 3, tentative: 16, videos: scale * videosPerTag}
+	want := seedSummary{tags: scale, unused: 3, tentative: 16, videos: videos}
 	if summary != want {
 		t.Fatalf("seed = %+v, want %+v", summary, want)
 	}
@@ -98,7 +113,7 @@ func TestSeedWritesTheTagsThroughTheStore(t *testing.T) {
 	for _, tag := range tags {
 		counts[tag.Name] = tag.VideoCount
 	}
-	for _, plan := range planTags(scale) {
+	for _, plan := range planTags(scale, videos) {
 		if got := counts[plan.name]; got != len(plan.videos) {
 			t.Errorf("tag %q has %d videos, want %d", plan.name, got, len(plan.videos))
 		}

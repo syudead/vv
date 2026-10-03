@@ -1,6 +1,6 @@
 import { writeFile } from "node:fs/promises";
 
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
 
 // タグ管理画面（/tags）を規模のデータで測る（specs/036-tag-admin-scale/quickstart.md の
 // 「場面と期待」）。`go run ./scripts/tagsbench` から呼ばれ、場面ごとの値を Markdown の表で
@@ -11,6 +11,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 // （仮想化など）が変わっても同じ場面を測れる。
 
 const scale = process.env.TAGSBENCH_SCALE ?? "?";
+const videos = process.env.TAGSBENCH_VIDEOS ?? "?";
 const resultPath = process.env.TAGSBENCH_RESULT;
 
 const account = { username: "tagsbench", password: "tagsbench-password" } as const;
@@ -21,6 +22,8 @@ const rowLinkPrefix = "Open the library filtered by ";
 const loadRuns = 3;
 /** 待つ上限。3,000 個の規模で遅い変更前の画面でも収まる長さにする。 */
 const waitTimeout = 120_000;
+/** スクロールで、位置も読み込んだ行も変わらないままこれだけ経ったら末尾を待つのをやめる。 */
+const scrollStallTimeout = 60_000;
 
 interface LongTaskEntry {
   start: number;
@@ -126,13 +129,38 @@ async function interact(page: Page, action: () => Promise<void>): Promise<Intera
   return { elapsed, longTasks: await longTasksSince(page, start) };
 }
 
+/** isTagList は、タグの一覧（`GET /api/tags`。統合の窓の候補の検索 `q` を除く）の応答か。 */
+function isTagList(response: Response): boolean {
+  const url = new URL(response.url());
+  return (
+    url.pathname === "/api/tags" &&
+    response.request().method() === "GET" &&
+    !url.searchParams.has("q")
+  );
+}
+
+interface TagListBody {
+  items: unknown[];
+  totalAll?: number;
+  nextCursor?: string;
+}
+
+function bytes(value: number): string {
+  return `${value.toLocaleString("en-US")} B`;
+}
+
 function rows(page: Page): Locator {
   return page.getByRole("link", { name: new RegExp(`^${rowLinkPrefix}`) });
 }
 
-/** countLine は件数の行（「1,000 tags」「12 of 1,000 tags」）である。 */
+/**
+ * filteredCount は絞った件数の行（「12 of 1,000 tags」。続きがあれば「 · 100 loaded」が
+ * 添わる）である。
+ */
 function filteredCount(page: Page): Locator {
-  return page.getByRole("status").filter({ hasText: / of [\d,]+ tags?$/ });
+  return page
+    .getByRole("status")
+    .filter({ hasText: / of [\d,]+ tags?( · [\d,]+ loaded)?$/ });
 }
 
 interface Row {
@@ -152,9 +180,12 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
   } else {
     expect(created.status()).toBe(200);
   }
-  const listed = await page.request.get("/api/tags");
+  // ページで返すサーバーは limit=1 で 1 件と totalAll を返す。変更前（ページが無い）は
+  // limit を無視して全件を返すので、件数をそこから取る。
+  const listed = await page.request.get("/api/tags?limit=1");
   expect(listed.status()).toBe(200);
-  const tagTotal = ((await listed.json()) as { items: unknown[] }).items.length;
+  const listedBody = (await listed.json()) as TagListBody;
+  const tagTotal = listedBody.totalAll ?? listedBody.items.length;
   // 規模のデータが崩れていないこと（タグの数が規模と同じ）を先に確かめる。
   if (scale !== "?") expect(tagTotal).toBe(Number(scale));
 
@@ -166,16 +197,21 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     api: number;
     apiFirstByte: number;
     longTask: string;
+    items: number;
+    bodyBytes: number;
+    transferBytes: number;
+    hasMore: boolean;
   }[] = [];
   for (let run = 0; run < loadRuns; run += 1) {
     await page.goto("about:blank");
-    const response = page.waitForResponse(
-      (r) => new URL(r.url()).pathname === "/api/tags" && r.request().method() === "GET",
-      { timeout: waitTimeout },
-    );
+    const response = page.waitForResponse(isTagList, { timeout: waitTimeout });
     await page.goto("/tags");
     await rows(page).first().waitFor({ state: "attached", timeout: waitTimeout });
-    const timing = (await response).request().timing();
+    const opened = await response;
+    const timing = opened.request().timing();
+    const body = await opened.body();
+    const listBody = JSON.parse(body.toString("utf8")) as TagListBody;
+    const sizes = await opened.request().sizes();
     const firstRow = await page.evaluate(() => window.__tagsBench?.firstRowAt ?? NaN);
     await settle(page);
     loads.push({
@@ -185,6 +221,10 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
       longTask: longTaskText(
         (await longTasksSince(page, 0)).filter((task) => task.start <= firstRow),
       ),
+      items: listBody.items.length,
+      bodyBytes: body.length,
+      transferBytes: sizes.responseBodySize,
+      hasMore: listBody.nextCursor !== undefined,
     });
   }
   results.push({
@@ -193,14 +233,35 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
       .map((load) => ms(load.firstRow))
       .join(" / ")}）`,
     expected: "1 秒以内",
-    note: `GET /api/tags の応答 ${loads
-      .map((load) => `${ms(load.api)}（最初のバイト ${ms(load.apiFirstByte)}）`)
-      .join(
-        " / ",
-      )}。最初の行までの最長のタスク ${loads.map((load) => load.longTask).join(" / ")}`,
+    note: `最初の行までの最長のタスク ${loads.map((load) => load.longTask).join(" / ")}`,
   });
 
-  // 2. 検索の 1 文字目（受け入れ条件 2）。
+  // 2. 開いたときに受け取るタグ（受け入れ条件 2）。応答の大きさは本文（展開後）の
+  // バイト数で、補足に転送の大きさ（圧縮されていれば圧縮後）を添える。
+  const opened = loads.at(-1);
+  if (opened !== undefined) {
+    results.push({
+      scene: "開いたときに受け取るタグ",
+      value: `items ${opened.items.toLocaleString("en-US")} 件・本文 ${bytes(opened.bodyBytes)}`,
+      expected: "3 つの規模で同じ数・同じ大きさ（±5%）",
+      note: `転送 ${bytes(opened.transferBytes)}、続き（nextCursor）${opened.hasMore ? "あり" : "なし"}。各回の本文 ${loads
+        .map((load) => bytes(load.bodyBytes))
+        .join(" / ")}`,
+    });
+  }
+
+  // 内訳（quickstart.md「内訳の切り分け」）: 開いたときの GET /api/tags の応答時間を
+  // 描画と分けて出す。
+  results.push({
+    scene: "GET /api/tags の応答（開いたとき・内訳）",
+    value: `${ms(median(loads.map((load) => load.api)))}（中央値）`,
+    expected: "—",
+    note: `各回 ${loads
+      .map((load) => `${ms(load.api)}（最初のバイト ${ms(load.apiFirstByte)}）`)
+      .join(" / ")}`,
+  });
+
+  // 3. 検索の 1 文字目（受け入れ条件 3）。
   const search = page.getByRole("searchbox", { name: "Search tags" });
   await search.focus();
   const typed = await interact(page, async () => {
@@ -214,7 +275,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `一覧が変わるまで ${ms(typed.elapsed)}`,
   });
 
-  // 3. Esc での取り消し（受け入れ条件 2）。
+  // 4. Esc での取り消し（受け入れ条件 3）。
   const cleared = await interact(page, async () => {
     await page.keyboard.press("Escape");
     await filteredCount(page).waitFor({ state: "detached", timeout: waitTimeout });
@@ -226,14 +287,17 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `一覧が戻るまで ${ms(cleared.elapsed)}`,
   });
 
-  // 4. 1 件の確定（受け入れ条件 2）。
+  // 5. 1 件の確定（受け入れ条件 3）。
   const confirmButton = page
     .getByRole("button", { name: "Confirm", exact: true })
     .first();
   // 一覧が見えている行だけを描くときは、先頭の付近に仮の行が無いと「確定する」が
-  // DOM に無い。仮の行が描かれるまで文書を送る（送る間は計測に含めない）。
-  for (let step = 0; step < 1000 && (await confirmButton.count()) === 0; step += 1) {
-    await page.evaluate(() => window.scrollBy(0, 400));
+  // DOM に無い。仮の行が描かれるまで文書を送る（送る間は計測に含めない）。名前の順では
+  // 英字の語のタグ（すべて確定）が先に並び、30,000 個の規模では仮の行が 15,000 行目の
+  // あたりまで出ないので、大きく送り、続きを読み込む間も送り続ける。
+  const searchDeadline = Date.now() + scrollStallTimeout * 5;
+  while ((await confirmButton.count()) === 0 && Date.now() < searchDeadline) {
+    await page.evaluate(() => window.scrollBy(0, 2_000));
     await scrollPosition(page);
   }
   await confirmButton.waitFor({ timeout: waitTimeout });
@@ -248,10 +312,13 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `行が差し替わるまで ${ms(confirmed.elapsed)}`,
   });
 
-  // 5. 1 件の改名（受け入れ条件 2）。
+  // 6. 1 件の改名（受け入れ条件 3）。名前の後ろに語を足し、並びの位置を変えない
+  // （ページで読む画面は、読み込んだ範囲の外へ動いた行を一覧から外す）。
   await page.getByRole("button", { name: "Rename", exact: true }).first().click();
   const renameInput = page.getByRole("textbox", { name: /^New name for "/ });
-  const newName = `tagsbench renamed ${String(Date.now())}`;
+  const renameLabel = (await renameInput.getAttribute("aria-label")) ?? "";
+  const oldName = /^New name for "(.*)"$/.exec(renameLabel)?.[1] ?? "tagsbench";
+  const newName = `${oldName} renamed ${String(Date.now())}`;
   await renameInput.fill(newName);
   const renamed = await interact(page, async () => {
     await renameInput.press("Enter");
@@ -266,14 +333,15 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `行が差し替わるまで ${ms(renamed.elapsed)}`,
   });
 
-  // 6. スクロール（受け入れ条件 3）。先頭から末尾までホイールで送る。
+  // 7. スクロール（受け入れ条件 4）。開き直した一覧の先頭から、続きを読み込みながら
+  // 末尾までホイールで送る。
   results.push(await measureScroll(page));
 
-  // 7. まとめての確定（受け入れ条件 9）。
+  // 8. まとめての確定（受け入れ条件 10）。
   results.push(await measureBulkConfirm(page));
 
   const header = [
-    `タグ管理画面の計測: 規模 ${scale}（タグ ${tagTotal.toLocaleString("en-US")} 個）、${browser.browserType().name()} ${browser.version()}`,
+    `タグ管理画面の計測: 規模 ${scale}（タグ ${tagTotal.toLocaleString("en-US")} 個・動画 ${Number.isNaN(Number(videos)) ? videos : Number(videos).toLocaleString("en-US")} 本）、${browser.browserType().name()} ${browser.version()}`,
     "",
     "| 場面 | 値 | 期待 | 補足 |",
     "| --- | --- | --- | --- |",
@@ -339,13 +407,52 @@ async function scrollPosition(page: Page): Promise<ScrollPosition> {
   );
 }
 
+/**
+ * ListLoads は、一覧の応答（先頭のページと続き）を数え、続きが尽きたか（最後の応答に
+ * `nextCursor` が無い）を持つ。変更前の画面（ページが無い）は最初の応答で尽きる。
+ */
+interface ListLoads {
+  responses: number;
+  loaded: number;
+  totalAll: number | undefined;
+  exhausted: boolean;
+  /** 続きのページの応答時間（`response.timing`）。 */
+  moreTimes: number[];
+}
+
 async function measureScroll(page: Page): Promise<Row> {
-  await page.evaluate(() => {
-    window.scrollTo(0, 0);
-    for (const element of document.querySelectorAll("*")) {
-      if (element.scrollTop > 0) element.scrollTop = 0;
-    }
-  });
+  // 開き直して、先頭のページだけを読んだ状態から始める（前の場面で読んだ続きを持ち越さない）。
+  const loads: ListLoads = {
+    responses: 0,
+    loaded: 0,
+    totalAll: undefined,
+    exhausted: false,
+    moreTimes: [],
+  };
+  const pending = new Set<Promise<void>>();
+  const onResponse = (response: Response) => {
+    if (!isTagList(response)) return;
+    const task = response
+      .json()
+      .then((body: TagListBody) => {
+        const more = new URL(response.url()).searchParams.has("cursor");
+        loads.responses += 1;
+        loads.loaded = more ? loads.loaded + body.items.length : body.items.length;
+        loads.totalAll = body.totalAll ?? body.items.length;
+        loads.exhausted = body.nextCursor === undefined;
+        if (more) loads.moreTimes.push(response.request().timing().responseEnd);
+      })
+      .catch(() => undefined)
+      .finally(() => pending.delete(task));
+    pending.add(task);
+  };
+  page.on("response", onResponse);
+  await page.goto("about:blank");
+  await page.goto("/tags");
+  await rows(page).first().waitFor({ state: "attached", timeout: waitTimeout });
+  await settle(page);
+  await Promise.all([...pending]);
+
   const first = rows(page).first();
   await first.scrollIntoViewIfNeeded();
   const box = await first.boundingBox();
@@ -364,19 +471,29 @@ async function measureScroll(page: Page): Promise<Row> {
     requestAnimationFrame(tick);
   });
 
-  // 末尾に着くまで送る。page.mouse.wheel はスクロールが済むのを待たないので、送るたびに
-  // 位置が 2 フレーム続けて動かなくなるまで待ってから読む。仮想化した一覧は送るたびに
-  // 高さが変わりうるので、末尾は「下端に届いている」ことで決める。
-  let stalls = 0;
+  // 続きが尽きて下端に着くまで送る。page.mouse.wheel はスクロールが済むのを待たないので、
+  // 送るたびに位置が 2 フレーム続けて動かなくなるまで待ってから読む。仮想化した一覧は
+  // 送るたびに高さが変わりうるので、末尾は「続きが尽き、下端に届いている」ことで決める。
+  // 下端で続きを待つ間も送り続ける（利用者がホイールを回し続ける場面）。位置も読み込んだ
+  // 行も変わらないまま scrollStallTimeout が経ったら諦める。
   let previous = -1;
+  let previousResponses = loads.responses;
+  let lastProgress = Date.now();
   let atEnd = false;
-  for (let step = 0; step < 5000 && !atEnd && stalls < 20; step += 1) {
+  let steps = 0;
+  while (!(atEnd && loads.exhausted && pending.size === 0)) {
+    if (Date.now() - lastProgress > scrollStallTimeout) break;
     await page.mouse.wheel(0, 400);
+    steps += 1;
     const position = await scrollPosition(page);
     atEnd = position.atEnd;
-    stalls = position.top === previous ? stalls + 1 : 0;
+    if (position.top !== previous || loads.responses !== previousResponses) {
+      lastProgress = Date.now();
+    }
     previous = position.top;
+    previousResponses = loads.responses;
   }
+  page.off("response", onResponse);
 
   // 最後のスクロールの描画を含むフレームまで記録してから止める。
   const frames = await page.evaluate(
@@ -405,18 +522,25 @@ async function measureScroll(page: Page): Promise<Row> {
     scene: "スクロール",
     value: `50 ms を超えるフレームが続いた回数 ${String(consecutive)}（最長のフレーム ${ms(maxOf(intervals))}）`,
     expected: "50 ms を超えるフレームが 2 つ続かない",
-    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、${atEnd ? "末尾" : "末尾に届かず"}の位置 ${ms(previous).replace(" ms", " px")}、最長のタスク ${longTaskText(longTasks)}`,
+    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、${atEnd && loads.exhausted ? "末尾" : "末尾に届かず"}の位置 ${ms(previous).replace(" ms", " px")}（ホイール ${steps.toLocaleString("en-US")} 回）、読み込んだ行 ${loads.loaded.toLocaleString("en-US")} / ${(loads.totalAll ?? 0).toLocaleString("en-US")}、続きの要求 ${String(loads.moreTimes.length)} 回（応答 中央値 ${ms(median(loads.moreTimes))} / 最長 ${ms(maxOf(loads.moreTimes))}）、最長のタスク ${longTaskText(longTasks)}`,
   };
 }
 
 async function measureBulkConfirm(page: Page): Promise<Row> {
   const scene = "まとめての確定";
   const expected = "0.2 秒を超えない";
-  await page.evaluate(() => window.scrollTo(0, 0));
+  // 開き直す。スクロールの場面で全部の行を読み込んだままだと、読み込んだ行をすべて
+  // 選ぶ操作が上限で使えない。
+  await page.goto("about:blank");
+  await page.goto("/tags");
+  await rows(page).first().waitFor({ state: "attached", timeout: waitTimeout });
   const tentativeOnly = page.getByRole("button", { name: "Tentative only" });
   await tentativeOnly.click();
   await filteredCount(page).waitFor({ timeout: waitTimeout });
-  const selectAll = page.getByRole("checkbox", { name: "Select all shown tags" });
+  // 変更前は「見えているものをすべて選ぶ」、ページで読む画面は「読み込んだ行をすべて選ぶ」。
+  const selectAll = page.getByRole("checkbox", {
+    name: /^Select (all shown tags|all [\d,]+ loaded tags|the [\d,]+ loaded tag)$/,
+  });
   try {
     await selectAll.waitFor({ timeout: 5_000 });
   } catch {
@@ -424,7 +548,7 @@ async function measureBulkConfirm(page: Page): Promise<Row> {
       scene,
       value: "測れない",
       expected,
-      note: "画面にまとめて選ぶ操作（「Select all shown tags」）が無い",
+      note: "画面にまとめて選ぶ操作（「Select all shown tags」「Select all N loaded tags」）が無い",
     };
   }
   const shown = (await filteredCount(page).textContent()) ?? "";
@@ -434,8 +558,12 @@ async function measureBulkConfirm(page: Page): Promise<Row> {
     .getByRole("button", { name: "Confirm", exact: true });
   const bulk = await interact(page, async () => {
     await confirm.click();
+    // 変更前は全部の仮のタグを読み込んでいるので空の表示が出る。ページで読む画面は
+    // 読み込んだ分だけを確定し、結果の通知が出る。
     await page
       .getByText("No tentative tags", { exact: true })
+      .or(page.getByText(/^Confirmed [\d,]+ tags?/))
+      .first()
       .waitFor({ timeout: waitTimeout });
   });
   return {
