@@ -68,3 +68,19 @@ jobs:
             report.md
             server.log
           if-no-files-found: ignore
+
+  pins:
+    name: Model pins
+    runs-on: ubuntu-latest
+    steps:
+      - name: 採用候補の revision と sha256 を出す
+        run: |
+          for repo in tencent/HY-MT1.5-7B-GGUF; do
+            echo "repo: $repo"
+            curl -sSf "https://huggingface.co/api/models/$repo" | python3 -c 'import json,sys; print("revision:", json.load(sys.stdin)["sha"])'
+            curl -sSf "https://huggingface.co/api/models/$repo/tree/main" | python3 -c '
+          import json, sys
+          for f in json.load(sys.stdin):
+              if f["path"].endswith(".gguf"):
+                  print(f["path"], f.get("lfs", {}).get("oid"), f.get("size"))'
+          done
