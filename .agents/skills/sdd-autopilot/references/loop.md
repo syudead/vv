@@ -17,13 +17,16 @@ the orchestrator's reads small:
 
 - Collect only the facts the rules need, each as a field-limited read: the
   base of a merged PR that `Refs #<parent>`, and the integration PR (the
-  parent's `closed_by_pull_requests`) once `integrate` has opened it;
+  parent's `closed_by_pull_requests`) once `integrate` has opened it, and
+  whether its body contains `<!-- sdd-sweep:` (keep the yes or no, not the
+  body);
   `specs/*/plan.md` and `ui-design.md` on `origin/<feature>` (`git fetch`, then `git diff --name-only` and
   `git cat-file -e`); the parent's labels; its native sub-issues (number,
   state, `state_reason`, and the `Depends on:` first line of each open
   child's body); and the open PRs into the feature branch (number, head ref,
   head SHA).
-- Do not read the parent Issue body, PR bodies, or the rest of child Issue
+- Do not read the parent Issue body, PR bodies (apart from that marker), or
+  the rest of child Issue
   bodies. What a rule needs from a body — whether an open PR belongs to this
   feature, whether a merged PR already `Refs` a child, the prerequisites of a
   child without a `Depends on:` line — is answered by the worker that handles
@@ -36,7 +39,7 @@ the orchestrator's reads small:
 | 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
 | 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers (§3) |
 | 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once (§3), and drive each resulting PR with §4 on its own; when one merges, go to §1, which may make more children ready. If no child is ready and no implementation PR is open, stop |
-| 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
+| 6 `integrate` | Integration refresh, which opens the integration PR, its review pass, the pre-merge sweep, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
 If a stage stops before its PR exists, selection picks the stage again. Anything
@@ -106,7 +109,8 @@ Handle each PR with one review-fix pass:
 After a restart, if GitHub state does not establish whether the one fixer pass
 already happened, stop and report that ambiguity instead of repeating it.
 
-**Limits.** Stop when three integration-fix PRs have merged since the
+**Limits.** The sweep PR (§6 step 4) counts as an integration-fix PR. Stop
+when three integration-fix PRs have merged since the
 integration PR was opened, when its head has been refreshed from `main` twice
 (§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one
 it can see was already fixed and resolved on the same PR. All of them are read
@@ -154,11 +158,21 @@ as `DONE` if it is picked again, and you close it then.
    returns that PR as `FIXED`; drive that PR with §4 until merged, then go
    to step 4. Do not repeat checks, review, or fixer work on the updated
    integration PR head.
-4. The **finish line**: after the initial review pass and any fix PR merge,
-   confirm only that GitHub reports the integration PR conflict-free and
-   mergeable. If branch protection blocks it, stop and report the blocker
-   without rerunning checks or review. Do not merge it. Report the integration
-   PR link to the maintainer, and stop.
+4. The **pre-merge sweep**, once per integration PR: when its body has no
+   `<!-- sdd-sweep:` marker (§1), start a fresh stage worker with the sweep
+   brief from [briefs.md](briefs.md). It runs the
+   [pre-merge sweep](../../issue-handoff/references/integrate.md#pre-merge-sweep):
+   every check on the feature head, the acceptance-criterion walk, and the
+   pick of deferred defects worth fixing now, all fixed in at most one PR to
+   the feature branch. It returns `DONE` with that PR, or with `PR: -` when
+   nothing needed fixing, after writing the marker. Drive the sweep PR with §4
+   until merged, then go to step 5. Do not review, sweep or fix the updated
+   integration PR head again.
+5. The **finish line**: after the review pass, the sweep, and the merge of any
+   PR either opened, confirm only that GitHub reports the integration PR
+   conflict-free and mergeable. If branch protection blocks it, stop and
+   report the blocker without rerunning checks or review. Do not merge it.
+   Report the integration PR link to the maintainer, and stop.
 
 ## 7. Waiting
 

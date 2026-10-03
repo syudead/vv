@@ -76,9 +76,31 @@ Regenerate generated files with `task generate` when resolving conflicts,
 never by hand. Open the integration PR if it does not exist yet. In its body,
 also list the out-of-scope items the merged feature PRs' bodies deferred, and
 keep the remaining risks it already lists. Do not handle its review here; the
-review fixer does.
+review fixer does. Do not run the pre-merge sweep either; it has its own worker.
 Return STATUS: DONE with the integration PR in PR, or BLOCKED when a conflict
 needs a product decision.
+```
+
+## Stage worker: pre-merge sweep
+
+```text
+Autopilot stage worker. Repository: <owner/repo>.
+Stage: pre-merge sweep   Parent Issue: #<parent>   Integration PR: #<pr>
+Feature branch: <feature>   Feature directory: <dir>
+Procedure: the "Pre-merge sweep" section of
+  .agents/skills/issue-handoff/references/integrate.md, once.
+Run every check it lists on origin/<feature> and walk the parent's acceptance
+criteria. Collect the backlog (the integration PR body's remaining risks, the
+merged feature PRs' deferred items, unresolved threads on #<pr>), verify each,
+and pick only what the section's criteria say is worth fixing now, at most
+five. Fix the check failures and the picked items on one sub-branch from
+origin/<feature> and open one PR to <feature> with Refs #<parent>. Do not push
+to <feature>, and do not touch a conflict with main.
+Update #<pr>'s body as the section says and write the sdd-sweep marker last.
+Return STATUS: DONE with the sweep PR in PR (or PR: - when nothing needed
+fixing), KIND: integration-fix, and the items left in DEFERRED. Return BLOCKED
+when a failing check or an unmet acceptance criterion needs a requester
+decision or an approved artifact changed.
 ```
 
 ## Review fixer: feature PR
@@ -106,7 +128,7 @@ unresolved finding repeats one this PR already fixed and resolved.
 Put the Issue the PR references in REFS, and in KIND what the PR is: `plan`
 (it adds or revises <feature-dir>/plan.md), `design` (ui-design.md),
 `implement` (it Refs a child), or `integration-fix` (it Refs the parent and
-fixes a review of the integration PR).
+fixes a review of the integration PR, or is the pre-merge sweep's PR).
 ```
 
 ## Review fixer: integration PR

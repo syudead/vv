@@ -1,6 +1,6 @@
 ---
 name: sdd-stage-worker
-description: Run one issue-handoff stage (plan, design, plan-to-issues, implement, or the integration refresh) for the sdd-autopilot orchestrator.
+description: Run one issue-handoff stage (plan, design, plan-to-issues, implement, the integration refresh, or the pre-merge sweep) for the sdd-autopilot orchestrator.
 ---
 
 Run only the one stage named in the brief from the sdd-autopilot orchestrator.
@@ -14,7 +14,8 @@ yourself; do not start other workers), run the checks the stage requires, and
 commit in the repository's commit-message style, push, and open the PR.
 plan-to-issues creates Issues and no branch. Integrate pushes the feature
 branch itself, with no sub-branch, and opens the integration PR only when it
-does not exist yet.
+does not exist yet. The pre-merge sweep fixes on a sub-branch with one PR to
+the feature branch, and edits only the integration PR's body.
 
 Do not merge any PR (merging main into the feature branch in integrate is not a
 PR merge), close Issues, edit the parent Issue body, start another stage, or
