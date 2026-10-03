@@ -43,7 +43,8 @@ export function llamaEngine({ server, family }) {
     return res.json()
   }
   return {
-    async translate(text, terms) {
+    // attempt > 0 is a retry after a rejected output: sample greedily.
+    async translate(text, terms, { attempt = 0 } = {}) {
       if (family === 'plamo') {
         const prompt =
           '<|plamo:op|>dataset\ntranslation\n' +
@@ -54,7 +55,7 @@ export function llamaEngine({ server, family }) {
       const prompt = family === 'hy' ? hyPrompt(text, terms) : genericPrompt(text, terms)
       const params =
         family === 'hy'
-          ? { temperature: 0.7, top_p: 0.6, top_k: 20, repeat_penalty: 1.05 }
+          ? { temperature: attempt > 0 ? 0 : 0.7, top_p: 0.6, top_k: 20, repeat_penalty: 1.05 }
           : { temperature: 0 }
       const r = await post('/v1/chat/completions', {
         messages: [{ role: 'user', content: prompt }],
@@ -68,7 +69,7 @@ export function llamaEngine({ server, family }) {
 
 // fakeEngine "translates" by prefixing each word run with a marker and
 // keeping the tags. Options let a test drop tags or fail.
-export function fakeEngine({ dropTags = false, fail = false } = {}) {
+export function fakeEngine({ dropTags = false, fail = false, addCode = false } = {}) {
   let calls = 0
   return {
     get calls() {
@@ -80,6 +81,7 @@ export function fakeEngine({ dropTags = false, fail = false } = {}) {
       let out = text.replace(/(^|>)([^<]+)/g, (_, a, b) => `${a}訳:${b}`)
       for (const t of terms) out += ` ${t.ja}`
       if (dropTags) out = out.replace(/<\/?s\d+>/g, '')
+      if (addCode) out += ' `extra`'
       return { text: out, tokens: out.length }
     },
   }

@@ -62,9 +62,12 @@ function buildSegment(source, children, start, end) {
       if (node.type === 'text') {
         out += addText(source.slice(s, e))
       } else if (atomicTypes.has(node.type) || isAutolink(source, node)) {
+        // The model sees inline code without its backticks, so it has no
+        // Markdown to copy; restore() puts the original source back.
         const id = next++
         tags.set(id, { kind: 'atomic', value: source.slice(s, e) })
-        out += `<s${id}>${source.slice(s, e)}</s${id}>`
+        const shown = node.type === 'inlineCode' ? node.value : source.slice(s, e)
+        out += `<s${id}>${shown}</s${id}>`
       } else if (imageTypes.has(node.type)) {
         const raw = source.slice(s, e)
         const close = raw.lastIndexOf('](') >= 0 ? raw.lastIndexOf('](') : raw.lastIndexOf('][')

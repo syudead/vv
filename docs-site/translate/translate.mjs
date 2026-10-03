@@ -131,9 +131,17 @@ export async function translateTree({
         let value = memory[key]
         if (value === undefined) {
           value = null
-          for (let attempt = 0; attempt < 2 && value === null; attempt++) {
-            const result = await engine.translate(seg.text, terms)
+          // Soft line breaks inside a paragraph are not content; the model
+          // sees one line. A restored segment must keep the inline code, links
+          // and emphasis of its source, or it is retried.
+          const shown = seg.text.replace(/\s*\n\s*/g, ' ')
+          for (let attempt = 0; attempt < 3 && value === null; attempt++) {
+            const result = await engine.translate(shown, terms, { attempt })
             value = restore(seg, result.text)
+            if (value !== null && seg.kind !== 'mermaid') {
+              const original = source.slice(seg.start, seg.end)
+              if (structureDiff(original, value.replace(/ \{#[^}\s]+\}$/, ''))) value = null
+            }
           }
           if (value === null) {
             english++

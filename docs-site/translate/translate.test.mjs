@@ -153,3 +153,13 @@ test('shards split the sources and a dry run calls no engine', async () => {
   assert.deepEqual(first.translated, ['docs/a.md'])
   assert.deepEqual(second.translated, ['specs/b.md'])
 })
+
+test('a segment whose output adds Markdown of its own stays English', async () => {
+  const root = repo({ ...base, 'docs/a.md': '# Alpha\n\nRead `code` here.\n' })
+  const out = path.join(root, '.docs-ja')
+  const engine = fakeEngine({ addCode: true })
+  const report = await translateTree({ root, out, engine, model, glossary })
+  assert.equal(report.failed.length, 0)
+  assert.ok(report.englishSegments.some((s) => s.includes('Read code here')))
+  assert.match(fs.readFileSync(path.join(out, 'docs/a.md'), 'utf8'), /Read `code` here\./)
+})
