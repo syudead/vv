@@ -79,11 +79,15 @@ export async function translateTree({
   shards = 1,
   prune = shards === 1,
   dryRun = false,
+  only = null,
 }) {
   const started = now()
   const modelHash = sha256(JSON.stringify(model))
   const glossaryHash = sha256(JSON.stringify(glossary))
-  const sources = publishedSources(root)
+  const all = publishedSources(root)
+  // only limits the run to named sources (a preview); it never prunes.
+  const sources = only ? all.filter((rel) => only.includes(rel)) : all
+  if (only) prune = false
   const report = {
     translated: [],
     unchanged: 0,
@@ -158,7 +162,7 @@ export async function translateTree({
     report.translated.push(rel)
   }
 
-  if (prune && !dryRun) report.removed = pruneTree({ root, out, sources })
+  if (prune && !dryRun) report.removed = pruneTree({ root, out, sources: all })
   return report
 }
 
@@ -231,6 +235,7 @@ async function main() {
       prune: { type: 'boolean' },
       'dry-run': { type: 'boolean', default: false },
       'prune-only': { type: 'boolean', default: false },
+      only: { type: 'string' },
     },
   })
   if (!values.out) throw new Error('--out is required')
@@ -255,6 +260,7 @@ async function main() {
     shards,
     prune: values.prune ?? shards === 1,
     dryRun: values['dry-run'],
+    only: values.only ? values.only.split(',') : null,
   })
   if (values['dry-run']) {
     // One line per source that needs work, for the workflow to count.
