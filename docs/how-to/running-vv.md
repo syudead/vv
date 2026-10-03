@@ -44,6 +44,92 @@ During and after a scan:
   when conversion succeeds; and
 - titles can be searched from the first character.
 
+## Windows app
+
+On Windows 10 or 11 (x64), VVMDM also runs as a desktop app without Docker,
+Go, Node or FFmpeg: it opens in its own window and stops when the window is
+closed.
+
+### Get it
+
+Download `VVMDM-<version>-windows-amd64.zip` from the
+[GitHub Releases](https://github.com/syudead/vv/releases) of this repository.
+The zip holds `VVMDM.exe`, a `README.txt`, and an `ffmpeg` folder with
+`ffmpeg.exe`, `ffprobe.exe` and FFmpeg's license and source information. To
+build the same zip from source, run `task build-windows-app`; it writes
+`dist/VVMDM-<version>-windows-amd64.zip` (the version is `VERSION` without a
+leading `v`, or `sha-<12 characters of the commit>` when `VERSION` is unset).
+
+### Start it
+
+1. Right-click the zip and choose **Extract All**. Running `VVMDM.exe` from
+   inside the zip shows a message asking you to extract it first.
+2. Run `VVMDM.exe` in the extracted folder. Keep the `ffmpeg` folder next to
+   it; VVMDM uses that FFmpeg even when another one is installed.
+3. VVMDM is not code-signed, so the first time Windows SmartScreen may show
+   "Windows protected your PC". Click **More info**, then **Run anyway**.
+4. Finish the [Account setup](#account-setup) in the window, then add your
+   media folders in Settings and start a scan.
+
+VVMDM needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11
+normally include; if it is missing, VVMDM says so and where to get it. Startup
+problems (a busy port, a data folder that cannot be written) are shown in a
+dialog. Running `VVMDM.exe` again while it is open brings the open window to the
+front. Closing the window while a scan or import is in progress asks first; the
+work continues from where it stopped on the next start.
+
+The Windows app does not read the environment variables in
+[Runtime settings](#runtime-settings), and it has no `mdm account` command.
+
+### Data
+
+VVMDM keeps everything for the signed-in Windows user under
+`%LOCALAPPDATA%\VVMDM` and writes nothing next to `VVMDM.exe`:
+
+| Path | Contents |
+| --- | --- |
+| `data\mdm.db` (with `-wal` and `-shm`) | The database, the same as `MDM_DATA_DIR/mdm.db` |
+| `data\thumbnails\` | Generated thumbnails |
+| `webview2\` | The window's browser data, including the sign-in cookie |
+| `logs\vvmdm.log`, `logs\vvmdm.1.log` | JSON logs of this run and the previous run |
+
+To back up, close VVMDM and copy the `data` folder. The
+[Data and recovery](#data-and-recovery) notes on what scanning can and cannot
+restore apply here too.
+
+### Update
+
+Close VVMDM, then replace the contents of the extracted folder with the
+contents of the new zip, or extract the new zip to a new folder and delete the
+old one. The data in `%LOCALAPPDATA%\VVMDM` stays, and the new version updates
+the database when it starts. To remove VVMDM, delete the folder, and
+`%LOCALAPPDATA%\VVMDM` as well to delete the library.
+
+### Port
+
+VVMDM listens on port `47880`. If another program uses it, VVMDM shows the port
+in a dialog. Start VVMDM on another port with `--port`, for example from a
+shortcut whose target is:
+
+```text
+"C:\path\to\VVMDM-<version>-windows-amd64\VVMDM.exe" --port 47881
+```
+
+### Open it from other devices
+
+By default only the PC running VVMDM can open it: VVMDM listens on
+`127.0.0.1` only. To use it from a phone or another computer on the same
+network, open **Settings** as the owner and turn on **Allow connections from
+the local network** in **Network**. The section then lists the addresses to
+open, such as `http://192.168.1.20:47880/`. When Windows Firewall asks, allow
+VVMDM on **private networks**. The setting is kept across restarts; turning it
+off stops new connections from other devices.
+
+The connection uses plain HTTP, so use it only on a network you trust. The
+Windows app does not read forwarding headers (it behaves as
+`MDM_TRUSTED_PROXIES=none`); see [Network exposure](#network-exposure) before
+putting it behind a reverse proxy.
+
 ## Subtitles
 
 VVMDM shows subtitle files placed next to a video. There is nothing to

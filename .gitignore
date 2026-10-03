@@ -17,6 +17,10 @@ dist/
 /build/
 /bin/
 
+# Windows 版の zip を組む間だけ置く、go-winres のアイコンと manifest
+# （scripts/build/windows_app.go）。
+/cmd/mdm/*.syso
+
 # web/dist is the embed target for the Go binary. Only .gitkeep is version
 # controlled, so that the directory exists and `go build ./...` works without a
 # web build; every build artefact under web/dist stays out of version control.

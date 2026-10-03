@@ -49,7 +49,7 @@
 | ログ | 標準ライブラリ `log/slog`（JSON ハンドラ） | 追加依存なしで構造化ログになる |
 | テスト | Go 標準 `testing` + `net/http/httptest`（Range の検証）+ Playwright（再生の E2E） | 「実際に再生が始まる」ことは E2E でしか担保できない |
 | lint | `golangci-lint`（`depguard` で層をまたぐ import を禁止） | 依存方向の制約を CI で機械的に落とせる |
-| 配布 | Docker（multi-stage、alpine + ffmpeg）+ Compose | CGO 不要なので alpine でそのまま動き、イメージが小さい |
+| 配布 | Docker（multi-stage、alpine + ffmpeg）+ Compose。Windows では `VVMDM.exe` と同梱の `ffmpeg` の zip をタグで GitHub Release に添付する（[Windows デスクトップ版](windows-app.md#配布)） | CGO 不要なので alpine でそのまま動き、イメージが小さい。同じ理由で Windows の exe も Linux からクロスコンパイルでき、zip を展開するだけで Docker も `ffmpeg` の導入も要らない |
 
 依存方向とパッケージの責務は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) に記す。
 SQLite には再構築できる索引と利用者データが共存するため、復旧時の区別は

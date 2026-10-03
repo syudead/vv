@@ -1,0 +1,129 @@
+# Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を作る。タグ v* の push では GitHub Release に
+# 添付し、手動実行では workflow の成果物として残す。組み立ては手元の task build-windows-app と
+# 同じ入口で、同梱の ffmpeg のエンコーダは Windows のランナーで確かめる
+# （specs/037-windows-app/research.md R-12・R-13、docs/design-docs/windows-app.md の「配布」）。
+name: Windows app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-app-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build zip
+    runs-on: ubuntu-latest
+    outputs:
+      zip: ${{ steps.zip.outputs.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "task"
+
+      - name: Web依存を取得する
+        run: npm --prefix web ci
+
+      # タグなら v を除いたタグが版になり、手動実行では VERSION を空にして sha-<12 桁> にする。
+      - name: zip を組む
+        env:
+          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: task build-windows-app
+
+      - name: zip の名前を調べる
+        id: zip
+        run: |
+          shopt -s nullglob
+          zips=(dist/VVMDM-*-windows-amd64.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "dist/ に zip がちょうど 1 つではありません: ${zips[*]}"
+            exit 1
+          fi
+          echo "name=$(basename "${zips[0]}")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-app
+          path: dist/${{ steps.zip.outputs.name }}
+          if-no-files-found: error
+          # zip は既に圧縮してある。
+          compression-level: 0
+
+  # 同梱の ffmpeg が Windows で動き、NVENC と QSV のエンコーダを持つことを確かめる（R-12）。
+  # GPU が無いランナーなので、確かめるのはエンコーダが組み込まれていることまでである。
+  verify:
+    name: Verify bundled FFmpeg
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-app
+
+      - name: zip の中身とエンコーダを確かめる
+        shell: pwsh
+        env:
+          ZIP: ${{ needs.build.outputs.zip }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -Path $env:ZIP -DestinationPath extracted
+          $root = Join-Path extracted ([IO.Path]::GetFileNameWithoutExtension($env:ZIP))
+          foreach ($file in 'VVMDM.exe', 'README.txt', 'ffmpeg\ffmpeg.exe', 'ffmpeg\ffprobe.exe', 'ffmpeg\LICENSE.txt', 'ffmpeg\README.txt') {
+            if (-not (Test-Path (Join-Path $root $file))) { throw "zip に $file がありません" }
+          }
+          & (Join-Path $root 'ffmpeg\ffprobe.exe') -hide_banner -version | Select-Object -First 1
+          if ($LASTEXITCODE -ne 0) { throw "ffprobe が動きません" }
+          $encoders = & (Join-Path $root 'ffmpeg\ffmpeg.exe') -hide_banner -encoders
+          if ($LASTEXITCODE -ne 0) { throw "ffmpeg -encoders が失敗しました" }
+          foreach ($encoder in 'h264_nvenc', 'h264_qsv') {
+            if (-not ($encoders | Select-String -SimpleMatch " $encoder ")) { throw "同梱の ffmpeg に $encoder がありません" }
+            Write-Host "found $encoder"
+          }
+
+  release:
+    name: Attach to release
+    needs: [build, verify]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: windows-app
+
+      # Release が無ければ作り、あれば zip を差し替える（同じタグの再実行）。
+      - name: GitHub Release に添付する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          ZIP: ${{ needs.build.outputs.zip }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" --verify-tag --title "VVMDM ${TAG#v}" --generate-notes
+          fi
