@@ -90,6 +90,7 @@ export default [
     files: [
       "src/**/*.{ts,tsx}",
       "e2e/**/*.ts",
+      "bench/**/*.ts",
       "vite.config.ts",
       "tailwind.config.ts",
       "vitest.setup.ts",
