@@ -2946,6 +2946,43 @@ describe("TagsPage 見えている行だけ描く", () => {
     );
   });
 
+  it("フォーカスが一覧の外へ出ると、表示域の外の行を描き続けるのをやめる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const next = await tabPastRange(user);
+
+    // 同じ行の中の移動では描き続ける。
+    await user.tab();
+    expect(document.activeElement?.closest("[data-index]")).toBe(wrapperOf(next));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector(`[data-index="${String(next)}"]`)).not.toBeNull();
+
+    // 一覧の外（ツールバー）へ移ると、その行は Tab の順に残らない。
+    await user.click(screen.getByRole("searchbox", { name: "Search tags" }));
+    await waitFor(() =>
+      expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull(),
+    );
+  });
+
+  it("作ったタグが描いている範囲の外に並ぶときも、その行を描いて名前へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Tag 99");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("link", { name: "Open the library filtered by Tag 99" }),
+      ),
+    );
+  });
+
   it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
     const user = userEvent.setup();
     server.tags = server.tags.slice(0, 3);

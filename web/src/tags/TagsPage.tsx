@@ -152,10 +152,27 @@ export default function TagsPage() {
   const listRef = useRef<HTMLDivElement | null>(null);
   /**
    * pinnedRowId は、見えている範囲の外でも描き続ける行である。フォーカスを
-   * 持つ（最後に持った）行と、これからフォーカスを移す行を指す
-   * （specs/036-tag-admin-scale/ui-design.md「Keyboard across virtualized rows」）。
+   * 持つ行（行から開いたメニューにあるときも含む）と、これからフォーカスを移す
+   * 行を指す。フォーカスが一覧の外へ出たら外す（`handleListBlur`。
+   * specs/036-tag-admin-scale/ui-design.md「Keyboard across virtualized rows」）。
    */
   const [pinnedRowId, setPinnedRowId] = useState<number | null>(null);
+  /**
+   * focusInListRef は、フォーカスが一覧（React の木での一覧で、行から開いた
+   * メニューを含む）の中にあるかである。`handleListBlur` が見る。
+   */
+  const focusInListRef = useRef(false);
+  /** afterCommitQueue は `afterCommit` が描き終えるのを待たせている処理である。 */
+  const afterCommitQueue = useRef<(() => void)[]>([]);
+  const [afterCommitTick, setAfterCommitTick] = useState(0);
+  useEffect(() => {
+    if (afterCommitQueue.current.length === 0) return;
+    const queued = afterCommitQueue.current;
+    afterCommitQueue.current = [];
+    setTimeout(() => {
+      for (const fn of queued) fn();
+    }, 0);
+  }, [afterCommitTick]);
   /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
   const [scrollMargin, setScrollMargin] = useState(0);
 
@@ -186,6 +203,31 @@ export default function TagsPage() {
       ? tentativeButtonRef
       : createButtonRef
     ).current?.focus();
+    // 候補を確かめるために描かせた行（`renderRow`）を Tab の順に残さない。
+    releasePinIfFocusOutside();
+  }
+
+  /**
+   * releasePinIfFocusOutside は、フォーカスが一覧の外にあれば、行を描き続ける
+   * のをやめる（`pinnedRowId`）。フォーカスを持つ要素は外さない。
+   */
+  function releasePinIfFocusOutside() {
+    if (focusInListRef.current) return;
+    if (listRef.current?.contains(document.activeElement)) return;
+    setPinnedRowId(null);
+  }
+
+  /**
+   * afterCommit は、いま置いた状態（応答で変えたタグの一覧や送信中の印）を
+   * React が描き終えてから、さらに setTimeout(0) で1呼吸置いて fn を呼ぶ
+   * （settings/SettingsPage.tsx の focusFolderAction と同じ1呼吸）。
+   * setTimeout(0) だけでは、応答のあとの再描画より先に走ることがあり、
+   * 新しい行がまだ一覧に無い、送信中で「新しいタグ」が押せない、といった
+   * 古い画面でフォーカス先を決めてしまう。
+   */
+  function afterCommit(fn: () => void) {
+    afterCommitQueue.current.push(fn);
+    setAfterCommitTick((tick) => tick + 1);
   }
 
   /**
@@ -217,12 +259,11 @@ export default function TagsPage() {
   /**
    * focusRow はタグの行のフォーカス先へ移す。その行がもう無ければ
    * `fallbackFocus` へ移す。行の差し替えが DOM に反映されたあとで移す必要が
-   * あるので setTimeout(0) で1呼吸置く（settings/SettingsPage.tsx の
-   * focusFolderAction と同じ）。行が描かれていなければ、先にその行の位置へ
-   * スクロールする（`revealRow`）。
+   * あるので、同時に置いた状態を描き終えてから1呼吸置く（`afterCommit`）。
+   * 行が描かれていなければ、先にその行の位置へスクロールする（`revealRow`）。
    */
   function focusRow(id: number, part: FocusTarget) {
-    setTimeout(() => {
+    afterCommit(() => {
       revealRow(id);
       const refs = rowRefs.current.get(id);
       const target =
@@ -236,7 +277,7 @@ export default function TagsPage() {
       if (target === null || target === undefined || !target.isConnected) {
         fallbackFocus();
       } else target.focus();
-    }, 0);
+    });
   }
 
   /**
@@ -264,7 +305,7 @@ export default function TagsPage() {
       ...order.slice(index + 1).filter(stays),
       ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
     ];
-    setTimeout(() => {
+    afterCommit(() => {
       const listed = new Set(visibleRowsRef.current.map((tag) => tag.id));
       for (const tag of candidates) {
         if (!listed.has(tag.id)) continue;
@@ -277,7 +318,7 @@ export default function TagsPage() {
         }
       }
       fallbackFocus();
-    }, 0);
+    });
   }
 
   /**
@@ -469,9 +510,24 @@ export default function TagsPage() {
    * で画面の外へ出ても、その行は外れず、フォーカスが `body` へ落ちない。
    */
   function handleListFocus(event: FocusEvent<HTMLDivElement>) {
+    focusInListRef.current = true;
     const row = (event.target as Element).closest<HTMLElement>("[data-tag-id]");
     if (row === null || !event.currentTarget.contains(row)) return;
     setPinnedRowId(Number(row.dataset.tagId));
+  }
+
+  /**
+   * handleListBlur は、フォーカスが一覧の外へ出たら行を描き続けるのをやめる。
+   * 残すと、表示域から遠い行が Tab の順に残り、ツールバーなどからの Tab が
+   * その行へ飛んで表示域が動く。フォーカスが決まったあとで見て、行の中や
+   * 行の間の移動、行から開いたメニュー（React の木では一覧の中なので focus が
+   * 一覧まで届く）への移動では外さない。ウィンドウ自体がフォーカスを失った
+   * ときは `document.activeElement` が一覧の中に残るので外さない。フォーカスを
+   * 持つ要素は外さない。
+   */
+  function handleListBlur() {
+    focusInListRef.current = false;
+    setTimeout(releasePinIfFocusOutside, 0);
   }
 
   /**
@@ -1073,6 +1129,7 @@ export default function TagsPage() {
                 className="relative"
                 style={{ height: virtualizer.getTotalSize() }}
                 onFocus={handleListFocus}
+                onBlur={handleListBlur}
                 onKeyDown={handleListKeyDown}
               >
                 {virtualizer.getVirtualItems().map((item) => {
