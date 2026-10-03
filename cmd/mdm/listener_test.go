@@ -239,3 +239,30 @@ func TestReopenableListenerRefusesReopenAfterClose(t *testing.T) {
 		t.Fatal("閉じたあとに開き直せた")
 	}
 }
+
+// IPv4 のアドレスは IPv4 だけで待ち受ける。"tcp" では IPv6 の使える機械で 0.0.0.0 が
+// [::] の両方の待ち受けになり、許可の切り替えの 0.0.0.0（R-14）から外れる。
+func TestListenNetworkKeepsIPv4HostsOnIPv4(t *testing.T) {
+	for addr, want := range map[string]string{
+		"0.0.0.0:47880":   "tcp4",
+		"127.0.0.1:47880": "tcp4",
+		"[::]:47880":      "tcp",
+		"[::1]:47880":     "tcp",
+		":47880":          "tcp",
+		"localhost:47880": "tcp",
+		"no-port":         "tcp",
+	} {
+		if got := listenNetwork(addr); got != want {
+			t.Errorf("listenNetwork(%q) = %q, want %q", addr, got, want)
+		}
+	}
+
+	listener := newReopenableListener()
+	if err := listener.Listen("0.0.0.0:0"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	if got := listener.Addr(); !strings.HasPrefix(got, "0.0.0.0:") {
+		t.Errorf("0.0.0.0 の待ち受け = %q", got)
+	}
+}

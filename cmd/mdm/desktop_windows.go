@@ -156,16 +156,13 @@ func runDesktop() int {
 	// 終わりは閉じる操作の goroutine と WebView2 の失敗の処理の両方が待つので、
 	// 1 つの値を受け合う channel でなく、全員に届く知らせにする。
 	server := startServer(func() error {
-		return run(runOptions{
-			Config:      cfg,
-			LogOutput:   logOutput,
-			Listener:    newReopenableListener(),
-			OnListening: func() { close(listening) },
-			OnBusyProbe: func(busy func(context.Context) (bool, error)) { busyProbe.Store(&busy) },
-			NotifyStop: func() (<-chan struct{}, func()) {
-				return stopRequested, nil
-			},
-		})
+		return run(desktopRunOptions(
+			cfg,
+			logOutput,
+			func() { close(listening) },
+			func(busy func(context.Context) (bool, error)) { busyProbe.Store(&busy) },
+			stopRequested,
+		))
 	})
 
 	select {

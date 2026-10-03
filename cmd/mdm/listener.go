@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"sync"
 )
 
@@ -41,7 +42,7 @@ func (l *reopenableListener) Listen(addr string) error {
 	if l.current != nil || l.closed {
 		return errors.New("the listener is already open")
 	}
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listenTCP(addr)
 	if err != nil {
 		return fmt.Errorf("cannot listen on %s: %w", addr, err)
 	}
@@ -91,7 +92,7 @@ func (l *reopenableListener) Reopen(addr string) error {
 		_ = old.Close()
 	}
 
-	ln, err := net.Listen("tcp", addr)
+	ln, err := listenTCP(addr)
 	if err == nil {
 		l.current, l.addr = ln, ln.Addr().String()
 		go l.serve(ln)
@@ -99,7 +100,7 @@ func (l *reopenableListener) Reopen(addr string) error {
 	}
 	reopenErr := fmt.Errorf("cannot listen on %s: %w", addr, err)
 
-	back, backErr := net.Listen("tcp", previous)
+	back, backErr := listenTCP(previous)
 	if backErr != nil {
 		lost := errors.Join(reopenErr, fmt.Errorf("cannot listen on %s again: %w", previous, backErr))
 		l.notify(lost)
@@ -108,6 +109,26 @@ func (l *reopenableListener) Reopen(addr string) error {
 	l.current = back
 	go l.serve(back)
 	return reopenErr
+}
+
+// listenTCP は addr で TCP の待ち受けを開く。ホストが IPv4 のアドレスなら IPv4 だけで
+// 待ち受ける。"tcp" のままだと、IPv6 の使える機械では 0.0.0.0 が IPv4 と IPv6 の両方を
+// 受ける [::] の待ち受けになり、許可の切り替えが決める 0.0.0.0／127.0.0.1（R-14）から
+// 外れる。
+func listenTCP(addr string) (net.Listener, error) {
+	return net.Listen(listenNetwork(addr), addr)
+}
+
+// listenNetwork は addr を待ち受ける net.Listen のネットワークを選ぶ。
+func listenNetwork(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return "tcp"
+	}
+	if ip, err := netip.ParseAddr(host); err == nil && ip.Is4() {
+		return "tcp4"
+	}
+	return "tcp"
 }
 
 // Close は今の待ち受けを閉じ、以後の開き直しを断る。確立済みの接続は閉じない
