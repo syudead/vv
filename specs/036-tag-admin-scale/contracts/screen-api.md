@@ -148,7 +148,9 @@ TagSort:
 | `Tag`・`TagSort` | 生成物から |
 
 `errorText` に `too_many_tags` の文言がある（merge 済み）。`maxTagBatch = 20000` は `maxVideoTagsSelection` と
-並んで置かれ、画面は読み込んだ行がこれを超えるときまとめての操作を disabled にする。
+並んで置かれる。上限は送る id の数に掛かるので、画面は読み込んだ行がこれを超えるときは「読み込んだ
+ものをすべて選ぶ」（先頭のチェック）だけを disabled にし、まとめての操作は選択の数がこれを超えるときだけ
+disabled にする（[research.md R-4](../research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かない無いタグは数えて飛ばす)）。
 `tagPageLimit = 100` を足し、画面の 1 ページの件数にする。
 
 ## 5. `GET /api/tags` のパラメータ
