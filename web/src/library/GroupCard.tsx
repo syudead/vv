@@ -3,11 +3,14 @@ import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
+import { updateFavorites } from "../api/favorites";
+import { groupRef } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
+import FavoriteToggle from "../videoList/FavoriteToggle";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -23,10 +26,11 @@ export interface GroupCardProps {
   selected: boolean;
   selectionMode: boolean;
   /**
-   * 全メンバー（`videoIds`）を選択に入れる・外す。選択を持たない見る人（ゲスト）では
+   * 全メンバー（`videoIds`）を選択に入れる・外す。呼び出し元はグループとしても覚える
+   * （specs/035-favorites/research.md R-7）。選択を持たない見る人（ゲスト）では
    * 省き、チェックを描かない。
    */
-  onSelect?: (videoIds: readonly number[], selected: boolean) => void;
+  onSelect?: (group: LibraryGroup, selected: boolean) => void;
   /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
   activePreviewId?: number | null;
   previewResetEpoch?: number;
@@ -73,6 +77,28 @@ export function groupLinkLabel(
   return t.library.group.label(name, videoCount, watchedCount);
 }
 
+/**
+ * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
+ * specs/035-favorites/ui-design.md「Card」）。グループのフォルダを送り、メンバーには付けない。
+ */
+function GroupFavorite({
+  group,
+  variant,
+}: {
+  group: LibraryGroup;
+  variant: "card" | "row";
+}) {
+  const favorite = group.favorite === true;
+  return (
+    <FavoriteToggle
+      favorite={favorite}
+      label={t.library.group.favorite(group.name)}
+      onToggle={() => updateFavorites([], [groupRef(group)], !favorite)}
+      variant={variant}
+    />
+  );
+}
+
 function groupPath(group: LibraryGroup): string {
   return `/videos/${String(group.openVideoId)}`;
 }
@@ -97,6 +123,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     tagsRow,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
 
@@ -125,7 +152,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         >
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group.videoIds, next)}
+            onCheckedChange={(next) => onSelect(group, next)}
             label={t.library.group.select(group.name)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
@@ -140,7 +167,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
-            onSelect(group.videoIds, !selected);
+            onSelect(group, !selected);
           }
         }}
         className="flex min-w-0 flex-1 flex-col outline-none"
@@ -192,6 +219,13 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           </h3>
         </div>
       </Link>
+      {owner && (
+        // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
+        // （ui-design.md「Placement」）。
+        <div className="absolute top-1.5 right-1.5 z-30 flex">
+          <GroupFavorite group={group} variant="card" />
+        </div>
+      )}
       {showTagsRow && (
         <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
       )}
@@ -206,6 +240,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
+  const owner = useAudience() === "owner";
   // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
   const cover = group.previews[0];
 
@@ -222,7 +257,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         <td className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group.videoIds, next)}
+            onCheckedChange={(next) => onSelect(group, next)}
             label={t.library.group.select(group.name)}
             className={cn(
               "transition-opacity",
@@ -262,7 +297,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           onClick={(event) => {
             if (selectionMode) {
               event.preventDefault();
-              onSelect?.(group.videoIds, !selected);
+              onSelect?.(group, !selected);
             }
           }}
           className={cn(
@@ -277,6 +312,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           {groupCountText(group.videoCount)}
         </span>
       </td>
+      {owner && (
+        <td className="w-8">
+          <GroupFavorite group={group} variant="row" />
+        </td>
+      )}
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check

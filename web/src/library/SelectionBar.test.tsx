@@ -15,7 +15,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
-import SelectionBar from "./SelectionBar";
+import SelectionBar, { measureBarLayout } from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -176,11 +176,21 @@ function install() {
   return fetchMock;
 }
 
-function barElement(props: React.ComponentProps<typeof SelectionBar>) {
+type BarProps = React.ComponentProps<typeof SelectionBar>;
+
+/** barElement はお気に入りの送る先を省くと、空にする（お気に入りを扱わない試験）。 */
+function barElement(
+  props: Omit<BarProps, "favoriteVideoIds" | "favoriteFolders"> &
+    Partial<Pick<BarProps, "favoriteVideoIds" | "favoriteFolders">>,
+) {
   return (
     <TooltipProvider>
       <ToastProvider>
-        <SelectionBar {...props} />
+        <SelectionBar
+          {...props}
+          favoriteVideoIds={props.favoriteVideoIds ?? []}
+          favoriteFolders={props.favoriteFolders ?? []}
+        />
       </ToastProvider>
     </TooltipProvider>
   );
@@ -1146,5 +1156,57 @@ describe("SelectionBar の束ねる操作（specs/030-video-versions/ui-design.m
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onClear).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+describe("measureBarLayout（specs/035-favorites/ui-design.md「Selection bar」の「Layout」）", () => {
+  /** frame（外側の枠）と、sm 以上の並び順の項目を持つバーを作る。幅は px で与える。 */
+  function bar(frameWidth: number, widths: Record<string, number>) {
+    const frame = document.createElement("div");
+    const element = document.createElement("div");
+    element.style.columnGap = "8px";
+    element.style.paddingLeft = "16px";
+    element.style.paddingRight = "6px";
+    frame.append(element);
+    for (const [name, width] of Object.entries(widths)) {
+      const item = document.createElement("span");
+      item.dataset.barItem = name;
+      item.getBoundingClientRect = () => ({ width }) as DOMRect;
+      element.append(item);
+    }
+    Object.defineProperty(frame, "clientWidth", { value: frameWidth });
+    return { frame, element };
+  }
+
+  // 件数 120・タグ 2 つ 90・Favorite 100・Visibility 110・Bundle 150・縦線 1・Select all 80・解除 32。
+  const items = {
+    count: 120,
+    addTag: 90,
+    removeTag: 90,
+    favorite: 100,
+    visibility: 110,
+    bundle: 150,
+    divider: 1,
+    selectAll: 80,
+    clear: 32,
+  };
+  // 1 行の和: 773 + 8 × 8 + 22 = 859。縦線の前まで: 660 + 8 × 5 + 22 = 722。
+  // タグまで（件数・タグ 2 つ）: 300 + 16 + 22 = 338。
+
+  it("1 行に収まる幅では 1 行のまま", () => {
+    const { frame, element } = bar(859, items);
+    expect(measureBarLayout(element, frame)).toBe("one");
+  });
+
+  it("収まらないときは、まず縦線から後ろを 2 行目へ回す", () => {
+    const { frame, element } = bar(858, items);
+    expect(measureBarLayout(element, frame)).toBe("wrapActions");
+    const edge = bar(722, items);
+    expect(measureBarLayout(edge.element, edge.frame)).toBe("wrapActions");
+  });
+
+  it("それでも 1 行目が収まらないときは「Favorite」以降も 2 行目へ回す", () => {
+    const { frame, element } = bar(721, items);
+    expect(measureBarLayout(element, frame)).toBe("wrapFavorite");
   });
 });

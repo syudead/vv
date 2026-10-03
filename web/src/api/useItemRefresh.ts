@@ -4,7 +4,11 @@ import { getVideo, isAborted, type LibraryItem, RequestFailed } from "./client";
 import { itemVideos } from "./libraryItems";
 import { isProcessing } from "./useVideoDetail";
 import { shownVideoIds, type VideosDataAction } from "./videosData";
+import { favoriteMark, withFavoriteSince } from "./favorites";
 import { visibilityMark, withVisibilitySince } from "./visibility";
+
+/** UncertainReason は、一部にしか反映されず確かでなくなった項目の値である。 */
+export type UncertainReason = "visibility" | "favorite";
 
 /** useItemRefresh は useVideos の動画の項目を1件ずつ取り直す。 */
 export function useItemRefresh(
@@ -35,13 +39,43 @@ export function useItemRefresh(
   // 知らせの前に始めた取り直し（更新の知らせ等）は切り替える前の `public` を
   // 読んでいることがあるので、取り直しは始めた時点の番号を覚えておき、それより
   // 新しい知らせで確かでないとされた動画は外さない（Devin の指摘、PR 338）。
-  const uncertain = useRef(new Map<number, number>());
+  //
+  // 確かでない理由（公開状態・お気に入り）は別々に持つ。全件に反映された公開の
+  // 切り替えは `public` しか確かにしないので、お気に入りの印が確かでない動画を
+  // 外してはならず、その逆も同じである（Codex の指摘、PR 668）。
+  const uncertain = useRef(new Map<number, Map<UncertainReason, number>>());
   const staleNotices = useRef(0);
+  // markUncertain は `id` を `reason` について、番号 `notice` の知らせで確かでないとする。
+  const markUncertain = useCallback(
+    (id: number, reason: UncertainReason, notice: number) => {
+      const reasons = uncertain.current.get(id);
+      if (reasons === undefined) uncertain.current.set(id, new Map([[reason, notice]]));
+      else reasons.set(reason, notice);
+    },
+    [],
+  );
   // settleUncertain は、`started`（取り直しを始めた時点の知らせの番号）以後の
-  // 知らせで確かでないとされていない動画を、確かになったとして外す。
+  // 知らせで確かでないとされていない理由を、取り直しで確かになったとして外す。
   const settleUncertain = useCallback((id: number, started: number) => {
-    if ((uncertain.current.get(id) ?? 0) <= started) uncertain.current.delete(id);
+    const reasons = uncertain.current.get(id);
+    if (reasons === undefined) return;
+    for (const [reason, notice] of reasons) {
+      if (notice <= started) reasons.delete(reason);
+    }
+    if (reasons.size === 0) uncertain.current.delete(id);
   }, []);
+  // settleUncertainReason は、全件に反映された結果が届いた `reason` だけを外す。
+  const settleUncertainReason = useCallback(
+    (ids: Iterable<number>, reason: UncertainReason) => {
+      for (const id of ids) {
+        const reasons = uncertain.current.get(id);
+        if (reasons === undefined) continue;
+        reasons.delete(reason);
+        if (reasons.size === 0) uncertain.current.delete(id);
+      }
+    },
+    [],
+  );
   const notifyIfIdle = useCallback(() => {
     if (
       pageLoading.current ||
@@ -63,9 +97,10 @@ export function useItemRefresh(
         const started = staleNotices.current;
         try {
           const mark = visibilityMark();
-          const refreshed = withVisibilitySince(
-            await getVideo(id, controller.signal),
-            mark,
+          const favoriteSince = favoriteMark();
+          const refreshed = withFavoriteSince(
+            withVisibilitySince(await getVideo(id, controller.signal), mark),
+            favoriteSince,
           );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
@@ -123,6 +158,8 @@ export function useItemRefresh(
     idleWaiters,
     uncertain,
     staleNotices,
+    markUncertain,
+    settleUncertainReason,
     notifyIfIdle,
     refreshItems,
     refreshProcessingItems,

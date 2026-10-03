@@ -69,6 +69,11 @@ const (
 	SortPlayedAsc VideoSort = "playedAsc"
 	// SortPlayedDesc は最後に再生した時刻が新しい順。再生の記録が無い動画は末尾。
 	SortPlayedDesc VideoSort = "playedDesc"
+	// SortFavoritedAsc はお気に入りにした日時が古い順。お気に入りでない項目は末尾
+	// （specs/035-favorites/research.md R-4）。
+	SortFavoritedAsc VideoSort = "favoritedAsc"
+	// SortFavoritedDesc はお気に入りにした日時が新しい順。お気に入りでない項目は末尾。
+	SortFavoritedDesc VideoSort = "favoritedDesc"
 	// SortRandom は Seed と id から ShuffleKey で作る値の順。向きを持たない。
 	SortRandom VideoSort = "random"
 )
@@ -78,7 +83,7 @@ func (s VideoSort) Valid() bool {
 	switch s {
 	case SortAddedAsc, SortAddedDesc, SortModifiedAsc, SortModifiedDesc,
 		SortCreatedAsc, SortCreatedDesc, SortTitleAsc, SortTitleDesc, SortDurationAsc, SortDurationDesc,
-		SortSizeAsc, SortSizeDesc, SortPlayedAsc, SortPlayedDesc, SortRandom:
+		SortSizeAsc, SortSizeDesc, SortPlayedAsc, SortPlayedDesc, SortFavoritedAsc, SortFavoritedDesc, SortRandom:
 		return true
 	default:
 		return false
@@ -124,6 +129,8 @@ type VideoQuery struct {
 	// specs/014-video-tags/data-model.md §6）。存在しない id は条件から落とし、
 	// VideoPage.MissingTagIDs に返す。空ならタグで絞り込まない。
 	TagIDs []int64
+	// FavoriteOnly はお気に入りの項目だけにする（specs/035-favorites/research.md R-3）。
+	FavoriteOnly bool
 }
 
 // VideoPage は一覧1ページ分である。

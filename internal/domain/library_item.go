@@ -28,6 +28,36 @@ type LibraryPage struct {
 	Roots []MediaFolder
 }
 
+// LibrarySelection は一覧の条件に合う項目の、ページングしない選択である
+// （GET /api/library/ids、specs/035-favorites/data-model.md §5）。動画の項目の id と、
+// グループの項目ごとのフォルダとメンバーの id を分けて持つ。
+type LibrarySelection struct {
+	// VideoIDs は動画の項目の id。
+	VideoIDs []int64
+	// Groups はグループの項目ごとのフォルダとメンバー。
+	Groups []LibraryGroupSelection
+	// Roots は登録フォルダの一覧である。LibraryPage.Roots と同じく選択と同じ読み取り
+	// スナップショットから読むので、Groups のフォルダはどれもこの中の登録フォルダの下にある。
+	Roots []MediaFolder
+}
+
+// LibraryGroupSelection はグループの項目 1 件のフォルダとメンバーである。
+type LibraryGroupSelection struct {
+	// Path はグループのフォルダの絶対パス。
+	Path string
+	// VideoIDs はグループの見せてよいメンバーの id。
+	VideoIDs []int64
+}
+
+// AllVideoIDs は動画の項目の id とグループのメンバーの id の和を、この順に返す。
+func (s LibrarySelection) AllVideoIDs() []int64 {
+	ids := append([]int64{}, s.VideoIDs...)
+	for _, group := range s.Groups {
+		ids = append(ids, group.VideoIDs...)
+	}
+	return ids
+}
+
 // LibraryGroup はグループの項目である。値はどれも、絞り込みに関係なく、見る人に
 // 見せてよいメンバーの全部から作る（data-model.md §5 の 3・§7）。
 type LibraryGroup struct {
@@ -50,6 +80,9 @@ type LibraryGroup struct {
 	AddedAt time.Time
 	// LastPlayedAt はメンバーの最後に再生した時刻の最大。記録が無ければ nil。
 	LastPlayedAt *time.Time
+	// Favorite はグループのフォルダの鍵が folder_favorites にあるか（specs/035-favorites/
+	// data-model.md §2）。メンバーの Video.Favorite とは独立である。保存層が埋める。
+	Favorite bool
 }
 
 // NewLibraryGroup は並んだメンバーと、それぞれの再生の記録（無ければ nil）から

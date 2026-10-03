@@ -19,11 +19,14 @@ export default function VisibilityMenu({
   overLimit,
   overLimitId,
   className,
+  ...rest
 }: {
   selectedIds: readonly number[];
   overLimit: boolean;
   overLimitId: string;
   className?: string;
+  /** 選択バーが 1 行に収まるかを測る目印（SelectionBar の measureBarLayout）。 */
+  "data-bar-item"?: string;
 }) {
   const toast = useToast();
 
@@ -56,6 +59,7 @@ export default function VisibilityMenu({
           disabled={overLimit}
           title={overLimit ? overLimitMessage() : undefined}
           aria-describedby={overLimit ? overLimitId : undefined}
+          {...rest}
         >
           <Globe aria-hidden="true" />
           {t.library.selection.visibility}

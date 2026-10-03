@@ -14,12 +14,14 @@ import (
 )
 
 // allSorts は contracts/list-api.md §3 の 13 通りと specs/033-video-dates/data-model.md §4 の
-// 作成日の 2 通りを合わせた 15 通りの並び順である。
+// 作成日の 2 通り、specs/035-favorites/data-model.md §5 のお気に入りにした日時の 2 通りを
+// 合わせた 17 通りの並び順である。
 var allSorts = []domain.VideoSort{
 	domain.SortAddedAsc, domain.SortAddedDesc, domain.SortModifiedAsc, domain.SortModifiedDesc,
 	domain.SortCreatedAsc, domain.SortCreatedDesc,
 	domain.SortTitleAsc, domain.SortTitleDesc, domain.SortDurationAsc, domain.SortDurationDesc,
-	domain.SortSizeAsc, domain.SortSizeDesc, domain.SortPlayedAsc, domain.SortPlayedDesc, domain.SortRandom,
+	domain.SortSizeAsc, domain.SortSizeDesc, domain.SortPlayedAsc, domain.SortPlayedDesc,
+	domain.SortFavoritedAsc, domain.SortFavoritedDesc, domain.SortRandom,
 }
 
 // sortRow は並べ替えの検証用の動画1件である。値の同じ行を混ぜ、id での決着も
@@ -32,18 +34,20 @@ type sortRow struct {
 	duration *int64
 	played   *int64 // playback_progress.updated_at（Unix 秒）
 	created  *int64 // 所在の file_created_at（分）。nil は取れなかった（並びは mtime に倒す）
+	// favorited は video_favorites.favorited_at。nil はお気に入りでない。
+	favorited *int64
 }
 
 func ptr(v int64) *int64 { return &v }
 
 var sortRows = []sortRow{
-	{"10話", 3, 5, 300, nil, nil, ptr(1)},
-	{"2話", 1, 2, 100, ptr(5000), ptr(100), nil},
-	{"b", 5, 2, 300, ptr(3000), nil, ptr(4)},
-	{"A", 2, 9, 200, nil, ptr(300), ptr(2)},
-	{"1話", 4, 1, 500, ptr(5000), ptr(200), nil},
-	{"2話", 3, 7, 100, ptr(1000), ptr(100), ptr(0)},
-	{"ア", 0, 5, 400, nil, nil, ptr(4)},
+	{"10話", 3, 5, 300, nil, nil, ptr(1), ptr(20)},
+	{"2話", 1, 2, 100, ptr(5000), ptr(100), nil, nil},
+	{"b", 5, 2, 300, ptr(3000), nil, ptr(4), ptr(10)},
+	{"A", 2, 9, 200, nil, ptr(300), ptr(2), nil},
+	{"1話", 4, 1, 500, ptr(5000), ptr(200), nil, ptr(20)},
+	{"2話", 3, 7, 100, ptr(1000), ptr(100), ptr(0), ptr(5)},
+	{"ア", 0, 5, 400, nil, nil, ptr(4), nil},
 }
 
 // sortFixture は sortRows を取り込み、行の順に動画の id を返す。
@@ -78,6 +82,11 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 				t.Fatal(err)
 			}
 			if _, err := db.sql.Exec(`update playback_progress set updated_at = ? where content_key = ?`, *row.played, key); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if row.favorited != nil {
+			if _, err := db.sql.Exec(`insert into video_favorites (content_key, favorited_at) values (?, ?)`, key, *row.favorited); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -122,6 +131,8 @@ func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 			e.num = row.size
 		case domain.SortPlayedAsc, domain.SortPlayedDesc:
 			nullable(row.played)
+		case domain.SortFavoritedAsc, domain.SortFavoritedDesc:
+			nullable(row.favorited)
 		case domain.SortRandom:
 			e.num = domain.ShuffleKey(seed, ids[i])
 		}
@@ -170,7 +181,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return nil
 }
 
-// 15 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
+// 17 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
 func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, sort := range allSorts {
@@ -236,6 +247,7 @@ func TestListVideosMissingValuesComeLast(t *testing.T) {
 	}{
 		{[]domain.VideoSort{domain.SortDurationAsc, domain.SortDurationDesc}, func(r sortRow) bool { return r.duration == nil }},
 		{[]domain.VideoSort{domain.SortPlayedAsc, domain.SortPlayedDesc}, func(r sortRow) bool { return r.played == nil }},
+		{[]domain.VideoSort{domain.SortFavoritedAsc, domain.SortFavoritedDesc}, func(r sortRow) bool { return r.favorited == nil }},
 	} {
 		missing := map[int64]bool{}
 		for i, row := range sortRows {

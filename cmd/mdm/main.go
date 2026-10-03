@@ -258,6 +258,7 @@ func run() error {
 		MediaFolders: mediaFolders,
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
+		Favorites:    db.Favorites(),
 		Overrides:    db.Overrides(),
 		Versions:     db.Versions(),
 		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。

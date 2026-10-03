@@ -218,6 +218,10 @@ type Video struct {
 	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
 	Public bool
 
+	// Favorite はお気に入りか（specs/035-favorites/data-model.md §2）。保存層が利用者データの鍵で
+	// video_favorites から埋める。空の content_key の動画は常に false である。
+	Favorite bool
+
 	// FileTitle はファイル名由来の題名（代表の所在の video_locations.title）である。
 	// Title は有効な題名で、表示名があればそれ、無ければ FileTitle と同じになる
 	// （specs/029-video-overrides/research.md R-2）。

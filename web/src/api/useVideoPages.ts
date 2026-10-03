@@ -18,7 +18,8 @@ import {
   RequestFailed,
   type TagRef,
 } from "./client";
-import { groupsWithMembers, videoItem } from "./libraryItems";
+import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favorites";
+import { folderRefKey, groupRef, groupsWithMembers, videoItem } from "./libraryItems";
 import type { useGroupRefresh } from "./useGroupRefresh";
 import type { useItemRefresh } from "./useItemRefresh";
 import type { VideosCriteria } from "./videosCriteria";
@@ -49,6 +50,7 @@ interface VideoPagesParams {
   resyncAttempted: RefObject<boolean>;
   pageLoading: RefObject<boolean>;
   changedWhileLoading: RefObject<Set<number>>;
+  favoriteFoldersChangedWhileLoading: RefObject<Map<string, FolderRef>>;
   progressChangedWhileLoading: RefObject<Set<number>>;
   tagsChangedWhileLoading: RefObject<
     Map<string, { videoId: number; tag: TagRef; action: "add" | "remove" }>
@@ -84,6 +86,7 @@ export function useVideoPages({
   resyncAttempted,
   pageLoading,
   changedWhileLoading,
+  favoriteFoldersChangedWhileLoading,
   progressChangedWhileLoading,
   tagsChangedWhileLoading,
   groups: { groupQueue, groupRefreshing, staleGroups, unsettledGroups, refreshGroups },
@@ -101,6 +104,7 @@ export function useVideoPages({
       pageLoading.current = true;
       changedWhileLoading.current.clear();
       progressChangedWhileLoading.current.clear();
+      favoriteFoldersChangedWhileLoading.current.clear();
       if (replace) {
         // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
         refreshing.current?.abort();
@@ -128,6 +132,7 @@ export function useVideoPages({
       }
 
       const mark = visibilityMark();
+      const favoriteSince = favoriteMark();
       try {
         const target = folderRef.current;
         const current = criteriaRef.current;
@@ -135,6 +140,7 @@ export function useVideoPages({
           query: current.query,
           watch: current.watch === "all" ? undefined : current.watch,
           playable: current.playable,
+          favorite: current.favorite,
           sort: current.sort,
           seed: current.sort === "random" ? current.seed : undefined,
           cursor: from,
@@ -151,10 +157,20 @@ export function useVideoPages({
           items: fetched.items.map((item): LibraryItem => {
             if ("kind" in item) {
               return item.kind === "video"
-                ? videoItem(withVisibilitySince(item.video, mark))
-                : item;
+                ? videoItem(
+                    withFavoriteSince(
+                      withVisibilitySince(item.video, mark),
+                      favoriteSince,
+                    ),
+                  )
+                : {
+                    kind: "group",
+                    group: withGroupFavoriteSince(item.group, favoriteSince),
+                  };
             }
-            return videoItem(withVisibilitySince(item, mark));
+            return videoItem(
+              withFavoriteSince(withVisibilitySince(item, mark), favoriteSince),
+            );
           }),
         };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
@@ -185,8 +201,22 @@ export function useVideoPages({
             ...progressChangedWhileLoading.current,
           ]),
         );
+        // ページの取得中にお気に入りを付け外したグループも、このページに初めて
+        // 現れたなら取り直す。付け外しの前に読まれたかもしれず、反映の数が 0 の
+        // （もうグループでない）ものは withGroupFavoriteSince では直せない（404 で外す）。
+        const favoriteFolders = favoriteFoldersChangedWhileLoading.current;
+        if (favoriteFolders.size > 0) {
+          refreshGroups(
+            page.items.flatMap((item) => {
+              if (item.kind !== "group") return [];
+              const folder = groupRef(item.group);
+              return favoriteFolders.has(folderRefKey(folder)) ? [folder] : [];
+            }),
+          );
+        }
         changedWhileLoading.current.clear();
         progressChangedWhileLoading.current.clear();
+        favoriteFolders.clear();
         // 公開状態が確かでない動画のうち、このページで取り直す（changed）ものと、
         // 続きの取得で残る表示中のものだけを uncertain に残す。一から読み直した
         // ページは切り替えの後に取ったものなので、それ以外はもう確かである。
@@ -272,6 +302,7 @@ export function useVideoPages({
     [
       changedWhileLoading,
       criteriaRef,
+      favoriteFoldersChangedWhileLoading,
       dispatch,
       folderRef,
       groupQueue,

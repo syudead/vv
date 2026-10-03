@@ -19,7 +19,7 @@ import { applyTagToTags } from "./tagOrder";
 const defaultSort: VideoSort = "addedDesc";
 
 /**
- * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・並び順・
+ * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・お気に入りのみ・並び順・
  * seed、フォルダ画面ではフォルダも。specs/013-library-search/contracts/list-url.md）。
  */
 export interface ListKey {
@@ -29,6 +29,11 @@ export interface ListKey {
   watch?: WatchFilter;
   /** 再生できるものだけか。省略すると偽と同じ鍵になる。 */
   playable?: boolean;
+  /**
+   * お気に入りのみか。省略すると偽と同じ鍵になる。お気に入りのみの一覧と絞らない一覧の
+   * 控えを取り違えない（specs/035-favorites/ui-design.md「Filter menu」）。
+   */
+  favorite?: boolean;
   /** 並び順。省略すると既定値と同じ鍵になる。 */
   sort?: VideoSort;
   /** sort=random の並びを決める値。ほかの並び順では鍵に入れない。 */
@@ -106,6 +111,7 @@ function normalize(key: ListKey): string {
     key.query.trim(),
     key.watch ?? "all",
     key.playable === true ? "1" : "",
+    key.favorite === true ? "1" : "",
     sort,
     seed,
     tags,
@@ -223,6 +229,53 @@ export function applyVisibilityToListSnapshot(
         : item,
     ),
   };
+}
+
+/**
+ * applyFavoritesToListSnapshot はお気に入りの付け外しの結果を控えへ反映する
+ * （specs/035-favorites/research.md R-6）。動画の項目は `favorite` を差し替え、グループの
+ * 項目は戻ったときに取り直す印を付ける（グループの値はサーバーから取り直す）。
+ * お気に入りのみで絞った一覧でも、その場では項目を外さない。
+ */
+export function applyFavoritesToListSnapshot(
+  videoIds: readonly number[],
+  folders: readonly FolderRef[],
+  favorite: boolean,
+): void {
+  if (held === undefined) return;
+  let next = held;
+  const targets = new Set(videoIds);
+  if (
+    next.items.some(
+      (item) =>
+        item.kind === "video" &&
+        targets.has(item.video.id) &&
+        item.video.favorite !== favorite,
+    )
+  ) {
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.kind === "video" && targets.has(item.video.id)
+          ? { kind: "video", video: { ...item.video, favorite } }
+          : item,
+      ),
+    };
+  }
+  const wanted = new Set(folders.map(folderRefKey));
+  const stale = next.items.flatMap((item) => {
+    if (item.kind !== "group") return [];
+    const folder = { rootId: item.group.folder.rootId, path: item.group.folder.path };
+    return wanted.has(folderRefKey(folder)) ? [folder] : [];
+  });
+  if (stale.length > 0) {
+    const merged = new Map(
+      (next.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder]),
+    );
+    for (const folder of stale) merged.set(folderRefKey(folder), folder);
+    next = { ...next, staleGroups: [...merged.values()] };
+  }
+  held = next;
 }
 
 /**

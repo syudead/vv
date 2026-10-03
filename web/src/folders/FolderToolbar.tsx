@@ -26,7 +26,12 @@ export interface FolderToolbarProps {
   onWatchChange: (value: WatchFilter) => void;
   playable: boolean;
   onPlayableChange: (value: boolean) => void;
-  /** 検索語・視聴状態・再生可否のどれかが効いているか（「条件を解除」を出す）。 */
+  favorite: boolean;
+  onFavoriteChange: (value: boolean) => void;
+  /**
+   * 検索語・視聴状態・再生可否・お気に入りのみのどれかが効いているか
+   * （「条件を解除」を出す）。
+   */
   canClear: boolean;
   onClear: () => void;
   /**
@@ -58,6 +63,8 @@ export default function FolderToolbar({
   onWatchChange,
   playable,
   onPlayableChange,
+  favorite,
+  onFavoriteChange,
   canClear,
   onClear,
   disabled,
@@ -80,6 +87,8 @@ export default function FolderToolbar({
         onWatchChange={onWatchChange}
         playable={playable}
         onPlayableChange={onPlayableChange}
+        favorite={favorite}
+        onFavoriteChange={onFavoriteChange}
         canClear={canClear}
         onClear={onClear}
         disabled={disabled}
