@@ -95,3 +95,11 @@ type TagImpact struct {
 	// VideoCount はそのどれかが付いた、いまライブラリにある動画の本数（重複なし）。
 	VideoCount int
 }
+
+// TagMergeOutcome は統合（POST /api/tags/{id}/merge）の結果である。
+type TagMergeOutcome struct {
+	// Tag は統合後の統合先。統合元がすべて無かったときは変わらない統合先。
+	Tag Tag
+	// NotFoundIDs はもう無かった統合元の id。重複を除いた sourceIDs に現れた順で、空なら空の配列。
+	NotFoundIDs []int64
+}

@@ -210,7 +210,7 @@ func TestManualEditsReturnConfirmedTag(t *testing.T) {
 	}{
 		{"改名", http.MethodPatch, "", func(int64) string { return `{"name":"新しい名前"}` }},
 		{"シノニムの追加", http.MethodPost, "/synonyms", func(int64) string { return `{"name":"別名"}` }},
-		{"統合先", http.MethodPost, "/merge", func(source int64) string { return `{"sourceId":` + strconv.FormatInt(source, 10) + `}` }},
+		{"統合先", http.MethodPost, "/merge", func(source int64) string { return `{"sourceIds":[` + strconv.FormatInt(source, 10) + `]}` }},
 	}
 	for index, tc := range cases {
 		id := f.addTentativeTag(t, "b", "仮"+strconv.Itoa(index))
@@ -219,10 +219,20 @@ func TestManualEditsReturnConfirmedTag(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("%s: status = %d: %s", tc.label, rec.Code, rec.Body)
 		}
-		if got := decode[gen.Tag](t, rec); got.Id != id || got.Tentative {
+		got := decodeTagOrMerged(t, rec, tc.suffix == "/merge")
+		if got.Id != id || got.Tentative {
 			t.Errorf("%s: Tag = %+v", tc.label, got)
 		}
 	}
+}
+
+// decodeTagOrMerged は応答のタグを読む。統合の応答は TagMergeResponse の tag にある。
+func decodeTagOrMerged(t *testing.T, rec *httptest.ResponseRecorder, merged bool) gen.Tag {
+	t.Helper()
+	if merged {
+		return decode[gen.TagMergeResponse](t, rec).Tag
+	}
+	return decode[gen.Tag](t, rec)
 }
 
 // 受け入れ条件 4: ゲストは 4 つの経路とも 401 で、ゲストの Video.tags は仮のタグがあっても空のまま。

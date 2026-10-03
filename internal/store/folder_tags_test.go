@@ -127,7 +127,7 @@ func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Tags().MergeTag(ctx, target.ID, anime.ID); err != nil {
+	if _, err := db.Tags().MergeTags(ctx, target.ID, []int64{anime.ID}); err != nil {
 		t.Fatal(err)
 	}
 	want = []domain.VideoTag{{TagRef: domain.TagRef{ID: target.ID, Name: "Cartoon"}, FromFolder: true}}

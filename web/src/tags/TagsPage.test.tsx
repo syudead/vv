@@ -288,10 +288,9 @@ function install() {
     const mergeMatch = /^\/api\/tags\/(\d+)\/merge$/.exec(path);
     if (mergeMatch && method === "POST") {
       const id = Number(mergeMatch[1]);
-      const body = JSON.parse(String(init?.body)) as { sourceId: number };
+      const body = JSON.parse(String(init?.body)) as { sourceIds: number[] };
       const target = server.tags.find((t) => t.id === id);
-      const source = server.tags.find((t) => t.id === body.sourceId);
-      if (target === undefined || source === undefined) {
+      if (target === undefined) {
         return Promise.resolve(
           jsonResponse({ code: "tag_not_found", message: "Tag not found." }, 404),
         );
@@ -302,12 +301,22 @@ function install() {
           jsonResponse({ code: "internal", message: "Could not merge." }, 500),
         );
       }
+      // 無い統合元は飛ばして notFoundIds に載せる。統合元がすべて無ければ統合先は
+      // 変わらない（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
       return maybeHold(() => {
-        target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
-        target.videoCount += source.videoCount;
-        target.tentative = false;
-        server.tags = server.tags.filter((t) => t.id !== source.id);
-        return jsonResponse(target);
+        const notFoundIds: number[] = [];
+        for (const sourceId of body.sourceIds) {
+          const source = server.tags.find((t) => t.id === sourceId);
+          if (source === undefined) {
+            notFoundIds.push(sourceId);
+            continue;
+          }
+          target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
+          target.videoCount += source.videoCount;
+          target.tentative = false;
+          server.tags = server.tags.filter((t) => t.id !== source.id);
+        }
+        return jsonResponse({ tag: target, notFoundIds });
       });
     }
 
@@ -1262,7 +1271,7 @@ describe("TagsPage 統合", () => {
 
   it("統合すると統合元が一覧から消え統合先のシノニムに並び、フォーカスが統合先の名前へ移る（受け入れ条件12）", async () => {
     const user = userEvent.setup();
-    install();
+    const fetchMock = install();
     server.tags = [
       tag({ id: 1, name: "旅行", videoCount: 5 }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),
@@ -1294,6 +1303,14 @@ describe("TagsPage 統合", () => {
     await user.click(mergeButton);
 
     expect(await screen.findByText('Merged "旅行" into "Anime"')).toBeDefined();
+    // 1 件の統合も sourceIds で送る（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/2/merge",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceIds: [1] }),
+      }),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByTitle("旅行")).toBeNull();
     expect(screen.getByText("Synonyms: アニメ · 旅行")).toBeDefined();
@@ -1370,6 +1387,35 @@ describe("TagsPage 統合", () => {
       await screen.findByText("This tag no longer exists, so the list was reloaded"),
     ).toBeDefined();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("統合元が別のタブで消えていると（notFoundIds）、もう無いことが伝わり一覧が取り直される", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "旅行" }), tag({ id: 2, name: "Anime" })];
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "More actions" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "旅行"' });
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    await user.type(combo, "Anime");
+    await user.click(await within(dialog).findByRole("option", { name: /Anime/ }));
+
+    server.tags = server.tags.filter((t) => t.name !== "旅行");
+
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    expect(
+      await screen.findByText("This tag no longer exists, so the list was reloaded"),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+    expect(screen.queryByText(/^Merged /)).toBeNull();
   });
 
   it("統合先の候補が開いているときのEscは一覧だけを閉じ、窓は閉じない（B1）", async () => {

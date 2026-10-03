@@ -572,7 +572,8 @@ export default function TagsPage() {
   }
 
   /**
-   * staleMerge は統合元・統合先のどちらかがもう無かった（tag_not_found）ときに
+   * staleMerge は統合元・統合先のどちらかがもう無かった（統合先は tag_not_found、
+   * 統合元は応答の notFoundIds）ときに
    * 呼ぶ。ほかの操作の tag_not_found と同じく、窓を閉じてトーストを出し、
    * 一覧を取り直す（ui-design.md「States」）。
    */

@@ -13,6 +13,7 @@ export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
 export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
 export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
 export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
+export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
 
 /**
  * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
@@ -244,18 +245,20 @@ export async function deleteTag(id: number, signal?: AbortSignal): Promise<void>
 }
 
 /**
- * mergeTag は sourceId のタグを id のタグへ統合する。返るのは統合先の更新後の
- * タグである。
+ * mergeTag は sourceIds のタグを id のタグへ統合する（1 件の統合も `[sourceId]` で送る）。
+ * 返るのは統合先の更新後のタグ（`tag`）と、もう無かった統合元（`notFoundIds`）である
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §2・§4）。統合元がすべて無かったときも
+ * 成功で、`tag` は変わらない統合先になる。
  */
 export async function mergeTag(
   id: number,
-  sourceId: number,
+  sourceIds: readonly number[],
   signal?: AbortSignal,
-): Promise<Tag> {
-  const merged = await request<Tag>(`/api/tags/${String(id)}/merge`, {
+): Promise<TagMergeResponse> {
+  const merged = await request<TagMergeResponse>(`/api/tags/${String(id)}/merge`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceId }),
+    body: JSON.stringify({ sourceIds }),
     signal,
   }).catch(refreshOnStaleTagError);
   afterTagChanged();

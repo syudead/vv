@@ -391,7 +391,7 @@ func TestNonEditingWritesKeepEditedAt(t *testing.T) {
 			return err
 		}},
 		{"タグの統合", func() error {
-			_, err := db.Tags().MergeTag(ctx, tagID, otherID)
+			_, err := db.Tags().MergeTags(ctx, tagID, []int64{otherID})
 			return err
 		}},
 		{"束ねる", func() error {

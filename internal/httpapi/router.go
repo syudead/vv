@@ -81,7 +81,7 @@ type Tags interface {
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error
-	MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error)
+	MergeTags(ctx context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error)
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 	RemoveSynonym(ctx context.Context, tagID int64, name string) error
 

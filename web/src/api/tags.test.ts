@@ -271,13 +271,21 @@ describe("タグの変更が成功した後の後始末", () => {
 
   it("mergeTagは成功後に共有の一覧を取り直し、一覧の控えを捨てる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
-    const fetch = stubMutation(jsonResponse(tag({ id: 1 })), [tag({ id: 1 })]);
+    const fetch = stubMutation(jsonResponse({ tag: tag({ id: 1 }), notFoundIds: [3] }), [
+      tag({ id: 1 }),
+    ]);
 
-    await mergeTag(1, 2);
+    await expect(mergeTag(1, [2, 3])).resolves.toEqual({
+      tag: tag({ id: 1 }),
+      notFoundIds: [3],
+    });
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       "/api/tags/1/merge",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ sourceId: 2 }) }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceIds: [2, 3] }),
+      }),
     );
     expect(takeListSnapshot(key)).toBeUndefined();
     await vi.waitFor(() => {

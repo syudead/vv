@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -88,11 +89,13 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	// store.MergeTag はtarget==sourceを何も変えない黙った成功にする
-	// （data-model.mdの統合の規則、#264 レビューの持ち越し）。APIはそれより先に
-	// 400 invalid_requestにする — 統合は違う2つのタグを1つにする操作であり、
-	// 同じidを送るのは要求の誤りだからである。
-	if body.SourceId == id {
+	if !s.validTagBatchIDs(w, "sourceIds", body.SourceIds) {
+		return
+	}
+	// store.MergeTags は統合元に混じった統合先を黙って飛ばす。API はそれより先に
+	// 400 invalid_request にする — 統合は違うタグを 1 つにする操作であり、統合先を
+	// 統合元に送るのは要求の誤りだからである（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+	if slices.Contains(body.SourceIds, id) {
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
 	}
@@ -100,13 +103,16 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	tag, err := s.tags.MergeTag(r.Context(), id, body.SourceId)
+	outcome, err := s.tags.MergeTags(r.Context(), id, body.SourceIds)
 	if err != nil {
 		s.writeTagError(w, err, "")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, toAPITag(tag), s.logger)
+	writeJSON(w, http.StatusOK, gen.TagMergeResponse{
+		Tag:         toAPITag(outcome.Tag),
+		NotFoundIds: nonNilIDs(outcome.NotFoundIDs),
+	}, s.logger)
 }
 
 func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId) {
@@ -197,7 +203,7 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 		s.invalidRequest(w, "action must be one of confirm, reject or delete.")
 		return
 	}
-	if !s.validTagBatchIDs(w, body.Ids) {
+	if !s.validTagBatchIDs(w, "ids", body.Ids) {
 		return
 	}
 	if s.tags == nil {
@@ -230,7 +236,7 @@ func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 		s.invalidRequest(w, "action must be one of reject, delete or merge.")
 		return
 	}
-	if !s.validTagBatchIDs(w, body.Ids) {
+	if !s.validTagBatchIDs(w, "ids", body.Ids) {
 		return
 	}
 	if s.tags == nil {
@@ -246,16 +252,16 @@ func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TagImpactResponse{TagCount: impact.TagCount, VideoCount: impact.VideoCount}, s.logger)
 }
 
-// validTagBatchIDs は ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、違えば 400 を書いて
-// false を返す。多すぎるときは reason too_many_tags と limit を付ける。
-func (s *server) validTagBatchIDs(w http.ResponseWriter, ids []int64) bool {
+// validTagBatchIDs は本文の項目 field の ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、
+// 違えば 400 を書いて false を返す。多すぎるときは reason too_many_tags と limit を付ける。
+func (s *server) validTagBatchIDs(w http.ResponseWriter, field string, ids []int64) bool {
 	switch {
 	case len(ids) == 0:
-		s.invalidRequest(w, "ids must contain at least one tag id.")
+		s.invalidRequest(w, field+" must contain at least one tag id.")
 		return false
 	case len(ids) > domain.MaxTagBatch:
 		s.invalidRequestLimit(w, reasonTooManyTags, domain.MaxTagBatch,
-			fmt.Sprintf("ids must contain between 1 and %d items.", domain.MaxTagBatch))
+			fmt.Sprintf("%s must contain between 1 and %d items.", field, domain.MaxTagBatch))
 		return false
 	}
 	return true

@@ -294,8 +294,8 @@ func TestManualEditsConfirmTentativeTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag, err := tags.MergeTag(ctx, id("虫"), confirmed.ID); err != nil || tag.Tentative {
-		t.Fatalf("統合 = %+v, %v", tag, err)
+	if merged, err := tags.MergeTags(ctx, id("虫"), []int64{confirmed.ID}); err != nil || merged.Tag.Tentative {
+		t.Fatalf("統合 = %+v, %v", merged, err)
 	}
 
 	list, err := tags.ListTags(ctx)
