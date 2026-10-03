@@ -43,7 +43,7 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
 | 引数 | 意味 |
 | --- | --- |
 | `-scale N` | 規模（タグの数）。必須 |
-| `-videos N` | 動画の数。省けば `-scale` の 10 倍 |
+| `-videos N` | 動画の数（1 以上）。省けば `-scale` の 10 倍 |
 | `-skip-build` | `bin/mdm` をビルドし直さずに使う |
 | `-chromium PATH` | Playwright が持つものの代わりに使う Chromium の実行ファイル |
 
@@ -66,9 +66,9 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
 - 検索の 1 文字目・Esc での取り消し・1 件の確定・1 件の改名・まとめての確定: 操作してから結果が
   見えるまでの最長のタスク（Long Task）。Long Task は 50 ms を超えるタスクだけが記録されるので、
   無ければ「なし（50 ms 以下）」。補足の「〜まで」は Playwright の往復を含む参考の値。
-- スクロール: `/tags` を開き直し、一覧の先頭から、続きを読み込みながら末尾（`nextCursor` が尽きて
-  下端に届く）までマウスホイールで送る間の `requestAnimationFrame` の間隔。50 ms を超えるフレームが
-  続いた回数と、最長のフレーム。補足に、読み込んだ行の数、続きの要求の回数とその応答時間を添える。
+- スクロール: `/tags` を開き直し、一覧の先頭から、続きを読み込みながら末尾（`nextCursor` が尽き、
+  件数の行から「 · N loaded」が消えて最後のページが描かれた後に、下端に届く）までマウスホイールで
+  送る間の `requestAnimationFrame` の間隔。50 ms を超えるフレームが続いた回数と、最長のフレーム。補足に、読み込んだ行の数、続きの要求の回数とその応答時間を添える。
   位置も読み込んだ行も 60 秒変わらなければ送るのをやめ、「末尾に届かず」と出る。
 - まとめての確定: `/tags` を開き直し、「Tentative only」で読み込んである仮のタグをすべて選び
   （「Select all N loaded tags」。変更前の画面では「Select all shown tags」）、選択バーの「Confirm」から
@@ -80,26 +80,32 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
 ## 変更前と変更後を比べる
 
 同じ環境で続けて測る。`scripts/tagsbench` や `web/bench/` が無いか古いコミット（変更前）を測る
-ときは、変更後のものを worktree へ写して走らせる。作った規模のデータも写すと、作り直しを省ける。
-ただし、変更後の vv が移行したデータ（新しい版のスキーマ）は変更前の vv では開けないので、変更前の
-スキーマで作ったデータだけを写す。写した `scripts/tagsbench` が変更前の `internal/store` の操作と
-合わずにビルドできないときは、データの作成の部分だけを変更前の操作に合わせる。
+ときは、変更後のものを worktree へ写して走らせる。
+
+規模のデータ（`seed/`）は、それを作った `scripts/tagsbench` の `internal/store` のスキーマで書かれる。
+vv は起動のたびに写し（`run/`）を移行するだけで `seed/` は書き換えないので、変更前のスキーマで
+作った `seed/` は変更前と変更後の両方で使える。逆に、変更後の `scripts/tagsbench` が作った `seed/`
+（新しい版のスキーマ）は変更前の vv では開けない。そこで変更前を先に測って `seed/` を作り、変更後は
+その `seed/` で置き換えてから測る（変更後の `.local/tagsbench` に既にあるデータは変更後が作ったもの
+なので、変更前へは写さない）。写した `scripts/tagsbench` が変更前の `internal/store` の操作と合わずに
+ビルドできないときは、データの作成の部分だけを変更前の操作に合わせる。
 
 ```sh
-# 変更後（PR のブランチ）
-go run ./scripts/tagsbench -scale 1000
-go run ./scripts/tagsbench -scale 3000
-go run ./scripts/tagsbench -scale 30000 -videos 30000
-
-# 変更前（PR の base のコミット）
+# 変更前（PR の base のコミット）を先に測る。seed/ は変更前のスキーマで作られる
 git worktree add ../vv-before <base のコミット>
-cp -r scripts/tagsbench ../vv-before/scripts/   # base に無いときだけ
-cp -r web/bench ../vv-before/web/               # base に無いときだけ
+cp -r scripts/tagsbench ../vv-before/scripts/   # base に無いか古いときだけ
+cp -r web/bench ../vv-before/web/               # base に無いか古いときだけ
 ln -s "$PWD/web/node_modules" ../vv-before/web/node_modules
-mkdir -p ../vv-before/.local && cp -r .local/tagsbench ../vv-before/.local/
 (cd ../vv-before && go run ./scripts/tagsbench -scale 1000)
 (cd ../vv-before && go run ./scripts/tagsbench -scale 3000)
 (cd ../vv-before && go run ./scripts/tagsbench -scale 30000 -videos 30000)
+
+# 変更後（PR のブランチ）。変更前が作ったデータで置き換えてから測る
+rm -rf .local/tagsbench
+mkdir -p .local && cp -r ../vv-before/.local/tagsbench .local/
+go run ./scripts/tagsbench -scale 1000
+go run ./scripts/tagsbench -scale 3000
+go run ./scripts/tagsbench -scale 30000 -videos 30000
 git worktree remove --force ../vv-before
 ```
 

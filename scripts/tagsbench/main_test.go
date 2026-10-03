@@ -36,7 +36,7 @@ func TestParseArgs(t *testing.T) {
 	if name := cfg.dataName(); name != "30000-videos-30000" {
 		t.Errorf("dataName = %q, want 30000-videos-30000", name)
 	}
-	for _, args := range [][]string{{}, {"-scale", "0"}, {"-scale", "10", "extra"}, {"-scale", "10", "-videos", "-1"}} {
+	for _, args := range [][]string{{}, {"-scale", "0"}, {"-scale", "10", "extra"}, {"-scale", "10", "-videos", "-1"}, {"-scale", "10", "-videos", "0"}} {
 		if _, err := parseArgs(args, io.Discard); !errors.Is(err, errUsage) {
 			t.Errorf("parseArgs(%q) = %v, want errUsage", args, err)
 		}
@@ -77,6 +77,14 @@ func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
 		}
 		if tentative != scale/2 {
 			t.Errorf("scale %d: %d tentative tags, want %d", scale, tentative, scale/2)
+		}
+	}
+	// 動画が 10 本未満でも、本数 0 は unusedEvery 個に 1 個だけで、本数の多いタグは空にならない。
+	for videos := 1; videos < 10; videos++ {
+		for i, plan := range planTags(100, videos) {
+			if wantUnused := i%unusedEvery == unusedEvery-1; (len(plan.videos) == 0) != wantUnused {
+				t.Errorf("videos %d: tag %d has %d videos, want unused=%v", videos, i, len(plan.videos), wantUnused)
+			}
 		}
 	}
 	if !reflect.DeepEqual(planTags(100, 1000), planTags(100, 1000)) {

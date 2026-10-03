@@ -163,6 +163,27 @@ function filteredCount(page: Page): Locator {
     .filter({ hasText: / of [\d,]+ tags?( · [\d,]+ loaded)?$/ });
 }
 
+/**
+ * countLine は件数の行（「1,000 tags」「12 of 1,000 tags」。続きがあれば「 · 100 loaded」が
+ * 添わる）である。
+ */
+function countLine(page: Page): Locator {
+  return page
+    .getByRole("status")
+    .filter({ hasText: /[\d,]+ tags?( · [\d,]+ loaded)?$/ })
+    .first();
+}
+
+/**
+ * listFullyRendered は、画面が最後のページを描いたか（件数の行から「 · N loaded」が消えたか）
+ * を返す。応答が届いたことと、その行が一覧に描かれたことは別で、描かれる前に下端を読むと
+ * 最後のページの行を送らずに末尾と見なしてしまう。変更前の画面（ページが無い）は添えない。
+ */
+async function listFullyRendered(page: Page): Promise<boolean> {
+  const text = await countLine(page).textContent({ timeout: waitTimeout });
+  return !/ · [\d,]+ loaded$/.test(text ?? "");
+}
+
 interface Row {
   scene: string;
   value: string;
@@ -476,15 +497,19 @@ async function measureScroll(page: Page): Promise<Row> {
   // 送るたびに高さが変わりうるので、末尾は「続きが尽き、下端に届いている」ことで決める。
   // 下端で続きを待つ間も送り続ける（利用者がホイールを回し続ける場面）。位置も読み込んだ
   // 行も変わらないまま scrollStallTimeout が経ったら諦める。
+  // 続きが尽きたことは応答で分かるが、最後のページの行が描かれるのはその後なので、尽きて
+  // 描き終えたことを位置を読む前に確かめ、その後に読んだ位置が下端のときだけ末尾とする。
   let previous = -1;
   let previousResponses = loads.responses;
   let lastProgress = Date.now();
   let atEnd = false;
+  let complete = false;
   let steps = 0;
-  while (!(atEnd && loads.exhausted && pending.size === 0)) {
+  while (!(complete && atEnd)) {
     if (Date.now() - lastProgress > scrollStallTimeout) break;
     await page.mouse.wheel(0, 400);
     steps += 1;
+    complete = loads.exhausted && pending.size === 0 && (await listFullyRendered(page));
     const position = await scrollPosition(page);
     atEnd = position.atEnd;
     if (position.top !== previous || loads.responses !== previousResponses) {
@@ -522,7 +547,7 @@ async function measureScroll(page: Page): Promise<Row> {
     scene: "スクロール",
     value: `50 ms を超えるフレームが続いた回数 ${String(consecutive)}（最長のフレーム ${ms(maxOf(intervals))}）`,
     expected: "50 ms を超えるフレームが 2 つ続かない",
-    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、${atEnd && loads.exhausted ? "末尾" : "末尾に届かず"}の位置 ${ms(previous).replace(" ms", " px")}（ホイール ${steps.toLocaleString("en-US")} 回）、読み込んだ行 ${loads.loaded.toLocaleString("en-US")} / ${(loads.totalAll ?? 0).toLocaleString("en-US")}、続きの要求 ${String(loads.moreTimes.length)} 回（応答 中央値 ${ms(median(loads.moreTimes))} / 最長 ${ms(maxOf(loads.moreTimes))}）、最長のタスク ${longTaskText(longTasks)}`,
+    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、${complete && atEnd ? "末尾" : "末尾に届かず"}の位置 ${ms(previous).replace(" ms", " px")}（ホイール ${steps.toLocaleString("en-US")} 回）、読み込んだ行 ${loads.loaded.toLocaleString("en-US")} / ${(loads.totalAll ?? 0).toLocaleString("en-US")}、続きの要求 ${String(loads.moreTimes.length)} 回（応答 中央値 ${ms(median(loads.moreTimes))} / 最長 ${ms(maxOf(loads.moreTimes))}）、最長のタスク ${longTaskText(longTasks)}`,
   };
 }
 

@@ -84,12 +84,19 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	if *scale < 1 {
 		return config{}, fmt.Errorf("%w: -scale は 1 以上にしてください（%d）", errUsage, *scale)
 	}
-	videoCount := *videos
-	if videoCount == 0 {
-		videoCount = *scale * videosPerTag
-	}
-	if videoCount < 1 {
-		return config{}, fmt.Errorf("%w: -videos は 1 以上にしてください（%d）", errUsage, *videos)
+	// 既定の本数は -videos を省いたときだけ使う。明示した 0 を省略と取り違えない。
+	videoCount := *scale * videosPerTag
+	videosSet := false
+	flags.Visit(func(f *flag.Flag) {
+		if f.Name == "videos" {
+			videosSet = true
+		}
+	})
+	if videosSet {
+		if *videos < 1 {
+			return config{}, fmt.Errorf("%w: -videos は 1 以上にしてください（%d）", errUsage, *videos)
+		}
+		videoCount = *videos
 	}
 	return config{scale: *scale, videos: videoCount, skipBuild: *skipBuild, chromium: *chromium}, nil
 }
@@ -132,7 +139,9 @@ func planTags(scale, videoCount int) []tagPlan {
 		if i%unusedEvery != unusedEvery-1 {
 			count := 1 + rng.IntN(maxLightCount)
 			if i < heavyTags {
-				count = videoCount / 10
+				// 動画が 10 本未満でも本数の多いタグを本数 0 にしない（本数 0 は unusedEvery 個に
+				// 1 個だけにする）。
+				count = max(1, videoCount/10)
 			}
 			plan.videos = pickVideos(rng, videoCount, min(count, videoCount))
 		}
