@@ -732,6 +732,8 @@ export const en = {
       title: (name: string) => `Merge "${name}"`,
       target: "Tag to merge into",
       synonymHint: (synonym: string) => `Synonym: ${synonym}`,
+      // 統合先の候補をサーバーで引けなかったとき（ui-design.md「Target candidates」）。
+      searchFailed: (reason: string) => `Couldn't search tags: ${reason}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,

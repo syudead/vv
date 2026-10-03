@@ -2,9 +2,15 @@ import { LoaderCircle } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
-import { compareNatural } from "../api/tagOrder";
-import { mergeTag, tagImpact, type Tag, type TagImpactResponse } from "../api/tags";
+import {
+  listTagPage,
+  mergeTag,
+  tagImpact,
+  type Tag,
+  type TagImpactResponse,
+} from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
+import { foldForMatch } from "../lib/foldForMatch";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
@@ -16,16 +22,19 @@ import TentativeMark from "../ui/TentativeMark";
  * 「別のタグへ統合…」（統合元 1 件）と選択バーの「Merge into one tag…」（統合元が
  * 選んだタグ）が同じ窓を開く（specs/036-tag-admin-scale/ui-design.md「Merge dialog」）。
  *
- * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は統合元を
- * 除く全タグで、確認の本数は統合元の `videoCount`。選択から開いたときは、候補は全タグ
- * で、選んだ中のタグを統合先に選ぶとそのタグは統合元から外れる。統合先を選ぶたびに、
+ * 統合先の候補は全部のタグから、入力のたびにサーバーの検索（`GET /api/tags?q=…&limit=8`）
+ * で引く（画面が読み込んでいないタグも選べる。research.md R-14、ui-design.md「Target
+ * candidates」）。並びはサーバーの名前の自然順のままで、画面では並べ直さない。
+ *
+ * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は応答から
+ * 統合元を除いたもので、確認の本数は統合元の `videoCount`。選択から開いたときは、候補に
+ * 選んだタグも残し、選んだ中のタグを統合先に選ぶとそのタグは統合元から外れる。統合先を選ぶたびに、
  * 統合先を外した統合元について `POST /api/tags/impact`（`merge`）で数え直し、届くまで
  * 「Merge」を押せなくする（数の無い確認で実行させない）。
  */
 export default function MergeTagDialog({
   sources,
   fromSelection = false,
-  tags,
   onClose,
   onMerged,
   onStale,
@@ -34,8 +43,6 @@ export default function MergeTagDialog({
   sources: readonly Tag[];
   /** 選択バーから開いた。統合先の候補に統合元も含める。 */
   fromSelection?: boolean;
-  /** 統合先の候補を作る、共有のタグの一覧。 */
-  tags: readonly Tag[];
   onClose: () => void;
   /**
    * 統合が成功したときに呼ぶ。統合先の最新の状態、送った統合元の id、もう無かった
@@ -55,12 +62,17 @@ export default function MergeTagDialog({
   const cancel = useRef<HTMLButtonElement>(null);
   const mergeButton = useRef<HTMLButtonElement>(null);
   const sourcesHeadingId = useId();
+  const searchErrorId = useId();
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
   const [impact, setImpact] = useState<TagImpactResponse | null>(null);
   const [countError, setCountError] = useState<UiText | null>(null);
+  // 統合先の候補（最後に届いた検索の応答）。次の応答が届くまで前の候補を残す。
+  const [candidates, setCandidates] = useState<readonly Tag[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<UiText | null>(null);
   // 数え直しのきっかけ。「Retry」と、統合先を選ぶたび（同じタグを選び直したときも。
   // targetId と effective が変わらないので、これが無いと前の数が残る）に進める。
   const [attempt, setAttempt] = useState(0);
@@ -76,7 +88,27 @@ export default function MergeTagDialog({
     () => (fromSelection ? new Set<number>() : new Set(sources.map((item) => item.id))),
     [fromSelection, sources],
   );
-  const { options, exactOption } = buildTargetOptions(tags, excluded, value);
+  const { options, exactOption } = buildTargetOptions(candidates, excluded, value);
+
+  // 入力が変わるたびに統合先の候補をサーバーで引く（窓を開いた直後の空の入力も同じ経路）。
+  // 進行中の要求は次の入力で打ち切り、最後の応答だけを候補にする。
+  useEffect(() => {
+    const controller = new AbortController();
+    setSearching(true);
+    setSearchError(null);
+    listTagPage({ q: value.trim(), limit: targetCandidateLimit }, controller.signal)
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        setCandidates(page.items);
+        setSearching(false);
+      })
+      .catch((failure: unknown) => {
+        if (controller.signal.aborted) return;
+        setSearchError(errorText(failure));
+        setSearching(false);
+      });
+    return () => controller.abort();
+  }, [value]);
 
   const targetId = target?.id ?? null;
   /** 統合先を外した統合元。実際に送る `sourceIds` になる。 */
@@ -139,7 +171,7 @@ export default function MergeTagDialog({
   }
 
   function selectTarget(option: ComboboxOption) {
-    const found = tags.find((item) => String(item.id) === option.id);
+    const found = candidates.find((item) => String(item.id) === option.id);
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
@@ -233,27 +265,36 @@ export default function MergeTagDialog({
             </ul>
           </div>
         )}
-        <Combobox
-          value={value}
-          onValueChange={(next) => {
-            setValue(next);
-            setTarget(null);
-            setError(null);
-          }}
-          options={options}
-          exactOption={exactOption}
-          onSelect={selectTarget}
-          placeholder={t.tags.mergeDialog.target}
-          aria-label={t.tags.mergeDialog.target}
-          // 候補の一覧が閉じているときの Esc は、この窓を閉じる
-          // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
-          // preventDefault するので ModalFrame の Esc には届かない）。
-          onEscapeWhenClosed={handleClose}
-          className="w-full"
-          // 統合先の入力と候補の一覧は窓の内側の幅いっぱい（要件 13、ui-design.md「Width」）。
-          frameClassName="w-full"
-          listClassName="w-full"
-        />
+        <div>
+          <Combobox
+            value={value}
+            onValueChange={(next) => {
+              setValue(next);
+              setTarget(null);
+              setError(null);
+            }}
+            options={options}
+            exactOption={exactOption}
+            onSelect={selectTarget}
+            placeholder={t.tags.mergeDialog.target}
+            aria-label={t.tags.mergeDialog.target}
+            // 候補の一覧が閉じているときの Esc は、この窓を閉じる
+            // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
+            // preventDefault するので ModalFrame の Esc には届かない）。
+            onEscapeWhenClosed={handleClose}
+            className="w-full"
+            // 統合先の入力と候補の一覧は窓の内側の幅いっぱい（要件 13、ui-design.md「Width」）。
+            frameClassName="w-full"
+            listClassName="w-full"
+            busy={searching}
+            describedBy={searchError !== null ? searchErrorId : undefined}
+          />
+          {searchError !== null && (
+            <p id={searchErrorId} aria-live="polite" className="mt-1 text-xs text-danger">
+              {t.tags.mergeDialog.searchFailed(searchError)}
+            </p>
+          )}
+        </div>
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
           {target !== null && effective.length === 0 && (
             <p className="text-sm text-fg-muted">
@@ -325,55 +366,40 @@ export default function MergeTagDialog({
   );
 }
 
+/** targetCandidateLimit は統合先の候補に引く最大の行数（ui-design.md「Target candidates」）。 */
+const targetCandidateLimit = 8;
+
+/**
+ * buildTargetOptions はサーバーの検索の応答から統合先の候補を作る。並びは応答のまま
+ * （サーバーの名前の自然順）。名前ではなくシノニムで当たった候補には、照合形
+ * （`foldForMatch`。サーバーと同じ）で当たったシノニムを補足に添える。
+ */
 function buildTargetOptions(
   tags: readonly Tag[],
   excluded: ReadonlySet<number>,
   input: string,
 ): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
   const trimmed = input.trim();
-  const query = trimmed.toLowerCase();
+  const query = foldForMatch(trimmed);
+  const candidates = tags.filter((tag) => !excluded.has(tag.id));
 
-  let exactTag: Tag | undefined;
-  for (const tag of tags) {
-    if (excluded.has(tag.id)) continue;
-    if (tag.name === trimmed || tag.synonyms.includes(trimmed)) {
-      exactTag = tag;
-      break;
-    }
-  }
+  const exactTag = candidates.find(
+    (tag) => tag.name === trimmed || tag.synonyms.includes(trimmed),
+  );
 
-  const matched = tags
-    .filter((tag) => !excluded.has(tag.id))
-    .map((tag) => {
-      const nameMatch = query === "" || tag.name.toLowerCase().includes(query);
-      const synonymHit = tag.synonyms.find((synonym) =>
-        synonym.toLowerCase().includes(query),
-      );
-      if (!nameMatch && synonymHit === undefined) return null;
-      const namePrefix = query === "" || tag.name.toLowerCase().startsWith(query);
-      const synonymPrefix =
-        synonymHit !== undefined && synonymHit.toLowerCase().startsWith(query);
-      return {
-        tag,
-        prefix: namePrefix || synonymPrefix,
-        hint:
-          !nameMatch && synonymHit !== undefined
-            ? t.tags.mergeDialog.synonymHint(synonymHit)
-            : undefined,
-      };
-    })
-    .filter((value): value is NonNullable<typeof value> => value !== null)
-    .sort((a, b) => {
-      if (a.prefix !== b.prefix) return a.prefix ? -1 : 1;
-      return compareNatural(a.tag.name, b.tag.name);
-    });
-
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
-    id: String(tag.id),
-    label: tag.name,
-    hint,
-    meta: t.tags.mergeDialog.videoCount(tag.videoCount),
-  }));
+  const options: ComboboxOption[] = candidates.map((tag) => {
+    const nameMatch = query === "" || foldForMatch(tag.name).includes(query);
+    const synonymHit = nameMatch
+      ? undefined
+      : tag.synonyms.find((synonym) => foldForMatch(synonym).includes(query));
+    return {
+      id: String(tag.id),
+      label: tag.name,
+      hint:
+        synonymHit !== undefined ? t.tags.mergeDialog.synonymHint(synonymHit) : undefined,
+      meta: t.tags.mergeDialog.videoCount(tag.videoCount),
+    };
+  });
 
   const exactOption: ComboboxOption | null =
     exactTag === undefined

@@ -869,7 +869,9 @@ create, rename and delete. Rows carry a checkbox; selecting any shows a bottom s
 `POST /api/tags/batch`, after a confirmation that counts the affected videos with
 `POST /api/tags/impact` (`BulkTagDialog`; bulk confirm asks nothing), or merges them into
 one tag chosen from every tag through `POST /api/tags/{id}/merge` (`MergeTagDialog`, the
-same dialog a row's merge opens, counting with `POST /api/tags/impact`). The selection is page
+same dialog a row's merge opens, counting with `POST /api/tags/impact`). The merge target is
+searched on the server as the user types (`GET /api/tags?q=…&limit=8`, the in-flight request
+aborted on the next keystroke), so a tag the page has not loaded can still be chosen. The selection is page
 state, kept to the rows currently shown. On touch devices and below `sm`, a row's actions
 collapse into one labelled "Actions" menu, switched by CSS alone. The list holds every tag from one `GET /api/tags` but
 draws only the rows in and near the viewport (`@tanstack/react-virtual`'s
