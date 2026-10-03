@@ -60,6 +60,7 @@ A technical constraint is never a reason to narrow the design (Q-7).
 6. Reconcile every stated behaviour against the parent Issue and the existing
    design system rules, which this artifact narrows more often than it
    contradicts.
-7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
+7. Push and open a feature-branch PR with `Refs #<parent>`, with the body in
+   [stage-pr-body.md](stage-pr-body.md). Stop.
 8. After human merge, the next stage is `plan-to-issues`. The parent Issue body
    is not edited.
