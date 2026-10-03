@@ -15,7 +15,7 @@ commit in the repository's commit-message style, push, and open the PR.
 plan-to-issues creates Issues and no branch. Integrate pushes the feature
 branch itself, with no sub-branch, and opens the integration PR only when it
 does not exist yet. The pre-merge sweep fixes on a sub-branch with one PR to
-the feature branch, and edits only the integration PR's body.
+the feature branch, and posts its result as a comment on the integration PR.
 
 Do not merge any PR (merging main into the feature branch in integrate is not a
 PR merge), close Issues, edit the parent Issue body, start another stage, or

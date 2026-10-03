@@ -93,10 +93,11 @@ Run every check it lists on origin/<feature> and walk the parent's acceptance
 criteria. Collect the backlog (the integration PR body's remaining risks, the
 merged feature PRs' deferred items, unresolved threads on #<pr>), verify each,
 and pick only what the section's criteria say is worth fixing now, at most
-five. Fix the check failures and the picked items on one sub-branch from
+five. Resolve the threads on #<pr> whose fix PR has merged, as the section
+says. Fix the check failures and the picked items on one sub-branch from
 origin/<feature> and open one PR to <feature> with Refs #<parent>. Do not push
 to <feature>, and do not touch a conflict with main.
-Update #<pr>'s body as the section says and write the sdd-sweep marker last.
+Post the sweep comment on #<pr> as the section says, last.
 Return STATUS: DONE with the sweep PR in PR (or PR: - when nothing needed
 fixing), KIND: integration-fix, and the items left in DEFERRED. Return BLOCKED
 when a failing check or an unmet acceptance criterion needs a requester
@@ -156,9 +157,9 @@ A blocking finding you verified is not a defect: reply why, and resolve it now.
 A real blocking defect or a check on the head that did not pass: create a
 sub-branch from origin/<feature>, commit the fixes there, push it, open a PR to
 <feature> titled for the review round, with Refs #<parent>. Reply on each
-thread it fixes naming that PR and leave it unresolved. List those threads in
-DEFERRED for the maintainer; this workflow does not review the integration PR
-again after the fix PR merges.
+thread it fixes naming that PR and leave it unresolved; the pre-merge sweep
+resolves it after the fix PR merges. This workflow does not review the
+integration PR again after the fix PR merges.
 Return FIXED with the new PR number. Return CLEAN only when every check on the
 head passed and no blocking thread needed a fix; a check that did not pass
 with no cause to fix is BLOCKED, as in the feature-PR brief.

@@ -23,12 +23,15 @@ done yet and stops.
 
 When the integration PR already exists, take the first that applies:
 
-1. Its review has a blocking finding with no fix PR yet: handle it as
-   [below](#review-of-the-integration-pr). The fix PR to the feature branch
-   that `Refs #<parent>` is this run's one PR.
+1. Its review has a thread not triaged yet (unresolved, with no reply from
+   this workflow): triage every finding as
+   [below](#review-of-the-integration-pr). A blocking one gets a fix PR to the
+   feature branch that `Refs #<parent>`, which is this run's one PR, and the
+   run stops there. When triage needs no fix PR, go on with the next rules in
+   the same run.
 2. A PR into the feature branch that `Refs #<parent>` is still open (a review
    fix or the sweep's PR): it waits on human merge; report that and stop.
-3. Its body has no `<!-- sdd-sweep:` marker: when the integration PR has no
+3. It has no sweep comment (one containing `<!-- sdd-sweep:`): when it has no
    review yet, report that it waits on its review and stop; otherwise run the
    [pre-merge sweep](#pre-merge-sweep). Its PR, if any, is this run's one PR.
 4. Otherwise, if the feature branch already contains the latest `main` or
@@ -84,7 +87,10 @@ single round.
 2. **Collect the backlog**: the remaining risks the integration PR body lists,
    the out-of-scope items the merged feature PRs' bodies deferred, and
    unresolved threads on the integration PR. Verify each against the current
-   head; drop the ones already fixed or not reproducible.
+   head; drop the ones already fixed or not reproducible. A thread left
+   unresolved because its fix went into a review fix PR that has merged:
+   confirm the fix on the head, reply naming that PR, and resolve it, so no
+   thread on the integration PR stays open for the merge.
 3. **Pick only what is worth fixing before the merge.** An item is picked when
    every one of these holds:
    - it is a verified defect in what this feature added or changed, not a
@@ -109,12 +115,12 @@ single round.
    push, and open one PR to the feature branch with `Refs #<parent>`, titled
    for the pre-merge sweep. Its body lists each fix and the backlog item or
    check it answers. Nothing to fix means no PR.
-5. **Update the integration PR body**: the checks run and their results, the
-   acceptance-criterion walk, the items collected (naming the sweep PR), and
-   every item left with a one-line reason. Keep the remaining risks that are
-   still open, and drop the ones the sweep PR fixes. End the body with
-   `<!-- sdd-sweep:<feature head SHA swept> -->`; the marker is how a later
-   run knows the sweep happened, so write it last, after the PR exists.
+5. **Comment the result on the integration PR**, in one comment: the checks
+   run and their results, the acceptance-criterion walk, the items collected
+   (naming the sweep PR), and every item left with a one-line reason. Start
+   it with `<!-- sdd-sweep:<feature head SHA swept> -->`; that comment is how
+   a later run knows the sweep happened, so post it last, after the PR
+   exists. Leave the integration PR body as it is.
 
 The sweep PR goes through the same review as any PR into the feature branch.
 After it merges, the integration PR is not reviewed or swept again; it waits on
