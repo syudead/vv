@@ -333,6 +333,39 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 	return nil
 }
 
+// ResumeInterrupted は、最新の走査が中断（failed、理由 interrupted）で終わって
+// いれば、新しい走査を 1 回始める（specs/037-windows-app/research.md R-9）。始めたら
+// true を返す。
+//
+// interrupted は、停止の指示で打ち切った走査と、running のまま残って
+// RecoverInterrupted が閉じた走査の両方に付く。利用者が走査を取り消す操作は無いので、
+// どちらもプロセスの停止による。走査はサイズと mtime が変わらないファイルを何も
+// しないで通るので、始め直しは続きからと同じ結果になる。最新の走査が done、
+// interrupted 以外の理由の failed、または走査の記録が無いときは始めない。
+//
+// 起動時に、RecoverInterrupted のあと、ワーカーを動かしてから 1 度だけ呼ぶ。
+func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
+	latest, err := s.store.CurrentScan(ctx)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted {
+		return false, nil
+	}
+	scan, started, err := s.StartScan(ctx)
+	if err != nil {
+		return false, err
+	}
+	if started {
+		s.logger.Info("resumed the interrupted scan",
+			slog.Int64("interrupted_scan", latest.ID), slog.Int64("scan", scan.ID))
+	}
+	return started, nil
+}
+
 // currentScanID は進捗の書き込み先を返す。取れない場合は 0 を返し、
 // 書き込みは何にも当たらない（走査は続ける）。
 func (s *Scans) currentScanID(ctx context.Context) int64 {

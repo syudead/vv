@@ -370,6 +370,53 @@ func TestRecoverInterrupted(t *testing.T) {
 	}
 }
 
+// 起動時に、最新の走査が中断で終わっていれば走査を 1 回始め直す。done、
+// interrupted 以外の理由の failed、走査の記録が無いときは始めない
+// （specs/037-windows-app/research.md R-9）。
+func TestResumeInterrupted(t *testing.T) {
+	cases := []struct {
+		name   string
+		latest *domain.Scan
+		want   bool
+	}{
+		{"中断で終わっていれば始める", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInterrupted}, true},
+		{"done なら始めない", &domain.Scan{ID: 4, State: domain.ScanDone}, false},
+		{"interrupted 以外の failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInternal}, false},
+		{"理由のコードの無い failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed}, false},
+		{"走査の記録が無ければ始めない", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &fakeScanner{}
+			scans, store, _ := newTestScans(t, context.Background(), scanner)
+			if tc.latest != nil {
+				store.current, store.hasScan, store.nextID = *tc.latest, true, tc.latest.ID
+			}
+
+			started, err := scans.ResumeInterrupted(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if started != tc.want {
+				t.Fatalf("始めたか = %v, want %v", started, tc.want)
+			}
+			if tc.want {
+				closed := store.waitFinished(t)
+				if closed.ID != tc.latest.ID+1 || closed.State != domain.ScanDone {
+					t.Fatalf("始め直した走査 = #%d %q, want #%d done", closed.ID, closed.State, tc.latest.ID+1)
+				}
+			}
+			scans.Wait()
+			scanner.mu.Lock()
+			runs := scanner.runs
+			scanner.mu.Unlock()
+			if want := map[bool]int{true: 1, false: 0}[tc.want]; runs != want {
+				t.Fatalf("走査の回数 = %d, want %d", runs, want)
+			}
+		})
+	}
+}
+
 // スキャンは成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。作り直しに
 // 失敗してもスキャンは失敗にしない。
 func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {

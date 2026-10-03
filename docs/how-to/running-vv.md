@@ -243,6 +243,12 @@ database is lost without a backup, set up a new account, register the media
 folders again in Settings, then start a scan to rebuild the index. Scanning
 cannot recover the user and configuration data in the linked classification.
 
+If vv stops while a scan is running (for example `task down`, a container
+restart or a shutdown), the next start begins a new scan automatically. Files
+that the interrupted scan already indexed and that have not changed since are
+passed over quickly, so the new scan continues where the old one stopped.
+Import work that was in progress also continues after the restart.
+
 ## Network exposure
 
 On a trusted home network, VVMDM can be used over plain HTTP. To make it reachable
