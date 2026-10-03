@@ -74,6 +74,9 @@ describe("SettingsPage", () => {
         return Promise.resolve(json(transcodingSettings));
       if (String(input) === "/api/api-tokens")
         return Promise.resolve(json({ items: [] }));
+      // 「Network」区画は NetworkSection.test.tsx が確かめる。ここではデスクトップ版でない。
+      if (String(input) === "/api/settings/network")
+        return Promise.resolve(json({ code: "not_found", message: "not found" }, 404));
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({

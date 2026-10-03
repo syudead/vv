@@ -89,6 +89,7 @@ export type VersionCandidate = components["schemas"]["VersionCandidate"];
 export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
+export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
 export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
@@ -746,6 +747,30 @@ export function updateTranscodingSettings(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoEncoder }),
+    signal,
+  });
+}
+
+/**
+ * getNetworkSettings は LAN からの接続の許可と、許可中に開くアドレスを取得する。デスクトップ版で
+ * なければ `404` の RequestFailed になる（specs/037-windows-app/contracts/network-settings-api.md §2）。
+ */
+export function getNetworkSettings(signal?: AbortSignal): Promise<NetworkSettings> {
+  return request<NetworkSettings>("/api/settings/network", { signal });
+}
+
+/**
+ * updateNetworkSettings は LAN からの接続の許可を切り替え、開き直したあとの状態を返す。
+ * 開き直せなければ `409`・reason `listen_failed` になる（同 §3）。
+ */
+export function updateNetworkSettings(
+  lanAccess: boolean,
+  signal?: AbortSignal,
+): Promise<NetworkSettings> {
+  return request<NetworkSettings>("/api/settings/network", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lanAccess }),
     signal,
   });
 }
