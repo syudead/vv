@@ -31,19 +31,30 @@ type fakeScanStore struct {
 	rebuiltBeforeFinish []int
 	// issues は記録された問題である。
 	issues []domain.ScanIssue
+	// resumedFrom は走査を始めるたびの持ち越し元（StartScan なら 0）である。
+	resumedFrom []int64
+	// unfinished は queued か running の仕事があるか、unfinishedErr はその問い合わせの失敗である。
+	unfinished    bool
+	unfinishedErr error
 }
 
 func newFakeScanStore() *fakeScanStore {
 	return &fakeScanStore{progress: map[int64][]domain.ScanProgress{}, finished: make(chan domain.Scan, 4)}
 }
 
-func (f *fakeScanStore) StartScan(context.Context) (domain.Scan, bool, error) {
+func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error) {
+	return f.ResumeScan(ctx, 0)
+}
+
+// ResumeScan は StartScan と同じで、持ち越し元を resumedFrom に残す。
+func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.hasScan && f.current.State == domain.ScanRunning {
 		return f.current, false, nil
 	}
 	f.nextID++
+	f.resumedFrom = append(f.resumedFrom, from)
 	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, StartedAt: time.Now()}
 	f.hasScan = true
 	return f.current, true, nil
@@ -121,6 +132,18 @@ func (f *fakeScanStore) RequeueRunningJobs(context.Context) (int64, error) {
 	return f.requeued, nil
 }
 
+func (f *fakeScanStore) HasUnfinishedJobs(context.Context) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.unfinished, f.unfinishedErr
+}
+
+func (f *fakeScanStore) setUnfinished(unfinished bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unfinished, f.unfinishedErr = unfinished, err
+}
+
 func (f *fakeScanStore) waitFinished(t *testing.T) domain.Scan {
 	t.Helper()
 	select {
@@ -179,9 +202,10 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 	store := newFakeScanStore()
 	publisher := &fakePublisher{}
 	scans := NewScans(ScansOptions{
-		Store:       store,
-		Jobs:        store,
-		FolderIndex: store,
+		Store:          store,
+		Jobs:           store,
+		UnfinishedJobs: store,
+		FolderIndex:    store,
 		NewScanner: func(reporter ScanReporter) Scanner {
 			scanner.reporter = reporter
 			return scanner
@@ -301,6 +325,49 @@ func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 	}
 }
 
+// Busy は走っている走査があるか、queued・running の仕事があるとき真で、どちらも
+// 無いとき偽（specs/037-windows-app/research.md R-7）。
+func TestBusy(t *testing.T) {
+	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	ctx := context.Background()
+	assertBusy := func(want bool) {
+		t.Helper()
+		got, err := scans.Busy(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("Busy() = %v, want %v", got, want)
+		}
+	}
+
+	assertBusy(false)
+
+	// 走査中。
+	if _, _, err := scans.StartScan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	<-scanner.started
+	assertBusy(true)
+	close(scanner.release)
+	store.waitFinished(t)
+	scans.Wait()
+	assertBusy(false)
+
+	// queued か running の仕事がある（保存先はどちらも 1 つの問い合わせで答える）。
+	store.setUnfinished(true, nil)
+	assertBusy(true)
+	store.setUnfinished(false, nil)
+	assertBusy(false)
+
+	// 問い合わせの失敗は返す。
+	store.setUnfinished(false, errors.New("disk"))
+	if _, err := scans.Busy(ctx); err == nil {
+		t.Error("問い合わせの失敗が返らない")
+	}
+}
+
 // 停止で寿命の長い context が取り消されたら、走査は打ち切られ、それでも
 // failed で閉じる（閉じる書き込みは取り消しを引き継がない）。
 func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
@@ -365,6 +432,59 @@ func TestRecoverInterrupted(t *testing.T) {
 			}
 			if !slices.Equal(store.recovered, tc.want) {
 				t.Fatalf("回復の順 = %v, want %v", store.recovered, tc.want)
+			}
+		})
+	}
+}
+
+// 起動時に、最新の走査が中断で終わっていれば走査を 1 回始め直す。done、
+// interrupted 以外の理由の failed、走査の記録が無いときは始めない
+// （specs/037-windows-app/research.md R-9）。
+func TestResumeInterrupted(t *testing.T) {
+	cases := []struct {
+		name   string
+		latest *domain.Scan
+		want   bool
+	}{
+		{"中断で終わっていれば始める", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInterrupted}, true},
+		{"done なら始めない", &domain.Scan{ID: 4, State: domain.ScanDone}, false},
+		{"interrupted 以外の failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInternal}, false},
+		{"理由のコードの無い failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed}, false},
+		{"走査の記録が無ければ始めない", nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &fakeScanner{}
+			scans, store, _ := newTestScans(t, context.Background(), scanner)
+			if tc.latest != nil {
+				store.current, store.hasScan, store.nextID = *tc.latest, true, tc.latest.ID
+			}
+
+			started, err := scans.ResumeInterrupted(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if started != tc.want {
+				t.Fatalf("始めたか = %v, want %v", started, tc.want)
+			}
+			if tc.want {
+				closed := store.waitFinished(t)
+				if closed.ID != tc.latest.ID+1 || closed.State != domain.ScanDone {
+					t.Fatalf("始め直した走査 = #%d %q, want #%d done", closed.ID, closed.State, tc.latest.ID+1)
+				}
+				store.mu.Lock()
+				from := slices.Clone(store.resumedFrom)
+				store.mu.Unlock()
+				if !slices.Equal(from, []int64{tc.latest.ID}) {
+					t.Fatalf("持ち越し元 = %v, want [%d]", from, tc.latest.ID)
+				}
+			}
+			scans.Wait()
+			scanner.mu.Lock()
+			runs := scanner.runs
+			scanner.mu.Unlock()
+			if want := map[bool]int{true: 1, false: 0}[tc.want]; runs != want {
+				t.Fatalf("走査の回数 = %d, want %d", runs, want)
 			}
 		})
 	}

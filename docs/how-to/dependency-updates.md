@@ -29,8 +29,29 @@
   イメージのダイジェスト更新は対象内に残す。
 - `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
   mise tools / container images グループに入る。
+- Windows 版の zip に同梱する FFmpeg（`scripts/build/windows_app.go` の
+  `ffmpegVersion` と `ffmpegSHA256`）。Renovate はこの定数を読まないので、
+  人が下の [FFmpeg の版の上げ方](#ffmpeg-の版の上げ方)で上げる。
 - Dependabot の security updates はリポジトリ設定で無効にしている。
   Renovate の `vulnerabilityAlerts` が同じ役割を果たす。
+
+## FFmpeg の版の上げ方
+
+Windows 版の zip は、`GyanD/codexffmpeg` の GitHub Releases にある Gyan.dev の
+essentials（`ffmpeg-<版>-essentials_build.zip`）を版と SHA-256 で固定して同梱する
+（[Windows デスクトップ版の配布](../design-docs/windows-app.md#配布)）。上げるときは次を 1 つの PR で行う。
+
+1. 新しい版の Release に `ffmpeg-<版>-essentials_build.zip` があることを確かめ、その
+   SHA-256 を Gyan.dev が公開する値（<https://www.gyan.dev/ffmpeg/builds/> の
+   `.sha256`）で確かめる。
+2. `scripts/build/windows_app.go` の `ffmpegVersion` と `ffmpegSHA256` を変える。
+   SHA-256 が合わなければ `task build-windows-app` は期待値と実際の値を示して失敗する。
+3. `task build-windows-app` で zip を組み、中身の `ffmpeg/README.txt` の版を確かめる。
+4. マージ後に `Windows app` workflow を手動実行し、同梱の `ffmpeg` に `h264_nvenc` と
+   `h264_qsv` があることを確かめる。
+
+`ffmpeg` の中のエンコーダの名前や引数が変わったときは、
+[hardware-encoding.md](../design-docs/hardware-encoding.md) と `internal/media` も合わせる。
 
 ## Renovate の PR に対する扱い
 

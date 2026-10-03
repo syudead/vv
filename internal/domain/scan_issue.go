@@ -45,6 +45,11 @@ var scanIssueKinds = []ScanIssueKind{
 	IssueFingerprintFailed, IssueThumbnailFirstFrame, IssueSeekThumbnailFullDecode,
 }
 
+// ScanIssueKinds は既知の種類を重い順に返す。
+func ScanIssueKinds() []ScanIssueKind {
+	return slices.Clone(scanIssueKinds)
+}
+
 // Valid は既知の種類かを返す。
 func (k ScanIssueKind) Valid() bool {
 	return slices.Contains(scanIssueKinds, k)

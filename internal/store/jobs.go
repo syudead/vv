@@ -496,6 +496,18 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 	return current == 1, err
 }
 
+// HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。デスクトップ版の
+// 閉じる確認が、取り込みの途中かを判断するのに使う（specs/037-windows-app/research.md R-7）。
+func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
+	var found bool
+	err := s.db.sql.QueryRowContext(ctx,
+		`select exists (select 1 from jobs where state in ('queued', 'running'))`).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("cannot look up unfinished jobs: %w", err)
+	}
+	return found, nil
+}
+
 // RequeueRunningJobs は running のまま残っている行を queued へ戻し、その数を
 // 返す。起動時に1度だけ呼ぶ。
 //

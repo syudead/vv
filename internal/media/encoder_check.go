@@ -44,7 +44,7 @@ type EncoderCheck struct {
 // NewEncoderCheck は FFmpeg を使う EncoderCheck を返す。
 func NewEncoderCheck() *EncoderCheck {
 	return &EncoderCheck{
-		commandContext: exec.CommandContext,
+		commandContext: command,
 		timeout:        encoderCheckTimeout,
 		listDone:       make(chan struct{}),
 	}

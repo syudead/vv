@@ -17,7 +17,13 @@ byte-range video streaming (via `http.ServeContent`), backed by SQLite and by
 video files on a mounted volume. `ffmpeg`/`ffprobe` run as child processes for
 metadata, thumbnails, previews and live transcoding, driven by an in-process job
 worker or by the request that needs them. Sidecar subtitles are converted to WebVTT
-in Go, without `ffmpeg`. Everything ships as one container.
+in Go, without `ffmpeg`. Everything ships as one container; the same binary
+also ships for Windows as a desktop app, `VVMDM.exe` (built from `cmd/mdm` with
+the `desktop` tag as a GUI executable), which runs the server in-process on a
+loopback port, shows it in its own window with an embedded WebView2, keeps its
+data under `%LOCALAPPDATA%\VVMDM`, uses the `ffmpeg` bundled next to it, and stops
+the server when the window closes
+([docs/design-docs/windows-app.md](docs/design-docs/windows-app.md)).
 
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
@@ -32,7 +38,10 @@ also every member in group order, with next/previous inside the group), retry a 
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the live-transcode video encoder setting
 (`/api/settings/transcoding`: the saved choice, the encoder in use and each hardware encoder's
-startup check result), the read-only folder browsing API
+startup check result), the desktop app's LAN access setting (`/api/settings/network`:
+whether devices on the LAN may connect, the listening port and, while allowed, the URL for
+each non-loopback IPv4 address; switching reopens the listener on `0.0.0.0` or `127.0.0.1`
+before saving, and the route returns `404` outside the desktop app), the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
@@ -253,7 +262,13 @@ recorded or a video row is deleted. Removing a media folder also publishes
 being claimable even when the video row survives through an unregistered location.
 Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
-generation output is removed at the next startup. When a video row is deleted (a scan finds its last
+generation output is removed at the next startup. Once the workers run, that startup
+also starts one new scan when the latest scan ended `failed` with the reason
+`interrupted` (stopped by shutdown, or closed because it was left running), with every
+launch method; the scan passes over files whose size and mtime are unchanged, so starting
+again continues where the interrupted scan stopped. That new scan takes over the
+interrupted import's videos and its job failures and substitutions, since jobs that
+failed up to their limit are not queued again for unchanged files. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` publishes the released content keys (`domain.ContentUnreferenced`) after
 commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek sprite and hover preview unless another video still
@@ -689,7 +704,7 @@ The server keeps no quality state; each request carries its own
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -728,7 +743,10 @@ way only. The packages under `internal/` fall into three layers:
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
   `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner`, `internal/jobs` and
   `internal/password` — talk to the outside world. `internal/eventbus` sits beside them and only delivers
-  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
+  `domain.Event` values in-process; only `cmd/mdm` imports it. `internal/desktop` holds the
+  Windows desktop app's OS side — the Win32 window with the embedded WebView2, the error dialogs,
+  the job object and resolving the data folders — and only `cmd/mdm`'s `desktop`-tagged entry
+  point imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
   media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
   and `internal/httpapi` never decides by itself whether a file may be opened.
   `internal/httpapi` only parses requests, calls the application layer, the store or
