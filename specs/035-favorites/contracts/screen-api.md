@@ -97,7 +97,7 @@ VideoSort:
 `GET /api/library/ids` has no `sort` and does not change.
 
 Guests (added to the table in
-[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件)): the rules apply
+[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-conditions-guests-cannot-use)): the rules apply
 to the three endpoints a guest can read, `GET /api/videos`, `GET /api/folders/{rootId}/videos` and
 `GET /api/library`. `GET /api/library/ids` is owner-only and still returns `401` to a guest whatever the
 conditions.

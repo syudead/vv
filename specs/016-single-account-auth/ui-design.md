@@ -9,7 +9,7 @@ page structure follows [012's ui-design.md](../012-video-detail-ia/ui-design.md)
 the toolbar, the no-match state and empty states follow
 [013's ui-design.md](../013-library-search/ui-design.md); the selection bar
 structure follows
-[library-ui.md §6](../../docs/design-docs/library-ui.md#6-一覧の構成); tag
+[library-ui.md §6](../../docs/design-docs/library-ui.md#6-list-layout); tag
 display and actions follow [014's ui-design.md](../014-video-tags/ui-design.md).
 The APIs, states and transitions the screens use are fixed in
 [contracts/auth-api.md](contracts/auth-api.md) (first-time setup, login, state,

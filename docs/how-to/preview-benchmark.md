@@ -5,7 +5,7 @@
 入力・同じ環境で測り、PR に残す手順。測るのは本番の生成コードそのもので、
 `scripts/previewbench` がそれを呼ぶ。動くプレビューは `internal/media` の
 `GeneratePreview`、シーク用は `GenerateSeekThumbnailSet` である。理由は
-[specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-計測の方法)。
+[specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-measurement-method)。
 
 ## 入力を作る
 

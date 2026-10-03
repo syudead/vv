@@ -6,8 +6,8 @@ Parent Issue: #574. The rest of the model is unchanged. Sources of truth:
 | --- | --- |
 | Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
 | Data classes | [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user data" |
-| User key | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵) |
-| Folder key | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-マイグレーション) |
+| User key | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
+| Folder key | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
 
 This file covers only the tables, values and read and write rules this feature adds. Tables not named here do
 not change.
@@ -53,8 +53,8 @@ Succession and bundling:
 
 | Path | Change |
 | --- | --- |
-| `moveUserData` (same-path succession, [030 §5](../030-video-versions/data-model.md#5-同じパスの中身の引き継ぎ)) | Add `video_favorites` to its table list. A row on `from` replaces the row on `to` |
-| `userDataTables` (bundle, change representative, remove, [030 §8](../030-video-versions/data-model.md#8-保存層の操作versionstore)) | Add `{"video_favorites", "favorited_at"}`. Bundling copies the representative's value to the bundle key; a removed member returns to the value under its own key |
+| `moveUserData` (same-path succession, [030 §5](../030-video-versions/data-model.md#5-carry-over-of-content-at-the-same-path)) | Add `video_favorites` to its table list. A row on `from` replaces the row on `to` |
+| `userDataTables` (bundle, change representative, remove, [030 §8](../030-video-versions/data-model.md#8-store-operations-versionstore)) | Add `{"video_favorites", "favorited_at"}`. Bundling copies the representative's value to the bundle key; a removed member returns to the value under its own key |
 | `folder_favorites` | No path copies it. Renaming or moving a folder drops its favorite, as required (Edge Case) |
 
 ## 2. `domain` values added
@@ -124,7 +124,7 @@ The maximum is taken over both tables because library items sort videos and grou
 
 Add `left join video_favorites fav on fav.content_key = <userKeyExpr("videos")> and videos.content_key <> ''`
 to `filteredFrom`. With `FavoriteOnly`, add the condition `fav.content_key is not null`. Add the following
-sort in the same shape as [the 013 table](../013-library-search/contracts/list-api.md#3-videosort-の値).
+sort in the same shape as [the 013 table](../013-library-search/contracts/list-api.md#3-videosort-values).
 
 | Sort | Ascending | Descending | Value | When there is no value |
 | --- | --- | --- | --- | --- |
@@ -133,7 +133,7 @@ sort in the same shape as [the 013 table](../013-library-search/contracts/list-a
 ### Library items (`libraryItemsCTE`, `ListLibrary`, `LibraryIDs`)
 
 `matched`, `gm`, `live`, `hits`, `whole` and `mv` from
-[027 §1](../027-partial-group-search/contracts/library-api.md#1-get-apilibrary-の項目の作り方) do not change.
+[027 §1](../027-partial-group-search/contracts/library-api.md#1-how-get-apilibrary-builds-items) do not change.
 `items` changes as follows (`favoriteOnly` is `FavoriteOnly`, `gf(group_id)` is the groups whose folder is in
 `folder_favorites`, and `vf(video_id)` is the videos whose key is in `video_favorites`).
 

@@ -101,7 +101,7 @@ A video whose video stream can be copied as is (`videoCanCopy` is true, for
 example an MKV containing H.264) avoids re-encoding even from a mid-file
 position. A copy starts at the preceding keyframe rather than the requested
 position, so the server has to know the time it actually started
-([research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-実際の開始位置をどこから知るか)).
+([research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-source-of-the-actual-start-position)).
 
 ### Decision
 
@@ -166,7 +166,7 @@ changes (tens of seconds to minutes), the jump back no longer reads as the
 position the user chose, so they are re-encoded from the requested position.
 Switching costs one FFmpeg start plus reading one keyframe interval, and only
 videos over the limit pay it
-([research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-コピーで許すキーフレームとの差)).
+([research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-allowed-gap-to-the-keyframe-when-copying)).
 
 ### Trade-offs
 
@@ -214,7 +214,7 @@ playback position would run ahead of the picture by up to the gap limit.
 Playback through `<video src>` exposes neither response headers nor body
 structure to JavaScript, so the transcode response itself cannot carry the
 start position
-([research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-実際の開始位置をプレイヤーへ伝える経路)).
+([research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-path-that-reports-the-actual-start-position-to-the-player)).
 
 ### Decision
 

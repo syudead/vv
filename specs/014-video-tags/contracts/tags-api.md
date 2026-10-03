@@ -157,10 +157,10 @@ The `query` of `listVideos` and `listFolderVideos` matches, in addition to the
 title and relative path, the original names and synonyms of the tags attached
 to a video ([data-model.md §7](../data-model.md#7-matching-tag-names-in-the-search-box)).
 Syntax, limits and the matching form follow #195's
-[list-api.md §1](../../013-library-search/contracts/list-api.md#1-検索語の書き方)
+[list-api.md §1](../../013-library-search/contracts/list-api.md#1-query-syntax)
 unchanged, as do the parameters and the response shape. The location shown for
 a list entry follows the rules of #195's
-[list-api.md §4](../../013-library-search/contracts/list-api.md#4-一覧に出す所在と-videofolder).
+[list-api.md §4](../../013-library-search/contracts/list-api.md#4-listed-location-and-videofolder).
 For a video that satisfies the expression by tag names alone, the first
 location is a path within the scope.
 

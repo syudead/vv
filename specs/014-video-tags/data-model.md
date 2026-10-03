@@ -158,7 +158,7 @@ says which were dropped
 ## 7. Matching tag names in the search box
 
 #195's search builds each term's condition against one location row
-([013 data-model.md §3](../013-library-search/data-model.md#3-search_key-の規則),
+([013 data-model.md §3](../013-library-search/data-model.md#3-search_key-rules),
 `searchExprCondition` in `internal/store/search.go`). The condition for one term
 widens to this OR (requirement 10):
 

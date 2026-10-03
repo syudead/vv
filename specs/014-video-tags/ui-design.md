@@ -22,7 +22,7 @@ radius or shadow tokens are added.
 | Library (`/`) grid card | A tag row below the title. The library list view rows have no tag row. Folder screen cards have the same tag row; pressing a tag goes to the library filtered by it (`/?tag=<id>`) |
 | Top of the library body | Only while filtering by tag, an active tag filter row above the summary line. Nothing is added to the toolbar (inside the top bar) |
 | Video page (`/videos/:id`) | The tag list below the title |
-| Selection bar | Bulk add and remove tag actions, placed per [library-ui.md §6](../../docs/design-docs/library-ui.md#6-一覧の構成) |
+| Selection bar | Bulk add and remove tag actions, placed per [library-ui.md §6](../../docs/design-docs/library-ui.md#6-list-layout) |
 | Tag management page (`/tags`) | Inside `AppShell`. The sidebar has a `タグ` entry (lucide `Tags`) right after `フォルダ` |
 
 ## Tag chip

@@ -20,6 +20,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 
 - [Core beliefs](core-beliefs.md)
 - [Writing quality: typed technical English](writing-quality.md)
+- [Japanese translation of the documents](japanese-translation.md)
 - [Plan quality rules: no text written only to fill a slot](plan-quality.md)
 - [Technology selection: MDM (Media Data Management)](tech-stack-selection.md)
 - [Separate track inputs for MOV live transcoding](mov-live-transcoding.md)

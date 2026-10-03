@@ -375,7 +375,7 @@ When rendering for a guest, the following are **not shown**. They are neither `d
 | Cards and rows (library, folder screen, search results) | The favorite mark and toggle | The response has no `favorite`. Like the public mark, it has no meaning for a guest |
 | Video page | The toggle at the right end of the facts row | The response has neither `location` nor `favorite`, so the whole right-hand group is absent (as today) |
 | Selection bar | — | Guests have no selection bar |
-| Toolbar | "Favorites only" in the filter, "Date favorited" in the sort | Guests have seven sorts. When the URL still has `fav=1`, `sort=favoritedAsc` or `favoritedDesc`, the request uses the normalised defaults, like `watch` and `played*`, and the URL is corrected (added to the table in [guest-api.md §3](../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件)). A sort stored on the device as `favorited*` is normalised the same way, and the stored value is not rewritten |
+| Toolbar | "Favorites only" in the filter, "Date favorited" in the sort | Guests have seven sorts. When the URL still has `fav=1`, `sort=favoritedAsc` or `favoritedDesc`, the request uses the normalised defaults, like `watch` and `played*`, and the URL is corrected (added to the table in [guest-api.md §3](../016-single-account-auth/contracts/guest-api.md#3-conditions-guests-cannot-use)). A sort stored on the device as `favorited*` is normalised the same way, and the stored value is not rewritten |
 
 ## Responsive behaviour
 

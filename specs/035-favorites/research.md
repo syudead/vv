@@ -5,8 +5,8 @@ Parent Issue: #574. Inherited decisions:
 | Topic | Source of truth |
 | --- | --- |
 | Tech stack, boundaries, dependency direction, rebuildable index versus user data | [ARCHITECTURE.md](../../ARCHITECTURE.md), [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
-| User key (`bundle:<id>` for a bundle, otherwise `content_key`) | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵) |
-| Folder key (`domain.FolderKey`) and manual group settings | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-マイグレーション) |
+| User key (`bundle:<id>` for a bundle, otherwise `content_key`) | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
+| Folder key (`domain.FolderKey`) and manual group settings | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
 | How library items are built | [specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md) |
 
 This file records only the decisions this feature adds.

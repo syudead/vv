@@ -100,7 +100,7 @@ quality goes with which seek or resume request.
 
 `GET /api/videos/{id}/transcode.mp4` takes an optional `quality` (`1080p`,
 `720p`, `480p`, `360p`)
-([contracts/transcode-quality-api.md §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-get-apivideosidtranscodemp4-の-quality)).
+([contracts/transcode-quality-api.md §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-quality-on-get-apivideosidtranscodemp4)).
 The server does not remember the quality; each request decides it from
 `quality`.
 
