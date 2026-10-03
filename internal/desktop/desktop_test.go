@@ -247,3 +247,30 @@ func TestMessagesNameTheLogExceptForTheUnwritableFolder(t *testing.T) {
 		t.Errorf("bad args: %q", text)
 	}
 }
+
+// 二重起動のミューテックスは、同じ利用者・同じデータの置き場（大文字と小文字を
+// 区別しない）で同じ名前になり、利用者かデータの置き場が違えば別の名前になる。
+// global はセッションをまたぎ、local はセッションごとの名前空間に置く。
+func TestInstanceNames(t *testing.T) {
+	const sid = "S-1-5-21-1-2-3-1001"
+	const root = `C:\Users\me\AppData\Local\VVMDM`
+	global, local := InstanceNames(sid, root)
+	if !strings.HasPrefix(global, `Global\VVMDM-`+sid+"-") || !strings.HasPrefix(local, `Local\VVMDM-`+sid+"-") {
+		t.Fatalf("InstanceNames = %q, %q", global, local)
+	}
+	if strings.TrimPrefix(global, `Global\`) != strings.TrimPrefix(local, `Local\`) {
+		t.Fatalf("global %q and local %q differ beyond the namespace", global, local)
+	}
+	if same, _ := InstanceNames(sid, strings.ToUpper(root)); same != global {
+		t.Errorf("case of the data folder changed the name: %q, %q", same, global)
+	}
+	if other, _ := InstanceNames("S-1-5-21-1-2-3-1002", root); other == global {
+		t.Errorf("another user got the same name %q", other)
+	}
+	if other, _ := InstanceNames(sid, `D:\VVMDM`); other == global {
+		t.Errorf("another data folder got the same name %q", other)
+	}
+	if len(global) > 260 {
+		t.Errorf("the name is longer than MAX_PATH: %d", len(global))
+	}
+}

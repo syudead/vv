@@ -72,3 +72,34 @@ func alternativePort(port int) int {
 	}
 	return port + 1
 }
+
+// 閉じる前の確認の文（research.md R-7、contracts/windows-app.md §4）。ボタンは
+// 「閉じる」「続ける」に当たる 2 つで、既定は「続ける」。
+const (
+	CloseConfirmInstruction = "Import is in progress"
+	CloseConfirmContent     = "If you close VVMDM now, the import is interrupted. " +
+		"It continues from where it left off the next time you start VVMDM."
+	CloseConfirmClose    = "Close"
+	CloseConfirmContinue = "Keep running"
+	// CloseConfirmFallbackQuestion は TaskDialog を使えないとき（Common Controls v6 の
+	// manifest が無いビルド）の、はい・いいえのダイアログに足す問いである。
+	CloseConfirmFallbackQuestion = "Close VVMDM now?"
+)
+
+// ShutdownBlockReason はサインアウト・シャットダウンで停止を待つ間に Windows が示す
+// 理由である（research.md R-8）。
+const ShutdownBlockReason = "VVMDM is stopping"
+
+// MessageOtherSession は同じ利用者が別のセッション（リモート デスクトップなど）で
+// 起動中のときのダイアログの文である（research.md R-6）。
+func MessageOtherSession() string {
+	return "VVMDM is already running in another sign-in session of this user.\n\n" +
+		"Close VVMDM in that session, and then run it here again."
+}
+
+// MessageStillRunning は同じセッションで起動中か停止の途中の VVMDM が、待っても
+// ウィンドウを出さず終わりもしなかったときのダイアログの文である（research.md R-6）。
+func MessageStillRunning() string {
+	return "VVMDM is already running, but its window did not appear.\n\n" +
+		"Wait a moment, and then run VVMDM again."
+}

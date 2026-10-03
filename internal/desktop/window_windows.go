@@ -31,9 +31,16 @@ type WindowOptions struct {
 	URL string
 	// DataPath は WebView2 の利用者データの置き場。
 	DataPath string
-	// OnClose は利用者がウィンドウを閉じたときに UI のスレッドで呼ぶ。ウィンドウは
-	// 先に隠れる。ウィンドウを壊すのは Destroy で、呼び出し元が停止を終えてから呼ぶ。
+	// ShouldConfirmClose は利用者がウィンドウを閉じようとしたときに UI のスレッドで
+	// 呼び、真なら閉じる前の確認を出す（research.md R-7）。nil なら確認しない。
+	ShouldConfirmClose func() bool
+	// OnClose は利用者がウィンドウを閉じると決めたときに UI のスレッドで呼ぶ。
+	// ウィンドウは先に隠れる。ウィンドウを壊すのは Destroy で、呼び出し元が停止を
+	// 終えてから呼ぶ。
 	OnClose func()
+	// OnEndSession はサインアウト・シャットダウンが確定したとき（WM_ENDSESSION）に
+	// UI のスレッドで呼ぶ。停止を終えるまで戻らない（research.md R-8）。
+	OnEndSession func()
 	// OnFatal は WebView2 が続けられない誤りを起こしたときに UI のスレッドで呼ぶ。
 	// 戻るとプロセスは終わる。
 	OnFatal func(error)
@@ -48,6 +55,10 @@ type Window struct {
 	chromium *edge.Chromium
 	ready    bool
 	closing  bool
+	// confirming は閉じる前の確認を出している間は真で、重ねて出さない。
+	confirming bool
+	// endingSession はサインアウト・シャットダウンの停止を始めたら真である。
+	endingSession bool
 
 	fullscreen      bool
 	savedStyle      uintptr
@@ -214,15 +225,22 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 			w.focusWebView()
 		}
 	case wmClose:
-		// 閉じる操作への反応がすぐ見えるよう、先にウィンドウを隠す。停止を終えた
-		// 呼び出し元が Destroy で壊す（research.md R-7）。
-		if !w.closing {
+		w.requestClose()
+		return 0
+	case wmQueryEndSession:
+		// 終了は拒まず、停止を待つ理由を Windows に示す（research.md R-8）。
+		w.setShutdownBlockReason(true)
+		return 1
+	case wmEndSession:
+		if wparam != 0 && !w.endingSession {
+			// 確認は出さない。今の停止手順を最後まで通してから戻る。
+			w.endingSession = true
 			w.closing = true
-			_, _, _ = procShowWindow.Call(hwnd, swHide)
-			if w.opts.OnClose != nil {
-				w.opts.OnClose()
+			if w.opts.OnEndSession != nil {
+				w.opts.OnEndSession()
 			}
 		}
+		w.setShutdownBlockReason(false)
 		return 0
 	case wmAppCall:
 		w.runPending()
@@ -236,6 +254,46 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	}
 	r, _, _ := procDefWindowProcW.Call(hwnd, message, wparam, lparam)
 	return r
+}
+
+// requestClose は閉じる操作を扱う。取り込みの途中なら確認を出し、「続ける」なら
+// 何もしない。閉じるなら、反応がすぐ見えるよう先にウィンドウを隠し、停止を終えた
+// 呼び出し元が Destroy で壊す（research.md R-7）。
+func (w *Window) requestClose() {
+	if w.closing || w.confirming {
+		return
+	}
+	if w.opts.ShouldConfirmClose != nil {
+		w.confirming = true
+		ask := w.opts.ShouldConfirmClose()
+		closeNow := !ask || confirmClose(w.hwnd)
+		w.confirming = false
+		// 確認の間にサインアウトの停止が始まっていたら、そちらに任せる。
+		if !closeNow || w.closing {
+			return
+		}
+	}
+	w.closing = true
+	_, _, _ = procShowWindow.Call(w.hwnd, swHide)
+	if w.opts.OnClose != nil {
+		w.opts.OnClose()
+	}
+}
+
+// setShutdownBlockReason はサインアウト・シャットダウンで停止を待つ理由を
+// 登録するか消す。
+func (w *Window) setShutdownBlockReason(on bool) {
+	if !on {
+		_, _, _ = procShutdownBlockReasonDestroy.Call(w.hwnd)
+		return
+	}
+	reason, err := windows.UTF16PtrFromString(ShutdownBlockReason)
+	if err != nil {
+		return
+	}
+	if ok, _, callErr := procShutdownBlockReasonCreate.Call(w.hwnd, uintptr(unsafe.Pointer(reason))); ok == 0 {
+		w.opts.Logger.Warn("could not register the shutdown block reason", slog.Any("error", callErr))
+	}
 }
 
 func (w *Window) focusWebView() {

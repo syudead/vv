@@ -56,6 +56,10 @@ type runOptions struct {
 	OnListening func()
 	// NotifyStop は停止の指示の受け取りを始める。HTTP サーバーを起動する直前に呼ぶ。
 	NotifyStop stopNotifier
+	// OnBusyProbe は走査を用意したあと、待ち受けを開く前に、取り込みの途中かを問う
+	// 関数（app.Scans.Busy）を渡す。デスクトップ版の閉じる前の確認が使う
+	// （specs/037-windows-app/research.md R-7）。nil なら呼ばない。
+	OnBusyProbe func(busy func(context.Context) (bool, error))
 }
 
 // stopNotifier は停止の指示の受け取りを始め、指示で閉じる channel と、受け取りを
@@ -182,6 +186,9 @@ func run(opts runOptions) error {
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
+	}
+	if opts.OnBusyProbe != nil {
+		opts.OnBusyProbe(scans.Busy)
 	}
 
 	// 生成物の置き場。パスの規則・公開・確認・読み出し・削除はここだけが持つ。

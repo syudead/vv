@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/syudead/vv/internal/desktop"
@@ -19,11 +21,20 @@ import (
 // "-H=windowsgui"` で組む。設定は環境変数（MDM_*）でなく自分で組み立て、run を同じ
 // プロセスで呼び、待ち受けまで済んだらウィンドウを出す。ウィンドウを閉じたら
 // run の停止手順を通して終わる（specs/037-windows-app/research.md R-1〜R-5、R-10、R-11）。
+// 閉じる前の確認・二重起動・サインアウトの扱いは R-6〜R-8 による。
 // このファイルは組み立てと配線だけを持ち、Win32 と WebView2 は internal/desktop が扱う。
 
 // fatalStopGrace は WebView2 が続けられなくなったときに停止を待つ上限である。
 // go-webview2 はそのあとプロセスを終わらせる。
 const fatalStopGrace = 30 * time.Second
+
+// instanceWait は、同じセッションの前のプロセスが停止の途中（ウィンドウを隠した
+// あと）のときに、終わるのを待つ上限である（research.md R-6）。
+const instanceWait = 30 * time.Second
+
+// busyCheckTimeout は閉じる前の確認で「取り込みの途中か」を読む上限である。
+// 読めなければ確認を出す。
+const busyCheckTimeout = 3 * time.Second
 
 func init() {
 	// ウィンドウと WebView2 は作ったスレッドでしか扱えないので、main の goroutine を
@@ -56,6 +67,24 @@ func runDesktop() int {
 	paths, err := desktop.ResolvePaths(localAppData)
 	if err != nil {
 		desktop.ShowError(desktop.MessageFailed(err, "(unavailable)"))
+		return 1
+	}
+
+	// 二重起動は DB を開く前、ログを開く前に判定する（research.md R-6）。ログを先に
+	// 開くと、起動中のプロセスのログを前回分へ移そうとしてしまう。
+	instance, err := desktop.AcquireInstance(paths.Root, instanceWait)
+	if err != nil {
+		desktop.ShowError(desktop.MessageFailed(err, "(unavailable)"))
+		return 1
+	}
+	switch instance {
+	case desktop.InstanceActivated:
+		return 0
+	case desktop.InstanceOtherSession:
+		desktop.ShowError(desktop.MessageOtherSession())
+		return 1
+	case desktop.InstanceStillRunning:
+		desktop.ShowError(desktop.MessageStillRunning())
 		return 1
 	}
 
@@ -122,6 +151,8 @@ func runDesktop() int {
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
 	requestStop := func() { stopOnce.Do(func() { close(stopRequested) }) }
+	// 閉じる前の確認が読む「取り込みの途中か」。run が走査を用意したら入る。
+	var busyProbe atomic.Pointer[func(context.Context) (bool, error)]
 	// 終わりは閉じる操作の goroutine と WebView2 の失敗の処理の両方が待つので、
 	// 1 つの値を受け合う channel でなく、全員に届く知らせにする。
 	server := startServer(func() error {
@@ -130,6 +161,7 @@ func runDesktop() int {
 			LogOutput:   logOutput,
 			Listener:    newReopenableListener(),
 			OnListening: func() { close(listening) },
+			OnBusyProbe: func(busy func(context.Context) (bool, error)) { busyProbe.Store(&busy) },
 			NotifyStop: func() (<-chan struct{}, func()) {
 				return stopRequested, nil
 			},
@@ -150,8 +182,18 @@ func runDesktop() int {
 	window, err := desktop.NewWindow(desktop.WindowOptions{
 		URL:      url,
 		DataPath: paths.WebView2,
-		// この単位では確認なしで閉じる。ウィンドウは先に隠れ、停止を終えてから壊す。
+		// 取り込みの途中なら確認を出す。ライブ変換の配信は含めない（R-7）。
+		ShouldConfirmClose: func() bool { return closeNeedsConfirmation(busyProbe.Load(), logger) },
+		// ウィンドウは先に隠れ、停止を終えてから壊す。
 		OnClose: requestStop,
+		// サインアウト・シャットダウンでは確認なしに同じ停止手順を通し、終わるまで
+		// 戻らない（R-8）。
+		OnEndSession: func() {
+			requestStop()
+			if !waitAtMost(func() { <-server.Done() }, fatalStopGrace) {
+				logger.Warn("the server did not stop before the session ended")
+			}
+		},
 		OnFatal: func(err error) {
 			desktop.ShowError(desktop.MessageFailed(err, paths.LogFile))
 			requestStop()
@@ -185,6 +227,22 @@ func runDesktop() int {
 		return 1
 	}
 	return 0
+}
+
+// closeNeedsConfirmation は閉じる前に確認を出すかを返す。取り込みの途中か読めない
+// ときは、中断を知らせずに閉じないよう確認を出す。
+func closeNeedsConfirmation(probe *func(context.Context) (bool, error), logger *slog.Logger) bool {
+	if probe == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), busyCheckTimeout)
+	defer cancel()
+	busy, err := (*probe)(ctx)
+	if err != nil {
+		logger.Warn("could not tell whether an import is in progress; asking before closing", slog.Any("error", err))
+		return true
+	}
+	return busy
 }
 
 // desktopConfig はデスクトップ版の設定を組み立てる。待ち受けはループバックだけで、
