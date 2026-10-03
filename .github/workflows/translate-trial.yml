@@ -28,28 +28,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: llama.cpp の配布物を入れる
+      - name: llama.cpp を用意する
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh api repos/ggml-org/llama.cpp/releases/latest --jq '.tag_name, (.assets[].name)'
-          # CPU 版の Linux x64 を選ぶ。GPU 向け（vulkan、cuda など）と arm は除く。
-          url=$(gh api repos/ggml-org/llama.cpp/releases/latest --jq '.assets[] | .browser_download_url' \
+          # リリースを新しい順に見て、Linux x64 の CPU 版の配布物を選ぶ。
+          # GPU 向け（vulkan、cuda など）と arm は除く。
+          url=$(gh api 'repos/ggml-org/llama.cpp/releases?per_page=30' --jq '.[].assets[].browser_download_url' \
             | grep -i 'ubuntu' | grep -iE 'x64|x86_64' \
-            | grep -viE 'vulkan|cuda|rocm|hip|sycl|openvino|kompute|arm|aarch64|s390' | head -1)
-          echo "llama.cpp: $url"
-          test -n "$url"
-          curl -sSfL -o llama.pkg "$url"
-          mkdir -p llama-extract
-          case "$url" in
-            *.zip) unzip -q llama.pkg -d llama-extract ;;
-            *) tar -xzf llama.pkg -C llama-extract ;;
-          esac
-          server=$(find llama-extract -name llama-server -type f | head -1)
+            | grep -viE 'vulkan|cuda|rocm|hip|sycl|openvino|kompute|arm|aarch64|s390' | head -1 || true)
+          echo "llama.cpp: ${url:-none, building from source}"
           mkdir -p llama
-          cp -r "$(dirname "$server")"/. llama/
+          if [ -n "$url" ]; then
+            curl -sSfL -o llama.pkg "$url"
+            mkdir -p llama-extract
+            case "$url" in
+              *.zip) unzip -q llama.pkg -d llama-extract ;;
+              *) tar -xzf llama.pkg -C llama-extract ;;
+            esac
+            server=$(find llama-extract -name llama-server -type f | head -1)
+            cp -r "$(dirname "$server")"/. llama/
+          else
+            git clone --depth 1 https://github.com/ggml-org/llama.cpp llama-src
+            cmake -S llama-src -B llama-build -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=ON
+            cmake --build llama-build --target llama-server -j "$(nproc)"
+            cp -r llama-build/bin/. llama/
+          fi
           chmod +x llama/llama-server
-          ./llama/llama-server --version || true
+          LD_LIBRARY_PATH=$PWD/llama ./llama/llama-server --version || true
 
       - name: 試す
         env:
