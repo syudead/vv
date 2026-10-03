@@ -365,7 +365,7 @@ export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag>
  * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、contracts/screen-api.md §2）。
  * タグは消え、付いていた動画から外れ、名前が却下した名前の一覧に入る。確定したタグは
  * 409 `tag_not_tentative` になる。却下した名前の一覧は呼び出し側が
- * `listRejectedTagNames` で取り直す。
+ * `listRejectedTagNamePage` で取り直す。
  */
 export async function rejectTag(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tags/${String(id)}/reject`, {
@@ -418,12 +418,24 @@ export function tagImpact(
 }
 
 /**
- * listRejectedTagNames は却下した名前を名前の自然順で返す
- * （GET /api/tags/rejected-names、contracts/screen-api.md §3）。
+ * listRejectedTagNamePage は却下した名前の 1 ページを名前の自然順で返す
+ * （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+ * `cursor` は前のページの `nextCursor`、`limit` は 1 ページの件数（1〜200）。省くとサーバーの
+ * 既定（先頭から 100 件）になる。応答の `total` は却下した名前の全部の数で、`nextCursor` は
+ * 続きがあるときだけ入る。共有の保持には触れない。
  */
-export function listRejectedTagNames(signal?: AbortSignal): Promise<string[]> {
-  return request<RejectedTagNameList>("/api/tags/rejected-names", { signal }).then(
-    (list) => list.items,
+export function listRejectedTagNamePage(
+  cursor?: string,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<RejectedTagNameList> {
+  const query = new URLSearchParams();
+  if (cursor !== undefined) query.set("cursor", cursor);
+  if (limit !== undefined) query.set("limit", String(limit));
+  const search = query.toString();
+  return request<RejectedTagNameList>(
+    search === "" ? "/api/tags/rejected-names" : `/api/tags/rejected-names?${search}`,
+    { signal },
   );
 }
 

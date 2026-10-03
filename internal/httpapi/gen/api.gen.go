@@ -1391,6 +1391,12 @@ type ProgressUpdate struct {
 type RejectedTagNameList struct {
 	// Items 却下した名前。名前の自然順
 	Items []string `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る。次の要求の `cursor` に渡す
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 却下した名前の全部の数
+	Total int `json:"total"`
 }
 
 // RelatedGroup 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
@@ -2350,6 +2356,15 @@ type ForgetRejectedTagNameParams struct {
 	Name string `form:"name" json:"name"`
 }
 
+// ListRejectedTagNamesParams defines parameters for ListRejectedTagNames.
+type ListRejectedTagNamesParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // RemoveTagSynonymParams defines parameters for RemoveTagSynonym.
 type RemoveTagSynonymParams struct {
 	// Name 外すシノニムの名前
@@ -2622,7 +2637,7 @@ type ServerInterface interface {
 	ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params ForgetRejectedTagNameParams)
 	// ListRejectedTagNames 却下した名前を一覧する
 	// (GET /api/tags/rejected-names)
-	ListRejectedTagNames(w http.ResponseWriter, r *http.Request)
+	ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params ListRejectedTagNamesParams)
 	// DeleteTag タグを1件削除する
 	// (DELETE /api/tags/{id})
 	DeleteTag(w http.ResponseWriter, r *http.Request, id TagId)
@@ -3874,8 +3889,40 @@ func (siw *ServerInterfaceWrapper) ForgetRejectedTagName(w http.ResponseWriter, 
 // ListRejectedTagNames operation middleware
 func (siw *ServerInterfaceWrapper) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRejectedTagNamesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRejectedTagNames(w, r)
+		siw.Handler.ListRejectedTagNames(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

@@ -104,7 +104,7 @@ type Tags interface {
 	// 仮のタグの確定・却下と、却下した名前（specs/031-tentative-tags/data-model.md §5）。
 	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	RejectTag(ctx context.Context, id int64) (string, error)
-	ListRejectedTagNames(ctx context.Context) ([]string, error)
+	ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error)
 	ForgetRejectedTagName(ctx context.Context, name string) error
 
 	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。

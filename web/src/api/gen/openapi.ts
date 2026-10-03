@@ -953,7 +953,9 @@ export interface paths {
         };
         /**
          * 却下した名前を一覧する
-         * @description 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+         * @description 名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §6）。`limit` が範囲外、`cursor` が
+         *     解釈できないときは 400 `invalid_request`。
          */
         get: operations["listRejectedTagNames"];
         put?: never;
@@ -1635,6 +1637,10 @@ export interface components {
         RejectedTagNameList: {
             /** @description 却下した名前。名前の自然順 */
             items: string[];
+            /** @description 却下した名前の全部の数 */
+            total: number;
+            /** @description 続きがあるときだけ入る。次の要求の `cursor` に渡す */
+            nextCursor?: string;
         };
         CreateTagRequest: {
             name: string;
@@ -3957,7 +3963,12 @@ export interface operations {
     };
     listRejectedTagNames: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3973,6 +3984,8 @@ export interface operations {
                     "application/json": components["schemas"]["RejectedTagNameList"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     forgetRejectedTagName: {

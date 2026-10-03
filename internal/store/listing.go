@@ -555,6 +555,16 @@ func unpackCursor(cursor string, n int) ([]string, error) {
 	return parts, nil
 }
 
+// encodeCursorFields は項目を不透明な文字列に包む。decodeCursor が解く形で、一覧ごとの
+// カーソル（却下した名前など）もこの包み方を使う。
+func encodeCursorFields(c cursorFields) string {
+	nullFlag := "0"
+	if c.isNull {
+		nullFlag = "1"
+	}
+	return packCursor(c.sort, c.seed, nullFlag, strconv.FormatInt(c.id, 10), c.value)
+}
+
 // cursorSeparator はカーソルの中で項目を区切る。値（題名の鍵）は最後に置くので、
 // 値に同じ文字が現れても区切りを誤らない。
 const cursorSeparator = "\x1f"

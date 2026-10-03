@@ -31,7 +31,7 @@ import {
   currentTags,
   deleteTag,
   forgetRejectedTagName,
-  listRejectedTagNames,
+  listRejectedTagNamePage,
   maxTagBatch,
   refreshTags,
   rejectTag,
@@ -423,11 +423,13 @@ export default function TagsPage() {
     const generation = rejectedGeneration.current;
     rejectedInFlight.current = generation;
     setRejectedError(null);
-    listRejectedTagNames()
-      .then((names) => {
+    // 入口の件数を total にし、窓の中で続きを読むのは後の単位（specs/036-tag-admin-scale/research.md R-13）。
+    // ここでは先頭のページの items だけを使う。
+    listRejectedTagNamePage()
+      .then((page) => {
         if (generation !== rejectedGeneration.current) return;
         rejectedInFlight.current = null;
-        setRejectedNames(names);
+        setRejectedNames(page.items);
       })
       .catch((failure: unknown) => {
         if (generation !== rejectedGeneration.current) return;

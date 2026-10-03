@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -71,27 +73,88 @@ func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 	return ref.Name, nil
 }
 
-// ListRejectedTagNames は却下した名前を名前の自然順（domain.SortTagNames）ですべて返す。
-func (s *TagStore) ListRejectedTagNames(ctx context.Context) ([]string, error) {
-	rows, err := s.sql.QueryContext(ctx, `select name from rejected_tag_names`)
+// rejectedTagNameCursorSort はカーソルの並び順の項目に入れる名前で、ほかの一覧のカーソルと取り違えない。
+const rejectedTagNameCursorSort = "rejectedTagName"
+
+// ListRejectedTagNames は却下した名前を名前の自然順（sort_key、同じなら name のバイト順）で、
+// cursor より後ろから limit 件返す（specs/036-tag-admin-scale/data-model.md §2）。limit が 0 以下なら
+// cursor より後ろをすべて返し、NextCursor は空にする。Total は却下した名前の全部の数。
+// 解釈できないカーソルや別の一覧のカーソルは domain.ErrInvalidCursor を返す。
+func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error) {
+	where, args := "", []any{}
+	if cursor != "" {
+		sortKey, name, err := decodeRejectedTagNameCursor(cursor)
+		if err != nil {
+			return domain.RejectedTagNamePage{}, err
+		}
+		where = ` where (sort_key, name) > (?, ?)`
+		args = append(args, sortKey, name)
+	}
+	query := `select name, sort_key from rejected_tag_names` + where + ` order by sort_key, name`
+	if limit > 0 {
+		query += ` limit ?`
+		args = append(args, limit+1)
+	}
+
+	// 件数とページを同じ読み取りスナップショットで読み、間の却下・取り外しで Total と Items が
+	// 食い違わないようにする。s.read（deferred）で開き、SQLite の唯一の書き込みの枠を取らない
+	// （listing.go の ListVideos と同じ）。読むだけなので最後は rollback で閉じる。
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, fmt.Errorf("cannot read rejected tag names: %w", err)
+		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	page := domain.RejectedTagNamePage{Items: []string{}}
+	if err := tx.QueryRowContext(ctx, `select count(*) from rejected_tag_names`).Scan(&page.Total); err != nil {
+		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot count rejected tag names: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	names := []string{}
+	var sortKeys []string
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, fmt.Errorf("cannot read rejected tag names: %w", err)
+		var name, sortKey string
+		if err := rows.Scan(&name, &sortKey); err != nil {
+			return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
 		}
-		names = append(names, name)
+		page.Items = append(page.Items, name)
+		sortKeys = append(sortKeys, sortKey)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read rejected tag names: %w", err)
+		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
 	}
-	domain.SortTagNames(names)
-	return names, nil
+	if limit > 0 && len(page.Items) > limit {
+		page.Items = page.Items[:limit]
+		page.NextCursor = encodeRejectedTagNameCursor(sortKeys[limit-1], page.Items[limit-1])
+	}
+	return page, nil
+}
+
+// encodeRejectedTagNameCursor は sort_key と name を listing.go と同じ包み方で包む。値の項目に
+// 「sort_key、区切り、name」を入れる。sort_key は制御文字を含まない名前（domain.NormalizeTagName）から
+// 作るので、区切りの文字を含まない。
+func encodeRejectedTagNameCursor(sortKey, name string) string {
+	return encodeCursorFields(cursorFields{sort: rejectedTagNameCursorSort, value: sortKey + cursorSeparator + name})
+}
+
+// decodeRejectedTagNameCursor は encodeRejectedTagNameCursor の包みを解く。
+func decodeRejectedTagNameCursor(cursor string) (sortKey, name string, err error) {
+	c, err := decodeCursor(cursor)
+	if err != nil {
+		return "", "", err
+	}
+	if c.sort != rejectedTagNameCursorSort || c.seed != "" || c.isNull || c.id != 0 {
+		return "", "", fmt.Errorf("%w: cursor is not for rejected tag names", domain.ErrInvalidCursor)
+	}
+	sortKey, name, ok := strings.Cut(c.value, cursorSeparator)
+	if !ok {
+		return "", "", fmt.Errorf("%w: cursor has no name", domain.ErrInvalidCursor)
+	}
+	return sortKey, name, nil
 }
 
 // ForgetRejectedTagName は name を却下した名前から外す。無ければ何も変えない。name は
