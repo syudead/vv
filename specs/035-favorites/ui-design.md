@@ -92,8 +92,10 @@
   言うためである。星は 5 段階の評価の絵として定着していて、1 つだけでも「何点か」を期待させる。
   写真のアプリやメディアサーバーの「お気に入り」はハートに収束している。
 - **オンの色はお気に入り専用の桃色のトークン `favorite`**（`text-favorite` + `fill-current`）で、
-  カード・行・再生画面のどこでも同じ色にする。値は [`web/src/index.css`](../../web/src/index.css)
-  の `@theme` に `--color-favorite` として 1 か所に置き、本書には写さない（design.md の規則）。
+  カード・行・再生画面のどこでも同じ色にする。値は `#ff6f9c` とメンテナが決めた（まだ
+  `index.css` に無い新しいトークンなので、決めた値をここに書く）。実装の PR がこの値を
+  [`web/src/index.css`](../../web/src/index.css) の `@theme` に `--color-favorite` として 1 か所に置き、
+  以後の値の出どころはそちらである（design.md の規則）。
   値に求めるのは次の 3 つで、実装の PR で `tokens.test.ts` の `pairs` に足して確かめる（「Colour」）。
   - 暗い面の上で 4.5 以上: `favorite` on `surface`（行）、on `accent-soft`（再生画面の `active` の面）、
     on `navbar`（サムネイルの無いカードの面）、on `bg`。
@@ -219,7 +221,9 @@
 - 部品は `IconButton`（`size="sm"`、ghost、lucide `Heart`）で、`aria-pressed` を持つ。オフは他の
   2 つと同じ `text-fg-muted`、hover で `text-fg`。オンは `IconButton` の `active` の面
   （`bg-accent-soft`）のまま、ハートの色だけを `text-favorite` にして塗る（カード・行と同じ色。
-  「Mark」）。`active` の文字色 `text-link` はこのボタンでは使わない。面を残すのは、一群の中で
+  「Mark」）。`active` の文字色 `text-link` はこのボタンでは使わない。`IconButton` の
+  `data-active:text-link` は素の `text-favorite` より詳細度が高いので、オフの `text-fg-muted!` と
+  同じく `text-favorite!` で上書きする（素のクラスではハートがシアンのまま残る）。面を残すのは、一群の中で
   「押されている」状態の見せ方を他の `IconButton` と揃えるためで、色を揃えるのは要件 7
   （どの入口でも同じ絵・同じ塗り）のためである。読み上げ名とツールチップは「Favorite」。
   置き場所と大きさはこの改訂で変えない。
@@ -438,8 +442,8 @@
 
 ## Colour
 
-色のトークンを 1 つ足す: `--color-favorite`（塗りのハートの色。「Mark」）。値は `index.css` に置き、
-本書には写さない。影のトークンを 1 つ足す: `--drop-shadow-mark`（サムネイルの上の印の影。
+色のトークンを 1 つ足す: `--color-favorite`（塗りのハートの色。「Mark」）。値はメンテナが決めた
+`#ff6f9c` で、実装の PR が `index.css` に置き、以後はそこが値の出どころになる。影のトークンを 1 つ足す: `--drop-shadow-mark`（サムネイルの上の印の影。
 半透明の黒で、`pairs` の対象外）。
 
 塗りのハートは `favorite`（再生画面では `accent-soft` の上、行では `surface` の上、カードでは
