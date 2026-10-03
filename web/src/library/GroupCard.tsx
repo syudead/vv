@@ -222,7 +222,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       {owner && (
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
-        <div className="absolute top-2 right-2 z-30 flex">
+        <div className="absolute top-1.5 right-1.5 z-30 flex">
           <GroupFavorite group={group} variant="card" />
         </div>
       )}

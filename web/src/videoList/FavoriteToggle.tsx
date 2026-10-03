@@ -11,15 +11,19 @@ import { useToast } from "../ui/Toast";
  * （specs/035-favorites/ui-design.md「Mark」「Card」）。印を兼ね、塗りのハートがお気に入り、
  * 線のハートがお気に入りでない。所有者の画面でだけ描く（呼び出し側が決める）。
  *
- * - `card` は格子のカードのサムネイルの右上に重ねる面付きの形、`row` はリスト表示の行の
- *   列に置く面なしの形である。オフはカード・行の hover、中へのフォーカス、`hover:none` の
+ * - `card` は格子のカードのサムネイルの右上に重ねる形で、面も枠も付けず、押せる範囲
+ *   `size-7` の中に 22px のハートだけを置き、暗い影（`drop-shadow-mark`）で明るい絵柄の上でも
+ *   読めるようにする。オフは白の線（`text-fg`）である。`row` はリスト表示の行の列に置く
+ *   面も影も無い形（`size-6`、ハート 16px）で、オフは `text-fg-muted`。オンはどちらも
+ *   `text-favorite` の塗りである。オフはカード・行の hover、中へのフォーカス、`hover:none` の
  *   端末でだけ見える（選択のチェックと同じ条件）。
  * - 押すと `onToggle` を 1 回呼ぶ。`click` の伝播を止め、カードのリンクも選択も動かさない。
  *   決着するまでは `aria-disabled` で回る印に替え、重ねて送らない。印は応答の通知で
  *   一覧が差し替える（api/favorites.ts）。失敗はトーストで伝え、印は変えない。
  * - `page` は再生画面の情報の行の右端の一群に置く形で、`IconButton`（`sm`、ghost）である
  *   （ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-fg-muted`、オンは
- *   `active`（`bg-accent-soft text-link`）で、常に見える。失敗は `onFailed` へ渡し、
+ *   `active` の面（`bg-accent-soft`）のまま、ハートの色だけを `text-favorite!` で上書きする
+ *   （`data-active:text-link` より詳細度が高いため `!` が要る）。常に見える。失敗は `onFailed` へ渡し、
  *   呼び出し側が情報の行の直下の 1 行に出す（トーストは出さない）。
  */
 export default function FavoriteToggle({
@@ -27,15 +31,12 @@ export default function FavoriteToggle({
   label,
   onToggle,
   variant,
-  previewing = false,
   onFailed,
 }: {
   favorite: boolean;
   label: UiText;
   onToggle: () => Promise<unknown>;
   variant: "card" | "row" | "page";
-  /** カードのホバープレビュー中は、面を不透明にする（チェックと同じ）。 */
-  previewing?: boolean;
   /** 失敗の理由を受け取る。渡さなければトーストで伝える。 */
   onFailed?: (reason: UiText) => void;
 }) {
@@ -72,7 +73,7 @@ export default function FavoriteToggle({
     <Icon
       aria-hidden="true"
       className={cn(
-        "size-4",
+        variant === "card" ? "size-5.5 drop-shadow-mark" : "size-4",
         pending && "animate-spin motion-reduce:animate-none",
         favorite && !pending && "fill-current",
       )}
@@ -88,7 +89,7 @@ export default function FavoriteToggle({
         aria-disabled={pending || undefined}
         onClick={press}
         className={cn(
-          !favorite && "text-fg-muted! hover:text-fg!",
+          favorite ? "text-favorite!" : "text-fg-muted! hover:text-fg!",
           pending && "cursor-progress",
         )}
       >
@@ -104,11 +105,10 @@ export default function FavoriteToggle({
       aria-disabled={pending || undefined}
       onClick={press}
       className={cn(
-        "inline-flex size-6 shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:outline-2 focus-visible:outline-link",
-        variant === "card" &&
-          (previewing ? "bg-navbar" : "bg-navbar/90 backdrop-blur-sm"),
+        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:outline-2 focus-visible:outline-link",
+        variant === "card" ? "size-7" : "size-6",
         favorite
-          ? "text-link"
+          ? "text-favorite"
           : variant === "card"
             ? "text-fg"
             : "text-fg-muted hover:text-fg",

@@ -278,6 +278,14 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     // オフは hover・フォーカス・hover:none の端末でだけ見える（チェックと同じ条件）。
     expect(toggle.className).toContain("opacity-0");
     expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
+    // 面も枠も無く、size-7 の中に 22px の白い線のハートを影付きで置く（「Mark」「Card」）。
+    expect(toggle.className).toContain("size-7");
+    expect(toggle.className).toContain("text-fg");
+    expect(toggle.className).not.toMatch(/\bbg-/);
+    const heart = toggle.querySelector("svg") as SVGElement;
+    expect(heart.getAttribute("class")).toContain("size-5.5");
+    expect(heart.getAttribute("class")).toContain("drop-shadow-mark");
+    expect(toggle.parentElement?.className).toContain("top-1.5 right-1.5");
     // リンクの外、同じ article の中（チェック → リンク → 付け外し）。
     const card = toggle.closest("article") as HTMLElement;
     expect(toggle.closest("a")).toBeNull();
@@ -291,8 +299,10 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     expect(server.favoriteRequests).toEqual([
       { videoIds: [1], folders: [], favorite: true },
     ]);
-    expect(toggle.className).toContain("text-link");
+    expect(toggle.className).toContain("text-favorite");
+    expect(toggle.className).not.toContain("text-link");
     expect(toggle.className).not.toContain("opacity-0");
+    expect(toggle.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
     // 押しても再生画面は開かない。
     expect(screen.queryByText("再生画面")).toBeNull();
     // ほかのカードは変わらない。
@@ -373,6 +383,12 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     expect(server.favoriteRequests).toEqual([
       { videoIds: [1], folders: [], favorite: true },
     ]);
+    // 行のオンもカードと同じ桃色の塗り。面も影も付けない（「List view row」）。
+    expect(toggle.className).toContain("text-favorite");
+    expect(toggle.className).toContain("size-6");
+    expect(toggle.querySelector("svg")?.getAttribute("class")).not.toContain(
+      "drop-shadow-mark",
+    );
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("false"));
   });

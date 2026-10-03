@@ -356,6 +356,9 @@
   --color-success-strong: #2f9e6b;
   --color-success-soft: #204334;
 
+  /* --- お気に入りの印（オンのハートの塗り。specs/035-favorites/ui-design.md「Mark」） --- */
+  --color-favorite: #ff6f9c;
+
   /* --- 書体 --- */
   --font-sans:
     "Inter Variable", "Noto Sans JP Variable", system-ui, -apple-system, "Segoe UI",
@@ -371,6 +374,8 @@
   --shadow-card: 0 0 0 1px rgb(255 255 255 / 0.05), 0 1px 2px rgb(0 0 0 / 0.3);
   --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.12), 0 8px 24px rgb(0 0 0 / 0.45);
   --shadow-elevated: 0 0 0 1px rgb(255 255 255 / 0.08), 0 12px 32px rgb(0 0 0 / 0.55);
+  /* サムネイルの上に面なしで置く印の影（お気に入りのハート。035「Card」）。 */
+  --drop-shadow-mark: 0 1px 2px rgb(0 0 0 / 0.75);
 
   /* --- レイアウト定数 --- */
   --spacing-navbar: 52px;
