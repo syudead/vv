@@ -230,6 +230,12 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
   const confirmButton = page
     .getByRole("button", { name: "Confirm", exact: true })
     .first();
+  // 一覧が見えている行だけを描くときは、先頭の付近に仮の行が無いと「確定する」が
+  // DOM に無い。仮の行が描かれるまで文書を送る（送る間は計測に含めない）。
+  for (let step = 0; step < 1000 && (await confirmButton.count()) === 0; step += 1) {
+    await page.evaluate(() => window.scrollBy(0, 400));
+    await scrollPosition(page);
+  }
   await confirmButton.waitFor({ timeout: waitTimeout });
   const confirmed = await interact(page, async () => {
     await confirmButton.click();

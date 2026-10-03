@@ -465,10 +465,14 @@ beforeEach(() => {
   confirmReleases.length = 0;
   holdRejectedGets = false;
   rejectedGetReleases.length = 0;
+  // 一覧の仮想化（useWindowVirtualizer）は文書をスクロールする。jsdom には
+  // window.scrollTo が無いので、何もしない実装に置き換える。
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("TagsPage", () => {
@@ -2847,5 +2851,158 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(screen.getByRole("menuitem", { name: /Reject/ }));
     await screen.findByRole("dialog");
     expectCatalogTextOnly(document.body, userData);
+  });
+});
+
+describe("TagsPage 見えている行だけ描く", () => {
+  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さを置く。 */
+  const rowHeight = 40;
+  const viewportHeight = 200;
+  const tagCount = 60;
+  let originalInnerHeight = 0;
+  let originalOffsetHeight: PropertyDescriptor | undefined;
+
+  function name(index: number): string {
+    return `Tag ${String(index).padStart(2, "0")}`;
+  }
+
+  function drawnIndexes(): number[] {
+    return [...document.querySelectorAll<HTMLElement>("[data-index]")].map((row) =>
+      Number(row.dataset.index),
+    );
+  }
+
+  function wrapperOf(index: number): HTMLElement {
+    return document.querySelector<HTMLElement>(`[data-index="${String(index)}"]`)!;
+  }
+
+  beforeEach(() => {
+    server.tags = Array.from({ length: tagCount }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: true }),
+    );
+    originalInnerHeight = window.innerHeight;
+    window.innerHeight = viewportHeight;
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-index") ? rowHeight : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    window.innerHeight = originalInnerHeight;
+    if (originalOffsetHeight !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    }
+  });
+
+  /** tabPastRange は描いている範囲の最後の行の最後の操作から Tab で次の行へ進む。 */
+  async function tabPastRange(user: ReturnType<typeof userEvent.setup>) {
+    const last = Math.max(...drawnIndexes());
+    expect(last).toBeLessThan(tagCount - 1);
+    const more = within(wrapperOf(last)).getByRole("button", { name: "More actions" });
+    more.focus();
+    await user.tab();
+    return last + 1;
+  }
+
+  it("全件ではなく表示域と前後の行だけを描き、件数は全件を数える", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    expect(screen.getByText(`${String(tagCount)} tags`)).toBeDefined();
+    const drawn = drawnIndexes();
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(drawn.length).toBeLessThan(tagCount);
+    expect(screen.queryByTitle(name(tagCount - 1))).toBeNull();
+  });
+
+  it("描いている範囲の端の Tab は次の行へ進み、Shift+Tab は前の行の最後の操作へ戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    const next = await tabPastRange(user);
+    expect(document.activeElement).toBe(
+      screen.getByRole("link", { name: `Open the library filtered by ${name(next)}` }),
+    );
+
+    // その行の最後の操作から、まだ描いていない次の行へ。
+    within(wrapperOf(next)).getByRole("button", { name: "More actions" }).focus();
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByTitle(name(next + 1)));
+    // フォーカスを移した行だけを描き続け、前の行は描いていない。
+    expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull();
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(
+      within(wrapperOf(next)).getByRole("button", { name: "More actions" }),
+    );
+  });
+
+  it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.slice(0, 3);
+    install();
+    renderPage();
+    await screen.findByTitle(name(2));
+    const more = within(wrapperOf(2)).getByRole("button", { name: "More actions" });
+    more.focus();
+    await user.tab();
+    expect(document.activeElement).not.toBe(more);
+    expect(document.activeElement?.closest("[data-index]")).toBeNull();
+  });
+
+  it("削除で行が消えると、描いていなかった次の行を描いてその「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) => ({ ...item, tentative: false }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const index = await tabPastRange(user);
+    expect(document.querySelector(`[data-index="${String(index + 1)}"]`)).toBeNull();
+
+    await user.click(
+      within(wrapperOf(index)).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByTitle(name(index))).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(
+          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+        ).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「Tentative only」中の確定で行が外れると、描いていなかった次の行の「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    const index = await tabPastRange(user);
+    expect(document.querySelector(`[data-index="${String(index + 1)}"]`)).toBeNull();
+
+    await user.click(within(wrapperOf(index)).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.queryByTitle(name(index))).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(
+          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+        ).getByRole("button", { name: "Rename" }),
+      ),
+    );
   });
 });
