@@ -123,10 +123,11 @@ specs/036-tag-admin-scale/
 
 **Affected boundaries**:
 
-- `internal/domain`（`Tag.CreatedAt`、`TagBatchAction`・`TagBatchOutcome`・`TagMergeOutcome`・`TagImpact`、
-  `TagBatchApplies`、`MaxTagBatch`）
+- `internal/domain`（`Tag.CreatedAt`、`TagBatchAction`・`TagBatchOutcome`・`TagMergeOutcome`・`TagImpactAction`・
+  `TagImpact`、`TagBatchApplies`・`TagImpactApplies`、`MaxTagBatch`）
 - `internal/store`（`TagStore.BatchTags`・`MergeTags`・`TagImpact`、`listCanonicalTags`・`tagByID` の
-  `created_at`、`MergeTag` の削除、不変条件の試験）
+  `created_at`、`CreateTag` の戻り値、`mergeTagInto` から `mergeTagsInto` への置き換え、`MergeTag` の削除、
+  不変条件の試験）
 - `internal/httpapi`（`tags.go` の 2 経路と `MergeTag` の本文・応答、`toAPITag` の `createdAt`、`router.go` の
   `Tags`、`openapi_routes_test.go`）、`api/openapi.yaml` と生成物
 - `web/src/api`（`tags.ts` の `batchTags`・`mergeTag`・`tagImpact`）、`web/src/lib`（`foldForMatch.ts`）、
@@ -154,20 +155,24 @@ specs/036-tag-admin-scale/
 
 ### `GET /api/tags` の応答に `createdAt` を載せる
 
-**Scope**: `domain.Tag.CreatedAt`、`listCanonicalTags`・`tagByID` の `created_at` の読み、`api/openapi.yaml` の
+**Scope**: `domain.Tag.CreatedAt`、`listCanonicalTags`・`tagByID` の `created_at` の読み、`CreateTag` の戻り値を
+`tagByID` で読み直す形への変更（[data-model.md §2](data-model.md#2-保存層の操作)「既存の操作の変更」）、`api/openapi.yaml` の
 `Tag.createdAt` と生成物、`toAPITag`（[contracts/screen-api.md §0](contracts/screen-api.md#0-スキーマの差分)、
 [data-model.md §1](data-model.md#1-domain-に足す値)）。外部連携 API の `listTags` は変えない（R-8）。
 
 **Dependencies**: None
 
-**Acceptance**: `task check` が通る。store の試験で、作ったタグの `CreatedAt` が作成時刻（秒）と一致し、
-`ListTags` の全件と `RenameTag`・`ConfirmTag`・`AddSynonym` の戻り値に載る。httpapi の試験で、
-`GET /api/tags` の各件と `POST /api/tags` の応答に `createdAt`（RFC 3339）が入り、
+**Acceptance**: `task check` が通る。store の試験で、`CreateTag` の戻り値の `CreatedAt` がゼロでなく作成時刻（秒）と
+一致し、続く `ListTags` の同じタグの `CreatedAt` と等しい; `ListTags` の全件と `RenameTag`・`ConfirmTag`・`AddSynonym`・
+`MergeTags` の戻り値に載る。httpapi の試験で、
+`GET /api/tags` の各件と `POST /api/tags` の応答に `createdAt`（RFC 3339）が入り、`POST /api/tags` の応答の値と
+続く `GET /api/tags` の同じタグの値が等しく、
 `GET /api/v1/tags` の応答には入らない。生成物の検査が通る。
 
 ### まとめての確定・却下・削除の `POST /api/tags/batch` と確認用の `POST /api/tags/impact` を足す
 
-**Scope**: `domain` の `TagBatchAction`・`TagBatchOutcome`・`TagImpact`・`TagBatchApplies`・`MaxTagBatch`、
+**Scope**: `domain` の `TagBatchAction`・`TagBatchOutcome`・`TagImpactAction`・`TagImpact`・`TagBatchApplies`・
+`TagImpactApplies`・`MaxTagBatch`、
 `TagStore.BatchTags`・`TagImpact`（[data-model.md §1・§2](data-model.md#1-domain-に足す値)）、
 `api/openapi.yaml` の 2 経路・4 スキーマ・`too_many_tags` と生成物、`internal/httpapi/tags.go` の経路、
 `router.go` の `Tags`、`openapi_routes_test.go`（[contracts/screen-api.md §1・§3](contracts/screen-api.md#1-post-apitagsbatch)）、
@@ -181,14 +186,19 @@ specs/036-tag-admin-scale/
 偽になる; `reject` で仮のタグが消えて元の名前が `rejected_tag_names` に入り、確定したタグは残る; `delete`
 で確定したタグが消え、仮のタグは残る; どの操作のあとも 031 の不変条件が通る。`TagImpact` で、同じ動画に
 付いた 2 つのタグを渡すと `VideoCount` が 1（重複なし）、フォルダ名からだけ付いている動画も数え、
-ライブラリに無い動画は数えない（受け入れ条件 11）。httpapi の試験で、`POST /api/tags/batch` が 3 つの配列を
+ライブラリに無い動画は数えない（受け入れ条件 11）; 100 本に付いた仮のタグと、別の 1 本に付いた確定した
+タグを渡すと、`delete` では `TagCount` 1・`VideoCount` 1、`reject` では `TagCount` 1・`VideoCount` 100、
+`merge` では `TagCount` 2・`VideoCount` 101。httpapi の試験で、`POST /api/tags/batch` が 3 つの配列を
 `ids` の順で返し、`ids` が空と 20,001 件は `400`（後者は `too_many_tags` と `limit`）、`action` が 3 値以外は
-`400`; `POST /api/tags/impact` が `tagCount`・`videoCount` を返す; 2 経路が `{id}` に取られない; ゲストは `401`。
+`400`; `POST /api/tags/impact` が `action` ごとに働くタグだけの `tagCount`・`videoCount` を返し、`action` が
+3 値以外は `400`; 2 経路が `{id}` に取られない; ゲストは `401`。
 生成物の検査が通る。
 
 ### `POST /api/tags/{id}/merge` を複数の統合元を受ける形にする
 
-**Scope**: `domain.TagMergeOutcome`、`TagStore.MergeTags` と `MergeTag` の削除（[data-model.md §2](data-model.md#2-保存層の操作)）、
+**Scope**: `domain.TagMergeOutcome`、`TagStore.MergeTags` と `MergeTag` の削除、`mergeTagInto` を統合元の集合を
+1 回の文で扱う `mergeTagsInto` に置き換えることと `AddSynonym` の呼び出しの変更（[data-model.md §2](data-model.md#2-保存層の操作)、
+[research.md R-5](research.md#r-5-統合は-post-apitagsidmerge-の本文を-sourceids1-件以上にし1-件の統合もこれを使う)）、
 `api/openapi.yaml` の `MergeTagRequest.sourceIds`・`TagMergeResponse` と生成物、`internal/httpapi/tags.go`、
 `router.go` の `Tags`（[contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-の変更)）、
 `web/src/api/tags.ts` の `mergeTag(id, sourceIds)` と、1 件の統合の呼び手 `MergeTagDialog`・`TagsPage.performMerge`
@@ -199,7 +209,9 @@ specs/036-tag-admin-scale/
 
 **Acceptance**: `task check` が通る。store の試験で、統合元 3 個（うち 1 個は無い id）を統合すると、残り
 2 個の付与（重複は 1 本）・元の名前・シノニムが統合先に移り、2 個が消え、統合先が確定になり、
-`NotFoundIDs` が 1 個; 統合先が無ければ `ErrTagNotFound`。httpapi の試験で、`{ sourceIds: [a, b] }` が
+`NotFoundIDs` が 1 個; 統合先が無ければ `ErrTagNotFound`; 統合元 20,000 個（`MaxTagBatch`）を 1 回で統合すると、
+すべての付与と名前が統合先に移って 031 の不変条件が通り、`mergeTagsInto` の文の数は統合元の数によらず、
+統合先の `tagByID` は 1 回だけ走る; `AddSynonym` の承諾した統合の既存の試験が通り続ける。httpapi の試験で、`{ sourceIds: [a, b] }` が
 `{ tag, notFoundIds }` を返し、`sourceIds` に `{id}` を含むと `400 merge_same_tag`、空は `400`、統合先が無いと
 `404 tag_not_found`、統合元が全部無いと `200` で `tag` は変わらない。Vitest で、行の「別のタグへ統合…」が
 `sourceIds: [source.id]` を送り、応答の `tag` で一覧が差し替わる（今の試験が通り続ける）。
@@ -214,7 +226,9 @@ specs/036-tag-admin-scale/
 **Dependencies**: None
 
 **Acceptance**: `task check` が通る。共有の組に、全角・半角（`ＡＣＴＩＯＮ` と `action`）、ひらがな・カタカナ
-（`あくしょん` と `アクション`）、NFD と NFC、大文字小文字が入り、Go と Vitest の両方で同じ結果になる。
+（`あくしょん` と `アクション`）、NFD と NFC、大文字小文字、`İ`（→ `i`）、語末の Σ（`ΟΔΟΣ` → `οδοσ`）が入り、
+Go と Vitest の両方で同じ結果になる。Go の試験で、共有の小文字化の表が全符号位置の `unicode.ToLower` と
+一致し、Vitest の試験で、`lowerCodePoint` が表のすべての組で Go と同じ符号位置を返す（R-3「小文字化の全数の検査」）。
 Vitest で、`ＡＣＴＩＯＮ` の検索で `action` のタグが見つかり（受け入れ条件 8）、シノニムでも見つかり、
 一致しない語で「No tags match」が出る。
 
@@ -290,8 +304,8 @@ ARCHITECTURE.md の `web/src/tags/` の段落。
 **Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。`task check` が通る。Vitest で、「Tentative only」
 で見えているタグをすべて選んで確定すると `POST /api/tags/batch` に `confirm` と全 id が 1 回送られ、応答の
 あとすべての行から仮の目印が消え、選択が空になる（受け入れ条件 9）; 仮と確定を混ぜて削除すると確認に
-`tagImpact` の `tagCount` と `videoCount` が出て（受け入れ条件 11）、実行後に `notApplicableIds` の数が
-トーストに出る（Edge Case）; `notFoundIds` があると一覧を取り直す; 失敗すると選択が残る; 検索を変えて
+`tagImpact('delete', ids)` の `tagCount` と `videoCount`（確定したタグとその動画だけ）が出て（受け入れ条件 11）、
+実行後に `notApplicableIds` の数がトーストに出る（Edge Case）; `notFoundIds` があると一覧を取り直す; 失敗すると選択が残る; 検索を変えて
 見えなくなった行の選択が外れる（Edge Case）; 見えている行が上限を超えるとまとめての操作が押せない。
 `tagsbench` の規模で、見えている仮のタグ全部の確定で最長タスクが 0.2 秒以内（受け入れ条件 9）。
 
@@ -299,7 +313,7 @@ ARCHITECTURE.md の `web/src/tags/` の段落。
 
 **Scope**: まとめての操作の帯からの「統合…」（`MergeTagDialog` を複数の統合元で開く。統合先は選んだ中からも
 選んでいないタグからも選べ、統合先を選んだ中から選んだときは統合元から外し、統合元が無くなれば実行できない。
-確認に `tagImpact` の数を出す）、応答の反映（統合元を取り除き、統合先を `tag` に差し替え、`notFoundIds` が
+確認に、統合先を外した統合元についての `tagImpact('merge', ids)` の数を出す）、応答の反映（統合元を取り除き、統合先を `tag` に差し替え、`notFoundIds` が
 あれば取り直す）、統合の窓の Combobox に `frameClassName="w-full"`（今は既定の `w-40`。幅の規則は
 `ui-design.md`「Merge dialog」に従う。要件 13）
 （[contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-の変更)、

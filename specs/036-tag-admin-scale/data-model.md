@@ -13,17 +13,23 @@
 
 | 値 | 中身 |
 | --- | --- |
-| `Tag.CreatedAt time.Time` | `tags.created_at`（Unix 秒）。`ListTags`・`tagByID` が読む。API では `Tag.createdAt`（[research.md R-8](research.md#r-8-作った日は-tagscreated_at-を-tagcreatedat-として載せ同じ秒のタグは名前の順にする)） |
+| `Tag.CreatedAt time.Time` | `tags.created_at`（Unix 秒）。`ListTags`・`tagByID` が読み、`Tag` を返す操作はすべてこのどちらかを通す（§2「既存の操作の変更」の `CreateTag`）。API では `Tag.createdAt`（[research.md R-8](research.md#r-8-作った日は-tagscreated_at-を-tagcreatedat-として載せ同じ秒のタグは名前の順にする)） |
 | `TagBatchAction` | `TagBatchConfirm`・`TagBatchReject`・`TagBatchDelete` の 3 値。`Valid()` を持つ |
 | `TagBatchOutcome{AppliedIDs, NotFoundIDs, NotApplicableIDs []int64}` | まとめての操作の結果。どの配列も `ids` に現れた順で、空なら空の配列（`nil` にしない） |
 | `TagMergeOutcome{Tag Tag, NotFoundIDs []int64}` | 統合の結果。`Tag` は統合後の統合先 |
-| `TagImpact{TagCount, VideoCount int}` | 確認に出す数。`TagCount` は `ids` のうち今あるタグの数、`VideoCount` はそのどれかが付いた動画の本数（重複なし） |
+| `TagImpactAction` | `TagImpactReject`・`TagImpactDelete`・`TagImpactMerge` の 3 値。確認をとる操作（要件 10）で、`Valid()` を持つ |
+| `TagImpact{TagCount, VideoCount int}` | 確認に出す数。`TagCount` は `ids` のうち今あり、その操作が働くタグの数（`TagImpactApplies`）、`VideoCount` はそのどれかが付いた動画の本数（重複なし） |
 | `MaxTagBatch = 20000` | `ids`・`sourceIds` の上限。`MaxVideoTagsSelection` と同じ理由（[R-4](research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かないないタグは数えて飛ばす)） |
 
 「働く種類」の規則は純関数 `TagBatchApplies(action TagBatchAction, tentative bool) bool` として `domain` に
 置く: `confirm`・`reject` は `tentative` が真のとき、`delete` は偽のとき真。画面の 1 行ずつの規則
 （仮の行に確定・却下、確定した行に削除。[031 の ui-design.md「Row」](../031-tentative-tags/ui-design.md#row)）と
 同じで、要件 7 の「今の 1 行ずつの操作の規則は変えない」をサーバーの側でも守る。
+
+確認の数の規則は純関数 `TagImpactApplies(action TagImpactAction, tentative bool) bool` として同じく `domain` に
+置く: `reject`・`delete` は `TagBatchApplies` の同じ名前の操作と同じ値、`merge` は種類によらず真（統合は仮の
+タグも確定したタグも統合元にとる）。確認が数えるタグと、`BatchTags` が実際に処理するタグはこれで一致する。
+仮と確定を混ぜて選んだまとめての削除の確認は、確定したタグとその動画だけを数える。
 
 ## 2. 保存層の操作
 
@@ -34,14 +40,26 @@
 | 操作 | 1 つの取引で行うこと |
 | --- | --- |
 | `BatchTags(ctx, action, ids) (TagBatchOutcome, error)` | `ids` の重複を除き、`tags` を結んで今あるものと `tentative` を読む。無い id は `NotFoundIDs`、`TagBatchApplies` が偽の id は `NotApplicableIDs`。残りに対して: `confirm` は `update tags set tentative = 0`（031 §3 の確定）、`reject` は各タグの元の名前を `rejected_tag_names` に `insert or ignore` してから `delete from tags`（031 §3 の却下を複数に）、`delete` は `delete from tags`（014 §4 の削除）。`AppliedIDs` はその id |
-| `MergeTags(ctx, targetID, sourceIDs) (TagMergeOutcome, error)` | 統合先が無ければ `ErrTagNotFound`。`sourceIDs` の重複を除き、無い id は `NotFoundIDs`。残りの各 id について今の `mergeTagInto` を順に呼ぶ（付与の写し、名前の移動、統合元の削除、統合先の確定）。1 件の `MergeTag` はこれで置き換える |
-| `TagImpact(ctx, ids) (TagImpact, error)` | `TagCount` は `tags` にある id の数。`VideoCount` は `taggedVideosSQL` に `tag_id in (json_each)` の条件を付け、`video_id` を `distinct` に数える（手で付けた分とフォルダ名から付いている分のどちらでも 1 本。014 §5） |
+| `MergeTags(ctx, targetID, sourceIDs) (TagMergeOutcome, error)` | 統合先が無ければ `ErrTagNotFound`。`sourceIDs` の重複を除き、無い id は `NotFoundIDs`。残り（統合先の id は除く）を `mergeTagsInto` に渡し、そのあと `tagByID` で統合先を 1 回だけ読んで `Tag` にする。1 件の `MergeTag` はこれで置き換える |
+| `TagImpact(ctx, action, ids) (TagImpact, error)` | `ids` の重複を除き、`tags` を結んで今あるものと `tentative` を読み、`TagImpactApplies` が真の id だけを残す。`TagCount` はその数。`VideoCount` は `taggedVideosSQL` に、残した id の `tag_id in (json_each)` の条件を付け、`video_id` を `distinct` に数える（手で付けた分とフォルダ名から付いている分のどちらでも 1 本。014 §5） |
 
 既存の操作の変更:
 
 - `listCanonicalTags`・`tagByID` は `t.created_at` を読んで `Tag.CreatedAt` に載せる。
+- `CreateTag` は返す `domain.Tag` を手で組み立てず、同じ取引の中で `tagByID` で読み直して返す（今は
+  `domain.Tag{ID, Name, Synonyms, VideoCount}` を組み立てていて、`CreatedAt` が Go のゼロ時刻になる）。
+  作成の応答の `createdAt` と、続く `GET /api/tags` の同じタグの `createdAt` は同じ値になる。
+- `mergeTagInto(ctx, tx, targetID, sourceID) (domain.Tag, error)` を
+  `mergeTagsInto(ctx, tx, targetID int64, sourceIDs []int64) error` に置き換える。統合元の数によらず決まった
+  数の文で行う: 統合元の付与を `insert or ignore into video_tags … select … where tag_id in (json_each)` で
+  1 回で写し、`update tag_names set tag_id = 統合先, canonical = 0 where tag_id in (json_each)` で名前を
+  1 回で移し、`delete from tags where id in (json_each)` で統合元を消し、統合先を 1 回確定する。統合後の
+  `Tag` は組み立てず、呼び手が最後に 1 回 `tagByID` で読む。統合元ごとに `tagByID`（本数の数え直しと
+  伸び続けるシノニムの読み）を繰り返すと、20,000 個の統合で書きの取引を長く握り続けるためである。
+  統合元の有無と統合先との重なりは呼び手が先に確かめて渡す。
 - `MergeTag(ctx, targetID, sourceID)` は消し、呼び手（`internal/httpapi`）は `MergeTags` を使う。
-  `AddSynonym` の承諾した統合は `mergeTagInto` を直接使っていて変わらない。
+  `AddSynonym` の承諾した統合は `mergeTagsInto(ctx, tx, tagID, []int64{lookup.tagID})` を呼ぶ形に変わるだけで、
+  結果は変わらない（もともと統合のあとに `tagByID` で読み直している）。
 - `internal/httpapi` が宣言する `Tags` の interface（`router.go`）に `BatchTags`・`MergeTags`・`TagImpact` を
   足し、`MergeTag` を外す。配線は `cmd/mdm`（変更なし。同じ `store.TagStore` が満たす）。
 
@@ -59,7 +77,7 @@
 | 確定 | `ConfirmTag` を各 id に行ったのと同じ。既に確定したタグは飛ばして数える（1 件では何も変えずに 200 を返す点が違う） |
 | 却下 | `RejectTag` を各 id に行ったのと同じ。確定したタグは飛ばして数える（1 件では `409 tag_not_tentative`） |
 | 削除 | `DeleteTag` を各 id に行ったのと同じ。仮のタグは飛ばして数える（1 件の経路は仮のタグも消すが、画面は仮の行に削除を出さない。031 §3） |
-| 統合 | `mergeTagInto` を各統合元に行ったのと同じ。統合先は 1 回で確定になる |
+| 統合 | 1 件の統合（今の `mergeTagInto`）を各統合元に順に行ったのと同じ結果を、`mergeTagsInto` が統合元の数によらない文の数で作る。統合先は 1 回で確定になる |
 
 ## 4. 画面の側で持つ状態
 

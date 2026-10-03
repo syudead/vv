@@ -45,7 +45,7 @@
 ## R-3: 一覧の検索は `domain.FoldForMatch` を TypeScript に移植して照合し、同じ入力の組で両方を検査する
 
 - Decision: `web/src/lib/foldForMatch.ts` に `foldForMatch(s)` を置く。NFKC 正規化（`String.prototype.normalize`）、
-  符号位置ごとの小文字化、ひらがな（U+3041–U+3096、U+309D・U+309E）からカタカナへの `+0x60` の順で、
+  符号位置ごとの小文字化（下の「小文字化を Go にそろえる」）、ひらがな（U+3041–U+3096、U+309D・U+309E）からカタカナへの `+0x60` の順で、
   Go の [`FoldForMatch`](../../internal/domain/search.go) と同じ手順にする。管理画面の検索は、各タグの
   名前とシノニムの照合形を 1 回作って覚え、検索語の照合形が部分一致するかで決める。
   入力と期待の組を `internal/domain/testdata/fold_for_match.json` に 1 つ置き、Go の試験と Vitest の
@@ -59,9 +59,23 @@
 - Alternatives considered: `GET /api/tags?q=` を足して `search_key` で絞る（打鍵ごとの往復になり、共有の
   保持の全件と一覧が別物になる。R-1 と相反する）。`search_key` を `Tag` に載せて画面に渡す（名前と
   シノニムの数だけ応答が太り、検索語の側の照合形は画面で作る必要が残る）。
-- 既知の差: Go の `unicode.ToLower` は 1 符号位置を 1 符号位置に写し、JavaScript の `toLowerCase` は
-  特殊な大文字化（U+0130 など）で複数の符号位置を返すことがある。タグ名の照合は部分一致なので、この差で
-  見つからなくなる組は組み合わせの試験に含めず、試験の組は両方で同じ結果になるものに限る。
+- 小文字化を Go にそろえる: Go の `unicode.ToLower` は Unicode の単純な小文字（1 符号位置を 1 符号位置）で、
+  JavaScript の `String.prototype.toLowerCase` は文字列全体に特殊な小文字化（SpecialCasing）を掛ける。差は
+  2 つある。U+0130（İ）は Go では `i`、JavaScript では `i` + U+0307 の 2 符号位置になる。語末の Σ は
+  JavaScript だけが文脈で `ς` にする。食い違いを残すと、例えば `İ` で探したときライブラリでは `i` という
+  タグが見つかり管理画面では見つからない、という要件 6 が無くそうとしている食い違いになるので、除外せず
+  そろえる。`foldForMatch` は文字列全体ではなく 1 符号位置ずつ `toLowerCase` を掛け（1 文字だけの文字列には
+  語末の文脈が無いので Σ は `σ`）、結果が 1 符号位置でないときは単純な小文字の表（U+0130 → U+0069。
+  SpecialCasing の無条件の小文字化で複数の符号位置になるのはこの 1 つ）を引く。
+- 小文字化の全数の検査: `fold_for_match.json` に、入力と期待の組のほかに、Go の `unicode.ToLower(r) != r`
+  となるすべての符号位置の組 `{from, to}` を載せる。Go の試験は全符号位置を回して、この表が
+  `unicode.ToLower` と完全に一致することを確かめる（表が古くなれば落ち、`-update` で書き直す）。Vitest の
+  試験は表の各組について、`foldForMatch` の小文字化の段（`lowerCodePoint`）が `to` を返すことを確かめる。
+  入力と期待の組には `İ`、語末の Σ（`ΟΔΟΣ` → `οδοσ`）、全角の英字、半角のカナ、ひらがなを含め、両方が
+  同じ照合形を返すことを確かめる。
+- 残る差: Go（`unicode` と `golang.org/x/text/unicode/norm`）とブラウザが持つ Unicode の版の違いで、片方に
+  しか無い新しい符号位置の小文字化と NFKC は食い違いうる。版の差の分だけで、上の表と組で検査できる範囲の
+  外にある。タグ名の照合に限った既知の例外としてここに残し、版を固定する仕組みは足さない。
 - 範囲: 変えるのはタグ管理画面の一覧の検索だけ。「タグを付ける」「別のタグへ統合…」などの候補の照合
   （`web/src/library/tagChoices.tsx`・`MergeTagDialog.tsx` の `toLowerCase().includes`）は親 Issue の要件に
   無いので変えない。同じ規則にそろえるのは別の Issue で扱う。
@@ -101,12 +115,17 @@
 - Alternatives considered: `sourceId` を残して `sourceIds` を任意で足す（どちらか一方が要る形は
   `oneOf` の生成物の扱いを増やし、[014 の contracts/tags-api.md §1](../014-video-tags/contracts/tags-api.md#1-スキーマ)
   が避けた形になる）。まとめての統合だけ別の経路（同じ取引が 2 か所になる）。
+- 統合元の数によらない文の数で行う: 1 件の `mergeTagInto` を統合元ごとに呼ぶと、そのたびに統合先の
+  `tagByID`（本数の数え直しと、伸び続けるシノニムの読み）が走り、20,000 個の統合では書きの取引を長く
+  握る。統合元の集合を `json_each` で渡し、付与の写し・名前の移動・統合元の削除をそれぞれ 1 文で行い、
+  統合先は最後に 1 回だけ読む（[data-model.md §2](data-model.md#2-保存層の操作) の `mergeTagsInto`）。
 - 統合先が統合元の中にあるときは画面が統合元から外す（Edge Case）。サーバーは今と同じく `400` で
   受け付けない。
 
 ## R-6: 確認に出す「影響を受ける動画の本数」は `POST /api/tags/impact` が重複を除いて数える
 
-- Decision: `{ ids }` を受け、`ids` のうち今あるタグの数と、そのどれかが付いた（手で付けた分とフォルダ名
+- Decision: `{ action, ids }` を受け、`ids` のうち今あり、`action`（`reject`・`delete`・`merge`）が働く
+  タグの数と、そのどれかが付いた（手で付けた分とフォルダ名
   から付いている分のどちらか。[014 の data-model.md §5](../014-video-tags/data-model.md#5-本数の数え方)）
   いまライブラリにある動画の本数を、動画の `id` で重複を除いて返す
   （[contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)）。
@@ -114,7 +133,13 @@
   和では同じ動画が 2 つのタグに付いていれば 2 と数える。1 件の削除・統合の確認は今までどおり
   `videoCount` を使う（014 の契約の「確認のための経路は足さない」は 1 件の話で、まとめての確認は
   この feature が足す要求である）。
-- Alternatives considered: `videoCount` の和（重複を数える。要求に合わない）。`POST /api/tags/batch` に
+- `action` を受ける理由: まとめての却下・削除は仮と確定を混ぜて選べ（要件 7）、`POST /api/tags/batch` は
+  働かない種類を飛ばす（R-4）。`ids` 全部を数えると、例えば 100 本に付いた仮のタグと 1 本に付いた確定した
+  タグを選んで削除するとき、実際に消えるのは確定したタグだけなのに確認は 101 本と出る。確認の数は実行で
+  変わるものだけにするため、処理と同じ `TagBatchApplies` の規則で数える対象を決める
+  （[data-model.md §1](data-model.md#1-domain-に足す値) の `TagImpactApplies`）。
+- Alternatives considered: `videoCount` の和（重複を数える。要求に合わない）。種類ごとに数を分けて返し、
+  画面が選ぶ（画面が規則をもう 1 つ持つことになり、サーバーの処理と食い違いうる）。`POST /api/tags/batch` に
   `dryRun` を足す（読みと書きを 1 つの経路に混ぜる。読みの経路は `POST /api/video-tags/summary` の
   前例がある）。
 

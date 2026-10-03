@@ -46,9 +46,10 @@ TagMergeResponse:
 
 TagImpactRequest:
   type: object
-  required: [ids]
+  required: [action, ids]
   additionalProperties: false
   properties:
+    action: { type: string, enum: [reject, delete, merge] }   # 確認をとる操作。数える種類がこれで決まる
     ids:
       type: array
       minItems: 1
@@ -60,7 +61,7 @@ TagImpactResponse:
   required: [tagCount, videoCount]
   additionalProperties: false
   properties:
-    tagCount:   { type: integer }   # ids のうち今あるタグの数
+    tagCount:   { type: integer }   # ids のうち今あり、action が働くタグの数
     videoCount: { type: integer }   # そのどれかが付いた、いまライブラリにある動画の本数（重複なし）
 ```
 
@@ -103,10 +104,13 @@ TagImpactResponse:
 
 | 本文 | 成功 | 誤り |
 | --- | --- | --- |
-| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request`（`ids` が空、`too_many_tags`） |
+| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request`（`action` が 3 値でない、`ids` が空、`too_many_tags`） |
 
 - 読みの経路で何も変えない。本文で `ids` を受けるのは、数千個の id が URL の長さに収まらないためで、
   `POST /api/video-tags/summary` と同じ形である。
+- 数えるのは、`ids` のうち今あり、`action` が働くタグだけである（[data-model.md §1](../data-model.md#1-domain-に足す値)
+  の `TagImpactApplies`）: `reject` は仮のタグ、`delete` は確定したタグ、`merge` はどちらも。`POST /api/tags/batch`
+  が飛ばす種類のタグとその動画は、確認の数に入らない。統合では、画面は統合先を外した統合元を `ids` に送る。
 - `videoCount` の数え方は [data-model.md §2](../data-model.md#2-保存層の操作) の `TagImpact`。
 - 画面はまとめての却下・削除・統合の確認を開くときに呼び、応答が届くまで確認の数は読み込み中にする。
   失敗したら確認の中に理由を出し、実行は押せない（数の無い確認で実行させない）。まとめての確定は
@@ -120,7 +124,7 @@ TagImpactResponse:
 | --- | --- |
 | `batchTags(action, ids)` | `POST /api/tags/batch`。成功したら `afterTagChanged` を 1 回呼ぶ |
 | `mergeTag(id, sourceIds)` | 署名を `sourceIds: readonly number[]` に変え、`TagMergeResponse` を返す。`tag_not_found` は今までどおり `refreshOnStaleTagError` を通す |
-| `tagImpact(ids)` | `POST /api/tags/impact`。共有の保持には触れない |
+| `tagImpact(action, ids)` | `POST /api/tags/impact`。共有の保持には触れない |
 | `Tag` | 生成物から `createdAt` が入る |
 
 `errorText` に `too_many_tags` の文言を足す。`maxTagBatch = 20000` を `maxVideoTagsSelection` と並べて置き、
