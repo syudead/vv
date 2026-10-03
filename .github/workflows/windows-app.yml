@@ -46,10 +46,11 @@ jobs:
       - name: Web依存を取得する
         run: npm --prefix web ci
 
-      # タグなら v を除いたタグが版になり、手動実行では VERSION を空にして sha-<12 桁> にする。
+      # タグの push なら v を除いたタグが版になり、手動実行では VERSION を空にして sha-<12 桁> にする。
+      # 手動実行でもタグを ref に選ぶと ref_type は tag になるので、event_name で分ける。
       - name: zip を組む
         env:
-          VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          VERSION: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || '' }}
         run: task build-windows-app
 
       - name: zip の名前を調べる
@@ -105,7 +106,7 @@ jobs:
   release:
     name: Attach to release
     needs: [build, verify]
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: write
