@@ -15,6 +15,9 @@ type ScanStore interface {
 	// StartScan は走査の行を running で作る。実行中のものがあれば作らずに
 	// それを返し、started は false になる。
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
+	// ResumeScan は StartScan と同じだが、中断で終わった走査 from の対象の動画の
+	// 集合と、仕事の段階の問題（失敗と代用）を新しい走査へ持ち越す。
+	ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
@@ -153,7 +156,14 @@ func NewScans(opts ScansOptions) *Scans {
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
-	scan, started, err := s.store.StartScan(ctx)
+	return s.start(ctx, s.store.StartScan)
+}
+
+// start は open で走査の行を作り、新しく作ったなら背後で走らせる。
+func (s *Scans) start(
+	ctx context.Context, open func(context.Context) (domain.Scan, bool, error),
+) (domain.Scan, bool, error) {
+	scan, started, err := open(ctx)
 	if err != nil {
 		return domain.Scan{}, false, err
 	}
@@ -340,7 +350,9 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 // interrupted は、停止の指示で打ち切った走査と、running のまま残って
 // RecoverInterrupted が閉じた走査の両方に付く。利用者が走査を取り消す操作は無いので、
 // どちらもプロセスの停止による。走査はサイズと mtime が変わらないファイルを何も
-// しないで通るので、始め直しは続きからと同じ結果になる。最新の走査が done、
+// しないで通るので、始め直しは続きからと同じ結果になる。ただし変わらないファイルの
+// 上限まで失敗した仕事は積み直されないので、中断した走査の対象の動画の集合と
+// 仕事の段階の問題は新しい走査へ持ち越す（ScanStore.ResumeScan）。最新の走査が done、
 // interrupted 以外の理由の failed、または走査の記録が無いときは始めない。
 //
 // 起動時に、RecoverInterrupted のあと、ワーカーを動かしてから 1 度だけ呼ぶ。
@@ -355,7 +367,9 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted {
 		return false, nil
 	}
-	scan, started, err := s.StartScan(ctx)
+	scan, started, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
+		return s.store.ResumeScan(ctx, latest.ID)
+	})
 	if err != nil {
 		return false, err
 	}

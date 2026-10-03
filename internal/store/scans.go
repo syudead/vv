@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -20,6 +21,24 @@ import (
 // 仕事がある動画は新しい走査の対象へ持ち越す
 // （specs/024-import-progress/research.md R-3）。
 func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
+	return s.startScan(ctx, 0)
+}
+
+// ResumeScan は中断で終わった走査 from の続きとして走査を始める。StartScan と
+// 同じだが、from の対象の動画の集合と、仕事の段階の問題（失敗と代用）を新しい
+// 走査へ持ち越す。持ち越さないと、上限まで失敗した仕事は変わらないファイルでは
+// 積み直されない（scanner の ensurePendingJobs）ので、その失敗が一覧から消え、
+// 取り込みが partial でなく done になる。始め直しを「続きから」と同じ結果にする
+// ための持ち越しである（specs/037-windows-app/research.md R-9）。走査が自分で
+// 見つける種類（domain.ScanIssueKind.FromScan）は、新しい走査が見つけ直すので
+// 持ち越さない。
+func (s *ScanStore) ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
+	return s.startScan(ctx, from)
+}
+
+// startScan は走査を始める。from が 0 でなければ、その走査の集合と仕事の段階の
+// 問題を新しい走査へ持ち越す。
+func (s *ScanStore) startScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
 	s.db.folderMu.Lock()
 	defer s.db.folderMu.Unlock()
 	var folderCount int
@@ -54,6 +73,11 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 	}
 	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
 		return domain.Scan{}, false, err
+	}
+	if from != 0 {
+		if err := carryInterruptedImport(ctx, tx, from, id); err != nil {
+			return domain.Scan{}, false, err
+		}
 	}
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
@@ -228,4 +252,27 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 	scan.ErrorCode = domain.ScanErrorCode(code.String)
 	scan.ErrorPath = path.String
 	return scan, nil
+}
+
+// carryInterruptedImport は中断した走査 from の対象の動画の集合と、仕事の段階の
+// 問題を走査 to へ写す（ResumeScan）。
+func carryInterruptedImport(ctx context.Context, q queryExecer, from, to int64) error {
+	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id)
+		select ?, video_id from scan_videos where scan_id = ?
+		on conflict (scan_id, video_id) do nothing`, to, from); err != nil {
+		return fmt.Errorf("cannot carry the interrupted import's videos: %w", err)
+	}
+	fromScan := []any{}
+	for _, kind := range domain.ScanIssueKinds() {
+		if kind.FromScan() {
+			fromScan = append(fromScan, string(kind))
+		}
+	}
+	args := append([]any{to, from}, fromScan...)
+	if _, err := q.ExecContext(ctx, `insert or ignore into scan_issues (scan_id, video_id, path, kind, created_at)
+		select ?, video_id, path, kind, created_at from scan_issues
+		where scan_id = ? and kind not in (`+strings.TrimSuffix(strings.Repeat("?,", len(fromScan)), ",")+`)`, args...); err != nil {
+		return fmt.Errorf("cannot carry the interrupted import's issues: %w", err)
+	}
+	return nil
 }

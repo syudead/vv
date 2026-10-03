@@ -31,19 +31,27 @@ type fakeScanStore struct {
 	rebuiltBeforeFinish []int
 	// issues は記録された問題である。
 	issues []domain.ScanIssue
+	// resumedFrom は走査を始めるたびの持ち越し元（StartScan なら 0）である。
+	resumedFrom []int64
 }
 
 func newFakeScanStore() *fakeScanStore {
 	return &fakeScanStore{progress: map[int64][]domain.ScanProgress{}, finished: make(chan domain.Scan, 4)}
 }
 
-func (f *fakeScanStore) StartScan(context.Context) (domain.Scan, bool, error) {
+func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error) {
+	return f.ResumeScan(ctx, 0)
+}
+
+// ResumeScan は StartScan と同じで、持ち越し元を resumedFrom に残す。
+func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.hasScan && f.current.State == domain.ScanRunning {
 		return f.current, false, nil
 	}
 	f.nextID++
+	f.resumedFrom = append(f.resumedFrom, from)
 	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, StartedAt: time.Now()}
 	f.hasScan = true
 	return f.current, true, nil
@@ -404,6 +412,12 @@ func TestResumeInterrupted(t *testing.T) {
 				closed := store.waitFinished(t)
 				if closed.ID != tc.latest.ID+1 || closed.State != domain.ScanDone {
 					t.Fatalf("始め直した走査 = #%d %q, want #%d done", closed.ID, closed.State, tc.latest.ID+1)
+				}
+				store.mu.Lock()
+				from := slices.Clone(store.resumedFrom)
+				store.mu.Unlock()
+				if !slices.Equal(from, []int64{tc.latest.ID}) {
+					t.Fatalf("持ち越し元 = %v, want [%d]", from, tc.latest.ID)
 				}
 			}
 			scans.Wait()
