@@ -283,6 +283,56 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
   else await writeFile(resultPath, `${table}\n`);
 });
 
+interface ScrollPosition {
+  top: number;
+  atEnd: boolean;
+}
+
+/**
+ * scrollPosition は一覧を送っている要素の位置を、2 フレーム続けて動かなくなるまで
+ * （上限 2 秒）待ってから返す。atEnd は下端に届いているか。
+ */
+async function scrollPosition(page: Page): Promise<ScrollPosition> {
+  return page.evaluate(
+    (prefix) =>
+      new Promise<ScrollPosition>((resolve) => {
+        const target = (): Element => {
+          const row = document.querySelector(`a[aria-label^="${prefix}"]`);
+          let scroller: Element | null = row?.parentElement ?? null;
+          while (scroller !== null) {
+            const style = getComputedStyle(scroller);
+            if (
+              /(auto|scroll)/.test(style.overflowY) &&
+              scroller.scrollHeight > scroller.clientHeight
+            )
+              break;
+            scroller = scroller.parentElement;
+          }
+          return scroller ?? document.scrollingElement ?? document.documentElement;
+        };
+        const deadline = performance.now() + 2_000;
+        let last = -1;
+        let still = 0;
+        const check = () => {
+          const element = target();
+          const top = element.scrollTop;
+          still = top === last ? still + 1 : 0;
+          last = top;
+          if (still >= 2 || performance.now() > deadline) {
+            resolve({
+              top,
+              atEnd: top + element.clientHeight >= element.scrollHeight - 1,
+            });
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      }),
+    rowLinkPrefix,
+  );
+}
+
 async function measureScroll(page: Page): Promise<Row> {
   await page.evaluate(() => {
     window.scrollTo(0, 0);
@@ -308,37 +358,37 @@ async function measureScroll(page: Page): Promise<Row> {
     requestAnimationFrame(tick);
   });
 
-  // 末尾に着くまで送る。仮想化した一覧は送るたびに高さが変わりうるので、位置が
-  // 動かなくなったことを末尾とみなす。
+  // 末尾に着くまで送る。page.mouse.wheel はスクロールが済むのを待たないので、送るたびに
+  // 位置が 2 フレーム続けて動かなくなるまで待ってから読む。仮想化した一覧は送るたびに
+  // 高さが変わりうるので、末尾は「下端に届いている」ことで決める。
   let stalls = 0;
   let previous = -1;
-  for (let step = 0; step < 5000 && stalls < 5; step += 1) {
+  let atEnd = false;
+  for (let step = 0; step < 5000 && !atEnd && stalls < 20; step += 1) {
     await page.mouse.wheel(0, 400);
-    const position = await page.evaluate((prefix) => {
-      const row = document.querySelector(`a[aria-label^="${prefix}"]`);
-      let scroller: Element | null = row?.parentElement ?? null;
-      while (scroller !== null) {
-        const style = getComputedStyle(scroller);
-        if (
-          /(auto|scroll)/.test(style.overflowY) &&
-          scroller.scrollHeight > scroller.clientHeight
-        )
-          break;
-        scroller = scroller.parentElement;
-      }
-      const target = scroller ?? document.scrollingElement ?? document.documentElement;
-      return target.scrollTop;
-    }, rowLinkPrefix);
-    stalls = position === previous ? stalls + 1 : 0;
-    previous = position;
+    const position = await scrollPosition(page);
+    atEnd = position.atEnd;
+    stalls = position.top === previous ? stalls + 1 : 0;
+    previous = position.top;
   }
 
-  const frames = await page.evaluate(() => {
-    const state = window.__tagsBench;
-    if (state === undefined) return [];
-    state.recording = false;
-    return state.frames;
-  });
+  // 最後のスクロールの描画を含むフレームまで記録してから止める。
+  const frames = await page.evaluate(
+    () =>
+      new Promise<number[]>((resolve) => {
+        const state = window.__tagsBench;
+        if (state === undefined) {
+          resolve([]);
+          return;
+        }
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            state.recording = false;
+            resolve([...state.frames]);
+          }),
+        );
+      }),
+  );
   await settle(page);
   const longTasks = await longTasksSince(page, start);
   const intervals = frames.slice(1).map((time, index) => time - (frames[index] ?? time));
@@ -349,7 +399,7 @@ async function measureScroll(page: Page): Promise<Row> {
     scene: "スクロール",
     value: `50 ms を超えるフレームが続いた回数 ${String(consecutive)}（最長のフレーム ${ms(maxOf(intervals))}）`,
     expected: "50 ms を超えるフレームが 2 つ続かない",
-    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、末尾の位置 ${ms(previous).replace(" ms", " px")}、最長のタスク ${longTaskText(longTasks)}`,
+    note: `フレーム ${String(intervals.length)} 個、50 ms 超 ${String(slowCount)} 個、${atEnd ? "末尾" : "末尾に届かず"}の位置 ${ms(previous).replace(" ms", " px")}、最長のタスク ${longTaskText(longTasks)}`,
   };
 }
 
