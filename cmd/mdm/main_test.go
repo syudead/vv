@@ -92,6 +92,50 @@ func TestServeReleasesStopNotifierOnce(t *testing.T) {
 	}
 }
 
+// 要求に応答したあとの停止の指示でも、正常に止まる。応答したなら Serve が
+// 待ち受けを http.Server に登録しているので、先に閉じた待ち受けの登録を Serve が
+// 外す前に Shutdown が走ると、Shutdown がもう一度閉じる。その順になるかは
+// 時の運なので、何度も繰り返す。
+func TestServeStopsCleanlyAfterServingARequest(t *testing.T) {
+	for i := range 200 {
+		if err := serveOneRequestAndStop(t); err != nil {
+			t.Fatalf("%d 回目: 正常な停止なのに誤りが返った: %v", i+1, err)
+		}
+	}
+}
+
+// serveOneRequestAndStop は serveUntil を起動し、要求に 1 度応答してから
+// 停止を指示し、serveUntil の戻り値を返す。
+func serveOneRequestAndStop(t *testing.T) error {
+	t.Helper()
+	stop := make(chan struct{})
+	listener := newReopenableListener()
+	listening := make(chan struct{})
+	returned := make(chan error, 1)
+	go func() {
+		returned <- serveUntil(
+			func() (<-chan struct{}, func()) { return stop, nil },
+			listener,
+			Config{Addr: "127.0.0.1:0"},
+			http.NotFoundHandler(),
+			slog.New(slog.NewTextHandler(io.Discard, nil)),
+			func() { close(listening) },
+			nil,
+		)
+	}()
+	<-listening
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get("http://" + listener.Addr() + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+
+	close(stop)
+	return <-returned
+}
+
 // 待ち受けを失って戻るときも、処理中の要求を待ってから戻り、待ち受けを失った
 // 理由を返す。戻ったあとに呼び出し元はデータベースを閉じる。
 func TestServeWaitsForInFlightRequestsWhenListenerIsLost(t *testing.T) {

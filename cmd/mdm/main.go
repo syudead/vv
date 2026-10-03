@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os/signal"
 	"runtime"
@@ -472,9 +473,11 @@ func serveUntil(
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 
-		// 停止の途中に開き直されないよう、待ち受けを先に閉じる。
+		// 停止の途中に開き直されないよう、待ち受けを先に閉じる。Serve がまだ
+		// 閉じた待ち受けの登録を外していなければ、Shutdown がもう一度閉じて
+		// net.ErrClosed を返す。それは停止の失敗ではない。
 		_ = listener.Close()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, net.ErrClosed) {
 			return fmt.Errorf("could not stop within %s: %w", shutdownGrace, err)
 		}
 		logger.Info("stopped")
