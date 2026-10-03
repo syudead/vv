@@ -465,7 +465,12 @@ compile:
   tentative tag, rejects it (deleting it and remembering its name in
   `rejected_tag_names`), lists and forgets rejected names, and every entry that writes a
   name into `tag_names` removes it from the rejected names in the same transaction
-  (`specs/031-tentative-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
+  (`specs/031-tentative-tags/data-model.md`). For the tag admin screen it confirms,
+  rejects or deletes many tags in one transaction (`BatchTags`, applying each action
+  only to the kind of tag the row action applies to and returning the skipped and missing
+  ids), and counts the tags an action applies to and the distinct registered videos they
+  are on for its confirmation (`TagImpact`); both pass the ids to `json_each` as one
+  argument (`specs/036-tag-admin-scale/data-model.md` §2). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
   Attaching and detaching manual tags (including the external API's bulk operation)

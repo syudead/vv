@@ -1548,6 +1548,61 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/tags/batch:
+    post:
+      operationId: batchTags
+      summary: 複数のタグをまとめて確定・却下・削除する
+      description: |
+        `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
+        確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
+        `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
+        3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
+        （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagBatchRequest"
+      responses:
+        "200":
+          description: 処理した・無かった・働かなかった id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagBatchResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/tags/impact:
+    post:
+      operationId: tagImpact
+      summary: まとめての却下・削除・統合の確認に出す数を返す
+      description: |
+        `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
+        `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
+        （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
+        何も変えない（specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagImpactRequest"
+      responses:
+        "200":
+          description: 確認に出す数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagImpactResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/video-tags:
     post:
       operationId: updateVideoTags
@@ -2493,6 +2548,75 @@ components:
         sourceId:
           type: integer
           format: int64
+
+    TagBatchRequest:
+      type: object
+      required: [action, ids]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [confirm, reject, delete]
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagBatchResponse:
+      type: object
+      required: [appliedIds, notFoundIds, notApplicableIds]
+      additionalProperties: false
+      properties:
+        appliedIds:
+          type: array
+          description: 処理した id
+          items:
+            type: integer
+            format: int64
+        notFoundIds:
+          type: array
+          description: もう無かった id
+          items:
+            type: integer
+            format: int64
+        notApplicableIds:
+          type: array
+          description: 操作が働かない種類だった id
+          items:
+            type: integer
+            format: int64
+
+    TagImpactRequest:
+      type: object
+      required: [action, ids]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [reject, delete, merge]
+          description: 確認をとる操作。数える種類がこれで決まる
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagImpactResponse:
+      type: object
+      required: [tagCount, videoCount]
+      additionalProperties: false
+      properties:
+        tagCount:
+          type: integer
+          description: ids のうち今あり、action が働くタグの数
+        videoCount:
+          type: integer
+          description: そのどれかが付いた、いまライブラリにある動画の本数（重複なし）
 
     AddTagSynonymRequest:
       type: object
@@ -3718,6 +3842,7 @@ components:
         - search_too_long
         - too_many_tag_filters
         - too_many_videos
+        - too_many_tags
         - guest_filter_not_allowed
         - invalid_cursor
         - invalid_folder_path

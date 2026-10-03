@@ -184,6 +184,91 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// BatchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
+// specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは何も変えずに
+// 数えて返し、残りを 1 つの取引で処理する。1 件の経路（confirm・reject・DELETE）は変えない。
+func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
+	var body gen.TagBatchRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	action := domain.TagBatchAction(body.Action)
+	if !action.Valid() {
+		s.invalidRequest(w, "action must be one of confirm, reject or delete.")
+		return
+	}
+	if !s.validTagBatchIDs(w, body.Ids) {
+		return
+	}
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	outcome, err := s.tags.BatchTags(r.Context(), action, body.Ids)
+	if err != nil {
+		s.internalError(w, "Could not update the tags.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.TagBatchResponse{
+		AppliedIds:       nonNilIDs(outcome.AppliedIDs),
+		NotFoundIds:      nonNilIDs(outcome.NotFoundIDs),
+		NotApplicableIds: nonNilIDs(outcome.NotApplicableIDs),
+	}, s.logger)
+}
+
+// TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
+// 本数を返す（POST /api/tags/impact、specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+// 何も変えない。
+func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
+	var body gen.TagImpactRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	action := domain.TagImpactAction(body.Action)
+	if !action.Valid() {
+		s.invalidRequest(w, "action must be one of reject, delete or merge.")
+		return
+	}
+	if !s.validTagBatchIDs(w, body.Ids) {
+		return
+	}
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	impact, err := s.tags.TagImpact(r.Context(), action, body.Ids)
+	if err != nil {
+		s.internalError(w, "Could not count the affected videos.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.TagImpactResponse{TagCount: impact.TagCount, VideoCount: impact.VideoCount}, s.logger)
+}
+
+// validTagBatchIDs は ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、違えば 400 を書いて
+// false を返す。多すぎるときは reason too_many_tags と limit を付ける。
+func (s *server) validTagBatchIDs(w http.ResponseWriter, ids []int64) bool {
+	switch {
+	case len(ids) == 0:
+		s.invalidRequest(w, "ids must contain at least one tag id.")
+		return false
+	case len(ids) > domain.MaxTagBatch:
+		s.invalidRequestLimit(w, reasonTooManyTags, domain.MaxTagBatch,
+			fmt.Sprintf("ids must contain between 1 and %d items.", domain.MaxTagBatch))
+		return false
+	}
+	return true
+}
+
+// nonNilIDs は応答の配列を null でなく [] にする。
+func nonNilIDs(ids []int64) []int64 {
+	if ids == nil {
+		return []int64{}
+	}
+	return ids
+}
+
 // ListRejectedTagNames は却下した名前を名前の自然順で返す
 // （GET /api/tags/rejected-names、specs/031-tentative-tags/contracts/screen-api.md §3）。
 func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {

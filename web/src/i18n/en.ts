@@ -144,6 +144,10 @@ const errorReasons = {
     limit === undefined
       ? "Select fewer videos."
       : `Select between 1 and ${videos(limit)}.`,
+  too_many_tags: ({ limit }) =>
+    limit === undefined
+      ? "Select fewer tags."
+      : `Select between 1 and ${tagCount(limit)}.`,
   guest_filter_not_allowed:
     "Sign in to filter by watch status or tags, or to sort by last played.",
   invalid_cursor: "The list changed while loading. Reload it.",

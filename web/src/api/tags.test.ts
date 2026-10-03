@@ -4,6 +4,7 @@ import {
   __resetTagsForTest,
   addTagSynonym,
   attachVideoTagByID,
+  batchTags,
   attachVideoTagByName,
   createTag,
   currentTags,
@@ -20,6 +21,7 @@ import {
   renameTag,
   subscribeTags,
   summarizeVideoTags,
+  tagImpact,
 } from "./tags";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
@@ -665,5 +667,76 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       videoIds: [1, 2, 3],
     });
+  });
+});
+
+describe("まとめての操作と確認の数（specs/036-tag-admin-scale/contracts/screen-api.md §1・§3・§4）", () => {
+  it("batchTagsはPOST /api/tags/batchを送り、成功後に共有の一覧を1回取り直して一覧の控えを捨てる", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const outcome = { appliedIds: [3, 1], notFoundIds: [9], notApplicableIds: [2] };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(outcome))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2 })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(batchTags("confirm", [3, 2, 9, 1])).resolves.toEqual(outcome);
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/batch");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "confirm",
+      ids: [3, 2, 9, 1],
+    });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 2 })]);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("batchTagsが失敗したら共有の一覧も一覧の控えも変えずに投げる", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          code: "invalid_request",
+          message: "x",
+          reason: "too_many_tags",
+          limit: 20000,
+        },
+        400,
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(batchTags("delete", [1])).rejects.toMatchObject({
+      reason: "too_many_tags",
+      limit: 20000,
+    });
+    expect(takeListSnapshot(key)).toBeDefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("tagImpactはPOST /api/tags/impactを送り、共有の保持には触れない", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tagCount: 2, videoCount: 101 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(tagImpact("merge", [4, 5])).resolves.toEqual({
+      tagCount: 2,
+      videoCount: 101,
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/impact");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "merge",
+      ids: [4, 5],
+    });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(takeListSnapshot(key)).toBeDefined();
+    expect(currentTags()).toBeUndefined();
   });
 });
