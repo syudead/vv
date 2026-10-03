@@ -9,33 +9,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// 二重起動の判定（specs/037-windows-app/research.md R-6、contracts/windows-app.md §2）。
-
-// InstanceState は AcquireInstance の結果である。
-type InstanceState int
-
-const (
-	// InstanceAcquired はこのプロセスが唯一の VVMDM として起動してよいことを表す。
-	InstanceAcquired InstanceState = iota
-	// InstanceActivated は同じセッションの既存のウィンドウを前面に出したことを表す。
-	// このプロセスは何も示さずに終わる。
-	InstanceActivated
-	// InstanceOtherSession は同じ利用者が別のセッションで起動中であることを表す。
-	InstanceOtherSession
-	// InstanceStillRunning は同じセッションの VVMDM が、待つ間にウィンドウを出さず
-	// 終わりもしなかったことを表す。
-	InstanceStillRunning
-)
-
-// instancePoll は待つ間に既存のウィンドウとミューテックスを確かめ直す間隔である。
-const instancePoll = 200 * time.Millisecond
-
 // instanceHandles はプロセスの終わりまで持つミューテックスである。閉じないので、
 // プロセスが終わると OS が放す。
-var instanceHandles []windows.Handle
+var instanceHandles []uintptr
 
 // AcquireInstance は、DB を開く前に、同じ利用者が同じデータの置き場で VVMDM を
-// 起動していないかを確かめる。
+// 起動していないかを確かめる（手順は acquireInstance）。
 //
 // セッションをまたぐ名前付きミューテックスを、作った利用者だけが開ける DACL で
 // 取る。取れなければ、同じセッションの持ち主なら、表に出ているウィンドウを元の
@@ -56,59 +35,35 @@ func AcquireInstance(root string, wait time.Duration) (InstanceState, error) {
 	attrs.Length = uint32(unsafe.Sizeof(*attrs))
 	globalName, localName := InstanceNames(sid, root)
 
-	global, existed, err := createMutex(attrs, globalName, true)
-	if err != nil {
-		return 0, err
-	}
-	if !existed {
-		return InstanceAcquired, holdLocal(attrs, localName, global)
-	}
-
-	// 持ち主は先に global、次に local を作るので、その間に来たときのために 1 度
-	// だけ確かめ直す。
-	sameSession := mutexExists(localName)
-	if !sameSession {
-		time.Sleep(instancePoll)
-		sameSession = mutexExists(localName)
-	}
-	if !sameSession {
-		_ = windows.CloseHandle(global)
-		return InstanceOtherSession, nil
-	}
-
-	deadline := time.Now().Add(wait)
-	for {
-		if activateExistingWindow() {
-			_ = windows.CloseHandle(global)
-			return InstanceActivated, nil
-		}
-		event, err := windows.WaitForSingleObject(global, uint32(instancePoll/time.Millisecond))
-		if err != nil {
-			_ = windows.CloseHandle(global)
-			return 0, fmt.Errorf("cannot wait for the running VVMDM: %w", err)
-		}
-		// 前のプロセスは放さずに終わるので、WAIT_ABANDONED も取れたことを表す。
-		if event == windows.WAIT_OBJECT_0 || event == windows.WAIT_ABANDONED {
-			return InstanceAcquired, holdLocal(attrs, localName, global)
-		}
-		if time.Now().After(deadline) {
-			_ = windows.CloseHandle(global)
-			return InstanceStillRunning, nil
-		}
-	}
+	state, handles, err := acquireInstance(winInstance{attrs: attrs}, globalName, localName, wait)
+	instanceHandles = append(instanceHandles, handles...)
+	return state, err
 }
 
-// holdLocal は取った global と、同じセッションの持ち主であることを示す local を
-// プロセスの終わりまで持つ。
-func holdLocal(attrs *windows.SecurityAttributes, localName string, global windows.Handle) error {
-	instanceHandles = append(instanceHandles, global)
-	local, _, err := createMutex(attrs, localName, false)
-	if err != nil {
-		return err
-	}
-	instanceHandles = append(instanceHandles, local)
-	return nil
+// winInstance は instanceOS の Win32 の実装である。
+type winInstance struct {
+	attrs *windows.SecurityAttributes
 }
+
+func (w winInstance) CreateMutex(name string, owner bool) (uintptr, bool, error) {
+	handle, existed, err := createMutex(w.attrs, name, owner)
+	return uintptr(handle), existed, err
+}
+
+func (winInstance) MutexExists(name string) bool { return mutexExists(name) }
+
+func (winInstance) Close(handle uintptr) { _ = windows.CloseHandle(windows.Handle(handle)) }
+
+func (winInstance) Wait(handle uintptr, d time.Duration) (bool, error) {
+	event, err := windows.WaitForSingleObject(windows.Handle(handle), uint32(d/time.Millisecond))
+	if err != nil {
+		return false, err
+	}
+	// 前のプロセスは放さずに終わるので、WAIT_ABANDONED も取れたことを表す。
+	return event == windows.WAIT_OBJECT_0 || event == windows.WAIT_ABANDONED, nil
+}
+
+func (winInstance) ActivateWindow() bool { return activateExistingWindow() }
 
 // createMutex は名前付きミューテックスを作るか開く。既にあったら existed は真で、
 // owner を求めても持ち主にはならない。
