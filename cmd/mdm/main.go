@@ -387,6 +387,8 @@ func waitAtMost(wait func(), limit time.Duration) bool {
 //
 // 停止の指示（タグなしの main では SIGINT / SIGTERM）を受けたら新規の接続受付を
 // 止め、処理中の要求を猶予時間まで待ってから終了する。正常終了の終了コードは 0 である。
+// 待ち受けを失ったとき（開き直しで元のアドレスも開けなかったときなど）も同じ手順で
+// 止め、待ち受けを失った理由を返す。
 func serveUntil(
 	notifyStop stopNotifier,
 	listener *reopenableListener,
@@ -397,10 +399,15 @@ func serveUntil(
 	beforeShutdown func(),
 ) error {
 	stopRequested, release := notifyStop()
+	// 停止の指示では先に戻し、戻るときにもう一度呼ぶ。受け取りをやめる関数が
+	// 2 度の呼び出しに耐えるとは限らないので、1 度だけ呼ぶ。
+	var releaseOnce sync.Once
 	restoreSignals := func() {
-		if release != nil {
-			release()
-		}
+		releaseOnce.Do(func() {
+			if release != nil {
+				release()
+			}
+		})
 	}
 	defer restoreSignals()
 
@@ -421,18 +428,9 @@ func serveUntil(
 	}
 	listener.Serve(srv)
 
-	select {
-	case err := <-listener.Failed():
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("cannot listen on %s: %w", listener.Addr(), err)
-		}
-		return nil
-
-	case <-stopRequested:
-		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
-		restoreSignals()
-		logger.Info("received a stop signal; waiting for in-flight requests",
-			slog.String("grace", shutdownGrace.String()))
+	// 停止の指示でも待ち受けを失ったときでも、処理中の要求を待ってから戻る。
+	// 戻ったあとに呼び出し元はデータベースを閉じるので、要求を残して戻らない。
+	shutdown := func() error {
 		if beforeShutdown != nil {
 			beforeShutdown()
 		}
@@ -447,6 +445,29 @@ func serveUntil(
 		}
 		logger.Info("stopped")
 		return nil
+	}
+
+	select {
+	case err := <-listener.Failed():
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		// 開き直しで元のアドレスも開けなかったときなど。確立済みの接続は
+		// まだ応答しているので、停止の指示と同じ手順で止める。
+		listenErr := fmt.Errorf("cannot listen on %s: %w", listener.Addr(), err)
+		logger.Error("lost the listener; waiting for in-flight requests",
+			slog.String("error", err.Error()), slog.String("grace", shutdownGrace.String()))
+		if stopErr := shutdown(); stopErr != nil {
+			return errors.Join(listenErr, stopErr)
+		}
+		return listenErr
+
+	case <-stopRequested:
+		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
+		restoreSignals()
+		logger.Info("received a stop signal; waiting for in-flight requests",
+			slog.String("grace", shutdownGrace.String()))
+		return shutdown()
 	}
 }
 
