@@ -36,6 +36,7 @@ import {
   maxTagBatch,
   rejectTag,
   renameTag,
+  type RejectedTagNameList,
   tagPageLimit,
   type Tag,
 } from "../api/tags";
@@ -112,6 +113,12 @@ const moreIdle: MoreState = { kind: "idle" };
  * 行は描いたあとに測った高さ（`measureElement`）で置き換わる。
  */
 const ROW_ESTIMATE = 49;
+
+/**
+ * rejectedPageLimit は却下した名前の 1 ページの件数である（ui-design.md
+ * 「Rejected names」の 100 件。research.md R-13）。
+ */
+const rejectedPageLimit = 100;
 
 /** ROW_OVERSCAN は、表示域の前後に余分に描く行の数である。 */
 const ROW_OVERSCAN = 8;
@@ -250,11 +257,30 @@ export default function TagsPage() {
   const barConfirmRef = useRef<HTMLButtonElement | null>(null);
   const barMoreRef = useRef<HTMLButtonElement | null>(null);
 
-  const [rejectedNames, setRejectedNames] = useState<string[] | undefined>(undefined);
+  /**
+   * 却下した名前は先頭から読み込んだ分（`items`）と、全部の数（`total`。入口の件数）、
+   * 続きのカーソル（`nextCursor`）で持つ（specs/036-tag-admin-scale/data-model.md §4、
+   * research.md R-13）。undefined の間は読み込み中か、先頭のページの読み込みの失敗。
+   */
+  const [rejectedPage, setRejectedPage] = useState<RejectedTagNameList | undefined>(
+    undefined,
+  );
   const [rejectedError, setRejectedError] = useState<UiText | null>(null);
+  /** 続きの読み込みの送信中と、その失敗。 */
+  const [rejectedMorePending, setRejectedMorePending] = useState(false);
+  const [rejectedMoreError, setRejectedMoreError] = useState<UiText | null>(null);
+  /** 先頭のページを受けるたびに 1 増える。窓が開いていればスクロール位置を先頭へ戻す。 */
+  const [rejectedEpoch, setRejectedEpoch] = useState(0);
   const rejectedGeneration = useRef(0);
   /** 取り直しの応答を待っている世代。待っていなければ null。 */
   const rejectedInFlight = useRef<number | null>(null);
+  /** 続きの要求を送っている間 true（同時に 1 つだけ送る）。 */
+  const rejectedMoreInFlight = useRef(false);
+  /**
+   * 先頭のページを受けたあとに × で外した名前。外す前に送った続きの応答に
+   * 載っていても並びに戻さない。
+   */
+  const rejectedForgotten = useRef(new Set<string>());
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -466,43 +492,96 @@ export default function TagsPage() {
   }
 
   /**
-   * reloadRejectedNames は却下した名前の一覧を取り直す。却下・作成・改名・
-   * シノニムの追加のあと（どれも一覧を変えうる。要件 15、受け入れ条件 14）と、
-   * 画面を開いたときに呼ぶ。追い越された古い取得の結果は捨てる。取り直しの
-   * 失敗は、最初の読み込みの失敗と同じ見え方（件数を出さず、「Couldn't load
-   * the rejected names」と Retry。ui-design.md「Rejected names」）にする。
-   * 古い一覧を黙って残すと、却下や作成で変わったはずの並びを正しいものとして
-   * 見せ続けてしまう。
+   * reloadRejectedNames は却下した名前の先頭の 1 ページを取り直す。却下・作成・
+   * 改名・シノニムの追加のあと（どれも一覧を変えうる。要件 15、受け入れ条件 14）と、
+   * 画面を開いたときに呼ぶ。読み込んだ続きは捨て、先頭の 1 ページに戻す
+   * （ui-design.md「Rejected names」）。追い越された古い取得の結果（続きも含む）は
+   * 捨てる。取り直しの失敗は、最初の読み込みの失敗と同じ見え方（件数を出さず、
+   * 「Couldn't load the rejected names」と Retry）にする。古い一覧を黙って残すと、
+   * 却下や作成で変わったはずの並びを正しいものとして見せ続けてしまう。
    */
   const reloadRejectedNames = useCallback(() => {
     rejectedGeneration.current += 1;
     const generation = rejectedGeneration.current;
     rejectedInFlight.current = generation;
+    rejectedMoreInFlight.current = false;
     setRejectedError(null);
-    // 入口の件数を total にし、窓の中で続きを読むのは後の単位（specs/036-tag-admin-scale/research.md R-13）。
-    // ここでは先頭のページの items だけを使う。
-    listRejectedTagNamePage()
+    setRejectedMorePending(false);
+    setRejectedMoreError(null);
+    listRejectedTagNamePage(undefined, rejectedPageLimit)
       .then((page) => {
         if (generation !== rejectedGeneration.current) return;
         rejectedInFlight.current = null;
-        setRejectedNames(page.items);
+        rejectedForgotten.current = new Set();
+        setRejectedPage(page);
+        setRejectedEpoch((epoch) => epoch + 1);
       })
       .catch((failure: unknown) => {
         if (generation !== rejectedGeneration.current) return;
         rejectedInFlight.current = null;
-        setRejectedNames(undefined);
+        setRejectedPage(undefined);
         setRejectedError(errorText(failure));
       });
   }, []);
 
   /**
-   * forgetRejectedName は × の取り外しである。取り外しの前から待っている
-   * 取り直しがあれば、その応答は取り外す前の並び（外した名前を含む）かも
-   * しれないので捨て、取り外しのあとで取り直す。
+   * loadMoreRejectedNames は窓の中身を末尾までスクロールしたときに、続きの
+   * 1 ページを読んで並びの末尾に足す。同時に 1 つだけ送る。失敗しても読み込んだ
+   * 名前は残し、Retry は同じカーソルで読み直す。入口の件数は先頭のページの
+   * `total` から外した数を引いたままにする（続きの応答で上書きすると、送ったあとの
+   * 取り外しの分がずれる）。
+   */
+  function loadMoreRejectedNames() {
+    const cursor = rejectedPage?.nextCursor;
+    if (cursor === undefined || rejectedMoreInFlight.current) return;
+    if (rejectedInFlight.current !== null) return;
+    const generation = rejectedGeneration.current;
+    rejectedMoreInFlight.current = true;
+    setRejectedMorePending(true);
+    setRejectedMoreError(null);
+    listRejectedTagNamePage(cursor, rejectedPageLimit)
+      .then((next) => {
+        if (generation !== rejectedGeneration.current) return;
+        rejectedMoreInFlight.current = false;
+        setRejectedMorePending(false);
+        setRejectedPage((current) => {
+          if (current === undefined) return current;
+          const known = new Set(current.items);
+          const added = next.items.filter(
+            (name) => !known.has(name) && !rejectedForgotten.current.has(name),
+          );
+          return {
+            items: [...current.items, ...added],
+            total: current.total,
+            ...(next.nextCursor === undefined ? {} : { nextCursor: next.nextCursor }),
+          };
+        });
+      })
+      .catch((failure: unknown) => {
+        if (generation !== rejectedGeneration.current) return;
+        rejectedMoreInFlight.current = false;
+        setRejectedMorePending(false);
+        setRejectedMoreError(errorText(failure));
+      });
+  }
+
+  /**
+   * forgetRejectedName は × の取り外しである。`204` でそのチップを消し、入口の
+   * 件数を 1 減らす（一覧は取り直さない）。取り外しの前から待っている取り直しが
+   * あれば、その応答は取り外す前の並び（外した名前を含む）かもしれないので捨て、
+   * 取り外しのあとで取り直す。
    */
   async function forgetRejectedName(name: string) {
     await forgetRejectedTagName(name);
-    setRejectedNames((current) => current?.filter((item) => item !== name));
+    rejectedForgotten.current.add(name);
+    setRejectedPage((current) => {
+      if (current === undefined || !current.items.includes(name)) return current;
+      return {
+        ...current,
+        items: current.items.filter((item) => item !== name),
+        total: Math.max(current.total - 1, 0),
+      };
+    });
     if (rejectedInFlight.current !== null) reloadRejectedNames();
   }
 
@@ -1894,9 +1973,13 @@ export default function TagsPage() {
         */}
           {page !== undefined && (
             <RejectedNames
-              names={rejectedNames}
+              page={rejectedPage}
               error={rejectedError}
               onRetry={reloadRejectedNames}
+              morePending={rejectedMorePending}
+              moreError={rejectedMoreError}
+              onLoadMore={loadMoreRejectedNames}
+              resetKey={rejectedEpoch}
               onForget={forgetRejectedName}
               className="-my-1.5 ml-auto"
             />

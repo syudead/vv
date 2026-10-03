@@ -1,6 +1,7 @@
 import { X } from "lucide-react";
-import { type RefObject, useMemo, useRef, useState } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 
+import type { RejectedTagNameList } from "../api/tags";
 import { errorText, formatNumber, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
@@ -10,24 +11,39 @@ import Skeleton from "../ui/Skeleton";
 /**
  * RejectedNames はタグ管理画面の件数の行の右端の「Rejected names」の入口と、
  * 押すと開く窓である（specs/036-tag-admin-scale/ui-design.md「Count line」
- * 「Rejected names」）。窓の中身・取り外し・取り直しの規則は 031 のまま
- * （specs/031-tentative-tags/ui-design.md「Rejected names」）。一覧の取得と
- * 取り直しは呼び出し元（TagsPage）が持ち、ここは入口・窓・取り外しを持つ。
+ * 「Rejected names」）。窓の中身・取り外しの規則は 031 のまま
+ * （specs/031-tentative-tags/ui-design.md「Rejected names」）。一覧の取得・続き・
+ * 取り直しは呼び出し元（TagsPage）が持ち、ここは入口・窓・取り外しと、窓の中身を
+ * 末尾までスクロールしたことを伝える番兵を持つ。
  *
- * `names` が undefined の間は読み込み中（`error` があれば読み込み失敗）で、
- * 入口の件数は出さない。開閉はこの画面の状態で、URL には載せない。
+ * `page` が undefined の間は読み込み中（`error` があれば読み込み失敗）で、
+ * 入口の件数は出さない。件数は `page.total`（読み込んでいない名前も数えた数）。
+ * 開閉はこの画面の状態で、URL には載せない。閉じても読み込んだ続きは
+ * 呼び出し元に残るので、開き直せば同じ並びが出る。
  */
 export default function RejectedNames({
-  names,
+  page,
   error,
   onRetry,
+  morePending,
+  moreError,
+  onLoadMore,
+  resetKey,
   onForget,
   className,
 }: {
-  names: readonly string[] | undefined;
+  page: RejectedTagNameList | undefined;
   error: UiText | null;
   onRetry: () => void;
-  /** 名前を外す。成功すれば呼び出し元が `names` からその名前を取り除く。 */
+  /** 続きの読み込みの送信中。 */
+  morePending: boolean;
+  /** 続きの読み込みの失敗。 */
+  moreError: UiText | null;
+  /** 続きを読む（失敗のあとの Retry も同じカーソルで読み直す）。 */
+  onLoadMore: () => void;
+  /** 先頭のページを受け直すたびに変わる。窓のスクロール位置を先頭へ戻す。 */
+  resetKey: number;
+  /** 名前を外す。成功すれば呼び出し元が `page` からその名前を取り除く。 */
   onForget: (name: string) => Promise<void>;
   className?: string;
 }) {
@@ -43,15 +59,20 @@ export default function RejectedNames({
         className={className}
       >
         {t.tags.rejectedNames.heading}
-        {names !== undefined && (
-          <span className="text-fg-muted tabular-nums">{formatNumber(names.length)}</span>
+        {page !== undefined && (
+          <span className="text-fg-muted tabular-nums">{formatNumber(page.total)}</span>
         )}
       </Button>
       {open && (
         <RejectedNamesDialog
-          names={names}
+          names={page?.items}
+          hasMore={page?.nextCursor !== undefined}
           error={error}
           onRetry={onRetry}
+          morePending={morePending}
+          moreError={moreError}
+          onLoadMore={onLoadMore}
+          resetKey={resetKey}
           onForget={onForget}
           // 閉じるとフォーカスは ModalFrame が開く前の要素（入口）へ戻す。
           onClose={() => setOpen(false)}
@@ -63,17 +84,57 @@ export default function RejectedNames({
 
 function RejectedNamesDialog({
   names,
+  hasMore,
   error,
   onRetry,
+  morePending,
+  moreError,
+  onLoadMore,
+  resetKey,
   onForget,
   onClose,
 }: {
   names: readonly string[] | undefined;
+  hasMore: boolean;
   error: UiText | null;
   onRetry: () => void;
+  morePending: boolean;
+  moreError: UiText | null;
+  onLoadMore: () => void;
+  resetKey: number;
   onForget: (name: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const onLoadMoreRef = useRef(onLoadMore);
+  onLoadMoreRef.current = onLoadMore;
+  const loadedCount = names?.length ?? 0;
+
+  // 先頭のページを受け直したら、並びと一緒にスクロール位置も先頭へ戻す。
+  useEffect(() => {
+    if (boxRef.current !== null) boxRef.current.scrollTop = 0;
+  }, [resetKey]);
+
+  // 窓の中身の箱を根にした番兵。末尾が見えたら続きを読む。読み込みのたびに
+  // 見張り直すので、届いた分で末尾がまだ見えていればもう 1 ページ読む。
+  // 失敗の間は読まない（Retry を押すまで）。
+  useEffect(() => {
+    const root = boxRef.current;
+    const target = sentinelRef.current;
+    if (root === null || target === null || !hasMore || morePending || moreError !== null)
+      return;
+    if (typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) onLoadMoreRef.current();
+      },
+      { root, rootMargin: "0px 0px 120px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, morePending, moreError, loadedCount]);
+
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
   const [removeError, setRemoveError] = useState<UiText | null>(null);
   const closeButton = useRef<HTMLButtonElement | null>(null);
@@ -136,7 +197,10 @@ function RejectedNamesDialog({
       initialFocus={initialFocus}
       width="sm:max-w-lg"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
+      <div
+        ref={boxRef}
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5"
+      >
         {names === undefined && error === null && (
           <div className="flex flex-wrap gap-1.5" aria-hidden="true">
             {Array.from({ length: 3 }, (_, index) => (
@@ -160,6 +224,7 @@ function RejectedNamesDialog({
             <p className="text-xs text-fg-muted">{t.tags.rejectedNames.description}</p>
             <ul
               aria-label={t.tags.rejectedNames.heading}
+              aria-busy={morePending || undefined}
               className="flex flex-wrap gap-1.5"
             >
               {names.map((name) => (
@@ -182,7 +247,26 @@ function RejectedNamesDialog({
                   </Chip>
                 </li>
               ))}
+              {morePending &&
+                Array.from({ length: 3 }, (_, index) => (
+                  <li key={`more-${index}`} aria-hidden="true">
+                    <Skeleton className="h-6 w-24" />
+                  </li>
+                ))}
             </ul>
+            {moreError !== null && (
+              <div className="flex flex-wrap items-center gap-2">
+                <p role="alert" className="text-xs text-danger">
+                  {t.tags.rejectedNames.loadMoreFailed}
+                </p>
+                <Button variant="ghost" size="sm" onClick={onLoadMore}>
+                  {t.common.retry}
+                </Button>
+              </div>
+            )}
+            {hasMore && (
+              <div ref={sentinelRef} aria-hidden="true" className="h-px shrink-0" />
+            )}
           </>
         )}
         {removeError !== null && (
