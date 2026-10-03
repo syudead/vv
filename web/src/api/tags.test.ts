@@ -392,7 +392,7 @@ describe("購読者のいない共有の保持（specs/036-tag-admin-scale/resea
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
-  it("捨てる前に始まっていた取得の応答は、届いても保持に入れない", async () => {
+  it("捨てる前に始まっていた取得の応答は保持に入れず、待つ呼び手には取り直した一覧を返す", async () => {
     let resolveFirst: ((response: Response) => void) | undefined;
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -409,12 +409,39 @@ describe("購読者のいない共有の保持（specs/036-tag-admin-scale/resea
     const first = getTags();
     await deleteTag(1);
     resolveFirst?.(jsonResponse({ items: [tag({ id: 1 })] }));
-    // 待っていた呼び手には自分の応答が届くが、共有の保持にはならない。
-    await expect(first).resolves.toEqual([tag({ id: 1 })]);
-    expect(currentTags()).toBeUndefined();
-
-    await expect(getTags()).resolves.toEqual([]);
+    // 待っていた呼び手には、変更を映していない古い応答ではなく取り直した一覧が届く。
+    await expect(first).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(currentTags()).toEqual([]);
+
+    // 取り直した一覧が共有の保持になり、次の getTags は送らない。
+    await expect(getTags()).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("捨てる前に始まっていた refreshTags を待つ呼び手にも、取り直した一覧を返す", async () => {
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2, name: "残る" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    const pending = refreshTags();
+    await deleteTag(1);
+    resolveFirst?.(
+      jsonResponse({
+        items: [tag({ id: 1, name: "消した" }), tag({ id: 2, name: "残る" })],
+      }),
+    );
+    await expect(pending).resolves.toEqual([tag({ id: 2, name: "残る" })]);
+    expect(currentTags()).toEqual([tag({ id: 2, name: "残る" })]);
   });
 
   it("購読者がいれば今までどおり取り直して知らせる", async () => {

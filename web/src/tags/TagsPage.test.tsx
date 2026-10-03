@@ -4634,6 +4634,160 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     expect(within(rowOf(name(200))).getByText("Tentative")).toBeDefined();
   });
 
+  it("先頭のページを待つ間に削除すると、削除の前に送った応答は捨てて読み直し、消したタグが戻らない（R-12）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(1));
+
+    // 「Unused only」の先頭のページ（2 回目の要求）から止める。全部のタグが 0 本。
+    holdGetsFrom = 2;
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+
+    await user.click(
+      within(rowOf(name(1))).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog", { name: `Delete "${name(1)}"` });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.queryByTitle(name(1))).toBeNull());
+
+    // 削除の前に受けた先頭のページ（消したタグを含む）が届く。
+    heldGetReleases[0]!();
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+    expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
+    expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
+    expect(screen.queryByTitle(name(1))).toBeNull();
+
+    heldGetReleases[1]!();
+    await waitFor(() => expect(count()).toBe("149 of 149 tags · 100 loaded"));
+    expect(screen.queryByTitle(name(1))).toBeNull();
+  });
+
+  it("続きを待つ間に確定すると、確定の前に送った続きは捨てて同じ cursor で読み直し、件数が戻らない（R-12）", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 250 }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
+    );
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await waitFor(() => expect(count()).toBe("125 of 250 tags · 100 loaded"));
+
+    holdGetsFrom = server.getCalls + 1;
+    await scrollToEnd(100);
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+    scrollTo(0);
+    await screen.findByTitle(name(0));
+
+    await user.click(within(rowOf(name(0))).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByTitle(name(0))).toBeNull());
+    expect(count()).toBe("124 of 250 tags · 99 loaded");
+
+    // 確定の前に受けた続き（total 125）が届く。
+    heldGetReleases[0]!();
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+    const sent = cursorRequests();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.get("cursor")).toBe(sent[0]?.get("cursor"));
+    expect(count()).toBe("124 of 250 tags · 99 loaded");
+
+    heldGetReleases[1]!();
+    await waitFor(() => expect(count()).toBe("124 of 250 tags"));
+    expect(screen.queryByText(/Tags were added or removed elsewhere/)).toBeNull();
+  });
+
+  it("並び順を変えて読み込んだ範囲の外になった改名中の行を改名しても、件数は増えない", async () => {
+    const user = userEvent.setup();
+    // 本数の多い順では Tag 0（0 本）が最後に並び、先頭のページに入らない。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      tentative: false,
+      videoCount: index,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    // 件数の行が total を出すよう、全部に合う検索で絞る。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
+    await waitFor(() => expect(count()).toBe("150 of 150 tags · 100 loaded"));
+
+    await user.click(within(rowOf(name(0))).getByRole("button", { name: "Rename" }));
+    await screen.findByRole("textbox", { name: `New name for "${name(0)}"` });
+    // 並び順を変えた先頭のページの次（改名中の行が末尾にあるので続きを読む）は届かない
+    // ままにし、改名中の行を読み込んでいない間に改名する。
+    holdGetsFrom = server.getCalls + 2;
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("sort")).toBe("countDesc"),
+    );
+    await waitFor(() => expect(loadedNames()[0]).toBe(name(149)));
+    expect(count()).toBe("150 of 150 tags · 100 loaded");
+
+    const input = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
+    await user.clear(input);
+    await user.type(input, "Tag renamed{Enter}");
+    await waitFor(() =>
+      expect(server.tags.find((item) => item.id === 1)?.name).toBe("Tag renamed"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: `New name for "${name(0)}"` }),
+      ).toBeNull(),
+    );
+    expect(count()).toBe("150 of 150 tags · 100 loaded");
+  });
+
+  it("シノニム登録に伴って読み込んでいないタグを統合すると、条件に合っていたそのタグを total からも引く", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(1));
+    // 件数の行が total を出すよう、全部に合う検索で絞る。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
+    await waitFor(() => expect(count()).toBe("150 of 150 tags · 100 loaded"));
+    expect(screen.queryByTitle(name(140))).toBeNull();
+
+    await user.click(within(rowOf(name(1))).getByRole("button", { name: "Synonyms" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Synonyms of "${name(1)}"`,
+    });
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Add synonym" }),
+      `${name(140)}{Enter}`,
+    );
+    await within(dialog).findByText(/is a tag on/);
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    await waitFor(() =>
+      expect(server.tags.some((item) => item.name === name(140))).toBe(false),
+    );
+    await within(dialog).findByText(name(140));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(count()).toBe("149 of 149 tags · 100 loaded"));
+  });
+
+  it("新しい検索の先頭のページを待つ間、空の状態は読んだ検索の語のまま出す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const box = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(box, "zzz");
+    expect(await screen.findByText('No tags match "zzz"')).toBeDefined();
+
+    holdGetsFrom = server.getCalls + 1;
+    await user.type(box, "q");
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+    expect(screen.getByText('No tags match "zzz"')).toBeDefined();
+    expect(screen.queryByText('No tags match "zzzq"')).toBeNull();
+
+    heldGetReleases[0]!();
+    expect(await screen.findByText('No tags match "zzzq"')).toBeDefined();
+  });
+
   it("読み込んでいない統合先へ統合すると、並び順の位置が範囲の中なら差し込み、共有の保持の取り直しが失敗しても統合元と統合先が残らず消えたりしない（R-12）", async () => {
     const user = userEvent.setup();
     // 本数の多い順で Tag 0（5 本）が先頭、残りは 1 本で名前の順。Tag 140 は読み込んでいない。

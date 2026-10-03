@@ -143,7 +143,10 @@ function startFetch(): Promise<Tag[]> {
       // 埋まっている（自分より後の呼び出しが少なくとも1つある）。
       return latestFetch!;
     }
-    if (myGeneration <= droppedGeneration) return tags;
+    // 保持を捨てる前に始まった取得は、変更を映していないかもしれない。待っている
+    // 呼び手（シノニムの窓の統合元の確かめなど）へ古い一覧を返さず、取り直した結果を
+    // 返す（取り直しが届けば、それが `held` に入る）。
+    if (myGeneration <= droppedGeneration) return startFetch();
     held = tags;
     notify(tags);
     return tags;
@@ -257,7 +260,8 @@ function afterTagChanged(): void {
 
 /**
  * dropHeldTags は共有の保持を捨てる。進行中の取得は変更の前に始まったものなので、
- * 届いても `held` に入れず（`droppedGeneration`）、次の `getTags` は新しく取り直す。
+ * 届いても `held` に入れず（`droppedGeneration`）、その取得を待つ呼び手には取り直した
+ * 結果を返す（`startFetch`）。進行中の取得が無ければ何も送らず、次の `getTags` が取り直す。
  */
 function dropHeldTags(): void {
   held = undefined;
