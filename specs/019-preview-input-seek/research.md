@@ -1,80 +1,137 @@
-# Research: 動くプレビューの区間の読み方
+# Research: Reading the segments of the animated preview
 
-技術スタックと生成物の所有は正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)・
-[ARCHITECTURE.md](../../ARCHITECTURE.md)「Generated files have one owner」）。ここにはこの feature が足す
-決定だけを書く。計測値は、親 Issue #387 に載っているもの（Windows、および Linux・ffmpeg 6.1.1・4 コア・
-16GB）と、開発コンテナ（Linux・ffmpeg 6.1.1・4 コア・16GB）で `testsrc2` から作った
-入力（2 分・1280×720・30fps・H.264/AAC、30 分・640×360・30fps・H.264、`-g 250`）で取ったものである。
-どちらも合成した映像で、実ライブラリの動画の速度の保証ではない。
+Inherited decisions: the tech stack and the ownership of generated files follow
+[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
+and [ARCHITECTURE.md](../../ARCHITECTURE.md) ("Generated files have one owner").
+This file records only the decisions this feature adds.
 
-## R-1: 区間を読む方式
+The measurements come from two sources: those in parent Issue #387 (Windows,
+and Linux with ffmpeg 6.1.1, 4 cores, 16GB), and runs in the development
+container (Linux, ffmpeg 6.1.1, 4 cores, 16GB) on inputs made from `testsrc2`
+(2 minutes, 1280×720, 30fps, H.264/AAC; 30 minutes, 640×360, 30fps, H.264;
+`-g 250`). Both are synthetic video and do not guarantee the speed for videos
+in a real library.
 
-- Decision: 9 秒を超える動画は、`PreviewSegments` が返す 12 区間をそれぞれ
-  `-ss <start> -t 0.75 -i <input>` の入力として 1 回の ffmpeg に渡し、入力ごとに
-  `[i:V:0]setpts=PTS-STARTPTS,<scale>,format=yuv420p[vi]` を掛けて `concat=n=12:v=1:a=0` で連結する。
-  出力側の引数（`-c:v libx264 -pix_fmt yuv420p -movflags +faststart -an`）は今のまま。
-- Rationale: 入力側の `-ss` で ffmpeg は区間の直前のキーフレームまで容器の索引でシークし、そこから
-  区間の終わりまでしかデコードしない。保持するフレームも区間 1 つ分なので、時間もメモリも動画の長さに
-  依らない。開発コンテナの計測:
+## R-1: How segments are read
 
-  | 入力 | 現行（1 入力・`trim`） | 12 入力・1 プロセス | 12 プロセス・concat demuxer |
-  | --- | ---: | ---: | ---: |
-  | 2 分・720p | 13.2〜26.9 秒、ピーク 5,010MB | 2.9〜3.2 秒、ピーク 488MB | 3.7〜3.8 秒、ピーク 126MB |
-  | 30 分・640×360 | 57 秒で 13.7GB に達し OOM kill | 1.5〜1.6 秒、ピーク 270MB | 2.5 秒、ピーク 106MB |
+**Decision**: For a video longer than 9 seconds, each of the 12 segments that
+`PreviewSegments` returns is passed to a single ffmpeg as its own input,
+`-ss <start> -t 0.75 -i <input>`. Each input gets
+`[i:V:0]setpts=PTS-STARTPTS,<scale>,format=yuv420p[vi]`, and the inputs are
+joined with `concat=n=12:v=1:a=0`. The output arguments
+(`-c:v libx264 -pix_fmt yuv420p -movflags +faststart -an`) stay as they are.
 
-  親 Issue の 2 時間の入力でも同じ向き（Linux: 現行は OOM、12 入力・1 プロセスは 2.1〜7.1 秒・367MB）。
-  1 プロセスの案を採るのは、プロセスの起動が 1 回で済み（親 Issue の Windows の短尺計測では、13 回起動する
-  案が現行 0.6 秒に対し 1.5 秒）、`internal/media` が中間ファイルの置き場を持たずに済むからである。
-  ピークメモリは 12 プロセス案より大きいが、区間の数と解像度で決まり動画の長さでは増えない（要件 2）。
-- Alternatives considered: 12 区間を別プロセスで抽出して concat demuxer で `-c copy` 結合する（上記。
-  メモリは最小だが起動 13 回と中間ファイル）。旧方式を短尺だけに残す（要件 1 が 9 秒超の全部を対象に
-  しており、2 分・720p でも 5GB を使う）。`-noaccurate_seek` で区間の開始をキーフレームに丸める
-  （R-3）。区間ごとに `-ss` を出力側に置く（入力を先頭からデコードするので今と同じ費用）。
+**Rationale**: With `-ss` on the input side, ffmpeg seeks through the
+container's index to the keyframe before the segment and decodes only from
+there to the end of the segment. It holds the frames of one segment at a time,
+so neither time nor memory depends on the length of the video. Measurements in
+the development container:
 
-## R-2: フレームの無い区間
+| Input | Current (1 input, `trim`) | 12 inputs, 1 process | 12 processes, concat demuxer |
+| --- | ---: | ---: | ---: |
+| 2 minutes, 720p | 13.2–26.9 s, peak 5,010MB | 2.9–3.2 s, peak 488MB | 3.7–3.8 s, peak 126MB |
+| 30 minutes, 640×360 | Reached 13.7GB at 57 s and was OOM-killed | 1.5–1.6 s, peak 270MB | 2.5 s, peak 106MB |
 
-- Decision: 区間にフレームが無い入力（容器の長さが映像 stream より長く、末尾の区間が映像の終わりより
-  後ろにある場合など）は失敗にせず、その区間が無いだけの短い出力を公開する。12 区間の全部が空で
-  出力が空ファイルになった場合は、`internal/artifacts.PublishPreview` の既存の検査（空ファイルを
-  公開しない）で失敗になり、ジョブの再試行と失敗記録が扱う。
-- Rationale: 映像 10 秒・音声 12 秒の入力（容器の長さ 12 秒）で確かめた。ffmpeg 6.1.1 の `concat`
-  フィルタは、フレームを出さずに終わった入力を空の区間として飛ばし、10 区間分（7.67 秒）の出力を
-  作った。現行方式も同じ入力で 7.47 秒の出力になるので、動作は変わらない。`probe` の長さは容器のもので、
-  映像 stream より数百ミリ秒長いことは珍しくないため、これを失敗にすると多くの動画のプレビューが
-  作れなくなる。
-- Alternatives considered: 最後の区間の開始を映像 stream の長さに合わせて前へずらす（映像 stream の
-  長さを `internal/media` に渡す口を増やすことになり、区間の選び方が入力によって変わる）。空の区間を
-  検出して ffmpeg をやり直す（ffmpeg が自分で飛ばすので不要）。
+The parent Issue's 2-hour input shows the same direction (Linux: the current
+method is OOM-killed; 12 inputs in 1 process takes 2.1–7.1 seconds and 367MB).
+The single-process option is chosen because it starts one process (in the
+parent Issue's short-video measurement on Windows, the option that starts 13
+processes took 1.5 seconds against 0.6 seconds for the current method) and
+because `internal/media` then needs no place for intermediate files. Its peak
+memory is higher than the 12-process option, but it is set by the number of
+segments and the resolution and does not grow with the video's length
+(requirement 2).
 
-## R-3: シークの精度
+**Alternatives considered**:
 
-- Decision: `-ss` は入力側に置き、ffmpeg の既定（accurate seek: 直前のキーフレームからデコードして
-  指定時刻までのフレームを捨てる）のまま使う。`-noaccurate_seek` は付けない。
-- Rationale: 今の `trim=start=<s>` は指定時刻からのフレームを出しており、区間と映る場面の対応
-  （要件 3・受け入れ条件 3）はそこで決まっている。accurate seek なら同じ対応を保つ。捨てるフレームの
-  デコード費用はキーフレーム間隔 1 つ分（x264 の既定 250 フレームで 30fps なら最大 8.3 秒分）で、
-  12 区間合わせても全編のデコードより小さい（R-1 の計測に含まれる）。
-- Alternatives considered: `-noaccurate_seek`（区間の開始が直前のキーフレームへずれ、区間の長さも
-  `-t` の解釈が変わって伸びる。時間はわずかに縮むが要件 3 に反する）。
+| Option | Verdict |
+| --- | --- |
+| Extract the 12 segments in separate processes and join them with the concat demuxer and `-c copy` | Rejected: smallest memory (above), but 13 process starts and intermediate files |
+| Keep the old method for short videos only | Rejected: requirement 1 covers every video over 9 seconds, and even 2 minutes at 720p uses 5GB |
+| Round segment starts to keyframes with `-noaccurate_seek` | Rejected: see R-3 |
+| Put `-ss` on the output side per segment | Rejected: decodes the input from the start, the same cost as today |
 
-## R-4: 計測の方法
+## R-2: Segments with no frames
 
-- Decision: `scripts/previewbench` を Go で書く。引数の動画ごとに `media.GeneratePreview` を一時
-  ディレクトリの出力へ `-runs`（既定 2）回走らせ、回ごとの壁時計時間と ffmpeg のピークメモリを表示
-  する。ピークメモリは Linux/macOS で `syscall.Getrusage(RUSAGE_CHILDREN)` の `Maxrss` から取り、
-  入力ごとに全回の最大値として表示する（この値は終了した子プロセス全体の最大なので、複数の入力を
-  1 回の実行に渡すと前の入力の値を引き継ぐ。手順書では入力ごとに実行を分ける）。Windows では取らずに
-  壁時計時間だけを表示する。手順は
-  `docs/how-to/preview-benchmark.md` に置き、比較用の入力を作る ffmpeg のコマンド（2 時間・640×360・
-  30fps・H.264 と 2 分・1280×720・H.264/AAC を `testsrc2` から作る。hover の確認用に回転情報を持つ
-  縦長の入力も作る）、変更前のコミットと変更後で同じ入力を測る手順、結果を表にして PR に残す形、
-  作った入力を `.local/preview/media/` に置いて `task preview` を起動し直し hover で確かめる手順を書く
-  （`task preview` の組み込みサンプルは 20 秒以下で、起動のたびにそのフォルダを取り込む）。
-- Rationale: 要件 6 は「同じ入力と環境で改善前後を測れる手順」を求めており、測るのは本番の生成コード
-  そのもの（`GeneratePreview`）でなければ意味が無い。Go で書けば Windows でも同じ手順で壁時計時間を
-  測れる。親 Issue の OOM は Linux で起きているので、ピークメモリは Linux で測れれば受け入れ条件 1 を
-  示せる。リポジトリの規則（Taskfile.yml: 込み入った処理は scripts/ の Go プログラムに置く）にも合う。
-- Alternatives considered: how-to に shell と `/usr/bin/time -v` の手順だけを書く（Windows で使えず、
-  ffmpeg の引数を手順書に写すことになり本番コードとずれる）。`go test -bench`（子プロセスのピーク
-  メモリを報告できない）。`GeneratePreview` に計測の口を足す（本番コードに計測のためだけの引数が残る）。
+**Decision**: An input where a segment has no frames (for example, the
+container is longer than the video stream and the last segment lies after the
+end of the video) is not a failure; a shorter output that lacks that segment is
+published. When all 12 segments are empty and the output is an empty file, the
+existing check in `internal/artifacts.PublishPreview` (never publish an empty
+file) fails it, and the job's retry and failure record handle it.
+
+**Rationale**: Confirmed with an input of 10 seconds of video and 12 seconds of
+audio (container length 12 seconds). The `concat` filter in ffmpeg 6.1.1 skips
+an input that ended without producing frames as an empty segment, and produced
+an output of 10 segments (7.67 seconds). The current method produces a
+7.47-second output from the same input, so the behaviour does not change. The
+`probe` length is the container's, and it is common for it to be a few hundred
+milliseconds longer than the video stream; treating this as a failure would
+leave many videos without a preview.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Move the last segment's start earlier to fit the video stream's length | Rejected: adds a way to pass the video stream's length into `internal/media`, and segment choice would vary by input |
+| Detect empty segments and rerun ffmpeg | Rejected: unnecessary, ffmpeg skips them itself |
+
+## R-3: Seek accuracy
+
+**Decision**: `-ss` goes on the input side and uses ffmpeg's default (accurate
+seek: decode from the preceding keyframe and drop frames up to the requested
+time). `-noaccurate_seek` is not added.
+
+**Rationale**: Today's `trim=start=<s>` emits frames from the requested time,
+and that fixes the correspondence between segments and the scenes shown
+(requirement 3, acceptance criterion 3). Accurate seek keeps the same
+correspondence. Decoding the dropped frames costs one keyframe interval (at
+most 8.3 seconds at 30fps with x264's default of 250 frames), and even for 12
+segments together this is less than decoding the whole video (it is included
+in the R-1 measurements).
+
+**Alternatives considered**: `-noaccurate_seek` was rejected: segment starts
+shift back to the preceding keyframe, and the interpretation of `-t` changes so
+segments also get longer. It saves a little time but violates requirement 3.
+
+## R-4: Measurement method
+
+**Decision**: Write `scripts/previewbench` in Go. For each video given as an
+argument, it runs `media.GeneratePreview` into an output in a temporary
+directory `-runs` times (default 2) and prints the wall-clock time and
+ffmpeg's peak memory for each run.
+
+- Peak memory comes from `Maxrss` of `syscall.Getrusage(RUSAGE_CHILDREN)` on
+  Linux/macOS and is printed per input as the maximum over all runs. The value
+  is the maximum over all terminated child processes, so when several inputs
+  are passed to one run, an input inherits the previous input's value; the
+  how-to runs each input separately.
+- On Windows, peak memory is not taken; only wall-clock time is printed.
+
+The procedure lives in `docs/how-to/preview-benchmark.md`. It contains:
+
+- the ffmpeg commands that create the comparison inputs from `testsrc2`
+  (2 hours, 640×360, 30fps, H.264; 2 minutes, 1280×720, H.264/AAC; and a
+  portrait input with rotation metadata for checking hover);
+- the steps to measure the same inputs at the commit before the change and
+  after it;
+- the table format for recording the results in the PR;
+- the steps to put the created inputs in `.local/preview/media/`, restart
+  `task preview`, and check hover (the built-in samples of `task preview` are
+  20 seconds or shorter, and it ingests that folder at every start).
+
+**Rationale**: Requirement 6 asks for "a procedure that measures before and
+after on the same input and environment", and that only means something if it
+measures the production generation code itself (`GeneratePreview`). Written in
+Go, the same procedure measures wall-clock time on Windows too. The parent
+Issue's OOM happened on Linux, so measuring peak memory on Linux is enough to
+show acceptance criterion 1. It also matches the repository rule (Taskfile.yml:
+involved processing goes into a Go program under scripts/).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Only a shell and `/usr/bin/time -v` procedure in the how-to | Rejected: unusable on Windows, and copying the ffmpeg arguments into the how-to drifts from the production code |
+| `go test -bench` | Rejected: cannot report the peak memory of child processes |
+| Add a measurement hook to `GeneratePreview` | Rejected: leaves an argument in production code that exists only for measurement |
