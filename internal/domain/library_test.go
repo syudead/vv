@@ -6,12 +6,14 @@ import (
 	"testing"
 )
 
-// 並び順は contracts/list-api.md §3 の 13 通りだけを受け付ける。
+// 並び順は contracts/list-api.md §3 の 13 通りと、作成日（033）・お気に入りにした日時（035）の
+// 2 通りずつだけを受け付ける。
 func TestVideoSortValid(t *testing.T) {
 	for _, sort := range []VideoSort{
 		SortAddedAsc, SortAddedDesc, SortModifiedAsc, SortModifiedDesc,
 		SortTitleAsc, SortTitleDesc, SortDurationAsc, SortDurationDesc,
 		SortSizeAsc, SortSizeDesc, SortPlayedAsc, SortPlayedDesc, SortRandom,
+		SortCreatedAsc, SortCreatedDesc, SortFavoritedAsc, SortFavoritedDesc,
 	} {
 		if !sort.Valid() {
 			t.Errorf("%q が無効になった", sort)

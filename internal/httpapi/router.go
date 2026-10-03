@@ -230,6 +230,8 @@ type Options struct {
 	Tags Tags
 	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
 	Visibility Visibility
+	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
+	Favorites Favorites
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
 	Overrides OverrideStore
 	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
@@ -302,6 +304,7 @@ type server struct {
 	mediaFolders MediaFolders
 	tags         Tags
 	visibility   Visibility
+	favorites    Favorites
 	overrides    OverrideStore
 	thumbnails   ThumbnailPicker
 	versions     VersionStore
@@ -371,6 +374,7 @@ func NewRouter(opts Options) http.Handler {
 		mediaFolders:      opts.MediaFolders,
 		tags:              opts.Tags,
 		visibility:        opts.Visibility,
+		favorites:         opts.Favorites,
 		overrides:         opts.Overrides,
 		thumbnails:        opts.ThumbnailPicker,
 		versions:          opts.Versions,
@@ -509,7 +513,7 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && rest != "" && !strings.Contains(rest, "/")
 		}
 	case http.MethodPut:
-		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/settings/transcoding" {
+		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {

@@ -113,8 +113,8 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 
 // parseIDsQuery は「すべて選択」の経路（listLibraryIds）のパラメータを
 // 検査して問い合わせにする。誤りなら 400 を書いて false を返す。
-func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64) (domain.VideoQuery, bool) {
-	query := domain.VideoQuery{}
+func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64, favorite *bool) (domain.VideoQuery, bool) {
+	query := domain.VideoQuery{FavoriteOnly: favorite != nil && *favorite}
 	filters, ok := s.parseListFilters(w, listFilterParams{watch: watch, playable: playable})
 	if !ok {
 		return domain.VideoQuery{}, false
@@ -129,14 +129,18 @@ func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen
 	return query, true
 }
 
-// writeVideoIDs は「すべて選択」の id を応答に書く。
-func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64) {
+// writeVideoIDs は「すべて選択」の id を応答に書く。groups はグループの項目で、
+// 無ければ省く（specs/035-favorites/contracts/screen-api.md §3）。
+func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64, groups []gen.LibraryGroupIds) {
 	if ids == nil {
 		ids = []int64{}
 	}
 	payload := gen.VideoIdsResponse{Ids: ids}
 	if len(missingTagIDs) > 0 {
 		payload.MissingTagIds = &missingTagIDs
+	}
+	if len(groups) > 0 {
+		payload.Groups = &groups
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)

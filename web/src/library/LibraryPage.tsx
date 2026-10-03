@@ -21,7 +21,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import { itemKey } from "../api/libraryItems";
+import { groupRef, itemKey } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -59,6 +59,18 @@ import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
 import LibraryToolbar from "./LibraryToolbar";
+import {
+  emptySelection,
+  favoriteTargets,
+  fromSelectAll,
+  type LibrarySelection,
+  reconcileGroups,
+  sameSelection,
+  setGroup,
+  setVideo,
+  toggleGroup,
+  toggleVideo,
+} from "./selection";
 import SelectionBar from "./SelectionBar";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
 import {
@@ -86,7 +98,7 @@ export default function LibraryPage() {
   // 含めない。useListCriteria の画面固有の
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
-  const { query, watch, playable, sort } = criteria;
+  const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
   // タグの操作の関数とカードの memo を保つ。ゲストはタグで絞り込めない（URL に残った
   // `tag` は useListCriteria が取り除く）。
@@ -137,6 +149,10 @@ export default function LibraryPage() {
   );
   const changePlayable = useCallback(
     (next: boolean) => update({ ...criteria, playable: next }),
+    [criteria, update],
+  );
+  const changeFavorite = useCallback(
+    (next: boolean) => update({ ...criteria, favorite: next }),
     [criteria, update],
   );
   const commitQuery = useCallback(
@@ -207,14 +223,21 @@ export default function LibraryPage() {
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
   useEffect(() => {
     resetPreview();
-  }, [items, playable, query, resetPreview, sort, view, watch, zoom]);
+  }, [favorite, items, playable, query, resetPreview, sort, view, watch, zoom]);
 
   // --- 選択 ---
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
-  // selectAllIds は直前の「すべて選択」（GET /api/library/ids）の応答の ids である。
-  // 選択がこれと同じ集合の間だけ「すべて選択」を押せなくする（ui-design.md
-  // 「Pressing and selection」。選んだ本数と total は数えるものが違うので比べない）。
-  const [selectAllIds, setSelectAllIds] = useState<ReadonlySet<number> | null>(null);
+  // 選択は動画の id の集合と、グループとして選んだグループ（フォルダとメンバー）を持つ
+  // （specs/035-favorites/research.md R-7）。タグ・公開・束ねる操作は id の集合を送り、
+  // 一括のお気に入りだけが選んだグループを `folders` として送る。
+  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+  const selectedIds = selection.ids;
+  // selectAllSelection は直前の「すべて選択」（GET /api/library/ids）の応答の ids と groups
+  // である。選択がこれと同じ（id の集合も選んだグループも）間だけ「すべて選択」を押せなく
+  // する（ui-design.md「Pressing and selection」、035 ui-design.md「Selection bar」。選んだ
+  // 本数と total は数えるものが違うので比べない）。
+  const [selectAllSelection, setSelectAllSelection] = useState<LibrarySelection | null>(
+    null,
+  );
   // 「すべて選択」の要求の間だけ true（下の selectAll が立てる）。
   const [selectingAll, setSelectingAll] = useState(false);
   // 「すべて選択」の進行中の要求を、手動の選択操作や条件の変化が起きたら
@@ -229,15 +252,12 @@ export default function LibraryPage() {
     selectAllSeq.current += 1;
     setSelectingAll(false);
   }, []);
+  // メンバーを 1 本でも外すと、そのグループはグループとしては選ばれていない扱いになる
+  // （selection.ts の removeIds）。
   const changeSelection = useCallback(
     (id: number, selected: boolean) => {
       invalidateSelectAll();
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        if (selected) next.add(id);
-        else next.delete(id);
-        return next;
-      });
+      setSelection((current) => setVideo(current, id, selected));
     },
     [invalidateSelectAll],
   );
@@ -248,64 +268,53 @@ export default function LibraryPage() {
   const toggleSelection = useCallback(
     (id: number) => {
       invalidateSelectAll();
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
+      setSelection((current) => toggleVideo(current, id));
     },
     [invalidateSelectAll],
   );
-  // グループのカードのチェックは、全メンバー（videoIds）を選択に入れる・外す
-  // （specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+  // グループのカードのチェックは、全メンバー（videoIds）を選択に入れる・外し、
+  // グループとして覚える（specs/017-folder-groups/ui-design.md「Pressing and selection」、
+  // 035 research.md R-7）。
   const changeGroupSelection = useCallback(
-    (ids: readonly number[], selected: boolean) => {
+    (group: LibraryGroup, selected: boolean) => {
       invalidateSelectAll();
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        for (const id of ids) {
-          if (selected) next.add(id);
-          else next.delete(id);
-        }
-        return next;
-      });
+      setSelection((current) =>
+        setGroup(
+          current,
+          { folder: groupRef(group), videoIds: group.videoIds },
+          selected,
+        ),
+      );
     },
     [invalidateSelectAll],
   );
   // 選択中にグループのカードのタグを押したときの切り替え。全メンバーが選択に
-  // 入っていれば外し、そうでなければ入れる。
+  // 入っていれば外し、そうでなければグループとして選ぶ。
   const toggleGroupSelection = useCallback(
-    (ids: readonly number[]) => {
+    (group: LibraryGroup) => {
       invalidateSelectAll();
-      setSelectedIds((current) => {
-        const next = new Set(current);
-        const all = ids.length > 0 && ids.every((id) => current.has(id));
-        for (const id of ids) {
-          if (all) next.delete(id);
-          else next.add(id);
-        }
-        return next;
-      });
+      setSelection((current) =>
+        toggleGroup(current, { folder: groupRef(group), videoIds: group.videoIds }),
+      );
     },
     [invalidateSelectAll],
   );
   const clearSelection = useCallback(() => {
     invalidateSelectAll();
-    setSelectedIds(new Set());
+    setSelection(emptySelection);
     // 選択が消えたら、前の「すべて選択」の応答はもう比べない。条件が変わった後に
     // 同じ id を手で選び直しても、読んでいない項目が残りうるので押せるままにする
     // （ui-design.md「Pressing and selection」）。
-    setSelectAllIds(null);
+    setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
   // --- 「すべて選択」 ---
-  // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。選択は常に id の
-  // 集合として持つ。
+  // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
+  // 選んだグループにする（035 research.md R-7）。
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, tag: tagIds })
+    listLibraryIds({ query, watch, playable, favorite, tag: tagIds })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -325,9 +334,9 @@ export default function LibraryPage() {
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
         }
-        const selected = new Set(response.ids);
-        setSelectedIds(selected);
-        setSelectAllIds(selected);
+        const selected = fromSelectAll(response.ids, response.groups ?? []);
+        setSelection(selected);
+        setSelectAllSelection(selected);
       })
       .catch((failure: unknown) => {
         if (selectAllSeq.current !== seq) return;
@@ -336,7 +345,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [apply, playable, query, tagIds, toast, watch]);
+  }, [apply, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -360,6 +369,13 @@ export default function LibraryPage() {
   // まだ読み込んでいない id まで巻き込んで削ってしまっていた（B1）。条件
   // （検索語・視聴状態・再生可否・タグ）が変わったときの解除は、下の
   // conditionsSignature の効果が別に担う。
+
+  // 選択を残したまま一覧を取り直したとき（取り込みの完了など）、選んだグループが
+  // もうグループでなくなっていたりメンバーが変わっていたりすれば、読み込んだ項目に
+  // 合わせて選んだグループだけを直す（selection.ts の reconcileGroups）。id は削らない。
+  useEffect(() => {
+    setSelection((current) => reconcileGroups(current, items));
+  }, [items]);
 
   // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する
   // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない
@@ -540,12 +556,10 @@ export default function LibraryPage() {
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const allSelected = useMemo(
-    () =>
-      selectAllIds !== null &&
-      selectAllIds.size === selectedIds.size &&
-      Array.from(selectedIds).every((id) => selectAllIds.has(id)),
-    [selectAllIds, selectedIds],
+    () => selectAllSelection !== null && sameSelection(selectAllSelection, selection),
+    [selectAllSelection, selection],
   );
+  const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
@@ -579,7 +593,7 @@ export default function LibraryPage() {
           tags={group.tags}
           selectionMode={selectionMode}
           onPress={pressTag}
-          onToggleSelection={() => toggleGroupSelection(group.videoIds)}
+          onToggleSelection={() => toggleGroupSelection(group)}
         />
       ) : undefined,
     [pressTag, selectionMode, toggleGroupSelection, view],
@@ -626,6 +640,8 @@ export default function LibraryPage() {
           onWatchChange={changeWatch}
           playable={playable}
           onPlayableChange={changePlayable}
+          favorite={favorite}
+          onFavoriteChange={changeFavorite}
           canClear={conditioned}
           onClear={clearAll}
           view={view}
@@ -714,6 +730,7 @@ export default function LibraryPage() {
                   {owner && <th className="w-10" />}
                   <th className="w-32 py-2" />
                   <th className="py-2 pr-4 font-medium">{t.library.columns.title}</th>
+                  {owner && <th className="w-8 py-2" />}
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
                   <th className="w-20 py-2 pr-4 text-right font-medium">
                     {t.library.columns.duration}
@@ -754,6 +771,8 @@ export default function LibraryPage() {
           count={selectedIds.size}
           allSelected={allSelected}
           selectedIds={selectedIdsArray}
+          favoriteVideoIds={favoriteSelection.videoIds}
+          favoriteFolders={favoriteSelection.folders}
           selectingAll={selectingAll}
           onSelectAll={selectAll}
           onClear={clearSelection}

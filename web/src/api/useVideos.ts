@@ -2,12 +2,13 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
-import type { TagRef } from "./client";
+import type { FolderRef, TagRef } from "./client";
+import { subscribeFavorites, subscribeFavoritesStale } from "./favorites";
 import { folderRefKey, groupRef } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
 import { useGroupRefresh } from "./useGroupRefresh";
-import { useItemRefresh } from "./useItemRefresh";
+import { type UncertainReason, useItemRefresh } from "./useItemRefresh";
 import { useVideoPages } from "./useVideoPages";
 import { subscribeVideoTags } from "./videoTagsEvents";
 import { criteriaKey, type VideosCriteria, type VideosSource } from "./videosCriteria";
@@ -101,6 +102,9 @@ export function useVideos(
   // 当たるグループを取り直す（fetchPage。Devin の指摘、PR 357）。
   const progressChangedWhileLoading = useRef(new Set<number>());
 
+  // ページの取得中にお気に入りを付け外したグループのフォルダである（下の subscribeFavorites）。
+  const favoriteFoldersChangedWhileLoading = useRef(new Map<string, FolderRef>());
+
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
   // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
   useEffect(
@@ -161,6 +165,8 @@ export function useVideos(
     idleWaiters,
     uncertain,
     staleNotices,
+    markUncertain,
+    settleUncertainReason,
     notifyIfIdle,
     refreshItems,
     refreshProcessingItems,
@@ -181,7 +187,10 @@ export function useVideos(
   useEffect(() => {
     const waiters = idleWaiters.current;
     const pending = uncertain.current;
-    const unsubscribe = subscribeVideoVisibilityStale((videoIds) => {
+    // お気に入りの付け外しが一部の動画にしか反映されなかったときも同じに取り直す
+    // （specs/035-favorites/research.md R-6）。
+    // 理由ごとに分けて覚え、全件に反映された結果はその理由だけを確かにする。
+    const onStale = (reason: UncertainReason) => (videoIds: readonly number[]) => {
       const targets = new Set(videoIds);
       staleNotices.current += 1;
       const notice = staleNotices.current;
@@ -190,25 +199,28 @@ export function useVideos(
         // 現れる対象は取り直し、現れない対象はそこで uncertain から外す（fetchPage）。
         for (const id of targets) {
           changedWhileLoading.current.add(id);
-          pending.set(id, notice);
+          markUncertain(id, reason, notice);
         }
       }
       const shown = shownVideoIds(itemsRef.current).filter((id) => targets.has(id));
       if (!pageLoading.current && shown.length === 0) return undefined;
-      for (const id of shown) pending.set(id, notice);
+      for (const id of shown) markUncertain(id, reason, notice);
       const settled = new Promise<void>((resolve) => {
         waiters.push(resolve);
       });
       refreshItems(shown);
       notifyIfIdle();
       return settled;
-    });
+    };
+    const unsubscribeVisibility = subscribeVideoVisibilityStale(onStale("visibility"));
+    const unsubscribeFavorites = subscribeFavoritesStale(onStale("favorite"));
     return () => {
-      unsubscribe();
+      unsubscribeVisibility();
+      unsubscribeFavorites();
       pending.clear();
       for (const resolve of waiters.splice(0)) resolve();
     };
-  }, [idleWaiters, notifyIfIdle, refreshItems, staleNotices, uncertain]);
+  }, [idleWaiters, markUncertain, notifyIfIdle, refreshItems, staleNotices, uncertain]);
 
   // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
   // 表示中の項目へ反映する（issue 305）。取得の間に反映した切り替えは、
@@ -216,18 +228,55 @@ export function useVideos(
   // drainRefreshQueue）。件数の上限で記録を落とさない（PR 328）。
   //
   // 全件に反映された切り替えの結果は、その動画の確かな公開状態でもある。
-  // 一部反映の取り直しに失敗して uncertain に残った動画も、これで確かになり、
-  // 控えを取れるようになる（Devin の指摘、PR 338）。同じ動画への切り替えは
+  // 一部反映の取り直しに失敗して uncertain に残った動画も、公開状態については
+  // これで確かになり、ほかの理由が無ければ控えを取れるようになる（Devin の指摘、PR 338）。同じ動画への切り替えは
   // visibility が要求の通し番号で順序を保ち、後から送った一部反映より古い
   // 全件反映の結果はここに届かない（recordApplied・recordUncertain の applied）。
   useEffect(
     () =>
       subscribeVideoVisibility((videoIds, isPublic) => {
-        for (const id of videoIds) uncertain.current.delete(id);
+        settleUncertainReason(videoIds, "visibility");
         dispatch({ type: "visibility", videoIds, isPublic });
         notifyIfIdle();
       }),
-    [notifyIfIdle, uncertain],
+    [notifyIfIdle, settleUncertainReason],
+  );
+
+  // お気に入りの付け外しの結果も一覧を読み直さずに反映する（specs/035-favorites/research.md R-6）。
+  // 動画の項目は `favorite` をその場で差し替える。メンバーの付け外しはグループの値を
+  // 変えないので、グループは取り直さない（要件 4）。付け外したグループの項目は
+  // `GET /api/folders/{rootId}/group` で取り直し、404 なら外す（useGroupRefresh）。
+  // お気に入りのみで絞った一覧や「Date favorited」の並びでも、その場では外さず並べ替えない。
+  //
+  // 確かに反映された動画は、一部反映の取り直しに失敗してお気に入りの印が確かでなかった
+  // ものでも、これで確かになる（公開状態の理由は残す。useItemRefresh の uncertain）。
+  // ページの取得中に付け外したグループは、取得中のページに初めて現れることがあるので
+  // 覚えておき、ページを反映したあとで取り直す（useVideoPages の fetchPage）。
+  // 反映の数が 0 の（もうグループでない）フォルダも、取り直して 404 で外すために覚える。
+  useEffect(
+    () =>
+      subscribeFavorites(({ videoIds, folders, favorite }) => {
+        if (videoIds.length > 0) {
+          settleUncertainReason(videoIds, "favorite");
+          dispatch({ type: "favorite", videoIds, favorite });
+          notifyIfIdle();
+        }
+        if (folders.length === 0) return;
+        if (pageLoading.current) {
+          for (const folder of folders) {
+            favoriteFoldersChangedWhileLoading.current.set(folderRefKey(folder), folder);
+          }
+        }
+        const wanted = new Set(folders.map(folderRefKey));
+        refreshGroups(
+          itemsRef.current.flatMap((item) =>
+            item.kind === "group" && wanted.has(folderRefKey(groupRef(item.group)))
+              ? [groupRef(item.group)]
+              : [],
+          ),
+        );
+      }),
+    [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
 
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
@@ -314,6 +363,7 @@ export function useVideos(
     pageLoading,
     changedWhileLoading,
     progressChangedWhileLoading,
+    favoriteFoldersChangedWhileLoading,
     tagsChangedWhileLoading,
     groups,
     itemRefresh,

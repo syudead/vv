@@ -72,7 +72,7 @@ func representativeLocationExpr(alias, expr string, audience domain.Audience) st
 }
 
 // libraryItemsCTE は項目の表 `items(group_id, id, path, added_at, mtime, created_at, title_key,
-// duration_ms, size_bytes, played_at, watch_state)` と、見せてよいグループのメンバー
+// duration_ms, size_bytes, played_at, favorited_at, watch_state)` と、見せてよいグループのメンバー
 // `gm(group_id, video_id, position)`・グループとして見せるもの `live(group_id)` を
 // 定める with 句と、その引数を返す。group_id は動画の項目では NULL である。id は
 // 動画の項目では動画の id、グループの項目では見せてよいメンバーのうち並びで最初の
@@ -81,6 +81,10 @@ func representativeLocationExpr(alias, expr string, audience domain.Audience) st
 // 全メンバーが当たったグループ（whole）だけをグループの項目にし、一部だけが当たった
 // グループの当たったメンバーは、グループに属さない動画と同じく動画の項目にする
 // （specs/027-partial-group-search/contracts/library-api.md §1）。
+//
+// お気に入りのみ（favoriteOnly）は項目を作る段で効かせる（specs/035-favorites/data-model.md §5、
+// research.md R-3）。グループの項目はフォルダがお気に入りのものだけにし、お気に入りでない
+// whole のグループのメンバーは動画の項目に戻したうえで、動画の項目はお気に入りの動画だけにする。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
@@ -103,6 +107,17 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	progressJoin := func(videoAlias string) string {
 		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
 			videoAlias + `.content_key <> ''`
+	}
+	// 動画の項目にしない（グループの項目に入る）whole のグループ。お気に入りのみなら、
+	// そのフォルダがお気に入りのものに限る。
+	wholeOwner := `gm join whole on whole.group_id = gm.group_id`
+	videoFavorite := ""
+	groupFavorite := ""
+	if spec.favoriteOnly {
+		wholeOwner += ` join folder_groups wg on wg.id = gm.group_id
+		join folder_favorites wf on wf.path = wg.path_key`
+		videoFavorite = ` and fav.content_key is not null`
+		groupFavorite = ` where ff.path is not null`
 	}
 	cte += `,
 	matched as (
@@ -136,21 +151,24 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
 			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
+			fav.favorited_at as favorited_at,
 			case when p.completed = 1 then 'watched'
 				when p.content_key is null or p.position_ms = 0 then 'unwatched'
 				else 'inProgress' end as watch_state
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
-		where not exists (select 1 from gm join whole on whole.group_id = gm.group_id where gm.video_id = matched.video_id)` +
-		videoPlayable + `
+		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
+		where not exists (select 1 from ` + wholeOwner + ` where gm.video_id = matched.video_id)` +
+		videoPlayable + videoFavorite + `
 		union all
 		select g.id, (select f.video_id from gm f where f.group_id = g.id order by f.position limit 1), null,
 			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
-			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at),
+			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), max(ff.favorited_at),
 			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
 				when sum(mv.completed = 1) = count(*) then 'watched'
 				else 'inProgress' end
 		from mv join folder_groups g on g.id = mv.group_id
+		left join folder_favorites ff on ff.path = g.path_key` + groupFavorite + `
 		group by g.id)`
 	return cte, args
 }
@@ -176,6 +194,7 @@ var itemOrderValues = map[domain.VideoSort]string{
 	domain.SortDurationAsc: `duration_ms`, domain.SortDurationDesc: `duration_ms`,
 	domain.SortSizeAsc: `size_bytes`, domain.SortSizeDesc: `size_bytes`,
 	domain.SortPlayedAsc: `played_at`, domain.SortPlayedDesc: `played_at`,
+	domain.SortFavoritedAsc: `favorited_at`, domain.SortFavoritedDesc: `favorited_at`,
 	domain.SortRandom: shuffleFunction + `(?, id)`,
 }
 
@@ -205,7 +224,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	page, err := listLibraryPageTx(ctx, tx, listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
 	if err != nil {
@@ -412,8 +431,9 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		progressColumns = `p.position_ms, p.duration_ms, p.completed, p.updated_at`
 		progressJoin = ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	}
-	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, `+progressColumns+`
+	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, ff.path is not null, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id
+		left join folder_favorites ff on ff.path = g.path_key
 		join videos on videos.id = m.video_id`+progressJoin+`
 		where g.id in (select value from json_each(?)) and `+visibleVideoCondition("videos", audience)+`
 		order by g.id, m.position`, string(encoded))
@@ -424,6 +444,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 
 	type collected struct {
 		path, name string
+		favorite   bool
 		members    []domain.Video
 		progress   []*domain.Progress
 	}
@@ -432,17 +453,18 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	for rows.Next() {
 		var groupID int64
 		var path, name string
+		var favorite bool
 		var position, duration, updatedAt sql.NullInt64
 		var completed sql.NullBool
 		video, err := scanVideo(extraScanner{rows: rows, extra: []any{
-			&groupID, &path, &name, &position, &duration, &completed, &updatedAt,
+			&groupID, &path, &name, &favorite, &position, &duration, &completed, &updatedAt,
 		}})
 		if err != nil {
 			return nil, fmt.Errorf("cannot read group members: %w", err)
 		}
 		group := groups[groupID]
 		if group == nil {
-			group = &collected{path: path, name: name}
+			group = &collected{path: path, name: name, favorite: favorite}
 			groups[groupID] = group
 			order = append(order, groupID)
 		}
@@ -461,29 +483,34 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	}
 	for _, id := range order {
 		group := groups[id]
-		out[id] = domain.NewLibraryGroup(group.path, group.name, group.members, group.progress)
+		item := domain.NewLibraryGroup(group.path, group.name, group.members, group.progress)
+		item.Favorite = group.favorite
+		out[id] = item
 	}
 	return out, nil
 }
 
-// LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目の、
-// 動画の id とグループの全メンバーの id を、ページングせずに返す
-// （GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2）。並びは
-// 決めない。「すべて選択」は所有者だけの操作なので、所有者として読む。
-func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
+// LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目を、
+// 動画の項目の id と、グループの項目ごとのフォルダとメンバーの id に分けて、ページングせずに
+// 返す（GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2、
+// specs/035-favorites/data-model.md §5）。動画の項目とグループの並びは決めず、グループの
+// メンバーはグループの中の並びで返す。登録フォルダも同じスナップショットから読んで返す。
+// 「すべて選択」は所有者だけの操作なので、所有者として読む。
+func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (domain.LibrarySelection, []int64, error) {
+	selection := domain.LibrarySelection{VideoIDs: []int64{}, Groups: []domain.LibraryGroupSelection{}}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot start reading ids: %w", err)
+		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot start reading ids: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
 	if err != nil {
-		return nil, nil, err
+		return domain.LibrarySelection{}, nil, err
 	}
 	cte, args := libraryItemsCTE(listSpec{
 		scope: libraryScope(domain.AudienceOwner), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 	})
 	watchClause, watchArgs := itemWatchCondition(q.Watch)
 	and := ""
@@ -493,32 +520,53 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]i
 	args = append(args, watchArgs...)
 	args = append(args, watchArgs...)
 	rows, err := tx.QueryContext(ctx, cte+`
-		select id from items where group_id is null`+and+`
+		select null as group_id, null as path, id as video_id, null as position from items
+		where group_id is null`+and+`
 		union all
-		select gm.video_id from items join gm on gm.group_id = items.group_id
-		where items.group_id is not null`+and, args...)
+		select items.group_id, g.path, gm.video_id, gm.position from items
+		join gm on gm.group_id = items.group_id
+		join folder_groups g on g.id = items.group_id
+		where items.group_id is not null`+and+`
+		order by group_id, position`, args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
+		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	ids := []int64{}
+	groupIndex := map[int64]int{}
 	for rows.Next() {
+		var groupID, position sql.NullInt64
+		var path sql.NullString
 		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, nil, fmt.Errorf("cannot read ids: %w", err)
+		if err := rows.Scan(&groupID, &path, &id, &position); err != nil {
+			return domain.LibrarySelection{}, nil, fmt.Errorf("cannot read ids: %w", err)
 		}
-		ids = append(ids, id)
+		if !groupID.Valid {
+			selection.VideoIDs = append(selection.VideoIDs, id)
+			continue
+		}
+		index, ok := groupIndex[groupID.Int64]
+		if !ok {
+			index = len(selection.Groups)
+			groupIndex[groupID.Int64] = index
+			selection.Groups = append(selection.Groups, domain.LibraryGroupSelection{Path: path.String, VideoIDs: []int64{}})
+		}
+		selection.Groups[index].VideoIDs = append(selection.Groups[index].VideoIDs, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
+		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
+		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot read ids: %w", err)
+	}
+	roots, err := listMediaFolders(ctx, tx)
+	if err != nil {
+		return domain.LibrarySelection{}, nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("cannot finish reading ids: %w", err)
+		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot finish reading ids: %w", err)
 	}
-	return ids, missingTagIDs, nil
+	selection.Roots = roots
+	return selection, missingTagIDs, nil
 }
 
 // FolderGroup はフォルダ dir（絶対パス）のグループを、絞り込みに関係なく見せてよい

@@ -28,6 +28,7 @@ import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
+import FavoriteToggle from "../videoList/FavoriteToggle";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { technicalSummary } from "./properties";
@@ -226,7 +227,12 @@ function DateFact({
  * 追加日のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
  * （specs/030-video-versions/ui-design.md「Versions fact」）。
  *
- * 開けなかったとき・サムネイルを変えられなかったときは、1 行目のすぐ下に 1 行だけ出す。
+ * 所有者には、右端の操作の先頭（撮るボタンの左）にお気に入りの付け外しを置く
+ * （specs/035-favorites/ui-design.md「Video page」）。ゲストの応答には `favorite` が無く、出ない。
+ * 付け外しは `onFavorite` に任せ、それが取り直しまで終えたら送信中を解く。
+ *
+ * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
+ * 1 行目のすぐ下に 1 行だけ出す。
  * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
 export default function VideoFacts({
@@ -235,6 +241,7 @@ export default function VideoFacts({
   capture,
   onChanged,
   onStale,
+  onFavorite,
   versions,
 }: {
   video: Video;
@@ -243,6 +250,8 @@ export default function VideoFacts({
   capture?: ThumbnailCapture;
   onChanged?: (video: Video, mark: DetailMark) => void;
   onStale?: () => void;
+  /** お気に入りを付け外しし、動画を取り直したら解決する。失敗は reject で返す。 */
+  onFavorite?: (favorite: boolean) => Promise<void>;
   /** バージョンの一覧から別のバージョンへ移るときの値と、集まりが変わったときの動作。 */
   versions?: {
     navigation: VersionsNavigation;
@@ -260,9 +269,12 @@ export default function VideoFacts({
   const technical = technicalSummary(video);
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const versionCount = video.versions?.count ?? 0;
+  const favorite = owner && onFavorite !== undefined ? video.favorite : undefined;
 
   const copyPath = () => {
     if (location === undefined) return;
+    // 前の失敗の行は、次の操作で消す（specs/035-favorites/ui-design.md「Video page」）。
+    setFailure(null);
     copyText(location.path, {
       onCopied: () => toast(t.player.facts.pathCopied),
       onFailed: () => toast(t.player.facts.copyFailed),
@@ -322,8 +334,24 @@ export default function VideoFacts({
             />
           )}
         </ul>
-        {(location !== undefined || (owner && capture !== undefined)) && (
+        {(location !== undefined ||
+          (owner && capture !== undefined) ||
+          favorite !== undefined) && (
           <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
+            {favorite !== undefined && (
+              <FavoriteToggle
+                variant="page"
+                favorite={favorite}
+                label={t.player.facts.favorite}
+                onToggle={async () => {
+                  setFailure(null);
+                  // 塗りは取り直した `favorite` で確かめる（R-6、033「Refresh after edits」）。
+                  // 取り直しが終わるまで送信中のままにし、前の状態から重ねて送らない。
+                  await onFavorite?.(!favorite);
+                }}
+                onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
+              />
+            )}
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}

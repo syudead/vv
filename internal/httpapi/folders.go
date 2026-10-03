@@ -147,7 +147,8 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		return
 	}
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
-	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Watch: query.Watch, Sort: query.Sort}) {
+	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
+	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Watch: query.Watch, Sort: query.Sort, FavoriteOnly: query.FavoriteOnly}) {
 		return
 	}
 	if params.Limit != nil {

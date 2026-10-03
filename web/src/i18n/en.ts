@@ -184,7 +184,7 @@ const errorReasons = {
       ? "Select fewer tags."
       : `Select between 1 and ${tagCount(limit)}.`,
   guest_filter_not_allowed:
-    "Sign in to filter by watch status or tags, or to sort by last played.",
+    "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.",
   invalid_cursor: "The list changed while loading. Reload it.",
   invalid_folder_path: "That folder path isn't valid.",
   relative_directory_path: "The path must be absolute.",
@@ -339,6 +339,7 @@ export const en = {
         watched: "Watched",
       },
       playableOnly: "Playable only",
+      favoritesOnly: "Favorites only",
       clear: "Clear filters",
     },
     sort: {
@@ -352,6 +353,7 @@ export const en = {
         duration: "Length",
         size: "File size",
         played: "Recently played",
+        favorited: "Date favorited",
         random: "Random",
       },
       wording: {
@@ -361,6 +363,7 @@ export const en = {
         duration: { asc: "shortest first", desc: "longest first" },
         size: { asc: "smallest first", desc: "largest first" },
         played: { asc: "least recently played", desc: "most recently played" },
+        favorited: { asc: "oldest first", desc: "newest first" },
       },
       asc: "Ascending",
       desc: "Descending",
@@ -374,6 +377,10 @@ export const en = {
       select: (title: string) => `Select "${title}"`,
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
+      // お気に入りの付け外しの読み上げ名と、変えられなかったときのトースト
+      // （specs/035-favorites/ui-design.md「Words」）。
+      favorite: (title: string) => `Favorite "${title}"`,
+      favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -432,6 +439,7 @@ export const en = {
     group: {
       count: videos,
       select: (name: string) => `Select the group "${name}"`,
+      favorite: (name: string) => `Favorite group "${name}"`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -464,6 +472,12 @@ export const en = {
       loading: "Loading…",
       summaryFailed: "Couldn't load the tags",
       nothingToRemove: "The selected videos have no tags that can be removed",
+      favorite: "Favorite",
+      addFavorites: "Add to favorites",
+      removeFavorites: "Remove from favorites",
+      favoritesAdded: (count: number) => `Added ${items(count)} to favorites`,
+      favoritesRemoved: (count: number) => `Removed ${items(count)} from favorites`,
+      favoritesFailed: (reason: string) => `Couldn't change the favorites: ${reason}`,
       visibility: "Visibility",
       makePublic: "Make public",
       makePrivate: "Make private",
@@ -935,6 +949,10 @@ export const en = {
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",
       thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
+      // 右端の一群の先頭のお気に入りの付け外しと、変えられなかった 1 行
+      // （specs/035-favorites/ui-design.md「Words」「Video page」）。
+      favorite: "Favorite",
+      favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       technical: "Technical details",
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",

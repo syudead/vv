@@ -34,6 +34,8 @@ export interface LibraryToolbarProps {
   onWatchChange: (value: WatchFilter) => void;
   playable: boolean;
   onPlayableChange: (value: boolean) => void;
+  favorite: boolean;
+  onFavoriteChange: (value: boolean) => void;
   canClear: boolean;
   onClear: () => void;
   view: ViewMode;
@@ -58,6 +60,8 @@ export default function LibraryToolbar({
   onWatchChange,
   playable,
   onPlayableChange,
+  favorite,
+  onFavoriteChange,
   canClear,
   onClear,
   view,
@@ -79,6 +83,8 @@ export default function LibraryToolbar({
         onWatchChange={onWatchChange}
         playable={playable}
         onPlayableChange={onPlayableChange}
+        favorite={favorite}
+        onFavoriteChange={onFavoriteChange}
         canClear={canClear}
         onClear={onClear}
       />

@@ -714,6 +714,36 @@ describe("list API client", () => {
     });
   });
 
+  it("sends favorite=true and the favorited sorts to all four lists only when favorite is true", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(() =>
+        Promise.resolve(jsonResponse({ items: [], total: 0, ids: [] })),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await listVideos({ favorite: true, sort: "favoritedDesc" });
+    await listLibrary({ favorite: true, sort: "favoritedAsc" });
+    await listLibraryIds({ favorite: true });
+    await listFolderVideos({ folder: { rootId: 3, path: "" }, favorite: true });
+    await listVideos({ favorite: false });
+    await listLibraryIds({ favorite: false });
+
+    const urls = fetch.mock.calls.map(
+      ([input]) => new URL(String(input), "http://localhost"),
+    );
+    expect(urls.map((url) => url.searchParams.get("favorite"))).toEqual([
+      "true",
+      "true",
+      "true",
+      "true",
+      null,
+      null,
+    ]);
+    expect(urls[0]?.searchParams.get("sort")).toBe("favoritedDesc");
+    expect(urls[1]?.searchParams.get("sort")).toBe("favoritedAsc");
+  });
+
   it("omits playable when it is false", async () => {
     const fetch = stubFetch();
     await listVideos({ playable: false });

@@ -48,6 +48,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     shuffle,
     changeWatch,
     changePlayable,
+    changeFavorite,
     commitQuery,
     clearAll,
     changeZoom: saveZoom,
@@ -74,6 +75,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       query: criteria.query,
       watch: criteria.watch,
       playable: criteria.playable,
+      favorite: criteria.favorite,
       sort: criteria.sort,
       seed: criteria.seed,
       scope,
@@ -343,6 +345,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
           onWatchChange={changeWatch}
           playable={criteria.playable}
           onPlayableChange={changePlayable}
+          favorite={criteria.favorite}
+          onFavoriteChange={changeFavorite}
           canClear={hasConditions(criteria)}
           onClear={clearAll}
           zoom={zoom}

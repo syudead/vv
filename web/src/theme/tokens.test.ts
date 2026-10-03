@@ -119,6 +119,12 @@ describe("contrast", () => {
     // 失効の窓の対象）（specs/026-external-api/ui-design.md「Colour」）。
     ["fg-muted", "field", 4.5],
     ["warning", "field", 4.5],
+    // お気に入りのオンのハートの塗り: 行・再生画面の active の面・サムネイルの無いカード・一覧の面
+    // （specs/035-favorites/ui-design.md「Colour」）。
+    ["favorite", "surface", 4.5],
+    ["favorite", "accent-soft", 4.5],
+    ["favorite", "navbar", 4.5],
+    ["favorite", "bg", 4.5],
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {

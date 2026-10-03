@@ -35,6 +35,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertVideoBundleInvariant(t, db)
 		assertVersionCandidateInvariant(t, db)
 		assertTentativeTagInvariant(t, db)
+		assertFavoriteInvariant(t, db)
 	})
 	return db
 }
@@ -323,5 +324,48 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 			v.gotContainer, v.wantContainer,
 			v.gotPlayable, v.wantPlayable,
 			v.gotReason, v.wantReason)
+	}
+}
+
+// assertFavoriteInvariant はお気に入りの不変条件を確かめる（specs/035-favorites/data-model.md §1）。
+// video_favorites に空の content_key の行は無く、folder_favorites.path は domain.FolderKey(path) と
+// 等しい（整えた鍵しか書かない）。
+func assertFavoriteInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name in ('video_favorites', 'folder_favorites')`,
+	).Scan(&present); err != nil {
+		t.Fatalf("お気に入りの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present < 2 {
+		return
+	}
+
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from video_favorites where content_key = ''`).Scan(&count); err != nil {
+		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("video_favorites に空の content_key の行が %d 行ある", count)
+	}
+
+	rows, err := db.sql.Query(`select path from folder_favorites`)
+	if err != nil {
+		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
+		}
+		if key := domain.FolderKey(path); key != path {
+			t.Errorf("folder_favorites の path %q が FolderKey %q と違う", path, key)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
 	}
 }

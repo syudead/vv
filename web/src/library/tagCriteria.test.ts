@@ -12,7 +12,14 @@ import {
 } from "./tagCriteria";
 
 function baseCriteria(extra: Partial<ListCriteria> = {}): ListCriteria {
-  return { query: "", watch: "all", playable: false, sort: "addedDesc", ...extra };
+  return {
+    query: "",
+    watch: "all",
+    playable: false,
+    favorite: false,
+    sort: "addedDesc",
+    ...extra,
+  };
 }
 
 describe("parseTagParam", () => {

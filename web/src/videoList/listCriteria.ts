@@ -21,6 +21,11 @@ export interface ListCriteria {
   watch: WatchFilter;
   /** true なら再生できるものだけにする。 */
   playable: boolean;
+  /**
+   * true ならお気に入りの項目だけにする（URL は `fav=1`。所有者だけ。
+   * specs/035-favorites/ui-design.md「Filter menu」）。
+   */
+  favorite: boolean;
   sort: VideoSort;
   /** sort=random の並びを決める値。ほかの並び順では常に undefined。 */
   seed?: number;
@@ -39,7 +44,15 @@ const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "
 
 /** SortKind は並べ替えの種類である（向きを除いたもの）。 */
 export type SortKind =
-  "added" | "modified" | "created" | "title" | "duration" | "size" | "played" | "random";
+  | "added"
+  | "modified"
+  | "created"
+  | "title"
+  | "duration"
+  | "size"
+  | "played"
+  | "favorited"
+  | "random";
 
 export type SortDirection = "asc" | "desc";
 
@@ -53,7 +66,7 @@ export interface SortKindInfo {
 }
 
 /**
- * sortKinds はメニューに並べる8つの種類である。順はメニューの順と同じ。表示名は
+ * sortKinds はメニューに並べる9つの種類である。順はメニューの順と同じ。表示名は
  * sortKindLabel で描画のたびにカタログから引く。
  */
 export const sortKinds: readonly SortKindInfo[] = [
@@ -64,6 +77,12 @@ export const sortKinds: readonly SortKindInfo[] = [
   { kind: "duration", initial: "durationDesc", asc: "durationAsc", desc: "durationDesc" },
   { kind: "size", initial: "sizeDesc", asc: "sizeAsc", desc: "sizeDesc" },
   { kind: "played", initial: "playedDesc", asc: "playedAsc", desc: "playedDesc" },
+  {
+    kind: "favorited",
+    initial: "favoritedDesc",
+    asc: "favoritedAsc",
+    desc: "favoritedDesc",
+  },
   { kind: "random", initial: "random" },
 ];
 
@@ -188,6 +207,7 @@ export function parseListCriteria(
       query: normalizeQuery(params.get("q") ?? ""),
       watch,
       playable: params.get("playable") === "1",
+      favorite: params.get("fav") === "1",
       sort,
       ...(seed === undefined ? {} : { seed }),
     },
@@ -199,10 +219,10 @@ export function parseListCriteria(
 /**
  * serializeListCriteria は条件を URL のクエリにする。
  *
- * watch=all と playable の偽は書かない。sort は書く — 省略すると「端末に
+ * watch=all と playable・favorite の偽は書かない。sort は書く — 省略すると「端末に
  * 保存した並び順」の意味になり、並べ替えを変えたあとに戻るで前の並びに
  * 戻れなくなるからである（list-url.md §1）。seed は random のときだけ書く。
- * 順は q・watch・playable・sort・seed で固定し、同じ条件は同じ文字列になる。
+ * 順は q・watch・playable・fav・sort・seed で固定し、同じ条件は同じ文字列になる。
  */
 export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
   const params = new URLSearchParams();
@@ -210,6 +230,7 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
   if (query !== "") params.set("q", query);
   if (criteria.watch !== "all") params.set("watch", criteria.watch);
   if (criteria.playable) params.set("playable", "1");
+  if (criteria.favorite) params.set("fav", "1");
   params.set("sort", criteria.sort);
   if (criteria.sort === "random" && criteria.seed !== undefined) {
     params.set("seed", String(criteria.seed));
@@ -218,35 +239,58 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
 }
 
 /**
- * ownerOnlySort は、所有者の再生位置に依る並び順（最近再生した順）かを返す。
- * ゲストには出さず、サーバーも受け付けない
- * （specs/016-single-account-auth/contracts/guest-api.md §3）。
+ * ownerOnlySortKinds は所有者だけの並べ替えの種類である。最近再生した順は再生位置に、
+ * お気に入りにした日時はお気に入りに依る。ゲストには出さず、サーバーも受け付けない
+ * （specs/016-single-account-auth/contracts/guest-api.md §3、
+ * specs/035-favorites/ui-design.md「Guest degradation」）。
  */
+export const ownerOnlySortKinds: readonly SortKind[] = ["played", "favorited"];
+
+/** ownerOnlySort は、所有者だけの並び順（最近再生した順・お気に入りにした日時）かを返す。 */
 export function ownerOnlySort(sort: VideoSort): boolean {
-  return sort === "playedAsc" || sort === "playedDesc";
+  return (
+    sort === "playedAsc" ||
+    sort === "playedDesc" ||
+    sort === "favoritedAsc" ||
+    sort === "favoritedDesc"
+  );
 }
 
 /**
- * guestListCriteria は、ゲストが使えない条件（視聴状態・最近再生した順）を既定に
- * 丸める（guest-api.md §3）。丸めるものが無ければ同じ値を返す。
+ * guestListCriteria は、ゲストが使えない条件（視聴状態・お気に入りのみ・所有者だけの
+ * 並び順）を既定に丸める（guest-api.md §3）。丸めるものが無ければ同じ値を返す。
  */
 export function guestListCriteria(criteria: ListCriteria): ListCriteria {
-  if (criteria.watch === "all" && !ownerOnlySort(criteria.sort)) return criteria;
+  if (criteria.watch === "all" && !criteria.favorite && !ownerOnlySort(criteria.sort)) {
+    return criteria;
+  }
   return {
     ...criteria,
     watch: "all",
+    favorite: false,
     sort: ownerOnlySort(criteria.sort) ? DEFAULT_SORT : criteria.sort,
   };
 }
 
-/** hasConditions は「条件を解除」で外せる条件（検索語・視聴状態・再生可否）があるか。 */
+/**
+ * hasConditions は「条件を解除」で外せる条件（検索語・視聴状態・再生可否・
+ * お気に入りのみ）があるか。
+ */
 export function hasConditions(criteria: ListCriteria): boolean {
-  return criteria.query !== "" || criteria.watch !== "all" || criteria.playable;
+  return (
+    criteria.query !== "" ||
+    criteria.watch !== "all" ||
+    criteria.playable ||
+    criteria.favorite
+  );
 }
 
-/** clearConditions は検索語・視聴状態・再生可否を外す。並べ替えと seed は残す。 */
+/**
+ * clearConditions は検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えと
+ * seed は残す。
+ */
 export function clearConditions(criteria: ListCriteria): ListCriteria {
-  return { ...criteria, query: "", watch: "all", playable: false };
+  return { ...criteria, query: "", watch: "all", playable: false, favorite: false };
 }
 
 /** criteriaKey は条件を比較・依存配列に使う文字列にする。 */

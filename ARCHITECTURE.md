@@ -43,7 +43,9 @@ thumbnails, playback progress, and the SPA embedded from `web/dist`.
 The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
-watch-state and playable filters, fifteen sort orders and a shuffle `seed`.
+watch-state, playable and favorites-only filters, seventeen sort orders
+(including the time a video was made a favorite, with non-favorites last in
+either direction) and a shuffle `seed`.
 `internal/httpapi` validates those parameters at the entry and hands them to
 the store as `domain.VideoQuery` / `domain.FolderVideoQuery`; `total` counts
 every match after all of them apply, and each item carries the folder of the
@@ -75,9 +77,18 @@ tag filter every group matches in full. A group's values (count, total
 duration and size, latest dates, watch state and the member to open, decided by
 `domain.GroupWatch` and `domain.GroupOpenIndex`) come from all of its members,
 and the playable filter, watch filter, sort and `total` apply to items (a group
-is playable when any member is). `GET /api/library/ids`
-returns the ids of the listed video items plus every member of listed groups
-(owner only), and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+is playable when any member is). The favorites-only filter applies while items
+are built: a group is an item only when its folder is a favorite, and the
+favorite members of a matching group that is not a favorite are listed as video
+items; the favorited-time sorts use the video's or the group folder's own
+favorite time
+([specs/035-favorites/data-model.md](specs/035-favorites/data-model.md) §5).
+`GET /api/library/ids` returns the ids of the listed video items plus every
+member of listed groups (owner only; the store returns them as
+`domain.LibrarySelection`, video items and each group's folder and members
+apart; the response also lists each group item's folder and members as `groups`,
+[specs/035-favorites/contracts/screen-api.md](specs/035-favorites/contracts/screen-api.md) §3),
+and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
 groups built from public members only; a group with one public member is listed
 as that video, and "all members" counts public members only
 ([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md),
@@ -362,7 +373,9 @@ rebuildable from registered media folders by scanning and processing the files a
 `video_tags`, and `rejected_tag_names`, `specs/031-tentative-tags/data-model.md` §1),
 `public_videos`, `video_overrides` (owner-set display names and representative thumbnail
 positions, `specs/029-video-overrides/data-model.md` §1), `video_edits` (when the owner last
-edited a video's information in vv, `specs/033-video-dates/data-model.md` §1), the version bundles
+edited a video's information in vv, `specs/033-video-dates/data-model.md` §1), the favorites
+(`video_favorites` keyed by the user key, `folder_favorites` keyed by the `domain.FolderKey`
+of a group's folder, `specs/035-favorites/data-model.md` §1), the version bundles
 (`video_bundles`, `video_bundle_members`) and the "different video" judgements
 (`video_version_dismissals`, `specs/030-video-versions/data-model.md` §1), `folder_group_overrides`,
 `account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
@@ -495,6 +508,15 @@ compile:
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
   SQL connection, and it advances the edited time of the content keys whose flag actually
   changed in the same transaction.
+- `FavoriteStore` — marking or unmarking a set of video ids (resolved to the
+  currently-registered videos' user keys, like the public flag) and group folders (kept only
+  while the folder is currently a group) as favorites in one transaction, returning how many
+  distinct video ids and folders it applied to (`specs/035-favorites/data-model.md` §4). Like
+  `VisibilityStore`, it holds only the SQL connection and publishes no domain event; it does
+  not advance the edited time. Every read that returns a video carries `Video.Favorite`, and
+  every group read carries `LibraryGroup.Favorite`; the two are independent. Same-path
+  successions and bundling move `video_favorites` with the other user data, while
+  `folder_favorites` follows no rename or move of a folder.
 - `OverrideStore` — an owner's display name for a video (resolved to its content key,
   like tag attachment), one video or an external-API batch in one transaction, together
   with rewriting the `title_key` and `search_key` of every location of that content
@@ -574,9 +596,9 @@ get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
 Guest-too requests without a valid session are handled as a guest: handlers pass the
 audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
 from them) appear, hidden videos and folders answer the same `404` as missing ones,
-guest responses omit `location`, `progress`, `probeError`, `probeErrorCode` and `rootPath` and carry
-empty `tags`, and list conditions that depend on owner data (`watch`, played-at
-sorts, `tag`) are `400`
+guest responses omit `location`, `progress`, `probeError`, `probeErrorCode`, `favorite` and `rootPath` and carry
+empty `tags`, and list conditions that depend on owner data (`watch`, played-at and
+favorited-at sorts, `tag`, `favorite`) are `400`
 ([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
 Thumbnails, seek previews and hover previews are served `private, no-cache` with an
 `ETag` (`304` on a match) to owners and guests alike, so neither a shared cache nor
@@ -590,7 +612,12 @@ flag through `VisibilityStore`; after the switch commits, making videos private 
 the in-flight guest stream, live-transcode and hover-preview responses of their content
 keys, which a second in-memory ledger (`visibility.go`) tracks, while owner responses
 continue. Switches run one at a time from commit to cut-off, so a later re-publish
-cannot be cut off by an earlier switch to private. `POST /api/auth/setup` creates the first account and logs in,
+cannot be cut off by an earlier switch to private. `PUT /api/favorites` (owner only)
+marks or unmarks videos and group folders as favorites through `FavoriteStore` and sends
+no `/api/events` notice; `Video.favorite` and `LibraryGroup.favorite` appear only in owner
+responses
+([specs/035-favorites/contracts/screen-api.md](specs/035-favorites/contracts/screen-api.md)).
+`POST /api/auth/setup` creates the first account and logs in,
 `POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
 `GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
 ([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
