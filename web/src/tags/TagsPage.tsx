@@ -14,6 +14,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -28,15 +29,14 @@ import {
   batchTags,
   confirmTag,
   createTag,
-  currentTags,
   deleteTag,
   forgetRejectedTagName,
   listRejectedTagNamePage,
+  listTagPage,
   maxTagBatch,
-  refreshTags,
   rejectTag,
   renameTag,
-  subscribeTags,
+  tagPageLimit,
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
@@ -59,10 +59,27 @@ import MergeTagDialog from "./MergeTagDialog";
 import RejectedNames from "./RejectedNames";
 import RejectTagDialog from "./RejectTagDialog";
 import SynonymsDialog from "./SynonymsDialog";
-import { sortTags, type TagListSort } from "./tagListOrder";
+import type { TagListSort } from "./tagListOrder";
+import {
+  addTag,
+  appendUniqueTags,
+  confirmTags,
+  insertionIndex,
+  matchesTagQuery,
+  removeTags,
+  replaceTag,
+  type TagPageRows,
+  type TagRowsQuery,
+} from "./tagPageRows";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import TagSearchBox from "./TagSearchBox";
+import {
+  TagListChanged,
+  TagLoadingMore,
+  TagLoadMoreFailed,
+  TagStaleList,
+} from "./TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
 import { TagCompactSort, TagSortMenu } from "./TagSortControls";
 
@@ -75,6 +92,19 @@ function isTagNotTentative(error: unknown): boolean {
 }
 
 type FocusTarget = "rename" | "synonyms" | "name" | "menu";
+
+/**
+ * MoreState は一覧の末尾の続きの状態である（specs/036-tag-admin-scale/ui-design.md
+ * 「Loading more」）。同時に 1 つだけで、`inconsistent` は続きの応答の `totalAll` が
+ * 画面の値と違ったとき（research.md R-11）。
+ */
+type MoreState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "failed"; error: UiText }
+  | { kind: "inconsistent" };
+
+const moreIdle: MoreState = { kind: "idle" };
 
 /**
  * ROW_ESTIMATE は、まだ描いていない行の高さの見積り（px）である。行（`py-2` と
@@ -125,11 +155,12 @@ interface RowHandlers {
  * management page」）。一覧・検索・作成・改名・削除・統合・シノニムの登録と
  * 解除を持つ。
  *
- * タグの一覧は共有の保持（`web/src/api/tags.ts`）を使う。作成・改名・削除の直後は、サーバーが返した最新の1件を
- * 今の一覧へその場で重ねる（もう1回 `GET /api/tags` を送らない。`createTag`・
- * `renameTag`・`deleteTag` 自体が共有の保持をバックグラウンドで取り直すので、
- * 二重の取得にはならない）。タグがもう無いとき（`tag_not_found`）だけ、
- * ほかのタグも変わっているかもしれないので `reload` で取り直す。
+ * タグの一覧は共有の保持（`web/src/api/tags.ts` の `getTags`）を使わず、検索・
+ * 絞り込み・並び順の条件ごとに `GET /api/tags` から 100 件ずつ受け、スクロールに
+ * 合わせて続きを読む（specs/036-tag-admin-scale/data-model.md §4、research.md
+ * R-1・R-11）。1 件とまとめての操作の直後は一覧を取り直さず、読み込んだ行の中で
+ * 書き換える（R-12、`tagPageRows.ts`）。タグがもう無いとき（`tag_not_found`、
+ * `notFoundIds`）だけ、ほかのタグも変わっているかもしれないので先頭から取り直す。
  *
  * 仮のタグ（specs/031-tentative-tags/ui-design.md「Tag management page」）:
  * 「Tentative only」の絞り込み（この画面の状態で URL には載せない）、仮の行の
@@ -138,8 +169,16 @@ interface RowHandlers {
  */
 export default function TagsPage() {
   const toast = useToast();
-  const [tags, setTags] = useState<Tag[] | undefined>(currentTags());
+  /** page は読み込んだ行と件数である。先頭のページをまだ一度も受けていなければ undefined。 */
+  const [page, setPage] = useState<TagPageRows | undefined>(undefined);
+  /**
+   * loadError は先頭のページの失敗である。一覧を持っていなければ失敗の表示、
+   * 持っていれば帯の中の「Stale list」の箱になる（ui-design.md「Stale list」）。
+   */
   const [loadError, setLoadError] = useState<UiText | null>(null);
+  /** firstPending は先頭のページを待っているかである。 */
+  const [firstPending, setFirstPending] = useState(false);
+  const [more, setMore] = useState<MoreState>(moreIdle);
   const [search, setSearch] = useState("");
   const [tentativeOnly, setTentativeOnly] = useState(false);
   const [unusedOnly, setUnusedOnly] = useState(false);
@@ -150,7 +189,12 @@ export default function TagsPage() {
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
 
-  const [renamingId, setRenamingId] = useState<number | null>(null);
+  /**
+   * renaming は改名中のタグ（始めた時点の状態）である。条件を変えて読み直した行に
+   * 無くても、これを並び順の位置に差し込んで残す（ui-design.md「Row checkbox」）。
+   */
+  const [renaming, setRenaming] = useState<Tag | null>(null);
+  const renamingId = renaming?.id ?? null;
   const [renamePending, setRenamePending] = useState(false);
   const [renameError, setRenameError] = useState<TagFieldError | null>(null);
 
@@ -166,7 +210,12 @@ export default function TagsPage() {
     sources: readonly Tag[];
     fromSelection: boolean;
   } | null>(null);
-  const [synonymsTagId, setSynonymsTagId] = useState<number | null>(null);
+  /**
+   * synonymsTag はシノニムの窓のタグ（最新の状態）である。窓の中の操作で今の条件に
+   * 合わなくなり読み込んだ行から外れても、窓は開いたままにする。
+   */
+  const [synonymsTag, setSynonymsTag] = useState<Tag | null>(null);
+  const synonymsTagId = synonymsTag?.id ?? null;
   /** シノニムの窓を開いたときの並び。閉じたときに行が外れていればここから次の行を探す。 */
   const synonymsOrderRef = useRef<readonly Tag[]>([]);
 
@@ -191,6 +240,7 @@ export default function TagsPage() {
   } | null>(null);
   const [bulkError, setBulkError] = useState<UiText | null>(null);
   const selectAllRef = useRef<HTMLButtonElement | null>(null);
+  const selectAllLimitId = useId();
   const barConfirmRef = useRef<HTMLButtonElement | null>(null);
   const barMoreRef = useRef<HTMLButtonElement | null>(null);
 
@@ -254,11 +304,11 @@ export default function TagsPage() {
   }, []);
 
   /**
-   * filtersRef は今描いている検索と「Tentative only」「Unused only」である。要求の応答を
+   * filtersRef は今描いている「Tentative only」「Unused only」である。要求の応答を
    * 待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
    * 閉じ込めた（押した時点の）値ではなくこれで決める。
    */
-  const filtersRef = useRef({ query: "", tentativeOnly: false, unusedOnly: false });
+  const filtersRef = useRef({ tentativeOnly: false, unusedOnly: false });
 
   /**
    * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
@@ -450,144 +500,288 @@ export default function TagsPage() {
     if (rejectedInFlight.current !== null) reloadRejectedNames();
   }
 
-  const reload = useCallback(() => {
-    setLoadError(null);
-    // 一覧への反映は下の mount の subscribeTags に一本化し、ここでは
-    // `refreshTags` の戻り値を直接 `setTags` へは使わない。この呼び出しが
-    // 別の（後から始まった）取り直しに追い越されると、`refreshTags` の
-    // generation ガードはこの呼び出し自身の取得結果ではなく、その時点の
-    // `held`（追い越した側がまだ終わっていなければ、さらに古い値）を返す。
-    // 直前に作成したタグをその場で重ねた直後にこれが起きると、その重ねを
-    // 古い一覧で上書きしてしまう（Devin の指摘4）。`subscribeTags` の通知は
-    // 常に「実際に held を更新した、最新の取得」でしか呼ばれないので、
-    // そちらだけを信頼する。
-    return refreshTags()
-      .then(() => undefined)
-      .catch((failure: unknown) => {
-        // 既に一覧を持っているときは、その一覧を残したまま理由だけを控える
-        // （読み込み失敗の空の状態は、一覧をまだ一度も取れていないときだけ
-        // 出す。N6: 直前の操作は成功しているので、一覧を空白にしない）。
+  /**
+   * pageRef・moreRef・firstPendingRef・loadErrorRef は、要求の応答のあとや
+   * 続きのきっかけで今の状態を読むための控えである。描くたびに差し替える。
+   */
+  const pageRef = useRef<TagPageRows | undefined>(page);
+  const moreRef = useRef<MoreState>(more);
+  const firstPendingRef = useRef(firstPending);
+  const loadErrorRef = useRef<UiText | null>(loadError);
+  useLayoutEffect(() => {
+    pageRef.current = page;
+    moreRef.current = more;
+    firstPendingRef.current = firstPending;
+    loadErrorRef.current = loadError;
+  });
+
+  /**
+   * generationRef は先頭のページの要求の通し番号である。条件を変えるたびに進め、
+   * 古い条件の応答（先頭のページも続きも）を捨てる（research.md R-11）。
+   */
+  const generationRef = useRef(0);
+  const firstAbortRef = useRef<AbortController | null>(null);
+  const moreAbortRef = useRef<AbortController | null>(null);
+  /** queryRef は最後に読み直しを始めた条件である。「Retry」「Reload」が同じ条件で読む。 */
+  const queryRef = useRef<TagRowsQuery & { search: string }>({
+    query: "",
+    search: "",
+    tentativeOnly: false,
+    unusedOnly: false,
+    sort: "name",
+  });
+
+  /**
+   * scrollListToTop は、一覧の先頭が帯の下に隠れていれば先頭まで戻す（ui-design.md
+   * 「Band」）。条件を変えて先頭のページが届いたときと「新しいタグ」で使う。
+   */
+  function scrollListToTop() {
+    const listTop = listBoxRef.current?.getBoundingClientRect().top;
+    if (listTop !== undefined && listTop < stuckBottom) {
+      window.scrollTo({ top: Math.max(0, window.scrollY + listTop - stuckBottom) });
+    }
+  }
+  const scrollListToTopRef = useRef(scrollListToTop);
+  useLayoutEffect(() => {
+    scrollListToTopRef.current = scrollListToTop;
+  });
+
+  /**
+   * loadFirst は今の条件（`queryRef`）で先頭のページを読み直す。進行中の要求
+   * （先頭のページと続き）を打ち切り、世代を進めて古い応答を捨てる。届くまで前の
+   * 行と件数を残し（`Skeleton` に戻さない）、届いたら差し替えて一覧の先頭へ戻す。
+   * 失敗したら、一覧を持っていなければ失敗の表示、持っていれば「Stale list」の箱に
+   * する（data-model.md §4「条件」「読み込み失敗」）。選択はここでは変えない
+   * （条件の変更と「Reload」は呼ぶ側が空にし、`notFoundIds` のあとの取り直しは
+   * 読み直した行に無い id だけが外れる）。
+   */
+  const loadFirst = useCallback((): Promise<void> => {
+    firstAbortRef.current?.abort();
+    moreAbortRef.current?.abort();
+    generationRef.current += 1;
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    firstAbortRef.current = controller;
+    const { search: searched, ...query } = queryRef.current;
+    firstPendingRef.current = true;
+    setFirstPending(true);
+    moreRef.current = moreIdle;
+    setMore(moreIdle);
+    return listTagPage(
+      {
+        q: query.query === "" ? undefined : searched.trim(),
+        tentative: query.tentativeOnly,
+        unused: query.unusedOnly,
+        sort: query.sort,
+        limit: tagPageLimit,
+      },
+      controller.signal,
+    ).then(
+      (result) => {
+        if (generation !== generationRef.current) return;
+        setPage({
+          rows: result.items,
+          total: result.total,
+          totalAll: result.totalAll,
+          nextCursor: result.nextCursor,
+          boundary: result.nextCursor === undefined ? undefined : result.items.at(-1),
+          query,
+        });
+        setLoadError(null);
+        setFirstPending(false);
+        scrollListToTopRef.current();
+      },
+      (failure: unknown) => {
+        if (generation !== generationRef.current) return;
+        setFirstPending(false);
         setLoadError(errorText(failure));
-        return undefined;
-      });
+      },
+    );
   }, []);
+
+  /**
+   * loadMore は続きの 1 ページを `nextCursor` で読み、`id` の重複を捨てて末尾に足す。
+   * 続きを読んでいる間・失敗や食い違いを出している間・先頭のページを待つ間・
+   * 「Stale list」の間は読まない（同時に 1 つだけ。持っているカーソルが前の条件の
+   * ものかもしれない）。応答の `totalAll` が画面の値と違えば、行は残して続きを止め、
+   * 「一覧が変わった」を出す（research.md R-11）。
+   */
+  const loadMore = useCallback(() => {
+    const current = pageRef.current;
+    if (current?.nextCursor === undefined) return;
+    if (moreRef.current.kind !== "idle") return;
+    if (firstPendingRef.current || loadErrorRef.current !== null) return;
+    const generation = generationRef.current;
+    const controller = new AbortController();
+    moreAbortRef.current = controller;
+    moreRef.current = { kind: "loading" };
+    setMore(moreRef.current);
+    const { query } = current;
+    listTagPage(
+      {
+        q: query.query === "" ? undefined : queryRef.current.search.trim(),
+        tentative: query.tentativeOnly,
+        unused: query.unusedOnly,
+        sort: query.sort,
+        cursor: current.nextCursor,
+        limit: tagPageLimit,
+      },
+      controller.signal,
+    ).then(
+      (result) => {
+        if (generation !== generationRef.current) return;
+        if (result.totalAll !== pageRef.current?.totalAll) {
+          moreRef.current = { kind: "inconsistent" };
+          setMore(moreRef.current);
+          return;
+        }
+        setPage((latest) =>
+          latest === undefined
+            ? latest
+            : {
+                ...latest,
+                rows: appendUniqueTags(latest.rows, result.items),
+                total: result.total,
+                nextCursor: result.nextCursor,
+                boundary:
+                  result.nextCursor === undefined ? undefined : result.items.at(-1),
+              },
+        );
+        moreRef.current = moreIdle;
+        setMore(moreIdle);
+      },
+      (failure: unknown) => {
+        if (generation !== generationRef.current) return;
+        moreRef.current = { kind: "failed", error: errorText(failure) };
+        setMore(moreRef.current);
+      },
+    );
+  }, []);
+
+  /** retryMore は続きの失敗の「Retry」で、同じカーソルで読み直す。 */
+  function retryMore() {
+    moreRef.current = moreIdle;
+    setMore(moreIdle);
+    loadMore();
+  }
+
+  /**
+   * reloadList は「一覧が変わった」の「Reload」で、選択を空にして先頭から読み直す
+   * （ui-design.md「Loading more」）。
+   */
+  function reloadList() {
+    setSelected(new Set());
+    void loadFirst();
+  }
+
+  /** reload は、もう無いタグに当たったときなどに先頭から取り直す。選択は残る。 */
+  const reload = loadFirst;
 
   useEffect(() => {
     reloadRejectedNames();
   }, [reloadRejectedNames]);
 
-  useEffect(() => {
-    let alive = true;
-    void reload();
-    const unsubscribe = subscribeTags((loaded) => {
-      if (alive) setTags(loaded);
-    });
-    return () => {
-      alive = false;
-      unsubscribe();
-    };
-  }, [reload]);
-
-  // 一覧は選んだ並び順（名前・本数・作った日。同値は名前の自然順）で並べる
-  // （specs/036-tag-admin-scale/data-model.md §4）。作成・改名でその場に重ねた
-  // 1件も、ここで並びの中の位置へ入る。絞り込みと検索は並びを変えないので、
-  // 並べてから絞っても「絞ってから並べる」と同じ結果になる。
-  const sorted = useMemo(() => {
-    if (tags === undefined) return [];
-    return sortTags(tags, sort);
-  }, [tags, sort]);
+  useEffect(
+    () => () => {
+      firstAbortRef.current?.abort();
+      moreAbortRef.current?.abort();
+    },
+    [],
+  );
 
   function changeSort(next: TagListSort) {
     setSort(next);
     writeTagListPreferences({ sort: next });
   }
 
-  // 検索はライブラリでタグを探すときと同じ照合形（`foldForMatch`）で照らす
-  // （specs/036-tag-admin-scale/research.md R-3）。タグごとの照合形はタグの
-  // 配列が変わったときだけ作り直し、打鍵ごとには作らない（data-model.md §4）。
+  // 検索はサーバーが全部のタグに掛ける（research.md R-1）。照合形は、空白だけの検索を
+  // 絞り込み中と数えないためと、同じ照合形になる打ち直しで読み直さないために使う。
   const normalizedQuery = foldForMatch(search).trim();
-  const searchKeys = useMemo(
-    () => new Map(sorted.map((tag) => [tag, tagSearchKeys(tag)])),
-    [sorted],
-  );
-  const filtered = useMemo(
-    () =>
-      sorted.filter((tag) =>
-        matchesFilters(
-          tag,
-          searchKeys.get(tag)!,
-          normalizedQuery,
-          tentativeOnly,
-          unusedOnly,
-        ),
-      ),
-    [sorted, searchKeys, normalizedQuery, tentativeOnly, unusedOnly],
-  );
+  const searchRef = useRef(search);
+  useLayoutEffect(() => {
+    searchRef.current = search;
+  });
+
+  // 検索・絞り込み・並び順のどれかが変わるたびに、選択を空にして先頭のページを読み
+  // 直す（data-model.md §4「条件」、ui-design.md「Controls」）。開いたときもここで読む。
+  useEffect(() => {
+    queryRef.current = {
+      query: normalizedQuery,
+      search: searchRef.current,
+      tentativeOnly,
+      unusedOnly,
+      sort,
+    };
+    setSelected((current) => (current.size === 0 ? current : new Set()));
+    void loadFirst();
+  }, [normalizedQuery, tentativeOnly, unusedOnly, sort, loadFirst]);
 
   useLayoutEffect(() => {
-    filtersRef.current = { query: normalizedQuery, tentativeOnly, unusedOnly };
-  }, [normalizedQuery, tentativeOnly, unusedOnly]);
+    filtersRef.current = { tentativeOnly, unusedOnly };
+  }, [tentativeOnly, unusedOnly]);
 
   /**
-   * shown は、その1件が今の検索と絞り込み（「Tentative only」「Unused only」）で
-   * 一覧に出るかである。要求の応答のあとで呼ぶので、`filtersRef` の今の値で決める。
+   * shown は、その1件が読み込んだ行の条件（検索と「Tentative only」「Unused only」）で
+   * 一覧に出るかである。要求の応答のあとで呼ぶので、`pageRef` の今の条件で決める。
    */
   function shown(tag: Tag): boolean {
-    const {
-      query,
-      tentativeOnly: onlyTentative,
-      unusedOnly: onlyUnused,
-    } = filtersRef.current;
-    return matchesFilters(tag, tagSearchKeys(tag), query, onlyTentative, onlyUnused);
+    const query = pageRef.current?.query;
+    return query === undefined || matchesTagQuery(tag, query);
   }
 
+  const rows = useMemo(() => page?.rows ?? [], [page]);
+
   /**
-   * visibleRows は実際に並べる行である。改名中の行は、検索・絞り込み・並び順を
-   * 変えて一致しなくなっても一覧から外さない（外すとその行が消え、打っている
-   * 途中の名前を失う）。`filtered` に無ければ `sorted` の並びのまま差し込む。
-   * 件数の行はこれを数えず、実際の一致件数（`filtered`）のまま見せる。
+   * visibleRows は実際に並べる行である。改名中の行は、条件を変えて読み直した行に
+   * 無くても一覧から外さない（外すとその行が消え、打っている途中の名前を失う）。
+   * 並び順の位置に差し込む。件数の行はこれを数えない。
    */
   const visibleRows = useMemo(() => {
-    if (renamingId === null) return filtered;
-    if (filtered.some((tag) => tag.id === renamingId)) return filtered;
-    const matched = new Set(filtered);
-    return sorted.filter((tag) => matched.has(tag) || tag.id === renamingId);
-  }, [filtered, sorted, renamingId]);
+    if (renaming === null || page === undefined) return rows;
+    if (rows.some((tag) => tag.id === renaming.id)) return rows;
+    const index = insertionIndex(rows, renaming, page.query.sort);
+    return [...rows.slice(0, index), renaming, ...rows.slice(index)];
+  }, [rows, page, renaming]);
 
   const visibleRowsRef = useRef<readonly Tag[]>(visibleRows);
   useLayoutEffect(() => {
     visibleRowsRef.current = visibleRows;
   }, [visibleRows]);
 
-  // 選択は見えている行の部分集合に保つ。検索・絞り込みを変えて見えなくなった行と、
-  // 改名中の行を外す。並び順だけの変更では行は見えたままなので残る
-  // （specs/036-tag-admin-scale/data-model.md §4「選択」）。
+  // 選択は読み込んだ行の部分集合に保つ。操作や取り直しで行から消えた id と、
+  // 改名中の行を外す（specs/036-tag-admin-scale/data-model.md §4「選択」）。条件の
+  // 変更では、読み直しを始めるときに空にする。
   useLayoutEffect(() => {
     setSelected((current) => {
       if (current.size === 0) return current;
-      const visible = new Set(visibleRows.map((tag) => tag.id));
+      const loaded = new Set(rows.map((tag) => tag.id));
       const next = new Set<number>();
       for (const id of current) {
-        if (visible.has(id) && id !== renamingId) next.add(id);
+        if (loaded.has(id) && id !== renamingId) next.add(id);
       }
       return next.size === current.size ? current : next;
     });
-  }, [visibleRows, renamingId]);
+  }, [rows, renamingId]);
 
   /**
-   * selectableCount は「見えているものをすべて選ぶ」の対象の数である。改名中の行は
-   * 入らない（ui-design.md「Count line」）。
+   * selectableCount は「読み込んだものをすべて選ぶ」の対象の数である。改名中の行は
+   * 入らない（ui-design.md「Count line」）。読み込んでいないタグは選ばない（要件 10）。
    */
   const selectableCount =
-    visibleRows.length -
-    (renamingId !== null && visibleRows.some((tag) => tag.id === renamingId) ? 1 : 0);
-  /** overLimit は見えている数がまとめての操作の上限を超えるかである。 */
-  const overLimit = visibleRows.length > maxTagBatch;
+    rows.length -
+    (renamingId !== null && rows.some((tag) => tag.id === renamingId) ? 1 : 0);
+  /**
+   * 上限 `maxTagBatch` は送る id の数に掛かる（research.md R-4）。先頭のチェックは
+   * 読み込んだ行の数で、まとめての操作は選んだ数で止める（ui-design.md「Count line」
+   * 「Enabled and disabled」）。
+   */
+  const selectAllOverLimit = rows.length > maxTagBatch;
+  const selectionOverLimit = selected.size > maxTagBatch;
   const selection = useMemo(() => {
     let tentative = false;
     let confirmed = false;
     if (selected.size > 0) {
-      for (const tag of visibleRows) {
+      for (const tag of rows) {
         if (!selected.has(tag.id)) continue;
         if (tag.tentative) tentative = true;
         else confirmed = true;
@@ -595,7 +789,7 @@ export default function TagsPage() {
       }
     }
     return { tentative, confirmed };
-  }, [selected, visibleRows]);
+  }, [selected, rows]);
   const selectAllState: boolean | "indeterminate" =
     selected.size === 0
       ? false
@@ -649,10 +843,30 @@ export default function TagsPage() {
     rangeExtractor,
     getItemKey,
   });
+  const virtualItems = virtualizer.getVirtualItems();
+
+  // 続きを読むきっかけ: 仮想化が描く最後の行が読み込んだ行の末尾から overscan 行
+  // 以内に入ったら、続きを 1 回要求する。操作で行が 1 つも残らなかったとき（描く行が
+  // 無い）も、ここで要求する（data-model.md §4「続きを読むきっかけ」、ui-design.md
+  // 「Loading more」）。読んでいる間・失敗・食い違いの間は `loadMore` が読まない。
+  const lastRendered = virtualItems.at(-1)?.index ?? -1;
+  const nextCursor = page?.nextCursor;
+  useEffect(() => {
+    if (nextCursor === undefined) return;
+    if (lastRendered >= visibleRows.length - ROW_OVERSCAN) loadMore();
+  }, [
+    lastRendered,
+    visibleRows.length,
+    nextCursor,
+    more,
+    firstPending,
+    loadError,
+    loadMore,
+  ]);
 
   // 一覧の上端は作成の行の有無やツールバーの折り返しで動くので、文書の
   // 大きさが変わるたびに測り直す。
-  const hasList = tags !== undefined && visibleRows.length > 0;
+  const hasList = page !== undefined && visibleRows.length > 0;
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!hasList || list === null) return;
@@ -745,14 +959,23 @@ export default function TagsPage() {
     into?.focus();
   }
 
-  const searching = normalizedQuery !== "";
-  const total = tags?.length ?? 0;
+  /**
+   * applied は読み込んだ行の条件である。件数の行と空の状態は、入力中の条件ではなく
+   * 届いた行の条件で決める（先頭のページを待つ間は前の行と件数を残す）。
+   */
+  const applied = page?.query;
+  const searching = applied !== undefined && applied.query !== "";
+  /** totalAll は全部のタグの数（読み込んでいないタグを含む）。 */
+  const totalAll = page?.totalAll ?? 0;
+  // 件数は応答の total・totalAll で出し、続きがあるときだけ読み込んだ数を添える。
+  // 差し込んで残した改名中の行は数えない（ui-design.md「Count line」）。
   const countText =
-    tags === undefined
+    page === undefined
       ? t.tags.loading
-      : searching || tentativeOnly || unusedOnly
-        ? t.tags.filteredCount(filtered.length, total)
-        : t.tags.count(total);
+      : (searching || page.query.tentativeOnly || page.query.unusedOnly
+          ? t.tags.filteredCount(page.total, page.totalAll)
+          : t.tags.count(page.totalAll)) +
+        (page.nextCursor === undefined ? "" : t.tags.loadedCount(page.rows.length));
 
   function openCreate() {
     // 改名の送信中は、その応答が届くまで新しく作成を始めない（B2 と同じ規則。
@@ -762,13 +985,10 @@ export default function TagsPage() {
     if (renamePending) return;
     // 作成の行はいつも一覧の先頭に入るので、一覧の先頭が帯の下に隠れていれば
     // 先に先頭まで戻す（見えない位置に入力を作らない。ui-design.md「Band」）。
-    const listTop = listBoxRef.current?.getBoundingClientRect().top;
-    if (listTop !== undefined && listTop < stuckBottom) {
-      window.scrollTo({ top: Math.max(0, window.scrollY + listTop - stuckBottom) });
-    }
+    scrollListToTop();
     setCreating(true);
     setCreateError(null);
-    setRenamingId(null);
+    setRenaming(null);
   }
 
   function clearSearch() {
@@ -782,7 +1002,7 @@ export default function TagsPage() {
    * 移す（031 の ui-design.md「Toolbar」）。
    */
   function toggleTentativeOnly() {
-    if (tentativeOnly && total === 0) {
+    if (tentativeOnly && totalAll === 0) {
       setTimeout(() => createButtonRef.current?.focus(), 0);
     }
     setTentativeOnly((value) => !value);
@@ -793,7 +1013,7 @@ export default function TagsPage() {
    * 規則（specs/036-tag-admin-scale/ui-design.md「Controls」）。
    */
   function toggleUnusedOnly() {
-    if (unusedOnly && total === 0) {
+    if (unusedOnly && totalAll === 0) {
       setTimeout(() => createButtonRef.current?.focus(), 0);
     }
     setUnusedOnly((value) => !value);
@@ -809,7 +1029,7 @@ export default function TagsPage() {
     const target = tentativeOnly ? tentativeButtonRef : unusedButtonRef;
     setUnusedOnly(false);
     setTentativeOnly(false);
-    setTimeout(() => (total === 0 ? createButtonRef : target).current?.focus(), 0);
+    setTimeout(() => (totalAll === 0 ? createButtonRef : target).current?.focus(), 0);
   }
 
   /**
@@ -821,7 +1041,7 @@ export default function TagsPage() {
     setTentativeOnly(false);
     setSearch("");
     setTimeout(
-      () => (total === 0 ? createButtonRef : searchInputRef).current?.focus(),
+      () => (totalAll === 0 ? createButtonRef : searchInputRef).current?.focus(),
       0,
     );
   }
@@ -833,7 +1053,7 @@ export default function TagsPage() {
   function showAllFromTentative() {
     setTentativeOnly(false);
     setTimeout(
-      () => (total === 0 ? createButtonRef : tentativeButtonRef).current?.focus(),
+      () => (totalAll === 0 ? createButtonRef : tentativeButtonRef).current?.focus(),
       0,
     );
   }
@@ -846,9 +1066,37 @@ export default function TagsPage() {
     setTentativeOnly(false);
     setSearch("");
     setTimeout(
-      () => (total === 0 ? createButtonRef : searchInputRef).current?.focus(),
+      () => (totalAll === 0 ? createButtonRef : searchInputRef).current?.focus(),
       0,
     );
+  }
+
+  /**
+   * replaceRow は書き換わったタグ 1 件を読み込んだ行へ反映する。書き換わる前の状態は
+   * 読み込んだ行（無ければ `before`）から取り、前後を今の条件に照らして件数を
+   * 数え直し、並び順の位置へ置き直すか取り除く（data-model.md §4「操作のあとの反映」）。
+   */
+  function replaceRow(updated: Tag, before?: Tag) {
+    setPage((current) => {
+      if (current === undefined) return current;
+      const previous = current.rows.find((item) => item.id === updated.id) ?? before;
+      return replaceTag(current, previous, updated);
+    });
+  }
+
+  /**
+   * removeRows はもう無いタグを読み込んだ行から取り除き、件数を減らす。消える前の
+   * 状態は読み込んだ行にあればそれを使う。
+   */
+  function removeRows(removed: readonly Tag[]) {
+    setPage((current) => {
+      if (current === undefined) return current;
+      const byId = new Map(current.rows.map((item) => [item.id, item]));
+      return removeTags(
+        current,
+        removed.map((item) => byId.get(item.id) ?? item),
+      );
+    });
   }
 
   async function submitCreate(name: string) {
@@ -856,7 +1104,9 @@ export default function TagsPage() {
     setCreatePending(true);
     try {
       const created = await createTag(name);
-      setTags((current) => (current === undefined ? [created] : [...current, created]));
+      // 今の条件に合えば並び順の位置へ置き、件数を数え直す（data-model.md §4
+      // 「操作のあとの反映」）。一覧は取り直さない。
+      setPage((current) => (current === undefined ? current : addTag(current, created)));
       setCreating(false);
       reloadRejectedNames();
       focusRow(created.id, "name");
@@ -873,10 +1123,8 @@ export default function TagsPage() {
     const order = visibleRows;
     try {
       const updated = await renameTag(tag.id, name);
-      setTags((current) =>
-        current?.map((item) => (item.id === updated.id ? updated : item)),
-      );
-      setRenamingId(null);
+      replaceRow(updated);
+      setRenaming(null);
       reloadRejectedNames();
       // 改名で確定になった仮のタグは「Tentative only」から外れる（031 の
       // ui-design.md「Toolbar」）。検索に一致しなくなったときも同じ扱い。
@@ -884,7 +1132,7 @@ export default function TagsPage() {
       else focusAfterRemoval(order, tag.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
-        setRenamingId(null);
+        setRenaming(null);
         toast(t.tags.gone);
         await reload();
         focusAfterRemoval(order, tag.id);
@@ -904,7 +1152,7 @@ export default function TagsPage() {
     setDeletePending(true);
     try {
       await deleteTag(target.id);
-      setTags((current) => current?.filter((item) => item.id !== target.id));
+      removeRows([target]);
       setDeletingTag(null);
       toast(t.tags.deleted(target.name));
       focusAfterRemoval(order, target.id);
@@ -935,9 +1183,7 @@ export default function TagsPage() {
     const order = visibleRows;
     try {
       const updated = await confirmTag(tag.id);
-      setTags((current) =>
-        current?.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      replaceRow(updated);
       toast(t.tags.confirmed(updated.name));
       if (shown(updated)) focusRow(updated.id, "rename");
       else focusAfterRemoval(order, updated.id);
@@ -965,7 +1211,7 @@ export default function TagsPage() {
     setRejectPending(true);
     try {
       await rejectTag(target.id);
-      setTags((current) => current?.filter((item) => item.id !== target.id));
+      removeRows([target]);
       setRejectingTag(null);
       toast(t.tags.rejected(target.name));
       reloadRejectedNames();
@@ -1039,16 +1285,17 @@ export default function TagsPage() {
     merged: Tag,
     sourceIds: readonly number[],
     notFoundIds: readonly number[],
+    target: Tag,
   ) {
     if (merging === null) return;
     const { sources, fromSelection } = merging;
     const order = visibleRows;
     const removed = new Set(sourceIds);
-    setTags((current) =>
-      current
-        ?.filter((item) => !removed.has(item.id))
-        .map((item) => (item.id === merged.id ? merged : item)),
-    );
+    // 統合元を取り除き、統合先を応答の tag で書き換える。読み込んでいない統合先は、
+    // 位置が読み込んだ範囲の中なら差し込む。統合の前の統合先（窓の候補）と応答を
+    // それぞれ今の条件に照らして件数を数え直す（data-model.md §4「操作のあとの反映」）。
+    removeRows(sources.filter((item) => removed.has(item.id)));
+    replaceRow(merged, target);
     if (fromSelection) setSelected(new Set());
     else setSelected((current) => withoutIds(current, removed));
     setMerging(null);
@@ -1080,7 +1327,7 @@ export default function TagsPage() {
   function staleMerge() {
     if (merging === null) return;
     const { sources, fromSelection } = merging;
-    const order = filtered;
+    const order = visibleRows;
     setMerging(null);
     toast(fromSelection ? t.tags.selection.stale : t.tags.gone);
     void reload().then(() => {
@@ -1113,40 +1360,53 @@ export default function TagsPage() {
   function cancelSynonyms() {
     if (synonymsTagId === null) return;
     const id = synonymsTagId;
-    setSynonymsTagId(null);
-    if (filtered.some((tag) => tag.id === id)) {
+    setSynonymsTag(null);
+    if (rows.some((tag) => tag.id === id)) {
       focusRow(id, "synonyms");
       return;
     }
-    const visibleIds = new Set(filtered.map((tag) => tag.id));
+    const loadedIds = new Set(rows.map((tag) => tag.id));
     const order = synonymsOrderRef.current;
     const gone = new Set(
-      order.filter((tag) => !visibleIds.has(tag.id)).map((tag) => tag.id),
+      order.filter((tag) => !loadedIds.has(tag.id)).map((tag) => tag.id),
     );
     focusAfterRemoval(order, id, gone);
   }
 
+  const synonymsTagRef = useRef<Tag | null>(synonymsTag);
+  useLayoutEffect(() => {
+    synonymsTagRef.current = synonymsTag;
+  });
+
   /**
    * updateSynonymsTag はシノニムの登録・解除・シノニム登録に伴う統合が
-   * 成功したときに、一覧の中のその1件を差し替える（`web/src/api/tags.ts` の
-   * 各関数がバックグラウンドで共有の一覧も取り直すが、ここではその結果を
-   * 待たずに画面へその場で反映する。作成・改名・削除と同じ扱い）。
+   * 成功したときに、読み込んだ行の中のその1件を差し替える（一覧は取り直さない。
+   * 作成・改名・削除と同じ扱い）。足したシノニムで検索に合うようになる・確定に
+   * なって「Tentative only」から外れることがあるので、今の条件に照らして置き直す。
    *
    * `removedId` は、シノニム登録に伴う統合（承諾したとき）でだけ渡す。統合元
-   * のタグは統合先のシノニムになって一覧から消えるので、そのタグを一覧から
-   * 取り除いてから統合先を差し替える。渡さなければ（素のシノニムの登録・
-   * 解除）何も取り除かない。取り除かないと、統合元がバックグラウンドの
-   * 取り直し（または、それが失敗すれば永久）まで一覧に残ってしまう。
+   * のタグは統合先のシノニムになって一覧から消えるので、そのタグを読み込んだ行
+   * から取り除いてから統合先を差し替える。読み込んでいない統合元は全部の数だけを
+   * 減らす（条件に合っていたかは分からない）。
    */
   function updateSynonymsTag(updated: Tag, removedId?: number) {
-    setTags((current) => {
+    const opened = synonymsTagRef.current;
+    setPage((current) => {
       if (current === undefined) return current;
-      const withoutRemoved =
-        removedId === undefined
-          ? current
-          : current.filter((item) => item.id !== removedId);
-      return withoutRemoved.map((item) => (item.id === updated.id ? updated : item));
+      let next = current;
+      if (removedId !== undefined) {
+        const source = next.rows.find((item) => item.id === removedId);
+        next =
+          source === undefined
+            ? { ...next, totalAll: Math.max(0, next.totalAll - 1) }
+            : removeTags(next, [source]);
+      }
+      const previous =
+        next.rows.find((item) => item.id === updated.id) ??
+        (opened?.id === updated.id ? opened : undefined);
+      return replaceTag(next, previous, updated);
     });
+    setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
     // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
     reloadRejectedNames();
   }
@@ -1154,18 +1414,21 @@ export default function TagsPage() {
   /**
    * removeSynonymFromTag は、1件のシノニムの解除が成功したときに呼ぶ。
    * `SynonymsDialog` に渡した `tag` の閉じ込め（古いかもしれない）ではなく、
-   * `setTags` の関数形で常に最新の一覧からその名前だけを取り除く。複数の
-   * シノニムをほぼ同時に解除したとき、それぞれの応答が別々にここへ届いても、
-   * 互いの結果を巻き戻さない（N5・並行する解除）。
+   * 関数形で常に最新の行からその名前だけを取り除く。複数のシノニムをほぼ同時に
+   * 解除したとき、それぞれの応答が別々にここへ届いても、互いの結果を巻き戻さない
+   * （N5・並行する解除）。解除で検索に合わなくなれば行から外す。
    */
   function removeSynonymFromTag(tagId: number, name: string) {
-    setTags((current) =>
-      current?.map((item) =>
-        item.id === tagId
-          ? { ...item, synonyms: item.synonyms.filter((s) => s !== name) }
-          : item,
-      ),
-    );
+    const without = (item: Tag): Tag => ({
+      ...item,
+      synonyms: item.synonyms.filter((synonym) => synonym !== name),
+    });
+    setPage((current) => {
+      const previous = current?.rows.find((item) => item.id === tagId);
+      if (current === undefined || previous === undefined) return current;
+      return replaceTag(current, previous, without(previous));
+    });
+    setSynonymsTag((current) => (current?.id === tagId ? without(current) : current));
   }
 
   /**
@@ -1175,15 +1438,16 @@ export default function TagsPage() {
   function staleSynonyms() {
     if (synonymsTagId === null) return;
     const id = synonymsTagId;
-    const order = filtered;
-    setSynonymsTagId(null);
+    const order = visibleRows;
+    setSynonymsTag(null);
     toast(t.tags.gone);
     void reload().then(() => focusAfterRemoval(order, id));
   }
 
   /**
-   * toggleSelectAll は件数の行の先頭のチェックである。空・中間なら見えている行の
-   * うち選べる行をすべて選び、全部なら選択を解く（要件 9、ui-design.md「Count line」）。
+   * toggleSelectAll は件数の行の先頭のチェックである。空・中間なら読み込んだ行の
+   * うち選べる行をすべて選び、全部なら選択を解く。読み込んでいないタグは選ばない
+   * （要件 10、ui-design.md「Count line」）。
    */
   function toggleSelectAll() {
     if (selectAllState === true) {
@@ -1191,7 +1455,7 @@ export default function TagsPage() {
       return;
     }
     setSelected(
-      new Set(visibleRows.filter((tag) => tag.id !== renamingId).map((tag) => tag.id)),
+      new Set(rows.filter((tag) => tag.id !== renamingId).map((tag) => tag.id)),
     );
   }
 
@@ -1234,10 +1498,8 @@ export default function TagsPage() {
     try {
       const result = await batchTags("confirm", ids);
       const applied = new Set(result.appliedIds);
-      setTags((current) =>
-        current?.map((item) =>
-          applied.has(item.id) ? { ...item, tentative: false } : item,
-        ),
+      setPage((current) =>
+        current === undefined ? current : confirmTags(current, applied),
       );
       setSelected((current) => withoutIds(current, applied));
       toast(t.tags.selection.confirmed(applied.size, result.notApplicableIds.length));
@@ -1296,7 +1558,7 @@ export default function TagsPage() {
     try {
       const result = await batchTags(action, ids);
       const applied = new Set(result.appliedIds);
-      setTags((current) => current?.filter((item) => !applied.has(item.id)));
+      removeRows(rows.filter((item) => applied.has(item.id)));
       setSelected((current) => withoutIds(current, applied));
       setBulkDialog(null);
       const skipped = result.notApplicableIds.length;
@@ -1346,21 +1608,21 @@ export default function TagsPage() {
         if (createPending || renamePending) return;
         setCreating(false);
         setRenameError(null);
-        setRenamingId(target.id);
+        setRenaming(target);
         // 選んでいる行の改名を始めると、その行を選択から外す（ui-design.md
         // 「Row checkbox」）。
         setSelected((current) => withoutIds(current, new Set([target.id])));
       },
       onCancelRename: (target) => {
         if (renamePending) return;
-        setRenamingId(null);
+        setRenaming(null);
         setRenameError(null);
         focusRow(target.id, "rename");
       },
       onSubmitRename: (target, name) => void submitRename(target, name),
       onOpenSynonyms: (target) => {
         synonymsOrderRef.current = visibleRows;
-        setSynonymsTagId(target.id);
+        setSynonymsTag(target);
       },
       onOpenMerge: (target) => setMerging({ sources: [target], fromSelection: false }),
       onDelete: (target) => {
@@ -1401,18 +1663,50 @@ export default function TagsPage() {
     [],
   );
 
+  // 空の状態は、届いた行の条件（`applied`）で選ぶ。条件を変えて先頭のページを待つ
+  // 間は、前の状態をそのまま残す（ui-design.md「States」）。
+  const appliedTentative = applied?.tentativeOnly ?? false;
+  const appliedUnused = applied?.unusedOnly ?? false;
   const showEmptyTags =
-    tags !== undefined && tags.length === 0 && !creating && !tentativeOnly && !unusedOnly;
+    page !== undefined &&
+    page.totalAll === 0 &&
+    !creating &&
+    !appliedTentative &&
+    !appliedUnused;
+  /**
+   * moreToShow は、読み込んだ行が無くても続きがあるかである。操作で行が 1 つも
+   * 残らなかったときは、空の状態を出さずに末尾の続きの状態を出す（ui-design.md
+   * 「Loading more」）。
+   */
+  const moreToShow = page?.nextCursor !== undefined && page.total > 0;
   const nothingShown =
-    tags !== undefined && visibleRows.length === 0 && !creating && !showEmptyTags;
-  const showNoUnused = nothingShown && unusedOnly && !searching;
-  const showNoUnusedMatch = nothingShown && unusedOnly && searching;
-  const showNoTentative = nothingShown && !unusedOnly && tentativeOnly && !searching;
-  const showNoTentativeMatch = nothingShown && !unusedOnly && tentativeOnly && searching;
-  const showNoMatch = nothingShown && !tentativeOnly && !unusedOnly;
-  const sortDisabled = tags === undefined || tags.length === 0;
+    page !== undefined &&
+    visibleRows.length === 0 &&
+    !creating &&
+    !showEmptyTags &&
+    !moreToShow;
+  const showNoUnused = nothingShown && appliedUnused && !searching;
+  const showNoUnusedMatch = nothingShown && appliedUnused && searching;
+  const showNoTentative =
+    nothingShown && !appliedUnused && appliedTentative && !searching;
+  const showNoTentativeMatch =
+    nothingShown && !appliedUnused && appliedTentative && searching;
+  const showNoMatch = nothingShown && !appliedTentative && !appliedUnused;
   const showRows =
-    tags !== undefined && (visibleRows.length > 0 || creating) && !showEmptyTags;
+    page !== undefined &&
+    (visibleRows.length > 0 || creating || moreToShow) &&
+    !showEmptyTags;
+  /**
+   * 先頭のページをまだ一度も受けていない間・一覧を持たないまま失敗したときは
+   * 何も押せない。押していない絞り込みと検索・並び順は、タグが 1 つも無いときも
+   * 押せない（ui-design.md「Controls」）。
+   */
+  const noTags = page === undefined || page.totalAll === 0;
+  const sortDisabled = noTags;
+  /** staleList は、一覧を持ったまま先頭のページを読めなかったか（「Stale list」）。 */
+  const staleList = page !== undefined && loadError !== null;
+  /** tail は一覧の末尾の続きの状態で、「Stale list」の間は出さない。 */
+  const tail = page === undefined || staleList ? moreIdle : more;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -1441,7 +1735,7 @@ export default function TagsPage() {
             value={search}
             onChange={setSearch}
             inputRef={searchInputRef}
-            disabled={tags !== undefined && tags.length === 0}
+            disabled={page !== undefined && page.totalAll === 0}
             className="order-1 min-w-0 flex-1 sm:max-w-sm"
           />
           <div className="order-3 flex w-full items-center gap-2 sm:gap-3 lg:order-2 lg:w-auto">
@@ -1453,7 +1747,7 @@ export default function TagsPage() {
                 onClick={toggleTentativeOnly}
                 // 押している間は、タグが 0 になっても disabled にしない
                 // （フォーカスの行き先で、絞り込みを外す唯一の手でもある）。
-                disabled={tags === undefined || (!tentativeOnly && tags.length === 0)}
+                disabled={page === undefined || (!tentativeOnly && noTags)}
               >
                 <CircleDashed className="max-sm:hidden" />
                 {t.tags.tentativeOnly}
@@ -1466,7 +1760,7 @@ export default function TagsPage() {
                 className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
                 onClick={toggleUnusedOnly}
                 // 「Tentative only」と同じく、押している間は disabled にしない。
-                disabled={tags === undefined || (!unusedOnly && tags.length === 0)}
+                disabled={page === undefined || (!unusedOnly && noTags)}
               >
                 <VideoOff className="max-sm:hidden" />
                 {t.tags.unusedOnly}
@@ -1490,7 +1784,7 @@ export default function TagsPage() {
             variant="primary"
             className="order-2 ml-auto lg:order-3"
             onClick={openCreate}
-            disabled={tags === undefined || creating || createPending || renamePending}
+            disabled={page === undefined || creating || createPending || renamePending}
           >
             <Plus />
             {t.tags.newTag}
@@ -1507,15 +1801,27 @@ export default function TagsPage() {
           変わっても、ResizeObserver が測り直してスクロール位置に渡す。
         */}
         <div className="group mt-2 flex min-h-5 flex-wrap items-center gap-x-2 gap-y-3 pl-2 sm:gap-x-3">
-          <div className="-my-1.5 flex size-8 shrink-0 items-center justify-center">
+          {/*
+            先頭のチェックは「読み込んだものをすべて選ぶ」。読み込んだ行が上限を超えると
+            押せず、理由を包みの title と sr-only で添える（ui-design.md「Count line」）。
+          */}
+          <div
+            className="-my-1.5 flex size-8 shrink-0 items-center justify-center"
+            title={
+              selectAllOverLimit ? t.tags.selectAllOverLimit(maxTagBatch) : undefined
+            }
+          >
             <Checkbox
               ref={selectAllRef}
               checked={selectAllState}
               onCheckedChange={toggleSelectAll}
               label={
-                selectAllState === true ? t.tags.clearSelection : t.tags.selectAllShown
+                selectAllState === true
+                  ? t.tags.clearSelection
+                  : t.tags.selectAllLoaded(selectableCount)
               }
-              disabled={tags === undefined || selectableCount === 0 || overLimit}
+              describedBy={selectAllOverLimit ? selectAllLimitId : undefined}
+              disabled={page === undefined || selectableCount === 0 || selectAllOverLimit}
               className={cn(
                 "transition-opacity",
                 selected.size > 0
@@ -1523,6 +1829,11 @@ export default function TagsPage() {
                   : "opacity-40 group-focus-within:opacity-100 group-hover:opacity-100",
               )}
             />
+            {selectAllOverLimit && (
+              <span id={selectAllLimitId} className="sr-only">
+                {t.tags.selectAllOverLimit(maxTagBatch)}
+              </span>
+            )}
           </div>
           <p
             role="status"
@@ -1536,7 +1847,7 @@ export default function TagsPage() {
           取れていない間（読み込み中・読み込み失敗）は置かない。「タグはまだ
           ありません」のときは置く（031 の ui-design.md「Rejected names」）。
         */}
-          {tags !== undefined && (
+          {page !== undefined && (
             <RejectedNames
               names={rejectedNames}
               error={rejectedError}
@@ -1546,13 +1857,20 @@ export default function TagsPage() {
             />
           )}
         </div>
+        {staleList && (
+          <TagStaleList
+            reason={loadError}
+            pending={firstPending}
+            onRetry={() => void reload()}
+          />
+        )}
       </div>
 
       <div
         ref={listBoxRef}
         className={cn(!showRows && "mt-2", selected.size > 0 && "pb-16")}
       >
-        {tags === undefined && loadError === null && (
+        {page === undefined && loadError === null && (
           <div className="space-y-2" aria-hidden="true">
             {Array.from({ length: 6 }, (_, index) => (
               <Skeleton key={index} className="h-10" />
@@ -1560,12 +1878,16 @@ export default function TagsPage() {
           </div>
         )}
 
-        {tags === undefined && loadError !== null && (
+        {page === undefined && loadError !== null && (
           <EmptyState
             icon={AlertCircle}
             tone="danger"
             title={t.tags.loadFailed}
-            action={<Button onClick={() => void reload()}>{t.common.retry}</Button>}
+            action={
+              <Button onClick={() => void reload()} disabled={firstPending}>
+                {t.common.retry}
+              </Button>
+            }
           />
         )}
 
@@ -1586,8 +1908,8 @@ export default function TagsPage() {
         {showNoUnused && (
           <EmptyState
             icon={VideoOff}
-            title={tentativeOnly ? t.tags.noUnusedTentative : t.tags.noUnused.title}
-            description={tentativeOnly ? undefined : t.tags.noUnused.description}
+            title={appliedTentative ? t.tags.noUnusedTentative : t.tags.noUnused.title}
+            description={appliedTentative ? undefined : t.tags.noUnused.description}
             action={<Button onClick={showAllFromUnused}>{t.tags.clearSearch}</Button>}
           />
         )}
@@ -1596,7 +1918,7 @@ export default function TagsPage() {
           <EmptyState
             icon={SearchX}
             title={
-              tentativeOnly
+              appliedTentative
                 ? t.tags.noUnusedTentativeMatches(search)
                 : t.tags.noUnusedMatches(search)
             }
@@ -1634,7 +1956,10 @@ export default function TagsPage() {
         )}
 
         {showRows && (
-          <div className="divide-y divide-border">
+          <div
+            className="divide-y divide-border"
+            aria-busy={tail.kind === "loading" ? true : undefined}
+          >
             {creating && (
               <CreateTagRow
                 pending={createPending}
@@ -1667,7 +1992,7 @@ export default function TagsPage() {
                 onBlur={handleListBlur}
                 onKeyDown={handleListKeyDown}
               >
-                {virtualizer.getVirtualItems().map((item) => {
+                {virtualItems.map((item) => {
                   const tag = visibleRows[item.index]!;
                   return (
                     <div
@@ -1702,6 +2027,11 @@ export default function TagsPage() {
                 })}
               </div>
             )}
+            {tail.kind === "loading" && <TagLoadingMore />}
+            {tail.kind === "failed" && (
+              <TagLoadMoreFailed reason={tail.error} onRetry={retryMore} />
+            )}
+            {tail.kind === "inconsistent" && <TagListChanged onReload={reloadList} />}
           </div>
         )}
       </div>
@@ -1710,7 +2040,7 @@ export default function TagsPage() {
         count={selected.size}
         hasTentative={selection.tentative}
         hasConfirmed={selection.confirmed}
-        overLimit={overLimit}
+        overLimit={selectionOverLimit}
         busy={bulkPending !== null}
         confirming={bulkPending === "confirm"}
         onConfirm={() => void submitBulkConfirm()}
@@ -1753,7 +2083,7 @@ export default function TagsPage() {
         />
       )}
 
-      {merging !== null && tags !== undefined && (
+      {merging !== null && page !== undefined && (
         <MergeTagDialog
           sources={merging.sources}
           fromSelection={merging.fromSelection}
@@ -1763,55 +2093,15 @@ export default function TagsPage() {
         />
       )}
 
-      {synonymsTagId !== null &&
-        (() => {
-          const synonymsTag = tags?.find((item) => item.id === synonymsTagId);
-          // 別のタブでの削除・統合と、staleSynonyms による一覧の取り直しの
-          // 間に、そのタグがもう一覧に無い一瞬がありうる。窓はまだ閉じ切って
-          // いないその一瞬だけ何も出さない。
-          if (synonymsTag === undefined) return null;
-          return (
-            <SynonymsDialog
-              tag={synonymsTag}
-              onClose={cancelSynonyms}
-              onTagUpdated={updateSynonymsTag}
-              onSynonymRemoved={removeSynonymFromTag}
-              onStale={staleSynonyms}
-            />
-          );
-        })()}
+      {synonymsTag !== null && (
+        <SynonymsDialog
+          tag={synonymsTag}
+          onClose={cancelSynonyms}
+          onTagUpdated={updateSynonymsTag}
+          onSynonymRemoved={removeSynonymFromTag}
+          onStale={staleSynonyms}
+        />
+      )}
     </div>
-  );
-}
-
-/** TagSearchKeys は、タグの名前とシノニムの照合形（`foldForMatch`）である。 */
-interface TagSearchKeys {
-  name: string;
-  synonyms: string[];
-}
-
-function tagSearchKeys(tag: Tag): TagSearchKeys {
-  return { name: foldForMatch(tag.name), synonyms: tag.synonyms.map(foldForMatch) };
-}
-
-/**
- * matchesFilters は、タグが検索（検索語の照合形が名前かシノニムの照合形に
- * 部分一致する）と絞り込み（「Tentative only」「Unused only」）のすべてに一致する
- * かである。`normalizedQuery` は `foldForMatch` を掛けた検索語、`keys` はその
- * タグの照合形である。
- */
-function matchesFilters(
-  tag: Tag,
-  keys: TagSearchKeys,
-  normalizedQuery: string,
-  tentativeOnly: boolean,
-  unusedOnly: boolean,
-): boolean {
-  if (tentativeOnly && !tag.tentative) return false;
-  if (unusedOnly && tag.videoCount !== 0) return false;
-  if (normalizedQuery === "") return true;
-  return (
-    keys.name.includes(normalizedQuery) ||
-    keys.synonyms.some((synonym) => synonym.includes(normalizedQuery))
   );
 }

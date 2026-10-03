@@ -46,12 +46,15 @@ export default function MergeTagDialog({
   onClose: () => void;
   /**
    * 統合が成功したときに呼ぶ。統合先の最新の状態、送った統合元の id、もう無かった
-   * 統合元の id（`notFoundIds`。送った全部ではない）を渡す。
+   * 統合元の id（`notFoundIds`。送った全部ではない）と、統合の前の統合先（選んだ候補）を
+   * 渡す。呼び手は統合の前後の統合先をそれぞれ今の条件に照らして件数を数え直す
+   * （specs/036-tag-admin-scale/data-model.md §4「操作のあとの反映」）。
    */
   onMerged: (
     merged: Tag,
     sourceIds: readonly number[],
     notFoundIds: readonly number[],
+    target: Tag,
   ) => void;
   /**
    * 統合先がもう無い（tag_not_found）か、統合元がすべてもう無かった（応答の
@@ -194,7 +197,7 @@ export default function MergeTagDialog({
         onStale();
         return;
       }
-      onMerged(merged, sourceIds, notFoundIds);
+      onMerged(merged, sourceIds, notFoundIds, target);
     } catch (failure) {
       if (failure instanceof RequestFailed && failure.code === "tag_not_found") {
         onStale();

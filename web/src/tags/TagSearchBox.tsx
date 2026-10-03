@@ -55,6 +55,8 @@ export default function TagSearchBox({
         placeholder={t.tags.search.placeholder}
         aria-label={t.tags.search.label}
         disabled={disabled}
+        // サーバーの q の上限と同じ（specs/036-tag-admin-scale/ui-design.md「Controls」）。
+        maxLength={100}
         autoComplete="off"
         spellCheck={false}
         className={cn(

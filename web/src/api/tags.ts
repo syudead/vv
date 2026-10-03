@@ -29,7 +29,8 @@ export const maxVideoTagsSelection = 20000;
 /**
  * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限
  * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。超えると 400 `too_many_tags` に
- * なるので、画面は見えている行がこれを超えるときまとめての操作を disabled にする。
+ * なるので、画面は読み込んだ行がこれを超えるときは先頭のチェック（読み込んだものを
+ * すべて選ぶ）だけを、選んだ数がこれを超えるときはまとめての操作を disabled にする。
  */
 export const maxTagBatch = 20000;
 
@@ -106,6 +107,12 @@ let generation = 0;
 let latestFetch: Promise<Tag[]> | undefined;
 /** pendingGet は getTags 同士（held がまだ無いときの同時呼び出し）だけをまとめる。 */
 let pendingGet: Promise<Tag[]> | undefined;
+/**
+ * droppedGeneration は、`dropHeldTags` が保持を捨てた時点の generation である。これ以下の
+ * 世代の取得（捨てる前に始まり、変更を映していないかもしれない）は、届いても `held` に
+ * 入れない。
+ */
+let droppedGeneration = 0;
 const listeners = new Set<TagsListener>();
 
 function notify(tags: Tag[]): void {
@@ -136,6 +143,7 @@ function startFetch(): Promise<Tag[]> {
       // 埋まっている（自分より後の呼び出しが少なくとも1つある）。
       return latestFetch!;
     }
+    if (myGeneration <= droppedGeneration) return tags;
     held = tags;
     notify(tags);
     return tags;
@@ -152,9 +160,11 @@ function startFetch(): Promise<Tag[]> {
 export function getTags(): Promise<Tag[]> {
   if (held !== undefined) return Promise.resolve(held);
   if (pendingGet === undefined) {
-    pendingGet = startFetch().finally(() => {
-      pendingGet = undefined;
+    const fetching: Promise<Tag[]> = startFetch().finally(() => {
+      // `dropHeldTags` のあとに始まった別の取得のまとめは外さない。
+      if (pendingGet === fetching) pendingGet = undefined;
     });
+    pendingGet = fetching;
   }
   return pendingGet;
 }
@@ -192,6 +202,7 @@ export function __resetTagsForTest(): void {
   generation = 0;
   latestFetch = undefined;
   pendingGet = undefined;
+  droppedGeneration = 0;
   listeners.clear();
 }
 
@@ -226,13 +237,32 @@ function afterTagCreated(): void {
 
 /**
  * afterTagChanged は、既存のタグを書き換える操作（改名・削除・統合・シノニム
- * の変更）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、破棄して
- * 読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。共有の
- * タグの一覧も取り直す（Structural Decisions 8）。どちらも完了を待たなくてよい。
+ * の変更・まとめての操作）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、
+ * 破棄して読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。
+ *
+ * 共有のタグの一覧は、購読者（`subscribeTags`）がいれば今までどおり取り直し
+ * （Structural Decisions 8）、いなければ取り直さずに `held` を捨てて次の `getTags` に
+ * 取らせる（specs/036-tag-admin-scale/research.md R-12、contracts/screen-api.md §4）。
+ * タグ管理画面は購読しないので、そこでの操作のたびに全件を取り直さない。どちらも
+ * 完了を待たなくてよい。
  */
 function afterTagChanged(): void {
   clearListSnapshot();
-  refreshTags().catch(() => undefined);
+  if (listeners.size > 0) {
+    refreshTags().catch(() => undefined);
+    return;
+  }
+  dropHeldTags();
+}
+
+/**
+ * dropHeldTags は共有の保持を捨てる。進行中の取得は変更の前に始まったものなので、
+ * 届いても `held` に入れず（`droppedGeneration`）、次の `getTags` は新しく取り直す。
+ */
+function dropHeldTags(): void {
+  held = undefined;
+  pendingGet = undefined;
+  droppedGeneration = generation;
 }
 
 /**

@@ -553,7 +553,19 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
+    // 続きがあるときだけ件数の後ろに添える、読み込んだ行の数
+    // （specs/036-tag-admin-scale/ui-design.md「Count line」）。
+    loadedCount: (loaded: number) => ` · ${formatNumber(loaded)} loaded`,
     loadFailed: "Couldn't load the tags",
+    // 一覧を持ったまま先頭のページを読めなかったとき（ui-design.md「Stale list」）。
+    staleList: (reason: string) =>
+      `Couldn't load tags: ${reason}. The list below may not match the current search, filters and sort.`,
+    // 一覧の末尾の続きの状態（ui-design.md「Loading more」）。
+    loadingMore: "Loading more tags…",
+    loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
+    listChanged:
+      "Tags were added or removed elsewhere, so the rest of this list may be out of date.",
+    reloadList: "Reload",
     empty: {
       title: "No tags yet",
       description:
@@ -657,7 +669,13 @@ export const en = {
       actions: "Actions",
     },
     // 行の選択とまとめての確定・却下・削除（specs/036-tag-admin-scale/ui-design.md「Words」）。
-    selectAllShown: "Select all shown tags",
+    selectAllLoaded: (count: number) =>
+      selectPlural(count, {
+        one: `Select the ${formatNumber(count)} loaded tag`,
+        other: `Select all ${formatNumber(count)} loaded tags`,
+      }),
+    selectAllOverLimit: (limit: number) =>
+      `Too many tags are loaded to select them all at once (limit ${formatNumber(limit)}). Narrow the list with search or a filter.`,
     clearSelection: "Clear selection",
     selection: {
       region: "Selected tags",
@@ -671,7 +689,7 @@ export const en = {
       noTentative: "No tentative tags are selected",
       noConfirmed: "No confirmed tags are selected",
       overLimit: (limit: number) =>
-        `Too many tags are shown to act on them together (limit ${formatNumber(limit)}). Narrow the list with search or a filter.`,
+        `Too many tags are selected to act on them together (limit ${formatNumber(limit)}). Clear some of the selection.`,
       confirmed: (applied: number, skipped: number) =>
         skipped === 0
           ? `Confirmed ${tagCount(applied)}`
