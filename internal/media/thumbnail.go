@@ -77,7 +77,7 @@ func ThumbnailAt(ctx context.Context, videoPath string, positionMs int64, output
 // 終わる。出力の有無まで見ないと、生成できていないのに成功として記録される。
 func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, output string) error {
 	args := thumbnailArgs(videoPath, offsetSec, output)
-	if _, err := exec.CommandContext(ctx, thumbnailCommand, args...).Output(); err != nil {
+	if _, err := command(ctx, thumbnailCommand, args...).Output(); err != nil {
 		_ = os.Remove(output)
 
 		var exitErr *exec.ExitError

@@ -3,7 +3,6 @@ package media
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -36,7 +35,7 @@ func PreviewSegments(durationMs int64) [][2]float64 {
 func GeneratePreview(ctx context.Context, videoPath, output string, durationMs int64) error {
 	processCtx, cancel := context.WithTimeout(ctx, previewTimeout)
 	defer cancel()
-	if combined, runErr := exec.CommandContext(processCtx, "ffmpeg", previewArgs(videoPath, output, durationMs)...).CombinedOutput(); runErr != nil {
+	if combined, runErr := command(processCtx, "ffmpeg", previewArgs(videoPath, output, durationMs)...).CombinedOutput(); runErr != nil {
 		if processCtx.Err() != nil {
 			return fmt.Errorf("preview generation was interrupted: %w", processCtx.Err())
 		}

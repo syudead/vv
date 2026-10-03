@@ -357,9 +357,9 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 // runSeekFFmpegIn は dir を作業ディレクトリにして ffmpeg を動かす。入力が多いとき、
 // 相対パスで渡してコマンドラインを短く保つ。
 func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, error) {
-	command := exec.CommandContext(ctx, seekThumbnailCommand, args...)
-	command.Dir = dir
-	data, err := command.Output()
+	cmd := command(ctx, seekThumbnailCommand, args...)
+	cmd.Dir = dir
+	data, err := cmd.Output()
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
