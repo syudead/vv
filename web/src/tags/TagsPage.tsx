@@ -3,7 +3,14 @@ import {
   useWindowVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
-import { AlertCircle, CircleDashed, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
+import {
+  AlertCircle,
+  CircleDashed,
+  Plus,
+  SearchX,
+  Tags as TagsIcon,
+  VideoOff,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -17,7 +24,6 @@ import {
 import { flushSync } from "react-dom";
 
 import { RequestFailed } from "../api/client";
-import { compareTagRefs } from "../api/tagOrder";
 import {
   confirmTag,
   createTag,
@@ -34,6 +40,10 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { foldForMatch } from "../lib/foldForMatch";
+import {
+  readTagListPreferences,
+  writeTagListPreferences,
+} from "../preferences/tagListPreferences";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -45,9 +55,11 @@ import MergeTagDialog from "./MergeTagDialog";
 import RejectedNames from "./RejectedNames";
 import RejectTagDialog from "./RejectTagDialog";
 import SynonymsDialog from "./SynonymsDialog";
+import { sortTags, type TagListSort } from "./tagListOrder";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import TagSearchBox from "./TagSearchBox";
+import { TagCompactSort, TagSortMenu } from "./TagSortControls";
 
 function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";
@@ -114,6 +126,9 @@ export default function TagsPage() {
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [search, setSearch] = useState("");
   const [tentativeOnly, setTentativeOnly] = useState(false);
+  const [unusedOnly, setUnusedOnly] = useState(false);
+  // 並び順だけは端末に残す（specs/036-tag-admin-scale/research.md R-7）。
+  const [sort, setSort] = useState<TagListSort>(() => readTagListPreferences().sort);
 
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
@@ -148,6 +163,7 @@ export default function TagsPage() {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
   const tentativeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const unusedButtonRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
   const listRef = useRef<HTMLDivElement | null>(null);
   /**
@@ -187,21 +203,24 @@ export default function TagsPage() {
   }, []);
 
   /**
-   * filtersRef は今描いている検索と「Tentative only」である。要求の応答を
+   * filtersRef は今描いている検索と「Tentative only」「Unused only」である。要求の応答を
    * 待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
    * 閉じ込めた（押した時点の）値ではなくこれで決める。
    */
-  const filtersRef = useRef({ query: "", tentativeOnly: false });
+  const filtersRef = useRef({ query: "", tentativeOnly: false, unusedOnly: false });
 
   /**
    * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
-   * 「新しいタグ」、「Tentative only」を押している間はそのボタン（次の操作が
-   * 「絞り込みを外す」だから。specs/031-tentative-tags/ui-design.md「Toolbar」）。
+   * 「新しいタグ」、「Tentative only」「Unused only」を押している間はそのボタン
+   * （次の操作が「絞り込みを外す」だから。specs/031-tentative-tags/ui-design.md
+   * 「Toolbar」）。両方を押していれば「Tentative only」へ。
    */
   function fallbackFocus() {
     (filtersRef.current.tentativeOnly
       ? tentativeButtonRef
-      : createButtonRef
+      : filtersRef.current.unusedOnly
+        ? unusedButtonRef
+        : createButtonRef
     ).current?.focus();
     // 候補を確かめるために描かせた行（`renderRow`）を Tab の順に残さない。
     releasePinIfFocusOutside();
@@ -398,13 +417,19 @@ export default function TagsPage() {
     };
   }, [reload]);
 
-  // 一覧は `GET /api/tags` が返す名前の自然順（contracts/tags-api.md §3）を
-  // 保つが、作成・改名でその場に重ねた1件は並びの外にあるかもしれないので
-  // `compareTagRefs`（カード・再生画面・候補と同じ並び替え）で並べ直す。
+  // 一覧は選んだ並び順（名前・本数・作った日。同値は名前の自然順）で並べる
+  // （specs/036-tag-admin-scale/data-model.md §4）。作成・改名でその場に重ねた
+  // 1件も、ここで並びの中の位置へ入る。絞り込みと検索は並びを変えないので、
+  // 並べてから絞っても「絞ってから並べる」と同じ結果になる。
   const sorted = useMemo(() => {
     if (tags === undefined) return [];
-    return [...tags].sort(compareTagRefs);
-  }, [tags]);
+    return sortTags(tags, sort);
+  }, [tags, sort]);
+
+  function changeSort(next: TagListSort) {
+    setSort(next);
+    writeTagListPreferences({ sort: next });
+  }
 
   // 検索はライブラリでタグを探すときと同じ照合形（`foldForMatch`）で照らす
   // （specs/036-tag-admin-scale/research.md R-3）。タグごとの照合形はタグの
@@ -417,39 +442,45 @@ export default function TagsPage() {
   const filtered = useMemo(
     () =>
       sorted.filter((tag) =>
-        matchesFilters(tag, searchKeys.get(tag)!, normalizedQuery, tentativeOnly),
+        matchesFilters(
+          tag,
+          searchKeys.get(tag)!,
+          normalizedQuery,
+          tentativeOnly,
+          unusedOnly,
+        ),
       ),
-    [sorted, searchKeys, normalizedQuery, tentativeOnly],
+    [sorted, searchKeys, normalizedQuery, tentativeOnly, unusedOnly],
   );
 
   useLayoutEffect(() => {
-    filtersRef.current = { query: normalizedQuery, tentativeOnly };
-  }, [normalizedQuery, tentativeOnly]);
+    filtersRef.current = { query: normalizedQuery, tentativeOnly, unusedOnly };
+  }, [normalizedQuery, tentativeOnly, unusedOnly]);
 
   /**
-   * shown は、その1件が今の検索と「Tentative only」の絞り込みで一覧に出るかで
-   * ある。要求の応答のあとで呼ぶので、`filtersRef` の今の値で決める。
+   * shown は、その1件が今の検索と絞り込み（「Tentative only」「Unused only」）で
+   * 一覧に出るかである。要求の応答のあとで呼ぶので、`filtersRef` の今の値で決める。
    */
   function shown(tag: Tag): boolean {
-    const { query, tentativeOnly: onlyTentative } = filtersRef.current;
-    return matchesFilters(tag, tagSearchKeys(tag), query, onlyTentative);
+    const {
+      query,
+      tentativeOnly: onlyTentative,
+      unusedOnly: onlyUnused,
+    } = filtersRef.current;
+    return matchesFilters(tag, tagSearchKeys(tag), query, onlyTentative, onlyUnused);
   }
 
   /**
-   * visibleRows は実際に並べる行である。改名中の行は、検索を変えて一致しなく
-   * なっても一覧から外さない（外すとその行が消え、打っている途中の名前を
-   * 失う）。`filtered` に無ければ `sorted` から拾い、並び（`compareTagRefs`）を
-   * 保つ位置へ差し込む。件数の行はこれを数えず、実際の一致件数（`filtered`）
-   * のまま見せる。
+   * visibleRows は実際に並べる行である。改名中の行は、検索・絞り込み・並び順を
+   * 変えて一致しなくなっても一覧から外さない（外すとその行が消え、打っている
+   * 途中の名前を失う）。`filtered` に無ければ `sorted` の並びのまま差し込む。
+   * 件数の行はこれを数えず、実際の一致件数（`filtered`）のまま見せる。
    */
   const visibleRows = useMemo(() => {
     if (renamingId === null) return filtered;
     if (filtered.some((tag) => tag.id === renamingId)) return filtered;
-    const renamingTag = sorted.find((tag) => tag.id === renamingId);
-    if (renamingTag === undefined) return filtered;
-    const insertAt = filtered.findIndex((tag) => compareTagRefs(tag, renamingTag) > 0);
-    const at = insertAt === -1 ? filtered.length : insertAt;
-    return [...filtered.slice(0, at), renamingTag, ...filtered.slice(at)];
+    const matched = new Set(filtered);
+    return sorted.filter((tag) => matched.has(tag) || tag.id === renamingId);
   }, [filtered, sorted, renamingId]);
 
   const visibleRowsRef = useRef<readonly Tag[]>(visibleRows);
@@ -566,7 +597,7 @@ export default function TagsPage() {
   const countText =
     tags === undefined
       ? t.tags.loading
-      : searching || tentativeOnly
+      : searching || tentativeOnly || unusedOnly
         ? t.tags.filteredCount(filtered.length, total)
         : t.tags.count(total);
 
@@ -596,6 +627,44 @@ export default function TagsPage() {
       setTimeout(() => createButtonRef.current?.focus(), 0);
     }
     setTentativeOnly((value) => !value);
+  }
+
+  /**
+   * toggleUnusedOnly は「Unused only」を押す・外す。`toggleTentativeOnly` と同じ
+   * 規則（specs/036-tag-admin-scale/ui-design.md「Controls」）。
+   */
+  function toggleUnusedOnly() {
+    if (unusedOnly && total === 0) {
+      setTimeout(() => createButtonRef.current?.focus(), 0);
+    }
+    setUnusedOnly((value) => !value);
+  }
+
+  /**
+   * showAllFromUnused は「No unused tags」「No unused tentative tags」の
+   * 「Show all tags」である。絞り込みを外し、「Unused only」だけなら
+   * 「Unused only」へ、両方なら「Tentative only」へ（タグが 0 なら
+   * 「新しいタグ」へ）移す（ui-design.md「States」）。
+   */
+  function showAllFromUnused() {
+    const target = tentativeOnly ? tentativeButtonRef : unusedButtonRef;
+    setUnusedOnly(false);
+    setTentativeOnly(false);
+    setTimeout(() => (total === 0 ? createButtonRef : target).current?.focus(), 0);
+  }
+
+  /**
+   * showAllFromUnusedSearch は「No unused (tentative) tags match」の
+   * 「Show all tags」である。絞り込みと検索を外し、検索の入力へ移す。
+   */
+  function showAllFromUnusedSearch() {
+    setUnusedOnly(false);
+    setTentativeOnly(false);
+    setSearch("");
+    setTimeout(
+      () => (total === 0 ? createButtonRef : searchInputRef).current?.focus(),
+      0,
+    );
   }
 
   /**
@@ -971,12 +1040,15 @@ export default function TagsPage() {
   );
 
   const showEmptyTags =
-    tags !== undefined && tags.length === 0 && !creating && !tentativeOnly;
+    tags !== undefined && tags.length === 0 && !creating && !tentativeOnly && !unusedOnly;
   const nothingShown =
     tags !== undefined && visibleRows.length === 0 && !creating && !showEmptyTags;
-  const showNoTentative = nothingShown && tentativeOnly && !searching;
-  const showNoTentativeMatch = nothingShown && tentativeOnly && searching;
-  const showNoMatch = nothingShown && !tentativeOnly;
+  const showNoUnused = nothingShown && unusedOnly && !searching;
+  const showNoUnusedMatch = nothingShown && unusedOnly && searching;
+  const showNoTentative = nothingShown && !unusedOnly && tentativeOnly && !searching;
+  const showNoTentativeMatch = nothingShown && !unusedOnly && tentativeOnly && searching;
+  const showNoMatch = nothingShown && !tentativeOnly && !unusedOnly;
+  const sortDisabled = tags === undefined || tags.length === 0;
   const showRows =
     tags !== undefined && (visibleRows.length > 0 || creating) && !showEmptyTags;
 
@@ -990,45 +1062,72 @@ export default function TagsPage() {
         review criteria」情報密度）を満たすため、ここを詰める（B5）。
       */}
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      {/*
+        操作の行（specs/036-tag-admin-scale/ui-design.md「Controls」「Responsive
+        behaviour」）。lg 以上は 1 行で 検索 →「Tentative only」→「Unused only」→
+        並び順 → 右端に「新しいタグ」。lg 未満は 2 行で、1 行目が 検索 →「新しい
+        タグ」、2 行目が絞り込みと並び順。幅の出し分けは CSS だけで行い、Tab の
+        順は DOM の順（lg 以上の見た目の順）のままにする。
+      */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 sm:gap-3">
         <TagSearchBox
           value={search}
           onChange={setSearch}
           inputRef={searchInputRef}
           disabled={tags !== undefined && tags.length === 0}
-          className="w-full min-w-0 sm:max-w-sm sm:flex-1"
+          className="order-1 min-w-0 flex-1 sm:max-w-sm"
         />
-        {/*
-          sm 未満は「Tentative only」と「新しいタグ」を2行目に半分ずつ、sm 以上は
-          検索の右に「Tentative only」、右端に「新しいタグ」（031 の ui-design.md
-          「Toolbar」）。
-        */}
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-1 sm:items-center sm:justify-between sm:gap-3">
+        <div className="order-3 flex w-full items-center gap-2 sm:gap-3 lg:order-2 lg:w-auto">
           <Tooltip content={t.tags.tentativeOnlyHint}>
             <Button
               ref={tentativeButtonRef}
               aria-pressed={tentativeOnly}
-              className="w-full aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link sm:w-auto"
+              className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
               onClick={toggleTentativeOnly}
               // 押している間は、タグが 0 になっても disabled にしない
               // （フォーカスの行き先で、絞り込みを外す唯一の手でもある）。
               disabled={tags === undefined || (!tentativeOnly && tags.length === 0)}
             >
-              <CircleDashed />
+              <CircleDashed className="max-sm:hidden" />
               {t.tags.tentativeOnly}
             </Button>
           </Tooltip>
-          <Button
-            ref={createButtonRef}
-            variant="primary"
-            className="w-full sm:w-auto"
-            onClick={openCreate}
-            disabled={tags === undefined || creating || createPending || renamePending}
-          >
-            <Plus />
-            {t.tags.newTag}
-          </Button>
+          <Tooltip content={t.tags.unusedOnlyHint}>
+            <Button
+              ref={unusedButtonRef}
+              aria-pressed={unusedOnly}
+              className="aria-pressed:border-accent-active aria-pressed:bg-accent-soft aria-pressed:text-link"
+              onClick={toggleUnusedOnly}
+              // 「Tentative only」と同じく、押している間は disabled にしない。
+              disabled={tags === undefined || (!unusedOnly && tags.length === 0)}
+            >
+              <VideoOff className="max-sm:hidden" />
+              {t.tags.unusedOnly}
+            </Button>
+          </Tooltip>
+          <TagSortMenu
+            sort={sort}
+            onSortChange={changeSort}
+            disabled={sortDisabled}
+            className="max-sm:hidden"
+          />
+          <TagCompactSort
+            sort={sort}
+            onSortChange={changeSort}
+            disabled={sortDisabled}
+            className="ml-auto sm:hidden"
+          />
         </div>
+        <Button
+          ref={createButtonRef}
+          variant="primary"
+          className="order-2 ml-auto lg:order-3"
+          onClick={openCreate}
+          disabled={tags === undefined || creating || createPending || renamePending}
+        >
+          <Plus />
+          {t.tags.newTag}
+        </Button>
       </div>
 
       <p
@@ -1067,6 +1166,29 @@ export default function TagsPage() {
                 <Plus />
                 {t.tags.newTag}
               </Button>
+            }
+          />
+        )}
+
+        {showNoUnused && (
+          <EmptyState
+            icon={VideoOff}
+            title={tentativeOnly ? t.tags.noUnusedTentative : t.tags.noUnused.title}
+            description={tentativeOnly ? undefined : t.tags.noUnused.description}
+            action={<Button onClick={showAllFromUnused}>{t.tags.clearSearch}</Button>}
+          />
+        )}
+
+        {showNoUnusedMatch && (
+          <EmptyState
+            icon={SearchX}
+            title={
+              tentativeOnly
+                ? t.tags.noUnusedTentativeMatches(search)
+                : t.tags.noUnusedMatches(search)
+            }
+            action={
+              <Button onClick={showAllFromUnusedSearch}>{t.tags.clearSearch}</Button>
             }
           />
         )}
@@ -1246,16 +1368,19 @@ function tagSearchKeys(tag: Tag): TagSearchKeys {
 
 /**
  * matchesFilters は、タグが検索（検索語の照合形が名前かシノニムの照合形に
- * 部分一致する）と「Tentative only」の両方に一致するかである。`normalizedQuery`
- * は `foldForMatch` を掛けた検索語、`keys` はそのタグの照合形である。
+ * 部分一致する）と絞り込み（「Tentative only」「Unused only」）のすべてに一致する
+ * かである。`normalizedQuery` は `foldForMatch` を掛けた検索語、`keys` はその
+ * タグの照合形である。
  */
 function matchesFilters(
   tag: Tag,
   keys: TagSearchKeys,
   normalizedQuery: string,
   tentativeOnly: boolean,
+  unusedOnly: boolean,
 ): boolean {
   if (tentativeOnly && !tag.tentative) return false;
+  if (unusedOnly && tag.videoCount !== 0) return false;
   if (normalizedQuery === "") return true;
   return (
     keys.name.includes(normalizedQuery) ||

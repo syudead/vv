@@ -522,6 +522,41 @@ export const en = {
         "Tags created by automatic tagging appear here until you confirm or reject them.",
     },
     noTentativeMatches: (query: string) => `No tentative tags match "${query}"`,
+    // 0 本のタグの絞り込みと並び順（specs/036-tag-admin-scale/ui-design.md「Words」）。
+    // 0 本のタグは「Unused」と呼び、「empty」「orphan」は使わない。
+    unusedOnly: "Unused only",
+    unusedOnlyHint: "Show only tags that aren't on any videos",
+    noUnused: {
+      title: "No unused tags",
+      description: "Every tag is on at least one video.",
+    },
+    noUnusedTentative: "No unused tentative tags",
+    noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
+    noUnusedTentativeMatches: (query: string) =>
+      `No unused tentative tags match "${query}"`,
+    sort: {
+      heading: "Sort by",
+      current: (label: string) => `Sort by: ${label}`,
+      compact: "Sort",
+      direction: "Sort direction",
+      kinds: {
+        name: "Name",
+        count: "Video count",
+        created: "Date created",
+      },
+      toggle: {
+        countDesc: "Descending (most videos first). Press for ascending",
+        countAsc: "Ascending (fewest videos first). Press for descending",
+        createdDesc: "Descending (newest first). Press for ascending",
+        createdAsc: "Ascending (oldest first). Press for descending",
+      },
+      segments: {
+        countDesc: "Most videos first",
+        countAsc: "Fewest videos first",
+        createdDesc: "Newest first",
+        createdAsc: "Oldest first",
+      },
+    },
     confirmed: (name: string) => `Confirmed "${name}"`,
     rejected: (name: string) => `Rejected "${name}"`,
     alreadyConfirmed: "This tag was already confirmed, so the list was reloaded",
