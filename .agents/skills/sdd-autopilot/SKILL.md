@@ -28,9 +28,14 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
   the gates in [references/loop.md](references/loop.md)
 - closing a child Issue as completed after its PR merges
 
-The integration PR is never merged here. The run ends after its initial review
-pass and any fix PR merge when GitHub reports it conflict-free and mergeable,
-and reports that to the maintainer.
+The integration PR is never merged here. Before handing it over, the run makes
+it as ready as it can: after the initial review pass, a pre-merge sweep runs
+every check on the finished feature, fixes what fails, and collects the
+deferred defects worth fixing now
+([integrate.md](../issue-handoff/references/integrate.md#pre-merge-sweep)).
+The run ends once the review's and the sweep's fix PRs have merged and GitHub
+reports the integration PR conflict-free and mergeable, and reports that to
+the maintainer with what the sweep left.
 
 ## Keeping the orchestrator's context small
 
@@ -48,7 +53,10 @@ skill; follow them even when reading something yourself looks quicker.
    [references/loop.md](references/loop.md) §1 lists (`fields`,
    `minimal_output`, `perPage`). Do not open diffs, CI job logs, review
    comment bodies, child Issue bodies, or artifact files. When a decision
-   needs one of those, it is a worker's job.
+   needs one of those, it is a worker's job. The one exception is a child
+   Issue body's first line, `Depends on: …`, which decides what runs in
+   parallel ([references/loop.md](references/loop.md) §2); keep the numbers
+   and nothing else from it.
 3. **Brief with pointers, not content.** A worker brief names the Issue, PR,
    branch, base and feature directory, and the worker reads them itself. Do not
    paste Issue text, findings, or diffs into a brief. The templates are in
@@ -58,13 +66,14 @@ skill; follow them even when reading something yourself looks quicker.
    keep only the numbers you need (PR, commit, blocker). Do not restate a
    worker's report to the maintainer.
 5. **One worker per unit of work.** A new stage, a new review round, and the
-   integration refresh each get a fresh worker.
+   integration refresh each get a fresh worker. Children whose dependencies
+   are done are implemented by concurrent workers, each in its own worktree.
 
 ## Workers
 
 | Role | Claude | Codex | Does |
 | --- | --- | --- | --- |
-| Stage worker | `sdd-stage-worker` | `sdd_stage_worker` | One `issue-handoff` stage on its own sub-branch through push and PR |
+| Stage worker | `sdd-stage-worker` | `sdd_stage_worker` | One `issue-handoff` stage, or the pre-merge sweep, on its own sub-branch through push and PR |
 | Review fixer | `pr-review-fixer` | `pr_review_fixer` | One round of CI failures and review findings on one PR |
 
 The stage worker and the review fixer push and call GitHub themselves. When the
@@ -82,7 +91,7 @@ everything downstream or a miss is expensive to find later.
 | --- | --- | --- |
 | `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
-| Implementation, `plan-to-issues`, review fixers, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
+| Implementation, `plan-to-issues`, review fixers, conflict-free integrate, pre-merge sweep | inherit | Bounded by an approved artifact or a child Issue; high volume |
 
 The orchestrator itself stays on the session's model. It only reads short
 facts and return blocks, so a more capable model buys it nothing. Codex keeps
@@ -95,8 +104,10 @@ Follow [references/loop.md](references/loop.md). In short:
 1. Preflight: Issue read/write, native sub-issues, push, PR create and merge.
    Stop before any mutation when one is missing.
 2. Loop: select the next stage with the one-stage workflow's rules, run it
-   through workers, apply the merge gates, close merged children. Repeat.
-3. Stop on a blocker, or when the integration PR meets the finish line.
+   through workers (independent children in parallel), apply the merge gates,
+   close merged children. Repeat.
+3. After the integration PR's review pass, run the pre-merge sweep once.
+4. Stop on a blocker, or when the integration PR meets the finish line.
 
 Report to the maintainer in one short line per merged PR, and at the end with
 the integration PR link and anything a worker deferred.

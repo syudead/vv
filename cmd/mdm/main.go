@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
@@ -44,29 +44,46 @@ const scanStopGrace = 10 * time.Second
 // readHeaderTimeout は要求ヘッダの読み取りに与える上限である。
 const readHeaderTimeout = 10 * time.Second
 
-func main() {
-	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
-	// （specs/016-single-account-auth/contracts/account-cli.md）。
-	if len(os.Args) > 1 {
-		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
-	}
-	if err := run(); err != nil {
-		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+// runOptions は起動・停止の手順に外から渡すものである。タグなしの main は環境変数の
+// 設定・標準出力・MDM_ADDR・SIGINT/SIGTERM を渡す。デスクトップ版は設定を自分で
+// 組み立て、同じ手順を同じプロセスで呼ぶ（specs/037-windows-app/research.md R-1）。
+type runOptions struct {
+	Config Config
+	// LogOutput は JSON の記録の書き先である。
+	LogOutput io.Writer
+	// Listener は Config.Addr で待ち受けを作る部品で、アドレスを変えて開き直せる。
+	Listener *reopenableListener
+	// OnListening は待ち受けを開いた直後に呼ぶ。nil なら呼ばない。
+	OnListening func()
+	// NotifyStop は停止の指示の受け取りを始める。HTTP サーバーを起動する直前に呼ぶ。
+	NotifyStop stopNotifier
+	// Desktop はデスクトップ版の起動である。真なら待ち受けのホストを LAN からの接続の
+	// 許可の保存値で決め（Config.Addr のポートを使う）、/api/settings/network で切り替え
+	// られるようにする。偽なら Config.Addr のまま待ち受け、その経路は 404 を返す
+	// （specs/037-windows-app/research.md R-14）。
+	Desktop bool
+	// OnBusyProbe は走査を用意したあと、待ち受けを開く前に、取り込みの途中かを問う
+	// 関数（app.Scans.Busy）を渡す。デスクトップ版の閉じる前の確認が使う
+	// （specs/037-windows-app/research.md R-7）。nil なら呼ばない。
+	OnBusyProbe func(busy func(context.Context) (bool, error))
+}
+
+// stopNotifier は停止の指示の受け取りを始め、指示で閉じる channel と、受け取りを
+// やめる関数（nil でよい）を返す。
+type stopNotifier func() (stopRequested <-chan struct{}, release func())
+
+// notifySignals は SIGINT / SIGTERM を停止の指示として受け取る。
+func notifySignals() (<-chan struct{}, func()) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	return ctx.Done(), stop
 }
 
 // run は起動から停止までを行う。順序は
-// 「設定読み込み → 記録の設定 → 起動前確認 → データベース接続とマイグレーション →
+// 「記録の設定 → 起動前確認 → データベース接続とマイグレーション →
 // HTTP サーバー起動」である。
-func run() error {
-	cfg, err := LoadConfig(os.Getenv)
-	if err != nil {
-		return err
-	}
-
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.Level()}))
+func run(opts runOptions) error {
+	cfg := opts.Config
+	logger := slog.New(slog.NewJSONHandler(opts.LogOutput, &slog.HandlerOptions{Level: cfg.Level()}))
 	slog.SetDefault(logger)
 
 	build := buildInfo()
@@ -86,7 +103,7 @@ func run() error {
 
 	db, err := store.Open(cfg.DataDir)
 	if err != nil {
-		return err
+		return &startupError{stage: stageDatabase, err: err}
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -96,7 +113,7 @@ func run() error {
 
 	migrated, err := store.Migrate(context.Background(), db)
 	if err != nil {
-		return err
+		return &startupError{stage: stageDatabase, err: err}
 	}
 	logger.Info("applied migrations",
 		slog.String("database", db.Path()),
@@ -137,6 +154,18 @@ func run() error {
 	authStore := db.Auth()
 	prepareAuth(context.Background(), authStore, time.Now(), logger)
 
+	// LAN からの接続の許可はデスクトップ版だけが持つ。DB を開いたあと、ジョブや待ち受けを
+	// 動かす前に保存値を読み、待ち受けるアドレスを決める。nil のままなら経路は 404 を返す。
+	var networkSettings httpapi.NetworkSettings
+	if opts.Desktop {
+		addr, settings, err := startNetworkSettings(context.Background(), db.Settings(), opts.Listener, cfg.Addr, logger)
+		if err != nil {
+			return &startupError{stage: stageDatabase, err: err}
+		}
+		cfg.Addr = addr
+		networkSettings = settings
+	}
+
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
@@ -156,9 +185,11 @@ func run() error {
 	playbackStore := db.Playback()
 
 	scans := app.NewScans(app.ScansOptions{
-		Store:       scanStore,
-		Jobs:        ingestStore,
-		FolderIndex: scanIndexStore,
+		Store: scanStore,
+		Jobs:  ingestStore,
+		// 閉じる確認が読む「取り込みの途中か」（Busy）の未完了の仕事の有無。
+		UnfinishedJobs: ingestStore,
+		FolderIndex:    scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
@@ -173,6 +204,9 @@ func run() error {
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
+	}
+	if opts.OnBusyProbe != nil {
+		opts.OnBusyProbe(scans.Busy)
 	}
 
 	// 生成物の置き場。パスの規則・公開・確認・読み出し・削除はここだけが持つ。
@@ -212,9 +246,51 @@ func run() error {
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 	})
+	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。
+	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
+	defer stopChecks()
+	// 方式の設定。作る前に戻ったときは nil のままである。
+	var transcodeSettings *app.TranscodeSettings
+
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
+	}
+	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
+	// 猶予を越えたときも）、データベースを閉じる前に走査とワーカーを止める。止めずに
+	// 戻ると、始め直した走査やワーカーが閉じたデータベースへ書く。データベースを
+	// 閉じる defer より後に登録するので、その前に走る。
+	defer func() {
+		// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
+		// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
+		// 起こさないよう、先に起こす購読をやめる。
+		// 取り消した確認の ffmpeg が終わるのを待つ。確認は取り消しで戻るので長くは待たない。
+		stopChecks()
+		if transcodeSettings != nil && !waitAtMost(func() { <-transcodeSettings.Done() }, scanStopGrace) {
+			logger.Warn("the hardware encoder checks did not stop within the grace period")
+		}
+		subscriptions.StopWorkers()
+		stopBackground()
+		workersDone.Wait()
+		// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
+		// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
+		// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
+		// 残り、次の起動の RecoverInterrupted が閉じる。
+		if !waitAtMost(scans.Wait, scanStopGrace) {
+			logger.Warn("the scan did not stop within the grace period; artifacts of videos it removed may remain",
+				slog.String("grace", scanStopGrace.String()))
+		}
+		// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
+		// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
+		bus.Close()
+		ingest.Wait()
+		logger.Info("stopped ingest and jobs")
+	}()
+	// 前回の停止で中断した走査を、ワーカーを動かしてから始め直す
+	// （specs/037-windows-app/research.md R-9）。始め直せなくても起動は止めず、
+	// 利用者が取り込みを始められる。
+	if _, err := scans.ResumeInterrupted(backgroundCtx); err != nil {
+		logger.Warn("could not resume the interrupted scan", slog.Any("error", err))
 	}
 
 	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
@@ -241,9 +317,7 @@ func run() error {
 
 	// ライブ変換の映像エンコード方式。起動時の確認は背後で走り、HTTP の待ち受けを
 	// 待たせない。停止の指示で確認を止める。
-	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
-	defer stopChecks()
-	transcodeSettings, err := startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
+	transcodeSettings, err = startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
 	if err != nil {
 		return err
 	}
@@ -271,6 +345,7 @@ func run() error {
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
 		// 要求ごとに今の方式を読むので、方式の変更は再起動なしに次の要求から効く。
 		TranscodeSettings: transcodeSettings,
+		NetworkSettings:   networkSettings,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,
@@ -296,35 +371,40 @@ func run() error {
 		subscriptions.StopScreen()
 		events.Close()
 	}
-	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
-		return err
-	}
+	// 戻ったあと、走査とワーカーは上の defer が止める。
+	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
+}
 
-	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
-	// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
-	// 起こさないよう、先に起こす購読をやめる。
-	// 取り消した確認の ffmpeg が終わるのを待つ。確認は取り消しで戻るので長くは待たない。
-	if !waitAtMost(func() { <-transcodeSettings.Done() }, scanStopGrace) {
-		logger.Warn("the hardware encoder checks did not stop within the grace period")
-	}
-	subscriptions.StopWorkers()
-	stopBackground()
-	workersDone.Wait()
-	// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
-	// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
-	// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
-	// 残り、次の起動の RecoverInterrupted が閉じる。
-	if !waitAtMost(scans.Wait, scanStopGrace) {
-		logger.Warn("the scan did not stop within the grace period; artifacts of videos it removed may remain",
-			slog.String("grace", scanStopGrace.String()))
-	}
-	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
-	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
-	bus.Close()
-	ingest.Wait()
-	logger.Info("stopped ingest and jobs")
+// startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで
+// 示すダイアログを選ぶ（specs/037-windows-app/research.md R-10）。
+type startupStage int
 
-	return nil
+const (
+	// stageOther は下の段階に当たらない失敗。
+	stageOther startupStage = iota
+	// stageDatabase はデータベースを開くか移行するところでの失敗。
+	stageDatabase
+	// stageListen は待ち受けを開くところでの失敗。
+	stageListen
+)
+
+// startupError は起動の失敗に段階を添える。文は元の誤りのままにする。
+type startupError struct {
+	stage startupStage
+	err   error
+}
+
+func (e *startupError) Error() string { return e.err.Error() }
+
+func (e *startupError) Unwrap() error { return e.err }
+
+// startupStageOf は run が返した誤りの段階を返す。
+func startupStageOf(err error) startupStage {
+	var startup *startupError
+	if errors.As(err, &startup) {
+		return startup.stage
+	}
+	return stageOther
 }
 
 // waitAtMost は wait の終わりを limit まで待ち、終わったかを返す。終わらなければ
@@ -345,66 +425,54 @@ func waitAtMost(wait func(), limit time.Duration) bool {
 	}
 }
 
-// serve は HTTP サーバーを起動し、停止指示を待つ。
+// serveUntil は listener で HTTP サーバーを起動し、停止の指示を待つ。
 //
-// SIGINT / SIGTERM を受けたら新規の接続受付を止め、処理中の要求を猶予時間まで
-// 待ってから終了する。正常終了の終了コードは 0 である。
-func serve(
-	cfg Config,
-	handler http.Handler,
-	logger *slog.Logger,
-	onListening func(),
-	beforeShutdown func(),
-) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	return serveUntil(ctx.Done(), stop, cfg, handler, logger, onListening, beforeShutdown)
-}
-
+// 停止の指示（タグなしの main では SIGINT / SIGTERM）を受けたら新規の接続受付を
+// 止め、処理中の要求を猶予時間まで待ってから終了する。正常終了の終了コードは 0 である。
+// 待ち受けを失ったとき（開き直しで元のアドレスも開けなかったときなど）も同じ手順で
+// 止め、待ち受けを失った理由を返す。
 func serveUntil(
-	stopRequested <-chan struct{},
-	restoreSignals func(),
+	notifyStop stopNotifier,
+	listener *reopenableListener,
 	cfg Config,
 	handler http.Handler,
 	logger *slog.Logger,
 	onListening func(),
 	beforeShutdown func(),
 ) error {
+	stopRequested, release := notifyStop()
+	// 停止の指示では先に戻し、戻るときにもう一度呼ぶ。受け取りをやめる関数が
+	// 2 度の呼び出しに耐えるとは限らないので、1 度だけ呼ぶ。
+	var releaseOnce sync.Once
+	restoreSignals := func() {
+		releaseOnce.Do(func() {
+			if release != nil {
+				release()
+			}
+		})
+	}
+	defer restoreSignals()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	listener, err := net.Listen("tcp", cfg.Addr)
-	if err != nil {
-		return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
+	if err := listener.Listen(cfg.Addr); err != nil {
+		return &startupError{stage: stageListen, err: err}
 	}
 	defer func() { _ = listener.Close() }()
 
-	listenErr := make(chan error, 1)
 	logger.Info("listening", slog.String("addr", cfg.Addr))
 	if onListening != nil {
 		onListening()
 	}
-	go func() {
-		listenErr <- srv.Serve(listener)
-	}()
+	listener.Serve(srv)
 
-	select {
-	case err := <-listenErr:
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
-		}
-		return nil
-
-	case <-stopRequested:
-		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
-		if restoreSignals != nil {
-			restoreSignals()
-		}
-		logger.Info("received a stop signal; waiting for in-flight requests",
-			slog.String("grace", shutdownGrace.String()))
+	// 停止の指示でも待ち受けを失ったときでも、処理中の要求を待ってから戻る。
+	// 戻ったあとに呼び出し元はデータベースを閉じるので、要求を残して戻らない。
+	shutdown := func() error {
 		if beforeShutdown != nil {
 			beforeShutdown()
 		}
@@ -412,11 +480,38 @@ func serveUntil(
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		// 停止の途中に開き直されないよう、待ち受けを先に閉じる。Serve がまだ
+		// 閉じた待ち受けの登録を外していなければ、Shutdown がもう一度閉じて
+		// net.ErrClosed を返す。それは停止の失敗ではない。
+		_ = listener.Close()
+		if err := srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, net.ErrClosed) {
 			return fmt.Errorf("could not stop within %s: %w", shutdownGrace, err)
 		}
 		logger.Info("stopped")
 		return nil
+	}
+
+	select {
+	case err := <-listener.Failed():
+		if err == nil || errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		// 開き直しで元のアドレスも開けなかったときなど。確立済みの接続は
+		// まだ応答しているので、停止の指示と同じ手順で止める。
+		listenErr := fmt.Errorf("cannot listen on %s: %w", listener.Addr(), err)
+		logger.Error("lost the listener; waiting for in-flight requests",
+			slog.String("error", err.Error()), slog.String("grace", shutdownGrace.String()))
+		if stopErr := shutdown(); stopErr != nil {
+			return errors.Join(listenErr, stopErr)
+		}
+		return listenErr
+
+	case <-stopRequested:
+		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
+		restoreSignals()
+		logger.Info("received a stop signal; waiting for in-flight requests",
+			slog.String("grace", shutdownGrace.String()))
+		return shutdown()
 	}
 }
 

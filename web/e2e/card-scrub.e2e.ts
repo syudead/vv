@@ -166,9 +166,15 @@ async function frameIndex(target: Locator, sprite: SeekSprite) {
   return { position, index: row * sprite.columns + column };
 }
 
-/** midFrameRatio は frame 番目のコマの真ん中を指す、帯の割合である。 */
+/**
+ * midFrameRatio は frame 番目のコマが受け持つ範囲の真ん中を指す、帯の割合である。
+ * 末尾のコマの範囲は動画の長さで切れる（6 秒の動画を 5 秒おきに 2 コマにすると、2 コマ目は
+ * 5〜6 秒）ので、範囲の終わりを長さで抑えてから真ん中をとる。
+ */
 function midFrameRatio(sprite: SeekSprite, durationMs: number, frame: number) {
-  return ((frame + 0.5) * sprite.intervalMs) / durationMs;
+  const start = frame * sprite.intervalMs;
+  const end = Math.min((frame + 1) * sprite.intervalMs, durationMs);
+  return (start + end) / 2 / durationMs;
 }
 
 async function layoutOf(page: Page, target: Locator) {

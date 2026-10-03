@@ -445,8 +445,10 @@ test.describe.serial("guest", () => {
 
     await page.getByRole("button", { name: /^Sort by:/ }).click();
     const menu = page.getByRole("menu");
-    await expect(menu.getByRole("menuitemradio")).toHaveCount(6);
+    // ゲストの並べ替えは 7 種（specs/035-favorites/ui-design.md）。
+    await expect(menu.getByRole("menuitemradio")).toHaveCount(7);
     await expect(menu.getByText("Recently played")).toHaveCount(0);
+    await expect(menu.getByText("Date favorited")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
     // 支援技術のツリーに、所有者だけの操作の名前が無い。

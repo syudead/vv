@@ -15,6 +15,9 @@ type ScanStore interface {
 	// StartScan は走査の行を running で作る。実行中のものがあれば作らずに
 	// それを返し、started は false になる。
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
+	// ResumeScan は StartScan と同じだが、中断で終わった走査 from の対象の動画の
+	// 集合と、仕事の段階の問題（失敗と代用）を新しい走査へ持ち越す。
+	ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
@@ -33,6 +36,12 @@ type ScanStore interface {
 // JobRecoveryStore は中断した取り込みジョブを待ち行列へ戻す保存先である。
 type JobRecoveryStore interface {
 	RequeueRunningJobs(ctx context.Context) (int64, error)
+}
+
+// UnfinishedJobStore は未完了の取り込みの仕事の有無の問い合わせ先である。
+type UnfinishedJobStore interface {
+	// HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。
+	HasUnfinishedJobs(ctx context.Context) (bool, error)
 }
 
 // FolderIndexStore はフォルダの索引（グループの割り当てと祖先フォルダ名）の
@@ -72,6 +81,9 @@ type Publisher interface {
 type ScansOptions struct {
 	Store ScanStore
 	Jobs  JobRecoveryStore
+	// UnfinishedJobs は Busy が未完了の仕事の有無を読む先である。nil なら
+	// Busy は走っている走査だけを見る。
+	UnfinishedJobs UnfinishedJobStore
 	// FolderIndex はスキャンを閉じる直前と、中断したスキャンを閉じたときに
 	// フォルダの索引を作り直す。nil なら作り直さない。
 	FolderIndex FolderIndexStore
@@ -93,6 +105,7 @@ type ScansOptions struct {
 type Scans struct {
 	store   ScanStore
 	jobs    JobRecoveryStore
+	pending UnfinishedJobStore
 	folders FolderIndexStore
 	roots   ActivityFolderStore
 	scanner Scanner
@@ -124,6 +137,7 @@ func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
 		store:     opts.Store,
 		jobs:      opts.Jobs,
+		pending:   opts.UnfinishedJobs,
 		folders:   opts.FolderIndex,
 		roots:     opts.Folders,
 		lifetime:  opts.Context,
@@ -153,7 +167,14 @@ func NewScans(opts ScansOptions) *Scans {
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
-	scan, started, err := s.store.StartScan(ctx)
+	return s.start(ctx, s.store.StartScan)
+}
+
+// start は open で走査の行を作り、新しく作ったなら背後で走らせる。
+func (s *Scans) start(
+	ctx context.Context, open func(context.Context) (domain.Scan, bool, error),
+) (domain.Scan, bool, error) {
+	scan, started, err := open(ctx)
 	if err != nil {
 		return domain.Scan{}, false, err
 	}
@@ -306,6 +327,27 @@ func (s *Scans) Wait() {
 	s.done.Wait()
 }
 
+// Busy は取り込みの途中か、つまり走っている走査があるか、queued か running の
+// 仕事が 1 件以上あるかを返す（specs/037-windows-app/research.md R-7）。どちらも
+// 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
+// ないので含めない。
+func (s *Scans) Busy(ctx context.Context) (bool, error) {
+	s.mu.Lock()
+	running := s.running
+	s.mu.Unlock()
+	if running {
+		return true, nil
+	}
+	if s.pending == nil {
+		return false, nil
+	}
+	pending, err := s.pending.HasUnfinishedJobs(ctx)
+	if err != nil {
+		return false, fmt.Errorf("cannot tell whether jobs are unfinished: %w", err)
+	}
+	return pending, nil
+}
+
 // RecoverInterrupted は前回の停止で中途半端に残った状態を戻す。
 //
 // running のまま残った走査を閉じないと、「実行中は1件だけ」の制約が働いた
@@ -331,6 +373,43 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 		s.logger.Info("requeued interrupted jobs", slog.Int64("count", restored))
 	}
 	return nil
+}
+
+// ResumeInterrupted は、最新の走査が中断（failed、理由 interrupted）で終わって
+// いれば、新しい走査を 1 回始める（specs/037-windows-app/research.md R-9）。始めたら
+// true を返す。
+//
+// interrupted は、停止の指示で打ち切った走査と、running のまま残って
+// RecoverInterrupted が閉じた走査の両方に付く。利用者が走査を取り消す操作は無いので、
+// どちらもプロセスの停止による。走査はサイズと mtime が変わらないファイルを何も
+// しないで通るので、始め直しは続きからと同じ結果になる。ただし変わらないファイルの
+// 上限まで失敗した仕事は積み直されないので、中断した走査の対象の動画の集合と
+// 仕事の段階の問題は新しい走査へ持ち越す（ScanStore.ResumeScan）。最新の走査が done、
+// interrupted 以外の理由の failed、または走査の記録が無いときは始めない。
+//
+// 起動時に、RecoverInterrupted のあと、ワーカーを動かしてから 1 度だけ呼ぶ。
+func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
+	latest, err := s.store.CurrentScan(ctx)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted {
+		return false, nil
+	}
+	scan, started, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
+		return s.store.ResumeScan(ctx, latest.ID)
+	})
+	if err != nil {
+		return false, err
+	}
+	if started {
+		s.logger.Info("resumed the interrupted scan",
+			slog.Int64("interrupted_scan", latest.ID), slog.Int64("scan", scan.ID))
+	}
+	return started, nil
 }
 
 // currentScanID は進捗の書き込み先を返す。取れない場合は 0 を返し、

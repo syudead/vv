@@ -22,6 +22,7 @@ Add each new document to this index.
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
+- [Windows デスクトップ版（VVMDM.exe）](windows-app.md)
 - [再生の画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [動画の隣に置いた字幕ファイル](sidecar-subtitles.md)

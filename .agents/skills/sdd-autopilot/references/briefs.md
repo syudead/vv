@@ -34,6 +34,7 @@ Autopilot stage worker. Repository: <owner/repo>.
 Stage: <plan | design | implement>
 Parent Issue: #<parent>   Child Issue: #<child or ->
 Feature branch: <feature or "none yet"> Feature directory: <dir or ->
+Checkout: <worktree path the orchestrator created, or "own"> — work only there
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/<plan|design|implement>.md.
 The orchestrator selected this stage; do not re-select it.
@@ -44,8 +45,10 @@ feature branch first), and open the PR to <feature> as the stage reference says.
 Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
 If the work needs an approved artifact changed, return BLOCKED without pushing.
 Implement only: if a PR merged into <feature> already Refs this child, change
-nothing and return DONE with that PR. If a dependency named in the child is
-not merged into <feature> yet, change nothing and return BLOCKED naming it.
+nothing and return DONE with that PR. If a dependency named in the child (its
+`Depends on:` line) is not merged into <feature> yet, change nothing and
+return BLOCKED naming it. Other children may be implemented in parallel on
+their own branches; stay inside this child's scope.
 ```
 
 ## Stage worker: `plan-to-issues`
@@ -56,7 +59,9 @@ Stage: plan-to-issues   Parent Issue: #<parent>
 Feature branch: <feature>   Feature directory: <dir>
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/plan-to-issues.md.
-Create the missing native sub-issues in Implementation Work order. Return STATUS: DONE, or BLOCKED with the
+Create the missing native sub-issues in Implementation Work order, each
+dependency before the unit that needs it, and start each body with its
+`Depends on:` line. Return STATUS: DONE, or BLOCKED with the
 question the plan does not settle.
 ```
 
@@ -71,9 +76,32 @@ Regenerate generated files with `task generate` when resolving conflicts,
 never by hand. Open the integration PR if it does not exist yet. In its body,
 also list the out-of-scope items the merged feature PRs' bodies deferred, and
 keep the remaining risks it already lists. Do not handle its review here; the
-review fixer does.
+review fixer does. Do not run the pre-merge sweep either; it has its own worker.
 Return STATUS: DONE with the integration PR in PR, or BLOCKED when a conflict
 needs a product decision.
+```
+
+## Stage worker: pre-merge sweep
+
+```text
+Autopilot stage worker. Repository: <owner/repo>.
+Stage: pre-merge sweep   Parent Issue: #<parent>   Integration PR: #<pr>
+Feature branch: <feature>   Feature directory: <dir>
+Procedure: the "Pre-merge sweep" section of
+  .agents/skills/issue-handoff/references/integrate.md, once.
+Run every check it lists on origin/<feature> and walk the parent's acceptance
+criteria. Collect the backlog (the integration PR body's remaining risks, the
+merged feature PRs' deferred items, unresolved threads on #<pr>), verify each,
+and pick only what the section's criteria say is worth fixing now, at most
+five. Resolve the threads on #<pr> whose fix PR has merged, as the section
+says. Fix the check failures and the picked items on one sub-branch from
+origin/<feature> and open one PR to <feature> with Refs #<parent>. Do not push
+to <feature>, and do not touch a conflict with main.
+Post the sweep comment on #<pr> as the section says, last.
+Return STATUS: DONE with the sweep PR in PR (or PR: - when nothing needed
+fixing), KIND: integration-fix, and the items left in DEFERRED. Return BLOCKED
+when a failing check or an unmet acceptance criterion needs a requester
+decision or an approved artifact changed.
 ```
 
 ## Review fixer: feature PR
@@ -101,7 +129,7 @@ unresolved finding repeats one this PR already fixed and resolved.
 Put the Issue the PR references in REFS, and in KIND what the PR is: `plan`
 (it adds or revises <feature-dir>/plan.md), `design` (ui-design.md),
 `implement` (it Refs a child), or `integration-fix` (it Refs the parent and
-fixes a review of the integration PR).
+fixes a review of the integration PR, or is the pre-merge sweep's PR).
 ```
 
 ## Review fixer: integration PR
@@ -129,9 +157,9 @@ A blocking finding you verified is not a defect: reply why, and resolve it now.
 A real blocking defect or a check on the head that did not pass: create a
 sub-branch from origin/<feature>, commit the fixes there, push it, open a PR to
 <feature> titled for the review round, with Refs #<parent>. Reply on each
-thread it fixes naming that PR and leave it unresolved. List those threads in
-DEFERRED for the maintainer; this workflow does not review the integration PR
-again after the fix PR merges.
+thread it fixes naming that PR and leave it unresolved; the pre-merge sweep
+resolves it after the fix PR merges. This workflow does not review the
+integration PR again after the fix PR merges.
 Return FIXED with the new PR number. Return CLEAN only when every check on the
 head passed and no blocking thread needed a fix; a check that did not pass
 with no cause to fix is BLOCKED, as in the feature-PR brief.

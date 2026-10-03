@@ -755,6 +755,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/network": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * LAN からの接続の許可と、許可中に開けるアドレスを返す
+         * @description Windows デスクトップ版だけの設定。保存した選択、今の待ち受けのポート、許可中なら上がっている
+         *     非ループバックの IPv4 アドレスごとの URL を返す。デスクトップ版でなければ `404` `not_found`
+         *     （specs/037-windows-app/contracts/network-settings-api.md §2）。
+         */
+        get: operations["getNetworkSettings"];
+        /**
+         * LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
+         * @description 許可するなら `0.0.0.0:<ポート>`、しないなら `127.0.0.1:<ポート>` で待ち受けを開き直し、
+         *     開き直せたら保存する。確立済みの接続は切らない。今と同じ値なら何もしない。新しいアドレスで
+         *     開き直せなければ元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason
+         *     `listen_failed` を返す。開き直せたが保存に失敗したら、待ち受けを元のアドレスへ戻して `500`
+         *     を返す。デスクトップ版でなければ `404` `not_found`
+         *     （specs/037-windows-app/contracts/network-settings-api.md §3）。
+         */
+        put: operations["updateNetworkSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/api-tokens": {
         parameters: {
             query?: never;
@@ -1549,6 +1580,18 @@ export interface components {
         };
         UpdateTranscodingSettingsRequest: {
             videoEncoder: components["schemas"]["VideoEncoderChoice"];
+        };
+        /** @description Windows デスクトップ版の LAN からの接続の設定 （specs/037-windows-app/contracts/network-settings-api.md §1） */
+        NetworkSettings: {
+            /** @description 保存した選択。保存値が無ければ false */
+            lanAccess: boolean;
+            /** @description 今の待ち受けのポート */
+            port: number;
+            /** @description lanAccess が true のときだけ、上がっている非ループバックの IPv4 アドレスごとに "http://<アドレス>:<ポート>/" が入る。false なら空 */
+            addresses: string[];
+        };
+        UpdateNetworkSettingsRequest: {
+            lanAccess: boolean;
         };
         /** @description 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。 */
         APIToken: {
@@ -2420,7 +2463,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3632,6 +3675,64 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getNetworkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkSettings"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateNetworkSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNetworkSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 切り替えたあとの設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NetworkSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 開き直したあとの保存に失敗した。待ち受けは元のアドレスへ戻した */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listApiTokens: {

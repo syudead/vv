@@ -1,9 +1,11 @@
 // build は SPA を web/dist へ出して Go の単一バイナリに埋め込む。
-// task build の実体。
+// task build の実体。-windows-app を付けると、代わりに Windows 版の zip を
+// dist/ へ作る（task build-windows-app、windows_app.go）。
 package main
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,10 +46,8 @@ func cleanDist(root string) error {
 }
 
 func main() {
-	version := os.Getenv("VERSION")
-	if version == "" {
-		version = "dev"
-	}
+	windowsApp := flag.Bool("windows-app", false, "build the Windows app zip into dist/")
+	flag.Parse()
 
 	root, err := devtools.RepositoryRoot()
 	if err != nil {
@@ -58,6 +58,19 @@ func main() {
 	}
 	if err := devtools.Run(root, "npm", "--prefix", "web", "run", "build"); err != nil {
 		devtools.Fail(err)
+	}
+	if *windowsApp {
+		out, err := buildWindowsApp(root, os.Getenv("VERSION"))
+		if err != nil {
+			devtools.Fail(err)
+		}
+		fmt.Printf("Built %s\n", out)
+		return
+	}
+
+	version := os.Getenv("VERSION")
+	if version == "" {
+		version = "dev"
 	}
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
 		devtools.Fail(err)

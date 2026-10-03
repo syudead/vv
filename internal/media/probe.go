@@ -48,7 +48,7 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
 
-	output, err := exec.CommandContext(ctx, probeCommand, probeArgs(path)...).Output()
+	output, err := command(ctx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
