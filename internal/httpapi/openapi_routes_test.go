@@ -383,3 +383,31 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 		t.Fatalf("DELETE without name: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
 	}
 }
+
+// /api/tags/batch と /api/tags/impact は /api/tags/{id} と字面の段で区別される。どちらの POST も
+// {id} の操作に取られず、それぞれの経路に届くことを確かめる
+// （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+func TestTagBatchRoutesAreNotTagID(t *testing.T) {
+	fake := &fakeTags{}
+	handler := newTestServer(t, Options{Tags: fake})
+
+	rec := jsonRequest(t, handler, http.MethodPost, "/api/tags/batch", `{"action":"delete","ids":[1]}`)
+	if rec.Code != http.StatusOK || fake.operation != "batch" {
+		t.Fatalf("POST /api/tags/batch: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
+	}
+
+	fake.operation = ""
+	rec = jsonRequest(t, handler, http.MethodPost, "/api/tags/impact", `{"action":"delete","ids":[1]}`)
+	if rec.Code != http.StatusOK || fake.operation != "impact" {
+		t.Fatalf("POST /api/tags/impact: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
+	}
+
+	// {id} の経路（PATCH・DELETE）として解釈されない。
+	for _, target := range []string{"/api/tags/batch", "/api/tags/impact"} {
+		fake.operation = ""
+		rec = do(t, handler, http.MethodDelete, target)
+		if fake.operation != "" {
+			t.Errorf("DELETE %s が %s に届いた (status %d)", target, fake.operation, rec.Code)
+		}
+	}
+}

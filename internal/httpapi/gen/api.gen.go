@@ -219,6 +219,7 @@ const (
 	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
+	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
@@ -303,6 +304,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonTooFewVideos:
 		return true
 	case ErrorReasonTooManyTagFilters:
+		return true
+	case ErrorReasonTooManyTags:
 		return true
 	case ErrorReasonTooManyVideos:
 		return true
@@ -617,6 +620,48 @@ func (e SubtitleTrackFormat) Valid() bool {
 	case Srt:
 		return true
 	case Vtt:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TagBatchRequestAction.
+const (
+	TagBatchRequestActionConfirm TagBatchRequestAction = "confirm"
+	TagBatchRequestActionDelete  TagBatchRequestAction = "delete"
+	TagBatchRequestActionReject  TagBatchRequestAction = "reject"
+)
+
+// Valid indicates whether the value is a known member of the TagBatchRequestAction enum.
+func (e TagBatchRequestAction) Valid() bool {
+	switch e {
+	case TagBatchRequestActionConfirm:
+		return true
+	case TagBatchRequestActionDelete:
+		return true
+	case TagBatchRequestActionReject:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TagImpactRequestAction.
+const (
+	TagImpactRequestActionDelete TagImpactRequestAction = "delete"
+	TagImpactRequestActionMerge  TagImpactRequestAction = "merge"
+	TagImpactRequestActionReject TagImpactRequestAction = "reject"
+)
+
+// Valid indicates whether the value is a known member of the TagImpactRequestAction enum.
+func (e TagImpactRequestAction) Valid() bool {
+	switch e {
+	case TagImpactRequestActionDelete:
+		return true
+	case TagImpactRequestActionMerge:
+		return true
+	case TagImpactRequestActionReject:
 		return true
 	default:
 		return false
@@ -1518,6 +1563,46 @@ type Tag struct {
 	VideoCount int `json:"videoCount"`
 }
 
+// TagBatchRequest defines model for TagBatchRequest.
+type TagBatchRequest struct {
+	Action TagBatchRequestAction `json:"action"`
+	Ids    []int64               `json:"ids"`
+}
+
+// TagBatchRequestAction defines model for TagBatchRequest.Action.
+type TagBatchRequestAction string
+
+// TagBatchResponse defines model for TagBatchResponse.
+type TagBatchResponse struct {
+	// AppliedIds 処理した id
+	AppliedIds []int64 `json:"appliedIds"`
+
+	// NotApplicableIds 操作が働かない種類だった id
+	NotApplicableIds []int64 `json:"notApplicableIds"`
+
+	// NotFoundIds もう無かった id
+	NotFoundIds []int64 `json:"notFoundIds"`
+}
+
+// TagImpactRequest defines model for TagImpactRequest.
+type TagImpactRequest struct {
+	// Action 確認をとる操作。数える種類がこれで決まる
+	Action TagImpactRequestAction `json:"action"`
+	Ids    []int64                `json:"ids"`
+}
+
+// TagImpactRequestAction 確認をとる操作。数える種類がこれで決まる
+type TagImpactRequestAction string
+
+// TagImpactResponse defines model for TagImpactResponse.
+type TagImpactResponse struct {
+	// TagCount ids のうち今あり、action が働くタグの数
+	TagCount int `json:"tagCount"`
+
+	// VideoCount そのどれかが付いた、いまライブラリにある動画の本数（重複なし）
+	VideoCount int `json:"videoCount"`
+}
+
 // TagInput 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
 // 無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
 type TagInput struct {
@@ -2245,6 +2330,12 @@ type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
+// BatchTagsJSONRequestBody defines body for BatchTags for application/json ContentType.
+type BatchTagsJSONRequestBody = TagBatchRequest
+
+// TagImpactJSONRequestBody defines body for TagImpact for application/json ContentType.
+type TagImpactJSONRequestBody = TagImpactRequest
+
 // RenameTagJSONRequestBody defines body for RenameTag for application/json ContentType.
 type RenameTagJSONRequestBody = RenameTagRequest
 
@@ -2367,6 +2458,12 @@ type ServerInterface interface {
 	// CreateTag タグを1件作る
 	// (POST /api/tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
+	// BatchTags 複数のタグをまとめて確定・却下・削除する
+	// (POST /api/tags/batch)
+	BatchTags(w http.ResponseWriter, r *http.Request)
+	// TagImpact まとめての却下・削除・統合の確認に出す数を返す
+	// (POST /api/tags/impact)
+	TagImpact(w http.ResponseWriter, r *http.Request)
 	// ForgetRejectedTagName 却下した名前を一覧から外す
 	// (DELETE /api/tags/rejected-names)
 	ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params ForgetRejectedTagNameParams)
@@ -3414,6 +3511,34 @@ func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CreateTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BatchTags operation middleware
+func (siw *ServerInterfaceWrapper) BatchTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TagImpact operation middleware
+func (siw *ServerInterfaceWrapper) TagImpact(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TagImpact(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4694,6 +4819,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/reject", wrapper.RejectTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ForgetRejectedTagName)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ListRejectedTagNames)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/batch", wrapper.BatchTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/impact", wrapper.TagImpact)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)

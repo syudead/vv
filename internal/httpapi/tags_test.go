@@ -33,6 +33,13 @@ type fakeTags struct {
 
 	// 031: 却下した名前の一覧の決め打ち。nil なら nil を返す。
 	rejectedNames []string
+
+	// 036: まとめての操作と確認の数の決め打ち。
+	lastBatchAction  domain.TagBatchAction
+	lastImpactAction domain.TagImpactAction
+	lastIDs          []int64
+	batchOutcome     domain.TagBatchOutcome
+	impact           domain.TagImpact
 }
 
 func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
@@ -133,6 +140,16 @@ func (f *fakeTags) ListRejectedTagNames(context.Context) ([]string, error) {
 func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
 	f.operation, f.lastName = "forget-rejected", name
 	return f.err
+}
+
+func (f *fakeTags) BatchTags(_ context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {
+	f.operation, f.lastBatchAction, f.lastIDs = "batch", action, ids
+	return f.batchOutcome, f.err
+}
+
+func (f *fakeTags) TagImpact(_ context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
+	f.operation, f.lastImpactAction, f.lastIDs = "impact", action, ids
+	return f.impact, f.err
 }
 
 func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSummary, error) {

@@ -952,6 +952,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tags/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 複数のタグをまとめて確定・却下・削除する
+         * @description `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
+         *     確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
+         *     `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
+         *     3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+         */
+        post: operations["batchTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * まとめての却下・削除・統合の確認に出す数を返す
+         * @description `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
+         *     `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
+         *     （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
+         *     何も変えない（specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+         */
+        post: operations["tagImpact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-tags": {
         parameters: {
             query?: never;
@@ -1539,6 +1586,33 @@ export interface components {
         MergeTagRequest: {
             /** Format: int64 */
             sourceId: number;
+        };
+        TagBatchRequest: {
+            /** @enum {string} */
+            action: "confirm" | "reject" | "delete";
+            ids: number[];
+        };
+        TagBatchResponse: {
+            /** @description 処理した id */
+            appliedIds: number[];
+            /** @description もう無かった id */
+            notFoundIds: number[];
+            /** @description 操作が働かない種類だった id */
+            notApplicableIds: number[];
+        };
+        TagImpactRequest: {
+            /**
+             * @description 確認をとる操作。数える種類がこれで決まる
+             * @enum {string}
+             */
+            action: "reject" | "delete" | "merge";
+            ids: number[];
+        };
+        TagImpactResponse: {
+            /** @description ids のうち今あり、action が働くタグの数 */
+            tagCount: number;
+            /** @description そのどれかが付いた、いまライブラリにある動画の本数（重複なし） */
+            videoCount: number;
         };
         AddTagSynonymRequest: {
             name: string;
@@ -2235,7 +2309,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3778,6 +3852,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    batchTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description 処理した・無かった・働かなかった id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagBatchResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    tagImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description 確認に出す数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagImpactResponse"];
+                };
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];

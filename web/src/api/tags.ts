@@ -9,6 +9,10 @@ export type TagRef = components["schemas"]["TagRef"];
 export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
+export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
+export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
+export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
+export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
 
 /**
  * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
@@ -18,6 +22,13 @@ export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
  * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md §6）。
  */
 export const maxVideoTagsSelection = 20000;
+
+/**
+ * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。超えると 400 `too_many_tags` に
+ * なるので、画面は見えている行がこれを超えるときまとめての操作を disabled にする。
+ */
+export const maxTagBatch = 20000;
 
 /**
  * listTags はタグを名前の自然順で取得する（本数0を含む）。
@@ -322,6 +333,45 @@ export async function rejectTag(id: number, signal?: AbortSignal): Promise<void>
     refreshOnStaleTagError(await toRequestFailed(response));
   }
   afterTagChanged();
+}
+
+/**
+ * batchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
+ * specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは
+ * サーバーが飛ばし、`notApplicableIds`・`notFoundIds` で返す。成功したら、1 件の操作と同じく
+ * `afterTagChanged` を 1 回呼ぶ。却下のあとの却下した名前の一覧は呼び出し側が取り直す。
+ */
+export async function batchTags(
+  action: TagBatchAction,
+  ids: readonly number[],
+  signal?: AbortSignal,
+): Promise<TagBatchResponse> {
+  const result = await request<TagBatchResponse>("/api/tags/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ids: Array.from(ids) }),
+    signal,
+  });
+  afterTagChanged();
+  return result;
+}
+
+/**
+ * tagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
+ * 本数（重複なし）を返す（POST /api/tags/impact、contracts/screen-api.md §3）。何も変えない
+ * ので、共有の保持には触れない。
+ */
+export function tagImpact(
+  action: TagImpactAction,
+  ids: readonly number[],
+  signal?: AbortSignal,
+): Promise<TagImpactResponse> {
+  return request<TagImpactResponse>("/api/tags/impact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ids: Array.from(ids) }),
+    signal,
+  });
 }
 
 /**
