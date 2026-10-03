@@ -131,10 +131,10 @@
 | 統合の窓の見出し（複数） | Merge 4 tags |
 | 統合の窓の統合元の見出し | Tags to merge |
 | 統合の窓の統合先の入力（今の形） | Tag to merge into |
-| 統合の窓の確認（複数） | The 120 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can't be undone. |
+| 統合の窓の確認（複数。数は統合先を外した統合元） | The 120 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can't be undone. |
 | 統合先を選んだ中から選んだとき | "Action" is kept and the other 3 tags merge into it. |
 | 統合元が無くなったとき | Choose another tag to merge into: "Action" is the only tag selected. |
-| 統合のトースト（複数） | Merged 4 tags into "Action" |
+| 統合のトースト（複数。数は実際に統合した数） | Merged 4 tags into "Action" |
 | 対象の一部がもう無かったとき | Some of the tags no longer existed, so the list was reloaded |
 | 却下した名前の入口 | Rejected names 〈件数〉（今の見出しの文字） |
 | 却下した名前の窓の見出し | Rejected names |
@@ -200,10 +200,11 @@
 高さは `h-5`（チェックの大きさ）に合わせ、文字は今の `text-xs text-fg-muted tabular-nums`。
 
 - **先頭のチェック**: `Checkbox`（`size-5`）。行のチェックと同じ列の位置に置き（行の `px-2` と
-  同じ左の余白）、縦に並ぶ。見え方は行のチェックと同じ規則（下の「Selection」の「Row checkbox」。
-  選んでいない間は `opacity-40`、帯に hover するか選んでいる間は `opacity-100`）。状態は 3 つ:
-  見えている行を 1 つも選んでいなければ空、一部なら中間（lucide `Minus`）、全部なら選択。空と中間で
-  押すと見えている行をすべて選び（要件 9）、全部のときに押すと選択を解く。読み上げ名は空・中間で
+  同じ左の余白）、縦に並ぶ。見え方は行のチェックと同じ規則（下の「Rows」の「Row checkbox」。
+  選んでいない間は `opacity-40`、帯に hover するか選んでいる間は `opacity-100`）。対象は見えている
+  行のうち**選べる行**で、改名中の行は入らない（その行のチェックは `disabled`。下の「Row checkbox」）。
+  状態は 3 つ: 選べる行を 1 つも選んでいなければ空、一部なら中間（lucide `Minus`）、全部なら選択。空と
+  中間で押すと選べる行をすべて選び（要件 9）、全部のときに押すと選択を解く。読み上げ名は空・中間で
   「Select all shown tags」、全部で「Clear selection」。見えている行が無いとき（空の状態）・読み込み中・
   読み込み失敗・見えている数が上限（`maxTagBatch`）を超えるときは `disabled`。
 - **件数**: 今の形（「1,000 tags」、絞り込み・検索のどちらかが効いていれば「90 of 1,000 tags」。
@@ -232,7 +233,8 @@
 - 選んだ行は面を `bg-accent-soft` にする（リスト表示の選んだ行と同じ）。名前（`text-fg`）と本数・
   シノニム（`text-fg-muted`）の色は変えない。改名中の行は改名の面（`bg-elevated` と
   `ring-control-border`）が勝ち、その行のチェックは `disabled`（改名の確定で行が並び順の別の位置へ
-  動きうるため、改名の間は選ばない）。
+  動きうるため、改名の間は選ばない）。選んでいる行の改名を始めると、その行を選択から外す（バーの
+  件数が減り、空になればバーが消える）。まとめての操作が改名中のタグに働くことは無い。
 - 選択は見えている行の部分集合で、検索・絞り込み・並び順を変えて見えなくなった行の選択は外れる
   （Edge Case、[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。並び順だけを変えたときは
   行は見えたままなので選択は残る。
@@ -253,6 +255,12 @@
   `IconButton` を `aria-busy` にし次の押下を無視）。改名・シノニム・統合・却下・削除は、それぞれの
   `IconButton`・項目を押したときと同じ。フォーカスの行き先の規則（014・031）で「改名」「その他の
   操作」を指すものは、まとめている間は入口の `IconButton` を指す。
+- **実装の置き場**: Plan の Summary はこの形（行の操作の文字の出し方）を design に委ねている。この
+  まとめは、行のチェックを足して `TagRow` の列を組み直す単位「タグ管理画面で複数の行を選び、まとめて
+  確定・却下・削除する」で入れる（下の 360px の幅の配分はチェックの包みと入口の `IconButton` を合わせて
+  決めているので、別の単位に分けると一方だけの間に名前の列の幅が決まらない）。その単位の受け入れには、
+  タッチの端末（または `sm` 未満）で行の右端が「Actions」1 つになり、項目が文字で読め、「Confirm」が
+  行の「確定する」と同じ結果になることを含める（下の「Review criteria」の「操作の優先順位」）。
 - 行の幅の配分（360px）: 本文の `px-4` と行の `px-2` を引いた 312px から、チェックの包み
   `size-8`（32px）・間 `gap-2` ×3（24px）・本数の列 `w-16`（64px）・入口の `IconButton`（32px）を
   引いて、名前の列は約 160px になる（031 の 92px より広い）。横スクロールは出ない。
@@ -304,8 +312,10 @@
   取り直し、トースト「Some of the tags no longer existed, so the list was reloaded」。
 - 「Tentative only」を押している間は確定した行が一覧から外れる。全部外れて空になったら 031 の
   「No tentative tags」の空の状態になり、フォーカスは「Tentative only」へ（031「絞り込みから外れた
-  行のフォーカス」）。そうでなければフォーカスは、バーが残っていれば「Confirm」に、バーが消えたら
-  件数の行の先頭のチェックへ移す。
+  行のフォーカス」）。そうでなければフォーカスは、バーが残っていて「Confirm」が押せれば「Confirm」に、
+  バーが残っていても「Confirm」が `disabled` になった（仮と確定を混ぜて選び、残った選択が確定した
+  タグだけになった）ら「More」に、バーが消えたら件数の行の先頭のチェックへ移す。押せないボタンへ
+  フォーカスを置かない。
 - 失敗（`5xx`・通信）はトーストで `errorText` を出し、何も変えず、選択は残る（Edge Case「途中で
   失敗したとき」）。
 
@@ -344,8 +354,10 @@
 ### Width
 
 - 統合先の `Combobox` の枠は窓の内側の幅いっぱい（`frameClassName="w-full"`。今の既定 `w-40` は
-  再生画面の「タグを追加」の幅で、窓の中では極端に小さい。要件 13）。候補の一覧も同じ幅で開く。
-  1 件の統合でも同じ。窓の幅は今の `ModalFrame` の既定（`sm:max-w-2xl`、`sm` 未満は全幅）。
+  再生画面の「タグを追加」の幅で、窓の中では極端に小さい。要件 13）。候補の一覧も枠と同じ幅で開く。
+  今の `Combobox` は候補の一覧を枠と別に `w-64` で固定しているので、一覧の幅を枠に合わせる指定
+  （例: `listClassName="w-full"`。包みの `relative` の幅に一覧の `absolute` を合わせる）を足し、統合の窓は
+  それを使う。指定しない呼び手（再生画面の「タグを追加」など）は今の `w-64` のまま。1 件の統合でも同じ。窓の幅は今の `ModalFrame` の既定（`sm:max-w-2xl`、`sm` 未満は全幅）。
 
 ### Sources
 
@@ -369,12 +381,20 @@
 - 統合先を選ぶと、統合先を外した統合元について `POST /api/tags/impact`（`merge`）を送り、届くまで
   「Counting the affected videos…」と `LoaderCircle`、「Merge」は `disabled`。届いたら 014 と同じ
   `border-l-2 border-danger-strong` の段落に「The 120 videos tagged with these 4 tags get the tag
-  "Action". …」を出す。数えられなかったときはまとめての却下と同じ「Couldn't count…」と「Retry」。
+  "Action". …」を出す。文中のタグの数（「these 4 tags」「the 4 tags leave」）は**統合先を外した統合元の
+  数**で、選んだ数ではない（4 個を選んでそのうち「Action」を統合先にすれば「these 3 tags」）。動画の
+  本数は応答の `videoCount`。統合元が 1 件になったら 014 の 1 件の文言にする。数えられなかったときはまとめての却下と同じ「Couldn't count…」と「Retry」。
   統合先を選び直すたびに数え直す。
 - 実行は `POST /api/tags/{id}/merge`（`sourceIds` = 統合先を外した統合元）。`200` で窓を閉じ、統合元の
-  行を消し、統合先の行を応答の `tag` に差し替え（本数が合算に、仮なら確定に）、選択を空にし、
-  トースト「Merged 4 tags into "Action"」。フォーカスは統合先の行の名前へ（014 と同じ。「Tentative
-  only」中で統合先が一覧に無ければ 031 の規則）。`notFoundIds` が空でなければ一覧を取り直す。
+  行を消し、統合先の行を応答の `tag` に差し替え（本数が合算に、仮なら確定に）、選択を空にする。
+  トーストの数は**実際に統合した数**（`sourceIds` の数から `notFoundIds` の数を引いたもの）で、
+  「Merged 4 tags into "Action"」（1 件なら 014 の「Merged "X" into "Action"」）。フォーカスは統合先の行の
+  名前へ（014 と同じ。「Tentative only」中で統合先が一覧に無ければ 031 の規則）。
+- `notFoundIds` が空でないときは一覧を取り直す。統合元が**すべて**もう無かった（`notFoundIds` が
+  `sourceIds` と同じ。応答の `tag` は変わっていない）ときは、統合のトーストを出さず、今の
+  `tag_not_found` と同じ扱いにする（窓を閉じ、トースト「Some of the tags no longer existed, so the list
+  was reloaded」、取り直し。Plan の統合の単位「`notFoundIds` が空でなければ今の `tag_not_found` と同じ
+  扱い」）。一部だけ無かったときは、実際に統合した数のトーストのあとに同じ取り直しのトーストを出す。
 - 失敗・「Cancel」・Esc は 014 のまま（窓は開いたまま失敗を出す。閉じたらフォーカスは開いた元の
   「その他の操作」またはバーの「More」へ）。
 
@@ -488,13 +508,33 @@
 - **キーボード**: `lg` 以上で Tab は 検索 →「Tentative only」→「Unused only」→ 並び順のメニュー →
   向き →「新しいタグ」→ 先頭のチェック →「Rejected names」→ 行のチェック → 行の名前 → 行の操作 →
   … と進み、バーが出ていれば本文のあとにバーの「Confirm」→「More」→ × が続く。`/` で検索へ移る。
-  窓の Esc は窓だけを閉じる。
+  窓の Esc は窓だけを閉じる。1,000 個の一覧で、行の中を Tab で進め続けると描いている範囲の端を越えても
+  次の行へ進み（バーや本文の外へ飛ばない）、Shift+Tab でも同じく前の行へ戻る（下の「Keyboard across
+  virtualized rows」）。
 - **要求を満たしたことにならない例**（UI品質）: 速くなっても、見えているタグをまとめて選んで確定する
   手が無い。選んでいないときからチェックや操作のバーが名前より先に目に入る。「Unused only」や
   並び順が吹き出しの中に隠れ、ボタンの文字で今の状態が読めない。却下・削除・統合がバーに直接
   並び、確定と同じ重さで見える。却下した名前が一覧の下にあり、先頭から届かない。タッチの端末で
   行の操作がアイコンだけで、押すまで意味が分からない。1280×800 で 12 行に届かない。統合の窓の
   入力が窓の幅より明らかに狭い。
+
+## Keyboard across virtualized rows
+
+見えている分だけ描く（R-2）と、描いている範囲の外の行は DOM に無いので、ブラウザの既定の Tab では
+最後に描いた行から一覧の外へ飛ぶ。次の 2 つで、Tab の順を全件の行の順のまま保つ。
+
+- **フォーカスのある行は描き続ける**: 仮想化の描く範囲（`rangeExtractor`）に、フォーカスを持つ行の
+  位置を常に足す。スクロールで画面の外へ出ても、その行は外されず、フォーカスが `body` へ落ちない。
+- **範囲の端の Tab を次の行へ渡す**: 一覧の包みの `keydown` で、Tab がその行の最後のフォーカスできる
+  要素から押され、次の行が描かれていない（全件の最後の行ではない）ときは、既定の動きを止め、次の行の
+  位置へスクロールし（`scrollToIndex`。留めた帯の高さを差し引く。「Band」）、描かれたらその行の
+  チェックへフォーカスを移す。Shift+Tab がその行の最初のフォーカスできる要素から押され、前の行が
+  描かれていないときは、前の行へスクロールして、その行の最後のフォーカスできる要素（行の操作の
+  入口）へ移す。全件の最後の行から Tab、最初の行から Shift+Tab は既定のまま一覧の外（バーの
+  「Confirm」、帯の「Rejected names」）へ進む。
+
+この仕組みは「タグ管理画面の一覧を見えている行だけ描くようにする」の単位（`focusRow` が描かれて
+いない行へ先にスクロールする仕組みと同じ場所）で入れる。
 
 ## Colour
 
