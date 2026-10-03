@@ -76,7 +76,8 @@ test("ログインの送信中は再送信できず、失敗するとパスワ�
   });
 
   await page.getByLabel("Password").press("Enter");
-  const submit = page.getByRole("button", { name: "Sign in" });
+  // 送信中はボタンの名前が「Signing in…」に変わるので、どちらの名前でも同じボタンを指す。
+  const submit = page.getByRole("button", { name: /^Sign(ing)? in/ });
   await expect(submit).toBeDisabled();
   await expect(submit).toHaveText("Signing in…");
   await expect(submit).toHaveAttribute("aria-busy", "true");

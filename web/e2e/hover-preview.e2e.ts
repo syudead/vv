@@ -380,7 +380,11 @@ test.describe.serial("library hover preview", () => {
     await expect(card(page, eligible).locator("video")).toHaveCount(0);
     await assertNoPreviewAfterPointer(page, eligible, "touch");
     await assertNoPreviewAfterPointer(page, eligible, "pen");
-    await card(page, eligible).locator("[data-preview-checkbox]").hover();
+    // お気に入りの付け外しも data-preview-checkbox を持つので、選択のチェックの方を指す。
+    await card(page, eligible)
+      .locator("[data-preview-checkbox]")
+      .filter({ has: page.getByRole("checkbox") })
+      .hover();
     await elapse(page, 500);
     await expect(card(page, eligible).locator("video")).toHaveCount(0);
 

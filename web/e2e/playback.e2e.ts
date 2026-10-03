@@ -514,7 +514,6 @@ test.describe.serial("live MP4 playback", () => {
     );
     await page.goto(`/videos/${String(item.id)}`);
     await initial;
-    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
     await page.locator(".vjs-big-play-button").click();
     await page.waitForFunction(() => {
       const element = document.querySelector("video");
@@ -537,6 +536,9 @@ test.describe.serial("live MP4 playback", () => {
       { steps: 3 },
     );
     await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
+    // 操作バーは再生を始めるまで出ない（video.js の vjs-has-started）ので、再生を始めて
+    // ポインターで操作バーを出してから確かめる。
+    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
     const seekBar = page.locator(".vjs-progress-control");
     const box = await seekBar.boundingBox();
     if (box === null) throw new Error("seek bar is not visible");
