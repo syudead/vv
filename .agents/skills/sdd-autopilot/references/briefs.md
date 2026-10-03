@@ -44,8 +44,10 @@ feature branch first), and open the PR to <feature> as the stage reference says.
 Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
 If the work needs an approved artifact changed, return BLOCKED without pushing.
 Implement only: if a PR merged into <feature> already Refs this child, change
-nothing and return DONE with that PR. If a dependency named in the child is
-not merged into <feature> yet, change nothing and return BLOCKED naming it.
+nothing and return DONE with that PR. If a dependency named in the child (its
+`Depends on:` line) is not merged into <feature> yet, change nothing and
+return BLOCKED naming it. Other children may be implemented in parallel on
+their own branches; stay inside this child's scope.
 ```
 
 ## Stage worker: `plan-to-issues`
@@ -56,7 +58,9 @@ Stage: plan-to-issues   Parent Issue: #<parent>
 Feature branch: <feature>   Feature directory: <dir>
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/plan-to-issues.md.
-Create the missing native sub-issues in Implementation Work order. Return STATUS: DONE, or BLOCKED with the
+Create the missing native sub-issues in Implementation Work order, each
+dependency before the unit that needs it, and start each body with its
+`Depends on:` line. Return STATUS: DONE, or BLOCKED with the
 question the plan does not settle.
 ```
 

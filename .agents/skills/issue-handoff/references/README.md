@@ -91,7 +91,8 @@ implementation PR, follow the open-PR rule below for that PR.
 3. **`ui` label and no `ui-design.md` on the feature branch** → `design`.
 4. **No native sub-issues** → `plan-to-issues`.
 5. **A child that is not done** → `implement` the first such child, in
-   sub-issue order, that has no open PR and whose prerequisites (the "has to
+   sub-issue order, that has no open PR and whose prerequisites (the children
+   its `Depends on:` line names; for a child without that line, the "has to
    land first" part of its body) are done. When every remaining child has an
    open PR, apply rule 1's review check to those PRs in order, and otherwise
    report what is waiting on merge and stop. When the rest are blocked only by
