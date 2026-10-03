@@ -37,23 +37,26 @@ UpdateNetworkSettingsRequest:
 
 | 状況 | 応答 |
 | --- | --- |
-| デスクトップ版でない（Docker・直接起動） | `404` `not_found`。認証の判定より前に返す |
-| 所有者のセッションでない | `403` `forbidden`（`/api/settings/transcoding` と同じ） |
+| 所有者のセッションでない | 今の認証の境界が `401` `unauthenticated` を返す（`/api/settings/transcoding` と同じ。ハンドラに届かない） |
+| デスクトップ版でない（Docker・直接起動） | `404` `not_found` |
 | それ以外 | `200` `NetworkSettings` |
 
-SPA は `404` を「この節を出さない」と読む。
+判定の順は上から。SPA（所有者）は `404` を「この節を出さない」と読む。
 
 ## 3. `PUT /api/settings/network`
 
 | 状況 | 応答 |
 | --- | --- |
+| 所有者のセッションでない | `401` `unauthenticated`（認証の境界） |
+| 同じオリジンでない | `403` `forbidden`・reason `cross_origin`（今の境界） |
 | デスクトップ版でない | `404` `not_found` |
-| 所有者のセッションでない・同じオリジンでない | `403` `forbidden` |
 | 本文が不正 | `400` `invalid_request` |
 | 今と同じ値 | 何もせず `200` `NetworkSettings` |
 | 新しいアドレスで待ち受けを開き直せない | 元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason `listen_failed` |
+| 開き直せたが保存に失敗した（ディスクの満杯・I/O の誤り） | 待ち受けを元のアドレスへ開き直し、`500` `internal` |
 | それ以外 | 待ち受けを開き直し、保存してから `200` `NetworkSettings`（開き直したあとの値） |
 
 - 開き直しのあいだも、確立済みの接続（この要求自身、SSE の `/api/events`、配信中の動画）は切らない。
 - `true` から `false` にしたあと、LAN の端末からの新しい接続は TCP の段で拒まれる（受け入れ条件 7）。
 - 同時に来た 2 つの `PUT` は 1 つずつ処理する。
+- どの誤りの応答でも、応答のあとの待ち受けのアドレスは保存値と一致する（許可していないのに `0.0.0.0` で待ち受けたまま残らない）。

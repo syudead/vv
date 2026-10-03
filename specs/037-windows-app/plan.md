@@ -20,7 +20,7 @@ Windows の利用者が zip を展開して `VVMDM.exe` を実行するだけで
   [R-12](research.md#r-12-同梱の-ffmpeg-は-gyandev-の-windows-版essentialsを版と-sha-256-で固定する)）。
 - **閉じる・二重起動・失敗**: 取り込み中なら閉じる前に確認し、二重起動は既存のウィンドウを前面に出し、
   サインアウトでは確認なしで穏当に止める。起動の失敗は全てダイアログで理由を示す
-  （[R-6](research.md#r-6-二重起動は名前付きミューテックスで判定し既存のウィンドウを前面に出す)、
+  （[R-6](research.md#r-6-二重起動は利用者ごとセッションをまたぐ名前付きミューテックスで判定し既存のウィンドウを前面に出す)、
   [R-7](research.md#r-7-閉じる確認は走査中か未完了の取り込みの仕事があるときに出し閉じると決めたらウィンドウを先に消してから停止する)、
   [R-8](research.md#r-8-サインアウトシャットダウンでは確認を出さず停止を待つ理由を-windows-に示して同じ停止手順を通す)、
   [R-10](research.md#r-10-起動の失敗は全て-windows-標準のダイアログで理由を示しログを-logs-に書く)）。
@@ -68,7 +68,7 @@ Windows の利用者が zip を展開して `VVMDM.exe` を実行するだけで
 | `internal/app` は `os/exec`・`net/http`・DB を読まない（ARCHITECTURE.md） | 満たす。`Busy` は app が宣言する役割の型（未完了の仕事の有無）を通す |
 | 生成物を手で変えない（AGENTS.md） | 満たす。`/api/settings/network` は `api/openapi.yaml` を変えて `task generate` |
 | 制約は検査で守る（core-beliefs.md） | 満たす。`build-windows-check` に `-tags desktop` のビルドを足し、`task lint` に `GOOS=windows`・`desktop` タグでの lint を足して、Windows 専用のファイルも CI で検査する |
-| 文書は振る舞いの変更と同じ変更で直す（core-beliefs.md、AGENTS.md） | 各実装単位が触る文書を Scope に書く。新しい設計文書 `docs/design-docs/windows-app.md` を索引に載せる |
+| 文書は振る舞いの変更と同じ変更で直す（core-beliefs.md、AGENTS.md） | 文書の節ごとに持ち主の実装単位を 1 つ決め（[文書の持ち分](#文書の持ち分)）、単位どうしで同じ節を書かない。新しい設計文書 `docs/design-docs/windows-app.md` を索引に載せる |
 | Docker と直接起動はこれまでどおり使える（親 Issue 要件 11） | 満たす。タグなしのビルドの入口・環境変数・イメージは変えない。全起動方法に効く変更は R-9 と R-11 だけ |
 
 設計の後に見直しても違反は無い。
@@ -112,13 +112,33 @@ specs/037-windows-app/
 `desktop` タグのファイルは組み立てと配線だけを持つ。却下した案: 全てを `cmd/mdm` に置く — 組み立ての場所に
 ウィンドウ手続きやダイアログの実装が入り、depguard で他の adapter から切り離せない。
 
+### 文書の持ち分
+
+振る舞いを変えた単位が、その節を同じ PR で書く（core-beliefs.md）。同じ節を 2 つの単位が書かないよう、
+節ごとに持ち主を 1 つに決める。`docs/design-docs/windows-app.md` は「Windows デスクトップ版」の単位が
+節の見出しごと作り、後の単位は自分の節の本文だけを書く。
+
+| 文書 | 節 | 持ち主の単位 |
+| --- | --- | --- |
+| ARCHITECTURE.md | 起動時の回復（Intended topology の「In place today」の段落の走査の回復） | 起動時に、中断で終わった走査を自動で始め直す |
+| ARCHITECTURE.md | Intended topology の配布の形、Intended dependency direction の `internal/desktop` | Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める |
+| ARCHITECTURE.md | API の一覧の `/api/settings/network` | LAN からの接続の許可を保存し、`/api/settings/network` で切り替える |
+| docs/design-docs/windows-app.md と索引 | 文書の作成、「プロセスとウィンドウ」「データと ffmpeg」「起動の失敗」 | Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める |
+| docs/design-docs/windows-app.md | 「閉じる・二重起動・サインアウト」 | 閉じる前の確認、二重起動の前面化、サインアウト時の穏当な停止 |
+| docs/design-docs/windows-app.md | 「LAN からの接続」 | LAN からの接続の許可を保存し、`/api/settings/network` で切り替える |
+| docs/design-docs/windows-app.md | 「配布」 | Windows 版の zip を作るビルドと、タグで GitHub Release に添付する workflow |
+| docs/how-to/running-vv.md | Data and recovery | 起動時に、中断で終わった走査を自動で始め直す |
+| docs/how-to/running-vv.md | 新しい「Windows app」の節（入手・起動・SmartScreen・データの場所・更新・`--port`・LAN の許可） | Windows 版の zip を作るビルドと、タグで GitHub Release に添付する workflow |
+| docs/design-docs/tech-stack-selection.md | 配布の形 | Windows 版の zip を作るビルドと、タグで GitHub Release に添付する workflow |
+| docs/how-to/dependency-updates.md | FFmpeg の版の上げ方 | Windows 版の zip を作るビルドと、タグで GitHub Release に添付する workflow |
+
 ## Implementation Work
 
 ### 起動時に、中断で終わった走査を自動で始め直す
 
 **Scope**: 起動時に最新の走査が `failed`・`interrupted` ならワーカーを動かしたあとに走査を 1 回始める
 （[research.md R-9](research.md#r-9-起動時に最後の走査が中断interruptedで終わっていれば走査を自動で始め直す全ての起動方法で)）。
-全ての起動方法に効く。ARCHITECTURE.md の起動の段落と running-vv.md の「Data and recovery」を直す。
+全ての起動方法に効く。[文書の持ち分](#文書の持ち分)のこの単位の節。
 
 **Dependencies**: None
 
@@ -164,8 +184,8 @@ specs/037-windows-app/
 [R-10](research.md#r-10-起動の失敗は全て-windows-標準のダイアログで理由を示しログを-logs-に書く)、R-11、
 [contracts/windows-app.md §2〜§4](contracts/windows-app.md#2-起動の引数と失敗時の表示)）。
 depguard に `internal/desktop` を足す。`build-windows-check` に `-tags desktop` のビルド、`task lint` に
-`GOOS=windows`・`desktop` タグの lint を足す。`docs/design-docs/windows-app.md` を作って索引に載せ、
-ARCHITECTURE.md の topology と依存方向に Windows 版を書く。
+`GOOS=windows`・`desktop` タグの lint を足す。[文書の持ち分](#文書の持ち分)のこの単位の節
+（`docs/design-docs/windows-app.md` の作成と索引を含む）。
 
 **Dependencies**: 「`cmd/mdm` の起動と停止を、設定と待ち受けを外から渡せる形に分ける」、
 「`ffmpeg`/`ffprobe` を Windows ではコンソール窓を出さずに起動する」
@@ -178,9 +198,9 @@ ARCHITECTURE.md の topology と依存方向に Windows 版を書く。
 ### 閉じる前の確認、二重起動の前面化、サインアウト時の穏当な停止
 
 **Scope**: `WM_CLOSE` で `Busy` を読んで確認を出す（[R-7](research.md#r-7-閉じる確認は走査中か未完了の取り込みの仕事があるときに出し閉じると決めたらウィンドウを先に消してから停止する)）、
-名前付きミューテックスと既存のウィンドウの前面化（[R-6](research.md#r-6-二重起動は名前付きミューテックスで判定し既存のウィンドウを前面に出す)）、
+名前付きミューテックスと既存のウィンドウの前面化（[R-6](research.md#r-6-二重起動は利用者ごとセッションをまたぐ名前付きミューテックスで判定し既存のウィンドウを前面に出す)）、
 `WM_QUERYENDSESSION`/`WM_ENDSESSION`（[R-8](research.md#r-8-サインアウトシャットダウンでは確認を出さず停止を待つ理由を-windows-に示して同じ停止手順を通す)）。
-`docs/design-docs/windows-app.md` に足す。
+[文書の持ち分](#文書の持ち分)のこの単位の節。
 
 **Dependencies**: 「Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める」、
 「起動時に、中断で終わった走査を自動で始め直す」
@@ -194,13 +214,14 @@ ARCHITECTURE.md の topology と依存方向に Windows 版を書く。
 store の `desktop.lan_access`、`cmd/mdm` で起動時に保存値から待ち受けのアドレスを決め、`PUT` で待ち受けを
 開き直してから保存する配線（[contracts/network-settings-api.md](contracts/network-settings-api.md)、
 [R-14](research.md#r-14-lan-からの接続の許可は設定表に保存し切り替えたら待ち受けを開き直す既定はループバックだけ)）。
-ARCHITECTURE.md の API の段落、`docs/design-docs/windows-app.md` に足す。
+[文書の持ち分](#文書の持ち分)のこの単位の節。
 
 **Dependencies**: 「`cmd/mdm` の起動と停止を、設定と待ち受けを外から渡せる形に分ける」、
 「Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める」
 
 **Acceptance**: `task check` が通る。httpapi の試験で、契約の §2・§3 の表の各行の応答が返る（デスクトップ版で
-ないとき `404`、ゲスト `403`、開き直しの失敗で `409` `listen_failed` と保存値が変わらない）。store の試験で、
+ないとき `404`、ゲスト `401`、別サイトから `403`、開き直しの失敗で `409` `listen_failed` と保存値が変わらない、
+保存の失敗で `500` と待ち受けが元のアドレスに戻る）。store の試験で、
 行が無いと偽、保存した値が読める。cmd/mdm の試験で、保存値が真なら `0.0.0.0` で、偽か行が無ければ
 `127.0.0.1` で待ち受ける。`addresses` は許可中だけ、ループバックを含まず入る。
 
@@ -208,7 +229,7 @@ ARCHITECTURE.md の API の段落、`docs/design-docs/windows-app.md` に足す�
 
 **Scope**: `web/src/settings` に節を足し、`404` なら出さない。スイッチ、許可中のアドレス、オンにするときの
 注意（[R-15](research.md#r-15-lan-の許可は設定画面の所有者だけの節に置き初期設定の前は切り替えられない)）、
-`409` `listen_failed` の表示。文言は `web/src/i18n/en.ts`。running-vv.md の Windows 版の節に LAN の許可を書く。
+`409` `listen_failed` の表示。文言は `web/src/i18n/en.ts`。文書は書かない（running-vv.md の LAN の許可は zip の単位が書く）。
 
 **Dependencies**: 「LAN からの接続の許可を保存し、`/api/settings/network` で切り替える」
 
@@ -225,10 +246,10 @@ ARCHITECTURE.md の API の段落、`docs/design-docs/windows-app.md` に足す�
 （[R-12](research.md#r-12-同梱の-ffmpeg-は-gyandev-の-windows-版essentialsを版と-sha-256-で固定する)、
 [R-13](research.md#r-13-配布物は-github-actions-で作りタグ-v-で-github-release-に添付する)、
 [contracts/windows-app.md §1](contracts/windows-app.md#1-zip-の中身)）。running-vv.md に Windows 版の節（入手・
-起動・SmartScreen・データの場所・更新・`--port`）を足し、tech-stack-selection.md の配布の形と
-dependency-updates.md（FFmpeg の版の上げ方）を直す。
+起動・SmartScreen・データの場所・更新・`--port`・LAN の許可）ほか、[文書の持ち分](#文書の持ち分)のこの単位の節。
 
-**Dependencies**: 「Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める」
+**Dependencies**: 「Windows デスクトップ版 `VVMDM.exe`: 専用ウィンドウで開き、閉じたらサーバーを止める」、
+「設定画面の「Network」の節で LAN からの接続を許可し、開くアドレスを示す」（running-vv.md に LAN の許可を書くため）
 
 **Acceptance**: `task check` が通る。`task build-windows-app` が `dist/VVMDM-<版>-windows-amd64.zip` を作り、
 中身が契約 §1 のとおりで、SHA-256 が合わない FFmpeg ではビルドが失敗する。workflow の手動実行が成功し、
