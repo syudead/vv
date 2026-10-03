@@ -136,7 +136,7 @@ export async function translateTree({
           // and emphasis of its source, or it is retried.
           const shown = seg.text.replace(/\s*\n\s*/g, ' ')
           for (let attempt = 0; attempt < 3 && value === null; attempt++) {
-            const result = await engine.translate(shown, terms, { attempt })
+            const result = await engine.translate(shown, terms, { attempt, context: seg.context })
             value = restore(seg, result.text)
             if (value !== null && seg.kind !== 'mermaid') {
               const original = source.slice(seg.start, seg.end)

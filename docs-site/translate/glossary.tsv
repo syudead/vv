@@ -30,6 +30,13 @@ owner	所有者
 guest	ゲスト
 external API	外部連携 API
 content key	内容の鍵
+skill	スキル
+agent	エージェント
+skeleton	雛形
+state machine	状態機械
+front matter	フロントマター
+workflow	ワークフロー
+runner	ランナー
 Library	Library
 Folders	Folders
 Tags	Tags

@@ -157,11 +157,32 @@ function mermaidSegments(source, node) {
     }))
 }
 
-// extractSegments returns the segments of a document in source order.
+// extractSegments returns the segments of a document in source order. Each
+// segment carries `context`: the document title, the section it sits in, and
+// for a table cell its column headings and row, for a paragraph the paragraph
+// before it. A short segment translated alone loses its meaning ("Kind" as a
+// person); the context is shown to the model but never translated.
 export function extractSegments(source) {
   const tree = parse(source)
   const slugger = new GithubSlugger()
   const segments = []
+  let title = ''
+  const trail = [] // heading texts by depth
+  let previous = ''
+  let table = null // { columns, row }
+
+  function context(kind) {
+    const lines = []
+    if (title) lines.push(`Document: ${title}`)
+    const section = trail.filter(Boolean).slice(title ? 1 : 0)
+    if (section.length) lines.push(`Section: ${section.join(' > ')}`)
+    if (kind === 'tableCell' && table) {
+      lines.push(`Table columns: ${table.columns.join(' | ')}`)
+      if (table.row) lines.push(`Row: ${table.row}`)
+    }
+    if (kind === 'paragraph' && previous) lines.push(`Previous paragraph: ${clip(previous)}`)
+    return lines.join('\n')
+  }
 
   function visit(node) {
     if (node.type === 'heading') {
@@ -170,6 +191,7 @@ export function extractSegments(source) {
       let [, end] = offsets(node.children[node.children.length - 1])
       const raw = source.slice(start, end)
       const anchor = raw.match(explicitAnchor)
+      const heading = plainText(node).replace(explicitAnchor, '').trim()
       let slug
       if (anchor) {
         end -= anchor[0].length
@@ -180,9 +202,24 @@ export function extractSegments(source) {
       const built = buildSegment(source, node.children, start, end)
       const text = anchor ? built.text.replace(explicitAnchor, '') : built.text
       const tags = built.tags
+      trail.length = node.depth - 1
+      const ctx = context('heading')
       if (hasWords.test(stripTags(text))) {
-        segments.push({ kind: 'heading', start, end, text, tags, slug })
+        segments.push({ kind: 'heading', start, end, text, tags, slug, context: ctx })
       }
+      trail[node.depth - 1] = heading
+      if (node.depth === 1 && !title) title = heading
+      previous = ''
+      return
+    }
+    if (node.type === 'table') {
+      const columns = node.children[0].children.map((cell) => plainText(cell).trim())
+      for (const [i, row] of node.children.entries()) {
+        table = { columns, row: i === 0 ? '' : plainText(row.children[0] ?? { children: [] }).trim() }
+        for (const cell of row.children) visit(cell)
+      }
+      table = null
+      previous = ''
       return
     }
     if (node.type === 'paragraph' || node.type === 'tableCell') {
@@ -190,11 +227,16 @@ export function extractSegments(source) {
       const [start] = offsets(node.children[0])
       const [, end] = offsets(node.children[node.children.length - 1])
       const { text, tags } = buildSegment(source, node.children, start, end)
-      if (hasWords.test(stripTags(text))) segments.push({ kind: node.type, start, end, text, tags })
+      if (hasWords.test(stripTags(text))) {
+        segments.push({ kind: node.type, start, end, text, tags, context: context(node.type) })
+      }
+      if (node.type === 'paragraph') previous = plainText(node)
       return
     }
     if (node.type === 'code') {
-      if (node.lang === 'mermaid') segments.push(...mermaidSegments(source, node))
+      if (node.lang === 'mermaid') {
+        for (const seg of mermaidSegments(source, node)) segments.push({ ...seg, context: context('mermaid') })
+      }
       return
     }
     if (node.type === 'html' || node.type === 'yaml' || node.type === 'toml') return
@@ -202,6 +244,11 @@ export function extractSegments(source) {
   }
   visit(tree)
   return segments
+}
+
+function clip(text) {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > 300 ? flat.slice(0, 300) + '…' : flat
 }
 
 function plainText(node) {

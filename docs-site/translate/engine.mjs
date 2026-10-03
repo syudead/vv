@@ -4,10 +4,14 @@
 
 const hasTags = /<s\d+>/
 
-function hyPrompt(text, terms) {
-  const ref = terms.length
-    ? `参考下面的翻译：\n${terms.map((t) => `${t.en} 翻译成 ${t.ja}`).join('\n')}\n\n`
-    : ''
+// HY-MT's prompt templates: terminology ("参考下面的翻译"), contextual
+// ("参考上面的信息") and formatted (<sn> tags) translation, combined as needed.
+function hyPrompt(text, terms, context) {
+  // Technical documents read in the plain form (である調) throughout.
+  const ref =
+    '日语译文统一使用书面语的简体（である调），不要使用です・ます。\n\n' +
+    (context ? `${context}\n参考上面的信息，注意不需要翻译上文。\n\n` : '') +
+    (terms.length ? `参考下面的翻译：\n${terms.map((t) => `${t.en} 翻译成 ${t.ja}`).join('\n')}\n\n` : '')
   if (hasTags.test(text)) {
     return (
       ref +
@@ -16,8 +20,7 @@ function hyPrompt(text, terms) {
       `输出格式为：<target>str</target>\n\n<source>${text}</source>`
     )
   }
-  if (terms.length) return `${ref}将以下文本翻译为日语，注意只需要输出翻译后的结果，不要额外解释：\n${text}`
-  return `Translate the following segment into Japanese, without additional explanation.\n\n${text}`
+  return `${ref}将以下文本翻译为日语，注意只需要输出翻译后的结果，不要额外解释：\n${text}`
 }
 
 function genericPrompt(text, terms) {
@@ -44,7 +47,7 @@ export function llamaEngine({ server, family }) {
   }
   return {
     // attempt > 0 is a retry after a rejected output: sample greedily.
-    async translate(text, terms, { attempt = 0 } = {}) {
+    async translate(text, terms, { attempt = 0, context = '' } = {}) {
       if (family === 'plamo') {
         const prompt =
           '<|plamo:op|>dataset\ntranslation\n' +
@@ -52,7 +55,7 @@ export function llamaEngine({ server, family }) {
         const r = await post('/completion', { prompt, n_predict: 1024, temperature: 0, stop: ['<|plamo:op|>'] })
         return { text: r.content.trim(), tokens: r.tokens_predicted ?? 0 }
       }
-      const prompt = family === 'hy' ? hyPrompt(text, terms) : genericPrompt(text, terms)
+      const prompt = family === 'hy' ? hyPrompt(text, terms, context) : genericPrompt(text, terms)
       const params =
         family === 'hy'
           ? { temperature: attempt > 0 ? 0 : 0.7, top_p: 0.6, top_k: 20, repeat_penalty: 1.05 }
