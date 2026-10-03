@@ -845,10 +845,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * sourceIdのタグをidのタグへ統合する
-         * @description 統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
-         *     統合元は一覧から消える。sourceIdがidと同じときは400を返す
-         *     （contracts/tags-api.md §3）。
+         * sourceIdsのタグをidのタグへ統合する
+         * @description 統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
+         *     統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
+         *     無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
+         *     tagは変わらない統合先。sourceIdsが空・多すぎる（too_many_tags）・idを含む
+         *     （merge_same_tag）ときは400、統合先が無いときは404を返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
          */
         post: operations["mergeTag"];
         delete?: never;
@@ -1584,8 +1587,13 @@ export interface components {
             name: string;
         };
         MergeTagRequest: {
-            /** Format: int64 */
-            sourceId: number;
+            /** @description 統合元の id。1 件の統合も [sourceId] で送る */
+            sourceIds: number[];
+        };
+        TagMergeResponse: {
+            tag: components["schemas"]["Tag"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
         };
         TagBatchRequest: {
             /** @enum {string} */
@@ -3694,13 +3702,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 統合後の統合先タグ */
+            /** @description 統合後の統合先タグと、もう無かった統合元 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Tag"];
+                    "application/json": components["schemas"]["TagMergeResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

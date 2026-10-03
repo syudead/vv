@@ -27,7 +27,10 @@ export default function MergeTagDialog({
   onClose: () => void;
   /** 統合が成功したときに呼ぶ。統合先の最新の状態を渡す。 */
   onMerged: (merged: Tag) => void;
-  /** 統合元・統合先のどちらかがもう無い（tag_not_found）ときに呼ぶ。 */
+  /**
+   * 統合元・統合先のどちらかがもう無い（統合先は tag_not_found、統合元は応答の
+   * notFoundIds）ときに呼ぶ。
+   */
   onStale: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
@@ -88,7 +91,13 @@ export default function MergeTagDialog({
     setError(null);
     setPending(true);
     try {
-      const merged = await mergeTag(target.id, source.id);
+      const { tag: merged, notFoundIds } = await mergeTag(target.id, [source.id]);
+      // 統合元がもう無かったときは何も統合されていない。tag_not_found と同じく
+      // 窓を閉じて一覧を取り直す（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+      if (notFoundIds.length > 0) {
+        onStale();
+        return;
+      }
       onMerged(merged);
     } catch (failure) {
       if (failure instanceof RequestFailed && failure.code === "tag_not_found") {

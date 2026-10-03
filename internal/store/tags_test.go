@@ -169,7 +169,7 @@ func TestRenameTagRejectsExistingNameOrSynonym(t *testing.T) {
 	}
 }
 
-func TestMergeTagMovesContentAndSynonyms(t *testing.T) {
+func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
@@ -195,11 +195,11 @@ func TestMergeTagMovesContentAndSynonyms(t *testing.T) {
 	attachTag(t, db, "key-both", x.ID)
 	attachTag(t, db, "key-both", y.ID)
 
-	merged, err := db.Tags().MergeTag(ctx, y.ID, x.ID)
+	outcome, err := db.Tags().MergeTags(ctx, y.ID, []int64{x.ID})
 	if err != nil {
-		t.Fatalf("MergeTag() error = %v", err)
+		t.Fatalf("MergeTags() error = %v", err)
 	}
-	if merged.ID != y.ID || merged.Name != "Y" {
+	if merged := outcome.Tag; merged.ID != y.ID || merged.Name != "Y" || len(outcome.NotFoundIDs) != 0 {
 		t.Errorf("merged = %+v, want id=%d name=Y", merged, y.ID)
 	}
 
@@ -390,7 +390,7 @@ func TestVideoCountExcludesUnregisteredVideosAndMergeReachesThem(t *testing.T) {
 		}
 	}
 
-	if _, err := db.Tags().MergeTag(ctx, y.ID, x.ID); err != nil {
+	if _, err := db.Tags().MergeTags(ctx, y.ID, []int64{x.ID}); err != nil {
 		t.Fatal(err)
 	}
 	for _, key := range []string{"key-registered", "key-gone"} {
@@ -432,7 +432,7 @@ func TestDeleteTagCascadesToUnregisteredVideoAssignments(t *testing.T) {
 
 // トリガーで統合の最後の一手（統合元の削除）を失敗させ、何も残らないことを
 // 確かめる（Edge Case「一括操作・統合の途中失敗」）。
-func TestMergeTagRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
+func TestMergeTagsRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
@@ -456,8 +456,8 @@ func TestMergeTagRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := db.Tags().MergeTag(ctx, target.ID, source.ID); err == nil {
-		t.Fatal("MergeTag() = nil error, want failure")
+	if _, err := db.Tags().MergeTags(ctx, target.ID, []int64{source.ID}); err == nil {
+		t.Fatal("MergeTags() = nil error, want failure")
 	}
 
 	var targetAssignments int

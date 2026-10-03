@@ -44,8 +44,8 @@ func TestCreateTagReturnsCreatedAtMatchingListTags(t *testing.T) {
 }
 
 // TestTagOperationsReturnCreatedAt は、ListTags の全件と、改名・確定・シノニム・統合の
-// 戻り値に、保存した tags.created_at がそのまま載ることを確かめる。統合は今の MergeTag
-// （単位「`POST /api/tags/{id}/merge` を複数の統合元を受ける形にする」が MergeTags に置き換える）。
+// 戻り値に、保存した tags.created_at がそのまま載ることを確かめる。統合は MergeTags の
+// 統合先。
 func TestTagOperationsReturnCreatedAt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -112,9 +112,9 @@ func TestTagOperationsReturnCreatedAt(t *testing.T) {
 	}
 	check("AddSynonym", "猫", withSynonym.CreatedAt)
 
-	merged, err := db.Tags().MergeTag(ctx, ids["猫"], ids["犬"])
+	merged, err := db.Tags().MergeTags(ctx, ids["猫"], []int64{ids["犬"]})
 	if err != nil {
 		t.Fatal(err)
 	}
-	check("MergeTag", "猫", merged.CreatedAt)
+	check("MergeTags", "猫", merged.Tag.CreatedAt)
 }

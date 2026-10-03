@@ -1295,7 +1295,8 @@ type MediaFolder struct {
 
 // MergeTagRequest defines model for MergeTagRequest.
 type MergeTagRequest struct {
-	SourceId int64 `json:"sourceId"`
+	// SourceIds 統合元の id。1 件の統合も [sourceId] で送る
+	SourceIds []int64 `json:"sourceIds"`
 }
 
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
@@ -1613,6 +1614,15 @@ type TagInput struct {
 // TagList defines model for TagList.
 type TagList struct {
 	Items []Tag `json:"items"`
+}
+
+// TagMergeResponse defines model for TagMergeResponse.
+type TagMergeResponse struct {
+	// NotFoundIds もう無かった統合元
+	NotFoundIds []int64 `json:"notFoundIds"`
+
+	// Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+	Tag Tag `json:"tag"`
 }
 
 // TagRef 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
@@ -2479,7 +2489,7 @@ type ServerInterface interface {
 	// ConfirmTag 仮のタグを確定する
 	// (POST /api/tags/{id}/confirm)
 	ConfirmTag(w http.ResponseWriter, r *http.Request, id TagId)
-	// MergeTag sourceIdのタグをidのタグへ統合する
+	// MergeTag sourceIdsのタグをidのタグへ統合する
 	// (POST /api/tags/{id}/merge)
 	MergeTag(w http.ResponseWriter, r *http.Request, id TagId)
 	// RejectTag 仮のタグを却下する

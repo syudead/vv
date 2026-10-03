@@ -1395,11 +1395,14 @@ paths:
   /api/tags/{id}/merge:
     post:
       operationId: mergeTag
-      summary: sourceIdのタグをidのタグへ統合する
+      summary: sourceIdsのタグをidのタグへ統合する
       description: |
-        統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
-        統合元は一覧から消える。sourceIdがidと同じときは400を返す
-        （contracts/tags-api.md §3）。
+        統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
+        統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
+        無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
+        tagは変わらない統合先。sourceIdsが空・多すぎる（too_many_tags）・idを含む
+        （merge_same_tag）ときは400、統合先が無いときは404を返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -1410,11 +1413,11 @@ paths:
               $ref: "#/components/schemas/MergeTagRequest"
       responses:
         "200":
-          description: 統合後の統合先タグ
+          description: 統合後の統合先タグと、もう無かった統合元
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Tag"
+                $ref: "#/components/schemas/TagMergeResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -2542,12 +2545,31 @@ components:
 
     MergeTagRequest:
       type: object
-      required: [sourceId]
+      required: [sourceIds]
       additionalProperties: false
       properties:
-        sourceId:
-          type: integer
-          format: int64
+        sourceIds:
+          type: array
+          description: 統合元の id。1 件の統合も [sourceId] で送る
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagMergeResponse:
+      type: object
+      required: [tag, notFoundIds]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/Tag"
+        notFoundIds:
+          type: array
+          description: もう無かった統合元
+          items:
+            type: integer
+            format: int64
 
     TagBatchRequest:
       type: object

@@ -170,7 +170,7 @@ func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
 
 // confirmTagInTx はタグ id を確定したタグにする（tentative = 0）。既に 0 なら何も変えない
 // （specs/031-tentative-tags/research.md R-4）。
-func confirmTagInTx(ctx context.Context, tx *sql.Tx, id int64) error {
+func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 	if _, err := tx.ExecContext(ctx, `update tags set tentative = 0 where id = ? and tentative = 1`, id); err != nil {
 		return fmt.Errorf("cannot confirm the tag (id=%d): %w", id, err)
 	}
