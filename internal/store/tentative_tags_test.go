@@ -36,11 +36,11 @@ func tagIDByName(t *testing.T, db *DB, name string) int64 {
 
 func rejectedNames(t *testing.T, db *DB) []string {
 	t.Helper()
-	names, err := db.Tags().ListRejectedTagNames(context.Background())
+	page, err := db.Tags().ListRejectedTagNames(context.Background(), "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return names
+	return page.Items
 }
 
 func applyTentative(t *testing.T, db *DB, refs []domain.VideoRef, action domain.VideoTagsAction, names ...string) domain.VideoTagsOutcome {

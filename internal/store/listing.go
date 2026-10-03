@@ -532,8 +532,20 @@ func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, err
 	default:
 		return "", fmt.Errorf("cannot encode the sort value: %T", value)
 	}
-	fields := []string{string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), text}
-	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator))), nil
+	return encodeCursorFields(cursorFields{
+		sort: string(spec.sort), seed: o.seedText(spec), isNull: nullFlag == "1", id: id, value: text,
+	}), nil
+}
+
+// encodeCursorFields は項目を不透明な文字列に包む。decodeCursor が解く形で、一覧ごとの
+// カーソル（却下した名前など）もこの包み方を使う。
+func encodeCursorFields(c cursorFields) string {
+	nullFlag := "0"
+	if c.isNull {
+		nullFlag = "1"
+	}
+	fields := []string{c.sort, c.seed, nullFlag, strconv.FormatInt(c.id, 10), c.value}
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator)))
 }
 
 // cursorSeparator はカーソルの中で項目を区切る。値（題名の鍵）は最後に置くので、

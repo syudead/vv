@@ -275,23 +275,50 @@ func nonNilIDs(ids []int64) []int64 {
 	return ids
 }
 
-// ListRejectedTagNames は却下した名前を名前の自然順で返す
-// （GET /api/tags/rejected-names、specs/031-tentative-tags/contracts/screen-api.md §3）。
-func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {
+// rejectedTagNamePageDefaultLimit は limit を省いた GET /api/tags/rejected-names の 1 ページの件数
+// （specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+const rejectedTagNamePageDefaultLimit = 100
+
+// ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
+// （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+// limit が 1〜domain.MaxLimit の外、cursor が解釈できないときは 400 invalid_request。
+func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params gen.ListRejectedTagNamesParams) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	names, err := s.tags.ListRejectedTagNames(r.Context())
-	if err != nil {
+	limit := rejectedTagNamePageDefaultLimit
+	if params.Limit != nil {
+		limit = *params.Limit
+		if limit < 1 || limit > domain.MaxLimit {
+			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxLimit))
+			return
+		}
+	}
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
+
+	page, err := s.tags.ListRejectedTagNames(r.Context(), cursor, limit)
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
 		s.internalError(w, "Could not load rejected tag names.", err)
 		return
 	}
+	names := page.Items
 	if names == nil {
 		names = []string{}
 	}
+	body := gen.RejectedTagNameList{Items: names, Total: page.Total}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RejectedTagNameList{Items: names}, s.logger)
+	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
 // ForgetRejectedTagName は名前を却下した名前の一覧から外す

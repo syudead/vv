@@ -13,7 +13,7 @@ import {
   detachVideoTag,
   forgetRejectedTagName,
   getTags,
-  listRejectedTagNames,
+  listRejectedTagNamePage,
   mergeTag,
   refreshTags,
   rejectTag,
@@ -411,14 +411,35 @@ describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts
     });
   });
 
-  it("listRejectedTagNamesは却下した名前を返す", async () => {
+  it("listRejectedTagNamePageはパラメータを省くと先頭のページを返す", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(jsonResponse({ items: ["Alpha", "Beta"] }));
+      .mockResolvedValueOnce(jsonResponse({ items: ["Alpha", "Beta"], total: 2 }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(listRejectedTagNames()).resolves.toEqual(["Alpha", "Beta"]);
+    await expect(listRejectedTagNamePage()).resolves.toEqual({
+      items: ["Alpha", "Beta"],
+      total: 2,
+    });
     expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/rejected-names");
+  });
+
+  it("listRejectedTagNamePageはcursorとlimitをクエリで送り、nextCursorを返す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ items: ["Gamma"], total: 3, nextCursor: "next" }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(listRejectedTagNamePage("a+b/c", 2)).resolves.toEqual({
+      items: ["Gamma"],
+      total: 3,
+      nextCursor: "next",
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `/api/tags/rejected-names?${new URLSearchParams({ cursor: "a+b/c", limit: "2" }).toString()}`,
+    );
   });
 
   it("forgetRejectedTagNameは名前をクエリで送るDELETEで、共有の一覧は取り直さない", async () => {

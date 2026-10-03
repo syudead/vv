@@ -369,6 +369,10 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	if rec.Code != http.StatusOK || fake.operation != "list-rejected" {
 		t.Fatalf("GET: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
 	}
+	// パラメータが無ければ先頭から 100 件まで（specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+	if fake.lastCursor != "" || fake.lastLimit != 100 {
+		t.Errorf("GET: cursor = %q limit = %d, want 空と 100", fake.lastCursor, fake.lastLimit)
+	}
 
 	fake.operation = ""
 	rec = do(t, handler, http.MethodDelete, "/api/tags/rejected-names?name=Blocked")

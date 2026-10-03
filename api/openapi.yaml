@@ -1557,7 +1557,24 @@ paths:
     get:
       operationId: listRejectedTagNames
       summary: 却下した名前を一覧する
-      description: 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+      description: |
+        名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §6）。`limit` が範囲外、`cursor` が
+        解釈できないときは 400 `invalid_request`。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
       responses:
         "200":
           description: 却下した名前の一覧
@@ -1565,6 +1582,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RejectedTagNameList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     delete:
       operationId: forgetRejectedTagName
       summary: 却下した名前を一覧から外す
@@ -2589,7 +2610,7 @@ components:
 
     RejectedTagNameList:
       type: object
-      required: [items]
+      required: [items, total]
       additionalProperties: false
       properties:
         items:
@@ -2597,6 +2618,12 @@ components:
           description: 却下した名前。名前の自然順
           items:
             type: string
+        total:
+          type: integer
+          description: 却下した名前の全部の数
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る。次の要求の `cursor` に渡す
 
     CreateTagRequest:
       type: object
