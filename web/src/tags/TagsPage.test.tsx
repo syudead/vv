@@ -508,6 +508,35 @@ describe("TagsPage", () => {
     expect(screen.getByTitle("旅行")).toBeDefined();
   });
 
+  it("検索はライブラリと同じ照合形で、全角・半角やかなの違いを同じものとして照らす（受け入れ条件8）", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "action", synonyms: [] }),
+      tag({ id: 2, name: "Anime", synonyms: ["アニメ"] }),
+      tag({ id: 3, name: "旅行" }),
+    ];
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const search = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(search, "ＡＣＴＩＯＮ");
+    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
+    expect(screen.getByTitle("action")).toBeDefined();
+    expect(screen.queryByTitle("Anime")).toBeNull();
+
+    // シノニムも照合形で照らす（ひらがなで打ってもカタカナのシノニムに当たる）。
+    await user.clear(search);
+    await user.type(search, "あにめ");
+    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
+    expect(screen.getByTitle("Anime")).toBeDefined();
+    expect(screen.queryByTitle("action")).toBeNull();
+
+    await user.clear(search);
+    await user.type(search, "ｱｸｼｮﾝ");
+    expect(await screen.findByText('No tags match "ｱｸｼｮﾝ"')).toBeDefined();
+  });
+
   it("検索で一致が無いときは、タグが無い状態と別の表示になり、そこから入力を消せる", async () => {
     const user = userEvent.setup();
     install();

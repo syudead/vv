@@ -24,6 +24,7 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
+import { foldForMatch } from "../lib/foldForMatch";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -275,10 +276,20 @@ export default function TagsPage() {
     return [...tags].sort(compareTagRefs);
   }, [tags]);
 
-  const normalizedQuery = search.trim().toLowerCase();
+  // 検索はライブラリでタグを探すときと同じ照合形（`foldForMatch`）で照らす
+  // （specs/036-tag-admin-scale/research.md R-3）。タグごとの照合形はタグの
+  // 配列が変わったときだけ作り直し、打鍵ごとには作らない（data-model.md §4）。
+  const normalizedQuery = foldForMatch(search).trim();
+  const searchKeys = useMemo(
+    () => new Map(sorted.map((tag) => [tag, tagSearchKeys(tag)])),
+    [sorted],
+  );
   const filtered = useMemo(
-    () => sorted.filter((tag) => matchesFilters(tag, normalizedQuery, tentativeOnly)),
-    [sorted, normalizedQuery, tentativeOnly],
+    () =>
+      sorted.filter((tag) =>
+        matchesFilters(tag, searchKeys.get(tag)!, normalizedQuery, tentativeOnly),
+      ),
+    [sorted, searchKeys, normalizedQuery, tentativeOnly],
   );
 
   useLayoutEffect(() => {
@@ -291,7 +302,7 @@ export default function TagsPage() {
    */
   function shown(tag: Tag): boolean {
     const { query, tentativeOnly: onlyTentative } = filtersRef.current;
-    return matchesFilters(tag, query, onlyTentative);
+    return matchesFilters(tag, tagSearchKeys(tag), query, onlyTentative);
   }
 
   /**
@@ -926,19 +937,31 @@ export default function TagsPage() {
   );
 }
 
+/** TagSearchKeys は、タグの名前とシノニムの照合形（`foldForMatch`）である。 */
+interface TagSearchKeys {
+  name: string;
+  synonyms: string[];
+}
+
+function tagSearchKeys(tag: Tag): TagSearchKeys {
+  return { name: foldForMatch(tag.name), synonyms: tag.synonyms.map(foldForMatch) };
+}
+
 /**
- * matchesFilters は、タグが検索（名前かシノニムの部分一致、大文字小文字を
- * 区別しない）と「Tentative only」の両方に一致するかである。
+ * matchesFilters は、タグが検索（検索語の照合形が名前かシノニムの照合形に
+ * 部分一致する）と「Tentative only」の両方に一致するかである。`normalizedQuery`
+ * は `foldForMatch` を掛けた検索語、`keys` はそのタグの照合形である。
  */
 function matchesFilters(
   tag: Tag,
+  keys: TagSearchKeys,
   normalizedQuery: string,
   tentativeOnly: boolean,
 ): boolean {
   if (tentativeOnly && !tag.tentative) return false;
   if (normalizedQuery === "") return true;
   return (
-    tag.name.toLowerCase().includes(normalizedQuery) ||
-    tag.synonyms.some((synonym) => synonym.toLowerCase().includes(normalizedQuery))
+    keys.name.includes(normalizedQuery) ||
+    keys.synonyms.some((synonym) => synonym.includes(normalizedQuery))
   );
 }
