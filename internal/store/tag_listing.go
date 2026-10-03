@@ -18,8 +18,11 @@ import (
 // （taggedVideosSQL の集計）。query.Limit が 0 なら条件と並び順だけを掛けて
 // 全件を返し、カーソルは無視する（外部連携 API と候補の全件）。
 //
-// タグ・件数・シノニムは 1 つの読み取りの取引で読むので、Total とページの行は同じ
-// 時点のものになる。シノニムはページのタグの分だけを 1 回で読む（N+1 にしない）。
+// タグ・件数・シノニムは ListVideos と同じく読み取り用の接続（s.read、deferred）の
+// 1 つの読み取りの取引で読むので、Total とページの行は同じ時点のものになり、書き込みの
+// 枠を取らず走査やタグの書き込みを待たせない。本数の集計（taggedVideosSQL）は Total とページの行を 1 つの問い合わせで読んで
+// 1 回だけ掛ける（research.md R-1）。シノニムはページのタグの分だけを 1 回で読む
+// （N+1 にしない）。
 func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error) {
 	sort := query.Sort
 	if sort == "" {
@@ -41,7 +44,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 		}
 	}
 
-	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.TagPage{}, fmt.Errorf("cannot start reading tags: %w", err)
 	}
@@ -49,14 +52,15 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 
 	listed, listedArgs := listedTagsCTE(query)
 	page := domain.TagPage{Items: []domain.Tag{}}
-	if err := tx.QueryRowContext(ctx, listed+` select count(*) from listed`, listedArgs...).Scan(&page.Total); err != nil {
-		return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
-	}
 	if err := tx.QueryRowContext(ctx, `select count(*) from tags`).Scan(&page.TotalAll); err != nil {
 		return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
 	}
 
-	statement := listed + ` select id, name, tentative, created_at, sort_key, video_count from listed`
+	// 条件に合う数（total）は窓関数でカーソルを掛ける前の listed 全体について数え、
+	// ページの行と同じ問い合わせで返す。listed の本数の集計を 2 回走らせない。
+	statement := listed + ` select id, name, tentative, created_at, sort_key, video_count, total from (
+		select id, name, tentative, created_at, sort_key, video_count, count(*) over () as total from listed
+	)`
 	args := listedArgs
 	if cursorClause != "" {
 		statement += ` where ` + cursorClause
@@ -69,9 +73,17 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 		args = append(args, limit+1)
 	}
 
-	items, keys, err := readListedTags(ctx, tx, statement, args)
+	items, keys, total, err := readListedTags(ctx, tx, statement, args)
 	if err != nil {
 		return domain.TagPage{}, err
+	}
+	page.Total = total
+	if len(items) == 0 && cursorClause != "" {
+		// カーソルより後ろに行が無いとき（読むあいだに後ろのタグが消えた）は、ページの
+		// 行から数を取れないので、条件に合う数だけを数える。
+		if err := tx.QueryRowContext(ctx, listed+` select count(*) from listed`, listedArgs...).Scan(&page.Total); err != nil {
+			return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
+		}
 	}
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
@@ -119,22 +131,24 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 		)`, args
 }
 
-// readListedTags は listed の行を読み、行ごとの名前の鍵も返す（カーソルに包む）。
-func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []any) ([]domain.Tag, []string, error) {
+// readListedTags は listed の行を読み、行ごとの名前の鍵（カーソルに包む）と、行が
+// 持つ条件に合う数を返す。行が無ければ数は 0。
+func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []any) ([]domain.Tag, []string, int, error) {
 	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot read tags: %w", err)
+		return nil, nil, 0, fmt.Errorf("cannot read tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	items := []domain.Tag{}
 	var keys []string
+	total := 0
 	for rows.Next() {
 		var tag domain.Tag
 		var createdAt int64
 		var sortKey string
-		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative, &createdAt, &sortKey, &tag.VideoCount); err != nil {
-			return nil, nil, fmt.Errorf("cannot read tags: %w", err)
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative, &createdAt, &sortKey, &tag.VideoCount, &total); err != nil {
+			return nil, nil, 0, fmt.Errorf("cannot read tags: %w", err)
 		}
 		tag.CreatedAt = time.Unix(createdAt, 0)
 		tag.Synonyms = []string{}
@@ -142,9 +156,9 @@ func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []an
 		keys = append(keys, sortKey)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("cannot read tags: %w", err)
+		return nil, nil, 0, fmt.Errorf("cannot read tags: %w", err)
 	}
-	return items, keys, nil
+	return items, keys, total, nil
 }
 
 // addSynonymsToPage は items の各タグにシノニムを名前の自然順で足す。ページの

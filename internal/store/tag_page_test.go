@@ -312,3 +312,61 @@ func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 		t.Errorf("並び = %v", got)
 	}
 }
+
+func TestListTagsKeepsTotalWhenThePageAfterTheCursorIsEmpty(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := createTagsNamed(t, db, "a", "b", "c")
+
+	first, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 続きを読むあいだに、カーソルより後ろのタグが消えた。
+	if err := db.Tags().DeleteTag(ctx, ids["c"]); err != nil {
+		t.Fatal(err)
+	}
+	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 2, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 0 || page.NextCursor != "" {
+		t.Errorf("Items = %v, NextCursor = %q, want 空", page.Items, page.NextCursor)
+	}
+	if page.Total != 2 || page.TotalAll != 2 {
+		t.Errorf("Total = %d, TotalAll = %d, want 2, 2", page.Total, page.TotalAll)
+	}
+}
+
+func TestListTagsDoesNotWaitForTheWriter(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	createTagsNamed(t, db, "a", "b")
+
+	// 書き込みの取引が書き込みの予約を持ったままのあいだにも、一覧は読める。
+	writer, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Rollback() }()
+	if _, err := writer.ExecContext(ctx, `update tags set tentative = tentative`); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Limit: 1})
+		if err == nil && page.Total != 2 {
+			err = fmt.Errorf("Total = %d, want 2", page.Total)
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("ListTags error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("ListTags が書き込みの取引を待った")
+	}
+}
