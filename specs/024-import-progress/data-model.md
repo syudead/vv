@@ -1,116 +1,143 @@
-# Data Model: 取り込みの進捗と結果
+# Data model: Import progress and results
 
-SQLite の既存の表は [internal/store/migrations](../../internal/store/migrations) が正本である。
-`scans` は [00002_core.sql](../../internal/store/migrations/00002_core.sql)、`jobs` と `videos` の
-状態列は同じ場所の各移行にある。この feature が足すのは、次の2つの表と、`scans` の2列だけである。
-ほかの表は変えない。
+The rest of the model is unchanged: the existing SQLite tables are defined in
+[internal/store/migrations](../../internal/store/migrations). `scans` is in
+[00002_core.sql](../../internal/store/migrations/00002_core.sql), and the state
+columns of `jobs` and `videos` are in the migrations in the same place. This
+feature adds only the two tables below and two columns on `scans`.
 
-この feature の3つは、ARCHITECTURE.md の「Rebuildable and user data」で作り直せる側に入る
-（走査と準備をやり直せば同じものができる）。
+All three belong to the rebuildable side of ARCHITECTURE.md "Rebuildable and user
+data": rerunning the scan and preparation produces the same content.
 
-## 1. `scans.settled_at`・`scans.issues_revision`（列の追加）
+## 1. `scans.settled_at` and `scans.issues_revision` (added columns)
 
-| 列 | 型 | 意味 |
+| Column | Type | Meaning |
 | --- | --- | --- |
-| `settled_at` | `integer null` | この走査の対象の動画がすべて済んだ時刻（Unix 秒） |
-| `issues_revision` | `integer not null default 0` | この走査の `scan_issues` を変えるたびに1増やす番号（§3） |
+| `settled_at` | `integer null` | The time every target video of this scan settled (Unix seconds) |
+| `issues_revision` | `integer not null default 0` | Incremented by one on every change to this scan's `scan_issues` (§3) |
 
-規則（[research.md R-4](research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)）:
+Rules ([research.md R-4](research.md#r-4-done-only-when-the-scan-is-closed-and-the-set-has-no-remaining-jobs)):
 
-- 書くのは `internal/store` の `refreshScanSettled` だけである。どのトランザクションで呼ぶかは
-  research.md R-4 にある。
-  - 直近の走査が `state <> 'running'` で、`scan_videos` の動画に着手できる `queued`・`running` の
-    仕事が無いとき: 値が無ければ今の時刻を入れる。値があれば変えない。
-  - それ以外のとき: `null` にする。
-- 走査が `failed` で閉じた場合も、残りの準備が済んだ時点で設定する。画面は `failed` を優先して示す。
-- 移行は、次の順に行う。
-  1. 直近の走査の `scan_videos` に、着手できる `queued`・`running` の仕事が残っている動画を入れる
-     （§2 の持ち越しと同じ条件）。
-  2. `scan_issues` を足す移行で、直近の走査の `scan_issues` に、今 `probe_state`・`thumbnail_state`・`seek_thumbnail_state`・
-     `preview_state` が `failed` の動画を、対応する `*_failed` の種類で入れる（§3、
-     [research.md R-11](research.md#r-11-移行は今の行から分かる結果だけを直近の走査へ移す)）。
-  3. 閉じた走査の `settled_at` に `finished_at` を入れる。ただし直近の走査は、1 で入れた動画が
-     あれば `null` のままにする。
+- Only `refreshScanSettled` in `internal/store` writes it. Which transactions call
+  it is in research.md R-4.
 
-## 2. `scan_videos`（新しい表）
+  | Condition | Effect |
+  | --- | --- |
+  | The latest scan has `state <> 'running'` and the videos in `scan_videos` have no claimable `queued` or `running` job | Set the current time if empty; leave an existing value unchanged |
+  | Otherwise | Set to `null` |
 
-直近の走査の対象の動画の集合である（[R-1](research.md#r-1-取り込みの対象を走査の記録に紐づく動画の集合として保存する)、
-[R-3](research.md#r-3-集合は直近の走査の分だけを持ち新しい走査の開始で入れ替える)）。
+- A scan that closed as `failed` also gets the value once the remaining
+  preparation settles. The screen shows `failed` first.
+- The migration runs in this order:
+  1. Put into the latest scan's `scan_videos` the videos that still have a
+     claimable `queued` or `running` job (the same condition as the carry-over in
+     §2).
+  2. In the migration that adds `scan_issues`, put into the latest scan's
+     `scan_issues` the videos whose `probe_state`, `thumbnail_state`,
+     `seek_thumbnail_state` or `preview_state` is currently `failed`, with the
+     matching `*_failed` kind (§3,
+     [research.md R-11](research.md#r-11-migration-moves-only-results-derivable-from-existing-rows-into-the-latest-scan)).
+  3. Set `settled_at` of closed scans to `finished_at`. The latest scan stays
+     `null` if step 1 added any video.
 
-| 列 | 型 | 意味 |
+## 2. `scan_videos` (new table)
+
+The set of target videos of the latest scan
+([R-1](research.md#r-1-import-videos-stored-as-a-set-tied-to-the-scan-record),
+[R-3](research.md#r-3-the-set-holds-only-the-latest-scan-and-is-replaced-when-a-new-scan-starts)).
+
+| Column | Type | Meaning |
 | --- | --- | --- |
-| `scan_id` | `integer not null references scans(id) on delete cascade` | 走査 |
-| `video_id` | `integer not null references videos(id) on delete cascade` | 対象の動画 |
+| `scan_id` | `integer not null references scans(id) on delete cascade` | The scan |
+| `video_id` | `integer not null references videos(id) on delete cascade` | The target video |
 
-主キーは `(scan_id, video_id)` である。
+The primary key is `(scan_id, video_id)`.
 
-**加わる時点**: `jobs` へ `queued` の行を入れるトランザクション、または `queued` の仕事を
-着手できるようにするトランザクションである。そのトランザクションの中で、直近の走査
-（`max(scans.id)`、無ければ加えない）へ `insert ... on conflict do nothing` する。
-今の該当箇所は次のとおりで、`internal/store` の中で1つの補助関数を通す。今後、仕事を積む
-移行を書くときも同じ規則に従う。
+**When a video joins**: in a transaction that inserts a `queued` row into `jobs`,
+or that makes a `queued` job claimable. Inside that transaction, the video is
+added to the latest scan (`max(scans.id)`; nothing is added when there is none)
+with `insert ... on conflict do nothing`. The current sites below go through one
+helper in `internal/store`. Any future migration that enqueues jobs follows the
+same rule.
 
-- 走査の登録: `UpsertVideo` の結果に従う積み込みと、変化の無いファイルへの `EnsureJob`
-- `EnqueueJob`（解析の結果と同じトランザクションで積むプレビューを含む。R-2）
-- 見つからないプレビューとシーク用サムネイルの積み直し（`RequeueMissingPreview`、`requeueJob`）
-- 解析のやり直し（`RetryProbe`）
-- メディアフォルダの追加・付け替え: 登録された所在ができて着手できるようになった
-  `queued` の仕事の動画
-- `StartScan`: 前の走査から持ち越す、`queued`・`running` の仕事が残っている動画
+- Scan registration: the enqueue that follows the `UpsertVideo` result, and
+  `EnsureJob` for unchanged files
+- `EnqueueJob` (including the preview enqueued in the same transaction as the
+  probe result; R-2)
+- Re-enqueuing missing previews and seek thumbnails (`RequeueMissingPreview`,
+  `requeueJob`)
+- Retrying analysis (`RetryProbe`)
+- Adding or relinking a media folder: videos with `queued` jobs that became
+  claimable because a registered location now exists
+- `StartScan`: videos carried over from the previous scan that still have a
+  `queued` or `running` job
 
-**済みの判定**: 集合の動画のうち、`jobs` に `state in ('queued','running')` の行が無いもの。
-登録された所在の無い（着手できない）仕事は、今の `Processing` と同じく残りに数えない。
+**Settled rule**: a video in the set with no `jobs` row in
+`state in ('queued','running')`. A job with no registered location (not
+claimable) does not count as remaining, as with today's `Processing`.
 
-**抜ける時点**: 動画の行が消えると `on delete cascade` で抜ける（元のファイルの削除や内容の変化）。
-移動の場合、動画の行は内容で同じとされて残るので、新しい所在で数え続ける。`StartScan` は、
-前の走査の行を消す。
+**When a video leaves**: when its video row is deleted, through
+`on delete cascade` (the source file was deleted or its content changed). On a
+move, the video row is kept because the content identifies it as the same video,
+and it keeps counting at its new location. `StartScan` deletes the previous scan's
+rows.
 
-## 3. `scan_issues`（新しい表）
+## 3. `scan_issues` (new table)
 
-直近の走査で起きた、利用者に知らせる出来事である（[R-6](research.md#r-6-問題は出来事ごとの行で保存し読み出しで動画ごとの1件にまとめる)）。
+Events of the latest scan that the user is told about
+([R-6](research.md#r-6-issues-stored-as-one-row-per-event-and-grouped-per-video-on-read)).
 
-| 列 | 型 | 意味 |
+| Column | Type | Meaning |
 | --- | --- | --- |
 | `id` | `integer primary key` | |
-| `scan_id` | `integer not null references scans(id) on delete cascade` | 走査 |
-| `video_id` | `integer null references videos(id) on delete cascade` | 登録された動画。未登録のファイルは `null` |
-| `path` | `text not null` | 出来事の時点のファイルの絶対パス。未登録のファイルを見分け、表示の所在にする |
-| `kind` | `text not null` | 下の種類 |
+| `scan_id` | `integer not null references scans(id) on delete cascade` | The scan |
+| `video_id` | `integer null references videos(id) on delete cascade` | The registered video; `null` for an unregistered file |
+| `path` | `text not null` | The file's absolute path at the time of the event. Identifies unregistered files and is the displayed location |
+| `kind` | `text not null` | One of the kinds below |
 | `created_at` | `integer not null` | |
 
-一意の制約は、`(scan_id, video_id, kind)`（`video_id` が非 null のとき）と、
-`(scan_id, path, kind)`（`video_id` が null のとき）の2つの部分索引である。
+Uniqueness is enforced by two partial indexes: `(scan_id, video_id, kind)` when
+`video_id` is not null, and `(scan_id, path, kind)` when `video_id` is null.
 
-**種類**（`internal/domain` の列挙で、重さも domain が決める）:
+**Kinds** (an enum in `internal/domain`, which also decides the severity):
 
-| `kind` | 重さ | 記録する時点 |
+| `kind` | Severity | Recorded when |
 | --- | --- | --- |
-| `unreadable` | 失敗 | 走査がファイルの情報や内容を読めなかった |
-| `changed_during_import` | 失敗 | 登録の途中でファイルが変わった |
-| `register_failed` | 失敗 | 索引への書き込みや仕事の積み込みに失敗した |
-| `probe_failed` | 失敗 | 解析の仕事がやり直しの上限まで失敗した |
-| `thumbnail_failed` | 失敗 | 代表サムネイルの仕事が上限まで失敗した |
-| `seek_thumbnail_failed` | 失敗 | シーク用サムネイルの仕事が上限まで失敗した |
-| `preview_failed` | 失敗 | 一覧用プレビューの仕事が上限まで失敗した |
-| `thumbnail_first_frame` | 代用 | 代表サムネイルを先頭のコマで作った |
-| `seek_thumbnail_full_decode` | 代用 | シーク用サムネイルを全編から作り直した |
+| `unreadable` | Failure | The scan could not read the file's metadata or content |
+| `changed_during_import` | Failure | The file changed during registration |
+| `register_failed` | Failure | Writing to the index or enqueuing jobs failed |
+| `probe_failed` | Failure | The analysis job failed up to the retry limit |
+| `thumbnail_failed` | Failure | The representative thumbnail job failed up to the limit |
+| `seek_thumbnail_failed` | Failure | The seek thumbnail job failed up to the limit |
+| `preview_failed` | Failure | The list preview job failed up to the limit |
+| `thumbnail_first_frame` | Substitution | The representative thumbnail was made from the first frame |
+| `seek_thumbnail_full_decode` | Substitution | The seek thumbnails were rebuilt from the whole video |
 
-規則:
+Rules:
 
-- 走査の3つの種類は、今ログにだけ出している `scanner.Scan` の各分岐（情報を読めない、変化の無い
-  ファイルの仕事を確かめられない、`ingest` の失敗）から記録する。走査が知っている既存の動画が
-  あれば、`video_id` を入れる。
-- `*_failed` は `recordTerminalFailure` と同じトランザクションで入れる。同じ段階が後で成功したら、
-  結果を書くトランザクションで、その動画のその段階の `*_failed` を消す。
-- 代用は、その段階の成功を書くトランザクションで入れる。同じ段階が代用なしで作り直されたら、
-  その行を消す。
-- 前の走査の行は `StartScan` で消す（R-3）。
-- 行を入れる・消すトランザクションは、同じ中で直近の走査の `issues_revision` を1増やす。
-  まとめた件の数が変わらない変化も、画面がこの番号の変化で読み直せる。例: 解析の失敗がある動画に
-  サムネイルの失敗が加わる場合、別の件が入れ替わる場合。
+- The three scan kinds are recorded from the branches of `scanner.Scan` that today
+  only log: metadata cannot be read, the job for an unchanged file cannot be
+  confirmed, `ingest` failed. When the scan knows an existing video for the file,
+  `video_id` is filled.
+- `*_failed` rows are inserted in the same transaction as `recordTerminalFailure`.
+  When the same stage later succeeds, the transaction that writes the result
+  deletes that video's `*_failed` row for that stage.
+- Substitution rows are inserted in the transaction that writes that stage's
+  success. When the same stage is rebuilt without substitution, the row is
+  deleted.
+- `StartScan` deletes the previous scan's rows (R-3).
+- A transaction that inserts or deletes rows increments the latest scan's
+  `issues_revision` by one within the same transaction. The screen can then reload
+  on a change that leaves the grouped item count unchanged, for example a
+  thumbnail failure added to a video that already has an analysis failure, or one
+  item replaced by another.
 
-**まとめた1件**（読み出しの形。保存はしない）: `coalesce(video_id, path)` ごとに、種類の集合、
-重さ（失敗を1つでも含めば失敗）、表示の所在を返す。所在は、動画なら今の代表の所在、未登録なら
-`path` である。どちらも `domain.LocateVideoFolder` と同じ規則で、登録フォルダの表示名と相対パスに
-直す。本数の数え方も同じ単位（まとめた件の数）である。所在がどの登録フォルダにも含まれない件は、
-一覧にも本数にも入れない（[contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)）。
+**Grouped item** (the read shape; not stored): per `coalesce(video_id, path)`,
+return the set of kinds, the severity (failure when any kind is a failure), and
+the displayed location. The location is the video's current representative
+location, or `path` for an unregistered file. Both are converted to the
+registered folder's display name and a relative path by the same rule as
+`domain.LocateVideoFolder`. Counts use the same unit (grouped items). An item
+whose location is not inside any registered folder is left out of both the list
+and the counts
+([contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)).

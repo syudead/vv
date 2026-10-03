@@ -1,60 +1,46 @@
-# Quickstart: GPU のあるホストでハードウェアエンコードを確かめる
+# Quickstart: Check hardware encoding on a host with a GPU
 
-CI にはハードウェアエンコーダーが無いので、親 Issue #370 の受け入れ条件 2・3・5・6・7・11 は
-この手順で GPU のあるホストで確かめ、結果（ホストの OS と GPU、方式、各手順の結果）を実装 PR の
-本文に残す（[research.md R-10](research.md#r-10-検査は-ffmpeg-を差し替えたテストで行い実機の確認は-quickstart-に置く)）。
-ffmpeg を差し替えた自動テストは `task check` が走らせる。
+CI has no hardware encoder, so acceptance criteria 2, 3, 5, 6, 7 and 11 of parent
+Issue #370 are checked with these steps on a host with a GPU, and the results
+(host OS and GPU, encoder, result of each step) go in the implementation PR body
+([research.md R-10](research.md#r-10-checks-use-tests-with-a-substituted-ffmpeg-on-hardware-checks-live-in-the-quickstart)).
+`task check` runs the automated tests that substitute ffmpeg.
 
-ハードウェアエンコードは、VVMDM をホストに直接入れた場合だけ使える。同梱の Docker イメージは
-ソフトウェアエンコードだけである（[research.md R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。
+Hardware encoding works only when VVMDM is installed directly on the host. The
+bundled Docker image encodes in software only
+([research.md R-1](research.md#r-1-the-bundled-image-stays-on-alpine-with-software-encoding-only)).
 
-## 前提
+## Prerequisites
 
-- ハードウェアエンコーダーのあるホスト: Intel/AMD の GPU（VAAPI・Quick Sync）か NVIDIA の GPU
-  （NVENC）のある Linux か Windows、または VideoToolbox の Mac。ドライバーを入れ、PATH の ffmpeg が
-  その方式のエンコーダーを含むこと（`ffmpeg -hide_banner -encoders`）。手順は
-  [docs/how-to/running-vv.md](../../docs/how-to/running-vv.md) の「Hardware encoding」の節に従う
-  （この feature が書く）。
-- 受け入れ条件 7 の動画: ブラウザで再生できない MP4（HEVC など）、MKV、回転付き、縦長、4K 超
-  （`web/e2e/media-fixtures.mjs` の生成物を流用してよい）。
-- 手順 11 のために Docker（`task up` が動くこと）。
+- A host with a hardware encoder: Linux or Windows with an Intel/AMD GPU (VAAPI,
+  Quick Sync) or an NVIDIA GPU (NVENC), or a Mac with VideoToolbox. The driver is
+  installed, and the ffmpeg on PATH includes that encoder
+  (`ffmpeg -hide_banner -encoders`). Follow the "Hardware encoding" section of
+  [docs/how-to/running-vv.md](../../docs/how-to/running-vv.md) (written by this
+  feature).
+- Videos for acceptance criterion 7: an MP4 the browser cannot play (HEVC or
+  similar), an MKV, a rotated video, a portrait video, and one above 4K (the
+  output of `web/e2e/media-fixtures.mjs` may be reused).
+- Docker (`task up` works), for step 11.
 
-## 手順
+## Steps
 
-1. `docs/how-to/running-vv.md` の節のとおり、ホストで `task build` の単一バイナリを
-   `MDM_DATA_DIR` を指定して直接起動する。起動ログに `live transcode video encoder` の行があり、
-   `effective` が `software`、各方式の確認結果が出ていること（要件 9）。
-2. 所有者でログインし、設定画面の「動画の変換」を開く。ソフトウェアが選ばれ、ホストにある方式が
-   選べ、無い方式は選べずに理由が添えられていること（受け入れ条件 1・4）。
-3. ホストにある方式を選ぶ。保存中の表示のあと「今使われている方式」がその方式になること。
-   再生できない形式の動画を開いて変換再生し、ログの `live transcoding started` にその方式が
-   出ること（受け入れ条件 2）。ホストのプロセス一覧（Linux・macOS は `ps -o args= -C ffmpeg` か
-   `ps ax | grep ffmpeg`、Windows はタスクマネージャーのコマンドライン列）で `-c:v h264_<方式>` が
-   見えること。
-4. サーバーを再起動し、設定画面に選んだ方式が残り、変換再生も同じ方式で動くこと（受け入れ条件 3）。
-5. 前提の 5 種類の動画を、最初から再生・シーク・一時停止して再読み込みからの再開で確かめ、向き・
-   縦横比・長さがソフトウェアのときと同じであること（受け入れ条件 7）。
-6. 変換の出力を確かめる: `ffprobe -show_streams` で `profile=High`、`level` が 51 以下、
-   `pix_fmt=yuv420p`、`-show_frames -select_streams v` でキーフレームの間隔が出力の時刻で 2 秒以下
-   （要件 10）。出力は `curl -o out.mp4 --cookie "<セッション>" "http://localhost:8080/api/videos/<id>/transcode.mp4?startMs=30000"` で数秒分取れば足りる。
-7. 自動選択にする。「今使われている方式」とログがホストの方式になること（受け入れ条件 6）。
-8. ハードウェアの方式を選んで保存したあと、その方式が使えない状態で同じ `MDM_DATA_DIR` のまま
-   再起動する（例: その方式のエンコーダーを含まない ffmpeg を PATH の先頭に置く。Linux の VAAPI・
-   Quick Sync なら `/dev/dri` の権限を持たない利用者で動かす）。サーバーが起動し、設定画面に「選んだ
-   方式が使えずソフトウェアで変換している」警告が出て、変換再生がソフトウェアで動くこと
-   （受け入れ条件 5）。
-9. NVIDIA の場合: 同時に変換再生するタブを GPU のセッション上限を超える数だけ開く。超えた分が
-   ソフトウェアで再生され、ログに `hardware encoder failed; transcoding with software` が出ること
-   （Edge Case「同時セッション数の上限」）。
-10. 変換の配信中に方式を変える。配信中の再生が止まらず、次のシークから新しい方式になること
-    （Edge Case「変換の配信中に方式を変える」）。
-11. 手順 1 で直接起動したサーバーを止めてから（同じホストのポート 8080 を使うため）、同じホストで
-    同梱の Docker イメージを `task up` で起動する。設定画面の「動画の変換」で
-    ハードウェアの方式がすべて使えない状態で理由とともに表示され、再生できない形式の動画が
-    ソフトウェアで変換再生されること（受け入れ条件 11）。
+| Step | Expected result | Acceptance |
+| --- | --- | --- |
+| 1. As described in the `docs/how-to/running-vv.md` section, start the single binary from `task build` directly on the host with `MDM_DATA_DIR` set. | The startup log has a `live transcode video encoder` line with `effective` `software` and each encoder's check result. | Requirement 9 |
+| 2. Log in as the owner and open Video conversion in Settings. | Software is selected; the encoders the host has can be selected; the others cannot and show a reason. | 1, 4 |
+| 3. Select an encoder the host has. Open a video in a format the browser cannot play and play it through transcoding. Check the host's process list (on Linux and macOS `ps -o args= -C ffmpeg` or `ps ax \| grep ffmpeg`; on Windows the command line column in Task Manager). | After the saving indicator, the encoder in use now is that encoder. The `live transcoding started` log shows it. `-c:v h264_<encoder>` appears in the process list. | 2 |
+| 4. Restart the server. | Settings still shows the chosen encoder, and transcoded playback uses it. | 3 |
+| 5. Play each of the five prerequisite videos from the start, seek, pause, and resume after a reload. | Orientation, aspect ratio and duration match software encoding. | 7 |
+| 6. Check the transcoded output. Fetching a few seconds with `curl -o out.mp4 --cookie "<session>" "http://localhost:8080/api/videos/<id>/transcode.mp4?startMs=30000"` is enough. | `ffprobe -show_streams` shows `profile=High`, `level` 51 or lower, `pix_fmt=yuv420p`; `-show_frames -select_streams v` shows keyframes at most 2 seconds apart in output time. | Requirement 10 |
+| 7. Switch to automatic. | The encoder in use now and the log show the host's encoder. | 6 |
+| 8. Select and save a hardware encoder, then restart with the same `MDM_DATA_DIR` while that encoder is unavailable (for example, put an ffmpeg without that encoder first on PATH; for VAAPI or Quick Sync on Linux, run as a user without permission on `/dev/dri`). | The server starts; Settings warns that the chosen encoder is unavailable and software is converting; transcoded playback runs in software. | 5 |
+| 9. For NVIDIA: open more transcoding tabs at once than the GPU's session limit. | The tabs over the limit play through software, and the log shows `hardware encoder failed; transcoding with software`. | Edge Case "concurrent session limit" |
+| 10. Change the encoder while a transcode is streaming. | The playback does not stop, and the new encoder applies from the next seek. | Edge Case "the encoder changes while a transcode is streaming" |
+| 11. Stop the server started in step 1 (it uses port 8080 on the same host), then start the bundled Docker image on the same host with `task up`. | Video conversion in Settings shows every hardware encoder as unavailable with reasons, and a video in a format the browser cannot play is transcoded in software. | 11 |
 
-## 期待する結果
+## Expected result
 
-上のそれぞれが成り立つ。1 つでも成り立たなければ、その方式の引数
-（[research.md R-7](research.md#r-7-エンコード引数は方式ごとの符号化器の指定だけを差し替え出力の約束は共通の引数で守る)）
-か確認の手順（R-2）を直してからやり直す。
+Every step above holds. If any step fails, fix that encoder's arguments
+([research.md R-7](research.md#r-7-encode-arguments-swap-only-the-per-encoder-codec-options-common-arguments-keep-the-output-guarantees))
+or the check procedure (R-2) and run the steps again.
