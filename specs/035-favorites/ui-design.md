@@ -1,476 +1,483 @@
-# UI Design: 動画とグループをお気に入りにする
+# UI design: Favorite videos and groups
 
-**Feature**: [parent Issue #574](https://github.com/syudead/vv/issues/574) ・
-[plan.md](plan.md) ・ [contracts/screen-api.md](contracts/screen-api.md) ・
-[research.md R-2](research.md#r-2-付け外しは所有者だけの-1-つの経路-put-apifavorites-で動画の-id-とフォルダを-1-つの取引で受け無いものは数えずに飛ばす)・
-[R-6](research.md#r-6-画面はドメインイベントを足さず公開の切り替えと同じ購読の仕組みで一覧と再生画面に反映し再生画面は動画を取り直す)・
-[R-7](research.md#r-7-複数選択は選んだグループをグループとして覚え一括のお気に入りではグループのメンバーを動画として送らない)
+**Feature**: [parent Issue #574](https://github.com/syudead/vv/issues/574) ·
+[plan.md](plan.md) · [contracts/screen-api.md](contracts/screen-api.md) ·
+[research.md R-2](research.md#r-2-one-owner-only-put-apifavorites-for-videos-and-folders-in-one-transaction) ·
+[R-6](research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern) ·
+[R-7](research.md#r-7-selection-keeps-chosen-groups-as-groups)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+The visual rules come from the following documents and are not decided again here.
 
-- 配色・操作状態・幅の出し分け・一覧と再生画面の構成: [ライブラリ UI](../../docs/design-docs/library-ui.md)
-  （「6. 一覧の構成」のカード・グループのカード・リスト表示・選択バー・ツールバー、「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- カードの箱と選択のチェックの出し方（hover・フォーカス・`hover:none` の端末）:
-  今の [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) と
-  [`web/src/library/GroupCard.tsx`](../../web/src/library/GroupCard.tsx)、
-  [specs/017-folder-groups/ui-design.md「Group card」](../017-folder-groups/ui-design.md#group-card)
-- カードの印の先例（公開の印）: [specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Card」](../016-single-account-auth/ui-design.md#card)
-- 再生画面の情報の行と右端の二次的な操作の一群: [specs/012-video-detail-ia/ui-design.md「Video facts」](../012-video-detail-ia/ui-design.md#video-facts)、
-  [specs/029-video-overrides/ui-design.md「Capture button」](../029-video-overrides/ui-design.md#capture-button)
-  と今の [`web/src/player/VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx)
-- 選択バーの構成とメニューの先例（「公開」）: [specs/016-single-account-auth/ui-design.md「Selection bar」](../016-single-account-auth/ui-design.md#selection-bar)、
-  [specs/030-video-versions/ui-design.md「Bundle action」](../030-video-versions/ui-design.md#bundle-action)
-  と今の [`web/src/library/SelectionBar.tsx`](../../web/src/library/SelectionBar.tsx)・
-  [`VisibilityMenu.tsx`](../../web/src/library/VisibilityMenu.tsx)
-- 絞り込みのポップオーバーと並べ替えのメニュー: [specs/013-library-search/ui-design.md「Sort and direction」「Filter menu」](../013-library-search/ui-design.md#sort-and-direction)、
-  [specs/033-video-dates/ui-design.md「Sort and direction」](../033-video-dates/ui-design.md#sort-and-direction)
-  と今の [`web/src/videoList/FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx)・
-  [`SortControls.tsx`](../../web/src/videoList/SortControls.tsx)・[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts)
-- ゲストへの縮退: [specs/016-single-account-auth/ui-design.md「Guest degradation」](../016-single-account-auth/ui-design.md#guest-degradation)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+| Topic | Source |
+| --- | --- |
+| Colours, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) (§6 for cards, group cards, list view, selection bar and toolbar; §8 for the video page) |
+| Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy values |
+| Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
+| Card box and how the selection checkbox appears (hover, focus, `hover:none` devices) | The current [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) and [`web/src/library/GroupCard.tsx`](../../web/src/library/GroupCard.tsx), [specs/017-folder-groups/ui-design.md "Group card"](../017-folder-groups/ui-design.md#group-card) |
+| Precedent for a mark on cards (the public mark) | [specs/016-single-account-auth/ui-design.md "Visibility toggle", "Card"](../016-single-account-auth/ui-design.md#card) |
+| Video page facts row and its right-hand group of secondary actions | [specs/012-video-detail-ia/ui-design.md "Video facts"](../012-video-detail-ia/ui-design.md#video-facts), [specs/029-video-overrides/ui-design.md "Capture button"](../029-video-overrides/ui-design.md#capture-button) and the current [`web/src/player/VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |
+| Selection bar layout and the menu precedent ("Visibility") | [specs/016-single-account-auth/ui-design.md "Selection bar"](../016-single-account-auth/ui-design.md#selection-bar), [specs/030-video-versions/ui-design.md "Bundle action"](../030-video-versions/ui-design.md#bundle-action) and the current [`web/src/library/SelectionBar.tsx`](../../web/src/library/SelectionBar.tsx), [`VisibilityMenu.tsx`](../../web/src/library/VisibilityMenu.tsx) |
+| Filter popover and sort menu | [specs/013-library-search/ui-design.md "Sort and direction", "Filter menu"](../013-library-search/ui-design.md#sort-and-direction), [specs/033-video-dates/ui-design.md "Sort and direction"](../033-video-dates/ui-design.md#sort-and-direction) and the current [`web/src/videoList/FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx), [`SortControls.tsx`](../../web/src/videoList/SortControls.tsx), [`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) |
+| Guest degradation | [specs/016-single-account-auth/ui-design.md "Guest degradation"](../016-single-account-auth/ui-design.md#guest-degradation) |
+| Where screen text lives and its format | [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md). The English here is a proposal showing intent; after implementation the catalog [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth |
 
-この feature が画面に足すのは次の 5 つで、どれも所有者だけに出る。新しいトークンは、オンのハートの
-色 `favorite` と、サムネイルの上の印の影 `drop-shadow-mark` の 2 つだけ（下の「Mark」「Colour」）。
-半径のトークンは足さない。
+This feature adds five things to the screen, all shown to the owner only. The only new tokens are the colour of
+the filled heart, `favorite`, and the shadow of marks on thumbnails, `drop-shadow-mark` (see "Mark" and
+"Colour" below). No radius token is added.
 
-1. ライブラリとフォルダ画面の**カードと行の付け外し**（動画のカード・行、グループのカード・行。
-   要件 6・7、受け入れ条件 1・3）
-2. 再生画面の**二次的な操作の段の付け外し**（要件 6・7、受け入れ条件 1・6）
-3. 選択バーの**「Favorite」のメニュー**（要件 6、受け入れ条件 7）
-4. 絞り込みの**「Favorites only」**（要件 8・9・11、受け入れ条件 4・5・9）
-5. 並べ替えの**「Date favorited」**（要件 10・11、受け入れ条件 8）
+1. The **toggle on cards and rows** in the library and folder screens (video cards and rows, group cards and
+   rows; requirements 6 and 7, acceptance criteria 1 and 3)
+2. The **toggle in the secondary actions row** of the video page (requirements 6 and 7, acceptance criteria 1
+   and 6)
+3. The **"Favorite" menu** in the selection bar (requirement 6, acceptance criterion 7)
+4. **"Favorites only"** in the filter (requirements 8, 9 and 11, acceptance criteria 4, 5 and 9)
+5. **"Date favorited"** in the sort (requirements 10 and 11, acceptance criterion 8)
 
-変えないもの: 普通のフォルダのカード（`FolderCard`。対象外）、再生画面のグループの行（「Group line」。
-要件 6 の再生画面の入口は**再生中の動画**のお気に入りだけで、グループのお気に入りはライブラリの
-グループのカードと複数選択から付ける）、関連動画とメンバーの並びの行、再生終了の層、サイドバー
-（お気に入りだけの画面や入口は作らない。UI品質「要求を満たしたことにならない変更」）。ゲストの画面は
-どこも変わらない（「Guest degradation」）。
+Unchanged: plain folder cards (`FolderCard`; out of scope); the group line on the video page ("Group line";
+the video page entry point of requirement 6 covers only the favorite of the **video being played**, and group
+favorites are set from the library's group cards and from multiple selection); the related-video and member
+rows; the end-of-playback layer; the sidebar (no favorites-only screen or entry point; `UI品質`:
+`要求を満たしたことにならない変更`). The guest screens do not change anywhere ("Guest degradation").
 
 ## Words
 
-英語の文言は、同じ画面で既に使っている語との衝突だけで決める。
+The English text is chosen only to avoid clashing with words the same screen already uses.
 
-| 場所 | 英語（案） |
+| Place | English (proposal) |
 | --- | --- |
-| 付け外しの読み上げ名（カード・行、動画） | Favorite "〈題名〉" |
-| 付け外しの読み上げ名（カード・行、グループ） | Favorite group "〈名〉" |
-| 再生画面の付け外しの読み上げ名・ツールチップ | Favorite |
-| 付け外しの状態 | `aria-pressed`（true が お気に入り） |
-| 再生画面で変えられなかった 1 行 | Couldn't change the favorite: {理由} |
-| カード・行で変えられなかったトースト | Couldn't change the favorite: {理由} |
-| 選択バーの引き金 | Favorite |
-| 選択バーのメニューの項目 | Add to favorites ／ Remove from favorites |
-| 一括で付けたトースト | Added {N} items to favorites（N は `appliedVideos + appliedFolders`。1 なら item） |
-| 一括で外したトースト | Removed {N} items from favorites |
-| 一括で変えられなかったトースト | Couldn't change the favorites: {理由} |
-| 一括の上限の理由 | 今の `too_many_videos` の文（タグ・公開と同じ）。数えるのは送る `videoIds` と `folders` の合計 |
-| 絞り込みのチェック | Favorites only |
-| 並べ替えの種類 | Date favorited |
-| 並べ替えの向きの言い換え | oldest first ／ newest first |
+| Accessible name of the toggle (card and row, video) | Favorite "{title}" |
+| Accessible name of the toggle (card and row, group) | Favorite group "{name}" |
+| Accessible name and tooltip of the video page toggle | Favorite |
+| Toggle state | `aria-pressed` (true means favorite) |
+| Failure line on the video page | Couldn't change the favorite: {reason} |
+| Failure toast on cards and rows | Couldn't change the favorite: {reason} |
+| Selection bar trigger | Favorite |
+| Selection bar menu items | Add to favorites / Remove from favorites |
+| Toast after adding in bulk | Added {N} items to favorites (N is `appliedVideos + appliedFolders`; "item" when 1) |
+| Toast after removing in bulk | Removed {N} items from favorites |
+| Toast when a bulk change fails | Couldn't change the favorites: {reason} |
+| Reason for the bulk limit | The current `too_many_videos` sentence (the same as tags and visibility). The count is the total of `videoIds` and `folders` sent |
+| Filter checkbox | Favorites only |
+| Sort kind | Date favorited |
+| Sort direction wording | oldest first / newest first |
 
-- 「Favorite」を動詞としても名詞としても使い、「Like」「Save」「Star」は使わない。「Star」は段階の
-  評価（対象外）に読め、「Save」はダウンロードに読め、「Like」は他の人に見える反応に読める。
-  お気に入りは所有者だけの印で、オンとオフしか持たない（要件 1・12）。
-- 一括のトーストの単位は **items** で、videos ではない。グループは 1 つの項目として付くので
-  （要件 6）、`appliedVideos + appliedFolders` を videos と呼ぶと、選んだ本数（メンバーを数える）と
-  食い違う。ライブラリの件数の行が項目を items と数えるのと同じである。
-- 並べ替えは「Date favorited」で、「Recently favorited」にしない。親 Issue の語は「お気に入りにした
-  日時」で、メニューの「Date added」「Date modified」「Date created」と同じ「Date …」の形にすると、
-  向きの言い換え（oldest first／newest first）もその 3 つと同じ語で済む。「Recently played」が
-  「Recently」なのは、再生は何度も起き「最後に再生した」ことを言う必要があるからで、お気に入りの
-  日時は付けた 1 回の日時である。
+- "Favorite" is used as both verb and noun; "Like", "Save" and "Star" are not used. "Star" reads as a graded
+  rating (out of scope), "Save" reads as a download, and "Like" reads as a reaction others can see. A favorite
+  is a mark only the owner has, with only on and off (requirements 1 and 12).
+- The unit in bulk toasts is **items**, not videos. A group is favorited as one item (requirement 6), so
+  calling `appliedVideos + appliedFolders` videos would contradict the selected count (which counts members).
+  The library's count line also counts items as items.
+- The sort is "Date favorited", not "Recently favorited". The parent Issue's term is `お気に入りにした日時`,
+  and the "Date …" form matches "Date added", "Date modified" and "Date created" in the menu, so the direction
+  wording (oldest first / newest first) is the same as for those three. "Recently played" says "Recently"
+  because playback happens many times and the sort has to say "last played"; a favorite has the one time it was
+  made.
 
 ## Mark
 
-印は lucide `Heart` の 1 つで、オンは塗り（`fill-current`）、オフは線だけにする。どの入口でも同じ
-絵・同じ塗りの規則にし、付け外しの操作そのものが今の状態を見せる（要件 7）。
+The mark is one lucide `Heart`: filled (`fill-current`) when on, outline only when off. Every entry point uses
+the same icon and the same fill rule, and the toggle itself shows the current state (requirement 7).
 
-- **星ではなくハート**にするのは、段階の評価を持たない（要件 1、対象外「評価」）ことを絵で
-  言うためである。星は 5 段階の評価の絵として定着していて、1 つだけでも「何点か」を期待させる。
-  写真のアプリやメディアサーバーの「お気に入り」はハートに収束している。
-- **オンの色はお気に入り専用の桃色のトークン `favorite`**（`text-favorite` + `fill-current`）で、
-  カード・行・再生画面のどこでも同じ色にする。値は `#ff6f9c` とメンテナが決めた（まだ
-  `index.css` に無い新しいトークンなので、決めた値をここに書く）。実装の PR がこの値を
-  [`web/src/index.css`](../../web/src/index.css) の `@theme` に `--color-favorite` として 1 か所に置き、
-  以後の値の出どころはそちらである（design.md の規則）。
-  値に求めるのは次の 3 つで、実装の PR で `tokens.test.ts` の `pairs` に足して確かめる（「Colour」）。
-  - 暗い面の上で 4.5 以上: `favorite` on `surface`（行）、on `accent-soft`（再生画面の `active` の面）、
-    on `navbar`（サムネイルの無いカードの面）、on `bg`。
-  - `danger` と見分けが付くこと。`danger` は朱に寄った赤（橙に近い側）で、`favorite` はそれより
-    紫に寄った桃色にする。同じ赤の系統に見える値（`danger` と色相が近い値）は採らない。
-  - 一目で「お気に入り」と読めること。写真のアプリやメディアサーバーのお気に入りの塗りは
-    赤から桃に収束していて、利用者はその色を見て意味を読む。
-- **以前の `text-link`（押下・選択の状態の色）は採らない。** 最初の案ではシアンの `link` を使い、
-  赤を避ける理由（`danger` との競合）をそのまま色の決め手にしていた。実機で見ると、シアンの
-  ハートは選択のチェックやフォーカスの輪郭と同じ系統で、「選んでいる」「フォーカスがある」の
-  印に紛れ、ハートの絵を見て初めてお気に入りと分かった。お気に入りの印は絵と色の両方で
-  読めるべきで、色はこの feature の印だけが使う 1 色にする。それでも `danger` を使わないのは
-  前のとおりで、赤は危険と失敗の意味別の色であり、カードの上で「再生できない」の警告と競う
-  （library-ui.md §1）。だから `danger` と同じ系統ではない桃色を、専用のトークンとして足す。
-- **オフは白の線だけのハート**（`text-fg`）で、カードの上では暗い影（`drop-shadow-mark`）を付け、
-  行と再生画面では `text-fg-muted` で影も面も付けない。付いていないカードが今より騒がしく
-  ならないように、オフの印はポイントかフォーカスしたときだけ現れる（下の「Card」）。
-- 塗りに加えて `aria-pressed` が状態を持つ。色の違い（`favorite` と `fg`）だけに頼らず、塗りの
-  有無で見分けられる。
+- **A heart, not a star**, so that the icon says there is no graded rating (requirement 1, out of scope
+  "rating"). A star is established as the icon of a five-step rating, and even a single star suggests a score.
+  The "favorite" of photo apps and media servers has converged on the heart.
+- **The on colour is the favorites-only pink token `favorite`** (`text-favorite` + `fill-current`), the same on
+  cards, rows and the video page. The maintainer set the value to `#ff6f9c` (it is recorded here because the
+  token was not yet in `index.css`). The implementation PR puts it once in `@theme` of
+  [`web/src/index.css`](../../web/src/index.css) as `--color-favorite`, and from then on that is the source of
+  the value (the design.md rule). The value must meet three conditions, checked by adding pairs to `pairs` in
+  `tokens.test.ts` in the implementation PR ("Colour"):
+  - 4.5 or more on dark surfaces: `favorite` on `surface` (rows), on `accent-soft` (the `active` surface on the
+    video page), on `navbar` (the surface of a card without a thumbnail), and on `bg`.
+  - Distinguishable from `danger`. `danger` is a vermilion red (toward orange); `favorite` is a pink shifted
+    toward purple. A value that looks like the same red family (a hue close to `danger`) is not used.
+  - Read as "favorite" at a glance. The fill of favorites in photo apps and media servers has converged on red
+    to pink, and users read the meaning from that colour.
+- **The earlier `text-link` (the pressed and selected state colour) is not used.** The first proposal used the
+  cyan `link` and let the reason for avoiding red (the clash with `danger`) decide the colour. On a real device
+  the cyan heart belonged to the same family as the selection checkbox and the focus outline, blended into the
+  "selected" and "focused" marks, and was recognisable as a favorite only from the heart shape. The favorite
+  mark should read through both shape and colour, so its colour is one used only by this feature's mark.
+  `danger` is still not used, for the earlier reason: red is the semantic colour for danger and failure, and
+  on a card it would compete with the "can't play" warning (library-ui.md §1). Hence a pink outside the
+  `danger` family, added as its own token.
+- **Off is an outline-only white heart** (`text-fg`), with a dark shadow (`drop-shadow-mark`) on cards; on rows
+  and the video page it is `text-fg-muted` with neither shadow nor surface. So that cards without a favorite are
+  not noisier than today, the off mark appears only on pointer hover or focus (see "Card" below).
+- `aria-pressed` carries the state in addition to the fill. The state does not rely on the colour difference
+  (`favorite` versus `fg`) alone; the fill tells them apart.
 
 ## Card
 
-ライブラリの格子（`VideoCard`・`GroupCard`）とフォルダ画面・その検索結果の動画のカードに、
-所有者だけ、付け外しを置く。
+The toggle goes on the library grid (`VideoCard`, `GroupCard`) and on video cards in the folder screen and its
+search results, for the owner only.
 
 ### Placement
 
-- サムネイルの枠の**右上**（`top-1.5 right-1.5`）に、選択のチェック（左上）と対になる位置で置く。
-  押せる範囲が `size-7` でチェック（`size-5`、`top-2 left-2`）より大きいので、内側の余白を 2px
-  詰めて、ハートの線の外縁がチェックの箱の外縁とほぼ同じ角からの距離（約 9px と 8px）に
-  来るようにする。
-  動画のカードは `z-20`（チェックと同じ）、グループのカードは `z-30`（そのチェックと同じ。
-  前に出たサムネイルより上）。
-- 部品は `button`（`type="button"`、`aria-pressed`）で、カードのリンク（`Link`）の**外**、同じ
-  `article` の中に置く（チェックと同じ。リンクの中にボタンを入れない）。DOM の順は チェック →
-  リンク → **付け外し** → タグの行。Tab で先に届くのは今までどおりカードのリンク（開く）で、
-  お気に入りはその次である（UI品質「操作の優先順位」）。
-- 押せる範囲は `size-7`（28px）の正方形で、中のハートは `size-5.5`（22px、lucide の既定の線の太さ 2）。
-  **面も枠も付けず、ハートだけ**をサムネイルの上に置き、線のハートにも塗りのハートにも暗い影
-  `drop-shadow-mark` を付けて、明るいサムネイルの上でも読めるようにする。影は `@theme` に
-  `--drop-shadow-mark` として足す（値は `index.css` に置く。半透明の黒で、`pairs` の対象外）。
-  チェック（`size-5`）より一回り大きいのは、チェックが選択モードでだけ主に押されるのに対し、
-  こちらはふだんの一覧で押す操作だからである。
-- **以前の `size-6 rounded-sm bg-navbar/90 backdrop-blur-sm` の面は採らない。** 最初の案は長さの印と
-  同じ面でハートを包み、どのサムネイルの上でも線が読めることを面で保証していた。実機で見ると、
-  その面は長さの印・公開の印と同じ暗い四角がもう 1 つ角に増えた形で、オンのカードは「四角の中の
-  小さなハート」になり、お気に入りの印が長さの印と同じ強さに揃ってしまった（UI品質「視覚的階層」:
-  付いているときに一目で分かる程度）。面を外して影で読めるようにすると、オンのカードは桃色の
-  ハートだけが角にあり、長さの印より目に入るが題名より目立たない。オフのハートは白の線に影で、
-  hover したときだけ出るので、面が無くても騒がしくならない。ハートを 16px から 22px に広げるのは、
-  面が無いと 16px の線のハートが長さの印の文字より細く見え、明るいサムネイルで影に頼りきりに
-  なるからである。
-- 行を増やさず、題名・タグの行・長さの印・公開の印・進捗の帯の位置と間隔は変えない（UI品質
-  「情報密度」「余白のリズム」）。公開の印（`Globe`、右下の長さの面の中）とは角が違うので重ならない。
-- **採らない置き場所**: 長さの印の中（公開の印と同じ場所）。リンクの中なので押せる印にできず、
-  要件 7（状態と操作が同じ場所）を満たさない。題名の行の右端。2 行の題名と幅を取り合い、
-  題名が 1 行で省略されるカードが増える。hover で出る操作のメニュー。付けるまでに 1 回増え、
-  「付けるたびに選択の画面を挟む」に当たる。
+- At the **top right** of the thumbnail frame (`top-1.5 right-1.5`), paired with the selection checkbox (top
+  left). The hit area `size-7` is larger than the checkbox (`size-5`, `top-2 left-2`), so the inset is 2px
+  tighter, which puts the outer edge of the heart's stroke at about the same distance from the corner as the
+  checkbox box's outer edge (about 9px and 8px). Video cards use `z-20` (the same as the checkbox); group cards
+  use `z-30` (the same as their checkbox, above the raised thumbnail).
+- The component is a `button` (`type="button"`, `aria-pressed`) placed **outside** the card link (`Link`),
+  inside the same `article` (like the checkbox; no button inside a link). DOM order is checkbox → link →
+  **toggle** → tag row. Tab still reaches the card link (open) first, and the favorite next (`UI品質`:
+  `操作の優先順位`).
+- The hit area is a `size-7` (28px) square, and the heart inside is `size-5.5` (22px, lucide's default stroke
+  width 2). **No surface and no border, only the heart** sits on the thumbnail, and both the outline and the
+  filled heart get the dark shadow `drop-shadow-mark` so they read on bright thumbnails. The shadow is added to
+  `@theme` as `--drop-shadow-mark` (its value lives in `index.css`; translucent black, outside `pairs`). It is a
+  step larger than the checkbox (`size-5`) because the checkbox is mostly pressed in selection mode, while this
+  is pressed in the everyday list.
+- **The earlier `size-6 rounded-sm bg-navbar/90 backdrop-blur-sm` surface is not used.** The first proposal
+  wrapped the heart in the same surface as the duration mark, guaranteeing that the stroke reads on any
+  thumbnail. On a real device that surface was one more dark square in a corner, like the duration and public
+  marks; a card that was on became "a small heart inside a square", and the favorite mark ended up with the same
+  weight as the duration mark (`UI品質`: `視覚的階層`, noticeable at a glance when on). Without the surface and
+  readable through the shadow, a card that is on has only a pink heart in the corner, more noticeable than the
+  duration mark and less than the title. The off heart is a white outline with a shadow and appears only on
+  hover, so it is not noisy without a surface. The heart grows from 16px to 22px because without a surface a
+  16px outline heart looks thinner than the duration mark's text and relies entirely on the shadow on bright
+  thumbnails.
+- No row is added, and the position and spacing of the title, tag row, duration mark, public mark and progress
+  bar do not change (`UI品質`: `情報密度`, `余白のリズム`). The public mark (`Globe`, inside the duration surface
+  at the bottom right) is in a different corner, so they do not overlap.
+- **Rejected placements**:
+
+  | Placement | Why rejected |
+  | --- | --- |
+  | Inside the duration mark (where the public mark is) | It is inside the link, so it cannot be a pressable mark and fails requirement 7 (state and action in the same place) |
+  | Right end of the title row | It competes with two-line titles for width, and more cards would truncate the title to one line |
+  | A menu of actions shown on hover | It adds one step before favoriting, which is "a selection screen every time you favorite" |
 
 ### When the mark is shown
 
-| 状態 | 格子のカード | リスト表示の行 |
+| State | Grid card | List view row |
 | --- | --- | --- |
-| オン | 常に見える（`opacity-100`） | 常に見える |
-| オフ | `opacity-0`。カードを hover、カードの中にフォーカス（`group-focus-within`）、`hover:none` の端末で `opacity-100`（チェックと同じ条件） | 行を hover、行の中にフォーカス、`hover:none` の端末で見える |
+| On | Always visible (`opacity-100`) | Always visible |
+| Off | `opacity-0`; `opacity-100` when the card is hovered, focus is inside the card (`group-focus-within`), or on `hover:none` devices (the same conditions as the checkbox) | Visible when the row is hovered, focus is inside the row, or on `hover:none` devices |
 
-- オフのハートを常に出さないのは、UI品質「付いていないときは、カードの見た目を今より騒がしく
-  しない」による。付いているカードだけにハートがあるので、一覧を眺めるだけでお気に入りが分かる
-  （UI品質「視覚的階層」）。
-- 選択モード（1 件以上選んでいる）でも同じ条件で出し、押せる（plan の受け入れ条件）。チェックの
-  ように常に出さないのは、選択モードの印はチェックだけで足りるからである。
-- hover のプレビュー（動画・フォルダの絵柄）との関係はチェックと同じにする: ポインタがこのボタンに
-  入ったらプレビューを止め（`data-preview-checkbox` と同じ扱いで、ボタンの上からプレビューを
-  始めない）。面が無いので、プレビュー中に見た目を変える必要は無く、影のまま動く絵柄の上に
-  載る。
-- 再生できない動画の全面の警告（`bg-overlay`）の上にも出る（`z-20` で警告より前）。お気に入りは
-  再生可否と無関係である。
+- The off heart is not always shown because of `UI品質`: `付いていないときは、カードの見た目を今より騒がしくしない`. Only
+  cards that are favorites have a heart, so scanning the list shows the favorites (`UI品質`: `視覚的階層`).
+- In selection mode (one or more selected) it appears under the same conditions and can be pressed (the plan's
+  acceptance). It is not always shown like the checkbox because the checkbox alone is enough as the mark of
+  selection mode.
+- Relation to the hover preview (video and folder artwork) is the same as the checkbox: when the pointer enters
+  this button the preview stops (treated like `data-preview-checkbox`; a preview does not start from over the
+  button). There is no surface, so nothing needs to change during the preview; the heart sits with its shadow
+  over the moving image.
+- It also appears over the full-card warning of an unplayable video (`bg-overlay`) (`z-20`, in front of the
+  warning). A favorite has nothing to do with playability.
 
 ### Pressing
 
-- 押すと `PUT /api/favorites` を 1 回送る。動画のカード・行は `videoIds: [id]`、グループのカード・
-  行は `folders: [group.folder]`、`favorite` は今の状態の反対。確認の窓は出さない（UI品質）。
-- 押してもカードのリンク（開く）と選択のチェックは動かない。`click` の伝播を止め、選択モードでも
-  選択を切り替えない。
-- 送っている間は `aria-disabled` にし、ハートを `LoaderCircle`（`animate-spin`、動きを減らす設定では
-  止める）にする。もう一度押しても送らない。
-- 応答を受けてから印を変える。動画のカード・行は一覧の項目の `favorite` をその場で差し替え、
-  グループのカード・行は `GET /api/folders/{rootId}/group` で取り直して差し替える（R-6、017
-  「Refresh and removal」）。取り直しの間、カードの見た目は変えない。`appliedFolders` が 0
-  （もうグループではない）で取り直しが 404 のときは、そのカードを一覧から外す（017 と同じく
-  何も伝えない）。
-- 失敗したときはトースト「Couldn't change the favorite: {理由}」を出し、印は変えない。カードには
-  失敗の行を置く場所が無い。
-- グループに付けてもメンバーの動画のカードの印は変わらず、メンバーに付けてもグループのカードの
-  印は変わらない（要件 4、受け入れ条件 3）。
-- **お気に入りのみで絞り込んだ一覧**でカードから外しても、その場では一覧から外さず、ハートが線に
-  なるだけである。一覧を取り直したとき（条件を変える、ページを読み込み直す）に消える（R-6）。
-  その場で消すと隣のカードが動いて続けて押せない。「Date favorited」で並べた一覧で付け外しても、
-  並びはその場では変えない（同じ理由）。
-- 再生画面から戻ったときは一覧を取り直さず控え（`listSnapshot`）を復元するので、控えのそのカードの
-  印は再生画面で変えた状態になっている（受け入れ条件 1、`listSnapshot` への反映）。お気に入りのみで
-  絞り込んだ一覧から開いた動画を外して戻っても、そのカードは線のハートで同じ位置に残り、取り直す
-  まで消えない（plan「再生画面にお気に入りの付け外しを置く」の Acceptance）。別のタブで変えた状態は、次に一覧を
-  取り直したときに追う（Edge Case）。
+- Pressing sends one `PUT /api/favorites`. Video cards and rows send `videoIds: [id]`, group cards and rows
+  send `folders: [group.folder]`, and `favorite` is the opposite of the current state. No confirmation dialog
+  (`UI品質`).
+- Pressing does not trigger the card link (open) or the selection checkbox. The `click` stops propagating, and
+  in selection mode it does not toggle the selection.
+- While sending, the button is `aria-disabled` and the heart becomes `LoaderCircle` (`animate-spin`, stopped
+  under reduced motion). Pressing again sends nothing.
+- The mark changes after the response. Video cards and rows replace the list item's `favorite` in place; group
+  cards and rows are refetched with `GET /api/folders/{rootId}/group` and replaced (R-6, 017 "Refresh and
+  removal"). The card's look does not change during the refetch. When `appliedFolders` is 0 (no longer a
+  group) and the refetch returns 404, the card is removed from the list (without notice, as in 017).
+- On failure the toast "Couldn't change the favorite: {reason}" appears and the mark does not change. A card has
+  no room for a failure line.
+- Favoriting a group does not change the marks on its member video cards, and favoriting a member does not
+  change the group card's mark (requirement 4, acceptance criterion 3).
+- Unfavoriting a card **in a favorites-only list** does not remove it from the list at once; the heart only
+  becomes an outline. It disappears when the list is refetched (conditions change, the page reloads) (R-6).
+  Removing it at once would shift the neighbouring cards and stop repeated presses. Toggling in a list sorted by
+  "Date favorited" does not reorder it at once either, for the same reason.
+- Returning from the video page restores the list snapshot (`listSnapshot`) instead of refetching, so that
+  card's mark in the snapshot is in the state set on the video page (acceptance criterion 1, applied to
+  `listSnapshot`). After opening a video from a favorites-only list, unfavoriting it and going back, the card
+  stays in the same position with an outline heart until a refetch (the Acceptance of the plan's "Put the
+  favorite toggle on the video page"). A state changed in another tab is picked up on the next list refetch
+  (Edge Case).
 
 ### List view row
 
-リスト表示（ライブラリだけ）の動画の行（`VideoRow`）とグループの行（`GroupRow`）は、題名の列の
-**直後**に `w-8` の列を足し、そこに同じ `button`（`size-6`、ハート `size-4`）を置く。面も影も付けない
-（行の面は `surface` で、サムネイルの上ではない）。オフは `text-fg-muted`、hover で `text-fg`、
-オンは `text-favorite` の塗り（カードと同じ色。「Mark」）。出す条件は上の表のとおりで、行のチェック
-（常に薄く見せる）とは違い、オフは隠す。薄い印が 1 行に 2 つ並ぶと、どちらが選択か読みにくい。
-行の大きさと置き場所はこの改訂で変えない。カードのハートを 22px に広げるのはサムネイルの上で
-面を外す代わりで、行は面もサムネイルも無く、`size-6` の列の中で 16px のハートが題名の文字と
-同じ高さに収まっている。
+In the list view (library only), the video row (`VideoRow`) and the group row (`GroupRow`) gain a `w-8` column
+**right after** the title column, holding the same `button` (`size-6`, heart `size-4`). Neither surface nor
+shadow (the row surface is `surface`, not a thumbnail). Off is `text-fg-muted`, `text-fg` on hover; on is the
+`text-favorite` fill (the same colour as cards; "Mark"). The visibility conditions are those in the table above.
+Unlike the row's checkbox (always shown faintly), the off state is hidden: two faint marks on one row make it
+hard to read which is the selection. The row's size and placement do not change in this revision. The card's
+heart grows to 22px in exchange for dropping the surface over the thumbnail; a row has neither surface nor
+thumbnail, and the 16px heart in the `size-6` column sits at the same height as the title text.
 
 ## Video page
 
-再生画面（`/videos/:id`）の情報の行の右端の操作の一群（`VideoFacts` の `actionsRef`、`ml-auto`）の
-**先頭**（「Use current frame as thumbnail」の左）に置く（UI品質「操作の優先順位」: 再生 → 題名 →
-タグ → 公開の切り替えの後、ファイルを開くなどの二次的な操作と同じ段）。
+On the video page (`/videos/:id`), the toggle goes **first** in the group of actions at the right end of the
+facts row (`actionsRef` in `VideoFacts`, `ml-auto`), to the left of "Use current frame as thumbnail" (`UI品質`:
+`操作の優先順位`: after playback → title → tags → visibility toggle, at the same level as secondary actions such
+as opening the file).
 
-- 部品は `IconButton`（`size="sm"`、ghost、lucide `Heart`）で、`aria-pressed` を持つ。オフは他の
-  2 つと同じ `text-fg-muted`、hover で `text-fg`。オンは `IconButton` の `active` の面
-  （`bg-accent-soft`）のまま、ハートの色だけを `text-favorite` にして塗る（カード・行と同じ色。
-  「Mark」）。`active` の文字色 `text-link` はこのボタンでは使わない。`IconButton` の
-  `data-active:text-link` は素の `text-favorite` より詳細度が高いので、オフの `text-fg-muted!` と
-  同じく `text-favorite!` で上書きする（素のクラスではハートがシアンのまま残る）。面を残すのは、一群の中で
-  「押されている」状態の見せ方を他の `IconButton` と揃えるためで、色を揃えるのは要件 7
-  （どの入口でも同じ絵・同じ塗り）のためである。読み上げ名とツールチップは「Favorite」。
-  置き場所と大きさはこの改訂で変えない。
-- 先頭に置くのは、一群の中でこれだけが状態を持つ操作で、情報の行から目が右へ流れて最初に
-  着く位置にあると、状態が「読める」からである。029 の「Capture button」が言う「先頭」は、
-  その 3 つ（撮る・開く・コピー）の中での先頭のままで、本書がその左に 1 つ足す。
-- 所有者では、所在が無い動画・プレイヤーの出ていない動画でも、この一群をこのボタンだけで出す
-  （029 が撮るボタンで既にそうしているのと同じ）。
-- 押すと `PUT /api/favorites`（`videoIds: [id]`）を送る。送っている間は `aria-disabled`、アイコンを
-  `LoaderCircle`（回転）にする。`200` を受けたら `GET /api/videos/{id}` で動画を取り直し（R-6、
-  plan）、取り直した `favorite` で塗りと `aria-pressed` が変わる。取り直しの間と失敗したときは
-  前の状態のまま（033「Refresh after edits」と同じ）。トーストは出さない。塗りが変わることが
-  結果である。
-- 失敗したときは、情報の行の直下の 1 行（撮る・開くと共有する `role="alert"` の行）に
-  「Couldn't change the favorite: {理由}」を出す。次に何かの操作をしたとき、または別の動画へ
-  移ったときに消える。
-- 一覧のカードで変えた状態は、`useVideoDetail` の購読で再生画面の 1 件に反映される（別タブは次の
-  取り直し）。
-- 見終わった動画でも印は残り、再生は先頭から始まる（要件 5、受け入れ条件 6）。再生終了の層・
-  次の予告は変えない。
-- `Video.group` がある動画（グループのメンバー）でも、ここで付くのはその動画のお気に入りだけで
-  ある（要件 6）。グループの行（「Group line」）にお気に入りは置かない。
+- The component is `IconButton` (`size="sm"`, ghost, lucide `Heart`) with `aria-pressed`. Off is
+  `text-fg-muted` like the other two, `text-fg` on hover. On keeps the `IconButton` `active` surface
+  (`bg-accent-soft`) and only colours and fills the heart with `text-favorite` (the same colour as cards and
+  rows; "Mark"). The `active` text colour `text-link` is not used on this button. `data-active:text-link` on
+  `IconButton` is more specific than a plain `text-favorite`, so it is overridden with `text-favorite!`, as the
+  off state uses `text-fg-muted!` (with the plain class the heart stays cyan). The surface stays so that the
+  "pressed" state looks the same as the other `IconButton`s in the group; the colour matches for requirement 7
+  (the same icon and fill at every entry point). The accessible name and tooltip are "Favorite". Placement and
+  size do not change in this revision.
+- It goes first because it is the only stateful action in the group, and at the first position the eye reaches
+  moving right from the facts row the state is readable. The "first" in 029 "Capture button" remains first among
+  its three actions (capture, open, copy); this document adds one more to their left.
+- For the owner, the group is shown with only this button even for a video with no location or no player (as
+  029 already does with the capture button).
+- Pressing sends `PUT /api/favorites` (`videoIds: [id]`). While sending, the button is `aria-disabled` and the
+  icon becomes `LoaderCircle` (spinning). On `200`, the video is refetched with `GET /api/videos/{id}` (R-6,
+  plan), and the refetched `favorite` changes the fill and `aria-pressed`. During the refetch and on failure the
+  previous state stays (as in 033 "Refresh after edits"). No toast: the change of fill is the result.
+- On failure, "Couldn't change the favorite: {reason}" appears in the line right below the facts row (the
+  `role="alert"` line shared with capture and open). It clears on the next action or when moving to another
+  video.
+- A state changed on a list card reaches the video on the video page through the `useVideoDetail`
+  subscription (other tabs on their next refetch).
+- A watched video keeps its mark, and playback starts from the beginning (requirement 5, acceptance criterion
+  6). The end-of-playback layer and the next-up notice do not change.
+- For a video with `Video.group` (a group member), this toggle favorites only that video (requirement 6). The
+  group line ("Group line") has no favorite.
 
 ## Selection bar
 
-「Remove tag」の**直後**、「Visibility」の前に「Favorite」（lucide `Heart` + 文言 + `ChevronDown`、
-`Button` の ghost・`sm`）を置く。並びは 件数 → Add tag → Remove tag → **Favorite** → Visibility →
-（2 本以上で）Bundle as versions → 縦線 → Select all → 解除。
+"Favorite" (lucide `Heart` + text + `ChevronDown`, `Button` ghost `sm`) goes **right after** "Remove tag",
+before "Visibility". The order is count → Add tag → Remove tag → **Favorite** → Visibility → (with two or more)
+Bundle as versions → divider → Select all → clear.
 
-- 押すと `ui/Menu` を上に開き（「公開」と同じ `side="top"`）、項目は「Add to favorites」（`Heart`）と
-  「Remove from favorites」（lucide `HeartOff`）の 2 つ。「公開」と同じく 2 つのボタンにしないのは、
-  `sm` 以上の 1 行が文言のボタン 5〜6 つになり、「Select all」との区切りより先に目に入るまとまりが
-  長くなりすぎるためである。1 つの切り替えボタンにしないのは、「Select all」で読んでいないページを
-  含めると今の状態が分からず、ボタンの塗りを決められないからである（016 と同じ理由）。
-- タグの 2 つの直後に置くのは、お気に入りもタグも「印を付ける」操作で、公開は「見せる範囲を
-  変える」操作だからである。公開の前に 1 つ入るので「Visibility」と「Bundle as versions」は右へ
-  動く。
-- 選んだ項目の今の状態は示さない。両方の項目は常に押せ、既に同じ状態のものは誤りにならない
-  （Edge Case、[contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)）。
-- 確定すると `PUT /api/favorites` を 1 回送る。`folders` は選んだグループ（グループのカードの
-  チェックで選んだもの、「Select all」の応答の `groups`）、`videoIds` は選んだ id のうち選んだ
-  グループのメンバーでないもの（R-7）。グループのメンバーを 1 本でも外すと、そのグループは
-  グループとしてではなく残ったメンバーが動画として送られる（017「Pressing and selection」の
-  「全メンバーが選択に入っているときだけ選択中」と同じ考え方）。
-- トースト「Added N items to favorites」「Removed N items from favorites」（N は
-  `appliedVideos + appliedFolders`）を出し、選択は残す。カードの印は応答を受けてから変える
-  （動画はその場、グループは取り直し）。失敗はトースト「Couldn't change the favorites: {理由}」で、
-  選択を残す。
-- 上限（20,000）は**送る数**（`videoIds` と `folders` の合計）で判定する。超えるときはタグ・公開と
-  同じく引き金を `disabled` にし、同じ理由を添える。選んだ本数 `count`（メンバーを数える）では
-  判定しない。メンバーが 20,000 本を超えるグループ 1 つは、タグ・公開では押せないままで、
-  お気に入りは `folders` 1 つとして押せる（plan）。
-- 「Select all」の無効の条件は、選択が応答の `ids` と同じ集合であることに加え、選んだグループが
-  応答の `groups` と同じであること（plan）。メンバーを 1 本外して戻すと、id はそろっても
-  グループはグループとして選ばれていないので、また押せる。
+- Pressing opens `ui/Menu` upward (`side="top"`, like "Visibility") with two items: "Add to favorites"
+  (`Heart`) and "Remove from favorites" (lucide `HeartOff`). Like "Visibility", it is not two buttons, because
+  at `sm` and up the single row would hold five or six text buttons, and the group before the "Select all"
+  divider would become too long and catch the eye first. It is not one toggle button, because with "Select all"
+  including unloaded pages the current state is unknown and the button's fill cannot be decided (the same
+  reason as 016).
+- It sits right after the two tag actions because favorites and tags both "mark" items, while visibility
+  "changes who can see". With one more action before visibility, "Visibility" and "Bundle as versions" move
+  right.
+- The current state of the selected items is not shown. Both items are always enabled, and items already in the
+  state are not errors (Edge Case, [contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)).
+- Confirming sends one `PUT /api/favorites`. `folders` is the chosen groups (chosen by a group card's
+  checkbox, or `groups` in the "Select all" response), and `videoIds` is the selected ids that are not members
+  of a chosen group (R-7). Deselecting even one member of a group sends the remaining members as videos instead
+  of the group (the same idea as "selected only while every member is in the selection" in 017 "Pressing and
+  selection").
+- The toast "Added N items to favorites" or "Removed N items from favorites" (N is
+  `appliedVideos + appliedFolders`) appears and the selection stays. Card marks change after the response
+  (videos in place, groups by refetch). A failure shows the toast "Couldn't change the favorites: {reason}" and
+  keeps the selection.
+- The limit (20,000) is checked against **the number sent** (the total of `videoIds` and `folders`). When it
+  is exceeded, the trigger is `disabled` with the same reason as tags and visibility. The selected count
+  `count` (which counts members) is not used. A single group with more than 20,000 members stays disabled for
+  tags and visibility, while favorites can be pressed as one entry in `folders` (plan).
+- "Select all" is disabled when the selection equals the set `ids` in the response and the chosen groups equal
+  `groups` in the response (plan). After deselecting one member and selecting it again, the ids match but the
+  group is not chosen as a group, so it can be pressed again.
 
 ### Layout
 
-- **`sm` 以上**: 今の 1 行に「Favorite」が 1 つ増える。収まる幅では今のとおり中身の幅の 1 行である。
-  1 行が画面の幅（`px-4` の内側）に収まらないときは、今の `nowrap` のまま画面からはみ出させず、
-  バーの幅を画面の幅いっぱいにして、次の順に 2 行目へ回す。
-  1. 縦線から後ろの「Select all」と解除を **2 行目の右端**に回す。1 行目は件数と操作のまとまりになる。
-  2. それでも 1 行目が収まらないとき（「12 videos selected」の件数で、2 本以上を選んで「Bundle as
-     versions」を含む 5 つの操作になる 640〜767px。文言のボタン 5 つと間だけで 1 行目の幅を超える）は、
-     `sm` 未満と同じ切れ目で操作のまとまりも割り、「Add tag」「Remove tag」を件数と 1 行目に残し、
-     「Favorite」以降（Favorite → Visibility → Bundle as versions）を順のまま 2 行目に、縦線・
-     「Select all」・解除の前に置く。2 行目は右端に寄せる。
+- **`sm` and up**: the current single row gains "Favorite". Where it fits, it stays one row as wide as its
+  content. When the row does not fit the screen width (inside `px-4`), it does not overflow the screen under
+  the current `nowrap`; the bar takes the full screen width and wraps to a second row in this order:
+  1. Move "Select all" and clear, after the divider, to the **right end of the second row**. The first row
+     holds the count and the actions.
+  2. When the first row still does not fit (640–767px with a count like "12 videos selected" and five actions
+     including "Bundle as versions" for two or more selected; five text buttons and their gaps alone exceed the
+     first row), split the actions at the same break as below `sm`: keep "Add tag" and "Remove tag" on the first
+     row with the count, and put "Favorite" onward (Favorite → Visibility → Bundle as versions) in order on the
+     second row, before the divider, "Select all" and clear. The second row is aligned right.
 
-  1 で済む幅では操作のまとまりを割らない。区切りより前が「選んだものに何をするか」の一群だから
-  である（library-ui.md §6）。2 で割るときも、タグの 2 つと「Favorite」以降の 2 つのまとまりに
-  分けるだけで、順は 1 行のときと同じに読める。操作名は短縮しない（library-ui.md §6）。どちらの
-  段まで要るかは件数と操作の実際の幅で決まり、判定する幅（640・768px）で実機で確かめる。
-  「Bundle as versions」を含む 5 つは今でも 768px で 1 行に収まっていないので、この規則はそれも直す。
-- **`sm` 未満**: 上の段は今のまま（件数・Select all・解除）。下の段は「Add tag」「Remove tag」
-  「Favorite」「Visibility」の 4 つ（2 本以上で「Bundle as versions」を足した 5 つ）を等分し、
-  収まらない幅では「Add tag」「Remove tag」をその段に残し、「Favorite」以降を順のまま次の段の
-  右端に回す。そこにも収まらなければ、さらに次の段の右端に回る。`SelectionBar` の容器の
-  問い合わせの幅を 4 つ分・5 つ分に直す（4 つ: いちばん広い 1 つの幅 × 4 + 間 × 3、5 つは同様）。
-  5 つが 1 段に収まる幅は `sm` 未満に無いので、2 本以上を選んだときは常に 3 段以上になる。
-- 360px（iPhone SE）・390px: 件数の段 → 「Add tag」「Remove tag」の段 → 「Favorite」「Visibility」が
-  右端に並ぶ段。2 本以上では「Bundle as versions」がその下の段の右端。
-- 操作名を短縮しない（library-ui.md §6）。「Favorite」はアイコンだけにしない。
+  When step 1 is enough, the actions are not split, because everything before the divider is the group of
+  "what to do with the selection" (library-ui.md §6). When step 2 splits them, it only splits into the two tag
+  actions and the group from "Favorite" onward, so the order reads the same as on one row. Action names are not
+  shortened (library-ui.md §6). Which step is needed depends on the count and the real widths of the actions;
+  check it on a real device at the judged widths (640 and 768px). The five actions including "Bundle as
+  versions" already do not fit one row at 768px, so this rule fixes that too.
+- **Below `sm`**: the top tier is unchanged (count, Select all, clear). The bottom tier divides the width
+  evenly among "Add tag", "Remove tag", "Favorite" and "Visibility" (five with "Bundle as versions" for two or
+  more). Where they do not fit, "Add tag" and "Remove tag" stay on that tier and "Favorite" onward moves in
+  order to the right end of the next tier; if that does not fit either, it moves to the right end of the tier
+  after. The container query widths of `SelectionBar` change to fit four and five (four: the widest one's width
+  × 4 + gap × 3; five likewise). No width below `sm` fits five on one tier, so two or more selected always gives
+  three or more tiers.
+- At 360px (iPhone SE) and 390px: count tier → "Add tag" and "Remove tag" tier → a tier with "Favorite" and
+  "Visibility" at the right end. With two or more, "Bundle as versions" is at the right end of the tier below.
+- Action names are not shortened (library-ui.md §6). "Favorite" is not reduced to an icon.
 
 ## Filter menu
 
-絞り込みのポップオーバー（`FilterMenu`）に、所有者だけ、「Favorites only」のチェックを足す。
+The filter popover (`FilterMenu`) gains a "Favorites only" checkbox, for the owner only.
 
-- 位置は視聴状態の `fieldset` の**直下**、「Playable only」の上。形は「Playable only」と同じ
-  `label` + `input[type=checkbox]`（`size-4 accent-accent`、`text-sm text-fg`）で、アイコンは
-  付けない。視聴状態の下に置くのは、どちらも所有者自身の印（見た・付けた）で、再生可否は
-  ファイルの性質だからである。2 つのチェックの間は視聴状態の下の `mb-4` より詰めた `gap-2`
-  （同じ性質の 2 行）。
-- 入れると `favorite=true` で一覧を取り、URL に `fav=1` が付く。ボタンの数字に数え、ボタンは
-  `bg-accent-soft text-link` になる（今の規則）。「Clear filters」で視聴状態・再生可否と一緒に
-  外れる。並べ替えは残る。
-- 検索語・タグ・視聴状態・再生可否とは AND で組み合わさる（要件 8・9）。一致が無いときは今の
-  「No videos match these conditions」のままで、お気に入り向けの文言は足さない。文の補足
-  「change the filters」が当てはまる。
-- お気に入りのみの一覧で、お気に入りでないグループに属するお気に入りの動画は、動画のカードで
-  出る（要件 9、受け入れ条件 4）。見た目は検索でメンバーが単独で出るときと同じで、区別の印は
-  付けない。
-- フォルダ画面も同じポップオーバーなので同じチェックが出る（要件 11）。フォルダ画面では
-  グループは無く、動画のお気に入りだけで絞る。
-- ゲストには出さない（「Guest degradation」）。
+- It goes **right below** the watch state `fieldset`, above "Playable only". It has the same form as "Playable
+  only" (`label` + `input[type=checkbox]`, `size-4 accent-accent`, `text-sm text-fg`), without an icon. It sits
+  below watch state because both are the owner's own marks (watched, favorited), while playability is a
+  property of the file. The two checkboxes are separated by `gap-2`, tighter than the `mb-4` below watch state
+  (two lines of the same kind).
+- Checking it fetches the list with `favorite=true` and adds `fav=1` to the URL. It counts in the button's
+  badge, and the button becomes `bg-accent-soft text-link` (the current rule). "Clear filters" clears it with
+  watch state and playability. The sort stays.
+- It combines with search terms, tags, watch state and playability by AND (requirements 8 and 9). With no match
+  the current "No videos match these conditions" stays; no favorites-specific text is added. Its hint "change
+  the filters" applies.
+- In a favorites-only list, a favorite video in a group that is not a favorite appears as a video card
+  (requirement 9, acceptance criterion 4). It looks the same as a member shown alone in search, with no
+  distinguishing mark.
+- The folder screen uses the same popover, so the same checkbox appears (requirement 11). The folder screen has
+  no groups and filters by video favorites only.
+- Not shown to guests ("Guest degradation").
 
 ## Sort and direction
 
-並べ替えの種類を 8 つから **9 つ**にする。ライブラリとフォルダ画面は `SortControls` を共有するので、
-両方に出る（要件 11）。既存の 8 種の名前・アイコン・向き・言い換えは変えない。
+The sort kinds go from eight to **nine**. The library and folder screens share `SortControls`, so both get it
+(requirement 11). The names, icons, directions and wording of the existing eight do not change.
 
-| 種類 | 名前 | アイコン | 選んだときの向き | 昇順／降順の言い換え |
+| Kind | Name | Icon | Direction when chosen | Ascending / descending wording |
 | --- | --- | --- | --- | --- |
-| 追加日 | Date added | `CalendarArrowDown` | 降順 | oldest first／newest first |
-| 更新日（ファイル） | Date modified | `CalendarClock` | 降順 | oldest first／newest first |
-| 作成日 | Date created | `FileClock` | 降順 | oldest first／newest first |
-| 題名 | Title | `ArrowDownAZ` | 昇順 | — |
-| 長さ | Length | `Timer` | 降順 | shortest first／longest first |
-| ファイルサイズ | File size | `HardDrive` | 降順 | smallest first／largest first |
-| 最近再生した順 | Recently played | `History` | 降順 | least recently played／most recently played |
-| **お気に入りにした日時** | **Date favorited** | **`CalendarHeart`** | 降順 | oldest first／newest first |
-| ランダム | Random | `Shuffle` | — | — |
+| Date added | Date added | `CalendarArrowDown` | Descending | oldest first / newest first |
+| Date modified (file) | Date modified | `CalendarClock` | Descending | oldest first / newest first |
+| Date created | Date created | `FileClock` | Descending | oldest first / newest first |
+| Title | Title | `ArrowDownAZ` | Ascending | — |
+| Length | Length | `Timer` | Descending | shortest first / longest first |
+| File size | File size | `HardDrive` | Descending | smallest first / largest first |
+| Recently played | Recently played | `History` | Descending | least recently played / most recently played |
+| **Date favorited** | **Date favorited** | **`CalendarHeart`** | Descending | oldest first / newest first |
+| Random | Random | `Shuffle` | — | — |
 
-- **位置**は「Recently played」の直後、「Random」の前。所有者だけの 2 種（再生・お気に入り）が
-  隣り合い、ゲストのメニューはその 2 つを除いた **7 種**で、残りの順は変わらない。
-- **アイコン**は `CalendarHeart`。カレンダーの家族（追加・更新）で「日時」であることを、ハートで
-  カードと再生画面の印と「同じもの」であることを言う。`Heart` そのものにしないのは、並べ替えの
-  メニューの中で「お気に入りのみ」の絞り込みと取り違えないためである。
-- 選ぶと `favoritedDesc`（最後に付けたものが先頭。受け入れ条件 8）、向きの切り替えで
-  `favoritedAsc`。どちらの向きでもお気に入りでない項目は末尾にまとまる（Edge Case、R-4）。
-  向きのボタンの読み上げ名とツールチップは今の形「Descending (newest first). Press for ascending」。
-  グループの項目はグループをお気に入りにした日時の位置に出る。
-- 端末の設定（`viewPreferences`）と URL（`sort=favoritedDesc`・`favoritedAsc`）の往復は、他の種類と
-  同じ。
-- `md` 未満の「表示と並び順」のまとめでは、2 列のラジオが所有者で 5 行（9 種）、ゲストで 4 行
-  （7 種）になる。メニューの順を `grid-cols-2` に行優先で流し込み、並びを組み替えない。所有者では
-  4 行目が「Recently played」「Date favorited」、5 行目が「Random」（左だけ）。ゲストでは 4 行目が
-  「Random」（左だけ）。「Date favorited」の文字が 2 列の幅で 1 行に収まり、`truncate` で切れない。
-- メニューボタンの文字は種類の名前だけ（「Date favorited」）。ボタンの幅は「Date modified」と
-  同程度で、ツールバーの他の部品の位置を動かさない。
+- **Position**: right after "Recently played", before "Random". The two owner-only kinds (played, favorited)
+  sit together, and the guest menu has the **seven** kinds without them, in the same order.
+- **Icon**: `CalendarHeart`. The calendar family (added, modified) says it is a date, and the heart says it is
+  the same thing as the mark on cards and the video page. It is not plain `Heart`, so it is not mistaken for
+  the favorites-only filter inside the sort menu.
+- Choosing it gives `favoritedDesc` (the last favorited first; acceptance criterion 8), and the direction toggle
+  gives `favoritedAsc`. In either direction non-favorite items gather at the end (Edge Case, R-4). The
+  accessible name and tooltip of the direction button keep the current form "Descending (newest first). Press
+  for ascending". A group item is placed by the time the group was favorited.
+- The round trip through device preferences (`viewPreferences`) and the URL (`sort=favoritedDesc`,
+  `favoritedAsc`) is the same as for other kinds.
+- In the combined "View and sort" panel below `md`, the two-column radios have five rows (nine kinds) for the
+  owner and four rows (seven kinds) for guests. The menu order flows row-first into `grid-cols-2` without
+  rearranging. For the owner, row 4 is "Recently played" and "Date favorited", and row 5 is "Random" (left only).
+  For guests, row 4 is "Random" (left only). "Date favorited" fits one line in the two-column width and is not
+  cut by `truncate`.
+- The menu button shows only the kind name ("Date favorited"). Its width is about that of "Date modified", and
+  it does not move other toolbar parts.
 
 ## Guest degradation
 
-ゲストとして描くとき、次を**出さない**。`disabled` にも `aria-disabled` にもしない（016 と同じ）。
+When rendering for a guest, the following are **not shown**. They are neither `disabled` nor `aria-disabled`
+(as in 016).
 
-| 場所 | 出さないもの | 代わりに |
+| Place | Not shown | Instead |
 | --- | --- | --- |
-| カード・行（ライブラリ・フォルダ画面・検索結果） | お気に入りの印と付け外し | 応答に `favorite` が無い。公開の印と同じく、ゲストには意味が無い |
-| 再生画面 | 情報の行の右端の付け外し | 応答に `location` も `favorite` も無いので、右端の一群ごと出ない（今のとおり） |
-| 選択バー | — | ゲストには選択バーそのものが無い |
-| ツールバー | 絞り込みの「Favorites only」、並べ替えの「Date favorited」 | ゲストの並べ替えは 7 種。URL に `fav=1`・`sort=favoritedAsc`・`favoritedDesc` が残っていたときは、`watch`・`played*` と同じく既定に丸めてから要求し、URL も直す（[guest-api.md §3](../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件) の表に足す）。端末に保存した並び順が `favorited*` のときも同じく丸め、保存値は書き換えない |
+| Cards and rows (library, folder screen, search results) | The favorite mark and toggle | The response has no `favorite`. Like the public mark, it has no meaning for a guest |
+| Video page | The toggle at the right end of the facts row | The response has neither `location` nor `favorite`, so the whole right-hand group is absent (as today) |
+| Selection bar | — | Guests have no selection bar |
+| Toolbar | "Favorites only" in the filter, "Date favorited" in the sort | Guests have seven sorts. When the URL still has `fav=1`, `sort=favoritedAsc` or `favoritedDesc`, the request uses the normalised defaults, like `watch` and `played*`, and the URL is corrected (added to the table in [guest-api.md §3](../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件)). A sort stored on the device as `favorited*` is normalised the same way, and the stored value is not rewritten |
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS で出し分ける（library-ui.md §4）。判定する幅は
-360px・640px・768px・1280px。
+Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md §4). The judged widths are 360px,
+640px, 768px and 1280px.
 
-| 幅 | カード | 選択バー | 再生画面 | ツールバー |
+| Width | Card | Selection bar | Video page | Toolbar |
 | --- | --- | --- | --- | --- |
-| 360px（`sm` 未満） | 格子は全幅の 1 列。ハートはサムネイルの右上に `top-1.5 right-1.5` の `size-7` で、チェック（左上）と同じ高さ。`hover:none` の端末では白の線のハートが影付きで全カードに見え、長さの印・公開の印と重ならない | 3 段（2 本以上で 4 段）。「Favorite」「Visibility」が右端に並び、文字が切れない | 情報の行の右端の操作（4 つ）が行の末尾に回り、横スクロールは出ない | 「Favorites only」はポップオーバーの中。並べ替えは「表示と並び順」のまとめの 2 列 × 5 行 |
-| 640px（`sm`） | 2 列 | 1 本の選択では件数と 4 つの操作が 1 行目、「Select all」と解除が 2 行目の右端。2 本以上（5 つの操作）では件数と「Add tag」「Remove tag」が 1 行目、「Favorite」「Visibility」「Bundle as versions」・縦線・「Select all」・解除が 2 行目の右端。画面からはみ出さない | 同上 | 同上 |
-| 768px（`md`） | 2〜3 列。印の大きさは変わらない | 1 本の選択では 1 行。2 本以上（「Bundle as versions」あり）では「Select all」と解除が 2 行目の右端で、それでも 1 行目が収まらなければ「Favorite」以降も 2 行目（Layout の 2）。画面からはみ出さない | 左の列に操作の一群が 1 行で収まる | 並べ替えのメニューボタンに「Date favorited」が 1 行で収まり、向きのボタンと接したまま |
-| 1280px（`lg` の 2 列） | 4〜5 列。表示倍率を変えても印の位置は角のまま | 常に 1 行 | 同上 | 同上 |
+| 360px (below `sm`) | Full-width single-column grid. The heart is at the thumbnail's top right, `top-1.5 right-1.5`, `size-7`, level with the checkbox (top left). On `hover:none` devices the white outline heart with its shadow shows on every card and does not overlap the duration or public mark | Three tiers (four with two or more). "Favorite" and "Visibility" sit at the right end, with no text cut | The actions at the right end of the facts row (four) wrap to the end of the row; no horizontal scroll | "Favorites only" is in the popover. The sort is 2 columns × 5 rows in the "View and sort" panel |
+| 640px (`sm`) | Two columns | With one selected, the count and four actions on the first row, "Select all" and clear at the right end of the second. With two or more (five actions), the count, "Add tag" and "Remove tag" on the first row; "Favorite", "Visibility", "Bundle as versions", divider, "Select all" and clear at the right end of the second. Nothing overflows the screen | Same as above | Same as above |
+| 768px (`md`) | Two to three columns. The mark size does not change | One row with one selected. With two or more ("Bundle as versions" present), "Select all" and clear at the right end of the second row, and if the first row still does not fit, "Favorite" onward on the second row too (Layout step 2). Nothing overflows the screen | The action group fits on one line in the left column | "Date favorited" fits on one line in the sort menu button, which stays joined to the direction button |
+| 1280px (`lg`, two columns) | Four to five columns. At any zoom level the mark stays in the corner | Always one row | Same as above | Same as above |
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md §5）。「ある」だけでは満たさない（Q-4）。
+Judge on a real device (library-ui.md §5). "It exists" alone does not pass (Q-4).
 
-- **視覚的階層（カード）**: 所有者のライブラリで、お気に入りのカードは塗りのハートが角に 1 つあるだけで、
-  サムネイルと題名より先に目に入らない。お気に入りでないカードは、この feature の前と並べて
-  違いが無い（ポイントしていないとき）。画面を眺めるだけで、どのカードがお気に入りかを数えられる
-  （UI品質「視覚的階層」）。塗りのハートが桃色（`favorite`）で、選択のチェックやフォーカスの
-  輪郭のシアンと取り違えず、「再生できない」の警告の赤（`danger`）とも同じ系統に見えない。
-  カードの角には面の四角が無く、ハートだけがある。明るいサムネイル（白に近い絵柄）の上でも、
-  hover で出る白の線のハートが影で輪郭を保って読める。
-- **情報密度・余白のリズム（カード）**: カードの高さ、題名とタグの行の間隔（`gap-1`・`pt-1`・`pb-3`）、
-  長さの印と公開の印の位置が前と同じ。ハートを置いたことで題名が 1 行短くなったり、タグの行が
-  詰まったりしていない。リスト表示の行の高さが前と同じで、題名の列が 1 列分（`w-8`）だけ狭い。
-- **操作の優先順位（カード）**: ハートを押しても再生画面が開かず、選択モードで押しても選択が
-  変わらない。Tab はチェック → カード（開く）→ ハート → タグの順に着く。ポイントしていない
-  カードで、キーボードでカードに着くとハートが現れる。タッチの端末（360px）ではポイントなしで
-  ハートが見え、1 回のタップで付く。付けるときに確認も選択の画面も挟まない。
-- **状態と操作が同じ場所（要件 7）**: カード・行・再生画面のどれでも、押した場所のハートが塗りに
-  変わり、もう一度押すと線に戻る。再生画面で付けた動画が、戻ったライブラリのカードでも塗りに
-  なっている（受け入れ条件 1）。グループのカードで付けても、メンバーの動画のカード（フォルダ画面・
-  検索結果）のハートは線のまま（受け入れ条件 3）。
-- **再生画面の階層**: プレイヤー → 題名 → タグ → 公開の切り替え → 情報の行の順に目が行き、
-  ハートは「ファイルを開く」「パスをコピー」と同じ大きさ・同じ薄さの一群の先頭にある。オンでも
-  `bg-accent-soft` の小さな面と桃色の塗りだけで、題名や公開の切り替えより目立たない。塗りの
-  色はカードのハートと同じに見える。失敗の行は
-  情報の行の直下の 1 行で、他の失敗（開けない・サムネイル）と同じ場所。
-- **選択バー**: 動画 2 本とグループ 1 つを選んで「Favorite」→「Add to favorites」で、3 枚のカードの
-  ハートが塗りになり、グループのメンバーのカードは変わらず、トーストが「Added 3 items to
-  favorites」（受け入れ条件 7）。「Favorite」が「Remove tag」と「Visibility」の間にあり、`sm`
-  以上で「Select all」の区切りより前のまとまりとして読める。640px で 2 本以上を選んでも画面から
-  はみ出さず、2 行目に回った「Favorite」以降が 1 行目の操作の続きとして読める。360px で 3 段（2 本以上で
-  4 段）になり、どの段の文字も切れない。
-- **絞り込み**: 「Favorites only」を入れると、お気に入りの動画とお気に入りのグループだけが出て、
-  お気に入りでないグループのお気に入りのメンバーは動画のカードで出る（受け入れ条件 4・5）。
-  絞り込みのボタンの数字に数えられ、タグの絞り込みと同時に使うと両方に当たるものだけ
-  （受け入れ条件 9）。「Clear filters」で外れ、URL の `fav=1` が消える。フォルダ画面でも同じ
-  チェックがある（要件 11）。
-- **並べ替え**: メニューに「Date favorited」が「Recently played」の直後にあり、アイコンが他の 8 つと
-  違って見える。選ぶと最後に付けたものが先頭で、お気に入りでない項目が末尾にまとまる
-  （受け入れ条件 8）。向きを変えても末尾は末尾のまま。ページを読み直しても `sort=favoritedDesc`
-  で同じ並び。`md` 未満のまとめで「Date favorited」が 4 行目の右にある。
-- **ゲスト**: ログアウトして同じライブラリ・フォルダ画面・再生画面を開くと、ハートがどこにも無く、
-  絞り込みに「Favorites only」が無く、並べ替えが 7 種。所有者で `?fav=1&sort=favoritedDesc` を
-  開いた URL をゲストで開くと、既定の一覧になり URL が直る（受け入れ条件 10）。
-- **要求を満たしたことにならない例**（UI品質）: 付けるときに確認の窓やメニューが出る。カードに
-  「お気に入り」の文字の行や帯が増えている。オフのハートが全カードに常に見え、格子が星取り表の
-  ように見える。塗りのハートが赤で、再生できない警告と同じ系統に見える。塗りのハートがシアンで、
-  選択やフォーカスの印と同じ系統に見える。カードの角に暗い四角の面が残り、長さの印がもう 1 つ
-  あるように見える。カードと行と再生画面でハートの塗りの色が違う。再生画面のハートが
-  題名の横や公開の切り替えの隣にあり、再生より先に目に入る。お気に入りの一覧がライブラリと
-  別の画面になっている。ゲストの画面に線のハートや無効のチェックが残っている。
+1. **Visual hierarchy (cards)**: In the owner's library, a favorite card has only one filled heart in its
+   corner, which does not catch the eye before the thumbnail and title. A card that is not a favorite looks no
+   different from before this feature (when not pointed at). Scanning the screen is enough to count which cards
+   are favorites (`UI品質`: `視覚的階層`). The filled heart is pink (`favorite`), not mistaken for the cyan of the
+   selection checkbox or the focus outline, and not in the same family as the red (`danger`) of the "can't play"
+   warning. The card corner has no square surface, only the heart. On a bright thumbnail (artwork near white),
+   the white outline heart shown on hover keeps its outline through the shadow.
+2. **Information density and spacing rhythm (cards)**: The card height, the spacing of the title and tag rows
+   (`gap-1`, `pt-1`, `pb-3`), and the positions of the duration and public marks are unchanged. Adding the heart
+   has not shortened the title by a line or squeezed the tag row. List view rows are the same height, and the
+   title column is narrower by one column (`w-8`).
+3. **Action priority (cards)**: Pressing the heart does not open the video page, and pressing it in selection
+   mode does not change the selection. Tab reaches checkbox → card (open) → heart → tags. On a card that is not
+   pointed at, reaching the card by keyboard reveals the heart. On a touch device (360px) the heart is visible
+   without a pointer and one tap favorites. Favoriting involves no confirmation and no selection screen.
+4. **State and action in the same place (requirement 7)**: On cards, rows and the video page, the heart that
+   was pressed becomes filled and returns to an outline on the next press. A video favorited on the video page
+   is filled on the library card after going back (acceptance criterion 1). Favoriting on a group card leaves
+   the hearts of its member video cards (folder screen, search results) as outlines (acceptance criterion 3).
+5. **Video page hierarchy**: The eye moves player → title → tags → visibility toggle → facts row, and the heart
+   is first in the group with "Open file" and "Copy path", at the same size and the same muted weight. When on,
+   it has only the small `bg-accent-soft` surface and the pink fill, and is less prominent than the title or the
+   visibility toggle. The fill colour looks the same as the card heart. The failure line is the line right
+   below the facts row, in the same place as other failures (open, thumbnail).
+6. **Selection bar**: Selecting two videos and one group and choosing "Favorite" → "Add to favorites" fills the
+   hearts on the three cards, leaves the group's member cards unchanged, and shows the toast "Added 3 items to
+   favorites" (acceptance criterion 7). "Favorite" sits between "Remove tag" and "Visibility" and, at `sm` and
+   up, reads as part of the group before the "Select all" divider. At 640px with two or more selected nothing
+   overflows the screen, and "Favorite" onward on the second row reads as a continuation of the first row's
+   actions. At 360px there are three tiers (four with two or more), and no tier cuts its text.
+7. **Filter**: Checking "Favorites only" shows only favorite videos and favorite groups, and the favorite
+   members of a group that is not a favorite appear as video cards (acceptance criteria 4 and 5). It counts in
+   the filter button's badge, and combined with a tag filter only items matching both appear (acceptance
+   criterion 9). "Clear filters" clears it and `fav=1` leaves the URL. The folder screen has the same checkbox
+   (requirement 11).
+8. **Sort**: The menu has "Date favorited" right after "Recently played", with an icon that looks different
+   from the other eight. Choosing it puts the last favorited first and gathers non-favorite items at the end
+   (acceptance criterion 8). Changing the direction keeps the end at the end. Reloading the page gives the same
+   order with `sort=favoritedDesc`. In the panel below `md`, "Date favorited" is on the right of row 4.
+9. **Guests**: Signing out and opening the same library, folder screen and video page shows no heart anywhere,
+   no "Favorites only" in the filter, and seven sorts. Opening as a guest a URL the owner had at
+   `?fav=1&sort=favoritedDesc` shows the default list and corrects the URL (acceptance criterion 10).
+10. **Examples that do not meet the requirement** (`UI品質`): a confirmation dialog or menu appears when
+    favoriting; cards gain a "favorite" text row or band; off hearts are always visible on every card and the
+    grid looks like a scoreboard; the filled heart is red and looks like the same family as the "can't play"
+    warning; the filled heart is cyan and looks like the same family as the selection or focus marks; a dark
+    square surface remains in the card corner and looks like a second duration mark; the fill colour differs
+    between cards, rows and the video page; the video page heart sits next to the title or the visibility
+    toggle and catches the eye before playback; the favorites list is a separate screen from the library; an
+    outline heart or a disabled checkbox remains on the guest screen.
 
 ## Colour
 
-色のトークンを 1 つ足す: `--color-favorite`（塗りのハートの色。「Mark」）。値はメンテナが決めた
-`#ff6f9c` で、実装の PR が `index.css` に置き、以後はそこが値の出どころになる。影のトークンを 1 つ足す: `--drop-shadow-mark`（サムネイルの上の印の影。
-半透明の黒で、`pairs` の対象外）。
+One colour token is added: `--color-favorite` (the colour of the filled heart; "Mark"). Its value is
+`#ff6f9c`, set by the maintainer; the implementation PR puts it in `index.css`, which is then the source of the
+value. One shadow token is added: `--drop-shadow-mark` (the shadow of marks on thumbnails; translucent black,
+outside `pairs`).
 
-塗りのハートは `favorite`（再生画面では `accent-soft` の上、行では `surface` の上、カードでは
-サムネイルの上。サムネイルが無いカードでは `navbar` の上）、線のハートは `fg`（カードのサムネイル
-の上、影付き）と `fg-muted`（行・再生画面）。`fg-muted` on `surface` は `pairs` にある。実装の PR で
-`pairs` に足す組は次の 4 つで、どれも 4.5 以上。印は文字ではないが、`favorite` はこの印が
-唯一の使い道で、塗りの色そのものが「お気に入り」を伝える役を持つので、文字と同じ閾で検査する。
+The filled heart is `favorite` (on `accent-soft` on the video page, on `surface` in rows, on the thumbnail on
+cards, and on `navbar` on a card without a thumbnail). The outline heart is `fg` (on the card thumbnail, with
+shadow) and `fg-muted` (rows and the video page). `fg-muted` on `surface` is already in `pairs`. The
+implementation PR adds the following four pairs to `pairs`, all 4.5 or more. The mark is not text, but
+`favorite` has this mark as its only use and the fill colour itself carries the meaning "favorite", so it is
+tested at the text threshold.
 
-| 組 | 場所 |
+| Pair | Where |
 | --- | --- |
-| `favorite` on `surface` | リスト表示の行 |
-| `favorite` on `accent-soft` | 再生画面の `active` の面 |
-| `favorite` on `navbar` | サムネイルが無い（取得前・読めない）カードの面 |
-| `favorite` on `bg` | 一覧の面（`pairs` の他の色と同じ基準の組） |
+| `favorite` on `surface` | List view rows |
+| `favorite` on `accent-soft` | The `active` surface on the video page |
+| `favorite` on `navbar` | The surface of a card without a thumbnail (not yet fetched, unreadable) |
+| `favorite` on `bg` | The list surface (a pair on the same basis as the other colours in `pairs`) |
 
-サムネイルの絵柄そのものは検査できないので、カードの上は影（`drop-shadow-mark`）で読めるように
-する（「Card」）。配色は暗い 1 組だけ（library-ui.md §2）で、検査もその 1 組で行う。`favorite` は
-役割の名前なので、明るい配色を定義する日が来れば、その組に `favorite` の値をもう 1 つ定義して
-同じ 4 つの組を検査すればよく、画面側は変わらない。
+The thumbnail artwork itself cannot be tested, so on cards the shadow (`drop-shadow-mark`) keeps the mark
+readable ("Card"). There is one dark palette only (library-ui.md §2), and testing uses that palette.
+`favorite` is a role name, so if a light palette is ever defined, it needs one more `favorite` value in that
+palette and the same four pairs tested; the screens do not change.
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前と状態だけを決める（029・030・033 と同じ
-範囲）。
+The parent Issue does not ask for screen reader or contrast design, so only names and states are decided (the
+same scope as 029, 030 and 033).
 
-- 付け外しは `button` の `aria-pressed` で、読み上げ名は「Words」の表のとおり（カードは題名・
-  グループ名を含み、再生画面は「Favorite」）。送っている間は `aria-disabled`。
-- 選択バーのメニューの項目は文言で区別できる。トーストは今のトーストの仕組み（`role="status"`）。
-- 絞り込みのチェックの名前は「Favorites only」、並べ替えのラジオの名前は「Date favorited」。
-  向きのボタンの読み上げ名は今の形。
+- The toggle is a `button` with `aria-pressed`, and its accessible name follows the "Words" table (cards
+  include the title or group name; the video page says "Favorite"). While sending it is `aria-disabled`.
+- The selection bar's menu items are distinguished by their text. Toasts use the current toast mechanism
+  (`role="status"`).
+- The filter checkbox is named "Favorites only", and the sort radio "Date favorited". The direction button's
+  accessible name keeps its current form.

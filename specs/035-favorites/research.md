@@ -1,150 +1,180 @@
-# Research: 動画とグループのお気に入り
+# Research: Favorite videos and groups
 
-親 Issue: #574。技術スタック・境界・依存方向・索引と利用者データの区分は
-[ARCHITECTURE.md](../../ARCHITECTURE.md) と
-[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) が正本で、
-ここでは変えない。利用者データの鍵（集まりなら `bundle:<id>`、そうでなければ `content_key`）は
-[specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵)、
-フォルダを指す鍵（`domain.FolderKey`）と手動のグループ設定は
-[specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-マイグレーション)、
-ライブラリの項目の作り方は
-[specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md)
-にある。ここには、この feature が足す決定だけを書く。
+Parent Issue: #574. Inherited decisions:
 
-## R-1: 動画のお気に入りは利用者データの鍵に結ぶ `video_favorites`、グループのお気に入りはフォルダの鍵に結ぶ `folder_favorites` の 2 つの表に持つ
+| Topic | Source of truth |
+| --- | --- |
+| Tech stack, boundaries, dependency direction, rebuildable index versus user data | [ARCHITECTURE.md](../../ARCHITECTURE.md), [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
+| User key (`bundle:<id>` for a bundle, otherwise `content_key`) | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵) |
+| Folder key (`domain.FolderKey`) and manual group settings | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-マイグレーション) |
+| How library items are built | [specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md) |
 
-- **Decision**: `video_favorites(content_key primary key, favorited_at)` と
-  `folder_favorites(path primary key, favorited_at)` を足す（[data-model.md §1](data-model.md#1-マイグレーション)）。
-  動画の鍵は `userKeyExpr`（集まりのメンバーなら集まりの鍵）で、`public_videos` と同じ。グループの鍵は
-  `domain.FolderKey(フォルダの絶対パス)` で、`folder_group_overrides` と同じ。どちらも `videos`・
-  `folder_groups`・`media_folders` への外部キーを張らない。同じパスの中身の引き継ぎ（`moveUserData`）と
-  束ねる・解く操作（`userDataTables`）は `video_favorites` も写す。
-- **Rationale**: 要件 2・3 と Edge Case（移動・再スキャン・登録解除・グループでなくなった後も記録を残す）は、
-  再生位置・公開の設定・手動のグループ設定が今まさに満たしている性質で、同じ鍵に結べば同じ経路
-  （`userKeysForVideoIDs`、`moveUserData`、`userDataTables`、索引の作り直しが触らない表）にそのまま乗る。
-  Edge Case「#572 が入った場合は集まりで 1 組」は、030 が既に入っているので利用者データの鍵がそれである。
-- **Alternatives considered**:
-  - `public_videos` のように 1 つの表に「動画かフォルダか」の列を足す。鍵の意味（内容の識別子とフォルダの
-    パス）が違い、引き継ぎと束ねの経路は動画の行だけを写すので、表を分けた方が各経路が自分の表だけを
-    見ればよい。却下。
-  - `videos`・`folder_groups` の列。どちらも作り直せる索引で、再スキャンとフォルダの索引の作り直しで行ごと
-    消える（ARCHITECTURE.md「Rebuildable and user data」）。却下。
+This file records only the decisions this feature adds.
 
-## R-2: 付け外しは所有者だけの 1 つの経路 `PUT /api/favorites` で、動画の id とフォルダを 1 つの取引で受け、無いものは数えずに飛ばす
+## R-1: Two tables: `video_favorites` by user key, `folder_favorites` by folder key
 
-- **Decision**: `PUT /api/favorites`（`videoIds`・`folders`・`favorite`）を足し、新しい役割の型 `FavoriteStore`
-  （`sql` 接続だけを持つ。`VisibilityStore` と同じ）の `SetFavorites` が 1 つの取引で書く
-  （[contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)、[data-model.md §4](data-model.md#4-書き込みfavoritestore)）。
-  `videoIds` は `userKeysForVideoIDs` でいまライブラリにある動画の鍵へ引き直し、`folders` は登録フォルダの
-  id と相対パスから絶対パスにして `folder_groups.path_key` にあるもの（所有者から見て今グループのフォルダ）
-  だけを書く。引けない id・登録されていない `rootId`・今グループでないフォルダは誤りにせず、応答の
-  `appliedVideos`・`appliedFolders` に数えない。既に同じ状態のものは数える（Edge Case「既にお気に入りのものが
-  含まれていてもエラーにしない」）。
-- **Rationale**: 要件 6 の複数選択は動画とグループを一度に受ける。公開の切り替え（`PUT /api/video-visibility`）が
-  「ライブラリに無い id は数えない」で一部反映を応答の数で伝える形を画面（`api/visibility.ts`）が既に
-  扱っているので、同じ形にすれば画面の取り直しの仕組み（R-5）を流用できる。1 枚のカードの操作で
-  `appliedFolders` が 0 なら、グループでなくなったことを画面が知り、グループのカードを取り直して外す
-  （017 の「Refresh and removal」と同じ）。普通のフォルダは対象外（親 Issue）なので、今グループでない
-  フォルダには書かない。
-- **Alternatives considered**:
-  - 動画用 `PUT /api/video-favorites` とフォルダ用 `PUT /api/folders/{rootId}/favorite` の 2 経路。一括が 2 つの
-    取引になり、片方だけ成功した状態を画面が扱う必要がある。却下。
-  - グループでないフォルダへの指定を `404 not_folder_group` にする。一括で 1 つでも外れると全体が失敗し、
-    「すべて選択」の直後にグループが解けた場面で何も付かない。却下。
-  - 今グループかを確かめずに書く。普通のフォルダのお気に入りが API からは作れてしまい、対象外の範囲に
-    記録だけが残る。却下。
+**Decision**: Add `video_favorites(content_key primary key, favorited_at)` and
+`folder_favorites(path primary key, favorited_at)`
+([data-model.md §1](data-model.md#1-migration)). A video's key is `userKeyExpr` (the bundle's key for a
+bundle member), the same as `public_videos`. A group's key is `domain.FolderKey(<absolute folder path>)`, the
+same as `folder_group_overrides`. Neither table has a foreign key to `videos`, `folder_groups` or
+`media_folders`. Same-path succession (`moveUserData`) and bundling and unbundling (`userDataTables`) also copy
+`video_favorites`.
 
-## R-3: お気に入りのみの絞り込みは `libraryItemsCTE` の項目を作る段で効かせ、お気に入りでないグループはお気に入りのメンバーを 1 本ずつ出す
+| Option | Verdict |
+| --- | --- |
+| **Two tables keyed like the existing user data** | Chosen |
+| One table like `public_videos` with a "video or folder" column | Rejected: the keys mean different things (a content identifier and a folder path), and the succession and bundling paths copy only video rows, so with separate tables each path reads only its own table |
+| Columns on `videos` and `folder_groups` | Rejected: both are rebuildable indexes whose rows are deleted by a rescan and a folder index rebuild (ARCHITECTURE.md "Rebuildable and user data") |
 
-- **Decision**: `VideoQuery.FavoriteOnly`（`favorite=true`）を足す。`GET /api/videos`・
-  `GET /api/folders/{rootId}/videos` では動画ごとの条件（`video_favorites` の行がある）として `filteredFrom` に
-  掛ける。`GET /api/library`・`GET /api/library/ids` では、検索語とタグで当たった動画（`matched`）と
-  全メンバーが当たったグループ（`whole`）は今のまま作り、項目にする段で次のように変える
-  （[data-model.md §5](data-model.md#5-読み出しと一覧)）。
-  - グループの項目: `whole` のうち、絞り込みが無いか、そのフォルダが `folder_favorites` にあるもの。
-  - 動画の項目: 当たった動画のうち、`whole` のグループに属さないもの、または絞り込みがあってそのグループが
-    `folder_favorites` に無いもの。絞り込みがあれば、さらに `video_favorites` にあるものだけ。
-  再生可否と視聴状態は今までどおり項目に掛け、`total` と `GET /api/library/ids` も同じ項目から数える。
-- **Rationale**: 要件 8 は項目ごとに自分のお気に入りで判定し、要件 9 はお気に入りでないグループのお気に入りの
-  メンバーを単独の項目として出す。027 の規則（当たったのが一部なら 1 本ずつ）を `matched` に
-  `video_favorites` を足すだけで流用すると、お気に入りのグループ G のメンバーが 1 本もお気に入りでないとき G が
-  出ず（要件 8・受け入れ条件 5）、G のメンバーが全部お気に入りのとき G がグループの項目になって
-  しまう（要件 9）。項目を作る段で「グループ自身のお気に入り」を見るのが、両方を満たす最も小さい変更である。
-- **Alternatives considered**:
-  - `matched` にお気に入りを足し、027 の規則で項目にする。上のとおり要件 8・9 を満たさない。却下。
-  - 項目を作った後に項目の絞り込み（視聴状態と同じ段）だけで効かせる。お気に入りでないグループの項目が
-    落ちるので、そのメンバーのお気に入りの動画が出ない（受け入れ条件 4）。却下。
+**Rationale**: Requirements 2 and 3 and the Edge Cases (keep the record after a move, a rescan, unregistering,
+or the folder ceasing to be a group) are properties that playback positions, public flags and manual group
+settings already have. Keying favorites the same way puts them on the same paths (`userKeysForVideoIDs`,
+`moveUserData`, `userDataTables`, tables an index rebuild does not touch). The Edge Case "one record per
+bundle once #572 lands" is met by the user key, because 030 has already landed.
 
-## R-4: 「お気に入りにした日時」の並び順は `favoritedAsc`・`favoritedDesc` の 2 値で、お気に入りでない項目は向きに関係なく末尾に置く
+## R-2: One owner-only `PUT /api/favorites` for videos and folders in one transaction
 
-- **Decision**: `VideoSort` に `favoritedAsc`・`favoritedDesc` を足す。値は動画の項目では `video_favorites.favorited_at`、
-  グループの項目では `folder_favorites.favorited_at`、お気に入りでなければ NULL で、`listOrder.nullable` の規則
-  （値の無い行は向きに関係なく末尾、カーソルも同じ形）に乗せる。付け直し（外して付ける）は新しい日時に
-  なる。既にお気に入りのものに付けても日時は変えない。
-- **Rationale**: Edge Case「お気に入りでない項目は、お気に入りの項目の後にまとめて並ぶ」は、最後に再生した
-  時刻（`played*`。記録の無い動画は末尾）と同じ形で、`listOrders`・`itemOrderValues`・カーソルの規則をそのまま
-  使える。
-- **Alternatives considered**:
-  - お気に入りでない項目を追加日時などで並べ直す。カーソルが 2 つの値を持つことになり、013 の keyset の形
-    （値 1 つと id）を変える。却下。
+**Decision**: Add `PUT /api/favorites` (`videoIds`, `folders`, `favorite`). `SetFavorites` on the new role
+type `FavoriteStore` (holds only the `sql` connection, like `VisibilityStore`) writes in one transaction
+([contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites),
+[data-model.md §4](data-model.md#4-writes-favoritestore)). `videoIds` are resolved with
+`userKeysForVideoIDs` to the keys of videos currently in the library. `folders` are turned into absolute paths
+from the registered folder id and relative path, and only paths in `folder_groups.path_key` (folders that are
+groups for the owner now) are written. An id that does not resolve, an unregistered `rootId` and a folder that
+is not a group now are not errors; they are left out of `appliedVideos` and `appliedFolders` in the response.
+Items already in the requested state are counted (Edge Case: "do not fail when some are already favorites").
 
-## R-5: ゲストにはお気に入りを出さず、絞り込みと並び順は視聴状態と同じ `400` にする
+| Option | Verdict |
+| --- | --- |
+| **One endpoint, one transaction, skip what does not resolve** | Chosen |
+| `PUT /api/video-favorites` for videos and `PUT /api/folders/{rootId}/favorite` for folders | Rejected: a bulk change becomes two transactions, and the screen has to handle one succeeding without the other |
+| `404 not_folder_group` for a folder that is not a group | Rejected: one miss fails the whole bulk change, so when a group is dissolved right after "Select all" nothing is favorited |
+| Write without checking that the folder is a group now | Rejected: the API could then favorite a plain folder, leaving records for something out of scope |
 
-- **Decision**: `Audience.CheckVideoQuery` に `FavoriteOnly` と `favorited*` を足し、ゲストでは
-  `ErrGuestQueryNotAllowed`（`400 guest_filter_not_allowed`）にする。応答の `Video.favorite` と
-  `LibraryGroup.favorite` は所有者にだけ入れ、`forAudience` とグループの応答の組み立てでゲストから省く。
-  `PUT /api/favorites` は所有者だけ（`/api/*` の既定）。画面は `guestListCriteria` で丸め、ゲストに入口も
-  印も出さない。
-- **Rationale**: 要件 12 と受け入れ条件 10 がそのまま決めている。視聴状態・再生日時の並び・タグと同じ扱いに
-  すると、契約（guest-api.md §3）も画面の丸めも同じ場所に 1 行足すだけで済む。
-- **Alternatives considered**: ゲストには `favorite: false` を常に返す。状態を「見せない」要件と、`public` が
-  ゲストで意味を持たないのと違って項目自体が所有者のものであることから、省く方が契約として正しい。却下。
+**Rationale**: The multiple selection of requirement 6 sends videos and groups at once. The visibility toggle
+(`PUT /api/video-visibility`) skips ids that are not in the library and reports a partial result through the
+counts in its response, and the screen (`api/visibility.ts`) already handles that shape. Using the same shape
+lets the screen reuse its refetch mechanism (R-5). When a single card action returns `appliedFolders` 0, the
+screen learns that the folder is no longer a group, refetches the group card and removes it (as in 017
+"Refresh and removal"). Plain folders are out of scope (parent Issue), so a folder that is not a group now is
+not written.
 
-## R-6: 画面はドメインイベントを足さず、公開の切り替えと同じ購読の仕組みで一覧と再生画面に反映し、再生画面は動画を取り直す
+## R-3: Favorites-only filter applied where `libraryItemsCTE` builds items
 
-- **Decision**: `web/src/api/favorites.ts` に `updateFavorites`（`PUT /api/favorites`）と、結果の購読
-  （`subscribeFavorites`・一部反映の `subscribeFavoritesStale`）、一覧の控えへの反映
-  （`applyFavoritesToListSnapshot`）を置く。`api/visibility.ts` と同じ形で、一覧（`useVideos`）は動画の項目の
-  `favorite` をその場で差し替え、グループの項目は `GET /api/folders/{rootId}/group` で取り直す（017 の
-  「Refresh and removal」の経路。`appliedFolders` が要求より少なければ該当のグループを取り直し、404 なら外す）。
-  再生画面は成功後に `GET /api/videos/{id}` で取り直す（033 R-8 と同じ）。新しいドメインイベントと
-  `/api/events` の種類は足さない。お気に入りのみで絞り込んだ一覧でカードから外しても、その場では一覧から
-  外さず、次に一覧を読んだときに消える（Edge Case「次に取り直したときに最新の状態を見せる」）。
-- **Rationale**: 公開の切り替えは「取り直さずに差し替える」「一部反映なら取り直す」「送った順に確定する」の
-  3 つを既に解いていて、お気に入りの付け外しは同じ性質（所有者の 1 操作、成功の応答で結果が分かる、
-  別タブは次の取り直しで追う）を持つ。サーバーからの知らせは別タブの同期にだけ効き、Edge Case は
-  それを求めていない。
-- **Alternatives considered**:
-  - `domain.VideoOverrideChanged` のようなイベントを足して `/api/events` の `video` で知らせる。付け外しの
-    たびに一覧の項目を取り直すことになり、一括で 2 万件を付けると 2 万回の取り直しになる。却下。
-  - お気に入りのみの絞り込み中に外したカードをその場で一覧から外す。選択バーの「タグを外す」は取り直す
-    方針（library-ui.md §6）だが、カードの 1 操作で一覧が動くとカードの位置が変わり、続けて押せない。
-    次の読み込みに任せる。却下。
+**Decision**: Add `VideoQuery.FavoriteOnly` (`favorite=true`). For `GET /api/videos` and
+`GET /api/folders/{rootId}/videos` it is a per-video condition in `filteredFrom` (a `video_favorites` row
+exists). For `GET /api/library` and `GET /api/library/ids`, the videos matched by search terms and tags
+(`matched`) and the groups whose members all match (`whole`) are built as today, and the item-building step
+changes as follows ([data-model.md §5](data-model.md#5-reads-and-lists)):
 
-## R-7: 複数選択は選んだグループをグループとして覚え、一括のお気に入りではグループのメンバーを動画として送らない
+| Item | Built from |
+| --- | --- |
+| Group item | Groups in `whole` when there is no filter, or whose folder is in `folder_favorites` |
+| Video item | Matched videos that do not belong to a `whole` group, or, under the filter, whose group is not in `folder_favorites`; under the filter, only those in `video_favorites` |
 
-- **Decision**: ライブラリの選択（`LibraryPage`）は、今の動画 id の集合に加えて、グループのカードのチェックで
-  選んだグループ（フォルダ、そのメンバーの id）を持つ。メンバーのどれかが選択から外れたらそのグループは
-  選んだグループから外す。「すべて選択」は `GET /api/library/ids` の応答に足す `groups`（グループの項目の
-  フォルダとメンバーの id、[contracts/screen-api.md §3](contracts/screen-api.md#3-get-apilibraryids-に足す項目)）を
-  選んだグループにする。選択バーのお気に入りは `videoIds` を「選んだ id のうち選んだグループのメンバーで
-  ないもの」、`folders` を選んだグループにして送る。タグの付け外し・公開・束ねる操作は今までどおり
-  動画の id の集合を送る。
-- **Rationale**: 要件 6・受け入れ条件 7 は、選んだグループにはグループのお気に入りを付けてメンバーには
-  付けないことを求める。今の選択は動画の id の集合だけで（017「Pressing and selection」）、一覧に載って
-  いないページを「すべて選択」で含めると、どの id がグループのメンバーかを画面は知らない。
-- **Alternatives considered**:
-  - サーバーが `videoIds` から `folders` のメンバーを除く。画面が送る内容と結果が食い違い、`appliedVideos` の
-    意味が「送った id のうち」でなくなる。却下。
-  - 選んだグループを「読み込んだグループの項目のうち全メンバーが選択に入っているもの」から導く。
-    「すべて選択」で読んでいないページのグループが動画として付いてしまう。却下。
+Playability and watch state still apply to the items, and `total` and `GET /api/library/ids` count the same
+items.
 
-## R-8: お気に入りの付け外しは動画の更新日時（`video_edits`）を進めない
+| Option | Verdict |
+| --- | --- |
+| **Check the group's own favorite where items are built** | Chosen |
+| Add favorites to `matched` and build items with the 027 rule | Rejected: fails requirements 8 and 9, as the rationale explains |
+| Apply the filter only after items are built (the watch-state step) | Rejected: the item of a group that is not a favorite drops out, so its favorite member videos are not listed (acceptance criterion 4) |
 
-- **Decision**: `FavoriteStore` は `touchEditedAt` を呼ばない。`Video.updatedAt` はお気に入りで変わらない。
-- **Rationale**: 033 R-2 は、進めるのを「動画の情報を書く 4 種の操作」に限り、再生位置は進めないと決めた。
-  お気に入りは動画の情報（表示名・タグ・公開・代表サムネイル）ではなく、再生位置と同じ所有者自身の
-  印で、自分の日時（`favorited_at`）と並び順を持つ。一括で 2 万件に付けるたびに全件の更新日時が進むと、
-  「この動画を最後にいつ直したか」が分からなくなる（033 R-2 と同じ理由）。
-- **Alternatives considered**: 公開の設定と同じく進める。公開は他の人に見える範囲を変える動画の設定で、
-  お気に入りは所有者だけの印である。却下。親 Issue はどちらとも書いていないので、PR の本文で確認を求める。
+**Rationale**: Requirement 8 judges each item by its own favorite, and requirement 9 lists the favorite
+members of a group that is not a favorite as separate items. Reusing the 027 rule (a partial match lists
+members one by one) by adding `video_favorites` to `matched` would hide a favorite group G whose members are
+not favorites (requirement 8, acceptance criterion 5), and would make G a group item when all its members are
+favorites (requirement 9). Checking the group's own favorite where items are built is the smallest change that
+meets both.
+
+## R-4: `favoritedAsc` and `favoritedDesc` sorts with non-favorites last
+
+**Decision**: Add `favoritedAsc` and `favoritedDesc` to `VideoSort`. The value is
+`video_favorites.favorited_at` for a video item, `folder_favorites.favorited_at` for a group item, and NULL
+for a non-favorite, so the `listOrder.nullable` rule applies (rows without a value go last in either
+direction, and the cursor has the same shape). Favoriting again after removing gives a new time. Favoriting
+something that is already a favorite keeps its time.
+
+**Rationale**: The Edge Case "non-favorite items follow the favorite items as one block" has the same shape as
+last played (`played*`, videos without a record go last), so `listOrders`, `itemOrderValues` and the cursor
+rules apply unchanged.
+
+**Alternatives considered**: Ordering non-favorites by another value such as the date added. The cursor would
+carry two values and change the 013 keyset shape (one value and the id). Rejected.
+
+## R-5: Favorites hidden from guests; filter and sort return `400`
+
+**Decision**: Add `FavoriteOnly` and `favorited*` to `Audience.CheckVideoQuery`, which returns
+`ErrGuestQueryNotAllowed` (`400 guest_filter_not_allowed`) for a guest. `Video.favorite` and
+`LibraryGroup.favorite` are set only in owner responses; `forAudience` and the group response builder omit
+them for a guest. `PUT /api/favorites` is owner-only (the `/api/*` default). The screen normalises the
+criteria with `guestListCriteria` and shows guests neither the controls nor the marks.
+
+**Rationale**: Requirement 12 and acceptance criterion 10 settle this directly. Treating favorites like watch
+state, the last-played sorts and tags means the contract (guest-api.md §3) and the screen's normalisation each
+gain one line in the same place.
+
+**Alternatives considered**: Always return `favorite: false` to guests. The requirement is to hide the state,
+and unlike `public`, which has no meaning for a guest, the field itself is the owner's data, so omitting it is
+the correct contract. Rejected.
+
+## R-6: No domain event; screens reuse the visibility subscription pattern
+
+**Decision**: `web/src/api/favorites.ts` holds `updateFavorites` (`PUT /api/favorites`), the result
+subscriptions (`subscribeFavorites`, and `subscribeFavoritesStale` for a partial result), and the update of
+the list snapshot (`applyFavoritesToListSnapshot`). In the same shape as `api/visibility.ts`, the list
+(`useVideos`) replaces `favorite` on video items in place and refetches group items with
+`GET /api/folders/{rootId}/group` (the 017 "Refresh and removal" path: when `appliedFolders` is below the
+number requested, the affected groups are refetched and removed on 404). The video page refetches with
+`GET /api/videos/{id}` after success (as in 033 R-8). No new domain event and no new `/api/events` kind. A
+card unfavorited in a favorites-only list stays in the list and disappears on the next load (Edge Case: "show
+the latest state on the next refetch").
+
+| Option | Verdict |
+| --- | --- |
+| **Reuse the visibility subscriptions; refetch the video page** | Chosen |
+| Add an event like `domain.VideoOverrideChanged` and announce it as `video` on `/api/events` | Rejected: every toggle would refetch list items, so favoriting 20,000 at once would mean 20,000 refetches |
+| Remove an unfavorited card from a favorites-only list at once | Rejected: the selection bar's "Remove tag" refetches (library-ui.md §6), but a list that moves on a single card action shifts the card positions and stops repeated presses; leave it to the next load |
+
+**Rationale**: The visibility toggle already solves "replace without refetching", "refetch on a partial
+result" and "settle in the order sent", and favoriting has the same properties: one owner action, the success
+response gives the result, and other tabs catch up on their next refetch. A server notification would only
+sync other tabs, which the Edge Cases do not ask for.
+
+## R-7: Selection keeps chosen groups as groups
+
+**Decision**: The library selection (`LibraryPage`) holds, besides the set of video ids, the groups chosen
+with a group card's checkbox (the folder and its member ids). When any member leaves the selection, that
+group leaves the chosen groups. "Select all" takes the chosen groups from `groups`, added to the
+`GET /api/library/ids` response (the folder and member ids of each group item,
+[contracts/screen-api.md §3](contracts/screen-api.md#3-fields-added-to-get-apilibraryids)). The selection
+bar's favorite action sends `videoIds` = the selected ids that are not members of a chosen group, and
+`folders` = the chosen groups. Adding and removing tags, visibility and bundling still send the set of video
+ids.
+
+| Option | Verdict |
+| --- | --- |
+| **The screen keeps chosen groups and splits what it sends** | Chosen |
+| The server removes members of `folders` from `videoIds` | Rejected: what the screen sends and the result diverge, and `appliedVideos` no longer means "of the ids sent" |
+| Derive chosen groups from loaded group items whose members are all selected | Rejected: groups on pages not loaded but included by "Select all" would be favorited as videos |
+
+**Rationale**: Requirement 6 and acceptance criterion 7 ask that a chosen group gets the group favorite and
+its members do not. Today the selection is only a set of video ids (017 "Pressing and selection"), and when
+"Select all" includes pages that are not listed, the screen does not know which ids are group members.
+
+## R-8: Favoriting does not advance `video_edits`
+
+**Decision**: `FavoriteStore` does not call `touchEditedAt`. `Video.updatedAt` does not change with a
+favorite.
+
+**Rationale**: 033 R-2 limits advancing the edit time to the four operations that write a video's information,
+and does not advance it for playback positions. A favorite is not video information (display name, tags,
+visibility, representative thumbnail); like a playback position it is the owner's own mark, with its own time
+(`favorited_at`) and sort. Advancing the edit time of every video each time 20,000 are favorited at once would
+hide when a video was last edited (the same reason as 033 R-2).
+
+**Alternatives considered**: Advance it, as the visibility setting does. Visibility is a video setting that
+changes who can see it; a favorite is a mark only the owner has. Rejected. The parent Issue says neither, so
+the PR body asks for confirmation.
