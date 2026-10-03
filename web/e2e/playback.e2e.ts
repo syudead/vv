@@ -514,7 +514,6 @@ test.describe.serial("live MP4 playback", () => {
     );
     await page.goto(`/videos/${String(item.id)}`);
     await initial;
-    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
     await page.locator(".vjs-big-play-button").click();
     await page.waitForFunction(() => {
       const element = document.querySelector("video");
@@ -528,6 +527,8 @@ test.describe.serial("live MP4 playback", () => {
     const height = () =>
       page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
     expect(await height()).toBe(480);
+    // 操作バーは再生を始めるまで出ない（video.js の vjs-has-started）ので、始めてから確かめる。
+    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
 
     const playerBox = await page.locator(".video-js").boundingBox();
     if (playerBox === null) throw new Error("player is not visible");
