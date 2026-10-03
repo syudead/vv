@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/signal"
 	"runtime"
 	"runtime/debug"
@@ -43,28 +42,6 @@ const scanStopGrace = 10 * time.Second
 
 // readHeaderTimeout は要求ヘッダの読み取りに与える上限である。
 const readHeaderTimeout = 10 * time.Second
-
-func main() {
-	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
-	// （specs/016-single-account-auth/contracts/account-cli.md）。
-	if len(os.Args) > 1 {
-		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
-	}
-	cfg, err := LoadConfig(os.Getenv)
-	if err == nil {
-		err = run(runOptions{
-			Config:     cfg,
-			LogOutput:  os.Stdout,
-			Listener:   newReopenableListener(),
-			NotifyStop: notifySignals,
-		})
-	}
-	if err != nil {
-		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
 
 // runOptions は起動・停止の手順に外から渡すものである。タグなしの main は環境変数の
 // 設定・標準出力・MDM_ADDR・SIGINT/SIGTERM を渡す。デスクトップ版は設定を自分で
@@ -116,7 +93,7 @@ func run(opts runOptions) error {
 
 	db, err := store.Open(cfg.DataDir)
 	if err != nil {
-		return err
+		return &startupError{stage: stageDatabase, err: err}
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -126,7 +103,7 @@ func run(opts runOptions) error {
 
 	migrated, err := store.Migrate(context.Background(), db)
 	if err != nil {
-		return err
+		return &startupError{stage: stageDatabase, err: err}
 	}
 	logger.Info("applied migrations",
 		slog.String("database", db.Path()),
@@ -365,6 +342,38 @@ func run(opts runOptions) error {
 	return nil
 }
 
+// startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで
+// 示すダイアログを選ぶ（specs/037-windows-app/research.md R-10）。
+type startupStage int
+
+const (
+	// stageOther は下の段階に当たらない失敗。
+	stageOther startupStage = iota
+	// stageDatabase はデータベースを開くか移行するところでの失敗。
+	stageDatabase
+	// stageListen は待ち受けを開くところでの失敗。
+	stageListen
+)
+
+// startupError は起動の失敗に段階を添える。文は元の誤りのままにする。
+type startupError struct {
+	stage startupStage
+	err   error
+}
+
+func (e *startupError) Error() string { return e.err.Error() }
+
+func (e *startupError) Unwrap() error { return e.err }
+
+// startupStageOf は run が返した誤りの段階を返す。
+func startupStageOf(err error) startupStage {
+	var startup *startupError
+	if errors.As(err, &startup) {
+		return startup.stage
+	}
+	return stageOther
+}
+
 // waitAtMost は wait の終わりを limit まで待ち、終わったかを返す。終わらなければ
 // wait は背後に残る。
 func waitAtMost(wait func(), limit time.Duration) bool {
@@ -418,7 +427,7 @@ func serveUntil(
 	}
 
 	if err := listener.Listen(cfg.Addr); err != nil {
-		return err
+		return &startupError{stage: stageListen, err: err}
 	}
 	defer func() { _ = listener.Close() }()
 
