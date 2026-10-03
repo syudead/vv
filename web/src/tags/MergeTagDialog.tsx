@@ -1,59 +1,118 @@
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { compareNatural } from "../api/tagOrder";
-import { mergeTag, type Tag } from "../api/tags";
+import { mergeTag, tagImpact, type Tag, type TagImpactResponse } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
+import Chip from "../ui/Chip";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { ModalFrame } from "../ui/ModalFrame";
+import TentativeMark from "../ui/TentativeMark";
 
 /**
- * MergeTagDialog は「別のタグへ統合…」の確認の窓である（ui-design.md「Merge
- * and delete」、受け入れ条件 12）。統合元（`source`）はその行のタグで固定、
- * 統合先を Combobox（統合元を除く全タグ、作成の行なし）で選ぶ。
+ * MergeTagDialog は統合の確認の窓である。統合元（`sources`）を 1 件以上持ち、行の
+ * 「別のタグへ統合…」（統合元 1 件）と選択バーの「Merge into one tag…」（統合元が
+ * 選んだタグ）が同じ窓を開く（specs/036-tag-admin-scale/ui-design.md「Merge dialog」）。
+ *
+ * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は統合元を
+ * 除く全タグで、確認の本数は統合元の `videoCount`。選択から開いたときは、候補は全タグ
+ * で、選んだ中のタグを統合先に選ぶとそのタグは統合元から外れる。統合先を選ぶたびに、
+ * 統合先を外した統合元について `POST /api/tags/impact`（`merge`）で数え直し、届くまで
+ * 「Merge」を押せなくする（数の無い確認で実行させない）。
  */
 export default function MergeTagDialog({
-  source,
+  sources,
+  fromSelection = false,
   tags,
   onClose,
   onMerged,
   onStale,
 }: {
-  source: Tag;
-  /** 統合先の候補を作る、共有のタグの一覧（統合元自身を除いて渡す前でよい）。 */
+  /** 統合元。窓を開いた時点で固定する（1 件以上）。 */
+  sources: readonly Tag[];
+  /** 選択バーから開いた。統合先の候補に統合元も含める。 */
+  fromSelection?: boolean;
+  /** 統合先の候補を作る、共有のタグの一覧。 */
   tags: readonly Tag[];
   onClose: () => void;
-  /** 統合が成功したときに呼ぶ。統合先の最新の状態を渡す。 */
-  onMerged: (merged: Tag) => void;
   /**
-   * 統合元・統合先のどちらかがもう無い（統合先は tag_not_found、統合元は応答の
-   * notFoundIds）ときに呼ぶ。
+   * 統合が成功したときに呼ぶ。統合先の最新の状態、送った統合元の id、もう無かった
+   * 統合元の id（`notFoundIds`。送った全部ではない）を渡す。
+   */
+  onMerged: (
+    merged: Tag,
+    sourceIds: readonly number[],
+    notFoundIds: readonly number[],
+  ) => void;
+  /**
+   * 統合先がもう無い（tag_not_found）か、統合元がすべてもう無かった（応答の
+   * notFoundIds が送った全部）ときに呼ぶ。
    */
   onStale: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   const mergeButton = useRef<HTMLButtonElement>(null);
+  const sourcesHeadingId = useId();
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
+  const [impact, setImpact] = useState<TagImpactResponse | null>(null);
+  const [countError, setCountError] = useState<UiText | null>(null);
+  const [attempt, setAttempt] = useState(0);
   // 選んだ直後（フォーカスをまだ動かしていない）かを持つ。統合先を選ぶと
   // 「統合する」へフォーカスを移すが、それは候補を選んだ直後の1回だけで、
   // 統合先を選び直した（別の候補、または綴りの完全一致）ときにも1回だけ
   // 動かす（B: フォーカスは常に動く意味のある要素へ。候補の一覧を開いたまま
-  // 確認の文言に重ねない）。
+  // 確認の文言に重ねない）。数えている間は「統合する」が押せないので、数が
+  // 届いて押せるようになってから動かす。
   const justSelectedRef = useRef(false);
 
-  const { options, exactOption } = buildTargetOptions(tags, source.id, value);
+  const excluded = useMemo(
+    () => (fromSelection ? new Set<number>() : new Set(sources.map((item) => item.id))),
+    [fromSelection, sources],
+  );
+  const { options, exactOption } = buildTargetOptions(tags, excluded, value);
+
+  const targetId = target?.id ?? null;
+  /** 統合先を外した統合元。実際に送る `sourceIds` になる。 */
+  const effective = useMemo(
+    () => sources.filter((item) => item.id !== targetId),
+    [sources, targetId],
+  );
+  const kept = targetId !== null && effective.length < sources.length;
+
+  // 選択から開いたときは、統合先を選ぶたびに統合元の影響を数え直す。
+  useEffect(() => {
+    setImpact(null);
+    setCountError(null);
+    if (!fromSelection || targetId === null || effective.length === 0) return;
+    const controller = new AbortController();
+    tagImpact(
+      "merge",
+      effective.map((item) => item.id),
+      controller.signal,
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) setImpact(result);
+      })
+      .catch((failure: unknown) => {
+        if (!controller.signal.aborted) setCountError(errorText(failure));
+      });
+    return () => controller.abort();
+  }, [fromSelection, targetId, effective, attempt]);
+
+  const counted = !fromSelection || impact !== null;
+  const canSubmit = target !== null && effective.length > 0 && counted && !pending;
 
   useEffect(() => {
-    if (justSelectedRef.current && target !== null) {
+    if (justSelectedRef.current && target !== null && canSubmit) {
       justSelectedRef.current = false;
       mergeButton.current?.focus();
     }
-  }, [target]);
+  }, [target, canSubmit]);
 
   // 統合が失敗した直後は、まだ有効な操作（統合先を選んだままなら「統合する」、
   // そうでなければ「キャンセル」）へフォーカスを戻す。何もしないと、失敗の
@@ -87,18 +146,19 @@ export default function MergeTagDialog({
   }
 
   async function submit() {
-    if (target === null || pending) return;
+    if (target === null || !canSubmit) return;
+    const sourceIds = effective.map((item) => item.id);
     setError(null);
     setPending(true);
     try {
-      const { tag: merged, notFoundIds } = await mergeTag(target.id, [source.id]);
-      // 統合元がもう無かったときは何も統合されていない。tag_not_found と同じく
+      const { tag: merged, notFoundIds } = await mergeTag(target.id, sourceIds);
+      // 統合元がすべてもう無かったときは何も統合されていない。tag_not_found と同じく
       // 窓を閉じて一覧を取り直す（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
-      if (notFoundIds.length > 0) {
+      if (notFoundIds.length >= sourceIds.length) {
         onStale();
         return;
       }
-      onMerged(merged);
+      onMerged(merged, sourceIds, notFoundIds);
     } catch (failure) {
       if (failure instanceof RequestFailed && failure.code === "tag_not_found") {
         onStale();
@@ -109,21 +169,66 @@ export default function MergeTagDialog({
     }
   }
 
+  const single = sources.length === 1 ? sources[0] : undefined;
+  const title =
+    single !== undefined
+      ? t.tags.mergeDialog.title(single.name)
+      : t.tags.mergeDialog.titleMany(sources.length);
+
+  let message: UiText | null = null;
+  if (target !== null && effective.length > 0 && counted) {
+    const only = effective.length === 1 ? effective[0] : undefined;
+    const videoCount = impact?.videoCount ?? only?.videoCount ?? 0;
+    message =
+      only !== undefined
+        ? t.tags.mergeDialog.warning(only.name, videoCount, target.name)
+        : t.tags.mergeDialog.warningMany(effective.length, videoCount, target.name);
+  }
+
   return (
-    <ModalFrame
-      title={t.tags.mergeDialog.title(source.name)}
-      onClose={handleClose}
-      initialFocus={cancel}
-    >
+    <ModalFrame title={title} onClose={handleClose} initialFocus={cancel}>
       {/*
         候補の一覧（Combobox）は overflow-y-auto の外に置く。中に置くと、
         窓の中身がまだ短い（確認の文言が出る前）うちは、この div 自身の
         高さも短く、候補の一覧（最大8行）が overflow-y-auto によって
         そこで切り取られてしまう（B3）。確認の文言・失敗の行だけを別の
         小さな overflow-y-auto に包み、長い文言でもそちらだけが縦に
-        スクロールする。
+        スクロールする。統合元の並びは自分の max-h-32 で縦にスクロールする。
       */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 sm:p-5">
+        {sources.length > 1 && (
+          <div>
+            <p
+              id={sourcesHeadingId}
+              className="mb-1 text-xs font-semibold text-fg-muted uppercase"
+            >
+              {t.tags.mergeDialog.sources}
+            </p>
+            <ul
+              aria-labelledby={sourcesHeadingId}
+              className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto"
+            >
+              {sources.map((item) => (
+                <li key={item.id} className="min-w-0 max-w-full">
+                  <Chip tone="onElevated" title={item.name} className="max-w-full">
+                    <span className="min-w-0 truncate">{item.name}</span>
+                    {item.tentative && (
+                      <>
+                        <TentativeMark />
+                        <span className="sr-only">{t.tags.tentative}</span>
+                      </>
+                    )}
+                    {item.id === targetId && (
+                      <span className="font-normal text-fg-muted">
+                        {t.tags.mergeDialog.kept}
+                      </span>
+                    )}
+                  </Chip>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <Combobox
           value={value}
           onValueChange={(next) => {
@@ -141,15 +246,58 @@ export default function MergeTagDialog({
           // preventDefault するので ModalFrame の Esc には届かない）。
           onEscapeWhenClosed={handleClose}
           className="w-full"
+          // 統合先の入力と候補の一覧は窓の内側の幅いっぱい（要件 13、ui-design.md「Width」）。
+          frameClassName="w-full"
+          listClassName="w-full"
         />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {target !== null && (
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {target !== null && effective.length === 0 && (
+            <p className="text-sm text-fg-muted">
+              {t.tags.mergeDialog.onlyTarget(target.name)}
+            </p>
+          )}
+          {target !== null && kept && effective.length > 0 && (
+            <p className="text-sm text-fg-muted">
+              {t.tags.mergeDialog.keptNote(target.name, effective.length)}
+            </p>
+          )}
+          {fromSelection &&
+            target !== null &&
+            effective.length > 0 &&
+            impact === null &&
+            countError === null && (
+              <p
+                aria-busy="true"
+                className="flex items-center gap-2 text-sm text-fg-muted"
+              >
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="size-4 animate-spin motion-reduce:animate-none"
+                />
+                {t.tags.bulkDialog.counting}
+              </p>
+            )}
+          {countError !== null && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p role="alert" className="text-sm text-danger">
+                {t.tags.bulkDialog.countFailed(countError)}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setAttempt((current) => current + 1)}
+              >
+                {t.common.retry}
+              </Button>
+            </div>
+          )}
+          {message !== null && (
             <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-              {t.tags.mergeDialog.warning(source.name, source.videoCount, target.name)}
+              {message}
             </p>
           )}
           {error !== null && (
-            <p role="alert" className="mt-3 text-sm text-danger">
+            <p role="alert" className="text-sm text-danger">
               {error}
             </p>
           )}
@@ -163,7 +311,7 @@ export default function MergeTagDialog({
           ref={mergeButton}
           variant="danger"
           onClick={() => void submit()}
-          disabled={pending || target === null}
+          disabled={!canSubmit}
         >
           {pending && <LoaderCircle className="animate-spin" />}
           {pending ? t.tags.mergeDialog.submitting : t.tags.mergeDialog.submit}
@@ -175,7 +323,7 @@ export default function MergeTagDialog({
 
 function buildTargetOptions(
   tags: readonly Tag[],
-  excludeId: number,
+  excluded: ReadonlySet<number>,
   input: string,
 ): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
   const trimmed = input.trim();
@@ -183,7 +331,7 @@ function buildTargetOptions(
 
   let exactTag: Tag | undefined;
   for (const tag of tags) {
-    if (tag.id === excludeId) continue;
+    if (excluded.has(tag.id)) continue;
     if (tag.name === trimmed || tag.synonyms.includes(trimmed)) {
       exactTag = tag;
       break;
@@ -191,7 +339,7 @@ function buildTargetOptions(
   }
 
   const matched = tags
-    .filter((tag) => tag.id !== excludeId)
+    .filter((tag) => !excluded.has(tag.id))
     .map((tag) => {
       const nameMatch = query === "" || tag.name.toLowerCase().includes(query);
       const synonymHit = tag.synonyms.find((synonym) =>

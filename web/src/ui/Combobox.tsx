@@ -123,6 +123,7 @@ export default function Combobox({
   className,
   inputClassName,
   frameClassName,
+  listClassName,
   ...rest
 }: {
   value: string;
@@ -157,6 +158,12 @@ export default function Combobox({
   inputClassName?: string;
   /** 入力を囲む枠の幅などを差し替える。既定は再生画面と同じ `w-40`。 */
   frameClassName?: string;
+  /**
+   * 候補の一覧の幅を差し替える。既定は枠と別の `w-64`。`w-full` を渡すと、包みの
+   * `relative`（`className` で幅を決めたもの）の幅に一覧を合わせる（統合の窓。
+   * specs/036-tag-admin-scale/ui-design.md「Width」）。
+   */
+  listClassName?: string;
 } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
   | "value"
@@ -445,7 +452,8 @@ export default function Combobox({
           id={listboxId}
           role="listbox"
           className={cn(
-            "absolute z-50 max-h-64 w-64 overflow-y-auto rounded-md bg-elevated py-1 shadow-elevated",
+            "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-elevated py-1 shadow-elevated",
+            listClassName ?? "w-64",
             side === "top" ? "bottom-full mb-1" : "top-full mt-1",
           )}
         >

@@ -677,6 +677,8 @@ export const en = {
               other: `${formatNumber(skipped)} tentative tags were skipped.`,
             })}`,
       stale: "Some of the tags no longer existed, so the list was reloaded",
+      merged: (count: number, target: string) =>
+        `Merged ${tagCount(count)} into "${target}"`,
     },
     bulkDialog: {
       rejectTitle: "Reject selected tags",
@@ -719,6 +721,24 @@ export const en = {
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
+      // 統合元が複数のとき（specs/036-tag-admin-scale/ui-design.md「Words」）。count は統合先を
+      // 外した統合元の数で、選んだ数ではない。videoCount が 0 なら「0 videos」とは言わない。
+      titleMany: (count: number) => `Merge ${tagCount(count)}`,
+      sources: "Tags to merge",
+      kept: "kept",
+      keptNote: (target: string, others: number) =>
+        `"${target}" is kept and the other ${selectPlural(others, {
+          one: "tag merges",
+          other: `${formatNumber(others)} tags merge`,
+        })} into it.`,
+      onlyTarget: (target: string) =>
+        `Choose another tag to merge into: "${target}" is the only tag selected.`,
+      warningMany: (count: number, videoCount: number, target: string) =>
+        `${
+          videoCount === 0
+            ? `These ${formatNumber(count)} tags aren't on any videos.`
+            : `The ${videos(videoCount)} tagged with these ${formatNumber(count)} tags get the tag "${target}".`
+        } Their names and synonyms become synonyms of "${target}", and the ${formatNumber(count)} tags leave the tag list. This can't be undone.`,
       submit: "Merge",
       submitting: "Merging…",
     },

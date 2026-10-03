@@ -3727,6 +3727,234 @@ describe("TagsPage まとめての操作", () => {
   });
 });
 
+describe("TagsPage まとめての統合", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Action", videoCount: 10 }),
+      tag({ id: 2, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 3, name: "Beta", tentative: true }),
+      tag({ id: 4, name: "Cat", videoCount: 4 }),
+      tag({ id: 5, name: "Gamma", videoCount: 5 }),
+    ];
+  });
+
+  async function openMerge(
+    user: ReturnType<typeof userEvent.setup>,
+    names: readonly string[],
+  ): Promise<HTMLElement> {
+    for (const name of names) {
+      await user.click(within(rowOf(name)).getByRole("checkbox"));
+    }
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into one tag…" }),
+    );
+    return screen.findByRole("dialog");
+  }
+
+  async function chooseTarget(
+    user: ReturnType<typeof userEvent.setup>,
+    dialog: HTMLElement,
+    name: string,
+  ) {
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    await user.clear(combo);
+    await user.type(combo, name);
+    await user.click(
+      await within(dialog).findByRole("option", { name: new RegExp(`^${name}`) }),
+    );
+  }
+
+  it("複数から開くと見出しが「Merge 4 tags」で統合元のチップが並び、統合先の入力と候補の一覧は窓の幅いっぱい（要件13）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Beta", "Cat", "Gamma"]);
+    expect(screen.getByRole("dialog", { name: "Merge 4 tags" })).toBe(dialog);
+    const chips = within(dialog).getByRole("list", { name: "Tags to merge" });
+    expect(
+      within(chips)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["AlphaTentative", "BetaTentative", "Cat", "Gamma"]);
+
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    expect(combo.parentElement!.className).toContain("w-full");
+    expect(combo.parentElement!.className).not.toContain("w-40");
+    await user.type(combo, "A");
+    const listbox = await within(dialog).findByRole("listbox");
+    expect(listbox.className).toContain("w-full");
+    expect(listbox.className).not.toContain("w-64");
+    // 統合先の候補は全タグ（選んだ中からも、選んでいないタグからも）。
+    expect(within(listbox).getByRole("option", { name: /^Action/ })).toBeDefined();
+    expect(within(listbox).getByRole("option", { name: /^Alpha/ })).toBeDefined();
+  });
+
+  it("統合先を選ぶと数を待ち、届いたら tagCount・videoCount の確認を出して統合する", async () => {
+    const user = userEvent.setup();
+    server.impactVideoCount = 9;
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Beta", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+
+    expect(
+      await within(dialog).findByText(
+        'The 9 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can\'t be undone.',
+      ),
+    ).toBeDefined();
+    expect(server.impactCalls).toEqual([{ action: "merge", ids: [2, 3, 4, 5] }]);
+    const mergeButton = within(dialog).getByRole("button", { name: "Merge" });
+    await waitFor(() => expect(document.activeElement).toBe(mergeButton));
+
+    await user.click(mergeButton);
+
+    expect(await screen.findByText('Merged 4 tags into "Action"')).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/1/merge",
+      expect.objectContaining({ body: JSON.stringify({ sourceIds: [2, 3, 4, 5] }) }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    for (const name of ["Alpha", "Beta", "Cat", "Gamma"]) {
+      expect(screen.queryByTitle(name)).toBeNull();
+    }
+    // 本数は応答の tag の videoCount（このモックでは合算の 21）。
+    expect(within(rowOf("Action")).getByText("21 videos")).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Action")).getByRole("link", { name: /Action/ }),
+      ),
+    );
+  });
+
+  it("選んだ中のタグを統合先にすると統合元から外れ、統合先だけなら実行できない（Edge Case）", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Action", "Alpha", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+
+    expect(
+      within(dialog).getByText('"Action" is kept and the other 3 tags merge into it.'),
+    ).toBeDefined();
+    const chips = within(dialog).getByRole("list", { name: "Tags to merge" });
+    expect(within(chips).getByText("kept")).toBeDefined();
+    expect(
+      await within(dialog).findByText(
+        /^The 11 videos tagged with these 3 tags get the tag "Action"\./,
+      ),
+    ).toBeDefined();
+    expect(server.impactCalls.at(-1)).toEqual({ action: "merge", ids: [2, 4, 5] });
+
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    expect(await screen.findByText('Merged 3 tags into "Action"')).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/1/merge",
+      expect.objectContaining({ body: JSON.stringify({ sourceIds: [2, 4, 5] }) }),
+    );
+  });
+
+  it("選んだのが 1 件でそれを統合先にすると「Merge」は押せない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Cat"]);
+    within(dialog).getByText('Merge "Cat"');
+    await chooseTarget(user, dialog, "Cat");
+
+    expect(
+      within(dialog).getByText(
+        'Choose another tag to merge into: "Cat" is the only tag selected.',
+      ),
+    ).toBeDefined();
+    expect(
+      (within(dialog).getByRole("button", { name: "Merge" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(server.impactCalls).toEqual([]);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(bar()).getByRole("button", { name: "More" }),
+      ),
+    );
+  });
+
+  it("数えられなければ理由と再試行を出し、統合元がすべてもう無ければ統合のトーストを出さずに取り直す", async () => {
+    const user = userEvent.setup();
+    server.failImpact = true;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+    expect(
+      (await within(dialog).findByRole("alert")).textContent?.startsWith(
+        "Couldn't count the affected videos:",
+      ),
+    ).toBe(true);
+    const mergeButton = within(dialog).getByRole("button", { name: "Merge" });
+    expect((mergeButton as HTMLButtonElement).disabled).toBe(true);
+
+    server.failImpact = false;
+    await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await within(dialog).findByText(/these 2 tags/);
+
+    // 別のタブで Cat と Gamma が消えていた。
+    server.tags = server.tags.filter((item) => item.id !== 4 && item.id !== 5);
+    const gets = server.getCalls;
+    await user.click(mergeButton);
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/^Merged/)).toBeNull();
+    await waitFor(() => expect(screen.queryByTitle("Cat")).toBeNull());
+    expect(server.getCalls).toBeGreaterThan(gets);
+  });
+
+  it("統合元の一部がもう無ければ、実際に統合した数を伝えて一覧を取り直す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+    await within(dialog).findByText(/these 3 tags/);
+
+    server.tags = server.tags.filter((item) => item.id !== 5);
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    expect(await screen.findByText('Merged 2 tags into "Action"')).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByTitle("Gamma")).toBeNull());
+  });
+});
+
 describe("TagsPage まとめての操作の上限", () => {
   let originalOffsetHeight: PropertyDescriptor | undefined;
 

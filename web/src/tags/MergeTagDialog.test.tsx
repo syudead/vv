@@ -31,7 +31,7 @@ function dialog(tags: readonly Tag[]): ReactElement {
   return (
     <TooltipProvider>
       <MergeTagDialog
-        source={source}
+        sources={[source]}
         tags={tags}
         onClose={() => {}}
         onMerged={() => {}}
@@ -126,5 +126,23 @@ describe("MergeTagDialog の失敗後のフォーカス", () => {
 
     await waitFor(() => expect(document.activeElement).toBe(mergeButton));
     expect(focus).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("MergeTagDialog の幅", () => {
+  it("行から開いた 1 件の統合でも、統合先の入力と候補の一覧は窓の幅いっぱい（要件 13）", async () => {
+    const user = userEvent.setup();
+    render(dialog(initialTags()));
+    const modal = await screen.findByRole("dialog", {
+      name: t.tags.mergeDialog.title("旅行"),
+    });
+    const combo = within(modal).getByRole("combobox", {
+      name: t.tags.mergeDialog.target,
+    });
+    expect(combo.parentElement!.className).toContain("w-full");
+    await user.type(combo, "A");
+    const listbox = await within(modal).findByRole("listbox");
+    expect(listbox.className).toContain("w-full");
+    expect(listbox.className).not.toContain("w-64");
   });
 });

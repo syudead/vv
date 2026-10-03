@@ -74,3 +74,27 @@ describe("nameReason の制御文字", () => {
     expect(nameReason(name)).toBeNull();
   });
 });
+
+describe("Combobox の候補の一覧の幅", () => {
+  const options = [{ id: "1", label: "Anime" }];
+
+  it("指定しなければ枠と別の w-64 で開き、listClassName を渡すとそれに替わる", () => {
+    const view = (listClassName?: string) => (
+      <Combobox
+        value=""
+        onValueChange={() => {}}
+        options={options}
+        onSelect={() => {}}
+        aria-label={t.tags.create.label}
+        listClassName={listClassName}
+      />
+    );
+    const { rerender } = render(view());
+    act(() => screen.getByRole("combobox").focus());
+    expect(screen.getByRole("listbox").className).toContain("w-64");
+
+    rerender(view("w-full"));
+    expect(screen.getByRole("listbox").className).toContain("w-full");
+    expect(screen.getByRole("listbox").className).not.toContain("w-64");
+  });
+});
