@@ -85,15 +85,7 @@ function usePublicMark(video: Video): boolean {
  * VideoFavorite は動画のカード・行のお気に入りの付け外しである（所有者だけ。
  * specs/035-favorites/ui-design.md「Card」）。ゲストには描かない（「Guest degradation」）。
  */
-function VideoFavorite({
-  video,
-  variant,
-  previewing,
-}: {
-  video: Video;
-  variant: "card" | "row";
-  previewing?: boolean;
-}) {
+function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "row" }) {
   const favorite = video.favorite === true;
   return (
     <FavoriteToggle
@@ -101,7 +93,6 @@ function VideoFavorite({
       label={t.list.card.favorite(video.title)}
       onToggle={() => updateFavorites([video.id], [], !favorite)}
       variant={variant}
-      previewing={previewing}
     />
   );
 }
@@ -420,9 +411,9 @@ function VideoCard(props: VideoCardProps) {
         <div
           data-preview-checkbox="true"
           onPointerEnter={release}
-          className="absolute top-2 right-2 z-20 flex"
+          className="absolute top-1.5 right-1.5 z-20 flex"
         >
-          <VideoFavorite video={video} variant="card" previewing={showingPreview} />
+          <VideoFavorite video={video} variant="card" />
         </div>
       )}
       {showTagsRow && (
