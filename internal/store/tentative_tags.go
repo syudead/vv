@@ -59,8 +59,8 @@ func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 		return "", fmt.Errorf("cannot reject the tag (id=%d): %w", id, err)
 	}
 	if _, err := tx.ExecContext(ctx,
-		`insert or ignore into rejected_tag_names (name, created_at) values (?, ?)`,
-		ref.Name, time.Now().Unix(),
+		`insert or ignore into rejected_tag_names (name, sort_key, search_version, created_at) values (?, ?, ?, ?)`,
+		ref.Name, domain.NaturalSortKey(ref.Name), domain.SearchKeyVersion, time.Now().Unix(),
 	); err != nil {
 		return "", fmt.Errorf("cannot remember the rejected tag name (%s): %w", ref.Name, err)
 	}

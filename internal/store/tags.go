@@ -87,9 +87,9 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 			return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 		}
 		if _, err := tx.ExecContext(ctx, `
-			update tag_names set name = ?, search_key = ?, search_version = ?
+			update tag_names set name = ?, search_key = ?, sort_key = ?, search_version = ?
 			 where tag_id = ? and canonical = 1`,
-			normalized, domain.FoldForMatch(normalized), domain.SearchKeyVersion, id,
+			normalized, domain.FoldForMatch(normalized), domain.NaturalSortKey(normalized), domain.SearchKeyVersion, id,
 		); err != nil {
 			return domain.Tag{}, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
 		}

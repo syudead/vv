@@ -185,9 +185,9 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 			name      string
 			canonical int
 		}{{fmt.Sprintf("s%d", i), 1}, {fmt.Sprintf("s%d-別名", i), 0}} {
-			if _, err := tx.Exec(`insert into tag_names (name, tag_id, canonical, search_key, search_version)
-				values (?, ?, ?, ?, ?)`, name.name, id, name.canonical,
-				domain.FoldForMatch(name.name), domain.SearchKeyVersion); err != nil {
+			if _, err := tx.Exec(`insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+				values (?, ?, ?, ?, ?, ?)`, name.name, id, name.canonical,
+				domain.FoldForMatch(name.name), domain.NaturalSortKey(name.name), domain.SearchKeyVersion); err != nil {
 				t.Fatal(err)
 			}
 		}
