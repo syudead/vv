@@ -32,9 +32,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(gh api repos/ggml-org/llama.cpp/releases/latest \
-            --jq '.assets[] | select(.name | test("bin-ubuntu-x64\\.(zip|tar\\.gz)$")) | .browser_download_url' | head -1)
+          gh api repos/ggml-org/llama.cpp/releases/latest --jq '.tag_name, (.assets[].name)'
+          # CPU 版の Linux x64 を選ぶ。GPU 向け（vulkan、cuda など）と arm は除く。
+          url=$(gh api repos/ggml-org/llama.cpp/releases/latest --jq '.assets[] | .browser_download_url' \
+            | grep -i 'ubuntu' | grep -iE 'x64|x86_64' \
+            | grep -viE 'vulkan|cuda|rocm|hip|sycl|openvino|kompute|arm|aarch64|s390' | head -1)
           echo "llama.cpp: $url"
+          test -n "$url"
           curl -sSfL -o llama.pkg "$url"
           mkdir -p llama-extract
           case "$url" in
