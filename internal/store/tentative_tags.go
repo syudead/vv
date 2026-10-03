@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"time"
@@ -95,9 +96,10 @@ func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limi
 		args = append(args, limit+1)
 	}
 
-	// 件数とページを同じ取引で読み、間の却下・取り外しで Total と Items が食い違わないようにする。
-	// 読むだけなので最後は rollback で閉じる。
-	tx, err := s.sql.BeginTx(ctx, nil)
+	// 件数とページを同じ読み取りスナップショットで読み、間の却下・取り外しで Total と Items が
+	// 食い違わないようにする。s.read（deferred）で開き、SQLite の唯一の書き込みの枠を取らない
+	// （listing.go の ListVideos と同じ）。読むだけなので最後は rollback で閉じる。
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
 	}

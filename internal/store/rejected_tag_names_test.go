@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -112,5 +113,34 @@ func TestListRejectedTagNamesTiesAndInvalidCursor(t *testing.T) {
 		if _, err := db.Tags().ListRejectedTagNames(ctx, cursor, 10); !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("カーソル %q: err = %v, want ErrInvalidCursor", cursor, err)
 		}
+	}
+}
+
+// 036 #727: 却下した名前のページ読みは書き込みの枠を取らない。別の書き込みが枠を持っている間も
+// 待たずに読める（読み取り用の接続で開く。listing.go の ListVideos と同じ）。
+func TestListRejectedTagNamesDoesNotWaitForTheWriter(t *testing.T) {
+	db, _ := tentativeFixture(t)
+	ctx := context.Background()
+	rejectName(t, db, "held")
+
+	writer, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("書き込みトランザクションを開始できない: %v", err)
+	}
+	defer func() { _ = writer.Rollback() }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := db.Tags().ListRejectedTagNames(ctx, "", 100)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("書き込み中の却下した名前の読み出しに失敗した: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("却下した名前の読み出しが書き込みの枠を待った")
 	}
 }
