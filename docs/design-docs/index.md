@@ -26,6 +26,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Separate track inputs for MOV live transcoding](mov-live-transcoding.md)
 - [Live transcoding seek and probe reuse](live-transcode-seek.md)
 - [Hardware encoding for live transcoding](hardware-encoding.md)
+- [Windows desktop app (VVMDM.exe)](windows-app.md)
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)

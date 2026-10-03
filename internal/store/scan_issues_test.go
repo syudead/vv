@@ -201,6 +201,53 @@ func TestStartScanClearsPreviousIssues(t *testing.T) {
 	}
 }
 
+// 中断した走査の続きとして始めると、仕事の段階の問題と対象の動画の集合を持ち越し、
+// 取り込みは partial のままになる。走査が見つけ直す種類（unreadable）は持ち越さない
+// （specs/037-windows-app/research.md R-9）。
+func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	interrupted, _, err := db.Scans().StartScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := upsertForImport(t, db, "a")
+	upsertForImport(t, db, "b")
+	failJobToLimit(t, db, domain.JobProbe) // a の解析を上限まで失敗させる
+	runAllJobs(t, db)
+	if err := db.Scans().RecordScanIssue(ctx, domain.ScanFileIssue{
+		Path: fixturePath("/media/broken.mp4"), Kind: domain.IssueUnreadable,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Scans().FinishScan(ctx, interrupted.ID, domain.ScanFailed,
+		domain.NewScanFailure(domain.ScanErrorInterrupted, "", errors.New("stopped"))); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, started, err := db.Scans().ResumeScan(ctx, interrupted.ID)
+	if err != nil || !started || resumed.ID == interrupted.ID {
+		t.Fatalf("ResumeScan = #%d started=%v err=%v, want 新しい走査", resumed.ID, started, err)
+	}
+	finishScan(t, db, resumed.ID)
+
+	_, issues, progress := importIssues(t, db)
+	if len(issues) != 1 || issues[0].VideoID != a ||
+		!slices.Equal(issues[0].Kinds, []domain.ScanIssueKind{domain.IssueProbeFailed}) {
+		t.Fatalf("問題 = %+v, want a の probe_failed だけ", issues)
+	}
+	if progress.Status != domain.ImportPartial || progress.Total != 2 || progress.Settled != 2 {
+		t.Fatalf("状態 = %+v, want 2本のうち2本・partial", progress)
+	}
+	var rows int
+	if err := db.sql.QueryRow(`select count(*) from scan_issues where scan_id <> ?`, resumed.ID).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 0 {
+		t.Fatalf("中断した走査の問題が %d 行残った", rows)
+	}
+}
+
 // 1本の動画に2つの種類が起きると、1件にまとまる。別の種類が加わっても件数は変わらず、
 // issues_revision は増える。
 func TestIssuesOfOneVideoAreGroupedAndRevisionAdvances(t *testing.T) {

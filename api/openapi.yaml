@@ -1295,6 +1295,61 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/settings/network:
+    get:
+      operationId: getNetworkSettings
+      summary: LAN からの接続の許可と、許可中に開けるアドレスを返す
+      description: |
+        Windows デスクトップ版だけの設定。保存した選択、今の待ち受けのポート、許可中なら上がっている
+        非ループバックの IPv4 アドレスごとの URL を返す。デスクトップ版でなければ `404` `not_found`
+        （specs/037-windows-app/contracts/network-settings-api.md §2）。
+      responses:
+        "200":
+          description: 今の設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkSettings"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: updateNetworkSettings
+      summary: LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
+      description: |
+        許可するなら `0.0.0.0:<ポート>`、しないなら `127.0.0.1:<ポート>` で待ち受けを開き直し、
+        開き直せたら保存する。確立済みの接続は切らない。今と同じ値なら何もしない。新しいアドレスで
+        開き直せなければ元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason
+        `listen_failed` を返す。開き直せたが保存に失敗したら、待ち受けを元のアドレスへ戻して `500`
+        を返す。デスクトップ版でなければ `404` `not_found`
+        （specs/037-windows-app/contracts/network-settings-api.md §3）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNetworkSettingsRequest"
+      responses:
+        "200":
+          description: 切り替えたあとの設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          description: 開き直したあとの保存に失敗した。待ち受けは元のアドレスへ戻した
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/api-tokens:
     get:
       operationId: listApiTokens
@@ -2402,6 +2457,36 @@ components:
       properties:
         videoEncoder:
           $ref: "#/components/schemas/VideoEncoderChoice"
+
+    NetworkSettings:
+      type: object
+      required: [lanAccess, port, addresses]
+      additionalProperties: false
+      description: >-
+        Windows デスクトップ版の LAN からの接続の設定
+        （specs/037-windows-app/contracts/network-settings-api.md §1）
+      properties:
+        lanAccess:
+          type: boolean
+          description: 保存した選択。保存値が無ければ false
+        port:
+          type: integer
+          description: 今の待ち受けのポート
+        addresses:
+          type: array
+          description: >-
+            lanAccess が true のときだけ、上がっている非ループバックの IPv4 アドレスごとに
+            "http://<アドレス>:<ポート>/" が入る。false なら空
+          items:
+            type: string
+
+    UpdateNetworkSettingsRequest:
+      type: object
+      required: [lanAccess]
+      additionalProperties: false
+      properties:
+        lanAccess:
+          type: boolean
 
     APIToken:
       type: object
@@ -3889,3 +3974,4 @@ components:
         - too_few_videos
         - representative_not_selected
         - not_bundled
+        - listen_failed

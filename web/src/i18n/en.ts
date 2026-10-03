@@ -183,6 +183,7 @@ const errorReasons = {
   too_few_videos: "Select at least two videos.",
   representative_not_selected: "Pick which video to show in the library.",
   not_bundled: "This video isn't bundled with others.",
+  listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -1172,6 +1173,25 @@ export const en = {
         check_failed: "The test encode failed",
         timed_out: "The test encode took too long",
       } satisfies Record<EncoderUnavailableReason, string>,
+    },
+    network: {
+      heading: "Network",
+      description:
+        "By default only this PC can open VVMDM. Allow connections from your local network to open it from a phone or another computer on the same network.",
+      loading: "Loading the network settings",
+      loadFailed: (reason: string) => `Couldn't load the network settings: ${reason}`,
+      lanAccess: "Allow connections from the local network",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't change the setting: ${reason}`,
+      cautionHeading: "Before you turn this on",
+      caution: {
+        lan: "Any device on the same local network can open the sign-in page.",
+        firewall: "If Windows Firewall asks, allow VVMDM on private networks.",
+        http: "The connection uses HTTP, so passwords travel unencrypted. Use it only on a network you trust.",
+      },
+      addresses: "Open one of these addresses on the other device:",
+      noAddresses:
+        "This PC has no local network address right now. Connect it to a network and reload this page.",
     },
     apiTokens: {
       heading: "API tokens",

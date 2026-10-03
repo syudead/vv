@@ -292,7 +292,8 @@ func TestExternalAPIOperationsAreBearer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("api/external-v1.yaml を読めない: %v", err)
 	}
-	text := string(body)
+	// core.autocrlf で CRLF に変わった作業ツリーでも、LF の文書として確かめる。
+	text := strings.ReplaceAll(string(body), "\r\n", "\n")
 	if !strings.Contains(text, "\nservers:\n  - url: "+externalAPIBase+"\n") {
 		t.Errorf("external-v1.yaml の servers が %s ではない", externalAPIBase)
 	}

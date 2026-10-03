@@ -19,6 +19,13 @@ worker or by the request that needs them. Sidecar subtitles are converted to
 WebVTT in Go, without `ffmpeg`. Everything ships as one container. Multi-user
 support is not built yet.
 
+The same binary also ships for Windows as a desktop app, `VVMDM.exe`, built from
+`cmd/mdm` with the `desktop` tag as a GUI executable. It runs the server
+in-process on a loopback port and shows it in its own window with an embedded
+WebView2. It keeps its data under `%LOCALAPPDATA%\VVMDM`, uses the `ffmpeg`
+bundled next to it, and stops the server when the window closes
+([docs/design-docs/windows-app.md](docs/design-docs/windows-app.md)).
+
 ### Startup and served routes
 
 At startup `cmd/mdm`:
@@ -40,6 +47,7 @@ It serves:
 | `/api/videos/{id}/open` | Opens the file in the server PC's default app |
 | Media folders | Media-folder settings and the server-side directory picker |
 | Live-transcode video encoder | `/api/settings/transcoding`: the saved choice, the encoder in use and each hardware encoder's startup check result |
+| Desktop app LAN access | `/api/settings/network`: whether devices on the LAN may connect, the listening port and, while allowed, the URL for each non-loopback IPv4 address. Switching reopens the listener on `0.0.0.0` or `127.0.0.1` before saving. The route returns `404` outside the desktop app |
 | Folder browsing (read-only) | `/api/folders*` |
 | Tag management | `/api/tags*`: list, create, rename, delete, merge, and synonym registration and removal |
 | Video tags | `/api/video-tags` attaches or detaches a tag on a set of videos; `/api/video-tags/summary` summarizes which tags apply to a selection |
@@ -339,7 +347,13 @@ claimable even when the video row survives through an unregistered location.
 
 At the next startup, interrupted scans are closed, running jobs are requeued,
 and the single `.tmp` directory that holds in-progress generation output is
-removed.
+removed. Once the workers run, that startup also starts one new scan when the
+latest scan ended `failed` with the reason `interrupted` (stopped by shutdown,
+or closed because it was left running), with every launch method. The scan
+passes over files whose size and mtime are unchanged, so starting again
+continues where the interrupted scan stopped. That new scan takes over the
+interrupted import's videos and its job failures and substitutions, since jobs
+that failed up to their limit are not queued again for unchanged files.
 
 When a video row is deleted (a scan finds its last location gone, its content
 changes, or its media folder is removed or replaced), `internal/store` publishes
@@ -930,7 +944,7 @@ state; each request carries its own
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} -> internal/domain`,
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop} -> internal/domain`,
 one way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -970,7 +984,11 @@ one way only. The packages under `internal/` fall into three layers:
   `internal/artifacts`, `internal/mediafs`, `internal/opener`,
   `internal/scanner`, `internal/jobs` and `internal/password`) talk to the
   outside world. `internal/eventbus` sits beside them and only delivers
-  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks
+  `domain.Event` values in-process; only `cmd/mdm` imports it.
+  `internal/desktop` holds the Windows desktop app's OS side: the Win32 window
+  with the embedded WebView2, the error dialogs, the job object and resolving
+  the data folders. Only `cmd/mdm`'s `desktop`-tagged entry point imports it.
+  Filesystem checks
   stay in the adapters: `internal/mediafs` checks media folder paths, the files a
   request may open and the directories the picker lists, so `internal/store`
   never touches the filesystem and `internal/httpapi` never decides by itself

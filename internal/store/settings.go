@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -45,4 +46,22 @@ func writeSetting(ctx context.Context, q *sql.DB, key, value string) error {
 		return fmt.Errorf("cannot save setting %s: %w", key, err)
 	}
 	return nil
+}
+
+// desktopLANAccessKey は Windows デスクトップ版で LAN からの接続を許可するかのキーである。
+// 値は "true" か "false"（specs/037-windows-app/research.md R-14）。
+const desktopLANAccessKey = "desktop.lan_access"
+
+// LANAccess は LAN からの接続を許可するかを返す。行が無いか "true" でなければ偽である。
+func (s *SettingsStore) LANAccess(ctx context.Context) (bool, error) {
+	value, found, err := readSetting(ctx, s.db.sql, desktopLANAccessKey)
+	if err != nil {
+		return false, err
+	}
+	return found && value == strconv.FormatBool(true), nil
+}
+
+// SaveLANAccess は LAN からの接続を許可するかを保存する。
+func (s *SettingsStore) SaveLANAccess(ctx context.Context, allowed bool) error {
+	return writeSetting(ctx, s.db.sql, desktopLANAccessKey, strconv.FormatBool(allowed))
 }

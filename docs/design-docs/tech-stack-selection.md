@@ -49,7 +49,7 @@ The system is self-hosted for a single user, so **simple operation** and
 | Logging | Standard library `log/slog` (JSON handler) | Structured logs with no added dependency |
 | Tests | Go `testing` + `net/http/httptest` (Range checks) + Playwright (playback E2E) | Only E2E can show that playback actually starts |
 | Lint | `golangci-lint` (`depguard` forbids imports across layers) | CI rejects dependency-direction violations automatically |
-| Distribution | Docker (multi-stage, alpine + ffmpeg) + Compose | Without CGO the binary runs on alpine as is, and the image is small |
+| Distribution | Docker (multi-stage, alpine + ffmpeg) + Compose. On Windows, a zip of `VVMDM.exe` and the bundled `ffmpeg` attached to the GitHub Release on each tag ([Windows desktop app](windows-app.md#distribution)) | Without CGO the binary runs on alpine as is, and the image is small. For the same reason the Windows exe cross-compiles from Linux, and extracting the zip needs neither Docker nor an `ffmpeg` install |
 
 Dependency direction and package responsibilities are in
 [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction). SQLite

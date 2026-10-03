@@ -25,11 +25,35 @@ this document, not in `renovate.json` itself.
 | --- | --- | --- |
 | `golang` / `node` images in `Dockerfile`; `go` / `node` in `mise.toml` | Version changes (major / minor / patch) are excluded; digest updates of the `Dockerfile` images stay in scope | The runtime version must match the `go` line in `go.mod`, so a person changes them together when raising `go.mod` |
 | `task` and `jq` in `mise.toml`; `alpine` in `Dockerfile` | In scope, in the mise tools and container images groups respectively | — |
+| FFmpeg bundled in the Windows zip (`ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`) | Raised by a person, following [Raise the bundled FFmpeg version](#raise-the-bundled-ffmpeg-version) | Renovate does not read these constants |
 | Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` does the same job |
 
 The mise manager names `go` as packageName `golang/go` and `node` as `nodejs`,
 so the exclusion uses `matchDepNames`, which both managers share, instead of
 `matchPackageNames`.
+
+## Raise the bundled FFmpeg version
+
+The Windows zip bundles Gyan.dev's essentials build
+(`ffmpeg-<version>-essentials_build.zip`) from the GitHub Releases of
+`GyanD/codexffmpeg`, pinned by version and SHA-256
+([Windows desktop app distribution](../design-docs/windows-app.md#distribution)).
+Raise it in one PR:
+
+1. Check that the new release has `ffmpeg-<version>-essentials_build.zip`, and
+   check its SHA-256 against the `.sha256` value Gyan.dev publishes at
+   <https://www.gyan.dev/ffmpeg/builds/>.
+2. Change `ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`.
+   When the SHA-256 does not match, `task build-windows-app` fails and prints
+   the expected and actual values.
+3. Build the zip with `task build-windows-app` and check the version in its
+   `ffmpeg/README.txt`.
+4. After the merge, run the `Windows app` workflow by hand and check that the
+   bundled `ffmpeg` has `h264_nvenc` and `h264_qsv`.
+
+When encoder names or arguments in `ffmpeg` change, update
+[hardware-encoding.md](../design-docs/hardware-encoding.md) and
+`internal/media` to match.
 
 ## Renovate PRs that need a person
 

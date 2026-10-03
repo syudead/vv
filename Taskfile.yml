@@ -59,6 +59,12 @@ tasks:
     cmds:
       - go run ./scripts/build
 
+  build-windows-app:
+    desc: Build the Windows app zip (dist/VVMDM-<version>-windows-amd64.zip) with the bundled FFmpeg.
+    # VERSION=v1.2.3 で版を決める。無ければ今の commit の sha-<12 桁>。
+    cmds:
+      - go run ./scripts/build -windows-app
+
   docs:
     desc: Serve the documentation site (docs/ and specs/) locally with live reload.
     cmds:
@@ -143,8 +149,20 @@ tasks:
     cmds:
       - task: golangci
         vars: { GOLANGCI_ARGS: "run" }
+      - task: lint-go-windows-desktop
       # 指摘はコードで解消し、//nolint による無効化は認めない（syudead/vv#443）。
       - go run ./scripts/nolintguard
+
+  lint-go-windows-desktop:
+    desc: Run golangci-lint on the Windows desktop build (VVMDM.exe).
+    # Windows 専用と desktop タグのファイルは、Linux のタグなしの lint では読まれない
+    # （specs/037-windows-app/plan.md の Constitution Check）。
+    cmds:
+      - task: golangci
+        vars:
+          # golangci-lint の場所は Linux のまま求め、読み込む対象だけを Windows にする。
+          GOLANGCI_ENV: "GOOS=windows CGO_ENABLED=0"
+          GOLANGCI_ARGS: "run --build-tags desktop"
 
   lint-web:
     desc: Run Web static analysis.
@@ -185,6 +203,8 @@ tasks:
       CGO_ENABLED: 0
     cmds:
       - go build ./...
+      # Windows デスクトップ版（VVMDM.exe）。出力は捨て、組めることだけを確かめる。
+      - go build -tags desktop -ldflags "-H=windowsgui" -o {{if eq OS "windows"}}NUL{{else}}/dev/null{{end}} ./cmd/mdm
 
   # golangci-lint は run と fmt の両方で使う。版は tools/go.mod が
   # 単一の出どころなので、呼び出しもここ1か所に寄せる。
@@ -194,4 +214,4 @@ tasks:
       GOLANGCI:
         sh: go -C tools tool -n golangci-lint
     cmds:
-      - '"{{.GOLANGCI}}" {{.GOLANGCI_ARGS}}'
+      - '{{.GOLANGCI_ENV}} "{{.GOLANGCI}}" {{.GOLANGCI_ARGS}}'
