@@ -288,6 +288,64 @@ func TestRequeueRunningJobs(t *testing.T) {
 	}
 }
 
+// 未完了の仕事は queued と running で、done と failed は数えない。
+func TestHasUnfinishedJobs(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	ingest := db.Ingest()
+	assertUnfinished := func(want bool) {
+		t.Helper()
+		got, err := ingest.HasUnfinishedJobs(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("HasUnfinishedJobs() = %v, want %v", got, want)
+		}
+	}
+
+	assertUnfinished(false)
+
+	if err := ingest.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	assertUnfinished(true) // queued
+
+	job, err := ingest.ClaimJob(ctx, domain.JobProbe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUnfinished(true) // running
+
+	if err := ingest.CompleteJob(ctx, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	assertUnfinished(false) // done
+
+	other, err := db.ScanIndex().UpsertVideo(ctx,
+		sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ingest.EnqueueJob(ctx, domain.JobProbe, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	var failed domain.Job
+	for range domain.MaxJobAttempts {
+		failed, err = ingest.ClaimJob(ctx, domain.JobProbe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ingest.FailJob(ctx, failed.ID, "broken"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := jobState(t, db, failed.ID); got != "failed" {
+		t.Fatalf("state = %q, want failed", got)
+	}
+	assertUnfinished(false) // failed
+}
+
 func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

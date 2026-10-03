@@ -33,6 +33,9 @@ type fakeScanStore struct {
 	issues []domain.ScanIssue
 	// resumedFrom は走査を始めるたびの持ち越し元（StartScan なら 0）である。
 	resumedFrom []int64
+	// unfinished は queued か running の仕事があるか、unfinishedErr はその問い合わせの失敗である。
+	unfinished    bool
+	unfinishedErr error
 }
 
 func newFakeScanStore() *fakeScanStore {
@@ -129,6 +132,18 @@ func (f *fakeScanStore) RequeueRunningJobs(context.Context) (int64, error) {
 	return f.requeued, nil
 }
 
+func (f *fakeScanStore) HasUnfinishedJobs(context.Context) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.unfinished, f.unfinishedErr
+}
+
+func (f *fakeScanStore) setUnfinished(unfinished bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unfinished, f.unfinishedErr = unfinished, err
+}
+
 func (f *fakeScanStore) waitFinished(t *testing.T) domain.Scan {
 	t.Helper()
 	select {
@@ -187,9 +202,10 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 	store := newFakeScanStore()
 	publisher := &fakePublisher{}
 	scans := NewScans(ScansOptions{
-		Store:       store,
-		Jobs:        store,
-		FolderIndex: store,
+		Store:          store,
+		Jobs:           store,
+		UnfinishedJobs: store,
+		FolderIndex:    store,
 		NewScanner: func(reporter ScanReporter) Scanner {
 			scanner.reporter = reporter
 			return scanner
@@ -306,6 +322,49 @@ func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 	scans.Wait()
 	if scanner.runs != 1 {
 		t.Fatalf("走査の回数 = %d, want 1", scanner.runs)
+	}
+}
+
+// Busy は走っている走査があるか、queued・running の仕事があるとき真で、どちらも
+// 無いとき偽（specs/037-windows-app/research.md R-7）。
+func TestBusy(t *testing.T) {
+	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	ctx := context.Background()
+	assertBusy := func(want bool) {
+		t.Helper()
+		got, err := scans.Busy(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("Busy() = %v, want %v", got, want)
+		}
+	}
+
+	assertBusy(false)
+
+	// 走査中。
+	if _, _, err := scans.StartScan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	<-scanner.started
+	assertBusy(true)
+	close(scanner.release)
+	store.waitFinished(t)
+	scans.Wait()
+	assertBusy(false)
+
+	// queued か running の仕事がある（保存先はどちらも 1 つの問い合わせで答える）。
+	store.setUnfinished(true, nil)
+	assertBusy(true)
+	store.setUnfinished(false, nil)
+	assertBusy(false)
+
+	// 問い合わせの失敗は返す。
+	store.setUnfinished(false, errors.New("disk"))
+	if _, err := scans.Busy(ctx); err == nil {
+		t.Error("問い合わせの失敗が返らない")
 	}
 }
 

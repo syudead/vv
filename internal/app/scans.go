@@ -38,6 +38,12 @@ type JobRecoveryStore interface {
 	RequeueRunningJobs(ctx context.Context) (int64, error)
 }
 
+// UnfinishedJobStore は未完了の取り込みの仕事の有無の問い合わせ先である。
+type UnfinishedJobStore interface {
+	// HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。
+	HasUnfinishedJobs(ctx context.Context) (bool, error)
+}
+
 // FolderIndexStore はフォルダの索引（グループの割り当てと祖先フォルダ名）の
 // 作り直し先である。作り直しに失敗したら、保存側が索引を古いと記録してから
 // 失敗を返す（specs/017-folder-groups/data-model.md §3）。
@@ -75,6 +81,9 @@ type Publisher interface {
 type ScansOptions struct {
 	Store ScanStore
 	Jobs  JobRecoveryStore
+	// UnfinishedJobs は Busy が未完了の仕事の有無を読む先である。nil なら
+	// Busy は走っている走査だけを見る。
+	UnfinishedJobs UnfinishedJobStore
 	// FolderIndex はスキャンを閉じる直前と、中断したスキャンを閉じたときに
 	// フォルダの索引を作り直す。nil なら作り直さない。
 	FolderIndex FolderIndexStore
@@ -96,6 +105,7 @@ type ScansOptions struct {
 type Scans struct {
 	store   ScanStore
 	jobs    JobRecoveryStore
+	pending UnfinishedJobStore
 	folders FolderIndexStore
 	roots   ActivityFolderStore
 	scanner Scanner
@@ -127,6 +137,7 @@ func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
 		store:     opts.Store,
 		jobs:      opts.Jobs,
+		pending:   opts.UnfinishedJobs,
 		folders:   opts.FolderIndex,
 		roots:     opts.Folders,
 		lifetime:  opts.Context,
@@ -314,6 +325,27 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 // 消した動画の知らせが捨てられ、その生成物が残り続ける。
 func (s *Scans) Wait() {
 	s.done.Wait()
+}
+
+// Busy は取り込みの途中か、つまり走っている走査があるか、queued か running の
+// 仕事が 1 件以上あるかを返す（specs/037-windows-app/research.md R-7）。どちらも
+// 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
+// ないので含めない。
+func (s *Scans) Busy(ctx context.Context) (bool, error) {
+	s.mu.Lock()
+	running := s.running
+	s.mu.Unlock()
+	if running {
+		return true, nil
+	}
+	if s.pending == nil {
+		return false, nil
+	}
+	pending, err := s.pending.HasUnfinishedJobs(ctx)
+	if err != nil {
+		return false, fmt.Errorf("cannot tell whether jobs are unfinished: %w", err)
+	}
+	return pending, nil
 }
 
 // RecoverInterrupted は前回の停止で中途半端に残った状態を戻す。

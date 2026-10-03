@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -50,23 +50,53 @@ func main() {
 	if len(os.Args) > 1 {
 		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
 	}
-	if err := run(); err != nil {
+	cfg, err := LoadConfig(os.Getenv)
+	if err == nil {
+		err = run(runOptions{
+			Config:     cfg,
+			LogOutput:  os.Stdout,
+			Listener:   newReopenableListener(),
+			NotifyStop: notifySignals,
+		})
+	}
+	if err != nil {
 		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// run は起動から停止までを行う。順序は
-// 「設定読み込み → 記録の設定 → 起動前確認 → データベース接続とマイグレーション →
-// HTTP サーバー起動」である。
-func run() error {
-	cfg, err := LoadConfig(os.Getenv)
-	if err != nil {
-		return err
-	}
+// runOptions は起動・停止の手順に外から渡すものである。タグなしの main は環境変数の
+// 設定・標準出力・MDM_ADDR・SIGINT/SIGTERM を渡す。デスクトップ版は設定を自分で
+// 組み立て、同じ手順を同じプロセスで呼ぶ（specs/037-windows-app/research.md R-1）。
+type runOptions struct {
+	Config Config
+	// LogOutput は JSON の記録の書き先である。
+	LogOutput io.Writer
+	// Listener は Config.Addr で待ち受けを作る部品で、アドレスを変えて開き直せる。
+	Listener *reopenableListener
+	// OnListening は待ち受けを開いた直後に呼ぶ。nil なら呼ばない。
+	OnListening func()
+	// NotifyStop は停止の指示の受け取りを始める。HTTP サーバーを起動する直前に呼ぶ。
+	NotifyStop stopNotifier
+}
 
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.Level()}))
+// stopNotifier は停止の指示の受け取りを始め、指示で閉じる channel と、受け取りを
+// やめる関数（nil でよい）を返す。
+type stopNotifier func() (stopRequested <-chan struct{}, release func())
+
+// notifySignals は SIGINT / SIGTERM を停止の指示として受け取る。
+func notifySignals() (<-chan struct{}, func()) {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	return ctx.Done(), stop
+}
+
+// run は起動から停止までを行う。順序は
+// 「記録の設定 → 起動前確認 → データベース接続とマイグレーション →
+// HTTP サーバー起動」である。
+func run(opts runOptions) error {
+	cfg := opts.Config
+	logger := slog.New(slog.NewJSONHandler(opts.LogOutput, &slog.HandlerOptions{Level: cfg.Level()}))
 	slog.SetDefault(logger)
 
 	build := buildInfo()
@@ -156,9 +186,11 @@ func run() error {
 	playbackStore := db.Playback()
 
 	scans := app.NewScans(app.ScansOptions{
-		Store:       scanStore,
-		Jobs:        ingestStore,
-		FolderIndex: scanIndexStore,
+		Store: scanStore,
+		Jobs:  ingestStore,
+		// 閉じる確認が読む「取り込みの途中か」（Busy）の未完了の仕事の有無。
+		UnfinishedJobs: ingestStore,
+		FolderIndex:    scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
@@ -302,7 +334,7 @@ func run() error {
 		subscriptions.StopScreen()
 		events.Close()
 	}
-	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
+	if err := serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown); err != nil {
 		return err
 	}
 
@@ -351,64 +383,54 @@ func waitAtMost(wait func(), limit time.Duration) bool {
 	}
 }
 
-// serve は HTTP サーバーを起動し、停止指示を待つ。
+// serveUntil は listener で HTTP サーバーを起動し、停止の指示を待つ。
 //
-// SIGINT / SIGTERM を受けたら新規の接続受付を止め、処理中の要求を猶予時間まで
-// 待ってから終了する。正常終了の終了コードは 0 である。
-func serve(
-	cfg Config,
-	handler http.Handler,
-	logger *slog.Logger,
-	onListening func(),
-	beforeShutdown func(),
-) error {
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	return serveUntil(ctx.Done(), stop, cfg, handler, logger, onListening, beforeShutdown)
-}
-
+// 停止の指示（タグなしの main では SIGINT / SIGTERM）を受けたら新規の接続受付を
+// 止め、処理中の要求を猶予時間まで待ってから終了する。正常終了の終了コードは 0 である。
 func serveUntil(
-	stopRequested <-chan struct{},
-	restoreSignals func(),
+	notifyStop stopNotifier,
+	listener *reopenableListener,
 	cfg Config,
 	handler http.Handler,
 	logger *slog.Logger,
 	onListening func(),
 	beforeShutdown func(),
 ) error {
+	stopRequested, release := notifyStop()
+	restoreSignals := func() {
+		if release != nil {
+			release()
+		}
+	}
+	defer restoreSignals()
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
-	listener, err := net.Listen("tcp", cfg.Addr)
-	if err != nil {
-		return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
+	if err := listener.Listen(cfg.Addr); err != nil {
+		return err
 	}
 	defer func() { _ = listener.Close() }()
 
-	listenErr := make(chan error, 1)
 	logger.Info("listening", slog.String("addr", cfg.Addr))
 	if onListening != nil {
 		onListening()
 	}
-	go func() {
-		listenErr <- srv.Serve(listener)
-	}()
+	listener.Serve(srv)
 
 	select {
-	case err := <-listenErr:
+	case err := <-listener.Failed():
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
+			return fmt.Errorf("cannot listen on %s: %w", listener.Addr(), err)
 		}
 		return nil
 
 	case <-stopRequested:
 		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
-		if restoreSignals != nil {
-			restoreSignals()
-		}
+		restoreSignals()
 		logger.Info("received a stop signal; waiting for in-flight requests",
 			slog.String("grace", shutdownGrace.String()))
 		if beforeShutdown != nil {
@@ -418,6 +440,8 @@ func serveUntil(
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 
+		// 停止の途中に開き直されないよう、待ち受けを先に閉じる。
+		_ = listener.Close()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			return fmt.Errorf("could not stop within %s: %w", shutdownGrace, err)
 		}

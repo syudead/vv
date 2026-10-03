@@ -18,7 +18,9 @@ func TestServeDoesNotRunStartupHookWhenPortIsInUse(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	called := false
-	err = serve(
+	err = serveUntil(
+		notifySignals,
+		newReopenableListener(),
 		Config{Addr: listener.Addr().String()},
 		http.NotFoundHandler(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -41,8 +43,8 @@ func TestServeCancelsTranscodesBeforeShutdown(t *testing.T) {
 	order := make(chan string, 2)
 
 	err := serveUntil(
-		ctx.Done(),
-		nil,
+		func() (<-chan struct{}, func()) { return ctx.Done(), nil },
+		newReopenableListener(),
 		Config{Addr: "127.0.0.1:0"},
 		http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
