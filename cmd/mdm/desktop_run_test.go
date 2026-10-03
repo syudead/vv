@@ -5,6 +5,9 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +18,9 @@ import (
 // デスクトップ版の入口の引数で run を起動すると、保存した許可が待ち受けに効き、
 // /api/settings/network がつながる（404 でなく、ゲストには 401）。
 func TestDesktopRunOptionsApplySavedLANAccess(t *testing.T) {
+	// 起動前確認は ffmpeg・ffprobe の有無だけを見る。この試験は待ち受けと API を
+	// 確かめるので、ffmpeg の無いホスト（CI の Checks）でも動くよう代わりを置く。
+	stubMediaCommands(t)
 	dataDir := t.TempDir()
 	db, err := store.Open(dataDir)
 	if err != nil {
@@ -76,4 +82,21 @@ func TestDesktopRunOptionsApplySavedLANAccess(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Errorf("ゲストの GET /api/settings/network = %d, want 401", resp.StatusCode)
 	}
+}
+
+// stubMediaCommands は起動前確認を通すだけの ffmpeg・ffprobe を PATH に置き、
+// ホストに入っている本物を使わない。代わりは何もせず失敗で終わる。
+func stubMediaCommands(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range []string{"ffmpeg", "ffprobe"} {
+		file, content := name, "#!/bin/sh\nexit 1\n"
+		if runtime.GOOS == "windows" {
+			file, content = name+".bat", "@exit /b 1\r\n"
+		}
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir)
 }
