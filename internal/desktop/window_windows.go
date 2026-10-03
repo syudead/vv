@@ -135,6 +135,11 @@ func NewWindow(opts WindowOptions) (*Window, error) {
 	_, _, _ = procShowWindow.Call(hwnd, swShowNormal)
 	_, _, _ = procUpdateWindow.Call(hwnd)
 	_, _, _ = procSetForegroundWindow.Call(hwnd)
+	// WebView2 は隠れたウィンドウに埋め込んだので、ウィンドウを表に出しても
+	// 描画の子ウィンドウは隠れたまま（白いだけ）になる。表示を明示的に伝える。
+	if err := chromium.Show(); err != nil {
+		opts.Logger.Warn("could not show the WebView2 controller", slog.Any("error", err))
+	}
 	chromium.Resize()
 	chromium.Navigate(opts.URL)
 	w.focusWebView()
