@@ -1,315 +1,381 @@
-# UI Design: 単一アカウント認証と、未ログインでの公開動画の閲覧
+# UI design: Single-account authentication and browsing public videos without logging in
 
 **Feature**: [parent Issue #135](https://github.com/syudead/vv/issues/135)
 
-見た目の規則・シェル・一覧の密度は
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。再生画面の構成は
-[012 の ui-design.md](../012-video-detail-ia/ui-design.md)、ツールバー・一致なし・空の状態は
-[013 の ui-design.md](../013-library-search/ui-design.md)、選択バーの構成は
-[library-ui.md §6](../../docs/design-docs/library-ui.md#6-一覧の構成)、タグの表示と操作は
-[014 の ui-design.md](../014-video-tags/ui-design.md) に従う。画面が使う API・状態・遷移は
-[contracts/auth-api.md](contracts/auth-api.md)（初回設定・ログイン・状態・Cookie）と
-[contracts/guest-api.md](contracts/guest-api.md)（ゲストへの応答の差・公開の切り替え）で
-決まっており、ここでは決め直さない。値の規則は [data-model.md §6](data-model.md#6-ユーザー名とパスワードの値)。
+Sources: visual rules, the shell and list density follow
+[Library UI: visual rules and list structure](../../docs/design-docs/library-ui.md)
+and the `@theme` in [`web/src/index.css`](../../web/src/index.css). The video
+page structure follows [012's ui-design.md](../012-video-detail-ia/ui-design.md);
+the toolbar, the no-match state and empty states follow
+[013's ui-design.md](../013-library-search/ui-design.md); the selection bar
+structure follows
+[library-ui.md §6](../../docs/design-docs/library-ui.md#6-一覧の構成); tag
+display and actions follow [014's ui-design.md](../014-video-tags/ui-design.md).
+The APIs, states and transitions the screens use are fixed in
+[contracts/auth-api.md](contracts/auth-api.md) (first-time setup, login, state,
+cookies) and [contracts/guest-api.md](contracts/guest-api.md) (guest response
+differences, public toggle); this document does not revisit them. Value rules
+are in [data-model.md §6](data-model.md#6-username-and-password-values).
 
-本書は、初回設定画面・ログイン画面・ゲートと、既存の画面がゲスト（未ログイン）と所有者
-（ログイン済み）で**変わるところ**、ログインとログアウトの入口、公開の切り替えだけを定める。
-新しい色・半径・影のトークンは追加しない。`tokens.test.ts` の `pairs` には、初回設定画面と
-ログイン画面の面で使う組を足す（下の「Accessibility」）。
+This document defines only the first-time setup screen, the login screen, the
+gate, **what changes** in existing screens between a guest (not logged in) and
+the owner (logged in), the login and logout entries, and the public toggle. No
+new color, radius or shadow tokens are added. `pairs` in `tokens.test.ts` gains
+the pairs used on the first-time setup and login screen surfaces
+("Accessibility" below).
 
 ## Screen boundary
 
-- **ゲート**（`web/src/auth/`、`App` の最上位）: `GET /api/auth/session` の答えが出るまで何も
-  描かない。答えで次の3つに分かれる。
-  - `setupRequired`: どの URL でも初回設定画面（`/setup`）。URL は `/setup` に置き換える。
-  - `guest`: 同じシェルと画面構成のまま、ゲスト向けに縮退させて描く。所有者だけの画面
-    （`/settings`・`/tags`）は `/login?next=<今の URL>` へ置き換える。`/setup` は `/` へ
-    置き換える（設定済みのサーバーでは初回設定画面を二度と出さない、要件 2）。
-  - `owner`: 今のとおり。`/login` と `/setup` を開いたときは、`GET /api/auth/session?next=…` の
-    `redirectTo`（`/setup` は `/`）へ置き換える。
-- **初回設定画面（`/setup`）とログイン画面（`/login`）**: シェル（上部バー・サイドバー）
-  の外に置く、1枚の中央寄せの画面である（下の「Credential screens」）。
-- **シェル**: サイドバーの下段は所有者では「設定」「ログアウト」、ゲストでは「ログイン」を
-  表示する。上部バーの右端（更新）はゲストでは出さない。
-- **ライブラリ・フォルダ画面（ゲスト）**: 所有者のデータに依る操作を**出さない**。無効表示で
-  並べない（UI品質「情報密度」）。何を出さないかは「Guest degradation」に列挙する。
-- **再生画面（`/videos/:id`）**: 所有者では題名の下の題名とタグのまとまりの直下に、公開の
-  切り替えを足す。ゲストでは再生位置・タグ・「ファイルを開く」「パスをコピー」・読み取りの
-  やり直しを出さない。
-- **選択バー（所有者だけ）**: タグの2つの操作の直後に「公開」のメニューを足す。
-- **カード（所有者だけ）**: 公開の動画に、サムネイル右下の時間の印の中へ公開の印を足す。
+- **Gate** (`web/src/auth/`, the top of `App`): draws nothing until
+  `GET /api/auth/session` answers. The answer splits into three:
+
+| Answer | Screen |
+| --- | --- |
+| `setupRequired` | The first-time setup screen (`/setup`) at every URL; the URL is replaced with `/setup` |
+| `guest` | The same shell and screen structure, degraded for guests. Owner-only screens (`/settings`, `/tags`) are replaced with `/login?next=<current URL>`. `/setup` is replaced with `/` (a configured server never shows the first-time setup screen again, requirement 2) |
+| `owner` | As now. Opening `/login` or `/setup` is replaced with `redirectTo` from `GET /api/auth/session?next=…` (`/` for `/setup`) |
+
+- **First-time setup screen (`/setup`) and login screen (`/login`)**: one
+  centered screen outside the shell (top bar, sidebar) ("Credential screens"
+  below).
+- **Shell**: the bottom of the sidebar shows `設定` and `ログアウト` for the
+  owner and `ログイン` for guests. The top bar's right end (refresh) is hidden
+  for guests.
+- **Library and folder screens (guest)**: controls that depend on the owner's
+  data are **not shown**, rather than listed as disabled (`UI品質`
+  "information density"). "Guest degradation" lists what is hidden.
+- **Video page (`/videos/:id`)**: for the owner, the public toggle is added
+  directly below the title and tag group. Guests do not see playback position,
+  tags, `ファイルを開く`, `パスをコピー`, or re-reading.
+- **Selection bar (owner only)**: a `公開` menu is added right after the two tag
+  actions.
+- **Card (owner only)**: a public video gets a public mark inside the duration
+  badge at the thumbnail's bottom right.
 
 ## Gate
 
-- 答えが出るまでは `bg-bg` のまま何も描かない。骨組みも「読み込み中」の文字も出さない
-  。答えは主キーの
-  引き当て1回で返るので、待たせる表示を要するほど長くならない。
-- 確認が失敗したときは、中央（`EmptyState` と同じ `max-w-lg`・中央寄せ）に lucide `AlertCircle`
-  （`text-danger`）、見出し「サーバーに接続できません」（`text-lg font-semibold`）、理由
-  （`text-sm text-fg-muted`）、`Button` の secondary「再試行」を出す。一覧も再生画面も描かない。
-  自動では再試行しない（Edge Case「失敗した要求を無限に再試行しない」）。
-- 所有者として描いている間に 401 か `X-VV-Audience: guest` を受けたときは、ページを1度だけ
-  読み直す。読み直しの前に「ログアウトされました」の
-  ようなトーストは出さない。読み直し後の画面がゲストの縮退した画面であること自体が
-  結果である。所有者だけの画面にいたときは、読み直し後のゲートが `/login?next=…` へ送る。
+- Until the answer arrives the screen stays `bg-bg` with nothing drawn: no
+  skeleton and no loading text. The answer is one primary key lookup, never long
+  enough to need a waiting indicator.
+- When the check fails, the center (`max-w-lg` and centered, as `EmptyState`)
+  shows lucide `AlertCircle` (`text-danger`), the heading
+  `サーバーに接続できません` (`text-lg font-semibold`), the reason
+  (`text-sm text-fg-muted`) and a secondary `Button` `再試行`. Neither the list
+  nor the video page is drawn. There is no automatic retry (Edge Case
+  `失敗した要求を無限に再試行しない`).
+- While drawing as the owner, receiving 401 or `X-VV-Audience: guest` reloads
+  the page once. No toast such as `ログアウトされました` appears before the
+  reload: the degraded guest screen after the reload is itself the result. On
+  an owner-only screen, the gate after the reload sends the user to
+  `/login?next=…`.
 
 ## Credential screens
 
-初回設定画面（`/setup`）とログイン画面（`/login`）は同じ骨格を使う。
+The first-time setup screen (`/setup`) and the login screen (`/login`) share one
+skeleton.
 
 ### Layout
 
-- 画面全体は `min-h-dvh bg-bg`。中身は横中央、縦は上寄せで、上の余白は `pt-16`（`sm` 以上
-  `pt-24`）、左右は `px-4`。縦中央にしないのは、スマートフォンでソフトキーボードが出たときに
-  見出しと入力が画面の外へ押し出されないためである。
-- 中身は `w-full max-w-sm`（384px）の1つの列で、`bg-surface rounded-lg shadow-card` の面に
-  `p-6`（`sm` 以上 `p-8`）で載せる。360px 幅では面の左右に `px-4` の余白が残り、画面端へ
-  密着しない。1280px でも列は 384px のままで、広い画面で散らばらない。
-- 列の中は上から、識別 → 見出しと補足 → 入力 → 失敗の行 → 主操作 → 接続の警告 →
-  （初回設定だけ）設定済みのときの案内、の順で、要素の間は `gap-5`、入力どうしは `gap-4`。
-  この順は UI品質「視覚的階層」の「識別 → 入力 → 主操作 → 接続の安全性または失敗理由」で
-  ある。
-- 識別は上部バーのロゴと同じ形（`size-2.5 rounded-full bg-accent` の点と「vv」、
-  `text-base font-semibold tracking-tight`）を1行に置く。それ以上の飾り、画像、製品説明は
-  置かない（UI品質「装飾や長い説明が主操作より目立たない」）。
+- The whole screen is `min-h-dvh bg-bg`. Content is centered horizontally and
+  top-aligned, with top padding `pt-16` (`pt-24` from `sm`) and `px-4` on the
+  sides. It is not vertically centered so the heading and inputs are not pushed
+  off screen when a phone's soft keyboard appears.
+- Content is one `w-full max-w-sm` (384px) column on a
+  `bg-surface rounded-lg shadow-card` surface with `p-6` (`p-8` from `sm`). At
+  360px, `px-4` remains on both sides of the surface so it does not touch the
+  screen edges. At 1280px the column stays 384px and does not spread out.
+- From the top the column holds: identity → heading and note → inputs →
+  failure line → primary action → connection warning → (first-time setup only)
+  the already-configured notice, with `gap-5` between elements and `gap-4`
+  between inputs. This is the `UI品質` "visual hierarchy" order "identity →
+  input → primary action → connection safety or failure reason".
+- Identity is one line in the same form as the top bar logo (a
+  `size-2.5 rounded-full bg-accent` dot and `vv`,
+  `text-base font-semibold tracking-tight`). No further decoration, images or
+  product description (`UI品質` "decoration and long explanations do not stand
+  out more than the primary action").
 
 ### Typography
 
-| 要素 | 書式 |
+| Element | Style |
 | --- | --- |
-| 見出し（`h1`） | 初回設定「アカウントを作成」、ログイン「ログイン」。`text-xl font-semibold text-fg` |
-| 補足 | 初回設定だけ「このサーバーを使うアカウントを1つ作ります。あとから変えるにはサーバーのコマンドを使います」。`text-sm leading-6 text-fg-muted` |
-| 入力のラベル | `text-xs font-medium text-fg-muted`、入力の上（`mb-1`）。`label` の `htmlFor` で結ぶ |
-| 入力 | 既存の文字入力（`h-8 … px-2`）と同じ枠と面で、この画面だけ主操作に合わせて一段大きい（`h-9 rounded-sm border border-border bg-field px-3 text-sm text-fg focus:border-accent focus:outline-none`）。`w-full` |
-| 失敗の行 | `text-sm text-danger`、先頭に lucide `AlertCircle`（`size-4`）、`role="alert"` |
-| 主操作 | `Button` の primary・`lg`・`w-full`。初回設定「設定してはじめる」、ログイン「ログイン」 |
-| 接続の警告 | `text-sm leading-6 text-warning`、先頭に lucide `ShieldAlert`（`size-4`、`mt-1`）、左に `border-l-2 border-warning-strong pl-3`（設定画面の「フォルダの変更を確認」の窓と同じ形） |
+| Heading (`h1`) | Setup `アカウントを作成`, login `ログイン`. `text-xl font-semibold text-fg` |
+| Note | Setup only: `このサーバーを使うアカウントを1つ作ります。あとから変えるにはサーバーのコマンドを使います`. `text-sm leading-6 text-fg-muted` |
+| Input label | `text-xs font-medium text-fg-muted`, above the input (`mb-1`). Tied with `htmlFor` on `label` |
+| Input | Same frame and surface as the existing text input (`h-8 … px-2`), one step larger on this screen only to match the primary action (`h-9 rounded-sm border border-border bg-field px-3 text-sm text-fg focus:border-accent focus:outline-none`). `w-full` |
+| Failure line | `text-sm text-danger`, leading lucide `AlertCircle` (`size-4`), `role="alert"` |
+| Primary action | Primary `Button`, `lg`, `w-full`. Setup `設定してはじめる`, login `ログイン` |
+| Connection warning | `text-sm leading-6 text-warning`, leading lucide `ShieldAlert` (`size-4`, `mt-1`), `border-l-2 border-warning-strong pl-3` on the left (the same form as the settings page's `フォルダの変更を確認` dialog) |
 
-警告と失敗は、色に加えてアイコンと文で区別する（UI品質「タイポグラフィ」）。
+Warnings and failures differ by icon and wording as well as color (`UI品質`
+"typography").
 
 ### Fields
 
-| 画面 | 入力 | `name` / `autocomplete` | 型 |
+| Screen | Input | `name` / `autocomplete` | Type |
 | --- | --- | --- | --- |
-| 両方 | ユーザー名 | `username` / `username` | `text`、`autocapitalize="none"`、`autocorrect="off"`、`spellcheck={false}` |
-| ログイン | パスワード | `password` / `current-password` | `password` |
-| 初回設定 | パスワード | `new-password` / `new-password` | `password` |
-| 初回設定 | パスワード（確認） | `confirm-password` / `new-password` | `password` |
+| Both | Username | `username` / `username` | `text`, `autocapitalize="none"`, `autocorrect="off"`, `spellcheck={false}` |
+| Login | Password | `password` / `current-password` | `password` |
+| Setup | Password | `new-password` / `new-password` | `password` |
+| Setup | Password (confirm) | `confirm-password` / `new-password` | `password` |
 
-- 入力は `form` の中に置き、`method="post"` を付けない（送信は `web/src/api/auth.ts` が
-  行い、既定の送信は `preventDefault` する）。`form` にするのは、Enter で送信でき、
-  パスワードマネージャーがユーザー名とパスワードを一組の資格情報として認識するため
-  である（受け入れ条件 18）。
-- 初期フォーカスはユーザー名。Tab 順は DOM 順（ユーザー名 → パスワード →（確認）→
-  主操作）。パスワードの表示切り替えの目のボタンは置かない。置くと Tab 順に1つ挟まり、
-  値の規則に強度が無いので入力ミスの費用も小さい。
-- `required` は付けない。ブラウザの検証の吹き出しは見た目が揃わず、空欄を伝える文言も
-  この画面の失敗の行で統一する。
+- The inputs are inside a `form` without `method="post"` (`web/src/api/auth.ts`
+  submits, and the default submit is `preventDefault`ed). A `form` lets Enter
+  submit and lets password managers recognize the username and password as one
+  credential pair (acceptance criterion 18).
+- Initial focus is the username. Tab order is DOM order (username → password →
+  (confirm) → primary action). There is no eye button to show the password: it
+  would add a Tab stop, and with no strength rule the cost of a typo is small.
+- No `required`. The browser's validation bubbles do not match the visual
+  style, and empty fields are reported through this screen's failure line like
+  everything else.
 
 ### Login behaviour
 
-- 送信中は主操作を `disabled` にし、文言の先頭に `LoaderCircle`（`animate-spin`）を出す。
-  入力は編集できるままにする（自動入力を邪魔しない）。二重送信は `disabled` と、送信中
-  フラグで Enter を無視することで防ぐ（Edge Case「二重送信」）。
-- 成功したら、応答の `redirectTo` へ**ページごと**移る（`window.location.assign`）。SPA の
-  遷移にしないのは、ゲストとして読んだ控え（`listSnapshot` など）を捨てるためである
-  。
-- 401 `invalid_credentials`（空欄を含むすべての失敗）は、失敗の行に「ユーザー名または
-  パスワードが違います」を出し、パスワードの入力だけを空にしてそこへフォーカスを移す。
-  ユーザー名は残す（UI品質「操作の優先順位」）。どの欄が違うかは示さない（要件 12）。
-- 429 `login_throttled` は、失敗の行に「試行が多すぎます。N 秒後にやり直してください」
-  （N は `Retry-After`）を出す。数を減らして数え直す表示は持たず、文言は固定で、N 秒の
-  間は主操作を `disabled` にする。パスワードは空にしない。
-- 403（同一オリジンでない）と 400 と 5xx は「ログインできませんでした。もう一度お試し
-  ください」。ネットワークの失敗は「サーバーに接続できません」。どれも同じ失敗の行に出す。
-- 空欄のまま送信したときも送る。画面で先に指摘しない（Edge Case「空のまま送信」。指摘して
-  よいが、どちらの欄かを言えないので、指摘の文言が失敗と同じになる）。
+- While submitting, the primary action is `disabled` with a leading
+  `LoaderCircle` (`animate-spin`). Inputs stay editable (so autofill is not
+  disturbed). Double submits are prevented by `disabled` and by ignoring Enter
+  while a submitting flag is set (Edge Case `二重送信`).
+- On success the **whole page** navigates to the response's `redirectTo`
+  (`window.location.assign`). It is not an SPA transition so that snapshots
+  read as a guest (`listSnapshot` and others) are discarded.
+
+| Response | Failure line and behaviour |
+| --- | --- |
+| 401 `invalid_credentials` (every failure, including empty fields) | `ユーザー名またはパスワードが違います`. Only the password input is cleared and focused; the username stays (`UI品質` "action priority"). It does not say which field is wrong (requirement 12) |
+| 429 `login_throttled` | `試行が多すぎます。N 秒後にやり直してください` (N is `Retry-After`). No countdown; the wording is fixed and the primary action is `disabled` for N seconds. The password is not cleared |
+| 403 (not same-origin), 400, 5xx | `ログインできませんでした。もう一度お試しください` |
+| Network failure | `サーバーに接続できません` |
+
+- Submitting with empty fields still sends the request; the screen does not
+  flag it first (Edge Case `空のまま送信`. Flagging is allowed, but since it
+  cannot say which field, the wording would be the same as the failure).
 
 ### Setup behaviour
 
-- 確認のパスワードが一致しないとき、ユーザー名かパスワードが空のとき、ユーザー名が
-  [data-model.md §6](data-model.md#6-ユーザー名とパスワードの値) を外れるときは送らず、
-  失敗の行に理由を出してその欄へフォーカスを移す。文言は「ユーザー名を入力してください」
-  「パスワードを入力してください」「確認用のパスワードが一致しません」「ユーザー名は 128 文字
-  まで、前後の空白と制御文字なしにしてください」。初回設定ではまだ隠す値が無いので、欄を
-  名指ししてよい（[auth-api.md §2](contracts/auth-api.md#2-post-apiauthsetup)）。
-- 一致しないときは確認の入力だけを空にする。
-- 成功したら `redirectTo`（`/`）へページごと移る。所有者の一覧が出る（受け入れ条件 1）。
-- 409 `account_already_configured` は、失敗の行に「アカウントは既に設定されています」を出し、
-  入力を3つとも空にし、主操作を `disabled` にし、列の末尾に `text-sm` の「ログインへ」
-  （`text-link underline underline-offset-4`）を出す。フォーカスはこのリンクへ移す。
-  同時の初回設定で負けた側が、次に何をするかで迷わないためである（Edge Case「2つの端末が
-  同時に」）。このリンクは `Link` ではなく素の `a href="/login"` にし、**ページごと**移る。
-  この画面のゲートは `setupRequired` を覚えたままなので、SPA の遷移では `/login` がまた
-  `/setup` に置き換えられる。ページごと読み直すと、ゲートが `GET /api/auth/session` を
-  やり直して `guest` を受け、ログイン画面を出す。
-- 400 `invalid_request` は `message` をそのまま失敗の行に出す。
+- When the confirmation password does not match, the username or password is
+  empty, or the username breaks
+  [data-model.md §6](data-model.md#6-username-and-password-values), nothing is
+  sent; the failure line gives the reason and focus moves to that field. The
+  wording is `ユーザー名を入力してください`, `パスワードを入力してください`,
+  `確認用のパスワードが一致しません`, or
+  `ユーザー名は 128 文字まで、前後の空白と制御文字なしにしてください`. During
+  first-time setup there is nothing to hide yet, so naming the field is allowed
+  ([auth-api.md §2](contracts/auth-api.md#2-post-apiauthsetup)).
+- On mismatch only the confirmation input is cleared.
+- On success the whole page navigates to `redirectTo` (`/`), showing the
+  owner's list (acceptance criterion 1).
+- 409 `account_already_configured` shows `アカウントは既に設定されています` in
+  the failure line, clears all three inputs, makes the primary action
+  `disabled`, and shows `ログインへ` in `text-sm`
+  (`text-link underline underline-offset-4`) at the end of the column. Focus
+  moves to this link, so the side that lost a concurrent first-time setup knows
+  what to do next (Edge Case `2つの端末が同時に`). The link is a plain
+  `a href="/login"`, not `Link`, and navigates the **whole page**: this
+  screen's gate still remembers `setupRequired`, so an SPA transition would
+  replace `/login` with `/setup` again. A full reload makes the gate call
+  `GET /api/auth/session` again, receive `guest`, and show the login screen.
+- 400 `invalid_request` shows `message` as is in the failure line.
 
 ### Connection warning
 
-- ページの `location.protocol` が `https:` でないとき、初回設定画面とログイン画面の両方で、
-  主操作の直下に警告を**常に**出す（要件 14）。文言は「この接続は暗号化されていません。
-  ユーザー名、パスワード、ログイン状態は通信路で読み取られるおそれがあります。ログインは
-  通信の盗聴を防ぎません」。閉じる操作は置かない。
-- HTTPS では、この行そのものを出さない。「安全な接続です」のような肯定の文も出さない
-  （UI品質「HTTP 接続を安全だと誤認させる表現は認めない」）。
-- ユーザー名の入力と主操作の `aria-describedby` で警告の要素を指し、キーボードで最初の
-  入力に着いた時点と、送信の直前に読まれるようにする。`form` 自身に付けない（`form` の
-  説明は、その中の入力にフォーカスが移っても読まれない）。DOM で主操作より下にあっても、
-  支援技術には先に伝わる。
+- When the page's `location.protocol` is not `https:`, both the first-time
+  setup and login screens **always** show a warning directly below the primary
+  action (requirement 14). The wording is
+  `この接続は暗号化されていません。ユーザー名、パスワード、ログイン状態は通信路で読み取られるおそれがあります。ログインは通信の盗聴を防ぎません`.
+  It cannot be dismissed.
+- Over HTTPS the line is absent. No reassuring text such as
+  `安全な接続です` appears either (`UI品質` "wording that makes an HTTP
+  connection look safe is not allowed").
+- The username input and the primary action point at the warning with
+  `aria-describedby`, so it is read when the keyboard first reaches the first
+  input and just before submitting. It is not on the `form` itself (a `form`'s
+  description is not read when focus moves to an input inside it). Although it
+  sits below the primary action in the DOM, assistive technology hears it
+  first.
 
 ## Shell entries
 
 ### Sidebar
 
-- 下段（`aria-label="設定"` の `nav`）を「アカウントと設定」に改め、次を置く。
+- The bottom group (`nav` with `aria-label="設定"`) becomes
+  `アカウントと設定` and holds:
 
-  | 見る人 | 下段の並び（上から） |
+  | Audience | Bottom group (top to bottom) |
   | --- | --- |
-  | 所有者 | 「設定」（今のまま）→「ログアウト」（lucide `LogOut`） |
-  | ゲスト | 「ログイン」（lucide `LogIn`） |
+  | Owner | `設定` (unchanged) → `ログアウト` (lucide `LogOut`) |
+  | Guest | `ログイン` (lucide `LogIn`) |
 
-- 「ログアウト」は `NavLink` ではなく `button` で、押すと `POST /api/auth/logout` を送り、
-  `204` で**今の URL** へページごと移る。読み直した画面はゲストの縮退した
-  画面になり（要件 8）、所有者だけの画面にいたときはゲートが `/login?next=…` へ送る。
-  確認の窓は出さない。
-  戻すにはログインし直せばよく、失う入力も無い。送信中はその項目を `disabled` にし、
-  文言を「ログアウト中…」にする。失敗したときはトースト「ログアウトできませんでした」を
-  出し、項目を戻す。
-- 「ログイン」は `NavLink` で、`/login?next=<今の URL>` へ移る（サーバーが `next` を確かめて
-  `redirectTo` にする）。
-- 再生画面（`/videos/:id`）はシェルの外のシアターモードで（012 の ui-design.md）、ログインと
-  ログアウトの入口を置かない。ログインとログアウトはシェルのサイドバーから行う。共有された URL から直接来たゲストも、× か Esc で一覧
-  （`state.from` が無ければ `/`）へ戻り、サイドバーの「ログイン」を使う。
-- 見た目は既存の項目（`Entry`）と同じ。展開・レール・ドロワーの3態で同じ扱いにし、
-  レールでは他の項目と同じくアイコンと `text-[10px]` の名前を縦に置く。
-- ゲストでは上段の「タグ」を出さない（「Guest degradation」）。
-  上段は「ライブラリ」「フォルダ」の2つになる。
+- `ログアウト` is a `button`, not a `NavLink`. It sends
+  `POST /api/auth/logout` and on `204` navigates the whole page to the
+  **current URL**. The reloaded screen is the degraded guest screen
+  (requirement 8), and on an owner-only screen the gate sends the user to
+  `/login?next=…`. There is no confirmation dialog: logging in again undoes it,
+  and no input is lost. While sending, the item is `disabled` with the wording
+  `ログアウト中…`. On failure a toast says `ログアウトできませんでした` and the
+  item reverts.
+- `ログイン` is a `NavLink` to `/login?next=<current URL>` (the server validates
+  `next` into `redirectTo`).
+- The video page (`/videos/:id`) is theater mode outside the shell (012's
+  ui-design.md) and has no login or logout entry; both go through the shell
+  sidebar. A guest arriving directly from a shared URL returns to the list
+  with × or Esc (`/` when there is no `state.from`) and uses `ログイン` in the
+  sidebar.
+- The look matches existing items (`Entry`). The expanded, rail and drawer
+  states treat it the same; in the rail it has the icon and a `text-[10px]`
+  name stacked vertically like the other items.
+- Guests do not see `タグ` in the top group ("Guest degradation"), so the top
+  group has two items, `ライブラリ` and `フォルダ`.
 
 ### Top bar
 
-- ゲストでは右端の更新（`ScanButton`）と取り込みの進捗（`ScanProgressIndicator`・
-  `ScanNoticeProvider` の通知）を出さない。`ScanProvider` はゲストでは `GET /api/scans/current` を
-  呼ばず、`/api/events` はゲストではどこからも開かない。`subscribeServerEvents` を使う
-  `ScanProvider`・`useVideos`・`useVideoDetail` の3つとも、ゲストでは購読しない
-  （`streamEvents` は「所有者だけ」で、`EventSource` は 401 でも自動で再接続するため。
-  運ぶ知らせ（取り込み・再生位置・タグ）はどれも所有者のものである）。
-- 中央の道具（`#topbar-library-tools`）の左端と高さは変えない。右端の入れ物が無くなった分、
-  道具の入れ物（`flex-1`）は右へ広がり、中の道具はその中で中央に寄る。所有者の画面と
-  比べて道具が更新のボタンの半分の幅だけ右へ動くが、左端の ☰ とロゴは動かない。
-  空の場所埋めは置かない（UI品質「余白のリズム」の「不自然な空白」は、詰まる方向なので
-  起きない）。
+- Guests do not see the refresh at the right end (`ScanButton`) or import
+  progress (`ScanProgressIndicator` and `ScanNoticeProvider` notifications).
+  For guests `ScanProvider` does not call `GET /api/scans/current`, and nothing
+  opens `/api/events`. None of the three users of `subscribeServerEvents`
+  (`ScanProvider`, `useVideos`, `useVideoDetail`) subscribes for guests:
+  `streamEvents` is "Owner only", `EventSource` reconnects automatically even on
+  401, and every notice it carries (import, playback position, tags) belongs to
+  the owner.
+- The left edge and height of the central tools (`#topbar-library-tools`) do
+  not change. Without the right-end container, the tools container (`flex-1`)
+  extends to the right and the tools stay centered in it. Compared with the
+  owner's screen the tools shift right by half the refresh button's width, but
+  ☰ and the logo at the left do not move. No filler is added (`UI品質`
+  "spacing rhythm"'s "unnatural blank space" does not occur, since the space
+  tightens rather than widens).
 
 ## Guest degradation
 
-ゲストとして描くとき、次を**出さない**。`disabled` にも `aria-disabled` にもしない
-（UI品質「情報密度」、library-ui.md §7 と同じ理由で「いまは使えない」の印を避ける）。
+When drawing as a guest, the following are **not shown**. They are neither
+`disabled` nor `aria-disabled` (`UI品質` "information density"; the
+"unavailable right now" mark is avoided for the same reason as library-ui.md
+§7).
 
-| 場所 | 出さないもの | 代わりに |
+| Place | Hidden | Instead |
 | --- | --- | --- |
-| ツールバー（ライブラリ・フォルダ） | 絞り込みの「視聴状態」の `fieldset` | 絞り込みのポップオーバーは「再生できるものだけ」と「条件を解除」だけになる。ボタンの数は再生可否だけを数える |
-| ツールバー | 並べ替えの「最近再生した順」 | 6種になる。URL に `sort=playedDesc`・`sort=playedAsc`、`watch`、`tag` が残っていたときは、既定に丸めてから要求し、URL も直す（[guest-api.md §3](contracts/guest-api.md#3-ゲストが使えない条件)）。URL に `sort` が無く、端末に保存した並び順（`readViewPreferences` の `sort`）が `playedAsc`・`playedDesc` のときも、`parseListCriteria` が返した並び順を検査して既定の `addedDesc` に丸めてから要求する。保存値そのものは書き換えない（同じ端末で所有者がログインし直したときに戻る） |
-| ライブラリのカード | 選択のチェック（hover でも、`hover:none` でも）、タグの行、再生進捗の帯 | タグの行は `tags` が空なので今の規則で出ない。カードの高さは題名の行までで、行の空白は残さない（今の「タグの無い動画」と同じ） |
-| ライブラリの本文 | 絞り込み中のタグの行、選択バー | — |
-| ライブラリのリスト表示の行 | 選択のチェック、再生済みと進捗 | — |
-| 空の状態 | 「取り込む」「設定を開く」 | 見出し「公開されている動画はありません」、補足「ログインすると、すべての動画を見られます」、`Button` の secondary「ログイン」（`/login?next=` 今の URL）。フォルダ画面の最上位も同じ文言 |
-| フォルダ画面の最上位 | 登録フォルダのカードのパスの行（`showPath`）、読み上げ名のパス | 表示名は `FolderSummary.name` から。パンくずの `title` も `name` から作り、絶対パスを組み立てない（[guest-api.md §1](contracts/guest-api.md#1-ゲストに見せる範囲)） |
-| フォルダ画面の検索結果のカード | 置き場所の `title` の絶対パス | `title` も表示と同じ相対の置き場所にする |
-| 再生画面 | タグの並び（入力を含む）、情報の行の「ファイルを開く」「パスをコピー」、読み取り失敗の「もう一度読み取る」「ファイルを開く」と `probeError` の枠 | 題名の下はファイルの情報と技術情報の 2 行だけになる（[012 の ui-design「Video facts」](../012-video-detail-ia/ui-design.md#video-facts)）。応答に `location` が無いので、情報の行の操作は出ない。見出しの帯のパンくずは `folder` から作るので出る。再生は先頭から始める（`progress` が無い） |
-| 再生画面 | 再生位置の保存（`saveProgress`・`beaconProgress`） | 送らない。再生終了の層は今のまま |
-| サイドバー | 「タグ」「設定」 | 「ログイン」（上の「Sidebar」） |
-| 上部バー | 更新、取り込みの進捗と通知 | — |
+| Toolbar (library, folders) | The filter's watch state `fieldset` | The filter popover holds only `再生できるものだけ` and `条件を解除`. The button's number counts only playability |
+| Toolbar | The sort option `最近再生した順` | Six sort options remain. When `sort=playedDesc`, `sort=playedAsc`, `watch` or `tag` remains in the URL, they are rounded to the defaults before requesting, and the URL is corrected ([guest-api.md §3](contracts/guest-api.md#3-conditions-guests-cannot-use)). When the URL has no `sort` and the sort saved on the device (`sort` of `readViewPreferences`) is `playedAsc` or `playedDesc`, the sort returned by `parseListCriteria` is checked and rounded to the default `addedDesc` before requesting. The saved value itself is not rewritten (it returns when the owner logs in again on the same device) |
+| Library cards | The selection checkbox (on hover and with `hover:none`), the tag row, the playback progress bar | The tag row is absent under the current rule because `tags` is empty. The card ends at the title line with no blank row (as a video without tags today) |
+| Library body | The active tag filter row, the selection bar | — |
+| Library list view rows | The selection checkbox, watched and progress | — |
+| Empty state | `取り込む`, `設定を開く` | Heading `公開されている動画はありません`, note `ログインすると、すべての動画を見られます`, secondary `Button` `ログイン` (`/login?next=` the current URL). The top level of the folder screen uses the same wording |
+| Top level of the folder screen | The path line on registered folder cards (`showPath`), the path in accessible names | The display name comes from `FolderSummary.name`. The breadcrumb `title` is also built from `name`, never assembling an absolute path ([guest-api.md §1](contracts/guest-api.md#1-what-guests-see)) |
+| Folder screen search result cards | The absolute path in the location's `title` | `title` is the same relative location as the display |
+| Video page | The tag list (including the input), `ファイルを開く` and `パスをコピー` in the facts line, the read failure's `もう一度読み取る` and `ファイルを開く`, and the `probeError` box | Below the title there are only the two lines of file facts and technical details ([012's ui-design "Video facts"](../012-video-detail-ia/ui-design.md#video-facts)). The response has no `location`, so the facts line has no actions. The breadcrumb in the header band is built from `folder`, so it appears. Playback starts at the beginning (no `progress`) |
+| Video page | Saving playback position (`saveProgress`, `beaconProgress`) | Not sent. The end-of-playback layer stays as now |
+| Sidebar | `タグ`, `設定` | `ログイン` ("Sidebar" above) |
+| Top bar | Refresh, import progress and notifications | — |
 
-- ゲストの再生画面で公開でなくなった動画（`404`）は、今の「動画が消えた」の層
-  （`MissingVideo`）をそのまま使う。「非公開になりました」とは言わない（要件 11）。
-- 所有者の再生中にセッションが失効したとき（Edge Case「再生中にセッションが失効」）は、
-  `video` 要素の読み込みの失敗には 401 も `X-VV-Audience` も付かないので、再生画面は
-  動画かライブ変換の読み込みが失敗した時点で `GET /api/auth/session` を確かめ、見る人が
-  変わっていれば、失敗の層を出さずにページを1度だけ読み直す。読み直した画面はゲストとして描き、公開の動画なら先頭から
-  再生でき、公開でなければ `MissingVideo` になる。見る人が変わっていなければ、今の
-  再生失敗の層（`PlaybackFailure`）のままである。
-- ゲストの一覧で所有者だけの応答（401）は起きないが、起きたときのゲートの扱いは
-  「Gate」のとおりである。
+- On a guest's video page, a video that is no longer public (`404`) uses the
+  existing "video disappeared" layer (`MissingVideo`) as is. It does not say
+  `非公開になりました` (requirement 11).
+- When the owner's session expires during playback (Edge Case
+  `再生中にセッションが失効`), a failed `video` element load carries neither
+  401 nor `X-VV-Audience`. The video page therefore checks
+  `GET /api/auth/session` when loading the video or live transcode fails; when
+  the audience has changed, it reloads the page once without showing the
+  failure layer. The reloaded screen draws as a guest: a public video plays from
+  the beginning, and a non-public one becomes `MissingVideo`. When the audience
+  has not changed, the current playback failure layer (`PlaybackFailure`)
+  stays.
+- An owner-only response (401) does not happen in a guest's list; if it did,
+  the gate handles it as in "Gate".
 
 ## Visibility toggle
 
 ### Video page
 
-- 題名とタグのまとまりの直下、ファイルの情報の上に、公開の切り替えを1行で置く。左寄せで、
-  `h-8`。まとまりとの間は `gap-2`（題名とタグの間と同じ）、ファイルの情報との間は `gap-5`
-  （012 の左列の段階）。題名 → タグ → 公開の順で、公開はタグより弱く見える。
-- 部品は `button` の `role="switch"`・`aria-checked`。中は、アイコン + 状態の文言で、
-  次のとおり。
+- One left-aligned `h-8` line directly below the title and tag group, above the
+  file facts. The gap to the group is `gap-2` (as between title and tags), and
+  to the file facts `gap-5` (012's left column step). The order is title →
+  tags → public, with public looking weaker than tags.
+- The component is a `button` with `role="switch"` and `aria-checked`. It holds
+  an icon and a state wording:
 
-  | 状態 | アイコン | 文言 | 面 |
+  | State | Icon | Wording | Surface |
   | --- | --- | --- | --- |
-  | 非公開 | lucide `Lock`（`size-4`） | 「非公開」 | `bg-elevated text-fg`（`Button` の secondary・`sm`） |
-  | 公開 | lucide `Globe`（`size-4`） | 「公開中」 | `bg-accent-soft text-link`（絞り込み中のタグと同じ） |
+  | Private | lucide `Lock` (`size-4`) | `非公開` | `bg-elevated text-fg` (secondary `Button`, `sm`) |
+  | Public | lucide `Globe` (`size-4`) | `公開中` | `bg-accent-soft text-link` (as an active tag filter) |
 
-  読み上げ名は「ログインしていない人に公開する」で、状態は `aria-checked` で伝わる。
-  色だけでなく、アイコンと文言が変わる（UI品質「色だけに頼らず判別できる」）。
-- 押すと `PUT /api/video-visibility`（`videoIds: [id]`）を送る。送信中は `disabled` にし、
-  アイコンを `LoaderCircle`（`animate-spin`）にする。応答を受けてから状態を変える。
-  トーストは出さない。部品自身の文言が変わるので、それが結果である。
-- 失敗したときは、行の右（`sm` 未満は下）に `text-sm text-danger` の「変更できませんでした」
-  （`role="alert"`、`AlertCircle`）を出す。次に押したとき、または別の動画へ移ったときに消える。
-- 別のタブで変わった状態は、この画面では追わない（動画の取り直しで反映される）。
+  The accessible name is `ログインしていない人に公開する`, and the state is
+  conveyed by `aria-checked`. The icon and wording change, not only the color
+  (`UI品質` "distinguishable without relying on color alone").
+- Pressing sends `PUT /api/video-visibility` (`videoIds: [id]`). While sending
+  it is `disabled` and the icon becomes `LoaderCircle` (`animate-spin`). The
+  state changes after the response. No toast: the component's own wording
+  changes, and that is the result.
+- On failure, `変更できませんでした` (`role="alert"`, `AlertCircle`) appears in
+  `text-sm text-danger` to the right of the line (below it under `sm`). It
+  clears on the next press or when moving to another video.
+- Changes made in another tab are not tracked on this screen (refetching the
+  video reflects them).
 
 ### Selection bar
 
-- 「タグを付ける」「タグを外す」の直後、縦線の前に「公開」（lucide `Globe` + 文言 +
-  `ChevronDown`、`Button` の ghost・`sm`）を置く。押すと `ui/Menu` を上に開き（今の `MenuContent` は
-  `align` しか受け取らないので、014 の `PopoverContent` と同じく `side` を渡せるようにする）、項目は
-  「公開にする」（`Globe`）と「非公開にする」（`Lock`）の2つである。2つのボタンに
-  しないのは、`sm` 以上の1行がタグの2つと合わせて4つの文言のボタンになり、「すべて選択」
-  との区切りより先に目に入るまとまりが長くなりすぎるためである。
-- 選んだ動画の今の状態は示さない。一覧に載っている選択は `Video.public` で分かるが、
-  「すべて選択」で読んでいないページを含めると分からず、2通りの表示になるからである。
-  両方の項目は常に押せ、既に同じ状態の動画は誤りにならない
-  （[guest-api.md §4](contracts/guest-api.md#4-公開フラグの切り替え)）。
-- 確定すると `PUT /api/video-visibility` を送り、トースト「N 件を公開にしました」
-  「N 件を非公開にしました」（N は `applied`）を出す。選択は残す。一覧のカードの印
-  （下の「Card」）は応答を受けてから変える。
-- 失敗したときはトースト「変更できませんでした」を出し、選択を残す。メニューはもう
-  閉じているので、ポップオーバーの中の1行（タグの形）は使わない。
-- 選択が上限（タグと同じ 20,000 件）を超えるときは、タグの操作と同じく「公開」を `disabled`
-  にし、同じ理由を添える（library-ui.md §6）。
+- Right after `タグを付ける` and `タグを外す`, before the vertical rule, sits
+  `公開` (lucide `Globe` + wording + `ChevronDown`, ghost `Button`, `sm`).
+  Pressing opens a `ui/Menu` upward (the current `MenuContent` takes only
+  `align`, so it gains a `side` prop, as 014's `PopoverContent`) with two items:
+  `公開にする` (`Globe`) and `非公開にする` (`Lock`). Two buttons are rejected:
+  from `sm` up, the single line would hold four worded buttons together with the
+  two tag actions, and that group would grow too long and catch the eye before
+  the divider from `すべて選択`.
+- The current state of the selected videos is not shown. For a selection on the
+  loaded list `Video.public` tells it, but with Select all including unloaded
+  pages it cannot be known, which would mean two kinds of display. Both items
+  are always enabled, and a video already in the state is not an error
+  ([guest-api.md §4](contracts/guest-api.md#4-switching-the-public-flag)).
+- On commit it sends `PUT /api/video-visibility` and shows the toast
+  `N 件を公開にしました` or `N 件を非公開にしました` (N is `applied`). The
+  selection remains. The card marks in the list ("Card" below) change after the
+  response.
+- On failure a toast says `変更できませんでした` and the selection remains. The
+  menu has already closed, so the one-line message inside a popover (the tag
+  form) is not used.
+- When the selection exceeds the limit (20,000, the same as tags), `公開` is
+  `disabled` with the same reason as the tag actions (library-ui.md §6).
 
 ### Card
 
-- 所有者のカードで、公開の動画にはサムネイル右下の印（「720P 59:11」の面）の先頭に
-  lucide `Globe`（`size-3`、`text-fg`）を置き、`sr-only` で「公開」を添える。印が無い
-  （画質も時間も無い）動画では、同じ面に `Globe` だけを出す。
-- リスト表示の行では、時間の列の直前に同じアイコンを置く。
-- ゲストではこの印を出さない。ゲストに見えるのはすべて公開の動画で、印に意味が無い。
-- カードの一次情報（サムネイル・題名・時間・進捗）に公開を加えない。印は時間と同じ面の
-  中の1つのアイコンで、題名やサムネイルより先に目に入らない。
+- On the owner's cards, a public video gets lucide `Globe` (`size-3`,
+  `text-fg`) at the start of the badge at the thumbnail's bottom right (the
+  `720P 59:11` surface), with `公開` in `sr-only`. A video without a badge (no
+  quality or duration) shows only `Globe` on the same surface.
+- In list view rows, the same icon sits just before the duration column.
+- Guests do not see this mark: everything they see is public, so it means
+  nothing.
+- Public is not added to the card's primary information (thumbnail, title,
+  duration, progress). The mark is one icon on the duration's surface and does
+  not catch the eye before the title or thumbnail.
 
 ## Interaction states
 
-- 初回設定・ログインの主操作: 通常（`bg-accent`）→ hover（`bg-accent-hover`）→
-  `disabled`（送信中・429 の間・409 の後、`opacity-50`）。フォーカスは既定の外側輪郭。
-- 入力: `focus:border-accent`。失敗の後も枠の色を変えない（`aria-invalid` は付けない）。
-  どの欄が違うかを示さないので、両方の枠を赤くする意味が無い。初回設定の画面の検証だけは、
-  名指しした欄に `aria-invalid="true"` を付け、`aria-describedby` で失敗の行を指す。
-- 公開の切り替え（`role="switch"`）: 通常 → hover（secondary の `hover:bg-hover-wash`、
-  公開中は `hover:bg-accent-soft` のまま文字を `text-fg`）→ `disabled`（送信中）。
-- ログアウトの項目: 既存の `Entry` の状態と同じ。`disabled` は送信中だけ。
+| Control | States |
+| --- | --- |
+| Setup and login primary action | Normal (`bg-accent`) → hover (`bg-accent-hover`) → `disabled` (while sending, during 429, after 409; `opacity-50`). Focus is the default outer outline |
+| Input | `focus:border-accent`. The border color does not change after a failure (no `aria-invalid`): the screen does not say which field is wrong, so turning both borders red means nothing. Only first-time setup validation sets `aria-invalid="true"` on the named field and points `aria-describedby` at the failure line |
+| Public toggle (`role="switch"`) | Normal → hover (secondary `hover:bg-hover-wash`; while public, stays `hover:bg-accent-soft` with text `text-fg`) → `disabled` (while sending) |
+| Logout item | The existing `Entry` states. `disabled` only while sending |
 
 ## Accessibility
 
-- 入力はそれぞれ `label` と結び、`autocomplete` は上の表のとおり（UI品質）。
-- 失敗の行と設定済みの案内は `role="alert"` で、出た時点で読まれる。429 の文言も同じ。
-  接続の警告は `role` を付けず、ユーザー名の入力と主操作の `aria-describedby` で結ぶ
-  （「Connection warning」）。
-- ページごと移る遷移の後は、移った先の画面の `h1`（一覧は `sr-only` の「ライブラリ」）が
-  今の規則でフォーカスを受ける。ログインの成功を別に読み上げない。
-- `tokens.test.ts` の `pairs` に次を足す。初回設定画面とログイン画面の面が `bg-surface` で、
-  今は `fg`・`fg-muted` しか検査されていないためである。
-  - `["danger", "surface", 4.5]`（失敗の行）
-  - `["warning", "surface", 4.5]`（接続の警告）
-  - `["link", "surface", 4.5]`（「ログインへ」）
-- フォーカスの輪郭は消さない。360px でも横スクロールと要素の重なりを起こさない。
-- 公開の切り替えは `role="switch"` の `aria-checked` で状態が伝わり、選択バーのメニューの
-  項目は文言で区別できる。
+- Each input is tied to a `label`, with `autocomplete` as in the table above
+  (`UI品質`).
+- The failure line and the already-configured notice are `role="alert"` and are
+  read when they appear; so is the 429 wording. The connection warning has no
+  `role` and is tied through `aria-describedby` on the username input and the
+  primary action ("Connection warning").
+- After a whole-page navigation, the destination screen's `h1` (for the list,
+  the `sr-only` `ライブラリ`) receives focus under the current rules. Login
+  success is not announced separately.
+- `pairs` in `tokens.test.ts` gains the following, because the setup and login
+  screen surface is `bg-surface` and only `fg` and `fg-muted` are checked on it
+  today:
+  - `["danger", "surface", 4.5]` (failure line)
+  - `["warning", "surface", 4.5]` (connection warning)
+  - `["link", "surface", 4.5]` (`ログインへ`)
+- Focus outlines are never removed. At 360px there is no horizontal scrolling
+  and no overlapping elements.
+- The public toggle conveys its state through `aria-checked` on
+  `role="switch"`, and the selection bar menu items differ by wording.

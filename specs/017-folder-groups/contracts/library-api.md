@@ -1,29 +1,39 @@
-# Contract: ライブラリの一覧（動画とグループの項目）
+# Contract: Library list (video and group entries)
 
-正本は `api/openapi.yaml` で、この文書は足す経路とスキーマだけを書く。誤りの形・パラメータの検査・
-カーソルの不透明さは [013 の list-api.md](../../013-library-search/contracts/list-api.md) と
-[014 の tags-api.md §5](../../014-video-tags/contracts/tags-api.md) に従う。問い合わせの中身は
-[data-model.md §5](../data-model.md#5-ライブラリの項目)。
+Source of truth: `api/openapi.yaml`. This document covers only the routes and
+schemas it adds. The error shape, parameter validation and cursor opacity
+follow [013's list-api.md](../../013-library-search/contracts/list-api.md) and
+[014's tags-api.md §5](../../014-video-tags/contracts/tags-api.md). The query
+itself is in [data-model.md §5](../data-model.md#5-library-items).
 
-経路ごとの「だれが使えるか」（`security`）は `GET /api/videos` と同じ扱いに合わせる。`GET /api/library` と
-グループ1件は所有者とゲスト（`security` に `{}` を含める）、`GET /api/library/ids` は所有者だけ（今の
-`listVideoIds` と同じ）。ゲストへの応答の差は [data-model.md §7](../data-model.md#7-見る人ごとの見え方) と
-[016 guest-api.md](../../016-single-account-auth/contracts/guest-api.md) に従う（`watch`・played の並び・`tag` は 400）。
+Who may use each route (`security`) matches `GET /api/videos`:
 
-`GET /api/videos` は1本ずつの一覧のまま変えない（フォルダ画面のルートの検索結果が使う）。
-`GET /api/videos/ids` は、ライブラリを `GET /api/library/ids` に切り替える単位で消す。
+| Route | Who |
+| --- | --- |
+| `GET /api/library`, one group | Owner and guests (`security` includes `{}`) |
+| `GET /api/library/ids` | Owner only (as the current `listVideoIds`) |
+
+Differences in guest responses follow
+[data-model.md §7](../data-model.md#7-visibility-per-audience) and
+[016 guest-api.md](../../016-single-account-auth/contracts/guest-api.md)
+(`watch`, played sort orders and `tag` are 400).
+
+`GET /api/videos` stays a list of single videos (used by search results at the
+folder screen root). `GET /api/videos/ids` is removed in the unit that switches
+the library to `GET /api/library/ids`.
 
 ## 1. `GET /api/library`
 
-- パラメータ: `GET /api/videos` と同じ（`query`・`watch`・`playable`・`sort`・`seed`・`cursor`・`limit`・`tag`）。
-- 応答 `LibraryPage`:
+- Parameters: the same as `GET /api/videos` (`query`, `watch`, `playable`,
+  `sort`, `seed`, `cursor`, `limit`, `tag`).
+- Response `LibraryPage`:
 
 ```yaml
 LibraryPage:
   required: [items, total]
   properties:
     items: { type: array, items: { $ref: LibraryItem } }
-    total: { type: integer }        # 絞り込み後の項目（カード）の数
+    total: { type: integer }        # number of entries (cards) after filtering
     nextCursor: { type: string }
     missingTagIds: { type: array, items: { type: integer, format: int64 } }
 
@@ -31,42 +41,50 @@ LibraryItem:
   required: [kind]
   properties:
     kind: { type: string, enum: [video, group] }
-    video: { $ref: Video }          # kind = video のときだけ
-    group: { $ref: LibraryGroup }   # kind = group のときだけ
+    video: { $ref: Video }          # only when kind = video
+    group: { $ref: LibraryGroup }   # only when kind = group
 
 LibraryGroup:
   required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
-  # watchedCount・watchState は所有者の応答では必ず入り、ゲストでは省く（data-model.md §7）
+  # watchedCount and watchState are always present for the owner and omitted for guests (data-model.md §7)
   properties:
-    folder: { $ref: VideoFolder }   # グループのフォルダ。これがグループを指す鍵
+    folder: { $ref: VideoFolder }   # the group's folder; the key that identifies the group
     name: { type: string }
     videoCount: { type: integer }
     watchedCount: { type: integer }
     watchState: { type: string, enum: [unwatched, inProgress, watched] }
-    durationMs: { type: integer, format: int64 }   # 1本も分からなければ省く
+    durationMs: { type: integer, format: int64 }   # omitted when no member's duration is known
     sizeBytes: { type: integer, format: int64 }
     addedAt: { type: string, format: date-time }
-    lastPlayedAt: { type: string, format: date-time }  # 無ければ省く
-    previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # サムネイル生成済みのメンバーを並びの順に最大4件。カードのフォルダの絵柄に使い、リストの行は先頭の1件をサムネイルに使う
-    openVideoId: { type: integer, format: int64 }  # 押したときに開くメンバー（data-model.md §6）
-    videoIds: { type: array, items: { type: integer, format: int64 } }  # 全メンバー、並びの順
-    tags: { type: array, items: { $ref: VideoTag } }  # メンバーのタグの和集合（出所も和）
+    lastPlayedAt: { type: string, format: date-time }  # omitted when none
+    previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # up to 4 members with generated thumbnails, in order. Used for the card's folder artwork; a list row uses the first as its thumbnail
+    openVideoId: { type: integer, format: int64 }  # the member opened on press (data-model.md §6)
+    videoIds: { type: array, items: { type: integer, format: int64 } }  # every member, in order
+    tags: { type: array, items: { $ref: VideoTag } }  # union of the members' tags (sources united too)
 ```
 
-グループの `id` は応答に出さず、グループは `folder` で指す。`id` を出すと、作り直しのたびに振り直される
-値を画面が選択や取り直しの鍵に持つことになる（却下）。
+A group's `id` is not exposed; a group is addressed by `folder`. Exposing `id`
+is rejected: the screen would keep a value reassigned on every rebuild as its
+key for selection and refetching.
 
 ## 2. `GET /api/library/ids`
 
-- パラメータ: `GET /api/library` から `sort`・`seed`・`cursor`・`limit` を除いたもの。
-- 応答: 既存の `VideoIdsResponse`（`ids`・`missingTagIds`）。`ids` は当たった項目の動画の `id` と、
-  当たったグループの**全メンバー**の `id`。上限と誤りは今の `GET /api/videos/ids` と同じ。
+- Parameters: those of `GET /api/library` without `sort`, `seed`, `cursor` and
+  `limit`.
+- Response: the existing `VideoIdsResponse` (`ids`, `missingTagIds`). `ids`
+  holds the `id`s of matching video entries and the `id`s of **every member**
+  of matching groups. Limits and errors are the same as the current
+  `GET /api/videos/ids`.
 
-## 3. グループ1件
+## 3. One group
 
 `GET /api/folders/{rootId}/group?path=…`
 
-- 一覧に残っているグループのカードを取り直すための経路（plan の Structural Decisions 10）。
-- 応答 200: `LibraryGroup`。絞り込みに関係なく、グループの全メンバーから作る。
-- 400: パスの規則違反（`FolderPath` と同じ）。
-- 404 `not_found`: そのフォルダが今グループでない、または無い。画面はそのカードを一覧から外す。
+- Refetches a group card still in the list (Structural Decisions 10 in the
+  plan).
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 200 | — | `LibraryGroup`, built from every member of the group regardless of filters |
+| 400 | — | The path breaks the rules (as `FolderPath`) |
+| 404 | `not_found` | The folder is not a group now, or does not exist. The screen removes that card from the list |
