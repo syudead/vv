@@ -1,4 +1,4 @@
-# Implementation Plan: 一覧のカードでサムネイル下端をなぞって動画の中身を見渡せるようにする
+# Implementation Plan: Scrub along the bottom of a library card's thumbnail to skim the video
 
 **Branch**: `feature/032-card-scrub-preview` | **Parent Issue**: #616
 
@@ -6,92 +6,93 @@
 
 ## Summary
 
-一覧の動画カード（ライブラリ、フォルダ画面と検索結果の格子表示）と再生画面の関連動画の
-サムネイルに、下端の 5 分の 1 を占める透明な帯を置く。マウスのポインタが帯にいる間、
-横位置を動画の長さに対応させ、シーク用サムネイルのスプライトからその位置のコマを
-サムネイルの面に出し、再生時間の表示と視聴位置のバーをスクラブ位置に差し替える。
-サーバーと API は変えない。
+Video cards in the library (the grid view of the library, the folder screen and search results) and the
+related-video thumbnails on the player screen get a transparent band covering the bottom fifth. While the mouse
+pointer is in the band, its horizontal position maps to the video's length, the frame at that position is shown
+on the thumbnail surface from the seek-thumbnail sprite, and the duration display and watch-position bar switch
+to the scrub position. The server and API do not change.
 
-- コマの選び方（`intervalMs` によるコマ、シート、列・行）と切り出しの計算は、プレイヤーの
-  シークバーが使う関数を `web/src/lib/seekSprite.ts` へ移して両方で共有する
-  （[research.md R-1](research.md#r-1-コマ選びと切り出しの共有の置き場)）。
-- 帯の状態（有効条件、初回の帯への進入での取得、カードを出たときの打ち切り、失敗時は
-  入り直すまで再試行しない、viewport から外れたら解放）は `web/src/ui/ScrubPreview.tsx` の
-  hook が 1 カードにつき 1 つ持ち、ループ再生の作りを知らない
-  （[R-3](research.md#r-3-帯の-hook-と配置情報シートの取得の規則)、
-  [R-4](research.md#r-4-保持したシートの解放)）。
-- ループ再生は帯に入ったら `pause()` で止め、帯からカードの中へ出たら `play()` で戻す。
-  400ms の待ちは帯にいる間は止め、出たところから数え直す。既存の 2 つの hook
-  （`useCardPreview`・`useHoverPreview`）にそのための `suspendPreview` / `resumePreview` を
-  足す（[R-2](research.md#r-2-ループ再生と帯の関係)）。
-- コマはサムネイルと同じ枠・同じ収め方で出し、帯は `Link` の中で再生時間の表示より前に
-  置く（[R-5](research.md#r-5-コマの収め方と帯の形)）。時間表示とバーの差し替えは
-  既存の要素を兼用し、視聴位置の `progressbar` は書き換えない
-  （[R-6](research.md#r-6-時間表示とバーの差し替え)）。
-- 見た目（スクラブ位置のバーの色、時刻の区切り、動きを減らす設定での切り替え）は
-  `ui` ラベルの design 段階が `ui-design.md` に決める。
+- Frame selection (frame by `intervalMs`, sheet, column and row) and the cropping calculation move from the
+  player's seek bar to `web/src/lib/seekSprite.ts` and are shared by both
+  ([research.md R-1](research.md#r-1-shared-home-for-frame-selection-and-cropping)).
+- The band's state (when it is active, fetching on the first entry into the band, aborting when the pointer leaves
+  the card, not retrying after a failure until the pointer comes back, releasing when the card leaves the
+  viewport) is held by a hook in `web/src/ui/ScrubPreview.tsx`, one per card, which does not know how loop
+  playback works
+  ([R-3](research.md#r-3-the-band-hook-and-rules-for-fetching-the-layout-and-sheets),
+  [R-4](research.md#r-4-releasing-held-sheets)).
+- Entering the band stops loop playback with `pause()`; leaving the band into the card resumes it with `play()`.
+  The 400ms wait stops while in the band and counts again from where the pointer left. The two existing hooks
+  (`useCardPreview`, `useHoverPreview`) gain `suspendPreview` / `resumePreview` for this
+  ([R-2](research.md#r-2-loop-playback-and-the-band)).
+- The frame is shown in the same frame and with the same fit as the thumbnail, and the band sits inside the
+  `Link` in front of the duration display ([R-5](research.md#r-5-how-frames-fit-and-the-bands-shape)). The time
+  display and the bar reuse the existing elements, and the watch-position `progressbar` is not rewritten
+  ([R-6](research.md#r-6-swapping-the-time-display-and-the-bar)).
+- The look (the scrub-position bar's colour, the time separator, the switch under reduced motion) is decided in
+  `ui-design.md` by the design stage for the `ui` label.
 
 ## Technical Context
 
 **Canonical definitions**:
 
-- Web の境界と依存の向き、`web/src/api/` だけがサーバーと話す規則、`index.css` の token、
-  `web/src/i18n/` の外に固定の文字列を置かない規則: [ARCHITECTURE.md](../../ARCHITECTURE.md)
-  「Web layer」
-- 一覧のホバープレビュー（400ms、同時に 1 件、解放の契機、選択モードとの優先順位、
-  支援技術の扱い）: [specs/010-hover-video-preview/ui-design.md](../010-hover-video-preview/ui-design.md)、
-  実装は [web/src/videoList/cardPreview.tsx](../../web/src/videoList/cardPreview.tsx)
-  （`useCardPreview`・`CardMedia`）、
-  [web/src/videoList/usePreviewCoordination.ts](../../web/src/videoList/usePreviewCoordination.ts)、
-  関連動画は [web/src/player/useHoverPreview.ts](../../web/src/player/useHoverPreview.ts) と
-  [web/src/player/RelatedVideos.tsx](../../web/src/player/RelatedVideos.tsx)（`VideoThumbnail`）
-- スプライトの配置情報とシートの契約（`SeekThumbnailSprite`、`intervalMs` によるコマの選び方、
-  最後のシートの空き升目、`private, no-cache` と `ETag`）: [api/openapi.yaml](../../api/openapi.yaml)
-  （`getVideoSeekThumbnail`・`getVideoSeekThumbnailSheet`）、
-  [specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)、
-  今の生成（81 コマ・9×9・長辺 160px、旧形式は最大 600 コマ・6 シート）:
+- Web boundaries and dependency direction, the rule that only `web/src/api/` talks to the server, tokens in
+  `index.css`, the rule against fixed strings outside `web/src/i18n/`: [ARCHITECTURE.md](../../ARCHITECTURE.md)
+  "Web layer"
+- Library hover preview (400ms, one at a time, release triggers, priority versus selection mode, assistive
+  technology handling): [specs/010-hover-video-preview/ui-design.md](../010-hover-video-preview/ui-design.md);
+  implemented in [web/src/videoList/cardPreview.tsx](../../web/src/videoList/cardPreview.tsx)
+  (`useCardPreview`, `CardMedia`) and
+  [web/src/videoList/usePreviewCoordination.ts](../../web/src/videoList/usePreviewCoordination.ts); related videos
+  in [web/src/player/useHoverPreview.ts](../../web/src/player/useHoverPreview.ts) and
+  [web/src/player/RelatedVideos.tsx](../../web/src/player/RelatedVideos.tsx) (`VideoThumbnail`)
+- The sprite layout and sheet contract (`SeekThumbnailSprite`, frame selection by `intervalMs`, empty cells in the
+  last sheet, `private, no-cache` and `ETag`): [api/openapi.yaml](../../api/openapi.yaml)
+  (`getVideoSeekThumbnail`, `getVideoSeekThumbnailSheet`),
+  [specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md);
+  current generation (81 frames, 9×9, 160px long side; the old format has up to 600 frames in 6 sheets):
   [docs/design-docs/seek-sprite-generation.md](../../docs/design-docs/seek-sprite-generation.md)
-- プレイヤーの取得と切り出し: [web/src/player/seekPreview.ts](../../web/src/player/seekPreview.ts)
-  （`seekSpriteCell`・`seekPreviewTarget`・`showCell`）、取得関数
-  `fetchSeekThumbnailSprite`・`fetchSeekThumbnailSheet`
-  （[web/src/api/client.ts](../../web/src/api/client.ts)）
-- カードの寸法と overlay、縦長の動画のぼかした背景: [web/src/videoList/VideoCard.tsx](../../web/src/videoList/VideoCard.tsx)、
-  [web/src/ui/ThumbnailBackdrop.tsx](../../web/src/ui/ThumbnailBackdrop.tsx)、
-  規則は [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)
-- 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task test-e2e`）。
-  e2e の実物のスプライトとホバープレビューの fixture:
-  [web/e2e/playback.e2e.ts](../../web/e2e/playback.e2e.ts)（`waitForSeekThumbnails`）、
+- Player fetching and cropping: [web/src/player/seekPreview.ts](../../web/src/player/seekPreview.ts)
+  (`seekSpriteCell`, `seekPreviewTarget`, `showCell`); fetch functions `fetchSeekThumbnailSprite` and
+  `fetchSeekThumbnailSheet` ([web/src/api/client.ts](../../web/src/api/client.ts))
+- Card dimensions and overlays, the blurred background for portrait videos:
+  [web/src/videoList/VideoCard.tsx](../../web/src/videoList/VideoCard.tsx),
+  [web/src/ui/ThumbnailBackdrop.tsx](../../web/src/ui/ThumbnailBackdrop.tsx); rules in
+  [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)
+- Check entry points: [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task test-e2e`). The
+  e2e fixtures with a real sprite and the hover preview:
+  [web/e2e/playback.e2e.ts](../../web/e2e/playback.e2e.ts) (`waitForSeekThumbnails`),
   [web/e2e/hover-preview.e2e.ts](../../web/e2e/hover-preview.e2e.ts)
 
 **Feature-specific context**:
 
-- 追加する依存は無い。サーバー、API、生成物は変えない（親 Issue「対象外」）。
-- 新しい依存の向きを作らない。共有する計算は `web/src/lib/`、帯の hook と部品は
-  `web/src/ui/` に置く。`ui/` が `api/client` の取得関数を import するのはこの feature が
-  初めてである（[R-3](research.md#r-3-帯の-hook-と配置情報シートの取得の規則)）。
-- 帯は `pointerType === "mouse"` だけに反応する（要件 10）。タッチ・ペン・キーボードは今の
-  操作のまま。
-- 対象は `VideoCard`（格子表示）と `RelatedVideos` の `MemberItem`・`RelatedItem` の
-  サムネイル。`VideoRow`（リスト表示）、`GroupCard`、`CurrentMember`、「次の動画」の
-  案内は変えない（要件 8、対象外）。
+- No dependency is added. The server, API and generated files do not change (parent Issue `対象外`).
+- No new dependency direction. Shared calculation goes in `web/src/lib/`, and the band's hook and components in
+  `web/src/ui/`. This feature is the first time `ui/` imports fetch functions from `api/client`
+  ([R-3](research.md#r-3-the-band-hook-and-rules-for-fetching-the-layout-and-sheets)).
+- The band reacts only to `pointerType === "mouse"` (requirement 10). Touch, pen and keyboard keep their current
+  behaviour.
+- In scope: `VideoCard` (grid view) and the thumbnails of `MemberItem` and `RelatedItem` in `RelatedVideos`.
+  `VideoRow` (list view), `GroupCard`, `CurrentMember` and the "next video" prompt do not change (requirement 8,
+  out of scope).
 
 ## Constitution Check
 
-- **Web の境界と依存の向き**（ARCHITECTURE.md「Web layer」）: 合格。`videoList/` と `player/` は
-  互いを import せず、共有は `lib/`（純粋な計算）と `ui/`（hook と部品）に置く。サーバーと
-  話すのは `api/client.ts` の既存の取得関数だけである。
-- **`index.css` の token と生の色の禁止**: 合格。帯は透明、コマはシートの画像、バーは既存の
-  token を使う。design 段階が選ぶ色も token から選ぶ。
-- **`web/src/i18n/` の外に固定の文字列を置かない**: 合格。時刻の「位置 / 長さ」は
-  `t.list.card.scrubTime` として `en.ts` に足す（[R-6](research.md#r-6-時間表示とバーの差し替え)）。
-- **幅の分岐と動きを減らす設定は CSS で扱う**（library-ui.md §4）: 合格。帯の高さは CSS の
-  割合で、JavaScript は帯の矩形を位置の計算に読むだけである。コマの切り替えに遷移は
-  付けない。
-- **文書は変更と同じ PR で直す**（core-beliefs.md）: 合格。ARCHITECTURE.md「Web layer」に
-  `lib/seekSprite.ts` と `ui/ScrubPreview.tsx` の 1 文を足すのは最初の単位、
-  `docs/design-docs/index.md` への `ui-design.md` のリンクは design 段階が足す。
+- **Web boundaries and dependency direction** (ARCHITECTURE.md "Web layer"): pass. `videoList/` and `player/` do
+  not import each other; shared code goes in `lib/` (pure calculation) and `ui/` (hook and components). Only the
+  existing fetch functions in `api/client.ts` talk to the server.
+- **Tokens from `index.css`, no raw colours**: pass. The band is transparent, the frame is the sheet image, and the
+  bar uses existing tokens. Colours the design stage chooses also come from tokens.
+- **No fixed strings outside `web/src/i18n/`**: pass. The time "position / length" is added to `en.ts` as
+  `t.list.card.scrubTime` ([R-6](research.md#r-6-swapping-the-time-display-and-the-bar)).
+- **Width branches and reduced motion are handled in CSS** (library-ui.md §4): pass. The band's height is a CSS
+  percentage, and JavaScript only reads the band's rectangle to compute the position. Switching frames has no
+  transition.
+- **Documentation changes in the same PR as the change** (core-beliefs.md): pass. The first unit adds one sentence
+  about `lib/seekSprite.ts` and `ui/ScrubPreview.tsx` to ARCHITECTURE.md "Web layer"; the design stage adds the
+  link to `ui-design.md` in `docs/design-docs/index.md`.
 
-Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
+The verdict is the same after Phase 1. There is no violation for Complexity Tracking.
 
 ## Project Structure
 
@@ -101,115 +102,122 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/032-card-scrub-preview/
 ├── plan.md          # This file
 │                    # No spec.md — the parent Issue is the specification
-├── research.md      # R-1〜R-6: 共有の置き場、ループとの関係、取得の規則、解放、収め方、表示の差し替え
-└── ui-design.md     # design 段階が足す（ui ラベル）
+├── research.md      # R-1 to R-6: shared home, relation to the loop, fetch rules, release, fit, display swap
+└── ui-design.md     # Added by the design stage (ui label)
 ```
 
-`data-model.md` は作らない。エンティティも列も足さず、画面の状態は hook の中だけにある。
-`contracts/` は作らない。API を変えず、既存の配置情報とシートの契約をそのまま使う。
-`quickstart.md` は作らない。受け入れ条件は `task test-e2e` の実物のスプライト
-（`playback.e2e.ts` の fixture）で確かめられ、人が確かめるのは画面の構図だけで、それは各単位の
-Acceptance に書く。
+No `data-model.md`: no entity or column is added, and the screen state lives only inside the hook.
+No `contracts/`: the API does not change, and the existing layout and sheet contract is used as is.
+No `quickstart.md`: the acceptance criteria are verified with the real sprite in `task test-e2e` (the fixture in
+`playback.e2e.ts`); a person checks only the screen composition, which each unit's Acceptance states.
 
 ### Source Code
 
 **Affected boundaries**:
 
-- `web/src/lib/`: スプライトの位置→コマ、コマ→切り出しの純粋な計算（`seekSprite.ts`、新規）。
-- `web/src/ui/`: 帯の hook と、コマの層・帯の部品（`ScrubPreview.tsx`、新規）。
-- `web/src/player/`: `seekPreview.ts` が `lib/seekSprite.ts` を使う（挙動は変えない）。
-  `useHoverPreview.ts` に一時停止と再開、`RelatedVideos.tsx` の `VideoThumbnail` に帯。
-- `web/src/videoList/`: `cardPreview.tsx` に一時停止と再開、`VideoCard.tsx` に帯と表示の
-  差し替え。
-- `web/src/i18n/en.ts`: `t.list.card.scrubTime`。
-- `web/e2e/`: 帯の e2e（新規 1 ファイル）。
-- `ARCHITECTURE.md`: 「Web layer」に共有の置き場の 1 文。
+| Path | Change |
+| --- | --- |
+| `web/src/lib/` | Pure calculation for sprite position → frame and frame → crop (`seekSprite.ts`, new) |
+| `web/src/ui/` | The band hook, the frame layer and the band component (`ScrubPreview.tsx`, new) |
+| `web/src/player/` | `seekPreview.ts` uses `lib/seekSprite.ts` (behaviour unchanged). Suspend and resume in `useHoverPreview.ts`; the band in `VideoThumbnail` of `RelatedVideos.tsx` |
+| `web/src/videoList/` | Suspend and resume in `cardPreview.tsx`; the band and display swap in `VideoCard.tsx` |
+| `web/src/i18n/en.ts` | `t.list.card.scrubTime` |
+| `web/e2e/` | e2e for the band (one new file) |
+| `ARCHITECTURE.md` | One sentence on the shared homes in "Web layer" |
 
-**New paths**: `web/src/lib/seekSprite.ts`、`web/src/ui/ScrubPreview.tsx`、
-`web/e2e/card-scrub.e2e.ts`。
+**New paths**: `web/src/lib/seekSprite.ts`, `web/src/ui/ScrubPreview.tsx`, `web/e2e/card-scrub.e2e.ts`.
 
-**Structure decision**: 共有の計算と部品を `lib/` と `ui/` に置き、`videoList/` と `player/` の
-間に依存を作らない（[R-1](research.md#r-1-コマ選びと切り出しの共有の置き場)、
-[R-3](research.md#r-3-帯の-hook-と配置情報シートの取得の規則)）。
+**Structure decision**: shared calculation and components go in `lib/` and `ui/`, creating no dependency between
+`videoList/` and `player/` ([R-1](research.md#r-1-shared-home-for-frame-selection-and-cropping),
+[R-3](research.md#r-3-the-band-hook-and-rules-for-fetching-the-layout-and-sheets)).
 
 ## Implementation Work
 
-### シーク用スプライトのコマ選びと切り出しを共有し、カードの帯の hook を作る
+### Share seek-sprite frame selection and cropping, and build the card band hook
 
-**Scope**: `seekSpriteCell`・`seekPreviewTarget` の位置の計算・`showCell` の敷き方を
-`web/src/lib/seekSprite.ts` へ移し、`web/src/player/seekPreview.ts` はそれを呼ぶ
-（[R-1](research.md#r-1-コマ選びと切り出しの共有の置き場)。プレイヤーの挙動は変えない）。
-`web/src/ui/ScrubPreview.tsx` に `useScrubPreview`（有効条件、帯の矩形と `clientX` からの位置、
-初回の帯への進入での配置情報とシートの取得、カードを出たときの打ち切り、失敗時は入り直す
-まで再試行しない、帯の外での表示の消去、viewport から外れたときと unmount での解放）、
-`ScrubFrame`（配置情報とシートが揃ったときだけ、サムネイルと同じ枠に 1 コマを出す層）、
-`ScrubBand`（下端 5 分の 1 の透明な帯。`mouse` 以外のポインタは無視する）を足す
-（[R-3](research.md#r-3-帯の-hook-と配置情報シートの取得の規則)、
-[R-4](research.md#r-4-保持したシートの解放)、[R-5](research.md#r-5-コマの収め方と帯の形)）。
-`useCardPreview` と `useHoverPreview` に `suspendPreview` / `resumePreview` を足す
-（[R-2](research.md#r-2-ループ再生と帯の関係)）。画面にはまだ付けない。
-ARCHITECTURE.md「Web layer」に 2 つの置き場の 1 文を足す。
+**Scope**: move `seekSpriteCell`, `seekPreviewTarget`'s position calculation and `showCell`'s sheet layout to
+`web/src/lib/seekSprite.ts`, and have `web/src/player/seekPreview.ts` call them
+([R-1](research.md#r-1-shared-home-for-frame-selection-and-cropping); the player's behaviour does not change).
+Add to `web/src/ui/ScrubPreview.tsx`:
+
+- `useScrubPreview`: when the band is active, the position from the band's rectangle and `clientX`, fetching the
+  layout and sheet on the first entry into the band, aborting when the pointer leaves the card, not retrying after
+  a failure until the pointer comes back, clearing the display outside the band, and releasing when the card
+  leaves the viewport and on unmount.
+- `ScrubFrame`: a layer that shows one frame in the same frame as the thumbnail, only when both the layout and the
+  sheet are present.
+- `ScrubBand`: the transparent band over the bottom fifth; ignores pointers other than `mouse`.
+
+([R-3](research.md#r-3-the-band-hook-and-rules-for-fetching-the-layout-and-sheets),
+[R-4](research.md#r-4-releasing-held-sheets), [R-5](research.md#r-5-how-frames-fit-and-the-bands-shape)).
+Add `suspendPreview` / `resumePreview` to `useCardPreview` and `useHoverPreview`
+([R-2](research.md#r-2-loop-playback-and-the-band)). Nothing is attached to the screens yet. Add one sentence on the
+two homes to ARCHITECTURE.md "Web layer".
 
 **Dependencies**: None.
 
-**Acceptance**: `web/src/lib/seekSprite.test.ts` が、帯の右端で `ceil(durationMs) - 1` の位置に
-なり `frameCount - 1` のコマを超えないこと、複数シートで指した位置のシート番号になること、
-プレイヤーの `seekPreview.test.ts` が今と同じ結果で通ることを検査する。
-`web/src/ui/ScrubPreview.test.tsx` が、帯に入るまで取得が起きないこと、初回の進入で配置情報
-→ そのコマのシートの順に 1 回ずつ取得すること、帯を出入りしても再取得しないこと、
-シートをまたぐ位置で次のシートだけを取ること、取得が終わる前に帯を出たらコマを出さず
-カードを出たら中断し、配置情報またはシートの取得中にカードを出て入り直し帯へ入ると
-取得し直してコマを出すこと、失敗したら入り直すまで取得しないこと、viewport から外れたら
-object URL が解放され次の進入で取り直すこと、`touch`・`pen` では何も起きないことを
-検査する。`cardPreview.test` と `useHoverPreview` のテストが、待ちの間の一時停止で timer が
-消え再開で 400ms から数え直すこと、再生中の一時停止で `pause()` され再開で `play()` される
-こと、読み込み中（`attempting` で `playing` 前）の一時停止で `src` と要素を保ったまま再開まで
-再生が始まらず、再開で `play()` されることを検査する。`task check` と `task check-docs` が通る。
+**Acceptance**: `task check` and `task check-docs` pass, and these tests pass:
 
-### 一覧の動画カードにスクラブの帯を付け、ループ再生と時間表示を差し替える
+- `web/src/lib/seekSprite.test.ts`: the right end of the band gives position `ceil(durationMs) - 1` and never
+  exceeds frame `frameCount - 1`; with several sheets, the pointed position gives that sheet's number. The player's
+  `seekPreview.test.ts` passes with the same results as now.
+- `web/src/ui/ScrubPreview.test.tsx`: no fetch happens before entering the band; the first entry fetches the
+  layout, then that frame's sheet, once each; entering and leaving the band does not refetch; a position in another
+  sheet fetches only that next sheet; leaving the band before the fetch finishes shows no frame, and leaving the
+  card aborts it; leaving the card during the layout or sheet fetch and coming back into the band fetches again
+  and shows the frame; after a failure there is no fetch until the pointer comes back; leaving the viewport
+  releases the object URL and the next entry fetches again; `touch` and `pen` do nothing.
+- The `cardPreview.test` and `useHoverPreview` tests: suspending during the wait clears the timer and resuming
+  counts 400ms again; suspending during playback calls `pause()` and resuming calls `play()`; suspending while
+  loading (`attempting`, before `playing`) keeps `src` and the element, playback does not start until resume, and
+  resuming calls `play()`.
 
-**Scope**: `VideoCard.tsx` と `cardPreview.tsx` で、`Link` の中のサムネイルの面に `ScrubBand` と
-`ScrubFrame` を置き、帯への出入りで `suspendPreview` / `resumePreview` を呼ぶ。帯にいる間、
-再生時間の表示を `t.list.card.scrubTime` に、視聴位置のバーの場所にスクラブ位置のバーを
-出す（[R-6](research.md#r-6-時間表示とバーの差し替え)、見た目は `ui-design.md`）。
-`previewResetEpoch`・`activePreviewId`・`selectionMode` の変化と `releasePreview` で
-スクラブも終える。`seekThumbnailUrl` の無い動画、全面の警告が出る動画、選択モード、
-`VideoRow`、`GroupCard` では帯を付けない。`web/e2e/card-scrub.e2e.ts` を足し、
-`playback.e2e.ts` と同じ実物のスプライトでライブラリとフォルダ画面（検索結果を含む）を
-確かめる。
+### Add the scrub band to library video cards, swapping loop playback and the time display
 
-**Dependencies**: `シーク用スプライトのコマ選びと切り出しを共有し、カードの帯の hook を作る`、
-design 段階の `ui-design.md`。
+**Scope**: in `VideoCard.tsx` and `cardPreview.tsx`, place `ScrubBand` and `ScrubFrame` on the thumbnail surface
+inside the `Link`, and call `suspendPreview` / `resumePreview` on entering and leaving the band. While in the band,
+the duration display shows `t.list.card.scrubTime` and a scrub-position bar replaces the watch-position bar
+([R-6](research.md#r-6-swapping-the-time-display-and-the-bar); the look is in `ui-design.md`). Changes of
+`previewResetEpoch`, `activePreviewId` and `selectionMode`, and `releasePreview`, also end scrubbing. No band on
+videos without `seekThumbnailUrl`, videos showing the full-surface warning, in selection mode, on `VideoRow` or on
+`GroupCard`. Add `web/e2e/card-scrub.e2e.ts`, checking the library and the folder screen (including search
+results) with the same real sprite as `playback.e2e.ts`.
 
-**Acceptance**: `VideoCard.test.tsx` が、帯にいる間だけ時間表示とバーが差し替わり出ると
-戻ること、帯の上のクリックが通常どおり遷移すること、選択モードと警告の出る動画で帯が
-無いことを検査する。`task test-e2e` の `card-scrub.e2e.ts` が、受け入れ条件 1〜7 と 9 を
-ライブラリ・フォルダ画面・フォルダ内の検索結果で検査する: 帯の左端から右端で
-`background-position` が先頭から末尾へ単調に変わる、同じ割合の位置で再生画面のシークバーの
-吹き出しと同じシート・同じ `background-position` になる、通過だけでは `seek-thumbnail` への
-要求が無く帯に入ると配置情報とシートが 1 回ずつで出入りしても増えない、ループ中に帯へ
-入ると `paused` になり出ると再生に戻る、帯の上のクリックで再生画面が開き開始位置が
-変わらない、帯の出入りと取得待ちでカードの `getBoundingClientRect` と `scrollY` が
-変わらない。画面が変わるので、360px・768px・1280px で、帯にいるときのコマ・時刻・バー、
-縦長の動画のコマ、取得待ち、取得失敗の 4 状態の画像を PR に残し、帯を示す装飾が無いことと
-カードの寸法が変わらないことを確かめる。`task check` と `task check-docs` が通る。
+**Dependencies**: Share seek-sprite frame selection and cropping, and build the card band hook; the design stage's
+`ui-design.md`.
 
-### 再生画面の関連動画のサムネイルにスクラブの帯を付ける
+**Acceptance**: `task check` and `task check-docs` pass. `VideoCard.test.tsx` checks that the time display and bar
+are swapped only while in the band and return on leaving, that a click on the band navigates as usual, and that
+there is no band in selection mode or on videos with a warning. `card-scrub.e2e.ts` in `task test-e2e` checks
+acceptance criteria 1 to 7 and 9 in the library, the folder screen and search results within a folder:
 
-**Scope**: `RelatedVideos.tsx` の `VideoThumbnail` に `ScrubBand` と `ScrubFrame` を足し、
-`MemberItem` と `RelatedItem` が `useScrubPreview` を持って `useHoverPreview` の
-`suspendPreview` / `resumePreview` を呼ぶ。右下の長さの表示と下端の進捗バーを、カードと
-同じ規則で差し替える（[R-6](research.md#r-6-時間表示とバーの差し替え)、見た目は
-`ui-design.md`）。`CurrentMember` と「次の動画」の案内は変えない。`playback.e2e.ts` に
-関連動画の帯の検査を足す。
+- From the band's left end to its right end, `background-position` changes monotonically from first to last.
+- At the same fraction, the sheet and `background-position` equal those of the player screen's seek-bar tooltip.
+- Passing over sends no request to `seek-thumbnail`; entering the band fetches the layout and the sheet once each,
+  and entering and leaving does not add more.
+- Entering the band during the loop makes the video `paused`, and leaving returns it to playing.
+- A click on the band opens the player screen without changing the start position.
+- Entering and leaving the band and waiting for a fetch do not change the card's `getBoundingClientRect` or
+  `scrollY`.
 
-**Dependencies**: `シーク用スプライトのコマ選びと切り出しを共有し、カードの帯の hook を作る`、
-design 段階の `ui-design.md`。
+This unit changes a screen, so the PR keeps images at 360px, 768px and 1280px of four states (frame, time and bar
+while in the band; a portrait video's frame; waiting for a fetch; fetch failed), confirming there is no decoration
+marking the band and the card's dimensions do not change.
 
-**Acceptance**: `RelatedVideos` のテストが、帯にいる間だけ長さの表示とバーが差し替わること、
-`CurrentMember` に帯が無いことを検査する。`task test-e2e` の `playback.e2e.ts` が、関連動画の
-帯の同じ割合の位置で、プレイヤーのシークバーの吹き出しと同じシート・同じ
-`background-position` になること（受け入れ条件 3）、通過だけでは要求が無いこと、帯の上の
-クリックでその動画へ移ることを検査する。画面が変わるので、768px と 1280px で関連動画の
-帯にいるときの画像を PR に残し、行の高さと列の幅が変わらないことを確かめる。
-`task check` と `task check-docs` が通る。
+### Add the scrub band to related-video thumbnails on the player screen
+
+**Scope**: add `ScrubBand` and `ScrubFrame` to `VideoThumbnail` in `RelatedVideos.tsx`; `MemberItem` and
+`RelatedItem` hold `useScrubPreview` and call `useHoverPreview`'s `suspendPreview` / `resumePreview`. The length
+display at the bottom right and the progress bar at the bottom edge are swapped by the same rule as cards
+([R-6](research.md#r-6-swapping-the-time-display-and-the-bar); the look is in `ui-design.md`). `CurrentMember` and
+the "next video" prompt do not change. Add band checks for related videos to `playback.e2e.ts`.
+
+**Dependencies**: Share seek-sprite frame selection and cropping, and build the card band hook; the design stage's
+`ui-design.md`.
+
+**Acceptance**: `task check` and `task check-docs` pass. The `RelatedVideos` tests check that the length display
+and bar are swapped only while in the band, and that `CurrentMember` has no band. `playback.e2e.ts` in
+`task test-e2e` checks that, at the same fraction of a related video's band, the sheet and `background-position`
+equal those of the player's seek-bar tooltip (acceptance criterion 3), that passing over sends no request, and
+that a click on the band moves to that video. This unit changes a screen, so the PR keeps images at 768px and
+1280px of a related video while in the band, confirming that row height and column width do not change.
