@@ -34,6 +34,7 @@ Autopilot stage worker. Repository: <owner/repo>.
 Stage: <plan | design | implement>
 Parent Issue: #<parent>   Child Issue: #<child or ->
 Feature branch: <feature or "none yet"> Feature directory: <dir or ->
+Checkout: <worktree path the orchestrator created, or "own"> — work only there
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/<plan|design|implement>.md.
 The orchestrator selected this stage; do not re-select it.

@@ -35,7 +35,7 @@ the orchestrator's reads small:
 | --- | --- |
 | 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
 | 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers (§3) |
-| 5 `implement` | Implement every **ready** child in parallel, up to three open implementation PRs at a time, in sub-issue order. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is closed. A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Start one stage worker per ready child at once (§3) and drive each resulting PR with §4 on its own; when one merges, go to §1, which may make more children ready. If no child is ready and no implementation PR is open, stop |
+| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once (§3), and drive each resulting PR with §4 on its own; when one merges, go to §1, which may make more children ready. If no child is ready and no implementation PR is open, stop |
 | 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
@@ -49,11 +49,14 @@ Stages `plan`, `design` and implementation each produce one PR to the feature
 branch. `plan-to-issues` produces no PR.
 
 1. Start a fresh stage worker with the brief for that stage from
-   [briefs.md](briefs.md). Concurrent implementation workers each run in their
-   own worktree (Claude: `isolation: "worktree"`; Codex: a separate checkout)
-   and never share one. It creates its own sub-branch, does the stage's
-   work and checks, commits, pushes, opens the PR, and returns `DONE` with
-   the PR number.
+   [briefs.md](briefs.md). Concurrent implementation workers never share a
+   checkout. On Claude, start each with `isolation: "worktree"`. Where the
+   host has no such isolation (Codex), create one first with
+   `git worktree add <path> origin/<feature>` per child and put its path in
+   the brief's `Checkout:` slot; remove it after the PR merges. Without
+   either, run implementation workers one at a time. Each worker creates its
+   own sub-branch, does the stage's work and checks, commits, pushes, opens
+   the PR, and returns `DONE` with the PR number.
    - `plan-to-issues` returns `DONE`. Go to §1.
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
@@ -91,9 +94,11 @@ Handle each PR with one review-fix pass:
    conflict-free and mergeable, then merge with a merge commit and go to §5.
    After `FIXED`, do not request another review, wait for checks or reviews on
    the new head, or run another fixer. The one exception: when a parallel
-   PR's merge leaves this PR conflicting with its base, start one fresh review
-   fixer that only merges `origin/<base>` (resolving generated files with
-   `task generate`), wait for the checks on its new head, then merge. If
+   PR merged into the same base after this PR's checks ran, the combined tree
+   was never checked, with or without a textual conflict. Start one fresh
+   review fixer that only merges `origin/<base>` into this PR (resolving
+   generated files with `task generate`) and pushes, wait for every check on
+   its new head to pass, then merge. Do not request another review for it. If
    GitHub branch protection prevents the merge, stop and report it; do not bypass the protection. `BLOCKED`:
    stop. `FOREIGN`: leave the PR alone, never merge it, and name it in the
    final report; go to §1.
