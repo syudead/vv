@@ -20,19 +20,22 @@ the orchestrator's reads small:
   parent's `closed_by_pull_requests`) once `integrate` has opened it;
   `specs/*/plan.md` and `ui-design.md` on `origin/<feature>` (`git fetch`, then `git diff --name-only` and
   `git cat-file -e`); the parent's labels; its native sub-issues (number,
-  state, `state_reason`); and the open PRs into the feature branch (number,
-  head ref, head SHA).
-- Do not read the parent Issue body, PR bodies, or child Issue bodies. What a
-  rule needs from a body — whether an open PR belongs to this feature, a
-  child's prerequisites, whether a merged PR already `Refs` a child — is
-  answered by the worker that handles it (§3, §4).
+  state, `state_reason`, and the `Depends on:` first line of each open
+  child's body); and the open PRs into the feature branch (number, head ref,
+  head SHA).
+- Do not read the parent Issue body, PR bodies, or the rest of child Issue
+  bodies. What a rule needs from a body — whether an open PR belongs to this
+  feature, whether a merged PR already `Refs` a child, the prerequisites of a
+  child without a `Depends on:` line — is answered by the worker that handles
+  it (§3, §4).
 
 ## 2. What autopilot changes in the selection
 
 | Rule in the selection | Autopilot does instead |
 | --- | --- |
-| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session |
-| 2 `plan`, 3 `design`, 4 `plan-to-issues`, 5 `implement` | Run that stage through workers (§3). For `implement`, take the first child in sub-issue order that is not closed and not already returned `BLOCKED` for a prerequisite in this session; if every such child is blocked, stop |
+| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
+| 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers (§3) |
+| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once (§3), and drive each resulting PR with §4 on its own; when one merges, go to §1, which may make more children ready. If no child is ready and no implementation PR is open, stop |
 | 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
@@ -46,9 +49,14 @@ Stages `plan`, `design` and implementation each produce one PR to the feature
 branch. `plan-to-issues` produces no PR.
 
 1. Start a fresh stage worker with the brief for that stage from
-   [briefs.md](briefs.md). It creates its own sub-branch, does the stage's
-   work and checks, commits, pushes, opens the PR, and returns `DONE` with
-   the PR number.
+   [briefs.md](briefs.md). Concurrent implementation workers never share a
+   checkout. On Claude, start each with `isolation: "worktree"`. Where the
+   host has no such isolation (Codex), create one first with
+   `git worktree add <path> origin/<feature>` per child and put its path in
+   the brief's `Checkout:` slot; remove it after the PR merges. Without
+   either, run implementation workers one at a time. Each worker creates its
+   own sub-branch, does the stage's work and checks, commits, pushes, opens
+   the PR, and returns `DONE` with the PR number.
    - `plan-to-issues` returns `DONE`. Go to §1.
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
@@ -85,8 +93,13 @@ Handle each PR with one review-fix pass:
 4. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
    conflict-free and mergeable, then merge with a merge commit and go to §5.
    After `FIXED`, do not request another review, wait for checks or reviews on
-   the new head, or run another fixer. If GitHub branch protection prevents
-   the merge, stop and report it; do not bypass the protection. `BLOCKED`:
+   the new head, or run another fixer. The one exception: when a parallel
+   PR merged into the same base after this PR's checks ran, the combined tree
+   was never checked, with or without a textual conflict. Start one fresh
+   review fixer that only merges `origin/<base>` into this PR (resolving
+   generated files with `task generate`) and pushes, wait for every check on
+   its new head to pass, then merge. Do not request another review for it. If
+   GitHub branch protection prevents the merge, stop and report it; do not bypass the protection. `BLOCKED`:
    stop. `FOREIGN`: leave the PR alone, never merge it, and name it in the
    final report; go to §1.
 

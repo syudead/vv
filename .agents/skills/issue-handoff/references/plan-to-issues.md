@@ -29,6 +29,11 @@ in the parent Issue or the approved artifacts the statement comes from.
    find them.
    Include a link to `plan.md`, the feature directory, and the feature branch
    name.
+   Start the body with one line that names the unit's dependencies as Issue
+   numbers, translated from the headings the plan's dependencies name:
+   `Depends on: #12, #13`, or `Depends on: none`. Autopilot reads only this
+   line to decide which children can be implemented in parallel, so list
+   every child that has to land first and nothing else.
 4. **Do not decide anything new here.** For every statement in the body, you
    must be able to name where in the parent Issue, the plan, or an artifact it
    comes from. If writing a usable Issue would require settling something none
@@ -50,7 +55,9 @@ in the parent Issue or the approved artifacts the statement comes from.
    Issue does not have leaves the specification behind the implementation.
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
-6. Create each missing Issue with the `task` label, which marks it as a child
+6. Create a unit's dependencies before the unit itself, so that its
+   `Depends on` line can name them; otherwise keep Implementation Work order.
+   Create each missing Issue with the `task` label, which marks it as a child
    (implementation) Issue, and attach it to the parent through GitHub's native
    sub-issue API. Add no other label. Do not create an ordinary unparented
    Issue as a fallback.
