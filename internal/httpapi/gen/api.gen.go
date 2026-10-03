@@ -1503,8 +1503,10 @@ type SubtitleTrackList struct {
 
 // Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
 type Tag struct {
-	Id   int64  `json:"id"`
-	Name string `json:"name"`
+	// CreatedAt タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+	Name      string    `json:"name"`
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`

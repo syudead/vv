@@ -36,7 +36,13 @@ function takenResponse(submitted: string, ownerName: string): Response {
 }
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
+  return {
+    synonyms: [],
+    videoCount: 0,
+    tentative: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
 }
 
 /** server はタグの管理経路（GET・POST・PATCH・DELETE /api/tags*）を扱う偽のサーバーである。 */

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -111,6 +112,8 @@ type Tag struct {
 	VideoCount int
 	// Tentative は仮のタグであること（specs/031-tentative-tags/data-model.md §4）。
 	Tentative bool
+	// CreatedAt は tags.created_at（Unix 秒。specs/036-tag-admin-scale/data-model.md §1）。
+	CreatedAt time.Time
 }
 
 // TagSummaryItem は選んだ動画のタグの要約1件である
