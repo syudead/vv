@@ -118,6 +118,8 @@ function RejectedNamesDialog({
 
   // 窓の中身の箱を根にした番兵。末尾が見えたら続きを読む。読み込みのたびに
   // 見張り直すので、届いた分で末尾がまだ見えていればもう 1 ページ読む。
+  // 先頭のページを受け直したときも見張り直す（取り直しの間に見えた番兵の通知は
+  // 呼び出し元が無視するので、件数が変わらなければ次の通知が来ない）。
   // 失敗の間は読まない（Retry を押すまで）。
   useEffect(() => {
     const root = boxRef.current;
@@ -133,7 +135,7 @@ function RejectedNamesDialog({
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, morePending, moreError, loadedCount]);
+  }, [hasMore, morePending, moreError, loadedCount, resetKey]);
 
   const [removing, setRemoving] = useState<ReadonlySet<string>>(new Set());
   const [removeError, setRemoveError] = useState<UiText | null>(null);
@@ -216,10 +218,14 @@ function RejectedNamesDialog({
             </Button>
           </div>
         )}
-        {names !== undefined && names.length === 0 && (
+        {/*
+          読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく
+          続きの番兵（失敗の間は Retry）を置く。空の文言は続きも無いときだけ。
+        */}
+        {names !== undefined && names.length === 0 && !hasMore && (
           <p className="text-xs text-fg-muted">{t.tags.rejectedNames.empty}</p>
         )}
-        {names !== undefined && names.length > 0 && (
+        {names !== undefined && (names.length > 0 || hasMore) && (
           <>
             <p className="text-xs text-fg-muted">{t.tags.rejectedNames.description}</p>
             <ul

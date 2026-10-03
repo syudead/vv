@@ -567,12 +567,20 @@ export default function TagsPage() {
 
   /**
    * forgetRejectedName は × の取り外しである。`204` でそのチップを消し、入口の
-   * 件数を 1 減らす（一覧は取り直さない）。取り外しの前から待っている取り直しが
-   * あれば、その応答は取り外す前の並び（外した名前を含む）かもしれないので捨て、
-   * 取り外しのあとで取り直す。
+   * 件数を 1 減らす（一覧は取り直さない）。取り外しの送信中に先頭のページの
+   * 取り直しが重なったとき（送る前から待っていた・送信中に始まった）は、その
+   * 応答が取り外しの前か後かが分からない。外した名前が先頭のページの外にあると、
+   * 局所の 1 減らしもできない。そのため、待っている応答は捨て、取り外しのあとで
+   * 取り直す。
    */
   async function forgetRejectedName(name: string) {
+    const generation = rejectedGeneration.current;
+    const refreshing = rejectedInFlight.current !== null;
     await forgetRejectedTagName(name);
+    const overlapped =
+      refreshing ||
+      generation !== rejectedGeneration.current ||
+      rejectedInFlight.current !== null;
     rejectedForgotten.current.add(name);
     setRejectedPage((current) => {
       if (current === undefined || !current.items.includes(name)) return current;
@@ -582,7 +590,7 @@ export default function TagsPage() {
         total: Math.max(current.total - 1, 0),
       };
     });
-    if (rejectedInFlight.current !== null) reloadRejectedNames();
+    if (overlapped) reloadRejectedNames();
   }
 
   /**
