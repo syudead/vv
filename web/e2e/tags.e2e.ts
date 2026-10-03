@@ -923,12 +923,15 @@ test.describe.serial("video tags", () => {
         tentative: true,
         createdAt,
       }));
-      await page.route("**/api/tags", (route) =>
+      // ページで読む画面はクエリ（sort・limit・tentative）を付けて送る。
+      await page.route(/\/api\/tags(\?.*)?$/, (route) =>
         route.request().method() === "GET"
-          ? route.fulfill({ json: { items } })
+          ? route.fulfill({
+              json: { items, total: items.length, totalAll: items.length },
+            })
           : route.fallback(),
       );
-      await page.route("**/api/tags/rejected-names", (route) =>
+      await page.route("**/api/tags/rejected-names**", (route) =>
         route.request().method() === "GET"
           ? route.fulfill({
               json: {
@@ -936,6 +939,7 @@ test.describe.serial("video tags", () => {
                   { length: 1000 },
                   (_, index) => `e2e却下${String(index)}`,
                 ),
+                total: 1000,
               },
             })
           : route.fallback(),
