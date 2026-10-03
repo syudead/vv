@@ -23,6 +23,7 @@ func TestFindDirectives(t *testing.T) {
 	write("block.go", "package p\n\n/* nolint */\nvar b = 1\n")
 	write("sub/own_line_test.go", "package p\n\n//nolint:errorlint\nvar c = 1\n\n// NoLint:all\nvar d = 1\n")
 	write("node_modules/dep/x.go", "package x\n\nvar e = 1 //nolint\n")
+	write(".local/gomodcache/dep/y.go", "package y\n\nvar f = 1 //nolint\n")
 
 	found, err := findDirectives(dir)
 	if err != nil {
