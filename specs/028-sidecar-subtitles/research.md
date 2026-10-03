@@ -1,202 +1,308 @@
-# Research: 動画の隣に置いた字幕ファイルの表示
+# Research: Sidecar subtitle files shown next to the video
 
-技術スタック、境界と依存方向、ファイルを開いてよいかの規則、ライブ変換の時間軸の扱いは正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)、
-[ARCHITECTURE.md](../../ARCHITECTURE.md)、[internal/mediafs](../../internal/mediafs/media_file.go)、
-[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md)）。
-ここにはこの feature が足す決定だけを書く。
+Inherited decisions: the tech stack, the boundaries and dependency direction,
+the rule for which files may be opened, and the live transcode timeline follow
+the canonical documents
+([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+[ARCHITECTURE.md](../../ARCHITECTURE.md),
+[internal/mediafs](../../internal/mediafs/media_file.go),
+[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md)).
+This file records only the decisions this feature adds.
 
-## R-1: 字幕ファイルは要求のたびにフォルダを読んで見つけ、SQLite には置かない
+## R-1: Find subtitle files by reading the folder on each request, not from SQLite
 
-- Decision: 字幕ファイルの一覧は、再生画面が呼ぶ `GET /api/videos/{id}/subtitles`
-  （[contracts/subtitles-api.md §1](contracts/subtitles-api.md#1-get-apivideosidsubtitles)）が
-  そのたびに動画のフォルダを `ReadDir` して作る。表も列も足さず、スキャンも取り込みの job も
-  関わらない。
-- Rationale: 要件 2 は「再スキャンなしで見つかる」「開き直せば反映される」である。フォルダ 1 つの
-  `ReadDir` は再生画面を開く 1 回につき 1 回で、動画の本体を開く費用に比べて無視できる。索引に
-  持つと、スキャンと無関係に変わるファイルの状態を追う仕組み（監視か、開くたびの照合）が要る。
-- Alternatives considered: スキャンで `video_locations` に字幕の有無を記録する（要件 2 に反し、
-  再スキャンまで反映されない）。`GET /api/videos/{id}` の応答に載せる（`Video` は一覧・関連動画・
-  取り込み中の再取得でも返る型で、そのたびにフォルダを読むことになる。字幕は再生画面だけが使う）。
+**Decision**: `GET /api/videos/{id}/subtitles`, which the playback screen calls
+([contracts/subtitles-api.md §1](contracts/subtitles-api.md#1-get-apivideosidsubtitles)),
+builds the subtitle list by running `ReadDir` on the video's folder on every
+call. No table or column is added, and neither the scan nor the import job is
+involved.
 
-## R-2: 探すフォルダは、配信が開く所在のフォルダである
+**Rationale**: Requirement 2 says subtitles are found "without a rescan" and
+"reflected when the video is opened again". The playback screen runs one
+`ReadDir` of one folder each time it opens, which is negligible next to the cost
+of opening the video itself. Keeping subtitles in the index would need a
+mechanism that tracks the state of files that change independently of the scan
+(a watcher, or a comparison on every open).
 
-- Decision: 字幕を探すフォルダは、`StreamVideo`・`TranscodeVideo` の `openMediaFile` と同じ順で
-  所在を試し、最初に開けた所在のフォルダとする。同じ規則を `internal/mediafs` の
-  `ListSidecarFiles`（フォルダの通常ファイルのうち、名前が動画の `<名前>` で始まるものの名前・
-  大きさ）と `OpenSidecarFile`（一覧に出た名前の 1 つを開く）に置き、`internal/httpapi` は
-  所在と登録フォルダを渡すだけにする。
-- Rationale: 親 Issue の Edge Case「動画が複数の場所にある」は「再生に使う場所の隣だけ」と決めて
-  いる。再生に使う場所を決めているのは `openMediaFile` なので、同じ順序で同じ判定を通す。
-  フォルダを読んでよいかの判定は `internal/mediafs` が一元に持つ規則で、`httpapi` が自分で
-  `ReadDir` してはいけない（ARCHITECTURE.md）。
-- Alternatives considered: `Video.location`（詳細の応答の代表の所在）のフォルダを使う
-  （代表の所在は開けるかを確かめずに選ばれ、開けないときは別の所在で再生する。再生と字幕の
-  フォルダがずれる）。全部の所在のフォルダを合わせて探す（Edge Case に反する）。
+**Alternatives considered**:
 
-## R-3: 名前の照合と重複の規則は `internal/domain` の純粋関数が持つ
+| Option | Verdict |
+| --- | --- |
+| Record whether subtitles exist in `video_locations` during the scan | Rejected: violates requirement 2; changes are not reflected until a rescan. |
+| Include subtitles in the `GET /api/videos/{id}` response | Rejected: `Video` is also returned for lists, related videos and refetches during import, so every one of them would read the folder. Only the playback screen uses subtitles. |
 
-- Decision: `domain.SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSidecar`
-  が、フォルダの項目から字幕の一覧（ファイル名、ラベル、形式）を作る。規則は次のとおり。
-  - `<名前>` は動画のファイル名から最後の拡張子だけを除いたもの（`my.movie.2024.mp4` →
-    `my.movie.2024`）。
-  - 候補は `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt`。`<名前>` の
-    部分と拡張子は Unicode 正規化（NFC）のうえ大文字・小文字を区別せずに照合する。`<ラベル>` は
-    空でない残りの部分で、ドットを含んでよい（`en.forced`）。表示にはファイル名に書かれた
-    ままのラベルを使う。
-  - 大きさが `domain.SubtitleFileLimit`（4 MiB）を超える項目は候補にしない。
-  - ラベルが同じ（大文字・小文字を区別しない）`.srt` と `.vtt` があれば `.vtt` だけを残す。
-    両方が同じ拡張子で大文字・小文字だけ違う（Linux でありうる）ときは、名前の自然順で先の
-    1 つを残す。
-  - 並びは、ラベルの無いものを先頭に、続いてラベルの自然順（`domain.CompareNatural`）。
-- Rationale: 純粋関数なら、ファイルシステムを作らずに大文字・小文字、複数ドット、重複、上限の
-  各ケースを表で検査できる。`internal/mediafs` は「読んでよいか」だけを持ち、名前の意味は持たない。
-  4 MiB は、2 時間の映画の SRT が数百 KB で、テレビ番組の 1 話が 100 KB 前後であることから、
-  正しい字幕を落とさず、誤って置かれた大きなファイルをメモリに読まない値として決めた。
-- Alternatives considered: 上限 1 MiB（会話の多い長編や、装飾タグの多い SRT が超えうる）。
-  上限なし（壊れたファイルや誤配置の大きなファイルを 1 要求で全部読む）。ラベルの重複を
-  両方出す（親 Issue の要件 6 に反する）。
+## R-2: The searched folder is the folder of the location that streaming opens
 
-## R-4: 変換は Go で行い、ffmpeg は使わない
+**Decision**: Subtitles are searched for in the folder of the first location
+that opens, trying locations in the same order as `openMediaFile` in
+`StreamVideo` and `TranscodeVideo`. The same rule goes into `internal/mediafs`
+as `ListSidecarFiles` (the names and sizes of the regular files in the folder
+whose names start with the video's `<name>`) and `OpenSidecarFile` (opens one of
+the names the list returned). `internal/httpapi` only passes the location and
+the media folders.
 
-- Decision: `internal/media` の `SubtitleConverter.Convert(src []byte, format, offsetMs) ([]byte, error)`
-  が、文字コードを判定して UTF-8 にし、SRT なら WebVTT にし、WebVTT ならヘッダーを確かめて
-  そのまま通し、どちらも `offsetMs` だけ時刻をずらす（R-6）。外部プロセスは起動しない。
-  `internal/httpapi` はこれを自分が宣言する `SubtitleConverter` interface で受け取り、
-  `cmd/mdm` が配線する（`Transcoder` と同じ形）。
-- Rationale: ffmpeg の `srt` demuxer は文字コードを自分では判定せず（`-sub_charenc` は
-  iconv 付きのビルドが要り、同梱イメージと利用者の ffmpeg で揃わない）、判定はどのみち Go で
-  要る。判定のあとに残るのは、番号行と時刻の行の書き換えという小さなテキスト処理で、要求ごとに
-  プロセスを起動する理由が無い。Go だけなら `ffmpeg` の無いテストで全部の入力を表で検査できる。
-  `internal/media` に置くのは、`fmp4.go` と同じく「メディアの形式の扱い」であり、兄弟パッケージの
-  import を増やさないためである。
-- Alternatives considered: `ffmpeg -i x.srt -f webvtt -` を要求ごとに起動する（上記）。
-  `internal/subtitles` を新設する（interface と配線が 1 つ増えるだけで、`internal/media` の
-  中の 1 ファイルと変わらない）。`internal/domain` に置く（`golang.org/x/text/encoding` を
-  domain に持ち込む。domain は値と規則の置き場で、バイト列の復号は adapter の仕事）。
+**Rationale**: The parent Issue's edge case "the video is in several places"
+decides "only next to the place used for playback". `openMediaFile` decides
+the place used for playback, so subtitles go through the same check in the same
+order. Whether a folder may be read is a rule that `internal/mediafs` owns in
+one place; `httpapi` must not run `ReadDir` itself (ARCHITECTURE.md).
 
-## R-5: 文字コードは BOM → UTF-8 の妥当性 → Shift_JIS の順で決める
+**Alternatives considered**:
 
-- Decision: 先頭のバイトで決める。`EF BB BF` は UTF-8 として BOM を除く。`FF FE`・`FE FF` は
-  UTF-16（LE・BE）として `golang.org/x/text/encoding/unicode` で復号する。BOM が無いときは、
-  UTF-8 と Shift_JIS（`golang.org/x/text/encoding/japanese`）の 2 つの候補を次の順で決める。
-  1. `utf8.Valid` で、復号した文字がすべて字幕で使われる文字体系（Unicode の script が
-     `Common`・`Inherited`・`Latin`・`Greek`・`Cyrillic`・`Hebrew`・`Arabic`・`Thai`・`Hangul`・
-     `Han`・`Hiragana`・`Katakana`・`Bopomofo` のどれか）に入るなら UTF-8。
-  2. そうでなく、Shift_JIS として復号でき（出力に `U+FFFD` も C1 制御文字 `U+0080`〜`U+009F` も
-     無い）れば Shift_JIS。
-  3. そうでなく `utf8.Valid` なら UTF-8（上の一覧に無い文字体系の UTF-8 の字幕）。
-  4. どれでもなければ壊れたファイルとして扱う（R-7）。
-  判定は `internal/media` の中の純粋関数で、ファイル全体のバイト列を 1 度だけ見る。
-- Rationale: BOM の 3 種類は先頭で一意に決まる。BOM 無しの UTF-8 と Shift_JIS は一意には
-  区別できない。Shift_JIS のバイト列が UTF-8 としても妥当になることがあり、たとえば `E0 A1 A1`
-  は Shift_JIS では `爍｡`、UTF-8 では `U+0861`（Syriac Supplement の `ࡡ`）になる。こうした列を
-  UTF-8 として読んだ結果は、日本語の字幕にまず現れない文字体系の文字になるので、手順 1 の
-  文字体系の確認で UTF-8 を捨てて Shift_JIS に回せる。日本語・英語・韓国語などの普通の UTF-8 の
-  字幕は手順 1 で決まり、Shift_JIS の復号に回らない。`golang.org/x/text` の Shift_JIS の復号器は
-  読めない列でエラーを返さず `U+FFFD` を出し、`0x80` を `U+0080` に通すので、「復号できた」は
-  出力にそれらが無いことで確かめる。
-  それでも、UTF-8 としても手順 1 の文字体系（ひらがなや漢字など）に収まる Shift_JIS の列は
-  残り、そのときは UTF-8 を選ぶ。
-  BOM 無しの Shift_JIS のファイル全体が `utf8.Valid` になるには、全部の非 ASCII の列が偶然
-  そうなる必要があり、実際の日本語の字幕では起きにくい。残る取り違えは quickstart の実在の
-  Shift_JIS のファイルで確かめる。`golang.org/x/text` は既に依存にある
-  （`internal/mediafs` の NFC 正規化）。`unicode` の script の表は標準ライブラリにある。
-- Alternatives considered: 文字コード推定のライブラリを足す（依存が増え、要件 4 の 4 種類の
-  外まで当てにいく必要が無い）。`utf8.Valid` だけで UTF-8 に決める（上の `E0 A1 A1` のような
-  Shift_JIS を化けたまま表示する）。両方の復号結果の「日本語らしさ」を点数で比べる（点数の
-  付け方が恣意的になり、表の検査で境界を固定しにくい）。BOM 無しの UTF-16 も受ける（要件 4 は
-  BOM 付きだけで、BOM 無しは 0x00 の混じる列の推定になる）。
+| Option | Verdict |
+| --- | --- |
+| Use the folder of `Video.location` (the representative location in the detail response) | Rejected: the representative location is chosen without checking that it opens, and playback uses another location when it does not. The playback folder and the subtitle folder would differ. |
+| Search the folders of all locations together | Rejected: contradicts the edge case. |
 
-## R-6: ライブ変換の時刻合わせは、サーバーが `offsetMs` だけ時刻をずらした WebVTT を返す
+## R-3: Name matching and duplicate rules live in pure functions in `internal/domain`
 
-- Decision: 字幕の取得経路は `offsetMs`（省略時 0）を取り、すべての cue の時刻からその値を
-  引いて返す。終了時刻が 0 以下になる cue は落とし、開始時刻が負になる cue は 0 から始める
-  （[contracts/subtitles-api.md §2](contracts/subtitles-api.md#2-get-apivideosidsubtitlesfile)）。
-  プレイヤーは、再生の時間軸の 0 が元動画のどの時刻か（`liveOffset.ts` の offset）が決まる
-  たびに、その値を `offsetMs` に付けた URL で字幕トラックを付け直す。直接再生では 0、ライブ変換では
-  `transcode-start` の報告が届いた実際の開始位置（報告が 404 なら指定位置）である。報告を待って
-  いる間はトラックを付けず、決まってから付ける。
-- Rationale: video.js の字幕の表示（エミュレーションでもブラウザ標準でも）は `<video>` 要素の
-  `currentTime`（変換の出力の時間軸）で cue を選び、`liveOffset.ts` の仲立ちが足す offset は
-  通らない。ずらす場所はサーバーか、ブラウザで cue を作り直すかのどちらかで、サーバーなら
-  純粋関数 1 つで済み、Go のテストで表にできる。ブラウザで作り直すには WebVTT の解析器が要り、
-  video.js が同梱する vtt.js はグローバル変数としてしか届かない。字幕ファイルは小さく、
-  付け直しはシークで変換をやり直すとき（もともと数秒かかる）にしか起きない。
-  「開始位置が分からない間はずれた字幕を出さない」（親 Issue の Edge Case）は、報告が決まる
-  までトラックを付けないことで満たす。
-- Alternatives considered: ブラウザで VTT を取得して解析し、`VTTCue` の時刻をずらして
-  `addTextTrack` で足す（解析器の問題と、シークのたびに cue を全部作り直す）。仲立ちで
-  `TextTrack` の cue を書き換える（video.js の内部にある `activeCues` の計算に手を入れる
-  ことになり、ブラウザ標準のトラック（Safari）には効かない）。
+**Decision**: `domain.SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSidecar`
+builds the subtitle list (file name, label, format) from the folder entries.
+The rules:
 
-## R-7: 壊れたファイルは一覧には出し、取得で 404 にする
+| Rule | Behaviour |
+| --- | --- |
+| `<name>` | The video's file name without its last extension only (`my.movie.2024.mp4` → `my.movie.2024`). |
+| Candidates | `<name>.srt`, `<name>.vtt`, `<name>.<label>.srt`, `<name>.<label>.vtt`. The `<name>` part and the extension are matched after Unicode normalization (NFC), ignoring case. |
+| `<label>` | The non-empty remainder; it may contain dots (`en.forced`). The label is displayed as written in the file name. |
+| Size limit | An entry larger than `domain.SubtitleFileLimit` (4 MiB) is not a candidate. |
+| Same label in `.srt` and `.vtt` (case-insensitive) | Only the `.vtt` is kept. |
+| Same extension differing only in case (possible on Linux) | The one first in natural name order is kept. |
+| Order | Unlabelled first, then labels in natural order (`domain.CompareNatural`). |
 
-- Decision: 一覧（R-1）はファイルの名前と大きさだけを見て作り、中身は読まない。取得の経路が
-  読んで変換し、復号できない（R-5）、SRT の cue が 1 つも読めない、WebVTT のヘッダーが無い、
-  空である、上限を超えたときは 404 `subtitle_unavailable`（`reason`）を返し、理由をサーバーの
-  ログに `Warn` で残す。ブラウザはそのトラックの読み込みに失敗し、何も表示しない。
-- Rationale: 親 Issue の Edge Case は「メニューに出さない」と「選んでも何も出ない」のどちらでも
-  よいとしている。一覧のたびに全部の字幕を読んで変換すると、再生画面を開くたびに使わない
-  字幕まで読むことになる。取得で失敗した字幕はブラウザの `<track>` が `error` になるだけで、
-  再生も他の字幕も止まらない。
-- Alternatives considered: 一覧のときに読んで壊れたものを除く（上記）。壊れた SRT の読めた
-  cue だけを返す（読めた分は返す。cue が 1 つも無いときだけ 404 にする、という形で採る）。
+**Rationale**: As a pure function, the case, multiple-dot, duplicate and limit
+cases can be tested in a table without building a file system.
+`internal/mediafs` owns only "may this be read", not what names mean. The
+4 MiB limit was chosen because the SRT of a two-hour film is a few hundred KB
+and one TV episode is about 100 KB: the value keeps every real subtitle file
+and stops a large misplaced file from being read into memory.
 
-## R-8: SRT の書式の揺れは、時刻の行だけを正規化し、cue の本文はそのまま通す
+**Alternatives considered**:
 
-- Decision: 変換は、行末を LF に揃え、BOM を除き、`WEBVTT` ヘッダーを付け、番号行（数字だけの
-  行のあとに時刻の行が続くもの）を除き、時刻の `,` を `.` にし（`.` はそのまま）、時・分・秒の
-  桁の揺れ（`0:01:02,5`）を `00:01:02.500` に整える。時刻の行が読めない cue は落とす。cue の
-  本文（`<i>`・`<b>`・`<font …>`・`{\an8}` などのタグを含む）はそのまま通す。
-- Rationale: WebVTT の cue 本文の解析は、ブラウザが知らないタグを捨てて中の文字を残す。
-  ブラウザ側に任せれば、サーバーはタグの表を持たずに済み、表を持たないので新しいタグで
-  壊れない。時刻の行は WebVTT の文法が厳密（`hh:mm:ss.ttt`、区切りは `.`）なので、ここだけを
-  揃える。
-- Alternatives considered: タグを全部除いて平文にする（要件に無く、イタリックなどの意味を
-  失う）。`<font color>` を `<c.色>` に写す（WebVTT の `::cue(c.色)` の CSS を用意する必要があり、
-  親 Issue は装飾の再現を対象外にしている）。
+| Option | Verdict |
+| --- | --- |
+| A 1 MiB limit | Rejected: a dialogue-heavy feature film or an SRT with many styling tags can exceed it. |
+| No limit | Rejected: one request reads a whole broken or misplaced large file. |
+| Show both entries of a duplicate label | Rejected: violates requirement 6 of the parent Issue. |
 
-## R-9: 字幕の選択は `web/src/preferences` に音量と同じ形で保存する
+## R-4: Conversion in Go, without ffmpeg
 
-- Decision: `web/src/preferences/subtitlePreference.ts` が
-  `{ enabled: boolean, label: string }`（ラベルの無い字幕は `""`）を `localStorage` の
-  `vv.subtitles.v1` に、`playbackVolume.ts` と同じ「読めなければ既定、書けなくても続ける」
-  総関数で読み書きする。既定は `{ enabled: false, label: "" }`。書くのは、利用者がメニューか
-  `c` キーで選択を変えたときだけで、offset の変化でトラックを付け直すとき（R-6）や、動画を
-  移ったときに一致するラベルが無くてオフになるときには書かない。
-- Rationale: 親 Issue の要件 7 は「音量の記憶と同じく、ブラウザごと」と決めている。
-  一致しない動画でオフになったときに保存値を消すと、次に `ja` のある動画を開いてもオンに
-  ならず、要件 7 の「同じラベルの字幕があれば自動でオン」が破れる。
-- Alternatives considered: video.js の `textTrackSettings` の保存（表示の設定の保存で、
-  どのトラックを選んだかは持たない。設定画面も出てしまうので `textTrackSettings: false` にする）。
-  サーバーに保存する（ゲストの再生にも要り、要件 7 がブラウザごとと決めている）。
+**Decision**: `SubtitleConverter.Convert(src []byte, format, offsetMs) ([]byte, error)`
+in `internal/media` detects the character encoding and converts to UTF-8,
+converts SRT to WebVTT, checks the header of WebVTT and passes it through, and
+in both cases shifts the times by `offsetMs` (R-6). It starts no external
+process. `internal/httpapi` receives it through a `SubtitleConverter` interface
+that `httpapi` declares, and `cmd/mdm` wires it (the same shape as
+`Transcoder`).
 
-## R-10: 字幕ボタンとメニューは video.js の `SubsCapsButton` を使う
+**Rationale**: ffmpeg's `srt` demuxer does not detect the encoding itself
+(`-sub_charenc` needs a build with iconv, which the bundled image and users'
+ffmpeg builds do not share), so detection is needed in Go anyway. What remains
+after detection is a small text rewrite of the number lines and timing lines;
+there is no reason to start a process per request. Pure Go lets every input be
+tested in a table without `ffmpeg`. It sits in `internal/media` because, like
+`fmp4.go`, it handles a media format, and that adds no import between sibling
+packages.
 
-- Decision: 操作バーの `children` に `subsCapsButton` を再生速度の前に入れ、
-  `textTrackSettings: false` で「字幕の設定」の項目を出さない。トラックは
-  `player.addRemoteTextTrack({ kind: "subtitles", src, label, default: false }, true)` で足す。
-  メニューの文言（`Subtitles`、`subtitles off`、`captions off` など）は `playerDictionary()` で
-  カタログから置き換え、ボタンには `withKey(…, "C")` と `aria-keyshortcuts="C"` を付ける。
-  ラベルの無い字幕の表示名はカタログの `t.player.subtitles.default`。字幕の表示は video.js の
-  `vjs-text-track-display` に任せ、操作バーが見えている間の下端の余白（`vjs-user-active` の
-  `bottom`）だけを `index.css` の操作バーの高さ（再生バーの 2em を含む）に合わせる。
-- Rationale: `SubsCapsButton` は、字幕のトラックが 1 つも無いと自分を隠す（要件 5）、
-  「オフ」の項目を持つ（要件 5）、既存の再生速度メニューと同じ部品で同じ余白と文字の大きさに
-  なる（親 Issue の UI 品質）。React で作るメニューは、これらを全部作り直すうえ、トラックの
-  `mode` と表示の同期も自分で持つことになる。
-- Alternatives considered: `TranscodeIndicator` と同じ Radix の Popover でメニューを作る
-  （上記）。`captionsButton`・`subtitlesButton` を別に出す（`kind: "subtitles"` しか使わないので
-  1 つで足りる）。
+**Alternatives considered**:
 
-## R-11: `c` キーは `keyboard.ts` に足し、切り替えの判断はプレイヤーが持つ
+| Option | Verdict |
+| --- | --- |
+| Start `ffmpeg -i x.srt -f webvtt -` per request | Rejected: see the rationale. |
+| A new `internal/subtitles` package | Rejected: adds one more interface and wiring and is no different from one file in `internal/media`. |
+| Put it in `internal/domain` | Rejected: brings `golang.org/x/text/encoding` into domain. Domain holds values and rules; decoding bytes is an adapter's job. |
 
-- Decision: `shortcutFor` に `c`／`C` → `"subtitles"` を足し、`PlayerControls` に
-  `toggleSubtitles()` を足す。`VideoPlayer` の実装は、トラックが無ければ何もしない、表示中の
-  トラックがあれば全部 `disabled` にしてオフを保存する、無ければ保存済みのラベルと一致する
-  トラック、無ければメニューの最初のトラックを `showing` にして保存する。
-- Rationale: 既存のキー（Space・F・M・0・Esc）と同じ経路で、入力欄やメニューの中では
-  効かない規則をそのまま使える。「最後に選んだ字幕」は R-9 の保存値そのものである。
-- Alternatives considered: video.js の `hotkeys` を有効にする（既存の設計が画面全体の捕捉で
-  受けると決めている。specs/012-video-detail-ia の Structural Decisions 9）。
+## R-5: Character encoding is decided by BOM, then UTF-8 validity, then Shift_JIS
+
+**Decision**: The leading bytes decide first. `EF BB BF` is UTF-8 and the BOM
+is removed. `FF FE` and `FE FF` are UTF-16 (LE and BE), decoded with
+`golang.org/x/text/encoding/unicode`. Without a BOM, the choice between the two
+candidates UTF-8 and Shift_JIS (`golang.org/x/text/encoding/japanese`) is made
+in this order:
+
+1. If `utf8.Valid` holds and every decoded character belongs to a script used
+   in subtitles (the Unicode script is one of `Common`, `Inherited`, `Latin`,
+   `Greek`, `Cyrillic`, `Hebrew`, `Arabic`, `Thai`, `Hangul`, `Han`,
+   `Hiragana`, `Katakana`, `Bopomofo`), UTF-8.
+2. Otherwise, if the bytes decode as Shift_JIS (the output has no `U+FFFD` and
+   no C1 control character `U+0080`–`U+009F`), Shift_JIS.
+3. Otherwise, if `utf8.Valid` holds, UTF-8 (a UTF-8 subtitle in a script not on
+   the list above).
+4. Otherwise the file is treated as broken (R-7).
+
+The detection is a pure function inside `internal/media` and looks at the bytes
+of the whole file once.
+
+**Rationale**: The three BOMs are decided uniquely by the leading bytes. UTF-8
+and Shift_JIS without a BOM cannot be told apart uniquely: a Shift_JIS byte
+sequence can also be valid UTF-8. For example, `E0 A1 A1` is `爍｡` in Shift_JIS
+and `U+0861` (`ࡡ` in Syriac Supplement) in UTF-8. Reading such a sequence as
+UTF-8 gives characters in a script that practically never appears in Japanese
+subtitles, so the script check in step 1 discards UTF-8 and passes the file to
+Shift_JIS. Ordinary UTF-8 subtitles in Japanese, English, Korean and similar
+languages are decided in step 1 and never reach the Shift_JIS decoder. The
+`golang.org/x/text` Shift_JIS decoder does not return an error for unreadable
+sequences; it emits `U+FFFD` and passes `0x80` through as `U+0080`, so
+"decodes" is checked by the absence of those characters in the output.
+
+Shift_JIS sequences that are also valid UTF-8 within the scripts of step 1
+(such as hiragana or kanji) still remain, and in that case UTF-8 is chosen. For
+a whole BOM-less Shift_JIS file to pass `utf8.Valid`, every non-ASCII sequence
+would have to happen to do so, which is unlikely in real Japanese subtitles.
+The remaining confusion is checked with a real Shift_JIS file in the
+quickstart. `golang.org/x/text` is already a dependency (the NFC normalization
+in `internal/mediafs`). The `unicode` script tables are in the standard library.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Add an encoding-detection library | Rejected: adds a dependency, and there is no need to guess beyond the four encodings of requirement 4. |
+| Decide UTF-8 from `utf8.Valid` alone | Rejected: shows Shift_JIS such as `E0 A1 A1` above garbled. |
+| Score both decodings for how Japanese they look | Rejected: the scoring is arbitrary and its boundaries are hard to pin in a table test. |
+| Also accept UTF-16 without a BOM | Rejected: requirement 4 covers only UTF-16 with a BOM, and without one it becomes guessing from sequences mixed with 0x00. |
+
+## R-6: Live transcode timing: the server returns WebVTT shifted by `offsetMs`
+
+**Decision**: The subtitle fetch route takes `offsetMs` (default 0) and
+subtracts that value from the time of every cue. A cue whose end time becomes 0
+or less is dropped, and a cue whose start time becomes negative starts at 0
+([contracts/subtitles-api.md §2](contracts/subtitles-api.md#2-get-apivideosidsubtitlesfile)).
+Each time the player learns which time in the original video the playback
+timeline's 0 is (the offset in `liveOffset.ts`), it reattaches the subtitle
+tracks with that value as `offsetMs` in the URL. The value is 0 for direct
+playback; for live transcode it is the actual start position from the
+`transcode-start` report (the requested position when the report returns 404).
+While the report is pending, no track is attached; tracks are attached once the
+offset is settled.
+
+**Rationale**: video.js subtitle display (emulated or native) picks cues by the
+`currentTime` of the `<video>` element (the transcode output's timeline), and
+the offset that the `liveOffset.ts` shim adds does not reach it. The shift has
+to happen either on the server or by rebuilding cues in the browser. On the
+server it is one pure function that Go tests can cover in a table. Rebuilding
+in the browser needs a WebVTT parser, and the vtt.js bundled with video.js is
+reachable only as a global variable. Subtitle files are small, and
+reattachment happens only when a seek restarts the transcode (which already
+takes several seconds). The parent Issue's edge case "do not show shifted
+subtitles while the start position is unknown" is met by not attaching tracks
+until the report settles.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Fetch and parse the VTT in the browser, shift the `VTTCue` times and add them with `addTextTrack` | Rejected: the parser problem, and every cue is rebuilt on every seek. |
+| Rewrite the cues of the `TextTrack` in the shim | Rejected: requires changing the `activeCues` computation inside video.js, and has no effect on native tracks (Safari). |
+
+## R-7: Broken files appear in the list and return 404 on fetch
+
+**Decision**: The list (R-1) is built from file names and sizes only, without
+reading content. The fetch route reads and converts. When the file cannot be
+decoded (R-5), no SRT cue can be read, the WebVTT header is missing, the file
+is empty or it exceeds the limit, the route returns 404 with `reason`
+`subtitle_unavailable` and logs the cause at `Warn` on the server. The browser
+fails to load that track and shows nothing.
+
+**Rationale**: The parent Issue's edge case accepts either "not shown in the
+menu" or "nothing appears when selected". Reading and converting every
+subtitle on each list would read subtitles nobody uses every time the playback
+screen opens. A subtitle that fails to fetch only puts the browser's `<track>`
+into `error`; playback and the other subtitles continue.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Read on list and drop broken files | Rejected: see the rationale. |
+| Return only the readable cues of a broken SRT | Adopted in this form: the readable cues are returned, and only an SRT with no readable cue gets 404. |
+
+## R-8: SRT format variations: normalize only timing lines, pass cue text through
+
+**Decision**: The conversion normalizes line endings to LF, removes the BOM,
+adds the `WEBVTT` header, removes number lines (a line of digits only followed
+by a timing line), changes `,` in times to `.` (`.` stays), and normalizes
+variable digit counts for hours, minutes and seconds (`0:01:02,5`) to
+`00:01:02.500`. A cue whose timing line cannot be read is dropped. Cue text,
+including tags such as `<i>`, `<b>`, `<font …>` and `{\an8}`, passes through
+unchanged.
+
+**Rationale**: WebVTT cue text parsing in the browser discards unknown tags and
+keeps the text inside them. Leaving that to the browser means the server keeps
+no tag table, and without a table it does not break on new tags. The WebVTT
+grammar for timing lines is strict (`hh:mm:ss.ttt`, `.` as the separator), so
+only those lines are normalized.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Strip all tags to plain text | Rejected: not a requirement, and loses meaning such as italics. |
+| Map `<font color>` to `<c.color>` | Rejected: needs CSS for WebVTT `::cue(c.color)`, and the parent Issue puts reproducing styling out of scope. |
+
+## R-9: The subtitle selection is stored in `web/src/preferences` like the volume
+
+**Decision**: `web/src/preferences/subtitlePreference.ts` reads and writes
+`{ enabled: boolean, label: string }` (`""` for an unlabelled subtitle) under
+the `localStorage` key `vv.subtitles.v1`, with total functions in the same
+"default when unreadable, carry on when unwritable" form as
+`playbackVolume.ts`. The default is `{ enabled: false, label: "" }`. The value
+is written only when the user changes the selection with the menu or the `c`
+key. It is not written when tracks are reattached because the offset changed
+(R-6), nor when moving to a video without a matching label turns subtitles off.
+
+**Rationale**: Requirement 7 of the parent Issue decides "per browser, like
+the remembered volume". Clearing the stored value when a video without a match
+turns subtitles off would leave subtitles off on the next video that has `ja`,
+breaking requirement 7's "turned on automatically when a subtitle with the
+same label exists".
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| The video.js `textTrackSettings` storage | Rejected: it stores display settings, not which track was chosen, and it also shows a settings dialog, so `textTrackSettings: false` is set. |
+| Store on the server | Rejected: guest playback would need it too, and requirement 7 decides per browser. |
+
+## R-10: Subtitle button and menu use video.js `SubsCapsButton`
+
+**Decision**: `subsCapsButton` goes into the control bar's `children` before
+the playback speed, and `textTrackSettings: false` hides the subtitle settings
+item. Tracks are added with
+`player.addRemoteTextTrack({ kind: "subtitles", src, label, default: false }, true)`.
+The menu strings (`Subtitles`, `subtitles off`, `captions off` and others) are
+replaced from the catalog by `playerDictionary()`, and the button gets
+`withKey(…, "C")` and `aria-keyshortcuts="C"`. An unlabelled subtitle is shown
+with the catalog name `t.player.subtitles.default`. Subtitle rendering is left
+to video.js's `vjs-text-track-display`; only the bottom margin while the
+control bar is visible (`bottom` under `vjs-user-active`) is matched in
+`index.css` to the control bar height (including the 2em progress bar).
+
+**Rationale**: `SubsCapsButton` hides itself when there is no subtitle track
+(requirement 5), has an off item (requirement 5), and is the same component as
+the existing playback speed menu, so it gets the same spacing and text size
+(the parent Issue's UI quality). A menu built in React would have to rebuild
+all of that and also keep the track `mode` in sync with the display itself.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Build the menu with a Radix Popover like `TranscodeIndicator` | Rejected: see the rationale. |
+| Show separate `captionsButton` and `subtitlesButton` | Rejected: only `kind: "subtitles"` is used, so one button is enough. |
+
+## R-11: The `c` key is added to `keyboard.ts`; the player decides the toggle
+
+**Decision**: `shortcutFor` maps `c` and `C` to `"subtitles"`, and
+`PlayerControls` gets `toggleSubtitles()`. The `VideoPlayer` implementation
+does nothing when there is no track. When a track is showing, it sets every
+track to `disabled` and stores "off". Otherwise it shows the track that matches
+the stored label, or else the first track in the menu, and stores the choice.
+
+**Rationale**: The key uses the same path as the existing keys (Space, F, M, 0,
+Esc), so the rule that keys do nothing inside input fields and menus applies
+unchanged. "The last chosen subtitle" is the R-9 stored value itself.
+
+**Alternatives considered**: Enabling video.js `hotkeys` was rejected: the
+existing design captures keys for the whole screen (Structural Decisions 9 in
+specs/012-video-detail-ia).
