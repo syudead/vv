@@ -75,19 +75,31 @@ behaviour in the present tense and the active voice.
 | --- | --- |
 | A subtitle file over 4 MiB is not listed. | Large files are handled appropriately. |
 
-### W-7: Tables and diagrams for structure, prose for reasons
+### W-7: Draw first, tabulate second, write prose last
+
+Pick the first form in this table that fits the content. Prose is for reasons
+only.
 
 | Content | Form |
 | --- | --- |
+| What talks to what: components, files, a request's path | Mermaid `flowchart` |
+| A sequence of calls or messages over time | Mermaid `sequenceDiagram` |
+| States and what triggers each transition | Mermaid `stateDiagram-v2` |
+| A rule with branches (if this, then that) | Mermaid `flowchart` with decision nodes |
 | Options compared on the same attributes | Table |
-| States, cases, or situations and the behaviour in each | Table |
+| Cases and the behaviour in each, without an order between them | Table |
 | A mapping (field → meaning, code → message, path → owner) | Table |
-| A flow across components, a sequence of calls, a dependency graph, a state machine | Mermaid diagram |
 | Steps the reader runs in order | Numbered list |
 | Why a choice was made | Prose |
 
-Keep a table cell to one statement. When a cell needs a paragraph, the content
-is prose. Every diagram has a sentence before it that says what it shows.
+A design document opens with a diagram of the parts it covers, and every
+section whose subject is a flow, a sequence, a state or a branching rule has
+its own. A section of only prose and tables is a sign a diagram is missing.
+Keep a table cell to one statement. Every diagram has a sentence before it that
+says what it shows, and its labels use the document's terms (W-8). Keep a label
+to about four words; put the detail in a sentence under the diagram. A rule
+with branches reads left to right (`flowchart LR`), so its decision nodes stay
+small.
 
 ### W-8: One term per concept
 

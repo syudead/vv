@@ -27,4 +27,5 @@ This file records only the decisions this feature adds.
 **Rationale**: [Why the chosen option wins here, in at most three sentences.
 Do not repeat the table.]
 
-<!-- DIAGRAM (Mermaid) when the decision is about a flow between components. -->
+<!-- DIAGRAM (Mermaid) when the decision is about a flow, a sequence, a state
+     change or a branching rule (W-7). -->

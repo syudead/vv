@@ -16,6 +16,10 @@ Source of truth: [link to the schema file and the operation ids].
 
 [What it does, in one sentence.]
 
+<!-- DIAGRAM (Mermaid sequenceDiagram) of the caller, this endpoint and what
+     it calls, when the exchange has more than one round trip or branches by
+     outcome (W-7). -->
+
 <!-- TABLE: parameters or request fields. -->
 
 | Field | In | Type | Required | Meaning |

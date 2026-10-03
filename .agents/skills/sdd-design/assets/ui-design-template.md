@@ -35,7 +35,8 @@ Sources: [links to the design-system documents and screens this narrows].
 | --- | --- |
 | | |
 
-<!-- DIAGRAM (Mermaid) when an interaction has more than two steps or branches. -->
+<!-- DIAGRAM (Mermaid stateDiagram-v2 or flowchart) of the screen states and
+     what the user does to move between them (W-7). -->
 
 ## Responsive behaviour
 

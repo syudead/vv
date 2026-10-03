@@ -131,3 +131,11 @@ test('the site marks current, stale and untranslated pages', () => {
   assert.match(fs.readFileSync(path.join(root, 'ja/docs/a.md'), 'utf8'), /^---\ntranslation: "current"[\s\S]*翻訳の置き場所/)
   assert.match(fs.readFileSync(path.join(root, 'ja/docs/c.md'), 'utf8'), /translation: "untranslated"[\s\S]*# C/)
 })
+
+test('state and sequence diagram labels may be translated, ids may not', () => {
+  const en = '```mermaid\nstateDiagram-v2\n  [*] --> Direct: direct playback\n  Direct --> Waiting: switch\n  Waiting: Track removed\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: request\n```\n'
+  const ja = '```mermaid\nstateDiagram-v2\n  [*] --> Direct: 直接再生\n  Direct --> Waiting: 切り替え\n  Waiting: トラックを外す\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: 要求\n```\n'
+  assert.equal(structureDiff(en, ja), null)
+  assert.notEqual(structureDiff(en, ja.replace('Direct --> Waiting', 'Direct --> Wait')), null)
+  assert.notEqual(structureDiff(en, ja.replace('A->>B', 'A->>C')), null)
+})

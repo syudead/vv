@@ -134,11 +134,21 @@ function tokenize(text: string): string[] {
   return tokens
 }
 
+// A ```mermaid block becomes a component that draws it in the browser.
+function mermaidFence(md: MarkdownIt) {
+  const fence = md.renderer.rules.fence!
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const token = tokens[idx]
+    if (token.info.trim() !== 'mermaid') return fence(tokens, idx, options, env, self)
+    return `<MermaidDiagram code="${encodeURIComponent(token.content)}" />`
+  }
+}
+
 // 見出し1を題として読む。サイドバーの表示に使う。
 function titleOf(file: string): string {
   const source = fs.readFileSync(path.join(repoRoot, file), 'utf8')
   const m = source.match(/^#[ \t]+(.+?)[ \t#]*$/m)
-  return m ? m[1].replace(/[`*]/g, '').trim() : path.posix.basename(file, '.md')
+  return m ? m[1].replace(/\s*\{#[^}]*\}$/, '').replace(/[`*]/g, '').trim() : path.posix.basename(file, '.md')
 }
 
 function pageLink(file: string): string {
@@ -277,7 +287,7 @@ export default defineConfig({
   markdown: {
     anchor: { slugify: slug },
     headers: { slugify: slug },
-    config: (md) => md.use(linkRewriter),
+    config: (md) => md.use(linkRewriter).use(mermaidFence),
   },
   themeConfig: {
     outline: { level: [2, 3] },

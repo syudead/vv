@@ -43,8 +43,11 @@ export function headings(markdown) {
 
 // Mermaid labels: [text], ("text"), {text}, |edge text|, participant X as Y,
 // and note ...: text. Node ids, arrows and keywords stay as they are.
+// The first alternative is a `subject: label` line (stateDiagram transitions and
+// state descriptions, sequenceDiagram messages, notes): the subject holds no
+// shape brackets except a state diagram's [*].
 const mermaidLabel =
-  /\[\[?"?([^\]"\n]+?)"?\]?\]|\(\(?"?([^()"\n]+?)"?\)?\)|\{\{?"?([^{}"\n]+?)"?\}?\}|\|"?([^|"\n]+?)"?\||\bparticipant\s+\S+\s+as\s+([^\n]+)|\bnote\s+[^:\n]+:\s*([^\n]+)/g
+  /^[ \t]*(?:\[\*\]|[^\n:[\](){}|"])+?:[ \t]*([^\n]+)|\[\[?"?([^\]"\n]+?)"?\]?\]|\(\(?"?([^()"\n]+?)"?\)?\)|\{\{?"?([^{}"\n]+?)"?\}?\}|\|"?([^|"\n]+?)"?\||\bparticipant\s+\S+\s+as\s+([^\n]+)|\bnote\s+[^:\n]+:\s*([^\n]+)/gm
 
 // mermaidLabels returns [start, end] offsets of the translatable labels in a
 // Mermaid body.
