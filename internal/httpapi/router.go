@@ -128,6 +128,17 @@ type TranscodeSettings interface {
 	Select(ctx context.Context, choice domain.EncoderChoice) (domain.TranscodeEncoding, error)
 }
 
+// NetworkSettings は Windows デスクトップ版の LAN からの接続の許可である。internal/app の
+// *NetworkSettings がこれを満たす。待ち受けの開き直しと保存の順はそちらが持つ
+// （specs/037-windows-app/research.md R-14）。
+type NetworkSettings interface {
+	// Current は今の許可・ポート・許可中に開けるアドレスを返す。
+	Current() domain.NetworkSettings
+	// SetLANAccess は許可を切り替え、切り替えたあとの設定を返す。新しいアドレスで待ち受けを
+	// 開けなければ domain.ErrListenFailed を包んで返し、保存値を変えない。
+	SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error)
+}
+
 // TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
 // internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
 // data-model.md §4）。
@@ -247,6 +258,9 @@ type Options struct {
 	// TranscodeSettings はライブ変換の映像エンコード方式の設定。nil なら設定の経路は 500 を
 	// 返し、ライブ変換は software でエンコードする。
 	TranscodeSettings TranscodeSettings
+	// NetworkSettings は LAN からの接続の許可。デスクトップ版だけが渡し、nil なら
+	// /api/settings/network は 404 を返す。
+	NetworkSettings NetworkSettings
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -310,6 +324,7 @@ type server struct {
 	transcoder   Transcoder
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
 	transcodeSettings TranscodeSettings
+	networkSettings   NetworkSettings
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -380,6 +395,7 @@ func NewRouter(opts Options) http.Handler {
 		transcoder:        opts.Transcoder,
 		transcodeProbes:   opts.TranscodeProbes,
 		transcodeSettings: opts.TranscodeSettings,
+		networkSettings:   opts.NetworkSettings,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,
@@ -509,7 +525,8 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && rest != "" && !strings.Contains(rest, "/")
 		}
 	case http.MethodPut:
-		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" {
+		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
+			r.URL.Path == "/api/settings/network" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
@@ -648,6 +665,7 @@ const (
 	reasonTooFewVideos                  = gen.ErrorReasonTooFewVideos
 	reasonRepresentativeNotSelected     = gen.ErrorReasonRepresentativeNotSelected
 	reasonNotBundled                    = gen.ErrorReasonNotBundled
+	reasonListenFailed                  = gen.ErrorReasonListenFailed
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

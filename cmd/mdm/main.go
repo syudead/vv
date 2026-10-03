@@ -56,6 +56,11 @@ type runOptions struct {
 	OnListening func()
 	// NotifyStop は停止の指示の受け取りを始める。HTTP サーバーを起動する直前に呼ぶ。
 	NotifyStop stopNotifier
+	// Desktop はデスクトップ版の起動である。真なら待ち受けのホストを LAN からの接続の
+	// 許可の保存値で決め（Config.Addr のポートを使う）、/api/settings/network で切り替え
+	// られるようにする。偽なら Config.Addr のまま待ち受け、その経路は 404 を返す
+	// （specs/037-windows-app/research.md R-14）。
+	Desktop bool
 	// OnBusyProbe は走査を用意したあと、待ち受けを開く前に、取り込みの途中かを問う
 	// 関数（app.Scans.Busy）を渡す。デスクトップ版の閉じる前の確認が使う
 	// （specs/037-windows-app/research.md R-7）。nil なら呼ばない。
@@ -147,6 +152,18 @@ func run(opts runOptions) error {
 	// 認証の準備。期限切れのセッションを消し、未設定なら初回設定を促す。
 	authStore := db.Auth()
 	prepareAuth(context.Background(), authStore, time.Now(), logger)
+
+	// LAN からの接続の許可はデスクトップ版だけが持つ。DB を開いたあと、ジョブや待ち受けを
+	// 動かす前に保存値を読み、待ち受けるアドレスを決める。nil のままなら経路は 404 を返す。
+	var networkSettings httpapi.NetworkSettings
+	if opts.Desktop {
+		addr, settings, err := startNetworkSettings(context.Background(), db.Settings(), opts.Listener, cfg.Addr, logger)
+		if err != nil {
+			return &startupError{stage: stageDatabase, err: err}
+		}
+		cfg.Addr = addr
+		networkSettings = settings
+	}
 
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
@@ -293,6 +310,7 @@ func run(opts runOptions) error {
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
 		// 要求ごとに今の方式を読むので、方式の変更は再起動なしに次の要求から効く。
 		TranscodeSettings: transcodeSettings,
+		NetworkSettings:   networkSettings,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

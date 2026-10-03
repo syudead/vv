@@ -245,8 +245,9 @@ func closeNeedsConfirmation(probe *func(context.Context) (bool, error), logger *
 	return busy
 }
 
-// desktopConfig はデスクトップ版の設定を組み立てる。待ち受けはループバックだけで、
-// 前に逆プロキシは無いので転送ヘッダを読まない（MDM_TRUSTED_PROXIES=none 相当、R-14）。
+// desktopConfig はデスクトップ版の設定を組み立てる。待ち受けのホストは run が LAN からの
+// 接続の許可の保存値で決め直す（既定はループバックだけ）。前に逆プロキシは無いので
+// 転送ヘッダを読まない（MDM_TRUSTED_PROXIES=none 相当、R-14）。
 func desktopConfig(paths desktop.Paths, port int) Config {
 	return Config{
 		Addr:           net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),

@@ -196,6 +196,7 @@ const (
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
 	ErrorReasonInvalidCursor                 ErrorReason = "invalid_cursor"
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
+	ErrorReasonListenFailed                  ErrorReason = "listen_failed"
 	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
@@ -257,6 +258,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonInvalidCursor:
 		return true
 	case ErrorReasonInvalidFolderPath:
+		return true
+	case ErrorReasonListenFailed:
 		return true
 	case ErrorReasonMediaFoldersChanged:
 		return true
@@ -1299,6 +1302,18 @@ type MergeTagRequest struct {
 	SourceId int64 `json:"sourceId"`
 }
 
+// NetworkSettings Windows デスクトップ版の LAN からの接続の設定 （specs/037-windows-app/contracts/network-settings-api.md §1）
+type NetworkSettings struct {
+	// Addresses lanAccess が true のときだけ、上がっている非ループバックの IPv4 アドレスごとに "http://<アドレス>:<ポート>/" が入る。false なら空
+	Addresses []string `json:"addresses"`
+
+	// LanAccess 保存した選択。保存値が無ければ false
+	LanAccess bool `json:"lanAccess"`
+
+	// Port 今の待ち受けのポート
+	Port int `json:"port"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -1617,6 +1632,11 @@ type TranscodingSettings struct {
 type UpdateMediaFolderRequest struct {
 	Path    string `json:"path"`
 	Version int64  `json:"version"`
+}
+
+// UpdateNetworkSettingsRequest defines model for UpdateNetworkSettingsRequest.
+type UpdateNetworkSettingsRequest struct {
+	LanAccess bool `json:"lanAccess"`
 }
 
 // UpdateTranscodingSettingsRequest defines model for UpdateTranscodingSettingsRequest.
@@ -2312,6 +2332,9 @@ type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
 
+// UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
+type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
+
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
@@ -2431,6 +2454,12 @@ type ServerInterface interface {
 	// ListCurrentScanIssues 直近の取り込みの問題の一覧を返す
 	// (GET /api/scans/current/issues)
 	ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params ListCurrentScanIssuesParams)
+	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
+	// (GET /api/settings/network)
+	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateNetworkSettings LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
+	// (PUT /api/settings/network)
+	UpdateNetworkSettings(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 	// (GET /api/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -3487,6 +3516,34 @@ func (siw *ServerInterfaceWrapper) ListCurrentScanIssues(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCurrentScanIssues(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetNetworkSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetNetworkSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetNetworkSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateNetworkSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateNetworkSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateNetworkSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4822,6 +4879,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)

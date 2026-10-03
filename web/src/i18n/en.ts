@@ -183,6 +183,7 @@ const errorReasons = {
   too_few_videos: "Select at least two videos.",
   representative_not_selected: "Pick which video to show in the library.",
   not_bundled: "This video isn't bundled with others.",
+  listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
