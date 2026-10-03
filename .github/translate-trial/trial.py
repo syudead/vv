@@ -107,6 +107,23 @@ def translate(family, kind, text, terms):
         r = post("/completion", {"prompt": prompt, "n_predict": 512, "temperature": 0,
                                  "stop": ["<|plamo:op|>"]})
         return r["content"].strip(), r.get("timings", {})
+    if family == "gemma":
+        # TranslateGemma's chat template only accepts typed content, so the
+        # official prompt is sent as a raw Gemma turn.
+        note = ""
+        if kind == "term":
+            note = " Use these term translations: " + "; ".join(f"{s} -> {t}" for s, t in terms) + "."
+        if kind == "format":
+            note = " Keep every <sN>...</sN> tag around the corresponding translated words."
+        prompt = ("<start_of_turn>user\nYou are a professional English (en) to Japanese (ja) translator. "
+                  "Your goal is to accurately convey the meaning and nuances of the original English text "
+                  "while adhering to Japanese grammar, vocabulary, and cultural sensitivities. Produce only "
+                  "the Japanese translation, without any additional explanations or commentary." + note +
+                  " Please translate the following English text into Japanese:\n\n\n"
+                  f"{text}<end_of_turn>\n<start_of_turn>model\n")
+        r = post("/completion", {"prompt": prompt, "n_predict": 512, "temperature": 0,
+                                 "stop": ["<end_of_turn>"]})
+        return r["content"].strip(), r.get("timings", {})
     prompt = hy_prompt(kind, text, terms) if family == "hy" else generic_prompt(kind, text, terms)
     params = ({"temperature": 0.7, "top_p": 0.6, "top_k": 20, "repeat_penalty": 1.05}
               if family == "hy" else {"temperature": 0})
@@ -138,8 +155,9 @@ def main():
     size = os.path.getsize("model.gguf") / 1e9
     report += [f"Size: {size:.2f} GB, download {time.time() - t0:.0f} s", ""]
 
+    jinja = "--no-jinja" if family == "gemma" else "--jinja"
     server = subprocess.Popen(["./llama/llama-server", "-m", "model.gguf", "-c", "4096",
-                               "-t", str(os.cpu_count()), "--port", "8080", "--jinja"],
+                               "-t", str(os.cpu_count()), "--port", "8080", jinja],
                               stdout=open("server.log", "w"), stderr=subprocess.STDOUT)
     for _ in range(600):
         try:

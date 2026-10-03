@@ -21,10 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: HY-MT1.5-1.8B, family: hy, query: HY-MT1.5-1.8B, author: tencent, quants: "Q8_0,Q6_K,Q4_K_M" }
-          - { name: HY-MT1.5-7B, family: hy, query: HY-MT1.5-7B, author: tencent, quants: "Q4_K_M,Q5_K_M,Q8_0" }
           - { name: TranslateGemma-4B, family: gemma, query: translategemma-4b, author: google, quants: "Q8_0,Q4_K_M" }
-          - { name: plamo-2-translate, family: plamo, query: plamo-2-translate, author: pfnet, quants: "Q4_K_M,Q5_K_M,Q8_0" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
