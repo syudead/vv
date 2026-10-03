@@ -41,8 +41,8 @@ file into a handbook.
   `api/external-v1.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Give every pushed working branch a pull request as its review target.
-- 依存更新（Renovate）の運用は
-  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md)。
+- Dependency updates (Renovate) follow
+  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).
 - SDD work starts when the maintainer hands over a parent Issue or native
   sub-issue URL, and runs `plan → design → plan-to-issues → implement →
   integrate`, with `design` only for `ui` Issues. Use

@@ -27,9 +27,10 @@ agrees with itself.
 
 ### 1. Reconcile the diff against the sources of truth
 
-For each behaviour the diff adds or changes, quote the parent Issue's 要件 or
-受け入れ条件, or the line in `plan.md`, `data-model.md`, `contracts/`,
-`ui-design.md`, `api/openapi.yaml`, or `AGENTS.md` that governs it, and state whether the code matches. A behaviour
+For each behaviour the diff adds or changes, quote the parent Issue's `要件` or
+`受け入れ条件`, or the line in `plan.md`, `data-model.md`, `contracts/`,
+`ui-design.md`, `api/openapi.yaml`, or `AGENTS.md` that governs it, and state
+whether the code matches. A behaviour
 with no governing line is either missing from the artifact or outside the
 change's scope; say which.
 

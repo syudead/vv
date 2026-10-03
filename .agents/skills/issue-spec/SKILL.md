@@ -13,7 +13,7 @@ not in the feature.
 
 Create or update the parent Issue. Do not create a branch, change repository
 files, or open a pull request. Stop when the Issue is written, and reply with
-its link and the 概要 line.
+its link and the `概要` line.
 
 ## Steps
 
@@ -30,15 +30,15 @@ its link and the 概要 line.
    - open and closed Issues for a duplicate or a related feature; when one
      exists, say so and ask whether to revise it instead.
 
-   Write the result as a 現状 note of a few lines, with links. It opens the
-   discussion in step 3 and becomes the Issue's 背景. Then answer what you
+   Write the result as a `現状` (current state) note of a few lines, with links. It opens the
+   discussion in step 3 and becomes the Issue's `背景`. Then answer what you
    can yourself in Q-6's order: the repository's design documents and
    specs, the existing screens and code, the request itself, and the form
    comparable current products have converged on.
-2. **Decide whether to discuss first (壁打ち).** Discuss when any of these
+2. **Decide whether to discuss first (`壁打ち`).** Discuss when any of these
    holds after step 1:
    - what the user gets, or the problem being solved, is not stated;
-   - the boundary between this feature and 対象外 is open;
+   - the boundary between this feature and `対象外` is open;
    - a question remains that meets Q-6 (it changes what the user gets, the
      sources above do not settle it, and getting it wrong is costly);
    - the request conflicts with existing behaviour and does not say which
@@ -49,7 +49,7 @@ its link and the 概要 line.
    Otherwise go straight to step 4. Tell the requester in one line which way
    you went and why.
 3. **Discuss until the requirement is settled.** Do not file the Issue
-   mid-discussion. Open the first round with the 現状 note from step 1, so
+   mid-discussion. Open the first round with the `現状` note from step 1, so
    the requester answers knowing what exists today. Each round:
    - state your current understanding in two or three lines — what the user
      gets, and what is in and out;
@@ -100,22 +100,24 @@ its link and the 概要 line.
 ## 概要
 ## 背景
 ## 要件
-## UI品質   <- `ui` ラベルの Issue だけ
+## UI品質   <- only for Issues with the `ui` label
 ## 受け入れ条件
 ## Edge Cases
 ## 対象外
 ```
 
-- **概要** is one to three lines: who can now do what, and what changes for
+- **`概要`** is one to three lines: who can now do what, and what changes for
   them. A reader who stops here knows the feature.
-- **背景** is the current state and why it falls short, in a few lines. Link
+- **`背景`** is the current state and why it falls short, in a few lines. Link
   the spec or design doc of the existing behaviour instead of retelling it.
 
+Write the Issue in Japanese, with the section headings exactly as above
+([W-1](../../../docs/design-docs/writing-quality.md#w-1-documents-are-in-english-issues-and-pr-bodies-are-in-japanese)).
 Leave out a section this feature has nothing for. Do not invent content to
 fill a heading. Do not add a workflow-progress section such as `## SDD`;
 progress is read from the feature branch and the native sub-issues.
 
-Write 要件 and 受け入れ条件 as numbered lists. Downstream stages cite an item as
+Write `要件` and `受け入れ条件` as numbered lists. Downstream stages cite an item as
 `要件 3` or `受け入れ条件 5`, and a plan, a child Issue, a checklist, or a review
 has nothing to point at otherwise. The numbers are handles, not a traceability
 matrix: do not add a table mapping one list to the other.
@@ -129,13 +131,14 @@ buries the requirement and fixes choices that belong downstream.
   more; merge items that say the same thing from two sides.
 - **No implementation detail** unless the requester stated it: no type, field,
   file, endpoint, component or CSS names, no pixel sizes or timings. Write
-  "サムネイル下端の細い帯", not "高さ 1/5 の帯"; plan and design pick the
+  `サムネイル下端の細い帯` (a thin band along the thumbnail's bottom edge), not
+  `高さ 1/5 の帯` (a band 1/5 high); plan and design pick the
   numbers.
-- **受け入れ条件 does not restate 要件.** Write only what someone checks, and
-  leave out a criterion that would repeat its 要件 word for word.
+- **`受け入れ条件` does not restate `要件`.** Write only what someone checks, and
+  leave out a criterion that would repeat its `要件` word for word.
 - **Edge Cases are one line each.** Group cases with the same outcome into one
   line.
-- **UI品質 is one line per viewpoint.** The design stage elaborates; the Issue
+- **`UI品質` is one line per viewpoint.** The design stage elaborates; the Issue
   only fixes the judgement.
 - **Prefer a picture to a paragraph.** When prose would describe states, a
   flow, or before/after behaviour, use a table or a Mermaid diagram (`stateDiagram-v2`,
@@ -148,17 +151,17 @@ Q-3 through Q-5 govern the UI section, Q-6 governs what becomes a question, and
 Q-7 keeps implementation difficulty out of the requirement. The points below are
 what this stage adds.
 
-- **受け入れ条件 is observable.** Write what someone can watch happen. A number
+- **`受け入れ条件` is observable.** Write what someone can watch happen. A number
   belongs there only when this repository can actually measure it — a criterion
   phrased around test participants or a user study will never be run here, and
   is a defect, not a strong requirement.
 - **Edge Cases carry the failures.** Boundaries, partial failure, concurrent
   use, and cleanup after the user leaves. This is the section a plan cannot
   recover on its own.
-- **対象外 is a decision, not a disclaimer.** List only what a reader would
+- **`対象外` is a decision, not a disclaimer.** List only what a reader would
   otherwise expect to be included.
 - **Name the existing behaviour this replaces.** When the feature changes
-  something the product already does, say so in 要件.
+  something the product already does, say so in `要件`.
 - **Revising is the same stage.** When the requirement changes, edit this Issue
   rather than recording the change somewhere downstream. Run step 2 on the
   change itself.
