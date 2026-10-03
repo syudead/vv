@@ -12,7 +12,7 @@
 
 - **見つけ方**: 再生画面が呼ぶ `GET /api/videos/{id}/subtitles` が、配信が開く所在のフォルダを
   そのたびに読む。SQLite には何も足さない
-  （[research.md R-1](research.md#r-1-字幕ファイルは要求のたびにフォルダを読んでsqlite-には置かない)、
+  （[research.md R-1](research.md#r-1-字幕ファイルは要求のたびにフォルダを読んで見つけsqlite-には置かない)、
   [R-2](research.md#r-2-探すフォルダは配信が開く所在のフォルダである)）。名前の照合・重複・上限
   （4 MiB）の規則は `internal/domain` の純粋関数が持つ
   （[R-3](research.md#r-3-名前の照合と重複の規則は-internaldomain-の純粋関数が持つ)）。
