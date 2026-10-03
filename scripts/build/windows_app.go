@@ -29,9 +29,8 @@ import (
 // （docs/how-to/dependency-updates.md）。SHA-256 が合わなければビルドは失敗する。
 const (
 	ffmpegVersion = "9.0.2"
-	// 未確定。この変更を作った環境からは Release の zip を取れず、値を確かめられなかった。
-	// Gyan.dev が公開する SHA-256 を確かめて入れるまで、ビルドは実際の値を示して失敗する。
-	ffmpegSHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+	// Gyan.dev が公開する値（https://www.gyan.dev/ffmpeg/builds/packages/<zip の名前>.sha256）。
+	ffmpegSHA256 = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba"
 )
 
 const (
