@@ -3,46 +3,48 @@
 Design documents explain consequential technical decisions and their context.
 Add each new document to this index.
 
-## 設計文書の方針
+## Design document policy
 
-- 文書には正しいことだけを書く。今の実装と食い違う記述は残さず、実装を変えた変更の中で
-  直す。
-- 何を出すか、何を置いてよいかを制限するのは、設計文書の役目ではない。「〜だけとする」
-  「〜は出さない」「〜を増やさないこと」のような縛りは書かず、今どうなっているかと、
-  なぜそうしたかを書く。
+- A document states only what is true. A statement that disagrees with the
+  current implementation is not left in place; it is fixed in the change that
+  altered the implementation.
+- Restricting what may be shown or placed is not the job of a design document.
+  Do not write constraints such as "only X", "do not show Y" or "do not add more
+  Z"; write how things are now and why.
 
 ## Documents
 
-下の `ui-design.md` は日本語の文言を引用している。英語化のあとの画面の文言は、英語のカタログ
-（`web/src/i18n/en.ts`）が正本である（[i18n](i18n.md#ui-designmd-の文言)）。
+The `ui-design.md` documents below quote Japanese screen text. After the English
+conversion, the English catalog (`web/src/i18n/en.ts`) is the source of truth
+for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 
 - [Core beliefs](core-beliefs.md)
 - [Writing quality: typed technical English](writing-quality.md)
-- [Plan品質の規則: 空欄を埋めるための記述を防ぐ](plan-quality.md)
-- [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
-- [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
-- [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
-- [ライブ変換のハードウェアエンコード](hardware-encoding.md)
-- [再生の画質](playback-quality.md)
-- [シーク用スプライトの生成](seek-sprite-generation.md)
-- [動画の隣に置いた字幕ファイル](sidecar-subtitles.md)
-- [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
-- [画面の文言と書式（i18n）](i18n.md)
-- [VVMDM ブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
-- [動画シーク時のサムネイルプレビュー UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
-- [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
-- [フォルダ階層をたどる画面の UI](../../specs/011-folder-browser/ui-design.md)
-- [動画詳細画面の UI](../../specs/012-video-detail-ia/ui-design.md)
-- [動画取り込みの進捗表示 UI](../../specs/012-scan-progress/ui-design.md)（置き場所と操作だけ。示す内容は 024）
-- [取り込みの進捗と結果の UI](../../specs/024-import-progress/ui-design.md)
-- [一覧とフォルダ画面の検索 UI](../../specs/013-library-search/ui-design.md)
-- [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
-- [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)
-- [フォルダのグループと続けて再生の UI](../../specs/017-folder-groups/ui-design.md)
-- [画質メニューと途切れの警告の UI](../../specs/027-playback-quality/ui-design.md)
-- [動画の表示名の編集と今の場面のサムネイル指定の UI](../../specs/029-video-overrides/ui-design.md)
-- [同じ動画の別バージョンを束ねる UI](../../specs/030-video-versions/ui-design.md)
-- [仮のタグの目印と、確定・却下・却下した名前の UI](../../specs/031-tentative-tags/ui-design.md)
-- [一覧のカードのサムネイル下端をなぞるスクラブの UI](../../specs/032-card-scrub-preview/ui-design.md)
-- [動画ページの更新日時・作成日時と「作成日」の並び順の UI](../../specs/033-video-dates/ui-design.md)
-- [動画とグループのお気に入りの印・付け外し・絞り込み・並び順の UI](../../specs/035-favorites/ui-design.md)
+- [Plan quality rules: no text written only to fill a slot](plan-quality.md)
+- [Technology selection: MDM (Media Data Management)](tech-stack-selection.md)
+- [Separate track inputs for MOV live transcoding](mov-live-transcoding.md)
+- [Live transcoding seek and probe reuse](live-transcode-seek.md)
+- [Hardware encoding for live transcoding](hardware-encoding.md)
+- [Playback quality](playback-quality.md)
+- [Seek sprite generation](seek-sprite-generation.md)
+- [Sidecar subtitle files](sidecar-subtitles.md)
+- [Library UI: visual rules and list layout](library-ui.md)
+- [Screen text and formatting (i18n)](i18n.md)
+- [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md)
+- [Thumbnail preview while seeking: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
+- [Hover video preview in lists: UI](../../specs/010-hover-video-preview/ui-design.md)
+- [Folder browsing screens: UI](../../specs/011-folder-browser/ui-design.md)
+- [Video page: UI](../../specs/012-video-detail-ia/ui-design.md)
+- [Video import progress: UI](../../specs/012-scan-progress/ui-design.md) (placement and controls only; what it shows is in 024)
+- [Import progress and results: UI](../../specs/024-import-progress/ui-design.md)
+- [Search on the library and folder screens: UI](../../specs/013-library-search/ui-design.md)
+- [Video tags and filtering by tag: UI](../../specs/014-video-tags/ui-design.md)
+- [Single-account authentication and guest viewing: UI](../../specs/016-single-account-auth/ui-design.md)
+- [Folder groups and continuous playback: UI](../../specs/017-folder-groups/ui-design.md)
+- [Quality menu and stall warning: UI](../../specs/027-playback-quality/ui-design.md)
+- [Editing a video's display name and using the current frame as thumbnail: UI](../../specs/029-video-overrides/ui-design.md)
+- [Bundling versions of the same video: UI](../../specs/030-video-versions/ui-design.md)
+- [Tentative tag marker, and confirming, rejecting and rejected names: UI](../../specs/031-tentative-tags/ui-design.md)
+- [Scrubbing along the bottom edge of a card thumbnail: UI](../../specs/032-card-scrub-preview/ui-design.md)
+- [Modified and created dates on the video page, and the "Date created" sort: UI](../../specs/033-video-dates/ui-design.md)
+- [Favorite mark, toggling, filtering and sorting for videos and groups: UI](../../specs/035-favorites/ui-design.md)

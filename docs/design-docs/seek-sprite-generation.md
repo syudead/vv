@@ -1,95 +1,120 @@
-# シーク用スプライトの生成
+# Seek sprite generation
 
-新しく生成するシーク用プレビューは、動画全体から最大81コマを選び、長辺160px以内の
-9×9スプライト1枚にする。短い動画では5秒間隔を維持し、それを超える長さでは
-`ceil(durationMs / 81)` ミリ秒ごとに配置する。コマ k は区間
-`[k × intervalMs, (k + 1) × intervalMs)` を受け持つ。再生位置からのコマ選択は
-配置情報の `intervalMs`、`frameCount`、`columns`、`rows` を使うため、
-プレイヤーの計算を変更する必要はない。
+A newly generated seek preview picks at most 81 frames across the whole video
+and puts them in one 9×9 sprite whose cells fit within 160px on the long side.
+Short videos keep a 5-second interval; longer videos place a frame every
+`ceil(durationMs / 81)` milliseconds. Frame k covers the interval
+`[k × intervalMs, (k + 1) × intervalMs)`. The player picks a frame from the
+playback position using `intervalMs`, `frameCount`, `columns` and `rows` in the
+layout, so the player's calculation does not change.
 
-## コマの選び方
+## Frame selection
 
-生成を始める前に、各区間に使う画像を決める。区間の中に画像が無いことは珍しくない
-（容器の長さが映像より少し長いと、最後の区間の開始が映像の終わりと重なる。
-キーフレームの間隔が区間より長い動画もある）。そうした区間は失敗として扱わず、
-直前の区間の場面を使う。直前が無い先頭の区間だけは直後の場面を使う。
-次の区間の場面を前へ持ってくることはしない。
+Before generation starts, the image for each interval is decided. An interval
+often contains no image: when the container is slightly longer than the video
+stream, the last interval starts at the end of the video, and some videos have
+keyframe intervals longer than the sprite interval. Such an interval is not a
+failure; it uses the scene of the previous interval. Only the first interval,
+which has no previous one, uses the next scene. A scene from the next interval
+is never pulled forward otherwise.
 
-## 索引からの生成（MP4／MOV の H.264／HEVC）
+## Generation from the index (H.264/HEVC in MP4/MOV)
 
-MP4／MOVで最初の映像トラックがH.264またはHEVCなら、`moov` の sample table を
-1回だけ読み、各キーフレームの表示時刻（`stts`・`ctts`・edit list から求める）と
-ファイル内の位置を得る。各区間には、区間の中の最初のキーフレームを使う。
-区間の中に無ければ区間より前の最後のキーフレームを使う。edit list が再生範囲の終わりを
-決めている場合、それより後ろのキーフレームは候補にしない。
+When the first video track of an MP4/MOV is H.264 or HEVC, the sample table in
+`moov` is read once to get each keyframe's presentation time (computed from
+`stts`, `ctts` and the edit list) and its position in the file. Each interval
+uses the first keyframe inside it; if there is none, the last keyframe before
+it. When the edit list sets the end of the playback range, keyframes after it
+are not candidates.
 
-選んだキーフレームのバイトだけを最大8並列で読み、デコーダ設定（`avcC`／`hvcC`）の
-パラメータセットを前に付けた開始コード区切りの形で、1枚ずつ一時ディレクトリに書く。
-同じキーフレームを受け持つ区間は1回だけ読んで復号し、画像を複製する。
+Only the bytes of the chosen keyframes are read, up to 8 in parallel, and each is
+written to a temporary directory in start-code-delimited form with the parameter
+sets from the decoder configuration (`avcC`/`hvcC`) prepended. Intervals that
+share a keyframe read and decode it once and duplicate the image.
 
-復号は1回のFFmpegで行い、160pxの画像にする。選んだキーフレームがすべてIDRなら、
-1本の列につないで1つのデコーダで復号する。IDRは表示順の番号とデコーダの状態を
-初期化するからである。IDRでないキーフレーム（open GOPのCRAや、IDRでない
-Iフレーム）が混じる場合は、1本の列にすると番号が前のキーフレームから続けて計算され、
-離れたキーフレームの間でデコーダが前後を入れ替える。そのため1枚ずつ別の入力にして
-デコーダを分け、`concat` フィルタで入力の順につなぐ。この場合は入力ごとの初期化の
-分だけ遅くなる。復号した枚数が合わない場合は、コマがずれるため使わない。
+Decoding is one FFmpeg run that produces 160px images.
 
-生の映像として復号すると、`tkhd` の表示行列による回転は失われる。表示行列が
-90度単位の回転なら、ffmpegが容器から読むときの自動回転と同じ変換（`transpose`、
-`hflip,vflip`）を縮小の前に施す。反転などそれ以外の表示行列は対象外にする。
+| Chosen keyframes | Decoding |
+| --- | --- |
+| All IDR | Concatenated into one stream and decoded by one decoder. An IDR resets the presentation order count and the decoder state |
+| Some not IDR (CRA in an open GOP, or non-IDR I-frames) | In one stream, the order count would continue from the previous keyframe and the decoder would reorder frames across distant keyframes. Each keyframe is therefore a separate input with its own decoder, joined in input order by the `concat` filter. This is slower by the per-input initialization |
 
-索引とキーフレームの読み取りは、処理の期限や停止で読み取りの終わりを待たずに戻る。
-応答しない置き場でジョブが止まり続けないようにするためである。
-すべて揃った後、FFmpegで9×9に並べて `000.jpg` を作る。
+If the number of decoded images does not match, the frames would be misaligned,
+so the result is not used.
 
-コマは区間の先頭そのものではなく、区間の中の最初のキーフレームになる。多くの動画は
-キーフレームが数秒以内の間隔で並ぶため、場面の違いは小さい。この方式は、コマごとに
-FFmpegを起動して索引を読み直すことも、キーフレームから目的の時刻まで復号することも
-しない。1本あたりの読み取りは、索引とキーフレーム（1コマあたり数十〜数百KB）だけに
-なる。
+Decoding the raw stream loses the rotation from the display matrix in `tkhd`.
+When the display matrix is a rotation in 90-degree steps, the same transform
+ffmpeg applies when auto-rotating from the container (`transpose`,
+`hflip,vflip`) is applied before scaling. Other display matrices, such as
+flips, are not handled here.
 
-`moov` が無い（fragmented MP4 など）、映像がH.264／HEVCでない、MP4／MOVでない、
-途中で解像度などが変わる（sample description が複数ある）、編集で途中を切り取った
-（空でないeditが複数ある）、表示行列が回転以外を含む、といった入力は、次の区間ごとの
-抽出で作る。索引が壊れているなどで読み取りや復号に
-失敗した場合も、警告を記録して区間ごとの抽出へ切り替える。
+Reads of the index and keyframes return on the processing deadline or a stop
+without waiting for the read to finish, so that a job does not hang on an
+unresponsive storage location. When everything is ready, FFmpeg tiles the
+images 9×9 into `000.jpg`.
 
-## 区間ごとの抽出
+A frame is the first keyframe inside its interval, not the start of the
+interval itself. Most videos have keyframes within a few seconds of each other,
+so the scene difference is small. This method neither starts FFmpeg and rereads
+the index for each frame nor decodes from a keyframe to a target time. A video
+reads only the index and the keyframes (tens to hundreds of KB per frame).
 
-索引から作れない入力では、1コマにつき1回FFmpegを起動し、区間の先頭へ入力側の時刻
-シークをしてBMPを一時ディレクトリに書く。最大4回を同時に実行し、コマ番号を
-ファイル名にして抽出の完了順に依存しない配置にする。各抽出は担当区間の末尾で
-打ち切る。区間内にフレームがない場合は、上の規則で前後のコマを複製する。
-複数の映像ストリームがある入力では、最初の添付画像でない映像ストリームを選ぶ。
-一時BMPは成功・失敗・キャンセルのいずれでも削除する。ジョブの公開は従来どおり
-`internal/artifacts` が完成品を確認した後に行う。
+The following inputs are generated by per-interval extraction (next section):
 
-FFmpegがエラーで終わった場合と、どの区間からも画像が取れない場合だけ、同じコマ数・
-160px・9×9配置を使う全編デコードへ戻す。途中でキャンセルされた場合は全編デコードを
-開始しない。30分の処理上限は抽出、結合、フォールバック全体に適用する。
-全編デコードで作ったことは、ログに加えて `GenerateSeekSprite` の戻り値で返し、
-直近の取り込みの問題（代用、`seek_thumbnail_full_decode`）として記録する
-（[specs/024-import-progress/research.md](../../specs/024-import-progress/research.md) R-7）。
-索引から作れない入力が区間ごとの抽出で作れた場合は通常の経路なので、代用に数えない。
-全編デコードで作ったかは `sprite.json` の `fullDecode` にも残す。公開と完了の記録の間で
-止まった後の再実行や、同じ内容の別の動画が完成したスプライトを採用するときも、これを読み戻して
-代用を記録する。`fullDecode` の無い従来の `sprite.json` は代用したかが分からないので、問題の
-行を変えない。
+- no `moov` (fragmented MP4 and the like)
+- video that is not H.264/HEVC
+- not MP4/MOV
+- resolution or similar changes midway (more than one sample description)
+- a middle section cut out by editing (more than one non-empty edit)
+- a display matrix that contains more than rotation
 
-従来の完成済みスプライト（最大600コマ・6シート）は引き続き読み出せる。
-新方式を導入するための一括再生成は行わず、新しく処理するジョブから適用する。
-これにより既存の待ち行列を増やさない。
+When reading or decoding fails, for example because the index is broken, a
+warning is logged and generation switches to per-interval extraction.
 
-## 速度と限界
+## Per-interval extraction
 
-ローカルディスク上の21分・1080p H.264の動画（81コマ、キーフレームはすべてIDR）では、
-区間ごとの抽出（4並列）が5.6〜5.9秒、索引からの生成が0.37秒だった。同じ81枚を
-1枚ずつ別の入力にして復号すると1.6〜1.8秒で、IDRでないキーフレームを含む動画は
-この程度になる。区間ごとの抽出は、コマごとに索引と、キーフレームから目的の時刻までの
-フレームを読み直すため、1本で数百MBを読む。索引からの生成は同じ動画で約15MB
-（索引約4MBとキーフレーム81枚）だった。
+For inputs the index cannot serve, FFmpeg is started once per frame, seeks on
+the input side to the start of the interval, and writes a BMP to a temporary
+directory. Up to 4 run at once; the frame number is the file name, so placement
+does not depend on the order extractions finish. Each extraction stops at the
+end of its interval. If an interval has no frame, a neighbouring frame is
+duplicated by the rule above. For inputs with several video streams, the first
+video stream that is not an attached picture is chosen. Temporary BMPs are
+deleted on success, failure and cancellation alike. Publication of the job is
+done, as before, after `internal/artifacts` checks the finished output.
 
-ランダム読み取りの遅い置き場では、読み取りの回数（索引1回とキーフレームの数）と
-1回ごとの待ち時間で時間が決まる。読み取り量が減るぶん区間ごとの抽出より速いが、
-コマ数ぶんの読み取りは残る。測定は生成結果の内容と所要時間を両方確認する。
+Only when FFmpeg exits with an error, or no interval yields an image, does
+generation fall back to a full decode with the same frame count, 160px and 9×9
+layout. A cancellation partway does not start a full decode. The 30-minute
+processing limit covers extraction, tiling and fallback together.
+
+A full decode is reported in the log and in the return value of
+`GenerateSeekSprite`, and recorded as a recent import problem (substitution,
+`seek_thumbnail_full_decode`)
+([specs/024-import-progress/research.md](../../specs/024-import-progress/research.md)
+R-7). An input the index cannot serve but per-interval extraction can is the
+normal path and does not count as a substitution. Whether a full decode was used
+is also stored as `fullDecode` in `sprite.json`. A rerun after a stop between
+publication and recording completion, or another video with the same content
+adopting the finished sprite, reads it back and records the substitution. An
+older `sprite.json` without `fullDecode` cannot tell whether it substituted, so
+the problem row is left unchanged.
+
+Older finished sprites (up to 600 frames, 6 sheets) remain readable. There is no
+bulk regeneration for the new method; it applies to newly processed jobs, so the
+existing queue does not grow.
+
+## Speed and limits
+
+For a 21-minute 1080p H.264 video on local disk (81 frames, all keyframes IDR):
+
+| Method | Time | Data read |
+| --- | --- | --- |
+| Per-interval extraction (4 parallel) | 5.6–5.9 s | Several hundred MB per video, because each frame rereads the index and the frames from the keyframe to the target time |
+| Generation from the index | 0.37 s | About 15 MB (index about 4 MB plus 81 keyframes) |
+| Generation from the index, each of the 81 frames as a separate input | 1.6–1.8 s | — (what videos with non-IDR keyframes take) |
+
+On storage with slow random reads, the time is set by the number of reads (one
+for the index plus one per keyframe) and the latency of each. Reading less makes
+it faster than per-interval extraction, but one read per frame remains.
+Measurements check both the generated content and the elapsed time.

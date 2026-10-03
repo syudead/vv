@@ -1,87 +1,119 @@
-# 動画の隣に置いた字幕ファイル
+# Sidecar subtitle files
 
-- ステータス: 採用
-- スコープ: 動画と同じフォルダにある SRT・WebVTT の字幕ファイルの見つけ方、WebVTT への変換、
-  `GET /api/videos/{id}/subtitles` と `GET /api/videos/{id}/subtitles/{file}` のアクセス制御、
-  ライブ変換の再生での字幕の時刻合わせ
-- 経緯: [specs/028-sidecar-subtitles/research.md](../../specs/028-sidecar-subtitles/research.md)、
-  契約: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)
+- Status: adopted
+- Scope: how SRT and WebVTT subtitle files in the video's folder are found,
+  conversion to WebVTT, access control for `GET /api/videos/{id}/subtitles` and
+  `GET /api/videos/{id}/subtitles/{file}`, and subtitle timing during live
+  transcoding playback
+- Background: [specs/028-sidecar-subtitles/research.md](../../specs/028-sidecar-subtitles/research.md);
+  contract: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)
 
-## 見つけ方
+## Discovery
 
-字幕は索引に持たず、要求のたびにフォルダを読んで見つける。SQLite の表も、取り込みの job も
-関わらない。フォルダに字幕を足したり消したりすると、再スキャンなしに次の一覧から反映される。
+Subtitles are not indexed; they are found by reading the folder on each
+request. No SQLite table or import job is involved. Adding or removing a
+subtitle in the folder shows up in the next listing without a rescan.
 
-1. `internal/httpapi/subtitles.go` が、配信（`openMediaFile`）と同じ順で動画の所在を試す。
-   `internal/mediafs` の `ListSidecarFiles` は、所在が `OpenMediaFile` と同じ規則で開けるときだけ、
-   その所在（symlink を辿る前のパス）のフォルダにある通常ファイルの名前と大きさを返す。
-   サブフォルダと symlink は含めない。最初に開けた所在のフォルダだけを使うので、動画が複数の
-   場所にあっても、再生に使う場所の隣だけが対象になる。
-2. `domain.SubtitleSidecars` が、動画のファイル名と項目から字幕の一覧を作る純粋関数である。
-   - `<名前>` は動画のファイル名から最後の拡張子だけを除いたもの。候補は `<名前>.srt`・
-     `<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` で、`<名前>` と拡張子は NFC
-     正規化のうえ大文字・小文字を区別せずに照合する。ラベルはドットを含んでよい（`en.forced`）。
-   - `domain.SubtitleFileLimit`（4 MiB）を超える項目は候補にしない。
-   - 同じラベルの `.srt` と `.vtt` は `.vtt` だけを残す。
-   - 並びはラベルの無いものが先頭で、続いてラベルの自然順。
-3. 一覧は中身を読まない。壊れたファイルも一覧には載り、取得で 404 になる。
+1. `internal/httpapi/subtitles.go` tries the video's locations in the same order
+   as delivery (`openMediaFile`). `ListSidecarFiles` in `internal/mediafs`
+   returns the names and sizes of the regular files in the folder of a location
+   (the path before following symlinks) only when that location opens under the
+   same rules as `OpenMediaFile`. Subfolders and symlinks are excluded. Only the
+   folder of the first location that opens is used, so when a video is in
+   several places, only the files next to the one used for playback count.
+2. `domain.SubtitleSidecars` is a pure function that builds the subtitle list
+   from the video's file name and the entries.
+   - `<name>` is the video file name without its last extension. Candidates are
+     `<name>.srt`, `<name>.vtt`, `<name>.<label>.srt` and `<name>.<label>.vtt`;
+     `<name>` and the extension are compared after NFC normalization, case
+     insensitively. A label may contain dots (`en.forced`).
+   - Entries larger than `domain.SubtitleFileLimit` (4 MiB) are not candidates.
+   - When a `.srt` and a `.vtt` have the same label, only the `.vtt` remains.
+   - The entry without a label comes first, then labels in natural order.
+3. Listing does not read the contents. A broken file is listed and returns 404
+   when fetched.
 
-どの所在も開けなければ一覧は 404 `file_unavailable`（配信と同じ）。所在は開けてもフォルダを
-読めなければ、字幕が無いのと同じく空の一覧を返し、理由をログに残す。一覧の応答は
-`Cache-Control: no-store` である。
+| Situation | List response |
+| --- | --- |
+| No location opens | 404 `file_unavailable` (same as delivery) |
+| A location opens but its folder cannot be read | An empty list, as if there were no subtitles; the reason is logged |
 
-## 取得と変換
+List responses carry `Cache-Control: no-store`.
 
-`GET /api/videos/{id}/subtitles/{file}` は一覧を作り直し、`file` がその中の 1 つと文字列で完全に
-一致するときだけ `OpenSidecarFile` で開く。`OpenSidecarFile` も一覧に出た名前しか受けず、開く前に
-`OpenMediaFile` の規則を通し直すので、一覧のあとに symlink へ差し替えられても登録フォルダの外は
-開かない。要求の文字列からパスを組み立てないので、`..` や区切りの検査は要らない。
-読むのは上限（4 MiB）までで、一覧のあとに大きくなったファイルも上限を超えては読まない。
+## Fetching and conversion
 
-変換は `internal/media` の `SubtitleConverter` が Go だけで行い、`ffmpeg` は起動しない。
-`internal/httpapi` はこれを自分が宣言する `SubtitleConverter` interface で受け取り、`cmd/mdm` が
-配線する。要求 1 回で読んで変換して返すので、`internal/app` は通さない。
+`GET /api/videos/{id}/subtitles/{file}` rebuilds the list and opens the file
+with `OpenSidecarFile` only when `file` exactly equals one of the listed names
+as a string. `OpenSidecarFile` also accepts only listed names and reapplies the
+`OpenMediaFile` rules before opening, so even if a file is replaced by a symlink
+after listing, nothing outside the registered folder is opened. The path is
+never built from the request string, so no `..` or separator check is needed.
+At most the limit (4 MiB) is read, even if a file grew after listing.
 
-- 文字コード: BOM（UTF-8・UTF-16 LE/BE）があればそれで決める。無ければ、字幕に使われる
-  文字体系の文字だけから成る妥当な UTF-8、次に `U+FFFD` も C1 制御文字も出ない Shift_JIS、
-  次に妥当な UTF-8 の順で決め、どれでもなければ読めないファイルとする。
-- SRT は、番号行を除き、時刻の行を WebVTT の形に揃え、cue の本文はそのまま通す。時刻の行が
-  読めない cue は落とす。WebVTT はヘッダーを確かめて通す。
-- `offsetMs`（既定 0）だけすべての cue の時刻を引く。終わりが 0 以下になる cue は返さず、
-  始まりが負になる cue は 0 から始める。ライブ変換の出力の時間軸に字幕を合わせるためで、
-  プレイヤーが実際の開始位置を渡す。
+`SubtitleConverter` in `internal/media` converts in Go only; it does not start
+`ffmpeg`. `internal/httpapi` receives it through a `SubtitleConverter` interface
+it declares, and `cmd/mdm` wires it. One request reads, converts and returns,
+so `internal/app` is not involved.
 
-応答は `Content-Type: text/vtt; charset=utf-8`、`Cache-Control: private, no-cache` と、変換した
-本文のダイジェストの `ETag` を持ち、`If-None-Match` が一致すれば 304 を返す。一覧に無い名前、
-`.vtt` に隠れた `.srt`、上限を超える・開けない・読めないファイルは 404 `subtitle_unavailable` で、
-理由はサーバーのログに `Warn` で残す。`offsetMs` が負や整数でなければ 400 `invalid_request`。
+- Character encoding: a BOM (UTF-8, UTF-16 LE/BE) decides it when present.
+  Otherwise, in order: valid UTF-8 consisting only of characters from scripts
+  used in subtitles; Shift_JIS that produces neither `U+FFFD` nor C1 control
+  characters; valid UTF-8. If none fits, the file is unreadable.
+- SRT: the sequence-number lines are dropped, time lines are rewritten into
+  WebVTT form, and cue text passes through unchanged. Cues with an unreadable
+  time line are dropped. WebVTT passes through after its header is checked.
+- `offsetMs` (default 0) is subtracted from every cue time. Cues whose end is 0
+  or less are not returned; cues whose start becomes negative start at 0. This
+  aligns subtitles to the time axis of the live transcoding output; the player
+  passes the actual start position.
 
-## アクセス制御
+The response has `Content-Type: text/vtt; charset=utf-8`,
+`Cache-Control: private, no-cache` and an `ETag` that is a digest of the
+converted body; a matching `If-None-Match` returns 304.
 
-2 つの経路はどちらも「ゲストも」の経路で（`api/openapi.yaml` の `security` が所有者とゲスト、
-`internal/httpapi/auth.go` の `accessRoutes` がその写し）、動画を `lookupServedVideo` で引く。
-ゲストが公開でない動画を指すと、存在しない動画と同じ 404 `video_not_found` になる。ゲストの
-要求は配信と同じ台帳に載るので、動画を非公開にすると処理中の要求も打ち切られる。
+| Case | Response |
+| --- | --- |
+| Name not in the list, a `.srt` hidden by a `.vtt`, a file over the limit, a file that cannot be opened or read | 404 `subtitle_unavailable`; the reason is logged at `Warn` |
+| `offsetMs` negative or not an integer | 400 `invalid_request` |
 
-## ライブ変換の時刻合わせ
+## Access control
 
-video.js の字幕の表示は、エミュレーションでもブラウザ標準のトラックでも `<video>` 要素の
-`currentTime`、つまり変換の出力の時間軸で cue を選ぶ。`liveOffset.ts` の仲立ちが現在時刻に足す
-offset は字幕には効かないので、サーバーが `offsetMs` だけずらした WebVTT を返し、プレイヤーは
-offset が決まるたびにトラックを付け直す
-（[research.md R-6](../../specs/028-sidecar-subtitles/research.md)）。
+Both routes are "guests too" routes (the `security` of `api/openapi.yaml` allows
+the owner and guests; `accessRoutes` in `internal/httpapi/auth.go` mirrors it)
+and look the video up with `lookupServedVideo`. A guest asking for a video that
+is not public gets the same 404 `video_not_found` as for a video that does not
+exist. Guest requests are recorded in the same ledger as delivery, so making a
+video private also cuts off requests in progress.
 
-- `liveSource` の source は、再生の時間軸の 0 が元動画のどの時刻かが決まるたびに
-  `vvOffsetSettled(seconds)` を 1 回呼ぶ。`attempt` の無い source（先頭から）は指定位置で直ちに、
-  `attempt` のある source は `transcode-start` の報告が 200 なら実際の開始位置、404 や誤りなら
-  指定位置で呼ぶ。報告を待ち始めるときは `vvOffsetPending()` を呼ぶ。未 buffer シークの
-  作り直し（`reloadAt`）も同じ経路を通り、source を差し替えたあとに届いた古い報告では呼ばない
-  （[live-transcode-seek.md の報告の経路](live-transcode-seek.md#報告の経路)）。
-- `VideoPlayer.tsx` はこの 2 つを `subtitleTracks.ts` の `setOffset` に渡す。未決（`null`）の間は
-  トラックを外し、ずれた字幕を一瞬でも出さない。決まったら `subtitleUrl(id, file, offsetMs)` で
-  付け直し、直前に表示していたラベルを `showing` にする。付け直しは利用者の選択ではないので
-  保存値を書き換えない。一覧が替わったあとに初めて付けるときだけ、保存値で表示を決める。
-- 直接再生の offset は 0 のままで、直接再生から変換への切り替え（`fallbackToTranscode`）も
-  `liveSource` を通るので同じ経路で合う。
-- 付け直しは変換をやり直すとき（もともと数秒かかる）にしか起きない。その間は字幕ボタンも
-  トラックが無いので隠れる。
+## Live transcoding time alignment
+
+Video.js selects subtitle cues by the `<video>` element's `currentTime`, the
+time axis of the transcoding output, both in emulation and with the browser's
+native tracks. The offset that the `liveOffset.ts` mediator adds to the current
+time does not apply to subtitles, so the server returns WebVTT shifted by
+`offsetMs`, and the player reattaches the track each time the offset is settled
+([research.md R-6](../../specs/028-sidecar-subtitles/research.md)).
+
+- A `liveSource` source calls `vvOffsetSettled(seconds)` once each time it is
+  settled which time of the original video is 0 on the playback time axis. A
+  source without `attempt` (from the start) calls it immediately with the
+  requested position; a source with `attempt` calls it with the actual start
+  position when the `transcode-start` report returns 200, and with the
+  requested position on 404 or an error. It calls `vvOffsetPending()` when it
+  starts waiting for the report. Rebuilding for an unbuffered seek
+  (`reloadAt`) goes through the same path, and a stale report arriving after
+  the source was replaced triggers no call
+  ([start position report in live-transcode-seek.md](live-transcode-seek.md#start-position-report)).
+- `VideoPlayer.tsx` passes both to `setOffset` in `subtitleTracks.ts`. While
+  unsettled (`null`), the track is removed so that shifted subtitles never show,
+  even briefly. Once settled, the track is reattached with
+  `subtitleUrl(id, file, offsetMs)`, and the label shown just before is set to
+  `showing`. Reattaching is not a user choice, so it does not overwrite the
+  saved value. Only the first attachment after the list changes uses the saved
+  value to decide what to show.
+- Direct playback keeps an offset of 0. Switching from direct playback to
+  transcoding (`fallbackToTranscode`) also goes through `liveSource`, so it
+  aligns by the same path.
+- Reattaching happens only when transcoding restarts (which takes a few seconds
+  anyway). Meanwhile the subtitle button is hidden too, because there is no
+  track.
