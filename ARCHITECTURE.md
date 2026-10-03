@@ -831,7 +831,9 @@ screen open, and the owner-only candidates screen (`/duplicates`), which lists t
 a scan found to look like the same video, bundles a pair through that dialog or records
 it as different videos, and refetches on the `scan` notification. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
-search, create, rename and delete. The list holds every tag from one `GET /api/tags` but
+search, "Tentative only" and "Unused only" filters, a sort by name, video count or
+creation date (only the sort is kept per device, in `web/src/preferences/tagListPreferences.ts`),
+create, rename and delete. The list holds every tag from one `GET /api/tags` but
 draws only the rows in and near the viewport (`@tanstack/react-virtual`'s
 `useWindowVirtualizer`, used nowhere else; the document stays the scroll owner), keeps the
 focused row drawn, and hands Tab across the edge of the drawn range so keyboard order follows

@@ -2983,6 +2983,39 @@ describe("TagsPage 見えている行だけ描く", () => {
     );
   });
 
+  it("並び順で改名中の行が描いている範囲の外へ移っても、その行を描き続け打っている途中の名前を失わない", async () => {
+    const user = userEvent.setup();
+    // 先頭の行だけ 0 本にし、本数の多い順で末尾（描いている範囲の外）へ移す。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      videoCount: index === 0 ? 0 : 1,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    const row = screen.getByTitle(name(0)).closest("[data-tag-id]")!;
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", {
+      name: `New name for "${name(0)}"`,
+    });
+    await user.clear(input);
+    await user.type(input, "下書き");
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() => expect(screen.queryByTitle(name(1))).not.toBeNull());
+    await waitFor(() => expect(wrapperOf(tagCount - 1)).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 改名中の行は全件の末尾にあり、表示域の外でも描いたままで、値も入力も同じ。
+    expect(drawnIndexes()).toContain(tagCount - 1);
+    expect(drawnIndexes()).not.toContain(tagCount - 2);
+    const still = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
+    expect(still).toBe(input);
+    expect((still as HTMLInputElement).value).toBe("下書き");
+  });
+
   it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
     const user = userEvent.setup();
     server.tags = server.tags.slice(0, 3);
@@ -3041,5 +3074,295 @@ describe("TagsPage 見えている行だけ描く", () => {
         ).getByRole("button", { name: "Rename" }),
       ),
     );
+  });
+});
+
+describe("TagsPage 並び順と0本の絞り込み", () => {
+  /** rowNames は描いている行の名前を一覧の並びで返す。 */
+  function rowNames(): string[] {
+    return [...document.querySelectorAll("[data-index]")]
+      .sort(
+        (a, b) =>
+          Number((a as HTMLElement).dataset.index) -
+          Number((b as HTMLElement).dataset.index),
+      )
+      .map(
+        (row) => row.querySelector("[data-tag-id] [title]")?.getAttribute("title") ?? "",
+      );
+  }
+
+  async function chooseSort(
+    user: ReturnType<typeof userEvent.setup>,
+    current: string,
+    next: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: `Sort by: ${current}` }));
+    await user.click(await screen.findByRole("menuitemradio", { name: next }));
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Alpha", videoCount: 5, createdAt: "2025-01-03T00:00:00Z" }),
+      tag({ id: 2, name: "Beta", createdAt: "2025-01-05T00:00:00Z" }),
+      tag({ id: 3, name: "Cat", videoCount: 5, createdAt: "2025-01-01T00:00:00Z" }),
+      tag({ id: 4, name: "Delta", tentative: true, createdAt: "2025-01-02T00:00:00Z" }),
+      tag({
+        id: 5,
+        name: "Echo",
+        tentative: true,
+        videoCount: 1,
+        createdAt: "2025-01-04T00:00:00Z",
+      }),
+    ];
+  });
+
+  it("既定は名前の順で、「Name」のときは向きの切り替えを出さない", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    expect(rowNames()).toEqual(["Alpha", "Beta", "Cat", "Delta", "Echo"]);
+    expect(screen.getByRole("button", { name: "Sort by: Name" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Press for/ })).toBeNull();
+  });
+
+  it("「Video count」は多い順で最多が先頭・0本が末尾、同じ本数は名前の順（受け入れ条件4）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await chooseSort(user, "Name", "Video count");
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Alpha", "Cat", "Echo", "Beta", "Delta"]),
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: "Descending (most videos first). Press for ascending",
+    });
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Beta", "Delta", "Echo", "Alpha", "Cat"]),
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ascending (fewest videos first). Press for descending",
+      }),
+    ).toBeDefined();
+  });
+
+  it("「Date created」は新しい順で、作成したタグが先頭に入る（受け入れ条件5）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await chooseSort(user, "Name", "Date created");
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Beta", "Echo", "Alpha", "Delta", "Cat"]),
+    );
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Zulu");
+    await user.keyboard("{Enter}");
+    await screen.findByTitle("Zulu");
+    await waitFor(() => expect(rowNames()[0]).toBe("Zulu"));
+  });
+
+  it("並び順は開き直しても残り、壊れた保存は名前の順になる（受け入れ条件6）", async () => {
+    const user = userEvent.setup();
+    install();
+    const first = renderPage();
+    await screen.findByTitle("Alpha");
+    await chooseSort(user, "Name", "Video count");
+    await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (most videos first). Press for ascending",
+      }),
+    );
+    first.unmount();
+
+    const second = renderPage();
+    await screen.findByTitle("Alpha");
+    expect(screen.getByRole("button", { name: "Sort by: Video count" })).toBeDefined();
+    expect(rowNames()).toEqual(["Beta", "Delta", "Echo", "Alpha", "Cat"]);
+    second.unmount();
+
+    window.localStorage.setItem("vv.tags.v1", "{not json");
+    renderPage();
+    await screen.findByTitle("Alpha");
+    expect(screen.getByRole("button", { name: "Sort by: Name" })).toBeDefined();
+    expect(rowNames()).toEqual(["Alpha", "Beta", "Cat", "Delta", "Echo"]);
+  });
+
+  it("「Unused only」は0本の行だけを出し、「Tentative only」・検索・並び順と重なる（受け入れ条件7）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const unused = screen.getByRole("button", { name: "Unused only" });
+    expect(unused.getAttribute("aria-pressed")).toBe("false");
+    await user.click(unused);
+    expect(unused.getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByText("2 of 5 tags")).toBeDefined();
+    expect(rowNames()).toEqual(["Beta", "Delta"]);
+    for (const name of rowNames()) {
+      const row = screen.getByTitle(name).closest("[data-tag-id]")!;
+      expect(row.textContent).toContain("0 videos");
+    }
+
+    // 並び順と重ねる。
+    await chooseSort(user, "Name", "Date created");
+    await waitFor(() => expect(rowNames()).toEqual(["Beta", "Delta"]));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (newest first). Press for ascending",
+      }),
+    );
+    await waitFor(() => expect(rowNames()).toEqual(["Delta", "Beta"]));
+
+    // 「Tentative only」と重ねると両方を満たす行だけ。
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    expect(await screen.findByText("1 of 5 tags")).toBeDefined();
+    expect(rowNames()).toEqual(["Delta"]);
+
+    // 検索と重ねる。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "zz");
+    expect(await screen.findByText('No unused tentative tags match "zz"')).toBeDefined();
+    expect(screen.getByText("0 of 5 tags")).toBeDefined();
+  });
+
+  it("0本のタグが無いときは「No unused tags」を出し、「Show all tags」で外して「Unused only」へ戻る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) => ({
+      ...item,
+      videoCount: item.videoCount + 1,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const unused = screen.getByRole("button", { name: "Unused only" });
+    await user.click(unused);
+    expect(await screen.findByText("No unused tags")).toBeDefined();
+    expect(screen.getByText("Every tag is on at least one video.")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(unused));
+    expect(unused.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("5 tags")).toBeDefined();
+  });
+
+  it("「Unused only」と「Tentative only」の両方で一致が無ければ両方を外して「Tentative only」へ戻る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) =>
+      item.tentative ? { ...item, videoCount: 2 } : item,
+    );
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const tentative = screen.getByRole("button", { name: "Tentative only" });
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    await user.click(tentative);
+    expect(await screen.findByText("No unused tentative tags")).toBeDefined();
+    expect(screen.queryByText("Every tag is on at least one video.")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(tentative));
+    expect(tentative.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Unused only" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("「Unused only」と検索で一致が無ければ、両方を外して検索の入力へ戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    const search = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(search, "Alpha");
+    expect(await screen.findByText('No unused tags match "Alpha"')).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("5 tags")).toBeDefined();
+  });
+
+  it("改名中の行は並び順・絞り込みを変えても残り、打っている途中の名前を失わない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const row = screen.getByTitle("Alpha").closest("[data-tag-id]")!;
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: 'New name for "Alpha"' });
+    await user.clear(input);
+    await user.type(input, "下書き");
+
+    await chooseSort(user, "Name", "Video count");
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    // Alpha は 5 本で「Unused only」に一致しないが、行は本数の順の位置に残る。
+    await waitFor(() => expect(screen.getByText("2 of 5 tags")).toBeDefined());
+    const still = screen.getByRole("textbox", { name: 'New name for "Alpha"' });
+    expect(still).toBe(input);
+    expect((still as HTMLInputElement).value).toBe("下書き");
+    expect(document.querySelectorAll("[data-index]")).toHaveLength(3);
+  });
+
+  it("読み込み中は並び順と「Unused only」が押せない", async () => {
+    install();
+    holdGetsFrom = 1;
+    renderPage();
+
+    expect(
+      (screen.getByRole("button", { name: "Unused only" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Sort by: Name" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Sort" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    for (const done of heldGetReleases) done();
+  });
+
+  it("狭い幅のまとめから並び順を選べ、Name 以外のときはまとめが効いている形になる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const compact = screen.getByRole("button", { name: "Sort" });
+    expect(compact.className).not.toContain("bg-accent-soft");
+    await user.click(compact);
+    // Name のときは向きを出さない。
+    expect(screen.queryByRole("group", { name: "Sort direction" })).toBeNull();
+    await user.click(await screen.findByRole("radio", { name: "Video count" }));
+    await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
+    await user.click(screen.getByRole("radio", { name: "Fewest videos first" }));
+    await waitFor(() => expect(rowNames()[0]).toBe("Beta"));
+    expect(screen.getByRole("button", { name: "Sort" }).className).toContain(
+      "bg-accent-soft",
+    );
+  });
+
+  it("疑似ロケールで、並び順と「Unused only」の文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    install();
+    const { container } = renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: "⟦Unused only⟧" }));
+    await screen.findByTitle("Beta");
+    expectCatalogTextOnly(container, ["Alpha", "Beta", "Cat", "Delta", "Echo"]);
   });
 });
