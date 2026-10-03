@@ -17,7 +17,13 @@ byte-range video streaming (via `http.ServeContent`), backed by SQLite and by
 video files on a mounted volume. `ffmpeg`/`ffprobe` run as child processes for
 metadata, thumbnails, previews and live transcoding, driven by an in-process job
 worker or by the request that needs them. Sidecar subtitles are converted to WebVTT
-in Go, without `ffmpeg`. Everything ships as one container.
+in Go, without `ffmpeg`. Everything ships as one container; the same binary
+also ships for Windows as a desktop app, `VVMDM.exe` (built from `cmd/mdm` with
+the `desktop` tag as a GUI executable), which runs the server in-process on a
+loopback port, shows it in its own window with an embedded WebView2, keeps its
+data under `%LOCALAPPDATA%\VVMDM`, uses the `ffmpeg` bundled next to it, and stops
+the server when the window closes
+([docs/design-docs/windows-app.md](docs/design-docs/windows-app.md)).
 
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
@@ -695,7 +701,7 @@ The server keeps no quality state; each request carries its own
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -734,7 +740,10 @@ way only. The packages under `internal/` fall into three layers:
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
   `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner`, `internal/jobs` and
   `internal/password` — talk to the outside world. `internal/eventbus` sits beside them and only delivers
-  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
+  `domain.Event` values in-process; only `cmd/mdm` imports it. `internal/desktop` holds the
+  Windows desktop app's OS side — the Win32 window with the embedded WebView2, the error dialogs,
+  the job object and resolving the data folders — and only `cmd/mdm`'s `desktop`-tagged entry
+  point imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
   media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
   and `internal/httpapi` never decides by itself whether a file may be opened.
   `internal/httpapi` only parses requests, calls the application layer, the store or

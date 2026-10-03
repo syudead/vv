@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -35,6 +36,10 @@ func TestServeDoesNotRunStartupHookWhenPortIsInUse(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "cannot listen on") {
 		t.Fatalf("err = %v", err)
+	}
+	// デスクトップ版は、この段階でポートの案内のダイアログを選ぶ。
+	if stage := startupStageOf(err); stage != stageListen {
+		t.Fatalf("startupStageOf = %v; want stageListen", stage)
 	}
 	if called {
 		t.Fatal("待ち受けに失敗したのに起動時フックが呼ばれた")
@@ -151,5 +156,19 @@ func TestServeWaitsForInFlightRequestsWhenListenerIsLost(t *testing.T) {
 	}
 	if !beforeShutdownCalled.Load() {
 		t.Fatal("待ち受けを失ったのに停止の前処理が呼ばれなかった")
+	}
+}
+
+func TestStartupStageOfKeepsTheMessageAndStage(t *testing.T) {
+	cause := errors.New("database is locked")
+	err := fmt.Errorf("startup: %w", &startupError{stage: stageDatabase, err: cause})
+	if stage := startupStageOf(err); stage != stageDatabase {
+		t.Fatalf("startupStageOf = %v; want stageDatabase", stage)
+	}
+	if !errors.Is(err, cause) || err.Error() != "startup: database is locked" {
+		t.Fatalf("err = %v", err)
+	}
+	if stage := startupStageOf(cause); stage != stageOther {
+		t.Fatalf("startupStageOf(plain) = %v; want stageOther", stage)
 	}
 }

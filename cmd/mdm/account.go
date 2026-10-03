@@ -11,8 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/term"
-
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/password"
 	"github.com/syudead/vv/internal/store"
@@ -42,16 +40,6 @@ type accountEnv struct {
 	// ReadHidden はエコーを止めて端末から1行読む。nil なら標準入力は端末でない。
 	ReadHidden func() ([]byte, error)
 	Now        func() time.Time
-}
-
-// osAccountEnv は実際の標準入出力と環境変数を使う accountEnv を返す。
-func osAccountEnv() accountEnv {
-	env := accountEnv{Getenv: os.Getenv, Stdin: os.Stdin, Stderr: os.Stderr, Now: time.Now}
-	fd := int(os.Stdin.Fd())
-	if term.IsTerminal(fd) {
-		env.ReadHidden = func() ([]byte, error) { return term.ReadPassword(fd) }
-	}
-	return env
 }
 
 // accountFailure は終了コードと、標準エラーへ出す理由の組である。
