@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -176,7 +177,7 @@ func TestExternalVideoTagsRejectsNonBooleanTentative(t *testing.T) {
 			t.Errorf("tentative=%s: status = %d: %s", value, status, raw)
 		}
 	}
-	if tags, err := f.env.db.Tags().ListTags(context.Background()); err != nil || len(tags) != 0 {
+	if tags, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{}); err != nil || len(tags.Items) != 0 {
 		t.Errorf("誤りの要求がタグを作った: %+v, err=%v", tags, err)
 	}
 }

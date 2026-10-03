@@ -668,6 +668,33 @@ func (e TagImpactRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for TagSort.
+const (
+	TagSortCountAsc    TagSort = "countAsc"
+	TagSortCountDesc   TagSort = "countDesc"
+	TagSortCreatedAsc  TagSort = "createdAsc"
+	TagSortCreatedDesc TagSort = "createdDesc"
+	TagSortName        TagSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the TagSort enum.
+func (e TagSort) Valid() bool {
+	switch e {
+	case TagSortCountAsc:
+		return true
+	case TagSortCountDesc:
+		return true
+	case TagSortCreatedAsc:
+		return true
+	case TagSortCreatedDesc:
+		return true
+	case TagSortName:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -832,61 +859,61 @@ func (e VideoEncoderChoice) Valid() bool {
 
 // Defines values for VideoSort.
 const (
-	AddedAsc      VideoSort = "addedAsc"
-	AddedDesc     VideoSort = "addedDesc"
-	CreatedAsc    VideoSort = "createdAsc"
-	CreatedDesc   VideoSort = "createdDesc"
-	DurationAsc   VideoSort = "durationAsc"
-	DurationDesc  VideoSort = "durationDesc"
-	FavoritedAsc  VideoSort = "favoritedAsc"
-	FavoritedDesc VideoSort = "favoritedDesc"
-	ModifiedAsc   VideoSort = "modifiedAsc"
-	ModifiedDesc  VideoSort = "modifiedDesc"
-	PlayedAsc     VideoSort = "playedAsc"
-	PlayedDesc    VideoSort = "playedDesc"
-	Random        VideoSort = "random"
-	SizeAsc       VideoSort = "sizeAsc"
-	SizeDesc      VideoSort = "sizeDesc"
-	TitleAsc      VideoSort = "titleAsc"
-	TitleDesc     VideoSort = "titleDesc"
+	VideoSortAddedAsc      VideoSort = "addedAsc"
+	VideoSortAddedDesc     VideoSort = "addedDesc"
+	VideoSortCreatedAsc    VideoSort = "createdAsc"
+	VideoSortCreatedDesc   VideoSort = "createdDesc"
+	VideoSortDurationAsc   VideoSort = "durationAsc"
+	VideoSortDurationDesc  VideoSort = "durationDesc"
+	VideoSortFavoritedAsc  VideoSort = "favoritedAsc"
+	VideoSortFavoritedDesc VideoSort = "favoritedDesc"
+	VideoSortModifiedAsc   VideoSort = "modifiedAsc"
+	VideoSortModifiedDesc  VideoSort = "modifiedDesc"
+	VideoSortPlayedAsc     VideoSort = "playedAsc"
+	VideoSortPlayedDesc    VideoSort = "playedDesc"
+	VideoSortRandom        VideoSort = "random"
+	VideoSortSizeAsc       VideoSort = "sizeAsc"
+	VideoSortSizeDesc      VideoSort = "sizeDesc"
+	VideoSortTitleAsc      VideoSort = "titleAsc"
+	VideoSortTitleDesc     VideoSort = "titleDesc"
 )
 
 // Valid indicates whether the value is a known member of the VideoSort enum.
 func (e VideoSort) Valid() bool {
 	switch e {
-	case AddedAsc:
+	case VideoSortAddedAsc:
 		return true
-	case AddedDesc:
+	case VideoSortAddedDesc:
 		return true
-	case CreatedAsc:
+	case VideoSortCreatedAsc:
 		return true
-	case CreatedDesc:
+	case VideoSortCreatedDesc:
 		return true
-	case DurationAsc:
+	case VideoSortDurationAsc:
 		return true
-	case DurationDesc:
+	case VideoSortDurationDesc:
 		return true
-	case FavoritedAsc:
+	case VideoSortFavoritedAsc:
 		return true
-	case FavoritedDesc:
+	case VideoSortFavoritedDesc:
 		return true
-	case ModifiedAsc:
+	case VideoSortModifiedAsc:
 		return true
-	case ModifiedDesc:
+	case VideoSortModifiedDesc:
 		return true
-	case PlayedAsc:
+	case VideoSortPlayedAsc:
 		return true
-	case PlayedDesc:
+	case VideoSortPlayedDesc:
 		return true
-	case Random:
+	case VideoSortRandom:
 		return true
-	case SizeAsc:
+	case VideoSortSizeAsc:
 		return true
-	case SizeDesc:
+	case VideoSortSizeDesc:
 		return true
-	case TitleAsc:
+	case VideoSortTitleAsc:
 		return true
-	case TitleDesc:
+	case VideoSortTitleDesc:
 		return true
 	default:
 		return false
@@ -1660,6 +1687,15 @@ type TagInput struct {
 // TagList defines model for TagList.
 type TagList struct {
 	Items []Tag `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部のタグの数。ページングとは独立に返る
+	TotalAll int `json:"totalAll"`
 }
 
 // TagMergeResponse defines model for TagMergeResponse.
@@ -1679,6 +1715,11 @@ type TagRef struct {
 	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
 	Tentative bool `json:"tentative"`
 }
+
+// TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+// createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+// （specs/036-tag-admin-scale/data-model.md §0・§2）
+type TagSort string
 
 // ThumbnailPositionUpdate defines model for ThumbnailPositionUpdate.
 type ThumbnailPositionUpdate struct {
@@ -2279,6 +2320,30 @@ type ListCurrentScanIssuesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListTagsParams defines parameters for ListTags.
+type ListTagsParams struct {
+	// Q 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+	// （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+	// タグだけにする。語の分解はしない
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Tentative true なら仮のタグだけにする
+	Tentative *bool `form:"tentative,omitempty" json:"tentative,omitempty"`
+
+	// Unused true なら本数0のタグだけにする
+	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
+
+	// Sort 並び順
+	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+	// `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ForgetRejectedTagNameParams defines parameters for ForgetRejectedTagName.
 type ForgetRejectedTagNameParams struct {
 	// Name 外す名前
@@ -2542,7 +2607,7 @@ type ServerInterface interface {
 	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
-	ListTags(w http.ResponseWriter, r *http.Request)
+	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
 	// CreateTag タグを1件作る
 	// (POST /api/tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
@@ -3636,8 +3701,92 @@ func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWrit
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTagsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tentative" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tentative", r.URL.Query(), &params.Tentative, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tentative"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tentative", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unused" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unused", r.URL.Query(), &params.Unused, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unused"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unused", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTags(w, r)
+		siw.Handler.ListTags(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

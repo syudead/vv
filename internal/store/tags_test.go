@@ -216,10 +216,11 @@ func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 	}
 
 	// X の元の名前とシノニムが Y のシノニムになる。
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	var found bool
 	for _, tag := range tags {
 		if tag.ID == x.ID {
@@ -293,10 +294,11 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 	}
 
 	// ここまで何も変わっていない。
-	tagsBefore, err := db.Tags().ListTags(ctx)
+	tagsBeforePage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tagsBefore := tagsBeforePage.Items
 	if len(tagsBefore) != 2 {
 		t.Fatalf("len(tagsBefore) = %d, want 2 (何も変わっていない)", len(tagsBefore))
 	}
@@ -326,10 +328,11 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		t.Errorf("Synonyms = %v, want [anime]", tag.Synonyms)
 	}
 
-	tagsAfter, err := db.Tags().ListTags(ctx)
+	tagsAfterPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tagsAfter := tagsAfterPage.Items
 	if len(tagsAfter) != 1 {
 		t.Fatalf("len(tagsAfter) = %d, want 1 (統合された)", len(tagsAfter))
 	}
@@ -380,10 +383,11 @@ func TestVideoCountExcludesUnregisteredVideosAndMergeReachesThem(t *testing.T) {
 	// いまライブラリに無い動画（video_locations を持たない content_key）への付与。
 	attachTag(t, db, "key-gone", x.ID)
 
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	for _, tag := range tags {
 		if tag.ID == x.ID && tag.VideoCount != 1 {
 			t.Errorf("VideoCount = %d, want 1 (所在が消えた動画を数えない)", tag.VideoCount)
@@ -538,10 +542,11 @@ func TestListTagsIncludesZeroCountTagsInNaturalOrder(t *testing.T) {
 		}
 	}
 
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	want := []string{"tag1", "tag2", "tag10"}
 	if len(tags) != len(want) {
 		t.Fatalf("len(tags) = %d, want %d", len(tags), len(want))
@@ -574,10 +579,11 @@ func TestRemoveSynonymIsNoopWhenNotASynonym(t *testing.T) {
 	if err := db.Tags().RemoveSynonym(ctx, tag.ID, "旅"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Tags().ListTags(ctx)
+	gotPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := gotPage.Items
 	if len(got) != 1 || len(got[0].Synonyms) != 0 {
 		t.Errorf("got = %+v, want シノニムが消えている", got)
 	}

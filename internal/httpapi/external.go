@@ -54,19 +54,21 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 }
 
 // ListTags はタグの一覧を返す（GET /api/v1/tags、contracts/external-api.md §3）。
-// 並びは画面の ListTags と同じで、保存先の順をそのまま返す。
+// 画面の ListTags の limit を省いた全件（TagListQuery{}）と同じもので、保存先の順
+// （名前の自然順）をそのまま返す。ページ・検索・絞り込みは足さない
+// （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
 func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request) {
 	if e.s.tags == nil {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	tags, err := e.s.tags.ListTags(r.Context())
+	page, err := e.s.tags.ListTags(r.Context(), domain.TagListQuery{})
 	if err != nil {
 		e.internalError(w, "Could not load tags.", err)
 		return
 	}
-	items := make([]extgen.Tag, 0, len(tags))
-	for _, tag := range tags {
+	items := make([]extgen.Tag, 0, len(page.Items))
+	for _, tag := range page.Items {
 		synonyms := tag.Synonyms
 		if synonyms == nil {
 			synonyms = []string{}

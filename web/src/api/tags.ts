@@ -14,6 +14,8 @@ export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
 export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
 export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
 export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
+export type TagList = components["schemas"]["TagList"];
+export type TagSort = components["schemas"]["TagSort"];
 
 /**
  * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
@@ -39,7 +41,45 @@ export const maxTagBatch = 20000;
  * はならない（B2）。
  */
 function listTags(): Promise<Tag[]> {
-  return request<{ items: Tag[] }>("/api/tags").then((page) => page.items);
+  return request<TagList>("/api/tags").then((page) => page.items);
+}
+
+/**
+ * tagPageLimit はタグ管理画面が 1 回に読むタグの数
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。
+ */
+export const tagPageLimit = 100;
+
+/** TagPageQuery は `listTagPage` の条件である（contracts/screen-api.md §5）。 */
+export interface TagPageQuery {
+  /** 検索語。サーバーが照合形にして名前とシノニムに部分一致させる。空なら絞らない。 */
+  q?: string;
+  /** 仮のタグだけにする。 */
+  tentative?: boolean;
+  /** 本数 0 のタグだけにする。 */
+  unused?: boolean;
+  sort?: TagSort;
+  /** 前回の応答の `nextCursor`。同じ条件で続けて使う。 */
+  cursor?: string;
+  /** 1 ページの件数（1〜200）。既定は `tagPageLimit`。 */
+  limit?: number;
+}
+
+/**
+ * listTagPage は条件に合うタグを 1 ページ読む（`GET /api/tags`、contracts/screen-api.md §4・§5）。
+ * 検索・絞り込み・並び順はサーバーが全部のタグに掛ける。共有の保持（`getTags`）には触れず、
+ * 呼び手ごとの `AbortSignal` で打ち切れる（条件を変えたら前の要求を打ち切るため）。
+ */
+export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<TagList> {
+  const params = new URLSearchParams();
+  if (query.q !== undefined && query.q !== "") params.set("q", query.q);
+  if (query.tentative === true) params.set("tentative", "true");
+  if (query.unused === true) params.set("unused", "true");
+  if (query.sort !== undefined) params.set("sort", query.sort);
+  if (query.cursor !== undefined && query.cursor !== "")
+    params.set("cursor", query.cursor);
+  params.set("limit", String(query.limit ?? tagPageLimit));
+  return request<TagList>(`/api/tags?${params.toString()}`, { signal });
 }
 
 /**

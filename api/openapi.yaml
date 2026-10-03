@@ -1355,7 +1355,52 @@ paths:
     get:
       operationId: listTags
       summary: タグを一覧する
-      description: 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+      description: |
+        本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+        AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
+        `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+      parameters:
+        - name: q
+          in: query
+          description: |
+            検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+            （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+            タグだけにする。語の分解はしない
+          schema:
+            type: string
+            maxLength: 100
+        - name: tentative
+          in: query
+          description: true なら仮のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: unused
+          in: query
+          description: true なら本数0のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          description: 並び順
+          schema:
+            $ref: "#/components/schemas/TagSort"
+        - name: cursor
+          in: query
+          description: |
+            前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+            `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数。省くと全件を返し、`nextCursor` は入らない
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
       responses:
         "200":
           description: タグの一覧
@@ -1363,6 +1408,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
     post:
       operationId: createTag
       summary: タグを1件作る
@@ -2579,13 +2626,31 @@ components:
 
     TagList:
       type: object
-      required: [items]
+      required: [items, total, totalAll]
       additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+        total:
+          type: integer
+          description: 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+        totalAll:
+          type: integer
+          description: 全部のタグの数。ページングとは独立に返る
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+
+    TagSort:
+      type: string
+      enum: [name, countDesc, countAsc, createdDesc, createdAsc]
+      default: name
+      description: |
+        タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+        createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+        （specs/036-tag-admin-scale/data-model.md §0・§2）
 
     RejectedTagNameList:
       type: object
