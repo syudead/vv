@@ -246,10 +246,46 @@ func run(opts runOptions) error {
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 	})
+	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。
+	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
+	defer stopChecks()
+	// 方式の設定。作る前に戻ったときは nil のままである。
+	var transcodeSettings *app.TranscodeSettings
+
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
+	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
+	// 猶予を越えたときも）、データベースを閉じる前に走査とワーカーを止める。止めずに
+	// 戻ると、始め直した走査やワーカーが閉じたデータベースへ書く。データベースを
+	// 閉じる defer より後に登録するので、その前に走る。
+	defer func() {
+		// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
+		// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
+		// 起こさないよう、先に起こす購読をやめる。
+		// 取り消した確認の ffmpeg が終わるのを待つ。確認は取り消しで戻るので長くは待たない。
+		stopChecks()
+		if transcodeSettings != nil && !waitAtMost(func() { <-transcodeSettings.Done() }, scanStopGrace) {
+			logger.Warn("the hardware encoder checks did not stop within the grace period")
+		}
+		subscriptions.StopWorkers()
+		stopBackground()
+		workersDone.Wait()
+		// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
+		// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
+		// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
+		// 残り、次の起動の RecoverInterrupted が閉じる。
+		if !waitAtMost(scans.Wait, scanStopGrace) {
+			logger.Warn("the scan did not stop within the grace period; artifacts of videos it removed may remain",
+				slog.String("grace", scanStopGrace.String()))
+		}
+		// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
+		// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
+		bus.Close()
+		ingest.Wait()
+		logger.Info("stopped ingest and jobs")
+	}()
 	// 前回の停止で中断した走査を、ワーカーを動かしてから始め直す
 	// （specs/037-windows-app/research.md R-9）。始め直せなくても起動は止めず、
 	// 利用者が取り込みを始められる。
@@ -281,9 +317,7 @@ func run(opts runOptions) error {
 
 	// ライブ変換の映像エンコード方式。起動時の確認は背後で走り、HTTP の待ち受けを
 	// 待たせない。停止の指示で確認を止める。
-	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
-	defer stopChecks()
-	transcodeSettings, err := startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
+	transcodeSettings, err = startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
 	if err != nil {
 		return err
 	}
@@ -337,35 +371,8 @@ func run(opts runOptions) error {
 		subscriptions.StopScreen()
 		events.Close()
 	}
-	if err := serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown); err != nil {
-		return err
-	}
-
-	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
-	// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
-	// 起こさないよう、先に起こす購読をやめる。
-	// 取り消した確認の ffmpeg が終わるのを待つ。確認は取り消しで戻るので長くは待たない。
-	if !waitAtMost(func() { <-transcodeSettings.Done() }, scanStopGrace) {
-		logger.Warn("the hardware encoder checks did not stop within the grace period")
-	}
-	subscriptions.StopWorkers()
-	stopBackground()
-	workersDone.Wait()
-	// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
-	// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
-	// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
-	// 残り、次の起動の RecoverInterrupted が閉じる。
-	if !waitAtMost(scans.Wait, scanStopGrace) {
-		logger.Warn("the scan did not stop within the grace period; artifacts of videos it removed may remain",
-			slog.String("grace", scanStopGrace.String()))
-	}
-	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
-	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
-	bus.Close()
-	ingest.Wait()
-	logger.Info("stopped ingest and jobs")
-
-	return nil
+	// 戻ったあと、走査とワーカーは上の defer が止める。
+	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
 }
 
 // startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで
