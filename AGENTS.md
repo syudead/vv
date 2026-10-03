@@ -18,6 +18,10 @@ file into a handbook.
 ## Working agreements
 
 - Keep documentation close to the code and update it with behavior changes.
+- Write documents in technical English to
+  [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
+  starting from the type for the document's kind. Issue and PR bodies stay
+  Japanese.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).

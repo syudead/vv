@@ -16,3 +16,8 @@ token values and the existing screens decide everything they cover; the
 artifact links them instead of restating them, and names tokens instead of
 writing values. `design.md` lists those sources and the rule for when something
 is a question for the requester rather than a choice to make here.
+
+Start `ui-design.md` from [`assets/ui-design-template.md`](assets/ui-design-template.md)
+and follow [writing-quality.md](../../../docs/design-docs/writing-quality.md):
+English, tables for words, states and widths, and a diagram for multi-step
+interactions.

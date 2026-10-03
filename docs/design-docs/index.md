@@ -17,6 +17,7 @@ Add each new document to this index.
 （`web/src/i18n/en.ts`）が正本である（[i18n](i18n.md#ui-designmd-の文言)）。
 
 - [Core beliefs](core-beliefs.md)
+- [Writing quality: typed technical English](writing-quality.md)
 - [Plan品質の規則: 空欄を埋めるための記述を防ぐ](plan-quality.md)
 - [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)

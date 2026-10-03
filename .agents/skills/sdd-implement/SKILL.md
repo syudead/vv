@@ -102,6 +102,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Respect dependencies without expanding the scope to unrelated work
    - Follow TDD when required by the specification or request
    - Include only setup, integration, and documentation changes necessary for this work
+   - Write documentation in English to [writing-quality.md](../../../docs/design-docs/writing-quality.md);
+     a new design document starts from [`assets/design-doc-template.md`](assets/design-doc-template.md)
+     and a new how-to guide from [`assets/how-to-template.md`](assets/how-to-template.md)
    - Run focused validation and any repository checks required by the change, including the pre-push check from `AGENTS.md`
 
 6. Progress tracking and error handling:
