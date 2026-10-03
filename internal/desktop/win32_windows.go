@@ -34,6 +34,11 @@ var (
 	procGetMonitorInfoW      = user32.NewProc("GetMonitorInfoW")
 	procSystemParametersInfo = user32.NewProc("SystemParametersInfoW")
 	procGetDpiForSystem      = user32.NewProc("GetDpiForSystem")
+	procFindWindowW          = user32.NewProc("FindWindowW")
+	procIsIconic             = user32.NewProc("IsIconic")
+
+	procShutdownBlockReasonCreate  = user32.NewProc("ShutdownBlockReasonCreate")
+	procShutdownBlockReasonDestroy = user32.NewProc("ShutdownBlockReasonDestroy")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 )
@@ -48,13 +53,17 @@ const (
 
 	swHide       = 0
 	swShowNormal = 1
+	swRestore    = 9
 
 	wmDestroy  = 0x0002
 	wmMove     = 0x0003
 	wmSize     = 0x0005
 	wmActivate = 0x0006
 	wmClose    = 0x0010
-	wmApp      = 0x8000
+
+	wmQueryEndSession = 0x0011
+	wmEndSession      = 0x0016
+	wmApp             = 0x8000
 
 	waInactive = 0
 

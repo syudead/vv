@@ -8,6 +8,8 @@
 package desktop
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -179,4 +181,15 @@ func PrependPath(dir, current string) string {
 		return dir
 	}
 	return dir + string(os.PathListSeparator) + current
+}
+
+// InstanceNames は二重起動の判定に使う名前付きミューテックスの名前を返す
+// （research.md R-6）。global はセッションをまたいで 1 つで、同じ利用者が同じ
+// データの置き場で 2 つ目を起動したことを知る。local はセッションごとで、持ち主が
+// 同じセッションにいるかを知る。どちらも利用者の SID とデータの置き場（大文字と
+// 小文字を区別しない）のハッシュで名付けるので、別の利用者の起動を妨げない。
+func InstanceNames(sid, root string) (global, local string) {
+	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root))))
+	suffix := AppName + "-" + sid + "-" + hex.EncodeToString(sum[:8])
+	return `Global\` + suffix, `Local\` + suffix
 }
