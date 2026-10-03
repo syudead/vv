@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // タグの作った日（specs/036-tag-admin-scale/data-model.md §1・§2、research.md R-8）。
@@ -34,10 +36,11 @@ func TestCreateTagReturnsCreatedAtMatchingListTags(t *testing.T) {
 		t.Errorf("CreatedAt = %d, tags.created_at = %d", tag.CreatedAt.Unix(), stored)
 	}
 
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	if len(tags) != 1 || !tags[0].CreatedAt.Equal(tag.CreatedAt) {
 		t.Errorf("ListTags = %#v, want CreatedAt %v", tags, tag.CreatedAt)
 	}
@@ -74,10 +77,11 @@ func TestTagOperationsReturnCreatedAt(t *testing.T) {
 		return time.Unix(sec, 0)
 	}
 
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	if len(tags) != len(names) {
 		t.Fatalf("ListTags = %d 件, want %d", len(tags), len(names))
 	}

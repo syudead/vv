@@ -17,22 +17,71 @@ import (
 // internal/store.TagStore の1つのトランザクションで済み、httpapi は要求の
 // 解釈と契約の形への変換だけを持つ。
 
-func (s *server) ListTags(w http.ResponseWriter, r *http.Request) {
+// ListTags はタグの一覧を返す（GET /api/tags、specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+// limit を省けば条件に合う全件を返し、nextCursor は入らない（候補・絞り込みの確かめの経路）。
+func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.ListTagsParams) {
+	query, ok := s.parseTagListQuery(w, params)
+	if !ok {
+		return
+	}
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	tags, err := s.tags.ListTags(r.Context())
-	if err != nil {
+	page, err := s.tags.ListTags(r.Context(), query)
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
 		s.internalError(w, "Could not load tags.", err)
 		return
 	}
-	out := make([]gen.Tag, 0, len(tags))
-	for _, tag := range tags {
+	out := make([]gen.Tag, 0, len(page.Items))
+	for _, tag := range page.Items {
 		out = append(out, toAPITag(tag))
 	}
+	body := gen.TagList{Items: out, Total: page.Total, TotalAll: page.TotalAll}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.TagList{Items: out}, s.logger)
+	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
+// parseTagListQuery は GET /api/tags のパラメータを検査する。sort が 5 値でない、
+// limit が 1〜200 の外、q が 100 文字を超えるときは 400 を書いて false を返す。
+// カーソルの中身は保存層が解く（解けなければ ErrInvalidCursor）。
+func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
+	query := domain.TagListQuery{
+		TentativeOnly: params.Tentative != nil && *params.Tentative,
+		UnusedOnly:    params.Unused != nil && *params.Unused,
+		Sort:          domain.TagSortName,
+	}
+	if params.Sort != nil {
+		query.Sort = domain.TagSort(*params.Sort)
+		if !query.Sort.Valid() {
+			s.invalidRequest(w, "Unknown sort order.")
+			return domain.TagListQuery{}, false
+		}
+	}
+	if params.Limit != nil {
+		limit := *params.Limit
+		if limit < 1 || limit > domain.MaxTagPageLimit {
+			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+			return domain.TagListQuery{}, false
+		}
+		query.Limit = limit
+		if params.Cursor != nil {
+			query.Cursor = *params.Cursor
+		}
+	}
+	search, ok := s.parseSearchQuery(w, params.Q)
+	if !ok {
+		return domain.TagListQuery{}, false
+	}
+	query.Search = search
+	return query, true
 }
 
 func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {

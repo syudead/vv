@@ -125,7 +125,8 @@ func TestExternalVideoTagsAddByPathShowsInScreenAPI(t *testing.T) {
 			t.Errorf("round %d: tags = %v", round, got)
 		}
 	}
-	tags, err := f.env.db.Tags().ListTags(ctx)
+	tagsPage, err := f.env.db.Tags().ListTags(ctx, domain.TagListQuery{})
+	tags := tagsPage.Items
 	if err != nil || len(tags) != 2 {
 		t.Fatalf("タグ = %+v, err=%v (犬を 1 度だけ作る)", tags, err)
 	}
@@ -221,7 +222,8 @@ func TestExternalVideoTagsMissingVideoChangesNothing(t *testing.T) {
 		*e.Reason != extgen.VideoNotFound || e.Index == nil || *e.Index != 1 {
 		t.Fatalf("status = %d: %s", status, raw)
 	}
-	tags, err := f.env.db.Tags().ListTags(context.Background())
+	tagsPage, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{})
+	tags := tagsPage.Items
 	if err != nil || len(tags) != 0 {
 		t.Errorf("失敗した要求がタグを作った: %+v, err=%v", tags, err)
 	}
@@ -274,7 +276,7 @@ func TestExternalVideoTagsRejectsBadRequests(t *testing.T) {
 			t.Errorf("%s: status = %d: %s", tc.name, status, raw)
 		}
 	}
-	if tags, err := f.env.db.Tags().ListTags(context.Background()); err != nil || len(tags) != 0 {
+	if tags, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{}); err != nil || len(tags.Items) != 0 {
 		t.Errorf("誤りの要求がタグを作った: %+v, err=%v", tags, err)
 	}
 }

@@ -207,16 +207,6 @@ func SortTagNames(names []string) {
 	})
 }
 
-// SortTags はタグを Name の自然順に並べる。
-func SortTags(tags []Tag) {
-	slices.SortStableFunc(tags, func(a, b Tag) int {
-		if order := CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return strings.Compare(a.Name, b.Name)
-	})
-}
-
 // SortTagRefs は動画に付いたタグ（TagRef）を Name の自然順に並べる。同順位は
 // ID で決着させる（元の名前は tag_names の主キーで一意なので、実際には
 // CompareNatural だけで決まる。ID の比較は同順位が起き得る呼び出し側の入力

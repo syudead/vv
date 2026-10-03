@@ -46,10 +46,20 @@ type fakeTags struct {
 	impact           domain.TagImpact
 	// mergeNotFound は MergeTags が NotFoundIDs として返す id。
 	mergeNotFound []int64
+	// lastListQuery は ListTags が受けた条件。listPage があれば ListTags はそれを返す。
+	lastListQuery domain.TagListQuery
+	listPage      *domain.TagPage
 }
 
-func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
-	return f.tags, f.err
+func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domain.TagPage, error) {
+	f.lastListQuery = query
+	if f.err != nil {
+		return domain.TagPage{}, f.err
+	}
+	if f.listPage != nil {
+		return *f.listPage, nil
+	}
+	return domain.TagPage{Items: f.tags, Total: len(f.tags), TotalAll: len(f.tags)}, nil
 }
 
 func (f *fakeTags) CreateTag(_ context.Context, name string) (domain.Tag, error) {

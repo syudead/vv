@@ -77,7 +77,7 @@ type MediaFolders interface {
 // Tags はタグ管理画面が操作するタグの保存先である。どの操作も1つのトランザクションで済むので、
 // internal/app は通さず、internal/store の TagStore をここへ直接渡す。
 type Tags interface {
-	ListTags(ctx context.Context) ([]domain.Tag, error)
+	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error

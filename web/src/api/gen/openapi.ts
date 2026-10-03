@@ -813,7 +813,10 @@ export interface paths {
         };
         /**
          * タグを一覧する
-         * @description 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+         *     AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
+         *     `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
          */
         get: operations["listTags"];
         put?: never;
@@ -1616,7 +1619,21 @@ export interface components {
         };
         TagList: {
             items: components["schemas"]["Tag"][];
+            /** @description 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部のタグの数。ページングとは独立に返る */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
         };
+        /**
+         * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+         *     createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+         *     （specs/036-tag-admin-scale/data-model.md §0・§2）
+         * @default name
+         * @enum {string}
+         */
+        TagSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
         RejectedTagNameList: {
             /** @description 却下した名前。名前の自然順 */
             items: string[];
@@ -3688,7 +3705,27 @@ export interface operations {
     };
     listTags: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+                 *     （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+                 *     タグだけにする。語の分解はしない
+                 */
+                q?: string;
+                /** @description true なら仮のタグだけにする */
+                tentative?: boolean;
+                /** @description true なら本数0のタグだけにする */
+                unused?: boolean;
+                /** @description 並び順 */
+                sort?: components["schemas"]["TagSort"];
+                /**
+                 * @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+                 *     `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+                 */
+                cursor?: string;
+                /** @description 1ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3704,6 +3741,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagList"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
         };
     };
     createTag: {

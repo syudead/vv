@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -88,10 +89,11 @@ func TestSeedWritesTheTagsThroughTheStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	counts := make(map[string]int, len(tags))
 	for _, tag := range tags {
 		counts[tag.Name] = tag.VideoCount

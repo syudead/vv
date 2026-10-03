@@ -532,9 +532,27 @@ func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, err
 	default:
 		return "", fmt.Errorf("cannot encode the sort value: %T", value)
 	}
-	return encodeCursorFields(cursorFields{
-		sort: string(spec.sort), seed: o.seedText(spec), isNull: nullFlag == "1", id: id, value: text,
-	}), nil
+	return packCursor(string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), text), nil
+}
+
+// packCursor は項目を不透明な文字列に包む。一覧のカーソル（動画・タグ）が共有する
+// 包み方で、区切りを含みうる項目（名前の鍵）は最後に置く。
+func packCursor(fields ...string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator)))
+}
+
+// unpackCursor は packCursor の包みを解き、n 個の項目を返す。解釈できないものや
+// 項目の数が合わないものは ErrInvalidCursor。最後の項目は区切りを含んでよい。
+func unpackCursor(cursor string, n int) ([]string, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", domain.ErrInvalidCursor, err)
+	}
+	parts := strings.SplitN(string(raw), cursorSeparator, n)
+	if len(parts) != n {
+		return nil, fmt.Errorf("%w: too few fields", domain.ErrInvalidCursor)
+	}
+	return parts, nil
 }
 
 // encodeCursorFields は項目を不透明な文字列に包む。decodeCursor が解く形で、一覧ごとの
@@ -544,8 +562,7 @@ func encodeCursorFields(c cursorFields) string {
 	if c.isNull {
 		nullFlag = "1"
 	}
-	fields := []string{c.sort, c.seed, nullFlag, strconv.FormatInt(c.id, 10), c.value}
-	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator)))
+	return packCursor(c.sort, c.seed, nullFlag, strconv.FormatInt(c.id, 10), c.value)
 }
 
 // cursorSeparator はカーソルの中で項目を区切る。値（題名の鍵）は最後に置くので、
@@ -562,14 +579,9 @@ type cursorFields struct {
 
 // decodeCursor は包みを解く。解釈できないものは誤りとして返す。
 func decodeCursor(cursor string) (cursorFields, error) {
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
+	parts, err := unpackCursor(cursor, 5)
 	if err != nil {
-		return cursorFields{}, fmt.Errorf("%w: %w", domain.ErrInvalidCursor, err)
-	}
-
-	parts := strings.SplitN(string(raw), cursorSeparator, 5)
-	if len(parts) != 5 {
-		return cursorFields{}, fmt.Errorf("%w: too few fields", domain.ErrInvalidCursor)
+		return cursorFields{}, err
 	}
 	if parts[2] != "0" && parts[2] != "1" {
 		return cursorFields{}, fmt.Errorf("%w: cannot parse whether a value is present", domain.ErrInvalidCursor)

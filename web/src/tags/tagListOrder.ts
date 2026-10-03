@@ -1,13 +1,12 @@
 import { compareTagRefs } from "../api/tagOrder";
-import type { Tag } from "../api/tags";
+import type { Tag, TagSort } from "../api/tags";
 
 /**
  * TagListSort はタグ管理画面の一覧の並び順である
  * （specs/036-tag-admin-scale/data-model.md §4、research.md R-7）。
- * 「名前」に向きは無い。
+ * `GET /api/tags` の `sort`（生成物の `TagSort`）と同じ値を持つ。「名前」に向きは無い。
  */
-export type TagListSort =
-  "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
+export type TagListSort = TagSort;
 
 /** TagSortKind は並び順の種類（メニューの項目）である。 */
 export type TagSortKind = "name" | "count" | "created";
