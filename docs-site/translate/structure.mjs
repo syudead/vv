@@ -1,7 +1,7 @@
 // skeleton() reduces a Markdown document to what a translation must not
 // change: block types and depths, list and table shapes, code blocks (Mermaid
 // with its labels masked), and link and image destinations.
-import { parse } from './segments.mjs'
+import { parse, maskMermaid } from './segments.mjs'
 
 export function skeleton(markdown) {
   const out = []
@@ -39,13 +39,6 @@ export function skeleton(markdown) {
   }
   visit(parse(markdown))
   return out
-}
-
-function maskMermaid(value) {
-  return value
-    .split('\n')
-    .map((line) => line.replace(/[^\s\-<>=.ox|:;&]+/g, '_').replace(/_+(\s+_+)*/g, '_'))
-    .join('\n')
 }
 
 // sameStructure compares two skeletons and returns the first difference, or

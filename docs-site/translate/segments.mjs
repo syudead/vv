@@ -114,11 +114,9 @@ function isAutolink(source, node) {
 const mermaidLabel =
   /\[\[?"?([^\]"\n]+?)"?\]?\]|\(\(?"?([^()"\n]+?)"?\)?\)|\{\{?"?([^{}"\n]+?)"?\}?\}|\|"?([^|"\n]+?)"?\||\bparticipant\s+\S+\s+as\s+([^\n]+)|\bnote\s+[^:\n]+:\s*([^\n]+)/g
 
-function mermaidSegments(source, node) {
-  const [s] = offsets(node)
-  const raw = source.slice(...offsets(node))
-  const bodyStart = s + raw.indexOf('\n') + 1
-  const value = node.value
+// mermaidLabels returns [start, end] offsets of the translatable labels in a
+// Mermaid body.
+export function mermaidLabels(value) {
   const out = []
   for (const m of value.matchAll(mermaidLabel)) {
     const group = m.slice(1).findIndex((g) => g !== undefined)
@@ -129,11 +127,34 @@ function mermaidSegments(source, node) {
     const lead = captured.match(/^[\s([{/\\>]*/)[0].length
     const trail = captured.match(/[\s)\]}/\\]*$/)[0].length
     const label = captured.slice(lead, captured.length - trail)
-    if (!hasWords.test(label)) continue
-    const at = bodyStart + m.index + m[0].indexOf(captured) + lead
-    out.push({ kind: 'mermaid', start: at, end: at + label.length, text: label, tags: new Map() })
+    if (!label) continue
+    const at = m.index + m[0].indexOf(captured) + lead
+    out.push([at, at + label.length, label])
   }
   return out
+}
+
+// maskMermaid replaces every label with `_`, leaving node ids, arrows and
+// keywords: what a translation must not change.
+export function maskMermaid(value) {
+  let out = value
+  for (const [start, end] of mermaidLabels(value).reverse()) out = out.slice(0, start) + '_' + out.slice(end)
+  return out
+}
+
+function mermaidSegments(source, node) {
+  const [s] = offsets(node)
+  const raw = source.slice(...offsets(node))
+  const bodyStart = s + raw.indexOf('\n') + 1
+  return mermaidLabels(node.value)
+    .filter(([, , label]) => hasWords.test(label))
+    .map(([start, end, label]) => ({
+      kind: 'mermaid',
+      start: bodyStart + start,
+      end: bodyStart + end,
+      text: label,
+      tags: new Map(),
+    }))
 }
 
 // extractSegments returns the segments of a document in source order.

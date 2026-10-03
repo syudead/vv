@@ -82,3 +82,11 @@ test('a segment without translation keeps its English text', () => {
   const out = assemble(doc, segs, segs.map(() => null))
   assert.equal(out.replace(/ \{#[^}]+\}/g, ''), doc)
 })
+
+test('Mermaid labels translated into Japanese keep the structure', () => {
+  const src = '```mermaid\nflowchart LR\n  push[push to main] -->|commit| ja[(branch docs-ja)]\n```\n'
+  const segs = extractSegments(src)
+  const out = assemble(src, segs, segs.map(() => 'ブランチへの反映'))
+  assert.equal(structureDiff(src, out), null)
+  assert.match(out, /push\[ブランチへの反映\] -->\|ブランチへの反映\| ja\[\(ブランチへの反映\)\]/)
+})
