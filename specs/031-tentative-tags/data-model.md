@@ -1,115 +1,141 @@
-# Data model: 仮のタグと却下した名前
+# Data model: Tentative tags and rejected names
 
-親 Issue: #589。
+Parent Issue: #589.
 
-既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、タグの表と
-名前の規則・書き換えの規則は [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、
-フォルダ由来のタグは [specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-フォルダ由来のタグ)、
-データの区分は [ARCHITECTURE.md](../../ARCHITECTURE.md)「Rebuildable and user data」にある。
-ここには、この feature が足す列と表、それを読み書きする規則だけを書く。書いていない表は変えない
-（`tag_names`・`video_tags` はそのまま。付け外し・絞り込み・検索・本数の SQL は変えない）。
+The rest of the model is unchanged. Table definitions are in
+[internal/store/migrations/](../../internal/store/migrations/); the tag tables,
+name rules and write rules are in
+[specs/014-video-tags/data-model.md](../014-video-tags/data-model.md);
+folder-derived tags are in
+[specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags);
+the data categories are in [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable
+and user data". This file records only the column and table this feature adds and
+the rules that read and write them. Tables not named here do not change
+(`tag_names` and `video_tags` stay as they are, and the SQL for attaching,
+detaching, filtering, search and counts does not change).
 
-## 1. マイグレーション
+## 1. Migration
 
-`00022_tentative_tags.sql` として足す（`main` の最後は `00021_video_overrides.sql`）。
+Added as `00022_tentative_tags.sql` (the last migration on `main` is
+`00021_video_overrides.sql`).
 
 ```sql
--- 仮のタグ（specs/031-tentative-tags/research.md R-1）。自動の付与で新しく作られたタグは 1、
--- 手で作ったタグと導入前のタグは 0。確定は 0 に書き換えるだけで、名前と付与は変えない。
+-- Tentative tags (specs/031-tentative-tags/research.md R-1). 1 for a tag newly created by
+-- automatic tagging; 0 for a tag created by hand or before this migration. Confirming only
+-- rewrites it to 0 and changes neither names nor assignments.
 alter table tags add column tentative integer not null default 0 check (tentative in (0, 1));
 
--- 却下した名前（R-2）。仮のタグを却下したとき、そのタグの元の名前を覚え、以後の仮の作成で
--- 飛ばす。タグでも付与でもない利用者データで、名前の照合は tag_names.name と同じ完全一致。
+-- Rejected names (R-2). Rejecting a tentative tag remembers its canonical name, and later
+-- tentative creates skip it. User data that is neither a tag nor an assignment; names match
+-- exactly, like tag_names.name.
 create table rejected_tag_names (
     name       text    primary key,
     created_at integer not null
 ) without rowid;
 ```
 
-Down は `rejected_tag_names` を落とし、`tags.tentative` を `alter table … drop column` で落とす。
+Down drops `rejected_tag_names` and drops `tags.tentative` with
+`alter table … drop column`.
 
-不変条件（`internal/store/invariants_test.go` に足す）:
+Invariants (added to `internal/store/invariants_test.go`):
 
-- `tentative = 1` のタグに `canonical = 0` の `tag_names` は無い（仮のタグはシノニムを持たない。
-  [R-4](research.md#r-4-仮のタグへの手入れ改名シノニム統合先は同じ取引で確定にする)）。
-- `rejected_tag_names.name` と `tag_names.name` に同じ値は無い
-  （[R-3](research.md#r-3-名前を-tag_names-に書く取引は同じ名前を-rejected_tag_names-から外す)）。
+| Invariant | Source |
+| --- | --- |
+| A tag with `tentative = 1` has no `tag_names` row with `canonical = 0` (a tentative tag has no synonyms) | [R-4](research.md#r-4-edits-to-a-tentative-tag-rename-synonym-merge-target-confirm-it-in-the-same-transaction) |
+| No value appears in both `rejected_tag_names.name` and `tag_names.name` | [R-3](research.md#r-3-a-transaction-that-writes-a-name-to-tag_names-removes-it-from-rejected_tag_names) |
 
-区分: どちらも作り直せない利用者データ。ARCHITECTURE.md のタグの表の一覧に `rejected_tag_names` を足す。
+Category: both are user data that cannot be rebuilt. Add `rejected_tag_names` to
+the list of tag tables in ARCHITECTURE.md.
 
 ## 2. `rejected_tag_names`
 
-- 1 行は却下した名前 1 つ。`name` は `domain.NormalizeTagName` を通した形（却下したタグの元の名前は
-  常にその形で保存されている）。
-- 引くのは `tentative` が真の作成（§3）と、管理画面の一覧（[contracts/screen-api.md §3](contracts/screen-api.md#3-却下した名前)）だけ。
-  照合用の鍵（`search_key`）は持たない。名前の検索の対象にしない。
-- 一覧の並びは名前の自然順（`domain.SortTagNames`）。
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `name` | text | No | One rejected name, in the form `domain.NormalizeTagName` produces (a rejected tag's canonical name is always stored in that form) |
+| `created_at` | integer | No | When the name was rejected |
 
-## 3. 書き換えの規則
+- Only two readers: a create with `tentative` true (§3) and the tag management
+  page's list ([contracts/screen-api.md §3](contracts/screen-api.md#3-rejected-names)).
+  The table has no matching key (`search_key`) and is not a target of name search.
+- The list is in natural name order (`domain.SortTagNames`).
 
-014 の §4 の表に足す。どの操作も 1 つの取引で行い、途中で失敗したら何も残さない。
+## 3. Write rules
 
-| 操作 | 書き換え |
+These rows extend the table in 014 §4. Every operation runs in one transaction
+and leaves nothing behind if it fails partway.
+
+| Operation | Writes |
 | --- | --- |
-| 仮の作成（`tentative` が真の `add`・`replace` で、名前がどのタグの名前にもシノニムにも当たらないとき） | 名前が `rejected_tag_names` にあれば、その名前を飛ばす（作らず、付けず、飛ばした名前として返す）。無ければ `tags` に `tentative = 1` で 1 行、`tag_names` に `canonical = 1` で 1 行。1 つの要求で同じ名前が複数の動画に付くときも作るのは 1 つ（Edge Case） |
-| 手での作成（画面の作成、名前での付与での作成、`tentative` が偽の API、グループのタグ化） | 今と同じ（`tentative = 0`）。同じ取引で `rejected_tag_names` からその名前を消す |
-| 既存のタグに当たる名前の付与（`tentative` の真偽を問わず） | 今と同じくそのタグを付ける。`tentative` は変えない（要件 2・3、仮のタグへの手での付与も仮のまま） |
-| 改名 | 今と同じ。名前が変わるときは、同じ取引で `tentative = 0` にし、新しい名前を `rejected_tag_names` から消す。今と同じ名前なら何も変えない |
-| シノニム登録（名前 n をタグ T に） | 今と同じ。n を足すとき（承諾した統合を伴うときとも）は T を `tentative = 0` にし、n を `rejected_tag_names` から消す。n が既に T のシノニムなら何も変えない |
-| 統合（元 X → 先 Y） | 今と同じ。Y を `tentative = 0` にする。X は消える（仮でも確定でも） |
-| 確定（`ConfirmTag`） | `tentative = 0`。既に 0 なら何も変えない。`tag_names`・`video_tags` は変えない |
-| 却下（`RejectTag`） | `tentative = 1` でなければ `domain.ErrTagNotTentative`。元の名前を読み、`tags` の行を消し（`tag_names`・`video_tags` は連鎖して消える）、`rejected_tag_names` に元の名前を `insert or ignore` |
-| 削除（`DeleteTag`） | 今と同じ。仮でも確定でも名前を覚えない（画面は仮のタグに削除を出さない。要件 10） |
-| 却下した名前の取り外し（`ForgetRejectedTagName`） | `delete from rejected_tag_names where name = ?`。無ければ何も変えない（Edge Case） |
+| Tentative create (`add` or `replace` with `tentative` true, when the name matches no tag's name or synonym) | If the name is in `rejected_tag_names`, skip it (do not create, do not attach, return it as a skipped name). Otherwise one row in `tags` with `tentative = 1` and one row in `tag_names` with `canonical = 1`. When one request attaches the same name to several videos, only one tag is created (edge case) |
+| Manual create (create in the screen, create during attach-by-name, the API with `tentative` false, group-to-tag conversion) | As today (`tentative = 0`). Removes the name from `rejected_tag_names` in the same transaction |
+| Attaching a name that matches an existing tag (with `tentative` true or false) | As today: attaches that tag. Does not change `tentative` (requirements 2 and 3; a manual attach of a tentative tag leaves it tentative) |
+| Rename | As today. When the name changes, sets `tentative = 0` and removes the new name from `rejected_tag_names` in the same transaction. A rename to the current name changes nothing |
+| Synonym registration (name n on tag T) | As today. When n is added (including with an accepted merge), sets T to `tentative = 0` and removes n from `rejected_tag_names`. If n is already a synonym of T, nothing changes |
+| Merge (source X → target Y) | As today. Sets Y to `tentative = 0`. X is deleted, tentative or confirmed |
+| Confirm (`ConfirmTag`) | `tentative = 0`. If already 0, nothing changes. `tag_names` and `video_tags` do not change |
+| Reject (`RejectTag`) | `domain.ErrTagNotTentative` unless `tentative = 1`. Reads the canonical name, deletes the `tags` row (`tag_names` and `video_tags` cascade), and inserts the canonical name into `rejected_tag_names` with `insert or ignore` |
+| Delete (`DeleteTag`) | As today. Remembers no name, tentative or confirmed (the screen does not offer delete for tentative tags; requirement 10) |
+| Removing a rejected name (`ForgetRejectedTagName`) | `delete from rejected_tag_names where name = ?`. Nothing changes if the name is absent (edge case) |
 
-- 「仮の作成」の判定と却下した名前の照合は、名前の引き当て（`lookupTagName`）と同じ取引の中で行う。
-  書き込みの取引は 1 つずつ走るので、却下との競合は起きない
-  （[R-6](research.md#r-6-却下と同じ名前の仮の付与はsqlite-の書き込みの直列化に任せる)）。
-- `tag_names` に名前を書く 2 つの入口（`insertTagName`、改名の `update`）が `rejected_tag_names` の
-  削除を持つ。仮の作成もこの入口を通るが、飛ばす判定の後なので消すものは無い（R-3）。
-- `remove` はどのタグにも当たらない名前を今と同じく何もしない。`tentative` は受け付けるが読まない。
+- The tentative-create decision and the rejected-name check run in the same
+  transaction as the name lookup (`lookupTagName`). Write transactions run one at
+  a time, so they cannot race a reject
+  ([R-6](research.md#r-6-rejection-and-a-tentative-attach-of-the-same-name-rely-on-sqlite-write-serialization)).
+- The two entry points that write a name to `tag_names` (`insertTagName` and the
+  rename `update`) carry the delete from `rejected_tag_names`. A tentative create
+  also passes through them, but after the skip check, so there is nothing to
+  delete (R-3).
+- `remove` does nothing for a name that matches no tag, as today. It accepts
+  `tentative` but does not read it.
 
-## 4. `domain` に足す値
+## 4. Values added to `domain`
 
-| 値 | 中身 |
+| Value | Content |
 | --- | --- |
-| `TagRef.Tentative` | `bool`。`VideoTag`（`TagRef` を埋め込む）と `TagSummaryItem.Tag` にもこれで載る |
-| `Tag.Tentative` | `bool`。管理画面の 1 件 |
-| `ErrTagNotTentative` | 仮でないタグを却下しようとした。API では `tag_not_tentative`（409） |
-| `VideoTagsOutcome{Items []VideoTagsResult, SkippedNames []string}` | 一括操作の結果。`SkippedNames` は却下した名前に当たって飛ばした名前（整えた形、`tags` の順、重複なし。無ければ空の配列） |
+| `TagRef.Tentative` | `bool`. Also carried by `VideoTag` (which embeds `TagRef`) and `TagSummaryItem.Tag` |
+| `Tag.Tentative` | `bool`. One tag on the tag management page |
+| `ErrTagNotTentative` | An attempt to reject a tag that is not tentative. `tag_not_tentative` (409) in the API |
+| `VideoTagsOutcome{Items []VideoTagsResult, SkippedNames []string}` | Result of a bulk operation. `SkippedNames` are the names skipped because they matched a rejected name (normalized, in `tags` order, without duplicates; an empty array when none) |
 
-`NormalizeTagName`・`SortTag*` は変えない。仮のタグの名前の規則は確定したタグと同じである。
+`NormalizeTagName` and `SortTag*` do not change. Tentative tags follow the same
+name rules as confirmed tags.
 
-## 5. 保存層の操作
+## 5. Store operations
 
-`TagStore` に足す。すべて共有する SQLite 接続だけを使い、ドメインイベントは発行しない（タグの変更は
-副作用を持たない。ARCHITECTURE.md の `TagStore` の段落のまま）。
+Added to `TagStore`. All of them use only the shared SQLite connection and publish
+no domain events (tag changes have no side effects, as the `TagStore` paragraph
+in ARCHITECTURE.md states).
 
-| 操作 | 1 つの取引で行うこと |
+| Operation | What one transaction does |
 | --- | --- |
-| `ApplyVideoTags(ctx, videos, action, names, tentative bool) (VideoTagsOutcome, error)` | 今の `ApplyVideoTags` に `tentative` を足す。`resolveTagNames` が `tentative` を受け、無い名前を §3 の「仮の作成」か「手での作成」で作り、飛ばした名前を集める。飛ばした名前は置き換え後の集合に入らない（Edge Case「`replace` と `tentative`」） |
-| `ConfirmTag(ctx, id) (Tag, error)` | §3 の確定。無ければ `ErrTagNotFound` |
-| `RejectTag(ctx, id) (name string, error)` | §3 の却下。無ければ `ErrTagNotFound`、仮でなければ `ErrTagNotTentative` |
-| `ListRejectedTagNames(ctx) ([]string, error)` | 名前の自然順 |
-| `ForgetRejectedTagName(ctx, name) error` | §3 の取り外し。`name` は `NormalizeTagName` で整えてから照合し、整えられない入力はそのまま照合する（`RemoveSynonym` と同じ扱い） |
+| `ApplyVideoTags(ctx, videos, action, names, tentative bool) (VideoTagsOutcome, error)` | Adds `tentative` to the current `ApplyVideoTags`. `resolveTagNames` receives `tentative`, creates each missing name by the "tentative create" or "manual create" rule in §3, and collects skipped names. Skipped names do not enter the replacement set (edge case "`replace` and `tentative`") |
+| `ConfirmTag(ctx, id) (Tag, error)` | Confirm in §3. `ErrTagNotFound` when absent |
+| `RejectTag(ctx, id) (name string, error)` | Reject in §3. `ErrTagNotFound` when absent, `ErrTagNotTentative` when not tentative |
+| `ListRejectedTagNames(ctx) ([]string, error)` | Natural name order |
+| `ForgetRejectedTagName(ctx, name) error` | Removal in §3. `name` is normalized with `NormalizeTagName` before matching; input that cannot be normalized is matched as is (the same handling as `RemoveSynonym`) |
 
-既存の操作の変更:
+Changes to existing operations:
 
-- `ListTags`、`tagByID`、`lookupTagName`（`nameLookup` に仮かどうかを足す）、`canonicalNameByTagID` を
-  使う `AttachTagByID`・`DetachTag`・`AttachTagByName`、`TagsByContentKeys`（`tags` を結ぶ）、
-  `Summary`、外部連携の一覧（`ListTags` を共有）は `tentative` を読んで `TagRef.Tentative`・
-  `Tag.Tentative` に載せる。
-- `RenameTag`・`AddSynonym`・`mergeTagInto` は §3 の確定を行う。
-- `insertTagName` と `RenameTag` の `update` は §3 の `rejected_tag_names` の削除を行う。
-  `FolderGroupStore` のグループのタグ化は `findOrCreateTag` → `insertTag` → `insertTagName` を通るので、
-  変更なしで手での作成の規則になる。
-- `internal/httpapi` が宣言する `Tags` の interface（`router.go`）に上の操作を足し、`ApplyVideoTags` の
-  署名を変える。配線は `cmd/mdm`（変更なし。同じ `store.TagStore` が満たす）。
+- `ListTags`, `tagByID`, `lookupTagName` (`nameLookup` gains the tentative flag),
+  `AttachTagByID`, `DetachTag` and `AttachTagByName` (which use
+  `canonicalNameByTagID`), `TagsByContentKeys` (joins `tags`), `Summary`, and the
+  external list (shares `ListTags`) read `tentative` and set `TagRef.Tentative`
+  and `Tag.Tentative`.
+- `RenameTag`, `AddSynonym` and `mergeTagInto` perform the confirm in §3.
+- `insertTagName` and the `update` in `RenameTag` perform the delete from
+  `rejected_tag_names` in §3. Group-to-tag conversion in `FolderGroupStore` goes
+  through `findOrCreateTag` → `insertTag` → `insertTagName`, so it follows the
+  manual-create rule with no change.
+- The `Tags` interface declared by `internal/httpapi` (`router.go`) gains the
+  operations above, and the signature of `ApplyVideoTags` changes. The wiring in
+  `cmd/mdm` does not change (the same `store.TagStore` satisfies it).
 
-## 6. 変えないもの
+## 6. What does not change
 
-- 動画への付け外し（`AttachTagByID`・`DetachTag`・`applyManualTags`）、タグでの絞り込み（014 §6）、
-  検索欄でのタグ名の照合（014 §7）、本数（014 §5）、フォルダ由来のタグ（017 §4）。どれも
-  `tags.tentative` を読まない（要件 4）。
-- ゲストへの応答（`Video.tags` は空の配列のまま。[guest-api.md](../016-single-account-auth/contracts/guest-api.md)）。
-- `SearchKeyVersion`。`rejected_tag_names` は照合用の鍵を持たない。
+- Attaching and detaching tags on videos (`AttachTagByID`, `DetachTag`,
+  `applyManualTags`), tag filtering (014 §6), tag-name matching in the search
+  field (014 §7), counts (014 §5), and folder-derived tags (017 §4). None of them
+  reads `tags.tentative` (requirement 4).
+- Responses to guests (`Video.tags` stays an empty array;
+  [guest-api.md](../016-single-account-auth/contracts/guest-api.md)).
+- `SearchKeyVersion`. `rejected_tag_names` has no matching key.
