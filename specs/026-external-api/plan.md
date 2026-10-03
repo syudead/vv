@@ -1,4 +1,4 @@
-# Implementation Plan: 外部連携 API と MCP（API トークンによる自動タグ付け）
+# Implementation Plan: External API and MCP (automatic tagging with API tokens)
 
 **Branch**: `feature/026-external-api` | **Parent Issue**: #493
 
@@ -6,85 +6,90 @@
 
 ## Summary
 
-オーナーが設定ページで発行する API トークン（Bearer）で、外部ツールが「新しい動画を見つける →
-タグを付ける」を人手なしで回せるようにする。同じ操作を `/mcp` の MCP サーバーでも出す。
+With an API token (Bearer) the owner issues on the settings page, an external tool can run "find new
+videos → tag them" without a person in the loop. The same operations are also offered by an MCP
+server at `/mcp`.
 
-- **トークン**: `api_tokens` 表に SHA-256 だけを置き、`account.version` の一致とアカウント変更での
-  全件削除で失効させる（[research.md R-1](research.md#r-1-トークンは接頭辞付きの-256-ビットの乱数にしsha-256-だけを保存する)、
-  [R-2](research.md#r-2-アカウントの変更はトークンの行を消し版の一致でも確かめる)）。管理は画面の API で
-  Cookie の所有者だけ（[contracts/token-api.md](contracts/token-api.md)）。
-- **境界**: `/api/v1/` と `/mcp` を Bearer だけの分類にし、それ以外の `/api/*` は今どおり Cookie だけ
-  （[R-3](research.md#r-3-外部連携-api-は-apiv1-の下に置き境界にbearerの分類を足す)、
-  [R-4](research.md#r-4-bearer-の要求には同一オリジンの検査をかけない)）。
-- **外部連携 API v1**: 別の OpenAPI 文書 `api/external-v1.yaml` を正本にし
-  （[R-5](research.md#r-5-外部連携-api-の契約は別の-openapi-の文書にしgo-だけを生成する)）、
-  追加順の keyset のカーソルで動画の一覧を読ませ（変更の追跡はしない。[R-6](research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）、
-  名前でタグを一括で付け外しさせる（[R-7](research.md#r-7-タグの操作は厳格な一括操作として-tagstore-に足す)、
-  [contracts/external-api.md](contracts/external-api.md)）。
-- **MCP**: 公式の Go SDK を stateless で使い、REST と同じ関数を呼ぶツールにする
-  （[R-8](research.md#r-8-mcp-は公式の-go-sdk-を-stateless-で-internalhttpapi-の中に置く)、
-  [contracts/mcp.md](contracts/mcp.md)）。
-- **画面**: 設定ページの「API トークン」節。`ui` ラベルがあるので、見た目と操作は次の design 段階の
-  `ui-design.md` が決める。
+- **Tokens**: the `api_tokens` table holds only the SHA-256, and tokens become invalid through the
+  `account.version` match and through deletion of every row when the account changes
+  ([research.md R-1](research.md#r-1-tokens-are-prefixed-256-bit-random-values-and-only-the-sha-256-is-stored),
+  [R-2](research.md#r-2-changing-the-account-deletes-the-token-rows-and-the-version-is-checked-as-well)).
+  They are managed through the screen API, by the cookie owner only
+  ([contracts/token-api.md](contracts/token-api.md)).
+- **Boundary**: `/api/v1/` and `/mcp` become a Bearer-only class, and every other `/api/*` path stays
+  cookie-only as today
+  ([R-3](research.md#r-3-the-external-api-lives-under-apiv1-and-the-boundary-gains-a-bearer-class),
+  [R-4](research.md#r-4-bearer-requests-skip-the-same-origin-check)).
+- **External API v1**: a separate OpenAPI document, `api/external-v1.yaml`, is the source of truth
+  ([R-5](research.md#r-5-the-external-api-contract-is-a-separate-openapi-document-generating-go-only)).
+  Clients read the video list with a keyset cursor in order of addition (no change tracking;
+  [R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)) and attach or
+  detach tags in bulk by name
+  ([R-7](research.md#r-7-tag-operations-are-added-to-tagstore-as-a-strict-batch-operation),
+  [contracts/external-api.md](contracts/external-api.md)).
+- **MCP**: the official Go SDK, stateless, with tools that call the same functions as REST
+  ([R-8](research.md#r-8-mcp-uses-the-official-go-sdk-stateless-inside-internalhttpapi),
+  [contracts/mcp.md](contracts/mcp.md)).
+- **Screen**: an "API tokens" section on the settings page. The Issue has the `ui` label, so the next
+  stage, design, decides the look and interaction in `ui-design.md`.
 
 ## Technical Context
 
 **Canonical definitions**:
 
-- 境界・依存方向・認証の境界・データの区分: [ARCHITECTURE.md](../../ARCHITECTURE.md)、
-  [.golangci.yml](../../.golangci.yml)（depguard）
-- 認証の今の作り: [specs/016-single-account-auth/data-model.md](../016-single-account-auth/data-model.md)、
-  [contracts/auth-api.md](../016-single-account-auth/contracts/auth-api.md)、
-  [contracts/account-cli.md](../016-single-account-auth/contracts/account-cli.md)、
-  [internal/httpapi/auth.go](../../internal/httpapi/auth.go)、[internal/app/auth.go](../../internal/app/auth.go)、
-  [internal/store/auth.go](../../internal/store/auth.go)
-- 画面の API とエラーの形: [api/openapi.yaml](../../api/openapi.yaml)、
-  [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md)、
-  [internal/httpapi/router.go](../../internal/httpapi/router.go)（`mutationBoundary`・`requiresJSONBody`）
-- タグ: [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、
-  [internal/store/video_tags.go](../../internal/store/video_tags.go)、[internal/domain/tag.go](../../internal/domain/tag.go)
-- 動画の一覧と所在の書き込み: [internal/store/listing.go](../../internal/store/listing.go)、
-  [internal/store/scan_index.go](../../internal/store/scan_index.go)、
-  [internal/store/ingest_results.go](../../internal/store/ingest_results.go)
-- スキャン: [internal/app/scans.go](../../internal/app/scans.go)
-- 生成と検査の入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task generate`）、
-  [scripts/generate/main.go](../../scripts/generate/main.go)、[api/oapi-codegen.yaml](../../api/oapi-codegen.yaml)
-- 画面の文言: [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)
+| Area | Source |
+| --- | --- |
+| Boundaries, dependency direction, the authentication boundary, data classes | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
+| Current authentication design | [specs/016-single-account-auth/data-model.md](../016-single-account-auth/data-model.md), [contracts/auth-api.md](../016-single-account-auth/contracts/auth-api.md), [contracts/account-cli.md](../016-single-account-auth/contracts/account-cli.md), [internal/httpapi/auth.go](../../internal/httpapi/auth.go), [internal/app/auth.go](../../internal/app/auth.go), [internal/store/auth.go](../../internal/store/auth.go) |
+| Screen API and error shape | [api/openapi.yaml](../../api/openapi.yaml), [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md), [internal/httpapi/router.go](../../internal/httpapi/router.go) (`mutationBoundary`, `requiresJSONBody`) |
+| Tags | [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md), [internal/store/video_tags.go](../../internal/store/video_tags.go), [internal/domain/tag.go](../../internal/domain/tag.go) |
+| Video list and location writes | [internal/store/listing.go](../../internal/store/listing.go), [internal/store/scan_index.go](../../internal/store/scan_index.go), [internal/store/ingest_results.go](../../internal/store/ingest_results.go) |
+| Scans | [internal/app/scans.go](../../internal/app/scans.go) |
+| Generation and check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`), [scripts/generate/main.go](../../scripts/generate/main.go), [api/oapi-codegen.yaml](../../api/oapi-codegen.yaml) |
+| Screen text | [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
 
 **Feature-specific context**:
 
-- Go の依存を 1 つ足す: `github.com/modelcontextprotocol/go-sdk`（R-8）。npm の依存は足さない。
-- 移行は 1 つ（`api_tokens`）。番号は実装の時点の `internal/store/migrations` の次を使う
-  （今の最後は `00019_scan_issues.sql`）。定義は [data-model.md](data-model.md)。`videos` には列を足さない。
-- 生成物が 1 つ増える: `internal/httpapi/extgen/`（手で直さない。AGENTS.md の一覧に足す）。
+- One Go dependency is added: `github.com/modelcontextprotocol/go-sdk` (R-8). No npm dependency is
+  added.
+- One migration (`api_tokens`). Its number is the next one in `internal/store/migrations` at
+  implementation time (the last one today is `00019_scan_issues.sql`). The definition is in
+  [data-model.md](data-model.md). No column is added to `videos`.
+- One more generated tree: `internal/httpapi/extgen/` (never hand-edited; added to the list in
+  AGENTS.md).
 
 ## Constitution Check
 
-- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。
-  - `internal/domain`: トークンの名前の規則、`APIToken`・`VideoRef`・一覧の問い合わせの値。純粋な値と関数だけ。
-  - `internal/store`: `api_tokens` の読み書き、外部連携 API の動画の一覧と引き当て、`TagStore.ApplyVideoTags`。
-  - `internal/app`: `Auth` にトークンの発行・一覧・失効・確認を足す（乱数はセッションと同じ作り）。
-  - `internal/httpapi`: 境界の分類、画面の API のトークン管理、外部連携 API、MCP。要求の解釈と変換だけで、
-    規則は domain・store・app に置く。
-  - `cmd/mdm`: 配線と `mdm account` の出力だけ。兄弟のパッケージ同士の import は増やさない
-    （MCP を別パッケージにしない、R-8）。
-- **API の正本と生成物**（ARCHITECTURE.md、AGENTS.md）: 合格。画面の API は `api/openapi.yaml`、外部連携
-  API は `api/external-v1.yaml` を正本にし、どちらも `task generate` で生成し、`generate-check` が差分を見る
-  （R-5）。この「正本が 2 つ」は ARCHITECTURE.md の「単一の正本」の記述を、画面と外部の 2 つの境界それぞれに
-  1 つずつと書き直す。
-- **認証の境界**（ARCHITECTURE.md の認証の段落）: 合格。分類は今と同じく経路だけで決め、
-  `openapi_routes_test.go` と同じ種類の試験で、外部連携 API のすべての操作が `bearerAuth` で、境界が Bearer に
-  分類することを確かめる。画面の API の分類と挙動は変えない（要件 5）。
-- **索引と利用者データの区別**（ARCHITECTURE.md「Rebuildable and user data」）: 合格。`api_tokens` は設定の
-  データとして一覧に足す（data-model.md §1）。索引の表は変えない。
-- **ドメインイベント**: 該当なし。トークンの操作とタグの操作はイベントを出さない（今の `AuthStore`・`TagStore`
-  と同じ）。
-- **サーバーの出力は英語**（`.golangci.yml` の gosmopolitan、023）: 合格。`message`・ログ・理由のコードは英語で、
-  画面の文言は `web/src/i18n/` のカタログが持つ。
-- **文書は変更と同じ PR で直す**（core-beliefs.md、AGENTS.md）: 合格。各単位が ARCHITECTURE.md と
-  `docs/how-to/external-api.md` の自分の部分を直す。
+- **Dependency direction** (ARCHITECTURE.md "Intended dependency direction"): pass.
 
-Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
+  | Package | What this feature puts there |
+  | --- | --- |
+  | `internal/domain` | Token name rules, `APIToken`, `VideoRef` and the list query values. Pure values and functions only. |
+  | `internal/store` | Reading and writing `api_tokens`, the external API's video list and lookup, `TagStore.ApplyVideoTags`. |
+  | `internal/app` | `Auth` gains issuing, listing, revoking and verifying tokens (randomness built the same way as sessions). |
+  | `internal/httpapi` | Boundary classification, token management in the screen API, the external API, MCP. Request parsing and conversion only; the rules live in domain, store and app. |
+  | `cmd/mdm` | Wiring and the `mdm account` output only. |
+
+  No new imports between sibling packages (MCP is not a separate package, R-8).
+- **API source of truth and generated code** (ARCHITECTURE.md, AGENTS.md): pass. The screen API's
+  source is `api/openapi.yaml` and the external API's is `api/external-v1.yaml`; both are generated
+  with `task generate`, and `generate-check` checks the diff (R-5). Having two sources rewrites
+  ARCHITECTURE.md's "single source of truth" as one source for each of the two boundaries, screen and
+  external.
+- **Authentication boundary** (the authentication paragraph in ARCHITECTURE.md): pass. Classification
+  is still decided by path alone, and a test of the same kind as `openapi_routes_test.go` checks that
+  every external API operation is `bearerAuth` and that the boundary classifies it as Bearer. The
+  screen API's classification and behaviour do not change (requirement 5).
+- **Index versus user data** (ARCHITECTURE.md "Rebuildable and user data"): pass. `api_tokens` is
+  added to the list as settings data (data-model.md §1). No index table changes.
+- **Domain events**: not applicable. Token and tag operations emit no events (as with today's
+  `AuthStore` and `TagStore`).
+- **Server output is English** (gosmopolitan in `.golangci.yml`, 023): pass. `message`, logs and
+  reason codes are English; screen text lives in the catalogue under `web/src/i18n/`.
+- **Documents change in the same PR as the code** (core-beliefs.md, AGENTS.md): pass. Each unit
+  updates its part of ARCHITECTURE.md and `docs/how-to/external-api.md`.
+
+The verdicts are the same after Phase 1. There is no violation for Complexity Tracking.
 
 ## Project Structure
 
@@ -94,121 +99,160 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/026-external-api/
 ├── plan.md               # This file
 │                         # No spec.md — the parent Issue is the specification
-├── research.md           # R-1〜R-10
-├── data-model.md         # api_tokens、domain の値
-├── quickstart.md         # 受け入れ条件を動くサーバーで確かめる手順
+├── research.md           # R-1 to R-10
+├── data-model.md         # api_tokens and the domain values
+├── quickstart.md         # Steps to check the acceptance criteria on a running server
 └── contracts/
-    ├── token-api.md      # 画面の API のトークン管理と mdm account の出力
-    ├── external-api.md   # /api/v1 の操作
-    └── mcp.md            # /mcp のツール
+    ├── token-api.md      # Token management in the screen API and the mdm account output
+    ├── external-api.md   # /api/v1 operations
+    └── mcp.md            # /mcp tools
 ```
 
-`ui-design.md` は次の design 段階が作る（`ui` ラベル）。
+The next stage, design, creates `ui-design.md` (`ui` label).
 
 ### Source Code
 
 **Affected boundaries**:
 
-- `internal/domain`・`internal/store`（移行・`AuthStore`・`TagStore`・動画の一覧の読み出し）・
-  `internal/app`（`Auth`）
-- `internal/httpapi`（`auth.go` の分類と台帳、`router.go` の `mutationBoundary`、画面の API、外部連携 API、MCP）
-- `api/openapi.yaml`・`scripts/generate`・`cmd/mdm`（配線、`account.go` の出力）
-- `web/src/api`・`web/src/settings`・`web/src/i18n`
-- `ARCHITECTURE.md`・`AGENTS.md`（生成物の一覧）・`docs/how-to/`
+- `internal/domain`, `internal/store` (migration, `AuthStore`, `TagStore`, reading the video list),
+  `internal/app` (`Auth`)
+- `internal/httpapi` (classification and the ledger in `auth.go`, `mutationBoundary` in `router.go`,
+  the screen API, the external API, MCP)
+- `api/openapi.yaml`, `scripts/generate`, `cmd/mdm` (wiring, output of `account.go`)
+- `web/src/api`, `web/src/settings`, `web/src/i18n`
+- `ARCHITECTURE.md`, `AGENTS.md` (list of generated files), `docs/how-to/`
 
 **New paths**:
 
-- `api/external-v1.yaml`・`api/oapi-codegen-external.yaml`・`internal/httpapi/extgen/`（生成物）
-- `internal/httpapi/api_tokens.go`・`internal/httpapi/external_*.go`・`internal/httpapi/mcp.go`
-- `internal/domain/api_token.go`・`internal/store/api_tokens.go`・`internal/store/external_videos.go`
-- `web/src/settings/APITokensSection.tsx`（名前は design 段階に従う）
-- `docs/how-to/external-api.md`（トークンの使い方、互換の方針、スクレイパーからの連携例、MCP の接続例。
-  `docs/how-to/README.md` から案内する）
+- `api/external-v1.yaml`, `api/oapi-codegen-external.yaml`, `internal/httpapi/extgen/` (generated)
+- `internal/httpapi/api_tokens.go`, `internal/httpapi/external_*.go`, `internal/httpapi/mcp.go`
+- `internal/domain/api_token.go`, `internal/store/api_tokens.go`, `internal/store/external_videos.go`
+- `web/src/settings/APITokensSection.tsx` (the name follows the design stage)
+- `docs/how-to/external-api.md` (how to use tokens, the compatibility policy, an integration example
+  from a scraper, an MCP connection example; linked from `docs/how-to/README.md`)
 
-**Structure decision**: 外部連携 API と MCP は、画面の API と同じ `internal/httpapi` の中に、別の生成パッケージと
-別のハンドラの型（`externalServer`）で置く。生成された `ServerInterface` の名前が画面の API とぶつからないように
-するためで、境界と応答への変換は共有する（R-8 の却下した代案も参照）。
+**Structure decision**: the external API and MCP live in the same `internal/httpapi` as the screen
+API, with a separate generated package and a separate handler type (`externalServer`). This keeps the
+generated `ServerInterface` names from colliding with the screen API's, while the boundary and the
+response conversion are shared (see also the rejected alternatives in R-8).
 
 ## Implementation Work
 
-### API トークンの発行・一覧・失効（画面の API と保存）
+### Issue, list and revoke API tokens (screen API and storage)
 
-**Scope**: `api_tokens` の移行と `AuthStore`・`app.Auth` の操作（[data-model.md §1](data-model.md#1-api_tokensr-1r-2r-9r-10)）、
-名前の規則（R-10）、画面の API の 3 つの操作と `mdm account` の出力（[contracts/token-api.md](contracts/token-api.md)）、
-`api/openapi.yaml` と生成物、ARCHITECTURE.md のデータの区分と `AuthStore` の段落。Bearer の確かめ方は
-`app.Auth` の操作として用意するが、境界にはまだつながない。
+**Scope**: the `api_tokens` migration and the `AuthStore` and `app.Auth` operations
+([data-model.md §1](data-model.md#1-api_tokens-r-1-r-2-r-9-r-10)), the name rules (R-10), the three
+screen API operations and the `mdm account` output ([contracts/token-api.md](contracts/token-api.md)),
+`api/openapi.yaml` and the generated code, and the data-class and `AuthStore` paragraphs of
+ARCHITECTURE.md. Bearer verification is provided as an `app.Auth` operation but not yet connected to
+the boundary.
 
 **Dependencies**: None
 
-**Acceptance**: `task check` が通る。Cookie の所有者で `POST /api/api-tokens` すると `201` で `secret` が返り、
-`GET /api/api-tokens` には `secret` もハッシュも無い。Cookie 無しでは 3 つとも `401`。名前が空・101 文字は `400` と
-各 `reason`。`mdm account set-password` の後、一覧が空になる。
+**Acceptance**: `task check` passes. `POST /api/api-tokens` as the cookie owner returns `201` with a
+`secret`, and `GET /api/api-tokens` contains neither the `secret` nor the hash. Without the cookie,
+all three return `401`. An empty name and a 101-character name return `400` with their `reason`.
+After `mdm account set-password`, the list is empty.
 
-### 設定ページの「API トークン」節
+### "API tokens" section on the settings page
 
-**Scope**: 設定ページに節を足し、発行・一度だけの平文の表示とコピー・一覧・確認付きの失効を行う。英語の
-カタログ（`web/src/i18n/en.ts`）の文言、新しい `reason` の文言（`web/src/i18n/errors.ts`）。見た目と操作は `ui-design.md` に従う。
+**Scope**: add a section to the settings page that issues tokens, shows the plaintext once with a
+copy action, lists tokens, and revokes with confirmation. Text in the English catalogue
+(`web/src/i18n/en.ts`) and text for the new `reason` values (`web/src/i18n/errors.ts`). The look and
+interaction follow `ui-design.md`.
 
-**Dependencies**: API トークンの発行・一覧・失効（画面の API と保存）
+**Dependencies**: Issue, list and revoke API tokens (screen API and storage)
 
-**Acceptance**: 画面の変更がある（視覚と操作の確認が要る）。Vitest の試験が通り、設定ページで発行した平文が一度だけ
-出て、再読み込み後は名前と日時だけが残る（受け入れ条件 1）。失効は確認の後に一覧から消える。
+**Acceptance**: the screen changes (visual and interaction review required). Vitest tests pass; the
+plaintext issued on the settings page appears exactly once, and after a reload only the name and
+dates remain (acceptance criterion 1). After confirmation, a revoked token disappears from the list.
 
-### 外部連携 API v1 の Bearer 認証とタグ・スキャンの操作
+### Bearer authentication and tag and scan operations in external API v1
 
-**Scope**: `api/external-v1.yaml` の土台（共通の誤り、`bearerAuth`）と生成の設定・`scripts/generate`・AGENTS.md の
-生成物の一覧（R-5）。境界の Bearer の分類・同一オリジンの検査の除外・最終使用日時・台帳による打ち切り
-（R-3・R-4・R-9）。操作は `GET /api/v1/tags` とスキャンの 2 つ（[contracts/external-api.md §3・§5](contracts/external-api.md#3-タグ)）。
-`app.Scans.StartScan` に `started` を返させ（`internal/httpapi` の `Scans` インターフェースと画面の `POST /api/scans` も合わせて
-直す。画面の応答は変えない）。`docs/how-to/external-api.md` を作り、トークンの使い方と互換の方針を書く。ARCHITECTURE.md の認証の段落。
+**Scope**: the base of `api/external-v1.yaml` (shared errors, `bearerAuth`), the generation settings,
+`scripts/generate` and the list of generated files in AGENTS.md (R-5). The boundary's Bearer class,
+exemption from the same-origin check, last-used time and cut-off through the ledger (R-3, R-4, R-9).
+Operations: `GET /api/v1/tags` and the two scan operations
+([contracts/external-api.md §3 and §5](contracts/external-api.md#3-tags)). `app.Scans.StartScan`
+returns `started` (the `Scans` interface in `internal/httpapi` and the screen's `POST /api/scans`
+change to match; the screen's response does not change). Create `docs/how-to/external-api.md` and
+describe how to use tokens and the compatibility policy. The authentication paragraph of
+ARCHITECTURE.md.
 
-**Dependencies**: API トークンの発行・一覧・失効（画面の API と保存）
+**Dependencies**: Issue, list and revoke API tokens (screen API and storage)
 
-**Acceptance**: `task check` が通る。有効なトークンで `GET /api/v1/tags` が `200`、無効・失効済み・形式違い・Cookie
-だけでは `401` と `WWW-Authenticate: Bearer`。Bearer だけの `GET /api/api-tokens` は `401`、`GET /api/videos` は
-`X-VV-Audience: guest`。別の `Origin` を付けた `POST /api/v1/scans` が通る。app の試験で `StartScan` の `started` が
-最初は真、実行中にもう一度呼ぶと偽になり、httpapi の試験で `POST /api/v1/scans` が最初は `201`、実行中は `200` を返し、
-画面の `POST /api/scans` は今どおり `202` のまま。`GET /api/v1/scans/current` が、始めた直後（`finding`）は
-`videos`・`settledVideos` とも `null`、対象 0 本で終わった走査は両方 `0` を返す。画面での失効が実行中の Bearer の応答を
-打ち切ることを httpapi の試験で確かめる。外部連携 API の全操作が `bearerAuth` で Bearer に分類されることを試験が確かめる。
+**Acceptance**: `task check` passes.
 
-### 外部連携 API で動画の一覧を読み、1 本を引く
+- With a valid token, `GET /api/v1/tags` returns `200`; with an invalid, revoked or malformed token,
+  or a cookie alone, it returns `401` with `WWW-Authenticate: Bearer`.
+- With a Bearer token alone, `GET /api/api-tokens` returns `401` and `GET /api/videos` returns
+  `X-VV-Audience: guest`.
+- `POST /api/v1/scans` with a different `Origin` succeeds.
+- In app tests, `StartScan` returns `started` true the first time and false when called again while
+  running; in httpapi tests, `POST /api/v1/scans` returns `201` the first time and `200` while
+  running, and the screen's `POST /api/scans` still returns `202`.
+- `GET /api/v1/scans/current` returns `null` for both `videos` and `settledVideos` right after start
+  (`finding`), and `0` for both for a scan that finished with no videos.
+- An httpapi test confirms that revoking on the screen cuts off an in-flight Bearer response.
+- A test confirms that every external API operation is `bearerAuth` and classified as Bearer.
 
-**Scope**: `GET /api/v1/videos` と `GET /api/v1/videos/lookup`（[contracts/external-api.md §2](contracts/external-api.md#2-動画)、
-[R-6](research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）。一覧は登録フォルダの下に所在を持つ動画を
-`(added_at, id)` の昇順で keyset のカーソルで返す読み出し（`internal/store/external_videos.go`。表と列は足さない）。
-`docs/how-to/external-api.md` の一覧の読み方（`nextCursor` が空になるまでたどる。新しい動画を知るには一覧を
-読み直し、持っている動画が消えたことは `lookup` の `404` で知る）。
+### Read the video list and look up one video through the external API
 
-**Dependencies**: 外部連携 API v1 の Bearer 認証とタグ・スキャンの操作
+**Scope**: `GET /api/v1/videos` and `GET /api/v1/videos/lookup`
+([contracts/external-api.md §2](contracts/external-api.md#2-videos),
+[R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)). The list is a read
+that returns videos with a location under a registered folder in `(added_at, id)` ascending order with
+a keyset cursor (`internal/store/external_videos.go`; no table or column is added). The part of
+`docs/how-to/external-api.md` on reading the list (follow until `nextCursor` is empty; read the list
+again to find new videos; learn that a held video is gone from a `404` on `lookup`).
 
-**Acceptance**: `task check` が通る。store の試験で、`limit` より多い動画が `nextCursor` をたどると重複無く
-`(added_at, id)` の順で全件返り、最後の応答の `nextCursor` が空で、解釈できないカーソルは `domain.ErrInvalidCursor`。
-一覧を最後まで読んだ後にスキャンで動画が増え、先頭から読み直すとその動画が含まれる（受け入れ条件 3）。
-ページングの途中で動画を消しても続きの要求が失敗しない。登録の下の所在をすべて失い登録外の所在だけで残った
-動画は、行が消えた動画と同じく一覧に返らず、`lookup` は `404 video_not_found` を返す。非公開の動画も返る
-（受け入れ条件 2）。`lookup` が id・内容キー・パス（NFD の綴りのパスを含む）のそれぞれで同じ動画を返し、
-無い指定は `404 video_not_found`。
+**Dependencies**: Bearer authentication and tag and scan operations in external API v1
 
-### 外部連携 API から名前でタグを付与・除去・置き換える
+**Acceptance**: `task check` passes.
 
-**Scope**: `TagStore.ApplyVideoTags`（R-7）と `POST /api/v1/video-tags`（[contracts/external-api.md §4](contracts/external-api.md#4-動画のタグ)）、
-`docs/how-to/external-api.md` のスクレイパーからの連携例（新着を読む → 引く → タグを付ける）。
+- In store tests, with more videos than `limit`, following `nextCursor` returns every video without
+  duplicates in `(added_at, id)` order, the last response's `nextCursor` is empty, and an unparsable
+  cursor yields `domain.ErrInvalidCursor`.
+- After reading the list to the end, a scan adds a video, and reading again from the start includes
+  that video (acceptance criterion 3).
+- Removing a video in the middle of paging does not make the next request fail.
+- A video that lost every location under the registered folders and remains only with locations
+  outside them is left out of the list, the same as a video whose row is gone, and `lookup` returns
+  `404 video_not_found`.
+- Private videos are returned too (acceptance criterion 2).
+- `lookup` returns the same video by id, by content key and by path (including a path spelled in
+  NFD), and a missing reference returns `404 video_not_found`.
 
-**Dependencies**: 外部連携 API で動画の一覧を読み、1 本を引く
+### Attach, detach and replace tags by name through the external API
 
-**Acceptance**: `task check` が通る。パスで指定した動画に無いタグ名とシノニムの名前で `add` すると、タグが作られ、
-シノニムは元のタグとして付き、画面の API の動画詳細と `tag` の絞り込みに出る（受け入れ条件 4）。同じ要求の繰り返しは
-`200` で状態が変わらない（受け入れ条件 5）。引けない動画を 1 つ含む要求は `404`・`index` 付きで何も反映しない。
-名前の誤りと件数の上限は `400` と各 `reason`。`replace` の後、動画の手で付けたタグ（`manual`）がちょうど指定の集合になり、フォルダ由来のタグ（`fromFolder`）は残る。
+**Scope**: `TagStore.ApplyVideoTags` (R-7) and `POST /api/v1/video-tags`
+([contracts/external-api.md §4](contracts/external-api.md#4-video-tags)), and the integration example
+from a scraper in `docs/how-to/external-api.md` (read new videos → look them up → tag them).
 
-### `/mcp` で外部連携の操作を MCP のツールとして提供する
+**Dependencies**: Read the video list and look up one video through the external API
 
-**Scope**: Go SDK の追加と `/mcp` のハンドラ（R-8）、6 つのツール（[contracts/mcp.md](contracts/mcp.md)）、
-`docs/how-to/external-api.md` の MCP の接続例、ARCHITECTURE.md の MCP の段落。
+**Acceptance**: `task check` passes.
 
-**Dependencies**: 外部連携 API から名前でタグを付与・除去・置き換える
+- `add` on a video referenced by path, with a tag name that does not exist and a synonym name,
+  creates the tag, attaches the synonym as its original tag, and both appear in the screen API's video
+  details and in the `tag` filter (acceptance criterion 4).
+- Repeating the same request returns `200` and does not change state (acceptance criterion 5).
+- A request containing one video that cannot be resolved returns `404` with `index` and applies
+  nothing.
+- Name errors and count limits return `400` with their `reason`.
+- After `replace`, the video's manually attached tags (`manual`) are exactly the given set, and
+  folder-derived tags (`fromFolder`) remain.
 
-**Acceptance**: `task check` が通る。httpapi の試験で、SDK のクライアントから `/mcp` に接続して 6 つのツールが並び、
-`update_video_tags` の結果が REST の `GET /api/v1/videos/lookup` に出る。トークン無し・無効なトークンでは `401`。
-[quickstart.md](quickstart.md) の手順を Claude Code で通し、その結果を PR の本文に残す（受け入れ条件 9 ほか）。
+### Offer the external operations as MCP tools at `/mcp`
+
+**Scope**: adding the Go SDK and the `/mcp` handler (R-8), six tools
+([contracts/mcp.md](contracts/mcp.md)), the MCP connection example in `docs/how-to/external-api.md`,
+and the MCP paragraph of ARCHITECTURE.md.
+
+**Dependencies**: Attach, detach and replace tags by name through the external API
+
+**Acceptance**: `task check` passes. In an httpapi test, an SDK client connects to `/mcp`, the six
+tools are listed, and the result of `update_video_tags` shows in REST `GET /api/v1/videos/lookup`.
+Without a token or with an invalid token, the response is `401`. The steps in
+[quickstart.md](quickstart.md) are run with Claude Code and the result is recorded in the PR body
+(acceptance criterion 9 and others).

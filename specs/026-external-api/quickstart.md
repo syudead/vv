@@ -1,39 +1,26 @@
-# Quickstart: 外部連携 API と MCP を端から端まで確かめる
+# Quickstart: Check the external API and MCP end to end
 
-親 Issue #493 の受け入れ条件を、動いているサーバーで確かめる手順である。各単位の自動テストは
-`task check` が走らせる。この手順は、画面・実際の MCP クライアント・スキャンを通す確認で、
-最後の単位（「`/mcp` で外部連携の操作を MCP のツールとして提供する」）の実装 PR の本文に結果を残す。
+These steps check the acceptance criteria of parent Issue #493 on a running server, through the
+screen, a real MCP client and a scan; `task check` runs each unit's automated tests. The result is
+recorded in the body of the implementation PR for the last unit ("Offer the external operations as
+MCP tools at `/mcp`").
 
-## 前提
+## Prerequisites
 
-- [docs/how-to/development.md](../../docs/how-to/development.md) のとおり `task dev` で起動し、所有者で
-  ログインし、メディアフォルダを 1 つ登録してスキャンを終えている。以下 `BASE=http://localhost:8080`。
-- 非公開の動画が 1 本以上ある（既定は非公開）。
-- MCP の確認に Claude Code（`claude` コマンド）。
+- Started with `task dev` as in [docs/how-to/development.md](../../docs/how-to/development.md),
+  logged in as the owner, with one media folder registered and a scan finished. Below,
+  `BASE=http://localhost:8080`.
+- At least one private video (videos are private by default).
+- Claude Code (the `claude` command) for the MCP check.
 
-## 手順
+## Steps
 
-1. 設定ページの「API トークン」節で名前を入れて発行する。平文が一度だけ表示されコピーできる。
-   再読み込みすると、一覧に名前と日時だけが残る（受け入れ条件 1）。以下その平文を `TOKEN` とする。
-2. `curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos"` が非公開の動画を含めて返る。
-   設定ページの一覧で最終使用日時が入る（受け入れ条件 2）。
-3. `nextCursor` が空になるまで `cursor` をたどり、全件が返る。メディアフォルダに動画を 1 本足して
-   スキャンし、先頭から読み直すと、その 1 本が含まれる（受け入れ条件 3）。
-4. `GET /api/v1/videos/lookup?path=<その動画の絶対パス>` で引く。`POST /api/v1/video-tags` に
-   `{"videos":[{"path":"…"}],"action":"add","tags":["新しい名前","<既存のタグのシノニム>"]}` を送る。
-   新しいタグが作られ、シノニムは元のタグとして付く。画面の動画詳細とタグの絞り込みに出る
-   （受け入れ条件 4）。同じ要求をもう一度送っても `200` で、タグは変わらない（受け入れ条件 5）。
-5. 画面で失効したトークンで呼ぶと `401`。新しく発行したトークンのあと
-   `mdm account set-password` を実行し、そのトークンで呼ぶと `401` で、一覧からも消えている
-   （受け入れ条件 6）。
-6. ブラウザのセッション Cookie だけを付けて `GET /api/v1/videos` を呼ぶと `401`。Bearer だけで
-   `GET /api/videos` を呼ぶと、応答の `X-VV-Audience` が `guest` で、非公開の動画は出ない。
-   Bearer だけで `GET /api/api-tokens` と `POST /api/api-tokens` を呼ぶと `401`（受け入れ条件 7・8）。
-7. `claude mcp add --transport http vv "$BASE/mcp" --header "Authorization: Bearer $TOKEN"` で追加し、
-   `/mcp` の一覧に [contracts/mcp.md](contracts/mcp.md) の 6 つのツールが並ぶ。`update_video_tags` で
-   タグを付けると画面に出る。`curl -X POST "$BASE/mcp"`（トークン無し）と無効なトークンでは `401`
-   （受け入れ条件 9）。
-
-## 期待する結果
-
-上のそれぞれが成り立つ。
+| Step | Expected result | Acceptance |
+| --- | --- | --- |
+| 1. In the "API tokens" section of the settings page, enter a name and create a token. Call the plaintext `TOKEN` below. | The plaintext is shown once and can be copied. After a reload, only the name and dates remain in the list. | 1 |
+| 2. `curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos"` | Returns videos including private ones. The last-used time appears in the list on the settings page. | 2 |
+| 3. Follow `cursor` until `nextCursor` is empty. Add one video to the media folder, scan, and read again from the start. | Every video is returned. The re-read includes the new video. | 3 |
+| 4. Look the video up with `GET /api/v1/videos/lookup?path=<absolute path of that video>`. Send `{"videos":[{"path":"…"}],"action":"add","tags":["新しい名前","<synonym of an existing tag>"]}` to `POST /api/v1/video-tags`, then send the same request again. | A new tag is created and the synonym is attached as its original tag; both show in the video details and the tag filter on the screen. The repeated request returns `200` and the tags do not change. | 4, 5 |
+| 5. Call with a token revoked on the screen. Then create a new token, run `mdm account set-password`, and call with that token. | Both calls return `401`, and the second token is also gone from the list. | 6 |
+| 6. Call `GET /api/v1/videos` with only the browser session cookie. Call `GET /api/videos` with only the Bearer token. Call `GET /api/api-tokens` and `POST /api/api-tokens` with only the Bearer token. | The first returns `401`. The second responds with `X-VV-Audience: guest` and shows no private videos. The last two return `401`. | 7, 8 |
+| 7. Add the server with `claude mcp add --transport http vv "$BASE/mcp" --header "Authorization: Bearer $TOKEN"`. Tag a video with `update_video_tags`. Run `curl -X POST "$BASE/mcp"` (no token) and call with an invalid token. | The six tools in [contracts/mcp.md](contracts/mcp.md) are listed for `/mcp`. The tag shows on the screen. Both calls without a valid token return `401`. | 9 |

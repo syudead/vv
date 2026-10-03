@@ -1,28 +1,31 @@
-# Contract: `/mcp` の MCP サーバー
+# Contract: MCP server at `/mcp`
 
-親 Issue: #493（要件 9）。作りは [research.md R-8](../research.md#r-8-mcp-は公式の-go-sdk-を-stateless-で-internalhttpapi-の中に置く)。
+Parent Issue: #493 (requirement 9). Design:
+[research.md R-8](../research.md#r-8-mcp-uses-the-official-go-sdk-stateless-inside-internalhttpapi).
 
-## 1. 接続
+## 1. Connection
 
-- 転送は Streamable HTTP の stateless。`POST /mcp` だけを受け、応答は `application/json`。
-  `GET`・`DELETE` は `405`。
-- 認証は外部連携 API と同じ Bearer だけ（[external-api.md §1](external-api.md#1-共通)）。無い・無効なら、
-  MCP の処理に入る前に境界が `401` と `WWW-Authenticate: Bearer` を返す（受け入れ条件 9）。
-- サーバー名は `vv`、版はバイナリの版。
+- Transport is stateless Streamable HTTP. Only `POST /mcp` is accepted, and responses are
+  `application/json`. `GET` and `DELETE` return `405`.
+- Authentication is Bearer only, as for the external API
+  ([external-api.md §1](external-api.md#1-common-rules)). With a missing or invalid token, the boundary
+  returns `401` with `WWW-Authenticate: Bearer` before MCP processing starts (acceptance criterion 9).
+- The server name is `vv`, and the version is the binary's version.
 
-接続例（`docs/how-to/external-api.md` に書く）:
+Connection example (documented in `docs/how-to/external-api.md`):
 
 ```sh
 claude mcp add --transport http vv https://vv.example/mcp --header "Authorization: Bearer vvt_…"
 ```
 
-## 2. ツール
+## 2. Tools
 
-入力と出力（structured content）は [external-api.md](external-api.md) の同じ操作の引数・本文と応答の本文と
-同じ形にする。誤りはツールの結果の `isError: true` と、外部連携 API の誤りと同じ `{ code, message,
-reason?, limit?, index? }` を本文に入れて返す。
+Input and output (structured content) have the same shape as the parameters and body, and the
+response body, of the same operation in [external-api.md](external-api.md). Errors are returned as a
+tool result with `isError: true` and, in the body, the same `{ code, message, reason?, limit?,
+index? }` as external API errors.
 
-| ツール | 対応する操作 |
+| Tool | Operation |
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
@@ -33,9 +36,12 @@ reason?, limit?, index? }` を本文に入れて返す。
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
 
-最後の 2 つは 029 で足した（[specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-のツール)）。
-どちらも `null` で上書きを解除するので `destructiveHint: true`・`idempotentHint: true` にする。
+The last two were added in 029
+([specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)).
 
-読み出しのツールには `readOnlyHint: true` を付ける。`update_video_tags` は `remove` と `replace` で
-既存のタグを外すので `destructiveHint: true`・`idempotentHint: true`、`start_scan` は
-`destructiveHint: false`・`idempotentHint: false` にする。
+| Tool | Hints | Reason |
+| --- | --- | --- |
+| Read tools | `readOnlyHint: true` | — |
+| `update_video_tags` | `destructiveHint: true`, `idempotentHint: true` | `remove` and `replace` detach existing tags. |
+| `start_scan` | `destructiveHint: false`, `idempotentHint: false` | — |
+| `update_video_display_names`, `update_video_thumbnails` | `destructiveHint: true`, `idempotentHint: true` | `null` clears an override. |

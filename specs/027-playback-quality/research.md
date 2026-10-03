@@ -1,181 +1,256 @@
-# Research: 低速ネットワーク向けの画質選択と、再生が途切れるときの警告
+# Research: Quality selection for slow networks, and a warning when playback stalls
 
-技術スタック、ライブ変換の現行の作り（解析情報の再利用、コピーとエンコードの切り替え、
-キーフレームの間隔、方式ごとの符号化器の引数）、再生の誤りの分け方と読み込み直し、画面の
-文言の置き場は正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)・
-[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md)・
-[docs/design-docs/hardware-encoding.md](../../docs/design-docs/hardware-encoding.md)・
-[docs/design-docs/library-ui.md「再生画面の構成」](../../docs/design-docs/library-ui.md#8-再生画面の構成)・
-[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)）。ここにはこの feature が足す決定だけを
-書く。ffmpeg の引数は開発コンテナの ffmpeg 6.1.1 の `-h encoder=…` で確かめた。
+Inherited decisions: the tech stack, the current live transcode design (reuse of probe data,
+switching between copy and encode, keyframe interval, per-method encoder arguments), how playback
+errors are classified and reloaded, and where screen text lives follow the canonical documents
+([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md),
+[docs/design-docs/hardware-encoding.md](../../docs/design-docs/hardware-encoding.md),
+[docs/design-docs/library-ui.md "Video page layout"](../../docs/design-docs/library-ui.md#8-video-page-layout),
+[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)). This file records only the decisions this
+feature adds. The ffmpeg arguments were checked with `-h encoder=…` on ffmpeg 6.1.1 in the development
+container.
 
-## R-1: 画質はライブ変換の要求の `quality` パラメータで指定し、変換の経路は増やさない
+## R-1: Quality is a `quality` parameter on the live transcode request; no new transcode path
 
-- Decision: `GET /api/videos/{id}/transcode.mp4` に任意の `quality`（`1080p`・`720p`・`480p`・`360p`）
-  を足す（[contracts/transcode-quality-api.md](contracts/transcode-quality-api.md)）。無ければ今までどおり
-  （元の画質）。`quality` のある要求は、映像をコピーできる動画でも必ずエンコードし、`startMs` の位置
-  そのものから始まる。`transcode-start` の報告の経路と `attempt` は変えない（エンコードなので報告は
-  指定位置になる）。サーバーは画質を覚えず、要求ごとに決める。
-- Rationale: 親 Issue 要件 3 は「選んだ画質のときだけ、今の変換を置き換える」ことを求める。
-  同じ経路のパラメータにすると、シークの作り直し（`liveOffset.ts` の `reloadAt`）と読み込み直し
-  （`playbackRecovery`）が今の URL の組み立てをそのまま使え、台帳・ゲストの境界・期限の作りが
-  増えない。要求ごとに決めるので、同じ動画を別のタブ・別の見る人が別の画質で見ても互いに影響
-  しない（Edge Case 7）。
-- Alternatives considered: 画質ごとの経路（`/transcode-480p.mp4` など。経路が 4 本増え、`accessRoutes`
-  と OpenAPI の `security` の対を増やす）。サーバー側にセッションごとの画質の設定を持つ（見る人の
-  選択がブラウザに閉じるという要件 5 に反し、ゲストに設定の口が要る）。
+**Decision**: Add an optional `quality` (`1080p`, `720p`, `480p`, `360p`) to
+`GET /api/videos/{id}/transcode.mp4` ([contracts/transcode-quality-api.md](contracts/transcode-quality-api.md)).
+Without it, behaviour is as before (original quality). A request with `quality` always encodes, even
+for a video whose video stream could be copied, and starts exactly at `startMs`. The `transcode-start`
+report path and `attempt` do not change (because it encodes, the report is the requested position).
+The server does not remember the quality; each request decides.
 
-## R-2: 画質は表示の短辺で縮め、ビットレートは `-maxrate`／`-bufsize` で上限を付ける
+**Rationale**: Requirement 3 of the parent Issue asks to "replace the current transcode only when a
+quality is chosen". Making it a parameter on the same path lets seek rebuilding (`reloadAt` in
+`liveOffset.ts`) and reload (`playbackRecovery`) reuse the current URL construction as is, and adds no
+ledger, guest boundary or expiry machinery. Because each request decides, viewing the same video in
+another tab or by another viewer at a different quality has no effect on either (Edge Case 7).
 
-- Decision: `internal/domain` に `TranscodeQuality`（`1080p`・`720p`・`480p`・`360p`）と、画質ごとの
-  値（短辺・映像の上限 kbps・音声の kbps）を持つ純粋関数を置く。値は親 Issue 要件 3 の目安どおり
-  映像 5000／2500／1200／700 kbps、音声は 128／128／96／64 kbps とする。`internal/media` の
-  `videoEncodeArgs` は、画質があるとき表示の寸法（`displayGeometry`。回転を反映済み）の短辺が
-  その画質になる偶数の寸法を計算して `scale=W:H` を出し、既存の `setsar` の扱いをそのまま通す。
-  縦長の動画は短辺が幅なので、1080×1920 の 720p は 720×1280 になる（Edge Case 3）。
-  縮める比は、画質の短辺への比と、今の変換の枠（`outputDimensions` の長辺 3840・短辺 2160。
-  H.264 Level 5.1 の 1 フレームの上限に収まる枠）への比の小さい方にする。極端に細長い動画だけは
-  短辺が画質より小さくなり、1200×12000 の `1080p`・`720p`・`480p` はどれも「元の画質」の変換と
-  同じ 384×3840、`360p` は 360×3600 になる（横長の 12000×1200 は向きを入れ替えた寸法）。
-  このときも画質ごとのビットレートの上限と音声は効くので、選んだ画質は回線に対して軽くなる。
-  選択肢の規則（[R-3](#r-3-画質が使えるかは動画の短辺で決めサーバーは使えない画質を-400-で拒む)）は
-  要件 1 のまま動画の短辺で決め、この枠では変えない。
-  符号化器の引数（`encoderCodecArgs`）には方式ごとに上限を足す。
-  - `software`・`nvenc`: 今の一定品質（`-crf 23`／`-cq 23`）のまま `-maxrate <上限>k -bufsize <上限×2>k`
-    を足す。品質に余裕のある場面は上限より軽くなる。
-  - `qsv`・`vaapi`・`videotoolbox`: 一定品質の指定（`-global_quality`／`-rc_mode CQP -qp`／`-q:v`）を
-    やめ、`-b:v <上限>k -maxrate <上限>k -bufsize <上限×2>k` の VBR にする（VAAPI は `-rc_mode VBR`）。
-  - 音声は画質があれば常に AAC（`-ac 2 -ar 48000`）で画質ごとの kbps にエンコードし、コピーしない。
-  - フィルター・`-force_key_frames`・`-movflags` の共通部分は変えない。
-- Rationale: 短辺で決めるので、横長でも縦長でも「同じ重さ」の画質になる（要件 1・Edge Case 3）。
-  `-maxrate`／`-bufsize` は VBV の上限で、どの方式でも出力の平均ビットレートを上限の付近に抑える
-  （受け入れ条件 3）。software と NVENC は一定品質に上限を重ねられるので、静かな場面で軽くなる
-  利点を残す。QSV・VAAPI・VideoToolbox の「一定品質に上限を重ねる」動作（QVBR など）は
-  ドライバーの対応に依るので、確実に上限が効く VBR にする。ハードウェアが使えず software に
-  切り替わっても、縮小は共通のフィルターで、上限は software の引数で効く（Edge Case 6）。
-  音声を軽くするのは要件 3 の「音声も合わせて軽くする」で、コピーだと元の 256〜320 kbps が残る。
-- Alternatives considered: 長辺で縮める（縦長の動画で 720p が 405×720 になり、横長の 720p より
-  軽くなる）。極端に細長い動画で、縮めた寸法が枠を超える画質を選択肢から外す（要件 1 の
-  「元の映像の短辺より小さいもの」を出すという規則を狭めることになり、ビットレートの上限だけでも
-  軽くしたい見る人の手が減る）。画質の短辺をそのまま守って枠を超える（1080×10800 は長辺が
-  3840 を超え、1 フレーム 45,900 マクロブロックで Level 5.1 の 36,864 を超える）。`-b:v` だけの平均ビットレート（瞬間の上限が無く、動きの多い場面で回線を超える）。
-  ffmpeg の `scale=-2:480` に寸法の計算を任せる（縦長で向きの判定を ffmpeg 側にも持つことになり、
-  Go の計算とテストが二重になる）。
+**Alternatives considered**:
 
-## R-3: 画質が使えるかは動画の短辺で決め、サーバーは使えない画質を 400 で拒む
+| Option | Verdict |
+| --- | --- |
+| A path per quality (`/transcode-480p.mp4` and so on) | Rejected: four more paths, and more `accessRoutes` and OpenAPI `security` pairs. |
+| A per-session quality setting on the server | Rejected: contradicts requirement 5 (the viewer's choice stays in the browser), and guests would need a settings endpoint. |
 
-- Decision: 選択肢は「元の画質」と、`1080p`・`720p`・`480p`・`360p` のうち短辺が動画の表示の短辺
-  （`Video.width`／`height`。回転を反映済み）より小さいもの（要件 1）。プレイヤーがこの規則で
-  選択肢を作り、覚えている画質が選択肢に無ければ「元の画質」で再生し、覚えている値は
-  書き換えない（Edge Case 2）。サーバーは同じ規則で確かめ、動画の短辺以上の画質と、寸法の無い
-  動画への画質は 400 `invalid_request` にする。
-- Rationale: 拡大や同じ寸法への変換は重くするだけで、要件 1 はその選択肢を出さないと決めている。
-  サーバーも拒むのは、プレイヤーの選択肢が正本の規則とずれたときに、黙って無駄な変換を始めず
-  気付けるようにするためである。規則は寸法の比較だけなので、`internal/domain` の純粋関数と
-  `web/src/player/quality.ts` の純粋関数がそれぞれ持ち、どちらもテストで同じ表を確かめる。
-- Alternatives considered: サーバーが黙って元の寸法に丸める（「480p」の表示のまま 360p の動画を
-  480p の上限で変換し、表示と中身がずれる）。選択肢をサーバーの応答に載せる（`Video` の形が増え、
-  規則が寸法だけなのに往復が要る）。
+## R-2: Quality scales the short side of the display, and `-maxrate`/`-bufsize` caps the bitrate
 
-## R-4: 画質のメニューは video.js の `MenuButton` の部品にする
+**Decision**: `internal/domain` gets `TranscodeQuality` (`1080p`, `720p`, `480p`, `360p`) and a pure
+function holding the per-quality values (short side, video cap in kbps, audio kbps). The values follow
+the guide in requirement 3 of the parent Issue: video 5000/2500/1200/700 kbps, audio 128/128/96/64
+kbps. When a quality is set, `videoEncodeArgs` in `internal/media` computes even dimensions whose short
+side, in display geometry (`displayGeometry`, rotation already applied), equals the quality, emits
+`scale=W:H`, and passes the existing `setsar` handling through unchanged. For a portrait video the
+short side is the width, so 720p of 1080×1920 is 720×1280 (Edge Case 3).
 
-- Decision: `web/src/player/qualityMenu.ts` に video.js の `MenuButton`・`MenuItem` を継承した部品を
-  作り、`videojs.registerComponent` して `controlBarChildren` の `playbackRateMenuButton` の前に置く。
-  ボタンの文字は再生速度の `1x` と同じく今の画質を短く示し、選択肢は React 側から
-  `player.trigger` や部品の `setOptions` で渡す。選んだ画質は部品がイベントで知らせ、
-  `VideoPlayer.tsx` が切り替え（[R-5](#r-5-画質の切り替えはプレイヤーを作り直さず同じ位置で-source-を差し替える)）
-  を行う。`playerControls.ts` の `rateMenuOpen` は `.vjs-menu.vjs-lock-showing` を探すので、そのまま
-  画質のメニューにも効く（開いている間の Esc はメニューを閉じるだけ）。
-- Rationale: 親 Issue の UI 品質は「再生速度と同じ重み・同じ大きさ・余白・文字」を求める。再生速度は
-  video.js の `PlaybackRateMenuButton` なので、同じ基底の部品にすれば見た目（`index.css` の
-  `.vjs-menu` の規則）、ポイント・押下・キーボードでの開閉、Esc の扱いが自動で同じになる。
-  React の `Popover` で作ると、これらを作り直した上で video.js の部品と 1 px 単位でそろえ続ける
-  ことになる。「変換して再生中」が React の吹き出しなのは、押して開く説明であってメニューでは
-  ないためで、判断は変わらない。
-- Alternatives considered: `web/src/ui/Menu.tsx` を操作バーへ portal で差し込む（上記）。
-  `PlaybackRateMenuButton` の選択肢に画質を混ぜる（速度と画質の意味が混ざり、読み上げ名も
-  付けられない）。
+The scale factor is the smaller of the factor to the quality's short side and the factor to the
+current transcode frame (long side 3840, short side 2160 in `outputDimensions`; the frame that fits
+H.264 Level 5.1's per-frame limit). Only extremely elongated videos end up with a short side below the
+quality: for 1200×12000, `1080p`, `720p` and `480p` all give 384×3840, the same as the original-quality
+transcode, and `360p` gives 360×3600 (the landscape 12000×1200 gives the swapped dimensions). The
+per-quality bitrate cap and audio still apply, so the chosen quality is still lighter on the network.
+The option rule ([R-3](#r-3-availability-of-a-quality-depends-on-the-videos-short-side-and-the-server-rejects-unavailable-qualities-with-400))
+stays as in requirement 1, decided by the video's short side, and this frame does not change it.
 
-## R-5: 画質の切り替えはプレイヤーを作り直さず、同じ位置で source を差し替える
+The encoder arguments (`encoderCodecArgs`) gain a cap per method:
 
-- Decision: `PlaybackAttempt` に `quality` を足し、`quality` が「元の画質」以外なら経路は
-  `transcode`、「元の画質」なら今の規則（`playable` なら `direct`、でなければ `transcode`）にする。
-  切り替えは直接再生から変換への切り替え（`handleFailure` の fallback）と同じ作りで、論理上の
-  位置を読み、`attempt` を新しい画質と経路で作り直し、`player.src` を差し替え、`canplay` で
-  再生中なら再生を続け、止めていたら止めたままにする（要件 4）。変換の source は URL の
-  `startMs` が位置を持つが、直接再生の source（`setDirectSource`。「元の画質」に戻した
-  `playable` の動画）は位置を持たず 0 から読み込まれるので、読み込み直しの `finishRecovery` と
-  同じく、メタデータが来た時点で論理上の位置へ `player.currentTime` でシークしてから再生の
-  意図を戻す（要件 4・6）。切り替えごとに世代を進め、古い `canplay`・メタデータの処理（古い
-  source が新しい source をシークしないこと）と古い報告（`attempt`）を捨てる。続けて変えたときは `player.src` の
-  差し替えでブラウザが前の要求を打ち切り、サーバーの変換は要求の取り消しで止まる
-  （Edge Case 4・10）。`liveSource` は `vvQuality` を持ち、`liveOffset.ts` の `reloadAt` と
-  `VideoPlayer.tsx` の `reload` はそれを引き継ぐので、シークと読み込み直しでも画質は変わらない
-  （要件 7）。切り替えた変換の開始の失敗は、今の誤りの経路（`playbackRecovery`）がそのまま
-  種類で分けて伝え、失敗した位置から再試行できる（Edge Case 5）。選んだ画質は選んだ時点で
-  `web/src/preferences/playbackQuality.ts` が `localStorage` に書く（音量と同じ作り。要件 5）。
-- Rationale: プレイヤーを作り直す（`VideoPage` の `attempt.key` を進める）と、ポスターに戻って
-  操作バーが消え、全画面の内側の状態（吹き出しの入れ物）も作り直しになる。fallback の作りは
-  すでに「位置を保って source を差し替え、再生の意図を保つ」を実装していて、同じ経路を通す
-  方がテストも共有できる。
-- Alternatives considered: `VideoPage` からプレイヤーを作り直す（上記）。video.js の
-  `sourceset` を使って部品の側で差し替える（`attempt` の位置と意図が `VideoPlayer.tsx` に
-  あるので、切り替えの判断を 2 か所に持つことになる）。
+| Method | Arguments when a quality is set |
+| --- | --- |
+| `software`, `nvenc` | Keep the current constant quality (`-crf 23` / `-cq 23`) and add `-maxrate <cap>k -bufsize <cap×2>k`. Scenes with quality headroom come out lighter than the cap. |
+| `qsv`, `vaapi`, `videotoolbox` | Drop the constant-quality setting (`-global_quality` / `-rc_mode CQP -qp` / `-q:v`) and use VBR: `-b:v <cap>k -maxrate <cap>k -bufsize <cap×2>k` (VAAPI adds `-rc_mode VBR`). |
+| Audio | With a quality, always encoded to AAC (`-ac 2 -ar 48000`) at the quality's kbps; never copied. |
+| Shared parts | Filters, `-force_key_frames` and `-movflags` do not change. |
 
-## R-6: 途切れの判断は `waiting`／`playing` の対で数え、落ち着くまでの待ちは数えない
+**Rationale**: Deciding by the short side makes a quality "equally heavy" for landscape and portrait
+(requirement 1, Edge Case 3). `-maxrate`/`-bufsize` are the VBV cap and keep the output's average
+bitrate near the cap on every method (acceptance criterion 3). Software and NVENC can layer a cap over
+constant quality, which keeps the benefit of lighter quiet scenes. On QSV, VAAPI and VideoToolbox,
+"constant quality with a cap" (QVBR and similar) depends on driver support, so VBR, where the cap
+reliably applies, is used. When hardware is unavailable and the transcode falls back to software,
+scaling is in the shared filter and the cap is in the software arguments (Edge Case 6). Audio is made
+lighter because requirement 3 says "make the audio lighter too"; copying would keep the original
+256–320 kbps.
 
-- Decision: `web/src/player/stallMonitor.ts` に純粋な状態機械を置く。データ待ちは、再生中に届いた
-  `waiting` から次の `playing` までとし、始まった時刻を持つ。60 秒の窓の中に始まったデータ待ちが
-  3 回以上になったか、1 回のデータ待ちが 10 秒を超えたら「回線の遅さで途切れている」と判断する
-  （要件 9）。シーク（`seeking`）・source の設定（`loadstart`。最初の読み込みと画質の切り替えを
-  含む）・再生の開始（`play`）のあとは、次の `playing` が来るまでの待ちを数えない。止めている
-  （`paused`）間と、通信の失敗で読み込み直している間（`recovering`）は数えず、数え直す
-  （Edge Case 8）。10 秒の判定は、データ待ちが始まった時点で `VideoPlayer.tsx` が 10 秒のタイマー
-  を掛け、まだ続いていれば判断する。判断は `PlayerStatus.stalled` として `VideoPage` に伝える。
-  読み込み直しの `error` は途切れではなく、`recovering` に入った時点で数え直す。
-- Rationale: `waiting` はシーク直後や読み込みの最初にも届くので、そのまま数えると要件が数えるな
-  と言う待ちを数えてしまう。「次の `playing` まで数えない」の 1 つの規則で、シーク・開始・画質の
-  切り替えの 3 つの除外を同じ形で扱える。純粋な状態機械にすると、時刻を渡すだけで窓と回数の
-  テストが書ける。
-- Alternatives considered: `buffered` の残りを監視して速さを推定する（回線の速さを測る作りに
-  なり、対象外の自動切り替えへ向かう）。`progress` イベントの間隔で判断する（ブラウザごとの
-  差が大きい）。
+**Alternatives considered**:
 
-## R-7: 警告は状態表示の入れ物とは別の層に出し、状態の層が出ている間は隠す
+| Option | Verdict |
+| --- | --- |
+| Scale by the long side | Rejected: 720p of a portrait video becomes 405×720, lighter than 720p of a landscape video. |
+| Drop qualities whose scaled dimensions exceed the frame for extremely elongated videos | Rejected: narrows requirement 1's rule of offering qualities "smaller than the original's short side", and takes an option away from viewers who want it lighter through the bitrate cap alone. |
+| Keep the quality's short side and exceed the frame | Rejected: 1080×10800 would have a long side over 3840, at 45,900 macroblocks per frame, over Level 5.1's 36,864. |
+| Average bitrate with `-b:v` alone | Rejected: no instantaneous cap, so high-motion scenes exceed the network. |
+| Leave the dimension calculation to ffmpeg's `scale=-2:480` | Rejected: ffmpeg would also have to decide orientation for portrait video, duplicating the Go calculation and its tests. |
 
-- Decision: 警告は `VideoPage` の入れ物（`data-overlay-layer`）の中の状態表示（読み込み中・失敗・
-  再生終了・中央の操作）とは別に、プレイヤーの上端に置く 1 つの小さな帯にする。
-  `role="status"` で、閉じるボタン以外は `pointer-events-none` にして、下の操作を遮らない
-  （要件 9・10）。状態表示の層のうち失敗・再生終了・再接続中・次の予告が出ている間は出さず、
-  再生終了・失敗・別の動画への移動では消える（Edge Case 9）。データ待ちの読み込み中の表示
-  （`waiting` で `loading` が立つ `LoadingOverlay`）の間は隠さず、並べて出す。途切れの判断は
-  データ待ちの最中（1 回が 10 秒を超えたとき）に立つので、読み込み中で隠すと、続いている
-  途切れの間は警告が見えず、再生が戻ってから出ることになる。読み込み中の表示は中央の小さな
-  回転の印で、警告は上端の帯なので重ならない。再生の開始・シーク・画質の切り替え・読み込み
-  直しの読み込み中は [R-6](#r-6-途切れの判断は-waitingplaying-の対で数え落ち着くまでの待ちは数えない)
-  が数えないので、その間に警告が新しく立つことはない。閉じた記録は `VideoPage` が
-  動画の id ごとに持ち、同じ動画の再生の間（失敗からの再試行を含む）は出し直さず、別の動画を
-  開けば消える（要件 10）。警告には画質を切り替える操作も、自動で下げる仕組みも置かない。
-  文言・大きさ・狭い枠での畳み方は design 段階の `ui-design.md` が決める。
-- Rationale: 今の入れ物は「同時に 1 つだけ」の層で、中央に置く前提である
-  （[library-ui.md](../../docs/design-docs/library-ui.md#8-再生画面の構成)）。警告は再生を止めず
-  操作もふさがないので、この入れ物に入れると中央の操作と排他になり、要件 9 に反する。別の層に
-  すると、入れ物の排他の規則を変えずに済み、重なりの順（状態の層より控えめ）も CSS で決まる。
-- Alternatives considered: `web/src/ui/Toast.tsx` で画面の隅に出す（全画面では見えず、
-  プレイヤーの外で再生と結び付かない）。入れ物の層の 1 つにする（上記）。
+## R-3: Availability of a quality depends on the video's short side, and the server rejects unavailable qualities with 400
 
-## R-8: ビットレートと寸法の検査は ffmpeg 付きの Go テストで行う
+**Decision**: The options are "Original" plus those of `1080p`, `720p`, `480p` and `360p` whose short
+side is smaller than the short side of the video's display (`Video.width`/`height`, rotation already
+applied) (requirement 1). The player builds the options with this rule; if the remembered quality is
+not among them, it plays at "Original" and does not rewrite the remembered value (Edge Case 2). The
+server checks the same rule and returns 400 `invalid_request` for a quality at or above the video's
+short side, and for any quality on a video without dimensions.
 
-- Decision: `internal/media/transcode_test.go` の ffmpeg 付きのテスト（`TestTranscodeRotated4K…` と
-  同じ作り）で、動きの多い合成入力（`testsrc2` など）を `480p` で変換し、出力の映像の寸法の短辺が
-  480、映像の平均ビットレートが 1200 kbps × 1.2 以下、音声が 96 kbps 付近であることを確かめる。
-  平均ビットレートは `ffprobe -show_entries packet=pts_time,size` の流れごとのパケットの大きさの
-  合計を、最初と最後の `pts_time` の差で割って求める（fragmented MP4 は `format`・`stream` の
-  `bit_rate` を出さないことがあるため。キーフレーム間隔の既存のテストと同じくパケットを読む）。縦長の入力では幅が 480 になることも確かめる。ハードウェアの方式の上限は CI に無い
-  ので [quickstart.md](quickstart.md) で実機で確かめる。
-- Rationale: 受け入れ条件 2・3 は出力の中身の事実で、引数の文字列の検査だけでは上限が本当に
-  効いているか分からない。ffmpeg 付きの Go テストはすでに同じ形で回転・4K・キーフレーム間隔を
-  確かめている。e2e は `video.videoHeight` で寸法は見られるがビットレートは見られない。
-- Alternatives considered: 引数のテストだけ（上記）。e2e で応答の大きさを測る（ブラウザの
-  先読みの量に左右される）。
+**Rationale**: Upscaling or transcoding to the same size only makes playback heavier, and requirement
+1 rules those options out. The server also rejects so that, if the player's options drift from the
+canonical rule, it is noticed instead of silently starting a useless transcode. The rule is only a
+dimension comparison, so a pure function in `internal/domain` and one in `web/src/player/quality.ts`
+each hold it, and tests on both check the same table.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| The server silently rounds to the original dimensions | Rejected: a 360p video would be transcoded under the 480p cap while showing "480p", so the label and content disagree. |
+| Put the options in the server response | Rejected: the `Video` shape grows, and a round trip is needed for a rule that depends only on dimensions. |
+
+## R-4: The quality menu is a video.js `MenuButton` component
+
+**Decision**: `web/src/player/qualityMenu.ts` defines a component that extends video.js `MenuButton`
+and `MenuItem`, registers it with `videojs.registerComponent`, and places it before
+`playbackRateMenuButton` in `controlBarChildren`. Like the playback rate's `1x`, the button text shows
+the current quality briefly, and React passes the options through `player.trigger` or the component's
+`setOptions`. The component reports the chosen quality with an event, and `VideoPlayer.tsx` performs
+the switch ([R-5](#r-5-switching-quality-swaps-the-source-at-the-same-position-without-recreating-the-player)).
+`rateMenuOpen` in `playerControls.ts` looks for `.vjs-menu.vjs-lock-showing`, so it applies to the
+quality menu as is (Esc while the menu is open only closes the menu).
+
+**Rationale**: The parent Issue's `UI品質` asks for "the same weight, size, spacing and type as the
+playback rate". The playback rate is video.js `PlaybackRateMenuButton`, so a component on the same base
+automatically gets the same look (the `.vjs-menu` rules in `index.css`), the same opening and closing
+by pointer, press and keyboard, and the same Esc handling. Building it with React `Popover` would mean
+rebuilding all of that and then keeping it aligned with the video.js components to the pixel. The
+"Converting for playback" indicator is a React popover because it is an explanation opened by a press,
+not a menu; that does not change this decision.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Portal `web/src/ui/Menu.tsx` into the control bar | Rejected: the reason above. |
+| Mix qualities into the options of `PlaybackRateMenuButton` | Rejected: mixes the meanings of speed and quality, and no accessible name can be given. |
+
+## R-5: Switching quality swaps the source at the same position without recreating the player
+
+**Decision**: `PlaybackAttempt` gains `quality`. If `quality` is anything other than "Original", the
+route is `transcode`; for "Original", the current rule applies (`direct` if `playable`, otherwise
+`transcode`). The switch is built like the switch from direct playback to transcoding (the fallback in
+`handleFailure`): read the logical position, rebuild `attempt` with the new quality and route, replace
+`player.src`, and on `canplay` keep playing if it was playing and stay paused if it was paused
+(requirement 4).
+
+- A transcode source carries the position in the URL's `startMs`, but a direct source
+  (`setDirectSource`; a `playable` video switched back to "Original") carries no position and loads
+  from 0. So, as `finishRecovery` does on reload, when metadata arrives the player seeks to the
+  logical position with `player.currentTime` and then restores the play intent (requirements 4 and 6).
+- Each switch advances a generation, and stale `canplay` and metadata handlers (an old source must not
+  seek the new one) and stale reports (`attempt`) are discarded.
+- On consecutive changes, replacing `player.src` makes the browser abort the previous request, and the
+  server's transcode stops when the request is cancelled (Edge Cases 4 and 10).
+- `liveSource` carries `vvQuality`, and `reloadAt` in `liveOffset.ts` and `reload` in
+  `VideoPlayer.tsx` carry it over, so seeking and reloading keep the quality (requirement 7).
+- A failure to start the switched transcode is reported by type through the current error path
+  (`playbackRecovery`) unchanged, and can be retried from the position where it failed (Edge Case 5).
+- The chosen quality is written to `localStorage` by `web/src/preferences/playbackQuality.ts` at the
+  moment it is chosen (built like the volume; requirement 5).
+
+**Rationale**: Recreating the player (advancing `attempt.key` in `VideoPage`) returns to the poster,
+hides the control bar, and also rebuilds the state inside the fullscreen element (the popover
+container). The fallback already implements "replace the source keeping the position and the play
+intent", and going through the same path lets the tests be shared too.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Recreate the player from `VideoPage` | Rejected: the reason above. |
+| Swap on the component side using video.js `sourceset` | Rejected: the `attempt` position and intent live in `VideoPlayer.tsx`, so the switch decision would be held in two places. |
+
+## R-6: Stalls are counted as `waiting`/`playing` pairs, excluding waits while settling
+
+**Decision**: `web/src/player/stallMonitor.ts` holds a pure state machine.
+
+- A data wait runs from a `waiting` received during playback to the next `playing`, and records its
+  start time.
+- If 3 or more data waits start within a 60-second window, or one data wait exceeds 10 seconds,
+  playback is judged "interrupted by a slow connection" (requirement 9).
+- After a seek (`seeking`), a source set (`loadstart`; includes the first load and quality switches)
+  or a play start (`play`), the wait until the next `playing` is not counted.
+- While paused (`paused`) and while reloading after a network failure (`recovering`), nothing is
+  counted, and counting restarts (Edge Case 8).
+- For the 10-second rule, `VideoPlayer.tsx` sets a 10-second timer when a data wait starts and judges a
+  stall if the wait is still going.
+- The judgement reaches `VideoPage` as `PlayerStatus.stalled`.
+- An `error` that leads to a reload is not a stall; counting restarts when `recovering` begins.
+
+**Rationale**: `waiting` also fires right after a seek and at the start of loading, so counting it
+directly would count the waits the requirement says not to count. The single rule "don't count until
+the next `playing`" handles the three exclusions (seek, start and quality switch) in the same way. A
+pure state machine lets window and count tests be written by passing timestamps only.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Estimate speed by watching the remaining `buffered` | Rejected: turns into a network speed meter and heads towards automatic switching, which is out of scope. |
+| Judge by the interval of `progress` events | Rejected: varies widely between browsers. |
+
+## R-7: The warning is a separate layer from the status overlay container, hidden while a status layer shows
+
+**Decision**: The warning is one small bar at the top edge of the player, separate from the status
+displays (loading, failure, ended, centre controls) inside `VideoPage`'s container
+(`data-overlay-layer`).
+
+- It is `role="status"`, and everything except the close button is `pointer-events-none`, so it does
+  not block the controls beneath (requirements 9 and 10).
+- It does not show while the failure, ended, reconnecting or up-next status layer shows, and it
+  disappears on ended, failure and moving to another video (Edge Case 9).
+- It is not hidden during the data-wait loading display (`LoadingOverlay`, shown when `waiting` sets
+  `loading`); the two show side by side. The stall judgement is made during a data wait (when one wait
+  exceeds 10 seconds), so hiding it during loading would keep the warning invisible for as long as the
+  stall lasts and show it only after playback resumes. The loading display is a small spinner in the
+  centre and the warning is a bar at the top edge, so they do not overlap.
+- During loading for a play start, seek, quality switch or reload,
+  [R-6](#r-6-stalls-are-counted-as-waitingplaying-pairs-excluding-waits-while-settling) does not count,
+  so no new warning appears then.
+- `VideoPage` keeps the dismissed record per video id; it does not show again during playback of the
+  same video (including retries after a failure), and the record clears when another video opens
+  (requirement 10).
+- The warning has no action that switches quality, and no automatic downgrade.
+- The design stage's `ui-design.md` decides the text, size and how it folds in a narrow frame.
+
+**Rationale**: The current container holds "only one layer at a time" and assumes a centred position
+([library-ui.md](../../docs/design-docs/library-ui.md#8-video-page-layout)). The warning neither stops
+playback nor blocks the controls, so putting it in that container would make it mutually exclusive
+with the centre controls, which violates requirement 9. A separate layer leaves the container's
+exclusivity rule unchanged, and CSS sets the stacking order (more subdued than the status layers).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Show it in a screen corner with `web/src/ui/Toast.tsx` | Rejected: invisible in fullscreen, and outside the player it is not tied to playback. |
+| Make it one of the container's layers | Rejected: the reason above. |
+
+## R-8: Bitrate and dimensions are checked by Go tests with ffmpeg
+
+**Decision**: A test with ffmpeg in `internal/media/transcode_test.go` (built like
+`TestTranscodeRotated4K…`) transcodes a high-motion synthetic input (`testsrc2` or similar) at `480p`
+and checks that the output video's short side is 480, the average video bitrate is at most 1200 kbps ×
+1.2, and the audio is around 96 kbps. The average bitrate is the sum of packet sizes per stream from
+`ffprobe -show_entries packet=pts_time,size`, divided by the difference between the first and last
+`pts_time` (fragmented MP4 may not report `bit_rate` in `format` or `stream`; like the existing keyframe
+interval test, it reads packets). For a portrait input it also checks that the width is 480. The
+hardware methods' caps are not available in CI, so they are checked on real hardware with
+[quickstart.md](quickstart.md).
+
+**Rationale**: Acceptance criteria 2 and 3 are facts about the output's content; checking the argument
+strings alone does not show that the cap actually takes effect. Go tests with ffmpeg already check
+rotation, 4K and keyframe interval in the same way. e2e can see dimensions through `video.videoHeight`
+but cannot see bitrate.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Argument tests only | Rejected: the reason above. |
+| Measure response size in e2e | Rejected: depends on how much the browser reads ahead. |

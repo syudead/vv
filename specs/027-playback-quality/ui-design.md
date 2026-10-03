@@ -1,228 +1,258 @@
-# UI Design: 画質メニューと、回線の遅さで途切れているときの警告
+# UI design: Quality menu, and a warning when a slow connection interrupts playback
 
-**Feature**: [parent Issue #521](https://github.com/syudead/vv/issues/521) ・
-[plan.md](plan.md) ・ [research.md R-4](research.md#r-4-画質のメニューは-videojs-の-menubutton-の部品にする)・
-[R-5](research.md#r-5-画質の切り替えはプレイヤーを作り直さず同じ位置で-source-を差し替える)・
-[R-7](research.md#r-7-警告は状態表示の入れ物とは別の層に出し状態の層が出ている間は隠す)
+**Feature**: [parent Issue #521](https://github.com/syudead/vv/issues/521) ·
+[plan.md](plan.md) · [research.md R-4](research.md#r-4-the-quality-menu-is-a-videojs-menubutton-component) ·
+[R-5](research.md#r-5-switching-quality-swaps-the-source-at-the-same-position-without-recreating-the-player) ·
+[R-7](research.md#r-7-the-warning-is-a-separate-layer-from-the-status-overlay-container-hidden-while-a-status-layer-shows)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+Sources (this document does not re-decide what they define):
 
-- 配色・操作状態・幅の出し分け・再生画面の構成: [ライブラリ UI](../../docs/design-docs/library-ui.md)
-  （「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- 操作バーの並び・「変換して再生中」・層の入れ物: [specs/012-video-detail-ia/ui-design.md「Player」](../012-video-detail-ia/ui-design.md#player)
-  と今の [`web/src/player/VideoPlayer.tsx`](../../web/src/player/VideoPlayer.tsx)・
-  [`VideoPage.tsx`](../../web/src/player/VideoPage.tsx)・[`StatusOverlays.tsx`](../../web/src/player/StatusOverlays.tsx)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+| Topic | Source |
+| --- | --- |
+| Colours, interaction states, width breakpoints, playback screen layout | [Library UI](../../docs/design-docs/library-ui.md) ("8. Video page layout") |
+| Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Referred to by name; values are not copied. |
+| Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
+| Control bar order, the "Converting for playback" indicator, the layer container | [specs/012-video-detail-ia/ui-design.md "Player"](../012-video-detail-ia/ui-design.md#player) and the current [`web/src/player/VideoPlayer.tsx`](../../web/src/player/VideoPlayer.tsx), [`VideoPage.tsx`](../../web/src/player/VideoPage.tsx), [`StatusOverlays.tsx`](../../web/src/player/StatusOverlays.tsx) |
+| Where screen text lives and its format | [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md). The English in this document is a proposal showing intent; after implementation the catalogue [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth. |
 
-この feature が画面に足すのは、再生画面（`/videos/:id`）のプレイヤーの中の 3 つだけである。
-それ以外の画面と、プレイヤーの外（題名・情報・関連動画）は変えない。所有者とゲストで同じ
-（親 Issue 要件 8）。新しい色・半径・影の token は足さず、`tokens.test.ts` の `pairs` にも足さない
-（下の「Colour」）。
+This feature adds exactly three things to the screen, all inside the player on the playback screen
+(`/videos/:id`). No other screen changes, and nothing outside the player (title, information, related
+videos) changes. Owners and guests see the same (requirement 8 of the parent Issue). No new colour,
+radius or shadow token is added, and nothing is added to `pairs` in `tokens.test.ts` ("Colour" below).
 
-1. 操作バーの**画質メニュー**（要件 1〜8）
-2. 「変換して再生中」の**画質つきの文言**（要件 6）
-3. プレイヤーの上端の**途切れの警告**（要件 9・10）
+1. The **quality menu** in the control bar (requirements 1–8)
+2. **Quality-aware text** for the "Converting for playback" indicator (requirement 6)
+3. The **stall warning** at the top edge of the player (requirements 9 and 10)
 
 ## Words
 
-| 場所 | 英語（案） |
+| Place | Text (proposed) |
 | --- | --- |
-| 画質メニューのボタンの読み上げ名・ツールチップ | Quality |
-| ボタンの文字（元の画質） | 動画の表示の短辺（`1080p`・`2160p` など）。短辺が分からなければ Orig |
-| ボタンの文字（選んだ画質） | `720p`・`480p`・`360p`・`1080p` |
-| メニューの項目（元の画質） | Original (1080p)。短辺が分からなければ Original |
-| メニューの項目（選べる画質） | 720p ／ 480p ／ 360p ／ 1080p |
-| 選べる画質が無いときの補足の行 | No smaller sizes for this video |
-| 「変換して再生中」（元の画質。今のまま） | Converting for playback |
-| 「変換して再生中」（選んだ画質） | Converting to 480p |
-| 吹き出しの説明（選んだ画質） | Playing a 480p version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds. |
-| 警告の文 | Slow connection is interrupting playback |
-| 警告を閉じる button の読み上げ名 | Dismiss |
+| Quality menu button accessible name and tooltip | Quality |
+| Button text (original quality) | The short side of the video's display (`1080p`, `2160p` and so on). Orig if the short side is unknown |
+| Button text (chosen quality) | `720p`, `480p`, `360p`, `1080p` |
+| Menu item (original quality) | Original (1080p). Original if the short side is unknown |
+| Menu items (available qualities) | 720p / 480p / 360p / 1080p |
+| Note line when no quality can be chosen | No smaller sizes for this video |
+| "Converting for playback" indicator (original quality; unchanged) | Converting for playback |
+| "Converting for playback" indicator (chosen quality) | Converting to 480p |
+| Popover explanation (chosen quality) | Playing a 480p version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds. |
+| Warning text | Slow connection is interrupting playback |
+| Accessible name of the button that dismisses the warning | Dismiss |
 
-- 画質の名前は `1080p` のように短辺の数字と `p` で、翻訳しない（技術情報の行の `H.264` と
-  同じ扱い）。
-- 警告の文は知らせるだけにする。画質を下げる勧め・メニューへの誘導・自動で切り替える旨は
-  書かない（要件 10、対象外「警告からの画質の提案」）。
+- Quality names are the short-side number plus `p`, like `1080p`, and are not translated (the same
+  treatment as `H.264` in the technical information row).
+- The warning text only informs. It does not suggest lowering the quality, point to the menu, or say
+  that it will switch automatically (requirement 10; out of scope: "suggesting a quality from the
+  warning").
 
 ## Control bar: quality menu
 
 ### Placement and weight
 
-操作バーの並びは 012 の「Control bar」を保ち、画質を 1 つ足す。左から、最初に戻る・再生・音量・
-現在時刻/長さ・右寄せの空き・「変換して再生中」・**画質**・再生速度・PiP・全画面。
+The control bar keeps the order from 012's "Control bar" and gains quality. From left: back to start,
+play, volume, current time / duration, right-aligned gap, "Converting for playback", **quality**,
+playback rate, PiP, fullscreen.
 
-- 画質は再生速度のすぐ左に置き、再生速度と同じ従の操作にする（UI品質「視覚的階層」）。
-  再生・シーク・音量より目立たせないのは、置き場所（右側の従の一群）と、ボタンの箱・文字色を
-  再生速度と同じにすることで守る。アクセント色は使わない。
-- ボタンは video.js の `MenuButton`（R-4）で、箱は再生速度のボタンと同じ（`.vjs-control` の幅
-  `4em`、狭い枠では `index.css` の規則で `3em`）。hover・focus-visible・押下の見え方は `index.css`
-  の `.vjs-button` の規則がそのまま効く。
-- 「変換して再生中」の右、再生速度の左に入ることで、「今どう再生しているか（変換の表示）→
-  それを変える操作（画質）」の順に目が流れる。「変換して再生中」は表示、画質は操作で、隣り合う
-  2 つの役割が違うことは、片方が `fg-muted` の文字と `Info` の印、もう片方が `fg` の文字だけの
-  ボタン、という今の対比で見分けられる。
+- Quality sits immediately left of the playback rate and is a secondary control like the playback rate
+  (`UI品質`: visual hierarchy). It is kept less prominent than play, seek and volume through its place
+  (in the secondary group on the right) and by giving the button the same box and text colour as the
+  playback rate. No accent colour.
+- The button is a video.js `MenuButton` (R-4), with the same box as the playback rate button (the
+  `.vjs-control` width of `4em`, `3em` in a narrow frame by the `index.css` rules). The hover,
+  focus-visible and pressed looks come from the `.vjs-button` rules in `index.css` as they are.
+- Sitting right of "Converting for playback" and left of the playback rate, it lets the eye run from
+  "how it is playing now (the transcode indicator)" to "the control that changes that (quality)".
+  "Converting for playback" is an indicator and quality is a control; the two neighbours' different
+  roles are told apart by the existing contrast: one is `fg-muted` text with the `Info` icon, the other
+  a button with `fg` text only.
 
 ### Button label
 
-- ボタンの文字は今の画質を短く示す（UI品質「今どの画質かは開かずに分かる程度に小さく示す」）。
-  選んだ画質なら `480p` のように、元の画質なら動画の表示の短辺（1080p の動画は `1080p`、4K は
-  `2160p`）。短辺が分からない動画では `Orig`。
-- 元の画質を短辺の数字で示すのは、それが「今の画質」の事実だからである。1080p の動画の
-  `1080p` は選択肢に無い（要件 1）ので、`1080p` が縮めた画質と読まれることは無く、開けば
-  「Original (1080p)」が選ばれている。360p 以下の動画で `360p` と出ることは、選べる画質が無い
-  理由も伝える（Edge Case 1）。
-- 文字は `text-xs`・`text-fg`・`tabular-nums`。再生速度の `1x` は video.js の `1.5em` で描いて
-  いるが、画質は 5 文字（`1080p`）を `4em` の箱に収める必要があるので、「変換して再生中」と同じ
-  `text-xs` にする。Issue が「小さく示す」と言っているのはこの文字である。箱の大きさ・余白・
-  文字色は再生速度と同じで、文字の大きさだけが違う。
-- 狭い枠（`index.css` の `@container (max-width: 39.99rem)`、箱が `3em`）では `1080p` が収まる
-  よう、文字を `text-[0.625rem]`（10px）・`tracking-tight` にする。文字を畳んで印だけにはしない。
-  数字が画質の唯一の手掛かりで、印に置き換えると開くまで分からなくなるからである。
-- ボタンの中に印（歯車など）は置かない。文字だけで、再生速度と同じ形にそろえる。
+- The button text shows the current quality briefly (`UI品質`: show the current quality small enough
+  to know it without opening). For a chosen quality it is `480p` and so on; for the original quality it
+  is the short side of the video's display (`1080p` for a 1080p video, `2160p` for 4K). For a video
+  whose short side is unknown, `Orig`.
+- The original quality is shown by its short-side number because that is the fact of "the current
+  quality". `1080p` is not an option for a 1080p video (requirement 1), so `1080p` is never read as a
+  scaled-down quality, and opening the menu shows "Original (1080p)" selected. Showing `360p` on a video
+  of 360p or less also tells why there is no quality to choose (Edge Case 1).
+- Text is `text-xs`, `text-fg`, `tabular-nums`. The playback rate's `1x` is drawn at video.js's
+  `1.5em`, but quality must fit 5 characters (`1080p`) in a `4em` box, so it uses `text-xs`, the same
+  as "Converting for playback". This is the text the Issue means by "show small". The box size,
+  spacing and text colour match the playback rate; only the text size differs.
+- In a narrow frame (`@container (max-width: 39.99rem)` in `index.css`, a `3em` box) the text becomes
+  `text-[0.625rem]` (10px) and `tracking-tight` so that `1080p` fits. The text is not folded into an
+  icon: the number is the only clue to the quality, and replacing it with an icon would hide it until
+  the menu opens.
+- No icon (such as a gear) inside the button. Text only, the same form as the playback rate.
 
 ### Menu
 
-- 開いたメニューの見た目は再生速度のメニューと同じ（video.js の `.vjs-menu` の規則。`index.css`
-  は上書きしていない）。幅だけは video.js の popup の既定 `10em` にし、「Original (1080p)」を
-  1 行に収める（再生速度の `4em` は使わない）。
-- 項目は上から、**Original (1080p)** → `720p` → `480p` → `360p` の順（元の画質が先頭、あとは
-  大きい順）。選択肢は動画の表示の短辺より小さいものだけ（要件 1、R-3）。
-- 今の画質の項目に video.js の `vjs-selected` の印（再生速度と同じ）を付ける。覚えていた画質が
-  この動画では使えず「元の画質」で再生しているときは（Edge Case 2）、「Original」に印が付く。
-  覚えている値は書き換えないが、メニューは今の再生の事実を示す。
-- 選べる画質が無い動画（360p 以下、または短辺が分からない）では、「Original (360p)」の 1 項目に
-  印を付け、その下に `vjs-menu-title` と同じ書式（`fg-muted`・押せない・フォーカスが止まらない）の
-  行「No smaller sizes for this video」を置く（Edge Case 1）。
-  - Q-5: この行は押せない。置く価値は、メニューを開いた人に「壊れている・読み込み中」ではなく
-    「この動画には縮める画質が無い」と伝えること。「押せる」と誤認する危険は、項目と違って印も
-    hover の面も無く、色が `fg-muted` であることで抑える。
-  - ボタン自体は残す。隠すと、動画ごとにボタンが出たり消えたりして操作バーの並びが動く。
-- 項目を選ぶとメニューは閉じ、ボタンの文字は**すぐ**新しい画質になる。切り替えの読み込み中は
-  今の「読み込み中」の中央の印（`LoadingOverlay`、`backdrop` 無し）が出る。再生位置・
-  再生中か止めているかは変えない（要件 4、R-5）。
-- 「元の画質」に戻すと、直接再生できる動画は「変換して再生中」が消える（要件 2・6）。
+- The open menu looks the same as the playback rate menu (video.js `.vjs-menu` rules; `index.css`
+  does not override them). Only the width is video.js's popup default of `10em`, so that "Original
+  (1080p)" fits on one line (the playback rate's `4em` is not used).
+- Items from top: **Original (1080p)** → `720p` → `480p` → `360p` (original first, then descending).
+  Only options smaller than the video's display short side are listed (requirement 1, R-3).
+- The current quality's item gets video.js's `vjs-selected` mark (as the playback rate does). When the
+  remembered quality is unavailable for this video and it plays at "Original" (Edge Case 2), "Original"
+  carries the mark. The remembered value is not rewritten, but the menu shows the fact of the current
+  playback.
+- For a video with no quality to choose (360p or less, or an unknown short side), the single item
+  "Original (360p)" carries the mark, and below it is the line "No smaller sizes for this video" in the
+  same format as `vjs-menu-title` (`fg-muted`, not pressable, not focusable) (Edge Case 1).
+  - Q-5: this line cannot be pressed. Its value is telling someone who opened the menu "this video has
+    no smaller quality" rather than "it is broken or loading". The risk of mistaking it for a pressable
+    item is kept down because, unlike items, it has no mark and no hover surface, and its colour is
+    `fg-muted`.
+  - The button itself stays. Hiding it would make the button appear and disappear per video and shift
+    the control bar order.
+- Choosing an item closes the menu, and the button text changes to the new quality **immediately**.
+  While the switch loads, the existing centred loading mark (`LoadingOverlay`, no `backdrop`) shows.
+  The playback position and whether it is playing or paused do not change (requirement 4, R-5).
+- Switching back to "Original" makes "Converting for playback" disappear for a video that can play
+  directly (requirements 2 and 6).
 
 ### Interaction
 
-- マウス: ポイントで開く（video.js の既定。再生速度と同じ）、押しても開く。項目を押して選ぶ。
-- タッチ: ボタンで開閉、項目で選ぶ。
-- キーボード: Tab でボタンへ、Enter/Space で開く、↑↓ で項目を移り、Enter で選ぶ、Esc で閉じる
-  （video.js の既定）。メニューが開いている間の Esc は画面を閉じず、メニューを閉じるだけ
-  （`playerControls.ts` の `rateMenuOpen` が画質のメニューにも効く。R-4）。
-- 全画面でも同じ場所に同じ形で出る。メニューはプレイヤーの中で上に開く。
-- ボタンにキーボードの近道は付けない（`aria-keyshortcuts` 無し）。
+| Input | Behaviour |
+| --- | --- |
+| Mouse | Opens on hover (video.js default, as for the playback rate) and on press. Click an item to choose it. |
+| Touch | The button opens and closes; an item chooses. |
+| Keyboard | Tab to the button, Enter/Space to open, ↑↓ to move between items, Enter to choose, Esc to close (video.js default). Esc while the menu is open closes only the menu, not the screen (`rateMenuOpen` in `playerControls.ts` applies to the quality menu too; R-4). |
+| Fullscreen | Same place and form. The menu opens upwards inside the player. |
+
+- The button has no keyboard shortcut (no `aria-keyshortcuts`).
 
 ## Control bar: transcode indicator
 
-「変換して再生中」の見た目（`Info` `size-3.5`・`text-xs text-fg-muted`・押して開く吹き出し・
-狭い枠で文字を畳んで印だけ残す `@max-[22.5rem]:sr-only`）は 012 のまま。変えるのは文言だけ
-（要件 6）。
+The look of "Converting for playback" (`Info` `size-3.5`, `text-xs text-fg-muted`, a popover opened by
+press, folding the text to leave only the icon in a narrow frame with `@max-[22.5rem]:sr-only`) stays
+as in 012. Only the text changes (requirement 6).
 
-- 元の画質で変換しているとき: 今のまま「Converting for playback」と今の説明。
-- 選んだ画質で変換しているとき: 「Converting to 480p」。吹き出しの説明は上の「Words」の画質の
-  もの（縮めていることと、戻し方が「画質メニューの Original」であること）。
-- 狭い枠で印だけになったときも、画質は隣の画質ボタンの文字で分かる。印を 2 種類にはしない。
+| Situation | Text |
+| --- | --- |
+| Transcoding at original quality | Unchanged: "Converting for playback" and the current explanation. |
+| Transcoding at a chosen quality | "Converting to 480p". The popover explanation is the quality one in "Words" above (it says the video is scaled down, and that the way back is "Original" in the quality menu). |
+
+- When folded to the icon in a narrow frame, the quality is still readable from the neighbouring
+  quality button's text. There are not two kinds of icon.
 
 ## Stall warning
 
-回線の遅さで途切れていると判断したとき（要件 9、R-6）、プレイヤーの上端に出す 1 つの小さな帯。
-状態表示の入れ物（`data-overlay-layer`）とは別の層（R-7）。
+When playback is judged to be interrupted by a slow connection (requirement 9, R-6), one small bar
+appears at the top edge of the player, in a layer separate from the status display container
+(`data-overlay-layer`) (R-7).
 
 ### Form
 
-- 置き場所: プレイヤーの枠の**左上**。`absolute left-2 top-2`（`sm` 以上は `left-3 top-3`）。
-  中央には置かない。中央は読み込み中の印・タッチの再生操作・再生失敗の面の場所で、警告は
-  それより控えめでなければならない（UI品質「操作の優先順位」）。
-- 形: `flex items-center gap-2 rounded-md bg-navbar px-3 py-1.5 text-xs text-fg shadow-elevated`。
-  左に lucide `WifiLow`（`size-4`、`text-warning`）、文、右に閉じる ×（lucide `X`、`size-3.5`、
-  `text-fg-muted`、hover で `text-fg`、押せる範囲は `size-6`）。
-  - 読み込み中の印（`text-sm font-medium`、`size-5` の `accent` の輪）より一段小さい文字と印に
-    する。読み込み中は「今起きていること」、警告は「その理由の知らせ」で、後者が主にならない。
-  - 「再接続中」（`WifiOff`）と同じ印の系統にし、回線の話だと一目で分かるようにする。
-    色は `warning` で、失敗（`danger`）でも操作（`accent`）でもないことを示す。
-- 幅: 内容の幅（`max-w-[calc(100%-1rem)]`）。360px では 1 行に収まり、収まらない言語でも
-  2 行に折り返して中央の印には届かない。
-- 出るときは `animate-fade-in`（`motion-reduce:animate-none`）。消えるときの動きは無い。
-- `role="status"`。文の読み上げは出たときの 1 回だけ。
+- Placement: the **top left** of the player frame. `absolute left-2 top-2` (`left-3 top-3` from `sm`
+  up). Not in the centre: the centre belongs to the loading mark, the touch play control and the
+  playback failure surface, and the warning must be more subdued than those (`UI品質`: action
+  priority).
+- Shape: `flex items-center gap-2 rounded-md bg-navbar px-3 py-1.5 text-xs text-fg shadow-elevated`.
+  On the left lucide `WifiLow` (`size-4`, `text-warning`), then the text, and on the right a close ×
+  (lucide `X`, `size-3.5`, `text-fg-muted`, `text-fg` on hover, a `size-6` hit area).
+  - Text and icon are one step smaller than the loading mark (`text-sm font-medium`, a `size-5`
+    `accent` ring). Loading is "what is happening now"; the warning is "a note on why", and the latter
+    must not dominate.
+  - The icon family matches "Reconnecting" (`WifiOff`), so it reads at a glance as a network matter.
+    The colour is `warning`, signalling that it is neither a failure (`danger`) nor a control
+    (`accent`).
+- Width: the content width (`max-w-[calc(100%-1rem)]`). At 360px it fits on one line; in a language
+  where it does not, it wraps to two lines and does not reach the centre mark.
+- It enters with `animate-fade-in` (`motion-reduce:animate-none`). It leaves without animation.
+- `role="status"`. The text is announced once, when it appears.
 
 ### Behaviour
 
-- 帯の入れ物は `pointer-events-none`、× だけ `pointer-events-auto`。帯の下の再生バーや映像への
-  クリック・タップは、× の外なら通る（要件 9「操作もふさがない」）。
-- 操作バーが隠れている間（再生中で操作していない）も**出したまま**にする。知らせが目的で、
-  操作ではないからである。全画面でも同じ左上。
-- 再生は止めない。画質を切り替えるボタン・リンク・自動の切り替えは置かない（要件 10）。
-- × で閉じると、その動画の再生の間は再び出ない（失敗からの再試行のあとも）。別の動画へ
-  移れば、条件を満たしたときにまた出る（要件 10、Edge Case 9）。
-- 重なりの順: 映像より上、状態表示の入れ物（`z-10`）と操作バー（`z-20`）より下。
-  - 状態表示のうち**再生失敗・再生終了・次の予告・再接続中・取り込み中**が出ている間は帯を出さない。
-    再生終了・失敗・別の動画への移動で消える（Edge Case 9）。
-  - **データ待ちの読み込み中**（中央の小さな輪）とは並べて出す。輪は中央、帯は左上で重ならない
-    （R-7）。
-  - タッチの中央の再生操作（`size-15`、中央）とも並ぶ。360px 幅・16:9（高さ約 203px）でも
-    帯（高さ約 28px）と中央の操作（上端 約 70px）は離れている。
-  - 前後の動画へのつまみ（左右の端、縦の中央、`min-h-18`）とも重ならない。360px・16:9 で
-    つまみの上端は約 40px、帯の下端は約 36px。縦長の動画の枠では間がさらに広い。
+- The bar's container is `pointer-events-none`, and only the × is `pointer-events-auto`. Clicks and
+  taps on the progress bar or the video beneath the bar go through outside the × (requirement 9: "does
+  not block the controls").
+- It **stays visible** while the control bar is hidden (playing with no interaction). Its purpose is
+  to inform, not to be operated. Same top-left place in fullscreen.
+- Playback does not stop. There is no button, link or automatic switch that changes quality
+  (requirement 10).
+- After dismissing with ×, it does not show again during playback of that video (including after a
+  retry from a failure). After moving to another video, it shows again when the conditions are met
+  (requirement 10, Edge Case 9).
+- Stacking order: above the video, below the status display container (`z-10`) and the control bar
+  (`z-20`).
+
+  | Other element | Relation |
+  | --- | --- |
+  | Playback failure, ended, up next, reconnecting, importing | The bar does not show while any of these shows. It disappears on ended, failure and moving to another video (Edge Case 9). |
+  | Data-wait loading (small centred ring) | Shown side by side. The ring is in the centre and the bar at the top left, so they do not overlap (R-7). |
+  | Touch centre play control (`size-15`, centred) | Shown side by side. At 360px width and 16:9 (about 203px high), the bar (about 28px high) and the centre control (top edge about 70px) are apart. |
+  | Previous/next video handles (left and right edges, vertically centred, `min-h-18`) | No overlap. At 360px and 16:9 the handles' top edge is about 40px and the bar's bottom edge about 36px. A portrait video frame leaves even more room. |
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定と、`index.css` の枠の幅（`@container`）だけを使い、CSS で出し分ける
-（library-ui.md 4）。判定する幅は 360px・768px・1280px と、1280px の縦長（9:16）の動画の枠、
-全画面。
+Width breakpoints are only Tailwind's defaults and the frame width in `index.css` (`@container`),
+switched in CSS (library-ui.md 4). The widths judged are 360px, 768px, 1280px, a portrait (9:16) video
+frame at 1280px, and fullscreen.
 
-| 幅・枠 | 画質ボタン | メニュー | 「変換して再生中」 | 警告 |
+| Width / frame | Quality button | Menu | "Converting for playback" | Warning |
 | --- | --- | --- | --- | --- |
-| 1280px・横長 | `4em`、`text-xs` | `10em`、上に開く | 印と文字 | 左上 `left-3 top-3`、1 行 |
-| 1280px・縦長（枠は画面の高さで決まる 9:16 の幅。40rem 未満） | `3em`、10px | 同上。枠の中に収まる | 枠が 22.5rem 以下なら印だけ | 左上、1 行または 2 行 |
-| 768px | `4em`、`text-xs` | 同上 | 印と文字 | 左上、1 行 |
-| 360px（枠は約 22.5rem） | `3em`、10px | 同上。PiP・全画面の幅の内側に収まる | 印だけ（`@max-[22.5rem]`） | 左上 `left-2 top-2`、1 行 |
-| 全画面 | 1280px と同じ | 同上 | 同上 | 左上 |
+| 1280px, landscape | `4em`, `text-xs` | `10em`, opens upwards | Icon and text | Top left `left-3 top-3`, one line |
+| 1280px, portrait (a 9:16 frame sized by the screen height; under 40rem) | `3em`, 10px | Same. Fits inside the frame | Icon only if the frame is 22.5rem or narrower | Top left, one or two lines |
+| 768px | `4em`, `text-xs` | Same | Icon and text | Top left, one line |
+| 360px (frame about 22.5rem) | `3em`, 10px | Same. Fits within the width up to PiP and fullscreen | Icon only (`@max-[22.5rem]`) | Top left `left-2 top-2`, one line |
+| Fullscreen | Same as 1280px | Same | Same | Top left |
 
-- どの幅でも横スクロールを出さず、操作バーの部品が重ならない。画質を足しても操作バーは
-  1 行のままで、右側の一群（変換の表示・画質・速度・PiP・全画面）が現在時刻/長さに食い込まない
-  （UI品質「情報密度」）。
+- At no width does a horizontal scroll appear or do control bar parts overlap. Adding quality keeps
+  the control bar on one line, and the right-hand group (transcode indicator, quality, rate, PiP,
+  fullscreen) does not cut into current time / duration (`UI品質`: information density).
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md 5）。「ある」だけでは満たさない（Q-4）。
+Judge on real devices (library-ui.md 5). "It is there" alone does not satisfy a criterion (Q-4).
 
-- **視覚的階層**: 操作バーを見て、再生・シーク・音量が先に目に入り、画質は再生速度と**同じ
-  重さ**に見える。画質ボタンの文字が再生速度の `1x` より目立たない。画質ボタンにアクセント色が
-  無い。警告は読み込み中の印や失敗の面より小さく、映像の左上で映像の主題を隠さない。
-- **情報密度**: 360px と縦長の枠で、操作バーの右側の一群が重ならず、現在時刻/長さが切れない。
-  「変換して再生中」が印だけになった状態で、画質はボタンの数字で読める。
-- **余白のリズム**: 画質ボタンの箱・余白・hover の面が再生速度と同じで、隣に並べて「後から足した
-  部品」に見えない（UI品質）。開いたメニューの項目の高さ・余白が再生速度のメニューと同じ。
-- **タイポグラフィ**: 画質の文字は `1080p` が箱に収まり、切れたり隣にはみ出したりしない
-  （4em・3em の両方）。数字は `tabular-nums` で、`720p` と `480p` を切り替えても文字の位置が
-  揺れない。警告の文は `text-xs` で 1 行（360px で 2 行まで）。
-- **操作の優先順位**: 警告が出ている間に、再生バーのシーク・中央の再生操作・操作バーの
-  すべてがそのまま押せる。警告の × 以外を押しても警告は反応せず、下へ通る。警告に画質を
-  変える操作が無く、出ても画質ボタンの文字が変わらない（受け入れ条件 11）。
-- **状態の見え方**: 画質を選んだ直後、ボタンの文字が新しい画質になり、中央に読み込み中の輪が
-  出て、位置と再生/停止が保たれる（受け入れ条件 2・4）。「元の画質」に戻すと直接再生できる動画は
-  「変換して再生中」が消える（受け入れ条件 6）。360p 以下の動画でメニューを開くと、「Original
-  (360p)」に印があり、その下に押せない補足の行が見える（Edge Case 1）。
-- **警告の出入り**: 回線を絞って条件を満たすと左上に帯が出て、再生は止まらない。× で消え、
-  同じ動画では再び出ない。別の動画で条件を満たすとまた出る。再生失敗・再生終了・再接続中の
-  面が出ている間は帯が無い（受け入れ条件 9・10）。
-- **要求を満たしたことにならない例**（UI品質）: 画質が設定画面にしか無い。警告が中央にある、
-  映像を暗くする、再生を止める、操作バーに重なる。警告に「480p にする」のような操作や自動の
-  切り替えがある。画質ボタンが歯車の印だけで今の画質が読めない。
+- **Visual hierarchy**: looking at the control bar, play, seek and volume catch the eye first, and
+  quality looks **the same weight** as the playback rate. The quality button text is no more prominent
+  than the playback rate's `1x`. The quality button has no accent colour. The warning is smaller than
+  the loading mark and the failure surface, and at the top left of the video it does not hide the
+  video's subject.
+- **Information density**: at 360px and in a portrait frame, the right-hand group of the control bar
+  does not overlap, and current time / duration is not cut off. With "Converting for playback" folded
+  to its icon, the quality is readable from the button's number.
+- **Spacing rhythm**: the quality button's box, spacing and hover surface match the playback rate, so
+  side by side it does not look like a part added later (`UI品質`). The open menu's item height and
+  spacing match the playback rate menu.
+- **Typography**: `1080p` fits in the quality button without being cut off or spilling into the
+  neighbour (at both 4em and 3em). The digits are `tabular-nums`, so switching between `720p` and
+  `480p` does not shift the text. The warning text is `text-xs` on one line (up to two at 360px).
+- **Action priority**: while the warning shows, seeking on the progress bar, the centre play control
+  and everything on the control bar can be pressed as usual. Pressing anything other than the warning's
+  × gets no reaction from the warning and passes through. The warning has no control that changes
+  quality, and the quality button text does not change when it appears (acceptance criterion 11).
+- **State visibility**: right after choosing a quality, the button text becomes the new quality, the
+  loading ring appears in the centre, and the position and playing/paused state are kept (acceptance
+  criteria 2 and 4). Switching back to "Original" removes "Converting for playback" for a video that
+  can play directly (acceptance criterion 6). Opening the menu on a video of 360p or less shows the mark
+  on "Original (360p)" and the non-pressable note line beneath it (Edge Case 1).
+- **Warning appearance**: when the network is throttled and the conditions are met, the bar appears at
+  the top left and playback does not stop. × removes it, and it does not appear again for the same
+  video. It appears again when the conditions are met on another video. There is no bar while the
+  playback failure, ended or reconnecting surface shows (acceptance criteria 9 and 10).
+- **Examples that do not meet the requirement** (`UI品質`): quality exists only in the settings
+  screen. The warning is in the centre, dims the video, stops playback, or overlaps the control bar.
+  The warning has an action such as "switch to 480p", or switches automatically. The quality button is
+  only a gear icon and the current quality cannot be read.
 
 ## Colour
 
-新しく使う組は無い。帯の文字は `fg` on `navbar`、メニューは再生速度と同じ video.js の既定、
-画質ボタンの文字は操作バーの `fg`。`warning` は `WifiLow` の印だけに使い、文字には使わないので
-`pairs` に足さない（library-ui.md 1、012「Accessibility」の印の扱いと同じ）。
+No new pair is used. The bar's text is `fg` on `navbar`, the menu uses the same video.js defaults as
+the playback rate, and the quality button text is the control bar's `fg`. `warning` is used only for
+the `WifiLow` icon, not for text, so it is not added to `pairs` (library-ui.md 1; the same treatment
+of icons as 012 "Accessibility").
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前だけを決める（012 と同じ範囲）。
+The parent Issue does not ask for screen reader or contrast design, so only names are decided (the
+same scope as 012).
 
-- 画質ボタンの読み上げ名・`title`: 「Quality」。`playerDictionary` と同じくカタログから作る。
-- メニューの項目の名前は表示の文字と同じ（「Original (1080p)」「480p」）。
-- 警告は `role="status"`、× の読み上げ名は「Dismiss」。
+- Quality button accessible name and `title`: "Quality", built from the catalogue as
+  `playerDictionary` does.
+- Menu item names are the same as their displayed text ("Original (1080p)", "480p").
+- The warning is `role="status"`, and the × has the accessible name "Dismiss".

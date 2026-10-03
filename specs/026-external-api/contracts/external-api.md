@@ -1,23 +1,25 @@
-# Contract: 外部連携 API v1
+# Contract: External API v1
 
-親 Issue: #493（要件 5〜7・10・11）。正本は実装の時点で `api/external-v1.yaml` に作る
-（[research.md R-5](../research.md#r-5-外部連携-api-の契約は別の-openapi-の文書にしgo-だけを生成する)）。
-ここは、その文書が満たすべき操作と規則を決める。
+Parent Issue: #493 (requirements 5–7, 10 and 11). Source of truth: `api/external-v1.yaml`, created at
+implementation time
+([research.md R-5](../research.md#r-5-the-external-api-contract-is-a-separate-openapi-document-generating-go-only)).
+This file fixes the operations and rules that document must satisfy.
 
-## 1. 共通
+## 1. Common rules
 
-- 基底は `/api/v1`。すべての操作が `security: bearerAuth`（`type: http`、`scheme: bearer`）。
-- 認証（[research.md R-3](../research.md#r-3-外部連携-api-は-apiv1-の下に置き境界にbearerの分類を足す)）:
-  `Authorization: Bearer <token>` が無い・形式が違う・無効・失効済みは
-  `401 unauthenticated` と `WWW-Authenticate: Bearer`。Cookie は読まない。
-- 同一オリジンの検査はかけない。本文を取る操作は `Content-Type: application/json` を要する
-  （[R-4](../research.md#r-4-bearer-の要求には同一オリジンの検査をかけない)）。
-- 見る人は常に所有者で、非公開の動画も返す（受け入れ条件 2）。
-- 誤りは画面の API と同じ形 `{ code, message, reason?, limit?, index? }`。`index` はこの API だけの項目で、
-  §4 の `videos` の何番目（0 から）が原因かを示す。`code` と `reason` の値は、ここに挙げたものだけを
-  `external-v1.yaml` の enum に置く。
+- The base is `/api/v1`. Every operation is `security: bearerAuth` (`type: http`, `scheme: bearer`).
+- Authentication
+  ([research.md R-3](../research.md#r-3-the-external-api-lives-under-apiv1-and-the-boundary-gains-a-bearer-class)):
+  a missing, malformed, invalid or revoked `Authorization: Bearer <token>` returns
+  `401 unauthenticated` with `WWW-Authenticate: Bearer`. Cookies are not read.
+- No same-origin check. Operations that take a body require `Content-Type: application/json`
+  ([R-4](../research.md#r-4-bearer-requests-skip-the-same-origin-check)).
+- The viewer is always the owner, and private videos are returned too (acceptance criterion 2).
+- Errors have the same shape as the screen API, `{ code, message, reason?, limit?, index? }`. `index`
+  exists only in this API and gives the position (from 0) in §4's `videos` that caused the error. Only
+  the `code` and `reason` values listed here go into the enums in `external-v1.yaml`.
 
-## 2. 動画
+## 2. Videos
 
 ```yaml
 ExternalVideo:
@@ -26,14 +28,14 @@ ExternalVideo:
     id: { type: integer, format: int64 }
     contentKey: { type: string }
     title: { type: string }
-    durationMs: { type: [integer, "null"] }        # 解析前は null
+    durationMs: { type: [integer, "null"] }        # null before analysis
     addedAt: { type: string, format: date-time }
-    locations:                                    # 登録フォルダの下の今の所在。代表が先頭
+    locations:                                    # current locations under registered folders; the representative one first
       type: array
       items:
         required: [path, fileName]
         properties:
-          path: { type: string }                  # 絶対パス
+          path: { type: string }                  # absolute path
           fileName: { type: string }
     tags:
       type: array
@@ -44,47 +46,55 @@ ExternalVideoTag:                                 # domain.VideoTag
   properties:
     id: { type: integer, format: int64 }
     name: { type: string }
-    manual: { type: boolean }                     # 手で付けた（この API の付け外しの対象）
-    fromFolder: { type: boolean }                 # 祖先のフォルダ名から付く（この API では外れない）
+    manual: { type: boolean }                     # attached by hand (what this API attaches and detaches)
+    fromFolder: { type: boolean }                 # derived from an ancestor folder name (this API cannot detach it)
 ```
 
 ### `GET /api/v1/videos`
 
-| 引数 | 既定 | 規則 |
+| Parameter | Default | Rule |
 | --- | --- | --- |
-| `cursor` | 先頭 | 前回の `nextCursor`。解釈できないものは `400 invalid_request` / `invalid_cursor` |
-| `limit` | 100 | 1〜`domain.MaxLimit`（200）。外れは `400 invalid_request` |
+| `cursor` | Start | The previous `nextCursor`. An unparsable value is `400 invalid_request` / `invalid_cursor`. |
+| `limit` | 100 | 1 to `domain.MaxLimit` (200). Out of range is `400 invalid_request`. |
 
-`200`: `{ items: ExternalVideo[], nextCursor: string }`。並びは `(addedAt, id)` の昇順で固定。続きが無ければ
-`nextCursor` は空文字列（[R-6](../research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）。
+`200`: `{ items: ExternalVideo[], nextCursor: string }`. The order is fixed at `(addedAt, id)`
+ascending. When there is nothing more, `nextCursor` is the empty string
+([R-6](../research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)).
 
-一覧は全件を先頭から読むための口で、変更の追跡はしない。新しい動画を知りたい利用者は一覧を読み直す
-（受け入れ条件 3）。ページングの途中で動画が増える・消える・移動しても、続きの要求は失敗せずその時点の
-続きを返すが、読み通しの間の取りこぼしと重複を防ぐ約束はしない（Edge Cases）。
+The list is for reading everything from the start; it does not track changes. A user who wants new
+videos reads the list again (acceptance criterion 3). If videos are added, removed or moved during
+paging, the next request does not fail and returns the continuation as of that moment, but there is
+no promise against missed or duplicated items across a full read (Edge Cases).
 
-一覧は、`lookup` と同じく登録フォルダの下に所在を 1 つ以上持つ動画だけを返す。登録の下の所在をすべて失い
-登録外の所在だけで残った動画は、行が消えた動画と同じく一覧に出ず、消えたことを知らせる項目（墓標）も返さない。
-Issue は消えた動画の通知を求めていない（Webhook も対象外）。利用者は、持っている動画が消えたことを
-`lookup` の `404` で知る（`docs/how-to/external-api.md` に書く）。
+Like `lookup`, the list returns only videos that have at least one location under a registered
+folder. A video that lost every location under the registered folders and remains only with locations
+outside them is left out of the list, the same as a video whose row is gone, and no item (tombstone)
+reports that it is gone. The Issue does not ask for notification of removed videos (webhooks are out
+of scope too). The user learns that a held video is gone from a `404` on `lookup` (documented in
+`docs/how-to/external-api.md`).
 
 ### `GET /api/v1/videos/lookup`
 
-`id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400 invalid_request`。
+Takes exactly one of `id`, `contentKey` and `path`. Zero, or two or more, is `400 invalid_request`.
 
-- `200`: `ExternalVideo`。
-- `404 not_found` / `video_not_found`: 無い、または登録フォルダの下に所在が無い。
+| Status | Meaning |
+| --- | --- |
+| `200` | `ExternalVideo`. |
+| `404 not_found` / `video_not_found` | The video does not exist, or has no location under a registered folder. |
 
-`path` は絶対パスで、正規化せず今の所在の `path` とバイト列の完全一致で比べる。所在は
-ファイルシステムの綴り（NFD を含む）のまま保存されている（`internal/scanner` の
-`TestScanPreservesPathAndNormalizesTitleToNFC`）ので、一覧が返した `path` をそのまま渡せば引ける。
+`path` is an absolute path, compared byte for byte with the current location's `path` without
+normalisation. Locations are stored in the file system's spelling (including NFD; see
+`TestScanPreservesPathAndNormalizesTitleToNFC` in `internal/scanner`), so a `path` returned by the
+list can be passed back as is.
 
-## 3. タグ
+## 3. Tags
 
 ### `GET /api/v1/tags`
 
-`200`: `{ items: [{ id, name, synonyms: string[], videoCount }] }`。画面の `ListTags` と同じ並び。
+`200`: `{ items: [{ id, name, synonyms: string[], videoCount }] }`, in the same order as the
+screen's `ListTags`.
 
-## 4. 動画のタグ
+## 4. Video tags
 
 ### `POST /api/v1/video-tags`
 
@@ -94,42 +104,41 @@ Issue は消えた動画の通知を求めていない（Webhook も対象外）
   "tags": ["名前", "シノニム"] }
 ```
 
-付け外しの対象は手で付けたタグだけで、フォルダ由来のタグは残る（`replace` の後も）。規則は [research.md R-7](../research.md#r-7-タグの操作は厳格な一括操作として-tagstore-に足す)。
+Only manually attached tags are attached and detached; folder-derived tags remain (after `replace`
+too). The rules are in
+[research.md R-7](../research.md#r-7-tag-operations-are-added-to-tagstore-as-a-strict-batch-operation).
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 成功 | `200`: `{ items: [{ video: { id, contentKey }, tags: ExternalVideoTag[] }] }`（`videos` の順、操作後のタグ） |
-| 各 `videos` の要素が id・内容キー・パスのちょうど 1 つでない、`action` が不正 | `400 invalid_request` |
-| `videos` が 0 件か 20000 件超 | `400 invalid_request` / `too_many_videos`、`limit` |
-| `tags` が `add`・`remove` で 0 件、または 100 件超 | `400 invalid_request` / `too_many_tags`、`limit` |
-| 名前が空・制御文字・長すぎる | `400 invalid_request` / `tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`index` は `tags` の位置 |
-| 引けない動画がある | `404 not_found` / `video_not_found`、`index`。何も反映しない |
+| Success | `200`: `{ items: [{ video: { id, contentKey }, tags: ExternalVideoTag[] }] }` (in `videos` order, tags after the operation) |
+| An element of `videos` is not exactly one of id, content key and path, or `action` is invalid | `400 invalid_request` |
+| `videos` has 0 entries or more than 20000 | `400 invalid_request` / `too_many_videos`, `limit` |
+| `tags` has 0 entries for `add` or `remove`, or more than 100 | `400 invalid_request` / `too_many_tags`, `limit` |
+| A name is empty, contains control characters or is too long | `400 invalid_request` / `tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`; `index` is the position in `tags` |
+| A video cannot be resolved | `404 not_found` / `video_not_found`, `index`. Nothing is applied. |
 
-名前の誤りの `index` は `tags` の位置を指す。それ以外の `index` は `videos` の位置を指す。
+For name errors, `index` points into `tags`. For every other error, `index` points into `videos`.
 
-## 5. スキャン
+## 5. Scans
 
 ```yaml
 ExternalScan:
   required: [id, status, startedAt, finishedAt, videos, settledVideos, errorCode]
   properties:
     id: { type: integer, format: int64 }
-    status: { enum: [finding, running, done, partial, failed] }   # domain の Scan.status と同じ
+    status: { enum: [finding, running, done, partial, failed] }   # same as Scan.status in domain
     startedAt: { type: string, format: date-time }
     finishedAt: { type: [string, "null"], format: date-time }
-    videos: { type: [integer, "null"] }            # finding のあいだは null（本数を数え終えていない）
-    settledVideos: { type: [integer, "null"] }     # 同上。数えたあとは 0 ≤ settledVideos ≤ videos
+    videos: { type: [integer, "null"] }            # null while finding (the count is not finished)
+    settledVideos: { type: [integer, "null"] }     # likewise; once counted, 0 ≤ settledVideos ≤ videos
     errorCode: { type: [string, "null"] }
 ```
 
-`videos`・`settledVideos` は `domain.ImportProgress.Counted` が真のときだけ数を入れ、偽なら両方 `null` にする
-（画面の API が `videos` を省くのと同じ判定）。走査を始めた直後の `finding` と、対象が 0 本で `done` の
-`{ videos: 0, settledVideos: 0 }` を区別できる。
+`videos` and `settledVideos` hold numbers only when `domain.ImportProgress.Counted` is true; when it is
+false both are `null` (the same test the screen API uses to omit `videos`). This distinguishes
+`finding` right after a scan starts from `done` with no videos, `{ videos: 0, settledVideos: 0 }`.
 
-- `POST /api/v1/scans`: 新しく始めたら `201`、実行中のものを返したら `200`。どちらかは、走査の行を作るか
-  実行中の行を返すかを 1 つのトランザクションで決める `ScanStore.StartScan` の `started` で決め、
-  `app.Scans.StartScan` は `(domain.Scan, started bool, error)` を返すように変えてそれを通す。画面の
-  `POST /api/scans` は `started` を読まず、今どおり `202` を返す。応答の前に `GET /api/v1/scans/current` で
-  状態を読んで決めることはしない（読む間に走査が始まる・終わる）。
-  メディアフォルダが無ければ、画面の API と同じ `409 media_folders_not_configured`。
-- `GET /api/v1/scans/current`: `200 ExternalScan`。一度も走査していなければ `404 not_found` / `no_scan`。
+| Operation | Behaviour |
+| --- | --- |
+| `POST /api/v1/scans` | `201` when a new scan was started, `200` when the running one is returned. Which one is decided by `started` from `ScanStore.StartScan`, which decides in one transaction whether to create a scan row or return the running one; `app.Scans.StartScan` changes to return `(domain.Scan, started bool, error)` and passes it through. The screen's `POST /api/scans` ignores `started` and still returns `202`. The response is not decided by reading state through `GET /api/v1/scans/current` first (a scan may start or finish in between). With no media folders, it returns `409 media_folders_not_configured`, as the screen API does. |
+| `GET /api/v1/scans/current` | `200 ExternalScan`. If no scan has ever run, `404 not_found` / `no_scan`. |
