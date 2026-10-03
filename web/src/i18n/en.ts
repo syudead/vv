@@ -700,9 +700,9 @@ export const en = {
     rejectDialog: {
       title: (name: string) => `Reject "${name}"`,
       unused: (name: string) =>
-        `This tag isn't on any videos. Automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+        `This tag isn't on any videos. Automatic tagging won't create "${name}" again. You can allow the name again from Rejected names.`,
       used: (name: string, count: number) =>
-        `This tag will be removed from ${videos(count)}, and automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+        `This tag will be removed from ${videos(count)}, and automatic tagging won't create "${name}" again. You can allow the name again from Rejected names.`,
       submit: "Reject",
       submitting: "Rejecting…",
     },

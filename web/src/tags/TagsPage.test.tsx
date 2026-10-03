@@ -2504,9 +2504,8 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const heading = screen.getByRole("button", { name: /Rejected names/ });
-    expect(heading.getAttribute("aria-expanded")).toBe("false");
-    await waitFor(() => expect(heading.textContent).toContain("0"));
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("0"));
 
     await user.click(
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
@@ -2515,7 +2514,7 @@ describe("TagsPage 仮のタグ", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
     expect(
       within(dialog).getByText(
-        'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from the rejected names below.',
+        'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from Rejected names.',
       ),
     ).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Reject" }));
@@ -2527,11 +2526,11 @@ describe("TagsPage 仮のタグ", () => {
         within(rowOf("Beta")).getByRole("button", { name: "Rename" }),
       ),
     );
-    await waitFor(() => expect(heading.textContent).toContain("1"));
+    await waitFor(() => expect(entry.textContent).toContain("1"));
 
-    await user.click(heading);
-    expect(heading.getAttribute("aria-expanded")).toBe("true");
-    const list = screen.getByRole("list", { name: "Rejected names" });
+    await user.click(entry);
+    const rejected = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(rejected).getByRole("list", { name: "Rejected names" });
     expect(within(list).getByTitle("Alpha")).toBeDefined();
   });
 
@@ -2546,7 +2545,7 @@ describe("TagsPage 仮のタグ", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Reject "Beta"' });
     expect(
       within(dialog).getByText(
-        "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from the rejected names below.",
+        "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from Rejected names.",
       ),
     ).toBeDefined();
 
@@ -2609,16 +2608,22 @@ describe("TagsPage 仮のタグ", () => {
     expect(screen.getByRole("dialog", { name: 'Reject "Alpha"' })).toBeDefined();
   });
 
-  it("却下した名前を×で一覧から外せる。最後の1つなら見出しへフォーカスが移る（受け入れ条件13）", async () => {
+  it("却下した名前を×で一覧から外せる。最後の1つなら「Close」へフォーカスが移る（受け入れ条件13）", async () => {
     const user = userEvent.setup();
     server.rejectedNames = ["Old", "Stale"];
     install();
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const heading = screen.getByRole("button", { name: /Rejected names/ });
-    await user.click(heading);
-    const list = await screen.findByRole("list", { name: "Rejected names" });
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("2"));
+    await user.click(entry);
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(dialog).getByRole("list", { name: "Rejected names" });
+    // 最初のフォーカスは最初の名前の ×。
+    expect(document.activeElement).toBe(
+      within(list).getByRole("button", { name: 'Allow "Old" again' }),
+    );
     expect(
       screen.getByText(
         "Automatic tagging won't create these tags. Remove a name to allow it again.",
@@ -2636,8 +2641,57 @@ describe("TagsPage 仮のタグ", () => {
 
     await user.click(within(list).getByRole("button", { name: 'Allow "Stale" again' }));
     expect(await screen.findByText("No rejected names")).toBeDefined();
-    await waitFor(() => expect(document.activeElement).toBe(heading));
-    expect(heading.textContent).toContain("0");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByText("Close", { selector: "button" }),
+      ),
+    );
+
+    // Esc で閉じると、フォーカスは入口へ戻り、件数は 0 になっている。
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(entry));
+    expect(entry.textContent).toContain("0");
+  });
+
+  it("却下した名前の入口は一覧の先頭より上の帯にあり、押すと窓で一覧と取り外しが開く（受け入れ条件12）", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const firstRow = screen.getByTitle("Alpha").closest("[data-tag-id]")!;
+    expect(
+      entry.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 入口は件数の行と同じ帯の中にある。一覧の下の折りたたみは無い。
+    expect(entry.closest(".sticky")).toBe(
+      screen.getByText(/^\d+ tags$/).closest(".sticky"),
+    );
+    expect(entry.hasAttribute("aria-expanded")).toBe(false);
+    expect(screen.getAllByRole("button", { name: /Rejected names/ })).toHaveLength(1);
+    await waitFor(() => expect(entry.textContent).toContain("1"));
+
+    await user.click(entry);
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    expect(
+      within(dialog).getByText(
+        "Automatic tagging won't create these tags. Remove a name to allow it again.",
+      ),
+    ).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: 'Allow "Old" again' }));
+    expect(await within(dialog).findByText("No rejected names")).toBeDefined();
+    expect(server.rejectedNames).toEqual([]);
+  });
+
+  it("タグの一覧を取る前は却下した名前の入口を出さず、タグが無いときは出す", async () => {
+    server.tags = [];
+    install();
+    renderPage();
+    expect(screen.queryByRole("button", { name: /Rejected names/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: /Rejected names/ })).toBeDefined();
   });
 
   it("却下した名前を取れなかったら理由を出し、再試行できる", async () => {
@@ -2664,8 +2718,6 @@ describe("TagsPage 仮のタグ", () => {
     install();
     renderPage();
     await screen.findByTitle("Alpha");
-    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
-    const list = await screen.findByRole("list", { name: "Rejected names" });
 
     // 却下で取り直しが始まり、その応答は取り外しの前の並びを持ったまま止まる。
     holdRejectedGets = true;
@@ -2675,6 +2727,10 @@ describe("TagsPage 仮のタグ", () => {
     await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
     expect(rejectedGetReleases).toHaveLength(1);
     holdRejectedGets = false;
+
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(dialog).getByRole("list", { name: "Rejected names" });
 
     await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
     await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
@@ -2698,12 +2754,16 @@ describe("TagsPage 仮のタグ", () => {
     expect(
       await screen.findByRole("button", { name: 'Allow "Old" again' }),
     ).toBeDefined();
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     server.failRejectedGets = true;
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
     await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
 
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
     expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
     expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
 
@@ -2782,15 +2842,16 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
-    expect(
-      await screen.findByRole("button", { name: 'Allow "Old" again' }),
-    ).toBeDefined();
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("1"));
 
     await user.click(screen.getByRole("button", { name: "New tag" }));
     await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Old");
     await user.keyboard("{Enter}");
+    await screen.findByTitle("Old");
 
+    await waitFor(() => expect(entry.textContent).toContain("0"));
+    await user.click(entry);
     expect(await screen.findByText("No rejected names")).toBeDefined();
     expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
   });
@@ -2913,6 +2974,8 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(screen.getByRole("button", { name: /Rejected names/ }));
     await screen.findByRole("list");
     expectCatalogTextOnly(document.body, userData);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await user.click(screen.getByRole("button", { name: /Tentative only/ }));
     await waitFor(() => expect(screen.queryByTitle("Gamma")).toBeNull());
@@ -2934,6 +2997,7 @@ describe("TagsPage 見えている行だけ描く", () => {
   const rowHeight = 40;
   const viewportHeight = 200;
   const tagCount = 60;
+  const bandHeight = 50;
   let originalInnerHeight = 0;
   let originalOffsetHeight: PropertyDescriptor | undefined;
 
@@ -2964,7 +3028,9 @@ describe("TagsPage 見えている行だけ描く", () => {
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
       configurable: true,
       get(this: HTMLElement) {
-        return this.hasAttribute("data-index") ? rowHeight : 0;
+        if (this.hasAttribute("data-index")) return rowHeight;
+        // 上部バーの下に留める帯（ui-design.md「Band」）。
+        return this.classList.contains("sticky") ? bandHeight : 0;
       },
     });
   });
@@ -3092,6 +3158,82 @@ describe("TagsPage 見えている行だけ描く", () => {
     const still = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
     expect(still).toBe(input);
     expect((still as HTMLInputElement).value).toBe("下書き");
+  });
+
+  describe("スクロールした位置から", () => {
+    const scrolled = 1000;
+
+    /** scrollWindow は文書を scrolled までスクロールしたことにする。 */
+    function scrollWindow() {
+      // スクロールの行き先が文書の高さで切り詰められないよう、文書に高さを置く。
+      Object.defineProperty(document.documentElement, "scrollHeight", {
+        configurable: true,
+        value: 100_000,
+      });
+      Object.defineProperty(window, "scrollY", { configurable: true, value: scrolled });
+      window.dispatchEvent(new Event("scroll"));
+    }
+
+    afterEach(() => {
+      Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+      Reflect.deleteProperty(document.documentElement, "scrollHeight");
+    });
+
+    it("描いていない前の行へ戻るときは、留めた帯の高さを差し引いてスクロールする", async () => {
+      const user = userEvent.setup();
+      install();
+      renderPage();
+      await screen.findByTitle(name(0));
+      scrollWindow();
+      await waitFor(() => expect(Math.min(...drawnIndexes())).toBeGreaterThan(0));
+
+      const first = Math.min(...drawnIndexes());
+      screen.getByRole("checkbox", { name: `Select "${name(first)}"` }).focus();
+      const scrollTo = vi.mocked(window.scrollTo);
+      scrollTo.mockClear();
+      await user.tab({ shift: true });
+
+      expect(document.activeElement).toBe(
+        within(wrapperOf(first - 1)).getByRole("button", { name: "More actions" }),
+      );
+      // 行の上端（jsdom では一覧の上端が文書の 0）から帯の高さだけ上へ。行が帯の
+      // 下に隠れない（ui-design.md「Keyboard across virtualized rows」）。
+      const start = Number(
+        /translateY\((-?[\d.]+)px\)/.exec(wrapperOf(first - 1).style.transform)![1],
+      );
+      expect(start).toBeGreaterThan(bandHeight);
+      expect(scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ top: start - bandHeight }),
+      );
+    });
+
+    it("一覧の先頭が帯の下に隠れていれば、「新しいタグ」は先頭まで戻してから作成の行を出す", async () => {
+      const user = userEvent.setup();
+      // 一覧の先頭は表示域の上の外（帯の下端より上）にある。
+      const listTop = -300;
+      const rect = vi
+        .spyOn(Element.prototype, "getBoundingClientRect")
+        .mockReturnValue({ top: listTop } as DOMRect);
+      try {
+        install();
+        renderPage();
+        await screen.findByTitle(name(0));
+        scrollWindow();
+        const scrollTo = vi.mocked(window.scrollTo);
+        scrollTo.mockClear();
+
+        await user.click(screen.getByRole("button", { name: "New tag" }));
+
+        expect(scrollTo).toHaveBeenCalledWith({ top: scrolled + listTop - bandHeight });
+        await waitFor(() =>
+          expect(document.activeElement).toBe(
+            screen.getByRole("textbox", { name: "New tag name" }),
+          ),
+        );
+      } finally {
+        rect.mockRestore();
+      }
+    });
   });
 
   it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
