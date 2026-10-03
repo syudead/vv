@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -120,8 +121,8 @@ func TestExternalVideoTagsWithoutTentativeCreatesConfirmedTags(t *testing.T) {
 	if got := f.externalTagStates(t); len(got) != 2 || got["高画質"] || got["犬"] {
 		t.Errorf("GET /api/v1/tags = %v", got)
 	}
-	rejected, err := f.env.db.Tags().ListRejectedTagNames(context.Background())
-	if err != nil || len(rejected) != 0 {
+	rejected, err := f.env.db.Tags().ListRejectedTagNames(context.Background(), "", 0)
+	if err != nil || len(rejected.Items) != 0 || rejected.Total != 0 {
 		t.Errorf("却下した名前 = %v, err=%v（確定で作った名前は一覧から消える）", rejected, err)
 	}
 }
@@ -176,7 +177,7 @@ func TestExternalVideoTagsRejectsNonBooleanTentative(t *testing.T) {
 			t.Errorf("tentative=%s: status = %d: %s", value, status, raw)
 		}
 	}
-	if tags, err := f.env.db.Tags().ListTags(context.Background()); err != nil || len(tags) != 0 {
+	if tags, err := f.env.db.Tags().ListTags(context.Background(), domain.TagListQuery{}); err != nil || len(tags.Items) != 0 {
 		t.Errorf("誤りの要求がタグを作った: %+v, err=%v", tags, err)
 	}
 }

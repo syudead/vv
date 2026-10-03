@@ -9,6 +9,13 @@ export type TagRef = components["schemas"]["TagRef"];
 export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
+export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
+export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
+export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
+export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
+export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
+export type TagList = components["schemas"]["TagList"];
+export type TagSort = components["schemas"]["TagSort"];
 
 /**
  * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
@@ -20,6 +27,14 @@ export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
 export const maxVideoTagsSelection = 20000;
 
 /**
+ * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。超えると 400 `too_many_tags` に
+ * なるので、画面は読み込んだ行がこれを超えるときは先頭のチェック（読み込んだものを
+ * すべて選ぶ）だけを、選んだ数がこれを超えるときはまとめての操作を disabled にする。
+ */
+export const maxTagBatch = 20000;
+
+/**
  * listTags はタグを名前の自然順で取得する（本数0を含む）。
  *
  * 呼び出し元ごとの AbortSignal は受け取らない。この要求は複数の呼び出し元で
@@ -27,7 +42,45 @@ export const maxVideoTagsSelection = 20000;
  * はならない（B2）。
  */
 function listTags(): Promise<Tag[]> {
-  return request<{ items: Tag[] }>("/api/tags").then((page) => page.items);
+  return request<TagList>("/api/tags").then((page) => page.items);
+}
+
+/**
+ * tagPageLimit はタグ管理画面が 1 回に読むタグの数
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。
+ */
+export const tagPageLimit = 100;
+
+/** TagPageQuery は `listTagPage` の条件である（contracts/screen-api.md §5）。 */
+export interface TagPageQuery {
+  /** 検索語。サーバーが照合形にして名前とシノニムに部分一致させる。空なら絞らない。 */
+  q?: string;
+  /** 仮のタグだけにする。 */
+  tentative?: boolean;
+  /** 本数 0 のタグだけにする。 */
+  unused?: boolean;
+  sort?: TagSort;
+  /** 前回の応答の `nextCursor`。同じ条件で続けて使う。 */
+  cursor?: string;
+  /** 1 ページの件数（1〜200）。既定は `tagPageLimit`。 */
+  limit?: number;
+}
+
+/**
+ * listTagPage は条件に合うタグを 1 ページ読む（`GET /api/tags`、contracts/screen-api.md §4・§5）。
+ * 検索・絞り込み・並び順はサーバーが全部のタグに掛ける。共有の保持（`getTags`）には触れず、
+ * 呼び手ごとの `AbortSignal` で打ち切れる（条件を変えたら前の要求を打ち切るため）。
+ */
+export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<TagList> {
+  const params = new URLSearchParams();
+  if (query.q !== undefined && query.q !== "") params.set("q", query.q);
+  if (query.tentative === true) params.set("tentative", "true");
+  if (query.unused === true) params.set("unused", "true");
+  if (query.sort !== undefined) params.set("sort", query.sort);
+  if (query.cursor !== undefined && query.cursor !== "")
+    params.set("cursor", query.cursor);
+  params.set("limit", String(query.limit ?? tagPageLimit));
+  return request<TagList>(`/api/tags?${params.toString()}`, { signal });
 }
 
 /**
@@ -54,6 +107,12 @@ let generation = 0;
 let latestFetch: Promise<Tag[]> | undefined;
 /** pendingGet は getTags 同士（held がまだ無いときの同時呼び出し）だけをまとめる。 */
 let pendingGet: Promise<Tag[]> | undefined;
+/**
+ * droppedGeneration は、`dropHeldTags` が保持を捨てた時点の generation である。これ以下の
+ * 世代の取得（捨てる前に始まり、変更を映していないかもしれない）は、届いても `held` に
+ * 入れない。
+ */
+let droppedGeneration = 0;
 const listeners = new Set<TagsListener>();
 
 function notify(tags: Tag[]): void {
@@ -84,6 +143,10 @@ function startFetch(): Promise<Tag[]> {
       // 埋まっている（自分より後の呼び出しが少なくとも1つある）。
       return latestFetch!;
     }
+    // 保持を捨てる前に始まった取得は、変更を映していないかもしれない。待っている
+    // 呼び手（シノニムの窓の統合元の確かめなど）へ古い一覧を返さず、取り直した結果を
+    // 返す（取り直しが届けば、それが `held` に入る）。
+    if (myGeneration <= droppedGeneration) return startFetch();
     held = tags;
     notify(tags);
     return tags;
@@ -100,9 +163,11 @@ function startFetch(): Promise<Tag[]> {
 export function getTags(): Promise<Tag[]> {
   if (held !== undefined) return Promise.resolve(held);
   if (pendingGet === undefined) {
-    pendingGet = startFetch().finally(() => {
-      pendingGet = undefined;
+    const fetching: Promise<Tag[]> = startFetch().finally(() => {
+      // `dropHeldTags` のあとに始まった別の取得のまとめは外さない。
+      if (pendingGet === fetching) pendingGet = undefined;
     });
+    pendingGet = fetching;
   }
   return pendingGet;
 }
@@ -140,6 +205,7 @@ export function __resetTagsForTest(): void {
   generation = 0;
   latestFetch = undefined;
   pendingGet = undefined;
+  droppedGeneration = 0;
   listeners.clear();
 }
 
@@ -174,13 +240,33 @@ function afterTagCreated(): void {
 
 /**
  * afterTagChanged は、既存のタグを書き換える操作（改名・削除・統合・シノニム
- * の変更）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、破棄して
- * 読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。共有の
- * タグの一覧も取り直す（Structural Decisions 8）。どちらも完了を待たなくてよい。
+ * の変更・まとめての操作）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、
+ * 破棄して読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。
+ *
+ * 共有のタグの一覧は、購読者（`subscribeTags`）がいれば今までどおり取り直し
+ * （Structural Decisions 8）、いなければ取り直さずに `held` を捨てて次の `getTags` に
+ * 取らせる（specs/036-tag-admin-scale/research.md R-12、contracts/screen-api.md §4）。
+ * タグ管理画面は購読しないので、そこでの操作のたびに全件を取り直さない。どちらも
+ * 完了を待たなくてよい。
  */
 function afterTagChanged(): void {
   clearListSnapshot();
-  refreshTags().catch(() => undefined);
+  if (listeners.size > 0) {
+    refreshTags().catch(() => undefined);
+    return;
+  }
+  dropHeldTags();
+}
+
+/**
+ * dropHeldTags は共有の保持を捨てる。進行中の取得は変更の前に始まったものなので、
+ * 届いても `held` に入れず（`droppedGeneration`）、その取得を待つ呼び手には取り直した
+ * 結果を返す（`startFetch`）。進行中の取得が無ければ何も送らず、次の `getTags` が取り直す。
+ */
+function dropHeldTags(): void {
+  held = undefined;
+  pendingGet = undefined;
+  droppedGeneration = generation;
 }
 
 /**
@@ -233,18 +319,20 @@ export async function deleteTag(id: number, signal?: AbortSignal): Promise<void>
 }
 
 /**
- * mergeTag は sourceId のタグを id のタグへ統合する。返るのは統合先の更新後の
- * タグである。
+ * mergeTag は sourceIds のタグを id のタグへ統合する（1 件の統合も `[sourceId]` で送る）。
+ * 返るのは統合先の更新後のタグ（`tag`）と、もう無かった統合元（`notFoundIds`）である
+ * （specs/036-tag-admin-scale/contracts/screen-api.md §2・§4）。統合元がすべて無かったときも
+ * 成功で、`tag` は変わらない統合先になる。
  */
 export async function mergeTag(
   id: number,
-  sourceId: number,
+  sourceIds: readonly number[],
   signal?: AbortSignal,
-): Promise<Tag> {
-  const merged = await request<Tag>(`/api/tags/${String(id)}/merge`, {
+): Promise<TagMergeResponse> {
+  const merged = await request<TagMergeResponse>(`/api/tags/${String(id)}/merge`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceId }),
+    body: JSON.stringify({ sourceIds }),
     signal,
   }).catch(refreshOnStaleTagError);
   afterTagChanged();
@@ -311,7 +399,7 @@ export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag>
  * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、contracts/screen-api.md §2）。
  * タグは消え、付いていた動画から外れ、名前が却下した名前の一覧に入る。確定したタグは
  * 409 `tag_not_tentative` になる。却下した名前の一覧は呼び出し側が
- * `listRejectedTagNames` で取り直す。
+ * `listRejectedTagNamePage` で取り直す。
  */
 export async function rejectTag(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tags/${String(id)}/reject`, {
@@ -325,12 +413,63 @@ export async function rejectTag(id: number, signal?: AbortSignal): Promise<void>
 }
 
 /**
- * listRejectedTagNames は却下した名前を名前の自然順で返す
- * （GET /api/tags/rejected-names、contracts/screen-api.md §3）。
+ * batchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
+ * specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは
+ * サーバーが飛ばし、`notApplicableIds`・`notFoundIds` で返す。成功したら、1 件の操作と同じく
+ * `afterTagChanged` を 1 回呼ぶ。却下のあとの却下した名前の一覧は呼び出し側が取り直す。
  */
-export function listRejectedTagNames(signal?: AbortSignal): Promise<string[]> {
-  return request<RejectedTagNameList>("/api/tags/rejected-names", { signal }).then(
-    (list) => list.items,
+export async function batchTags(
+  action: TagBatchAction,
+  ids: readonly number[],
+  signal?: AbortSignal,
+): Promise<TagBatchResponse> {
+  const result = await request<TagBatchResponse>("/api/tags/batch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ids: Array.from(ids) }),
+    signal,
+  });
+  afterTagChanged();
+  return result;
+}
+
+/**
+ * tagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
+ * 本数（重複なし）を返す（POST /api/tags/impact、contracts/screen-api.md §3）。何も変えない
+ * ので、共有の保持には触れない。
+ */
+export function tagImpact(
+  action: TagImpactAction,
+  ids: readonly number[],
+  signal?: AbortSignal,
+): Promise<TagImpactResponse> {
+  return request<TagImpactResponse>("/api/tags/impact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action, ids: Array.from(ids) }),
+    signal,
+  });
+}
+
+/**
+ * listRejectedTagNamePage は却下した名前の 1 ページを名前の自然順で返す
+ * （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+ * `cursor` は前のページの `nextCursor`、`limit` は 1 ページの件数（1〜200）。省くとサーバーの
+ * 既定（先頭から 100 件）になる。応答の `total` は却下した名前の全部の数で、`nextCursor` は
+ * 続きがあるときだけ入る。共有の保持には触れない。
+ */
+export function listRejectedTagNamePage(
+  cursor?: string,
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<RejectedTagNameList> {
+  const query = new URLSearchParams();
+  if (cursor !== undefined) query.set("cursor", cursor);
+  if (limit !== undefined) query.set("limit", String(limit));
+  const search = query.toString();
+  return request<RejectedTagNameList>(
+    search === "" ? "/api/tags/rejected-names" : `/api/tags/rejected-names?${search}`,
+    { signal },
   );
 }
 

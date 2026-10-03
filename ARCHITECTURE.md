@@ -482,8 +482,12 @@ compile:
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
-  synonym, the counted listing, and the startup refresh of tag-name search keys
-  (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
+  synonym, the counted listing, and the startup refresh of the two per-name keys, the
+  match key `search_key` and the natural-order key `sort_key`, for the `tag_names` rows
+  and the `sort_key` for the `rejected_tag_names` rows whose `search_version` is older
+  than `domain.SearchKeyVersion` (`specs/014-video-tags/data-model.md`,
+  `specs/036-tag-admin-scale/data-model.md` §0). Every entry that writes a name row
+  writes both keys in the same statement. It also attaches and detaches a tag across a
   set of video ids (resolved to the currently-registered videos' user keys, one per
   bundle, through `userKeysForVideoIDs`),
   summarizes the tags on a selected set of videos, and looks up the tags on a set of
@@ -493,7 +497,12 @@ compile:
   tentative tag, rejects it (deleting it and remembering its name in
   `rejected_tag_names`), lists and forgets rejected names, and every entry that writes a
   name into `tag_names` removes it from the rejected names in the same transaction
-  (`specs/031-tentative-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
+  (`specs/031-tentative-tags/data-model.md`). For the tag admin screen it confirms,
+  rejects or deletes many tags in one transaction (`BatchTags`, applying each action
+  only to the kind of tag the row action applies to and returning the skipped and missing
+  ids), and counts the tags an action applies to and the distinct registered videos they
+  are on for its confirmation (`TagImpact`); both pass the ids to `json_each` as one
+  argument (`specs/036-tag-admin-scale/data-model.md` §2). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
   Attaching and detaching manual tags (including the external API's bulk operation)
@@ -870,8 +879,35 @@ that picks the representative, which the library's selection bar and the candida
 screen open, and the owner-only candidates screen (`/duplicates`), which lists the pairs
 a scan found to look like the same video, bundles a pair through that dialog or records
 it as different videos, and refetches on the `scan` notification. `web/src/tags/` is the tag
-admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
-search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
+admin screen (`/tags`): a list of the tags with their video counts, a name/synonym
+search, "Tentative only" and "Unused only" filters, a sort by name, video count or
+creation date (only the sort is kept per device, in `web/src/preferences/tagListPreferences.ts`),
+create, rename and delete. Search, filters and sort are applied by the server to every tag:
+the page reads 100 tags at a time from `GET /api/tags` (`listTagPage`) for the current
+conditions, aborting the in-flight request and dropping stale responses when they change, and
+reads the next page by `nextCursor` as the drawn range nears the end of the loaded rows
+(duplicates by id are dropped; a changed `totalAll` stops paging and offers a reload). After a
+single or bulk action the page rewrites its loaded rows in place instead of refetching
+(`web/src/tags/tagPageRows.ts`): it re-checks the current conditions with `foldForMatch` and
+places a changed or created tag at its sort position with `naturalSortKey`, unless that
+position lies past the loaded range. The page does not use the shared tag store
+(`getTags`/`subscribeTags`); a tag change refreshes that store only while something
+subscribes to it and otherwise just drops it. Rows carry a checkbox; selecting any shows a bottom selection bar
+(`TagSelectionBar`) that confirms, rejects or deletes the selected tags together through one
+`POST /api/tags/batch`, after a confirmation that counts the affected videos with
+`POST /api/tags/impact` (`BulkTagDialog`; bulk confirm asks nothing), or merges them into
+one tag chosen from every tag through `POST /api/tags/{id}/merge` (`MergeTagDialog`, the
+same dialog a row's merge opens, counting with `POST /api/tags/impact`). The merge target is
+searched on the server as the user types (`GET /api/tags?q=…&limit=8`, the in-flight request
+aborted on the next keystroke), so a tag the page has not loaded can still be chosen. The selection is page
+state, kept to the loaded rows; the header checkbox selects every loaded row, never tags not
+yet loaded. On touch devices and below `sm`, a row's actions
+collapse into one labelled "Actions" menu, switched by CSS alone. The list draws only the rows in and near the viewport (`@tanstack/react-virtual`'s
+`useWindowVirtualizer`, used nowhere else; the document stays the scroll owner), keeps the
+focused row drawn, and hands Tab across the edge of the drawn range so keyboard order follows
+every row (`docs/design-docs/library-ui.md` §3). The toolbar and count line stay pinned under
+the top bar as one sticky band, and row scrolling subtracts its measured height; the rejected
+names open in a dialog from the count line (`RejectedNames`). `web/src/shell/navigation.ts` puts its sidebar entry
 right after "フォルダ" (Folders), followed by the owner-only "Duplicates" entry. Every sidebar entry links to a working screen. The library, folder, settings, tag and candidates screens use the shell: `app/App.tsx`
 puts `AppShell` around the `/`, `/folders/*`, `/settings`, `/tags` and `/duplicates` routes, and the
 playback screen

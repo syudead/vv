@@ -55,7 +55,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 	case mergeTagID == nil || *mergeTagID != lookup.tagID:
 		return domain.Tag{}, &domain.TagMergeRequired{Tag: lookup.ref()}
 	default:
-		if _, err := mergeTagInto(ctx, tx, tagID, lookup.tagID); err != nil {
+		if err := mergeTagsInto(ctx, tx, tagID, []int64{lookup.tagID}); err != nil {
 			return domain.Tag{}, err
 		}
 	}

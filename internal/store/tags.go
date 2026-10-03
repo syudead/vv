@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -43,8 +44,9 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, err
 	}
 	// 作ったばかりのタグでも、同じ名前の祖先フォルダの下の動画にはもう付いて
-	// いる（017 の data-model.md §4）ので、本数は数える。
-	count, err := videoCountByTagID(ctx, tx, id)
+	// いる（017 の data-model.md §4）ので、本数も数える。作った時刻も載せるため、
+	// 手で組み立てずに同じ取引で読み直す（specs/036-tag-admin-scale/data-model.md §2）。
+	tag, err := tagByID(ctx, tx, id)
 	if err != nil {
 		return domain.Tag{}, err
 	}
@@ -52,7 +54,7 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 	if err := tx.Commit(); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot create the tag: %w", err)
 	}
-	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: count}, nil
+	return tag, nil
 }
 
 // RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の
@@ -85,9 +87,9 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 			return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 		}
 		if _, err := tx.ExecContext(ctx, `
-			update tag_names set name = ?, search_key = ?, search_version = ?
+			update tag_names set name = ?, search_key = ?, sort_key = ?, search_version = ?
 			 where tag_id = ? and canonical = 1`,
-			normalized, domain.FoldForMatch(normalized), domain.SearchKeyVersion, id,
+			normalized, domain.FoldForMatch(normalized), domain.NaturalSortKey(normalized), domain.SearchKeyVersion, id,
 		); err != nil {
 			return domain.Tag{}, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
 		}
@@ -132,62 +134,92 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 	return nil
 }
 
-// MergeTag は sourceID のタグを targetID へ統合する（specs/014-video-tags/data-model.md §4）。source の付与は insert or ignore で target へ写り、
-// source の元の名前とシノニムはすべて target のシノニムになり、source は
-// 一覧から消える。どちらかが無ければ domain.ErrTagNotFound を返す。
-func (s *TagStore) MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error) {
+// MergeTags は sourceIDs のタグを targetID へ 1 つの取引で統合する
+// （specs/036-tag-admin-scale/data-model.md §2、specs/014-video-tags/data-model.md §4）。統合元の付与は
+// insert or ignore で統合先へ写り、統合元の元の名前とシノニムはすべて統合先のシノニムになり、
+// 統合元は一覧から消え、統合先は確定したタグになる。統合先が無ければ domain.ErrTagNotFound を返す。
+// sourceIDs の重複は 1 つとして扱い、無い id は飛ばして NotFoundIDs に入れる。統合先の id は
+// 統合元から除く。統合後の統合先は最後に 1 回だけ読む。取引が失敗したら何も変えない。
+func (s *TagStore) MergeTags(ctx context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.Tag{}, err
+		return domain.TagMergeOutcome{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tag, err := mergeTagInto(ctx, tx, targetID, sourceID)
+	outcome, err := mergeTagsInTx(ctx, tx, targetID, sourceIDs)
 	if err != nil {
-		return domain.Tag{}, err
+		return domain.TagMergeOutcome{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.Tag{}, fmt.Errorf("cannot merge the tags: %w", err)
+		return domain.TagMergeOutcome{}, fmt.Errorf("cannot merge the tags: %w", err)
 	}
-	return tag, nil
+	return outcome, nil
 }
 
-// mergeTagInto は同じトランザクションの中で source を target へ統合する。
-// target と source が同じ id なら何もせず、今の target をそのまま返す。統合したときは
-// target を確定したタグにする（specs/031-tentative-tags/data-model.md §3）。
-func mergeTagInto(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (domain.Tag, error) {
+// mergeTagsInTx は MergeTags の取引の中身である。統合元の有無と統合先との重なりをここで確かめ、
+// 残りを mergeTagsInto に渡し、統合先を tagByID で 1 回だけ読む。
+func mergeTagsInTx(ctx context.Context, tx tagTx, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error) {
 	if _, err := canonicalNameByTagID(ctx, tx, targetID); err != nil {
-		return domain.Tag{}, err
+		return domain.TagMergeOutcome{}, err
 	}
-	if targetID == sourceID {
-		return tagByID(ctx, tx, targetID)
+	unique := uniqueTagIDs(sourceIDs)
+	existing, err := tentativeByTagID(ctx, tx, unique)
+	if err != nil {
+		return domain.TagMergeOutcome{}, err
 	}
-	if _, err := canonicalNameByTagID(ctx, tx, sourceID); err != nil {
-		return domain.Tag{}, err
+	notFound := []int64{}
+	merged := make([]int64, 0, len(unique))
+	for _, id := range unique {
+		switch _, found := existing[id]; {
+		case !found:
+			notFound = append(notFound, id)
+		case id != targetID:
+			merged = append(merged, id)
+		}
 	}
+	if len(merged) > 0 {
+		if err := mergeTagsInto(ctx, tx, targetID, merged); err != nil {
+			return domain.TagMergeOutcome{}, err
+		}
+	}
+	tag, err := tagByID(ctx, tx, targetID)
+	if err != nil {
+		return domain.TagMergeOutcome{}, err
+	}
+	return domain.TagMergeOutcome{Tag: tag, NotFoundIDs: notFound}, nil
+}
 
+// mergeTagsInto は同じ取引の中で sourceIDs のタグを targetID へ統合し、統合先を確定したタグにする
+// （specs/031-tentative-tags/data-model.md §3）。統合元の数によらず決まった数の文で行い、統合後の
+// タグは組み立てない（20,000 個の統合で書きの取引を長く握らないため。036 の data-model.md §2）。
+// 統合元がすべて今あり、統合先を含まないことは呼び手が先に確かめて渡す。
+func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceIDs []int64) error {
+	encoded, err := json.Marshal(sourceIDs)
+	if err != nil {
+		return fmt.Errorf("cannot build tag ids: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		insert or ignore into video_tags (content_key, tag_id, created_at)
-		select content_key, ?, created_at from video_tags where tag_id = ?`,
-		targetID, sourceID,
+		select content_key, ?, created_at from video_tags
+		 where tag_id in (select value from json_each(?))`,
+		targetID, string(encoded),
 	); err != nil {
-		return domain.Tag{}, fmt.Errorf("cannot copy assignments to the merge target (source=%d target=%d): %w", sourceID, targetID, err)
+		return fmt.Errorf("cannot copy assignments to the merge target (target=%d): %w", targetID, err)
 	}
-
-	if _, err := tx.ExecContext(ctx, `update tag_names set tag_id = ?, canonical = 0 where tag_id = ?`,
-		targetID, sourceID,
+	if _, err := tx.ExecContext(ctx, `
+		update tag_names set tag_id = ?, canonical = 0
+		 where tag_id in (select value from json_each(?))`,
+		targetID, string(encoded),
 	); err != nil {
-		return domain.Tag{}, fmt.Errorf("cannot move tag names to the merge target (source=%d target=%d): %w", sourceID, targetID, err)
+		return fmt.Errorf("cannot move tag names to the merge target (target=%d): %w", targetID, err)
 	}
-
-	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, sourceID); err != nil {
-		return domain.Tag{}, fmt.Errorf("cannot delete the merged tag (id=%d): %w", sourceID, err)
+	if _, err := tx.ExecContext(ctx,
+		`delete from tags where id in (select value from json_each(?))`, string(encoded),
+	); err != nil {
+		return fmt.Errorf("cannot delete the merged tags (target=%d): %w", targetID, err)
 	}
-	if err := confirmTagInTx(ctx, tx, targetID); err != nil {
-		return domain.Tag{}, err
-	}
-
-	return tagByID(ctx, tx, targetID)
+	return confirmTagInTx(ctx, tx, targetID)
 }
 
 // findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ

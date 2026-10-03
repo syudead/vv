@@ -64,6 +64,41 @@ function tagCount(count: number): string {
   });
 }
 
+/** selectedTags は「The 8 selected tags」（1 件は「The selected tag」）である。 */
+function selectedTags(count: number): string {
+  return selectPlural(count, {
+    one: "The selected tag",
+    other: `The ${formatNumber(count)} selected tags`,
+  });
+}
+
+/** someOf は「8 of the 12 selected tags are」（働く数が 1 なら「is」）である。 */
+function someOf(applied: number, selected: number): string {
+  return `${formatNumber(applied)} of the ${formatNumber(selected)} selected tags ${applied === 1 ? "is" : "are"}`;
+}
+
+function pronoun(count: number): string {
+  return count === 1 ? "It" : "They";
+}
+
+/**
+ * removal はまとめての却下・削除の確認の動詞句である。count はその主語のタグの数、
+ * videoCount は影響を受ける動画の本数で、0 なら「aren't on any videos」の形にする。
+ */
+function removal(count: number, videoCount: number): string {
+  if (videoCount === 0)
+    return count === 1 ? "isn't on any videos" : "aren't on any videos";
+  return `will be removed from ${videos(videoCount)}`;
+}
+
+/** leftAsIs は「The 4 confirmed tags are left as they are.」である。 */
+function leftAsIs(count: number, kind: "confirmed" | "tentative"): string {
+  return selectPlural(count, {
+    one: `The ${kind} tag is left as it is.`,
+    other: `The ${formatNumber(count)} ${kind} tags are left as they are.`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -144,6 +179,10 @@ const errorReasons = {
     limit === undefined
       ? "Select fewer videos."
       : `Select between 1 and ${videos(limit)}.`,
+  too_many_tags: ({ limit }) =>
+    limit === undefined
+      ? "Select fewer tags."
+      : `Select between 1 and ${tagCount(limit)}.`,
   guest_filter_not_allowed:
     "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.",
   invalid_cursor: "The list changed while loading. Reload it.",
@@ -515,7 +554,19 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
+    // 続きがあるときだけ件数の後ろに添える、読み込んだ行の数
+    // （specs/036-tag-admin-scale/ui-design.md「Count line」）。
+    loadedCount: (loaded: number) => ` · ${formatNumber(loaded)} loaded`,
     loadFailed: "Couldn't load the tags",
+    // 一覧を持ったまま先頭のページを読めなかったとき（ui-design.md「Stale list」）。
+    staleList: (reason: string) =>
+      `Couldn't load tags: ${reason}. The list below may not match the current search, filters and sort.`,
+    // 一覧の末尾の続きの状態（ui-design.md「Loading more」）。
+    loadingMore: "Loading more tags…",
+    loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
+    listChanged:
+      "Tags were added or removed elsewhere, so the rest of this list may be out of date.",
+    reloadList: "Reload",
     empty: {
       title: "No tags yet",
       description:
@@ -533,6 +584,41 @@ export const en = {
         "Tags created by automatic tagging appear here until you confirm or reject them.",
     },
     noTentativeMatches: (query: string) => `No tentative tags match "${query}"`,
+    // 0 本のタグの絞り込みと並び順（specs/036-tag-admin-scale/ui-design.md「Words」）。
+    // 0 本のタグは「Unused」と呼び、「empty」「orphan」は使わない。
+    unusedOnly: "Unused only",
+    unusedOnlyHint: "Show only tags that aren't on any videos",
+    noUnused: {
+      title: "No unused tags",
+      description: "Every tag is on at least one video.",
+    },
+    noUnusedTentative: "No unused tentative tags",
+    noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
+    noUnusedTentativeMatches: (query: string) =>
+      `No unused tentative tags match "${query}"`,
+    sort: {
+      heading: "Sort by",
+      current: (label: string) => `Sort by: ${label}`,
+      compact: "Sort",
+      direction: "Sort direction",
+      kinds: {
+        name: "Name",
+        count: "Video count",
+        created: "Date created",
+      },
+      toggle: {
+        countDesc: "Descending (most videos first). Press for ascending",
+        countAsc: "Ascending (fewest videos first). Press for descending",
+        createdDesc: "Descending (newest first). Press for ascending",
+        createdAsc: "Ascending (oldest first). Press for descending",
+      },
+      segments: {
+        countDesc: "Most videos first",
+        countAsc: "Fewest videos first",
+        createdDesc: "Newest first",
+        createdAsc: "Oldest first",
+      },
+    },
     confirmed: (name: string) => `Confirmed "${name}"`,
     rejected: (name: string) => `Rejected "${name}"`,
     alreadyConfirmed: "This tag was already confirmed, so the list was reloaded",
@@ -543,6 +629,7 @@ export const en = {
       empty: "No rejected names",
       allow: (name: string) => `Allow "${name}" again`,
       loadFailed: "Couldn't load the rejected names",
+      loadMoreFailed: "Couldn't load more rejected names",
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
     },
@@ -580,13 +667,76 @@ export const en = {
       delete: "Delete…",
       confirm: "Confirm",
       reject: "Reject…",
+      select: (name: string) => `Select "${name}"`,
+      actions: "Actions",
+    },
+    // 行の選択とまとめての確定・却下・削除（specs/036-tag-admin-scale/ui-design.md「Words」）。
+    selectAllLoaded: (count: number) =>
+      selectPlural(count, {
+        one: `Select the ${formatNumber(count)} loaded tag`,
+        other: `Select all ${formatNumber(count)} loaded tags`,
+      }),
+    selectAllOverLimit: (limit: number) =>
+      `Too many tags are loaded to select them all at once (limit ${formatNumber(limit)}). Narrow the list with search or a filter.`,
+    clearSelection: "Clear selection",
+    selection: {
+      region: "Selected tags",
+      count: (count: number) => `${tagCount(count)} selected`,
+      confirm: "Confirm",
+      more: "More",
+      clear: "Clear selection",
+      mergeInto: "Merge into one tag…",
+      reject: "Reject…",
+      delete: "Delete…",
+      noTentative: "No tentative tags are selected",
+      noConfirmed: "No confirmed tags are selected",
+      overLimit: (limit: number) =>
+        `Too many tags are selected to act on them together (limit ${formatNumber(limit)}). Clear some of the selection.`,
+      confirmed: (applied: number, skipped: number) =>
+        skipped === 0
+          ? `Confirmed ${tagCount(applied)}`
+          : `Confirmed ${tagCount(applied)}. ${formatNumber(skipped)} ${skipped === 1 ? "was" : "were"} already confirmed.`,
+      rejected: (applied: number, skipped: number) =>
+        skipped === 0
+          ? `Rejected ${tagCount(applied)}`
+          : `Rejected ${tagCount(applied)}. ${selectPlural(skipped, {
+              one: `${formatNumber(skipped)} confirmed tag was skipped.`,
+              other: `${formatNumber(skipped)} confirmed tags were skipped.`,
+            })}`,
+      deleted: (applied: number, skipped: number) =>
+        skipped === 0
+          ? `Deleted ${tagCount(applied)}`
+          : `Deleted ${tagCount(applied)}. ${selectPlural(skipped, {
+              one: `${formatNumber(skipped)} tentative tag was skipped.`,
+              other: `${formatNumber(skipped)} tentative tags were skipped.`,
+            })}`,
+      stale: "Some of the tags no longer existed, so the list was reloaded",
+      merged: (count: number, target: string) =>
+        `Merged ${tagCount(count)} into "${target}"`,
+    },
+    bulkDialog: {
+      rejectTitle: "Reject selected tags",
+      deleteTitle: "Delete selected tags",
+      counting: "Counting the affected videos…",
+      countFailed: (reason: string) => `Couldn't count the affected videos: ${reason}`,
+      // 選んだすべてに働くとき。videoCount が 0 なら「removed from 0 videos」とは言わない。
+      rejectAll: (selected: number, videoCount: number) =>
+        `${selectedTags(selected)} ${removal(selected, videoCount)}, and automatic tagging won't create ${selected === 1 ? "its name" : "their names"} again. You can allow a name again from Rejected names.`,
+      rejectSome: (applied: number, selected: number, videoCount: number) =>
+        `${someOf(applied, selected)} tentative. ${pronoun(applied)} ${removal(applied, videoCount)}, and automatic tagging won't create ${applied === 1 ? "its name" : "their names"} again. ${leftAsIs(selected - applied, "confirmed")} You can allow a name again from Rejected names.`,
+      rejectNone: "None of the selected tags are tentative.",
+      deleteAll: (selected: number, videoCount: number) =>
+        `${selectedTags(selected)} ${removal(selected, videoCount)}. This can't be undone.`,
+      deleteSome: (applied: number, selected: number, videoCount: number) =>
+        `${someOf(applied, selected)} confirmed. ${pronoun(applied)} ${removal(applied, videoCount)}. This can't be undone. ${leftAsIs(selected - applied, "tentative")} Reject ${selected - applied === 1 ? "it" : "them"} instead.`,
+      deleteNone: "None of the selected tags are confirmed.",
     },
     rejectDialog: {
       title: (name: string) => `Reject "${name}"`,
       unused: (name: string) =>
-        `This tag isn't on any videos. Automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+        `This tag isn't on any videos. Automatic tagging won't create "${name}" again. You can allow the name again from Rejected names.`,
       used: (name: string, count: number) =>
-        `This tag will be removed from ${videos(count)}, and automatic tagging won't create "${name}" again. You can allow the name again from the rejected names below.`,
+        `This tag will be removed from ${videos(count)}, and automatic tagging won't create "${name}" again. You can allow the name again from Rejected names.`,
       submit: "Reject",
       submitting: "Rejecting…",
     },
@@ -602,9 +752,29 @@ export const en = {
       title: (name: string) => `Merge "${name}"`,
       target: "Tag to merge into",
       synonymHint: (synonym: string) => `Synonym: ${synonym}`,
+      // 統合先の候補をサーバーで引けなかったとき（ui-design.md「Target candidates」）。
+      searchFailed: (reason: string) => `Couldn't search tags: ${reason}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
+      // 統合元が複数のとき（specs/036-tag-admin-scale/ui-design.md「Words」）。count は統合先を
+      // 外した統合元の数で、選んだ数ではない。videoCount が 0 なら「0 videos」とは言わない。
+      titleMany: (count: number) => `Merge ${tagCount(count)}`,
+      sources: "Tags to merge",
+      kept: "kept",
+      keptNote: (target: string, others: number) =>
+        `"${target}" is kept and the other ${selectPlural(others, {
+          one: "tag merges",
+          other: `${formatNumber(others)} tags merge`,
+        })} into it.`,
+      onlyTarget: (target: string) =>
+        `Choose another tag to merge into: "${target}" is the only tag selected.`,
+      warningMany: (count: number, videoCount: number, target: string) =>
+        `${
+          videoCount === 0
+            ? `These ${formatNumber(count)} tags aren't on any videos.`
+            : `The ${videos(videoCount)} tagged with these ${formatNumber(count)} tags get the tag "${target}".`
+        } Their names and synonyms become synonyms of "${target}", and the ${formatNumber(count)} tags leave the tag list. This can't be undone.`,
       submit: "Merge",
       submitting: "Merging…",
     },

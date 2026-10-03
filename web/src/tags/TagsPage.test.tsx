@@ -1,11 +1,13 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Tag } from "../api/tags";
-import { __resetTagsForTest, refreshTags } from "../api/tags";
+import type { Tag, TagSort } from "../api/tags";
+import { __resetTagsForTest, getTags, subscribeTags } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
+import { foldForMatch } from "../lib/foldForMatch";
+import { compareTagsForSort } from "./tagPageRows";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import TagsPage from "./TagsPage";
@@ -36,14 +38,73 @@ function takenResponse(submitted: string, ownerName: string): Response {
 }
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
+  return {
+    synonyms: [],
+    videoCount: 0,
+    tentative: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/**
+ * pageOf は `GET /api/tags` のページ（specs/036-tag-admin-scale/contracts/screen-api.md §5）を
+ * 偽のサーバーの側で作る。条件を全部のタグに掛け、並び順で並べ、カーソル（前のページの
+ * 最後の行の並びの値）より後ろから `limit` 件を返す。カーソルは keyset と同じく、
+ * 並びの値で「より後ろ」を決める（読み込んだあとで前へ動いた行は返さない）。
+ */
+function pageOf(tags: readonly Tag[], params: URLSearchParams) {
+  const q = foldForMatch(params.get("q") ?? "").trim();
+  const sort = (params.get("sort") ?? "name") as TagSort;
+  const matched = tags
+    .filter((item) => params.get("tentative") !== "true" || item.tentative)
+    .filter((item) => params.get("unused") !== "true" || item.videoCount === 0)
+    .filter(
+      (item) =>
+        q === "" ||
+        foldForMatch(item.name).includes(q) ||
+        item.synonyms.some((synonym) => foldForMatch(synonym).includes(q)),
+    )
+    .sort((a, b) => compareTagsForSort(a, b, sort));
+  const cursor = params.get("cursor");
+  const after =
+    cursor === null
+      ? matched
+      : matched.filter(
+          (item) =>
+            compareTagsForSort(
+              item,
+              JSON.parse(decodeURIComponent(atob(cursor))) as Tag,
+              sort,
+            ) > 0,
+        );
+  const limit = Number(params.get("limit"));
+  const items = after.slice(0, limit).map((item) => structuredClone(item));
+  const last = items.at(-1);
+  return {
+    items,
+    total: matched.length,
+    totalAll: tags.length,
+    ...(after.length > limit && last !== undefined
+      ? { nextCursor: btoa(encodeURIComponent(JSON.stringify(last))) }
+      : {}),
+  };
 }
 
 /** server はタグの管理経路（GET・POST・PATCH・DELETE /api/tags*）を扱う偽のサーバーである。 */
 const server = {
   tags: [] as Tag[],
   nextId: 100,
+  /** タグ管理画面のページの GET /api/tags（limit 付き）の回数。 */
   getCalls: 0,
+  /** タグ管理画面のページの要求のパラメータ（送った順）。 */
+  pageRequests: [] as URLSearchParams[],
+  /** 共有の保持の全件の GET /api/tags（limit 無し）の回数。 */
+  fullGetCalls: 0,
+  /** true にすると、共有の保持の全件の GET /api/tags（limit 無し）を 500 で失敗させる。 */
+  failFullGets: false,
+  /** 設定すると、ページの GET /api/tags の limit の代わりにこの件数を返す。 */
+  pageLimitOverride: null as number | null,
   /** true にすると、次の GET /api/tags を 500 で失敗させる（N6: 取り直しの失敗）。 */
   failNextGet: false,
   /**
@@ -77,8 +138,21 @@ const server = {
   rejectedNames: [] as string[],
   /** true にすると、以後の GET /api/tags/rejected-names をすべて 500 で失敗させる。 */
   failRejectedGets: false,
+  /** true にすると、以後の cursor 付きの GET /api/tags/rejected-names（続き）を 500 で失敗させる。 */
+  failRejectedMoreGets: false,
+  /** GET /api/tags/rejected-names が受けたクエリ。 */
+  rejectedGetRequests: [] as URLSearchParams[],
   /** 確定・却下・却下した名前の取り外しの要求の回数。 */
   confirmCalls: 0,
+  /** POST /api/tags/batch・/api/tags/impact が受けた本文。 */
+  batchCalls: [] as { action: string; ids: number[] }[],
+  impactCalls: [] as { action: string; ids: number[] }[],
+  /** 設定すると、POST /api/tags/impact の videoCount をこの値にする（重複を除いた数の代わり）。 */
+  impactVideoCount: null as number | null,
+  /** true にすると、以後の POST /api/tags/impact を 500 で失敗させる。 */
+  failImpact: false,
+  /** true にすると、次の POST /api/tags/batch を 500 で失敗させる。 */
+  failNextBatch: false,
 };
 
 /**
@@ -88,6 +162,13 @@ const server = {
  */
 let holdRejectedGets = false;
 const rejectedGetReleases: (() => void)[] = [];
+
+/**
+ * holdRejectedDeletes を true にした間の DELETE /api/tags/rejected-names は、release を
+ * 呼ぶまでサーバーの並びを変えず、応答もしない。
+ */
+let holdRejectedDeletes = false;
+const rejectedDeleteReleases: (() => void)[] = [];
 
 /** holdConfirms を true にした間の POST /api/tags/{id}/confirm は、release() を呼ぶまで応答しない。 */
 let holdConfirms = false;
@@ -122,21 +203,42 @@ function install() {
     const path = url.pathname;
     const method = init?.method ?? "GET";
 
-    if (path === "/api/tags" && method === "GET") {
-      server.getCalls += 1;
-      if (server.failAllGets || server.failNextGet) {
-        server.failNextGet = false;
+    if (path === "/api/tags" && method === "GET" && !url.searchParams.has("limit")) {
+      // 共有の保持（候補・絞り込みの確かめ）の全件。タグ管理画面は送らない。
+      server.fullGetCalls += 1;
+      if (server.failFullGets) {
         return Promise.resolve(
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
       }
-      const snapshot = [...server.tags];
+      const items = server.tags.map((item) => structuredClone(item));
+      return Promise.resolve(
+        jsonResponse({ items, total: items.length, totalAll: items.length }),
+      );
+    }
+
+    if (path === "/api/tags" && method === "GET") {
+      server.getCalls += 1;
+      server.pageRequests.push(url.searchParams);
+      const failed = () => jsonResponse({ code: "internal", message: "failed" }, 500);
+      const fail = server.failAllGets || server.failNextGet;
+      server.failNextGet = false;
+      // 応答の中身は要求を受けた時点のサーバーの状態で作る。
+      const params = new URLSearchParams(url.searchParams);
+      if (server.pageLimitOverride !== null) {
+        params.set("limit", String(server.pageLimitOverride));
+      }
+      const body = fail ? null : pageOf(server.tags, params);
+      const respond = () => (body === null ? failed() : jsonResponse(body));
       if (holdGetsFrom !== null && server.getCalls >= holdGetsFrom) {
-        return new Promise((resolve) => {
-          heldGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+        return new Promise((resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+          heldGetReleases.push(() => resolve(respond()));
         });
       }
-      return Promise.resolve(jsonResponse({ items: snapshot }));
+      return Promise.resolve(respond());
     }
 
     if (path === "/api/tags/rejected-names" && method === "GET") {
@@ -145,13 +247,33 @@ function install() {
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
       }
+      server.rejectedGetRequests.push(url.searchParams);
+      const cursor = url.searchParams.get("cursor");
+      if (cursor !== null && server.failRejectedMoreGets) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      // 実際のサーバーと同じく、cursor は前のページの最後の名前の次から、limit 件ずつ返す
+      // （名前は昇順で持つ）。
       const snapshot = [...server.rejectedNames];
+      const limit = Number(url.searchParams.get("limit") ?? "100");
+      const start = cursor === null ? 0 : snapshot.findIndex((name) => name > cursor);
+      const from = start < 0 ? snapshot.length : start;
+      const items = snapshot.slice(from, from + limit);
+      const page = {
+        items,
+        total: snapshot.length,
+        ...(from + limit < snapshot.length
+          ? { nextCursor: items[items.length - 1] }
+          : {}),
+      };
       if (holdRejectedGets) {
         return new Promise((resolve) => {
-          rejectedGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+          rejectedGetReleases.push(() => resolve(jsonResponse(page)));
         });
       }
-      return Promise.resolve(jsonResponse({ items: snapshot }));
+      return Promise.resolve(jsonResponse(page));
     }
 
     if (method !== "GET" && server.nextError !== null) {
@@ -168,10 +290,74 @@ function install() {
       });
     }
 
+    if (path === "/api/tags/batch" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      server.batchCalls.push(body);
+      if (server.failNextBatch) {
+        server.failNextBatch = false;
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const appliedIds: number[] = [];
+      const notFoundIds: number[] = [];
+      const notApplicableIds: number[] = [];
+      for (const id of body.ids) {
+        const found = server.tags.find((t) => t.id === id);
+        if (found === undefined) notFoundIds.push(id);
+        else if (found.tentative === (body.action === "delete"))
+          notApplicableIds.push(id);
+        else appliedIds.push(id);
+      }
+      const applied = new Set(appliedIds);
+      if (body.action === "confirm") {
+        for (const item of server.tags) if (applied.has(item.id)) item.tentative = false;
+      } else {
+        if (body.action === "reject") {
+          server.rejectedNames = [
+            ...server.rejectedNames,
+            ...server.tags.filter((t) => applied.has(t.id)).map((t) => t.name),
+          ].sort();
+        }
+        server.tags = server.tags.filter((t) => !applied.has(t.id));
+      }
+      return maybeHold(() => jsonResponse({ appliedIds, notFoundIds, notApplicableIds }));
+    }
+
+    if (path === "/api/tags/impact" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      server.impactCalls.push(body);
+      if (server.failImpact) {
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "failed" }, 500),
+        );
+      }
+      const counted = server.tags.filter(
+        (t) =>
+          body.ids.includes(t.id) &&
+          (body.action === "merge" || t.tentative === (body.action === "reject")),
+      );
+      return Promise.resolve(
+        jsonResponse({
+          tagCount: counted.length,
+          videoCount:
+            server.impactVideoCount ?? counted.reduce((sum, t) => sum + t.videoCount, 0),
+        }),
+      );
+    }
+
     if (path === "/api/tags/rejected-names" && method === "DELETE") {
       const name = url.searchParams.get("name") ?? "";
-      server.rejectedNames = server.rejectedNames.filter((item) => item !== name);
-      return Promise.resolve(jsonResponse(null, 204));
+      const respond = () => {
+        server.rejectedNames = server.rejectedNames.filter((item) => item !== name);
+        return jsonResponse(null, 204);
+      };
+      if (holdRejectedDeletes) {
+        return new Promise((resolve) => {
+          rejectedDeleteReleases.push(() => resolve(respond()));
+        });
+      }
+      return Promise.resolve(respond());
     }
 
     const confirmMatch = /^\/api\/tags\/(\d+)\/confirm$/.exec(path);
@@ -282,10 +468,9 @@ function install() {
     const mergeMatch = /^\/api\/tags\/(\d+)\/merge$/.exec(path);
     if (mergeMatch && method === "POST") {
       const id = Number(mergeMatch[1]);
-      const body = JSON.parse(String(init?.body)) as { sourceId: number };
+      const body = JSON.parse(String(init?.body)) as { sourceIds: number[] };
       const target = server.tags.find((t) => t.id === id);
-      const source = server.tags.find((t) => t.id === body.sourceId);
-      if (target === undefined || source === undefined) {
+      if (target === undefined) {
         return Promise.resolve(
           jsonResponse({ code: "tag_not_found", message: "Tag not found." }, 404),
         );
@@ -296,12 +481,22 @@ function install() {
           jsonResponse({ code: "internal", message: "Could not merge." }, 500),
         );
       }
+      // 無い統合元は飛ばして notFoundIds に載せる。統合元がすべて無ければ統合先は
+      // 変わらない（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
       return maybeHold(() => {
-        target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
-        target.videoCount += source.videoCount;
-        target.tentative = false;
-        server.tags = server.tags.filter((t) => t.id !== source.id);
-        return jsonResponse(target);
+        const notFoundIds: number[] = [];
+        for (const sourceId of body.sourceIds) {
+          const source = server.tags.find((t) => t.id === sourceId);
+          if (source === undefined) {
+            notFoundIds.push(sourceId);
+            continue;
+          }
+          target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
+          target.videoCount += source.videoCount;
+          target.tentative = false;
+          server.tags = server.tags.filter((t) => t.id !== source.id);
+        }
+        return jsonResponse({ tag: target, notFoundIds });
       });
     }
 
@@ -429,6 +624,10 @@ beforeEach(() => {
   ];
   server.nextId = 100;
   server.getCalls = 0;
+  server.pageRequests = [];
+  server.fullGetCalls = 0;
+  server.pageLimitOverride = null;
+  server.failFullGets = false;
   server.failNextGet = false;
   server.failAllGets = false;
   server.failNextCreate = false;
@@ -445,15 +644,28 @@ beforeEach(() => {
   heldGetReleases.length = 0;
   server.rejectedNames = [];
   server.failRejectedGets = false;
+  server.failRejectedMoreGets = false;
+  server.rejectedGetRequests = [];
   server.confirmCalls = 0;
+  server.batchCalls = [];
+  server.impactCalls = [];
+  server.impactVideoCount = null;
+  server.failImpact = false;
+  server.failNextBatch = false;
   holdConfirms = false;
   confirmReleases.length = 0;
   holdRejectedGets = false;
   rejectedGetReleases.length = 0;
+  holdRejectedDeletes = false;
+  rejectedDeleteReleases.length = 0;
+  // 一覧の仮想化（useWindowVirtualizer）は文書をスクロールする。jsdom には
+  // window.scrollTo が無いので、何もしない実装に置き換える。
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("TagsPage", () => {
@@ -491,6 +703,35 @@ describe("TagsPage", () => {
     await user.clear(search);
     expect(await screen.findByText("3 tags")).toBeDefined();
     expect(screen.getByTitle("旅行")).toBeDefined();
+  });
+
+  it("検索はライブラリと同じ照合形で、全角・半角やかなの違いを同じものとして照らす（受け入れ条件8）", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "action", synonyms: [] }),
+      tag({ id: 2, name: "Anime", synonyms: ["アニメ"] }),
+      tag({ id: 3, name: "旅行" }),
+    ];
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const search = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(search, "ＡＣＴＩＯＮ");
+    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
+    expect(screen.getByTitle("action")).toBeDefined();
+    expect(screen.queryByTitle("Anime")).toBeNull();
+
+    // シノニムも照合形で照らす（ひらがなで打ってもカタカナのシノニムに当たる）。
+    await user.clear(search);
+    await user.type(search, "あにめ");
+    expect(await screen.findByText("1 of 3 tags")).toBeDefined();
+    expect(screen.getByTitle("Anime")).toBeDefined();
+    expect(screen.queryByTitle("action")).toBeNull();
+
+    await user.clear(search);
+    await user.type(search, "ｱｸｼｮﾝ");
+    expect(await screen.findByText('No tags match "ｱｸｼｮﾝ"')).toBeDefined();
   });
 
   it("検索で一致が無いときは、タグが無い状態と別の表示になり、そこから入力を消せる", async () => {
@@ -538,55 +779,6 @@ describe("TagsPage", () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(created));
     expect(screen.getByText("4 tags")).toBeDefined();
-  });
-
-  // Devin の指摘4: 開いたときにすでに共有の一覧を持っていると（別の画面から
-  // 移ってきた等）、画面が開くたびの取り直し（reload）が作成の前に始まり、
-  // 追い越されたまま作成の後に届くことがある。その追い越された取得の
-  // 戻り値をそのまま画面へ反映すると、確定した作成をその場で消してしまう。
-  // `refreshTags` の generation ガードは「held を実際に更新した、最新の
-  // 取得」だけを `subscribeTags` へ通知するので、そちらだけを信頼していれば
-  // 消えない（TagsPage.tsx の `reload`）。
-  it("追い越された取り直しの戻り値で、確定済みの作成を消さない（Devinの指摘4）", async () => {
-    const user = userEvent.setup();
-    install();
-    // 別の画面ですでに一覧を取得済み（held あり）のまま、この画面を開く
-    // （マウント時の1回目の GET を数えておく）。
-    await refreshTags();
-    expect(server.getCalls).toBe(1);
-
-    // マウントの reload（2回目の GET）を止める。
-    holdGetsFrom = 2;
-    renderPage();
-    await screen.findByTitle("旅行");
-    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
-
-    // 作成の POST は止めない。成功後の afterTagCreated の取り直し（3回目の
-    // GET）も同じく止め、まだ新しいタグを含まない2回目の応答が
-    // 追い越されたまま先に届く状況を作る。
-    await user.click(screen.getByRole("button", { name: "New tag" }));
-    const input = screen.getByRole("textbox", { name: "New tag name" });
-    await user.type(input, "新規タグ");
-    await user.keyboard("{Enter}");
-
-    const created = await screen.findByRole("link", {
-      name: "Open the library filtered by 新規タグ",
-    });
-    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
-
-    // 追い越された2回目（作成前のスナップショット）を、3回目より先に解決する。
-    heldGetReleases[0]!();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(created.isConnected).toBe(true);
-    expect(screen.getByRole("link", { name: "Open the library filtered by 新規タグ" }));
-
-    // 3回目（作成を含む、最新の取得）が届いても、引き続き出ている。
-    heldGetReleases[1]!();
-    await waitFor(() =>
-      expect(
-        screen.getByRole("link", { name: "Open the library filtered by 新規タグ" }),
-      ).toBeDefined(),
-    );
   });
 
   it("既存の名前と重なる作成は理由を出し、入力を残す", async () => {
@@ -1041,7 +1233,7 @@ describe("TagsPage", () => {
     expect(screen.queryByText(/ of 3 tags/)).toBeNull();
   });
 
-  it("作成の直後に一覧を2回取り直さない（N6）", async () => {
+  it("作成の後に一覧を取り直さず、共有の保持の購読者が無ければ全件の GET も送らない（R-12）", async () => {
     const user = userEvent.setup();
     install();
     renderPage();
@@ -1055,12 +1247,57 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
     await screen.findByTitle("Banana");
 
-    // api/tags.ts の afterTagCreated によるバックグラウンドの1回だけが増える
-    // （TagsPage 自身は、その結果を待たずに作った1件をその場で重ねるので、
-    // もう1回 GET /api/tags を送らない）。
-    await waitFor(() => expect(server.getCalls).toBe(2));
+    // 作った 1 件は読み込んだ行の中に置き、ページも全件も取り直さない。
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(server.getCalls).toBe(2);
+    expect(server.getCalls).toBe(1);
+    expect(server.fullGetCalls).toBe(0);
+  });
+
+  it("共有の保持の購読者がいれば、操作のあとに全件の GET が送られる（R-12）", async () => {
+    const user = userEvent.setup();
+    install();
+    // 候補や絞り込みの確かめが共有の保持を購読している（別の画面の部品など）。
+    const unsubscribe = subscribeTags(() => undefined);
+    try {
+      renderPage();
+      await screen.findByTitle("旅行");
+      expect(server.fullGetCalls).toBe(0);
+
+      const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+      await user.click(within(row).getByRole("button", { name: "More actions" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+      await user.click(
+        within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+      );
+      await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
+      await waitFor(() => expect(server.fullGetCalls).toBe(1));
+      expect(server.getCalls).toBe(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it("購読者が無ければ、操作のあとに共有の保持を捨てて次の getTags が取り直す（R-12）", async () => {
+    const user = userEvent.setup();
+    install();
+    await getTags();
+    expect(server.fullGetCalls).toBe(1);
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    await user.click(
+      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+    );
+    await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.fullGetCalls).toBe(1);
+
+    const refreshed = await getTags();
+    expect(server.fullGetCalls).toBe(2);
+    expect(refreshed.map((item) => item.name)).not.toContain("Drama");
   });
 
   it("tag_not_foundの取り直しに失敗しても、一覧を空白にせず今の一覧を残す（N6）", async () => {
@@ -1256,7 +1493,7 @@ describe("TagsPage 統合", () => {
 
   it("統合すると統合元が一覧から消え統合先のシノニムに並び、フォーカスが統合先の名前へ移る（受け入れ条件12）", async () => {
     const user = userEvent.setup();
-    install();
+    const fetchMock = install();
     server.tags = [
       tag({ id: 1, name: "旅行", videoCount: 5 }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),
@@ -1288,6 +1525,14 @@ describe("TagsPage 統合", () => {
     await user.click(mergeButton);
 
     expect(await screen.findByText('Merged "旅行" into "Anime"')).toBeDefined();
+    // 1 件の統合も sourceIds で送る（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/2/merge",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceIds: [1] }),
+      }),
+    );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.queryByTitle("旅行")).toBeNull();
     expect(screen.getByText("Synonyms: アニメ · 旅行")).toBeDefined();
@@ -1364,6 +1609,35 @@ describe("TagsPage 統合", () => {
       await screen.findByText("This tag no longer exists, so the list was reloaded"),
     ).toBeDefined();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("統合元が別のタブで消えていると（notFoundIds）、もう無いことが伝わり一覧が取り直される", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "旅行" }), tag({ id: 2, name: "Anime" })];
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "More actions" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "旅行"' });
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    await user.type(combo, "Anime");
+    await user.click(await within(dialog).findByRole("option", { name: /Anime/ }));
+
+    server.tags = server.tags.filter((t) => t.name !== "旅行");
+
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    expect(
+      await screen.findByText("This tag no longer exists, so the list was reloaded"),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+    expect(screen.queryByText(/^Merged /)).toBeNull();
   });
 
   it("統合先の候補が開いているときのEscは一覧だけを閉じ、窓は閉じない（B1）", async () => {
@@ -2201,8 +2475,13 @@ describe("TagsPage 仮のタグ", () => {
     const gamma = rowOf("Gamma");
     expect(within(gamma).queryByText("Tentative")).toBeNull();
     expect(within(gamma).queryByRole("button", { name: "Confirm" })).toBeNull();
-    // 確定した行の操作は今と同じ3つ。
-    expect(within(gamma).getAllByRole("button")).toHaveLength(3);
+    // 確定した行の操作は今と同じ3つ（マウスの端末）と、タッチ・狭い幅でそれを
+    // まとめる「Actions」（CSS でどちらか一方だけを描く）。
+    expect(
+      within(gamma)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Actions", "Rename", "Synonyms", "More actions"]);
   });
 
   it("「Tentative only」で仮のタグだけが並び、件数は全タグを分母にする（受け入れ条件6）", async () => {
@@ -2344,9 +2623,8 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const heading = screen.getByRole("button", { name: /Rejected names/ });
-    expect(heading.getAttribute("aria-expanded")).toBe("false");
-    await waitFor(() => expect(heading.textContent).toContain("0"));
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("0"));
 
     await user.click(
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
@@ -2355,7 +2633,7 @@ describe("TagsPage 仮のタグ", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
     expect(
       within(dialog).getByText(
-        'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from the rejected names below.',
+        'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from Rejected names.',
       ),
     ).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Reject" }));
@@ -2367,11 +2645,11 @@ describe("TagsPage 仮のタグ", () => {
         within(rowOf("Beta")).getByRole("button", { name: "Rename" }),
       ),
     );
-    await waitFor(() => expect(heading.textContent).toContain("1"));
+    await waitFor(() => expect(entry.textContent).toContain("1"));
 
-    await user.click(heading);
-    expect(heading.getAttribute("aria-expanded")).toBe("true");
-    const list = screen.getByRole("list", { name: "Rejected names" });
+    await user.click(entry);
+    const rejected = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(rejected).getByRole("list", { name: "Rejected names" });
     expect(within(list).getByTitle("Alpha")).toBeDefined();
   });
 
@@ -2386,7 +2664,7 @@ describe("TagsPage 仮のタグ", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Reject "Beta"' });
     expect(
       within(dialog).getByText(
-        "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from the rejected names below.",
+        "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from Rejected names.",
       ),
     ).toBeDefined();
 
@@ -2449,16 +2727,22 @@ describe("TagsPage 仮のタグ", () => {
     expect(screen.getByRole("dialog", { name: 'Reject "Alpha"' })).toBeDefined();
   });
 
-  it("却下した名前を×で一覧から外せる。最後の1つなら見出しへフォーカスが移る（受け入れ条件13）", async () => {
+  it("却下した名前を×で一覧から外せる。最後の1つなら「Close」へフォーカスが移る（受け入れ条件13）", async () => {
     const user = userEvent.setup();
     server.rejectedNames = ["Old", "Stale"];
     install();
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const heading = screen.getByRole("button", { name: /Rejected names/ });
-    await user.click(heading);
-    const list = await screen.findByRole("list", { name: "Rejected names" });
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("2"));
+    await user.click(entry);
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(dialog).getByRole("list", { name: "Rejected names" });
+    // 最初のフォーカスは最初の名前の ×。
+    expect(document.activeElement).toBe(
+      within(list).getByRole("button", { name: 'Allow "Old" again' }),
+    );
     expect(
       screen.getByText(
         "Automatic tagging won't create these tags. Remove a name to allow it again.",
@@ -2476,8 +2760,57 @@ describe("TagsPage 仮のタグ", () => {
 
     await user.click(within(list).getByRole("button", { name: 'Allow "Stale" again' }));
     expect(await screen.findByText("No rejected names")).toBeDefined();
-    await waitFor(() => expect(document.activeElement).toBe(heading));
-    expect(heading.textContent).toContain("0");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByText("Close", { selector: "button" }),
+      ),
+    );
+
+    // Esc で閉じると、フォーカスは入口へ戻り、件数は 0 になっている。
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(entry));
+    expect(entry.textContent).toContain("0");
+  });
+
+  it("却下した名前の入口は一覧の先頭より上の帯にあり、押すと窓で一覧と取り外しが開く（受け入れ条件12）", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const firstRow = screen.getByTitle("Alpha").closest("[data-tag-id]")!;
+    expect(
+      entry.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 入口は件数の行と同じ帯の中にある。一覧の下の折りたたみは無い。
+    expect(entry.closest(".sticky")).toBe(
+      screen.getByText(/^\d+ tags$/).closest(".sticky"),
+    );
+    expect(entry.hasAttribute("aria-expanded")).toBe(false);
+    expect(screen.getAllByRole("button", { name: /Rejected names/ })).toHaveLength(1);
+    await waitFor(() => expect(entry.textContent).toContain("1"));
+
+    await user.click(entry);
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    expect(
+      within(dialog).getByText(
+        "Automatic tagging won't create these tags. Remove a name to allow it again.",
+      ),
+    ).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: 'Allow "Old" again' }));
+    expect(await within(dialog).findByText("No rejected names")).toBeDefined();
+    expect(server.rejectedNames).toEqual([]);
+  });
+
+  it("タグの一覧を取る前は却下した名前の入口を出さず、タグが無いときは出す", async () => {
+    server.tags = [];
+    install();
+    renderPage();
+    expect(screen.queryByRole("button", { name: /Rejected names/ })).toBeNull();
+    expect(await screen.findByRole("button", { name: /Rejected names/ })).toBeDefined();
   });
 
   it("却下した名前を取れなかったら理由を出し、再試行できる", async () => {
@@ -2504,8 +2837,6 @@ describe("TagsPage 仮のタグ", () => {
     install();
     renderPage();
     await screen.findByTitle("Alpha");
-    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
-    const list = await screen.findByRole("list", { name: "Rejected names" });
 
     // 却下で取り直しが始まり、その応答は取り外しの前の並びを持ったまま止まる。
     holdRejectedGets = true;
@@ -2515,6 +2846,10 @@ describe("TagsPage 仮のタグ", () => {
     await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
     expect(rejectedGetReleases).toHaveLength(1);
     holdRejectedGets = false;
+
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    const list = within(dialog).getByRole("list", { name: "Rejected names" });
 
     await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
     await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
@@ -2538,12 +2873,16 @@ describe("TagsPage 仮のタグ", () => {
     expect(
       await screen.findByRole("button", { name: 'Allow "Old" again' }),
     ).toBeDefined();
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     server.failRejectedGets = true;
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
     await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
 
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
     expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
     expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
 
@@ -2622,15 +2961,16 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
-    expect(
-      await screen.findByRole("button", { name: 'Allow "Old" again' }),
-    ).toBeDefined();
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("1"));
 
     await user.click(screen.getByRole("button", { name: "New tag" }));
     await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Old");
     await user.keyboard("{Enter}");
+    await screen.findByTitle("Old");
 
+    await waitFor(() => expect(entry.textContent).toContain("0"));
+    await user.click(entry);
     expect(await screen.findByText("No rejected names")).toBeDefined();
     expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
   });
@@ -2753,6 +3093,8 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(screen.getByRole("button", { name: /Rejected names/ }));
     await screen.findByRole("list");
     expectCatalogTextOnly(document.body, userData);
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await user.click(screen.getByRole("button", { name: /Tentative only/ }));
     await waitFor(() => expect(screen.queryByTitle("Gamma")).toBeNull());
@@ -2766,5 +3108,2102 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(screen.getByRole("menuitem", { name: /Reject/ }));
     await screen.findByRole("dialog");
     expectCatalogTextOnly(document.body, userData);
+  });
+});
+
+describe("TagsPage 見えている行だけ描く", () => {
+  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さを置く。 */
+  const rowHeight = 40;
+  const viewportHeight = 200;
+  const tagCount = 60;
+  const bandHeight = 50;
+  let originalInnerHeight = 0;
+  let originalOffsetHeight: PropertyDescriptor | undefined;
+
+  function name(index: number): string {
+    return `Tag ${String(index).padStart(2, "0")}`;
+  }
+
+  function drawnIndexes(): number[] {
+    return [...document.querySelectorAll<HTMLElement>("[data-index]")].map((row) =>
+      Number(row.dataset.index),
+    );
+  }
+
+  function wrapperOf(index: number): HTMLElement {
+    return document.querySelector<HTMLElement>(`[data-index="${String(index)}"]`)!;
+  }
+
+  beforeEach(() => {
+    server.tags = Array.from({ length: tagCount }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: true }),
+    );
+    originalInnerHeight = window.innerHeight;
+    window.innerHeight = viewportHeight;
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.hasAttribute("data-index")) return rowHeight;
+        // 上部バーの下に留める帯（ui-design.md「Band」）。
+        return this.classList.contains("sticky") ? bandHeight : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    window.innerHeight = originalInnerHeight;
+    if (originalOffsetHeight !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    }
+  });
+
+  /** tabPastRange は描いている範囲の最後の行の最後の操作から Tab で次の行へ進む。 */
+  async function tabPastRange(user: ReturnType<typeof userEvent.setup>) {
+    const last = Math.max(...drawnIndexes());
+    expect(last).toBeLessThan(tagCount - 1);
+    const more = within(wrapperOf(last)).getByRole("button", { name: "More actions" });
+    more.focus();
+    await user.tab();
+    return last + 1;
+  }
+
+  it("全件ではなく表示域と前後の行だけを描き、件数は全件を数える", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    expect(screen.getByText(`${String(tagCount)} tags`)).toBeDefined();
+    const drawn = drawnIndexes();
+    expect(drawn.length).toBeGreaterThan(0);
+    expect(drawn.length).toBeLessThan(tagCount);
+    expect(screen.queryByTitle(name(tagCount - 1))).toBeNull();
+  });
+
+  it("描いている範囲の端の Tab は次の行へ進み、Shift+Tab は前の行の最後の操作へ戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    // 描いた次の行のチェックへ移る（ui-design.md「Keyboard across virtualized rows」）。
+    const next = await tabPastRange(user);
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: `Select "${name(next)}"` }),
+    );
+
+    // その行の最後の操作から、まだ描いていない次の行へ。
+    within(wrapperOf(next)).getByRole("button", { name: "More actions" }).focus();
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: `Select "${name(next + 1)}"` }),
+    );
+    // フォーカスを移した行だけを描き続け、前の行は描いていない。
+    expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull();
+
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(
+      within(wrapperOf(next)).getByRole("button", { name: "More actions" }),
+    );
+  });
+
+  it("フォーカスが一覧の外へ出ると、表示域の外の行を描き続けるのをやめる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const next = await tabPastRange(user);
+
+    // 同じ行の中の移動では描き続ける。
+    await user.tab();
+    expect(document.activeElement?.closest("[data-index]")).toBe(wrapperOf(next));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.querySelector(`[data-index="${String(next)}"]`)).not.toBeNull();
+
+    // 一覧の外（ツールバー）へ移ると、その行は Tab の順に残らない。
+    await user.click(screen.getByRole("searchbox", { name: "Search tags" }));
+    await waitFor(() =>
+      expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull(),
+    );
+  });
+
+  it("作ったタグが描いている範囲の外に並ぶときも、その行を描いて名前へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Tag 99");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("link", { name: "Open the library filtered by Tag 99" }),
+      ),
+    );
+  });
+
+  it("並び順で改名中の行が描いている範囲の外へ移っても、その行を描き続け打っている途中の名前を失わない", async () => {
+    const user = userEvent.setup();
+    // 先頭の行だけ 0 本にし、本数の多い順で末尾（描いている範囲の外）へ移す。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      videoCount: index === 0 ? 0 : 1,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    const row = screen.getByTitle(name(0)).closest("[data-tag-id]")!;
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", {
+      name: `New name for "${name(0)}"`,
+    });
+    await user.clear(input);
+    await user.type(input, "下書き");
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() => expect(screen.queryByTitle(name(1))).not.toBeNull());
+    await waitFor(() => expect(wrapperOf(tagCount - 1)).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 改名中の行は全件の末尾にあり、表示域の外でも描いたままで、値も入力も同じ。
+    expect(drawnIndexes()).toContain(tagCount - 1);
+    expect(drawnIndexes()).not.toContain(tagCount - 2);
+    const still = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
+    expect(still).toBe(input);
+    expect((still as HTMLInputElement).value).toBe("下書き");
+  });
+
+  describe("スクロールした位置から", () => {
+    const scrolled = 1000;
+
+    /** scrollWindow は文書を scrolled までスクロールしたことにする。 */
+    function scrollWindow() {
+      // スクロールの行き先が文書の高さで切り詰められないよう、文書に高さを置く。
+      Object.defineProperty(document.documentElement, "scrollHeight", {
+        configurable: true,
+        value: 100_000,
+      });
+      Object.defineProperty(window, "scrollY", { configurable: true, value: scrolled });
+      window.dispatchEvent(new Event("scroll"));
+    }
+
+    afterEach(() => {
+      Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+      Reflect.deleteProperty(document.documentElement, "scrollHeight");
+    });
+
+    it("描いていない前の行へ戻るときは、留めた帯の高さを差し引いてスクロールする", async () => {
+      const user = userEvent.setup();
+      install();
+      renderPage();
+      await screen.findByTitle(name(0));
+      scrollWindow();
+      await waitFor(() => expect(Math.min(...drawnIndexes())).toBeGreaterThan(0));
+
+      const first = Math.min(...drawnIndexes());
+      screen.getByRole("checkbox", { name: `Select "${name(first)}"` }).focus();
+      const scrollTo = vi.mocked(window.scrollTo);
+      scrollTo.mockClear();
+      await user.tab({ shift: true });
+
+      expect(document.activeElement).toBe(
+        within(wrapperOf(first - 1)).getByRole("button", { name: "More actions" }),
+      );
+      // 行の上端（jsdom では一覧の上端が文書の 0）から帯の高さだけ上へ。行が帯の
+      // 下に隠れない（ui-design.md「Keyboard across virtualized rows」）。
+      const start = Number(
+        /translateY\((-?[\d.]+)px\)/.exec(wrapperOf(first - 1).style.transform)![1],
+      );
+      expect(start).toBeGreaterThan(bandHeight);
+      expect(scrollTo).toHaveBeenCalledWith(
+        expect.objectContaining({ top: start - bandHeight }),
+      );
+    });
+
+    it("一覧の先頭が帯の下に隠れていれば、「新しいタグ」は先頭まで戻してから作成の行を出す", async () => {
+      const user = userEvent.setup();
+      // 一覧の先頭は表示域の上の外（帯の下端より上）にある。
+      const listTop = -300;
+      const rect = vi
+        .spyOn(Element.prototype, "getBoundingClientRect")
+        .mockReturnValue({ top: listTop } as DOMRect);
+      try {
+        install();
+        renderPage();
+        await screen.findByTitle(name(0));
+        scrollWindow();
+        const scrollTo = vi.mocked(window.scrollTo);
+        scrollTo.mockClear();
+
+        await user.click(screen.getByRole("button", { name: "New tag" }));
+
+        expect(scrollTo).toHaveBeenCalledWith({ top: scrolled + listTop - bandHeight });
+        await waitFor(() =>
+          expect(document.activeElement).toBe(
+            screen.getByRole("textbox", { name: "New tag name" }),
+          ),
+        );
+      } finally {
+        rect.mockRestore();
+      }
+    });
+  });
+
+  it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.slice(0, 3);
+    install();
+    renderPage();
+    await screen.findByTitle(name(2));
+    const more = within(wrapperOf(2)).getByRole("button", { name: "More actions" });
+    more.focus();
+    await user.tab();
+    expect(document.activeElement).not.toBe(more);
+    expect(document.activeElement?.closest("[data-index]")).toBeNull();
+  });
+
+  it("削除で行が消えると、描いていなかった次の行を描いてその「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) => ({ ...item, tentative: false }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const index = await tabPastRange(user);
+    expect(document.querySelector(`[data-index="${String(index + 1)}"]`)).toBeNull();
+
+    await user.click(
+      within(wrapperOf(index)).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByTitle(name(index))).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(
+          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+        ).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「Tentative only」中の確定で行が外れると、描いていなかった次の行の「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    const index = await tabPastRange(user);
+    expect(document.querySelector(`[data-index="${String(index + 1)}"]`)).toBeNull();
+
+    await user.click(within(wrapperOf(index)).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => expect(screen.queryByTitle(name(index))).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(
+          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+        ).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+});
+
+describe("TagsPage 並び順と0本の絞り込み", () => {
+  /** rowNames は描いている行の名前を一覧の並びで返す。 */
+  function rowNames(): string[] {
+    return [...document.querySelectorAll("[data-index]")]
+      .sort(
+        (a, b) =>
+          Number((a as HTMLElement).dataset.index) -
+          Number((b as HTMLElement).dataset.index),
+      )
+      .map(
+        (row) => row.querySelector("[data-tag-id] [title]")?.getAttribute("title") ?? "",
+      );
+  }
+
+  async function chooseSort(
+    user: ReturnType<typeof userEvent.setup>,
+    current: string,
+    next: string,
+  ) {
+    await user.click(screen.getByRole("button", { name: `Sort by: ${current}` }));
+    await user.click(await screen.findByRole("menuitemradio", { name: next }));
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Alpha", videoCount: 5, createdAt: "2025-01-03T00:00:00Z" }),
+      tag({ id: 2, name: "Beta", createdAt: "2025-01-05T00:00:00Z" }),
+      tag({ id: 3, name: "Cat", videoCount: 5, createdAt: "2025-01-01T00:00:00Z" }),
+      tag({ id: 4, name: "Delta", tentative: true, createdAt: "2025-01-02T00:00:00Z" }),
+      tag({
+        id: 5,
+        name: "Echo",
+        tentative: true,
+        videoCount: 1,
+        createdAt: "2025-01-04T00:00:00Z",
+      }),
+    ];
+  });
+
+  it("既定は名前の順で、「Name」のときは向きの切り替えを出さない", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    expect(rowNames()).toEqual(["Alpha", "Beta", "Cat", "Delta", "Echo"]);
+    expect(screen.getByRole("button", { name: "Sort by: Name" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Press for/ })).toBeNull();
+  });
+
+  it("「Video count」は多い順で最多が先頭・0本が末尾、同じ本数は名前の順（受け入れ条件4）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await chooseSort(user, "Name", "Video count");
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Alpha", "Cat", "Echo", "Beta", "Delta"]),
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: "Descending (most videos first). Press for ascending",
+    });
+    await user.click(toggle);
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Beta", "Delta", "Echo", "Alpha", "Cat"]),
+    );
+    expect(
+      screen.getByRole("button", {
+        name: "Ascending (fewest videos first). Press for descending",
+      }),
+    ).toBeDefined();
+  });
+
+  it("「Date created」は新しい順で、作成したタグが先頭に入る（受け入れ条件5）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await chooseSort(user, "Name", "Date created");
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Beta", "Echo", "Alpha", "Delta", "Cat"]),
+    );
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "Zulu");
+    await user.keyboard("{Enter}");
+    await screen.findByTitle("Zulu");
+    await waitFor(() => expect(rowNames()[0]).toBe("Zulu"));
+  });
+
+  it("並び順は開き直しても残り、壊れた保存は名前の順になる（受け入れ条件6）", async () => {
+    const user = userEvent.setup();
+    install();
+    const first = renderPage();
+    await screen.findByTitle("Alpha");
+    await chooseSort(user, "Name", "Video count");
+    await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (most videos first). Press for ascending",
+      }),
+    );
+    first.unmount();
+
+    const second = renderPage();
+    await screen.findByTitle("Alpha");
+    expect(screen.getByRole("button", { name: "Sort by: Video count" })).toBeDefined();
+    expect(rowNames()).toEqual(["Beta", "Delta", "Echo", "Alpha", "Cat"]);
+    second.unmount();
+
+    window.localStorage.setItem("vv.tags.v1", "{not json");
+    renderPage();
+    await screen.findByTitle("Alpha");
+    expect(screen.getByRole("button", { name: "Sort by: Name" })).toBeDefined();
+    expect(rowNames()).toEqual(["Alpha", "Beta", "Cat", "Delta", "Echo"]);
+  });
+
+  it("「Unused only」は0本の行だけを出し、「Tentative only」・検索・並び順と重なる（受け入れ条件7）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const unused = screen.getByRole("button", { name: "Unused only" });
+    expect(unused.getAttribute("aria-pressed")).toBe("false");
+    await user.click(unused);
+    expect(unused.getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByText("2 of 5 tags")).toBeDefined();
+    expect(rowNames()).toEqual(["Beta", "Delta"]);
+    for (const name of rowNames()) {
+      const row = screen.getByTitle(name).closest("[data-tag-id]")!;
+      expect(row.textContent).toContain("0 videos");
+    }
+
+    // 並び順と重ねる。
+    await chooseSort(user, "Name", "Date created");
+    await waitFor(() => expect(rowNames()).toEqual(["Beta", "Delta"]));
+    await user.click(
+      screen.getByRole("button", {
+        name: "Descending (newest first). Press for ascending",
+      }),
+    );
+    await waitFor(() => expect(rowNames()).toEqual(["Delta", "Beta"]));
+
+    // 「Tentative only」と重ねると両方を満たす行だけ。
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    expect(await screen.findByText("1 of 5 tags")).toBeDefined();
+    expect(rowNames()).toEqual(["Delta"]);
+
+    // 検索と重ねる。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "zz");
+    expect(await screen.findByText('No unused tentative tags match "zz"')).toBeDefined();
+    expect(screen.getByText("0 of 5 tags")).toBeDefined();
+  });
+
+  it("0本のタグが無いときは「No unused tags」を出し、「Show all tags」で外して「Unused only」へ戻る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) => ({
+      ...item,
+      videoCount: item.videoCount + 1,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const unused = screen.getByRole("button", { name: "Unused only" });
+    await user.click(unused);
+    expect(await screen.findByText("No unused tags")).toBeDefined();
+    expect(screen.getByText("Every tag is on at least one video.")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(unused));
+    expect(unused.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("5 tags")).toBeDefined();
+  });
+
+  it("「Unused only」と「Tentative only」の両方で一致が無ければ両方を外して「Tentative only」へ戻る", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item) =>
+      item.tentative ? { ...item, videoCount: 2 } : item,
+    );
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const tentative = screen.getByRole("button", { name: "Tentative only" });
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    await user.click(tentative);
+    expect(await screen.findByText("No unused tentative tags")).toBeDefined();
+    expect(screen.queryByText("Every tag is on at least one video.")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(tentative));
+    expect(tentative.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Unused only" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("「Unused only」と検索で一致が無ければ、両方を外して検索の入力へ戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    const search = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(search, "Alpha");
+    expect(await screen.findByText('No unused tags match "Alpha"')).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Show all tags" }));
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect((search as HTMLInputElement).value).toBe("");
+    expect(screen.getByText("5 tags")).toBeDefined();
+  });
+
+  it("改名中の行は並び順・絞り込みを変えても残り、打っている途中の名前を失わない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const row = screen.getByTitle("Alpha").closest("[data-tag-id]")!;
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: 'New name for "Alpha"' });
+    await user.clear(input);
+    await user.type(input, "下書き");
+
+    await chooseSort(user, "Name", "Video count");
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    // Alpha は 5 本で「Unused only」に一致しないが、行は本数の順の位置に残る。
+    await waitFor(() => expect(screen.getByText("2 of 5 tags")).toBeDefined());
+    const still = screen.getByRole("textbox", { name: 'New name for "Alpha"' });
+    expect(still).toBe(input);
+    expect((still as HTMLInputElement).value).toBe("下書き");
+    expect(document.querySelectorAll("[data-index]")).toHaveLength(3);
+  });
+
+  it("読み込み中は並び順と「Unused only」が押せない", async () => {
+    install();
+    holdGetsFrom = 1;
+    renderPage();
+
+    expect(
+      (screen.getByRole("button", { name: "Unused only" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Sort by: Name" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Sort" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    for (const done of heldGetReleases) done();
+  });
+
+  it("狭い幅のまとめから並び順を選べ、Name 以外のときはまとめが効いている形になる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const compact = screen.getByRole("button", { name: "Sort" });
+    expect(compact.className).not.toContain("bg-accent-soft");
+    await user.click(compact);
+    // Name のときは向きを出さない。
+    expect(screen.queryByRole("group", { name: "Sort direction" })).toBeNull();
+    await user.click(await screen.findByRole("radio", { name: "Video count" }));
+    await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
+    await user.click(screen.getByRole("radio", { name: "Fewest videos first" }));
+    await waitFor(() => expect(rowNames()[0]).toBe("Beta"));
+    expect(screen.getByRole("button", { name: "Sort" }).className).toContain(
+      "bg-accent-soft",
+    );
+  });
+
+  it("疑似ロケールで、並び順と「Unused only」の文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    install();
+    const { container } = renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: "⟦Unused only⟧" }));
+    await screen.findByTitle("Beta");
+    expectCatalogTextOnly(container, ["Alpha", "Beta", "Cat", "Delta", "Echo"]);
+  });
+});
+
+describe("TagsPage まとめての操作", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function selectAll(): HTMLElement {
+    return screen.getByRole("checkbox", {
+      name: /^Select (all [\d,]+ loaded tags|the 1 loaded tag)$/,
+    });
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 2, name: "Beta", tentative: true }),
+      tag({ id: 3, name: "Cat", videoCount: 4 }),
+      tag({ id: 4, name: "Gamma", synonyms: ["ガンマ"], videoCount: 5 }),
+    ];
+  });
+
+  it("「Tentative only」で読み込んだものをすべて選んで確定すると、全 id を 1 回送り、仮の目印と選択が消え、一覧は取り直さない（受け入れ条件10）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await waitFor(() => expect(screen.queryByTitle("Cat")).toBeNull());
+    expect(server.pageRequests.at(-1)?.get("tentative")).toBe("true");
+    const gets = server.getCalls;
+    expect(selectAll().getAttribute("aria-label")).toBe("Select all 2 loaded tags");
+    await user.click(selectAll());
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    expect(screen.getByRole("checkbox", { name: "Clear selection" })).toBeDefined();
+
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull(),
+    );
+    expect(server.batchCalls).toEqual([{ action: "confirm", ids: [1, 2] }]);
+    expect(await screen.findByText("Confirmed 2 tags")).toBeDefined();
+    // 確定は読み込んだ行の中で反映し、ページも全件も取り直さない（R-12）。
+    expect(server.getCalls).toBe(gets);
+    expect(server.fullGetCalls).toBe(0);
+    expect(screen.getByText("0 of 4 tags")).toBeDefined();
+    // 確定した行は「Tentative only」から外れ、空になれば「Tentative only」へ移る。
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Tentative only" }),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await screen.findByTitle("Alpha");
+    expect(screen.queryByText("Tentative")).toBeNull();
+  });
+
+  it("仮と確定を混ぜて確定すると、既に確定していた分を数えて伝え、それを選んだまま残す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+
+    expect(
+      await screen.findByText("Confirmed 2 tags. 2 were already confirmed."),
+    ).toBeDefined();
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    // 残った選択は確定したタグだけなので「Confirm」は押せず、フォーカスは「More」へ。
+    const confirm = within(bar()).getByRole("button", { name: "Confirm" });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    expect(confirm.getAttribute("title")).toBe("No tentative tags are selected");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(bar()).getByRole("button", { name: "More" }),
+      ),
+    );
+  });
+
+  it("仮と確定を混ぜて削除すると、確認に確定したタグの数と動画の本数が出て、外した数をトーストで伝える（受け入れ条件11）", async () => {
+    const user = userEvent.setup();
+    server.impactVideoCount = 7;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete selected tags" });
+    expect(server.impactCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
+    expect(
+      await within(dialog).findByText(
+        "2 of the 4 selected tags are confirmed. They will be removed from 7 videos. This can't be undone. The 2 tentative tags are left as they are. Reject them instead.",
+      ),
+    ).toBeDefined();
+
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(
+      await screen.findByText("Deleted 2 tags. 2 tentative tags were skipped."),
+    ).toBeDefined();
+    expect(server.batchCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
+    expect(screen.queryByTitle("Cat")).toBeNull();
+    expect(screen.queryByTitle("Gamma")).toBeNull();
+    // 働かなかった仮のタグは選んだまま。
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+  });
+
+  it("確認の数が届くまで実行できず、数えられなければ理由と再試行を出す", async () => {
+    const user = userEvent.setup();
+    server.failImpact = true;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const reject = within(dialog).getByRole("button", { name: "Reject" });
+    expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+    expect(
+      (await within(dialog).findByRole("alert")).textContent?.startsWith(
+        "Couldn't count the affected videos:",
+      ),
+    ).toBe(true);
+    expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+    server.failImpact = false;
+    await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+    expect(
+      await within(dialog).findByText(
+        "The selected tag will be removed from 2 videos, and automatic tagging won't create its name again. You can allow a name again from Rejected names.",
+      ),
+    ).toBeDefined();
+    await user.click(reject);
+    expect(await screen.findByText("Rejected 1 tag")).toBeDefined();
+    expect(screen.queryByTitle("Alpha")).toBeNull();
+  });
+
+  it("対象の一部がもう無ければ一覧を取り直し、失敗すれば選択を残す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(rowOf("Beta")).getByRole("checkbox"));
+
+    // 失敗は何も変えず、選択は残る。
+    server.failNextBatch = true;
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText(/Something went wrong/)).toBeDefined();
+    expect(within(bar()).getByText("2 tags selected")).toBeDefined();
+    expect(within(rowOf("Alpha")).getByText("Tentative")).toBeDefined();
+
+    // 別のタブで Beta が消えていた。
+    server.tags = server.tags.filter((item) => item.id !== 2);
+    const gets = server.getCalls;
+    await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    expect(server.getCalls).toBeGreaterThan(gets);
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+  });
+
+  it("並び順を変えると sort=countDesc で読み直されて選択が空になり、検索を変えても空になる（Edge Case）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(selectAll());
+    expect(within(bar()).getByText("4 tags selected")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("sort")).toBe("countDesc"),
+    );
+    expect(server.pageRequests.at(-1)?.get("limit")).toBe("100");
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    // 読み直した行が同じ id を持っていても選び直さない。
+    await waitFor(() =>
+      expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+        "Gamma",
+        "Cat",
+        "Alpha",
+        "Beta",
+      ]),
+    );
+    expect(selectAll().getAttribute("aria-checked")).toBe("false");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    expect(within(bar()).getByText("1 tag selected")).toBeDefined();
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "a");
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+  });
+
+  it("選んでいる行の改名を始めると選択から外れ、改名中の行のチェックは押せない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Rename" }));
+    await screen.findByRole("textbox", { name: 'New name for "Alpha"' });
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    const check = screen.getByRole("checkbox", { name: 'Select "Alpha"' });
+    expect((check as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("×で選択を解くとバーが消え、先頭のチェックへフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Cat")).getByRole("checkbox"));
+    const more = within(bar()).getByRole("button", { name: "More" });
+    await user.click(more);
+    const reject = await screen.findByRole("menuitem", { name: "Reject…" });
+    expect(reject.getAttribute("aria-disabled")).toBe("true");
+    expect(reject.getAttribute("title")).toBe("No tentative tags are selected");
+    await user.keyboard("{Escape}");
+
+    await user.click(within(bar()).getByRole("button", { name: "Clear selection" }));
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(selectAll()));
+  });
+
+  it("タッチ・狭い幅の「Actions」は文字を持つ項目を並べ、「Confirm」は行の「確定する」と同じ結果になる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Actions" }));
+    const items = (await screen.findAllByRole("menuitem")).map(
+      (item) => item.textContent,
+    );
+    expect(items).toEqual([
+      "Confirm",
+      "Rename",
+      "Synonyms",
+      "Merge into another tag…",
+      "Reject…",
+    ]);
+    await user.click(screen.getByRole("menuitem", { name: "Confirm" }));
+
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    expect(server.confirmCalls).toBe(1);
+    await waitFor(() =>
+      expect(within(rowOf("Alpha")).queryByText("Tentative")).toBeNull(),
+    );
+
+    await user.click(within(rowOf("Cat")).getByRole("button", { name: "Actions" }));
+    expect(
+      (await screen.findAllByRole("menuitem")).map((item) => item.textContent),
+    ).toEqual(["Rename", "Synonyms", "Merge into another tag…", "Delete…"]);
+  });
+
+  it("疑似ロケールで、選択・選択バー・まとめての確認の文言がカタログから出る", async () => {
+    const user = userEvent.setup();
+    enablePseudoLocale();
+    install();
+    const { container } = renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(container.querySelector<HTMLElement>('[role="checkbox"]')!);
+    await user.click(within(screen.getByRole("region")).getAllByRole("button")[1]!);
+    const items = await screen.findAllByRole("menuitem");
+    await user.click(items[1]!);
+    const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(server.impactCalls).toHaveLength(1));
+    await within(dialog).findByText(/videos|video/i);
+    expectCatalogTextOnly(document.body, ["Alpha", "Beta", "Cat", "Gamma", "ガンマ"]);
+  });
+});
+
+describe("TagsPage まとめての統合", () => {
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    server.tags = [
+      tag({ id: 1, name: "Action", videoCount: 10 }),
+      tag({ id: 2, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 3, name: "Beta", tentative: true }),
+      tag({ id: 4, name: "Cat", videoCount: 4 }),
+      tag({ id: 5, name: "Gamma", videoCount: 5 }),
+    ];
+  });
+
+  async function openMerge(
+    user: ReturnType<typeof userEvent.setup>,
+    names: readonly string[],
+  ): Promise<HTMLElement> {
+    for (const name of names) {
+      await user.click(within(rowOf(name)).getByRole("checkbox"));
+    }
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into one tag…" }),
+    );
+    return screen.findByRole("dialog");
+  }
+
+  async function chooseTarget(
+    user: ReturnType<typeof userEvent.setup>,
+    dialog: HTMLElement,
+    name: string,
+  ) {
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    await user.clear(combo);
+    await user.type(combo, name);
+    await user.click(
+      await within(dialog).findByRole("option", { name: new RegExp(`^${name}`) }),
+    );
+  }
+
+  it("複数から開くと見出しが「Merge 4 tags」で統合元のチップが並び、統合先の入力と候補の一覧は窓の幅いっぱい（要件13）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Beta", "Cat", "Gamma"]);
+    expect(screen.getByRole("dialog", { name: "Merge 4 tags" })).toBe(dialog);
+    const chips = within(dialog).getByRole("list", { name: "Tags to merge" });
+    expect(
+      within(chips)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["AlphaTentative", "BetaTentative", "Cat", "Gamma"]);
+
+    const combo = within(dialog).getByRole("combobox", { name: "Tag to merge into" });
+    expect(combo.parentElement!.className).toContain("w-full");
+    expect(combo.parentElement!.className).not.toContain("w-40");
+    await user.type(combo, "A");
+    const listbox = await within(dialog).findByRole("listbox");
+    expect(listbox.className).toContain("w-full");
+    expect(listbox.className).not.toContain("w-64");
+    // 統合先の候補は全タグ（選んだ中からも、選んでいないタグからも）。
+    expect(within(listbox).getByRole("option", { name: /^Action/ })).toBeDefined();
+    expect(within(listbox).getByRole("option", { name: /^Alpha/ })).toBeDefined();
+  });
+
+  it("統合先を選ぶと数を待ち、届いたら tagCount・videoCount の確認を出して統合する", async () => {
+    const user = userEvent.setup();
+    server.impactVideoCount = 9;
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Beta", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+
+    expect(
+      await within(dialog).findByText(
+        'The 9 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can\'t be undone.',
+      ),
+    ).toBeDefined();
+    expect(server.impactCalls).toEqual([{ action: "merge", ids: [2, 3, 4, 5] }]);
+    const mergeButton = within(dialog).getByRole("button", { name: "Merge" });
+    await waitFor(() => expect(document.activeElement).toBe(mergeButton));
+
+    await user.click(mergeButton);
+
+    expect(await screen.findByText('Merged 4 tags into "Action"')).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/1/merge",
+      expect.objectContaining({ body: JSON.stringify({ sourceIds: [2, 3, 4, 5] }) }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    for (const name of ["Alpha", "Beta", "Cat", "Gamma"]) {
+      expect(screen.queryByTitle(name)).toBeNull();
+    }
+    // 本数は応答の tag の videoCount（このモックでは合算の 21）。
+    expect(within(rowOf("Action")).getByText("21 videos")).toBeDefined();
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Action")).getByRole("link", { name: /Action/ }),
+      ),
+    );
+  });
+
+  it("選んだ中のタグを統合先にすると統合元から外れ、統合先だけなら実行できない（Edge Case）", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Action", "Alpha", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+
+    expect(
+      within(dialog).getByText('"Action" is kept and the other 3 tags merge into it.'),
+    ).toBeDefined();
+    const chips = within(dialog).getByRole("list", { name: "Tags to merge" });
+    expect(within(chips).getByText("kept")).toBeDefined();
+    expect(
+      await within(dialog).findByText(
+        /^The 11 videos tagged with these 3 tags get the tag "Action"\./,
+      ),
+    ).toBeDefined();
+    expect(server.impactCalls.at(-1)).toEqual({ action: "merge", ids: [2, 4, 5] });
+
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    expect(await screen.findByText('Merged 3 tags into "Action"')).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/tags/1/merge",
+      expect.objectContaining({ body: JSON.stringify({ sourceIds: [2, 4, 5] }) }),
+    );
+  });
+
+  it("選んだのが 1 件でそれを統合先にすると「Merge」は押せない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Cat"]);
+    within(dialog).getByText('Merge "Cat"');
+    await chooseTarget(user, dialog, "Cat");
+
+    expect(
+      within(dialog).getByText(
+        'Choose another tag to merge into: "Cat" is the only tag selected.',
+      ),
+    ).toBeDefined();
+    expect(
+      (within(dialog).getByRole("button", { name: "Merge" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(server.impactCalls).toEqual([]);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(bar()).getByRole("button", { name: "More" }),
+      ),
+    );
+  });
+
+  it("数えられなければ理由と再試行を出し、統合元がすべてもう無ければ統合のトーストを出さずに取り直す", async () => {
+    const user = userEvent.setup();
+    server.failImpact = true;
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+    expect(
+      (await within(dialog).findByRole("alert")).textContent?.startsWith(
+        "Couldn't count the affected videos:",
+      ),
+    ).toBe(true);
+    const mergeButton = within(dialog).getByRole("button", { name: "Merge" });
+    expect((mergeButton as HTMLButtonElement).disabled).toBe(true);
+
+    server.failImpact = false;
+    await user.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await within(dialog).findByText(/these 2 tags/);
+
+    // 別のタブで Cat と Gamma が消えていた。
+    server.tags = server.tags.filter((item) => item.id !== 4 && item.id !== 5);
+    const gets = server.getCalls;
+    await user.click(mergeButton);
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/^Merged/)).toBeNull();
+    await waitFor(() => expect(screen.queryByTitle("Cat")).toBeNull());
+    expect(server.getCalls).toBeGreaterThan(gets);
+  });
+
+  it("統合元の一部がもう無ければ、実際に統合した数を伝えて一覧を取り直す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const dialog = await openMerge(user, ["Alpha", "Cat", "Gamma"]);
+    await chooseTarget(user, dialog, "Action");
+    await within(dialog).findByText(/these 3 tags/);
+
+    server.tags = server.tags.filter((item) => item.id !== 5);
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    expect(await screen.findByText('Merged 2 tags into "Action"')).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Some of the tags no longer existed, so the list was reloaded",
+      ),
+    ).toBeDefined();
+    await waitFor(() => expect(screen.queryByTitle("Gamma")).toBeNull());
+  });
+});
+
+describe("TagsPage まとめての操作の上限", () => {
+  let originalOffsetHeight: PropertyDescriptor | undefined;
+
+  beforeEach(() => {
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-index") ? 40 : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    if (originalOffsetHeight !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    }
+  });
+
+  it("読み込んだ行が上限を超えると先頭のチェックだけが押せず、1 行ずつ選んだ数行のまとめての操作は押せる", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 20002 }, (_, index) =>
+      tag({ id: index + 1, name: `T${String(index).padStart(5, "0")}`, tentative: true }),
+    );
+    // 続きを何度も読んだあとと同じく、上限を超える行を読み込んだ状態を 1 回の応答で作る。
+    server.pageLimitOverride = 20001;
+    install();
+    renderPage();
+    await screen.findByTitle("T00000");
+
+    const reason =
+      "Too many tags are loaded to select them all at once (limit 20,000). Narrow the list with search or a filter.";
+    const header = screen.getByRole("checkbox", {
+      name: "Select all 20,001 loaded tags",
+    });
+    expect((header as HTMLButtonElement).disabled).toBe(true);
+    expect(header.parentElement?.getAttribute("title")).toBe(reason);
+    const describedBy = header.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy!)?.textContent).toBe(reason);
+
+    await user.click(screen.getByRole("checkbox", { name: 'Select "T00000"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "T00001"' }));
+    const region = screen.getByRole("region", { name: "Selected tags" });
+    for (const name of ["Confirm", "More"]) {
+      const button = within(region).getByRole("button", { name });
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    }
+    await user.click(within(region).getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText("Confirmed 2 tags")).toBeDefined();
+    expect(server.batchCalls).toEqual([{ action: "confirm", ids: [1, 2] }]);
+  }, 60000);
+});
+
+describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale/research.md R-1・R-11・R-12）", () => {
+  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さを置く。 */
+  const rowHeight = 40;
+  const viewportHeight = 200;
+  let originalInnerHeight = 0;
+  let originalOffsetHeight: PropertyDescriptor | undefined;
+
+  /** name は並べたときに番号の順になる名前（名前の自然順）。 */
+  function name(index: number): string {
+    return `Tag ${String(index)}`;
+  }
+
+  function loadedNames(): string[] {
+    return [...document.querySelectorAll<HTMLElement>("[data-index]")]
+      .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index))
+      .map(
+        (row) => row.querySelector("[data-tag-id] [title]")?.getAttribute("title") ?? "",
+      );
+  }
+
+  function count(): string {
+    return screen.getAllByRole("status").find((node) => node.tagName === "P")!
+      .textContent!;
+  }
+
+  function rowOf(tagName: string): HTMLElement {
+    return screen.getByTitle(tagName).closest("[data-tag-id]")!;
+  }
+
+  /** scrollTo は文書を top までスクロールしたことにし、仮想化に知らせる。 */
+  function scrollTo(top: number) {
+    Object.defineProperty(document.documentElement, "scrollHeight", {
+      configurable: true,
+      value: 1_000_000,
+    });
+    Object.defineProperty(window, "scrollY", { configurable: true, value: top });
+    window.dispatchEvent(new Event("scroll"));
+  }
+
+  /** scrollToEnd は読み込んだ行の末尾近くまでスクロールし、続きのきっかけを作る。 */
+  async function scrollToEnd(loaded: number) {
+    scrollTo(loaded * 60);
+    await waitFor(() =>
+      expect(
+        document.querySelector(`[data-index="${String(loaded - 1)}"]`),
+      ).not.toBeNull(),
+    );
+  }
+
+  function cursorRequests(): URLSearchParams[] {
+    return server.pageRequests.filter((params) => params.has("cursor"));
+  }
+
+  beforeEach(() => {
+    server.tags = Array.from({ length: 150 }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
+    );
+    originalInnerHeight = window.innerHeight;
+    window.innerHeight = viewportHeight;
+    originalOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-index") ? rowHeight : 0;
+      },
+    });
+  });
+
+  afterEach(() => {
+    window.innerHeight = originalInnerHeight;
+    if (originalOffsetHeight !== undefined) {
+      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
+    }
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
+    Reflect.deleteProperty(document.documentElement, "scrollHeight");
+  });
+
+  it("開くと GET /api/tags を limit=100&sort=name で 1 回だけ送り、全件は送らない", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    expect(server.pageRequests.map((params) => params.toString())).toEqual([
+      "sort=name&limit=100",
+    ]);
+    expect(server.fullGetCalls).toBe(0);
+    // 件数は全部の数で、続きがあるので読み込んだ数を添える。
+    expect(count()).toBe("150 tags · 100 loaded");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.getCalls).toBe(1);
+  });
+
+  it("検索は q で先頭から読み直し、応答の行だけが並ぶ（受け入れ条件9）", async () => {
+    const user = userEvent.setup();
+    server.tags.push(tag({ id: 999, name: "zz action" }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    expect(screen.queryByTitle("zz action")).toBeNull();
+
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search tags" }),
+      "ＡＣＴＩＯＮ",
+    );
+
+    await screen.findByTitle("zz action");
+    await waitFor(() => expect(loadedNames()).toEqual(["zz action"]));
+    expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ");
+    expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
+    expect(count()).toBe("1 of 151 tags");
+    // 入力は q の上限の 100 文字で止まる。
+    expect(
+      screen.getByRole("searchbox", { name: "Search tags" }).getAttribute("maxlength"),
+    ).toBe("100");
+  });
+
+  it("「Unused only」で unused=true を送り、件数の行が total of totalAll になる（受け入れ条件8）", async () => {
+    const user = userEvent.setup();
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      videoCount: index < 140 ? 1 : 0,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    await screen.findByTitle(name(140));
+    expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
+    // 読み込んでいなかったタグも数えた数で、末尾まで読んだので「loaded」は無い。
+    expect(count()).toBe("10 of 150 tags");
+    expect(loadedNames()).toHaveLength(10);
+  });
+
+  it("末尾に近づくと cursor 付きの要求を 1 回送り、行を末尾に足して重複する id を捨てる", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    // 読み込んだあとで、読み込んだ行の 1 つが別のタブで改名され、境より後ろに並ぶ
+    // ようになった（続きのページにも同じ id が出る）。
+    server.tags = server.tags.map((item) =>
+      item.id === 6 ? { ...item, name: "Tag 120a" } : item,
+    );
+
+    await scrollToEnd(100);
+    await waitFor(() => expect(count()).toBe("150 tags"));
+    expect(cursorRequests()).toHaveLength(1);
+    expect(cursorRequests()[0]?.get("limit")).toBe("100");
+    expect(cursorRequests()[0]?.get("sort")).toBe("name");
+
+    scrollTo(150 * 60);
+    await waitFor(() =>
+      expect(document.querySelector('[data-index="148"]')).not.toBeNull(),
+    );
+    // 150 行のまま（id 6 は二重に出ない）。続きはもう無いので要求しない。
+    expect(document.querySelector('[data-index="149"]')).not.toBeNull();
+    expect(document.querySelector('[data-index="150"]')).toBeNull();
+    expect(screen.queryByTitle("Tag 120a")).toBeNull();
+    expect(cursorRequests()).toHaveLength(1);
+  });
+
+  it("続きの応答の totalAll が違えば「一覧が変わった」を出して続きを止め、「Reload」で先頭から読み直す（Edge Case）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(within(rowOf(name(0))).getByRole("checkbox"));
+
+    // 別のタブでタグが増えた。
+    server.tags.push(tag({ id: 500, name: "Tag 999" }));
+    await scrollToEnd(100);
+
+    expect(
+      await screen.findByText(
+        "Tags were added or removed elsewhere, so the rest of this list may be out of date.",
+      ),
+    ).toBeDefined();
+    // 行と選択は残り、続きは足さず、それ以上要求しない。
+    expect(count()).toBe("150 tags · 100 loaded");
+    expect(
+      within(screen.getByRole("region", { name: "Selected tags" })).getByText(
+        "1 tag selected",
+      ),
+    ).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(cursorRequests()).toHaveLength(1);
+
+    const gets = server.getCalls;
+    scrollTo(0);
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(count()).toBe("151 tags · 100 loaded"));
+    expect(server.getCalls).toBe(gets + 1);
+    expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
+    expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
+    expect(screen.queryByText(/Tags were added or removed elsewhere/)).toBeNull();
+  });
+
+  it("続きの読み込みに失敗すると読み込んだ行が残り、「Retry」で同じ cursor を送る（Edge Case）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    server.failNextGet = true;
+    await scrollToEnd(100);
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/^Couldn't load more: /);
+    expect(screen.getByTitle(name(99))).toBeDefined();
+    expect(count()).toBe("150 tags · 100 loaded");
+
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(count()).toBe("150 tags"));
+    const sent = cursorRequests();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.get("cursor")).toBe(sent[0]?.get("cursor"));
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("続きを待つ間に検索を変えると、古い条件の続きは一覧に混ざらない（Edge Case）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    // 続き（2 回目の要求）から止める。
+    holdGetsFrom = 2;
+    await scrollToEnd(100);
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+    expect(screen.getByText("Loading more tags…")).toBeDefined();
+
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 14");
+    await waitFor(() => expect(heldGetReleases.length).toBeGreaterThan(1));
+    scrollTo(0);
+    // 新しい条件の応答を先に、古い続きの応答をあとに解く。
+    for (const release of heldGetReleases.slice(1)) release();
+    heldGetReleases[0]!();
+    await waitFor(() =>
+      expect(loadedNames()).toEqual([
+        "Tag 14",
+        "Tag 140",
+        "Tag 141",
+        "Tag 142",
+        "Tag 143",
+        "Tag 144",
+        "Tag 145",
+        "Tag 146",
+        "Tag 147",
+        "Tag 148",
+        "Tag 149",
+      ]),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(loadedNames()).toHaveLength(11);
+    expect(count()).toBe("11 of 150 tags");
+    expect(screen.queryByText(/Couldn't load more/)).toBeNull();
+  });
+
+  it("先頭のチェックは読み込んだ行だけを選び、続きがあってもそれ以上は選ばない（要件10）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    const header = screen.getByRole("checkbox", { name: "Select all 100 loaded tags" });
+    await user.click(header);
+    const bar = screen.getByRole("region", { name: "Selected tags" });
+    expect(within(bar).getByText("100 tags selected")).toBeDefined();
+    expect(header.getAttribute("aria-checked")).toBe("true");
+
+    // 続きが届くと読み込んだ行が増え、全部の状態は中間に戻る。
+    await scrollToEnd(100);
+    await waitFor(() => expect(count()).toBe("150 tags"));
+    expect(within(bar).getByText("100 tags selected")).toBeDefined();
+    expect(
+      screen
+        .getByRole("checkbox", { name: "Select all 150 loaded tags" })
+        .getAttribute("aria-checked"),
+    ).toBe("mixed");
+  });
+
+  it("名前の順で作成したタグは名前の自然順の鍵の位置に入る（受け入れ条件6）", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      tag({ id: 1, name: "B1" }),
+      tag({ id: 2, name: "B2" }),
+      tag({ id: 3, name: "B10" }),
+    ];
+    install();
+    renderPage();
+    await screen.findByTitle("B10");
+    expect(loadedNames()).toEqual(["B1", "B2", "B10"]);
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "ｂ５");
+    await user.keyboard("{Enter}");
+    await screen.findByTitle("ｂ５");
+    expect(loadedNames()).toEqual(["B1", "B2", "ｂ５", "B10"]);
+    expect(count()).toBe("4 tags");
+    expect(server.getCalls).toBe(1);
+  });
+
+  it("検索中に改名して一致しなくなった行は取り除かれ、total が減る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 14");
+    await waitFor(() => expect(count()).toBe("11 of 150 tags"));
+
+    await user.click(within(rowOf("Tag 141")).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: 'New name for "Tag 141"' });
+    await user.clear(input);
+    await user.type(input, "Renamed");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(screen.queryByTitle("Renamed")).toBeNull());
+    expect(screen.queryByTitle("Tag 141")).toBeNull();
+    expect(count()).toBe("10 of 150 tags");
+  });
+
+  it("先頭のページの失敗で、一覧を持っていなければ失敗の表示と「Retry」になる（Edge Case）", async () => {
+    const user = userEvent.setup();
+    server.failNextGet = true;
+    install();
+    renderPage();
+    expect(await screen.findByText("Couldn't load the tags")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByTitle(name(0));
+    expect(screen.queryByText("Couldn't load the tags")).toBeNull();
+  });
+
+  it("先頭のページの失敗で、一覧を持っていればその一覧を残して帯の中に知らせ、その間は続きを読まない（Edge Case）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    server.failNextGet = true;
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(
+      /^Couldn't load tags: .*\. The list below may not match the current search, filters and sort\./,
+    );
+    // 前の行と件数を残す。
+    expect(screen.getByTitle(name(0))).toBeDefined();
+    expect(count()).toBe("150 tags · 100 loaded");
+
+    // 箱がある間は、末尾に近づいても前の条件のカーソルで続きを読まない。
+    await scrollToEnd(100);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(cursorRequests()).toHaveLength(0);
+
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(count()).toBe("150 of 150 tags"));
+    expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("「Tentative only」で読み込んだ行を全部確定すると、空の状態を出さずにその場で続きを読み、残りの仮のタグが仮のまま出る（受け入れ条件10）", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 250 }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
+    );
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await waitFor(() => expect(count()).toBe("125 of 250 tags · 100 loaded"));
+
+    await user.click(
+      screen.getByRole("checkbox", { name: "Select all 100 loaded tags" }),
+    );
+    await user.click(
+      within(screen.getByRole("region", { name: "Selected tags" })).getByRole("button", {
+        name: "Confirm",
+      }),
+    );
+
+    expect(await screen.findByText("Confirmed 100 tags")).toBeDefined();
+    expect(server.batchCalls[0]?.ids).toHaveLength(100);
+    await waitFor(() => expect(count()).toBe("25 of 250 tags"));
+    expect(cursorRequests()).toHaveLength(1);
+    expect(screen.queryByText("No tentative tags")).toBeNull();
+    expect(loadedNames()[0]).toBe(name(200));
+    expect(within(rowOf(name(200))).getByText("Tentative")).toBeDefined();
+  });
+
+  it("先頭のページを待つ間に削除すると、削除の前に送った応答は捨てて読み直し、消したタグが戻らない（R-12）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(1));
+
+    // 「Unused only」の先頭のページ（2 回目の要求）から止める。全部のタグが 0 本。
+    holdGetsFrom = 2;
+    await user.click(screen.getByRole("button", { name: "Unused only" }));
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+
+    await user.click(
+      within(rowOf(name(1))).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("dialog", { name: `Delete "${name(1)}"` });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.queryByTitle(name(1))).toBeNull());
+
+    // 削除の前に受けた先頭のページ（消したタグを含む）が届く。
+    heldGetReleases[0]!();
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+    expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
+    expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
+    expect(screen.queryByTitle(name(1))).toBeNull();
+
+    heldGetReleases[1]!();
+    await waitFor(() => expect(count()).toBe("149 of 149 tags · 100 loaded"));
+    expect(screen.queryByTitle(name(1))).toBeNull();
+  });
+
+  it("続きを待つ間に確定すると、確定の前に送った続きは捨てて同じ cursor で読み直し、件数が戻らない（R-12）", async () => {
+    const user = userEvent.setup();
+    server.tags = Array.from({ length: 250 }, (_, index) =>
+      tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
+    );
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    await user.click(screen.getByRole("button", { name: "Tentative only" }));
+    await waitFor(() => expect(count()).toBe("125 of 250 tags · 100 loaded"));
+
+    holdGetsFrom = server.getCalls + 1;
+    await scrollToEnd(100);
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+    scrollTo(0);
+    await screen.findByTitle(name(0));
+
+    await user.click(within(rowOf(name(0))).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByTitle(name(0))).toBeNull());
+    expect(count()).toBe("124 of 250 tags · 99 loaded");
+
+    // 確定の前に受けた続き（total 125）が届く。
+    heldGetReleases[0]!();
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+    const sent = cursorRequests();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.get("cursor")).toBe(sent[0]?.get("cursor"));
+    expect(count()).toBe("124 of 250 tags · 99 loaded");
+
+    heldGetReleases[1]!();
+    await waitFor(() => expect(count()).toBe("124 of 250 tags"));
+    expect(screen.queryByText(/Tags were added or removed elsewhere/)).toBeNull();
+  });
+
+  it("並び順を変えて読み込んだ範囲の外になった改名中の行を改名しても、件数は増えない", async () => {
+    const user = userEvent.setup();
+    // 本数の多い順では Tag 0（0 本）が最後に並び、先頭のページに入らない。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      tentative: false,
+      videoCount: index,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    // 件数の行が total を出すよう、全部に合う検索で絞る。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
+    await waitFor(() => expect(count()).toBe("150 of 150 tags · 100 loaded"));
+
+    await user.click(within(rowOf(name(0))).getByRole("button", { name: "Rename" }));
+    await screen.findByRole("textbox", { name: `New name for "${name(0)}"` });
+    // 並び順を変えた先頭のページの次（改名中の行が末尾にあるので続きを読む）は届かない
+    // ままにし、改名中の行を読み込んでいない間に改名する。
+    holdGetsFrom = server.getCalls + 2;
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("sort")).toBe("countDesc"),
+    );
+    await waitFor(() => expect(loadedNames()[0]).toBe(name(149)));
+    expect(count()).toBe("150 of 150 tags · 100 loaded");
+
+    const input = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
+    await user.clear(input);
+    await user.type(input, "Tag renamed{Enter}");
+    await waitFor(() =>
+      expect(server.tags.find((item) => item.id === 1)?.name).toBe("Tag renamed"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: `New name for "${name(0)}"` }),
+      ).toBeNull(),
+    );
+    expect(count()).toBe("150 of 150 tags · 100 loaded");
+  });
+
+  it("シノニム登録に伴って読み込んでいないタグを統合すると、条件に合っていたそのタグを total からも引く", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(1));
+    // 件数の行が total を出すよう、全部に合う検索で絞る。
+    await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
+    await waitFor(() => expect(count()).toBe("150 of 150 tags · 100 loaded"));
+    expect(screen.queryByTitle(name(140))).toBeNull();
+
+    await user.click(within(rowOf(name(1))).getByRole("button", { name: "Synonyms" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: `Synonyms of "${name(1)}"`,
+    });
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Add synonym" }),
+      `${name(140)}{Enter}`,
+    );
+    await within(dialog).findByText(/is a tag on/);
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+    await waitFor(() =>
+      expect(server.tags.some((item) => item.name === name(140))).toBe(false),
+    );
+    await within(dialog).findByText(name(140));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(count()).toBe("149 of 149 tags · 100 loaded"));
+  });
+
+  it("新しい検索の先頭のページを待つ間、空の状態は読んだ検索の語のまま出す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+    const box = screen.getByRole("searchbox", { name: "Search tags" });
+    await user.type(box, "zzz");
+    expect(await screen.findByText('No tags match "zzz"')).toBeDefined();
+
+    holdGetsFrom = server.getCalls + 1;
+    await user.type(box, "q");
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+    expect(screen.getByText('No tags match "zzz"')).toBeDefined();
+    expect(screen.queryByText('No tags match "zzzq"')).toBeNull();
+
+    heldGetReleases[0]!();
+    expect(await screen.findByText('No tags match "zzzq"')).toBeDefined();
+  });
+
+  it("読み込んでいない統合先へ統合すると、並び順の位置が範囲の中なら差し込み、共有の保持の取り直しが失敗しても統合元と統合先が残らず消えたりしない（R-12）", async () => {
+    const user = userEvent.setup();
+    // 本数の多い順で Tag 0（5 本）が先頭、残りは 1 本で名前の順。Tag 140 は読み込んでいない。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      tentative: false,
+      videoCount: index === 0 ? 5 : 1,
+    }));
+    install();
+    // 共有の保持の購読者がいて、統合のあとの全件の取り直しは失敗する。
+    server.failFullGets = true;
+    const unsubscribe = subscribeTags(() => undefined);
+    try {
+      renderPage();
+      await screen.findByTitle(name(0));
+      await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+      await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+      await waitFor(() =>
+        expect(server.pageRequests.at(-1)?.get("sort")).toBe("countDesc"),
+      );
+      await waitFor(() => expect(loadedNames()[1]).toBe(name(1)));
+      expect(screen.queryByTitle(name(140))).toBeNull();
+
+      await user.click(
+        within(rowOf(name(0))).getByRole("button", { name: "More actions" }),
+      );
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
+      );
+      const dialog = await screen.findByRole("dialog", { name: `Merge "${name(0)}"` });
+      await user.type(
+        within(dialog).getByRole("combobox", { name: "Tag to merge into" }),
+        name(140),
+      );
+      await user.click(
+        await within(dialog).findByRole("option", { name: new RegExp(`^${name(140)}`) }),
+      );
+      await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+      expect(
+        await screen.findByText(`Merged "${name(0)}" into "${name(140)}"`),
+      ).toBeDefined();
+      await waitFor(() => expect(server.fullGetCalls).toBeGreaterThan(0));
+      // 統合先は 6 本で先頭に入り、統合元は消える。件数は 1 つ減る。
+      await waitFor(() => expect(loadedNames()[0]).toBe(name(140)));
+      expect(screen.queryByTitle(name(0))).toBeNull();
+      expect(count()).toBe("149 tags · 100 loaded");
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          screen.getByRole("link", { name: `Open the library filtered by ${name(140)}` }),
+        ),
+      );
+
+      // 続きを末尾まで読んでも、統合先は二重に出ない。
+      await scrollToEnd(100);
+      await waitFor(() => expect(count()).toBe("149 tags"));
+      scrollTo(0);
+      await waitFor(() => expect(loadedNames()[0]).toBe(name(140)));
+      expect(screen.getAllByTitle(name(140))).toHaveLength(1);
+    } finally {
+      unsubscribe();
+    }
+  });
+});
+
+describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/research.md R-13）", () => {
+  /** 見張っている番兵（IntersectionObserver）。窓の中身を末尾までスクロールしたことにする。 */
+  const observers = new Set<{
+    callback: IntersectionObserverCallback;
+    target: Element | null;
+  }>();
+
+  function scrollRejectedToEnd(skip: ReadonlySet<object> = new Set()) {
+    act(() => {
+      for (const observer of [...observers]) {
+        if (observer.target === null || skip.has(observer)) continue;
+        observer.callback(
+          [
+            {
+              isIntersecting: true,
+              target: observer.target,
+            } as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+      }
+    });
+  }
+
+  const names = Array.from(
+    { length: 250 },
+    (_, index) => `Name${String(index).padStart(3, "0")}`,
+  );
+
+  function rowOf(name: string): HTMLElement {
+    return screen.getByTitle(name).closest("[data-tag-id]")!;
+  }
+
+  function bar(): HTMLElement {
+    return screen.getByRole("region", { name: "Selected tags" });
+  }
+
+  beforeEach(() => {
+    observers.clear();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        private entry: { callback: IntersectionObserverCallback; target: Element | null };
+        constructor(callback: IntersectionObserverCallback) {
+          this.entry = { callback, target: null };
+        }
+        observe(target: Element) {
+          this.entry.target = target;
+          observers.add(this.entry);
+        }
+        disconnect() {
+          observers.delete(this.entry);
+        }
+      },
+    );
+    server.tags = [
+      tag({ id: 1, name: "Alpha", tentative: true, videoCount: 2 }),
+      tag({ id: 2, name: "Beta", tentative: true }),
+    ];
+    server.rejectedNames = [...names];
+  });
+
+  async function openRejected(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Rejected names" });
+    return within(dialog).getByRole("list", { name: "Rejected names" });
+  }
+
+  it("開くと先頭の1ページだけを limit=100 で読み、入口に total を出す。窓を開くために読み直さない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    expect(server.rejectedGetRequests).toHaveLength(1);
+    expect(server.rejectedGetRequests[0]?.get("limit")).toBe("100");
+    expect(server.rejectedGetRequests[0]?.has("cursor")).toBe(false);
+
+    const list = await openRejected(user);
+    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    expect(server.rejectedGetRequests).toHaveLength(1);
+  });
+
+  it("窓の中身を末尾までスクロールすると cursor 付きで続きを読み、名前を足す。閉じても続きは残る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    expect(server.rejectedGetRequests[1]?.get("cursor")).toBe("Name099");
+    expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
+    expect(list.getAttribute("aria-busy")).toBeNull();
+
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(250));
+    expect(within(list).getByTitle("Name249")).toBeDefined();
+    // 末尾まで読んだら、もう番兵は見張らない。
+    expect(observers.size).toBe(0);
+    const requests = server.rejectedGetRequests.length;
+
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const reopened = await openRejected(user);
+    expect(within(reopened).getAllByRole("listitem")).toHaveLength(250);
+    expect(server.rejectedGetRequests).toHaveLength(requests);
+  });
+
+  it("×で外すと DELETE を送り、その名前が消えて入口の件数が1減る。一覧は取り直さない", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    const list = await openRejected(user);
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Name000" again' }));
+    await waitFor(() => expect(within(list).queryByTitle("Name000")).toBeNull());
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          init?.method === "DELETE" &&
+          String(input).startsWith("/api/tags/rejected-names?"),
+      ),
+    ).toBe(true);
+    expect(entry.textContent).toContain("249");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(99);
+    expect(server.rejectedGetRequests).toHaveLength(1);
+  });
+
+  it("まとめての却下のあと、先頭の1ページだけを取り直し、窓の並びが先頭のページに戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const before = server.rejectedGetRequests.length;
+    await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
+    await user.click(within(bar()).getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const reject = within(dialog).getByRole("button", { name: "Reject" });
+    await waitFor(() => expect((reject as HTMLButtonElement).disabled).toBe(false));
+    await user.click(reject);
+    expect(await screen.findByText("Rejected 1 tag")).toBeDefined();
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    const reloads = server.rejectedGetRequests.slice(before);
+    expect(reloads).toHaveLength(1);
+    expect(reloads[0]?.has("cursor")).toBe(false);
+    expect(reloads[0]?.get("limit")).toBe("100");
+
+    const reopened = await openRejected(user);
+    expect(within(reopened).getAllByRole("listitem")).toHaveLength(100);
+    expect(within(reopened).getByTitle("Alpha")).toBeDefined();
+  });
+
+  it("続きの読み込みに失敗しても読み込んだ名前を残し、Retry で同じカーソルから読み直す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    server.failRejectedMoreGets = true;
+    scrollRejectedToEnd();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("Couldn't load more rejected names");
+    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    // 失敗の間は番兵で読み直さない。
+    expect(observers.size).toBe(0);
+
+    server.failRejectedMoreGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    const more = server.rejectedGetRequests.filter((params) => params.has("cursor"));
+    expect(more.map((params) => params.get("cursor"))).toEqual(["Name099", "Name099"]);
+    expect(screen.queryByText("Couldn't load more rejected names")).toBeNull();
+  });
+  it("読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく続きの失敗と Retry を残す", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = names.slice(0, 101);
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    server.failRejectedMoreGets = true;
+    scrollRejectedToEnd();
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Couldn't load more rejected names",
+    );
+    for (const name of names.slice(0, 100)) {
+      fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+    }
+    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    expect(screen.queryByText("No rejected names")).toBeNull();
+
+    server.failRejectedMoreGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await within(list).findByTitle("Name100")).toBeDefined();
+  });
+
+  it("読み込んだ名前をすべて外しても続きが残っていれば、番兵で続きを読む", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = names.slice(0, 101);
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+
+    for (const name of names.slice(0, 100)) {
+      fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+    }
+    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    expect(screen.queryByText("No rejected names")).toBeNull();
+
+    scrollRejectedToEnd();
+    expect(await within(list).findByTitle("Name100")).toBeDefined();
+  });
+
+  it("先頭のページの取り直しの間に番兵が見えても、取り直しのあとで見張り直して続きを読む", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const list = await openRejected(user);
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // 却下で先頭のページの取り直しが始まり、その応答は止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(rejectedGetReleases).toHaveLength(1));
+    holdRejectedGets = false;
+
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const reopened = await openRejected(user);
+    // 取り直しの間の通知は無視される。
+    scrollRejectedToEnd();
+    expect(
+      server.rejectedGetRequests.filter((params) => params.has("cursor")),
+    ).toHaveLength(0);
+    expect(list.isConnected).toBe(false);
+
+    // 取り直しの応答も 100 件で、件数は変わらない。番兵は見えたままなので、今の
+    // 見張りにはもう通知が来ない。見張り直したときの最初の通知だけで続きを読む。
+    const watching = new Set(observers);
+    act(() => rejectedGetReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    await waitFor(() =>
+      expect([...observers].some((observer) => !watching.has(observer))).toBe(true),
+    );
+    scrollRejectedToEnd(watching);
+    await waitFor(() =>
+      expect(within(reopened).getAllByRole("listitem")).toHaveLength(200),
+    );
+  });
+
+  it("取り直しと重なった続きの名前の取り外しのあと、取り直して入口の件数を合わせる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    const entry = screen.getByRole("button", { name: /Rejected names/ });
+    const list = await openRejected(user);
+    scrollRejectedToEnd();
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await user.click(screen.getByText("Close", { selector: "button" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // 却下で先頭のページの取り直しが始まり、その応答（取り外しの前の 251 件）は止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(rejectedGetReleases).toHaveLength(1));
+    holdRejectedGets = false;
+
+    // 古い続きに残る名前を外す。DELETE の応答も止める。
+    const reopened = await openRejected(user);
+    holdRejectedDeletes = true;
+    await user.click(
+      within(reopened).getByRole("button", { name: 'Allow "Name150" again' }),
+    );
+    await waitFor(() => expect(rejectedDeleteReleases).toHaveLength(1));
+    holdRejectedDeletes = false;
+
+    // 取り直しの応答が DELETE の応答より先に届く。
+    act(() => rejectedGetReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("251"));
+    const before = server.rejectedGetRequests.length;
+
+    act(() => rejectedDeleteReleases.forEach((resolve) => resolve()));
+    await waitFor(() => expect(entry.textContent).toContain("250"));
+    expect(server.rejectedGetRequests.length).toBe(before + 1);
+    expect(server.rejectedGetRequests.at(-1)?.has("cursor")).toBe(false);
   });
 });

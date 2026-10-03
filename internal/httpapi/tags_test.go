@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,7 +20,7 @@ type fakeTags struct {
 	operation string
 	lastID    int64
 	lastName  string
-	lastTag   *int64 // MergeTagのsourceID・AddSynonymのmergeTagID
+	lastTag   *int64 // AddSynonymのmergeTagID
 	err       error
 
 	// #267: 付け外し・要約・一覧のタグ引きの決め打ち。
@@ -33,10 +34,32 @@ type fakeTags struct {
 
 	// 031: 却下した名前の一覧の決め打ち。nil なら nil を返す。
 	rejectedNames []string
+	// 036: 却下した名前の一覧に渡ったカーソルと件数。
+	lastCursor string
+	lastLimit  int
+
+	// 036: まとめての操作と確認の数の決め打ち。
+	lastBatchAction  domain.TagBatchAction
+	lastImpactAction domain.TagImpactAction
+	lastIDs          []int64
+	batchOutcome     domain.TagBatchOutcome
+	impact           domain.TagImpact
+	// mergeNotFound は MergeTags が NotFoundIDs として返す id。
+	mergeNotFound []int64
+	// lastListQuery は ListTags が受けた条件。listPage があれば ListTags はそれを返す。
+	lastListQuery domain.TagListQuery
+	listPage      *domain.TagPage
 }
 
-func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
-	return f.tags, f.err
+func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domain.TagPage, error) {
+	f.lastListQuery = query
+	if f.err != nil {
+		return domain.TagPage{}, f.err
+	}
+	if f.listPage != nil {
+		return *f.listPage, nil
+	}
+	return domain.TagPage{Items: f.tags, Total: len(f.tags), TotalAll: len(f.tags)}, nil
 }
 
 func (f *fakeTags) CreateTag(_ context.Context, name string) (domain.Tag, error) {
@@ -65,12 +88,15 @@ func (f *fakeTags) DeleteTag(_ context.Context, id int64) error {
 	return f.err
 }
 
-func (f *fakeTags) MergeTag(_ context.Context, targetID, sourceID int64) (domain.Tag, error) {
-	f.operation, f.lastID, f.lastTag = "merge", targetID, &sourceID
+func (f *fakeTags) MergeTags(_ context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error) {
+	f.operation, f.lastID, f.lastIDs = "merge", targetID, sourceIDs
 	if f.err != nil {
-		return domain.Tag{}, f.err
+		return domain.TagMergeOutcome{}, f.err
 	}
-	return domain.Tag{ID: targetID, Name: "target", Synonyms: []string{}, VideoCount: 0}, nil
+	return domain.TagMergeOutcome{
+		Tag:         domain.Tag{ID: targetID, Name: "target", Synonyms: []string{}, VideoCount: 0},
+		NotFoundIDs: f.mergeNotFound,
+	}, nil
 }
 
 func (f *fakeTags) AddSynonym(_ context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error) {
@@ -125,14 +151,24 @@ func (f *fakeTags) RejectTag(_ context.Context, id int64) (string, error) {
 	return "", f.err
 }
 
-func (f *fakeTags) ListRejectedTagNames(context.Context) ([]string, error) {
-	f.operation = "list-rejected"
-	return f.rejectedNames, f.err
+func (f *fakeTags) ListRejectedTagNames(_ context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error) {
+	f.operation, f.lastCursor, f.lastLimit = "list-rejected", cursor, limit
+	return domain.RejectedTagNamePage{Items: f.rejectedNames, Total: len(f.rejectedNames)}, f.err
 }
 
 func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
 	f.operation, f.lastName = "forget-rejected", name
 	return f.err
+}
+
+func (f *fakeTags) BatchTags(_ context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {
+	f.operation, f.lastBatchAction, f.lastIDs = "batch", action, ids
+	return f.batchOutcome, f.err
+}
+
+func (f *fakeTags) TagImpact(_ context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
+	f.operation, f.lastImpactAction, f.lastIDs = "impact", action, ids
+	return f.impact, f.err
 }
 
 func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSummary, error) {
@@ -287,7 +323,7 @@ func TestTagMutationsReturnNotFoundForMissingTag(t *testing.T) {
 		name, method, target, body string
 	}{
 		{"rename", http.MethodPatch, "/api/tags/999", `{"name":"新しい名前"}`},
-		{"merge", http.MethodPost, "/api/tags/999/merge", `{"sourceId":1}`},
+		{"merge", http.MethodPost, "/api/tags/999/merge", `{"sourceIds":[1]}`},
 		{"delete", http.MethodDelete, "/api/tags/999", ""},
 	}
 	for _, tc := range tests {
@@ -311,21 +347,66 @@ func TestTagMutationsReturnNotFoundForMissingTag(t *testing.T) {
 	}
 }
 
-func TestMergeTagSameIDIsInvalidRequest(t *testing.T) {
-	fake := &fakeTags{}
-	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", `{"sourceId":3}`)
-	assertErrorBody(t, "同じタグの統合", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonMergeSameTag})
-	if fake.operation != "" {
-		t.Fatal("MergeTag was called for sourceId == id")
+func TestMergeTagsRejectsInvalidSources(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want wantError
+	}{
+		{"sourceIds に統合先を含む", `{"sourceIds":[5,3]}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonMergeSameTag}},
+		{"sourceIds が空", `{"sourceIds":[]}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
+		{"sourceIds が 20001 件", `{"sourceIds":` + idsJSON(domain.MaxTagBatch+1) + `}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
+		{"廃止した sourceId", `{"sourceId":5}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
+	}
+	for _, tc := range cases {
+		fake := &fakeTags{}
+		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", tc.body)
+		assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), tc.want)
+		if fake.operation != "" {
+			t.Errorf("%s: 保存層に届いた (%s)", tc.name, fake.operation)
+		}
 	}
 }
 
-func TestMergeTagCallsStoreForDifferentIDs(t *testing.T) {
-	fake := &fakeTags{}
-	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", `{"sourceId":5}`)
-	if rec.Code != http.StatusOK || fake.operation != "merge" || fake.lastID != 3 || fake.lastTag == nil || *fake.lastTag != 5 {
-		t.Fatalf("response = %d operation=%s id=%d source=%v", rec.Code, fake.operation, fake.lastID, fake.lastTag)
+func TestMergeTagsReturnsTagAndNotFoundIDs(t *testing.T) {
+	fake := &fakeTags{mergeNotFound: []int64{6}}
+	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", `{"sourceIds":[5,6]}`)
+	if rec.Code != http.StatusOK || fake.operation != "merge" || fake.lastID != 3 || !slices.Equal(fake.lastIDs, []int64{5, 6}) {
+		t.Fatalf("response = %d operation=%s id=%d sources=%v: %s", rec.Code, fake.operation, fake.lastID, fake.lastIDs, rec.Body)
+	}
+	got := decode[gen.TagMergeResponse](t, rec)
+	if got.Tag.Id != 3 || !slices.Equal(got.NotFoundIds, []int64{6}) {
+		t.Errorf("response = %+v", got)
+	}
+}
+
+// 統合元がすべて無かったときも 200 で、tag は変わらない統合先、notFoundIds は全部。
+// NotFoundIDs が nil でも応答は [] にする。
+func TestMergeTagsWithOnlyMissingSourcesReturnsOK(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		notFound []int64
+		want     []int64
+	}{
+		{"全部無い", []int64{5, 6}, []int64{5, 6}},
+		{"nil", nil, []int64{}},
+	} {
+		fake := &fakeTags{mergeNotFound: tc.notFound}
+		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", `{"sourceIds":[5,6]}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: response = %d %s", tc.name, rec.Code, rec.Body)
+		}
+		if !strings.Contains(rec.Body.String(), `"notFoundIds":[`) {
+			t.Errorf("%s: notFoundIds が配列でない: %s", tc.name, rec.Body)
+		}
+		got := decode[gen.TagMergeResponse](t, rec)
+		if got.Tag.Id != 3 || !slices.Equal(got.NotFoundIds, tc.want) {
+			t.Errorf("%s: response = %+v", tc.name, got)
+		}
 	}
 }
 
