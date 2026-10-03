@@ -23,8 +23,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  // 3,000 個の規模で全場面を回すと数分かかる。
-  timeout: 20 * 60_000,
+  // 30,000 個の規模で、続きを読み込みながら末尾まで送ると数十分かかる。
+  timeout: 90 * 60_000,
   outputDir: path.join(benchRoot, "..", "test-results", "bench"),
   reporter: "list",
   use: {
