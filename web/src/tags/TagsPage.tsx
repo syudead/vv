@@ -495,19 +495,31 @@ export default function TagsPage() {
       pinnedRowId === null ? -1 : visibleRows.findIndex((tag) => tag.id === pinnedRowId),
     [visibleRows, pinnedRowId],
   );
+  /**
+   * renamingIndex は改名中の行の位置である。改名中の行は、フォーカスが一覧の
+   * 外へ出ても（並び順のメニューを開くなど）描き続ける。外すと `TagRow` が
+   * 外れて打っている途中の名前を失う（並び順・絞り込みを変えても改名中の行を
+   * 消さない。specs/036-tag-admin-scale/plan.md）。
+   */
+  const renamingIndex = useMemo(
+    () =>
+      renamingId === null ? -1 : visibleRows.findIndex((tag) => tag.id === renamingId),
+    [visibleRows, renamingId],
+  );
   const rangeExtractor = useCallback(
     (range: Range) => {
       const indexes = defaultRangeExtractor(range);
-      if (
-        pinnedIndex < 0 ||
-        pinnedIndex >= range.count ||
-        indexes.includes(pinnedIndex)
-      ) {
-        return indexes;
-      }
-      return [...indexes, pinnedIndex].sort((a, b) => a - b);
+      const extra = [pinnedIndex, renamingIndex].filter(
+        (index, i, all) =>
+          index >= 0 &&
+          index < range.count &&
+          !indexes.includes(index) &&
+          all.indexOf(index) === i,
+      );
+      if (extra.length === 0) return indexes;
+      return [...indexes, ...extra].sort((a, b) => a - b);
     },
-    [pinnedIndex],
+    [pinnedIndex, renamingIndex],
   );
   const getItemKey = useCallback(
     (index: number) => visibleRows[index]!.id,

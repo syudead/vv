@@ -2983,6 +2983,39 @@ describe("TagsPage 見えている行だけ描く", () => {
     );
   });
 
+  it("並び順で改名中の行が描いている範囲の外へ移っても、その行を描き続け打っている途中の名前を失わない", async () => {
+    const user = userEvent.setup();
+    // 先頭の行だけ 0 本にし、本数の多い順で末尾（描いている範囲の外）へ移す。
+    server.tags = server.tags.map((item, index) => ({
+      ...item,
+      videoCount: index === 0 ? 0 : 1,
+    }));
+    install();
+    renderPage();
+    await screen.findByTitle(name(0));
+
+    const row = screen.getByTitle(name(0)).closest("[data-tag-id]")!;
+    await user.click(within(row as HTMLElement).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", {
+      name: `New name for "${name(0)}"`,
+    });
+    await user.clear(input);
+    await user.type(input, "下書き");
+
+    await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await waitFor(() => expect(screen.queryByTitle(name(1))).not.toBeNull());
+    await waitFor(() => expect(wrapperOf(tagCount - 1)).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // 改名中の行は全件の末尾にあり、表示域の外でも描いたままで、値も入力も同じ。
+    expect(drawnIndexes()).toContain(tagCount - 1);
+    expect(drawnIndexes()).not.toContain(tagCount - 2);
+    const still = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
+    expect(still).toBe(input);
+    expect((still as HTMLInputElement).value).toBe("下書き");
+  });
+
   it("全件の最後の行からの Tab は既定のまま一覧の外へ進む", async () => {
     const user = userEvent.setup();
     server.tags = server.tags.slice(0, 3);
