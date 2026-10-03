@@ -179,9 +179,10 @@ function hasMarkdown(dir: string): boolean {
 }
 
 // editLink points at the English source, also from a Japanese page: the
-// translation is generated and never edited.
+// translation is generated and never edited. The function runs in the browser,
+// so it cannot use this module's constants.
 function editPattern({ filePath }: { filePath: string }): string {
-  return `${github}/edit/${branch}/${filePath.replace(/^ja\//, '')}`
+  return 'https://github.com/syudead/vv/edit/main/' + filePath.replace(/^ja\//, '')
 }
 
 const english: DefaultTheme.Config = {

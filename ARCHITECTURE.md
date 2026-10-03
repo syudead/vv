@@ -622,8 +622,8 @@ issue response
 ([specs/026-external-api/contracts/token-api.md](specs/026-external-api/contracts/token-api.md)).
 Bearer requests — a `path.Clean`ed path under `/api/v1/` (including undefined ones,
 which answer a JSON `404` after authentication) or `/mcp`, chosen only when the
-escaped and decoded segments agree — never read the cookie: `Authorization: Bearer
-<token>` alone decides the owner through `app.Auth`, and a missing, malformed, unknown
+escaped and decoded segments agree — never read the cookie:
+`Authorization: Bearer <token>` alone decides the owner through `app.Auth`, and a missing, malformed, unknown
 or revoked token is `401 unauthenticated` with `WWW-Authenticate: Bearer`. Every
 other path never reads `Authorization`, so a Bearer-only request to the screen API is
 a guest (or `401` for owner-only operations). The same-origin check applies to cookie

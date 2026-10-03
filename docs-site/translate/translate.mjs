@@ -29,7 +29,7 @@ const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
 
 // publishedSources lists the English documents the site publishes. Files
 // still waiting for their English rewrite have no English source yet.
-export function publishedSources(root) {
+export function publishedSources(root, { includePending = false } = {}) {
   const out = execFileSync('git', ['-C', root, 'ls-files', '-z', '--', ...publishedRoots], { encoding: 'utf8' })
   const pendingFile = path.join(root, pendingList)
   const pending = new Set(
@@ -43,7 +43,7 @@ export function publishedSources(root) {
   )
   return out
     .split('\0')
-    .filter((p) => p.endsWith('.md') && !pending.has(p))
+    .filter((p) => p.endsWith('.md') && (includePending || !pending.has(p)))
     .sort()
 }
 

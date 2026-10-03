@@ -48,7 +48,9 @@ hero:
 export function buildJaTree({ root, ja, out = path.join(root, 'ja') }) {
   fs.rmSync(out, { recursive: true, force: true })
   const counts = { current: 0, stale: 0, untranslated: 0 }
-  for (const rel of publishedSources(root)) {
+  // Every published page gets a ja/ page, including documents still waiting
+  // for their English rewrite, so links between ja/ pages always resolve.
+  for (const rel of publishedSources(root, { includePending: true })) {
     const source = fs.readFileSync(path.join(root, rel), 'utf8')
     const read = (p) => (ja && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null)
     const translation = read(path.join(ja ?? '', rel))
