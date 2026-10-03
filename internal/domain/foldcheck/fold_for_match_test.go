@@ -1,7 +1,9 @@
 // Package foldcheck_test は、Go の domain.FoldForMatch と画面の foldForMatch
 // （web/src/lib/foldForMatch.ts）が共有する入力の組
 // internal/domain/testdata/fold_for_match.json を確かめ、-update で書き直す
-// （specs/036-tag-admin-scale/research.md R-3）。ファイルを読み書きするので、
+// （specs/036-tag-admin-scale/research.md R-3）。domain.NaturalSortKey と画面の
+// naturalSortKey（web/src/lib/naturalSortKey.ts）が共有する
+// internal/domain/testdata/natural_sort_key.json も確かめる（R-12）。ファイルを読み書きするので、
 // os を import できない internal/domain の外（depguard の
 // domain-is-the-end-of-the-dependency-chain）に置く。
 package foldcheck_test
