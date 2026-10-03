@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -86,12 +87,16 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 	return name, nil
 }
 
-// tagByID はタグ1件を、シノニムと本数を添えて返す。無ければ
+// tagByID はタグ1件を、シノニムと本数と作った時刻を添えて返す。無ければ
 // domain.ErrTagNotFound を返す。
 func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	ref, err := tagRefByID(ctx, q, id)
 	if err != nil {
 		return domain.Tag{}, err
+	}
+	var createdAt int64
+	if err := q.QueryRowContext(ctx, `select created_at from tags where id = ?`, id).Scan(&createdAt); err != nil {
+		return domain.Tag{}, fmt.Errorf("cannot read the tag (id=%d): %w", id, err)
 	}
 	count, err := videoCountByTagID(ctx, q, id)
 	if err != nil {
@@ -101,7 +106,10 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	return domain.Tag{ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative}, nil
+	return domain.Tag{
+		ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative,
+		CreatedAt: time.Unix(createdAt, 0),
+	}, nil
 }
 
 // videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を

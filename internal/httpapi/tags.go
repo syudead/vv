@@ -227,6 +227,7 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 	return gen.Tag{
 		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
+		CreatedAt: tag.CreatedAt,
 	}
 }
 

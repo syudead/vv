@@ -5,7 +5,14 @@ import { t } from "../i18n";
 import { buildAddOptions, buildRemoveOptions, removableSummary } from "./tagChoices";
 
 function tag(id: number, name: string, synonyms: string[] = [], videoCount = 1): Tag {
-  return { id, name, synonyms, videoCount, tentative: false };
+  return {
+    id,
+    name,
+    synonyms,
+    videoCount,
+    tentative: false,
+    createdAt: "2026-01-01T00:00:00Z",
+  };
 }
 
 function summaryItem(id: number, name: string, manualCount: number, count = manualCount) {

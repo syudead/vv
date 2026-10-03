@@ -2421,7 +2421,7 @@ components:
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount, tentative]
+      required: [id, name, synonyms, videoCount, tentative, createdAt]
       additionalProperties: false
       description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
       properties:
@@ -2441,6 +2441,10 @@ components:
         tentative:
           type: boolean
           description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+        createdAt:
+          type: string
+          format: date-time
+          description: タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
 
     TagList:
       type: object

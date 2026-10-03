@@ -1517,6 +1517,11 @@ export interface components {
             videoCount: number;
             /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
             tentative: boolean;
+            /**
+             * Format: date-time
+             * @description タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+             */
+            createdAt: string;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
