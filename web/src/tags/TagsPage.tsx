@@ -1757,7 +1757,6 @@ export default function TagsPage() {
         <MergeTagDialog
           sources={merging.sources}
           fromSelection={merging.fromSelection}
-          tags={tags}
           onClose={cancelMerge}
           onMerged={performMerge}
           onStale={staleMerge}
