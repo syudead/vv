@@ -1,19 +1,14 @@
 // Builds the ja/ tree the documentation site publishes under /ja/.
 //
-//   node translate/site.mjs [--root <repo>] [--ja <docs-ja checkout>]
+//   node translate/site.mjs
 //
 // Every published English document gets a page under ja/: its translation
-// when docs-ja has one, marked stale when the English source changed since,
+// from translations/ja/, marked stale when the English source changed since,
 // or the English text marked untranslated. The tree is rebuilt from scratch on
 // every run, so a deleted or renamed source leaves no page behind.
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseArgs } from 'node:util'
-import { publishedSources } from './translate.mjs'
-
-const here = path.dirname(new URL(import.meta.url).pathname)
-const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
+import { defaultRoot, publishedSources, readTranslation, sha256, translationFile } from './ja.mjs'
 
 // withFrontmatter adds keys to a page's front matter, creating it if needed.
 export function withFrontmatter(markdown, fields) {
@@ -23,9 +18,9 @@ export function withFrontmatter(markdown, fields) {
 }
 
 // pageStatus decides what a ja/ page shows for one English source.
-export function pageStatus(source, translation, meta) {
-  if (translation == null || meta == null) return 'untranslated'
-  return meta.sourceHash === sha256(source) ? 'current' : 'stale'
+export function pageStatus(source, translation) {
+  if (translation == null || !translation.fields.sourceHash) return 'untranslated'
+  return translation.fields.sourceHash === sha256(source) ? 'current' : 'stale'
 }
 
 const home = `---
@@ -45,19 +40,15 @@ hero:
 ---
 `
 
-export function buildJaTree({ root, ja, out = path.join(root, 'ja') }) {
+export function buildJaTree({ root, out = path.join(root, 'ja') }) {
   fs.rmSync(out, { recursive: true, force: true })
   const counts = { current: 0, stale: 0, untranslated: 0 }
-  // Every published page gets a ja/ page, including documents still waiting
-  // for their English rewrite, so links between ja/ pages always resolve.
-  for (const rel of publishedSources(root, { includePending: true })) {
+  for (const rel of publishedSources(root)) {
     const source = fs.readFileSync(path.join(root, rel), 'utf8')
-    const read = (p) => (ja && fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : null)
-    const translation = read(path.join(ja ?? '', rel))
-    const metaText = read(path.join(ja ?? '', '.meta', rel + '.json'))
-    const status = pageStatus(source, translation, metaText && JSON.parse(metaText))
+    const translation = readTranslation(translationFile(root, rel))
+    const status = pageStatus(source, translation)
     counts[status]++
-    const body = status === 'untranslated' ? source : translation
+    const body = status === 'untranslated' ? source : translation.body
     const target = path.join(out, rel)
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, withFrontmatter(body, { translation: status, sourcePath: rel }))
@@ -67,13 +58,6 @@ export function buildJaTree({ root, ja, out = path.join(root, 'ja') }) {
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  const { values } = parseArgs({
-    options: {
-      root: { type: 'string', default: path.resolve(here, '../..') },
-      ja: { type: 'string', default: path.resolve(here, '../../.docs-ja') },
-    },
-  })
-  const ja = fs.existsSync(values.ja) ? values.ja : null
-  const counts = buildJaTree({ root: values.root, ja })
+  const counts = buildJaTree({ root: defaultRoot })
   console.log(`ja/: ${counts.current} translated, ${counts.stale} stale, ${counts.untranslated} untranslated`)
 }

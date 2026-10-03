@@ -242,6 +242,9 @@ var markdownLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 // 実行計画を active/ から completed/ へ移した結果、参照元のリンクが切れていた。
 func TestMarkdownRelativeLinksResolve(t *testing.T) {
 	for _, path := range guardedMarkdown(t) {
+		if isTranslation(relativeTo(t, path)) {
+			continue
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("%s を読めない: %v", path, err)

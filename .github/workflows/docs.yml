@@ -1,7 +1,7 @@
 # Builds the documentation site (docs-site/, VitePress) and, on main, deploys
 # it to GitHub Pages. Pull requests only check that it builds. The site
 # publishes docs/, specs/ and ARCHITECTURE.md, and their Japanese translations
-# from the docs-ja branch under /ja/ (written by docs-translate.yml).
+# from translations/ja/ under /ja/ (docs/design-docs/japanese-translation.md).
 name: Docs site
 
 on:
@@ -11,6 +11,7 @@ on:
       - "docs/**"
       - "specs/**"
       - "ARCHITECTURE.md"
+      - "translations/**"
       - "docs-site/**"
       - ".github/workflows/docs.yml"
   pull_request:
@@ -18,6 +19,7 @@ on:
       - "docs/**"
       - "specs/**"
       - "ARCHITECTURE.md"
+      - "translations/**"
       - "docs-site/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch: {}
@@ -50,12 +52,13 @@ jobs:
       - name: 依存を入れる
         run: npm --prefix docs-site ci
 
-      - name: 和訳の仕組みを検査する
+      - name: 和訳の検査ツールを検査する
         run: npm --prefix docs-site test
 
-      # 和訳はまだ無いこともある。無ければ /ja/ の全ページが「未翻訳」になる。
-      - name: docs-ja を取り出す
-        run: git fetch --depth=1 origin docs-ja && git worktree add --detach .docs-ja FETCH_HEAD || echo "docs-ja はまだ無い"
+      # 構造が崩れた和訳と、原文が消えた和訳は失敗にする。原文より古い和訳と
+      # 和訳の無い文書は警告だけで、英語の公開は止めない。
+      - name: 和訳を検査する
+        run: node docs-site/translate/ja.mjs check
 
       - name: サイトを作る
         run: npm --prefix docs-site run build

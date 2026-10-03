@@ -1,7 +1,7 @@
 // skeleton() reduces a Markdown document to what a translation must not
 // change: block types and depths, list and table shapes, code blocks (Mermaid
 // with its labels masked), and link and image destinations.
-import { parse, maskMermaid } from './segments.mjs'
+import { parse, maskMermaid } from './markdown.mjs'
 
 export function skeleton(markdown) {
   const out = []

@@ -1,8 +1,0 @@
-{
-  "family": "hy",
-  "repo": "tencent/HY-MT1.5-7B-GGUF",
-  "revision": "126325496bc8e3575f1d8615b8ca951d8483f206",
-  "file": "HY-MT1.5-7B-Q4_K_M.gguf",
-  "sha256": "fc87637e4dd29547811a28170770c2ac17725fb7690b7c4aafa4f463c3e77568",
-  "llamaCpp": "b11371"
-}

@@ -105,6 +105,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Write documentation in English to [writing-quality.md](../../../docs/design-docs/writing-quality.md);
      a new design document starts from [`assets/design-doc-template.md`](assets/design-doc-template.md)
      and a new how-to guide from [`assets/how-to-template.md`](assets/how-to-template.md)
+   - Once the English is final, hand every changed, renamed or deleted published document to the `doc-translator` subagent and commit its `translations/ja/` output with the change
    - Run focused validation and any repository checks required by the change, including the pre-push check from `AGENTS.md`
 
 6. Progress tracking and error handling:

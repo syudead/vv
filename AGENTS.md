@@ -22,6 +22,12 @@ file into a handbook.
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
   starting from the type for the document's kind. Issue and PR bodies stay
   Japanese.
+- After the English of a change is final, hand every changed, renamed or
+  deleted document under `docs/`, `specs/` and `ARCHITECTURE.md` to the
+  `doc-translator` subagent and commit its `translations/ja/` output in the
+  same pull request
+  ([japanese-translation.md](docs/design-docs/japanese-translation.md)). Do
+  not write or edit a translation yourself.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).

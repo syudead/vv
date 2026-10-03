@@ -87,6 +87,9 @@ var fragmentLink = regexp.MustCompile(`\]\(([^)\s]*#[^)\s]+)\)`)
 func TestMarkdownLinkAnchorsResolve(t *testing.T) {
 	cache := map[string]map[string]bool{}
 	for _, path := range guardedMarkdown(t) {
+		if isTranslation(relativeTo(t, path)) {
+			continue
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)

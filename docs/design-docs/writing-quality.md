@@ -7,8 +7,10 @@ P-1..P-7 from [plan-quality.md](plan-quality.md); Issue specifications follow
 [spec-quality.md](../product-specs/spec-quality.md).
 
 Japanese readers use the translation published under `/ja/` on the
-documentation site ([docs-site.md](../how-to/docs-site.md)). Nobody edits a
-translation; fix the English source and the translation follows.
+documentation site ([docs-site.md](../how-to/docs-site.md)). The
+`doc-translator` subagent writes it from the finished English in the same pull
+request ([japanese-translation.md](japanese-translation.md)). Nobody edits a
+translation by hand; fix the English source and translate it again.
 
 ## Rules
 
@@ -51,7 +53,7 @@ section. Link to the place that says it.
 
 | Write | Not |
 | --- | --- |
-| Translations live on `docs-ja` (see the Storage section). | Translations live on `docs-ja`. In other words, the translated files are kept on a separate branch called `docs-ja`. |
+| Translations live in `translations/ja/` (see the Storage section). | Translations live in `translations/ja/`. In other words, the translated files are kept in a separate directory called `translations/ja/`. |
 
 ### W-5: No emphasis without evidence
 
@@ -92,8 +94,9 @@ is prose. Every diagram has a sentence before it that says what it shows.
 Use one English term for one concept across all documents. Product terms use
 the words the screen shows, as defined in
 [web/src/i18n/en.ts](../../web/src/i18n/en.ts). When a term is introduced,
-define it once and link to the definition elsewhere. The translation glossary
-maps each term to one Japanese rendering.
+define it once and link to the definition elsewhere. The
+[translation terms](japanese-translation.md#terms) map each term to one
+Japanese rendering.
 
 ### W-9: Stable headings
 

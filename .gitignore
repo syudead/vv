@@ -56,6 +56,5 @@ __pycache__/
 
 *.tsbuildinfo
 
-# docs-site/translate/site.mjs が作る和訳のページと、docs-ja ブランチの checkout。
+# docs-site/translate/site.mjs が translations/ja/ から作る和訳のページ。
 /ja/
-/.docs-ja/

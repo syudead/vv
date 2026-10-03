@@ -1,9 +1,7 @@
 package sddguard
 
 import (
-	"bufio"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -16,9 +14,6 @@ import (
 var japaneseExempt = map[string]bool{
 	".github/pull_request_template.md": true,
 }
-
-// pendingList names the documents that still have to be rewritten in English.
-const pendingList = "scripts/sddguard/japanese-pending.txt"
 
 var fenceLine = regexp.MustCompile("^\\s*(```|~~~)")
 
@@ -53,61 +48,30 @@ func hasJapanese(s string) bool {
 	return false
 }
 
-func readPending(t *testing.T) map[string]bool {
-	t.Helper()
-	pending := map[string]bool{}
-	f, err := os.Open(filepath.Join(repositoryRoot(t), pendingList))
-	if os.IsNotExist(err) {
-		return pending
-	}
-	if err != nil {
-		t.Fatalf("read %s: %v", pendingList, err)
-	}
-	defer func() {
-		if err := f.Close(); err != nil {
-			t.Errorf("close %s: %v", pendingList, err)
-		}
-	}()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" && !strings.HasPrefix(line, "#") {
-			pending[line] = true
-		}
-	}
-	return pending
+// translationRoot holds the Japanese translations of the published documents.
+// They are checked by docs-site/translate/ja.mjs, not by these guards: their
+// prose is Japanese, and their links mirror their English sources.
+const translationRoot = "translations/"
+
+func isTranslation(rel string) bool {
+	return strings.HasPrefix(rel, translationRoot)
 }
 
 // TestDocumentsAreWrittenInEnglish fails on Japanese prose in a repository
 // document. Issue and PR bodies stay Japanese; documents do not
 // (docs/design-docs/writing-quality.md).
 func TestDocumentsAreWrittenInEnglish(t *testing.T) {
-	pending := readPending(t)
-	seen := map[string]bool{}
 	for _, path := range guardedMarkdown(t) {
 		rel := relativeTo(t, path)
-		if japaneseExempt[rel] {
+		if japaneseExempt[rel] || isTranslation(rel) {
 			continue
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", rel, err)
 		}
-		lines := japaneseProse(string(body))
-		if pending[rel] {
-			seen[rel] = true
-			if len(lines) == 0 {
-				t.Errorf("%s has no Japanese prose left. Remove it from %s", rel, pendingList)
-			}
-			continue
-		}
-		for _, n := range lines {
+		for _, n := range japaneseProse(string(body)) {
 			t.Errorf("%s:%d: Japanese prose. Write documents in English; put quoted screen text or user data in inline code", rel, n)
-		}
-	}
-	for rel := range pending {
-		if !seen[rel] {
-			t.Errorf("%s is listed in %s but is not a tracked Markdown file. Remove the entry", rel, pendingList)
 		}
 	}
 }

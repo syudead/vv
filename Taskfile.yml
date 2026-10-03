@@ -70,9 +70,15 @@ tasks:
       - npm --prefix docs-site run build
 
   docs-test:
-    desc: Test the Japanese translation pipeline in docs-site/translate, as CI does.
+    desc: Test the translation tools in docs-site/translate and check translations/ja, as CI does.
     cmds:
       - npm --prefix docs-site test
+      - node docs-site/translate/ja.mjs check
+
+  docs-ja-status:
+    desc: List published documents whose Japanese translation is stale or missing.
+    cmds:
+      - node docs-site/translate/ja.mjs status
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.

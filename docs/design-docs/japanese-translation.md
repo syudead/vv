@@ -1,128 +1,150 @@
 # Japanese translation of the documents
 
-The repository's documents are written in English. A workflow translates the
-published ones into Japanese with a translation-specialised model run on the
-GitHub Actions runner. The site publishes the result under `/ja/`. The code is
-in `docs-site/translate/`, the workflow in
-`.github/workflows/docs-translate.yml`, and the operating steps in
-[docs-site.md](../how-to/docs-site.md).
+The English documents are the source of truth. Their Japanese translations are
+written by a translation-only subagent, `doc-translator`, in the same pull
+request that changes the English. They live in `translations/ja/`, and the
+documentation site publishes them under `/ja/`
+([docs-site.md](../how-to/docs-site.md)).
 
 ```mermaid
 flowchart LR
-  push[push to main] --> docs[docs.yml: build and deploy]
-  ja[(branch docs-ja)] --> docs
-  push --> tr[docs-translate.yml: six shards]
-  nightly[nightly schedule] --> tr
-  tr -->|commit| ja
-  tr -->|start| docs
-  docs --> pages[GitHub Pages: / and /ja/]
+  author[agent writing the change] -->|1. finishes the English| en[English document]
+  en -->|2. hands over the changed paths| tr[doc-translator subagent]
+  tr -->|3. writes| ja[translations/ja/path]
+  ja --> stamp[4. ja.mjs stamp: pins anchors, records the source hash]
+  stamp --> pr[same pull request]
+  pr --> check[docs.yml: ja.mjs check]
+  check --> site[site: /ja/]
 ```
 
-## Translation engine
-
-### Context
-
-The translation has to be produced without a person, follow the English
-source, keep one Japanese rendering per term, and keep Markdown structure.
-The requester asked for a recent translation-specialised model.
+## Who translates
 
 ### Decision
 
-`HY-MT1.5-7B` (Tencent, quantised to GGUF `Q4_K_M`), served by `llama.cpp`
-`llama-server` on the `ubuntu-latest` runner. `docs-site/translate/model.json`
-pins the Hugging Face repository, revision, file, sha256 and the `llama.cpp`
-release.
-
-Candidates were run on the same eight English segments on a 4-vCPU runner
-(2026-10-03):
-
-| Model | Size | Speed | Result |
-| --- | --- | --- | --- |
-| `HY-MT1.5-1.8B` `Q8_0` | 1.9 GB | 18 tokens/s | Wrong terms ("seek bar" as `検索バー`, "orphan branch" garbled) and one paragraph with the opposite meaning |
-| **`HY-MT1.5-7B` `Q4_K_M`** | 4.6 GB | 7.6 tokens/s | Correct and natural on every sample; kept `<sN>` tags and glossary terms |
-| `TranslateGemma` 4B `Q8_0` | 4.1 GB | 8.6 tokens/s | Kept tags and terms, but mistranslated "seek bar" (`スクロールバー`) and "main" |
-| `plamo-2-translate` `Q4_K_M` | about 6 GB | below 1 token/s | Did not finish eight short segments in 25 minutes |
-
-Services and general-purpose LLM APIs were not run:
-
-| Option | Why not |
-| --- | --- |
-| DeepL, Google Translation, Azure Translator, Amazon Translate | The requester prefers a translation model the repository runs; each needs an account and a secret |
-| `PLaMo翻訳` API | No public API |
-| Claude or OpenAI API | Not translation-specialised |
-| Argos, opus-mt, NLLB | Poor technical Japanese; NLLB is non-commercial |
+The agent that changes an English document finishes the English first, then
+hands the changed paths to `doc-translator` (`.claude/agents/doc-translator.md`,
+`.codex/agents/doc-translator.toml`). The subagent reads only the English
+source, the current translation when there is one, and the rules below. It
+does not write or edit English. It translates, compares its translation with
+the source sentence by sentence, fixes what it added, dropped or changed, and
+runs `node docs-site/translate/ja.mjs stamp <path>`.
 
 ### Trade-offs
 
-At 7.6 tokens/s, translating everything takes about a day of runner time. The
-workflow splits the sources across six parallel jobs and stops each one after
-five hours, so the first full translation completes in one or two nightly runs.
-Later runs translate only changed segments and finish in minutes.
+Translation-specialised models run on CI were tried first (2026-10-03, on six
+real documents):
 
-`HY-MT`'s license does not apply in the EU, the UK or South Korea. The workflow
-runs on GitHub-hosted runners. Moving it to self-hosted runners needs a check
-against that license.
+| Engine | Result |
+| --- | --- |
+| `HY-MT1.5-7B` `Q4_K_M` on a 4-vCPU runner, segment by segment with context | Paragraphs readable. Headings and table cells mistranslated ("Say each thing once" as "read each item once", the column "Not" as "no"), repository terms wrong ("Issues and PR bodies" as "problems and proposals"), polite and plain forms mixed, segments with many code spans left in English |
+| `HY-MT1.5-1.8B`, `TranslateGemma` 4B | Worse than 7B on the same samples |
+| `plamo-2-translate` | Under 1 token/s on the runner |
+| Claude subagent, translate then compare with the source | Correct terms and headings, consistent plain form, nothing left in English; the comparison pass caught three sentences whose force had changed |
 
-## Segments instead of whole files
+The model cannot follow style rules, and short segments lose their meaning
+without the document. A subagent reads the whole document and the rules.
+Writing the English first and translating it in a separate context keeps the
+English authoritative and stops the author from writing the Japanese it
+intended rather than the English it wrote.
+
+A scheduled translation job was rejected: the translation would land in a
+later commit than the English, and every run would scan the whole tree. Doing
+it in the pull request puts the translation under the same review.
+
+## Storage and checks
 
 ### Decision
 
-`segments.mjs` parses each document with `remark` and sends only the inline
-text of paragraphs, headings and table cells, plus Mermaid labels. Inline code,
-link destinations, HTML and identifier-like words (paths, `snake_case`,
-`camelCase`) become numbered `<sN>` tags. The tags go through HY-MT's
-formatted-translation prompt and come back byte for byte. The translated file is
-the English file with each segment's span replaced.
+`translations/ja/<path>` mirrors `<path>`. Its front matter records the source
+path and the SHA-256 of the English file it translates (`sourceHash`), and every
+heading ends with the English heading's anchor (`{#slug}`), so links between
+Japanese pages resolve. `stamp` writes both; nobody edits them by hand.
 
-| Check | When it fails |
+`node docs-site/translate/ja.mjs check` runs in `docs.yml`:
+
+| Situation | Result |
 | --- | --- |
-| Every tag appears once, nested as in the source | The segment is retried once, then kept in English and listed in the run summary |
-| Same block structure, code blocks, inline code and link destinations as the source | The file is not written; the previous translation stays |
-| Each glossary term's Japanese rendering appears | Listed in the run summary; the translation is kept |
+| Headings, lists, tables, code blocks, inline code, link destinations or Mermaid structure differ from the source | Error |
+| A heading lacks its English anchor | Error |
+| The English source no longer exists | Error; delete or move the translation |
+| The English source changed after `stamp` | Warning; the page shows an out-of-date notice |
+| A Japanese paragraph is broken across lines | Warning; the break renders as a space |
+| A published document has no translation | Counted; the page shows the English under an untranslated notice |
 
-Each heading gets an explicit `{#slug}` with its English GitHub slug, so links
-between Japanese pages keep working.
+A stale or missing translation never fails CI, so a change to English is never
+blocked by its translation. The next change that touches the document, or a
+run of `ja.mjs status` and the subagent, brings it up to date.
 
-### Trade-offs
+`TestDocumentsAreWrittenInEnglish` and the link guards in `scripts/sddguard`
+skip `translations/`: the prose there is Japanese, and its links mirror the
+checked English ones.
 
-Whole-file translation by the model was rejected: a 7B model drops table and
-list structure over long inputs, and every small edit would retranslate the
-whole file.
+## Translation rules
 
-## Terms
+The subagent follows these rules. They are part of its prompt.
 
-`docs-site/translate/glossary.tsv` maps each English term to one Japanese
-rendering. Only the entries that occur in a segment go into its prompt, through
-HY-MT's terminology template. The screen is English only
-([i18n.md](i18n.md)), so a UI label maps to itself and stays as the screen shows
-it.
+### Faithfulness
 
-## Storage and freshness
+- Translate every sentence. Do not add explanations, examples, softeners,
+  summaries or emphasis. Do not merge or drop sentences.
+- Keep the force of every statement: "must", "never", "only when" and "unless"
+  keep their strength; a statement stays a statement and an instruction stays
+  an instruction.
+- Translate terse text (headings, table cells, labels) by its meaning in
+  context. A column "Not" next to "Write" is `書かない例`, not `いいえ`.
+- When translating a changed document that already has a translation, keep the
+  existing Japanese for sentences whose English did not change.
 
-### Decision
+### Structure
 
-Translations live on the orphan branch `docs-ja`, never on `main`, so nobody
-edits them. For each source the branch holds the translation, `.meta/<path>.json`
-(hashes of the source, model and glossary) and `.memory/<path>.json` (segment
-translations keyed by source text, terms and model).
+- Keep every Markdown element where it is, with the same heading levels, list
+  items, table rows and columns, code blocks, links and images.
+- Never change inline code, fenced code, link destinations or image paths. In a
+  `mermaid` block, translate only node and edge labels.
+- Keep identifiers, file paths, commands, API names, HTTP status codes and UI
+  labels as the English screen shows them (**Versions**, Library).
+- Write each paragraph on one line. A line break inside a Japanese paragraph
+  renders as a space.
+- `stamp` adds the heading anchors; do not write them.
 
-| Situation | Behaviour |
+### Style
+
+- Use the plain form (`だ・である`) throughout, never `です・ます`.
+- Write short, direct sentences. Avoid translationese:
+
+| Avoid | Write |
 | --- | --- |
-| A source changed | Only segments missing from memory reach the model |
-| A glossary line changed | Segments with that term miss memory and are retranslated |
-| `model.json` changed | Every segment is retranslated |
-| A source was deleted or renamed | Its translation, metadata and memory are removed |
-| The translation run failed or ran out of time | The site deploys anyway; affected pages show the out-of-date or untranslated notice until a later run |
-| A source is still listed in `scripts/sddguard/japanese-pending.txt` | It is not translated: it has no English text yet |
+| `〜することができる` | `〜できる` |
+| `〜を行う`, `〜を実施する` | the verb itself (`確認する`) |
+| `〜に関して`, `〜について` where not needed | drop it |
+| `〜というものは`, `〜ということ` | drop the padding |
+| `それは`, `これらの` where the subject is clear | omit the pronoun |
+| `一切`, `明らかに`, `非常に` not in the source | omit |
 
-`site.mjs` builds `ja/` before every site build and compares each translation's
-recorded source hash with the current English file. That comparison decides the
-notice on the page.
+- Prefer an established Japanese technical term to katakana (response →
+  `応答`, discovery → `検出`). Keep katakana Japanese engineers use as is
+  (`ブランチ`, `コミット`, `キャッシュ`, `ワークフロー`).
+- An HTTP status is not an error unless the source says so (`304 を返す`).
 
-### Trade-offs
+### Terms
 
-Committing translations to `main` through bot pull requests was rejected: every
-change would wait for a merge, and an editable copy would sit beside the
-source. Keeping them only in the Actions cache was rejected: the cache is
-evicted after seven days unused, and a full retranslation takes a day of runner
-time.
+| English | Japanese |
+| --- | --- |
+| Issue, parent Issue, child Issue | `Issue`, `親 Issue`, `子 Issue` |
+| pull request, PR, PR body | `プルリクエスト`, `PR`, `PR 本文` |
+| requirement, acceptance criterion | `要件`, `受け入れ条件` |
+| repository, root documents | `リポジトリ`, `ルートの文書` |
+| design document, how-to guide | `設計文書`, `手順書` |
+| documentation site | `文書サイト` |
+| skill, document type, skeleton | `スキル`, `型`, `雛形` |
+| feature branch | `feature ブランチ` |
+| live transcoding | `ライブ変換` |
+| seek bar, seek thumbnail | `シークバー`, `シーク用サムネイル` |
+| sidecar subtitle file | `隣の字幕ファイル` |
+| owner, guest | `所有者`, `ゲスト` |
+| tentative tag, folder group, content key | `仮のタグ`, `フォルダのグループ`, `内容の鍵` |
+| workflow, runner | `ワークフロー`, `ランナー` |
+| Mermaid | `Mermaid` |
+
+Add a row when a term is translated inconsistently; existing translations keep
+their wording until their English changes.
