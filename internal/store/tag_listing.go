@@ -92,11 +92,42 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	if err := addSynonymsToPage(ctx, tx, items); err != nil {
 		return domain.TagPage{}, err
 	}
+	if limit > 0 && query.Cursor == "" {
+		if page.Exact, err = exactListedTag(ctx, tx, query); err != nil {
+			return domain.TagPage{}, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.TagPage{}, fmt.Errorf("cannot finish reading tags: %w", err)
 	}
 	page.Items = items
 	return page, nil
+}
+
+// exactListedTag は検索語（前後の空白を落とした生の綴り）と元の名前かシノニムの綴りが
+// 完全に一致し、絞り込みにも合うタグを返す。無ければ nil。ページの行は名前の自然順の
+// 部分一致なので、完全に一致するタグが 1 ページ目に入るとは限らない（統合の窓の
+// 統合先、specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) (*domain.Tag, error) {
+	name := strings.TrimSpace(query.Search)
+	if name == "" {
+		return nil, nil
+	}
+	lookup, found, err := lookupTagName(ctx, tx, name)
+	if err != nil || !found {
+		return nil, err
+	}
+	if query.TentativeOnly && !lookup.tentative {
+		return nil, nil
+	}
+	tag, err := tagByID(ctx, tx, lookup.tagID)
+	if err != nil {
+		return nil, err
+	}
+	if query.UnusedOnly && tag.VideoCount != 0 {
+		return nil, nil
+	}
+	return &tag, nil
 }
 
 // listedTagsCTE は条件に合うタグを listed（id・name・tentative・created_at・

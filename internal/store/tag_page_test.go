@@ -151,6 +151,60 @@ func TestListTagsSearchMatchesFoldedNameOrSynonym(t *testing.T) {
 	}
 }
 
+// TestListTagsReturnsTheExactSpellingOutsideThePage は、検索語と綴りが完全に一致する
+// タグを、部分一致の 1 ページ目に入らなくても Exact に返すことを確かめる（統合の窓の統合先）。
+func TestListTagsReturnsTheExactSpellingOutsideThePage(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := createTagsNamed(t, db, "a1cat", "a2cat", "a3cat", "cat", "猫")
+	if _, err := db.Tags().AddSynonym(ctx, ids["猫"], "neko", nil); err != nil {
+		t.Fatal(err)
+	}
+	keys := addLibraryVideos(t, db, 1)
+	attachTag(t, db, keys[0], ids["cat"])
+
+	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Search: " cat ", Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := pagedTagNames([]domain.TagPage{page}); !slices.Equal(got, []string{"a1cat", "a2cat"}) {
+		t.Fatalf("1 ページ目 = %v, want [a1cat a2cat]", got)
+	}
+	if page.Exact == nil || page.Exact.ID != ids["cat"] || page.Exact.VideoCount != 1 {
+		t.Fatalf("Exact = %+v, want cat（本数 1）", page.Exact)
+	}
+
+	// シノニムの綴りでも元のタグに着く。照合形が同じだけ（綴りが違う）なら入れない。
+	cases := []struct {
+		query domain.TagListQuery
+		want  int64
+	}{
+		{domain.TagListQuery{Search: "neko", Limit: 2}, ids["猫"]},
+		{domain.TagListQuery{Search: "CAT", Limit: 2}, 0},
+		// 2 ページ目・全件・空の検索語では引かない。
+		{domain.TagListQuery{Search: "cat", Limit: 2, Cursor: page.NextCursor}, 0},
+		{domain.TagListQuery{Search: "cat"}, 0},
+		{domain.TagListQuery{Search: "  ", Limit: 2}, 0},
+		// 絞り込みに合わなければ入れない。
+		{domain.TagListQuery{Search: "cat", Limit: 2, UnusedOnly: true}, 0},
+		{domain.TagListQuery{Search: "cat", Limit: 2, TentativeOnly: true}, 0},
+		{domain.TagListQuery{Search: "neko", Limit: 2, UnusedOnly: true}, ids["猫"]},
+	}
+	for _, tc := range cases {
+		page, err := db.Tags().ListTags(ctx, tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got int64
+		if page.Exact != nil {
+			got = page.Exact.ID
+		}
+		if got != tc.want {
+			t.Errorf("%+v: Exact の id = %d, want %d", tc.query, got, tc.want)
+		}
+	}
+}
+
 func TestListTagsFiltersCombineWithAnd(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -59,4 +59,8 @@ type TagPage struct {
 	TotalAll int
 	// NextCursor は続きの取得に渡す。続きが無ければ空。
 	NextCursor string
+	// Exact は検索語と元の名前かシノニムの綴りが完全に一致し、絞り込みにも合うタグ。
+	// Limit を付けた 1 ページ目（Cursor が空）で、検索語が空でないときだけ引く。
+	// 無ければ nil。
+	Exact *Tag
 }
