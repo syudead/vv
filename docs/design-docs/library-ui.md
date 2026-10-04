@@ -95,11 +95,9 @@ viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
 reason above applies there: it is one column, and rows arrive 100 at a time
 from the server for the current conditions. The document stays the scroll
 owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. Its toolbar, tab and column
-headings stay as one sticky band under the top bar; the page measures the band
-and passes its height to the virtualizer and to `scroll-padding-top`, so a
-focused row never hides under it
-([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
+drawn range, so keyboard order reaches every row. The toolbar, tabs and column
+headings stay in a sticky band under the top bar that never covers the focused
+row ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
 ### The window owns scrolling
 
@@ -350,11 +348,7 @@ consistent across components. Keyboard focus is an outer outline in the accent
 colour; the search field draws it on its outer frame, not the inner `input`, to
 avoid a double outline.
 
-## 7. Sidebar navigation
-
-Each sidebar item goes to its screen.
-
-## 8. Video page layout
+## 7. Video page layout
 
 The video page (`/videos/:id`) is for watching, so it is less dense than the
 lists; shapes and text are in
@@ -398,11 +392,10 @@ No path appears under the title, because the breadcrumb already shows the
 location.
 
 The owner's favorite toggle opens the right-hand action group, left of
-`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
-`sm`, `aria-pressed`). It is the group's only control with state, so the eye
-lands on it first; even so, it is no more prominent than the title: on is a small
-`bg-accent-soft` fill with the pink heart. It is absent on group rows and for
-guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
+`Use current frame as thumbnail`: it is the group's only control with state,
+so its state is read first. On, it is a small `bg-accent-soft` fill with the pink heart, no more
+prominent than the title. It is absent on group rows and for guests
+([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
 ```mermaid
 flowchart LR
@@ -424,22 +417,13 @@ the order. Only the "being created" line sits below the player. Layer text
 sits on opaque `bg-navbar`, because `tokens.test.ts` cannot check text on the
 translucent `bg-overlay`.
 
-The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx),
-`role="status"`) is a separate small banner at the player's top left: it
-neither stops playback nor blocks controls, so it stays out of the
-one-at-a-time container.
-
-| Aspect | Rule |
-| --- | --- |
-| Stacking | Above the video, below the container and the control bar |
-| Input | Passes through to the controls, except its × |
-| Hidden while | Playback failure, playback ended, up next, reconnecting or importing shows |
-| Loading spinner | Shown together with it during a data wait |
-| Dismissed | Not shown again for the same video |
-| Actions | None; no quality change |
-
-Rules: [Playback quality, Stall warning](playback-quality.md#stall-warning);
-details:
+The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx))
+is a separate small banner at the player's top left, above the video and below
+the container and the control bar: it neither stops playback nor blocks
+controls, so it stays out of the one-at-a-time container. When it shows, hides
+and is dismissed is in
+[Playback quality, Stall warning](playback-quality.md#stall-warning); details
+are in
 [027 UI design, Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning).
 
 ### Playback errors
@@ -546,7 +530,7 @@ Central touch controls appear on `pointer: coarse` devices through a CSS media
 condition, without `matchMedia`, for the reason in
 [section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception).
 
-## 9. List conditions applied by the server
+## 8. List conditions applied by the server
 
 The server applies every list condition (search, filters, sort, shuffle seed),
 and the page never filters the pages it has loaded
@@ -570,7 +554,7 @@ flowchart LR
 Inserting the representative directly could show a video outside the folder
 or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
 
-## 10. Per-device preferences with defaults
+## 9. Per-device preferences with defaults
 
 Per-device display settings are total functions over `localStorage` that
 never throw ([`web/src/preferences/`](../../web/src/preferences)): a missing,

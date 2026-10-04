@@ -11,7 +11,7 @@ here.
 
 | Topic | Source |
 | --- | --- |
-| Colour, interaction states, width breakpoints, playback screen structure | [Library UI](../../docs/design-docs/library-ui.md) (the cards in section 6 on list structure, and section 8 on the playback screen structure) |
+| Colour, interaction states, width breakpoints, playback screen structure | [Library UI](../../docs/design-docs/library-ui.md) (the cards in section 6 on list structure, and section 7 on the playback screen structure) |
 | Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Referred to by name; values are not copied |
 | Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | Playback screen columns, title format, the two "Video facts" rows with their right-hand actions, the failure line | [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md) and the current [`web/src/player/VideoPage.tsx`](../../web/src/player/VideoPage.tsx) and [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |

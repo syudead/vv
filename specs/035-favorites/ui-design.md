@@ -10,7 +10,7 @@ The visual rules come from the following documents and are not decided again her
 
 | Topic | Source |
 | --- | --- |
-| Colours, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) (§6 for cards, group cards, list view, selection bar and toolbar; §8 for the video page) |
+| Colours, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) (§6 for cards, group cards, list view, selection bar and toolbar; §7 for the video page) |
 | Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy values |
 | Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | Card box and how the selection checkbox appears (hover, focus, `hover:none` devices) | The current [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) and [`web/src/library/GroupCard.tsx`](../../web/src/library/GroupCard.tsx), [specs/017-folder-groups/ui-design.md "Group card"](../017-folder-groups/ui-design.md#group-card) |

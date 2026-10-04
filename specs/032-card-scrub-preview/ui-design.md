@@ -10,7 +10,7 @@
 Sources: the visual rules come from these documents and are not decided again here.
 
 - Colours, interaction states, width breakpoints, library and player layout:
-  [Library UI](../../docs/design-docs/library-ui.md) (cards in §6, library layout, and §8, player screen layout)
+  [Library UI](../../docs/design-docs/library-ui.md) (cards in §6, library layout, and §7, player screen layout)
 - Role tokens: `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy
   values
 - Pairs checked for contrast: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)

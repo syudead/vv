@@ -6,7 +6,7 @@ errors are classified and reloaded, and where screen text lives follow the canon
 ([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
 [docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md),
 [docs/design-docs/hardware-encoding.md](../../docs/design-docs/hardware-encoding.md),
-[docs/design-docs/library-ui.md "Video page layout"](../../docs/design-docs/library-ui.md#8-video-page-layout),
+[docs/design-docs/library-ui.md "Video page layout"](../../docs/design-docs/library-ui.md#7-video-page-layout),
 [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)). This file records only the decisions this
 feature adds. The ffmpeg arguments were checked with `-h encoder=…` on ffmpeg 6.1.1 in the development
 container.
@@ -219,7 +219,7 @@ displays (loading, failure, ended, centre controls) inside `VideoPage`'s contain
 - The design stage's `ui-design.md` decides the text, size and how it folds in a narrow frame.
 
 **Rationale**: The current container holds "only one layer at a time" and assumes a centred position
-([library-ui.md](../../docs/design-docs/library-ui.md#8-video-page-layout)). The warning neither stops
+([library-ui.md](../../docs/design-docs/library-ui.md#7-video-page-layout)). The warning neither stops
 playback nor blocks the controls, so putting it in that container would make it mutually exclusive
 with the centre controls, which violates requirement 9. A separate layer leaves the container's
 exclusivity rule unchanged, and CSS sets the stacking order (more subdued than the status layers).

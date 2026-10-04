@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: cdfff46be19b2e36a397eb25edc60fa7f615b1f9720f9bceecc9513a5571d595
+sourceHash: 12b5528d3d9799b16d321d1ffdac6b3521a6462b3296a2f4d2f2f353f592389e
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -70,7 +70,7 @@ flowchart LR
 
 一覧は折り返すグリッドで、1 行のカード数は画面幅とカード幅で変わる。そのため仮想化すると、その数を計算し、スクロール位置の復元を仮想座標で作り直すことになる。ページは 60 項目ずつ読み込む（[`PAGE_SIZE`](../../web/src/api/client.ts)）ので、DOM には利用者が読み込んだものだけがある。**何が遅いかを測った後にだけ見直す。**
 
-タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。ツールバー、タブ、列見出しは、上部バーの下に貼り付く 1 つの帯としてとどまる。ページは帯を測り、その高さを仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が帯の下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
+タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。ツールバー、タブ、列見出しは上部バーの下に貼り付く帯にとどまり、その帯がフォーカスのある行を覆うことはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
 
 ### スクロールはウィンドウが持つ {#the-window-owns-scrolling}
 
@@ -252,11 +252,7 @@ flowchart LR
 
 通常、ホバー、focus-visible、押下中、選択中、無効は互いに区別でき、コンポーネント間で一貫している。キーボードフォーカスはアクセント色の外側の輪郭線だ。検索欄は二重の輪郭線を避けるため、内側の `input` ではなく外枠に描く。
 
-## 7. サイドバーのナビゲーション {#7-sidebar-navigation}
-
-サイドバーの各項目は、それぞれの画面へ移る。
-
-## 8. 動画ページのレイアウト {#8-video-page-layout}
+## 7. 動画ページのレイアウト {#7-video-page-layout}
 
 動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。形と文言は [012 UI 設計](../../specs/012-video-detail-ia/ui-design.md) にある。
 
@@ -292,7 +288,7 @@ flowchart LR
 
 パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `IconButton` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-accent-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
+所有者のお気に入りの切り替えは、右側の操作のまとまりの先頭、`Use current frame as thumbnail` の左にある。まとまりの中で状態を持つ唯一のコントロールなので、その状態が最初に読まれる。オンは小さな `bg-accent-soft` の塗りにピンクのハートで、タイトルより目立たない。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
 
 ```mermaid
 flowchart LR
@@ -308,18 +304,7 @@ flowchart LR
 
 読み込み中、取り込みの段階、読み取りの失敗、再生の失敗、動画の消失、再生の終了は、プレーヤーの上の 1 つのコンテナから一度に 1 つずつ表示され、その順序はコンテナが決める。「作成中」の行だけはプレーヤーの下に置く。`tokens.test.ts` は半透明の `bg-overlay` の上の文字を確かめられないので、レイヤーの文字は不透明な `bg-navbar` の上に置く。
 
-停滞の警告（[`StallWarning.tsx`](../../web/src/player/StallWarning.tsx)、`role="status"`）は、プレーヤーの左上にある別の小さなバナーだ。再生を止めずコントロールも塞がないので、一度に 1 つのコンテナには入れない。
-
-| 観点 | ルール |
-| --- | --- |
-| 重なり順 | 動画より上、コンテナとコントロールバーより下 |
-| 入力 | × を除き、下のコントロールへ通す |
-| 隠れるとき | 再生の失敗、再生の終了、次の動画、再接続中、取り込み中が表示されているとき |
-| 読み込み中のスピナー | データ待ちの間はスピナーと一緒に表示する |
-| 閉じた後 | 同じ動画では再び表示しない |
-| 操作 | なし。画質は変えない |
-
-ルール: [Playback quality、Stall warning](playback-quality.md#stall-warning)。詳細: [027 UI 設計、Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning)。
+停滞の警告（[`StallWarning.tsx`](../../web/src/player/StallWarning.tsx)）は、プレーヤーの左上にある別の小さなバナーで、動画より上、コンテナとコントロールバーより下にある。再生を止めずコントロールも塞がないので、一度に 1 つのコンテナには入れない。いつ表示され、隠れ、閉じられるかは [Playback quality、Stall warning](playback-quality.md#stall-warning) にあり、詳細は [027 UI 設計、Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning) にある。
 
 ### 再生のエラー {#playback-errors}
 
@@ -404,7 +389,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 中央のタッチ操作は、[4 節](#4-width-breakpoints-in-css-and-the-sidebar-exception)の理由により、`matchMedia` を使わず CSS のメディア条件で `pointer: coarse` の機器に表示する。
 
-## 9. サーバーが適用する一覧の条件 {#9-list-conditions-applied-by-the-server}
+## 8. サーバーが適用する一覧の条件 {#8-list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
 
@@ -422,7 +407,7 @@ flowchart LR
 
 代表を直接差し込むと、フォルダや絞り込みの外の動画を表示しかねない（[`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)）。
 
-## 10. 既定値を持つ機器ごとの設定 {#10-per-device-preferences-with-defaults}
+## 9. 既定値を持つ機器ごとの設定 {#9-per-device-preferences-with-defaults}
 
 機器ごとの表示設定は、決して例外を投げない `localStorage` 上の全域関数だ（[`web/src/preferences/`](../../web/src/preferences)）。値がない、壊れている、読めないときは既定値になり、書き込みの失敗は無視する。
 

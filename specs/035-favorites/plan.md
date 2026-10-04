@@ -278,7 +278,7 @@ Run the guest scenario of `task test-e2e` locally and write the result in the PR
 open file, copy path and use current frame as thumbnail; position and look follow `ui-design.md` "Video
 page"), and after success refetch the video with `refresh()` on `VideoPage` (R-6). Through the
 `useVideoDetail` subscription, a toggle on the list side updates the single video on the video page. English
-catalog text. The video page description in `docs/design-docs/library-ui.md` §8.
+catalog text. The video page description in `docs/design-docs/library-ui.md` §7.
 
 **Dependencies**: `Put the favorite mark and toggle on library and folder cards`
 
