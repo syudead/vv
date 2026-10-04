@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 7b8459aad389d89cc45fb9ca2b853b3d7d2da198ab0b49de5bde71edf9a2ca51
+sourceHash: fd519cb3458c7e88e767de3f8b8b70cca145d6c7a32557e1f6ae39da48760d4e
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -18,12 +18,15 @@ flowchart LR
   classes --> screens[web/src の画面]
   test[tokens.test.ts] -->|コントラスト| theme
   test -->|生の色の走査| screens
+  lint[ESLint] -->|テーマにないクラス| screens
   people[実機で見る人] -->|レイアウト| screens
 ```
 
 ## 視覚値は CSS の 1 か所に置き、コントラストはテストで保証する {#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests}
 
 画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-card`、`text-muted-foreground`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
+
+`tokens.css` の `@theme` は、まず色、文字、太さ、余白、角丸、影、アニメーションの Tailwind の既定の名前空間をリセットし（`--color-*: initial`、`--spacing: initial` など）、その後デザインシステムの段階だけを定義する。そのため Tailwind は尺度の外のクラスを生成せず、画面に書かれたそのようなクラスは ESLint の `no-unknown-classes` が失敗させる（[design-system.md、Foundations](design-system.md#foundations)）。
 
 CSS を元にするのは、画面にトークン名以外の選択肢を残さないからだ。値が 1 つのファイルにあるので、コントラストの確認はそのファイルだけを読む。
 
@@ -53,7 +56,7 @@ flowchart LR
 
 `html` は `color-scheme: dark` を宣言し、暗色の値が 1 組だけある。`prefers-color-scheme` の分岐も切り替えもない。
 
-切り替えを置くとコントラストを確かめる組が倍になり、片方の組は気づかれないまま古くなる。トークン名は色（`neutral-850`）ではなく役割（`bg`、`surface`、`elevated`、`fg`、`fg-muted`、`accent`、`danger`、`warning`）を表すので、後で明色の配色を加えるときは 2 組目の値を足すだけで、画面は変わらない。
+切り替えを置くとコントラストを確かめる組が倍になり、片方の組は気づかれないまま古くなる。トークン名は色（`neutral-850`）ではなく役割（`background`、`card`、`popover`、`foreground`、`muted-foreground`、`primary`、`destructive`、`warning`）を表すので、後で明色の配色を加えるときは 2 組目の値を足すだけで、画面は変わらない。
 
 ## 仮想スクロールは使わない {#no-virtual-scrolling}
 

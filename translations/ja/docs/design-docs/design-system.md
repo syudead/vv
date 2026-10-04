@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 06528835b5dcaa3e362b827c0439a3f89e8901f94c8e016a58b1358a34ed9293
+sourceHash: 9048cb76d24a16ee053b40850154993d4e7073e3c87e92923916d7f13f9b3237
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -54,7 +54,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | --- | --- | --- |
 | `web/src/ui` の外の `<button>`、`<input>`、`<select>`、`<textarea>` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
 | 任意の値か任意のプロパティを持つクラス、または `(--var)` の短縮記法 | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
-| テーマが生成しないクラス | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
+| テーマが生成しないクラス。尺度の外の段階（`p-7`、`text-2xl`、`rounded-xl`、`font-bold`）を含む | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
 | トークン外の生の色、既定パレットのクラス、最小値を下回るコントラストの組 | `web/src/theme/tokens.test.ts` | テスト自身のメッセージ |
 
 任意のバリアント（`data-[state=open]:`、`has-[...]:`、`max-[49.5rem]:`）は通る。任意の値のルールは最後のバリアントの後のユーティリティだけを検査する。`h-[3px]` と `[overflow-wrap:anywhere]` は失敗し、`data-[state=open]:bg-primary-soft` は通る。
@@ -66,12 +66,12 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | `file` | `web/src` 以下のパス。例: `player/VideoPage.tsx` |
 | `rules` | その項目が免除する、上の表のルール名 |
 | `classes` | 省略可。許可する唯一のクラスを表す正規表現で、それぞれクラス全体と照合する。ない場合、ファイルは `rules` から免除される |
-| `kind` | `migration`（そのファイルを移行する PR が削除する）または `special`（残る） |
+| `kind` | `special`（残る）。`migration` は画面の移行を待つファイルを示していたが、もう受け付けない |
 | `reason` | `special` では必須。デザインシステムでその見た目を表現できない理由 |
 
 `no-restricted-syntax` の免除は生のコントロールの検査だけを外す。同じルールを共有する i18n の検査は引き続き適用される。`classes` は 2 つのクラスのルールにだけ適用される。
 
-一覧は、チェックが入った時点でチェックに違反していたすべてのファイルを `migration` 項目として始まった。それ以降、チェックに違反する新しいファイルは失敗し、各移行 PR は自分のファイルの項目を削除する（[research.md R-9](../../specs/038-design-system/research.md#r-9-screens-migrate-one-area-per-pr-behind-a-shrinking-exception-list)）。`web/src/theme/designExceptions.test.ts`（`task test-web`）は、項目が存在しないファイルを指す、未知のルールを指す、未知の `kind` を持つ、ファイルを重複させる、または `reason` のない `special` である場合に失敗する。
+一覧は、チェックが入った時点でチェックに違反していたすべてのファイルを `migration` 項目として始まった。それ以降、チェックに違反する新しいファイルは失敗し、各移行 PR は自分のファイルの項目を削除する（[research.md R-9](../../specs/038-design-system/research.md#r-9-screens-migrate-one-area-per-pr-behind-a-shrinking-exception-list)）。すべての画面が移行した後、最後の単位が残りの `migration` 項目を削除したので、一覧には `special` 項目だけがある。`web/src/theme/designExceptions.test.ts`（`task test-web`）は、項目が存在しないファイルを指す、未知のルールを指す、`migration` 項目であるかほかの未知の `kind` を持つ、ファイルを重複させる、または `reason` のない `special` である場合に失敗する。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
@@ -103,14 +103,16 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | 尺度 | 段階 |
 | --- | --- |
 | 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階。`font-normal`、`font-medium`、`font-semibold` |
-| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、ポップオーバーの幅） |
+| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、ポップオーバーとコンボボックスの幅） |
 | 角丸 | `sm`、`md`、`lg`、`full` |
 | 影 | `shadow-card-hover`、`shadow-elevated`、`drop-shadow-mark`。静止した面には付けない |
-| 動き | `fade-in`、`pop-in`、`slide-up`、`shimmer`。動きを減らす設定では無効 |
+| 動き | `fade-in`、`pop-in`、`slide-up`、および読み込み用の `shimmer`、`spin`、`pulse`。動きを減らす設定では無効 |
 
 ライブラリは動画ページより密だ。コントロールは `h-8`、コントロールの間は `gap-2`、カードの間は `gap-3`、本文は `text-sm` で、動画ページではそれぞれ `h-9`、`gap-3`、`gap-4`、`text-base` だ。
 
-すべての画面が移行するまで、`no-restricted-classes` のパターンが尺度の外の数値の段階（`p-7`、`gap-2.5`、`text-2xl`、`rounded-xl`、`font-bold`）を `Step outside the design-system scale (web/registry/rules/foundations.md).` で失敗させ、以前のトークン名（`surface`、`fg-muted`、`link` など）は新しい名前の `var()` の別名として定義されたまま残るので、移行していない画面も動き続ける。シアンの `accent` はすべての箇所で一度に `primary` へ改名した。shadcn は `accent` をホバーの塗りに使うからだ。
+尺度はテーマ自体が閉じている。`tokens.css` はまず各尺度について Tailwind の既定の名前空間（`--color-*`、`--text-*`、`--font-weight-*`、`--spacing` と `--spacing-*`、`--radius-*`、`--shadow-*`、`--drop-shadow-*`、`--animate-*`）をリセットし、その後尺度の段階だけを定義する。そのため段階の外のもの（`p-7`、`gap-2.5`、`text-2xl`、`rounded-xl`、`font-bold`、`bg-red-500`）は生成されず、未知のクラスとして失敗する。分数、`full`、`auto`、`px`、コンテナの幅（`max-w-md`）はリセットする名前空間に含まれないので、引き続き使える。リセットは `tw-animate-css` の出現と退出のアニメーションも取り除くので、浮遊レイヤーは `animate-pop-in` で開く。
+
+移行中は、以前のトークン名（`surface`、`fg-muted`、`link` など）が新しい名前の `var()` の別名であり、`no-restricted-classes` のパターンが尺度の外の段階を失敗させていた。どちらもリセットとともになくなった。シアンの `accent` はすべての箇所で一度に `primary` へ改名した。shadcn は `accent` をホバーの塗りに使うからだ。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
@@ -154,7 +156,7 @@ flowchart LR
 
 上流に対する 4 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
 
-この層は既存の画面を変えない。画面が今使っているコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパス（`Button.tsx`、`Checkbox.tsx`、`Combobox.tsx` と、表が挙げるほかのもの）に残る。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
+この層は既存の画面を変えなかった。古いコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパスに残り、最後の単位がどこからも import されていないものを削除した。`ui/Combobox` は動画ページのタグ名の入力欄とタグ管理画面の統合先の一覧として残る。そのキーボードと検証の振る舞いを shadcn の `Combobox` は再現しない。これは尺度だけを使う。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
 
 ショーケース（`/design-system`）は、各コンポーネントをバリアントと状態ごとに並べる。状態は通常、ホバー、キーボードフォーカス、押下中、選択中、無効である。状態はポインターなしで、コンポーネントを囲む要素の `data-demo-state` 属性によって描かれる。`web/src/index.css` はこの属性を Tailwind の `hover`、`focus`、`focus-visible`、`active` のバリアントに加え、フォーカスリングをその要素の最初の子に描く。画面はこの属性を設定しない。
 

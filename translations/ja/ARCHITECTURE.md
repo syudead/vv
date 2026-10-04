@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: b79edd0c452a6f7c87b2a57abb6beab934d0bc00ad2d9148d2d99e22c6fff3e9
+sourceHash: e91fbee04787d2015fe5e5128409a71e8795513c9e5ef413da88088ac3c77eba
 ---
 
 # アーキテクチャ {#architecture}
@@ -145,7 +145,7 @@ flowchart LR
 | `videoList/` | ライブラリ画面とフォルダ画面が共有する一覧の部品 |
 | `ui/` | 再利用できるプリミティブ。`web/registry.json` の shadcn レジストリとして公開する ([design-system.md](docs/design-docs/design-system.md)) |
 | `hooks/` | レジストリのコンポーネントが共有するフック（`use-mobile` など） |
-| `lib/` | ロケールに依存しない書式整形 |
+| `lib/` | 複数のフローが共有する補助: ロケールに依存しない書式整形、タグ名のルール、IME のキー処理 |
 | `i18n/` | 画面の文言と、ロケールに依存する書式整形 ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | 端末ごとの表示設定 |
 | `theme/` | トークンのテストのみで、実行時のコードはない |
