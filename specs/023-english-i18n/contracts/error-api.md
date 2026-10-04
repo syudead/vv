@@ -46,6 +46,7 @@ wording for `code`.
 | `invalid_request` (400) | `search_too_long` | `maxQueryLength` | Search term too long (`videos.go`) |
 | `invalid_request` (400) | `too_many_tag_filters` | `maxTagFilterCount` | Too many tag filters (`videos.go`) |
 | `invalid_request` (400) | `too_many_videos` | `maxVideoTagsIDs` | Zero or too many videos in a bulk action (`video_tags.go`, `visibility.go`) |
+| `invalid_request` (400) | `too_many_tags` | `domain.MaxTagBatch` | Zero or too many tags in a bulk tag action, an impact count or a merge (`tags.go`; [036 screen-api.md §1–§3](../../036-tag-admin-scale/contracts/screen-api.md#1-post-apitagsbatch)). The external API returns it when the tag name list is out of range (`external_video_tags.go`, `domain.ExternalVideoTagsMaxNames`) |
 | `invalid_request` (400) | `guest_filter_not_allowed` | — | A guest used an owner-only condition (`videos.go`) |
 | `invalid_request` (400) | `invalid_cursor` | — | The load position cannot be parsed (`videos.go`, `library.go`, `folders.go`) |
 | `invalid_request` (400) | `invalid_folder_path` | — | The folder specification is invalid (`folders.go`) |

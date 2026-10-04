@@ -700,9 +700,11 @@ sequenceDiagram
 ```
 
 - **Candidate rows keep the current `Combobox` content**: the name, "Synonym: …" when a synonym matched, the count
-  at the right, `exactOption` for a name or synonym equal to the input, up to 8 rows. Order is the server's natural
-  name order; the screen does not re-sort. Opened from a row, the response drops the source; opened from the
-  selection, selected tags stay as candidates (the merged shape).
+  at the right, `exactOption` for a name or synonym equal to the input, up to 8 rows. The tag spelled exactly as
+  the input comes first, taken from the response's `exact` even when it is not among the first substring matches
+  ([screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)); the rest keep the server's natural name
+  order. Opened from a row, the request asks for 8 plus the number of sources and the screen drops the sources, so
+  8 rows remain; opened from the selection, selected tags stay as candidates (the merged shape).
 - **Right after opening** (empty input) the same request fetches the first 8 and lists them on arrival; candidates
   for an empty input stay as today.
 - **Loading**: `Combobox` `busy` (`LoaderCircle` at the right end of the frame, `size-3`, `text-fg-muted`,
