@@ -57,6 +57,12 @@ export type ScanControlsValue = Pick<
   "running" | "canStart" | "start" | "refresh" | "setFolderCount" | "finished"
 >;
 
+/**
+ * dedupeLoadMs は、取り直しの求めを途中の取得にまとめる時間である。これより前に始めた
+ * 取得がまだ返らなければ、打ち切って取り直す。
+ */
+const dedupeLoadMs = 1000;
+
 const ScanContext = createContext<ScanContextValue | null>(null);
 const ScanControlsContext = createContext<ScanControlsValue | null>(null);
 
@@ -221,7 +227,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
   /** load はフォルダの件数も含めて、今の状態をまとめて取り直す。 */
   const foldersInFlight = useRef<AbortController | null>(null);
+  const loadStartedAt = useRef(0);
   const load = useCallback(() => {
+    loadStartedAt.current = Date.now();
     foldersInFlight.current?.abort();
     const controller = new AbortController();
     foldersInFlight.current = controller;
@@ -233,12 +241,16 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [loadFolders, loadScan]);
 
   /**
-   * loadUnlessLoading は、取得の途中でなければ取り直す。取得の途中なら、その応答が
-   * 今の状態を運ぶ。画面を開いたときの取り直しと、この部品の最初の取得が重なって、同じ
-   * 取得を2回続けて送らないようにする（子の画面の effect は親より先に走る。issue 674）。
+   * loadUnlessLoading は、直前（`dedupeLoadMs` 以内）に始めた取得の途中でなければ取り直す。
+   * 途中なら、その応答が今の状態を運ぶ。画面を開いたときの取り直しと、この部品の最初の
+   * 取得が重なって、同じ取得を2回続けて送らないようにする（子の画面の effect は親より先に
+   * 走る。issue 674）。それより前に始めた取得がまだ返らないなら、返らないまま止まっている
+   * かもしれないので、`load` で打ち切って取り直す。
    */
   const loadUnlessLoading = useCallback(() => {
-    if (inFlight.current === null && foldersInFlight.current === null) load();
+    const loading = inFlight.current !== null || foldersInFlight.current !== null;
+    if (loading && Date.now() - loadStartedAt.current < dedupeLoadMs) return;
+    load();
   }, [load]);
 
   useEffect(() => {

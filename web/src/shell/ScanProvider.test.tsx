@@ -248,6 +248,44 @@ describe("ScanProvider", () => {
     await waitFor(() => expect(currentCalls).toBe(2));
   });
 
+  it("返らないまま残った取得は、少し経ってからの取り直しで打ち切って取り直す", async () => {
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      currentCalls += 1;
+      // 最初の取得は返らない（打ち切られるまで待つ）。
+      if (currentCalls === 1) {
+        return new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(json(scan(5, "done")));
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      render(
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>,
+      );
+      await act(async () => Promise.resolve());
+      // 始めたばかりの取得の途中なら、取り直しはまとめる。
+      await userEvent.click(screen.getByRole("button", { name: "更新" }));
+      expect(currentCalls).toBe(1);
+
+      now.mockReturnValue(1_000_000 + 5_000);
+      await userEvent.click(screen.getByRole("button", { name: "更新" }));
+      expect(await screen.findByText("状態: 5")).toBeDefined();
+      expect(currentCalls).toBe(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("取り込みの進みの知らせでは、useScanControls を読む部品を描き直さない", async () => {
     fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));

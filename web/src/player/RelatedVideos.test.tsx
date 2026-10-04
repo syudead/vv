@@ -784,6 +784,41 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       }
     });
 
+    it("幅が lg をまたいだら、前の読み方をボタンとスクロールで切り替える", async () => {
+      let matches = false;
+      const listeners = new Set<() => void>();
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        get matches() {
+          return matches && query === "(min-width: 64rem)";
+        },
+        addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+        removeEventListener: (_: string, listener: () => void) =>
+          listeners.delete(listener),
+      }));
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn();
+      try {
+        renderWindow();
+        expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+        expect(edges()).toHaveLength(1);
+
+        matches = true;
+        act(() => {
+          for (const listener of listeners) listener();
+        });
+        expect(screen.queryByRole("button", { name: /earlier videos/ })).toBeNull();
+        expect(edges()).toHaveLength(2);
+
+        matches = false;
+        act(() => {
+          for (const listener of listeners) listener();
+        });
+        expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
     it("読み足しに失敗したら、出ている行を残してやり直しのボタンを出す", async () => {
       wide(false);
       vi.mocked(listVideoGroupMembers).mockRejectedValueOnce(new Error("offline"));

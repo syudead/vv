@@ -164,6 +164,24 @@ function isWideScreen(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(wideScreen).matches;
 }
 
+/**
+ * useWideScreen は広い画面かを返し、窓の幅や向きが `lg` をまたいで変わったら描き直す。
+ * 描くときに一度だけ調べると、またいだ後も前の幅の読み足し方（スクロールかボタンか）が残る。
+ */
+function useWideScreen(): boolean {
+  const [wide, setWide] = useState(isWideScreen);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(wideScreen);
+    if (typeof query.addEventListener !== "function") return;
+    const update = () => setWide(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
+
 /** 関連動画の並びの入れ物。広い画面では並びだけを中でスクロールさせる。 */
 const scrollerClass =
   // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、はみ出す分だけ
@@ -282,6 +300,7 @@ function GroupedRelated({
   items: Video[];
   backTo: string;
 }) {
+  const wide = useWideScreen();
   const [before, setBefore] = useState<Video[]>([]);
   const [after, setAfter] = useState<Video[]>([]);
   const [loading, setLoading] = useState<GroupSide | null>(null);
@@ -359,7 +378,6 @@ function GroupedRelated({
     currentRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [currentId]);
 
-  const wide = isWideScreen();
   return (
     <section
       aria-labelledby="group-heading"
