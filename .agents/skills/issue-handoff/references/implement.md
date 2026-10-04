@@ -20,8 +20,11 @@ Read [README.md](README.md) first. Input is one native child Issue.
 5. Run focused checks and the repository checks required by the change,
    including the pre-push check from `AGENTS.md`. For UI work, check the result
    against the review criteria in `ui-design.md`.
-6. Push and open a feature-branch PR with `Refs #<child>`, checks, and remaining
-   risks in the body. Stop.
+6. Push and open a feature-branch PR with `Refs #<child>`. Fill every section
+   of [the repository PR template](../../../../.github/pull_request_template.md):
+   the behaviour before and after as a table, a diagram when a flow or state
+   changes, decisions made during implementation, the documents and their
+   translations, the checks, and what was left. Stop.
 7. After human merge, the maintainer closes the child as completed. This means
    implemented on the feature branch; the parent closes only when the
    integration PR reaches `main`. Under

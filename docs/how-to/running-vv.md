@@ -1,85 +1,88 @@
 # Running VVMDM
 
+VVMDM runs in one of four ways; pick the one that matches the machine.
+
+```mermaid
+flowchart LR
+    Q{Which machine?} -->|Clone with Docker| A[task up]
+    Q -->|Docker host, no source| B[Published image]
+    Q -->|Windows 10 or 11| C[Windows app]
+    Q -->|Needs GPU encoding| D[Binary on host]
+```
+
+| Way | Section | Hardware encoding |
+| --- | --- | --- |
+| `task up` from a clone | [Start the container](#start-the-container) | No |
+| Published image on a NAS or home server | [Hosting VVMDM](hosting-vv.md) | No |
+| Windows desktop app | [Windows app](#windows-app) | No |
+| `bin/mdm` on the host | [Run VVMDM directly on the host](#run-vvmdm-directly-on-the-host) | Yes |
+
 ## Start the container
 
-VVMDM requires Task and Docker. From the repository root:
+You need Task and Docker.
 
-```bash
-task up
-```
+1. Start VVMDM from the repository root, choosing the media folder and host
+   port when the defaults (`./media`, `8080`) do not fit:
 
-To run VVMDM on a Docker host without the source, such as a NAS, use the
-published image instead: see [Hosting VVMDM](hosting-vv.md).
+   ```bash
+   task up
+   MDM_MEDIA_HOST_DIR=/path/to/videos MDM_HOST_PORT=18080 task up
+   ```
 
-Open <http://localhost:8080>. The health endpoint is available at
-`http://localhost:8080/api/health`. Stop the application with `task down`.
+   The media folder is mounted read-only at `/media`. Only the host side of
+   the port mapping changes; VVMDM listens on 8080 inside the container.
+2. Open <http://localhost:8080> (or the port you chose) and finish the
+   [Account setup](#account-setup). The health endpoint is
+   `/api/health`.
+3. Add the mounted folder in Settings and start a scan.
+4. Stop VVMDM with `task down`.
 
-The container mounts `./media` read-only at `/media` by default. Set another
-host directory before starting VVMDM when needed:
+Scans are manual: adding files does not start one. Source videos are never
+modified, moved, deleted or converted. During and after a scan:
 
-```bash
-MDM_MEDIA_HOST_DIR=/path/to/videos task up
-```
-
-The container publishes port 8080 on the host by default. Choose another host
-port when 8080 is already in use (for example by a NAS management UI):
-
-```bash
-MDM_HOST_PORT=18080 task up
-```
-
-Then open <http://localhost:18080> instead. The application inside the
-container keeps listening on 8080, so only the host side of the mapping
-changes.
-
-Add the mounted folder in Settings and start a scan. Scans are manual: adding
-files does not trigger one automatically. Source videos are read-only and are
-never modified, moved, deleted, or converted.
-
-During and after a scan:
-
-- the library and player remain available while indexing continues;
-- moved or renamed files retain their identity and playback position;
-- browser-incompatible files remain visible and play through live transcoding
-  when conversion succeeds; and
+- the library and player stay available while indexing continues;
+- moved or renamed files keep their identity and playback position;
+- files a browser cannot play stay listed and play through live conversion
+  when conversion succeeds;
 - titles can be searched from the first character.
 
 ## Windows app
 
-On Windows 10 or 11 (x64), VVMDM also runs as a desktop app without Docker,
-Go, Node or FFmpeg: it opens in its own window and stops when the window is
-closed.
+On Windows 10 or 11 (x64), VVMDM runs as a desktop app without Docker, Go,
+Node or FFmpeg. It opens in its own window and stops when the window closes.
 
 ### Get it
 
 Download `VVMDM-<version>-windows-amd64.zip` from the
-[GitHub Releases](https://github.com/syudead/vv/releases) of this repository.
-The zip holds `VVMDM.exe`, a `README.txt`, and an `ffmpeg` folder with
-`ffmpeg.exe`, `ffprobe.exe` and FFmpeg's license and source information. To
-build the same zip from source, run `task build-windows-app`; it writes
-`dist/VVMDM-<version>-windows-amd64.zip` (the version is `VERSION` without a
-leading `v`, or `sha-<12 characters of the commit>` when `VERSION` is unset).
+[GitHub Releases](https://github.com/syudead/vv/releases). The zip holds
+`VVMDM.exe`, a `README.txt` and an `ffmpeg` folder with `ffmpeg.exe`,
+`ffprobe.exe` and FFmpeg's license and source information.
+
+To build the same zip from source, run `task build-windows-app`. It writes
+`dist/VVMDM-<version>-windows-amd64.zip`, where the version is `VERSION`
+without a leading `v`, or `sha-<12 characters of the commit>` when `VERSION`
+is unset.
 
 ### Start it
 
-1. Right-click the zip and choose **Extract All**. Running `VVMDM.exe` from
-   inside the zip shows a message asking you to extract it first.
+1. Right-click the zip and choose **Extract All**. `VVMDM.exe` run from inside
+   the zip asks you to extract it first.
 2. Run `VVMDM.exe` in the extracted folder. Keep the `ffmpeg` folder next to
    it; VVMDM uses that FFmpeg even when another one is installed.
-3. VVMDM is not code-signed, so the first time Windows SmartScreen may show
+3. VVMDM is not code-signed, so on the first run Windows SmartScreen may show
    "Windows protected your PC". Click **More info**, then **Run anyway**.
-4. Finish the [Account setup](#account-setup) in the window, then add your
-   media folders in Settings and start a scan.
+4. Finish the [Account setup](#account-setup) in the window, add your media
+   folders in Settings and start a scan.
 
-VVMDM needs the Microsoft Edge WebView2 Runtime, which Windows 10 and 11
-normally include; if it is missing, VVMDM says so and where to get it. Startup
-problems (a busy port, a data folder that cannot be written) are shown in a
-dialog. Running `VVMDM.exe` again while it is open brings the open window to the
-front. Closing the window while a scan or import is in progress asks first; the
-work continues from where it stopped on the next start.
+| Situation | What VVMDM does |
+| --- | --- |
+| The WebView2 Runtime is missing | Says so and where to get it (Windows 10 and 11 normally include it) |
+| The port is busy or the data folder cannot be written | Shows the problem in a dialog |
+| `VVMDM.exe` is run again while open | Brings the open window to the front |
+| The window is closed during a scan or import | Asks first; the work resumes on the next start |
 
-The Windows app does not read the environment variables in
-[Runtime settings](#runtime-settings), and it has no `mdm account` command.
+The Windows app does not read the [Runtime settings](#runtime-settings)
+variables and has no `mdm account` command.
 
 ### Data
 
@@ -93,22 +96,24 @@ VVMDM keeps everything for the signed-in Windows user under
 | `webview2\` | The window's browser data, including the sign-in cookie |
 | `logs\vvmdm.log`, `logs\vvmdm.1.log` | JSON logs of this run and the previous run |
 
-To back up, close VVMDM and copy the `data` folder. The
-[Data and recovery](#data-and-recovery) notes on what scanning can and cannot
-restore apply here too.
+To back up, close VVMDM and copy the `data` folder.
+[Data and recovery](#data-and-recovery) applies here too.
 
 ### Update
 
-Close VVMDM, then replace the contents of the extracted folder with the
-contents of the new zip, or extract the new zip to a new folder and delete the
-old one. The data in `%LOCALAPPDATA%\VVMDM` stays, and the new version updates
-the database when it starts. To remove VVMDM, delete the folder, and
-`%LOCALAPPDATA%\VVMDM` as well to delete the library.
+1. Close VVMDM.
+2. Replace the contents of the extracted folder with the new zip's contents,
+   or extract the new zip to a new folder and delete the old one.
+3. Start VVMDM. The data in `%LOCALAPPDATA%\VVMDM` stays, and the new version
+   updates the database on start.
+
+To remove VVMDM, delete the folder, and `%LOCALAPPDATA%\VVMDM` as well to
+delete the library.
 
 ### Port
 
-VVMDM listens on port `47880`. If another program uses it, VVMDM shows the port
-in a dialog. Start VVMDM on another port with `--port`, for example from a
+VVMDM listens on port `47880`. When another program uses it, VVMDM shows the
+port in a dialog. Start on another port with `--port`, for example from a
 shortcut whose target is:
 
 ```text
@@ -117,279 +122,314 @@ shortcut whose target is:
 
 ### Open it from other devices
 
-By default only the PC running VVMDM can open it: VVMDM listens on
-`127.0.0.1` only. To use it from a phone or another computer on the same
-network, open **Settings** as the owner and turn on **Allow connections from
-the local network** in **Network**. The section then lists the addresses to
-open, such as `http://192.168.1.20:47880/`. When Windows Firewall asks, allow
-VVMDM on **private networks**. The setting is kept across restarts; turning it
-off stops new connections from other devices.
+By default VVMDM listens on `127.0.0.1` only, so only the PC running it can
+open it. To allow a phone or another computer on the same network:
 
-The connection uses plain HTTP, so use it only on a network you trust. The
-Windows app does not read forwarding headers (it behaves as
-`MDM_TRUSTED_PROXIES=none`); see [Network exposure](#network-exposure) before
-putting it behind a reverse proxy.
+1. Open **Settings** as the owner and turn on **Allow connections from the
+   local network** in **Network**.
+2. When Windows Firewall asks, allow VVMDM on **private networks**.
+3. Open one of the addresses the section lists, such as
+   `http://192.168.1.20:47880/`.
+
+The setting is kept across restarts; turning it off stops new connections from
+other devices. The connection is plain HTTP, so use it only on a network you
+trust. The Windows app never reads forwarding headers (it behaves as
+`MDM_TRUSTED_PROXIES=none`); read [Network exposure](#network-exposure)
+before putting it behind a reverse proxy.
 
 ## Subtitles
 
-VVMDM shows subtitle files placed next to a video. There is nothing to
-register and no rescan is needed: add or remove a file, then reopen the
-video's page. Name the file after the video, without the video's extension:
+VVMDM shows subtitle files placed next to a video, named after the video
+without its extension. Nothing is registered and no rescan is needed: add or
+remove a file, then reopen the video's page.
 
-| Video       | Subtitle files                                         |
-| ----------- | ------------------------------------------------------ |
-| `movie.mp4` | `movie.srt` or `movie.vtt` (listed as "Default")       |
-| `movie.mp4` | `movie.<label>.srt` or `movie.<label>.vtt`, such as `movie.ja.srt` or `movie.en.forced.vtt` |
+| Video | Subtitle file | Listed as |
+| --- | --- | --- |
+| `movie.mp4` | `movie.srt` or `movie.vtt` | "Default" |
+| `movie.mp4` | `movie.<label>.srt` or `movie.<label>.vtt`, such as `movie.ja.srt` or `movie.en.forced.vtt` | The label |
 
-- Names and extensions match case-insensitively. When the same label has both
-  an `.srt` and a `.vtt`, only the `.vtt` is used.
-- Supported formats are SubRip (`.srt`) and WebVTT (`.vtt`). Text may be UTF-8
-  (with or without a BOM), UTF-16 with a BOM, or Shift_JIS.
-- Files larger than 4 MiB are ignored.
-- Only the folder of the file that is played is searched; a `Subs/` folder is
-  not.
+| Rule | Value |
+| --- | --- |
+| Name and extension matching | Case-insensitive |
+| Same label as `.srt` and `.vtt` | Only the `.vtt` is used |
+| Formats | SubRip (`.srt`) and WebVTT (`.vtt`) |
+| Text encodings | UTF-8 (with or without a BOM), UTF-16 with a BOM, Shift_JIS |
+| Size limit | Files over 4 MiB are ignored |
+| Folders searched | Only the folder of the played file; a `Subs/` folder is not |
 
 When a video has subtitles, the player shows a subtitles button next to the
-playback speed. Press `C` to turn subtitles on or off. The browser remembers
-the last choice, and a video with the same label starts with it turned on.
+playback speed, and `C` turns subtitles on or off. The browser remembers the
+last choice, and a video with the same label starts with it turned on.
 
 ## Runtime settings
 
-| Variable              | Default | Purpose                                                                                         |
-| --------------------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `MDM_ADDR`            | `:8080` | Server listen address                                                                           |
-| `MDM_DATA_DIR`        | `/data` | Absolute path for the database and generated media                                              |
-| `MDM_LOG_LEVEL`       | `info`  | `debug`, `info`, `warn`, or `error`                                                             |
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MDM_ADDR` | `:8080` | Server listen address |
+| `MDM_DATA_DIR` | `/data` | Absolute path for the database and generated media |
+| `MDM_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `MDM_TRUSTED_PROXIES` | private | Reverse proxies whose forwarding headers are trusted; see [Network exposure](#network-exposure) |
 
-Docker Compose sets these values for the container. Media folders themselves
-are managed in the application rather than with a configuration file.
-Invalid environment values are reported together when the application starts.
+Docker Compose sets these for the container. Media folders are managed in
+Settings, not in a configuration file. All invalid values are reported
+together at startup.
 
 ## Account setup
 
-VVMDM has a single account. Until it is configured, the first person to reach the
-server can create it, so finish the initial setup in the browser right after
-installing VVMDM, before the server is reachable by anyone else. Open VVMDM and
-choose the username and password on the setup screen.
+VVMDM has a single account, and until it exists the first person to reach the
+server can create it. Right after installing, before anyone else can reach the
+server, open VVMDM and choose the username and password on the setup screen.
 
 ## Changing the username or resetting the password
 
-After the initial setup, the username and password can be changed only from a
-shell on the host. Both commands read `MDM_DATA_DIR` alone, apply migrations,
-and do not need `ffmpeg`; they work whether the server is running or stopped.
-Each change signs out every existing session.
+After setup, the username and password change only from a shell on the host.
+The commands read `MDM_DATA_DIR` alone, apply migrations, do not need
+`ffmpeg`, and work whether the server is running or stopped.
 
-With Docker Compose, while the container is running:
+1. Run the command. With Docker Compose and the container running:
 
-```bash
-docker compose exec mdm mdm account set-username NEW_NAME
-docker compose exec mdm mdm account set-password
-```
+   ```bash
+   docker compose exec mdm mdm account set-username NEW_NAME
+   docker compose exec mdm mdm account set-password
+   ```
 
-When the container is stopped:
+   With the container stopped:
 
-```bash
-docker compose run --rm mdm account set-password
-```
+   ```bash
+   docker compose run --rm mdm account set-password
+   ```
 
-`set-password` asks for the new password twice with echo turned off. When
-standard input is not a terminal, it reads the first line (without the
-trailing newline) instead, which suits scripts:
+2. For `set-password`, type the new password twice (echo is off). From a
+   script, pipe it in; when standard input is not a terminal, the first line
+   without its trailing newline is read:
 
-```bash
-docker compose exec -T mdm mdm account set-password < new-password.txt
-```
+   ```bash
+   docker compose exec -T mdm mdm account set-password < new-password.txt
+   ```
 
 The password is never accepted as an argument or an environment variable, so
-it does not end up in shell history, process listings or `docker inspect`.
-
-The username must be 1 to 128 characters without control characters or
-leading and trailing spaces; the password must be 1 to 1024 bytes. The
-commands never create the account: on an unconfigured server they change
-nothing and ask you to use the setup screen.
+it stays out of shell history, process listings and `docker inspect`. The
+username is 1 to 128 characters without control characters or leading and
+trailing spaces; the password is 1 to 1024 bytes. The commands never create
+the account: on an unconfigured server they change nothing and point to the
+setup screen.
 
 | Exit code | Meaning |
-| --------- | ------- |
-| `0`       | The change was saved, existing sessions were signed out and API tokens were revoked |
-| `1`       | The database could not be opened or written |
-| `2`       | Not configured yet, an invalid value, a mismatched confirmation, or an unknown command |
+| --- | --- |
+| `0` | Saved; every session is signed out and API tokens are revoked |
+| `1` | The database could not be opened or written |
+| `2` | Not configured yet, an invalid value, a mismatched confirmation, or an unknown command |
 
 ## Hardware encoding
 
-Videos that a browser cannot play are converted while they stream. By default
-the conversion uses the CPU (software encoding). A GPU can do the video part
-of that conversion instead, which lowers the CPU load.
+Videos a browser cannot play are converted while they stream, with the CPU
+(software encoding) by default. A GPU can encode the video part instead, which
+lowers the CPU load.
 
 Hardware encoding works only when VVMDM runs directly on the host (Windows,
-Linux or macOS). The Docker image, both with `task up` and the published image
-in [Hosting VVMDM](hosting-vv.md), uses software encoding only: it carries no
-GPU drivers, and passing a GPU to the container does not enable a hardware
-encoder. Inside the container, Settings shows every hardware encoder as not
-available, and conversions use software.
+Linux or macOS). The Docker image, from `task up` or
+[Hosting VVMDM](hosting-vv.md), carries no GPU drivers; passing a GPU to the
+container does not help, and Settings shows every hardware encoder as not
+available there.
 
 ### What each encoder needs
 
-VVMDM does not bundle FFmpeg or GPU drivers on a direct install. It runs the
-`ffmpeg` found on `PATH`, so that build must include the encoder, and the host
-must have the driver and the device.
+On a direct install VVMDM bundles neither FFmpeg nor GPU drivers. It runs the
+`ffmpeg` on `PATH`, so that build must include the encoder, and the host must
+have the driver and the device.
 
-| Encoder in Settings  | Operating system | GPU and driver                                                                                                               |
-| -------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| NVENC (NVIDIA)       | Linux, Windows   | An NVIDIA GPU with NVENC and the NVIDIA driver                                                                               |
-| Quick Sync (Intel)   | Linux, Windows   | An Intel GPU supported by the oneVPL GPU runtime (Iris Xe, 11th-generation Core or newer), the Intel driver and that runtime |
-| VAAPI (Intel/AMD)    | Linux            | An Intel GPU (Broadwell or newer) or an AMD GPU with a video encoder, a VA-API driver, and access to `/dev/dri/renderD128`   |
-| VideoToolbox (macOS) | macOS            | A Mac; the driver is part of macOS                                                                                            |
+| Encoder in Settings | Operating system | GPU and driver |
+| --- | --- | --- |
+| NVENC (NVIDIA) | Linux, Windows | An NVIDIA GPU with NVENC and the NVIDIA driver |
+| Quick Sync (Intel) | Linux, Windows | An Intel GPU supported by the oneVPL GPU runtime (Iris Xe, 11th-generation Core or newer), the Intel driver and that runtime |
+| VAAPI (Intel/AMD) | Linux | An Intel GPU (Broadwell or newer) or an AMD GPU with a video encoder, a VA-API driver, and access to `/dev/dri/renderD128` |
+| VideoToolbox (macOS) | macOS | A Mac; the driver is part of macOS |
 
-On Linux, Quick Sync and VAAPI open the GPU through `/dev/dri`, so the user
-that runs VVMDM needs read and write access to `/dev/dri/renderD128`, usually
-through the group that owns it (often `render` or `video`):
+1. On Linux, for Quick Sync and VAAPI, give the user that runs VVMDM read and
+   write access to `/dev/dri/renderD128`, usually through its group (often
+   `render` or `video`):
 
-```bash
-ls -l /dev/dri/renderD128
-sudo usermod -aG render "$USER"   # then sign out and in again
-```
+   ```bash
+   ls -l /dev/dri/renderD128
+   sudo usermod -aG render "$USER"   # then sign out and in again
+   ```
 
-VAAPI uses `renderD128`, the first GPU. Consumer NVIDIA GPUs limit how many
-NVENC sessions run at the same time; a conversion that the GPU refuses falls
-back to software encoding.
+2. Check that the `ffmpeg` on `PATH` lists the encoder (`h264_nvenc`,
+   `h264_qsv`, `h264_vaapi` or `h264_videotoolbox`). If it does not, install
+   a build that includes it, for example one linked from
+   [ffmpeg.org](https://ffmpeg.org/download.html).
 
-Check that the `ffmpeg` on `PATH` has the encoder you want (`h264_nvenc`,
-`h264_qsv`, `h264_vaapi` or `h264_videotoolbox`):
+   ```bash
+   ffmpeg -hide_banner -encoders
+   ```
 
-```bash
-ffmpeg -hide_banner -encoders
-```
-
-Having an encoder in the list does not mean the GPU works; VVMDM tests it when
-it starts (below). If an encoder is missing, install an FFmpeg build that
-includes it, for example one linked from
-[ffmpeg.org](https://ffmpeg.org/download.html).
+A listed encoder does not prove the GPU works; VVMDM tests it on start
+([Turn it on in Settings](#turn-it-on-in-settings)). VAAPI uses `renderD128`,
+the first GPU. Consumer NVIDIA GPUs limit concurrent NVENC sessions; a
+conversion the GPU refuses falls back to software.
 
 ### Run VVMDM directly on the host
 
-Set up the toolchain as described in
-[Development](development.md#set-up-the-toolchain), then build the single
-binary from the repository root:
+1. Set up the toolchain as in
+   [Development](development.md#set-up-the-toolchain).
+2. Build the single binary `bin/mdm` (the SPA is embedded) from the
+   repository root:
 
-```bash
-mise exec --command "task build"
-```
+   ```bash
+   mise exec --command "task build"
+   ```
 
-This produces `bin/mdm` (the SPA is embedded in it). Start it with an absolute
-data directory, and the other [Runtime settings](#runtime-settings) as needed:
+3. Start it with an absolute data directory (on Windows, including the drive
+   letter) and any other [Runtime settings](#runtime-settings):
 
-```bash
-MDM_DATA_DIR=/absolute/path/to/vv-data ./bin/mdm
-```
+   ```bash
+   MDM_DATA_DIR=/absolute/path/to/vv-data ./bin/mdm
+   ```
 
-On Windows, `MDM_DATA_DIR` must include the drive letter. Open
-<http://localhost:8080>, finish the [Account setup](#account-setup), and add
-your media folders in Settings.
+4. Open <http://localhost:8080>, finish the [Account setup](#account-setup)
+   and add your media folders in Settings.
 
 ### Turn it on in Settings
 
-VVMDM tests each hardware encoder with a short encode every time it starts.
-Open **Settings** as the owner and go to **Video conversion**:
+VVMDM tests each hardware encoder with a short encode on every start. Open
+**Settings** as the owner and go to **Video conversion**:
 
-- encoders that passed the test can be selected; the others show the reason,
-  for example "Not supported on this server's operating system", "Not found on
-  this server" or "The test encode failed";
-- choose one encoder, or **Automatic** to use the first available of NVENC,
-  Quick Sync, VAAPI and VideoToolbox, falling back to software;
-- **In use now** shows the encoder that conversions use.
+- encoders that passed can be selected; the others show the reason, such as
+  "Not supported on this server's operating system", "Not found on this
+  server" or "The test encode failed";
+- choose one encoder, or **Automatic**;
+- **In use now** shows the encoder conversions use.
 
-The choice is kept across restarts. If the chosen encoder is not available
-after a restart (for example, the driver was removed or VVMDM now runs in the
-Docker image), VVMDM converts with software and Settings says so. When the
-hardware encoder cannot start a conversion, for example because the GPU is
-busy, that conversion uses software. The startup log shows the result of each
-test (`transcode video encoder checks finished`), and a failed test is logged
-with the end of FFmpeg's error output.
+The choice is kept across restarts. Each conversion picks its encoder as
+follows.
+
+```mermaid
+flowchart LR
+    S{Choice} -->|Automatic| F[First passed encoder]
+    S -->|One encoder| P{Passed test?}
+    F -->|None passed| SW[Software]
+    F --> St{Conversion starts?}
+    P -->|No| SW
+    P -->|Yes| St
+    St -->|Yes| HW[Hardware]
+    St -->|No| SW
+```
+
+Automatic tries NVENC, Quick Sync, VAAPI and VideoToolbox in that order. When
+the chosen encoder is unavailable after a restart (the driver was removed, or
+VVMDM now runs in the Docker image), Settings says that software is in use.
+A conversion the encoder cannot start, for example because the GPU is busy,
+uses software. The startup log shows each test's result
+(`transcode video encoder checks finished`), and a failed test is logged with
+the end of FFmpeg's error output.
 
 ## Data and recovery
 
-The Docker setup stores application data in the `vv_data` volume. The SQLite
-database is `MDM_DATA_DIR/mdm.db`; generated thumbnails live below
-`MDM_DATA_DIR/thumbnails/`.
+The Docker setup stores application data in the `vv_data` volume: the SQLite
+database `MDM_DATA_DIR/mdm.db` and thumbnails under
+`MDM_DATA_DIR/thumbnails/`. The database holds user and configuration data
+that scanning cannot restore, next to an index that a scan rebuilds:
 
-The database contains user and configuration data that scanning cannot restore.
-The [data classification](../../ARCHITECTURE.md#rebuildable-and-user-data)
-names every table and separates this data from the rebuildable index.
+| Category | Tables and files | Recovered by |
+| --- | --- | --- |
+| Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
+| User data | `playback_progress`, `tags`, `tag_names`, `video_tags`, `rejected_tag_names`, `public_videos`, `video_overrides`, `video_edits`, `video_favorites`, `folder_favorites`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `folder_group_overrides` | A backup only |
+| Configuration | `account`, `media_folders`, `settings`, `api_tokens` | A backup, or setting it up again |
+| Session | `sessions` | Logging in again |
 
-Back up the **whole** `vv_data` volume, including `mdm.db`, before resetting or
-updating vv. Stop the container with `task down`, copy the volume with your
-Docker volume backup tool, then restart with `task up`. Do not copy the database
-files while vv is running: SQLite uses WAL mode, so a filesystem copy taken
-during writes may be inconsistent. `task down` does not delete the volume;
-`docker compose down -v` does.
+User data is keyed by values a rescan reproduces (the content key, a version
+bundle's key, a folder's absolute path), never by a video row's id, so it
+survives a rebuild of the index. A scan cannot start until a media folder is
+registered, and a lost API token has to be issued again.
 
-To restore, stop vv, restore the saved volume, and start vv again. If the
-database is lost without a backup, set up a new account, register the media
-folders again in Settings, then start a scan to rebuild the index. Scanning
-cannot recover the user and configuration data in the linked classification.
+Back up the **whole** `vv_data` volume, including `mdm.db`, before resetting
+or updating VVMDM:
 
-If vv stops while a scan is running (for example `task down`, a container
-restart or a shutdown), the next start begins a new scan automatically. Files
-that the interrupted scan already indexed and that have not changed since are
-passed over quickly, so the new scan continues where the old one stopped.
-Import work that was in progress also continues after the restart.
+1. Stop the container with `task down`. SQLite runs in WAL mode, so a copy
+   taken during writes may be inconsistent.
+2. Copy the volume with your Docker volume backup tool.
+3. Start again with `task up`.
+
+`task down` keeps the volume; `docker compose down -v` deletes it.
+
+| Situation | Recovery |
+| --- | --- |
+| A backup exists | Stop VVMDM, restore the volume, start VVMDM |
+| The database is lost without a backup | Set up a new account, register the media folders again in Settings, scan; user and configuration data is gone |
+| VVMDM stopped during a scan (`task down`, a restart, a shutdown) | The next start scans again automatically and passes quickly over files already indexed and unchanged |
+| VVMDM stopped during an import | The import continues after the restart |
 
 ## Network exposure
 
-On a trusted home network, VVMDM can be used over plain HTTP. To make it reachable
-from the internet, put it behind a reverse proxy that serves HTTPS; never
-expose VVMDM's own HTTP port to the internet. Over HTTP, the password and the
-session cookie travel unencrypted.
+Plain HTTP is fine on a trusted home network. To reach VVMDM from the
+internet, put it behind a reverse proxy that serves HTTPS, and never expose
+VVMDM's own HTTP port: over HTTP the password and session cookie travel
+unencrypted.
+
+```mermaid
+flowchart LR
+    B[Browser] -->|HTTPS| P[Reverse proxy]
+    P -->|HTTP plus headers| V[VVMDM]
+```
 
 The reverse proxy must:
 
 - terminate HTTPS and forward to VVMDM over HTTP;
-- pass the `Host` header through unchanged (VVMDM compares it with `Origin` to
-  accept only same-origin changes, and does not read `X-Forwarded-Host`);
-- set or append the client address in `X-Forwarded-For` and set `X-Forwarded-Proto`
-  to `https`.
+- pass `Host` through unchanged (VVMDM compares it with `Origin` to accept
+  only same-origin changes, and does not read `X-Forwarded-Host`);
+- set or append the client address in `X-Forwarded-For` and set
+  `X-Forwarded-Proto` to `https`.
 
 VVMDM trusts forwarding headers from loopback and private addresses by default
 (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`,
-`fc00::/7`), so a proxy on the same PC, on the home network or in the same
-Docker network works without any setting. Set `MDM_TRUSTED_PROXIES` only to
-narrow this, as CIDR ranges or single addresses separated by commas or spaces,
-or to `none` to never read forwarding headers:
+`fc00::/7`), so a proxy on the same PC, the home network or the same Docker
+network needs no setting. Set `MDM_TRUSTED_PROXIES` only to narrow this, as
+CIDR ranges or single addresses separated by commas or spaces, or to `none`
+to never read forwarding headers:
 
 ```bash
 MDM_TRUSTED_PROXIES=172.18.0.0/16 task up
 ```
 
-VVMDM reads the forwarding headers only on connections from those addresses.
-There it takes the client address by walking `X-Forwarded-For` from the right
-to the first untrusted address, and decides HTTPS from the last
-`X-Forwarded-Proto` value. On every other connection it uses the connecting
-address and whether the connection itself was TLS, so a client on the internet
-cannot fake either. With the default, a device on the home network can: it can
-claim another address and so get around the login attempt limit. Narrow
+VVMDM decides the client address and HTTPS for each connection as follows.
+
+```mermaid
+flowchart LR
+    C{From trusted proxy?} -->|Yes| H[Read forwarding headers]
+    C -->|No| D[Use the connection]
+    H --> A[Client from X-Forwarded-For]
+    H --> T[HTTPS from X-Forwarded-Proto]
+    D --> A2[Connecting address]
+    D --> T2[TLS of connection]
+```
+
+From a trusted proxy, the client address is found by walking
+`X-Forwarded-For` from the right to the first untrusted address, and HTTPS
+comes from the last `X-Forwarded-Proto` value. A client on the internet cannot
+fake either. With the default, a device on the home network can: it can claim
+another address and get around the login attempt limit, so narrow
 `MDM_TRUSTED_PROXIES` to the proxy's address if you do not trust every device
 on the network. The `Forwarded` header (RFC 7239) is not read. Invalid entries
-are reported together with other invalid settings at startup.
+are reported with the other invalid settings at startup.
 
-The client address and HTTPS decide the login attempt limit, the address in
-authentication logs, the session cookie (`__Host-vv_session` with `Secure`
-over HTTPS, `vv_session` over HTTP), the same-origin check, and whether the
-"open in default app" action counts as coming from the server's own PC. That
-action stays refused for remote clients even when the proxy runs on the same
-PC, and it also requires the connection itself to come from loopback, so a
-device on the network cannot claim `127.0.0.1` in `X-Forwarded-For`.
+The client address and HTTPS decide:
 
-If the proxy's address is not trusted (it has a public address, or
-`MDM_TRUSTED_PROXIES` leaves it out):
+- the login attempt limit and the address in authentication logs;
+- the session cookie: `__Host-vv_session` with `Secure` over HTTPS,
+  `vv_session` over HTTP;
+- the same-origin check;
+- whether "open in default app" counts as coming from the server's own PC.
+  That action is refused for remote clients even when the proxy runs on the
+  same PC, and also requires the connection itself to come from loopback, so
+  a device on the network cannot claim `127.0.0.1` in `X-Forwarded-For`.
 
-- every client is seen as the proxy's address, so all of them share one login
-  attempt limit, and one person's failed attempts lock everyone out for a while;
-- requests are treated as HTTP, so browsers send an `https://` `Origin` that
-  does not match and every change (`POST`, `PUT`, `PATCH`, `DELETE`) including
-  login fails with 403.
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| One person's failed logins lock everyone out | The proxy's address is not trusted, so every client shares its address and one login attempt limit | Add the proxy to `MDM_TRUSTED_PROXIES`, or give it a private address |
+| Every change (`POST`, `PUT`, `PATCH`, `DELETE`), including login, fails with 403 | The proxy is not trusted, so requests count as HTTP and the browser's `https://` `Origin` does not match | Same as above |
 
-A minimal Caddy configuration, with VVMDM and Caddy in the same Docker network:
+A minimal Caddy configuration, with VVMDM and Caddy in the same Docker
+network:
 
 ```caddyfile
 vv.example.com {
@@ -399,4 +439,4 @@ vv.example.com {
 
 Caddy obtains the certificate, passes `Host` through, and sets
 `X-Forwarded-For` and `X-Forwarded-Proto` by default. Docker networks use
-private addresses, so no `MDM_TRUSTED_PROXIES` setting is needed.
+private addresses, so `MDM_TRUSTED_PROXIES` needs no setting.

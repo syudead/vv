@@ -1,28 +1,32 @@
-# Data model: 一覧とフォルダ画面の検索
+# Data model: Search in the list and folder screens
 
-親 Issue: #195。
+Parent Issue: #195.
 
-既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、
-索引と利用者データの区別は [ARCHITECTURE.md](../../ARCHITECTURE.md) にある。ここには
-この feature が足す列と表、それを埋める規則だけを書く。`videos`・`media_folders`・
-`playback_progress`・`jobs` は変えない。足すものはすべて「再構築できる索引」側に属する。
+The rest of the model is unchanged: the existing table definitions are owned by
+[internal/store/migrations/](../../internal/store/migrations/), and the split
+between indexes and user data is in [ARCHITECTURE.md](../../ARCHITECTURE.md).
+This document covers only the columns and tables this feature adds and the rules
+that fill them. `videos`, `media_folders`, `playback_progress` and `jobs` do not
+change. Everything added belongs to the rebuildable index side.
 
-## 1. `video_locations` に足す列
+## 1. Columns added to `video_locations`
 
-| 列 | 型 | 意味 |
+| Column | Type | Meaning |
 | --- | --- | --- |
-| `search_key` | `text not null default ''` | 所在1件の照合用の文字列。§3 の規則で Go が作る |
-| `title_key` | `text not null default ''` | 題名の自然順の並べ替え用の鍵。§4 の規則で Go が作る |
-| `search_version` | `integer not null default 0` | `search_key` と `title_key` を作った規則の版。§5 |
+| `search_key` | `text not null default ''` | The match string for one location. Built in Go by the rules in §3 |
+| `title_key` | `text not null default ''` | The key for sorting titles in natural order. Built in Go by the rules in §4 |
+| `search_version` | `integer not null default 0` | The version of the rules that built `search_key` and `title_key`. See §5 |
 
-鍵を所在ごとに持つのは、要件 9（語ごとに別の所在で満たしても当たりにしない）を
-所在1行の中で判定するためである。
+The keys are stored per location so that requirement 9 (a video does not match
+when different terms are satisfied by different locations) is decided within one
+location row.
 
-## 2. 全文索引の付け替え
+## 2. Replacing the full-text index
 
-`videos_fts`（`title`・`path` の trigram）と、それを同期するトリガ
-`video_locations_ai`・`video_locations_ad`・`video_locations_au` を落とす。代わりに、
-`search_key` の1列だけを持つ次の索引を作る。
+`videos_fts` (a trigram index on `title` and `path`) and the triggers that keep it
+in sync, `video_locations_ai`, `video_locations_ad` and `video_locations_au`, are
+dropped. In their place, the following index with only the `search_key` column is
+created:
 
 ```sql
 create virtual table location_search_fts using fts5(
@@ -30,80 +34,99 @@ create virtual table location_search_fts using fts5(
 );
 ```
 
-同期トリガは `search_key` だけを写す（挿入・削除、`search_key` の更新）。題名や
-パスの変更は、Go が同じ書き込みの中で `search_key` を作り直すことで索引に届く。
+The sync triggers copy only `search_key` (on insert and delete, and on updates of
+`search_key`). Changes to the title or path reach the index because Go rebuilds
+`search_key` in the same write.
 
-マイグレーションは `00007_location_search.sql` として新しく足す。既存のマイグレーションは
-変えない（`scripts/migrations-immutable.sh`）。SQL だけでは §3 の正規化を書けないため、
-マイグレーションは列・索引・トリガを作るところまでとし、鍵の値は §5 で埋める。Down は
-`videos_fts` と3つのトリガを 00003 の定義どおりに作り直し、`'rebuild'` で索引を埋め直してから、足した列を落とす。
+The migration is added as `00007_location_search.sql`. Existing migrations do not
+change (`scripts/migrations-immutable.sh`). SQL alone cannot express the
+normalisation in §3, so the migration only creates the columns, the index and the
+triggers; the key values are filled as described in §5. Down recreates
+`videos_fts` and the three triggers as defined in 00003, refills the index with
+`'rebuild'`, and then drops the added columns.
 
-## 3. `search_key` の規則
+## 3. `search_key` rules
 
 ```text
 search_key = fold(title) + "\n" + fold(relative_path)
 ```
 
-- `relative_path` は、所在を含む登録メディアフォルダより下の相対パスで、区切りは `/`、
-  拡張子を含む。登録メディアフォルダ自身のパスは入れない（要件 8）。
-- 題名と相対パスの中の改行は、`fold` の後で空白にそろえる。改行は2つの境目にだけ残し、
-  検索語の側も改行を空白として扱うので、境目をまたいで当たることはない。
-- 登録フォルダの下かどうかは、一覧の判定と同じ規則で決める。区切りは Windows では
-  `/` と `\`、ほかの OS では `/` だけである。
-- どの登録メディアフォルダにも含まれない所在は `search_key = ''` とする。その所在は
-  もともと一覧に出ない（`registeredLocationCondition`）。
-- `fold` は `internal/domain` の照合形への変換で、検索語にも同じものを掛ける
-  （[contracts/list-api.md §1](contracts/list-api.md#1-検索語の書き方)）。
-  NFKC 正規化、Unicode の小文字化、ひらがなからカタカナへの置き換えの順に掛ける。
+- `relative_path` is the path below the registered media folder that contains
+  the location, separated by `/`, including the extension. The path of the
+  registered media folder itself is not included (requirement 8).
+- Newlines inside the title and the relative path are turned into spaces after
+  `fold`. A newline remains only at the boundary between the two, and the query
+  side also treats a newline as a space, so no term matches across the boundary.
+- Whether a location is under a registered folder is decided by the same rule as
+  the list. The separators are `/` and `\` on Windows and only `/` on other
+  operating systems.
+- A location contained in no registered media folder gets `search_key = ''`.
+  Such a location never appears in the list anyway
+  (`registeredLocationCondition`).
+- `fold` is the conversion to the match form in `internal/domain`; the same
+  conversion is applied to query terms
+  ([contracts/list-api.md §1](contracts/list-api.md#1-query-syntax)). It applies
+  NFKC normalisation, Unicode lower-casing, and hiragana-to-katakana replacement,
+  in that order.
 
-## 4. `title_key` の規則
+## 4. `title_key` rules
 
-`internal/domain` の関数が題名から作る、バイト順に比べると自然順になる文字列である。
-`fold` を掛けたうえで、ASCII の数字の連続を「先頭の 0 を除いた桁数を10進4桁で表した
-接頭辞 + 先頭の 0 を除いた数字」に置き換える（`2` は `00012`、`10` は `000210`）。接頭辞が
-数字で始まるので、数字の連続とほかの文字との前後は、元の文字の前後と変わらない。
-並べ替えは `title_key` が同じなら `id` で決着させる。
+A function in `internal/domain` builds it from the title: a string whose byte
+order is natural order. After `fold`, each run of ASCII digits is replaced with
+"a prefix giving the number of digits without leading zeros, as four decimal
+digits, followed by the digits without leading zeros" (`2` becomes `00012`, `10`
+becomes `000210`). The prefix starts with a digit, so the order between a digit
+run and other characters stays the same as for the original characters. Sorting
+breaks ties on `id` when `title_key` is equal.
 
-定める順序は「照合形にした題名の自然順」である。`title_key` のバイト順は、異なる2つの
-題名 `a`・`b` について `CompareNatural(fold(a), fold(b))` と同じ向きを返す。`fold` の後で
-比べるので、NFKC で数字になる全角数字（`２`）や `①` は数字として比べ、ひらがなは
-カタカナとして比べる（`い` と `ア` では `ア` が先）。大文字小文字、全角半角、かなの違い
-だけの題名は同じ鍵になり、`id` で決着する。
+The defined order is "natural order of the title in match form". For two
+different titles `a` and `b`, the byte order of `title_key` gives the same
+direction as `CompareNatural(fold(a), fold(b))`. Because the comparison happens
+after `fold`, full-width digits (`２`) and `①`, which NFKC turns into digits,
+compare as digits, and hiragana compares as katakana (between `い` and `ア`, `ア`
+comes first). Titles that differ only in case, width or kana type get the same
+key and are ordered by `id`.
 
-フォルダカードの並び（`CompareNatural` を生の名前に掛ける）とは、かなや全角数字を含む
-名前で順序が違いうる。フォルダカードの並びはこの feature では変えない。
+The order of folder cards (`CompareNatural` on the raw names) can differ for
+names that contain kana or full-width digits. This feature does not change the
+order of folder cards.
 
-## 5. 鍵を作る時点と `search_version`
+## 5. When keys are built, and `search_version`
 
-`domain.SearchKeyVersion`（初版は 1）を §3・§4 の規則の版とする。鍵は次の時点で、
-その所在について作り直し、`search_version` に現在の版を書く。
+`domain.SearchKeyVersion` (1 initially) is the version of the rules in §3 and §4.
+Keys are rebuilt for a location at the following points, and `search_version` is
+set to the current version:
 
-| 時点 | 対象 |
+| When | Target |
 | --- | --- |
-| 起動時、マイグレーションの直後で HTTP を受け付ける前 | `search_version` が現在の版より小さい所在すべて |
-| 取り込みで所在を追加・更新したとき（`UpsertVideo`） | その所在 |
-| メディアフォルダを追加・変更したとき（`AddMediaFolder`・`ReplaceMediaFolder`） | 新しい登録フォルダの下にある所在 |
+| At startup, right after migrations and before accepting HTTP | All locations whose `search_version` is lower than the current version |
+| When a scan adds or updates a location (`UpsertVideo`) | That location |
+| When a media folder is added or changed (`AddMediaFolder`, `ReplaceMediaFolder`) | Locations under the new registered folder |
 
-起動時の埋め直しは `store.Migrate` の直後、中断したジョブの戻しとジョブワーカーの起動、
-HTTP の受け付けより前に走る。500 件ずつのトランザクションで書き、失敗したら起動を止める
-（古い鍵のまま検索を出さない）。版は行ごとなので、止まった所から次の起動で続きを埋める。
-メディアフォルダの追加・変更での作り直しは、フォルダの変更と同じトランザクションで行う。
+The startup refill runs right after `store.Migrate`, before interrupted jobs are
+reset, before the job worker starts and before HTTP is accepted. It writes in
+transactions of 500 rows, and a failure stops startup (search is never served
+with old keys). The version is per row, so the next startup continues from where
+it stopped. Rebuilding on a media folder add or change happens in the same
+transaction as the folder change.
 
-起動時の埋め直しによって、既存のライブラリは再取り込みなしで要件 7 と 8 を満たす
-（受け入れ条件 8）。規則を変えるときは版を上げ、同じ経路で全件を作り直す。削除された
-所在は行ごと消えるので、作り直しの対象にならない。
+The startup refill lets an existing library meet requirements 7 and 8 without
+rescanning (acceptance criterion 8). To change the rules, raise the version, and
+the same path rebuilds every key. A deleted location loses its row, so it is not
+a rebuild target.
 
-## 6. 視聴状態の導き方
+## 6. Deriving watch state
 
-保存するものは無い。`playback_progress` を `content_key` で引き、次の3値に畳む。
-一覧画面の `watchState`（`web/src/lib/format.ts`）と同じ定義で、サーバー側は
-`internal/domain` の関数とそれに対応する SQL の条件で持つ。
+Nothing is stored. `playback_progress` is looked up by `content_key` and reduced
+to the following three values. This is the same definition as `watchState` on the
+list screen (`web/src/lib/format.ts`); the server holds it as a function in
+`internal/domain` and the matching SQL condition.
 
-| 状態 | 条件 |
+| State | Condition |
 | --- | --- |
-| 未視聴 `unwatched` | 記録が無い、または `completed = 0` かつ `position_ms = 0` |
-| 視聴済み `watched` | `completed = 1` |
-| 視聴途中 `inProgress` | それ以外 |
+| Unwatched `unwatched` | No record, or `completed = 0` and `position_ms = 0` |
+| Watched `watched` | `completed = 1` |
+| In progress `inProgress` | Anything else |
 
-「最近再生した順」は `playback_progress.updated_at` を使い、記録の無い動画は向きに
-関係なく末尾に置く（受け入れ条件 14）。
+"Recently played" uses `playback_progress.updated_at`, and videos without a
+record go last in either direction (acceptance criterion 14).

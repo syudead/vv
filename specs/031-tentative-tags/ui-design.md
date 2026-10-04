@@ -1,395 +1,499 @@
-# UI Design: 仮のタグを見分け、確定・却下・統合で片付ける
+# UI design: Telling tentative tags apart and settling them by confirm, reject or merge
 
-**Feature**: [parent Issue #589](https://github.com/syudead/vv/issues/589) ・
-[plan.md](plan.md) ・ [contracts/screen-api.md](contracts/screen-api.md) ・
-[research.md R-5](research.md#r-5-却下するは仮のタグにだけ効き確定したタグには-409-tag_not_tentative-で何もしない)・
-[R-8](research.md#r-8-仮のタグだけの絞り込みと却下した名前の一覧は画面の側で持つ)
+**Feature**: [parent Issue #589](https://github.com/syudead/vv/issues/589) ·
+[plan.md](plan.md) · [contracts/screen-api.md](contracts/screen-api.md) ·
+[research.md R-5](research.md#r-5-reject-applies-only-to-tentative-tags-a-confirmed-tag-gets-409-tag_not_tentative-and-no-change) ·
+[R-8](research.md#r-8-the-tentative-only-filter-and-the-rejected-name-list-live-in-the-screen)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+Sources: the visual rules come from these documents and are not decided again
+here.
 
-- 配色・操作状態・幅の出し分け・一覧と再生画面の構成:
-  [ライブラリ UI](../../docs/design-docs/library-ui.md)（「6. 一覧の構成」のカード、「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- タグのチップの 3 つの形・カードのタグの行・再生画面のタグ・タグ管理画面の骨格（行・作成と改名・
-  シノニムの窓・統合と削除の窓・状態）: [specs/014-video-tags/ui-design.md](../014-video-tags/ui-design.md)
-  と今の [`web/src/tags/`](../../web/src/tags/)・[`web/src/library/CardTagRow.tsx`](../../web/src/library/CardTagRow.tsx)・
-  [`web/src/player/VideoTags.tsx`](../../web/src/player/VideoTags.tsx)
-- フォルダ由来だけのタグのチップ（破線の枠と Folder の目印）:
-  [specs/017-folder-groups/ui-design.md「Folder-derived tag chip」](../017-folder-groups/ui-design.md#folder-derived-tag-chip)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+| Topic | Source |
+| --- | --- |
+| Colour, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) (the cards in "6. List layout" and "8. Video page layout") |
+| Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Referenced by name; values are not copied |
+| Pairs checked for contrast | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
+| The three tag chip forms, the card tag row, video page tags, and the tag management page skeleton (rows, create and rename, the synonyms dialog, the merge and delete dialogs, states) | [specs/014-video-tags/ui-design.md](../014-video-tags/ui-design.md) and the current [`web/src/tags/`](../../web/src/tags/), [`web/src/library/CardTagRow.tsx`](../../web/src/library/CardTagRow.tsx), [`web/src/player/VideoTags.tsx`](../../web/src/player/VideoTags.tsx) |
+| The chip of a folder-only tag (dashed border and Folder mark) | [specs/017-folder-groups/ui-design.md "Folder-derived tag chip"](../017-folder-groups/ui-design.md#folder-derived-tag-chip) |
+| Where screen text lives and its formatting | [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md). The English here states intent; after implementation the catalog [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth |
 
-この feature が画面に足すのは、所有者だけの次の 4 つである。
+This feature adds four owner-only things to the screens:
 
-1. 動画のタグのチップ（ライブラリのカード・グループのカード・再生画面）の**仮の目印**（要件 6、
-   受け入れ条件 5）
-2. タグ管理画面の行の**仮の目印**と、**仮のタグだけ**の絞り込み（要件 6・7、受け入れ条件 5・6）
-3. 仮のタグの行の**確定する・却下する**（統合は今の操作のまま）と、「削除…」の置き換え（要件 8・10、
-   受け入れ条件 7・8・12）
-4. タグ管理画面の**却下した名前**の一覧と取り外し（要件 14、受け入れ条件 13）
+1. A **tentative mark** on video tag chips (library cards, group cards, the video
+   page) (requirement 6, acceptance criterion 5)
+2. A **tentative mark** on tag management rows, and a **tentative-only** filter
+   (requirements 6 and 7, acceptance criteria 5 and 6)
+3. **Confirm** and **Reject** on tentative rows (merge stays the current
+   action), replacing "Delete…" (requirements 8 and 10, acceptance criteria 7, 8
+   and 12)
+4. The **rejected names** list on the tag management page, with removal
+   (requirement 14, acceptance criterion 13)
 
-それ以外は変えない。仮のタグは付け外し・絞り込み・検索で確定したタグと同じに働く（要件 4）ので、
-絞り込み中のタグの行、「タグを追加」「タグを付ける」「タグを外す」の候補、統合先の候補、選択バー、
-リスト表示、フォルダ画面の検索結果の置き場所の行には目印を足さない。候補の行に目印を足さないのは、
-候補で選ぶのは「どのタグを付けるか」であり、仮かどうかはその判断を変えないからである（付けた
-結果は仮のまま。[data-model.md §3](data-model.md#3-書き換えの規則)）。ゲストにはタグが出ないので
-（要件 4）、この feature の 4 つのどれも出ない。新しい色・半径・影の token は足さず、
-`tokens.test.ts` の `pairs` にも足さない（下の「Colour」）。
+Nothing else changes. A tentative tag behaves like a confirmed tag in attaching,
+detaching, filtering and search (requirement 4), so no mark is added to the
+active-filter tag row, the candidates of "Add tag" (video page) and of the
+selection bar's "Add tag" and "Remove tag", the merge-target candidates, the
+selection bar, the list view, or the location row of folder-page search results.
+Candidate rows get no mark because a candidate answers "which tag to attach", and
+being tentative does not change that choice (the attached tag stays tentative;
+[data-model.md §3](data-model.md#3-write-rules)). Guests see no tags
+(requirement 4), so none of the four appears for them. No new colour, radius or
+shadow token is added, and nothing is added to `pairs` in `tokens.test.ts` (see
+"Colour" below).
 
 ## Why this shape
 
-- **仮の目印は 1 つの形（lucide `CircleDashed`）で全画面に通す**。破線の丸は、現行の開発・
-  課題管理の製品が「下書き・未確定」に収束させている形で、017 の Folder（出所）と別の意味
-  （状態）を別の形で持たせられる。目印は名前の**前**ではなく**後ろ**に置く。前に置くと Folder の
-  目印と並んで「出所が 2 つ」に読め、名前の読み始めも遅れるからである。色は `text-fg-subtle` で、
-  名前（`text-fg-muted` または `text-fg`）より薄い。仮のタグも普通に使えるタグなので、警告色・
-  面の色の変更・バッジ・件数は使わない（UI品質「視覚的階層」「要求を満たしたことにならないもの」）。
-- **「仮のタグだけ」は検索と同じ行の押しボタン（`aria-pressed`）で、URL には載せない**。014 の
-  管理画面の検索がその場の絞り込みで URL を持たないのと同じ扱いにし、片付けの作業（絞り込む →
-  行を 1 つずつ片付ける → 空になる）が 1 画面で閉じるようにする。押している間は行が減っていく
-  ことが結果で、件数の行が「3 of 12 tags」で残りを伝える（UI品質「仮のタグを一覧で探すのに、
-  全タグを読む必要が残る形」を避ける）。
-- **「確定する」は行に直接、「却下する」はメニューの中**。確定は状態を進めるだけで取り消しの
-  費用が無く、片付けの主の操作なので、行の操作の一群の先頭に置いて 1 回で届くようにする。却下は
-  タグの削除を伴うので、014 が「削除…」に与えた場所（「その他の操作」の区切り線の下、danger）を
-  そのまま引き継ぎ、確認の窓を挟む（UI品質「操作の優先順位」）。統合は今の「別のタグへ統合…」の
-  まま動かさない。
-- **却下した名前は一覧の下の折りたたみ**。タグではなく「次から作らない」だけの事実で、片付けの
-  途中で毎回見るものではない（UI品質「情報密度」）。設定画面や別の画面に置かないのは、却下の直後に
-  「どこに入ったか」を同じ画面で確かめられ、取り消し（取り外し）もその場で済むためである。
+- **One tentative mark (lucide `CircleDashed`) on every screen.** A dashed circle
+  is the shape current development and issue-tracking products have converged on
+  for "draft, not yet decided", and it gives the state a shape distinct from 017's
+  Folder mark, which means origin. The mark goes **after** the name, not before.
+  Before the name it would sit beside the Folder mark and read as "two origins",
+  and it would delay the start of the name. The colour is `text-fg-subtle`,
+  lighter than the name (`text-fg-muted` or `text-fg`). A tentative tag is still a
+  usable tag, so no warning colour, surface colour change, badge or count is used
+  (`UI品質` "visual hierarchy" and "what does not satisfy the requirement").
+- **"Tentative only" is a toggle button (`aria-pressed`) on the search row and is
+  not stored in the URL.** It matches 014's tag management search, which filters
+  in place without a URL, so the clean-up work (filter → settle rows one by one →
+  the list empties) stays on one screen. While pressed, the result is the list
+  shrinking, and the count row "3 of 12 tags" tells how many remain (avoiding the
+  `UI品質` failure "finding tentative tags still requires reading every tag").
+- **"Confirm" sits on the row; "Reject" sits in the menu.** Confirming only moves
+  the state forward and costs nothing to undo, and it is the main clean-up action,
+  so it goes first in the row's action group and takes one press. Rejecting
+  deletes the tag, so it inherits the place 014 gave "Delete…" (below the divider
+  in "More actions", danger) and goes through a confirmation dialog (`UI品質`
+  "action priority"). Merge stays where it is as "Merge into another tag…".
+- **Rejected names are a collapsible section below the list.** They are not tags,
+  only a record of "do not create this again", and are not something to check on
+  every step of the clean-up (`UI品質` "information density"). They are not on a
+  settings page or a separate screen so that right after rejecting, the user can
+  see on the same screen where the name went, and undoing it (removal) happens in
+  place.
 
 ## Words
 
-| 場所 | 英語（案） |
+| Place | Text |
 | --- | --- |
-| 仮の目印の視覚的に隠した文言・`title`・ツールチップ | Tentative |
-| カードのチップの読み上げ名（押せる形） | Filter by 〈名〉 (tentative) |
-| カードのチップの読み上げ名（フォルダ由来だけで仮） | Filter by 〈名〉 (from the folder name, tentative) |
-| 再生画面の名前の部分の読み上げ名 | Filter by 〈名〉 (tentative) |
-| 絞り込みのボタン | Tentative only |
-| 絞り込みのボタンの補足（ツールチップ） | Show only tags created by automatic tagging |
-| 件数の行（絞り込み中・検索と同じ形） | 3 of 12 tags |
-| 仮のタグが無いときの空の状態の見出し | No tentative tags |
-| 仮のタグが無いときの説明 | Tags created by automatic tagging appear here until you confirm or reject them. |
-| 絞り込み中に検索で一致が無いとき | No tentative tags match "〈入力〉" |
-| 空の状態・一致なしのボタン | Show all tags |
-| 行の「確定する」（読み上げ名・ツールチップ） | Confirm |
-| メニューの「却下する」 | Reject… |
-| 却下の窓の見出し | Reject "〈名〉" |
-| 却下の窓の本文（N 本） | This tag will be removed from N videos, and automatic tagging won't create "〈名〉" again. You can allow the name again from the rejected names below. |
-| 却下の窓の本文（0 本） | This tag isn't on any videos. Automatic tagging won't create "〈名〉" again. You can allow the name again from the rejected names below. |
-| 却下の窓のボタン | Cancel / Reject（送信中 Rejecting…） |
-| 確定のトースト | Confirmed "〈名〉" |
-| 却下のトースト | Rejected "〈名〉" |
-| `tag_not_tentative` のトースト | This tag was already confirmed, so the list was reloaded |
-| 却下した名前の見出し | Rejected names |
-| 却下した名前の説明 | Automatic tagging won't create these tags. Remove a name to allow it again. |
-| 却下した名前が無いとき | No rejected names |
-| 名前の × の読み上げ名 | Allow "〈名〉" again |
-| 却下した名前を取れなかったとき | Couldn't load the rejected names |
-| 取り外せなかったとき | Couldn't remove "〈名〉": {理由} |
-| `errorText` の `tag_not_tentative` | The tag is already confirmed. |
+| Visually hidden text, `title` and tooltip of the tentative mark | Tentative |
+| Accessible name of a card chip (pressable) | Filter by {name} (tentative) |
+| Accessible name of a card chip (folder-only and tentative) | Filter by {name} (from the folder name, tentative) |
+| Accessible name of the name part on the video page | Filter by {name} (tentative) |
+| Filter button | Tentative only |
+| Filter button hint (tooltip) | Show only tags created by automatic tagging |
+| Count row (while filtering; same form as search) | 3 of 12 tags |
+| Empty-state heading when there are no tentative tags | No tentative tags |
+| Empty-state description when there are no tentative tags | Tags created by automatic tagging appear here until you confirm or reject them. |
+| No search match while filtering | No tentative tags match "{query}" |
+| Button in the empty and no-match states | Show all tags |
+| Row "Confirm" (accessible name and tooltip) | Confirm |
+| Menu "Reject" | Reject… |
+| Reject dialog heading | Reject "{name}" |
+| Reject dialog body (N videos) | This tag will be removed from N videos, and automatic tagging won't create "{name}" again. You can allow the name again from the rejected names below. |
+| Reject dialog body (0 videos) | This tag isn't on any videos. Automatic tagging won't create "{name}" again. You can allow the name again from the rejected names below. |
+| Reject dialog buttons | Cancel / Reject (Rejecting… while submitting) |
+| Confirm toast | Confirmed "{name}" |
+| Reject toast | Rejected "{name}" |
+| `tag_not_tentative` toast | This tag was already confirmed, so the list was reloaded |
+| Rejected names heading | Rejected names |
+| Rejected names description | Automatic tagging won't create these tags. Remove a name to allow it again. |
+| No rejected names | No rejected names |
+| Accessible name of a name's × | Allow "{name}" again |
+| Rejected names failed to load | Couldn't load the rejected names |
+| Removal failed | Couldn't remove "{name}": {reason} |
+| `tag_not_tentative` in `errorText` | The tag is already confirmed. |
 
-- 「Tentative」は目印の文言、「automatic tagging」は説明の文にだけ使う。「draft」「pending」は
-  使わない（「pending」は取り込みの段階の語）。
-- タグの名前は利用者のデータで、翻訳せずに埋め込む（i18n.md）。
+- "Tentative" is used only as the mark's text, and "automatic tagging" only in
+  descriptive sentences. "Draft" and "pending" are not used ("pending" is the
+  term for an ingest stage).
+- Tag names are user data and are embedded untranslated (i18n.md).
 
 ## Tentative mark
 
-仮のタグ（`tentative: true`）の目印は、どの画面でも同じ 1 つの形である。
+A tentative tag (`tentative: true`) has the same single mark on every screen.
 
-- lucide `CircleDashed`、`shrink-0`、`text-fg-subtle`、`aria-hidden`。名前の**後ろ**に `gap-1` で
-  置く。大きさはチップでは `size-3`（Folder の目印と同じ）、管理画面の行では `size-3.5`。
-- 名前が省略される（`truncate`）ときも目印は省略されず、名前の末尾の後ろに残る（目印が
-  `shrink-0`、名前が `min-w-0 truncate`）。
-- 読み上げは、押せる要素ではその要素の読み上げ名に「(tentative)」を添え、押せない要素では
-  視覚的に隠した「Tentative」を名前の後ろに置く。`title` を持つ要素の `title` は名前のまま
-  （名前の全体を見せるためのもの）で、目印自身にツールチップは付けない。管理画面の行だけは、
-  目印に `Tooltip`「Tentative」を付ける（下の「Row」）。
-- 確定したタグには何も足さない。確定したタグの見た目はこの feature の前と同じである
-  （受け入れ条件 5・7）。
+- lucide `CircleDashed`, `shrink-0`, `text-fg-subtle`, `aria-hidden`, placed
+  **after** the name with `gap-1`. Size `size-3` on chips (the same as the Folder
+  mark) and `size-3.5` on tag management rows.
+- When the name is truncated (`truncate`), the mark is not; it stays after the
+  end of the truncated name (the mark is `shrink-0` and the name is
+  `min-w-0 truncate`).
+- For screen readers, a pressable element appends "(tentative)" to its accessible
+  name; a non-pressable element places a visually hidden "Tentative" after the
+  name. An element's `title` stays the name (it exists to show the full name), and
+  the mark itself gets no tooltip. Only tag management rows give the mark a
+  `Tooltip` "Tentative" (see "Row" below).
+- Confirmed tags get nothing. Confirmed tags look exactly as before this feature
+  (acceptance criteria 5 and 7).
 
 ## Video tag chips
 
 ### Library card and group card
 
-[`CardTagRow`](../../web/src/library/CardTagRow.tsx) の各チップ（見えているチップ、「+N」の
-ポップオーバーの中のチップ、測るためだけの並び）に上の目印を足す。
+Each chip in [`CardTagRow`](../../web/src/library/CardTagRow.tsx) (the visible
+chips, the chips inside the "+N" popover, and the measurement-only row) gets the
+mark above.
 
-- 面のあるチップ（`bg-elevated`、`h-5`・`text-xs`・`text-fg-muted`）: 名前 → 目印。
-- フォルダ由来だけのチップ（破線の枠）: Folder の目印 → 名前 → 仮の目印。2 つの目印は形が
-  違うので並んでも混ざらない。
-- チップの幅は目印の分だけ広がり、行に収まる数（「+N」の算出）はそのまま測り直した幅で決まる。
-  高さは変えない（UI品質「余白のリズムとタイポグラフィ」）。
-- 押したときの振る舞い（そのタグで絞り込む、選択中はカードの選択の切り替え）は仮かどうかに
-  よらず同じ（要件 4、受け入れ条件 4）。
-- グループのカードのタグの行は同じ部品なので同じ形になる。
+| Chip | Order |
+| --- | --- |
+| Chip with a surface (`bg-elevated`, `h-5`, `text-xs`, `text-fg-muted`) | Name → mark |
+| Folder-only chip (dashed border) | Folder mark → name → tentative mark. The two marks have different shapes, so they do not blur together |
+
+- The chip widens by the mark's width, and the number that fits in the row (the
+  "+N" calculation) follows from the re-measured widths. The height does not
+  change (`UI品質` "spacing rhythm and typography").
+- Pressing the chip (filter by that tag, or toggle card selection while selecting)
+  behaves the same whether the tag is tentative or not (requirement 4, acceptance
+  criterion 4).
+- The tag row on group cards is the same component, so it takes the same form.
 
 ### Video page
 
-[`VideoTags`](../../web/src/player/VideoTags.tsx) のチップ（`h-6`・`text-xs`・`text-fg`）に目印を
-足す。
+Chips in [`VideoTags`](../../web/src/player/VideoTags.tsx) (`h-6`, `text-xs`,
+`text-fg`) get the mark.
 
-- 面のあるチップ（名前 ＋ 縦線 ＋ ×）: 名前の部分（`Link`）の中で名前 → 目印。縦線と × は今の
-  まま。× を押すとこの動画から外れ、応答を受けてチップが消える（今と同じ）。
-- フォルダ由来だけのチップ（破線、× なし）: Folder の目印 → 名前 → 仮の目印。
-- 名前で付けた応答（`POST /api/video-tags` の `tag`）の `tentative` をそのままチップに映す。
-  「タグを追加」で無い名前を作ったときは確定したタグとして作られる（要件 16）ので目印は出ない。
-  「タグを追加」の候補に仮のタグがあれば、選んで付いたチップは目印付きで並ぶ。
-- 管理画面で確定・却下したあと、開いたままの再生画面のチップは、次に動画を取り直すまで古い
-  ままでよい（014「Stale tags in other screens」と同じ）。押して `tag_not_found` になれば今の
-  とおり取り直す。
+| Chip | Order |
+| --- | --- |
+| Chip with a surface (name + divider + ×) | Name → mark, inside the name part (`Link`). The divider and × are unchanged. Pressing × removes the tag from this video, and the chip disappears when the response arrives (as today) |
+| Folder-only chip (dashed, no ×) | Folder mark → name → tentative mark |
+
+- The `tentative` in the attach-by-name response (`tag` of `POST /api/video-tags`)
+  goes onto the chip as is. A missing name created through "Add tag" is created
+  as a confirmed tag (requirement 16), so it shows no mark. If a tentative tag is
+  among the "Add tag" candidates, choosing it adds a chip with the mark.
+- After confirming or rejecting on the tag management page, chips on an open
+  video page may stay stale until the video is next reloaded (the same as 014
+  "Stale tags in other screens"). Pressing one that returns `tag_not_found`
+  reloads, as today.
 
 ## Tag management page
 
 ### Toolbar
 
-操作の行（検索・「新しいタグ」）に、**仮のタグだけ**の押しボタンを足す。
+The action row (search and "New tag") gains a **tentative-only** toggle button.
 
-- 部品は `Button` の secondary（`h-9`、検索の入力と同じ高さ）、lucide `CircleDashed`、文言
-  「Tentative only」、`aria-pressed`。押している間は `IconButton` の `active` と同じ見え方
-  （`border-accent-active`・`bg-accent-soft`・`text-link`）で、ツールバーの表示形式・並び順の
-  選択と同じ「選んでいる」の形にする。独自の状態の色は作らない。
-- 並びは `sm` 以上で、左から検索の入力（`flex-1 sm:max-w-sm`）→ 「Tentative only」→ 右端に
-  「新しいタグ」（primary）。`sm` 未満では 1 行目に検索の入力、2 行目に「Tentative only」と
-  「新しいタグ」を `grid grid-cols-2 gap-2` で並べる（どちらも幅いっぱい）。本文で最初に Tab が
-  届くのは今までどおり検索の入力で、`/` のキーも今のまま。
-- 押すと、一覧を `tentative` が真のタグだけにする。検索と重ねられる（両方で絞る）。件数の行は
-  検索と同じ「3 of 12 tags」の形（分母は全タグ）。絞り込みはこの画面の状態で、URL・
-  `localStorage` には載せない（Why this shape）。画面を離れると解除される。
-- 押していない間にタグが 1 つも無いとき（「タグはまだありません」の状態）は検索の入力と同じく
-  `disabled`。読み込み中・読み込み失敗でも `disabled`。**押している間は、タグが 0 になっても
-  `disabled` にしない**（最後のタグを却下した・取り直したら無かったとき、フォーカスの行き先で
-  あり、絞り込みを外す唯一の手でもあるため）。そのとき一覧は下の「States」の「No tentative
-  tags」の空の状態を出す。押して外した結果タグが 0 なら、ボタンは `disabled` になるので
-  フォーカスを「新しいタグ」へ移す（「Show all tags」で外したときも同じ）。
-- 改名中の行は、検索と同じく、絞り込みで一致しなくなっても一覧から外さない（改名すると
-  確定になり、絞り込みの外へ出る。改名の応答を受けて閉じたときに外れる）。
-- **絞り込みから外れた行のフォーカス**: 「Tentative only」を押している間に、確定・改名・
-  シノニムの追加・統合で行が確定になって一覧から外れたとき、その操作の今のフォーカス先
-  （同じ行の「改名」「シノニム」、統合先の名前）はもう無い。そのときは削除と同じ規則で、
-  外れた行の位置の次の行の「改名」、無ければ前の行の「改名」、1 つも無ければ「Tentative
-  only」へ移す（「新しいタグ」ではなく絞り込みのボタンへ移すのは、その次の操作が
-  「絞り込みを外す」だからである）。却下・`tag_not_found` の取り直しで行が消えたときも、
-  押している間は同じ規則で最後の行き先を「Tentative only」にする。行き先の行が一覧に
-  残っているときは、各操作の今のフォーカス先のままである。**シノニムの追加だけは窓の中の
-  操作なので、この規則を窓を閉じたときに当てる**: 追加で行が一覧から外れても窓は開いたまま
-  （014 のとおり次の名前を足せる）で、フォーカスは窓の中（入力）に残す（背後は `ModalFrame`
-  で `inert` なので、そこへは移さない）。窓を閉じたとき（×・Esc）、行がまだ一覧に
-  あれば今どおりその行の「シノニム」へ、外れていれば窓を開いたときの行の位置からこの規則で
-  次の行の「改名」→ 前の行 → 「Tentative only」へ移す（今の `cancelSynonyms` は無くなった行を
-  指して「新しいタグ」へ落ちるので、それを変える）。実装の試験は、押している間の
-  仮のタグどうしの統合（フォーカスが「Tentative only」か隣の行へ行き「新しいタグ」へ落ちない）と、
-  唯一のタグの却下（「Tentative only」が押せるまま、そこにフォーカスがある）と、押している間に
-  唯一の仮のタグへシノニムを足して窓を閉じる（追加のあとも入力にフォーカスがあり、閉じると
-  「Tentative only」へ移る）を含める。
+- The component is a secondary `Button` (`h-9`, the same height as the search
+  input) with lucide `CircleDashed`, the text "Tentative only", and
+  `aria-pressed`. While pressed it looks like an `IconButton` in its `active`
+  state (`border-accent-active`, `bg-accent-soft`, `text-link`), the same
+  "selected" form as the toolbar's view-mode and sort selections. No custom state
+  colour is introduced.
+- At `sm` and up, from the left: the search input (`flex-1 sm:max-w-sm`) →
+  "Tentative only" → "New tag" (primary) at the right end. Below `sm`, the search
+  input is on the first row, and "Tentative only" and "New tag" share the second
+  row in `grid grid-cols-2 gap-2` (both full width). The first Tab stop in the
+  body is still the search input, and the `/` key is unchanged.
+- Pressing it limits the list to tags with `tentative` true. It combines with
+  search (both filter). The count row takes the same "3 of 12 tags" form as
+  search (the denominator is all tags). The filter is state of this screen and is
+  not stored in the URL or `localStorage` (see "Why this shape"). It is cleared on
+  leaving the screen.
+- While not pressed, when there are no tags at all (the "No tags yet" state), it
+  is `disabled`, like the search input. It is also `disabled` while loading and
+  after a load failure. **While pressed, it is not disabled even when no tags
+  remain** (after rejecting the last tag, or when a reload finds none), because it
+  is the focus destination and the only way to clear the filter. The list then
+  shows the "No tentative tags" empty state in "States" below. If releasing it
+  leaves zero tags, the button becomes `disabled`, so focus moves to "New tag"
+  (also when released through "Show all tags").
+- A row being renamed stays in the list even when it stops matching the filter,
+  as with search (renaming confirms the tag and moves it out of the filter; it
+  leaves when the rename response arrives and the editor closes).
+- **Focus when a row leaves the filter**: while "Tentative only" is pressed, when
+  confirm, rename, adding a synonym or merge turns a row confirmed and removes it
+  from the list, the operation's current focus target (the same row's "Rename" or
+  "Synonyms", or the merge target's name) no longer exists. Focus then follows
+  the delete rule: "Rename" on the next row at the removed row's position,
+  otherwise the previous row, and if no row remains, "Tentative only" (the filter
+  button rather than "New tag", because the next action is to clear the filter).
+  When a reject or a `tag_not_found` reload removes a row while pressed, the same
+  rule applies with "Tentative only" as the last destination. When the target row
+  is still in the list, each operation keeps its current focus target.
+  **Adding a synonym is the exception, because it happens inside a dialog: the
+  rule applies when the dialog closes.** If adding removes the row from the list,
+  the dialog stays open (014 lets the user add the next name), and focus stays in
+  the dialog's input (the background is `inert` through `ModalFrame`, so focus
+  cannot move there). When the dialog closes (× or Esc), focus goes to the row's
+  "Synonyms" if the row is still listed, as today; otherwise it follows this rule
+  from the row's position when the dialog opened: next row's "Rename" → previous
+  row → "Tentative only" (today's `cancelSynonyms` points at the vanished row and
+  falls back to "New tag"; this changes that). The implementation's tests cover:
+  merging one tentative tag into another while pressed (focus goes to "Tentative
+  only" or an adjacent row, never to "New tag"); rejecting the only tag ("Tentative
+  only" stays pressable and holds focus); and adding a synonym to the only
+  tentative tag while pressed, then closing the dialog (focus stays in the input
+  after adding, and moves to "Tentative only" on close).
 
 ### Row
 
-仮のタグの行は、名前の列と操作の一群だけが変わる。行の高さ（`py-2`）・本数の列・改名の入力は
-今のまま（UI品質「情報密度」）。
+On a tentative row only the name column and the action group change. The row
+height (`py-2`), the count column and the rename input are unchanged (`UI品質`
+"information density").
 
-- **名前の列**: 名前の `Link` の後ろに `gap-1` で仮の目印（`size-3.5`）。目印には `Tooltip`
-  「Tentative」と視覚的に隠した「Tentative」を付ける。名前とシノニムの行の書式は変えない。
-  仮のタグはシノニムを持たない（要件 9）ので、仮の行にシノニムの行は出ない。改名中は入力に
-  置き換わるので目印も出ない。
-- **操作の一群**（左から）: 「確定する」（`IconButton` ghost・`sm`、lucide `Check`）→ 「改名」
-  → 「シノニム」→ 「その他の操作」。「確定する」は仮の行にだけあり、確定した行には無い
-  （確定した行の操作は今と同じ 3 つ）。「確定する」を先頭に置くのは、片付けの主の操作を
-  行の操作の中で最初に触れる位置にするためで、色は他の `IconButton` と同じ（アクセント色・
-  面は持たない。UI品質「視覚的階層」）。
-- **「その他の操作」のメニュー**（仮の行）: 「別のタグへ統合…」（`Merge`）、区切り線、
-  「却下する…」（lucide `Ban`、`tone="danger"`）。「削除…」は出さない（要件 10、受け入れ条件 12）。
-  確定した行のメニューは今のまま（「別のタグへ統合…」、区切り線、「削除…」）。
-- 改名・シノニムの追加・統合先になったとき、応答の `Tag` は `tentative: false` で返る
-  （[contracts/screen-api.md §1](contracts/screen-api.md#1-変わる既存の経路)）。行はその 1 件で
-  差し替わり、目印と「確定する」が消え、メニューが確定した行の形になる（受け入れ条件 11）。
-  改名で今と同じ名前を送ったときは何も変わらず、仮のままである。
-- 「シノニム」の窓（014「Synonyms」）は仮のタグでも同じ窓で開く。上のチップの並びは空で、
-  「シノニムを追加」で名前を足すとタグが確定する。窓の文言は変えない。「Tentative only」を
-  押している間に足して行が一覧から外れたときのフォーカスは、上の「Toolbar」の「絞り込みから
-  外れた行のフォーカス」（窓を閉じたときに当てる）。
+- **Name column**: the tentative mark (`size-3.5`) after the name `Link` with
+  `gap-1`. The mark gets a `Tooltip` "Tentative" and a visually hidden
+  "Tentative". The name and synonym-line formatting is unchanged. A tentative tag
+  has no synonyms (requirement 9), so a tentative row has no synonym line. While
+  renaming, the input replaces the name, so the mark is not shown.
+- **Action group** (from the left): "Confirm" (ghost `IconButton`, `sm`, lucide
+  `Check`) → "Rename" → "Synonyms" → "More actions". "Confirm" appears only on
+  tentative rows (confirmed rows keep their current three actions). It comes
+  first so the main clean-up action is the first one reached in the row, and its
+  colour matches the other `IconButton`s (no accent colour or surface; `UI品質`
+  "visual hierarchy").
+- **"More actions" menu** (tentative row): "Merge into another tag…" (`Merge`), a
+  divider, "Reject…" (lucide `Ban`, `tone="danger"`). "Delete…" is not shown
+  (requirement 10, acceptance criterion 12). The menu on confirmed rows is
+  unchanged ("Merge into another tag…", divider, "Delete…").
+- When the tag is renamed, gains a synonym, or becomes a merge target, the
+  response's `Tag` comes back with `tentative: false`
+  ([contracts/screen-api.md §1](contracts/screen-api.md#1-changed-existing-routes)).
+  The row is replaced with it: the mark and "Confirm" disappear and the menu
+  takes the confirmed-row form (acceptance criterion 11). A rename to the current
+  name changes nothing and the tag stays tentative.
+- The "Synonyms" dialog (014 "Synonyms") opens the same way for tentative tags.
+  The chip list at its top is empty, and adding a name with "Add synonym"
+  confirms the tag. The dialog's text does not change. Focus when adding removes
+  the row from the list while "Tentative only" is pressed follows "Focus when a
+  row leaves the filter" in "Toolbar" above (applied when the dialog closes).
 
 ### Confirm
 
-- 押すとすぐ `POST /api/tags/{id}/confirm` を送る。確認の窓は無い（取り消しの費用が無い。
-  仮に戻す操作は要件に無いが、確定は「タグが使える」状態を変えないので取り消す理由も無い）。
-- 送信中はそのボタンのアイコンを `LoaderCircle`（`animate-spin motion-reduce:animate-none`）にし
-  `aria-busy` と `aria-disabled="true"` を付け、**次の押下（二度押し・キーの連打）を無視して
-  要求を 1 回だけにする**。`disabled` にしないのは、押した本人のボタンにフォーカスがあり、
-  `disabled` にするとフォーカスが `body` へ落ちるためである（失敗したときはこのボタンに
-  フォーカスが残ったまま戻る）。その行の「改名」「その他の操作」は `disabled`（改名の送信中の
-  `blockStart` と同じ扱い。ほかの行はそのまま）。
-- `200` を受けたら、応答の `Tag` で行を差し替える（目印と「確定する」が消える。受け入れ条件 7）。
-  トースト「Confirmed "〈名〉"」（削除・統合のトーストと同じ）。フォーカスは、消えた「確定する」の
-  代わりに同じ行の「改名」へ移す。「Tentative only」を押している間はその行が一覧から外れるので、
-  上の「絞り込みから外れた行のフォーカス」で次の行の「改名」、無ければ前の行、1 つも無ければ
-  「Tentative only」へ移す
-  （「新しいタグ」ではなく絞り込みのボタンへ移すのは、その次の操作が「絞り込みを外す」だから
-  である）。
-- 既に確定していた（別のタブで先に確定。応答は `200` のまま）ときも同じに扱う。
-- 失敗（`tag_not_found`）は今の「タグがもう無い」と同じ: トースト「This tag no longer exists,
-  so the list was reloaded」、一覧を取り直し、削除と同じ規則でフォーカスを移す。その他の失敗は
-  トーストで `errorText` を出し、行は変えない（行の中に失敗の 1 行を置く場所が無い。改名中の
-  入力の下の行と違い、この操作は入力を持たない）。
+- Pressing it sends `POST /api/tags/{id}/confirm` immediately. There is no
+  confirmation dialog (undoing has no cost; no requirement asks to make a tag
+  tentative again, and confirming does not change whether the tag is usable, so
+  there is nothing to undo).
+- While submitting, the button's icon becomes `LoaderCircle`
+  (`animate-spin motion-reduce:animate-none`) with `aria-busy` and
+  `aria-disabled="true"`, and **further presses (double clicks, repeated keys)
+  are ignored so only one request is sent**. It is not `disabled` because focus is
+  on the pressed button and `disabled` would drop focus to `body` (on failure,
+  focus stays on this button). That row's "Rename" and "More actions" are
+  `disabled` (the same as `blockStart` while a rename submits; other rows are
+  unaffected).
+- On `200`, the row is replaced with the response's `Tag` (the mark and "Confirm"
+  disappear; acceptance criterion 7). Toast "Confirmed "{name}"" (like the
+  delete and merge toasts). Focus moves to the same row's "Rename" in place of
+  the vanished "Confirm". While "Tentative only" is pressed, the row leaves the
+  list, so focus follows "Focus when a row leaves the filter" above: the next
+  row's "Rename", otherwise the previous row, and if none remains, "Tentative
+  only" (the filter button rather than "New tag", because the next action is to
+  clear the filter).
+- An already confirmed tag (confirmed first in another tab; the response is still
+  `200`) is handled the same way.
+- A failure with `tag_not_found` is handled like today's "the tag no longer
+  exists": toast "This tag no longer exists, so the list was reloaded", reload the
+  list, and move focus by the delete rule. Other failures show `errorText` in a
+  toast and leave the row unchanged (the row has no place for a one-line error;
+  unlike the line under the rename input, this action has no input).
 
 ### Reject
 
-- 「却下する…」は `ModalFrame` の窓「Reject "〈名〉"」を開く。014 の「削除…」の窓と同じ骨格
-  （本文の段落、secondary「Cancel」（最初のフォーカス）と danger「Reject」）で、本文は上の
-  「Words」の 2 つ（N 本・0 本）。本数は `GET /api/tags` の `videoCount`。「却下した名前から
-  戻せる」を本文に書くのは、削除と違って取り消しの入口があることを、押す前に知らせるためである。
-- 実行中は両方のボタンを `disabled`、danger のボタンに `LoaderCircle`（削除の窓と同じ）。
-- `204` を受けたら窓を閉じ、行を一覧から消し、トースト「Rejected "〈名〉"」、フォーカスは削除と
-  同じ規則（次の行の「改名」→ 前の行 → 「新しいタグ」。「Tentative only」中は「新しいタグ」の
-  代わりに「Tentative only」で、最後のタグでも押せるまま。上の「Toolbar」）。却下した名前の一覧（下）を取り直す。
-- `409 tag_not_tentative`（別のタブや API で先に確定された）は窓を閉じ、トースト「This tag was
-  already confirmed, so the list was reloaded」、一覧を取り直す（Edge Case「操作の競合」、
-  screen-api.md §2）。`404 tag_not_found` は今の「タグがもう無い」と同じ。その他の失敗は窓の中に
-  `text-sm text-danger`（`role="alert"`）の 1 行で `errorText` を出し、窓は開いたまま（削除の窓と
-  同じ）。
-- 「キャンセル」・Esc は何も変えず閉じ、フォーカスをその行の「その他の操作」へ戻す（削除の窓と
-  同じ）。
+- "Reject…" opens the `ModalFrame` dialog "Reject "{name}"". It has the same
+  skeleton as 014's "Delete…" dialog (a body paragraph, secondary "Cancel" with
+  initial focus, and danger "Reject"), and the body is one of the two texts in
+  "Words" (N videos or 0 videos). The count is `videoCount` from `GET /api/tags`.
+  The body says the name can be restored from the rejected names so that, before
+  pressing, the user knows that unlike delete there is a way back.
+- While running, both buttons are `disabled` and the danger button shows
+  `LoaderCircle` (as in the delete dialog).
+- On `204`, the dialog closes, the row leaves the list, the toast "Rejected
+  "{name}"" appears, and focus follows the delete rule (next row's "Rename" →
+  previous row → "New tag"; while "Tentative only" is pressed, "Tentative only"
+  replaces "New tag" and stays pressable even after the last tag; see "Toolbar"
+  above). The rejected-name list (below) is reloaded.
+- `409 tag_not_tentative` (confirmed first from another tab or the API) closes
+  the dialog, shows the toast "This tag was already confirmed, so the list was
+  reloaded", and reloads the list (edge case "conflicting operations",
+  screen-api.md §2). `404 tag_not_found` is handled like today's "the tag no
+  longer exists". Other failures show `errorText` in one line of
+  `text-sm text-danger` (`role="alert"`) inside the dialog, and the dialog stays
+  open (as in the delete dialog).
+- "Cancel" and Esc close the dialog without changes and return focus to the
+  row's "More actions" (as in the delete dialog).
 
 ### Merge
 
-- 仮の行の「別のタグへ統合…」は今の窓のまま。統合先の候補に仮のタグも出る（候補に目印は
-  足さない。上の「それ以外は変えない」）。応答の `Tag`（統合先）は `tentative: false` で、
-  統合先の行の目印が消える（Edge Case「仮のタグどうしの統合」、受け入れ条件 11）。
-- 成功したときのフォーカスは今どおり統合先の名前。ただし「Tentative only」を押している間は、
-  統合元は消え、統合先は確定になって一覧に無い（仮のタグどうしの統合でも、確定したタグへの
-  統合でも）。そのときは上の「絞り込みから外れた行のフォーカス」で、統合元の行の位置の次の
-  行の「改名」、無ければ前の行、1 つも無ければ「Tentative only」へ移す（「新しいタグ」へ
-  落ちない）。
-- 確認の文言は変えない。統合元が仮でも「"X" and its synonyms become synonyms」の文で不都合は
-  無い（仮のタグのシノニムは空なので、その部分は空集合を言うだけ）。
+- "Merge into another tag…" on a tentative row keeps the current dialog.
+  Tentative tags also appear among the merge-target candidates (with no mark; see
+  "Nothing else changes" above). The response's `Tag` (the target) has
+  `tentative: false`, and the target row's mark disappears (edge case "merging
+  tentative tags", acceptance criterion 11).
+- On success, focus goes to the target's name, as today. While "Tentative only" is
+  pressed, however, the source is deleted and the target, now confirmed, is not in
+  the list (whether the target was tentative or confirmed). Focus then follows
+  "Focus when a row leaves the filter" above: "Rename" on the next row at the
+  source row's position, otherwise the previous row, and if none remains,
+  "Tentative only" (never "New tag").
+- The confirmation text does not change. For a tentative source, the sentence
+  "\"X\" and its synonyms become synonyms" is still correct (a tentative tag has
+  no synonyms, so that part refers to an empty set).
 
 ### Rejected names
 
-一覧（`divide-y` の行の並び）と空の状態の**下**に、折りたたみの一群を 1 つ置く。読み込み中・
-読み込み失敗（タグの一覧をまだ一度も取れていない）のときは置かない。
+One collapsible group sits **below** the list (the `divide-y` rows) and its empty
+states. It is not shown while loading or after a load failure (the tag list has
+never loaded).
 
-- **見出し**: `h2` の中の 1 つのボタン（`text-sm font-medium text-fg`、`aria-expanded`）。左に
-  lucide `ChevronRight`（`size-4`、開くと `rotate-90`、`motion-reduce:transition-none`）、
-  文言「Rejected names」、その後ろに `text-xs text-fg-muted tabular-nums` で件数（「3」。0 なら
-  「0」）。件数は「片付けたものがここにある」を閉じたままで伝えるためのもので、仮のタグの件数
-  ではない（対象外「仮のタグの件数による通知やバッジ」には当たらない）。上の一覧との間は
-  `mt-6`。閉じた状態で始まり、開閉はこの画面の状態（URL・`localStorage` には載せない）。
-- **中身**（開いたとき、`mt-2`）: `text-xs text-fg-muted` の説明の 1 行「Automatic tagging won't
-  create these tags. Remove a name to allow it again.」、その下に名前の並び（`ul`、
-  `flex flex-wrap gap-1.5`、`mt-2`）。各名前は 014 のシノニムの窓のチップと同じ形（`Chip` の
-  neutral（本文の面は `bg` なので `bg-elevated` でよい）に × を足したもの、`h-6`・`text-xs`）。
-  名前は 1 行で省略し `title` に全体、× は `size-6` の正方形、lucide `X`（`size-3`）、読み上げ名
-  「Allow "〈名〉" again」。並びは API の順（名前の自然順）。
-- **取り外し**: × を押すとすぐ `DELETE /api/tags/rejected-names?name=…` を送る。確認は
-  挟まない（UI品質「取り消しに当たるので確認を挟まずに済ませてよい」）。送信中はその × を
-  `disabled`（`opacity-50`）。`204` でチップを消す（もう無かった名前でも `204` なので同じ。
-  Edge Case）。トーストは出さない（シノニムの解除と同じ。チップが消えることが結果である）。
-  フォーカスは、次のチップの × へ、無ければ前のチップの × へ、最後の 1 つなら見出しのボタンへ
-  移す（014 の再生画面の × と同じ規則）。失敗は並びの下に `text-xs text-danger`（`role="alert"`）
-  の 1 行「Couldn't remove "〈名〉": {理由}」で、チップは残す。次の取り外しで消える。
-- **読み込み**: 一覧は画面を開いたときにタグの一覧と一緒に `GET /api/tags/rejected-names` で
-  取る（見出しの件数のため）。取れるまで見出しの件数は出さず、開いた中身は `Skeleton`
-  （`h-6 w-24`）を 3 つ並べる。失敗したら見出しの件数は出さず、開いた中身に `text-xs text-danger`
-  の 1 行「Couldn't load the rejected names」と `Button` の ghost・`sm`「Retry」を出す。
-- **取り直し**: 却下の `204` のあと、「新しいタグ」で作成したあと、改名のあと、シノニムの追加の
-  あとに取り直す（それぞれ却下した名前を一覧から外しうる。要件 15、受け入れ条件 14）。取り直しは
-  中身が開いていても閉じていても行い、開いていれば並びがその場で変わる。
-- **空**: 名前が 1 つも無いときは、説明の 1 行の代わりに `text-xs text-fg-muted` の「No rejected
-  names」だけを出す。見出しは出したまま（この一群がどこにあるかを、初めて却下する前から
-  分かるようにする）。
-- 検索・「Tentative only」はこの一群に効かない（タグではない）。「タグはまだありません」の
-  空の状態のときも置く（タグが 0 でも却下した名前はありうる）。
+- **Heading**: one button inside an `h2` (`text-sm font-medium text-fg`,
+  `aria-expanded`). On the left, lucide `ChevronRight` (`size-4`, `rotate-90` when
+  open, `motion-reduce:transition-none`), then the text "Rejected names", then the
+  count in `text-xs text-fg-muted tabular-nums` ("3"; "0" when empty). The count
+  tells, while collapsed, that settled names are kept here. It is not a count of
+  tentative tags (so it is not the out-of-scope "notification or badge with the
+  number of tentative tags"). `mt-6` separates it from the list above. It starts
+  collapsed, and the open state is state of this screen (not stored in the URL or
+  `localStorage`).
+- **Content** (when open, `mt-2`): one description line in `text-xs
+  text-fg-muted`, "Automatic tagging won't create these tags. Remove a name to
+  allow it again.", and below it the names (`ul`, `flex flex-wrap gap-1.5`,
+  `mt-2`). Each name takes the form of the chips in 014's synonyms dialog (a
+  neutral `Chip` — the body surface is `bg`, so `bg-elevated` works — with an ×
+  added, `h-6`, `text-xs`). The name is truncated to one line with the full name
+  in `title`; the × is a `size-6` square with lucide `X` (`size-3`) and the
+  accessible name "Allow "{name}" again". The order is the API's (natural name
+  order).
+- **Removal**: pressing × sends `DELETE /api/tags/rejected-names?name=…`
+  immediately. No confirmation (`UI品質`: an undo-like action may skip
+  confirmation). While submitting, that × is `disabled` (`opacity-50`). On `204`
+  the chip disappears (a name that was already gone also returns `204`, so the
+  result is the same; edge case). No toast (as with removing a synonym; the chip
+  disappearing is the result). Focus moves to the next chip's ×, otherwise the
+  previous chip's ×, and after the last one to the heading button (the same rule
+  as the × on the 014 video page). A failure shows one line below the names in
+  `text-xs text-danger` (`role="alert"`), "Couldn't remove "{name}": {reason}",
+  and the chip stays. The line clears on the next removal.
+- **Loading**: the list is fetched with `GET /api/tags/rejected-names` together
+  with the tag list when the screen opens (for the heading count). Until it
+  arrives, the heading shows no count, and the open content shows three
+  `Skeleton`s (`h-6 w-24`). On failure the heading shows no count, and the open
+  content shows one line in `text-xs text-danger`, "Couldn't load the rejected
+  names", and a ghost `sm` `Button` "Retry".
+- **Reload**: after a reject's `204`, after creating with "New tag", after a
+  rename, and after adding a synonym (each can remove a rejected name from the
+  list; requirement 15, acceptance criterion 14). The reload happens whether the
+  content is open or closed, and an open list updates in place.
+- **Empty**: when there are no names, only "No rejected names" in `text-xs
+  text-fg-muted` replaces the description line. The heading stays (so the user can
+  see where this group is before the first reject).
+- Search and "Tentative only" do not affect this group (it is not tags). It is
+  also shown in the "No tags yet" empty state (rejected names can exist with zero
+  tags).
 
 ### States
 
-014 の「States」の表に足す・変える。
+These rows add to or change the "States" table in 014.
 
-| 状態 | 見え方 |
+| State | What the screen shows |
 | --- | --- |
-| 「Tentative only」で仮のタグが無い（検索は空） | `EmptyState`（`CircleDashed`）「No tentative tags」、説明「Tags created by automatic tagging appear here until you confirm or reject them.」、`Button`「Show all tags」。押すと絞り込みを外し、フォーカスを「Tentative only」へ移す（外した結果タグが 0 なら「Tentative only」は `disabled` になるので「新しいタグ」へ）。最後のタグを却下したあとも、この状態で「Tentative only」は押したまま使える |
-| 「Tentative only」と検索で一致が無い | `EmptyState`（`SearchX`）「No tentative tags match "〈入力〉"」、`Button`「Show all tags」。押すと絞り込みと検索の両方を外し、フォーカスを検索の入力へ移す |
-| 確定の送信中 | 「確定する」が `LoaderCircle`・`aria-disabled` で次の押下を無視、同じ行の「改名」「その他の操作」が `disabled` |
-| 却下の送信中 | 窓のボタンが `disabled`、「Reject」に `LoaderCircle` |
-| タグが既に確定していた（`tag_not_tentative`） | 窓を閉じ、トースト「This tag was already confirmed, so the list was reloaded」、一覧を取り直す |
-| 却下した名前の取り外しの送信中 | その × が `disabled`（`opacity-50`） |
+| "Tentative only" with no tentative tags (search empty) | `EmptyState` (`CircleDashed`) "No tentative tags", description "Tags created by automatic tagging appear here until you confirm or reject them.", `Button` "Show all tags". Pressing it clears the filter and moves focus to "Tentative only" (if clearing leaves zero tags, "Tentative only" becomes `disabled`, so focus goes to "New tag"). After rejecting the last tag, "Tentative only" stays pressed and usable in this state |
+| "Tentative only" and search match nothing | `EmptyState` (`SearchX`) "No tentative tags match "{query}"", `Button` "Show all tags". Pressing it clears both the filter and the search and moves focus to the search input |
+| Confirm submitting | "Confirm" shows `LoaderCircle` with `aria-disabled` and ignores further presses; the same row's "Rename" and "More actions" are `disabled` |
+| Reject submitting | The dialog buttons are `disabled`, "Reject" shows `LoaderCircle` |
+| The tag was already confirmed (`tag_not_tentative`) | The dialog closes, toast "This tag was already confirmed, so the list was reloaded", the list reloads |
+| Removing a rejected name, submitting | That × is `disabled` (`opacity-50`) |
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS で出し分ける（library-ui.md 4）。判定する幅は
-360px・768px・1280px。
+Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md 4).
+The judged widths are 360px, 768px and 1280px.
 
-| 幅 | 管理画面の操作の行 | 仮の行の操作 | 却下した名前 | カードのチップ |
+| Width | Tag management action row | Tentative row actions | Rejected names | Card chips |
 | --- | --- | --- | --- | --- |
-| 1280px | 検索（`max-w-sm`）・「Tentative only」・右端に「新しいタグ」が 1 行 | 4 つの `IconButton` が 1 行、名前の列が残りを取る | 見出しの行と、折り返す名前の並び | 目印の分だけチップが広がり、収まる数が減れば「+N」が増える |
-| 768px | 同上 | 同上 | 同上 | 同上 |
-| 360px | 1 行目に検索、2 行目に「Tentative only」と「新しいタグ」が半分ずつ | 4 つの `IconButton`（`h-8 w-8`・`gap-1`）と本数の列（`w-16`）の右に、名前の列が省略されて残る。横スクロールは出ない | 名前の並びが折り返し、長い名前はチップの中で省略 | 同上 |
+| 1280px | Search (`max-w-sm`), "Tentative only", and "New tag" at the right end on one row | Four `IconButton`s on one row; the name column takes the rest | The heading row and wrapping names | Chips widen by the mark; if fewer fit, "+N" grows |
+| 768px | Same as above | Same as above | Same as above | Same as above |
+| 360px | Search on the first row; "Tentative only" and "New tag" share the second row half and half | The name column, truncated, sits left of the four `IconButton`s (`h-8 w-8`, `gap-1`) and the count column (`w-16`). No horizontal scroll | Names wrap; long names truncate inside the chip | Same as above |
 
-- 仮の行の名前の列は 360px で約 92px になる（本文の `px-4` と行の `px-2` を引いた 312px から、
-  列の間の `gap-2` ×2・本数の列 `w-16`・4 つの `IconButton` 128px と `gap-1` ×3 を引く。確定した
-  行は 3 つの操作で約 128px）。名前の列は今どおり `min-w-0 flex-1` で、名前の `Link` は `truncate`
-  （`min-w-0`）、目印は `shrink-0` にして名前の後ろに残し、名前だけが省略される。`title` で全体を
-  確かめられる。横スクロールは出ない。実装の PR で 360px の実機で確かめる（目印が見切れない、
-  長い名前で操作の一群が押し出されない）。
-- 却下の窓・統合の窓は `ModalFrame` の今の幅の扱い（狭い幅で全幅）に従う。
+- At 360px the name column of a tentative row is about 92px: 312px (after the
+  body's `px-4` and the row's `px-2`) minus two column `gap-2`s, the `w-16` count
+  column, the four `IconButton`s (128px) and three `gap-1`s. A confirmed row with
+  three actions has about 128px. The name column stays `min-w-0 flex-1`, the name
+  `Link` is `truncate` (`min-w-0`), and the mark is `shrink-0` so it stays after
+  the name and only the name truncates. `title` shows the full name. No horizontal
+  scroll. The implementation PR checks this on a real 360px device (the mark is
+  not clipped, and long names do not push out the action group).
+- The reject and merge dialogs follow `ModalFrame`'s current width handling (full
+  width at narrow widths).
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md 5）。「ある」だけでは満たさない（Q-4）。
+Judged by looking at a real device (library-ui.md 5). "It is there" alone does
+not pass (Q-4).
 
-- **視覚的階層**: ライブラリを開いて、仮のタグが付いた動画と付いていない動画のカードを並べた
-  とき、題名 → タグの名前 の順に目が行き、破線の丸は名前を読んだあとに気づく程度で、色は名前
-  より薄い。カードの面・チップの面・文字の色は仮でも確定でも同じ。管理画面でも同じで、名前の
-  列は名前が主のまま、目印は名前の後ろに小さく付くだけである。「確定する」は他の `IconButton`
-  と同じ重さで、アクセント色・面・枠が無い。「Tentative only」は押している間だけ選んでいる形
-  （`accent-soft` の面）になり、押していないときは検索の入力より目立たない（UI品質「視覚的階層」
-  「要求を満たしたことにならないもの」）。
-- **情報密度**: 1280×800 で管理画面を開いたとき、仮の行と確定した行の高さが同じで、この feature
-  の前と同じ行数（014「Visual review criteria」の 12 行以上）が 1 画面に見える。仮の行に増えて
-  いるのは目印と `IconButton` 1 つだけで、文字のラベルや 2 行目は増えていない。却下した名前は
-  閉じた見出し 1 行だけを占め、開くまで名前は見えない（UI品質「情報密度」）。
-- **余白のリズム**: 操作の行・件数の行・一覧の間隔、行の `py-2`、カードの題名とタグの行の間隔
-  （`gap-1`）、再生画面の題名とタグの間隔（`gap-2`）が、この feature の前と同じ。チップの高さ
-  （`h-5`・`h-6`）も同じで、目印の分だけ横に広がるだけである。却下した名前の一群は一覧から
-  `mt-6` 離れ、一覧の行の並びの一部に見えない（UI品質「余白のリズムとタイポグラフィ」）。
-- **タイポグラフィ**: 新しい文字の大きさ・太さが無い。名前は仮でも確定でも同じ書式で、
-  目印はアイコンだけで文字を足さない。件数の行の「3 of 12 tags」は検索のときと同じ書式。
-- **操作の優先順位**: 「Tentative only」を 1 回押すと仮のタグだけが並び、各行で「確定する」を
-  1 回押すだけでその行が片付き（絞り込み中は一覧から消え）、次の行の「改名」にフォーカスが
-  移る。却下は「その他の操作」→「却下する…」→「Reject」の 3 回で、確定より 2 回多い。仮の行の
-  メニューに「削除…」は無く、確定した行のメニューは今のままである（受け入れ条件 12）。却下した
-  名前の × は 1 回で消え、確認の窓は出ない（受け入れ条件 13）。
-- **片付けの結果**: 仮のタグ「高画質」を却下すると、行が消え、「Rejected names」の件数が 1 増え、
-  開くと「高画質」のチップがある（受け入れ条件 8）。その名前を「新しいタグ」で作ると、チップが
-  消える（受け入れ条件 14）。仮のタグを確定・改名・シノニムの追加・統合先にすると、その行の
-  目印と「確定する」が消える（受け入れ条件 7・11）。
-- **キーボード**: 管理画面で Tab は 検索 → 「Tentative only」→ 「新しいタグ」→ 行の名前 →
-  「確定する」→ 「改名」→ 「シノニム」→ 「その他の操作」→ … → 「Rejected names」の見出し →
-  （開いていれば）各名前の × と進む。`/` で検索へ移る。却下の窓の Esc は窓だけを閉じる。
-- **ゲスト**: ログアウトして公開された動画のカードと再生画面を見ると、仮でも確定でもタグが出ず、
-  管理画面には入れない（受け入れ条件 4）。
-- **要求を満たしたことにならない例**（UI品質）: 仮のタグのチップや行が警告色・別の面の色・
-  バッジを持ち、確定したタグより先に目に入る。管理画面のどこかに仮のタグの件数が通知やバッジの
-  形で出る（「Rejected names」の件数は却下した名前の数で、これに当たらない）。仮のタグを
-  見つけるのに「Tentative only」以外の手（全行を読む）が要る。仮の行の高さが確定した行と違う。
-  却下した名前が別の画面や窓にあり、却下の直後に同じ画面で確かめられない。
+1. **Visual hierarchy**: with library cards for videos with and without tentative
+   tags side by side, the eye goes title → tag name, the dashed circle is noticed
+   only after reading the name, and its colour is lighter than the name. Card
+   surface, chip surface and text colour are the same for tentative and confirmed
+   tags. The same holds on the tag management page: the name stays primary in the
+   name column, and the mark is small and after the name. "Confirm" has the same
+   weight as the other `IconButton`s, with no accent colour, surface or border.
+   "Tentative only" takes the selected form (`accent-soft` surface) only while
+   pressed, and when not pressed it is less prominent than the search input
+   (`UI品質` "visual hierarchy" and "what does not satisfy the requirement").
+2. **Information density**: at 1280×800 on the tag management page, tentative and
+   confirmed rows have the same height, and the same number of rows as before
+   this feature fits on one screen (014 "Visual review criteria": 12 or more).
+   A tentative row adds only the mark and one `IconButton`, with no text label or
+   second line. Rejected names take only one collapsed heading line, and no name
+   is visible until opened (`UI品質` "information density").
+3. **Spacing rhythm**: the spacing between the action row, the count row and the
+   list, the rows' `py-2`, the spacing between a card's title and tag row
+   (`gap-1`), and between the video page title and tags (`gap-2`) are the same as
+   before this feature. Chip heights (`h-5`, `h-6`) are the same; chips only
+   widen by the mark. The rejected-names group sits `mt-6` from the list and does
+   not look like part of the list rows (`UI品質` "spacing rhythm and
+   typography").
+4. **Typography**: no new text size or weight. Names have the same format,
+   tentative or confirmed, and the mark is an icon only, adding no text. The
+   count row "3 of 12 tags" has the same format as during search.
+5. **Action priority**: pressing "Tentative only" once lists only tentative tags;
+   one press of "Confirm" on each row settles it (and removes it from the list
+   while filtering), and focus moves to the next row's "Rename". Rejecting takes
+   three presses, "More actions" → "Reject…" → "Reject", two more than
+   confirming. A tentative row's menu has no "Delete…", and a confirmed row's
+   menu is unchanged (acceptance criterion 12). A rejected name's × removes it in
+   one press with no confirmation dialog (acceptance criterion 13).
+6. **Clean-up result**: rejecting the tentative tag `高画質` removes its row,
+   raises the "Rejected names" count by one, and opening it shows a `高画質` chip
+   (acceptance criterion 8). Creating that name with "New tag" removes the chip
+   (acceptance criterion 14). Confirming, renaming, adding a synonym to, or
+   merging into a tentative tag removes that row's mark and "Confirm" (acceptance
+   criteria 7 and 11).
+7. **Keyboard**: on the tag management page, Tab goes search → "Tentative only" →
+   "New tag" → row name → "Confirm" → "Rename" → "Synonyms" → "More actions" →
+   … → the "Rejected names" heading → (when open) each name's ×. `/` moves to
+   search. Esc in the reject dialog closes only the dialog.
+8. **Guests**: logged out, cards and the video page of public videos show no
+   tags, tentative or confirmed, and the tag management page is not reachable
+   (acceptance criterion 4).
+9. **What does not satisfy the requirement** (`UI品質`): tentative chips or rows
+   with a warning colour, a different surface colour or a badge that draws the
+   eye before confirmed tags; a count of tentative tags anywhere on the tag
+   management page as a notification or badge (the "Rejected names" count is the
+   number of rejected names and does not count); needing anything other than
+   "Tentative only" (reading every row) to find tentative tags; tentative rows
+   with a different height from confirmed rows; rejected names on another screen
+   or in a dialog, so that they cannot be checked on the same screen right after
+   rejecting.
 
 ## Colour
 
-新しく使う組は無い。目印の `fg-subtle` はアイコンだけに使い、文字には使わない。「Tentative only」の
-押している形（`link` on `accent-soft`）は `IconButton` の `active` と `SegmentedControl` の選んでいる
-形と同じ組である。却下した名前のチップは `fg` on `elevated`、説明と件数は `fg-muted` on `bg`、
-失敗の行は `danger` on `bg`（管理画面の本文）と `danger` on `elevated`（却下の窓。014 が `pairs` に
-含めた組）。`tokens.test.ts` の `pairs` には足さない。
+No new pair is used. The mark's `fg-subtle` is used only for icons, never for
+text. The pressed form of "Tentative only" (`link` on `accent-soft`) is the same
+pair as `IconButton`'s `active` and `SegmentedControl`'s selected form. Rejected
+name chips are `fg` on `elevated`; the description and count are `fg-muted` on
+`bg`; the error lines are `danger` on `bg` (the tag management body) and `danger`
+on `elevated` (the reject dialog; a pair 014 already included in `pairs`).
+Nothing is added to `pairs` in `tokens.test.ts`.
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前だけを決める（014 と同じ範囲）。
+The parent Issue does not ask for screen-reader or contrast design, so only names
+are decided here (the same scope as 014).
 
-- 目印: `aria-hidden` のアイコンと、視覚的に隠した「Tentative」または読み上げ名の「(tentative)」。
-- 「Tentative only」: `aria-pressed`。件数の行は今の `role="status"`（`polite`）で絞り込みの
-  結果を伝える。
-- 「確定する」: 読み上げ名「Confirm」、送信中は `aria-busy` と `aria-disabled="true"`。
-- 却下した名前: 見出しのボタンは `aria-expanded`、中身の `ul` に `aria-label`「Rejected names」、
-  × は「Allow "〈名〉" again」。失敗の行は `role="alert"`。
+| Element | Decision |
+| --- | --- |
+| Mark | An `aria-hidden` icon, plus a visually hidden "Tentative" or "(tentative)" in the accessible name |
+| "Tentative only" | `aria-pressed`. The count row reports the filter result through its current `role="status"` (`polite`) |
+| "Confirm" | Accessible name "Confirm"; `aria-busy` and `aria-disabled="true"` while submitting |
+| Rejected names | The heading button has `aria-expanded`, the content `ul` has `aria-label` "Rejected names", and the × is "Allow "{name}" again". Error lines have `role="alert"` |

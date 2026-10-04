@@ -1,63 +1,73 @@
-# Contract: 画面の API の表示名とサムネイルの位置
+# Contract: Display name and thumbnail position in the screen API
 
-正本は `api/openapi.yaml` で、この文書は足す 2 つの経路と `Video` の差分だけを書く。決定は
-[research.md R-8](../research.md#r-8-画面の-api-は動画ごとの-2-つの-put-にし空の表示名と-null-の位置が解除である)・
-[R-10](../research.md#r-10-表示名の規則はタグ名の規則にそろえ上限は-200-符号位置にする)・
-[R-11](../research.md#r-11-位置の検証は-internaldomain-の純粋関数が持ち誤りは-3-つに分ける)。
+Source of truth: `api/openapi.yaml`, operations `setVideoDisplayName` and
+`setVideoThumbnailPosition`. This document covers only the two added routes
+and the changes to `Video`. The decisions are in
+[research.md R-8](../research.md#r-8-the-screen-api-is-two-puts-per-video-an-empty-display-name-and-a-null-position-clear),
+[R-10](../research.md#r-10-display-name-rules-follow-tag-name-rules-with-a-200-code-point-limit)
+and
+[R-11](../research.md#r-11-position-validation-is-a-pure-function-in-internaldomain-with-three-distinct-errors).
 
-## 0. `Video` の差分
+## 0. `Video` changes
 
-| 項目 | 型 | 規則 |
+| Field | Type | Rule |
 | --- | --- | --- |
-| `title` | string（既存） | 有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名。説明を書き換える |
-| `fileTitle` | string | 拡張子を除いたファイル名。所有者の応答にだけ入る |
-| `displayName` | string | 表示名。設定されているときだけ、所有者の応答にだけ入る |
-| `thumbnailPositionMs` | integer (int64) | 代表サムネイルの位置。設定されているときだけ、所有者の応答にだけ入る |
-| `thumbnailUrl` | string（既存） | 位置が設定されているとき版が `<内容鍵の先頭>-r<改版番号>` になる。位置の値は入れない（[R-6](../research.md#r-6-thumbnailurl-の版に指定の改版番号を含める)） |
+| `title` | string (existing) | The effective title: the display name if there is one, otherwise the file name without its extension. Its description is rewritten |
+| `fileTitle` | string | The file name without its extension. Only in owner responses |
+| `displayName` | string | The display name. Only when set, and only in owner responses |
+| `thumbnailPositionMs` | integer (int64) | The representative thumbnail position. Only when set, and only in owner responses |
+| `thumbnailUrl` | string (existing) | When a position is set, the version is `<content key prefix>-r<revision>`. The position value is not included ([R-6](../research.md#r-6-the-thumbnailurl-version-includes-the-position-revision)) |
 
-ゲストの応答は `title` に表示名を受け取り（要件 1）、3 つの新しい項目を省く。`thumbnailUrl` は所有者と
-同じ文字列で、位置の値を含まない
-（[specs/016-single-account-auth/contracts/guest-api.md §1](../../016-single-account-auth/contracts/guest-api.md)
-の `location` と同じ扱い）。一覧・関連動画・ライブラリ項目・`RelatedVideo` の `title` も有効な題名である。
+Guest responses receive the display name in `title` (requirement 1) and omit
+the three new fields. `thumbnailUrl` is the same string as for the owner and
+does not contain the position value (the same handling as `location` in
+[specs/016-single-account-auth/contracts/guest-api.md §1](../../016-single-account-auth/contracts/guest-api.md)).
+The `title` in lists, related videos, library items and `RelatedVideo` is also
+the effective title.
 
 ## 1. `PUT /api/videos/{id}/display-name`
 
-`operationId: setVideoDisplayName`。所有者だけ（`security: sessionCookie`。`accessRoutes` の既定の分類）。
-本文は `{ "displayName": string }`（`required`、`Content-Type: application/json`）。
+`operationId: setVideoDisplayName`. Owner only (`security: sessionCookie`; the
+default category in `accessRoutes`). The body is `{ "displayName": string }`
+(`required`, `Content-Type: application/json`).
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 保存した、または整えて空だったので解除した | `200` `Video`（`GET /api/videos/{id}` と同じ形。`title`・`fileTitle`・`displayName` が反映済み） |
-| 制御文字を含む | `400 invalid_request` / `display_name_control_characters` |
-| 200 符号位置を超える | `400 invalid_request` / `display_name_too_long`、`limit: 200` |
-| 動画が無い、または登録フォルダの下に所在が無い | `404 not_found` / `video_not_found` |
-| ゲスト | `401 unauthenticated`（境界が返す。要件 9） |
+| Saved, or cleared because the value was empty after trimming | `200` `Video` (same shape as `GET /api/videos/{id}`, with `title`, `fileTitle` and `displayName` updated) |
+| Contains control characters | `400 invalid_request` / `display_name_control_characters` |
+| Longer than 200 code points | `400 invalid_request` / `display_name_too_long`, `limit: 200` |
+| The video does not exist, or has no location under the media folders | `404 not_found` / `video_not_found` |
+| Guest | `401 unauthenticated` (returned by the boundary; requirement 9) |
 
-他の動画と同じ表示名は許す（Edge Case）。保存は最後に確定した取引が残る（同時の変更は後勝ち）。
-確定後に `/api/events` の `video` がその動画で流れる。
+A display name equal to another video's is allowed (edge case). The last
+committed transaction wins (concurrent changes: last write wins). After commit,
+`video` for that video is sent on `/api/events`.
 
 ## 2. `PUT /api/videos/{id}/thumbnail-position`
 
-`operationId: setVideoThumbnailPosition`。所有者だけ。本文は `{ "positionMs": integer | null }`
-（`required`、`null` は解除）。
+`operationId: setVideoThumbnailPosition`. Owner only. The body is
+`{ "positionMs": integer | null }` (`required`; `null` clears).
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 指定の位置の画像を作って公開し、記録した | `200` `Video`（`thumbnailState: done`、`thumbnailUrl` の版が新しい、`thumbnailPositionMs`） |
-| `null` で、自動の位置の画像を作り直して記録した | `200` `Video`（`thumbnailPositionMs` 無し） |
-| 解析が終わっていない、または尺が分からない | `409 conflict` / `duration_unknown` |
-| `positionMs < 0` または尺以上 | `400 invalid_request` / `thumbnail_position_out_of_range`、`limit` = 尺（ミリ秒） |
-| 画像を作れなかった（ffmpeg が失敗、指定の位置で 0 枚） | `409 conflict` / `thumbnail_frame_unavailable`。前の画像と前の位置はそのまま |
-| どの所在も開けない | `404 not_found` / `file_unavailable`（`getVideoStream` と同じ） |
-| 動画が無い | `404 not_found` / `video_not_found` |
-| ゲスト | `401 unauthenticated` |
+| The image at the chosen position was made, published and recorded | `200` `Video` (`thumbnailState: done`, a new `thumbnailUrl` version, `thumbnailPositionMs`) |
+| `null`, and the image at the automatic position was regenerated and recorded | `200` `Video` (no `thumbnailPositionMs`) |
+| Analysis has not finished, or the duration is unknown | `409 conflict` / `duration_unknown` |
+| `positionMs < 0` or at least the duration | `400 invalid_request` / `thumbnail_position_out_of_range`, `limit` = duration (milliseconds) |
+| No image could be made (ffmpeg failed, 0 frames at the position) | `409 conflict` / `thumbnail_frame_unavailable`. The previous image and position are kept |
+| No location opens | `404 not_found` / `file_unavailable` (same as `getVideoStream`) |
+| The video does not exist | `404 not_found` / `video_not_found` |
+| Guest | `401 unauthenticated` |
 
-応答は生成が終わってから返す（数秒かかりうる）。同じ動画への同時の指定は生成の錠で直列になり、最後に
-記録した位置の画像が残る。確定後に `video` 通知が流れ、一覧のカードは新しい `thumbnailUrl` を読む。
+The response returns after generation finishes (this can take seconds).
+Concurrent choices for the same video are serialized by the generation lock,
+and the image of the last recorded position remains. After commit, a `video`
+notification is sent and list cards read the new `thumbnailUrl`.
 
-## 3. 足す `code`・`reason`
+## 3. Added `code` and `reason` values
 
-`Error.code` には足さない（`conflict`・`invalid_request`・`not_found` を使う）。`ErrorReason` に
-`display_name_control_characters`・`display_name_too_long`・`duration_unknown`・
-`thumbnail_position_out_of_range`・`thumbnail_frame_unavailable` を足し、`web/src/i18n/errors.ts` に
-それぞれの英語の文言を足す。
+Nothing is added to `Error.code` (`conflict`, `invalid_request` and
+`not_found` are used). `ErrorReason` gets `display_name_control_characters`,
+`display_name_too_long`, `duration_unknown`, `thumbnail_position_out_of_range`
+and `thumbnail_frame_unavailable`, and `web/src/i18n/errors.ts` gets an English
+message for each.

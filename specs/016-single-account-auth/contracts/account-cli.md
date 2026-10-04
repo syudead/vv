@@ -1,50 +1,60 @@
-# Contract: アカウントを再設定するホスト側のコマンド
+# Contract: Host command for resetting the account
 
-親 Issue: #135。
+Parent Issue: #135.
 
-初回設定の後に、サーバー管理者がホストのシェルからだけユーザー名を変え、パスワードを
-再設定する口である（要件 3）。最初のアカウントは画面の初回設定で作る
-（[auth-api.md §2](auth-api.md#2-post-apiauthsetup)）。
-既存の `mdm` バイナリの下位コマンドとして足す。引数なしの `mdm` は今までどおり
-サーバーを起動する。設定は今の起動と同じ `MDM_DATA_DIR` から読む
-（[docs/how-to/running-vv.md](../../../docs/how-to/running-vv.md) の Runtime settings）。
+After first-time setup, the server administrator changes the username and
+resets the password only from the host shell (requirement 3). The first account
+is created in the first-time setup screen
+([auth-api.md §2](auth-api.md#2-post-apiauthsetup)). The commands are added as
+subcommands of the existing `mdm` binary; `mdm` with no arguments still starts
+the server. Settings are read from the same `MDM_DATA_DIR` as server startup
+(Runtime settings in
+[docs/how-to/running-vv.md](../../../docs/how-to/running-vv.md)).
 
-## 1. 下位コマンド
+## 1. Subcommands
 
-| コマンド | すること |
+| Command | Action |
 | --- | --- |
-| `mdm account set-username <NAME>` | ユーザー名を変える |
-| `mdm account set-password` | パスワードを再設定する |
+| `mdm account set-username <NAME>` | Change the username |
+| `mdm account set-password` | Reset the password |
 
-- どちらもアカウントが設定済みのときだけ書く。未設定なら `account`・`sessions` に何も書かず、画面で初回設定
-  するよう標準エラーに出して終了コード 2 で終わる。コマンドでアカウントを作ると、
-  画面の初回設定と2つの作り方ができ、片方だけの設定という中間の状態が生まれるためである。
-- どちらも、書き換えと同じ取引で既存の全セッションを無効にする
-  （[data-model.md §5](../data-model.md#5-書き換えの規則)）。サーバーが動いていても
-  止まっていても実行できる。動いているサーバーは次の要求から古いセッションを拒否し、
-  処理中の長い応答も打ち切る。
-- 要るのは `MDM_DATA_DIR` だけで、サーバーの起動前確認（`ffmpeg`・`ffprobe` の有無）は
-  行わない。`ffmpeg` の無いホストでもパスワードを再設定できるようにするためである。
-- 起動時と同じくマイグレーションを適用してから書く。
-- Docker Compose では `docker compose exec mdm mdm account set-password` の形で呼ぶ。
-  コンテナが止まっているときは `docker compose run --rm mdm account set-password`。
+- Both write only when the account is configured. When it is not, they write
+  nothing to `account` or `sessions`, tell the user on standard error to run
+  first-time setup in the browser, and exit with code 2. Creating the account
+  from the command would give two ways to create it, alongside first-time setup
+  in the browser, and an intermediate state where only one is configured.
+- Both invalidate every existing session in the same transaction as the write
+  ([data-model.md §5](../data-model.md#5-write-rules)). They run whether the
+  server is running or stopped. A running server rejects old sessions from the
+  next request on and cuts off long responses in progress.
+- Only `MDM_DATA_DIR` is needed; the server's startup checks (presence of
+  `ffmpeg` and `ffprobe`) do not run, so the password can be reset on a host
+  without `ffmpeg`.
+- Migrations are applied before writing, as at startup.
+- Under Docker Compose, call `docker compose exec mdm mdm account set-password`.
+  When the container is stopped, use
+  `docker compose run --rm mdm account set-password`.
 
-## 2. パスワードの受け取り
+## 2. Reading the password
 
-- 標準入力が端末なら、エコーを止めて2回尋ね、一致しなければ `account`・`sessions` に何も書かずに終わる。
-- 標準入力が端末でなければ、最初の1行（末尾の改行を除く）をパスワードとする。
-  スクリプトや `docker compose exec -T` から渡すためである。
-- パスワードを引数や環境変数では受け取らない。シェルの履歴、`ps`、`docker inspect` に
-  平文が残るためである。
-- 値の規則は [data-model.md §6](../data-model.md#6-ユーザー名とパスワードの値) に従い、
-  外れたら `account`・`sessions` に何も書かずに理由を標準エラーへ出す。
+| Standard input | Behaviour |
+| --- | --- |
+| A terminal | Echo is turned off and the password is asked twice. On mismatch the command exits without writing to `account` or `sessions` |
+| Not a terminal | The first line (without the trailing newline) is the password, so scripts and `docker compose exec -T` can pass it |
 
-## 3. 終了コードと出力
+- The password is never accepted as an argument or an environment variable: the
+  plain text would remain in shell history, `ps` and `docker inspect`.
+- Values follow
+  [data-model.md §6](../data-model.md#6-username-and-password-values). A value
+  that breaks the rules writes nothing to `account` or `sessions`, and the
+  reason goes to standard error.
 
-| 結果 | 終了コード | 標準エラー |
+## 3. Exit codes and output
+
+| Result | Exit code | Standard error |
 | --- | --- | --- |
-| 書いた | 0 | 何を変えたかと、既存のセッションを無効にしたこと |
-| 未設定・値の誤り・確認の不一致・未知の下位コマンド | 2 | 理由と使い方 |
-| DB を開けない・書けない | 1 | 理由 |
+| Written | 0 | What changed, and that existing sessions were invalidated |
+| Not configured, invalid value, confirmation mismatch, unknown subcommand | 2 | The reason and usage |
+| The DB cannot be opened or written | 1 | The reason |
 
-パスワードとそのハッシュは、どの結果でも出力しない。
+The password and its hash are never printed, whatever the result.

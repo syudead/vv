@@ -1,51 +1,63 @@
-# Research: ライブラリの検索で一部のメンバーだけが当たったグループは、当たった動画を1本ずつ出す
+# Research: Show each matching video when a library search matches only some members of a group
 
-親 Issue: #523。
+Parent Issue: #523.
 
-受け継ぐ技術の決定は [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
-と [ARCHITECTURE.md](../../ARCHITECTURE.md) にある（Go の単一バイナリ、SQLite、`api/openapi.yaml` を正本に
-した生成、`LibraryStore` の読み出し）。今の項目の作り方は
-[specs/017-folder-groups/data-model.md §5〜§7](../017-folder-groups/data-model.md#5-ライブラリの項目) にある。
-ここには、この feature が足す決定だけを書く。
+Inherited decisions: [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
+and [ARCHITECTURE.md](../../ARCHITECTURE.md) (a single Go binary, SQLite, code generated from
+`api/openapi.yaml` as the source of truth, reads in `LibraryStore`). The current way items are built is
+in [specs/017-folder-groups/data-model.md §5–§7](../017-folder-groups/data-model.md#5-library-items).
+This file records only the decisions this feature adds.
 
-## R-1: 判定は項目を作る SQL の段に置く
+## R-1: The decision is made in the SQL stage that builds items
 
-- **Decision**: 「全メンバーが当たったか、一部か」は `internal/store` の `libraryItemsCTE`（`items` を作る
-  with 句）の中で決め、`ListLibrary` と `LibraryIDs` が同じ句を使う。規則は
-  [contracts/library-api.md §1](contracts/library-api.md#1-get-apilibrary-の項目の作り方)。
-- **Rationale**: `total`・並べ替え・keyset のカーソル・「すべて選択」はどれも項目に対して働く
-  （017 §5 の 4〜7）。項目が決まる前にそれらを掛けることはできないので、判定は項目を作る段より前に
-  無ければならず、その段は今も SQL の中にある。`LibraryIDs` が同じ句を使えば、要件 8（「すべて選択」を
-  一覧の項目に合わせる）は別の実装を持たずに満たせる。
-- **Alternatives considered**:
-  - 1ページを取ってから Go で分ける: `total` とカーソルはグループ1件で数えられているので、分けた後の
-    項目の数と食い違い、ページをまたいで重複と抜けが起こる。
-  - 画面（`useVideos`）で分ける: ゲストには非公開のメンバーの本数を返さないので（017 §7）、画面は
-    「全メンバー」を知らず判定できない。`total` と `GET /api/library/ids` も合わなくなる。
+**Decision**: Whether all members or only some of a group matched is decided inside
+`libraryItemsCTE` in `internal/store` (the `with` clause that builds `items`), and `ListLibrary` and
+`LibraryIDs` use the same clause. The rules are in
+[contracts/library-api.md §1](contracts/library-api.md#1-how-get-apilibrary-builds-items).
 
-## R-2: 決め手は検索語とタグだけにし、再生可否は項目に今までどおり掛ける
+**Rationale**: `total`, sorting, the keyset cursor and "Select all" all work on items (items 4–7 of
+017 §5). None of them can be applied before items are fixed, so the decision has to come before the
+stage that builds items, and that stage is already in SQL. If `LibraryIDs` uses the same clause,
+requirement 8 (match "Select all" to the list's items) is met without a second implementation.
 
-- **Decision**: 「当たったメンバー」は、範囲と検索式（`chosen`）にタグの AND を掛けたものとする。
-  再生可否（`playable`）はこの判定に入れず、視聴状態と同じく、できた項目に掛ける。グループの項目は
-  メンバーのどれか1本が再生できれば残り（今の結果と同じ）、動画の項目はその動画で判定する。
-- **Rationale**: 要件 6 が視聴状態と再生可否をこの判定に使わないと決めている。今の実装は再生可否を
-  メンバー単位の条件に入れているが、「全メンバーが当たった」グループについては「どれか1本が
-  （検索語 ∧ タグ ∧ 再生可）」と「どれか1本が再生可」は同じ集合になるので、項目に掛け直しても
-  今の一覧は変わらない（要件 4）。
-- **Alternatives considered**:
-  - 再生可否も決め手にする: 「再生できるものだけ」を付けただけで、絞り込み無しでは1枚だった
-    グループが分かれる。要件 4 と 6 に反する。
-  - グループの項目に全メンバーの再生可を求める: 再生できないメンバーを1本含むグループが今は出て
-    いるのに消える。要件 6 の「今までどおり」に反する。
+**Alternatives considered**:
 
-## R-3: 017 の成果物は直さず、現行の規則は本 feature の契約と ARCHITECTURE.md に置く
+| Option | Verdict |
+| --- | --- |
+| Fetch a page, then split in Go | Rejected: `total` and the cursor count a group as one item, so they disagree with the number of items after splitting, and items are duplicated or skipped across pages. |
+| Split on the screen (`useVideos`) | Rejected: guests are not told how many private members a group has (017 §7), so the screen does not know "all members" and cannot decide. `total` and `GET /api/library/ids` would also stop matching. |
 
-- **Decision**: `specs/017-folder-groups/` の `data-model.md` と `contracts/library-api.md` は変えない。
-  置き換える規則は [contracts/library-api.md](contracts/library-api.md) に書き、実装の単位で
-  ARCHITECTURE.md の `GET /api/library` の段落、`api/openapi.yaml` の説明文、コードの注釈の参照を
-  そちらへ向ける。
-- **Rationale**: 完成した feature の成果物は履歴であり、現行の設計は実装・API スキーマ・試験と
-  ARCHITECTURE.md から読む（`specs/README.md`）。017 も 013 の `list-api.md` を書き換えず、差分の文書を
-  足して ARCHITECTURE.md から参照している。同じ形にすれば、どの feature で規則が変わったかが履歴に残る。
-- **Alternatives considered**: 017 の §5 を書き換える。承認済みの成果物を後の feature が改訂すると、
-  その文書がどの時点の判断かが分からなくなる。ARCHITECTURE.md が現行を指すので、書き換える必要も無い。
+## R-2: Only the search query and tags decide; playability still applies to items as before
+
+**Decision**: A "matched member" is the scope and search expression (`chosen`) combined with the tag
+AND. Playability (`playable`) is not part of this decision; like watch status, it is applied to the
+resulting items. A group item remains if any one member is playable (the same result as today), and a
+video item is judged by that video.
+
+**Rationale**: Requirement 6 rules out using watch status and playability for this decision. The
+current implementation puts playability in the per-member condition, but for a group where "all
+members matched", "some member satisfies (query ∧ tags ∧ playable)" and "some member is playable"
+are the same set, so applying it to items instead does not change today's list (requirement 4).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Make playability a deciding factor too | Rejected: merely turning on "playable only" would split a group that was one card without filters. Violates requirements 4 and 6. |
+| Require every member of a group item to be playable | Rejected: a group containing one unplayable member, which shows today, would disappear. Violates "as before" in requirement 6. |
+
+## R-3: 017's artifacts stay unchanged; the current rule lives in this feature's contract and ARCHITECTURE.md
+
+**Decision**: `data-model.md` and `contracts/library-api.md` in `specs/017-folder-groups/` do not
+change. The replacing rule is written in [contracts/library-api.md](contracts/library-api.md), and the
+implementation unit points the `GET /api/library` paragraph of ARCHITECTURE.md, the description in
+`api/openapi.yaml` and the references in code comments there.
+
+**Rationale**: A finished feature's artifacts are history; the current design is read from the
+implementation, the API schema, the tests and ARCHITECTURE.md (`specs/README.md`). 017 likewise did not
+rewrite 013's `list-api.md`; it added a delta document and referenced it from ARCHITECTURE.md. Using
+the same form keeps a record of which feature changed the rule.
+
+**Alternatives considered**: Rewrite 017 §5. Rejected: if a later feature revises an approved
+artifact, it is no longer clear which point in time the document's decisions belong to. ARCHITECTURE.md
+points at the current rule, so a rewrite is not needed either.

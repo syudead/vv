@@ -1,105 +1,112 @@
-# Contract: 取り込みの状態と問題の一覧
+# Contract: Import status and issue list
 
-正本は [api/openapi.yaml](../../../api/openapi.yaml) で、Go と TypeScript は `task generate` で作る。
-この文書は、この feature が変える経路と形だけを書く。認可は変えない。どの経路も今と同じく
-全体の `security: [sessionCookie]` で所有者だけが使え、ゲストには出ない（要件 11、
-[internal/httpapi/auth.go](../../../internal/httpapi/auth.go) の `accessRoutes` に足さない）。
-経路の名前を残す理由は [research.md R-9](../research.md#r-9-api-は-apiscans-を作り直しapiprocessing-と-sse-の-processing-をなくす) にある。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml); the Go and
+TypeScript code is generated with `task generate`. This document covers only the
+routes and shapes this feature changes. Authorization does not change: every route
+is owner-only through the global `security: [sessionCookie]`, as today, and is not
+exposed to guests (requirement 11; not added to `accessRoutes` in
+[internal/httpapi/auth.go](../../../internal/httpapi/auth.go)). Why the route names
+stay is in
+[research.md R-9](../research.md#r-9-api-reshapes-apiscans-and-removes-apiprocessing-and-the-sse-processing-event).
 
-## 1. 変える・なくす・足す経路
+## 1. Changed, removed and added routes
 
-| 経路 | 変更 |
+| Route | Change |
 | --- | --- |
-| `POST /api/scans` | 応答の `Scan` が §2 の形になる。409・403 は変えない |
-| `GET /api/scans/current` | 応答の `Scan` が §2 の形になる。一度も走査していなければ今と同じく 404 |
-| `GET /api/scans/current/issues` | 新しく足す。§3 |
-| `GET /api/processing` | なくす。`Processing` の schema も消す |
-| `GET /api/events` | `processing` の event をなくす。`scan` は §4 |
+| `POST /api/scans` | The response `Scan` takes the §2 shape. 409 and 403 do not change |
+| `GET /api/scans/current` | The response `Scan` takes the §2 shape. 404 when no scan has ever run, as today |
+| `GET /api/scans/current/issues` | New. §3 |
+| `GET /api/processing` | Removed, along with the `Processing` schema |
+| `GET /api/events` | The `processing` event is removed. `scan` is in §4 |
 
 ## 2. `Scan`
 
-直近の取り込みの、利用者から見た状態である。右下の表示と設定画面は、どちらもこの1つを読む
-（要件 8）。
+The latest import's state as the user sees it. The bottom-right indicator and the
+Settings page both read this one value (requirement 8).
 
-| 項目 | 型 | 意味 |
+| Field | Type | Meaning |
 | --- | --- | --- |
-| `id` | int64, 必須 | 走査の id。取り込みが入れ替わったことの判定に使う |
-| `status` | `finding` \| `running` \| `done` \| `partial` \| `failed`, 必須 | 利用者に見せる状態（[R-4](../research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)） |
-| `videos` | object \| 省略 | 進み具合。`finding` のあいだは省く |
-| `videos.total` | int, 必須 | 対象の本数（[R-5](../research.md#r-5-走査中の分母は集合にまだ登録していない対象のファイルの数を足す)）。0 は「変化が無かった」 |
-| `videos.settled` | int, 必須 | 済みの本数。`0 ≤ settled ≤ total` |
-| `issues` | object, 必須 | 問題の本数。§3 のまとめた件を数える |
-| `issues.failed` | int, 必須 | 重さが失敗の件数 |
-| `issues.substituted` | int, 必須 | 重さが代用の件数 |
-| `issues.revision` | int, 必須 | 問題の一覧の中身が変わるたびに増える番号（[data-model.md §1・§3](../data-model.md#3-scan_issues新しい表)）。本数が同じでも、種類や行が変われば増える |
-| `settledAt` | date-time \| 省略 | 対象がすべて済んだ時刻。`done`・`partial` のときだけ返す（要件 4） |
-| `activity` | object \| 省略 | 今の処理（[R-8](../research.md#r-8-今の処理は保存せずinternalapp-がメモリに持つ)）。何も動いていなければ省く |
-| `activity.kind` | `registering` \| `probe` \| `thumbnail` \| `seekThumbnail` \| `preview`, 必須 | 何をしているか |
-| `activity.fileName` | string, 必須 | ファイル名 |
-| `activity.folder` | `VideoFolder` \| 省略 | ファイルが置かれたフォルダ。同じ名前のファイルを見分けるため |
-| `activity.videoId` | int64 \| 省略 | 登録された動画なら、その id |
-| `state` | `running` \| `done` \| `failed`, 必須 | 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使い、画面には出さない |
-| `errorCode`・`errorPath` | 省略可 | 走査が `failed` のときの理由。英語化（023）が `Scan` に足した形をそのまま引き継ぐ。`error` も 023 のとおり残すが、画面には出さない |
+| `id` | int64, required | The scan id. Used to detect that the import was replaced |
+| `status` | `finding` \| `running` \| `done` \| `partial` \| `failed`, required | The status shown to the user ([R-4](../research.md#r-4-done-only-when-the-scan-is-closed-and-the-set-has-no-remaining-jobs)) |
+| `videos` | object \| omitted | Progress. Omitted during `finding` |
+| `videos.total` | int, required | The number of target videos ([R-5](../research.md#r-5-the-denominator-during-a-scan-adds-files-not-yet-registered)). 0 means "nothing changed" |
+| `videos.settled` | int, required | The number of settled videos. `0 ≤ settled ≤ total` |
+| `issues` | object, required | Issue counts, counting the grouped items of §3 |
+| `issues.failed` | int, required | Items whose severity is failure |
+| `issues.substituted` | int, required | Items whose severity is substitution |
+| `issues.revision` | int, required | Increases whenever the issue list content changes ([data-model.md §1 and §3](../data-model.md#3-scan_issues-new-table)). It increases when kinds or rows change even if the counts stay the same |
+| `settledAt` | date-time \| omitted | The time every target settled. Returned only for `done` and `partial` (requirement 4) |
+| `activity` | object \| omitted | The current activity ([R-8](../research.md#r-8-current-activity-held-in-memory-by-internalapp-not-stored)). Omitted when nothing is running |
+| `activity.kind` | `registering` \| `probe` \| `thumbnail` \| `seekThumbnail` \| `preview`, required | What is happening |
+| `activity.fileName` | string, required | The file name |
+| `activity.folder` | `VideoFolder` \| omitted | The folder that holds the file, to tell files with the same name apart |
+| `activity.videoId` | int64 \| omitted | The video id, when the file is a registered video |
+| `state` | `running` \| `done` \| `failed`, required | The state of the scan itself. Used to reload the list and to decide whether an import can start; not shown on screen |
+| `errorCode`, `errorPath` | optional | The reason when the scan is `failed`. Keeps the shape the English i18n feature (023) added to `Scan`. `error` also stays, as in 023, and is not shown on screen |
 
-今の `startedAt`・`finishedAt`・`total`・`completed`・`failed` はなくす。
+Today's `startedAt`, `finishedAt`, `total`, `completed` and `failed` are removed.
 
-`status` の決め方は次のとおりである。純粋関数で、`internal/domain` が持つ。上から順に最初に
-当てはまるものにする。
+`status` is decided by a pure function in `internal/domain`. The first rule from
+the top that matches wins:
 
 1. `failed`: `state = failed`
-2. `finding`: `state = running` で、走査がまだ対象を数え終えていない
-3. `running`: `state = running`、または済んでいない対象がある
+2. `finding`: `state = running`, and the scan has not finished counting its
+   targets
+3. `running`: `state = running`, or some target is not settled
 4. `partial`: `issues.failed > 0`
-5. `done`: それ以外
+5. `done`: otherwise
 
 ## 3. `GET /api/scans/current/issues`
 
-直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す
-（[data-model.md §3](../data-model.md#3-scan_issues新しい表)）。
+Returns the latest import's issues, one item per video (per file when
+unregistered) ([data-model.md §3](../data-model.md#3-scan_issues-new-table)).
 
-問い合わせの引数:
+Query parameters:
 
-| 引数 | 意味 |
+| Parameter | Meaning |
 | --- | --- |
-| `limit` | 1〜200、既定 50 |
-| `cursor` | 前の応答の `nextCursor`。不透明な文字列 |
+| `limit` | 1 to 200, default 50 |
+| `cursor` | The previous response's `nextCursor`. An opaque string |
 
-応答:
+Response:
 
-| 項目 | 型 | 意味 |
+| Field | Type | Meaning |
 | --- | --- | --- |
-| `scanId` | int64, 必須 | どの取り込みの一覧か。`Scan.id` と違えば、画面は読み直す |
-| `items` | `ScanIssue[]`, 必須 | 失敗を先に、同じ重さの中はファイル名、次にフォルダの順 |
-| `nextCursor` | string \| 省略 | 続きがあるときだけ |
+| `scanId` | int64, required | Which import the list belongs to. When it differs from `Scan.id`, the screen reloads |
+| `items` | `ScanIssue[]`, required | Failures first; within a severity, by file name, then by folder |
+| `nextCursor` | string \| omitted | Present only when there is more |
 
-所在がどの登録フォルダにも含まれない件は、返さず、`Scan.issues` の本数にも数えない。例は、
-取り込みの後にメディアフォルダを外した場合である。親 Issue の Edge Cases「対象から外れた動画は
-…問題にも数えない」に従う。
+An item whose location is not inside any registered folder is neither returned nor
+counted in `Scan.issues`, for example after a media folder is removed following
+the import. This follows the parent Issue's Edge Case that a video that left the
+target is not counted as an issue either.
 
-一度も走査していなければ 404 を返す（`GET /api/scans/current` と同じ）。`cursor` が不正なら 400 を
-返す。
+When no scan has ever run, the response is 404 (as for `GET /api/scans/current`).
+An invalid `cursor` returns 400.
 
-`ScanIssue` の形:
+The `ScanIssue` shape:
 
-| 項目 | 型 | 意味 |
+| Field | Type | Meaning |
 | --- | --- | --- |
-| `severity` | `failed` \| `substituted`, 必須 | まとめた件の重さ |
-| `kinds` | `ScanIssueKind[]`, 必須, 1件以上 | data-model.md §3 の種類。重い順 |
-| `fileName` | string, 必須 | |
-| `folder` | `VideoFolder`, 必須 | 所在の置かれたフォルダ。同じ名前のファイルを見分けるため |
-| `videoId` | int64 \| 省略 | 登録された動画なら、その id。画面は `/videos/{id}` へ移れる（要件 5） |
+| `severity` | `failed` \| `substituted`, required | The grouped item's severity |
+| `kinds` | `ScanIssueKind[]`, required, at least one | The kinds of data-model.md §3, most severe first |
+| `fileName` | string, required | |
+| `folder` | `VideoFolder`, required | The folder that holds the location, to tell files with the same name apart |
+| `videoId` | int64 \| omitted | The video id, when registered. The screen can link to `/videos/{id}` (requirement 5) |
 
-影響の言葉（「一覧に追加できませんでした」など）と理由の言葉は、`kinds` から SPA が組み立てる
-（[R-10](../research.md#r-10-画面の言葉はサーバーが返す種類から-spa-が組み立てる)）。
+The SPA builds the impact wording (such as `一覧に追加できませんでした`) and the
+reason wording from `kinds`
+([R-10](../research.md#r-10-the-spa-builds-screen-text-from-kinds-the-server-returns)).
 
 ## 4. `/api/events`
 
-- `scan` の event は §2 の `Scan` を運ぶ。今と同じく、送る時点で読み、接続ごとに合流し、
-  つながった直後に1回送る。
-- `scan` を送る契機は次のとおりである。
-  - 今の `domain.ScanChanged`
-  - `domain.ProcessingChanged`（仕事の成否で済みの本数が変わるため）
-  - 新しい `domain.ScanActivityChanged`
-- 問題の一覧は SSE では送らない。画面は `Scan.id` か `Scan.issues.revision` が変わったら、
-  §3 を読み直す。つながり直したあとも同じで、切れていた間に増えた問題が反映される。
-- `video` の event は変えない。
+- The `scan` event carries the §2 `Scan`. As today, it is read at send time,
+  coalesced per connection, and sent once right after connecting.
+- `scan` is sent on:
+  - today's `domain.ScanChanged`
+  - `domain.ProcessingChanged` (a job outcome changes the settled count)
+  - the new `domain.ScanActivityChanged`
+- The issue list is not sent over SSE. The screen reloads §3 when `Scan.id` or
+  `Scan.issues.revision` changes. The same applies after reconnecting, so issues
+  added while disconnected appear.
+- The `video` event does not change.

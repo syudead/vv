@@ -20,7 +20,8 @@ stage that creates the feature branch.
    create a `spec.md`.
 5. Run the plan's checks and reconcile it against the parent Issue and the
    contracts it supersedes.
-6. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
+6. Push and open a feature-branch PR with `Refs #<parent>`, with the body in
+   [stage-pr-body.md](stage-pr-body.md). Stop.
 7. After human merge, the next run continues with `design` for a `ui` Issue
    or `plan-to-issues` otherwise. The feature-to-`main` integration PR is
    opened by `integrate`, after every child is done. The parent Issue body is

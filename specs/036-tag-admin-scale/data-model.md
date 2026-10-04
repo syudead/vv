@@ -1,148 +1,211 @@
-# Data model: タグ管理画面のページ読み・まとめての操作と画面の側の状態
+# Data model: Paged tag list, bulk tag actions and screen state
 
-親 Issue: #651。
+Parent Issue: #651. The rest of the model is unchanged. Sources of truth:
 
-既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、タグの表と名前の
-規則・書き換えの規則は [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、仮のタグと
-却下した名前は [specs/031-tentative-tags/data-model.md](../031-tentative-tags/data-model.md) にある。
-ここには `domain` に足す値、保存層に足す・変える操作、画面の側で持つ状態の規則だけを書く。書いていない
-操作（1 件の作成・改名・削除・確定・却下・シノニム、付け外し、本数）は変えない。
+| Topic | Source |
+| --- | --- |
+| Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
+| Tag tables, name rules and write rules | [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md) |
+| Tentative tags and rejected names | [specs/031-tentative-tags/data-model.md](../031-tentative-tags/data-model.md) |
 
-§1〜§3 のまとめての操作（`BatchTags`・`MergeTags`・`TagImpact`）は feature branch に merge 済みで、
-親 Issue の改訂で変わらない。§0 の移行、§1 のページの値、§2 の `ListTags`・`ListRejectedTagNames`・
-鍵の書き、§4 は改訂で足した・書き直した部分である。
+This file covers only the values added to `domain`, the store operations added or changed, and the rules of
+the screen's state. Operations not named here (single create, rename, delete, confirm, reject, synonyms,
+adding and removing tags on videos, video counts) do not change.
 
-## 0. マイグレーション
+The bulk operations of §1 to §3 (`BatchTags`, `MergeTags`, `TagImpact`) are merged into the feature branch
+and unchanged by the revision of the parent Issue. The migration of §0, the page values of §1, `ListTags`,
+`ListRejectedTagNames` and the key writes of §2, and §4 were added or rewritten by the revision.
 
-1 つ足す（`00030_tag_sort_keys.sql`。[research.md R-10](research.md#r-10-名前の自然順の鍵-sort_key-を-tag_names-と-rejected_tag_names-に持ち起動時の鍵の埋め直しで作る)）。
-表の意味も既存の列も変えない。
+## 0. Migration
 
-| 表 | 足す列 | 規則 |
+One migration, `00030_tag_sort_keys.sql`
+([research.md R-10](research.md#r-10-a-natural-order-name-key-sort_key-on-tag_names-and-rejected_tag_names-filled-by-the-startup-key-refresh)).
+Table meanings and existing columns do not change.
+
+| Table | Added columns | Rule |
 | --- | --- | --- |
-| `tag_names` | `sort_key text not null default ''` | `domain.NaturalSortKey(name)`。名前の行を書く操作（作成・シノニム登録・付与での作成・改名）が `search_key` と同じ取引で書く。統合で `tag_id` を付け替えても変わらない |
-| `rejected_tag_names` | `sort_key text not null default ''`、`search_version integer not null default 0` | `domain.NaturalSortKey(name)`。却下が書く。`search_version` は `tag_names.search_version` と同じ意味（`domain.SearchKeyVersion`） |
+| `tag_names` | `sort_key text not null default ''` | `domain.NaturalSortKey(name)`, written with `search_key` in the same transaction by every operation that writes a name row (create, synonym, create on assignment, rename); a merge that moves `tag_id` leaves it unchanged |
+| `rejected_tag_names` | `sort_key text not null default ''`, `search_version integer not null default 0` | `sort_key` is `domain.NaturalSortKey(name)`, written by reject; `search_version` means the same as `tag_names.search_version` (`domain.SearchKeyVersion`) |
 
-移行は `update tag_names set search_version = 0` を行い、既存の行の `sort_key` は起動時の
-`TagStore.RefreshSearchKeys` が `search_key` と一緒に埋める（§2）。`rejected_tag_names` の既存の行は
-`search_version` の既定が 0 なので同じ埋め直しに入る。鍵は作り直せる派生の値で、`SearchKeyVersion` を
-上げたときも同じ仕組みで作り直される。
+The migration runs `update tag_names set search_version = 0`, and `TagStore.RefreshSearchKeys` at startup
+fills `sort_key` of existing rows together with `search_key` (§2). Existing `rejected_tag_names` rows default
+to `search_version` 0, so the same refresh picks them up. The key is a rebuildable derived value, rebuilt by
+the same mechanism when `SearchKeyVersion` is raised.
 
-名前の自然順の定義: `sort_key` のバイト順、同じなら `tags.id`（却下した名前では `name` のバイト順）。
-`NaturalSortKey` は照合形（`FoldForMatch`）に掛けるので、全角・半角・かなが同じ名前は同順位になり、
-`id` で決着する（R-10「名前の順の定義が変わる点」）。
+**Natural name order**: the byte order of `sort_key`, then `tags.id` (for rejected names, the byte order of
+`name`). `NaturalSortKey` works on the matching form (`FoldForMatch`), so names equal after folding
+full-width, half-width and kana tie and are ordered by `id` (R-10, "Change in the name order").
 
-## 1. `domain` に足す値
+## 1. Values added to `domain`
 
-merge 済み（まとめての操作）:
+Merged (bulk operations):
 
-| 値 | 中身 |
+| Value | Contents |
 | --- | --- |
-| `Tag.CreatedAt time.Time` | `tags.created_at`（Unix 秒）。`Tag` を返す操作はすべて載せる。API では `Tag.createdAt`（[research.md R-8](research.md#r-8-作った日は-tagscreated_at-を-tagcreatedat-として載せ同じ秒のタグは名前の順にする)） |
-| `TagBatchAction` | `TagBatchConfirm`・`TagBatchReject`・`TagBatchDelete` の 3 値。`Valid()` を持つ |
-| `TagBatchOutcome{AppliedIDs, NotFoundIDs, NotApplicableIDs []int64}` | まとめての操作の結果。どの配列も `ids` に現れた順で、空なら空の配列（`nil` にしない） |
-| `TagMergeOutcome{Tag Tag, NotFoundIDs []int64}` | 統合の結果。`Tag` は統合後の統合先 |
-| `TagImpactAction` | `TagImpactReject`・`TagImpactDelete`・`TagImpactMerge` の 3 値。確認をとる操作（要件 11）で、`Valid()` を持つ |
-| `TagImpact{TagCount, VideoCount int}` | 確認に出す数。`TagCount` は `ids` のうち今あり、その操作が働くタグの数（`TagImpactApplies`）、`VideoCount` はそのどれかが付いた動画の本数（重複なし） |
-| `MaxTagBatch = 20000` | `ids`・`sourceIds` の上限。`MaxVideoTagsSelection` と同じ理由（[R-4](research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かない無いタグは数えて飛ばす)） |
+| `Tag.CreatedAt time.Time` | `tags.created_at` (Unix seconds); set by every operation that returns a `Tag`; `Tag.createdAt` in the API ([research.md R-8](research.md#r-8-date-created-is-tagscreated_at-exposed-as-tagcreatedat-tags-created-in-the-same-second-sort-by-name)) |
+| `TagBatchAction` | Three values, `TagBatchConfirm`, `TagBatchReject`, `TagBatchDelete`, with `Valid()` |
+| `TagBatchOutcome{AppliedIDs, NotFoundIDs, NotApplicableIDs []int64}` | Result of a bulk operation; each array keeps the order of `ids` and is empty, not `nil`, when it has no ids |
+| `TagMergeOutcome{Tag Tag, NotFoundIDs []int64}` | Result of a merge; `Tag` is the target after the merge |
+| `TagImpactAction` | Three values, `TagImpactReject`, `TagImpactDelete`, `TagImpactMerge` (the actions that ask for confirmation, requirement 11), with `Valid()` |
+| `TagImpact{TagCount, VideoCount int}` | The counts the confirmation shows: `TagCount` is the existing `ids` the action works on (`TagImpactApplies`); `VideoCount` is the videos carrying any of them, without duplicates |
+| `MaxTagBatch = 20000` | Limit of `ids` and `sourceIds`, for the same reason as `MaxVideoTagsSelection` ([R-4](research.md#r-4-bulk-confirm-reject-and-delete-use-one-post-apitagsbatch-transaction-that-skips-and-counts-misses)) |
 
-「働く種類」の規則は純関数 `TagBatchApplies(action TagBatchAction, tentative bool) bool`: `confirm`・`reject` は
-`tentative` が真のとき、`delete` は偽のとき真。画面の 1 行ずつの規則（[031 の ui-design.md「Row」](../031-tentative-tags/ui-design.md#row)）と
-同じで、要件 8 の「今の 1 行ずつの操作の規則は変えない」をサーバーの側でも守る。確認の数の規則は
-`TagImpactApplies(action TagImpactAction, tentative bool) bool`: `reject`・`delete` は `TagBatchApplies` の同じ
-名前の操作と同じ値、`merge` は種類によらず真。
+The kinds an action works on are the pure function `TagBatchApplies(action TagBatchAction, tentative bool)
+bool`:
 
-改訂で足す（ページ読み。[R-1](research.md#r-1-一覧はサーバーのページで受け検索絞り込み並び順はサーバーが全部のタグに掛ける)）:
-
-| 値 | 中身 |
+| Action | True when |
 | --- | --- |
-| `TagSort` | `TagSortName`（既定）・`TagSortCountDesc`・`TagSortCountAsc`・`TagSortCreatedDesc`・`TagSortCreatedAsc`。API の `TagSort` と同じ文字列（`name`・`countDesc`・`countAsc`・`createdDesc`・`createdAsc`）。`Valid()` を持つ |
-| `TagListQuery{Search string; TentativeOnly, UnusedOnly bool; Sort TagSort; Cursor string; Limit int}` | 一覧の条件。`Search` は呼び手が受けた生の文字列で、店が `FoldForMatch` を掛けて前後の空白を落とす（空なら絞らない）。`Limit` が 0 なら全件（カーソルは無視し、`NextCursor` は空）。`Sort` が空なら `TagSortName` |
-| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string}` | 1 ページ。`Total` は条件（検索・絞り込み）に合うタグの数、`TotalAll` は全部のタグの数。`NextCursor` は続きが無ければ空 |
-| `RejectedTagNamePage{Items []string; Total int; NextCursor string}` | 却下した名前の 1 ページ |
-| `MaxTagPageLimit = 200` | `limit` の上限。`GET /api/library` と同じ |
+| `confirm`, `reject` | `tentative` is true |
+| `delete` | `tentative` is false |
 
-`ErrInvalidCursor` は 013 のものを使う（別の並び順で作ったカーソル、解釈できないカーソル）。
+This is the per-row rule of the screen
+([031 ui-design.md "Row"](../031-tentative-tags/ui-design.md#row)), so the server also keeps requirement 8,
+"the existing per-row rules do not change". The confirmation count uses
+`TagImpactApplies(action TagImpactAction, tentative bool) bool`: `reject` and `delete` return what
+`TagBatchApplies` returns for the action of the same name, and `merge` is true for either kind.
 
-## 2. 保存層の操作
+Added by the revision (paging,
+[R-1](research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag)):
 
-`TagStore` に足す・変える。すべて共有する SQLite 接続だけを使い、ドメインイベントは発行しない（タグの
-変更は副作用を持たない。ARCHITECTURE.md の `TagStore` の段落のまま）。`ids` は `json_each` に 1 つの
-引数で渡す（`external_video_tags.go` と同じ）。
-
-merge 済み（まとめての操作）:
-
-| 操作 | 1 つの取引で行うこと |
+| Value | Contents |
 | --- | --- |
-| `BatchTags(ctx, action, ids) (TagBatchOutcome, error)` | `ids` の重複を除き、`tags` を結んで今あるものと `tentative` を読む。無い id は `NotFoundIDs`、`TagBatchApplies` が偽の id は `NotApplicableIDs`。残りに対して: `confirm` は `update tags set tentative = 0`、`reject` は各タグの元の名前を `rejected_tag_names` に `insert or ignore` してから `delete from tags`、`delete` は `delete from tags`。`AppliedIDs` はその id |
-| `MergeTags(ctx, targetID, sourceIDs) (TagMergeOutcome, error)` | 統合先が無ければ `ErrTagNotFound`。`sourceIDs` の重複を除き、無い id は `NotFoundIDs`。残り（統合先の id は除く）を `mergeTagsInto`（統合元の数によらない文の数で付与の写し・名前の移動・統合元の削除を行う）に渡し、そのあと `tagByID` で統合先を 1 回だけ読む |
-| `TagImpact(ctx, action, ids) (TagImpact, error)` | `ids` の重複を除き、今あるものと `tentative` を読み、`TagImpactApplies` が真の id だけを残す。`TagCount` はその数。`VideoCount` は `taggedVideosSQL` に残した id の条件を付け、`video_id` を `distinct` に数える |
+| `TagSort` | `TagSortName` (default), `TagSortCountDesc`, `TagSortCountAsc`, `TagSortCreatedDesc`, `TagSortCreatedAsc`; the same strings as the API's `TagSort` (`name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc`), with `Valid()` |
+| `TagListQuery{Search string; TentativeOnly, UnusedOnly bool; Sort TagSort; Cursor string; Limit int}` | List conditions. `Search` is the raw string from the caller; the store folds it with `FoldForMatch` and trims it (empty means no search). `Limit` 0 means every tag (the cursor is ignored and `NextCursor` is empty). An empty `Sort` means `TagSortName` |
+| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string}` | One page. `Total` counts tags matching the conditions (search and filters); `TotalAll` counts all tags; `NextCursor` is empty when there is no next page |
+| `RejectedTagNamePage{Items []string; Total int; NextCursor string}` | One page of rejected names |
+| `MaxTagPageLimit = 200` | Upper limit of `limit`, as in `GET /api/library` |
 
-改訂で変える・足す:
+`ErrInvalidCursor` is the one from 013 (a cursor made under another sort, or one that cannot be parsed).
 
-| 操作 | 行うこと |
+## 2. Store operations
+
+Added to or changed on `TagStore`. Every operation uses only the shared SQLite connection and publishes no
+domain event (tag changes have no side effects; the `TagStore` paragraph of ARCHITECTURE.md is unchanged).
+`ids` go to `json_each` as one argument (as in `external_video_tags.go`).
+
+Merged (bulk operations):
+
+| Operation | What one transaction does |
 | --- | --- |
-| `ListTags(ctx, query TagListQuery) (TagPage, error)` | 今の `ListTags(ctx)` を置き換える。1 つの問い合わせで、本数を `taggedVideosSQL("")` の集計（CTE）から全タグに付け、条件（`Search` → `exists (select 1 from tag_names tn where tn.tag_id = t.id and instr(tn.search_key, ?) > 0)`、`TentativeOnly` → `t.tentative = 1`、`UnusedOnly` → 本数が 0）を掛け、並び順（下の表）とカーソルの条件を付けて `Limit + 1` 件読む。`Limit + 1` 件目があれば `Limit` 件目から `NextCursor` を作る。ページのタグのシノニムは `tag_id in (json_each)` で 1 回読む。`Total` は同じ条件の `count(*)`、`TotalAll` は `tags` の `count(*)`。`Limit` が 0 なら条件と並び順だけを掛けて全件を返す（外部連携 API の `listTags` と候補の全件は `TagListQuery{}` で呼ぶ） |
-| `ListRejectedTagNames(ctx, cursor string, limit int) (RejectedTagNamePage, error)` | 今の全件を返す形を置き換える。`sort_key, name` の順で `limit + 1` 件読み、`Total` は `count(*)`。カーソルは `sort_key` と `name` を包む |
-| `RefreshSearchKeys(ctx) (int, error)` | `tag_names` の `search_version` が現在の版より小さい行の `search_key` と `sort_key` を書き直し、`rejected_tag_names` の同じ条件の行の `sort_key` を書き直す。戻り値は書き直した行の数（両方の合計） |
-| 名前の行を書く操作（`insertTagName` を通る作成・シノニム登録・付与での作成・改名、`RejectTag`・`BatchTags(reject)` の `rejected_tag_names` への挿入） | `sort_key = domain.NaturalSortKey(name)` を同じ文で書く |
+| `BatchTags(ctx, action, ids) (TagBatchOutcome, error)` | Deduplicates `ids` and joins `tags` to read which exist and their `tentative`. Missing ids go to `NotFoundIDs`, ids where `TagBatchApplies` is false to `NotApplicableIDs`. For the rest: `confirm` runs `update tags set tentative = 0`; `reject` runs `insert or ignore` of each tag's primary name into `rejected_tag_names`, then `delete from tags`; `delete` runs `delete from tags`. Those ids are `AppliedIDs` |
+| `MergeTags(ctx, targetID, sourceIDs) (TagMergeOutcome, error)` | `ErrTagNotFound` when the target is missing. Deduplicates `sourceIDs`; missing ids go to `NotFoundIDs`. The rest (minus the target's id) go to `mergeTagsInto`, which copies assignments, moves names and deletes sources in a statement count independent of the number of sources; then `tagByID` reads the target once |
+| `TagImpact(ctx, action, ids) (TagImpact, error)` | Deduplicates `ids`, reads which exist and their `tentative`, and keeps only ids where `TagImpactApplies` is true. `TagCount` is their number. `VideoCount` adds the kept ids as a condition to `taggedVideosSQL` and counts `distinct video_id` |
 
-並び順と keyset の条件（`listOrder` の `orderBy`・`after` と同じ考え。値の向きと名前の向きが違うので、
-行値の比較 1 つではなく展開した形で書く）:
+Changed or added by the revision:
 
-| `TagSort` | `order by` | カーソルが包むもの | 「カーソルより後」の条件 |
+| Operation | What it does |
+| --- | --- |
+| `ListTags(ctx, query TagListQuery) (TagPage, error)` | Replaces `ListTags(ctx)`. One query attaches counts to every tag from the `taggedVideosSQL("")` aggregation (a CTE), applies the conditions, the sort (table below) and the cursor condition, and reads `Limit + 1` rows; when row `Limit + 1` exists, `NextCursor` is built from row `Limit`. Synonyms of the page's tags are read once with `tag_id in (json_each)`. `Total` is `count(*)` under the same conditions; `TotalAll` is `count(*)` of `tags`. With `Limit` 0, only the conditions and the sort apply and every tag is returned (the external API's `listTags` and the full candidate list call it with `TagListQuery{}`) |
+| `ListRejectedTagNames(ctx, cursor string, limit int) (RejectedTagNamePage, error)` | Replaces the full-list form. Reads `limit + 1` rows ordered by `sort_key, name`; `Total` is `count(*)`. The cursor wraps `sort_key` and `name` |
+| `RefreshSearchKeys(ctx) (int, error)` | Rewrites `search_key` and `sort_key` of `tag_names` rows whose `search_version` is below the current version, and `sort_key` of `rejected_tag_names` rows under the same condition. Returns the number of rows rewritten (both tables together) |
+| Operations that write a name row (create, synonym, create on assignment and rename through `insertTagName`; the `rejected_tag_names` insert of `RejectTag` and `BatchTags(reject)`) | Write `sort_key = domain.NaturalSortKey(name)` in the same statement |
+
+The conditions of `ListTags`:
+
+| Condition | SQL |
+| --- | --- |
+| `Search` | `exists (select 1 from tag_names tn where tn.tag_id = t.id and instr(tn.search_key, ?) > 0)` |
+| `TentativeOnly` | `t.tentative = 1` |
+| `UnusedOnly` | The video count is 0 |
+
+Sort orders and keyset conditions follow the same idea as `orderBy` and `after` of `listOrder`. The value and
+the name can run in opposite directions, so the condition is expanded rather than one row-value comparison:
+
+| `TagSort` | `order by` | Cursor wraps | "After the cursor" condition |
 | --- | --- | --- | --- |
 | `name` | `tn.sort_key asc, t.id asc` | `sort_key`, `id` | `(tn.sort_key, t.id) > (?, ?)` |
-| `countDesc` / `countAsc` | `video_count desc/asc, tn.sort_key asc, t.id asc` | `video_count`, `sort_key`, `id` | `video_count < ?`（asc は `>`）`or (video_count = ? and (tn.sort_key, t.id) > (?, ?))` |
-| `createdDesc` / `createdAsc` | `t.created_at desc/asc, tn.sort_key asc, t.id asc` | `created_at`, `sort_key`, `id` | 本数と同じ形 |
+| `countDesc` / `countAsc` | `video_count desc/asc, tn.sort_key asc, t.id asc` | `video_count`, `sort_key`, `id` | `video_count < ?` (`>` for asc) `or (video_count = ? and (tn.sort_key, t.id) > (?, ?))` |
+| `createdDesc` / `createdAsc` | `t.created_at desc/asc, tn.sort_key asc, t.id asc` | `created_at`, `sort_key`, `id` | Same shape as the count sorts |
 
-カーソルは並び順の名前・値・`sort_key`・`id` を包んだ不透明な文字列で、別の並び順のカーソルや
-解釈できないものは `ErrInvalidCursor`（`listing.go` の `encodeCursor`・`decodeCursor` と同じ形。
-共有できる部分は共有する）。
+The cursor is an opaque string wrapping the sort name, the value, `sort_key` and `id`. A cursor from another
+sort, or one that cannot be parsed, returns `ErrInvalidCursor` (the same shape as `encodeCursor` and
+`decodeCursor` in `listing.go`, sharing what can be shared).
 
-不変条件（[031 の data-model.md §1](../031-tentative-tags/data-model.md#1-マイグレーション) の 2 つ）に、
-「`tag_names` と `rejected_tag_names` の `search_version` が現在の版の行は、`sort_key` が
-`NaturalSortKey(name)` と一致する」を足し、`invariants_test.go` の検査に入れる。
+The two invariants of [031 data-model.md §1](../031-tentative-tags/data-model.md#1-migration) gain a third,
+checked in `invariants_test.go`:
 
-`internal/httpapi` が宣言する `Tags` の interface（`router.go`）の `ListTags`・`ListRejectedTagNames` の
-署名が変わる。配線は `cmd/mdm`（変更なし）。
-
-## 3. 書き換えの規則の対応
-
-014 §4・031 §3 の表に新しい種類の書き換えは無い。まとめての操作は、1 件の操作を同じ取引の中で
-複数回行ったものと同じ結果になる（merge 済み）。
-
-| まとめての操作 | 1 件の操作との関係 |
+| Rule | Enforced in |
 | --- | --- |
-| 確定 | `ConfirmTag` を各 id に行ったのと同じ。既に確定したタグは飛ばして数える（1 件では何も変えずに 200 を返す点が違う） |
-| 却下 | `RejectTag` を各 id に行ったのと同じ。確定したタグは飛ばして数える（1 件では `409 tag_not_tentative`） |
-| 削除 | `DeleteTag` を各 id に行ったのと同じ。仮のタグは飛ばして数える（1 件の経路は仮のタグも消すが、画面は仮の行に削除を出さない。031 §3） |
-| 統合 | 1 件の統合を各統合元に順に行ったのと同じ結果を、`mergeTagsInto` が統合元の数によらない文の数で作る。統合先は 1 回で確定になる |
+| A `tag_names` or `rejected_tag_names` row at the current `search_version` has `sort_key` equal to `NaturalSortKey(name)` | `internal/store/invariants_test.go` |
 
-`sort_key` は名前の行と一緒に書かれ、名前の行が消えれば消える。書き換えの規則に影響しない。
+The signatures of `ListTags` and `ListRejectedTagNames` in the `Tags` interface declared by `internal/httpapi`
+(`router.go`) change. The wiring in `cmd/mdm` does not change.
 
-## 4. 画面の側で持つ状態
+## 3. Write rules
 
-タグ管理画面（`web/src/tags/TagsPage.tsx`）が持つ状態と、その規則。条件（検索語・絞り込み・並び順）と
-タブは URL のクエリに載せ（`web/src/tags/tagListUrl.ts`、[ui-design.md「URL state」](ui-design.md#url-state)）、
-`localStorage` には並び順だけを残す（[R-7](research.md#r-7-並び順はこの画面の端末の設定として-localstorage-に持ち絞り込みは今までどおり画面の状態に留める) の追記）。
-画面は共有の保持（`web/src/api/tags.ts` の `getTags`・`subscribeTags`）を使わない（[R-1](research.md#r-1-一覧はサーバーのページで受け検索絞り込み並び順はサーバーが全部のタグに掛ける)）。
+The tables of 014 §4 and 031 §3 gain no new kind of write. A bulk operation gives the same result as running
+the single operation several times in one transaction (merged).
 
-| 状態 | 規則 |
+| Bulk operation | Relation to the single operation |
 | --- | --- |
-| 条件 `query` | 検索語、「Tentative only」、「Unused only」、並び順 `TagSort`（URL の `sort`。無ければ `tagListPreferences.ts` に保存した値、読めない・壊れているときは `name`）。どれかが変わると: 進行中の要求を打ち切り、世代の番号を進め、選択を空にし、先頭のページを要求する（Edge Case「選んでいる間に…」「続きを読んでいる最中に…」）。届くまで前の行は残す（空の一瞬を作らない） |
-| ページ `rows` | 読み込んだ行（`Tag[]`）、`total`、`totalAll`、`nextCursor`、続きの読み込み中か、続きの失敗。続きは末尾に `id` の重複を捨てて足す（[R-11](research.md#r-11-続きは画面の末尾に近づいたら-100-件ずつ読みid-で重複を捨て件数が食い違えば知らせて取り直させる)）。1 ページは 100 件 |
-| 続きを読むきっかけ | 仮想化が描く最後の行の位置が `rows.length - overscan` 以上で、`nextCursor` があり、続きを読んでいなければ 1 回要求する。失敗したら読み込んだ行を残し、末尾の失敗の行の「Retry」が同じカーソルで読み直す（Edge Case「続きの読み込みに失敗したとき」） |
-| 食い違い `inconsistent` | 続きの応答の `totalAll` が画面の値と違うとき真。行は残し、続きは止め、「一覧が変わった」の 1 行と「取り直す」を出す。取り直しは先頭から読み直して選択を空にする（Edge Case「続きを読むあいだに別のタブで…」） |
-| 読み込み失敗 | 先頭のページの失敗: 一覧を持っていなければ今の失敗の表示と「Retry」、持っていればその一覧を残して理由を控える（Edge Case「一覧の読み込みに失敗したとき」） |
-| 見えている行 `visibleRows` | `rows` そのまま。改名中の行が `rows` に無ければ（条件を変えて先頭から読み直したとき）`sort` の位置に差し込んで残す（Edge Case「改名中の行」）。差し込む位置は `naturalSortKey` と並び順の値で決める（[R-12](research.md#r-12-操作のあとの反映は読み込んだ行の中で行い並びの位置は-naturalsortkey-の移植で決める)） |
-| 見出しの件数 | 検索・絞り込みのどちらかが効いているときは「〈`total`〉 of 〈`totalAll`〉」（受け入れ条件 8）、効いていなければ「〈`totalAll`〉」。読み込んだ数は出さない。差し込んだ改名中の行は数えない。先頭のページが届く前は読み込み中 |
-| タブ | 「Tags」か「Rejected names」（URL の `tab`）。切り替えると選択・作成・改名を閉じる。「Rejected names」の間は一覧の続きを読まない |
-| 選択 `Set<number>` | `rows` の id の部分集合。`rows` から消えた id、改名中の行の id を外す。「読み込んだものをすべて選ぶ」は `rows` の id 全部（要件 10。読み込んでいないタグは選ばれない）。上限は送る id の数に掛ける（[R-4](research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かない無いタグは数えて飛ばす)）: `rows.length` が `maxTagBatch` を超えると先頭のチェック（読み込んだものをすべて選ぶ）だけを disabled にし、まとめての操作は選択の数が `maxTagBatch` を超えるときだけ disabled にする（1 行ずつ選んだ選択は、何行読み込んでいても操作できる。要件 8・9） |
-| 操作のあとの反映 | 1 件の操作とまとめての操作のどちらも `rows` の中で行う（R-12）: 確定は `tentative: false` に差し替え（「Tentative only」が効いていれば取り除く）、却下・削除・統合元は取り除き `total`・`totalAll` を減らす、統合先は応答の `tag` で書き換える（`rows` にあれば差し替えて位置を直し、無ければ（統合の窓がサーバーから引いた読み込んでいないタグ）位置に差し込む。統合の前の `Tag`（行か窓の候補）と応答の `tag` をそれぞれ今の条件に照らし、合っていたのに合わなくなれば取り除いて `total` を減らし、合っていなかったのに合うようになれば `total` を増やす。統合元の名前がシノニムに移るので検索語に合うようになりうる）、改名は名前を差し替えて位置を直し、今の条件に合わなくなれば取り除く、作成は条件に合えば位置に差し込み `total`・`totalAll` を増やす（合わなければ `totalAll` だけ増やす）。条件に合うかは `foldForMatch` の部分一致・`tentative`・`videoCount === 0` で決める（R-3）。位置を直す・差し込むは `naturalSortKey` と並び順の値で決めた位置に置くが、その位置が読み込んだ範囲の外（最後の行より後ろで `nextCursor` がある）なら `rows` に入れない（入っていれば取り除く）。続きのカーソルは最後の行の鍵なので、その後ろの行は続きのページが返し、前に動いた行（`countDesc` で本数が増えた統合先など）は返さないため、前に動いた行は画面が置かなければ一覧から抜ける（R-12）。`notFoundIds` が空でなければ先頭から取り直す。失敗したら何も変えず、選択は残る |
-| 描く行 | `visibleRows` のうち仮想化が表示域と前後に入ると決めた行と、フォーカスを持つ行・改名中の行（[R-2](research.md#r-2-行の仮想化は-tanstackreact-virtual-の-usewindowvirtualizer-で行う)、merge 済み） |
-| 却下した名前 | 先頭の 1 ページ（`items`・`total`・`nextCursor`）を画面を開いたときと 031 のきっかけで取り直す。「Rejected names」のタブで並びの末尾までスクロールしたら続きを足す。「Allow again」で外した名前は局所で取り除き `total` を減らす（[R-13](research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)） |
-| 統合の窓の候補 | 入力の照合形で `GET /api/tags?q=…&limit=…` を呼んで候補にする。行から開いたときは統合元を除き、選んだ中から開いたとき（`fromSelection`）は選んだタグも候補に残す（選んだ中から統合先を選ぶと統合元から外す。要件 9・Edge Case、merge 済みの形）。入力が変わったら進行中の要求を打ち切る（[R-14](research.md#r-14-統合の窓の統合先の候補は-get-apitagsqlimit-で引く)） |
+| Confirm | Same as `ConfirmTag` on each id; an already confirmed tag is skipped and counted (the single route changes nothing and returns 200) |
+| Reject | Same as `RejectTag` on each id; a confirmed tag is skipped and counted (the single route returns `409 tag_not_tentative`) |
+| Delete | Same as `DeleteTag` on each id; a tentative tag is skipped and counted (the single route also deletes tentative tags, but the screen shows no delete on a tentative row, 031 §3) |
+| Merge | `mergeTagsInto` produces the result of merging each source in turn, in a statement count independent of the number of sources; the target is confirmed once |
 
-共有の保持（`web/src/api/tags.ts`）は候補・絞り込みの確かめのために残る。1 件とまとめての操作の関数が
-成功のあとに呼ぶ `afterTagChanged` は、購読者がいれば今までどおり取り直し、いなければ `held` を捨てる
-（R-12）。動画一覧の控え（`clearListSnapshot`）の扱いは変えない。
+`sort_key` is written with its name row and removed with it, so it does not affect the write rules.
+
+## 4. Screen state
+
+The state the tag management screen (`web/src/tags/TagsPage.tsx`) holds, and its rules. The conditions
+(search term, filters, sort) and the tab go into the URL query (`web/src/tags/tagListUrl.ts`,
+[ui-design.md "URL state"](ui-design.md#url-state)); `localStorage` keeps only the sort order (the addendum
+of
+[R-7](research.md#r-7-the-sort-order-is-a-per-device-preference-in-localstorage-filters-stay-in-screen-state)).
+The screen does not use the shared cache (`getTags` and `subscribeTags` in `web/src/api/tags.ts`,
+[R-1](research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag)).
+
+The diagram below shows the list's loading states and what each condition change, page and action does.
+
+```mermaid
+stateDiagram-v2
+    [*] --> LoadingFirst
+    LoadingFirst --> Ready: first page arrives
+    LoadingFirst --> LoadFailed: first page fails
+    Ready --> LoadingMore: last rendered row near end
+    LoadingMore --> Ready: page appended
+    LoadingMore --> MoreFailed: next page fails
+    MoreFailed --> LoadingMore: Retry
+    LoadingMore --> ListChanged: totalAll differs
+    ListChanged --> LoadingFirst: Reload
+    Ready --> LoadingFirst: conditions change
+    LoadingMore --> LoadingFirst: conditions change
+```
+
+| State | Rule |
+| --- | --- |
+| Conditions `query` | Search term, `Tentative only`, `Unused only`, and sort `TagSort` (URL `sort`; without it, the value saved by `tagListPreferences.ts`; `name` when that is unreadable or broken). When any changes: abort the request in flight, advance the generation number, clear the selection, and request the first page (Edge Cases "while selecting…" and "while more rows load…"). The previous rows stay until it arrives (no empty flash) |
+| Page `rows` | Loaded rows (`Tag[]`), `total`, `totalAll`, `nextCursor`, whether more rows are loading, and the next-page failure. More rows are appended with duplicates dropped by `id` ([R-11](research.md#r-11-more-rows-load-100-at-a-time-near-the-end-duplicates-are-dropped-by-id-and-a-count-mismatch-asks-for-a-reload)). A page is 100 tags |
+| Load-more trigger | Requests once when the virtualizer's last rendered row is at or past `rows.length - overscan`, `nextCursor` exists and nothing is loading. On failure the loaded rows stay, and `Retry` on the failure row at the end retries the same cursor (Edge Case "loading more fails") |
+| Mismatch `inconsistent` | True when `totalAll` in a next-page response differs from the screen's value. Rows stay, loading more stops, and the list-changed line with `Reload` appears; `Reload` loads from the first page and clears the selection (Edge Case "while more rows load, another tab…") |
+| Load failure | First page fails: with no list held, the existing failure display with `Retry`; with a list held, that list stays and the reason is noted (Edge Case "loading the list fails") |
+| Visible rows `visibleRows` | `rows` as is. A row being renamed that is not in `rows` (after the conditions changed and the first page reloaded) is inserted at its `sort` position and kept (Edge Case "row being renamed"). The position comes from `naturalSortKey` and the sort value ([R-12](research.md#r-12-actions-update-the-loaded-rows-in-place-positioned-with-a-port-of-naturalsortkey)) |
+| Heading count | `〈total〉 of 〈totalAll〉` when search or a filter is on (acceptance criterion 8), otherwise `〈totalAll〉`. The loaded count is not shown, and an inserted row being renamed is not counted. Loading until the first page arrives |
+| Tab | `Tags` or `Rejected names` (URL `tab`). Switching closes the selection, create and rename. While `Rejected names` is open, the tag list does not load more |
+| Selection `Set<number>` | A subset of the ids in `rows`; ids that leave `rows` and the id of a row being renamed are removed. Select all loaded selects every id in `rows` (requirement 10; tags not loaded are not selected). The limit counts the ids sent ([R-4](research.md#r-4-bulk-confirm-reject-and-delete-use-one-post-apitagsbatch-transaction-that-skips-and-counts-misses)): when `rows.length` exceeds `maxTagBatch`, only the header checkbox (select all loaded) is disabled; bulk actions are disabled only when the selection exceeds `maxTagBatch`, so a row-by-row selection works however many rows are loaded (requirements 8 and 9) |
+| Rows rendered | Rows of `visibleRows` the virtualizer places in or near the viewport, plus the focused row and the row being renamed ([R-2](research.md#r-2-rows-are-virtualized-with-usewindowvirtualizer-from-tanstackreact-virtual), merged) |
+| Rejected names | The first page (`items`, `total`, `nextCursor`), refetched when the screen opens and on the 031 triggers. Scrolling the `Rejected names` tab to the end appends more. A name removed with `Allow again` is removed locally and `total` drops ([R-13](research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll)) |
+| Merge dialog candidates | Candidates from `GET /api/tags?q=…&limit=…` with the folded input. Opened from a row, the sources are excluded; opened from the selection (`fromSelection`), the selected tags stay as candidates (choosing one as the target removes it from the sources; requirement 9 and the Edge Case, the merged form). A change of input aborts the request in flight ([R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit)) |
+
+After an action, single or bulk, the screen updates `rows` in place (R-12). On failure nothing changes and the
+selection stays. When `notFoundIds` is not empty, the list reloads from the first page.
+
+| Action | Change to `rows` and counts |
+| --- | --- |
+| Confirm | Set `tentative: false`; remove the row when `Tentative only` is on |
+| Reject, delete, merge source | Remove the row; decrease `total` and `totalAll` |
+| Merge target | Rewrite with the response's `tag`: replace and reposition when in `rows`, otherwise insert at its position (a tag not loaded, fetched by the merge dialog). Check both the pre-merge `Tag` (the row or the dialog candidate) and the response's `tag` against the current conditions: matched before but not after, remove and decrease `total`; not matched before but after, increase `total` (the source names become synonyms, so the target can start matching the search term) |
+| Rename | Replace the name and reposition; remove the row when it no longer meets the current conditions |
+| Create | Insert at its position and increase `total` and `totalAll` when it meets the conditions; otherwise increase only `totalAll` |
+
+Whether a row meets the conditions uses a `foldForMatch` substring match, `tentative` and `videoCount === 0`
+(R-3). Repositioning and inserting place the row at the position given by `naturalSortKey` and the sort
+value, but when that position is outside the loaded range (after the last row while `nextCursor` exists) the
+row is not put in `rows` (and is removed if it was there). The next-page cursor is the last row's key, so the
+next page returns rows after it but not rows that moved before it (such as a merge target whose count rose
+under `countDesc`); a row that moved forward goes missing unless the screen places it (R-12).
+
+The shared cache (`web/src/api/tags.ts`) stays for the candidates and the filter check. `afterTagChanged`,
+which the single and bulk action functions call after success, refetches as before when there are
+subscribers, and otherwise drops `held` (R-12). The handling of the video list snapshot
+(`clearListSnapshot`) does not change.

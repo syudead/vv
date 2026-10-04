@@ -1,914 +1,994 @@
-# UI Design: タグ管理画面を数千〜数万個のタグでも片付けられる形にする
+# UI design: Tag admin screen that stays manageable with thousands to tens of thousands of tags
 
-**Feature**: [parent Issue #651](https://github.com/syudead/vv/issues/651) ・
-[plan.md](plan.md) ・ [research.md](research.md)（R-1〜R-7・R-11〜R-14）・
-[data-model.md §4](data-model.md#4-画面の側で持つ状態) ・
-[contracts/screen-api.md](contracts/screen-api.md)（§5・§6）
+**Feature**: [parent Issue #651](https://github.com/syudead/vv/issues/651) ·
+[plan.md](plan.md) · [research.md](research.md) (R-1 to R-7, R-11 to R-14) ·
+[data-model.md §4](data-model.md#4-screen-state) ·
+[contracts/screen-api.md](contracts/screen-api.md) (§5, §6)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+The visual rules come from the following sources and are not decided again here.
 
-- 配色・操作状態・幅の出し分け・一覧の構成・選択バーの形:
-  [ライブラリ UI](../../docs/design-docs/library-ui.md)（§1・§3・§4・§6）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- タグ管理画面の骨格（本文の幅、行の列と書式、作成と改名、シノニムの窓、削除の窓、状態の表）:
-  [specs/014-video-tags/ui-design.md「Tag management page」](../014-video-tags/ui-design.md#tag-management-page)
-  と今の [`web/src/tags/`](../../web/src/tags/)
-- 仮の目印、「Tentative only」、行の「確定する」「却下する…」、却下の窓、却下した名前の**中身**
-  （説明・チップ・×・読み込み・取り直し・空）:
-  [specs/031-tentative-tags/ui-design.md「Tag management page」](../031-tentative-tags/ui-design.md#tag-management-page)
-- ライブラリのツールバーの並べ替え（メニューと向きの切り替え、`md` 未満の「表示と並び順」のまとめ）:
-  [specs/013-library-search/ui-design.md「Sort and direction」](../013-library-search/ui-design.md#sort-and-direction)、
-  [specs/033-video-dates/ui-design.md「Sort and direction」](../033-video-dates/ui-design.md#sort-and-direction)、
-  今の [`web/src/videoList/SortControls.tsx`](../../web/src/videoList/SortControls.tsx)・
-  [`FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx)・
-  [`web/src/library/LibraryToolbar.tsx`](../../web/src/library/LibraryToolbar.tsx)
-- ライブラリの選択（リスト表示のチェックの見せ方、選択バーの箱・段の折り返し・上限の扱い）:
-  [specs/014-video-tags/ui-design.md「Selection bar」](../014-video-tags/ui-design.md#selection-bar)、
-  今の [`web/src/library/SelectionBar.tsx`](../../web/src/library/SelectionBar.tsx)・
-  [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)（リスト表示の行）
-- ライブラリの続きの読み込み（読み込み中の `Skeleton`、続きの失敗の箱と「Retry」）:
-  [specs/013-library-search/ui-design.md](../013-library-search/ui-design.md)、
-  今の [`web/src/videoList/states.tsx`](../../web/src/videoList/states.tsx)（`LoadMoreFailed`）・
-  [`web/src/library/LibraryPage.tsx`](../../web/src/library/LibraryPage.tsx)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+| Topic | Source |
+| --- | --- |
+| Colours, interaction states, width breakpoints, list layout, selection bar shape | [Library UI](../../docs/design-docs/library-ui.md) (§1, §3, §4, §6) |
+| Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy values |
+| Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
+| Skeleton of the tag admin screen (body width, row columns and format, create and rename, synonyms dialog, delete dialog, states table) | [specs/014-video-tags/ui-design.md "Tag management page"](../014-video-tags/ui-design.md#tag-management-page) and the current [`web/src/tags/`](../../web/src/tags/) |
+| Tentative mark, "Tentative only", the row's "Confirm" and "Reject…", the reject dialog, the **content** of rejected names (description, chips, ×, loading, reload, empty) | [specs/031-tentative-tags/ui-design.md "Tag management page"](../031-tentative-tags/ui-design.md#tag-management-page) |
+| Library toolbar sort (menu and direction toggle, the combined view-and-sort control below `md`) | [specs/013-library-search/ui-design.md "Sort and direction"](../013-library-search/ui-design.md#sort-and-direction), [specs/033-video-dates/ui-design.md "Sort and direction"](../033-video-dates/ui-design.md#sort-and-direction), the current [`web/src/videoList/SortControls.tsx`](../../web/src/videoList/SortControls.tsx), [`FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx) and [`web/src/library/LibraryToolbar.tsx`](../../web/src/library/LibraryToolbar.tsx) |
+| Library selection (how list-view checkboxes appear; selection bar box, wrapping and limit) | [specs/014-video-tags/ui-design.md "Selection bar"](../014-video-tags/ui-design.md#selection-bar), the current [`web/src/library/SelectionBar.tsx`](../../web/src/library/SelectionBar.tsx) and [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) (list-view row) |
+| Library load-more (`Skeleton` while loading, the load-more failure box and "Retry") | [specs/013-library-search/ui-design.md](../013-library-search/ui-design.md), the current [`web/src/videoList/states.tsx`](../../web/src/videoList/states.tsx) (`LoadMoreFailed`) and [`web/src/library/LibraryPage.tsx`](../../web/src/library/LibraryPage.tsx) |
+| Where screen text lives and its format | [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md). The English here is a proposal showing intent; after implementation the catalog [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth |
 
-この feature が画面に足す・変えるのは、所有者だけのタグ管理画面（`/tags`）の次の 8 つである。
-1〜7 は feature branch に merge 済みで（子 Issue #678〜#687）、本書はそれらを改訂後の親 Issue と Plan
-に合わせて直している。8 とその影響（「読み込んだ行」を単位にする箇所）が、その改訂で足した部分
-である。
+This feature adds or changes eight things on the owner-only tag admin screen (`/tags`). Items 1 to 7 are merged
+into the feature branch (child Issues #678 to #687); this document aligns them with the revised parent Issue and
+Plan. Item 8 and what it affects (every place whose unit is "loaded rows") is what that revision added.
 
-そのあとの見た目のレビューで、本文の中に作った操作の行（独自の検索欄・2 つの押しボタン・並び順）と、
-件数・すべて選ぶ・却下した名前の入口を詰めた件数の行が、ライブラリの画面と揃わず浮いていると
-指摘された。本書はその直し（レビューで承認された「提案 1」）に合わせてある。振る舞いとサーバーの
-API は変えない（100 件ずつのページ、`q`・`tentative`・`unused`・`sort` はサーバー、「すべて選ぶ」は
-読み込んだ行だけ）。直したのは次の見た目の置き場で、下の各節がその形である。
+1. The headings, tabs and column header **stay** under the top bar while the list scrolls (requirement 13).
+2. A **sort** (name, video count, date created) and an **unused-only** filter (requirements 4 to 6).
+3. A **checkbox** on each row, and a selection bar shown **only while something is selected** that confirms,
+   rejects, deletes and merges in bulk (requirements 8 to 11).
+4. **Confirmation dialogs** for bulk reject, delete and merge (requirement 11), and a **merge dialog** with several
+   sources (requirements 9 and 14).
+5. **Rejected names** move to a tab under the heading and open in the page body (requirement 12).
+6. Row actions collapse into **a menu with text labels** on touch devices and narrow widths (`UI品質`: `行の操作`).
+7. The list draws only the visible rows (requirements 1 and 3). **The look does not change.**
+8. The list **loads from the server only what the view needs and loads more on scroll** (requirements 1 to 3
+   and 7). Search, filters and sort apply to every tag, loaded or not; the end of the list gains **loading more,
+   failure and list-changed** rows. The column header's select-all selects **loaded rows** (requirement 10).
+   The rejected names tab and the merge dialog's candidates also load only what they show (requirements 12 and 9).
 
-- 検索・絞り込み・並び順は、ライブラリと同じく**共通トップバー**に置く（「Top bar」）
-- 本文の先頭は**見出しの行**（「Tags」・件数・「New tag」）、その下に**タブ**「Tags | Rejected names」、
-  効いている**絞り込みのチップ**、**列の見出し**（「Band」）
-- 選んでいる間は見出しの行を**選択の行**に入れ替え、まとめての操作を本物のボタンで並べる（「Selection bar」）
-- 却下した名前は窓ではなく**タブ**の本文に並べる（「Rejected names tab」）
-- 統合の窓の候補は入力の下の**高さを決めた一覧**に並べる（「Merge dialog」）
-- 条件とタブは **URL** に載せる（「URL state」）
+A later visual review found that the controls row built inside the body (its own search field, two toggle
+buttons, the sort) and the count row (count, select all, the rejected names entry) did not match the library and
+looked out of place. This document follows the fix the review approved ("Proposal 1"). Behaviour and the server
+API do not change: pages of 100, `q`, `tentative`, `unused` and `sort` on the server, and select-all over loaded
+rows only. The fix moves these pieces:
 
-1. 見出し・タブ・列の見出しを、一覧をスクロールしても上部バーの下に**留める**（要件 13）
-2. **並び順**（名前・本数・作った日）と **0 本のタグだけ**の絞り込みを足す（要件 4〜6）
-3. 行に**チェック**を足し、**選んでいる間だけ**出る選択の行から、まとめて確定・却下・削除・統合する
-   （要件 8〜11）
-4. まとめての却下・削除・統合の**確認の窓**（要件 11）と、複数の統合元を持つ**統合の窓**（要件 9・14）
-5. **却下した名前**を見出しの下のタブに移し、本文で開く（要件 12）
-6. 行の操作を、タッチの端末と狭い幅では**文字を持つメニュー**にまとめる（UI品質「行の操作」）
-7. 一覧の行を見えている分だけ描く（要件 1・3）。**見た目は変えない**
-8. 一覧を、**表示に要る分だけサーバーから読み、スクロールで続きを読む**（要件 1〜3・7）。検索・
-   絞り込み・並び順は読み込んでいないタグも含めた全部に効き、一覧の末尾に**続きの読み込み中・
-   失敗・食い違い**の行が加わる。列の見出しの「すべて選ぶ」は**読み込んだ行**を選ぶ（要件 10）。
-   却下した名前のタブと統合の窓の候補も、表示に要る分だけ読む（要件 12・9）
+| Piece | Where it goes | Section |
+| --- | --- | --- |
+| Search, filters, sort | The **shared top bar**, as in the library | [Top bar](#top-bar) |
+| Top of the body | A **header row** ("Tags", count, "New tag"), the **tabs** "Tags \| Rejected names", the active **filter chips**, the **column header** | [Band](#band) |
+| Bulk actions | The header row is **replaced by the selection bar** with real buttons while something is selected | [Selection bar](#selection-bar) |
+| Rejected names | A **tab** in the body, not a dialog | [Rejected names tab](#rejected-names-tab) |
+| Merge candidates | A **fixed-height list** under the input | [Merge dialog](#merge-dialog) |
+| Conditions and tab | The **URL** | [URL state](#url-state) |
 
-行の列と書式、作成の行、改名、シノニムの窓、1 件の確定・却下・削除・統合の規則、仮の目印、
-「Tentative only」の振る舞い、却下した名前の中身の規則は変えない。新しい色・半径・影の token は
-足さない（下の「Colour」）。
+Unchanged: row columns and format, the create row, rename, the synonyms dialog, the single-tag confirm, reject,
+delete and merge rules, the tentative mark, the behaviour of "Tentative only", and the rules for the content of
+rejected names. No colour, radius or shadow token is added ([Colour](#colour)).
+
+The page from top to bottom; the band stays under the top bar and the rows scroll with the document.
+
+```mermaid
+flowchart TB
+  TB["Top bar: search, Filter, sort"] --> Band
+  subgraph Band["Band (sticky)"]
+    H["Header row or selection bar"] --> T["Tabs"]
+    T --> C["Filter chips"]
+    C --> S["Stale list box"]
+    S --> CH["Column header"]
+  end
+  Band --> R["Loaded rows (virtualized)"]
+  R --> E["End-of-list state"]
+```
+
+Filter chips appear only while a filter applies, and the stale list box only after a failed first page.
 
 ## Why this shape
 
-- **ページの操作はライブラリと同じく共通トップバーに置く。** 検索・絞り込み・並び順は
-  `TopBarPortal` で上部バーの中央に入れ、部品もライブラリの `SearchBox`・`FilterMenu` の枠
-  （`FilterPopover`）・`SortMenu` の形（`SortMenuView`・`CompactSortView`）を使う。本文の中に独自の
-  操作の行を作った最初の形は、ライブラリと見た目が揃わず浮いていた（レビュー）。上部バーは
-  いつも見えているので、スクロール中に手が届く（要件 13）ことも満たす。
-- **見出し・タブ・列の見出しを `sticky` の帯で留め、本文のスクロールは変えない。** 一覧を別の箱で
-  スクロールさせる形（本文は固定、一覧の中だけが動く）は、ブラウザの戻る・進むでのスクロール位置の
-  復元と `/` のキーの扱いを変え、設定画面など他の本文の画面と動きが違ってしまう。帯に入れるのは
-  見出しの行（選んでいる間は選択の行）・タブ・絞り込みのチップ・列の見出しで、行は本文と一緒に流れる。
-  選択の行が帯の中にあるので、どこまでスクロールしても選んだ行にまとめての操作が届く。
-- **並び順はライブラリの「Sort by」のメニューと向きの切り替えと同じ部品で、同じ位置に置く。**
-  親 Issue の UI品質がこの形を名指ししていて、利用者はライブラリで既に覚えている。同じ `Button` の
-  secondary にいまの種類の名前を出すので、「今どの並びか」はボタンの文字で分かる。並び順は列の
-  見出しのクリックにはしない。列の見出しは「どの列が何か」を言うだけの細い行で、並び順の状態は
-  トップバーのボタンが言う。
-- **「Tentative only」「Unused only」はライブラリと同じ「Filter」の吹き出しの中のチェックにする。**
-  最初の形は 2 つの押しボタンを本文の操作の行に並べたが、ライブラリの絞り込みと形が違い、行が
-  混み合った（レビュー）。効いている絞り込みは「Filter」のボタンの数（ライブラリと同じ
-  `bg-accent-soft text-link` と数）と、見出しの下の**チップ**（ライブラリのタグの絞り込みの
-  `ActiveTagFilters` と同じ `FilterChip`）で読めるので、吹き出しを開かなくても「何で絞っているか」が
-  分かり、チップの × で 1 回で外せる。
-- **検索・絞り込み・並び順は、見えている行の見た目を変えずにサーバーへ渡す。** 利用者から見える
-  違いは、結果が「読み込んだ行の中」ではなく「全部のタグ」から出ることだけで（要件 4・6・7）、
-  部品も位置も変えない。条件を変えたとき、新しい先頭のページが届くまで**前の行と件数を残す**
-  （ライブラリの検索と同じ。空の一瞬や `Skeleton` の点滅を作らない）。失敗したら前の行を残し、
-  帯の中に失敗の箱と「Retry」を**残し続けて**、残した行が今の条件の結果ではないことを示す（Edge Case
-  「一覧の読み込みに失敗したときは、今と同じ失敗の表示と『Retry』を出す。すでに一覧を持っていれば、
-  その一覧を残す」）。トーストだけにすると、消えたあとに条件と合わない行が今の結果に見え続ける。
-- **続きは、スクロールが読み込んだ行の末尾に近づいたら自動で読み、「もっと見る」のボタンは置かない。**
-  ライブラリと同じ形で、親 Issue も「スクロールに合わせて続きを読み込む」と求める。続きの読み込み中・
-  失敗・食い違いは**一覧の末尾の行**として出し、トーストにしない。読み込んだ行の下に続くものなので、
-  「ここで一覧が途切れている」という位置に見せるのが読みやすく、スクロールを戻れば前の行はそのまま
-  残っていることが分かる。失敗の行はライブラリの `LoadMoreFailed` と同じ箱で、同じカーソルから
-  読み直す「Retry」を持つ。
-- **食い違い（別のタブでタグが増減した）は黙って取り直さず、行を残して知らせる。** 続きの応答の
-  `totalAll` が画面の値と違ったら、読み込んだ行と選択を残し、末尾に「一覧が変わった」の 1 行と
-  「Reload」を出して続きを止める（[research.md R-11](research.md#r-11-続きは画面の末尾に近づいたら-100-件ずつ読みid-で重複を捨て件数が食い違えば知らせて取り直させる)）。
-  黙って先頭から読み直すと、数千行スクロールした位置と選んでいる行を失う。利用者が「Reload」を
-  押したときだけ先頭から読み直す（選択は空になる）。食い違いの行は失敗ではないので danger の色は
-  使わず、面を持つ中立の箱にする。
-- **「すべて選ぶ」は読み込んだ行だけを選び、読み込んでいないタグには届かない。** 親 Issue の要件 10
-  と「対象外」（条件に当てはまる全部へのまとめての操作）がこう決めている。選べる範囲が「見えている
-  集合」より狭いので、読み上げ名と選択の行の件数で**選んだのは読み込んだ分だけ**だと分かるようにする
-  （下の「Column header」）。一覧の総数と選んだ数の違い（「500 of 1,000 tags」に対して「100 tags
-  selected」）が、残りを読み込んでいないことの印になる。件数に読み込んだ数（ページの区切り）は
-  添えない。読み込みはスクロールで自動に続き、利用者が知る必要のない仕組みの数だからである（レビュー）。
-- **選択はチェックで、選んでいる間は見出しの行を選択の行に入れ替える。** 最初の形は画面下部に
-  浮かぶバーで、最後の行に重なった（レビュー）。見出しの行は帯の中で留まるので、そこを入れ替えれば
-  スクロールしても手が届き（要件 13）、行に重ならない。入れ替えは同じ高さ（`min-h-10`）で行い、
-  選んだ瞬間に一覧が上下に動かない。チェックを常に薄く見せるのは、ライブラリのリスト表示と同じ
-  規則で、hover できない端末でも選択の入口が見えるためである。
-- **まとめての操作は本物のボタンで並べ、働かない操作は出さない。** 最初の形は「Confirm」だけを前に
-  出し、残りを「More」のメニューに隠した。選択の行には場所があるので、「Confirm」（primary。片付けの
-  主の操作）・「Merge into one tag…」・「Reject…」・「Delete…」（secondary、文字とアイコンは danger の色）を
-  並べる。選んだタグに働かない操作（仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無い
-  ときの「Delete…」）は薄くせず、出さない（押せない理由を読ませるより、押せるものだけを並べる方が
-  短い）。確定は確認をとらず（要件 11）、却下・削除・統合は確認の窓を挟む。
-- **「読み込んだものをすべて選ぶ」は列の見出しの先頭のチェック。** 一覧の上の細い列の見出し
-  （チェック・「Name」・右寄せの「Videos」）の先頭にあり、メールの一覧の見出しのチェックと同じく
-  「この一覧（のうち読み込んだ分）を選ぶ」と読める。選択の行の「すべて選択」（ライブラリ）を置く
-  案は、選択の行は 1 件選んだあとにしか出ないので、最初の 1 件を選ぶ手が別に要る。先頭のチェック
-  なら、絞って 1 回押すだけで読み込んだ全部が選べる。
-- **上限を超えて読み込んだ一覧で止めるのは、先頭のチェックだけ。** まとめての操作の上限
-  （`maxTagBatch`、20,000 件）は送る id の数に掛かる（[research.md R-4](research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かない無いタグは数えて飛ばす)、
-  Plan「まとめての操作」）。読み込んだ行が上限を超えても、1 行ずつ選んだ数行のまとめての操作は
-  上限に当たらないので、選択の行の操作を止める理由は無い。止めるのは「読み込んだものを
-  すべて選ぶ」だけで、理由は「読み込んだ数が多すぎる」と言い、絞り込みへ誘う。選択の行の操作が
-  止まるのは選んだ数そのものが上限を超えたときだけである（1 行ずつでは実質起きない）。
-- **却下した名前は見出しの下のタブ「Rejected names」で開き、本文で続きを読む。** 031 が一覧の下に
-  置いた折りたたみは、数千行の下では届かない（要件 12）。最初の形は件数の行の右端の小さな入口から
-  窓で開いたが、件数の行が混み合い、「Rejected names 0」が何の数か読みにくかった（レビュー）。
-  タブなら「Tags 300 | Rejected names 4」と、2 つの一覧とその数が同じ形で並び、帯に留まるので先頭から
-  届く。中身は本文に並べ、本文のスクロールで続きを読む（要件 12 の後半）。タブの数は応答の `total` で、
-  読み込んだ数ではない。
-- **統合の窓の統合先の候補は、入力のたびにサーバーから引く。** 画面が持つのは読み込んだ行だけで、
-  要件 9 は「統合先は…選んでいないタグからでも選べる」と求める
-  （[research.md R-14](research.md#r-14-統合の窓の統合先の候補は-get-apitagsqlimit-で引く)）。候補の照合も
-  一覧の検索と同じ照合形になり、全角・半角やかなの違いが同一視される。利用者から見える違いは、
-  入力の右端に読み込み中の小さな回転と、候補が入力より一拍遅れて変わりうることだけである。届く
-  まで前の候補を残し、候補の一覧を空にして点滅させない。候補は入力の上に重ねて開く一覧ではなく、
-  入力の下の**高さを決めた箱**に常に並べる。重ねる形は窓の中身より長く開いて窓のボタンを覆った
-  （レビュー）。
-- **行の操作は、タッチの端末と `sm` 未満の幅では、文字を持つ 1 つのメニューにまとめる。** 親 Issue の
-  UI品質は「触るまで意味の分からないアイコンだけにならない」と求める。アイコンの横に文字を出す
-  案は、行の幅を 4 つの操作の文字に取られ、名前の列が無くなる。メニューの各項目は文字を持ち、
-  入口の「⋯」は現行の一覧の製品が「この行の操作」に収束させている形である。行で 1 回押しの確定は
-  2 回押しになるが、タッチの端末での片付けの主の経路は「チェック → 確定（選択の行）」で、こちらは
-  行ごとに 1 回押しのまま残る。マウスの端末では、今の 4 つの `IconButton`（ツールチップ付き）を
-  変えない。
+- **Page controls sit in the shared top bar, as in the library.** Search, filters and sort go into the centre of
+  the top bar through `TopBarPortal` and reuse the library's `SearchBox`, the `FilterMenu` frame (`FilterPopover`)
+  and the `SortMenu` shapes (`SortMenuView`, `CompactSortView`). The first version built its own controls row in
+  the body and did not match the library (review). The top bar is always visible, which also keeps the controls in
+  reach while scrolling (requirement 13).
+- **The header, tabs and column header stay in a `sticky` band; the body scroll does not change.** Scrolling the
+  list in its own box (fixed body, only the list moves) changes how the browser restores the scroll position on
+  back and forward and how `/` is handled, and the page would move differently from other body screens such as
+  settings. The band holds the header row (the selection bar while selecting), the tabs, the filter chips and the
+  column header; rows flow with the body. Because the selection bar is in the band, bulk actions are in reach at
+  any scroll depth.
+- **Sort uses the library's "Sort by" menu and direction toggle, in the same place.** The parent Issue's
+  `UI品質` names this shape, and users already know it from the library. The secondary `Button` shows the current
+  kind, so its text says which sort is on. Clicking column headings does not sort: the column header only says
+  which column is which, and the top bar button says the sort.
+- **"Tentative only" and "Unused only" are checkboxes in the library's "Filter" popover.** The first version put
+  two toggle buttons in the body's controls row, which did not match the library filter and crowded the row
+  (review). Active filters show as the count on the "Filter" button (`bg-accent-soft text-link` and the number, as
+  in the library) and as **chips** under the heading (the same `FilterChip` as the library's `ActiveTagFilters`),
+  so the user reads what applies without opening the popover and removes a filter with one press on the chip's ×.
+- **Search, filters and sort go to the server without changing how visible rows look.** The only visible
+  difference is that results come from every tag, not from the loaded rows (requirements 4, 6 and 7); the parts
+  and positions stay. On a condition change the **previous rows and count stay** until the new first page arrives
+  (as in the library search; no empty flash and no `Skeleton` flicker). On failure the previous rows stay and a
+  failure box with "Retry" **stays in the band** to say the rows do not match the current conditions (Edge Case:
+  show the current failure display and "Retry"; keep the list if one is already there). A toast alone would
+  vanish and leave mismatched rows looking like the current result.
+- **More rows load automatically as the scroll nears the end of the loaded rows; there is no "Show more"
+  button.** This matches the library, and the parent Issue asks to load more as the user scrolls. Loading more,
+  failure and list-changed show as **rows at the end of the list**, not toasts: they follow the loaded rows, so
+  showing them where the list stops is the clearest place, and scrolling back shows the earlier rows are still
+  there. The failure row is the library's `LoadMoreFailed` box, with "Retry" reloading from the same cursor.
+- **A mismatch (tags added or removed in another tab) keeps the rows and tells the user instead of reloading
+  silently.** When a load-more response's `totalAll` differs from the screen's value, the loaded rows and the
+  selection stay, the end of the list shows a one-line list-changed notice with "Reload", and loading more stops
+  ([research.md R-11](research.md#r-11-more-rows-load-100-at-a-time-near-the-end-duplicates-are-dropped-by-id-and-a-count-mismatch-asks-for-a-reload)).
+  A silent reload from the top would lose a scroll position thousands of rows deep and the selected rows. Only
+  "Reload" reloads from the top (the selection empties). The notice is not a failure, so it uses a neutral box with
+  a surface, not the danger colour.
+- **Select-all selects loaded rows only and does not reach unloaded tags.** Requirement 10 and the out-of-scope
+  item (bulk actions on everything matching the conditions) decide this. Because the selectable set is narrower
+  than "the matching set", the accessible name and the selection bar count show that **only loaded rows were
+  selected** ([Column header](#column-header)). The gap between the list total and the selected count ("100
+  tags selected" against "500 of 1,000 tags") marks that the rest is not loaded. The count does not show the
+  loaded number (page boundaries): loading continues automatically on scroll, and the number is a mechanism the
+  user does not need (review).
+- **Selection uses checkboxes, and the header row is replaced by the selection bar while selecting.** The first
+  version floated a bar at the bottom of the screen, which covered the last row (review). The header row stays in
+  the band, so replacing it keeps the actions in reach while scrolling (requirement 13) without covering rows. The
+  swap keeps the same height (`min-h-10`), so the list does not jump when the first row is selected. Checkboxes
+  stay faintly visible at all times, as in the library list view, so devices without hover still see the way in.
+- **Bulk actions are real buttons, and actions that do not apply are not shown.** The first version showed only
+  "Confirm" and hid the rest under a "More" menu. The selection bar has room for "Confirm" (primary; the main
+  clean-up action), "Merge into one tag…", "Reject…" and "Delete…" (secondary; text and icon in the danger colour).
+  Actions that do not apply to the selection ("Confirm" and "Reject…" with no tentative tag, "Delete…" with no
+  confirmed tag) are hidden rather than dimmed: listing only what works is shorter than making the user read why
+  something does not. Confirm asks nothing (requirement 11); reject, delete and merge go through a confirmation
+  dialog.
+- **"Select all loaded" is the checkbox at the start of the column header.** It sits at the start of the thin
+  column header above the list (checkbox, "Name", right-aligned "Videos") and reads like the header checkbox of a
+  mail list: "select this list (the loaded part)". Putting the library's "Select all" in the selection bar was
+  rejected: that bar appears only after the first selection, so the first row would need a separate press. With
+  the header checkbox, one press after filtering selects every loaded row.
+- **When more rows are loaded than the limit, only the header checkbox stops.** The bulk limit (`maxTagBatch`,
+  20,000) applies to the number of ids sent
+  ([research.md R-4](research.md#r-4-bulk-confirm-reject-and-delete-use-one-post-apitagsbatch-transaction-that-skips-and-counts-misses),
+  Plan "Bulk actions"). A few rows picked one by one stay under the limit however many rows are loaded, so there is
+  no reason to stop the selection bar actions. Only "select all loaded" stops; its reason says too many tags are
+  loaded and points to filtering. Selection bar actions stop only when the selected count itself exceeds the
+  limit, which picking rows one by one practically never reaches.
+- **Rejected names open in the "Rejected names" tab under the heading and load more in the body.** The collapsible
+  section 031 put under the list is out of reach below thousands of rows (requirement 12). The first version opened
+  a dialog from a small entry at the right end of the count row, which crowded that row and left "Rejected names 0"
+  unclear (review). Tabs show both lists and their counts in the same form, "Tags 300 | Rejected names 4", and stay
+  in the band, so they are reachable from the top. The content lies in the body and loads more as the body scrolls
+  (second half of requirement 12). The tab count is the response's `total`, not the loaded number.
+- **Merge target candidates come from the server on each keystroke.** The screen holds only loaded rows, and
+  requirement 9 asks that the target can be any tag, selected or not
+  ([research.md R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit)). Candidates
+  use the same matching form as the list search, so full-width and half-width forms and kana variants match. The
+  visible differences are a small spinner at the right end of the input and candidates that may change a beat
+  after the input. The previous candidates stay until new ones arrive, so the list does not empty and flicker.
+  Candidates sit in a **fixed-height box** under the input, always shown, not in a list layered over the input: the
+  layered list opened taller than the dialog content and covered its buttons (review).
+- **On touch devices and below `sm`, row actions collapse into one menu with text labels.** The parent Issue's
+  `UI品質` asks that actions are not icons whose meaning is unknown until pressed. Text beside each icon was rejected:
+  four action labels take the row width and leave no room for the name. Each menu item has text, and the "⋯" entry
+  is the shape current list products settle on for "this row's actions". A one-press confirm on the row becomes two
+  presses, but the main clean-up path on touch is "checkbox → Confirm (selection bar)", which stays one press per
+  row. On mouse devices the current four `IconButton`s (with tooltips) do not change.
 
 ## Words
 
-| 場所 | 英語（案） |
-| --- | --- |
-| 並び順のメニューの見出し | Sort by |
-| 並び順の種類 | Name ／ Video count ／ Date created |
-| 並び順のボタンの読み上げ名 | Sort by: 〈種類〉 |
-| 向きの切り替え（本数） | Descending (most videos first). Press for ascending ／ Ascending (fewest videos first). Press for descending |
-| 向きの切り替え（作った日） | Descending (newest first). Press for ascending ／ Ascending (oldest first). Press for descending |
-| 向きの `SegmentedControl` の項目（`sm` 未満のまとめ） | Most videos first ／ Fewest videos first、Newest first ／ Oldest first |
-| `md` 未満の並び順のまとめのボタン | Sort |
-| 検索欄（読み上げ名・placeholder） | Search tags |
-| 絞り込みのボタン（ライブラリと同じ） | Filter ／ Filter (2 applied)（読み上げ名） |
-| 絞り込みの吹き出しのチェック | Tentative only ／ Unused only |
-| 絞り込みのチェックの補足 | Show only tags created by automatic tagging ／ Show only tags that aren't on any videos |
-| 絞り込みの吹き出しの解除（ライブラリと同じ） | Clear filters |
-| 絞り込みのチップの並びの読み上げ名 | Active filters |
-| 絞り込みのチップの読み上げ名 | Remove the filter "Tentative only" ／ Remove the filter "Unused only" |
-| 見出しの件数（絞り込み・検索のどちらかが効いている） | 90 of 1,000 tags（`total` of `totalAll`）。効いていなければ 1,000 tags。読み込んだ数は添えない |
-| タブの並びの読み上げ名 | Tag lists |
-| タブ | Tags 〈`totalAll`〉 ／ Rejected names 〈`total`〉 |
-| 列の見出し | Name ／ Videos |
-| 列の見出しの先頭のチェックの読み上げ名 | Select all 100 loaded tags ／ Clear selection（全部選んでいるとき） |
-| 先頭のチェックが押せない理由（読み込んだ数が上限を超える） | Too many tags are loaded to select them all at once (limit {limit}). Narrow the list with search or a filter. |
-| 行のチェックの読み上げ名 | Select "〈名〉" |
-| 続きを読み込んでいる間（読み上げのみ） | Loading more tags… |
-| 続きの読み込みに失敗した行 | Couldn't load more: {理由} ／ Retry |
-| 先頭のページを読めなかったとき（一覧を持っている。帯の箱） | Couldn't load tags: {理由}. The list below may not match the current search, filters and sort. ／ Retry |
-| 一覧が変わった行 | Tags were added or removed elsewhere, so the rest of this list may be out of date. ／ Reload |
-| 一致が無いときの見出し | No unused tags ／ No unused tentative tags ／ No unused tags match "〈入力〉" ／ No unused tentative tags match "〈入力〉" |
-| 一致が無いときの説明（「Unused only」だけ、検索なし） | Every tag is on at least one video. |
-| 一致が無いときのボタン | Show all tags（今の形） |
-| 選択の行の読み上げ名（`region`） | Selected tags |
-| 選択の行の件数 | 1 tag selected ／ 12 tags selected |
-| 選択の行の操作 | Clear selection（×）／ Confirm ／ Merge into one tag… ／ Reject… ／ Delete… |
-| 選んだ数が上限を超えたとき（選択の行） | Too many tags are selected to act on them together (limit {limit}). Clear some of the selection. |
-| まとめての確定のトースト | Confirmed 8 tags ／ Confirmed 8 tags. 4 were already confirmed. |
-| まとめての却下の窓の見出し | Reject selected tags |
-| まとめての却下の本文（全部に働く） | The 8 selected tags will be removed from 120 videos, and automatic tagging won't create their names again. You can allow a name again from Rejected names. |
-| まとめての却下の本文（一部に働く） | 8 of the 12 selected tags are tentative. They will be removed from 120 videos, and automatic tagging won't create their names again. The 4 confirmed tags are left as they are. You can allow a name again from Rejected names. |
-| まとめての削除の窓の見出し | Delete selected tags |
-| まとめての削除の本文（全部に働く） | The 8 selected tags will be removed from 120 videos. This can't be undone. |
-| まとめての削除の本文（一部に働く） | 8 of the 12 selected tags are confirmed. They will be removed from 120 videos. This can't be undone. The 4 tentative tags are left as they are; reject them instead. |
-| 0 本のとき（却下・削除・統合に共通の差し替え） | …aren't on any videos… の形（「removed from 0 videos」とは言わない） |
-| 数を数えている間 | Counting the affected videos… |
-| 数えられなかったとき | Couldn't count the affected videos: {理由} ／ Retry |
-| まとめての却下・削除のボタン | Cancel ／ Reject（送信中 Rejecting…）／ Delete（送信中 Deleting…） |
-| まとめての却下・削除のトースト | Rejected 8 tags ／ Rejected 8 tags. 4 confirmed tags were skipped. ／ Deleted 8 tags ／ Deleted 8 tags. 4 tentative tags were skipped. |
-| 統合の窓の見出し（複数） | Merge 4 tags |
-| 統合の窓の統合元の見出し | Tags to merge |
-| 統合の窓の統合先の入力（見える名札と読み上げ名） | Tag to merge into |
-| 統合先の候補が無いとき（一覧の中） | No matching tags |
-| 統合の窓の下端（統合元 → 統合先） | Alpha → Action ／ 3 tags → Action |
-| 統合先の候補を引けなかったとき（入力の下） | Couldn't search tags: {理由} |
-| 統合の窓の確認（複数。数は統合先を外した統合元） | The 120 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can't be undone. |
-| 統合先を選んだ中から選んだとき | "Action" is kept and the other 3 tags merge into it. |
-| 統合元が無くなったとき | Choose another tag to merge into: "Action" is the only tag selected. |
-| 統合のトースト（複数。数は実際に統合した数） | Merged 4 tags into "Action" |
-| 対象の一部がもう無かったとき | Some of the tags no longer existed, so the list was reloaded |
-| 却下した名前のタブの説明 | Automatic tagging won't create these names. Allow a name again to let it be created. |
-| 却下した名前の行のボタン（見える文字・読み上げ名） | Allow again ／ Allow "〈名〉" again |
-| 却下した名前のタブで続きを読めなかったとき | Couldn't load more rejected names ／ Retry |
-| 行の操作のまとめの入口（タッチ・`sm` 未満） | Actions |
+Labels the catalog already holds are written as `web/src/i18n/en.ts` shows them.
 
-- 「Unused」は 0 本のタグの呼び名で、文言の中で「tags that aren't on any videos」と説明する。
-  「empty」「orphan」は使わない。
-- 「loaded」は「画面がここまでに受け取った」の意味で、読み込んでいない残りがあることを含む。
-  「shown」「visible」は使わない（見えている行は描いている行のことで、読み込んだ行とは別の集合）。
-  「loaded」は先頭のチェックの読み上げ名と押せない理由だけに使い、件数やページの区切りには出さない。
-- 数はすべて `formatNumber`、件数の形はカタログの `tagCount`・`videos` を使う。タグの名前は利用者の
-  データで、翻訳せずに埋め込む（i18n.md）。
+| Place | Text | Notes |
+| --- | --- | --- |
+| Sort menu heading | Sort by | |
+| Sort kinds | Name / Video count / Date created | |
+| Accessible name of the sort button | Sort by: {kind} | |
+| Direction toggle (video count) | Descending (most videos first). Press for ascending / Ascending (fewest videos first). Press for descending | |
+| Direction toggle (date created) | Descending (newest first). Press for ascending / Ascending (oldest first). Press for descending | |
+| Direction `SegmentedControl` items (compact view below `sm`) | Most videos first / Fewest videos first, Newest first / Oldest first | |
+| Compact sort button below `md` | Sort | |
+| Search field | Search tags | Accessible name and placeholder |
+| Filter button | Filter / Filter (2 applied) | Same as the library; the second is the accessible name |
+| Filter popover checkboxes | Tentative only / Unused only | |
+| Filter checkbox hints | Show only tags created by automatic tagging / Show only tags that aren't on any videos | |
+| Filter popover reset | Clear filters | Same as the library |
+| Accessible name of the chip list | Active filters | |
+| Accessible name of a chip | Remove the filter "Tentative only" / Remove the filter "Unused only" | |
+| Header count | 90 of 1,000 tags | `total` of `totalAll`, while a filter or search applies. Otherwise 1,000 tags. The loaded number is never added |
+| Accessible name of the tab list | Tag lists | |
+| Tabs | Tags {`totalAll`} / Rejected names {`total`} | |
+| Column header | Name / Videos | |
+| Accessible name of the header checkbox | Select all 100 loaded tags / Clear selection | The second while all are selected. With one row: Select the 1 loaded tag |
+| Why the header checkbox is disabled (loaded rows over the limit) | Too many tags are loaded to select them all at once (limit {limit}). Narrow the list with search or a filter. | |
+| Accessible name of a row checkbox | Select "{name}" | |
+| While loading more | Loading more tags… | Screen reader only |
+| Load-more failure row | Couldn't load more: {reason} / Retry | |
+| First page failed while a list is shown | Couldn't load tags: {reason}. The list below may not match the current search, filters and sort. / Retry | In the band |
+| List-changed row | Tags were added or removed elsewhere, so the rest of this list may be out of date. / Reload | |
+| Empty-result heading | No unused tags / No unused tentative tags / No unused tags match "{input}" / No unused tentative tags match "{input}" | |
+| Empty-result description | Every tag is on at least one video. | "Unused only" alone, no search |
+| Empty-result button | Show all tags | Current wording |
+| Accessible name of the selection bar (`region`) | Selected tags | |
+| Selection bar count | 1 tag selected / 12 tags selected | |
+| Selection bar actions | Clear selection (×) / Confirm / Merge into one tag… / Reject… / Delete… | |
+| Selected count over the limit | Too many tags are selected to act on them together (limit {limit}). Clear some of the selection. | Under the selection bar |
+| Bulk confirm toast | Confirmed 8 tags / Confirmed 8 tags. 4 were already confirmed. | |
+| Bulk reject dialog title | Reject selected tags | |
+| Bulk reject text (applies to all) | The 8 selected tags will be removed from 120 videos, and automatic tagging won't create their names again. You can allow a name again from Rejected names. | |
+| Bulk reject text (applies to some) | 8 of the 12 selected tags are tentative. They will be removed from 120 videos, and automatic tagging won't create their names again. The 4 confirmed tags are left as they are. You can allow a name again from Rejected names. | |
+| Bulk delete dialog title | Delete selected tags | |
+| Bulk delete text (applies to all) | The 8 selected tags will be removed from 120 videos. This can't be undone. | |
+| Bulk delete text (applies to some) | 8 of the 12 selected tags are confirmed. They will be removed from 120 videos. This can't be undone. The 4 tentative tags are left as they are; reject them instead. | |
+| Zero videos (reject, delete, merge) | The "…aren't on any videos…" form | Never "removed from 0 videos" |
+| While counting | Counting the affected videos… | |
+| Count failed | Couldn't count the affected videos: {reason} / Retry | |
+| Bulk reject and delete buttons | Cancel / Reject (Rejecting… while sending) / Delete (Deleting… while sending) | |
+| Bulk reject and delete toasts | Rejected 8 tags / Rejected 8 tags. 4 confirmed tags were skipped. / Deleted 8 tags / Deleted 8 tags. 4 tentative tags were skipped. | |
+| Merge dialog title (several) | Merge 4 tags | |
+| Merge dialog sources heading | Tags to merge | |
+| Merge target input | Tag to merge into | Visible label and accessible name |
+| No candidates (in the list) | No matching tags | |
+| Merge dialog footer | Alpha → Action / 3 tags → Action | Source → target |
+| Candidate search failed (under the input) | Couldn't search tags: {reason} | |
+| Merge confirmation (several) | The 120 videos tagged with these 4 tags get the tag "Action". Their names and synonyms become synonyms of "Action", and the 4 tags leave the tag list. This can't be undone. | The number is the sources without the target |
+| Target picked from the selection | "Action" is kept and the other 3 tags merge into it. | |
+| No source left | Choose another tag to merge into: "Action" is the only tag selected. | |
+| Merge toast (several) | Merged 4 tags into "Action" | The number actually merged |
+| Some targets no longer existed | Some of the tags no longer existed, so the list was reloaded | |
+| Rejected names tab description | Automatic tagging won't create these names. Allow a name again to let it be created. | |
+| Rejected name row button | Allow again / Allow "{name}" again | Visible text / accessible name |
+| Rejected names load-more failure | Couldn't load more rejected names / Retry | |
+| Row actions menu entry (touch, below `sm`) | Actions | |
+
+- "Unused" names a tag on zero videos; the text explains it as "tags that aren't on any videos". "Empty" and
+  "orphan" are not used.
+- "Loaded" means "received by the screen so far" and implies that unloaded tags remain. "Shown" and "visible" are
+  not used: visible rows are the drawn rows, a different set from loaded rows. "Loaded" appears only in the header
+  checkbox's accessible name and disabled reason, never in counts or as a page boundary.
+- Every number uses `formatNumber`, and counts use the catalog's `tagCount` and `videos`. Tag names are user data
+  and are embedded untranslated (i18n.md).
 
 ## Top bar
 
-検索・絞り込み・並び順は、ライブラリと同じく共通トップバーの中央（`TopBarPortal`）に置く
-（[`web/src/tags/TagToolbar.tsx`](../../web/src/tags/TagToolbar.tsx)）。並びと見た目は
-[`LibraryToolbar`](../../web/src/library/LibraryToolbar.tsx) と同じで、Tab の順も同じく 検索欄 →
-「Filter」→ 並び順 → 向き。本文の中に操作の行は置かない。「Rejected names」のタブを開いている間は
-トップバーに何も置かない（タグの検索・絞り込み・並び順は却下した名前に効かない。031 と同じ）。
+Search, filters and sort sit in the centre of the shared top bar (`TopBarPortal`), as in the library
+([`web/src/tags/TagToolbar.tsx`](../../web/src/tags/TagToolbar.tsx)). Order and look match
+[`LibraryToolbar`](../../web/src/library/LibraryToolbar.tsx), and so does the Tab order: search → "Filter" → sort
+→ direction. The body has no controls row. While the "Rejected names" tab is open the top bar holds nothing: tag
+search, filters and sort do not apply to rejected names (as in 031).
 
-検索・「Tentative only」・「Unused only」・並び順のどれを変えても、画面はその条件で**先頭のページを
-サーバーから読み直す**（[data-model.md §4](data-model.md#4-画面の側で持つ状態)「条件」）。届くまで前の
-行と件数を残し、`Skeleton` に戻さない。届いたら行と件数を差し替え、スクロール位置は先頭へ戻す
-（条件が変わったので前の位置に意味は無い）。進行中の続きの読み込みは打ち切り、古い条件の行は
-混ざらない（Edge Case）。**どの変更でも選択は空になる**（Edge Case「選んでいる間に検索・絞り込み・
-並び順を変えたとき: 選択は外す」。並び順の変更も含む。読み直したあとの行が同じ id を持っていても
-選び直しはしない）。改名中の行は条件を変えても残る（下の「Row checkbox」）。先頭のページの読み込みに
-失敗したときは下の「Stale list」。
+Changing search, "Tentative only", "Unused only" or the sort **reloads the first page from the server** under the
+new conditions ([data-model.md §4](data-model.md#4-screen-state), "Conditions").
 
-- **検索**: ライブラリの `SearchBox`（`syntaxHelp={false}`。動画の検索構文の手引きは出さない）。
-  読み上げ名・placeholder は「Search tags」、`/` でフォーカス、Esc で消してフォーカスを外す（IME の
-  変換中の Esc は無視する）。打鍵ごとに引き直す（`debounceMs={0}`。前の要求は打ち切る。014 からの
-  振る舞い）。照合はサーバーが全部のタグの名前とシノニムに掛け、ライブラリでタグを探すときと同じ規則で
-  全角・半角やかなの違いを同一視する（要件 7、[contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-のパラメータ) の `q`）。
-  入力は 100 文字（符号位置）で止める（`q` の上限と同じ。ライブラリの検索欄と同じ数え方）。
-  タグが 1 つも無いときは `disabled`。
-- **「Filter」**: ライブラリの `FilterMenu` と同じボタンと吹き出し（`FilterPopover`。`Button` の
-  secondary、`ListFilter`、`xl` 以上で文字「Filter」）。吹き出しの中は 2 つのチェック（`FilterCheckbox`）
-  「Tentative only」（補足「Show only tags created by automatic tagging」）と「Unused only」（補足
-  「Show only tags that aren't on any videos」）。どちらかが効いている間は、ボタンをライブラリと同じく
-  `bg-accent-soft text-link` にして効いている数（1 か 2）を添え、読み上げ名を「Filter (N applied)」にし、
-  吹き出しの末尾に「Clear filters」（両方を外す。検索と並び順は残す）を出す。チェックを押すと
-  `tentative=true`・`unused=true` で読み直し、吹き出しは開いたまま（ライブラリと同じ）。両方が効いて
-  いれば両方を満たすタグ（要件 6）。読み込んでいないタグも含めた全部に効く。`disabled` は先頭の
-  ページをまだ一度も受けていない間・一覧を持たないまま失敗したとき・何も効いていない間に
-  `totalAll` が 0 のとき。**効いている間は `total` が 0 になっても `disabled` にしない**（絞り込みを
-  外す手であり、フォーカスの行き先でもある）。
-- **並び順**: `md` 以上はライブラリの `SortMenu` と同じ形（`SortMenuView`）。`Button` の secondary に
-  いまの種類の名前（「Name」「Video count」「Date created」）と `ChevronDown`、読み上げ名「Sort by:
-  〈種類〉」。メニューは見出し「Sort by」と 3 つのラジオ項目。アイコンは Name が `ArrowDownAZ`
-  （ライブラリの「Title」と同じ、名前の順の意味）、Video count が `Hash`（数）、Date created が
-  `CalendarPlus`（タグができた日。ライブラリの「Date created」の `FileClock` はファイルの作成日で別の
-  ものなので、同じ絵にしない）。
-  - 種類を選ぶと、その種類の既定の向きになる: Video count は多い順（`countDesc`）、Date created は
-    新しい順（`createdDesc`）。Name に向きは無い（要件 4）。
-  - **向きの切り替え**は、ライブラリと同じくメニューのボタンの右に接する `Button`
-    （`rounded-l-none px-2.5`）で、`ArrowDownWideNarrow`（降順）／`ArrowUpNarrowWide`（昇順）、
-    読み上げ名とツールチップは上の「Words」。**Name のときは向きのボタンを出さない**（メニューの
-    ボタンは全周の角丸に戻る）。
-  - `md` 未満は、ライブラリの「表示と並び順」と同じく `SlidersHorizontal` のボタン（読み上げ名「Sort」）
-    を押すと吹き出し（`PopoverContent`、`align="end"`、`w-72`）が開き、中身は `CompactSortControls` と
-    同じ形（`CompactSortView`）: 見出し「Sort by」、2 列のラジオ、その下に向きの `SegmentedControl`
-    （Name のときは出さない）。ボタン自体の見た目は並び順で変えない（ライブラリと同じ）。
-  - 並び順は読み込んでいないタグも含めた全部に効く（要件 4。サーバーが並べ、画面は並べ直さない）。
-    同じ値のタグどうしは名前の自然順（R-10）。選んだ並び順は URL に載り（下の「URL state」）、
-    `localStorage` にも残る（R-7）。URL に並び順が無いときは残した並び順で始まる。壊れていれば Name。
-  - `disabled` はタグが 1 つも無いとき（先頭のページを受ける前を含む）。
+```mermaid
+flowchart LR
+  A["Condition changes"] --> B["Clear selection,<br/>stop load-more"]
+  B --> C["Keep previous rows<br/>and count"]
+  C --> D{"First page?"}
+  D -->|arrives| E["Replace rows and count,<br/>scroll to top"]
+  D -->|fails| F["Stale list box"]
+```
+
+- The `Skeleton` does not come back while waiting. The scroll position returns to the top on arrival, because the
+  old position means nothing under new conditions.
+- An in-flight load-more is abandoned, so rows from old conditions never mix in (Edge Case).
+- **Every change empties the selection**, including a sort change (Edge Case: clear the selection when search,
+  filters or sort change while selecting). Rows that come back with the same ids are not reselected.
+- A row being renamed survives a condition change ([Row checkbox](#row-checkbox)). A failed first page is
+  [Stale list](#stale-list).
+
+| Control | Shape and behaviour |
+| --- | --- |
+| Search | The library's `SearchBox` with `syntaxHelp={false}` (no video search syntax help). Accessible name and placeholder "Search tags"; `/` focuses it; Esc clears it and leaves the field (Esc during IME composition is ignored). Requests on every keystroke (`debounceMs={0}`, the previous request is aborted; behaviour since 014). The server matches the names and synonyms of every tag and treats full-width and half-width forms and kana variants as equal, the same rule as tag search in the library (requirement 7, `q` in [contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). Input stops at 100 characters (code points), the limit of `q`, counted as in the library search field. `disabled` when there are no tags |
+| "Filter" | The library's `FilterMenu` button and popover (`FilterPopover`; secondary `Button`, `ListFilter`, text "Filter" at `xl` and up). Two `FilterCheckbox`es: "Tentative only" (hint "Show only tags created by automatic tagging") and "Unused only" (hint "Show only tags that aren't on any videos"). While either applies, the button takes the library's `bg-accent-soft text-link` with the active count (1 or 2), the accessible name becomes "Filter (N applied)", and the popover ends with "Clear filters" (clears both; search and sort stay). A checkbox reloads with `tentative=true` or `unused=true` and leaves the popover open (as in the library). Both together match tags meeting both (requirement 6), over every tag |
+| "Filter" disabled | Before the first page has ever arrived, after a failure with no list, and when `totalAll` is 0 with nothing applied. **Not disabled when `total` reaches 0 while a filter applies**: it is how the user removes the filter and a focus target |
+| Sort, `md` and up | The library's `SortMenu` shape (`SortMenuView`): a secondary `Button` with the current kind ("Name", "Video count", "Date created") and `ChevronDown`, accessible name "Sort by: {kind}". The menu has the heading "Sort by" and three radio items. Icons: Name `ArrowDownAZ` (the library's "Title" icon, meaning name order); Video count `Hash` (a number); Date created `CalendarPlus` (the day the tag was made; the library's "Date created" uses `FileClock` for a file's creation date, a different thing, so the picture differs) |
+| Sort default direction | Picking a kind sets its default direction: Video count descending (`countDesc`), Date created newest first (`createdDesc`). Name has no direction (requirement 4) |
+| Direction toggle | As in the library, a `Button` joined to the right of the menu button (`rounded-l-none px-2.5`) with `ArrowDownWideNarrow` (descending) or `ArrowUpNarrowWide` (ascending); accessible name and tooltip in [Words](#words). **Hidden for Name** (the menu button returns to full rounding) |
+| Sort, below `md` | As in the library's view-and-sort control: a `SlidersHorizontal` button (accessible name "Sort") opens a popover (`PopoverContent`, `align="end"`, `w-72`) holding the `CompactSortControls` shape (`CompactSortView`): heading "Sort by", two columns of radios, and the direction `SegmentedControl` under them (hidden for Name). The button itself does not change with the sort (as in the library) |
+| Sort scope and memory | Applies to every tag, loaded or not (requirement 4); the server sorts and the screen does not re-sort. Ties fall back to natural name order (R-10). The chosen sort is in the URL ([URL state](#url-state)) and in `localStorage` (R-7). Without a sort in the URL the stored sort applies; if it is broken, Name |
+| Sort disabled | When there are no tags, including before the first page arrives |
 
 ## URL state
 
-検索語・絞り込み・並び順・タブは、ライブラリの一覧の条件（[specs/013-library-search/contracts/list-url.md](../013-library-search/contracts/list-url.md)）
-と同じく URL のクエリに載せ、再読み込み・戻る・進むで残す
-（[`web/src/tags/tagListUrl.ts`](../../web/src/tags/tagListUrl.ts)）。
+Search text, filters, sort and tab are URL query parameters, like the library list conditions
+([specs/013-library-search/contracts/list-url.md](../013-library-search/contracts/list-url.md)), and survive
+reload, back and forward ([`web/src/tags/tagListUrl.ts`](../../web/src/tags/tagListUrl.ts)).
 
-- パラメータは `q`（検索語。`normalizeQuery` の形）、`tentative=1`、`unused=1`、`sort`（`name`・
-  `countDesc`・`countAsc`・`createdDesc`・`createdAsc`）、`tab=rejected`。偽の絞り込みと「Tags」の
-  タブは書かない。`sort` は書くときはいつも書く（省くと「端末に残した並び順」の意味になり、戻るで
-  前の並びに戻れない。list-url.md §1 と同じ）。解釈できない値は既定として扱う。
-- 絞り込み・並び順・タブ・チップの × は履歴を 1 つ増やす（push）。検索の入力はライブラリと同じく、
-  フォーカスが入ってから外れるまでの一続きで最初の確定だけが push で、残りは置き換え。
-- 「Tentative only」「Unused only」と検索語は R-7 で URL に載せないとしていたが、ライブラリの条件と
-  揃えるために載せる（レビュー）。`localStorage` には今までどおり並び順だけを残す。
+| Parameter | Values | Rule |
+| --- | --- | --- |
+| `q` | Search text in the `normalizeQuery` form | |
+| `tentative` | `1` | Not written when false |
+| `unused` | `1` | Not written when false |
+| `sort` | `name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc` | Always written. Leaving it out would mean "the sort stored on this device", and back could not return to the previous sort (as list-url.md §1) |
+| `tab` | `rejected` | Not written for the "Tags" tab |
+
+- A value that cannot be parsed counts as the default.
+- Filters, sort, tab and a chip's × each push one history entry. Search input works as in the library: within one
+  focus-to-blur run, only the first commit pushes and the rest replace.
+- R-7 kept "Tentative only", "Unused only" and the search text out of the URL; they are in it now to match the
+  library conditions (review). `localStorage` still stores only the sort.
 
 ## Band
 
-本文の先頭を 1 つの帯にし、上部バーの下に留める
-（[`web/src/tags/TagsPage.tsx`](../../web/src/tags/TagsPage.tsx)）。帯の中は上から、**見出しの行**
-（選んでいる間は**選択の行**）→ **タブ** → **絞り込みのチップ**（効いているときだけ）→ 「Stale list」の
-箱（あるときだけ）→ **列の見出し**。
+The top of the body is one band that stays under the top bar
+([`web/src/tags/TagsPage.tsx`](../../web/src/tags/TagsPage.tsx)). Top to bottom: the **header row** (the
+**selection bar** while selecting) → the **tabs** → the **filter chips** (only while a filter applies) → the
+[Stale list](#stale-list) box (only when present) → the **column header**.
 
-- 帯は `position: sticky`、`top` は上部バーの高さの token（`top-navbar`）、面は `bg-bg`（不透明。
-  下を流れる行が透けない）、`z-20`（上部バーの `z-40` より下）。中は `flex flex-col gap-3`、上に
-  `pt-3`（留まったときに見出しが上部バーに接しない）。本文の幅は今の `max-w-4xl`。
-- 帯の高さは幅と中身で変わる（チップ・箱・選択の行の折り返し）。`ResizeObserver` で測り直し、仮想化の
-  スクロール位置の計算と `scroll-padding-top` は帯の高さを差し引く（行へフォーカスを移すときに、
-  その行が帯の下に隠れない）。
-- 「新しいタグ」を押したとき、一覧の先頭が帯の下に見えていなければ、先頭までスクロールしてから
-  作成の行を差し込み、入力へフォーカスを移す（作成の行はいつも一覧の先頭で、見えない位置に
-  入力を作らない）。
+- The band is `position: sticky` with `top` at the top bar height token (`top-navbar`), an opaque `bg-bg` surface
+  so rows do not show through, and `z-20` (below the top bar's `z-40`). Inside it is `flex flex-col gap-3` with
+  `pt-3`, so the stuck heading does not touch the top bar. The body width stays `max-w-4xl`.
+- The band height depends on width and content (chips, the box, a wrapping selection bar). A `ResizeObserver`
+  remeasures it, and the virtualizer's scroll offsets and `scroll-padding-top` subtract it, so a row receiving focus
+  never hides under the band.
+- Pressing "New tag" when the top of the list is not visible under the band scrolls to the top first, then inserts
+  the create row and focuses its input. The create row is always first in the list, and an input is never created
+  out of view.
 
 ### Header
 
-見出しの行は `flex min-h-10 items-center gap-3`。左に `h1`「Tags」（ライブラリの見出しと同じ
-`text-xl font-semibold tracking-tight sm:text-2xl`）、右にライブラリの「N items」と同じ書式の件数
-（`text-xs text-fg-muted tabular-nums sm:text-sm`、`role="status"`・`aria-live="polite"`）、その右に
-primary の「New tag」（`Plus`）。
+The header row is `flex min-h-10 items-center gap-3`: on the left an `h1` "Tags" in the library heading format
+(`text-xl font-semibold tracking-tight sm:text-2xl`); to its right the count in the format of the library's
+"N items" (`text-xs text-fg-muted tabular-nums sm:text-sm`, `role="status"`, `aria-live="polite"`); then the
+primary "New tag" (`Plus`).
 
-- **件数**: 応答の `total`・`totalAll` で出す（[contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-のパラメータ)）。
-  「1,000 tags」、絞り込み・検索のどちらかが効いていれば「90 of 1,000 tags」（受け入れ条件 8。読み込んで
-  いないタグも数えた数）。**読み込んだ数・ページの区切りはどこにも出さない**。改名中の残した行は
-  数えない。操作のあとの増減は局所で数え直す（[data-model.md §4](data-model.md#4-画面の側で持つ状態)
-  「操作のあとの反映」）。先頭のページが届く前は「Loading…」。
-- 「Rejected names」のタブの間は、件数と「New tag」を出さない（`h1` だけ）。
-- 1 件でも選ぶと、この行は同じ高さの**選択の行**に入れ替わる（下の「Selection bar」）。
+- **Count**: built from the response's `total` and `totalAll`
+  ([contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). "1,000 tags", or "90 of 1,000
+  tags" while a filter or search applies (acceptance criterion 8; unloaded tags are counted). **The loaded number
+  and page boundaries never appear.** A row kept for an ongoing rename is not counted. Changes after an action are
+  counted locally ([data-model.md §4](data-model.md#4-screen-state), "Applying an action's result").
+  Before the first page arrives the count reads "Loading…".
+- On the "Rejected names" tab the row shows only the `h1`, without the count and "New tag".
+- Selecting one row replaces this row with the selection bar of the same height ([Selection bar](#selection-bar)).
 
 ### Tabs
 
-見出しの行の下に、下線のタブ（`ui/Tabs`。`role="tablist"`、読み上げ名「Tag lists」）を 2 つ置く:
-「Tags 〈`totalAll`〉」と「Rejected names 〈却下した名前の `total`〉」。数は名前の後ろに `font-normal
-text-fg-subtle tabular-nums` で添え、取れるまでは出さない。選んでいるタブは `text-fg` と
-`border-accent` の 2px の下線、選んでいないタブは `text-fg-muted`（hover で `text-fg`）。並びの下端に
-`border-b border-border`。
+Under the header row sit two underlined tabs (`ui/Tabs`, `role="tablist"`, accessible name "Tag lists"):
+"Tags {`totalAll`}" and "Rejected names {rejected names `total`}". The number follows the name in
+`font-normal text-fg-subtle tabular-nums` and is omitted until known. The selected tab is `text-fg` with a 2px
+`border-accent` underline; the other is `text-fg-muted` (`text-fg` on hover). The row ends with
+`border-b border-border`.
 
-- 押すか、左右の矢印・Home・End で切り替える（選んでいるタブだけが Tab の順に入る）。パネルは
-  `role="tabpanel"` と `aria-labelledby`。
-- タブは URL の `tab` に載る（「URL state」）。切り替えると、選択・作成の行・改名を閉じる（どれも
-  「Tags」のタブの中のもの）。作成・改名の送信中は切り替えない。
-- 「Tags」のタブを離れても読み込んだ行と件数は残り、戻れば同じ一覧が出る（「Rejected names」の間は
-  続きを読まない）。
+- Switching is by press, or by the left and right arrows, Home and End; only the selected tab is in the Tab order.
+  The panel has `role="tabpanel"` and `aria-labelledby`.
+- The tab is the URL's `tab` ([URL state](#url-state)). Switching closes the selection, the create row and rename
+  (all belong to the "Tags" tab). The tab does not switch while a create or rename is being sent.
+- Leaving the "Tags" tab keeps the loaded rows and count, and coming back shows the same list. Nothing loads more
+  while "Rejected names" is open.
 
 ### Active filters
 
-「Tentative only」「Unused only」のどちらかが効いている間だけ、タブの下に効いている絞り込みの
-チップを並べる（`ul`、読み上げ名「Active filters」、`flex flex-wrap gap-1.5`）。チップはライブラリの
-タグの絞り込み（`ActiveTagFilters`）と同じ `FilterChip`（`h-6`・`rounded-sm`・`bg-accent-soft`・
-`text-xs text-link`、末尾に `X`）で、先頭のアイコンは「Tentative only」が `CircleDashed`（仮の目印と
-同じ絵）、「Unused only」が `VideoOff`。読み上げ名は「Remove the filter "〈名〉"」。押すとその絞り込み
-だけを外し、フォーカスは残るチップへ、無ければ「Filter」へ（タグが 0 なら「New tag」へ）移す。
+While "Tentative only" or "Unused only" applies, the active filters show as chips under the tabs (`ul`,
+accessible name "Active filters", `flex flex-wrap gap-1.5`). Each chip is the `FilterChip` of the library's tag
+filter (`ActiveTagFilters`: `h-6`, `rounded-sm`, `bg-accent-soft`, `text-xs text-link`, trailing `X`). Leading
+icons: `CircleDashed` for "Tentative only" (the tentative mark) and `VideoOff` for "Unused only". Accessible name
+"Remove the filter "{name}"". Pressing a chip removes only that filter and moves focus to the remaining chip, else
+to "Filter" (to "New tag" when there are no tags).
 
 ### Column header
 
-一覧の上の細い行（`h-9`、`border-b border-border`、`text-xs text-fg-muted`）。行と同じ `px-2`・
-`gap-2 sm:gap-3` で、左から**先頭のチェック** →「Name」（`flex-1`）→ 右寄せの「Videos」（行の本数の列と
-同じ `w-16 sm:w-20`）→ 行の操作の列と同じ幅の空き（マウスの端末で `sm` 以上は 4 つの `IconButton` の
-幅、タッチ・`sm` 未満は「Actions」1 つの幅）。行の操作の列の幅を揃えるため、確定したタグの行も
-「確定する」の分の幅を空けておく（本数の列が全部の行で「Videos」の下に揃う）。列の見出しは並べ替えの
-操作を持たない。一覧に行が無い（空の状態）ときは出さない。
+A thin row above the list (`h-9`, `border-b border-border`, `text-xs text-fg-muted`) with the rows' `px-2` and
+`gap-2 sm:gap-3`. Left to right: the **header checkbox** → "Name" (`flex-1`) → right-aligned "Videos" (`w-16
+sm:w-20`, the width of the rows' video count column) → a gap as wide as the row actions column (four `IconButton`s
+on mouse devices at `sm` and up; one "Actions" on touch or below `sm`). To keep the actions column aligned,
+confirmed rows reserve the width of "Confirm", so the video count sits under "Videos" on every row. The column
+header has no sort controls and is hidden when the list has no rows (empty state).
 
-- **先頭のチェック**: `Checkbox`（`size-5`）を `size-8` の包みに置く。見え方は行のチェックと同じ規則
-  （下の「Row checkbox」。選んでいない間は `opacity-40`、列の見出しに hover するか選んでいる間は
-  `opacity-100`）。対象は**読み込んだ行**（`rows`）のうち**選べる行**で、改名中の行は入らない。
-  読み込んでいないタグは選ばれない（要件 10）。状態は 3 つ: 選べる行を 1 つも選んでいなければ空、
-  一部なら中間（lucide `Minus`）、全部なら選択。空と中間で押すと選べる行をすべて選び、全部のときに
-  押すと選択を解く。読み上げ名は空・中間で「Select all 100 loaded tags」（数は読み込んだ選べる行の数）、
-  全部で「Clear selection」。続きが届いて読み込んだ行が増えると、全部の状態は中間に戻る。選べる行が
-  無いとき・読み込んだ行の数が上限（`maxTagBatch`）を超えるときは `disabled`。上限のときは、理由
-  「Too many tags are loaded to select them all at once…」を包みの `title` と `aria-describedby` の
-  `sr-only` で添える（ライブラリの上限と同じ形）。この理由は選択の行には出さない（下の「Enabled and
-  disabled」）。
+The header checkbox is a `Checkbox` (`size-5`) in a `size-8` wrapper. It appears like a row checkbox
+([Row checkbox](#row-checkbox): `opacity-40` while nothing is selected, `opacity-100` on column header hover or
+while selecting). Its scope is the **selectable loaded rows** (`rows`); a row being renamed is excluded, and
+unloaded tags are never selected (requirement 10).
+
+| State | Condition | Mark | Press does | Accessible name |
+| --- | --- | --- | --- | --- |
+| Empty | No selectable row selected | Empty | Selects every selectable row | Select all 100 loaded tags (the number of selectable loaded rows) |
+| Mixed | Some selected | lucide `Minus` | Selects every selectable row | Select all 100 loaded tags |
+| All | All selected | Check | Clears the selection | Clear selection |
+| Disabled | No selectable row, or loaded rows over `maxTagBatch` | | | Over the limit, the reason "Too many tags are loaded to select them all at once…" is in the wrapper's `title` and in an `sr-only` element named by `aria-describedby` (as the library limit). The selection bar does not show it ([Enabled and disabled](#enabled-and-disabled)) |
+
+When load-more adds rows, "All" turns back into "Mixed".
 
 ### Stale list
 
-一覧を持っている間に**先頭のページ**の読み込みが失敗したとき（条件の変更、「Reload」、`notFoundIds`
-のあとの取り直しのどれでも。[data-model.md §4](data-model.md#4-画面の側で持つ状態)「読み込み失敗」）の形。
+This is the shape when the **first page** fails while a list is shown: after a condition change, "Reload", or
+the reload after `notFoundIds` ([data-model.md §4](data-model.md#4-screen-state), "Load failure").
 
-- 前の行と件数はそのまま残し（Edge Case）、帯の中の列の見出しの上に、ライブラリの
-  `LoadMoreFailed` と同じ箱（`rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm
-  text-danger`、`AlertCircle`、`role="alert"`）で「Couldn't load tags: {理由}. The list below may not
-  match the current search, filters and sort.」と `Button` の `sm`「Retry」を出す。トーストは出さない
-  （箱が同じことを言い、消えない）。帯の中に置くのは、スクロールした位置でも見えるためである
-  （残した行は条件と合わないので、どこまでスクロールしても知らせが要る）。
-- 箱は、「Retry」か条件の変更で次の先頭のページが**届くまで**残る。「Retry」は今の条件で先頭の
-  ページを読み直す（送信中は「Retry」を `disabled`。届いたら行と件数を差し替え、スクロール位置は
-  先頭、箱は消える）。また失敗すれば箱は残り、理由だけが変わる。
-- 箱がある間は**続きを読まない**（持っているカーソルは前の条件のもので、今の条件の続きにならない。
-  Edge Case「古い条件の行は混ざらない」）。末尾の「Loading more」の状態も出さない。残した行の
-  チェックと操作は押せる（どれも実在するタグへの操作で、反映は今までどおり読み込んだ行の中で行う）。
-- 帯の高さは箱の分だけ伸びる（`sm` 未満では文字とボタンが `flex-wrap` で折り返す）。まれな失敗の
-  間だけで、仮想化のスクロール位置の計算は今の帯の高さを差し引く（上の「Band」）。
+```mermaid
+stateDiagram-v2
+  [*] --> Current
+  Current --> Stale: first page fails
+  Stale --> Retrying: Retry
+  Retrying --> Stale: fails again
+  Retrying --> Current: arrives
+  Stale --> Current: new conditions arrive
+```
+
+- The previous rows and count stay (Edge Case). Above the column header, in the band, the library's
+  `LoadMoreFailed` box (`rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger`,
+  `AlertCircle`, `role="alert"`) says "Couldn't load tags: {reason}. The list below may not match the current
+  search, filters and sort." with a `sm` `Button` "Retry". No toast: the box says the same and does not vanish. It
+  lives in the band because the kept rows do not match the conditions, so the notice has to be visible at any
+  scroll depth.
+- The box stays until a first page **arrives**, from "Retry" or a condition change. "Retry" reloads the first page
+  under the current conditions and is `disabled` while sending; on arrival the rows and count are replaced, the
+  scroll returns to the top and the box goes. Another failure keeps the box and only changes the reason.
+- While the box is shown **nothing loads more**: the cursor belongs to the old conditions (Edge Case: rows from
+  old conditions never mix in), and the [Loading more](#loading-more) state is not shown. Checkboxes and actions on
+  the kept rows still work; each acts on a real tag and applies within the loaded rows as before.
+- The band grows by the box (below `sm` the text and button wrap with `flex-wrap`). This lasts only during a rare
+  failure, and the virtualizer subtracts the current band height ([Band](#band)).
 
 ## Rows
 
-行の列・書式・高さ（`py-2`）・名前のリンク・シノニムの行・本数・仮の目印・改名の入力は 014・031 の
-まま。足すのは先頭のチェックと、タッチ・狭い幅での操作のまとめだけで、見えている行だけを描く
-仕組み（R-2）とページで読む仕組み（R-1・R-11）は行の見た目を変えない。
+Row columns, format, height (`py-2`), the name link, the synonyms line, the video count, the tentative mark and the
+rename input stay as in 014 and 031. Only the leading checkbox and the collapsed actions on touch and narrow widths
+are added. Drawing only visible rows (R-2) and loading in pages (R-1, R-11) do not change how rows look.
 
 ### Loading more
 
-一覧の末尾（読み込んだ最後の行の下）に、続きの状態を 1 つだけ出す。行と同じ `px-2`、幅は行と同じ、
-`divide-y` の線の下に置く。件数には数えず、選べず、仮想化の描く範囲にも入れない（読み込んだ行の
-後ろに置く通常の要素）。
+The end of the list (below the last loaded row) shows one load-more state at a time. It uses the rows' `px-2` and
+width, sits under the `divide-y` line, is not counted, cannot be selected, and is outside the virtualizer's drawn
+range (an ordinary element after the loaded rows).
 
-- **読み込み中**: 行の `Skeleton` を 3 つ（初回の読み込み中と同じ形・同じ高さ。`aria-hidden`）。
-  一覧の包みを `aria-busy`、`sr-only` の `role="status"` に「Loading more tags…」。きっかけは
-  仮想化が描く最後の行が読み込んだ行の末尾から数行以内に入ったときで（[data-model.md §4](data-model.md#4-画面の側で持つ状態)
-  「続きを読むきっかけ」）、利用者が末尾に届く前に読み始める。**操作で読み込んだ行が 1 つも残らず**
-  （`rows` が空）、`nextCursor` があるときは、描く行が無いので仮想化のきっかけは働かない。この
-  ときは操作の反映と同時にその場で続きを 1 回要求し、`total` が 0 でなければ空の状態は出さずに
-  この `Skeleton` を出す（「Tentative only」で読み込んだ仮のタグを全部確定した、「Unused only」で
-  読み込んだ行を全部削除した、など）。届いた行は末尾に足し、`Skeleton` は
-  消える。**出ている行の操作とスクロールは止まらない**（UI品質）。読み込みの間に行を 1 件操作しても、
-  その結果は読み込んだ行の中で反映する（R-12）。
-- **失敗**: ライブラリの `LoadMoreFailed` と同じ箱（`rounded-md border border-danger bg-danger-soft
-  px-3 py-2 text-sm text-danger`、`AlertCircle`、`role="alert"`）に「Couldn't load more: {理由}」と
-  `Button` の `sm`「Retry」。「Retry」は同じカーソルで読み直す。読み込んだ行はそのまま残る（Edge Case
-  「続きの読み込みに失敗したとき」）。箱の上下は `my-3`。
-- **一覧が変わった**（続きの応答の `totalAll` が画面の値と違う）: 同じ大きさの中立の箱
-  （`rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg`、lucide
-  `RefreshCw`、`role="status"`）に「Tags were added or removed elsewhere, so the rest of this list may be
-  out of date.」と `Button` の secondary・`sm`「Reload」。続きの読み込みは止め、読み込んだ行と
-  選択は残す。「Reload」で先頭から読み直し（選択は空、スクロール位置は先頭）、箱は消える
-  （Edge Case「続きを読むあいだに別のタブで…」、R-11）。danger にしないのは、失敗ではなく
-  知らせだからである。
-- **末尾まで読んだ**（`nextCursor` が無い）: 何も出さない。「すべて読み込みました」の行は置かない
-  （続きの `Skeleton` が出なくなることが印で、読み込んだ数は出さない）。
+```mermaid
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Loading: last drawn row near the end
+  Loading --> Idle: page arrives
+  Loading --> Failed: request fails
+  Failed --> Loading: Retry
+  Loading --> Changed: totalAll differs
+  Changed --> [*]: Reload from the top
+  Idle --> Done: no nextCursor
+```
 
-末尾の状態は同時に 1 つだけで、読み込み中 → 失敗、読み込み中 → 一覧が変わった、のどちらかに
-変わる。条件を変えて先頭から読み直すと、どの状態も消える。
+Reloading from the top under new conditions clears every state.
+
+| State | What the end of the list shows |
+| --- | --- |
+| Loading | Three row `Skeleton`s (the first-load shape and height, `aria-hidden`). The list wrapper is `aria-busy`, with an `sr-only` `role="status"` "Loading more tags…". **Visible rows keep scrolling and accepting actions** (`UI品質`); a single-row action during the load applies within the loaded rows (R-12). Arriving rows append and the `Skeleton`s go |
+| Failed | The library's `LoadMoreFailed` box (`rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger`, `AlertCircle`, `role="alert"`, `my-3`) with "Couldn't load more: {reason}" and a `sm` `Button` "Retry", which reloads from the same cursor. Loaded rows stay (Edge Case: when loading more fails) |
+| List changed (load-more `totalAll` differs from the screen's) | A neutral box of the same size (`rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg`, lucide `RefreshCw`, `role="status"`) with "Tags were added or removed elsewhere, so the rest of this list may be out of date." and a secondary `sm` `Button` "Reload". Loading more stops; loaded rows and the selection stay. "Reload" reloads from the top (selection empty, scroll at the top) and the box goes (Edge Case: another tab changes tags while loading more; R-11). Not danger, because it is a notice, not a failure |
+| Done (no `nextCursor`) | Nothing. No "Everything is loaded" row: the absence of the load-more `Skeleton` is the sign, and the loaded number is not shown |
+
+The trigger is the virtualizer's last drawn row coming within a few rows of the end of the loaded rows
+([data-model.md §4](data-model.md#4-screen-state), "When to load more"), so loading starts before the
+user reaches the end. When an action leaves **no loaded row** (`rows` empty) and a `nextCursor` exists, no row is
+drawn and that trigger cannot fire. The screen then requests the next page once, together with applying the
+action, and shows the loading `Skeleton` instead of the empty state when `total` is not 0. Examples: confirming
+every loaded tentative tag under "Tentative only", or deleting every loaded row under "Unused only".
 
 ### Row checkbox
 
-- 名前の列の**左**に `Checkbox`（`size-5`）を `gap-2`（`sm:gap-3`）で置く。押す範囲は `size-8` の
-  正方形（チェックを中央に置いた包み）で、タッチでも外さない。チェックを押しても名前のリンクへは
-  移らない。
-- 見え方はライブラリのリスト表示の規則: 1 件も選んでいない間は `opacity-40`、その行に hover
-  するかフォーカスが入ると `opacity-100`、1 件でも選んでいる間はすべての行で `opacity-100`。
-  hover できない端末では `opacity-40` のまま押せる（薄くても見えている）。
-- 選んだ行は面を `bg-accent/10`（アクセントの 10% の薄い色）にする。最初の形の `bg-accent-soft` は
-  塗りつぶしの濃いティールで、選んだ行が続くと一覧が重く見えた（レビュー）。名前（`text-fg`）と本数・
-  シノニム（`text-fg-muted`）の色は変えない。改名中の行は改名の面（`bg-elevated` と
-  `ring-control-border`）が勝ち、その行のチェックは `disabled`（改名の確定で行が並び順の別の位置へ
-  動きうるため、改名の間は選ばない）。選んでいる行の改名を始めると、その行を選択から外す（選択の行の
-  件数が減り、空になれば見出しの行に戻る）。まとめての操作が改名中のタグに働くことは無い。
-- 選択は**読み込んだ行**の部分集合で、検索・絞り込み・**並び順**のどれを変えても空になる（Edge
-  Case、[data-model.md §4](data-model.md#4-画面の側で持つ状態)「選択」）。操作や取り直しで `rows` から
-  消えた id も外れる。読み込んだ行が上限を超えても、行のチェックは押せる（上の「Why this shape」）。
-- 改名中の行は、条件を変えて先頭から読み直したあとも、新しい `rows` に無ければ並び順の位置に
-  差し込んで残し、入力中の名前を失わない（Edge Case「改名中の行は…」。今の検索と同じ）。改名を
-  確定・取り消しすると、その行は今の条件に合わなければ消える。
-- Shift を押しながらの範囲選択は入れない（親 Issue に無く、先頭のチェックで読み込んだ全部を選べる）。
+- A `Checkbox` (`size-5`) sits **left** of the name column with `gap-2` (`sm:gap-3`). The press target is a
+  `size-8` square wrapper with the checkbox centred, so touch does not miss it. Pressing it does not follow the
+  name link.
+- Appearance follows the library list view: `opacity-40` while nothing is selected; `opacity-100` on hover or
+  focus of that row; `opacity-100` on every row while anything is selected. Devices without hover press it at
+  `opacity-40` (faint but visible).
+- A selected row gets a `bg-accent/10` surface (10% of the accent). The first version's `bg-accent-soft` is a
+  solid dark teal, and runs of selected rows made the list look heavy (review). The name (`text-fg`) and the count
+  and synonyms (`text-fg-muted`) keep their colours.
+- A row being renamed shows the rename surface (`bg-elevated` with `ring-control-border`), which wins, and its
+  checkbox is `disabled`: committing a rename can move the row to another sort position, so it is not selectable
+  during rename. Starting a rename on a selected row deselects it (the selection bar count drops; at zero the header
+  row returns). Bulk actions never act on a tag being renamed.
+- The selection is a subset of the **loaded rows** and empties when search, filters or **sort** change (Edge Case,
+  [data-model.md §4](data-model.md#4-screen-state), "Selection"). Ids that leave `rows` after an action
+  or a reload drop out. Row checkboxes stay pressable even when the loaded rows exceed the limit
+  ([Why this shape](#why-this-shape)).
+- A row being renamed survives a reload from the top under new conditions: if the new `rows` lack it, it is inserted
+  at its sort position, so the typed name is not lost (Edge Case on rows being renamed; as the current search does).
+  When the rename is committed or cancelled, the row disappears if it does not match the current conditions.
+- No Shift range selection: the parent Issue does not ask for it, and the header checkbox selects every loaded row.
 
 ### Actions on touch and narrow widths
 
-- マウスの端末（`pointer: fine`）で `sm` 以上の幅では、行の操作は今のまま（「確定する」「改名」
-  「シノニム」の `IconButton` と「その他の操作」のメニュー。031「Row」）。
-- **タッチの端末（`pointer: coarse`）または `sm` 未満の幅**では、行の右端を 1 つの `IconButton`
-  （`Ellipsis`、読み上げ名「Actions」、ツールチップなし）にし、メニューに文字を持つ項目を並べる:
-  「Confirm」（`Check`、仮の行だけ）→「Rename」（`Pencil`）→「Synonyms」（`Tags`）→
-  「Merge into another tag…」（`Merge`）→ 区切り線 →「Reject…」（`Ban`、danger。仮の行）または
-  「Delete…」（`Trash2`、danger。確定した行）。項目の文言は今の `IconButton` の読み上げ名と
-  メニューの項目をそのまま使う。出し分けは CSS（`[@media(pointer:coarse)]` と `max-sm:`）で行い、
-  `matchMedia` は読まない（library-ui.md §4、`TouchControls` と同じ）。
-- まとめたメニューの「Confirm」は行の「確定する」と同じ振る舞い（確認なし、送信中は入口の
-  `IconButton` を `aria-busy` にし次の押下を無視）。改名・シノニム・統合・却下・削除は、それぞれの
-  `IconButton`・項目を押したときと同じ。フォーカスの行き先の規則（014・031）で「改名」「その他の
-  操作」を指すものは、まとめている間は入口の `IconButton` を指す。
-- 行の幅の配分（360px）: 本文の `px-4` と行の `px-2` を引いた 312px から、チェックの包み
-  `size-8`（32px）・間 `gap-2` ×3（24px）・本数の列 `w-16`（64px）・入口の `IconButton`（32px）を
-  引いて、名前の列は約 160px になる（031 の 92px より広い）。横スクロールは出ない。
-- このまとめは merge 済み（#683）。
+| Device and width | Row actions |
+| --- | --- |
+| Mouse (`pointer: fine`) at `sm` and up | Unchanged: the "Confirm", "Rename" and "Synonyms" `IconButton`s and the "More actions" menu (031 "Row") |
+| Touch (`pointer: coarse`) or below `sm` | One `IconButton` at the right end (`Ellipsis`, accessible name "Actions", no tooltip) opening a menu of labelled items: "Confirm" (`Check`, tentative rows only) → "Rename" (`Pencil`) → "Synonyms" (`Tags`) → "Merge into another tag…" (`Merge`) → separator → "Reject…" (`Ban`, danger, tentative rows) or "Delete…" (`Trash2`, danger, confirmed rows) |
+
+- Item labels reuse the current `IconButton` accessible names and menu items. CSS chooses the variant
+  (`[@media(pointer:coarse)]` and `max-sm:`), without reading `matchMedia` (library-ui.md §4, as `TouchControls`).
+- "Confirm" in the menu behaves like the row's "Confirm": no confirmation; while sending, the entry `IconButton` is
+  `aria-busy` and ignores further presses. Rename, synonyms, merge, reject and delete behave as their `IconButton`s
+  and items. Focus rules from 014 and 031 that target "Rename" or "More actions" target the entry `IconButton`
+  while collapsed.
+- Width at 360px: the body's `px-4` and the row's `px-2` leave 312px. Minus the checkbox wrapper `size-8` (32px),
+  three `gap-2` (24px), the count column `w-16` (64px) and the entry `IconButton` (32px), the name column gets about
+  160px (wider than 031's 92px). No horizontal scroll.
+- This collapse is merged (#683).
 
 ## Selection bar
 
-1 件でも選ぶと、帯の先頭の見出しの行が同じ高さ（`min-h-10`）の**選択の行**に入れ替わる
-（[`web/src/tags/TagSelectionBar.tsx`](../../web/src/tags/TagSelectionBar.tsx)）。`role="region"`、読み上げ名
-「Selected tags」。選択が空になると見出しの行に戻る。画面下部に浮かぶバーは置かない（最後の行に
-重なっていた。レビュー）。帯ごと留まるので、どこまでスクロールしても手が届く（要件 13）。
+Selecting one row replaces the header row at the top of the band with the **selection bar** of the same height
+(`min-h-10`) ([`web/src/tags/TagSelectionBar.tsx`](../../web/src/tags/TagSelectionBar.tsx)): `role="region"`,
+accessible name "Selected tags". An empty selection brings the header row back. No bar floats at the bottom of the
+screen (it covered the last row; review). It stays with the band, so it is in reach at any scroll depth
+(requirement 13).
+
+```mermaid
+stateDiagram-v2
+  [*] --> HeaderRow
+  HeaderRow --> SelectionBar: select a row
+  SelectionBar --> HeaderRow: selection empties
+  SelectionBar --> HeaderRow: condition change
+```
+
+The selection empties through ×, the header checkbox in "All", a condition change, a tab switch, renaming the last
+selected row, or applying an action.
 
 ### Layout
 
-左から:
+Left to right:
 
-1. **×**（`IconButton`、読み上げ名「Clear selection」）。押すと選択を解き、フォーカスを列の見出しの
-   先頭のチェックへ移す
-2. 件数「12 tags selected」（`text-lg font-semibold text-fg tabular-nums`、`role="status"`・
-   `aria-live="polite"`。見出しの位置にあるので見出しに近い大きさ）。数は選んだ id の数で、読み込んだ
-   行の部分集合である。先頭のチェックで選んだときは読み込んだ選べる行の数になり（「100 tags
-   selected」）、条件に合う全部の数（タブの「Tags 1,000」、見出しに戻ったときの「500 of 1,000 tags」）
-   より少なければ、残りを読み込んでいないことがそのまま読める
-3. 右寄せで、まとめての操作を本物のボタン（`Button` の `md`）で並べる:
-   - **「Confirm」**（primary、lucide `Check`）— 選んだ中に仮のタグがあるときだけ
-   - **「Merge into one tag…」**（secondary、`Merge`）— いつも（統合元 1 件の統合は行の統合と同じ結果）
-   - **「Reject…」**（secondary、`Ban`。文字とアイコンは `text-danger`）— 選んだ中に仮のタグがあるときだけ
-   - **「Delete…」**（secondary、`Trash2`。文字とアイコンは `text-danger`）— 選んだ中に確定したタグが
-     あるときだけ
+1. **×** (`IconButton`, accessible name "Clear selection"). Clears the selection and moves focus to the header
+   checkbox.
+2. The count "12 tags selected" (`text-lg font-semibold text-fg tabular-nums`, `role="status"`,
+   `aria-live="polite"`; close to heading size because it sits in the heading's place). The number is the selected
+   ids, a subset of the loaded rows. After the header checkbox it is the number of selectable loaded rows ("100 tags
+   selected"); when it is below the matching total (the tab's "Tags 1,000", the header row's "500 of 1,000 tags"),
+   the gap reads as "the rest is not loaded".
+3. Right-aligned, the bulk actions as real buttons (`Button`, `md`):
 
-幅が足りないとき（`sm` 未満など）は、ボタンの並びが件数の下の行へ折り返す（`flex-wrap`）。
-ライブラリの「すべて選択」はここに置かない（列の見出しの先頭のチェックがその役）。
+| Button | Variant and icon | Shown when |
+| --- | --- | --- |
+| Confirm | primary, lucide `Check` | The selection has a tentative tag |
+| Merge into one tag… | secondary, `Merge` | Always (merging one source gives the row merge's result) |
+| Reject… | secondary, `Ban`; text and icon `text-danger` | The selection has a tentative tag |
+| Delete… | secondary, `Trash2`; text and icon `text-danger` | The selection has a confirmed tag |
+
+When the width runs out (below `sm` and similar), the buttons wrap to a line under the count (`flex-wrap`). The
+library's "Select all" is not here; the header checkbox does that job.
 
 ### Enabled and disabled
 
-- 選んだタグに**働かない操作は出さない**（薄くしない）。仮と確定が混ざっていれば「Confirm」「Reject…」
-  「Delete…」が全部出て、それぞれ働く分だけ処理し、外した数を伝える（Edge Case）。
-- 上限は**選んだ数**に掛ける: 選んだ id の数が `maxTagBatch` を超えるときだけ、出ている操作を
-  `disabled` にし、ライブラリの上限と同じ文言の理由（「Too many tags are selected to act on them
-  together…」）を `title`・`aria-describedby` と、選択の行の下の `text-xs text-danger` の 1 行で添える。
-  **読み込んだ行の数が上限を超えていても、選んだ数が上限の中なら操作は押せる**（1 行ずつ選んだ選択は、
-  何行読み込んでいても操作できる。Plan「まとめての操作」、要件 8・9）。先頭のチェックは読み込んだ数で
-  止まるので（「Column header」）、この状態に入るのは行のチェックで上限を超えて選んだときだけで、
-  実質起きない。
-- まとめての操作の送信中は、選択の行のすべてのボタンを `disabled` にし、「Confirm」の送信中は
-  そのアイコンを `LoaderCircle`（`animate-spin motion-reduce:animate-none`）にする。続きの読み込み中は
-  止めない（送る id は選んだ行で決まっていて、続きの到着に左右されない）。
+- Actions that do not apply to the selection are **hidden, not dimmed**. With tentative and confirmed tags mixed,
+  "Confirm", "Reject…" and "Delete…" all show; each acts on the tags it applies to and reports how many it skipped
+  (Edge Case).
+- The limit applies to the **selected count**: only when the selected ids exceed `maxTagBatch` do the shown actions
+  become `disabled`, with the library-style reason ("Too many tags are selected to act on them together…") in
+  `title`, `aria-describedby` and a `text-xs text-danger` line under the selection bar. **With more loaded rows than
+  the limit, actions stay pressable while the selected count is within it** (rows picked one by one work however many
+  rows are loaded; Plan "Bulk actions", requirements 8 and 9). The header checkbox stops at the loaded count
+  ([Column header](#column-header)), so this state is reached only by picking more than the limit row by row, which
+  practically does not happen.
+- While a bulk action is sending, every selection bar button is `disabled`, and while confirming, the "Confirm"
+  icon becomes `LoaderCircle` (`animate-spin motion-reduce:animate-none`). Loading more is not paused: the ids sent
+  are fixed by the selection and do not depend on arriving rows.
 
 ### Bulk confirm
 
-- 「Confirm」を押すとすぐ `POST /api/tags/batch`（`confirm`、選んだ id 全部）を 1 回送る。確認の窓は
-  無い（要件 11）。
-- 応答で、`appliedIds` の行を**読み込んだ行の中で** `tentative: false` に差し替え（目印と「確定する」が
-  消える。一覧は取り直さない。R-12）、選択から外す。`notApplicableIds`（既に確定していたもの）は
-  選んだまま残す。トースト「Confirmed 8 tags」、外した数があれば「Confirmed 8 tags. 4 were already
-  confirmed.」。`notFoundIds` が空でなければ一覧を**先頭から**取り直し（スクロール位置は先頭、
-  取り直しで `rows` に無くなった id は選択から外れる）、トースト「Some of the tags no longer existed,
-  so the list was reloaded」。
-- 「Tentative only」を押している間は確定した行が一覧から外れ、`total` が減る。読み込んでいない
-  仮のタグは仮のまま残り、続きを読めば出てくる（受け入れ条件 10）。読み込んだ行が全部外れて
-  `total` も 0 なら 031 の「No tentative tags」の空の状態になり、フォーカスは「Tentative only」へ
-  （031「絞り込みから外れた行のフォーカス」。押しボタンは「Filter」の中に移ったので「Filter」へ）。
-  読み込んだ行が全部外れたが `total` が 0 でない
-  （読み込んでいない仮のタグが残っている）ときは、空の状態にせず、確定の反映と同時に `nextCursor` で
-  続きを 1 回要求して次の行を出す（描く行が無いので仮想化のきっかけは働かず、明示して要求する。
-  「Loading more」。カーソルは最後に読んだ行の位置なので、確定した行が消えても続きの位置は変わらない）。
-  このとき選択の行は消えていて先頭のチェックも `disabled` なので、フォーカスは「Filter」へ移す。
-  そうでなければ
-  フォーカスは、選択が残っていて「Confirm」が出ていれば「Confirm」に、選択が残っていても「Confirm」が
-  出なくなった（仮と確定を混ぜて選び、残った選択が確定したタグだけになった）ら「Merge into one tag…」に、
-  選択が空になったら列の見出しの先頭のチェックへ移す。押せないボタンへフォーカスを置かない。
-- 失敗（`5xx`・通信）はトーストで `errorText` を出し、何も変えず、選択は残る（Edge Case「途中で
-  失敗したとき」）。
+"Confirm" sends one `POST /api/tags/batch` (`confirm`, every selected id) at once, with no dialog
+(requirement 11).
+
+| Response part | Screen result |
+| --- | --- |
+| `appliedIds` | Those rows change to `tentative: false` **within the loaded rows** (the mark and the row "Confirm" disappear; no reload; R-12) and leave the selection. Toast "Confirmed 8 tags" |
+| `notApplicableIds` (already confirmed) | Stay selected. The toast becomes "Confirmed 8 tags. 4 were already confirmed." |
+| `notFoundIds` not empty | The list reloads **from the top** (scroll at the top; ids missing from the new `rows` leave the selection). Toast "Some of the tags no longer existed, so the list was reloaded" |
+| Failure (`5xx`, network) | A toast with `errorText`; nothing changes and the selection stays (Edge Case: when it fails midway) |
+
+Under "Tentative only", confirmed rows leave the list and `total` drops. Unloaded tentative tags stay tentative and
+appear when more loads (acceptance criterion 10). Focus after a confirm follows this rule; it never lands on a
+button that cannot be pressed.
+
+```mermaid
+flowchart LR
+  A{"Rows left<br/>in the list?"} -->|"none, total 0"| B["Empty state;<br/>focus Filter"]
+  A -->|"none, total > 0"| C["Load more once;<br/>focus Filter"]
+  A -->|yes| D{"Selection left?"}
+  D -->|no| E["Header checkbox"]
+  D -->|"yes, Confirm shown"| F["Confirm"]
+  D -->|"yes, no Confirm"| G["Merge into one tag…"]
+```
+
+- "None, total 0" shows 031's "No tentative tags" empty state; focus goes to "Filter", which now holds the toggle
+  031 focused (031: focus when a row leaves the filter).
+- "None, total > 0" means unloaded tentative tags remain. The screen does not show the empty state; it requests
+  the next page with `nextCursor` together with applying the confirm, because no row is drawn and the virtualizer
+  trigger cannot fire ([Loading more](#loading-more)). The cursor is the position of the last loaded row, so the
+  confirmed rows leaving does not move it. The selection bar is gone and the header checkbox is `disabled`, so focus
+  goes to "Filter".
+- "Yes, no Confirm" happens when tentative and confirmed tags were mixed and only confirmed ones remain selected.
 
 ### Bulk reject and delete
 
-選択の行の「Reject…」「Delete…」は `ModalFrame` の窓を開く。骨格は 014 の削除の窓と同じ（本文の
-段落、secondary「Cancel」（最初のフォーカス）と danger「Reject」／「Delete」）。
+"Reject…" and "Delete…" in the selection bar open a `ModalFrame` dialog with the skeleton of 014's delete dialog:
+a body paragraph, a secondary "Cancel" (first focus) and a danger "Reject" or "Delete".
 
-- 開くと同時に `POST /api/tags/impact`（`reject` または `delete`、選んだ id 全部）を送る。届くまで
-  本文は「Counting the affected videos…」の 1 行（`text-sm text-fg-muted`）と、その横に
-  `LoaderCircle`。**届くまで danger のボタンは `disabled`**（数の無い確認で実行させない。
-  [contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)）。
-- 届いたら本文を、`tagCount` が選んだ数と同じなら「全部に働く」の文、少なければ「一部に働く」の文
-  （上の「Words」。選んだ数・働く数・外れる数・`videoCount` を埋める）にする。`videoCount` が 0 なら
-  「aren't on any videos」の形で言い、「removed from 0 videos」とは言わない。本文の段落は 014 と同じ
-  `border-l-2 border-danger-strong pl-3`。
-- 数えられなかったとき（失敗）は本文に `text-sm text-danger`（`role="alert"`）の「Couldn't count the
-  affected videos: {理由}」と `Button` の ghost・`sm`「Retry」を出し、danger のボタンは `disabled` の
-  まま。
-- 実行中は両方のボタンを `disabled`、danger のボタンに `LoaderCircle`（削除の窓と同じ）。
-- `200` で窓を閉じ、`appliedIds` の行を読み込んだ行から消し（`total`・`totalAll` を減らす。一覧は
-  取り直さない）、選択から外す。`notApplicableIds` は選んだまま残す。トースト「Rejected 8 tags」
-  「Deleted 8 tags」、外した数があれば「… 4 confirmed tags were skipped.」「… 4 tentative tags were
-  skipped.」。却下のあとは却下した名前の先頭の 1 ページを取り直す（タブの件数が増える）。
-  `notFoundIds` が空でなければ一覧を先頭から取り直し、上と同じトースト。フォーカスは、消えた行の
-  位置の次の行の「改名」（まとめている間は入口の `IconButton`）、無ければ前の行、1 つも無ければ
-  「Tentative only」が効いていれば「Filter」、効いていなければ列の見出しの先頭のチェック（行が 1 つも
-  残らず `disabled` なら「New tag」）へ移す（014・031 の削除・却下の規則を、まとめての操作に当てたもの）。
-  消した分だけ末尾が上がって描く範囲が読み込んだ行の末尾に届けば、続きの読み込みが普通に始まる。
-  読み込んだ行が 1 つも残らず `nextCursor` があれば、反映と同時に続きを要求する（「Loading more」）。
-- 失敗は窓の中に `text-sm text-danger`（`role="alert"`）の 1 行で `errorText` を出し、窓は開いたまま、
-  選択も残る。「Cancel」・Esc は何も変えずに閉じ、フォーカスを窓を開いたボタン（「Reject…」
-  「Delete…」）へ戻す。
+```mermaid
+stateDiagram-v2
+  [*] --> Counting: open, send impact
+  Counting --> Ready: count arrives
+  Counting --> CountFailed: count fails
+  CountFailed --> Counting: Retry
+  Ready --> Sending: Reject or Delete
+  Sending --> [*]: 200, close
+  Sending --> Ready: failure line
+  Ready --> [*]: Cancel or Esc
+```
+
+| State | What the dialog shows |
+| --- | --- |
+| Counting | Opening sends `POST /api/tags/impact` (`reject` or `delete`, every selected id). The body is one line "Counting the affected videos…" (`text-sm text-fg-muted`) with `LoaderCircle`. **The danger button stays `disabled`** so nothing runs without a number ([contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)) |
+| Ready | When `tagCount` equals the selected count, the "applies to all" text; when smaller, the "applies to some" text ([Words](#words); selected, applied and skipped counts and `videoCount` filled in). `videoCount` 0 uses the "aren't on any videos" form, never "removed from 0 videos". The paragraph has 014's `border-l-2 border-danger-strong pl-3` |
+| Count failed | `text-sm text-danger` (`role="alert"`) "Couldn't count the affected videos: {reason}" and a ghost `sm` `Button` "Retry"; the danger button stays `disabled` |
+| Sending | Both buttons `disabled`; `LoaderCircle` on the danger button (as the delete dialog) |
+| Failed | One `text-sm text-danger` (`role="alert"`) line with `errorText`; the dialog stays open and the selection stays |
+| Cancel or Esc | Closes without changes and returns focus to the button that opened it ("Reject…" or "Delete…") |
+
+On `200` the dialog closes:
+
+- `appliedIds` rows leave the loaded rows (`total` and `totalAll` drop; no reload) and the selection.
+  `notApplicableIds` stay selected.
+- Toast "Rejected 8 tags" or "Deleted 8 tags"; with skipped tags "… 4 confirmed tags were skipped." or "… 4
+  tentative tags were skipped.".
+- After a reject, the first page of rejected names reloads (the tab count grows).
+- Non-empty `notFoundIds` reloads the list from the top with the same toast as [Bulk confirm](#bulk-confirm).
+- If the removal lifts the end of the list into the drawn range, loading more starts as usual. If no loaded row
+  remains and a `nextCursor` exists, the next page is requested together with applying the result
+  ([Loading more](#loading-more)).
+
+Focus applies the 014 and 031 delete and reject rule to bulk actions:
+
+```mermaid
+flowchart LR
+  A{"Row after the<br/>removed one?"} -->|yes| B["Its Rename"]
+  A -->|no| C{"Row before?"}
+  C -->|yes| D["Its Rename"]
+  C -->|no| E{"Tentative only<br/>applied?"}
+  E -->|yes| F["Filter"]
+  E -->|no| G{"Header checkbox<br/>enabled?"}
+  G -->|yes| H["Header checkbox"]
+  G -->|no| I["New tag"]
+```
+
+"Rename" means the entry `IconButton` while row actions are collapsed.
 
 ## Merge dialog
 
-`MergeTagDialog` を、統合元を 1 件以上持つ 1 つの窓にする。行の「別のタグへ統合…」（統合元 1 件）と
-選択の行の「Merge into one tag…」（統合元が選んだタグ）が同じ窓を開く。
+`MergeTagDialog` becomes one dialog with one or more sources. The row's "Merge into another tag…" (one source) and
+the selection bar's "Merge into one tag…" (the selected tags as sources) open the same dialog.
 
 ### Width
 
-- 窓は `ModalFrame` の `sm:max-w-lg`（`sm` 未満は全幅）。統合先の入力の枠と候補の一覧は窓の内側の幅
-  いっぱい（`frameClassName="w-full"`。要件 14）。1 件の統合でも同じ。
+- The dialog is `ModalFrame` at `sm:max-w-lg` (full width below `sm`). The target input frame and the candidate
+  list fill the dialog's inner width (`frameClassName="w-full"`; requirement 14), for a single merge too.
 
 ### Target field and list
 
-- 入力の上に**見える名札**「Tag to merge into」（`label`、`text-sm font-medium text-fg`）を置き、入力の
-  枠の左端に lucide `Search`（`text-fg-subtle`）を置く。枠は本文の検索欄と同じ高さ（`h-9`・`text-sm`・
-  `rounded-md`）。
-- 候補は入力の上に重ねて開く一覧ではなく、入力の下の**高さを決めた箱**（`h-60 max-h-[40vh]`、
-  `rounded-md border border-border p-1`、中を縦にスクロール）に**いつも**並べる（`Combobox` の
-  `inline`）。箱の高さは候補の数によらず同じで、窓の下端のボタンを覆わない。候補の行は `min-h-9`・
-  `rounded-md`、hover・矢印で選んでいる行は `bg-hover-wash`。
-- **選んだ統合先は一覧の中で目立たせる**（`bg-accent-soft text-link`、名前を `font-medium`）。
-- 候補が 1 つも無いとき（読み込み中でも失敗でもない）は、箱の中に `text-sm text-fg-muted` の
-  「No matching tags」。
-- 窓の下端（ボタンの行）の左に「**統合元 → 統合先**」を出す（統合先を選んだあとだけ。統合元が 1 件なら
-  その名前、複数なら「3 tags」、`text-sm text-fg-muted`、統合先は `font-medium text-fg`、間は
-  `ArrowRight`）。
-- 「Merge」は **primary** の `Button`。統合先を選び、数が届くまでは `disabled`（primary の `disabled`、
-  `opacity-50`）。押せない「Merge」を danger の赤で見せない（レビュー）。破壊的な操作であることは
-  本文の `border-l-2 border-danger-strong` の段落が言う（014 と同じ）。
-- Esc は候補の箱が開いたままでも窓を閉じる（箱は窓の本文の一部で、閉じる段は無い）。
+- A **visible label** "Tag to merge into" (`label`, `text-sm font-medium text-fg`) sits above the input, and lucide
+  `Search` (`text-fg-subtle`) at the left of its frame. The frame matches the body search field (`h-9`, `text-sm`,
+  `rounded-md`).
+- Candidates are **always** listed in a **fixed-height box** under the input (`h-60 max-h-[40vh]`,
+  `rounded-md border border-border p-1`, scrolling vertically; `Combobox` `inline`), not in a list layered over the
+  input. The box height does not depend on the number of candidates and never covers the dialog's footer buttons.
+  Candidate rows are `min-h-9` and `rounded-md`; the hovered or arrow-selected row is `bg-hover-wash`.
+- **The chosen target stands out in the list** (`bg-accent-soft text-link`, name in `font-medium`).
+- With no candidates (neither loading nor failed), the box shows "No matching tags" in `text-sm text-fg-muted`.
+- The left of the footer (the button row) shows "**source → target**" once a target is chosen: the source name for
+  one source, "3 tags" for several, in `text-sm text-fg-muted`, the target in `font-medium text-fg`, with
+  `ArrowRight` between.
+- "Merge" is a **primary** `Button`, `disabled` (primary `disabled`, `opacity-50`) until a target is chosen and its
+  count arrives. A "Merge" that cannot be pressed is not shown in danger red (review). The body's
+  `border-l-2 border-danger-strong` paragraph says the action is destructive (as in 014).
+- Esc closes the dialog even with the candidate box open: the box is part of the dialog body, with no level of its
+  own to close.
 
 ### Sources
 
-- 統合元が 1 件（行から）のときは今の形: 見出し「Merge "X"」、統合元の並びは出さず、確認の文言と
-  本数（`videoCount`）は 014 のまま。
-- 統合元が複数（選択の行から）のときは、見出し「Merge 4 tags」、入力の上に「Tags to merge」の
-  見出し（`text-xs font-semibold text-fg-muted uppercase`。吹き出しの `legend` と同じ書式）と、
-  統合元の名前の並び（`ul`、`flex flex-wrap gap-1.5`、各名前は 014 のシノニムの窓と同じ `bg-bg` の
-  `Chip`、`h-6`・`text-xs`、× なし）。並びは `max-h-32 overflow-y-auto` で、数十個を超えても窓を
-  押し広げない。仮のタグには行と同じ目印（`size-3`）を名前の後ろに付ける。
-- **選んだ中のタグを統合先に選ぶと、そのタグは統合元から外れ**（Edge Case）、並びのそのチップに
-  `text-fg-muted` の「kept」を添えて残し（消すと「選んだのに無い」と見える）、確認の文言の上に
-  `text-sm text-fg-muted` の 1 行「"Action" is kept and the other 3 tags merge into it.」を出す。
-- 統合元が統合先だけになったとき（選んだのが 1 件で、それを統合先に選んだとき）は、確認の文言の
-  代わりに `text-sm text-fg-muted` の「Choose another tag to merge into: "Action" is the only tag
-  selected.」を出し、「Merge」は `disabled`。
+| Sources | Dialog content |
+| --- | --- |
+| One (from a row) | The current shape: title "Merge "X"", no source list, 014's confirmation text and count (`videoCount`) |
+| Several (from the selection bar) | Title "Merge 4 tags". Above the input, the heading "Tags to merge" (`text-xs font-semibold text-fg-muted uppercase`, the popover `legend` format) and the source names (`ul`, `flex flex-wrap gap-1.5`; each a `bg-bg` `Chip` as in 014's synonyms dialog, `h-6`, `text-xs`, no ×). The list is `max-h-32 overflow-y-auto`, so dozens of sources do not stretch the dialog. Tentative tags carry the row's mark (`size-3`) after the name |
+| Target picked from the selection | That tag leaves the sources (Edge Case). Its chip stays with a `text-fg-muted` "kept" (removing it would look like a selected tag went missing), and a `text-sm text-fg-muted` line ""Action" is kept and the other 3 tags merge into it." sits above the confirmation text |
+| Only the target left (one tag selected and chosen as target) | `text-sm text-fg-muted` "Choose another tag to merge into: "Action" is the only tag selected." replaces the confirmation text, and "Merge" is `disabled` |
 
 ### Target candidates
 
-統合先の候補は**全部のタグ**から出す（選んだ中からも、選んでいないタグからも、読み込んでいない
-タグからも。要件 9）。候補は入力のたびに `GET /api/tags?q=〈入力〉&limit=8` で引く
-（[research.md R-14](research.md#r-14-統合の窓の統合先の候補は-get-apitagsqlimit-で引く)、
-[data-model.md §4](data-model.md#4-画面の側で持つ状態)「統合の窓の候補」）。
+Candidates come from **every tag**: selected, unselected and unloaded (requirement 9). Each input requests
+`GET /api/tags?q={input}&limit=8`
+([research.md R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit),
+[data-model.md §4](data-model.md#4-screen-state), "Merge dialog candidates").
 
-- **候補の行の中身は今の `Combobox` のまま**（名前、シノニムで当たったときの「Synonym: …」の補足、
-  右端の本数、入力と完全に一致する名前・シノニムの `exactOption`、8 行まで）。並びはサーバーの
-  名前の自然順で、画面では並べ直さない。行から開いたときは応答から統合元を除き、選んだ中から
-  開いたときは選んだタグも候補に残す（merge 済みの形）。
-- **窓を開いた直後**（入力が空）も同じ経路で先頭の 8 件を引き、届いたら箱に並べる（空の入力で候補が
-  出る今の振る舞いを変えない）。
-- **読み込み中**: `Combobox` の `busy`（枠の右端の `LoaderCircle`、`size-3`、`text-fg-muted`、
-  `aria-busy`）。**前の候補はそのまま残し**、届いたら差し替える。候補の一覧を空にしたり閉じたり
-  しない（入力のたびに一覧が消えて現れると、候補を目で追えない）。「Searching…」の行は置かない
-  （回転で足りる。読み込みは 1 往復で、普段は入力と同時に見える）。進行中の要求は次の入力で
-  打ち切り、最後の応答だけを候補にする。
-- **候補が無い**（応答の `items` が空で、`exactOption` も無い）: 箱の中に「No matching tags」。
-- **引けなかった**（失敗）: 入力の下に `Combobox` の `reason` と同じ書式（`mt-1 text-xs text-danger`）で
-  「Couldn't search tags: {理由}」。最後に届いた候補は残し、次の入力で消して引き直す。「Retry」は
-  置かない（入力を変えれば引き直すので、押すものを増やさない）。「Merge」は候補を選んでいなければ
-  今までどおり押せない。
-- 候補を選んだあとの振る舞い（数え直し、確認の文言）は下の「Confirmation」。入力の照合は一覧の検索と
-  同じ照合形なので、「ａｃｔ」で「Action」が、読み込んでいなくても候補に出る（要件 9・7）。
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant D as Merge dialog
+  participant S as Server
+  U->>D: type
+  D->>D: spinner on, keep old candidates
+  D->>S: GET /api/tags?q&limit=8
+  U->>D: type again
+  D->>S: abort, send new request
+  S-->>D: items
+  D->>D: replace candidates, spinner off
+```
+
+- **Candidate rows keep the current `Combobox` content**: the name, "Synonym: …" when a synonym matched, the count
+  at the right, `exactOption` for a name or synonym equal to the input, up to 8 rows. Order is the server's natural
+  name order; the screen does not re-sort. Opened from a row, the response drops the source; opened from the
+  selection, selected tags stay as candidates (the merged shape).
+- **Right after opening** (empty input) the same request fetches the first 8 and lists them on arrival; candidates
+  for an empty input stay as today.
+- **Loading**: `Combobox` `busy` (`LoaderCircle` at the right end of the frame, `size-3`, `text-fg-muted`,
+  `aria-busy`). **The previous candidates stay** until replaced; the list never empties or closes, because a list
+  that vanishes and returns on every keystroke cannot be followed. No "Searching…" row: the spinner is enough, a
+  load is one round trip and usually appears with the input. The next input aborts the request in flight, and only
+  the last response becomes the candidates.
+- **No candidates** (`items` empty and no `exactOption`): "No matching tags" in the box.
+- **Failure**: "Couldn't search tags: {reason}" under the input in the `Combobox` `reason` format
+  (`mt-1 text-xs text-danger`). The last candidates stay; the next input clears the message and searches again. No
+  "Retry": changing the input searches again, so there is nothing more to press. "Merge" stays unpressable without
+  a chosen candidate, as before.
+- Matching uses the list search's matching form, so `ａｃｔ` finds "Action" even when it is not loaded
+  (requirements 9 and 7). What happens after choosing is [Confirmation](#confirmation).
 
 ### Confirmation
 
-- 統合先を選ぶと、統合先を外した統合元について `POST /api/tags/impact`（`merge`）を送り、届くまで
-  「Counting the affected videos…」と `LoaderCircle`、「Merge」は `disabled`。届いたら 014 と同じ
-  `border-l-2 border-danger-strong` の段落に「The 120 videos tagged with these 4 tags get the tag
-  "Action". …」を出す。文中のタグの数（「these 4 tags」「the 4 tags leave」）は**統合先を外した統合元の
-  数**で、選んだ数ではない（4 個を選んでそのうち「Action」を統合先にすれば「these 3 tags」）。動画の
-  本数は応答の `videoCount`。統合元が 1 件になったら 014 の 1 件の文言にする。数えられなかったときは
-  まとめての却下と同じ「Couldn't count…」と「Retry」。統合先を選び直すたびに数え直す。
-- 実行は `POST /api/tags/{id}/merge`（`sourceIds` = 統合先を外した統合元）。`200` で窓を閉じ、
-  統合元の行を読み込んだ行から消し、統合先を応答の `tag` で書き換える（本数が合算に、仮なら確定に。
-  一覧は取り直さない）。統合先が読み込んだ行に**あれば**その行を差し替えて並び順の位置へ動かし、
-  **無ければ**（窓の候補から選んだ、読み込んでいないタグ）並び順の位置が読み込んだ範囲の中なら
-  そこへ差し込み、範囲の外なら差し込まない（続きのページが返す。R-12）。選択は空にする。
-  トーストの数は**実際に統合した数**（`sourceIds` の数から `notFoundIds` の数を引いたもの）で、
-  「Merged 4 tags into "Action"」（1 件なら 014 の「Merged "X" into "Action"」）。フォーカスは統合先の
-  行が読み込んだ行にあればその名前へ（014 と同じ）、無ければ（読み込んだ範囲の外、または
-  「Tentative only」中で統合先が確定になった）031 の規則で、消えた最初の統合元の位置の次の行、
-  無ければ列の見出しの先頭のチェック（行が 1 つも残らず `disabled` なら「New tag」）へ。読み込んだ行が
-  1 つも残らず `nextCursor` があれば、反映と同時に続きを要求する（「Loading more」）。
-- `notFoundIds` が空でないときは一覧を先頭から取り直す。統合元が**すべて**もう無かった
-  （`notFoundIds` が `sourceIds` と同じ。応答の `tag` は変わっていない）ときは、統合のトーストを
-  出さず、今の `tag_not_found` と同じ扱いにする（窓を閉じ、トースト「Some of the tags no longer
-  existed, so the list was reloaded」、取り直し）。一部だけ無かったときは、実際に統合した数の
-  トーストのあとに同じ取り直しのトーストを出す。
-- 失敗・「Cancel」・Esc は 014 のまま（窓は開いたまま失敗を出す。閉じたらフォーカスは開いた元の
-  「その他の操作」または選択の行の「Merge into one tag…」へ）。
+- Choosing a target sends `POST /api/tags/impact` (`merge`) for the sources without the target. Until it arrives:
+  "Counting the affected videos…" with `LoaderCircle`, and "Merge" `disabled`. On arrival, 014's
+  `border-l-2 border-danger-strong` paragraph says "The 120 videos tagged with these 4 tags get the tag "Action".
+  …". The tag number ("these 4 tags", "the 4 tags leave") is **the sources without the target**, not the selected
+  count: selecting 4 and choosing "Action" among them gives "these 3 tags". The video number is the response's
+  `videoCount`. With one source left, 014's single-tag text applies. A count failure shows bulk reject's
+  "Couldn't count…" and "Retry". Choosing another target counts again.
+- Running sends `POST /api/tags/{id}/merge` with `sourceIds` = the sources without the target. On `200`:
+
+| Effect | Rule |
+| --- | --- |
+| Dialog | Closes |
+| Source rows | Leave the loaded rows |
+| Target | Rewritten from the response's `tag` (counts summed; tentative becomes confirmed); no reload |
+| Target among loaded rows | Its row is replaced and moves to its sort position |
+| Target not loaded (chosen from candidates) | Inserted at its sort position if that falls inside the loaded range; otherwise not inserted, and a later page returns it (R-12) |
+| Selection | Empties |
+| Toast | The number **actually merged** (`sourceIds` minus `notFoundIds`): "Merged 4 tags into "Action"" (one: 014's "Merged "X" into "Action"") |
+| Focus | The target row's name if it is among loaded rows (as 014). Otherwise (outside the loaded range, or confirmed under "Tentative only") 031's rule: the row after the first removed source, else the header checkbox ("New tag" when no row remains and the checkbox is `disabled`) |
+| No loaded row left with a `nextCursor` | The next page is requested together with applying the result ([Loading more](#loading-more)) |
+
+- Non-empty `notFoundIds` reloads the list from the top. When **every** source was gone (`notFoundIds` equals
+  `sourceIds`; the response's `tag` is unchanged), there is no merge toast; it is handled like today's
+  `tag_not_found`: the dialog closes, the toast "Some of the tags no longer existed, so the list was reloaded"
+  shows, and the list reloads. When only some were gone, the merged-count toast is followed by the same reload
+  toast.
+- Failure, "Cancel" and Esc stay as in 014: a failure shows in the open dialog; on close, focus returns to the
+  "More actions" that opened it or to the selection bar's "Merge into one tag…".
 
 ## Rejected names tab
 
-見出しの下のタブ「Rejected names」（上の「Tabs」）を選ぶと、本文（`role="tabpanel"`）に却下した名前を
-並べる（[`web/src/tags/RejectedNames.tsx`](../../web/src/tags/RejectedNames.tsx)）。窓は開かない。中身は
-`GET /api/tags/rejected-names` の**ページ**で受け、本文のスクロールで続きを読む
-（[research.md R-13](research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)、
-[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-のパラメータ)）。
+Selecting the "Rejected names" tab under the heading ([Tabs](#tabs)) lists rejected names in the body
+(`role="tabpanel"`; [`web/src/tags/RejectedNames.tsx`](../../web/src/tags/RejectedNames.tsx)). No dialog opens. The
+content arrives in **pages** of `GET /api/tags/rejected-names` and loads more as the body scrolls
+([research.md R-13](research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll),
+[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-parameters)).
 
-- **中身の形**: 説明の 1 行（`text-sm text-fg-muted`「Automatic tagging won't create these names. Allow a
-  name again to let it be created.」）と、名前の行の並び（`ul`、読み上げ名「Rejected names」、
-  `divide-y divide-border`）。行は `min-h-12`・`px-2`、名前（`text-sm font-medium`、省略は `truncate` と
-  `title`）と右端の secondary・`sm` の「Allow again」（読み上げ名「Allow "〈名〉" again」）。押すと即時に
-  取り外す（確認なし、送信中は `disabled`、トーストなし）。フォーカスは次の行の「Allow again」→ 前の行
-  → 無ければ「Rejected names」のタブ。取り外しの失敗は並びの下の `role="alert"` の 1 行。初回の読み込み中は
-  行の高さの `Skeleton`（`h-10`）×4、初回に取れなかったときは「Couldn't load the rejected names」と
-  「Retry」、無いときは中央に「No rejected names」。規則は 031「Rejected names」のまま（× のチップを
-  行のボタンにしただけ）。
-- **読み込み**: 画面を開いたときに先頭の 1 ページ（100 件）をタグの一覧と一緒に取り、タブの件数は
-  応答の `total`。タブを開いたときはその 1 ページを出す（開くために読み直さない。受け入れ条件 13）。
-- **続き**: 並びの末尾が表示域に近づくと（表示域を根にした番兵）、`nextCursor` で次の 100 件を引いて
-  並びの末尾に足す（#730 の規則のまま。行は仮想化しない）。読み込み中は並びの下に行の高さの
-  `Skeleton` ×3（`aria-hidden`）、並びの `ul` を `aria-busy`。同時に 1 つだけ送り、届くまで行のボタンは
-  普通に押せる。取り直しの間に番兵が見えても、取り直しのあとで見張り直して続きを読む。
-- **続きの失敗**: 並びの下に `text-sm text-danger`（`role="alert"`）の「Couldn't load more rejected
-  names」と `Button` の ghost・`sm`「Retry」。読み込んだ名前は残し、「Retry」は同じカーソルで読み直す。
-  読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく続き（失敗の間は「Retry」）を出す。
-- **取り外し**: `204` でその行を消し、タブの件数（`total`）を 1 減らす。一覧は取り直さない。取り外しの
-  送信中に先頭のページの取り直しが重なったら、その応答は捨てて取り外しのあとで取り直す。
-- **取り直し**のきっかけ（却下・作成・改名・シノニムの追加・まとめての却下のあと）は 031 のまま。
-  取り直すのは**先頭の 1 ページだけ**。
-- 検索・絞り込み・並び順は却下した名前に効かない（タグではない。031 と同じ）。このタブの間はトップバー
-  に何も置かず、検索も置かない（サーバーの `GET /api/tags/rejected-names` は検索を持たず、足すのは
-  この直しの範囲の外）。
+```mermaid
+stateDiagram-v2
+  [*] --> FirstPage: page opens, with the tag list
+  FirstPage --> Listed: arrives
+  FirstPage --> LoadFailed: fails
+  LoadFailed --> FirstPage: Retry
+  Listed --> LoadingMore: sentinel visible
+  LoadingMore --> Listed: page arrives
+  LoadingMore --> MoreFailed: fails
+  MoreFailed --> LoadingMore: Retry
+```
+
+- **Content**: one description line (`text-sm text-fg-muted` "Automatic tagging won't create these names. Allow a
+  name again to let it be created.") and the names (`ul`, accessible name "Rejected names",
+  `divide-y divide-border`). Rows are `min-h-12` and `px-2`: the name (`text-sm font-medium`, `truncate` with
+  `title`) and a secondary `sm` "Allow again" at the right (accessible name "Allow "{name}" again"). Pressing it
+  removes the name at once (no confirmation, `disabled` while sending, no toast). Focus moves to the next row's
+  "Allow again", else the previous row's, else the "Rejected names" tab. A removal failure is one `role="alert"`
+  line under the list. The first load shows four row-height `Skeleton`s (`h-10`); a failed first load shows
+  "Couldn't load the rejected names" and "Retry"; no names shows "No rejected names" centred. The rules are 031
+  "Rejected names", with the × chip turned into a row button.
+- **Loading**: the page fetches the first page (100) together with the tag list when it opens, and the tab count is
+  the response's `total`. Opening the tab shows that page without reloading (acceptance criterion 13).
+- **More**: when the end of the list nears the viewport (a sentinel with the viewport as root), the next 100 come
+  with `nextCursor` and append (the #730 rule; rows are not virtualized). While loading, three row-height
+  `Skeleton`s (`aria-hidden`) sit under the list and its `ul` is `aria-busy`. One request at a time; row buttons
+  stay pressable until it arrives. If the sentinel shows during a reload, it is watched again after the reload and
+  loads more.
+- **More failed**: under the list, `text-sm text-danger` (`role="alert"`) "Couldn't load more rejected names" and a
+  ghost `sm` `Button` "Retry". Loaded names stay; "Retry" reloads from the same cursor. If every loaded name is
+  removed but more remain, the screen shows the load-more state (or "Retry" after a failure), not the empty text.
+- **Removal**: `204` removes the row and lowers the tab count (`total`) by 1, without a reload. If a first-page
+  reload overlaps a removal in flight, its response is dropped and the reload runs after the removal.
+- **Reload** triggers (after reject, create, rename, adding a synonym, bulk reject) stay as in 031. Only **the first
+  page** reloads.
+- Search, filters and sort do not apply to rejected names (they are not tags; as in 031). On this tab the top bar
+  holds nothing, not even search: `GET /api/tags/rejected-names` has no search, and adding one is outside this fix.
 
 ## States
 
-014・031 の「States」の表に足す・変える。
+These rows add to or change the "States" tables of 014 and 031.
 
-| 状態 | 見え方 |
+| State | What the screen shows |
 | --- | --- |
-| 条件（検索・絞り込み・並び順）を変えて先頭のページを待つ | 前の行と件数を残す。選択は空になり見出しの行に戻る。`Skeleton` には戻さない。届いたら差し替え、スクロール位置は先頭 |
-| 「Unused only」で一致が無い（検索は空、「Tentative only」はオフ） | `EmptyState`（`VideoOff`）「No unused tags」、説明「Every tag is on at least one video.」、`Button`「Show all tags」。押すと絞り込みを外し、フォーカスを「Filter」へ移す。判定は応答の `total` が 0 |
-| 「Unused only」と「Tentative only」の両方で一致が無い | `EmptyState`（`VideoOff`）「No unused tentative tags」、説明なし、`Button`「Show all tags」。押すと両方を外し、フォーカスを「Filter」へ |
-| 「Tentative only」で一致が無い（031） | 031 の「No tentative tags」。「Show all tags」で外し、フォーカスを「Filter」へ（タグが 0 なら「New tag」へ） |
-| 絞り込みと検索で一致が無い | `EmptyState`（`SearchX`）「No unused tags match "〈入力〉"」「No unused tentative tags match "〈入力〉"」、`Button`「Show all tags」。押すと絞り込みと検索の両方を外し、フォーカスを検索の入力へ |
-| 続きを読み込んでいる | 一覧の末尾に行の `Skeleton` ×3、読み上げ「Loading more tags…」。出ている行の操作とスクロールは止まらない |
-| 続きの読み込みに失敗した | 末尾に danger の箱「Couldn't load more: {理由}」と「Retry」。読み込んだ行は残る |
-| 続きの応答で一覧が変わっていた（`totalAll` の食い違い） | 末尾に中立の箱「Tags were added or removed elsewhere…」と「Reload」。読み込んだ行と選択は残り、続きは止まる。「Reload」で先頭から読み直し、選択は空 |
-| 末尾まで読み込んだ | 末尾に何も出さない |
-| まとめての確定の送信中 | 選択の行のボタンがすべて `disabled`、「Confirm」のアイコンが `LoaderCircle` |
-| まとめての却下・削除・統合の確認で数を待つ | 本文「Counting the affected videos…」と `LoaderCircle`、danger のボタンは `disabled` |
-| 数えられなかった | 本文に `role="alert"` の「Couldn't count the affected videos: {理由}」と「Retry」、danger のボタンは `disabled` |
-| 働かない種類を含めて実行した | 窓の本文で「8 of the 12 selected tags are …」と先に言い、実行後のトーストで「4 … were skipped.」。外した分は選んだまま残る |
-| 対象の一部がもう無かった（`notFoundIds`） | 残りは処理し、トースト「Some of the tags no longer existed, so the list was reloaded」、一覧を先頭から取り直す。取り直しで `rows` に無くなった id の選択は外れる |
-| まとめての操作が失敗した | 選択の行からの確定はトースト、窓からの操作は窓の中の 1 行。一覧と選択は変えない |
-| 読み込んだ行の数が上限を超える | 先頭のチェックだけが `disabled`、理由を `title` と `sr-only` で。行のチェックと選択の行の操作は押せる |
-| 選んだ数が上限を超える | 選択の行の操作が `disabled`、理由を `title`・`aria-describedby` と選択の行の下の 1 行で |
-| 統合の窓で候補を引いている | 入力の右端に `LoaderCircle`、前の候補は残る |
-| 統合の窓で候補を引けなかった | 入力の下に `text-xs text-danger`「Couldn't search tags: {理由}」、最後の候補は残る |
-| 統合の窓で候補が無い | 候補の箱の中に「No matching tags」 |
-| 却下した名前のタブで続きを読んでいる | 並びの下に行の `Skeleton` ×3 |
-| 却下した名前のタブで続きを読めなかった | 並びの下に「Couldn't load more rejected names」と「Retry」、読み込んだ名前は残る |
-| 読み込み失敗（一覧を持っている） | 今の一覧と件数を残し、帯の列の見出しの上に danger の箱「Couldn't load tags: {理由}…」と「Retry」。届くまで箱は残り、続きは読まない（「Stale list」、Edge Case）。一覧をまだ持っていなければ今の `EmptyState`（danger）と「Retry」 |
+| Waiting for the first page after a condition change (search, filters, sort) | The previous rows and count stay. The selection empties and the header row returns. No `Skeleton`. On arrival the rows are replaced and the scroll returns to the top |
+| No match for "Unused only" (no search, "Tentative only" off) | `EmptyState` (`VideoOff`) "No unused tags", description "Every tag is on at least one video.", `Button` "Show all tags". Pressing it removes the filter and focuses "Filter". Decided by the response's `total` being 0 |
+| No match for "Unused only" and "Tentative only" | `EmptyState` (`VideoOff`) "No unused tentative tags", no description, `Button` "Show all tags". Pressing it removes both and focuses "Filter" |
+| No match for "Tentative only" (031) | 031's "No tentative tags". "Show all tags" removes it and focuses "Filter" ("New tag" when there are no tags) |
+| No match for filters and search | `EmptyState` (`SearchX`) "No unused tags match "{input}"" or "No unused tentative tags match "{input}"", `Button` "Show all tags". Pressing it removes the filters and the search and focuses the search input |
+| Loading more | Three row `Skeleton`s at the end, screen reader "Loading more tags…". Visible rows keep scrolling and accepting actions |
+| Loading more failed | A danger box "Couldn't load more: {reason}" with "Retry" at the end. Loaded rows stay |
+| The list changed during load-more (`totalAll` mismatch) | A neutral box "Tags were added or removed elsewhere…" with "Reload" at the end. Loaded rows and the selection stay; loading more stops. "Reload" reloads from the top and empties the selection |
+| Everything loaded | Nothing at the end |
+| Bulk confirm sending | Every selection bar button `disabled`; the "Confirm" icon is `LoaderCircle` |
+| Waiting for the count in bulk reject, delete or merge | Body "Counting the affected videos…" with `LoaderCircle`; the danger button `disabled` |
+| Count failed | `role="alert"` "Couldn't count the affected videos: {reason}" with "Retry" in the body; the danger button `disabled` |
+| Run over a selection with inapplicable tags | The dialog body says "8 of the 12 selected tags are …" first, and the toast after running says "4 … were skipped.". Skipped tags stay selected |
+| Some targets no longer existed (`notFoundIds`) | The rest is processed; toast "Some of the tags no longer existed, so the list was reloaded"; the list reloads from the top. Ids missing from the new `rows` leave the selection |
+| A bulk action failed | From the selection bar (confirm) a toast; from a dialog one line in the dialog. List and selection unchanged |
+| Loaded rows over the limit | Only the header checkbox is `disabled`, with the reason in `title` and `sr-only`. Row checkboxes and selection bar actions stay pressable |
+| Selected count over the limit | Selection bar actions `disabled`, with the reason in `title`, `aria-describedby` and one line under the selection bar |
+| Merge dialog searching candidates | `LoaderCircle` at the right end of the input; previous candidates stay |
+| Merge dialog candidate search failed | `text-xs text-danger` "Couldn't search tags: {reason}" under the input; the last candidates stay |
+| Merge dialog has no candidates | "No matching tags" in the candidate box |
+| Rejected names tab loading more | Three row `Skeleton`s under the list |
+| Rejected names tab failed to load more | "Couldn't load more rejected names" with "Retry" under the list; loaded names stay |
+| Load failure with a list shown | The current list and count stay; a danger box "Couldn't load tags: {reason}…" with "Retry" sits above the column header in the band, stays until a page arrives, and nothing loads more ([Stale list](#stale-list), Edge Case). With no list yet, the current danger `EmptyState` with "Retry" |
 
-初回の読み込み中の `Skeleton`、「タグはまだありません」、「Tentative only」の空の状態、改名・作成・
-1 件の操作の状態は 014・031 のまま。1 件の操作のあとも一覧は取り直さず、読み込んだ行の中で
-書き換える（確定・却下・削除・改名・作成・統合。[data-model.md §4](data-model.md#4-画面の側で持つ状態)
-「操作のあとの反映」）。利用者から見える違いは、操作のあとに `Skeleton` や行の点滅が無く、
-スクロール位置が動かないことだけである。並び順・「Filter」・先頭のチェックは、先頭のページをまだ
-受けていない間と一覧を持たないままの失敗で `disabled`。タブはいつも出し、件数は取れてから添える。
+The first-load `Skeleton`, "No tags yet", the "Tentative only" empty state, and the rename, create and single-row
+action states stay as in 014 and 031. Single-row actions also apply within the loaded rows without a reload
+(confirm, reject, delete, rename, create, merge; [data-model.md §4](data-model.md#4-screen-state),
+"Applying an action's result"). The visible difference is that actions cause no `Skeleton` or row flicker and the
+scroll position does not move. The sort, "Filter" and the header checkbox are `disabled` before the first page has
+arrived and after a failure with no list. Tabs always show; their counts appear once known.
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS で出し分ける（library-ui.md §4）。判定する幅は
-360px（390px の端末を含む）・768px・1280px。トップバーの出し分けはライブラリの `LibraryToolbar` と
-同じ。
+Width variants use only Tailwind's default breakpoints, in CSS (library-ui.md §4). The judged widths are 360px
+(covering 390px devices), 768px and 1280px. The top bar varies as the library's `LibraryToolbar` does.
 
-| 幅 | トップバー | 帯 | 行 |
+| Width | Top bar | Band | Rows |
 | --- | --- | --- | --- |
-| 1280px | 検索（`sm:max-w-md`）→「Filter」（`xl` 以上で文字も）→ 並び順（メニュー＋向き） | 見出しの行（「Tags」・件数・「New tag」）→ タブ →（チップ）→ 列の見出し | チェック → 名前の列 → 本数 → `IconButton` 4 つ分の列（マウス）または「Actions」1 つ（タッチ） |
-| 768px（`md` 以上） | 同上（「Filter」はアイコンと数だけ） | 同上 | 同上 |
-| 360px（`md` 未満） | 検索（`flex-1`）→「Filter」（アイコンと数）→ 並び順のまとめ（`SlidersHorizontal`、読み上げ名「Sort」） | 同上。選択の行は、件数の下にボタンの並びが折り返す | チェック → 名前の列（約 160px）→ 本数（`w-16`）→「Actions」1 つ。横スクロールは出ない |
+| 1280px | Search (`sm:max-w-md`) → "Filter" (with text at `xl` and up) → sort (menu and direction) | Header row ("Tags", count, "New tag") → tabs → (chips) → column header | Checkbox → name column → count → four `IconButton`s (mouse) or one "Actions" (touch) |
+| 768px (`md` and up) | As above ("Filter" shows icon and count only) | As above | As above |
+| 360px (below `md`) | Search (`flex-1`) → "Filter" (icon and count) → compact sort (`SlidersHorizontal`, accessible name "Sort") | As above. The selection bar wraps its buttons under the count | Checkbox → name column (about 160px) → count (`w-16`) → one "Actions". No horizontal scroll |
 
-- `md` 未満の並び順のまとめは、ライブラリの「表示と並び順」と同じ吹き出し（`PopoverContent`、
-  `align="end"`、`w-72`）で、中身は `CompactSortControls` と同じ形（上の「Top bar」）。
-- 見出しの行は 360px でも 1 行（「Tags」・「1,000 of 1,000 tags」・「New tag」で約 300px）。件数は
-  `truncate` で、折り返さない。タブ「Tags 1,000 | Rejected names 1,000」も 1 行（約 250px）。
-- 帯の高さの見積り（1280px、チップなし）: `pt-3` ＋ 見出しの行 `h-10` ＋ タブ `h-10` ＋ 列の見出し `h-9`
-  ＋ 間 `gap-3` ×2 で約 150px。1280×800 で上部バーと帯を引いた一覧の高さは約 600px で、シノニムの行を
-  持たないタグなら約 12 行が見える。1 ページ 100 件はこの約 8 画面分で、開いた直後に続きを読む必要は無い。
-- 窓（確認・統合）は `ModalFrame` の今の幅の扱い（`sm` 未満で全幅）。
+- The compact sort below `md` is the library's view-and-sort popover (`PopoverContent`, `align="end"`, `w-72`) with
+  the `CompactSortControls` shape ([Top bar](#top-bar)).
+- The header row stays on one line at 360px ("Tags", "1,000 of 1,000 tags", "New tag" take about 300px); the count
+  is `truncate` and does not wrap. The tabs "Tags 1,000 | Rejected names 1,000" also fit one line (about 250px).
+- Band height at 1280px without chips: `pt-3` + header row `h-10` + tabs `h-10` + column header `h-9` + two `gap-3`,
+  about 150px. At 1280×800 the list below the top bar and the band is about 600px, about 12 rows of tags without a
+  synonyms line. One page of 100 is about 8 screens, so nothing needs to load more right after opening.
+- Dialogs (confirmation, merge) keep `ModalFrame`'s current width handling (full width below `sm`).
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md §5）。「ある」だけでは満たさない（Q-4）。幅は 1280×800 を主に、
-768px と 360px（タッチの端末またはデベロッパーツールのタッチの模擬）で確かめる。規模は
-`tagsbench` の 1,000 個・3,000 個・30,000 個（[quickstart.md](quickstart.md)）で、見た目の判定は
-30,000 個でも同じである。
+Judge on a real screen (library-ui.md §5); presence alone does not pass (Q-4). Check mainly at 1280×800, then at
+768px and 360px (on a touch device or with devtools touch emulation). Scale: `tagsbench` with 1,000, 3,000 and
+30,000 tags ([quickstart.md](quickstart.md)); the visual judgement is the same at 30,000.
 
-- **ライブラリとの揃い**: トップバーの検索欄・「Filter」・並び順のボタンが、ライブラリの画面と同じ
-  位置・同じ高さ・同じ見た目で並ぶ。見出しの「Tags」と右の件数はライブラリの「Library」と「N items」と
-  同じ書式。本文の中に独自の操作の行は無い。
-- **視覚的階層**: 1280×800 で管理画面を開いたとき、目が行く順は 行の名前 → 見出しと「New tag」→
-  本数・シノニム・仮の目印 で、チェック（`opacity-40`）はそのあとに気づく程度である。1 件選ぶと、
-  見出しの行が選択の行に替わり、選んだ行の薄い面（`accent/10`）と全行のチェックが前に出るが、名前の
-  色・大きさは変わらない。×で解くと元に戻る。選択の行では「Confirm」だけが primary で、統合・却下・
-  削除は secondary（却下・削除は danger の色の文字）。働かない操作は出ない。絞り込みが効いている間は
-  「Filter」のボタンが `accent-soft` の面と数を持ち、見出しの下にチップが並ぶ。末尾の続きの状態
-  （`Skeleton`・失敗・一覧が変わった）は行より前に出ず、失敗の箱だけが danger の色を持つ（UI品質
-  「視覚的階層」「操作の優先順位」）。
-- **情報密度**: 1280×800 で、シノニムの行を持たないタグなら帯の下に約 12 行が見える。行の高さは
-  031 と同じ（チェックは `size-5` で `py-2` の行に収まり、行を伸ばさない）。選択の行は見出しの行と
-  同じ高さで、選んでも一覧の行数は変わらない。件数にページの区切りは出ない。
-- **余白のリズム**: 帯の中の見出しの行・タブ・チップ・列の見出しの間は `gap-3`。列の見出しの下の
-  線は行の間の線と同じ色・太さ。チェックと名前の列の間は列どうしの `gap-2`（`sm:gap-3`）と同じで、
-  列の見出しのチェック・「Name」・「Videos」が行のチェック・名前・本数の真上に揃う。スクロールして帯が
-  留まったとき、帯の下を流れる行は帯に透けない。続きの `Skeleton` は行と同じ高さ・同じ `px-2` で、
-  読み込んだ行の並びがそのまま続いているように見える。
-- **タイポグラフィ**: 見出しと件数はライブラリと同じ書式。選択の行の件数は `text-lg font-semibold`、
-  列の見出しとタブの数は `text-xs`／`text-sm` の `fg-muted`・`fg-subtle`。並び順のボタンの文字は種類の
-  名前だけで、向きはアイコンで示す。
-- **操作の優先順位**: 「Filter」→「Tentative only」、列の見出しの先頭のチェック、選択の行の「Confirm」の
-  4 回で、読み込んだ仮のタグ全部が片付く（受け入れ条件 10。URL に `tentative=1` があれば 2 回）。
-  却下は「Reject…」→ 数が出るのを待って「Reject」の 2 回で、確定より窓の分だけ多い。行の 1 件の操作は
-  マウスの端末で今のまま 1 回で届く。タッチの端末では行の操作は「Actions」→ 項目の 2 回だが、各項目は
-  文字で読める（UI品質「行の操作」）。
-- **読み込んだ分と全部の見分け**: 「Tentative only」で `total` が 500 の一覧（「500 of 1,000 tags」）で
-  先頭のチェックを押すと、選択の行は「100 tags selected」になり、先頭のチェックは選択の状態、読み上げ名は
-  「Select all 100 loaded tags」→「Clear selection」。「Confirm」のあと、読み込んだ 100 行から仮の目印が
-  消え、見出しの件数が「400 of 1,000 tags」になり、スクロールして続きを読むと残りの仮のタグが仮の
-  まま出る（受け入れ条件 10、要件 10）。この間に画面が固まらない。
-- **続きの読み込み**: 30,000 個の一覧を末尾へスクロールすると、読み込んだ最後の行の下に行の
-  `Skeleton` が出てすぐ行に置き換わり、その間も帯は動かず、行のチェックと操作が押せる。同じタグが
-  二重に出ない。
-  続きの失敗では読み込んだ行が残り、danger の箱の「Retry」で続きが読める。別のタブでタグを作って
-  から続きを読むと、中立の箱「Tags were added or removed elsewhere…」が出て続きが止まり、
-  「Reload」で先頭から読み直す（Edge Case）。
-- **並びと絞り込みの可視性**: 並び順のボタンの文字で今の種類が、その右の矢印で向きが分かる。
-  「Unused only」をオンにすると見出しの件数が「90 of 1,000 tags」になり、チップ「Unused only」が出て、
-  出る行の本数がすべて「0 videos」
-  で、この数は読み込んでいないタグも含む（受け入れ条件 8）。「Video count」の多い順で先頭が最多、
-  末尾まで読むと 0 本（受け入れ条件 5）。「Date created」の新しい順で「新しいタグ」を作ると、その行が
-  一覧の先頭に入る（受け入れ条件 6）。並び順・絞り込み・検索・タブを変えて再読み込みしても、同じ
-  条件で開く（受け入れ条件 7、「URL state」）。検索に「ＡＣＴＩＯＮ」と入れると、読み込まれていなかった「action」が
-  出る（受け入れ条件 9）。条件を変えた瞬間に一覧が空や `Skeleton` にならず、前の行から新しい行へ
-  置き換わる。
-- **スクロール中の手の届き方**: 30,000 個の一覧の末尾までスクロールしても、トップバーの検索・
-  「Filter」・並び順と、帯の見出し（選んでいれば選択の行）・タブ・列の見出しが見える（要件 13）。
-  1,000 個の先頭でスクロールせずに「Rejected names」のタブを押すと本文に並ぶ（受け入れ条件 13）。
-- **確認の数**: 仮 8 個と確定 4 個を選んで「Delete…」を開くと、「8 of the 12 selected tags are
-  confirmed」ではなく「4 of the 12 selected tags are confirmed」と、確定した 4 個のどれかが付いた
-  動画の本数（重複なし）が出る（受け入れ条件 12）。4 個を選んで「Action」へ統合すると、窓に 4 個の
-  チップと統合先の入力が窓の幅いっぱいに出て、実行後に 4 個が消え、「Action」の本数が合算
-  （重複なし）になる（受け入れ条件 11、要件 14）。統合先の入力に「ａｃｔ」と入れると、読み込んで
-  いない「Action」が入力の下の箱に出て、入力中は右端に小さな回転が見え、候補が消えて現れたりしない
-  （要件 9）。箱は窓の下端のボタンを覆わず、選んだ統合先が目立ち、下端に「統合元 → 統合先」が出る。
-  統合先を選ぶまで「Merge」は primary の押せない形で、赤くない。
-- **却下した名前のタブ**: 1,000 個の却下した名前でタブに「1,000」が出て、タブを開くと先頭の 100 個が
-  行で並び、末尾までスクロールすると行の `Skeleton` が出て次の 100 個が足される。「Allow again」で外すと
-  行が消え、タブの数が 1 減る（要件 12）。
-- **キーボード**: Tab は トップバーの検索 →「Filter」→ 並び順のメニュー → 向き → 本文の「New tag」
-  （選んでいれば選択の行の × → 操作）→ タブ → チップ →（「Stale list」の箱があればその「Retry」）→
-  列の見出しの先頭のチェック → 行のチェック → 行の名前 → 行の操作 → … と進み、読み込んだ最後の行の
-  あとは末尾の箱のボタン（「Retry」「Reload」があるとき）。`/` で検索へ移る。窓の Esc は窓だけを
-  閉じる。1,000 個の一覧で、行の中を Tab で進め続けると描いている範囲の端を越えても
-  次の行へ進み（帯や本文の外へ飛ばない）、Shift+Tab でも同じく前の行へ戻る。Tab で読み込んだ
-  最後の行に届いたとき、続きがあれば（その行が描かれた時点で）続きの読み込みが始まっている
-  （下の「Keyboard across virtualized rows」）。
-- **要求を満たしたことにならない例**（UI品質）: 速くなっても、読み込んだタグをまとめて選んで
-  確定する手が無い。選んでいないときからチェックや操作のボタンが名前より先に目に入る。絞り込みが
-  効いているのに「Filter」のボタンにもチップにも出ず、今の状態が読めない。却下・削除・統合が確定と
-  同じ primary の重さで見える。働かない操作が薄いボタンで並ぶ。選択の操作が最後の行に重なる。
-  件数にページの区切り（読み込んだ数）が出る。却下した名前が一覧の下にあり、先頭から届かない。タッチの
-  端末で行の操作がアイコンだけで、押すまで意味が分からない。1280×800 で 12 行に届かない。統合の
-  窓の入力が窓の幅より明らかに狭い。条件を変えるたびに一覧が `Skeleton` に戻って点滅する。
-  続きの読み込み中にスクロールや行の操作が止まる。先頭のチェックで選んだあと、選んだのが
-  読み込んだ分だけだと件数から読めない。別のタブの変更で、黙って先頭に戻されて選択を失う。
+1. **Match with the library**: the top bar's search field, "Filter" and sort button sit in the same place, at the
+   same height and with the same look as on the library screen. The heading "Tags" and the count to its right use
+   the format of "Library" and "N items". The body has no controls row of its own.
+2. **Visual hierarchy**: opening the screen at 1280×800, the eye goes to the row names → the heading and "New tag" →
+   counts, synonyms and tentative marks; the checkboxes (`opacity-40`) are noticed after that. Selecting one row
+   swaps the header row for the selection bar, and the faint selected surface (`accent/10`) and every checkbox come
+   forward, while name colour and size stay. × restores the screen. In the selection bar only "Confirm" is
+   primary; merge, reject and delete are secondary (reject and delete with danger text). Inapplicable actions are
+   absent. While a filter applies, the "Filter" button has the `accent-soft` surface and a number, and chips sit
+   under the heading. End-of-list states (`Skeleton`, failure, list changed) never stand out over rows, and only
+   the failure box carries the danger colour (`UI品質`: `視覚的階層`, `操作の優先順位`).
+3. **Density**: at 1280×800 about 12 rows without a synonyms line show under the band. Row height is 031's (the
+   `size-5` checkbox fits the `py-2` row without stretching it). The selection bar has the header row's height, so
+   selecting does not change how many rows show. No page boundary appears in counts.
+4. **Spacing rhythm**: inside the band, header row, tabs, chips and column header are `gap-3` apart. The line under
+   the column header matches the lines between rows in colour and weight. The gap between checkbox and name column
+   equals the column gap `gap-2` (`sm:gap-3`), so the column header's checkbox, "Name" and "Videos" sit exactly
+   above the rows' checkbox, name and count. When the band sticks, rows scrolling under it do not show through.
+   The load-more `Skeleton` has the rows' height and `px-2`, so it reads as a continuation of the loaded rows.
+5. **Typography**: heading and count use the library format. The selection bar count is `text-lg font-semibold`;
+   the column header and tab numbers are `text-xs` or `text-sm` in `fg-muted` or `fg-subtle`. The sort button text
+   is only the kind name; the direction is shown by the icon.
+6. **Action priority**: "Filter" → "Tentative only", the header checkbox, and the selection bar's "Confirm" clear
+   every loaded tentative tag in 4 presses (acceptance criterion 10; 2 when the URL has `tentative=1`). Reject is
+   "Reject…" → wait for the number → "Reject", two presses, one dialog more than confirm. A single-row action on a
+   mouse device stays one press. On touch, row actions take "Actions" → item, two presses, but every item is
+   readable text (`UI品質`: `行の操作`).
+7. **Loaded versus all**: under "Tentative only" with `total` 500 ("500 of 1,000 tags"), the header checkbox makes
+   the selection bar read "100 tags selected", the checkbox shows the selected state, and its accessible name goes
+   "Select all 100 loaded tags" → "Clear selection". After "Confirm", the 100 loaded rows lose the tentative mark,
+   the header count becomes "400 of 1,000 tags", and scrolling to load more shows the remaining tentative tags still
+   tentative (acceptance criterion 10, requirement 10). The screen does not freeze during this.
+8. **Loading more**: scrolling a 30,000-tag list to the end shows row `Skeleton`s under the last loaded row that
+   are soon replaced by rows, while the band stays put and row checkboxes and actions remain pressable. No tag shows
+   twice. A load-more failure keeps the loaded rows, and the danger box's "Retry" loads more. Creating a tag in
+   another tab and then loading more shows the neutral box "Tags were added or removed elsewhere…", stops loading,
+   and "Reload" reloads from the top (Edge Case).
+9. **Visible sort and filters**: the sort button's text shows the kind and the arrow to its right the direction.
+   Turning on "Unused only" makes the header count "90 of 1,000 tags", shows the chip "Unused only", and every row
+   shown reads "0 videos"; the count includes unloaded tags (acceptance criterion 8). "Video count" descending puts
+   the most-used tag first and reaches 0 videos at the end (acceptance criterion 5). Under "Date created" newest
+   first, creating a tag with "New tag" puts its row first (acceptance criterion 6). Changing sort, filters, search
+   or tab and reloading opens with the same conditions (acceptance criterion 7, [URL state](#url-state)). Typing
+   `ＡＣＴＩＯＮ` in search shows "action" even though it was not loaded (acceptance criterion 9). Changing
+   conditions never shows an empty list or a `Skeleton`; the old rows give way to the new ones.
+10. **Reach while scrolling**: at the end of a 30,000-tag list, the top bar's search, "Filter" and sort, and the
+    band's header (or the selection bar), tabs and column header are visible (requirement 13). At the top of a
+    1,000-tag list, pressing the "Rejected names" tab without scrolling lists them in the body (acceptance criterion
+    13).
+11. **Confirmation numbers**: selecting 8 tentative and 4 confirmed tags and opening "Delete…" shows "4 of the 12
+    selected tags are confirmed", not "8 of the 12 selected tags are confirmed", with the number of distinct videos
+    carrying any of the 4 confirmed tags (acceptance criterion 12). Merging 4 selected tags into "Action" shows 4
+    chips and a target input across the dialog width; after running, the 4 disappear and "Action"'s count becomes
+    the distinct sum (acceptance criterion 11, requirement 14). Typing `ａｃｔ` in the target input shows the
+    unloaded "Action" in the box under the input, with a small spinner at the right end while typing and no
+    candidates vanishing and returning (requirement 9). The box does not cover the footer buttons, the chosen
+    target stands out, and the footer shows "source → target". Until a target is chosen, "Merge" is a primary
+    button that cannot be pressed, not red.
+12. **Rejected names tab**: with 1,000 rejected names the tab shows "1,000"; opening it lists the first 100 as rows,
+    and scrolling to the end shows row `Skeleton`s and appends the next 100. "Allow again" removes the row and
+    lowers the tab number by 1 (requirement 12).
+13. **Keyboard**: Tab goes top bar search → "Filter" → sort menu → direction → the body's "New tag" (or, while
+    selecting, the selection bar's × → actions) → tabs → chips → ("Retry" of the [Stale list](#stale-list) box when
+    present) → header checkbox → row checkbox → row name → row actions → …, and after the last loaded row to the
+    end-of-list box's button ("Retry" or "Reload" when present). `/` jumps to search. Esc in a dialog closes only
+    the dialog. In a 1,000-tag list, tabbing through rows past the edge of the drawn range reaches the next row
+    (focus does not jump out of the band or the body), and Shift+Tab likewise returns to the previous row. When Tab
+    reaches the last loaded row, loading more has already started if more exists (from when that row was drawn;
+    [Keyboard across virtualized rows](#keyboard-across-virtualized-rows)).
+14. **Examples that do not meet the requirement** (`UI品質`): it is faster, but there is no way to select and
+    confirm loaded tags together. Checkboxes or action buttons draw the eye before names when nothing is selected.
+    A filter applies but neither the "Filter" button nor a chip shows it. Reject, delete and merge look as heavy as
+    the primary confirm. Inapplicable actions show as dimmed buttons. Selection actions cover the last row. Counts
+    show page boundaries (the loaded number). Rejected names sit below the list, out of reach from the top. On touch,
+    row actions are icons only, unclear until pressed. Fewer than 12 rows show at 1280×800. The merge dialog input is
+    clearly narrower than the dialog. The list falls back to `Skeleton` and flickers on every condition change.
+    Scrolling or row actions stop while loading more. After the header checkbox, the count does not show that only
+    loaded rows were selected. A change in another tab silently returns the user to the top and loses the selection.
 
 ## Keyboard across virtualized rows
 
-見えている分だけ描く（R-2）と、描いている範囲の外の行は DOM に無いので、ブラウザの既定の Tab では
-最後に描いた行から一覧の外へ飛ぶ。次の 2 つで、Tab の順を読み込んだ行の順のまま保つ（merge 済み）。
+Drawing only the visible rows (R-2) leaves rows outside the drawn range out of the DOM, so the browser's default
+Tab jumps out of the list from the last drawn row. Two rules keep Tab order equal to the loaded row order (merged).
 
-- **フォーカスのある行は描き続ける**: 仮想化の描く範囲（`rangeExtractor`）に、フォーカスを持つ行の
-  位置を常に足す。スクロールで画面の外へ出ても、その行は外されず、フォーカスが `body` へ落ちない。
-- **範囲の端の Tab を次の行へ渡す**: 一覧の包みの `keydown` で、Tab がその行の最後のフォーカスできる
-  要素から押され、次の行が描かれていない（読み込んだ最後の行ではない）ときは、既定の動きを止め、
-  次の行の位置へスクロールし（`scrollToIndex`。留めた帯の高さを差し引く。「Band」）、描かれたらその
-  行のチェックへフォーカスを移す。Shift+Tab がその行の最初のフォーカスできる要素から押され、前の行が
-  描かれていないときは、前の行へスクロールして、その行の最後のフォーカスできる要素（行の操作の
-  入口）へ移す。読み込んだ最後の行から Tab、最初の行から Shift+Tab は既定のまま一覧の外（末尾の
-  箱のボタン、帯の列の見出しの先頭のチェック）へ進む。
-- **続きとの関係**: 読み込んだ最後の行へ Tab で届くと、その行が描かれるので続きの読み込みが
-  始まる（「Loading more」のきっかけと同じ）。届いた行は読み込んだ最後の行の後ろに足されるので、
-  利用者は続けて Tab で進める。読み込みが間に合わずに一覧の外へ出たら、Shift+Tab で戻る。
+```mermaid
+flowchart LR
+  A["Tab on a row's<br/>last focusable"] --> B{"Next row<br/>drawn?"}
+  B -->|yes| C["Default Tab"]
+  B -->|"no, not last loaded"| D["Scroll to next row,<br/>focus its checkbox"]
+  B -->|"no, last loaded"| E["Default: end-of-list box"]
+```
+
+- **The focused row stays drawn**: the virtualizer's drawn range (`rangeExtractor`) always includes the focused
+  row's index. Scrolling it off screen does not remove it, so focus never falls to `body`.
+- **Tab at the edge passes to the next row**: in the list wrapper's `keydown`, when Tab comes from a row's last
+  focusable element and the next row is not drawn (and this is not the last loaded row), the default is prevented,
+  the list scrolls to the next row (`scrollToIndex`, minus the band height; [Band](#band)), and once drawn, focus
+  moves to that row's checkbox. Shift+Tab from a row's first focusable element with the previous row undrawn scrolls
+  to the previous row and focuses its last focusable element (the row actions entry). Tab from the last loaded row
+  and Shift+Tab from the first row keep the default and leave the list (to the end-of-list box's button, or to the
+  band's header checkbox).
+- **Relation to loading more**: tabbing to the last loaded row draws it, which starts loading more (the
+  [Loading more](#loading-more) trigger). Arriving rows append after it, so the user keeps tabbing forward. If the
+  load is too slow and focus leaves the list, Shift+Tab comes back.
 
 ## Colour
 
-- 新しい token は足さない。選んだ行の面は `accent` の 10%（`bg-accent/10`。`bg` の上に重ねるので、
-  名前 `fg`・本数とシノニム `fg-muted` の対比は `bg` の上とほぼ同じ）。
-- 「Filter」が効いている形とチップ（`link` on `accent-soft`）、選んだ統合先の候補（同じ組）、選択の行の
-  文字（`fg` on `bg`）、選択の行の「Reject…」「Delete…」の文字（`danger` on `elevated`）、窓の中の失敗の
-  行（`danger` on `elevated`）、帯の文字（`fg-muted` on `bg`）、続きの失敗の箱と帯の「Stale list」の箱
-  （`danger` on `danger-soft`。ライブラリの `LoadMoreFailed` と同じ）、一覧が変わった箱（`fg` on
-  `elevated`）は `pairs` に既にある。
-- 仮の目印の `fg-subtle` はアイコンだけに使う（031 と同じ）。
+- No token is added. The selected row surface is 10% `accent` (`bg-accent/10`). It lies over `bg`, so the contrast
+  of the name (`fg`) and the count and synonyms (`fg-muted`) stays close to that on `bg`.
+- These pairs are already in `pairs`: the active "Filter" and the chips (`link` on `accent-soft`), the chosen merge
+  candidate (the same pair), the selection bar text (`fg` on `bg`), the selection bar's "Reject…" and "Delete…" text
+  (`danger` on `elevated`), the failure line in dialogs (`danger` on `elevated`), band text (`fg-muted` on `bg`),
+  the load-more failure box and the band's stale list box (`danger` on `danger-soft`, as the library's
+  `LoadMoreFailed`), and the list-changed box (`fg` on `elevated`).
+- The tentative mark's `fg-subtle` is used for the icon only (as in 031).
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前と役割だけを決める（014・031 と同じ範囲）。
+The parent Issue does not ask for a screen reader or contrast design, so this section fixes only names and roles
+(the same scope as 014 and 031).
 
-- 行のチェック: 読み上げ名「Select "〈名〉"」。先頭のチェック: 「Select all 100 loaded tags」／「Clear
-  selection」、中間の状態は `aria-checked="mixed"`、押せない理由は `aria-describedby`。
-- 「Filter」: 読み上げ名「Filter」／「Filter (N applied)」、吹き出しの中は文字を持つ `checkbox`。チップは
-  `ul`「Active filters」の中のボタン「Remove the filter "〈名〉"」。並び順のメニュー: `aria-label`
-  「Sort by: 〈種類〉」、向きのボタンは上の「Words」。まとめのボタン: 「Sort」。
-- タブ: `role="tablist"`「Tag lists」、`role="tab"` と `aria-selected`・`aria-controls`、パネルは
-  `role="tabpanel"` と `aria-labelledby`。見出しの件数は `role="status"`。
-- 続きの状態: 読み込み中は一覧の包みの `aria-busy` と `sr-only` の `role="status"`「Loading more
-  tags…」、失敗の箱は `role="alert"`、一覧が変わった箱は `role="status"`。帯の「Stale list」の箱は
-  `role="alert"`。
-- 選択の行: `role="region"`「Selected tags」、件数は `role="status"`（`polite`）。上限で押せない理由は
-  `title` と `aria-describedby`。
-- 窓: 見出しは `ModalFrame` の `title`。数えている間の 1 行は `aria-busy`、失敗の行は `role="alert"`。
-  統合の窓の入力は見える `label` を持ち、候補の読み込み中は `Combobox` の `aria-busy`。候補の箱は
-  `role="listbox"`（いつも開いているので `aria-expanded="true"`）。
-- 却下した名前のタブ: 並びの `ul`「Rejected names」、続きを読んでいる間は `aria-busy`。行のボタンの
-  読み上げ名は「Allow "〈名〉" again」。
-- 「Actions」のメニュー: 入口は `aria-label`「Actions」、項目は文字を持つ。
+| Element | Name and role |
+| --- | --- |
+| Row checkbox | Accessible name "Select "{name}"" |
+| Header checkbox | "Select all 100 loaded tags" / "Clear selection"; mixed state `aria-checked="mixed"`; the disabled reason through `aria-describedby` |
+| "Filter" | Accessible name "Filter" / "Filter (N applied)"; the popover holds labelled `checkbox`es |
+| Chips | Buttons "Remove the filter "{name}"" inside the `ul` "Active filters" |
+| Sort menu | `aria-label` "Sort by: {kind}"; the direction button as in [Words](#words); the compact button "Sort" |
+| Tabs | `role="tablist"` "Tag lists"; `role="tab"` with `aria-selected` and `aria-controls`; the panel `role="tabpanel"` with `aria-labelledby`. The header count is `role="status"` |
+| End-of-list states | Loading: `aria-busy` on the list wrapper and an `sr-only` `role="status"` "Loading more tags…". Failure box `role="alert"`; list-changed box `role="status"`. The band's stale list box `role="alert"` |
+| Selection bar | `role="region"` "Selected tags"; the count `role="status"` (`polite`); the over-limit reason in `title` and `aria-describedby` |
+| Dialogs | The title is `ModalFrame`'s `title`. The counting line is `aria-busy` and the failure line `role="alert"`. The merge input has a visible `label`, and `Combobox` sets `aria-busy` while candidates load. The candidate box is `role="listbox"` (always open, so `aria-expanded="true"`) |
+| Rejected names tab | The list `ul` "Rejected names", `aria-busy` while loading more. Row button accessible name "Allow "{name}" again" |
+| "Actions" menu | Entry `aria-label` "Actions"; items have text |

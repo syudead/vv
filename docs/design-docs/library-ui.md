@@ -1,303 +1,580 @@
-# ライブラリ UI: 見た目の規則と一覧の構成
+# Library UI: visual rules and list layout
 
-- ステータス: 採用
-- スコープ: `web/` の画面（シェル・一覧・再生）が従う見た目の規則と、その規則が
-  守られていることの確かめ方
+- Status: adopted
+- Scope: the visual rules that the screens in `web/` (shell, lists, video page)
+  follow, and how compliance with those rules is checked
 
-本書は画面に共通する構成と、その判断の理由を記す。値そのもの（色・半径・カード幅）は
-`web/src/index.css` の `@theme` にあり、検査する組は
-`web/src/theme/tokens.test.ts` にある。ここに写すと真実が 2 か所になるので、写さない。
+The screens share one set of visual values in CSS, and tests check what a
+machine can check. The values (colours, radii, card widths) live only in
+`@theme` in [`web/src/index.css`](../../web/src/index.css) and the checked
+pairs only in [`tokens.test.ts`](../../web/src/theme/tokens.test.ts); they are
+not copied here.
 
-## 1. なぜ見た目の値を CSS の 1 か所に置き、対比をテストで保証するのか
+The diagram shows where the values live and who checks each part.
 
-規則の置き場は `web/src/index.css` の `@theme` である。画面と部品は、そこから
-Tailwind が生成する実用クラス（`bg-surface`・`text-fg-muted`・`rounded-md` など）で
-色を指定する。生の 16 進色・`rgb()`・Tailwind 既定のパレット名（`neutral-*`・`sky-*`）が
-`web/src/**` にあると、`web/src/theme/tokens.test.ts` の走査が落ちる。
+```mermaid
+flowchart LR
+  theme["@theme in index.css"] --> classes[Tailwind utility classes]
+  classes --> screens[Screens in web/src]
+  test[tokens.test.ts] -->|contrast| theme
+  test -->|raw colour scan| screens
+  people[People on devices] -->|layout| screens
+```
 
-CSS を真実にしたのは、そうすると画面側にトークン名以外の選択肢が無くなるからである。
-値を TypeScript 側に置いて CSS を生成する形も採れるが、画面は結局 Tailwind のクラス名で
-書くので名前が二重になり、手編集禁止の管理対象が 1 つ増える。
+## 1. Visual values in one CSS location, with contrast guaranteed by tests
 
-対比を人の目に任せない。同じ `tokens.test.ts` が `@theme` から色を取り出し、
-sRGB → 相対輝度 → 対比を WCAG 2 の式で計算して、文字と面の各組が 4.5 以上であることを
-表明する。検証が**そのファイルを読むだけ**で済むのは、値が 1 か所に集まっている結果である。
-外部の検査ツール（axe・Lighthouse）を CI に入れる案は、実ブラウザと描画が要る割に、
-得られるのは対比以外の指摘であり、それは人が見る範囲である。
+Screens set visual values only through the utility classes Tailwind generates
+from `@theme` (`bg-surface`, `text-fg-muted`, `rounded-md`), and
+`tokens.test.ts` checks that every listed text/surface pair reaches a WCAG 2
+contrast of at least 4.5.
 
-**文字色や面の色を足したら `tokens.test.ts` の組にも足すこと。** 組に無い色は検査されない。
-テストは「組に載っているのに CSS に無い」ずれも落とすが、その逆は落としようがない。
+CSS is the source because it leaves screens no option other than token names.
+With the values in one file, the contrast check reads only that file.
 
-VVMDM の画面では `navbar`・`bg`・`surface` に提供された暗色を、主要操作にシアンの
-`accent`、hover に `accent-hover`、押下と選択に `accent-active` を使う。共通操作部の
-境界には `control-border`、キーボードフォーカスには `link` を使う。危険・警告・成功は
-それぞれの意味別の色と文言・アイコンで伝え、シアンの操作状態と混同させない。
-お気に入りの印だけは専用の桃色 `favorite` で塗り、選択・フォーカスのシアンとも
-`danger` の赤とも別の系統にする（specs/035-favorites/ui-design.md「Mark」）。
-通常文字と面の対比、主要な境界とフォーカスの対比は `tokens.test.ts` で検査する。
+The test applies these checks:
 
-## 2. なぜ暗い配色だけを実装し、明暗の切り替えを持たないのか
+```mermaid
+flowchart LR
+  src[web/src file] --> raw{Raw hex, rgb or default palette?}
+  raw -->|yes| fail[Test fails]
+  pair[Listed pair] --> css{Both in @theme?}
+  css -->|no| fail
+  css -->|yes| ratio{Contrast 4.5 or more?}
+  ratio -->|no| fail
+  ratio -->|yes| pass[Pass]
+```
 
-`html` に `color-scheme: dark` を宣言し、定義している配色は暗い 1 組である。
-`prefers-color-scheme` の分岐も切り替えスイッチも無い。
+Default palette names are `neutral-*`, `sky-*` and the rest. A colour missing
+from the pairs is not checked, so **a new text or surface colour must be added
+to the pairs**; the test catches a listed pair missing from CSS, not the
+reverse.
 
-理由は維持の費用である。切り替えを入れると、対比の検査対象が 2 組になる。一方は誰も
-見ないまま値が古び、それでも検証対象として保ち続けることになる。
+| Role | Token |
+| --- | --- |
+| Shell and surfaces | Supplied dark `navbar`, `bg`, `surface` |
+| Primary action | Cyan `accent`; `accent-hover` on hover; `accent-active` pressed and selected |
+| Borders of shared controls | `control-border` |
+| Keyboard focus | `link` |
+| Danger, warning, success | Own semantic colour, always with text and an icon |
+| Favorite mark | Pink `favorite`, used by nothing else ([035 UI design, Mark](../../specs/035-favorites/ui-design.md)) |
 
-その代わり、トークン名を色そのもの（`neutral-850`）ではなく**役割**（`bg`・`surface`・
-`elevated`・`fg`・`fg-muted`・`accent`・`danger`・`warning`）で付けてある。将来明るい配色が
-必要になったときの作業は「もう 1 組の値を定義する」ことだけで、画面側の書き換えは発生しない。
-いま分岐を持たないことと、あとで分岐を足せることは両立する。
+The semantic colours and the pink stay apart from cyan so they are not read as
+interaction states. The test covers body text on surfaces, the main borders and
+focus.
 
-## 3. なぜ仮想スクロールを使っていないのか
+| Rejected | Why |
+| --- | --- |
+| Values in TypeScript, CSS generated | Screens use Tailwind class names anyway, so names are duplicated and one more generated file appears |
+| axe or Lighthouse in CI | Needs a real browser; beyond contrast it adds findings people review anyway |
 
-一覧は仮想スクロールのライブラリを使っていない。求めているのは「操作への反応がすぐ始まる」
-ことであって、DOM の要素数を減らすこと自体ではない。
+## 2. Dark scheme only, without a light/dark switch
 
-仮想スクロールを避けたのは、この一覧が**折り返す格子**だからである。1 行の枚数は画面幅と
-カード幅で変わるので、仮想化すると枚数の計算を自前で持つことになり、一覧へ戻ったときの
-位置の復元も仮想化の座標系に合わせて作り直しになる。一覧は 1 ページ 60 件ずつしか読まない
-ので、DOM に載る数は利用者が読み込んだ分に限られる。依存も増えない。
+`html` declares `color-scheme: dark` and one dark set of values exists, with no
+`prefers-color-scheme` branch and no switch.
 
-**この判断は測ってから見直す。** 反応が遅いと分かった場合でも、その場で仮想スクロールへ
-進まず、まず何が遅いのかを測る。
+A switch doubles the sets under contrast checking, and one set would go stale
+unseen. Token names describe roles (`bg`, `surface`, `elevated`, `fg`,
+`fg-muted`, `accent`, `danger`, `warning`), not colours (`neutral-850`), so a
+later light scheme is a second set of values with no screen changes.
 
-タグ管理画面（`/tags`）の一覧は、この例外として `@tanstack/react-virtual` の
-`useWindowVirtualizer` で表示域と前後の少数の行だけを描く（[036 の research.md R-2](../../specs/036-tag-admin-scale/research.md#r-2-行の仮想化は-tanstackreact-virtual-の-usewindowvirtualizer-で行う)）。
-数千個のタグで開いた直後と検索・スクロールが固まると測ったうえでの判断で、上の 2 つの理由は
-この一覧には当たらない。1 列で 1 行の枚数が幅で変わらず、行はサーバーから条件ごとに 100 件ずつ受け、描く範囲が
-読み込んだ行の末尾に近づいたら続きを読む（[036 の research.md R-11](../../specs/036-tag-admin-scale/research.md#r-11-続きは画面の末尾に近づいたら-100-件ずつ読みid-で重複を捨て件数が食い違えば知らせて取り直させる)）。
-スクロールの持ち主は文書のままで、行の高さは描いた要素を測る。描いていない行へ Tab が届く
-仕組み（フォーカスのある行を描き続け、範囲の端の Tab を次の行へ渡す）も一覧の側で持つ。
-動画の格子の一覧が仮想スクロールを使わない理由は変わらない。
+## 3. No virtual scrolling
 
-この画面の検索・絞り込み・並び順は、ライブラリと同じく共通トップバーに置く。本文の先頭の見出し
-（選んでいる間は選択の行）・タブ「Tags | Rejected names」・絞り込みのチップ・列の見出しは 1 つの帯
-として上部バーの下に `position: sticky` で留まり、行は文書と一緒に流れる
-（[036 の ui-design.md「Band」](../../specs/036-tag-admin-scale/ui-design.md#band)）。
-帯の高さは中身と幅で変わるので、画面が上部バーと帯の高さを測り、仮想化の
-`scrollPaddingStart` と文書の `scroll-padding-top` に渡す。行へスクロールしても、ブラウザが
-フォーカスした行を寄せても、行は帯の下に隠れない。却下した名前は一覧の下の折りたたみ
-ではなく、帯のタブで開く本文で見る。
+Lists render every loaded item without a virtual scrolling library; the goal is
+immediate response to input, not fewer DOM elements.
 
-## 4. 幅の分岐を CSS で行う理由と、サイドバーの例外
+The list is a wrapping grid whose cards per row change with screen and card
+width, so virtualization would mean computing that count and rebuilding scroll
+restoration in virtual coordinates. Pages load 60 items
+([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
+user loaded. **Revisit only after measuring what is slow.**
 
-画面の組み立ての幅による出し分けは、Tailwind の既定のブレークポイントを使い CSS で
-行っている。JavaScript で幅を監視すると、監視そのものに加えて、初回描画が既定値で
-1 フレーム出るちらつきと、テストのための `matchMedia` の擬似実装を抱え込むからである。
+The tag admin list (`/tags`) is the measured exception: with thousands of tags,
+opening, search and scrolling froze, so it draws only the rows near the
+viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
+[036 research R-2](../../specs/036-tag-admin-scale/research.md)). Neither
+reason above applies there: it is one column, and rows arrive 100 at a time
+from the server for the current conditions. The document stays the scroll
+owner, the list keeps the focused row drawn, and Tab crosses the edge of the
+drawn range, so keyboard order reaches every row. Its toolbar, tab and column
+headings stay as one sticky band under the top bar; the page measures the band
+and passes its height to the virtualizer and to `scroll-padding-top`, so a
+focused row never hides under it
+([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
-サイドバーの展開・レール・ドロワーは、`web/src/shell/useSidebar.ts` が `matchMedia` で
-画面幅を読んで決めている。利用者が開閉した選択を幅ごとに解釈し、ドロワーの開閉を状態と
-して持つためで、CSS だけでは表せない。境界（1024px・640px）は Tailwind の `lg`・`sm` と
-同じ値である。
+### The window owns scrolling
 
-**動きを減らす設定（`prefers-reduced-motion`）は CSS で扱う。** 装飾的な
-遷移は `motion-reduce:` 変種で止め、色の最終状態と狙いの印は常に適用する ── 動きだけを
-止めるので、操作の結果は判別できる。
+The document (the window) scrolls the content; the shell's sidebar and toolbar
+are fixed or sticky and own no scroll container.
 
-## 5. なぜ構図の検証を機械に任せないのか
+The list's scroll restoration, zoom anchoring and infinite scroll all read
+`window.scrollY` or observe against the viewport, so a scroll container inside
+the shell would mean rewriting all three.
 
-機械で確かめているのは、対比・生の色が無いこと・部品の振る舞い（選択、絞り込み、
-再生位置の送信など）である。**構図そのものと、画面幅による出し分けは人が実機で確かめる。**
+## 4. Width breakpoints in CSS, and the sidebar exception
 
-jsdom は CSS を適用しないので、`position: fixed` もメディアクエリも折り返しも解決されない。
-そこに擬似的な仕掛けを置くと、「テストは通るが画面は壊れている」という最悪の状態を招く。
-視覚回帰テスト（基準画像との比較）は依存が増えるうえ、環境ごとの字形差で誤検知が出るため、
-以後すべての UI 変更が基準画像の更新を伴うことになる。
+Width variations use Tailwind's default breakpoints in CSS; only the sidebar
+reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts)).
 
-人に回すのは**確かめられないものだけ**である。
+Watching width in JavaScript brings a watcher, a one-frame flicker on the first
+render, and a `matchMedia` stub in tests. The sidebar is the exception because
+it interprets the user's open/close choice per width and keeps the drawer's
+open state, which CSS cannot express. Its breakpoints equal `lg` and `sm`:
 
-## 6. 一覧の構成
+```mermaid
+flowchart LR
+  w{Screen width} -->|1024px or more| user[User choice, default open]
+  w -->|640 to 1023px| rail[Rail by default]
+  w -->|639px or less| drawer[Drawer]
+  user -->|closed| railc[Rail]
+  rail -->|opened| exp[Expanded]
+  drawer -->|opened| over[Overlay]
+```
 
-一覧は管理画面として密度の高い構成にする。上部ナビゲーション、フィルタ帯、箱型カードを
-組み合わせ、配色と書体は VVMDM のものにしている。
+Reduced motion (`prefers-reduced-motion`) is also handled in CSS: the
+`motion-reduce:` variant stops decorative transitions, while the final colour
+and the target marker still apply, so the result of an action stays visible.
 
-- **シェル**: 上部の `TopBar`（`web/src/shell/TopBar.tsx`）は ☰・ロゴ・取り込みの
-  「更新」ボタンを持ち、その間に各画面が自分のツールバーを差し込む
-  （`TopBarPortal`）。ナビゲーションと設定への入口は `Sidebar` にある。サイドバーの
-  下段は所有者では「設定」「ログアウト」、ゲスト（ログインしていない人）では
-  「ログイン」だけで、ゲストでは上段も「ライブラリ」「フォルダ」の 2 つになり、
-  上部バーの「更新」と取り込みの進捗も出ない
-  （specs/016-single-account-auth/ui-design.md「Shell entries」「Guest degradation」）。
-- **サイドバー**: 展開・レール（アイコンのみ）・ドロワー（狭幅）の 3 状態。折りたたむと、
-  格子が使える横幅が増える（カードの幅は表示倍率で決まる）。
-- **ツールバー**: 検索・絞り込み・表示形式（ライブラリのみ）・表示倍率・並び順を持つ。
-  狭い幅では表示形式・表示倍率・並び順が「表示と並び順」のまとめへ移る。スマホ幅（sm 未満）では
-  どの倍率でもカードが 1 列にしか並ばないので、格子は全幅の 1 列にし、表示倍率は出さない。件数は
-  ライブラリと検索結果では格子の上の行に、フォルダ画面の直下の表示では一群の見出しに出る。
-  並び順の種類は追加日・更新日（ファイル）・作成日（ファイル）・題名・長さ・ファイルサイズ・
-  最近再生した順・お気に入りにした日時（Date favorited）・ランダムの 9 つで、ゲストには所有者だけの
-  最近再生した順とお気に入りにした日時を除く 7 つを出す。作成日は 033 で足し、日付の 3 種を
-  隣り合わせる（specs/033-video-dates/ui-design.md「Sort and direction」）。お気に入りにした日時は
-  035 で最近再生した順の直後に足し、選ぶと新しい順になる。`md` 未満の「表示と並び順」のまとめでは
-  2 列のラジオに行優先で流し込み、所有者で 5 行、ゲストで 4 行になる
-  （specs/035-favorites/ui-design.md「Sort and direction」）。
-  絞り込みのポップオーバーは視聴状態・お気に入りのみ（Favorites only、URL は `fav=1`）・再生可否の
-  順で、視聴状態とお気に入りのみは所有者だけに出す。お気に入りのみは「Clear filters」で
-  ほかの絞り込みと一緒に外れ、並べ替えは残る。ゲストの URL に `fav=1` や `sort=favorited*` が
-  残っていれば、既定に丸めてから要求し URL も直す（specs/035-favorites/ui-design.md
-  「Filter menu」「Guest degradation」）。
-- **カード**（`web/src/videoList/VideoCard.tsx`）: サムネイル、その右下の再生時間、
-  下端の再生進捗、題名を描く。ライブラリの格子表示とフォルダ画面では、題名の下にその
-  動画のタグの行を足し、タグの無い動画では足さない（specs/014-video-tags/ui-design.md
-  「Library card」）。ライブラリではタグを押すとそのタグで絞り込み、フォルダ画面では
-  そのタグで絞ったライブラリ（`/?tag=<id>`）へ移る。フォルダ名からだけ付いているタグは、
-  同じ大きさのまま面を持たない破線の枠と Folder の目印で手で付けたタグと区別し、再生画面では
-  × を出さない。選択バーの「タグを外す」も手で付けたタグだけを候補にする
-  （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
-  フォルダ画面の検索結果では題名の下に置き場所の行を足す。ホバープレビューはどの画面でも
-  同時に 1 件だけ再生され、表示倍率を変えると画面上端にあったカードの位置へ戻る。格子
-  （`web/src/videoList/Grid.tsx`）はライブラリとフォルダ画面で共有している。
-- **フォルダのカード**（`web/src/folders/FolderCard.tsx`）: 動画カードと同じ幅・境界を使い、
-  フォルダの絵柄と題名の Folder アイコンで区別する。名前は2行まで表示し、全体は
-  `title` でも確認できる。登録フォルダのパスは所有者だけに末尾を優先して表示し、
-  省略した全体は `title` で確認できる。登録済みの空ルートでは、ファイルを置いてから
-  取り込む必要があることを伝える。
-- **グループのカード**（ライブラリのみ、`web/src/library/GroupCard.tsx`）: ライブラリの一覧は
-  `GET /api/library` を読み、フォルダのグループを動画と同格の 1 件として混ぜる。カードは
-  動画のカードと同じ箱と大きさで、サムネイルの枠にフォルダカードと同じフォルダの絵柄
-  （`web/src/videoList/FolderArt.tsx`、メンバーのサムネイルを最大4枚重ねる）、その右下の面に
-  本数（「12 本」）と合計の長さ、視聴中だけ見終えた本数の割合の帯、グループ名、メンバーの
-  タグの行を描く。押すと続きの
-  メンバーの再生画面（`/videos/{openVideoId}`）へ移る。ゲストには視聴状態・見終えた本数・帯を
-  出さない。フォルダ画面とその検索結果は今までどおり 1 本ずつ出す
-  （specs/017-folder-groups/ui-design.md「Group card」）。まとめの解除・直下をまとめる・
-  タグに変える操作はカードの上に置かず、フォルダ画面の「動画 N」の見出しの行の右端の
-  メニュー（所有者のみ、`web/src/folders/FolderGroupingMenu.tsx`）と、再生画面の
-  グループ名の行に置く。操作の後はライブラリの一覧の控えを捨て、次にライブラリを開くと
-  読み直す（specs/017-folder-groups/ui-design.md「Folder grouping menu」）。
-- **お気に入りの印**（所有者のみ、`web/src/videoList/FavoriteToggle.tsx`）: 動画のカード（ライブラリ・フォルダ画面・検索結果）と
-  ライブラリのグループのカードのサムネイルの右上に、印を兼ねた
-  付け外しのハートを置く。面も枠も付けず、押せる範囲 28px の中に 22px のハートだけを置き、
-  暗い影（`drop-shadow-mark`）で明るい絵柄の上でも読めるようにする。お気に入りはこの印だけが使う
-  桃色（`favorite`）の塗り、そうでないものは白の線だけで、線のハートは
-  選択のチェックと同じくポイント・フォーカスしたとき（hover できない端末では常に）だけ現れる。
-  カードのリンクの外にあり、押しても開かず選択も変えない。応答の後に印を変え、動画は一覧の項目を
-  その場で差し替え、グループは `GET /api/folders/{rootId}/group` で取り直す。お気に入りのみで
-  絞った一覧でも、その場では外さない。リスト表示では題名の列の直後の列に面も影も無しで置き、
-  オンはカードと同じ `favorite` の塗りにする。ゲストには
-  出さない（specs/035-favorites/ui-design.md「Mark」「Card」）。
-- **リスト表示**（ライブラリのみ）: 1 行に題名・お気に入り（所有者のみ）・視聴済み・長さ・画質・
-  大きさ・追加日時を並べる。グループの行は同じ列に、先頭のメンバーのサムネイル、題名の下の Folder の目印と
-  本数、視聴済みの列の「3 / 12」、合計の長さと大きさを出し、画質は空にする
-  （specs/017-folder-groups/ui-design.md「List view row」）。
-- **選択**（ライブラリのみ、所有者のみ）: 格子表示のチェックはポイントまたは
-  フォーカスしたときに現れ、hover できない端末では常に見せる。リスト表示のチェックは
-  常に薄く見せ、選択中はすべてのチェックを表示する。グループのチェックが選ぶ対象と
-  件数の数え方は [017 の UI 設計「Pressing and selection」](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) に記す。
-- **選択バー**: 1 件でも選ぶと画面下部に固定して出し、ツールバーの位置と高さは
-  変えない。広い幅では「N 件を選択中」・「タグを付ける」・「タグを外す」・「Favorite」・
-  「公開」（2 本以上で「Bundle as versions」）を区切り線の無い一群にし、その後に
-  区切り線・「すべて選択」・解除を 1 行に並べる。`sm` 以上で 1 行が画面の幅に収まらない
-  ときは、`nowrap` のまま画面からはみ出させず、バーを画面の幅いっぱいにして、まず
-  区切り線から後ろを 2 行目の右端へ回す。それでも 1 行目が収まらなければ「Favorite」
-  以降も同じ順のまま 2 行目の区切り線の前へ回す（件数と操作の実際の幅を測って決める）。
-  `sm` 未満では上段に件数・「すべて選択」・解除、下段にタグの 2 操作・「Favorite」・
-  「公開」を置く。下段が収まらない幅では「Favorite」以降が次の段の右端に回り、そこにも
-  収まらなければさらに次の段の右端に回る。
-  操作名を短縮しないのは、hover できない端末でも意味を読めるようにするためである。
-  タグ操作の中身は [014 の UI 設計「Selection bar」](../../specs/014-video-tags/ui-design.md#selection-bar)、
-  公開メニューの中身は [016 の UI 設計「Selection bar」](../../specs/016-single-account-auth/ui-design.md#selection-bar)、
-  「Favorite」のメニューと折り返しの規則は [035 の UI 設計「Selection bar」](../../specs/035-favorites/ui-design.md#selection-bar) に記す。
-  「Favorite」はグループのカードのチェックや「すべて選択」の応答で選んだグループを
-  グループとして送り、そのメンバーを動画としては送らない。選択を残したまま一覧を取り直して
-  （取り込みの完了など）そのフォルダのメンバーが動画の項目として載ったときや、グループの
-  メンバーが増えて全員が選択に入っていないときは、グループとしては送らずメンバーを動画として送る。
-- **操作状態**: 通常・hover・focus-visible・active・selected・disabled を部品ごとにばらばらに
-  せず明確に分ける。キーボードフォーカスはアクセント色の外側輪郭で示す。検索欄は内側の
-  `input` ではなく外枠にフォーカスを出し、二重輪郭を避ける。
+## 5. Layout verified by people, not machines
 
-## 7. サイドバーの導線
+Machines check contrast, the absence of raw colours and component behaviour;
+**people check the layout and its width variations on real devices**.
 
-サイドバーの各項目は対応する画面へ移る。
+```mermaid
+flowchart LR
+  item[What to check] --> m{Needs CSS layout?}
+  m -->|no| tests[Automated tests]
+  m -->|yes| people[People on devices]
+```
 
-## 8. 再生画面の構成
+jsdom does not apply CSS, so `position: fixed`, media queries and wrapping are
+unresolved, and faking them gives passing tests on a broken screen.
 
-再生画面（`/videos/:id`）は「見る」ための画面で、一覧とは逆に密度を下げる。詳細な形と
-文言は [specs/012-video-detail-ia/ui-design.md](../../specs/012-video-detail-ia/ui-design.md)
-にあり、ここには構成の判断だけを書く。
+| Rejected | Why |
+| --- | --- |
+| Visual regression tests | New dependencies, false positives from glyph differences between environments, and every UI change updates reference images |
 
-- **構成要素**: 見出しの帯・プレイヤー・題名・タグ・公開の切り替え・ファイルの情報・
-  関連動画を置く。シェルは無く、一覧の上に重なった画面として × と Esc で閉じる。見出しの帯は
-  再生画面だけのもので、ロゴ（ホームへ）・置き場所のフォルダまでのパンくず・× を持つ。戻り先は
-  画面を開く前の一覧で、関連動画や「次を再生」で移っても最初の一覧のまま引き継ぐ。タグは
-  題名のすぐ下に置き、題名と1つのまとまりとして扱う（詳細は
-  [specs/014-video-tags/ui-design.md「Video page tags」](../../specs/014-video-tags/ui-design.md#video-page-tags)）。
-  公開の切り替え（`role="switch"`）はそのまとまりの直下、ファイルの情報の上に置く。ゲストでは
-  タグ・公開の切り替え・「ファイルを開く」「パスをコピー」を出さず、題名の下はファイルの情報と
-  技術情報の 2 行だけになる（[specs/016-single-account-auth/ui-design.md「Visibility toggle」「Guest degradation」](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)）。
-- **幅による出し分けは CSS**（4 と同じ）: `lg` 以上は右に関連動画の列、それ未満は縦に
-  積む。× は帯の 1 か所だけにあり、パンくずは `md` より狭い幅で最後の段だけを残して畳む。
-- **題名の下は線も枠もラベルも使わない 2 行**: 1 行目はアイコンを添えたファイルの情報
-  （長さ・サイズ・追加日）と、右端の「ファイルを開く」「パスをコピー」。2 行目は技術情報
-  （解像度・コンテナ・コーデック）で、いちばん小さく控えめにする。置き場所はパンくずとして
-  帯にあるので、題名の下にパスは出さない。
-- **お気に入りは右端の操作の一群の先頭**（所有者のみ）: 情報の行の右端の一群の先頭（「今の場面を
-  代表サムネイルにする」の左）に、再生中の動画のお気に入りの付け外し（`FavoriteToggle` の `page`
-  の形。`IconButton` の `sm`、`aria-pressed`）を置く。一群の中で状態を持つのはこれだけなので、
-  目が右へ流れて最初に着く位置にし、題名や公開の切り替えより目立たせない（オンは
-  `bg-accent-soft` の小さな面と、カード・行と同じ `favorite` の桃色の塗りだけ）。押すと `PUT /api/favorites` を送り、成功したら動画を
-  取り直して塗りが変わる。結果は一覧の控えにも重ねるので、戻ったライブラリのカードの印も
-  変わっている。失敗は開く・撮ると同じ情報の行の直下の 1 行に出し、トーストは出さない。
-  グループの行には置かず、ゲストには出ない（詳細は
-  [specs/035-favorites/ui-design.md「Video page」](../../specs/035-favorites/ui-design.md#video-page)）。
-- **状態と失敗はプレイヤーの中に出す**: 読み込み中・取り込みの段階・読み取り失敗・
-  再生失敗・動画が消えた・再生終了は、プレイヤーの上の 1 つの入れ物に重なる。入れ物が
-  重なりの順を決め、一度に 1 つを出す。プレイヤーの外に出る状態はプレイヤー直下の
-  「作成中」の 1 行である。層の中の文字は不透明な `bg-navbar` の面に載っている。半透明の
-  `bg-overlay` の上の文字は、対比を `tokens.test.ts` で検査できないからである。
-- **途切れの警告は入れ物の外の別の層**: 回線の遅さで再生が途切れていると判断したら、
-  プレイヤーの左上に知らせるだけの小さな帯（`web/src/player/StallWarning.tsx`、`role="status"`）
-  を出す。状態表示の入れ物は「一度に 1 つ・中央」の層なので、再生を止めず操作もふさがない
-  警告は入れない。帯は映像より上、入れ物と操作バーより下で、× 以外は下の操作へ通す。
-  再生失敗・再生終了・次の予告・再接続中・取り込み中の層が出ている間は出さず、データ待ちの
-  読み込み中の輪とは並べて出す。閉じると同じ動画の間は出し直さない。画質を変える操作は
-  置かない（[再生の画質「途切れの警告」](playback-quality.md#途切れの警告)、詳細は
-  [specs/027-playback-quality/ui-design.md「Stall warning」](../../specs/027-playback-quality/ui-design.md#stall-warning)）。
-- **再生の誤りは種類で分ける**（`web/src/player/playbackRecovery.ts`）: `video` 要素の
-  誤りの番号 1・2 は通信の失敗、3 はデータが読めない失敗とする。4 と番号の無い誤りは
-  原因を確かめて分ける（端末がオフラインなら確かめない）。直接再生は動画本体の先頭 1 バイト
-  を要求し、届かなければ通信の失敗、中身が返れば形式の問題、誤りの状態なら動画を出せない
-  失敗とする。変換は要求すると変換が始まるので、`/api/health` に届くかだけを確かめる。
-  通信の失敗は変換へ切り替えず、今の経路のまま切れた位置から読み込み直す。待ちは 1・2・
-  4・8・15 秒（合わせて約 30 秒）で、その間は失敗の層ではなく「再接続中」の表示を出し、
-  端末が回線に戻ったら（`online`）待ちを切り上げる。読み込み直した要求が 15 秒のうちに
-  メタデータを返さなければ、誤りが無くても次の読み込み直しへ進む。待つ間の見る人の操作は
-  壊れた source へ渡さない。止まっているかは要素ではなく見る人の意図で答え、再生・一時停止の
-  ボタンもそれに合わせる。再生は待ちを切り上げて読み込み直し、一時停止は読み込み直した
-  あとも止めたままにし、シークは読み込み直す位置になる（要求の途中のシークは、メタデータの
-  後にその位置へ移る）。読み込み直したあと再生中に実際に
-  10 秒進んだら（シーク・一時停止中の変化は数えない）回数を数え直す。直接再生からの
-  変換への切り替えは、データが読めない失敗と形式の問題のときだけ 1 回行う。使い切った
-  失敗は、サーバーに届かない・データが読めない（壊れている）・動画を出せない（動いた・
-  消えた・形式）の文で分けて伝える。
-- **video.js の部品になっているのは操作バーの部品**: 最初に戻る・画質・字幕・再生速度・
-  現在時刻/長さ・「変換して再生中」。状態表示は React 側にある。video.js の部品にすると、
-  画面の他の部分と状態を共有できないからである。
-- **操作バーの画質は再生速度と同じ従の操作**: 右側の一群に「変換して再生中」・画質・
-  再生速度・PiP・全画面の順で並ぶ。画質は video.js の `MenuButton` の部品
-  （`web/src/player/qualityMenu.ts`）で、箱・余白・開き方・Esc の扱いを再生速度とそろえ、
-  ボタンの文字で今の画質（元の画質なら動画の短辺）を示す。選ぶとプレイヤーを作り直さず、
-  同じ位置で source を差し替える（[再生の画質「切り替え」](playback-quality.md#切り替え)、
-  詳細は [specs/027-playback-quality/ui-design.md「Control bar: quality menu」](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)）。
-  開いているメニュー（画質・再生速度）の Esc はメニューだけを閉じる。
-- **字幕は映像と操作バーの間の層**: 動画の隣に置いた字幕は video.js の字幕の層
-  （`vjs-text-track-display`）に出し、操作バーが見えている間は操作バーと再生バーの上へ寄せて
-  重ねない。字幕ボタンは再生速度の隣にあり、字幕が無い動画では出ない。メニューは字幕の名前と
-  「オフ」だけで、字幕の見た目の設定は置かない。選んだ字幕はブラウザごとに覚え、次に開いた
-  動画に同じラベルがあればオンで始まる（`web/src/player/subtitleTracks.ts`、
-  [sidecar-subtitles.md](sidecar-subtitles.md)）。
-- **キーボード操作は画面全体で受ける**: video.js の操作バーの部品はキーの伝播を止めるので、
-  `window` の捕捉段階で受け、ボタンやスライダー自身の操作になるキーだけを見送る。
-  Space・F・M・C（字幕）・0・Esc を扱う。
-- **グループのメンバーは同じ画面に足すだけ**: 題名の上にグループ名と何本目かの従の1行、
-  関連動画の列の上位に「続けて再生」のメンバーの並びと境目、再生終了の層の代わりに次の
-  メンバーの予告（5 秒・取り消せる・Esc は取り消し）を出す。所有者ではグループ名の行が
-  「まとめを解除」「グループをタグに変える」のメニューを開き、操作の後は動画と関連動画を
-  取り直してふつうの動画の形に戻る。開いているメニューの Esc はメニューだけを閉じる。
-  前後のつまみはグループの中の前後になる。グループに属さない動画の画面は変えない（詳細は
-  [specs/017-folder-groups/ui-design.md「Video page」](../../specs/017-folder-groups/ui-design.md#video-page)）。
-  広い画面で今のメンバーの行を見える位置へ動かすときだけ、`lg` の幅を `matchMedia` で読む。
-  狭い幅ではページごと動いてプレイヤーが消えるので、動かさないためである。
-- **タッチ用の中央操作は `pointer: coarse` の端末に出る**: 出し分けは CSS のメディア条件で
-  行い、`matchMedia` は読んでいない（4 と同じ理由）。
+## 6. List layout
+
+Lists use a dense management-screen layout: a top bar, a filter band and boxed
+cards, shared by the library and folder pages through one grid
+([`Grid.tsx`](../../web/src/videoList/Grid.tsx)).
+
+The diagram shows the parts of a list screen.
+
+```mermaid
+flowchart LR
+  top[Top bar] --> tool[Screen toolbar]
+  side[Sidebar] --> grid[Grid or list view]
+  tool --> grid
+  grid --> cards[Video, folder, group cards]
+  cards -->|select| bar[Selection bar]
+```
+
+### Shell and toolbar
+
+The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
+logo and `Refresh library`, and each screen inserts its toolbar between them.
+The sidebar has three states (expanded, rail, drawer; see
+[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
+it widens the grid, while card width follows the zoom level. Guest rules are in
+[016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
+
+| Part | Owner | Guest |
+| --- | --- | --- |
+| Sidebar, upper | All entries | `Library` and `Folders` only |
+| Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
+| Refresh button and import progress | Shown | Hidden |
+| Sort orders | 9 | 7 |
+| Watch status and `Favorites only` filters | Shown | Hidden |
+
+The toolbar holds search, filters, view (library only), zoom and sort.
+
+| Width | Toolbar |
+| --- | --- |
+| Wide | All controls inline |
+| Narrow | View, zoom and sort move into `View and sort` |
+| Below `md` | Sort orders fill two radio columns row-first: 5 rows owner, 4 guest |
+| Below `sm` | One full-width column at any zoom; zoom hidden |
+
+The count sits in the row above the grid for the library and search results,
+and in the section heading for a folder's direct contents.
+
+The sort orders are date added, date modified, date created, title, duration,
+file size, recently played, date favorited and random; guests lose the
+owner-only recently played and date favorited. Date created sits
+with the other dates ([033 UI design](../../specs/033-video-dates/ui-design.md));
+date favorited follows recently played and sorts newest first
+([035 UI design, Sort and direction](../../specs/035-favorites/ui-design.md)).
+
+The filter popover lists watch status, `Favorites only` (URL `fav=1`) and
+playability, in that order. `Clear filters` clears favorites only with the
+other filters and keeps the sort. A guest URL with `fav=1` or `sort=favorited*`
+is reset to the defaults before the request and the URL is corrected.
+
+### Cards
+
+A video card ([`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)) shows
+the thumbnail, the duration at its bottom right, playback progress along the
+bottom edge and the title.
+
+| Card | Rules |
+| --- | --- |
+| Video, library and folder pages | Tag row under the title, none without tags ([014 UI design, Library card](../../specs/014-video-tags/ui-design.md)) |
+| Video, folder search results | Location row under the title |
+| Folder | Video card's width and border, folder artwork, Folder icon in the title |
+| Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
+
+Video card behaviour:
+
+| Case | Behaviour |
+| --- | --- |
+| Tag pressed in the library | Filters by the tag |
+| Tag pressed on a folder page | Opens `/?tag=<id>` |
+| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
+| Hover preview | One at a time on any screen |
+| Zoom changed | Returns to the card that was at the top |
+
+A folder card shows its name on up to two lines with the full name in `title`.
+The owner also sees the media folder path, truncated to favour its end, full in
+`title`. An empty registered root says to place files there and import.
+
+The library reads `GET /api/library`, which mixes folder groups in with videos;
+folder pages and their search results list videos one by one. A group card
+shows a panel with the count (`12 videos`) and total duration, a watched-share
+bar only while some members are in progress, the group name and the members'
+tags. Pressing it opens the member to continue (`/videos/{openVideoId}`).
+Guests see no watch status, watched count or bar.
+
+Ungroup, group a folder's direct videos and turn a group into a tag are not on
+the card. They sit in the owner's menu at the right end of a folder page's
+`Videos N` heading row
+([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)) and
+on the video page's group name row. After an action the cached library list is
+discarded and reloads on the next visit.
+
+### Favorite mark
+
+The owner's favorite mark is one heart that is both mark and toggle, at the
+top right of the thumbnail on video and group cards
+([`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx),
+[035 UI design, Mark, Card](../../specs/035-favorites/ui-design.md)).
+
+| Aspect | Rule |
+| --- | --- |
+| Shape | 22px heart in a 28px hit area, no fill or border behind it |
+| Readability | Dark `drop-shadow-mark` on cards; none in list view |
+| On | Filled pink `favorite`, everywhere |
+| Off | White outline, shown only on hover or focus (always where hover is impossible) |
+| Pressing | Outside the card link: does not open or select |
+| Filtered to favorites | Item stays until the next fetch |
+| Guests | Not shown |
+
+The mark changes only after the server answers:
+
+```mermaid
+flowchart LR
+  press[Heart pressed] --> res[Server response]
+  res --> kind{Item kind?}
+  kind -->|video| repl[Replace item in place]
+  kind -->|group| refetch[Refetch the group]
+```
+
+A group is refetched with `GET /api/folders/{rootId}/group`.
+
+### List view and selection
+
+List view (library only) shows title, favorite (owner), watched, duration,
+quality, size and date added. A group row uses the same columns: first member's
+thumbnail, Folder marker and count under the title, `3 / 12` watched, total
+duration and size, empty quality
+([017 UI design, List view row](../../specs/017-folder-groups/ui-design.md)).
+
+Selection is library- and owner-only. Its check shows on hover or focus in the
+grid (always where hover is impossible), always faintly in list view, and on
+every item during selection. What a group's check selects is in
+[017 UI design, Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection).
+
+### Selection bar
+
+The selection bar is fixed to the bottom of the screen from the first selected
+item, without moving or resizing the toolbar. Action names are never shortened,
+so they read on devices without hover.
+
+Its items, in order, are `N selected`, `Add tag`, `Remove tag`, `Favorite`,
+`Visibility`, `Bundle as versions` (2 or more videos), a separator, `Select
+all` and clear. Lines are decided by measuring the actual widths:
+
+```mermaid
+flowchart LR
+  w{Width sm or more?} -->|yes| one{One line fits?}
+  one -->|yes| line[One line]
+  one -->|no| sep[Separator onward to line 2]
+  sep --> still{Line 1 fits?}
+  still -->|no| fav[Favorite onward to line 2]
+  w -->|no| narrow[Count, Select all, clear on top]
+  narrow --> wrap[Overflow moves Favorite onward down]
+```
+
+At `sm` and above the bar spans the full width instead of overflowing with
+`nowrap`, and moved items sit at the right end of line 2, `Favorite` and the
+rest before the separator. Below `sm`, the bottom line holds the two tag
+actions, `Favorite` and `Visibility`; what does not fit moves to the right end
+of the next line, then the line after.
+
+Details: tag actions in
+[014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
+the visibility menu in
+[016 UI design, Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar),
+and `Favorite` and wrapping in
+[035 UI design, Selection bar](../../specs/035-favorites/ui-design.md#selection-bar).
+
+`Favorite` decides per selected group whether to send it as a group:
+
+```mermaid
+flowchart LR
+  g[Selected group] --> m{Members listed as videos?}
+  m -->|yes| vids[Send members as videos]
+  m -->|no| all{All members still selected?}
+  all -->|no| vids
+  all -->|yes| grp[Send as group]
+```
+
+A group is selected through its card's check or through `Select all`. Members
+appear as video items, or the group gains members, when the list is refetched
+with the selection kept, for example after an import.
+
+### Interaction states
+
+Normal, hover, focus-visible, active, selected and disabled are distinct and
+consistent across components. Keyboard focus is an outer outline in the accent
+colour; the search field draws it on its outer frame, not the inner `input`, to
+avoid a double outline.
+
+## 7. Sidebar navigation
+
+Each sidebar item goes to its screen.
+
+## 8. Video page layout
+
+The video page (`/videos/:id`) is for watching, so it is less dense than the
+lists; shapes and text are in
+[012 UI design](../../specs/012-video-detail-ia/ui-design.md).
+
+The page is layered over the list with no shell and closes with × or Esc. The
+diagram shows its parts.
+
+```mermaid
+flowchart LR
+  band[Header band] --> player[Player]
+  player --> title[Title and tags]
+  title --> vis[Visibility toggle]
+  vis --> info[File information]
+  player --> related[Related videos]
+```
+
+| Part | Rule |
+| --- | --- |
+| Header band | Logo (home), breadcrumb to the folder, the only × |
+| Return target | The list before the page opened, kept through related videos and `Play next` |
+| Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
+| Visibility toggle | `role="switch"`, below the title unit, above file information |
+| Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
+
+Width variations stay in CSS, as in
+[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
+above related videos form a right column, below that everything stacks, and
+below `md` the breadcrumb shows only its last segment.
+
+### Information rows
+
+Two rows under the title carry no lines, frames or labels.
+
+| Row | Content |
+| --- | --- |
+| First | Duration, size, date added with icons; actions at the right end |
+| Second | Resolution, container, codec; smallest and most subdued |
+
+No path appears under the title, because the breadcrumb already shows the
+location.
+
+The owner's favorite toggle opens the right-hand action group, left of
+`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
+`sm`, `aria-pressed`). It is the group's only control with state, so the eye
+lands on it first; even so, it is no more prominent than the title: on is a small
+`bg-accent-soft` fill with the pink heart. It is absent on group rows and for
+guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
+
+```mermaid
+flowchart LR
+  press[Toggle pressed] --> put[PUT /api/favorites]
+  put -->|ok| refetch[Refetch the video]
+  refetch --> cache[Update cached list]
+  put -->|error| line[One-line failure below]
+```
+
+Updating the cached list means the library card has changed on return. The
+failure line sits directly below the information row, like open and capture
+failures, with no toast.
+
+### Player states
+
+Loading, import stages, read failure, playback failure, video gone and playback
+ended show one at a time from a single container over the player, which decides
+the order. Only the "being created" line sits below the player. Layer text
+sits on opaque `bg-navbar`, because `tokens.test.ts` cannot check text on the
+translucent `bg-overlay`.
+
+The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx),
+`role="status"`) is a separate small banner at the player's top left: it
+neither stops playback nor blocks controls, so it stays out of the
+one-at-a-time container.
+
+| Aspect | Rule |
+| --- | --- |
+| Stacking | Above the video, below the container and the control bar |
+| Input | Passes through to the controls, except its × |
+| Hidden while | Playback failure, playback ended, up next, reconnecting or importing shows |
+| Loading spinner | Shown together with it during a data wait |
+| Dismissed | Not shown again for the same video |
+| Actions | None; no quality change |
+
+Rules: [Playback quality, Stall warning](playback-quality.md#stall-warning);
+details:
+[027 UI design, Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning).
+
+### Playback errors
+
+Playback errors are classified by kind
+([`playbackRecovery.ts`](../../web/src/player/playbackRecovery.ts)), checking
+the cause when the `video` element's code does not say it:
+
+```mermaid
+flowchart LR
+  code{Error code} -->|1 or 2| net[Network failure]
+  code -->|3| data[Data unreadable]
+  code -->|4 or none| off{Device offline?}
+  off -->|yes| net
+  off -->|no| probe{Probe result}
+  probe -->|no response| net
+  probe -->|content| fmt[Format problem]
+  probe -->|error status| gone[Cannot be served]
+```
+
+Direct playback probes the first byte of the file. Transcoding probes only
+whether `/api/health` answers, because a request to the stream would start a
+transcode; any answer counts as a format problem.
+
+A network failure reloads on the current route from where it broke off,
+without switching to transcoding:
+
+```mermaid
+stateDiagram-v2
+  [*] --> Playing
+  Playing --> Waiting: network failure
+  Waiting --> Reloading: wait ends
+  Reloading --> Playing: playback advances 10 s
+  Reloading --> Waiting: error or 15 s without metadata
+  Waiting --> Failed: retries exhausted
+  Playing: Playing normally
+  Waiting: Reconnecting shown
+  Reloading: Source reloaded
+  Failed: Failure message shown
+```
+
+| Rule | Value |
+| --- | --- |
+| Waits | 1, 2, 4, 8, 15 s (about 30 s in total) |
+| Early end of a wait | Device comes back `online`, or the viewer presses play |
+| Retry count reset | 10 s of real playback after a reload; seeks and paused changes do not count |
+| Pause during a wait | Playback stays paused after the reload |
+| Seek during a wait | Becomes the reload position; during a request, applied after metadata |
+| Paused state | Answered from the viewer's intent; the play/pause button follows it |
+| Switch to transcoding | Once, only from direct playback, only for data-unreadable and format failures |
+
+Viewer input during the wait never reaches the broken source. The final
+message says which applies: the server cannot be reached, the data cannot be
+read (corrupt), or the video cannot be served (moved, gone, format).
+
+### Control bar
+
+Only control bar parts are video.js components: restart, quality, subtitles,
+playback speed, current time/duration and the transcode indicator. The status
+display is React, because a video.js component could not share state with the
+rest of the screen.
+
+| Control | Rule |
+| --- | --- |
+| Right-hand group | Transcode indicator, quality, playback speed, PiP, full screen, in that order |
+| Quality | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts)) |
+| Quality label | The current quality; for the original, the video's short side |
+| Choosing a quality | Replaces the source at the same position without recreating the player |
+| Esc in an open menu | Closes only the menu |
+| Subtitle button | Next to playback speed; absent for videos without subtitles |
+| Subtitle menu | Subtitle names and `Off`; no appearance settings |
+| Subtitle choice | Remembered per browser; the next video with the same label starts with it |
+| Subtitle position | Raised above the control bar and progress bar while they show |
+
+Quality: [Playback quality, Switching](playback-quality.md#switching) and
+[027 UI design, Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu).
+Subtitles use video.js's `vjs-text-track-display`
+([sidecar-subtitles.md](sidecar-subtitles.md)).
+
+Keyboard shortcuts work on the whole screen: video.js components stop key
+propagation, so keys are caught in the capture phase on `window`, passing
+through only keys that operate the focused button or slider. Space, F, M, C
+(subtitles), 0 and Esc are handled.
+
+### Group members
+
+A video in a group only gains parts on the same page; a video outside any group
+is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-design.md#video-page)).
+
+| Part | Rule |
+| --- | --- |
+| Above the title | Group name and position in the group |
+| Related videos column | `Up next` member list and a divider at the top |
+| Playback ended | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels |
+| Group name row (owner) | Menu with `Ungroup` and `Turn the group into a tag`; Esc closes only the menu |
+| After a menu action | Video and related videos refetched; page returns to the plain form |
+| Previous/next handles | Move within the group |
+
+`matchMedia` reads the `lg` width only to scroll the current member's row into
+view on wide screens; on narrow widths scrolling would move the whole page and
+hide the player.
+
+Central touch controls appear on `pointer: coarse` devices through a CSS media
+condition, without `matchMedia`, for the reason in
+[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception).
+
+## 9. List conditions applied by the server
+
+The server applies every list condition (search, filters, sort, shuffle seed),
+and the page never filters the pages it has loaded
+([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
+URL).
+
+Only the server knows which videos and groups belong to a folder and match the
+filters, so a page that filtered locally would show a different set from
+`total`. For the same reason a re-fetched list item never guesses its place:
+
+```mermaid
+flowchart LR
+  ev[video event] --> rf[Re-fetch the video]
+  rf --> rep{Still representative?}
+  rep -->|yes| upd[Update in place]
+  rep -->|no| shown{Representative listed?}
+  shown -->|yes| drop[Drop the item]
+  shown -->|no| reload[Reload from first page]
+```
+
+Inserting the representative directly could show a video outside the folder
+or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
+
+## 10. Per-device preferences with defaults
+
+Per-device display settings are total functions over `localStorage` that
+never throw ([`web/src/preferences/`](../../web/src/preferences)): a missing,
+corrupt or unreadable value yields the defaults, and a failed write is ignored.
+
+A preference is a convenience; a bad stored value or blocked storage must not
+blank the screen.

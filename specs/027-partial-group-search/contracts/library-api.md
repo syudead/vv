@@ -1,64 +1,72 @@
-# Contract: ライブラリの一覧の項目の作り方（一部だけが当たったグループ）
+# Contract: How library list items are built (groups matched only in part)
 
-正本は `api/openapi.yaml` で、経路・パラメータ・応答のスキーマは
-[017 の library-api.md](../../017-folder-groups/contracts/library-api.md) から変えない。この文書は、
-`GET /api/library` と `GET /api/library/ids` が当たった動画を項目にまとめる規則の差分だけを書く。
-[017 data-model.md §5](../../017-folder-groups/data-model.md#5-ライブラリの項目) の 1〜2 をここの §1 が
-置き換え、3 以降と §6・§7 はそのまま使う。
+Source of truth: `api/openapi.yaml`. Paths, parameters and response schemas do not change from
+[017's library-api.md](../../017-folder-groups/contracts/library-api.md). This document records only
+the delta in the rules by which `GET /api/library` and `GET /api/library/ids` gather matched videos
+into items. §1 here replaces items 1–2 of
+[017 data-model.md §5](../../017-folder-groups/data-model.md#5-library-items); item 3 onward and §6
+and §7 stay in force.
 
-## 1. `GET /api/library` の項目の作り方
+## 1. How `GET /api/library` builds items
 
-1. **当たったメンバー**: `chosen`（範囲と検索式）に `videos` を結び、タグの AND
-   （017 §4 の出所の OR）を掛けたものを「当たった動画」とする。1本の動画が検索語とタグの両方を
-   満たすことを求める（要件 3）。再生可否はここに入れない（要件 6、[research.md R-2](../research.md#r-2-決め手は検索語とタグだけにし再生可否は項目に今までどおり掛ける)）。
-2. **見せてよいメンバーとグループ**: 今のまま。`gm` は見る人に見せてよい所在を持つメンバー、
-   `live` は `gm` の本数が見る人に応じた下限（所有者 1、ゲスト 2）以上のグループである。
-3. **項目にまとめる**: `live` なグループごとに、当たったメンバーの本数を `gm` の本数と比べる。
-   - 等しい（全メンバーが当たった）→ グループの項目1件。値は今までどおり `gm` の全メンバーから作る
-     （要件 2）。
-   - 1本以上で `gm` より少ない（一部だけが当たった）→ 当たったメンバーをそれぞれ動画の項目にする
-     （要件 1）。所在は `chosen` の所在で、動画の項目の値の作り方は今までと同じ。
-   - 0本 → 出さない。
-   - `live` でないグループのメンバーと、グループに属さない動画は、今までどおり当たれば動画の項目。
+1. **Matched members**: `chosen` (scope and search expression) joined with `videos` and filtered by
+   the tag AND (the OR over sources from 017 §4) gives the "matched videos". A single video must
+   satisfy both the search query and the tags (requirement 3). Playability is not part of this
+   (requirement 6, [research.md R-2](../research.md#r-2-only-the-search-query-and-tags-decide-playability-still-applies-to-items-as-before)).
+2. **Visible members and groups**: unchanged. `gm` is the members with a location the viewer may
+   see, and `live` is the groups whose `gm` count is at least the viewer's minimum (owner 1, guest 2).
+3. **Gathering into items**: for each `live` group, compare the number of matched members with the
+   `gm` count.
 
-   検索語もタグも無いときは、`gm` のメンバーは全部 `chosen` にあるので、どのグループも「全メンバーが
-   当たった」になり、今の一覧と同じになる（要件 4）。
-4. **項目単位の絞り込み**: 再生可否は、動画の項目はその動画で、グループの項目はメンバーのどれか1本が
-   再生できるかで判定する（今の結果と同じ）。視聴状態は今までどおり項目の視聴状態に掛ける（要件 6）。
-   1本ずつ出したメンバーの視聴状態はその動画自身のものである（要件 5）。
-5. **並べ替え・keyset・件数**: 今までどおり項目の値で行う。1本ずつ出したメンバーの鍵は動画の `id`
-   （動画の項目と同じ）、グループの項目の鍵は `gm` の並びで最初のメンバーの `id`。同じグループの
-   カードとそのメンバーの項目は同時には出ないので、鍵は項目どうしで重ならない。`total` は項目の数
-   （要件 5）。
+   | Matched members | Items |
+   | --- | --- |
+   | Equal to `gm` (all members matched) | One group item. Its values are built from all `gm` members as before (requirement 2). |
+   | At least 1 and fewer than `gm` (only some matched) | Each matched member becomes a video item (requirement 1). Its location is the `chosen` location, and video item values are built as before. |
+   | 0 | Nothing. |
 
-ゲストには `gm` が公開のメンバーだけなので、「全メンバー」は公開のメンバーで数える。公開の一部だけが
-当たれば、当たった公開のメンバーを1本ずつ出す（要件 7）。
+   Members of groups that are not `live`, and videos not in any group, become video items when they
+   match, as before.
 
-Edge Cases（親 Issue）はこの規則から導かれる: 当たったのが1本でも1本ずつ出す。12本中11本でも
-「等しくない」ので11本を1本ずつ出す。1本ずつ出したメンバーは並べ替えで隣り合わないことがある。
+   With no search query and no tags, every `gm` member is in `chosen`, so every group counts as "all
+   members matched" and the list is the same as today (requirement 4).
+4. **Per-item filters**: playability is judged per video for a video item and, for a group item, by
+   whether any one member is playable (the same result as today). Watch status is applied to the
+   item's watch status as before (requirement 6). A member shown on its own has its own watch status
+   (requirement 5).
+5. **Sorting, keyset and count**: as before, done on item values. The key of a member shown on its
+   own is the video `id` (the same as a video item), and the key of a group item is the `id` of the
+   first member in `gm` order. A group's card and its members' items never appear together, so keys do
+   not collide between items. `total` is the number of items (requirement 5).
+
+For guests, `gm` is only the public members, so "all members" is counted over public members. If only
+some public members match, each matched public member is shown on its own (requirement 7).
+
+The Edge Cases in the parent Issue follow from these rules: a single matched member is still shown on
+its own; 11 of 12 matched is "not equal", so the 11 are shown one by one; members shown on their own
+may not be adjacent after sorting.
 
 ## 2. `GET /api/library/ids`
 
-§1 の 1〜4 を通った項目について、動画の項目はその動画の `id`、グループの項目は `gm` の全メンバーの `id`
-を返す（要件 8）。一部だけが当たったグループのメンバーは動画の項目なので、当たったメンバーの `id` だけが
-入る。`GET /api/library` と同じ with 句から作り、規則を二重に持たない（[R-1](../research.md#r-1-判定は項目を作る-sql-の段に置く)）。
+For items that passed items 1–4 of §1, it returns the video's `id` for a video item and the `id` of
+every `gm` member for a group item (requirement 8). Members of a group matched only in part are video
+items, so only the matched members' `id`s are included. It is built from the same `with` clause as
+`GET /api/library`, so the rule is not held twice
+([R-1](../research.md#r-1-the-decision-is-made-in-the-sql-stage-that-builds-items)).
 
-## 3. 変えないもの
+## 3. What does not change
 
-- `GET /api/folders/{rootId}/group`: 絞り込みに関係なく `gm` の全メンバーから作る（017 §3）。画面が
-  一覧に残っているグループのカードを取り直す経路であり、一覧を開いたまま当たり方が変わっても
-  カードは組み替えない（親 Issue の Edge Case）。
-- 応答のスキーマ（`LibraryPage`・`LibraryItem`・`LibraryGroup`・`VideoIdsResponse`）、パラメータ、
-  誤りの形、カーソルの形。
-- `GET /api/videos` とフォルダ画面（1本ずつの一覧のまま）。
+- `GET /api/folders/{rootId}/group`: built from all `gm` members regardless of filters (017 §3). It is
+  the path by which the screen refetches a group card still in the list, and the card is not
+  rearranged when the matches change while the list is open (Edge Case in the parent Issue).
+- Response schemas (`LibraryPage`, `LibraryItem`, `LibraryGroup`, `VideoIdsResponse`), parameters,
+  the error shape and the cursor shape.
+- `GET /api/videos` and the folder screen (still a one-video-per-row list).
 
-## 4. 直す文書と試験
+## 4. Documents and tests to update
 
-- `api/openapi.yaml` の `listLibrary` と `listLibraryIds` の `description`: 「当たったメンバーが1本以上
-  あればグループが出る」を §1 の規則に書き換え、この文書を参照する。生成物は `task generate` で作り直す。
-- `ARCHITECTURE.md` の `GET /api/library` の段落（「a group appears when any member matches」）を §1 の
-  規則にし、この文書を参照に足す。
-- `internal/store/library_items.go` の注釈の 017 §5 への参照を、この文書へ向ける。
-- `web/e2e/guest.e2e.ts` の `ownerGroups` の前提（所有者の「ゲスト」検索で「非公開だけ」がグループで出る）
-  は成り立たなくなる。「公開あり」は5本全部が当たるのでグループのカード、「非公開だけ」は D だけが当たる
-  ので D の動画のカードになる。グループを選ぶ手順は、全メンバーが当たる語（フォルダ名など）で検索して残す。
+| Target | Change |
+| --- | --- |
+| `description` of `listLibrary` and `listLibraryIds` in `api/openapi.yaml` | Replace "a group appears when at least one member matches" with the §1 rules and reference this document. Regenerate with `task generate`. |
+| The `GET /api/library` paragraph of `ARCHITECTURE.md` ("a group appears when any member matches") | Change to the §1 rules and add this document as a reference. |
+| Comments in `internal/store/library_items.go` | Point the references to 017 §5 at this document. |
+| The `ownerGroups` premise in `web/e2e/guest.e2e.ts` (the owner's `ゲスト` search shows `非公開だけ` as a group) | No longer holds. `公開あり` matches all 5 members, so it is a group card; `非公開だけ` matches only D, so it becomes D's video card. Keep the step that selects a group by searching for a term that matches every member (such as the folder name). |

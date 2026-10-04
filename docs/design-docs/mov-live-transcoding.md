@@ -1,77 +1,68 @@
-# MOVライブ変換のtrack分離入力
+# Separate track inputs for MOV live transcoding
 
-- ステータス: 採用
-- スコープ: request-scoped fragmented MP4へのライブ変換
+For a MOV with audio, live transcoding opens the same file as two FFmpeg
+inputs, one for video and one for audio, so neither demuxer seeks back and
+forth between tracks ([`transcodeArgs`](../../internal/media/transcode.go)).
 
-## Context
+One FFmpeg process reads the file twice, and each input feeds one stream of the
+request-scoped fragmented MP4.
 
-動画ファイルはローカルディスクだけでなくネットワークドライブにも置かれる。
-MOV demuxerが映像と音声のpacketを時刻順に返すためにtrack間を細かくseekすると、
-ネットワークドライブでは初期出力と再生中の変換が著しく遅くなることがある。
-
-FFmpegのMOV demuxerには`interleaved_read`があるが、これを無効にするとfile位置順の
-読み出しが一方のtrackだけを長時間先行させ得る。映像と音声が離れて格納されたMOVでは、
-不足するtrackをmuxerが待って初期出力が期限を超えるか、再生が途中で停止する。そのため、
-全MOVでinterleaveを無効にする方法は採用しない。
+```mermaid
+flowchart LR
+  file[(MOV file)] --> in0[Input 0, -an]
+  file --> in1[Input 1, -vn]
+  in0 -->|video stream| ffmpeg[One FFmpeg process]
+  in1 -->|audio stream| ffmpeg
+  ffmpeg --> mp4[Fragmented MP4 response]
+```
 
 ## Decision
 
-ライブ変換の解析情報（取り込み時に保存した値か、要求時の`ffprobe`の結果。
-[解析情報の再利用](live-transcode-seek.md#解析情報の再利用)）のformat名に`mov`を含み、選択対象の音声streamがある場合だけ、FFmpegに
-同じpathを二つのinputとして渡す。
+FFmpeg gets the path as two inputs only when the format name in the
+[live transcoding probe](live-transcode-seek.md#probe-reuse) contains `mov` and
+there is an audio stream to select.
 
-- input 0は`-an`で音声を無効にし、選択した映像streamだけをmapする。
-- input 1は`-vn`で映像を無効にし、選択した音声streamだけをmapする。
-- seek再開時は同じ`-ss`を両inputへ指定する。MOV demuxerのseekは既定のstream（映像）の
-  キーフレームへ行い、`-vn`のinputでも音声をその時刻へ合わせる。映像をコピーして途中から
-  始めるときは、音声も映像のキーフレームの時刻から始まり、track間の差は出力の`moov`の
-  edit listに残す（[コピーの経路と差の上限](live-transcode-seek.md#コピーの経路と差の上限)）。
-  映像をエンコードするときは、両inputとも指定位置から始める。
-- `interleaved_read`は指定せず、MOV demuxerの既定動作を維持する。
+The MOV demuxer returns packets in time order by seeking between tracks, and on
+a network drive this makes the first output and ongoing transcoding very slow.
+A demuxer that follows one track does not seek between tracks.
 
-各demuxerが一方のtrackだけを追うため、映像と音声の間を往復するseekを避けられる。
-非MOV、または音声のないMOVは単一inputのままとする。複数の映像・音声がある場合も、
-解析情報が選んだ最初の非添付映像と最初の音声だけを出力する既存規則は変えない。
-実装は`internal/media/transcode.go`の`transcodeArgs`に閉じる。
+```mermaid
+flowchart LR
+  probe[Probe] --> mov{Format has mov?}
+  mov -->|yes| audio{Audio stream selected?}
+  audio -->|yes| two[Two inputs]
+  mov -->|no| one[Single input]
+  audio -->|no| one
+```
 
-## Trade-offs
+| Input | Flag | Maps |
+| --- | --- | --- |
+| 0 | `-an` (audio disabled) | The selected video stream only |
+| 1 | `-vn` (video disabled) | The selected audio stream only |
 
-- FFmpegは音声付きMOVごとに同じファイルを二つのdemuxerで開く。単一inputよりfile handle、
-  demux処理、container metadataの読込みが増える。
-- track配置とOS cacheによっては、二つのinputが同じ領域を読み、総読込量が増える。
-  この方式が保証するのはtrack間の往復seek削減であり、すべてのMOVでI/O量が減ることではない。
-- 負荷は同時ライブ変換request数に比例する。想定運用は単一ユーザー、同時視聴1から2 sessionであり、
-  現時点では共有cacheや変換workerを追加しない。
-- 二つのinputは一つのFFmpeg process内にあり、request contextのcancelでまとめて停止する。
-  出力はrequest-scopedで、local fileやdatabaseへ永続化しない。
+| Case | Behaviour |
+| --- | --- |
+| Start at a seek position | Both inputs get the same `-ss`; the demuxer seeks to a video keyframe and the `-vn` input aligns audio to that time |
+| Video copied from a mid-file position | Audio starts at the video keyframe time; the track difference stays in the output `elst` ([copy path](live-transcode-seek.md#copy-path-and-gap-limit)) |
+| Video encoded | Both inputs start at the requested position |
+| Several video or audio streams | Only the first video stream that is not an attached picture, and the audio stream the probe chose, are output |
+| `interleaved_read` | Not set; the demuxer keeps its default |
+| Request cancelled | Both inputs stop with the one process; nothing is written to disk or the database |
 
-この負荷増加は、ネットワークドライブ上のMOVで実用的な初期出力を得ながら、track配置に依存する
-再生停止を避けるための代償として受け入れる。同時変換数を増やす場合は、file handle上限、
-ネットワーク帯域、server CPUを再計測してこの判断を見直す。
+## Added load
 
-## Alternatives
+Each MOV with audio costs two demuxers: more file handles, demux work and
+metadata reads than a single input, and the two inputs can read the same region
+depending on track layout and the OS cache. The method guarantees fewer seeks
+between tracks, not less I/O for every MOV.
 
-### `interleaved_read=0`
+This is accepted because the expected use is one user with 1 to 2 concurrent
+viewing sessions, so no shared cache or transcoding worker is added. If
+concurrent transcodes grow, re-measure the file handle limit, network bandwidth
+and server CPU, and revisit this decision.
 
-track間のseekは減るが、非interleave読込みにより一方のtrackが長時間先行し得る。また、古い
-FFmpegにはoption自体がない。再生の正しさとhost FFmpeg互換性を損なうため採用しない。
-
-### local一時fileへのcopy
-
-既定のinterleaveを保ったままネットワークseekを避けられるが、再生開始前に動画全体のcopyが必要になり、
-長尺動画の初期待ち時間とlocal storage管理が増える。request-scopedで永続物を持たない現在の設計にも
-合わないため採用しない。
-
-### すべてのformatを二入力にする
-
-問題が確認されたのはMOV demuxerのtrack間seekであり、他formatへfile handleとdemux負荷を広げる
-根拠がない。MOVかつ映像・音声の両方がある場合に限定する。
-
-## Validation
-
-- 通常配置の映像・音声MOVを生成し、二入力変換後のMP4に両streamがあることを確認する。
-- 実MOVをネットワークドライブから変換し、初期出力、映像・音声の開始時刻、durationを確認する。
-- 初期データ取得後にtranscoderをcancelし、二入力のFFmpeg processが短時間で終了することを確認する。
-- browser E2EでMOVを含むformat matrixの再生開始を確認する。
-
-自動検証は`internal/media/transcode_test.go`と`web/e2e/playback.e2e.ts`に置く。
+| Rejected | Why |
+| --- | --- |
+| `interleaved_read=0` | Reads in file order can run one track far ahead, so the muxer waits and the first output misses its deadline or playback stops; older FFmpeg builds lack the option |
+| Copy to a local temporary file | The whole video is copied before playback starts, and local storage needs managing, against the request-scoped design |
+| Two inputs for every format | The observed problem is the MOV demuxer; nothing justifies the extra load for other formats |

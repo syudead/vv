@@ -18,6 +18,20 @@ file into a handbook.
 ## Working agreements
 
 - Keep documentation close to the code and update it with behavior changes.
+- Write documents in technical English to
+  [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
+  starting from the type for the document's kind. Issue and PR bodies stay
+  Japanese. A PR body fills
+  [the PR template](.github/pull_request_template.md) (behaviour before and
+  after, a diagram when a flow changes) so a reviewer can follow the change
+  without opening the code; `plan` and `design` PRs use
+  [stage-pr-body.md](.agents/skills/issue-handoff/references/stage-pr-body.md).
+- After the English of a change is final, hand every changed, renamed or
+  deleted document under `docs/`, `specs/` and `ARCHITECTURE.md` to the
+  `doc-translator` subagent and commit its `translations/ja/` output in the
+  same pull request
+  ([japanese-translation.md](docs/design-docs/japanese-translation.md)). Do
+  not write or edit a translation yourself.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
@@ -37,8 +51,8 @@ file into a handbook.
   `api/external-v1.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Give every pushed working branch a pull request as its review target.
-- 依存更新（Renovate）の運用は
-  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md)。
+- Dependency updates (Renovate) follow
+  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).
 - SDD work starts when the maintainer hands over a parent Issue or native
   sub-issue URL, and runs `plan → design → plan-to-issues → implement →
   integrate`, with `design` only for `ui` Issues. Use

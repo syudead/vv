@@ -1,23 +1,28 @@
-# Contract: 画面の API のページ読み・まとめての操作と `createdAt`
+# Contract: Paged reads, bulk actions and `createdAt` in the screen API
 
-正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は足す項目・経路・パラメータ・誤りの差分
-だけを書く。誤りの形、同一オリジンの検査、JSON 本文の読み方、`requiresJSONBody` と
-`openapi_routes_test.go` への追加は [specs/014-video-tags/contracts/tags-api.md](../../014-video-tags/contracts/tags-api.md)
-のまま。決定は [research.md R-1・R-4〜R-6・R-8・R-13・R-14](../research.md)。経路はすべて所有者だけ
-（`security` は既存のタグの操作と同じ）。外部連携 API（`api/external-v1.yaml`）は変えない。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
+lists only the added fields, routes, parameters and errors. The error shape,
+the same-origin check, JSON body reading, and the additions to
+`requiresJSONBody` and `openapi_routes_test.go` stay as in
+[specs/014-video-tags/contracts/tags-api.md](../../014-video-tags/contracts/tags-api.md).
+The decisions are in [research.md R-1, R-4 to R-6, R-8, R-13 and R-14](../research.md).
+Every route is owner-only (`security` as for the existing tag operations). The
+external API (`api/external-v1.yaml`) does not change.
 
-§1〜§3 と §0 の `Tag.createdAt`・まとめての操作のスキーマは feature branch に merge 済みで、親 Issue の
-改訂で変わらない。§0 の一覧のスキーマ、§5・§6 と §4 の対応する関数は改訂で足した。
+| Part | Status |
+| --- | --- |
+| §1 to §3, and `Tag.createdAt` and the bulk action schemas in §0 | Merged into the feature branch; unchanged by the revision of the parent Issue |
+| The list schemas in §0, §5, §6 and their functions in §4 | Added by the revision |
 
-## 0. スキーマの差分
+## 0. Schema changes
 
-| スキーマ | 足す項目 | 規則 |
+| Schema | Added field | Rule |
 | --- | --- | --- |
-| `Tag` | `createdAt: string, format: date-time`（`required`） | `tags.created_at`。`GET /api/tags` と、作成・改名・統合・シノニム・確定の応答に出る（merge 済み） |
-| `TagList` | `total: integer`（`required`）、`totalAll: integer`（`required`）、`nextCursor: string`（任意） | `total` は条件（`q`・`tentative`・`unused`）に合うタグの数、`totalAll` は全部のタグの数。`nextCursor` は `limit` を付けた要求で続きがあるときだけ入る（`LibraryPage` と同じ） |
-| `RejectedTagNameList` | `total: integer`（`required`）、`nextCursor: string`（任意） | `total` は却下した名前の全部の数 |
+| `Tag` | `createdAt: string, format: date-time` (`required`) | `tags.created_at`. Appears in `GET /api/tags` and in the responses of create, rename, merge, synonym and confirm (merged) |
+| `TagList` | `total: integer` (`required`), `totalAll: integer` (`required`), `nextCursor: string` (optional) | `total` is the number of tags matching the conditions (`q`, `tentative`, `unused`); `totalAll` is the number of all tags. `nextCursor` is present only on a request with `limit` when more remain (as in `LibraryPage`) |
+| `RejectedTagNameList` | `total: integer` (`required`), `nextCursor: string` (optional) | `total` is the number of all rejected names |
 
-新しいスキーマ（merge 済みのまとめての操作）:
+New schemas (merged bulk actions):
 
 ```yaml
 TagBatchRequest:
@@ -37,24 +42,24 @@ TagBatchResponse:
   required: [appliedIds, notFoundIds, notApplicableIds]
   additionalProperties: false
   properties:
-    appliedIds:        { type: array, items: { type: integer, format: int64 } }  # 処理した id
-    notFoundIds:       { type: array, items: { type: integer, format: int64 } }  # もう無かった id
-    notApplicableIds:  { type: array, items: { type: integer, format: int64 } }  # 操作が働かない種類だった id
+    appliedIds:        { type: array, items: { type: integer, format: int64 } }  # ids processed
+    notFoundIds:       { type: array, items: { type: integer, format: int64 } }  # ids that no longer existed
+    notApplicableIds:  { type: array, items: { type: integer, format: int64 } }  # ids of a kind the action does not apply to
 
 TagMergeResponse:
   type: object
   required: [tag, notFoundIds]
   additionalProperties: false
   properties:
-    tag:         { $ref: "#/components/schemas/Tag" }                            # 統合後の統合先
-    notFoundIds: { type: array, items: { type: integer, format: int64 } }        # もう無かった統合元
+    tag:         { $ref: "#/components/schemas/Tag" }                            # the merge target after the merge
+    notFoundIds: { type: array, items: { type: integer, format: int64 } }        # sources that no longer existed
 
 TagImpactRequest:
   type: object
   required: [action, ids]
   additionalProperties: false
   properties:
-    action: { type: string, enum: [reject, delete, merge] }   # 確認をとる操作。数える種類がこれで決まる
+    action: { type: string, enum: [reject, delete, merge] }   # the action being confirmed; it decides which kinds are counted
     ids:
       type: array
       minItems: 1
@@ -66,132 +71,160 @@ TagImpactResponse:
   required: [tagCount, videoCount]
   additionalProperties: false
   properties:
-    tagCount:   { type: integer }   # ids のうち今あり、action が働くタグの数
-    videoCount: { type: integer }   # そのどれかが付いた、いまライブラリにある動画の本数（重複なし）
+    tagCount:   { type: integer }   # ids that exist now and that action applies to
+    videoCount: { type: integer }   # videos now in the library carrying any of them (no duplicates)
 ```
 
-新しいスキーマ（改訂で足す）:
+New schema (added by the revision):
 
 ```yaml
 TagSort:
   type: string
   enum: [name, countDesc, countAsc, createdDesc, createdAsc]
   default: name
-  # name は名前の自然順（向きは無い）。値が同じタグは名前の自然順、それも同じなら id
-  # （specs/036-tag-admin-scale/data-model.md §0・§2）
+  # name is the natural name order (no direction). Tags with the same value sort by
+  # natural name order, then by id (specs/036-tag-admin-scale/data-model.md §0, §2)
 ```
 
-`ErrorReason` に `too_many_tags` を足す（`limit` 付き、`too_many_videos` と同じ形。merge 済み）。
+`ErrorReason` gains `too_many_tags` (with `limit`, the same shape as
+`too_many_videos`; merged).
 
 ## 1. `POST /api/tags/batch`
 
-| 本文 | 成功 | 誤り |
+Confirms, rejects or deletes several tags in one transaction.
+
+| Body | Success | Error |
 | --- | --- | --- |
-| `TagBatchRequest` | 200 `TagBatchResponse` | 400 `invalid_request`（`action` が 3 値でない、`ids` が空、`too_many_tags`） |
+| `TagBatchRequest` | 200 `TagBatchResponse` | 400 `invalid_request` (`action` is not one of the 3 values, `ids` is empty, `too_many_tags`) |
 
-- `ids` の重複は 1 つとして扱う。応答の 3 つの配列は互いに重ならず、合わせて重複を除いた `ids` になる。
-  並びは `ids` に現れた順。空の配列は `[]`（`null` にしない）。
-- 働く種類は [data-model.md §1](../data-model.md#1-domain-に足す値) の `TagBatchApplies`: `confirm`・`reject` は
-  仮のタグ、`delete` は確定したタグ。合わない id は何も変えずに `notApplicableIds`。無い id は `notFoundIds`。
-- 残りを 1 つの取引で処理する（[data-model.md §2](../data-model.md#2-保存層の操作)）。取引が失敗したら
-  `500` で、何も変わらない。
-- `/api/tags/batch` と `/api/tags/impact` は `/api/tags/{id}` と、`ServeMux` の「字面の段が優先する」規則で
-  区別される。`openapi_routes_test.go` に、どちらも `{id}` に取られないことの検査がある
-  （`/api/tags/rejected-names` と同じ）。
-- 画面は、`reject` のあと却下した名前の先頭のページ（§6）を取り直す（1 件の却下と同じ）。
-- 1 件の経路（`POST /api/tags/{id}/confirm`・`/reject`、`DELETE /api/tags/{id}`）は変えない。行の操作は
-  今までどおりそれを使う。
+| Case | Rule |
+| --- | --- |
+| Duplicate `ids` | Treated as one. The three response arrays do not overlap and together equal the deduplicated `ids`, in the order they appear in `ids`. An empty array is `[]`, never `null` |
+| Kinds the action applies to | `TagBatchApplies` in [data-model.md §1](../data-model.md#1-values-added-to-domain): `confirm` and `reject` apply to tentative tags, `delete` to confirmed tags. Other ids change nothing and go to `notApplicableIds` |
+| Missing ids | `notFoundIds` |
+| The rest | Processed in one transaction ([data-model.md §2](../data-model.md#2-store-operations)). If the transaction fails, `500` and nothing changes |
+| Routing | `/api/tags/batch` and `/api/tags/impact` are told apart from `/api/tags/{id}` by the `ServeMux` rule that literal segments win. `openapi_routes_test.go` checks that `{id}` takes neither (as for `/api/tags/rejected-names`) |
+| Screen after `reject` | Reads the first page of rejected names again (§6), as after a single reject |
+| Single-tag routes | `POST /api/tags/{id}/confirm` and `/reject` and `DELETE /api/tags/{id}` do not change; row actions keep using them |
 
-## 2. `POST /api/tags/{id}/merge` の変更
+## 2. `POST /api/tags/{id}/merge` changes
 
-| 本文 | 成功 | 誤り |
+Merges one or more source tags into the tag `{id}`.
+
+| Body | Success | Error |
 | --- | --- | --- |
-| `{ sourceIds: int64[] }`（1 件以上 20,000 件以下） | 200 `TagMergeResponse` | 400 `invalid_request`（`sourceIds` が空・`too_many_tags`、`sourceIds` に `{id}` を含む: reason `merge_same_tag`）、404 `tag_not_found`（統合先が無い） |
+| `{ sourceIds: int64[] }` (1 to 20,000) | 200 `TagMergeResponse` | 400 `invalid_request` (`sourceIds` empty, `too_many_tags`, or `sourceIds` containing `{id}`: reason `merge_same_tag`), 404 `tag_not_found` (the target does not exist) |
 
-- `MergeTagRequest` の `sourceId` は廃止し、`sourceIds` を `required` にする。1 件の統合（行の「別のタグへ
-  統合…」）も `sourceIds: [sourceId]` で送る。
-- 応答は `Tag` から `TagMergeResponse` に変わる。無い統合元は飛ばして `notFoundIds` に載せ、残りを 1 つの
-  取引で統合する。統合元がすべて無かったときも 200 で、`tag` は変わらない統合先、`notFoundIds` は全部。
-  1 件の統合でこれを受けた画面は、今の `tag_not_found` と同じ扱い（窓を閉じ、一覧を取り直す）にする。
-- 統合先が選んだタグの中にあるときは画面が統合元から外して送る（Edge Case）。統合元が統合先だけに
-  なったら送らない（実行できない）。
+- `sourceId` in `MergeTagRequest` is removed and `sourceIds` is `required`. A
+  single merge (the row's "Merge into another tag…") also sends
+  `sourceIds: [sourceId]`.
+- The response changes from `Tag` to `TagMergeResponse`. Missing sources are
+  skipped and listed in `notFoundIds`; the rest merge in one transaction.
+
+The diagram shows how the outcome depends on which sources still exist.
+
+```mermaid
+flowchart LR
+  req["sourceIds"] --> any{"Any source exists?"}
+  any -->|"Yes"| merged["200: merged, missing in notFoundIds"]
+  any -->|"No"| none["200: target unchanged, all in notFoundIds"]
+  none --> single{"Single merge?"}
+  single -->|"Yes"| stale["Screen: close, reload list"]
+```
+
+A single merge that gets every source back in `notFoundIds` is handled like
+today's `tag_not_found`: the screen closes the dialog and reloads the list.
+When the target is among the selected tags, the screen removes it from the
+sources before sending (Edge Case). When the target is the only source left,
+the screen does not send (the action cannot run).
 
 ## 3. `POST /api/tags/impact`
 
-| 本文 | 成功 | 誤り |
+Counts the tags and videos a bulk reject, delete or merge would affect, without
+changing anything.
+
+| Body | Success | Error |
 | --- | --- | --- |
-| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request`（`action` が 3 値でない、`ids` が空、`too_many_tags`） |
+| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request` (`action` is not one of the 3 values, `ids` is empty, `too_many_tags`) |
 
-- 読みの経路で何も変えない。本文で `ids` を受けるのは、数千個の id が URL の長さに収まらないためで、
-  `POST /api/video-tags/summary` と同じ形である。
-- 数えるのは、`ids` のうち今あり、`action` が働くタグだけである（[data-model.md §1](../data-model.md#1-domain-に足す値)
-  の `TagImpactApplies`）: `reject` は仮のタグ、`delete` は確定したタグ、`merge` はどちらも。`POST /api/tags/batch`
-  が飛ばす種類のタグとその動画は、確認の数に入らない。統合では、画面は統合先を外した統合元を `ids` に送る。
-- `videoCount` の数え方は [data-model.md §2](../data-model.md#2-保存層の操作) の `TagImpact`。
-- 画面はまとめての却下・削除・統合の確認を開くときに呼び、応答が届くまで確認の数は読み込み中にする。
-  失敗したら確認の中に理由を出し、実行は押せない（数の無い確認で実行させない）。まとめての確定は
-  確認をとらないので呼ばない（要件 11）。
-
-## 4. `web/src/api` の関数
-
-`tags.ts` に足す・変える。
-
-| 関数 | 中身 |
+| Rule | Detail |
 | --- | --- |
-| `listTagPage(query, signal)` | 改訂で足す。`GET /api/tags` に §5 のパラメータを付けて呼び、`TagList`（`items`・`total`・`totalAll`・`nextCursor`）を返す。共有の保持には触れない。呼び手ごとの `AbortSignal` を受ける（条件を変えたら打ち切るため） |
-| `listRejectedTagNamePage(cursor, limit, signal)` | 改訂で足す。`GET /api/tags/rejected-names` に §6 のパラメータを付けて呼び、`RejectedTagNameList` を返す。今の `listRejectedTagNames` はこれに置き換える |
-| `getTags`・`refreshTags`・`subscribeTags`・`currentTags` | 変えない（`limit` を省いた `GET /api/tags` の全件。候補と絞り込みの確かめが使う）。`listTags` は応答の `items` だけを使い続ける |
-| `afterTagChanged` | 改訂で変える。購読者（`subscribeTags`）がいれば今までどおり取り直し、いなければ `held` を捨てて次の `getTags` に取らせる（[research.md R-12](../research.md#r-12-操作のあとの反映は読み込んだ行の中で行い並びの位置は-naturalsortkey-の移植で決める)）。`clearListSnapshot` は変えない |
-| `batchTags(action, ids)` | `POST /api/tags/batch`。成功したら `afterTagChanged` を 1 回呼ぶ（merge 済み） |
-| `mergeTag(id, sourceIds)` | `TagMergeResponse` を返す。`tag_not_found` は `refreshOnStaleTagError` を通す（merge 済み） |
-| `tagImpact(action, ids)` | `POST /api/tags/impact`。共有の保持には触れない（merge 済み） |
-| `Tag`・`TagSort` | 生成物から |
+| Why a body | Thousands of ids do not fit in a URL; the same shape as `POST /api/video-tags/summary` |
+| What is counted | Only `ids` that exist now and that `action` applies to (`TagImpactApplies` in [data-model.md §1](../data-model.md#1-values-added-to-domain)): `reject` counts tentative tags, `delete` confirmed tags, `merge` both. Tags that `POST /api/tags/batch` would skip, and their videos, are not counted. For a merge, the screen sends the sources without the target |
+| `videoCount` | Counted as `TagImpact` in [data-model.md §2](../data-model.md#2-store-operations) |
+| Screen | Called when the bulk reject, delete or merge confirmation opens; the counts show as loading until the response. On failure the confirmation shows the reason and the action cannot run, so no action runs from a confirmation without counts. Bulk confirm asks for no confirmation and does not call it (requirement 11) |
 
-`errorText` に `too_many_tags` の文言がある（merge 済み）。`maxTagBatch = 20000` は `maxVideoTagsSelection` と
-並んで置かれる。上限は送る id の数に掛かるので、画面は読み込んだ行がこれを超えるときは「読み込んだ
-ものをすべて選ぶ」（先頭のチェック）だけを disabled にし、まとめての操作は選択の数がこれを超えるときだけ
-disabled にする（[research.md R-4](../research.md#r-4-まとめての確定却下削除は-1-つの経路-post-apitagsbatch-が-1-つの取引で受け働かない無いタグは数えて飛ばす)）。
-`tagPageLimit = 100` を足し、画面の 1 ページの件数にする。
+## 4. `web/src/api` functions
 
-## 5. `GET /api/tags` のパラメータ
+Added to or changed in `tags.ts`.
 
-| パラメータ | 型 | 既定 | 意味 |
+| Function | Behaviour |
+| --- | --- |
+| `listTagPage(query, signal)` | Added by the revision. Calls `GET /api/tags` with the §5 parameters and returns `TagList` (`items`, `total`, `totalAll`, `nextCursor`). Does not touch the shared cache. Takes the caller's `AbortSignal`, to abort when the conditions change |
+| `listRejectedTagNamePage(cursor, limit, signal)` | Added by the revision. Calls `GET /api/tags/rejected-names` with the §6 parameters and returns `RejectedTagNameList`. Replaces the current `listRejectedTagNames` |
+| `getTags`, `refreshTags`, `subscribeTags`, `currentTags` | Unchanged (`GET /api/tags` without `limit`, every tag, used by suggestions and filter validation). `listTags` keeps using only `items` |
+| `afterTagChanged` | Changed by the revision. With subscribers (`subscribeTags`) it reloads as before; without, it drops `held` so the next `getTags` reads again ([research.md R-12](../research.md#r-12-actions-update-the-loaded-rows-in-place-positioned-with-a-port-of-naturalsortkey)). `clearListSnapshot` does not change |
+| `batchTags(action, ids)` | `POST /api/tags/batch`. Calls `afterTagChanged` once on success (merged) |
+| `mergeTag(id, sourceIds)` | Returns `TagMergeResponse`. `tag_not_found` goes through `refreshOnStaleTagError` (merged) |
+| `tagImpact(action, ids)` | `POST /api/tags/impact`. Does not touch the shared cache (merged) |
+| `Tag`, `TagSort` | From the generated code |
+
+| Constant or text | Rule |
+| --- | --- |
+| `errorText` | Has text for `too_many_tags` (merged) |
+| `maxTagBatch = 20000` | Sits next to `maxVideoTagsSelection`. The limit applies to the number of ids sent, so the screen disables only "select all loaded" (the header checkbox) when the loaded rows exceed it, and disables bulk actions only when the selection exceeds it ([research.md R-4](../research.md#r-4-bulk-confirm-reject-and-delete-use-one-post-apitagsbatch-transaction-that-skips-and-counts-misses)) |
+| `tagPageLimit = 100` | Added; the number of tags per page on the screen |
+
+## 5. `GET /api/tags` parameters
+
+| Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `q` | string、`maxLength: 100` | 空 | 検索語。`FoldForMatch` を掛けて前後の空白を落とし、空でなければ元の名前かシノニムの照合形に部分一致するタグだけにする（[014 の data-model.md §7](../../014-video-tags/data-model.md#7-検索欄でのタグ名の照合) と同じ照合形。語の分解はしない） |
-| `tentative` | boolean | false | true なら仮のタグだけ |
-| `unused` | boolean | false | true なら本数 0 のタグだけ。`tentative`・`q` と AND |
-| `sort` | `TagSort` | `name` | 並び順。値が同じタグは名前の自然順、それも同じなら `id` |
-| `cursor` | string | — | 前回の応答の `nextCursor`。中身は不透明 |
-| `limit` | integer、1〜200 | — | 1 ページの件数。**省くと全件**を返し、`nextCursor` は入らない（候補・絞り込みの確かめ・外部連携 API の経路が使う今までの形） |
+| `q` | string, `maxLength: 100` | empty | Search term. Folded with `FoldForMatch` and trimmed; when not empty, only tags whose original name or synonym matching form contains it are returned (the matching form of [014 data-model.md §7](../../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box); the term is not split into words) |
+| `tentative` | boolean | false | When true, tentative tags only |
+| `unused` | boolean | false | When true, only tags on no videos. ANDed with `tentative` and `q` |
+| `sort` | `TagSort` | `name` | Sort order. Tags with the same value sort by natural name order, then by `id` |
+| `cursor` | string | — | `nextCursor` from the previous response. Opaque |
+| `limit` | integer, 1 to 200 | — | Tags per page. **Omitted, every tag** is returned without `nextCursor` (the existing form used by suggestions, filter validation and the external API path) |
 
-| 成功 | 誤り |
+| Success | Error |
 | --- | --- |
-| 200 `TagList`（`items`・`total`・`totalAll`、`limit` 付きで続きがあれば `nextCursor`） | 400 `invalid_request`（`sort` が 5 値でない、`limit` が範囲外、`cursor` が解釈できない・別の並び順のもの、`q` が 100 文字を超える） |
+| 200 `TagList` (`items`, `total`, `totalAll`, and `nextCursor` when `limit` is set and more remain) | 400 `invalid_request` (`sort` not one of the 5 values, `limit` out of range, `cursor` unreadable or from another sort order, `q` over 100 characters) |
 
-- `total` は `q`・`tentative`・`unused` をすべて掛けた数、`totalAll` は何も掛けない数。どちらもページングと
-  独立に返る（`LibraryPage.total` と同じ）。
-- `cursor` は同じ `q`・`tentative`・`unused`・`sort` で続けて使う。条件を変えたら画面はカーソルを捨てて
-  先頭から読む。別の `sort` のカーソルは `400`、別の条件（`q` など）で同じカーソルを渡したときの結果は
-  保証しない（ライブラリと同じ）。
-- ページ送りの途中で別のタブがタグを増減・改名したときの保証は、ライブラリの keyset と同じ範囲
-  （[013 の list-api.md §5](../../013-library-search/contracts/list-api.md#5-カーソルと誤り)）。画面は `id` の
-  重複を捨て、`totalAll` の食い違いを知らせる（[data-model.md §4](../data-model.md#4-画面の側で持つ状態)）。
-- 本数（`videoCount`）、シノニム、`tentative`、`createdAt` の載せ方は変えない。
-- `GET /api/v1/tags`（外部連携 API）は変えない（`limit` 無しの全件と同じ結果を今の形で返す）。
-- `Cache-Control: no-store` は今のまま。
+The diagram shows how the screen reads the list in pages.
 
-## 6. `GET /api/tags/rejected-names` のパラメータ
+```mermaid
+sequenceDiagram
+  participant S as Screen
+  participant A as GET /api/tags
+  S->>A: q, tentative, unused, sort, limit
+  A-->>S: items, total, totalAll, nextCursor
+  S->>A: same conditions + cursor
+  A-->>S: items, total, totalAll
+  Note over S: Conditions change: drop cursor, read from start
+```
 
-| パラメータ | 型 | 既定 | 意味 |
+| Rule | Detail |
+| --- | --- |
+| `total`, `totalAll` | `total` applies all of `q`, `tentative` and `unused`; `totalAll` applies none. Both are returned regardless of paging (as `LibraryPage.total`) |
+| Cursor reuse | Use a `cursor` with the same `q`, `tentative`, `unused` and `sort`. When the conditions change, the screen drops the cursor and reads from the start. A cursor from another `sort` returns `400`; the result of reusing a cursor with other conditions (`q` and so on) is not guaranteed (as in the library) |
+| Changes during paging | When another tab adds, removes or renames tags mid-paging, the guarantee matches the library keyset ([013 list-api.md §5](../../013-library-search/contracts/list-api.md#5-cursor-and-errors)). The screen drops duplicate `id`s and reports a `totalAll` mismatch ([data-model.md §4](../data-model.md#4-screen-state)) |
+| Row content | Video count (`videoCount`), synonyms, `tentative` and `createdAt` are returned as before |
+| External API | `GET /api/v1/tags` does not change (it returns the same result as the request without `limit`, in its current form) |
+| Caching | `Cache-Control: no-store`, as now |
+
+## 6. `GET /api/tags/rejected-names` parameters
+
+| Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `cursor` | string | — | 前回の応答の `nextCursor` |
-| `limit` | integer、1〜200 | 100 | 1 ページの件数 |
+| `cursor` | string | — | `nextCursor` from the previous response |
+| `limit` | integer, 1 to 200 | 100 | Names per page |
 
-| 成功 | 誤り |
+| Success | Error |
 | --- | --- |
-| 200 `RejectedTagNameList`（`items`・`total`、続きがあれば `nextCursor`） | 400 `invalid_request`（`limit` が範囲外、`cursor` が解釈できない） |
+| 200 `RejectedTagNameList` (`items`, `total`, and `nextCursor` when more remain) | 400 `invalid_request` (`limit` out of range, `cursor` unreadable) |
 
-- 並びは名前の自然順（`sort_key`、同じなら `name` のバイト順。[data-model.md §0](../data-model.md#0-マイグレーション)）。
-- `DELETE /api/tags/rejected-names?name=…` は変えない（[031 の contracts/screen-api.md §3](../../031-tentative-tags/contracts/screen-api.md#3-却下した名前)）。
-- 画面は開いたときに先頭の 1 ページを受けて入口に `total` を出し、窓の中で末尾までスクロールしたら
-  `nextCursor` で続きを足す（[research.md R-13](../research.md#r-13-却下した名前は-get-apitagsrejected-names-のページで受け窓の中で続きを読む)）。
+| Rule | Detail |
+| --- | --- |
+| Order | Natural name order (`sort_key`, then `name` byte order; [data-model.md §0](../data-model.md#0-migration)) |
+| Removal | `DELETE /api/tags/rejected-names?name=…` does not change ([031 contracts/screen-api.md §3](../../031-tentative-tags/contracts/screen-api.md#3-rejected-names)) |
+| Screen | On open, receives the first page and shows `total` at the entry point; when scrolled to the end, appends the next page with `nextCursor` ([research.md R-13](../research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll)) |

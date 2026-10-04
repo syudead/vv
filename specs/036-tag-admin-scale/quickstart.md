@@ -1,64 +1,95 @@
-# Quickstart: 規模のデータで受け入れ条件を確かめる
+# Quickstart: Check the acceptance criteria at scale
 
-親 Issue #651 の受け入れ条件 1〜4 は、本番ビルドをタグ 1,000 個・動画 10,000 本、タグ 3,000 個・
-動画 30,000 本、タグ 30,000 個のライブラリでヘッドレス Chromium から測る数値である。`task check` と
-Vitest はこれを確かめられないので、ここにその手順だけを書く。機能の正しさ（受け入れ条件 5〜13）は
-store・httpapi・Vitest の試験で確かめ、ここには書かない。
+These steps measure acceptance criteria 1 to 4 of parent Issue #651, which
+`task check` and Vitest cannot verify: numbers taken from headless Chromium
+against the production build with libraries of 1,000 tags and 10,000 videos,
+3,000 tags and 30,000 videos, and 30,000 tags. Functional correctness
+(acceptance criteria 5 to 13) is covered by the store, httpapi and Vitest
+tests and is not repeated here.
 
-計測の道具は merge 済みの `scripts/tagsbench` と `web/bench/` で、改訂で足す規模と場面は実装の単位
-「計測の道具に規模 30,000 と、開いたときの転送量・続きを読み込みながらのスクロールの場面を足す」が足す
-（[research.md R-9](research.md#r-9-受け入れ条件の計測は作り置きの規模のデータを-scriptstagsbench-が作りplaywright-の計測スクリプトが本番ビルドに対して測る)）。
-使い方の正本は [docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md) で、ここは
-何を測り何を期待するかの一覧である。
+The tooling is the merged `scripts/tagsbench` and `web/bench/`; the scales and
+scenes added in the revision come from the implementation unit "Add the 30,000
+scale and the open transfer and scroll-while-loading scenes to the benchmark"
+([research.md R-9](research.md#r-9-scriptstagsbench-builds-scale-data-and-a-playwright-script-measures-the-production-build)).
+[docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md)
+is the source of truth for usage; this page lists what is measured and what is
+expected.
 
-## 前提
+## Prerequisites
 
-- `task build` が通る環境（Go・Node・`ffmpeg`・`ffprobe`。[docs/how-to/development.md](../../docs/how-to/development.md)）。
-  動画のファイルは作らないので、`ffmpeg` は起動前確認にだけ使う。
-- `web/` の Playwright のブラウザが入っている（`task test-e2e` と同じ）。入れられない環境では手元の
-  Chromium を `-chromium` で渡す。
+- An environment where `task build` passes (Go, Node, `ffmpeg`, `ffprobe`;
+  [docs/how-to/development.md](../../docs/how-to/development.md)). No video
+  files are created, so `ffmpeg` is used only for the startup check.
+- Playwright's browser installed under `web/` (as for `task test-e2e`). Where it
+  cannot be installed, pass a local Chromium with `-chromium`.
 
-## 手順
+## Steps
 
 ```sh
-# 規模のデータを作り（初回だけ。.local/tagsbench/ に残る）、本番ビルドをそのデータで起動して測る
+# Build the scale data (first run only; kept in .local/tagsbench/), start the production build on it, and measure
 go run ./scripts/tagsbench -scale 1000
 go run ./scripts/tagsbench -scale 3000
 go run ./scripts/tagsbench -scale 30000 -videos 30000
 ```
 
-`-scale` は規模の名前（タグの数）で、動画は省けば 10 倍、`-videos` で別に与える。30,000 個の規模の
-動画は 30,000 本にする（3,000 個の規模と同じ。違いをタグの数だけにする。R-9）。各タグには動画が付き、
-約 9% のタグは 0 本、半数は仮のタグにする（親 Issue の「1,000 個のうち約 90 個」に合わせる）。計測は
-`web/bench/tags-admin.bench.ts` が行い、場面ごとの値を表で出す。変更前（feature branch の改訂前の
-先頭）と変更後を同じ環境で続けて測り、PR の本文に残す
-（[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) の「PR に残す形」と同じ）。
+| Data | Rule |
+| --- | --- |
+| `-scale` | The scale name (number of tags) |
+| Videos | 10 times `-scale` when omitted; `-videos` sets it |
+| Videos at the 30,000 scale | 30,000, the same as the 3,000 scale, so only the number of tags differs (R-9) |
+| Tags | Every tag has videos except about 9%, which are unused; half are tentative (matching the parent Issue's "about 90 of 1,000") |
 
-## 場面と期待
+`web/bench/tags-admin.bench.ts` measures and prints one value per scene in a
+table. Measure before the change (the feature branch head before the revision)
+and after it in the same environment, one after the other, and record both in
+the PR body (as in "PR format" of
+[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md)).
 
-| 場面 | 測り方 | 期待（1,000・3,000・30,000 のどれでも） |
-| --- | --- | --- |
-| 開いてから最初の行が出るまで | `/tags` へ移動してから、一覧の最初の行が DOM に現れるまで | 1 秒以内（受け入れ条件 1） |
-| 開いたときに受け取るタグ | 開いたときの `GET /api/tags` の応答に入った `items` の数と、応答の大きさ（バイト。Playwright の `response.body()`） | 3 つの規模で同じ数・同じ大きさ（±5%。受け入れ条件 2。タグの名前の長さの違いだけ） |
-| 検索の 1 文字目 | 検索欄に 1 文字入れてから一覧が変わるまでの、最長のタスク（Long Task） | 0.2 秒を超えない（受け入れ条件 3） |
-| Esc での取り消し | 検索を Esc で消してから一覧が戻るまでの最長のタスク | 0.2 秒を超えない（受け入れ条件 3） |
-| 1 件の確定 | 仮の行の「確定する」を押してから行が差し替わるまでの最長のタスク | 0.2 秒を超えない（受け入れ条件 3） |
-| 1 件の改名 | 改名を送ってから行が差し替わるまでの最長のタスク | 0.2 秒を超えない（受け入れ条件 3） |
-| スクロール | 一覧の先頭から、続きを読み込みながら末尾までマウスホイールで送る間のフレーム時間 | 50ms を超えるフレームが 2 つ続かない。30,000 個でも同じ（受け入れ条件 4） |
-| まとめての確定 | 「Tentative only」で読み込んである仮のタグをすべて選んで確定し、仮の目印が消えるまでの最長のタスク | 0.2 秒を超えない（受け入れ条件 10） |
+## Scenes and expectations
 
-Long Task とフレーム時間は `PerformanceObserver`（`longtask`）と `requestAnimationFrame` の間隔で
-ページの中から読む。数値はブラウザとマシンで変わるので、変更前の値を同じ表に並べる。
+Each expectation holds at 1,000, 3,000 and 30,000 tags.
 
-## 内訳の切り分け
+| Scene | Measurement | Expected | Acceptance |
+| --- | --- | --- | --- |
+| Open to first row | From navigating to `/tags` until the first list row appears in the DOM | Within 1 second | 1 |
+| Tags received on open | `items` in the `GET /api/tags` response on open, and the response size in bytes (Playwright `response.body()`) | Same count and size at all three scales (±5%, from tag name length alone) | 2 |
+| First search character | Longest task (Long Task) from typing one character in search until the list changes | At most 0.2 seconds | 3 |
+| Clear with Esc | Longest task from clearing search with Esc until the list returns | At most 0.2 seconds | 3 |
+| One confirm | Longest task from pressing "Confirm" on a tentative row until the row is replaced | At most 0.2 seconds | 3 |
+| One rename | Longest task from sending a rename until the row is replaced | At most 0.2 seconds | 3 |
+| Scroll | Frame times while scrolling with the mouse wheel from the top to the end, loading more on the way | No two consecutive frames over 50 ms, at 30,000 too | 4 |
+| Bulk confirm | Longest task from selecting every loaded tentative tag under "Tentative only" and confirming until the tentative marks disappear | At most 0.2 seconds | 10 |
 
-最初の行までの時間が長いとき、サーバーの `GET /api/tags` の応答時間（Playwright の `response.timing`）を
-別に出し、描画の時間と分ける。応答が長ければ `internal/store/tag_listing.go` の本数の集計と並び替えが
-疑わしく、描画が長ければ `web/src/tags/` の側である。この feature は 1 ページの応答と描画の両方を
-直す。本数の集計（`taggedVideosSQL`）が 30,000 個の規模で 1 秒を占めるときは、その計測を PR の本文に
-書いて本数の持ち方（サーバーの側）を別の Issue にする（親 Issue の「対象外」がサーバー側の遅さを
-#674 に渡している。R-1「本数の数え方」）。
+Long Tasks and frame times are read inside the page from `PerformanceObserver`
+(`longtask`) and the interval between `requestAnimationFrame` callbacks. The
+numbers vary by browser and machine, so the before values go in the same
+table.
 
-スクロールで 50ms を超えるフレームが続くとき、続きの応答が届いた直後（行の追加）か、それ以外
-（描画）かを Long Task の時刻と要求の時刻で分ける。前者なら `rows` への追加と選択の付け直し
-（[data-model.md §4](data-model.md#4-画面の側で持つ状態)）、後者なら行の描画が疑わしい。
+## Breakdown
+
+The diagram shows where to look when a budget is missed.
+
+```mermaid
+flowchart LR
+  slow{"Which is slow?"} -->|"First row"| resp{"Response long?"}
+  resp -->|"Yes"| server["tag_listing.go counts and sort"]
+  resp -->|"No"| draw["web/src/tags/"]
+  slow -->|"Scroll frames"| when{"Right after a page?"}
+  when -->|"Yes"| append["Appending rows"]
+  when -->|"No"| rows["Row drawing"]
+```
+
+When the first row is slow, report the server's `GET /api/tags` response time
+(Playwright `response.timing`) separately from drawing. A long response points
+at video counting and sorting in `internal/store/tag_listing.go`; a long draw
+points at `web/src/tags/`. This feature fixes both the one-page response and
+drawing. When video counting (`taggedVideosSQL`) takes 1 second at the 30,000
+scale, put that measurement in the PR body and open a separate Issue for how
+counts are stored on the server: the parent Issue's out-of-scope list hands
+server-side slowness to #674 (R-1 "Video counts").
+
+When scrolling has consecutive frames over 50 ms, compare Long Task times with
+request times to tell whether they follow a response for more rows. If they
+do, appending to `rows` and reattaching the selection are suspect
+([data-model.md §4](data-model.md#4-screen-state)); otherwise row drawing
+is.

@@ -1,16 +1,17 @@
-# Contract: API トークンの管理（画面の API）
+# Contract: API token management (screen API)
 
-親 Issue: #493（要件 1〜4・8）。正本は実装の時点で [api/openapi.yaml](../../../api/openapi.yaml) に
-入れ、ここはその差分だけを書く。エラーの形は
-[023 error-api.md](../../023-english-i18n/contracts/error-api.md) に従う。
+Parent Issue: #493 (requirements 1–4 and 8). Source of truth: the operations go into
+[api/openapi.yaml](../../../api/openapi.yaml) at implementation time; this file records only the
+delta. The error shape follows [023 error-api.md](../../023-english-i18n/contracts/error-api.md).
 
-3 つの操作はどれも `security: sessionCookie` で、`accessRoutes` に足さない（所有者だけ）。
-Bearer は画面の API では読まれない（[research.md R-3](../research.md#r-3-外部連携-api-は-apiv1-の下に置き境界にbearerの分類を足す)）
-ので、Bearer だけの要求は `401 unauthenticated` になる（受け入れ条件 8）。
+All three operations are `security: sessionCookie` and are not added to `accessRoutes` (owner only).
+The screen API does not read Bearer tokens
+([research.md R-3](../research.md#r-3-the-external-api-lives-under-apiv1-and-the-boundary-gains-a-bearer-class)),
+so a request with only a Bearer token gets `401 unauthenticated` (acceptance criterion 8).
 
 ## `GET /api/api-tokens`
 
-`200`: `{ "items": APIToken[] }`。`created_at` の降順。
+`200`: `{ "items": APIToken[] }`, in descending `created_at` order.
 
 ```yaml
 APIToken:
@@ -21,17 +22,17 @@ APIToken:
     id: { type: integer, format: int64 }
     name: { type: string }
     createdAt: { type: string, format: date-time }
-    lastUsedAt: { type: [string, "null"], format: date-time }  # 未使用は null
+    lastUsedAt: { type: [string, "null"], format: date-time }  # null when never used
 ```
 
 ## `POST /api/api-tokens`
 
-本文 `{ "name": string }`（JSON 必須、`requiresJSONBody` に足す）。
+Body `{ "name": string }` (JSON required; added to `requiresJSONBody`).
 
-- `201`: `{ "token": APIToken, "secret": string }`。`secret` は平文で、この応答にしか出ない
-  （要件 2）。応答は今の API と同じく `Cache-Control: no-store`。
-- `400 invalid_request`: 名前の規則（[research.md R-10](../research.md#r-10-トークンの名前の規則はタグ名と同じ形にする)）の
-  `reason` を付ける。
+| Status | Body |
+| --- | --- |
+| `201` | `{ "token": APIToken, "secret": string }`. `secret` is the plaintext and appears only in this response (requirement 2). As with the existing API, the response is `Cache-Control: no-store`. |
+| `400 invalid_request` | Carries a `reason` from the name rules ([research.md R-10](../research.md#r-10-token-names-follow-the-same-rules-as-tag-names)), listed below. |
 
 | `reason` | `limit` |
 | --- | --- |
@@ -41,10 +42,12 @@ APIToken:
 
 ## `DELETE /api/api-tokens/{id}`
 
-`204`。無い id も `204`（二重の失効を誤りにしない）。確定した後、そのトークンの実行中の外部連携 API と
-MCP の応答を打ち切る（[research.md R-9](../research.md#r-9-最終使用日時は-1-分に-1-回だけ書く失効は実行中の要求も止める)）。
+`204`. A missing id also returns `204` (revoking twice is not an error). Once committed, in-flight
+external API and MCP responses for that token are cut off
+([research.md R-9](../research.md#r-9-last-used-time-is-written-at-most-once-a-minute-revocation-also-stops-in-flight-requests)).
 
 ## `mdm account`
 
-`set-username`・`set-password` の完了の出力を、セッションと API トークンの両方が失効したことを
-伝える文にする（今の文は [016 account-cli.md](../../016-single-account-auth/contracts/account-cli.md)）。
+The completion output of `set-username` and `set-password` becomes a sentence saying that both the
+sessions and the API tokens were revoked (the current text is in
+[016 account-cli.md](../../016-single-account-auth/contracts/account-cli.md)).

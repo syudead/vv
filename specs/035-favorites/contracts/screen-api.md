@@ -1,10 +1,10 @@
-# Contract: 画面の API の差分
+# Contract: Screen API changes
 
-親 Issue: #574。正本は [api/openapi.yaml](../../../api/openapi.yaml) で、ここには足す経路・項目・値だけを
-書く。`task generate` で `internal/httpapi/gen/` と `web/src/api/gen/` を作り直す。外部連携 API
-（`api/external-v1.yaml`）は変えない（対象外）。
+Parent Issue: #574. Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This file lists only the
+endpoints, fields and values added. `task generate` regenerates `internal/httpapi/gen/` and
+`web/src/api/gen/`. The external API (`api/external-v1.yaml`) does not change (out of scope).
 
-## 0. `Video` と `LibraryGroup` に足す項目
+## 0. Fields added to `Video` and `LibraryGroup`
 
 ```yaml
 Video:
@@ -12,30 +12,31 @@ Video:
     favorite:
       type: boolean
       description: |
-        所有者がお気に入りにした動画か。所有者の応答にだけ入る
-        （specs/035-favorites/data-model.md §3）
+        Whether the owner made this video a favorite. Present only in owner responses
+        (specs/035-favorites/data-model.md §3)
 
 LibraryGroup:
   properties:
     favorite:
       type: boolean
       description: |
-        所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
-        所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+        Whether the owner made this group a favorite. Independent of the member videos' favorites,
+        and present only in owner responses (specs/035-favorites/data-model.md §3)
 ```
 
-- `Video.favorite` は動画を返すすべての応答（一覧、`GET /api/videos/{id}`、関連、バージョン、
-  `GET /api/folders/{rootId}/videos`、probe の再試行、表示名・サムネイルの位置の応答）に、所有者にだけ入る。
-  `required` にはしない（ゲストの応答で省く）。`forAudience` が `public` と違って `favorite` を落とす。
-- `LibraryGroup.favorite` は `GET /api/library` のグループの項目と `GET /api/folders/{rootId}/group` に、
-  所有者にだけ入る。ゲストの応答では `watchState` などと同じく省く。
-- お気に入りにした日時は応答に出さない（並び順はサーバーが決める）。
+| Field | Where it appears |
+| --- | --- |
+| `Video.favorite` | Every response that returns videos (lists, `GET /api/videos/{id}`, related, versions, `GET /api/folders/{rootId}/videos`, probe retry, display name and thumbnail position responses), for the owner only. Not `required`, because guest responses omit it. Unlike `public`, `forAudience` drops `favorite` |
+| `LibraryGroup.favorite` | Group items of `GET /api/library` and `GET /api/folders/{rootId}/group`, for the owner only. Guest responses omit it, like `watchState` |
+
+The time a favorite was made is not in any response (the server decides the order).
 
 ## 1. `PUT /api/favorites`
 
-所有者だけ（`/api/*` の既定の分類）。`videoIds` の動画と `folders` のグループのお気に入りを `favorite` に
-そろえる（[research.md R-2](../research.md#r-2-付け外しは所有者だけの-1-つの経路-put-apifavorites-で動画の-id-とフォルダを-1-つの取引で受け無いものは数えずに飛ばす)、
-[data-model.md §4](../data-model.md#4-書き込みfavoritestore)）。
+Owner only (the default class for `/api/*`). Sets the favorite of the videos in `videoIds` and the groups in
+`folders` to `favorite`
+([research.md R-2](../research.md#r-2-one-owner-only-put-apifavorites-for-videos-and-folders-in-one-transaction),
+[data-model.md §4](../data-model.md#4-writes-favoritestore)).
 
 ```yaml
 /api/favorites:
@@ -50,62 +51,65 @@ FavoritesRequest:
   required: [favorite]
   properties:
     videoIds:  { type: array, items: { type: integer, format: int64 } }
-    folders:   { type: array, items: { $ref: VideoFolder } }   # グループのフォルダ（rootId と path）
+    folders:   { type: array, items: { $ref: VideoFolder } }   # group folders (rootId and path)
     favorite:  { type: boolean }
 
 FavoritesResponse:
   required: [appliedVideos, appliedFolders]
   properties:
-    appliedVideos:  { type: integer }   # videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数える）
-    appliedFolders: { type: integer }   # folders のうちいまグループのフォルダの数
+    appliedVideos:  { type: integer }   # distinct video ids in videoIds that are in the library now (ids in the same bundle each count)
+    appliedFolders: { type: integer }   # folders in folders that are groups now
 ```
 
-| 条件 | 応答 |
+| Condition | Response |
 | --- | --- |
-| `videoIds` と `folders` の合計が 1 以上 20000 以下でない（重複は 1 つに数える） | `400 invalid_request`（`too_many_videos`、`limit` は 20000。`POST /api/video-tags` と同じ） |
-| `folders` の `path` が `ValidateFolderPath` に通らない | `400 invalid_request`（`invalid_folder_path`） |
-| `videoIds` にライブラリに無い id、空の `content_key` の動画 | 誤りにせず `appliedVideos` に数えない |
-| `folders` の `rootId` が登録フォルダに無い、またはそのフォルダが今グループでない | 誤りにせず `appliedFolders` に数えない |
-| 既に同じ状態 | 誤りにせず数える。付いているものに付けても日時は変えない |
+| The total of `videoIds` and `folders` is not between 1 and 20000 (duplicates count once) | `400 invalid_request` (`too_many_videos`, `limit` 20000; the same as `POST /api/video-tags`) |
+| A `path` in `folders` fails `ValidateFolderPath` | `400 invalid_request` (`invalid_folder_path`) |
+| An id in `videoIds` is not in the library, or the video has an empty `content_key` | Not an error; not counted in `appliedVideos` |
+| A `rootId` in `folders` is not a registered folder, or the folder is not a group now | Not an error; not counted in `appliedFolders` |
+| Already in the requested state | Not an error; counted. Favoriting a favorite keeps its time |
 
-`folders` の各要素は `GET /api/folders/{rootId}/group` と同じく `domain.FolderDir(root.Path, path)` で絶対パスに
-し、保存層がフォルダの鍵にする。処理は 1 つの取引で、全部に反映するか 1 つも反映しない。確定後の
-`/api/events` の知らせは無い（[research.md R-6](../research.md#r-6-画面はドメインイベントを足さず公開の切り替えと同じ購読の仕組みで一覧と再生画面に反映し再生画面は動画を取り直す)）。
-`videoIds` にグループのメンバーを入れればその動画に付く。`folders` にグループを入れてもメンバーには
-付かない（要件 4）。
+Each element of `folders` becomes an absolute path with `domain.FolderDir(root.Path, path)`, as in
+`GET /api/folders/{rootId}/group`, and the store turns it into the folder key. The change runs in one
+transaction: all of it applies or none of it does. No `/api/events` notification follows the commit
+([research.md R-6](../research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern)).
+A group member in `videoIds` gets its own favorite. A group in `folders` does not favorite its members
+(requirement 4).
 
-## 2. 一覧の `favorite` と `VideoSort` に足す値
+## 2. List `favorite` parameter and new `VideoSort` values
 
-`GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library`、`GET /api/library/ids` に
-`favorite`（boolean、既定 false）を足す。true でお気に入りのみにする。項目ごとに自分のお気に入りで判定し
-（動画の項目は動画、グループの項目はグループ）、`query`・`tag`・`watch`・`playable` と AND で組み合わさる。
-お気に入りでないグループに属するお気に入りの動画は動画の項目になる
-（[data-model.md §5](../data-model.md#5-読み出しと一覧)）。`GET /api/library` と `GET /api/library/ids` の
-`description` にその規則を足す。
+Add `favorite` (boolean, default false) to `GET /api/videos`, `GET /api/folders/{rootId}/videos`,
+`GET /api/library` and `GET /api/library/ids`. True limits the list to favorites. Each item is judged by its
+own favorite (a video item by the video, a group item by the group), combined with `query`, `tag`, `watch`
+and `playable` by AND. A favorite video in a group that is not a favorite becomes a video item
+([data-model.md §5](../data-model.md#5-reads-and-lists)). The `description` of `GET /api/library` and
+`GET /api/library/ids` gains this rule.
 
 ```yaml
 VideoSort:
   enum: [..., playedAsc, playedDesc, favoritedAsc, favoritedDesc, random]
   description: |
-    …、favorited = お気に入りにした日時（お気に入りでない項目は向きに関係なく末尾。グループの項目は
-    グループをお気に入りにした日時）、…
+    ..., favorited = date favorited (non-favorite items go last in either direction; a group item
+    uses the time the group was made a favorite), ...
 ```
 
-`GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library` の `sort` で受け付ける。
-`GET /api/library/ids` は `sort` を持たず、変わらない。
+`GET /api/videos`, `GET /api/folders/{rootId}/videos` and `GET /api/library` accept them in `sort`.
+`GET /api/library/ids` has no `sort` and does not change.
 
-ゲスト（[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-ゲストが使えない条件) の表に足す）。
-ゲストが読める `GET /api/videos`・`GET /api/folders/{rootId}/videos`・`GET /api/library` の 3 経路に掛かる。
-`GET /api/library/ids` は所有者だけの経路で、ゲストには条件によらず今までどおり `401` を返す:
+Guests (added to the table in
+[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-conditions-guests-cannot-use)): the rules apply
+to the three endpoints a guest can read, `GET /api/videos`, `GET /api/folders/{rootId}/videos` and
+`GET /api/library`. `GET /api/library/ids` is owner-only and still returns `401` to a guest whatever the
+conditions.
 
-| 条件 | ゲストでの扱い |
+| Condition | For a guest |
 | --- | --- |
-| `favorite` が true | `400 invalid_request`（`guest_filter_not_allowed`） |
-| `sort` が `favoritedAsc`・`favoritedDesc` | `400 invalid_request`（`guest_filter_not_allowed`） |
+| `favorite` is true | `400 invalid_request` (`guest_filter_not_allowed`) |
+| `sort` is `favoritedAsc` or `favoritedDesc` | `400 invalid_request` (`guest_filter_not_allowed`) |
 
-`guest_filter_not_allowed` の `message` に「お気に入り」を足す。
+The `message` of `guest_filter_not_allowed` gains "favorites".
 
-## 3. `GET /api/library/ids` に足す項目
+## 3. Fields added to `GET /api/library/ids`
 
 ```yaml
 VideoIdsResponse:
@@ -113,8 +117,8 @@ VideoIdsResponse:
     groups:
       type: array
       description: |
-        条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
-        listLibraryIds の応答にだけ入り、1 つも無ければ省略される
+        Group items that match the conditions: each one's folder and the ids of all its members
+        (also included in ids). Present only in the listLibraryIds response, and omitted when there are none
       items:
         $ref: LibraryGroupIds
 
@@ -125,23 +129,22 @@ LibraryGroupIds:
     videoIds: { type: array, items: { type: integer, format: int64 } }
 ```
 
-`ids` は今までどおり動画の項目の id とグループの項目の全メンバーの id の和で、並びは決めない。
-`groups` は画面が「選んだグループ」を知るためのもので、選択バーのお気に入りが `folders` に送る
-（[research.md R-7](../research.md#r-7-複数選択は選んだグループをグループとして覚え一括のお気に入りではグループのメンバーを動画として送らない)）。
-`POST /api/video-tags/summary` など `VideoIdsResponse` を返す他の経路は `groups` を入れない。
+`ids` is still the union of the video items' ids and every member id of the group items, in no set order.
+`groups` lets the screen know the chosen groups, which the selection bar's favorite action sends as `folders`
+([research.md R-7](../research.md#r-7-selection-keeps-chosen-groups-as-groups)). Other endpoints that return
+`VideoIdsResponse`, such as `POST /api/video-tags/summary`, do not include `groups`.
 
-## 4. 変わらない経路
+## 4. Unchanged endpoints
 
-`PUT /api/video-visibility`・`POST /api/video-tags`・`POST /api/video-bundles` は今のまま動画の id の集合を
-受ける。`GET /api/folders/{rootId}/group` の引数は変わらない（応答に `favorite` が足される）。
-外部連携 API と MCP は変わらない。
+`PUT /api/video-visibility`, `POST /api/video-tags` and `POST /api/video-bundles` still take a set of video
+ids. The parameters of `GET /api/folders/{rootId}/group` do not change (its response gains `favorite`). The
+external API and MCP do not change.
 
-## 5. `web/src/api` の差分
+## 5. `web/src/api` changes
 
-- `videoSorts` に `favoritedAsc`・`favoritedDesc` を足す。画面の一覧の条件は `isListSort` で `sortKinds` に
-  種類があるものだけを受け付ける（033 §3 と同じ）。
-- `ListFilterParams` に `favorite?: boolean` を足し、`listVideos`・`listLibrary`・`listLibraryIds`・
-  `listFolderVideos` が true のときだけ `favorite=true` を載せる。
-- `favorites.ts` に `updateFavorites(videoIds, folders, favorite)`（`PUT /api/favorites`）と、結果の購読
-  （[research.md R-6](../research.md#r-6-画面はドメインイベントを足さず公開の切り替えと同じ購読の仕組みで一覧と再生画面に反映し再生画面は動画を取り直す)）を置く。
-- 生成された `Video`・`LibraryGroup` 型の `favorite` は省略可能なので、Vitest の fixture は追従不要。
+| Change | Detail |
+| --- | --- |
+| `videoSorts` | Add `favoritedAsc` and `favoritedDesc`. The screen's list criteria accept only sorts whose kind is in `sortKinds`, through `isListSort` (as in 033 §3) |
+| `ListFilterParams` | Add `favorite?: boolean`. `listVideos`, `listLibrary`, `listLibraryIds` and `listFolderVideos` send `favorite=true` only when it is true |
+| `favorites.ts` | `updateFavorites(videoIds, folders, favorite)` (`PUT /api/favorites`) and the result subscriptions ([research.md R-6](../research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern)) |
+| Generated `Video` and `LibraryGroup` types | `favorite` is optional, so the Vitest fixtures need no update |
