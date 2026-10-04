@@ -1,351 +1,515 @@
-# Research: タグ管理画面を数千〜数万個のタグに耐えさせる
+# Research: Tag management at thousands to tens of thousands of tags
 
-技術スタック、境界と依存方向、タグの表と名前の規則、仮のタグと却下した名前、画面の文言と書式、
-一覧画面の見た目の規則は正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)、
-[ARCHITECTURE.md](../../ARCHITECTURE.md)、
-[specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、
-[specs/031-tentative-tags/data-model.md](../031-tentative-tags/data-model.md)、
-[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)、
-[docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)）。
-ここにはこの feature が足す決定だけを書く。
+Parent Issue: #651. Inherited decisions:
 
-親 Issue #651 の改訂（画面は表示に要る分だけを読み、検索・並び順・絞り込みは読み込んでいない
-タグも含めた全部に効く。規模にタグ 30,000 個を足す）で、R-1 は置き換え、R-9 は規模と場面を足し、
-R-3・R-7・R-12 は役割を書き直した。R-10 以降がこの改訂で足した決定である。R-2・R-4〜R-6・R-8 は
-feature branch に merge 済みの実装のとおりで変わらない。
+| Topic | Source of truth |
+| --- | --- |
+| Tech stack | [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
+| Boundaries and dependency direction | [ARCHITECTURE.md](../../ARCHITECTURE.md) |
+| Tag tables and name rules | [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md) |
+| Tentative tags and rejected names | [specs/031-tentative-tags/data-model.md](../031-tentative-tags/data-model.md) |
+| Screen text and formatting | [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
+| Visual rules of the list screens | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md) |
 
-## R-1: 一覧はサーバーのページで受け、検索・絞り込み・並び順はサーバーが全部のタグに掛ける
+This file records only the decisions this feature adds.
 
-- Decision: `GET /api/tags` に `q`・`tentative`・`unused`・`sort`・`cursor`・`limit` を足し、画面は
-  開いたときに 1 ページ（`limit` 件）だけを受け、スクロールに合わせて `nextCursor` で続きを受ける
-  （[contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-のパラメータ)）。検索・絞り込み・
-  並び順は要求のパラメータで、サーバーが全部のタグに掛けて 1 ページを返す。ページは `total`
-  （条件に合う数）と `totalAll`（全部の数）を持ち、件数の行はこれを出す（受け入れ条件 8）。
-  カーソルは `GET /api/library` と同じ keyset 方式（並び順の値・名前の鍵・`id`）で、別の並び順で
-  作ったカーソルは `400`（`ErrInvalidCursor`。[013 の list-api.md §5](../013-library-search/contracts/list-api.md#5-カーソルと誤り)）。
-  `limit` を省いた要求は今までどおり全件を返し、候補（combobox）・絞り込みの確かめが使う共有の保持
-  （`web/src/api/tags.ts` の `getTags`）はこの形のまま使い続ける。
-- Rationale: 改訂した要件 2 は「最初に表示に要る分のタグだけを読み込み、タグの総数が増えても開くまでの
-  待ちと最初に読み込む量は増えない」と求め、受け入れ条件 2 は 1,000・3,000・30,000 個で受け取る数と
-  転送量が同じであることを測る。全件を 1 回で受けて画面で絞る前の R-1 では、描画は仮想化で解けても
-  転送と JSON の解釈は総数に比例し、30,000 個では開くまでの待ちが規模で増える。要件 4・6・7 と
-  受け入れ条件 8・9 は読み込んでいないタグにも並び順・絞り込み・検索が効くことを求めるので、
-  条件はサーバーに渡すほかない。既存の経路に加えるのは、候補と絞り込みの確かめが同じタグの一覧を
-  全件で要し（親 Issue の「対象外」。#674・#675 が扱う）、別の経路にすると同じ応答の形が 2 つに
-  なるためである。
-- Alternatives considered: 全件を 1 回で受けて画面で絞る（改訂前の R-1。要件 2・受け入れ条件 2 と
-  相反する）。`GET /api/tags/page` など別の経路（応答の形と絞り込みの規則が 2 つの経路に分かれ、
-  #674 が候補を同じ条件で引くときに経路を足し直すことになる）。offset ページング（`?page=N`。
-  続きを読む間に別のタブでタグが増減すると行が二重に出る・抜ける。Edge Case「続きを読むあいだに
-  別のタブで…」が禁じ、keyset はライブラリに前例がある）。
-- 並びの決着: どの並び順でも、値が同じタグは名前の自然順（R-10 の `sort_key`）、それも同じなら
-  `id` で決める（要件 4「値が同じタグどうしは名前の順」。`SortTagRefs` と同じ決着）。本数と作った日の
-  並びは向きが名前と逆になりうるので、カーソルの条件は行値の比較 1 つではなく「値が前 or（値が同じ
-  and（鍵, id）が後）」の形で書く（[data-model.md §2](data-model.md#2-保存層の操作)）。
-- 検索の規則: `q` は `domain.FoldForMatch` を掛けて前後の空白を落とし、空でなければ
-  `tag_names.search_key`（元の名前とシノニムの両方の行）への `instr` で照らす
-  （[014 の data-model.md §7](../014-video-tags/data-model.md#7-検索欄でのタグ名の照合) と同じ照合形。
-  要件 7）。語の分解（AND・OR・除外）は入れない。改訂前の画面の検索も 1 つの語の部分一致で、親 Issue
-  が求めるのは「同じ規則で照らし合わせる」（照合形）であって検索式ではない。`q` の上限は
-  `GET /api/library` の `query` と同じ 100 文字。
-- 本数の数え方: 本数は今の `taggedVideosSQL` の集計（[014 の data-model.md §5](../014-video-tags/data-model.md#5-本数の数え方)）を
-  1 回の問い合わせの中で全タグについて数え、並び順（本数）と絞り込み（0 本）とページの本数に使う。
-  改訂前の全件の一覧も同じ集計を要求ごとに 1 回行っていたので、集計の費用は新しくない。新しいのは
-  ページごとに集計が走ることで、30,000 個の規模の応答時間は quickstart.md が `GET /api/tags` の応答を
-  別に出して確かめる。集計が 1 秒を占めるなら本数の持ち方（サーバーの側）を変えることになり、それは
-  親 Issue の「対象外」が #674 に渡した領域である。
+The revision of the parent Issue (the screen loads only what it shows; search, sort and filters apply to every
+tag, loaded or not; the scales gain 30,000 tags) replaced R-1, added a scale and scenarios to R-9, and
+rewrote the role of R-3, R-7 and R-12. R-10 onwards were added by the revision. R-2, R-4 to R-6 and R-8 match
+the implementation already merged into the feature branch and do not change.
 
-## R-2: 行の仮想化は `@tanstack/react-virtual` の `useWindowVirtualizer` で行う
+## R-1: The server pages the list and applies search, filters and sort to every tag
 
-- Decision: `web/package.json` に `@tanstack/react-virtual` を足し、タグの一覧だけで使う。スクロールの
-  持ち主は今までどおり window（文書）で、行の高さは描いた要素を測って持つ（`measureElement`）。
-  ページで読む形（R-1）になっても変えない。
-- Rationale: 行の高さは一様でない。シノニムの行を持つタグは 1 行高く、改名中の行は失敗の文言で伸び、
-  作成の行が先頭に入る。自前で窓を切るには高さの計測と累積の管理を書くことになり、そこが不具合の
-  置き場になる。この依存は実行時の依存を持たず、Renovate の運用（[docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md)）
-  に乗る。[library-ui.md §3](../../docs/design-docs/library-ui.md#3-なぜ仮想スクロールを使っていないのか) が
-  仮想スクロールを避けた理由は「折り返す格子で 1 行の枚数が幅で変わる」「60 件ずつしか読まない」の
-  2 つで、1 列のこの一覧には前者が当たらない。後者は R-1 でページ読みになっても当たらない: 受け入れ
-  条件 4 は 30,000 個の一覧を末尾まで続きを読み込みながらスクロールすることを求め、読み込んだ行は
-  30,000 行まで増える。読み込んだ分を全部描けば、改訂前に測った描画の遅さがそのまま戻る。
-- Alternatives considered: 自前の窓切り（高さを 2 種類に固定すれば累積は足し算で済むが、改名の失敗の
-  文言と作成の行で崩れる。崩さないために行の形を変えるのは、実装の都合で設計を狭めることになる）。
-  行の高さを 1 種類に固定してシノニムを名前の行に詰める（[014 の ui-design.md「Rows」](../014-video-tags/ui-design.md#rows)
-  の情報階層を変える。要求にその理由が無い）。`react-window`（固定高か高さの関数を要し、計測は自前になる）。
-  ページで読むなら仮想化を外す（上の Rationale のとおり、読み込んだ行の数は総数まで増える）。
-- 文書: `docs/design-docs/library-ui.md` §3 に、タグ管理画面の一覧がこれを使うことと、格子の一覧が
-  今も使わない理由はそのままであることを書く（merge 済み）。R-1 の改訂で「全件を 1 回で受けて持って
-  いる」の記述は「ページで受け、読み込んだ行が総数まで増える」に直す。
+**Decision**: `GET /api/tags` gains `q`, `tentative`, `unused`, `sort`, `cursor` and `limit`
+([contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). On open the screen
+receives one page (`limit` tags) and fetches the next page with `nextCursor` as it scrolls. Search, filters
+and sort are request parameters that the server applies to every tag before cutting the page. A page carries
+`total` (tags matching the conditions) and `totalAll` (all tags), which the count line shows (acceptance
+criterion 8). A request without `limit` returns every tag as before; the shared cache (`getTags` in
+`web/src/api/tags.ts`) that the combobox candidates and the filter check use keeps that form.
 
-## R-3: 照合形 `FoldForMatch` の TypeScript 移植は、画面が読み込んだ行をその場で判定するために使う
+The sequence below shows one screen opening and scrolling.
 
-- Decision: `web/src/lib/foldForMatch.ts`（merge 済み。NFKC → 符号位置ごとの小文字化 → ひらがなから
-  カタカナ）と、Go と Vitest が共に読む `internal/domain/testdata/fold_for_match.json` は残す。役割は
-  変わる: 一覧の検索はサーバーが `search_key` で行う（R-1）ので、画面は検索語の照合には使わない。
-  使うのは、作成・改名・確定・却下のあとにその行が今の条件（検索語・「Tentative only」・「Unused
-  only」）にまだ合うかを、サーバーへ往復せずに決めるとき（R-12）である。
-- Rationale: 改訂前は画面が全件を照らすための移植だった。ページ読みになっても、操作のあとの 1 行の
-  判定を往復で行うと、行の操作のたびに一覧の取り直しが要り、改訂前の「その都度固まる」の原因の 1 つ
-  （操作ごとの取り直し）に戻る。サーバーと同じ照合形を画面が持っていれば、1 行の判定は同期で済む。
-  2 言語に同じ規則を持つ代わりに、同じ入力の組で食い違いを機械で見つける仕組みも merge 済みである。
-- Alternatives considered: 移植を捨てて操作のたびに一覧を取り直す（上の Rationale）。移植を捨てて
-  操作した行は条件に合わなくても残す（検索中に改名して一致しなくなった行が、一覧を取り直すまで
-  並び続け、サーバーの一覧と食い違う）。
-- 小文字化と残る差（版の違いで Node に無い符号位置の組を既知の例外として除いていること）は
-  merge 済みの実装と試験のとおりで、ここでは決め直さない。
+```mermaid
+sequenceDiagram
+    participant S as Tags page
+    participant A as GET /api/tags
+    S->>A: q, tentative, unused, sort, limit=100
+    A-->>S: items, total, totalAll, nextCursor
+    S->>A: same conditions, cursor=nextCursor
+    A-->>S: next items, nextCursor
+    Note over S,A: a cursor from another sort returns 400
+```
 
-## R-4: まとめての確定・却下・削除は 1 つの経路 `POST /api/tags/batch` が 1 つの取引で受け、働かない・無いタグは数えて飛ばす
+The cursor is keyset, as in `GET /api/library` (sort value, name key, `id`). A cursor made under another
+sort returns `400` (`ErrInvalidCursor`,
+[013 list-api.md §5](../013-library-search/contracts/list-api.md#5-cursor-and-errors)).
 
-- Decision: `{ action: confirm | reject | delete, ids }` を受け、`ids` のうち今あるタグで、その操作が働く
-  種類（確定・却下は仮のタグ、削除は確定したタグ）だけを 1 つの取引で処理する。応答は処理した id、
-  無かった id、種類が合わず飛ばした id の 3 つの配列
-  （[contracts/screen-api.md §1](contracts/screen-api.md#1-post-apitagsbatch)、
-  [data-model.md §2](data-model.md#2-保存層の操作)）。1 件の経路（`POST /api/tags/{id}/confirm` など）は
-  今のまま残し、行の操作はそれを使い続ける（要件 8「今の 1 行ずつの操作の規則は変えない」）。
-- Rationale: 仮のタグ 100 個の確定が 100 回の要求と 100 回の取り直しになるのが、親 Issue の「その都度
-  固まる」の正体である。1 つの取引なら要求は 1 回、画面の反映も 1 回で済み、受け入れ条件 10 の
-  「固まらない」に届く。Edge Case「働かない種類を含めて選んで実行したとき」「別のタブで対象の一部が
-  消えたとき」は、どちらも「残りは処理し、数を伝える」なので、全部か無しかにせず、飛ばした id を
-  理由別に返す。取引が失敗したときは何も反映されないので、「済んだ分と済まなかった分が分かり、
-  済まなかった分は選んだまま残る」は、画面が応答の `appliedIds` だけを選択から外すことで満たす。
-- Alternatives considered: 操作ごとに別の経路（`/api/tags/confirm`・`/reject`・`/delete`。本文の形と
-  応答が同じで、分ける理由が無い）。画面が 1 件の経路を順に呼ぶ（要求の数が選んだ数になり、途中の
-  失敗で残りの扱いが画面の都合になる。固まる原因そのもの）。無い id を `404` で全体を失敗にする
-  （Edge Case が「残りは処理する」と求める）。
-- 上限: `ids` は 1 件以上 20,000 件以下で、`POST /api/video-tags` の `videoIds` と同じ理由（本文の
-  上限 1 MiB に収まり、`json_each` に 1 つの引数で渡す）。超えたら `400` の reason `too_many_tags`
-  （`limit` 付き）。上限は送る id の数に掛かるので、画面は読み込んだ行が上限を超えるときは
-  「読み込んだものをすべて選ぶ」（先頭のチェック）だけを disabled にし、まとめての操作は選択の数が
-  上限を超えるときだけ disabled にする（要件 10 の「読み込んである行」が対象なので、30,000 個を
-  末尾まで読んだ一覧では「すべて選ぶ」は押せなくなるが、1 行ずつ選んだ選択は要件 8・9 のとおり
-  操作できる。読み込んだ行の数でまとめての操作まで止めると、末尾近くまでスクロールしただけで
-  数行の選択も操作できなくなる）。
+| Option | Verdict |
+| --- | --- |
+| **Add paging and conditions to `GET /api/tags`** | Chosen |
+| Receive every tag at once and filter on the screen (R-1 before the revision) | Rejected: conflicts with requirement 2 and acceptance criterion 2 |
+| A separate route such as `GET /api/tags/page` | Rejected: the response shape and filter rules split across two routes, and #674 would need another route to fetch candidates under the same conditions |
+| Offset paging (`?page=N`) | Rejected: rows repeat or go missing when another tab adds or removes tags while more rows load, which the Edge Case "while more rows load, another tab…" forbids; keyset has a precedent in the library |
 
-## R-5: 統合は `POST /api/tags/{id}/merge` の本文を `sourceIds`（1 件以上）にし、1 件の統合もこれを使う
+**Rationale**: The revised requirement 2 asks that the screen load only the tags it needs to show, so that
+the wait to open and the amount first loaded do not grow with the number of tags; acceptance criterion 2
+measures that the count received and the bytes transferred are the same at 1,000, 3,000 and 30,000 tags.
+Virtualization fixed rendering, but transfer and JSON parsing of the whole list grow with the total.
+Requirements 4, 6 and 7 and acceptance criteria 8 and 9 apply sort, filters and search to tags not yet
+loaded, so the conditions have to go to the server; the existing route is extended because the candidates
+and the filter check need the full list (the parent Issue's `対象外`, handled by #674 and #675).
 
-- Decision: `MergeTagRequest` を `{ sourceIds: int64[] }` にし、`sourceId` は廃止する。応答は
-  `{ tag: Tag, notFoundIds: int64[] }`。統合先 `{id}` が無ければ `404 tag_not_found`、`sourceIds` に
-  `{id}` が含まれれば `400`（reason `merge_same_tag`、今と同じ）。無い統合元は飛ばして `notFoundIds` に
-  載せ、残りを 1 つの取引で統合する（[contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-の変更)）。
-- Rationale: 統合の取引（付与の写し、名前の移動、統合元の削除、統合先の確定）は統合元の数だけ
-  繰り返すだけで、1 件と複数で違う形を持つ理由が無い。`api/openapi.yaml` は画面との契約で、呼び手は
-  `web/src/api/tags.ts` の `mergeTag` の 1 か所である。外部連携 API（`api/external-v1.yaml`）に統合は無い。
-- Alternatives considered: `sourceId` を残して `sourceIds` を任意で足す（どちらか一方が要る形は
-  `oneOf` の生成物の扱いを増やし、[014 の contracts/tags-api.md §1](../014-video-tags/contracts/tags-api.md#1-スキーマ)
-  が避けた形になる）。まとめての統合だけ別の経路（同じ取引が 2 か所になる）。
-- 統合元の数によらない文の数で行う: 1 件の `mergeTagInto` を統合元ごとに呼ぶと、そのたびに統合先の
-  `tagByID`（本数の数え直しと、伸び続けるシノニムの読み）が走り、20,000 個の統合では書きの取引を長く
-  握る。統合元の集合を `json_each` で渡し、付与の写し・名前の移動・統合元の削除をそれぞれ 1 文で行い、
-  統合先は最後に 1 回だけ読む（[data-model.md §2](data-model.md#2-保存層の操作) の `mergeTagsInto`）。
-- 統合先が統合元の中にあるときは画面が統合元から外す（Edge Case）。サーバーは今と同じく `400` で
-  受け付けない。
+**Tie-break**: in every sort, tags with the same value are ordered by the natural name order (the `sort_key`
+of R-10), then by `id` (requirement 4, "tags with the same value are ordered by name"; the same tie-break as
+`SortTagRefs`). The video-count and date-created sorts can run opposite to the name order, so the cursor
+condition is "value before, or value equal and (key, id) after", not a single row-value comparison
+([data-model.md §2](data-model.md#2-store-operations)).
 
-## R-6: 確認に出す「影響を受ける動画の本数」は `POST /api/tags/impact` が重複を除いて数える
+**Search rule**: `q` is folded with `domain.FoldForMatch` and trimmed; when not empty, it is matched with
+`instr` against `tag_names.search_key` (rows of both the primary name and the synonyms), the same matching
+form as [014 data-model.md §7](../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box)
+(requirement 7). Terms are not split into AND, OR or exclusion: the screen's search before the revision was a
+substring match of one term, and the parent Issue asks for the same matching form, not a query syntax. `q` is
+limited to 100 characters, like `query` on `GET /api/library`.
 
-- Decision: `{ action, ids }` を受け、`ids` のうち今あり、`action`（`reject`・`delete`・`merge`）が働く
-  タグの数と、そのどれかが付いた（手で付けた分とフォルダ名
-  から付いている分のどちらか。[014 の data-model.md §5](../014-video-tags/data-model.md#5-本数の数え方)）
-  いまライブラリにある動画の本数を、動画の `id` で重複を除いて返す
-  （[contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)）。
-- Rationale: 要件 11・受け入れ条件 11・12 は「重複を数えない」本数を求める。画面が持つ `videoCount` の
-  和では同じ動画が 2 つのタグに付いていれば 2 と数える。1 件の削除・統合の確認は今までどおり
-  `videoCount` を使う（014 の契約の「確認のための経路は足さない」は 1 件の話で、まとめての確認は
-  この feature が足す要求である）。
-- `action` を受ける理由: まとめての却下・削除は仮と確定を混ぜて選べ（要件 8）、`POST /api/tags/batch` は
-  働かない種類を飛ばす（R-4）。`ids` 全部を数えると、例えば 100 本に付いた仮のタグと 1 本に付いた確定した
-  タグを選んで削除するとき、実際に消えるのは確定したタグだけなのに確認は 101 本と出る。確認の数は実行で
-  変わるものだけにするため、処理と同じ `TagBatchApplies` の規則で数える対象を決める
-  （[data-model.md §1](data-model.md#1-domain-に足す値) の `TagImpactApplies`）。
-- Alternatives considered: `videoCount` の和（重複を数える。要求に合わない）。種類ごとに数を分けて返し、
-  画面が選ぶ（画面が規則をもう 1 つ持つことになり、サーバーの処理と食い違いうる）。`POST /api/tags/batch` に
-  `dryRun` を足す（読みと書きを 1 つの経路に混ぜる。読みの経路は `POST /api/video-tags/summary` の
-  前例がある）。
+**Video counts**: one query counts every tag with the existing `taggedVideosSQL` aggregation
+([014 data-model.md §5](../014-video-tags/data-model.md#5-video-counts)) and uses it for the count sorts, the
+`Unused only` filter and the page's counts. The full list before the revision ran the same aggregation once
+per request, so its cost is not new; what is new is that it runs per page. quickstart.md reports the
+`GET /api/tags` response time at 30,000 tags separately. If the aggregation takes 1 second, the way counts
+are stored (server side) has to change, which the parent Issue's `対象外` hands to #674.
 
-## R-7: 並び順はこの画面の端末の設定として `localStorage` に持ち、絞り込みは今までどおり画面の状態に留める
+## R-2: Rows are virtualized with `useWindowVirtualizer` from `@tanstack/react-virtual`
 
-- Decision: `web/src/preferences/tagListPreferences.ts` の `readTagListPreferences`・`writeTagListPreferences`
-  （merge 済み）が並び順だけを保存する。`viewPreferences.ts` と同じ総関数（投げない、壊れていれば既定の
-  「名前」の順）。「Tentative only」と「Unused only」と検索語は保存せず URL にも載せない。並び順の値は
-  API の `TagSort`（`name`・`countDesc`・`countAsc`・`createdDesc`・`createdAsc`）と同じ 5 値で、画面は
-  読んだ値をそのまま `sort` パラメータに送る（R-1）。
-- Rationale: 要件 5 は並び順だけに「画面を離れてもブラウザを開き直しても残る」と求める。URL ではなく
-  端末の設定にするのは、ライブラリの並び順も `viewPreferences` で端末に残していて、管理画面の URL は
-  共有する用途を持たないからである。絞り込みを保存しないのは、
-  [031 の research.md R-8](../031-tentative-tags/research.md#r-8-仮のタグだけの絞り込みと却下した名前の一覧は画面の側で持つ)
-  が「Tentative only」を画面の状態に留めた判断を変える理由が無く、0 本の絞り込みも同じ性質だからである。
-  端末の設定の値と API の値を同じにするのは、並び替えがサーバーへ移った（R-1）ことで、画面に並び順の
-  写しの表を持つ理由が無くなったためである。
-- 追記（見た目のレビューのあとの直し）: 検索・絞り込み・並び順をライブラリと同じ共通トップバーへ
-  移したのに合わせ、検索語・「Tentative only」・「Unused only」・並び順と、見出しの下のタブを、
-  ライブラリの一覧の条件と同じく URL のクエリ（`q`・`tentative=1`・`unused=1`・`sort`・`tab=rejected`）に
-  載せる（[ui-design.md「URL state」](ui-design.md#url-state)、`web/src/tags/tagListUrl.ts`）。再読み込みと
-  戻る・進むで条件が残るのがライブラリと同じ振る舞いだからで、上の「URL にも載せない」はこれで置き
-  換わる。`localStorage` には今までどおり並び順だけを残し、URL に `sort` が無いときに使う。
-- Alternatives considered: URL のクエリ（ライブラリと同じ形だが、戻る・進むで並び順が変わる体験に
-  なり、ブラウザを開き直すと消える）。サーバーの `settings` 表（端末ごとの見え方の好みで、
-  サーバーの設定にする理由が無い）。
-- 既定と保存する値: `name`（既定）、`countDesc`、`countAsc`、`createdDesc`、`createdAsc`。「名前」に
-  向きは無い（今の並びと同じ）。同値の決着は R-1 のとおりサーバーが行う。
+**Decision**: Add `@tanstack/react-virtual` to `web/package.json` and use it only in the tag list. The window
+(document) still owns scrolling, and row heights are measured from the rendered elements
+(`measureElement`). Paging (R-1) does not change this.
 
-## R-8: 「作った日」は `tags.created_at` を `Tag.createdAt` として載せ、同じ秒のタグは名前の順にする
+| Option | Verdict |
+| --- | --- |
+| **`@tanstack/react-virtual` with measured heights** | Chosen |
+| A hand-written window | Rejected: two fixed heights would make offsets a sum, but the rename error text and the create row break them; changing the row shape to avoid that narrows the design for the implementation's sake |
+| One fixed row height, synonyms packed into the name line | Rejected: changes the information hierarchy of [014 ui-design.md "Rows"](../014-video-tags/ui-design.md#rows) with no requirement behind it |
+| `react-window` | Rejected: needs fixed heights or a height function, so measuring is still hand-written |
+| Drop virtualization now that the list is paged | Rejected: loaded rows grow to the total, as the rationale explains |
 
-- Decision: `GET /api/tags` と `Tag` を返すすべての応答に `createdAt`（`date-time`）を足す（merge 済み）。
-  値は今ある `tags.created_at`（Unix 秒）で、移行も列の変更も無い。「作った日」の並びは `created_at` で
-  比べ、同じならほかの並びと同じく名前の順にする（要件 4）。
-- Rationale: 列はすでにあり、`insertTag` が書いている。秒より細かくするには列の意味を変えることになり、
-  既存の行と混ざる。外部連携 API の一括付与は 1 つの取引で複数のタグを作るので同じ秒に並ぶが、
-  そのときの並びは要件 4 が「名前の順」と決めている。
-- Alternatives considered: 同じ秒は `id` の降順（作られた順）にする（要件 4 の「値が同じタグどうしは
-  名前の順」と食い違う）。`created_at` をミリ秒にする（既存の行の値と単位が混ざり、移行で写しても
-  精度は戻らない）。
-- 外部連携 API（`api/external-v1.yaml` の `listTags`）の応答は変えない。`domain.Tag` の欄が増えるだけで、
-  外部の型への写しは `internal/httpapi/external.go` が明示的に行っている。
+**Rationale**: Row heights vary: a tag with synonyms is one line taller, a row being renamed grows with its
+error text, and the create row goes on top; hand-written windowing would put the bugs in height measurement
+and offsets. The dependency has no runtime dependencies and follows the Renovate process
+([docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md)). Of the two reasons
+[library-ui.md §3](../../docs/design-docs/library-ui.md#3-no-virtual-scrolling) gives for avoiding virtual
+scrolling (a wrapping grid whose cards per line depend on width, and loading only 60 at a time), the first
+does not apply to a one-column list, and the second does not apply after R-1 either: acceptance criterion 4
+scrolls a 30,000-tag list to the end while loading more, so loaded rows reach 30,000 and rendering them all
+brings back the slowness measured before the revision.
 
-## R-9: 受け入れ条件の計測は、作り置きの規模のデータを `scripts/tagsbench` が作り、Playwright の計測スクリプトが本番ビルドに対して測る
+**Documents**: `docs/design-docs/library-ui.md` §3 states that the tag list uses this and that the grid still
+does not, for unchanged reasons (merged). After the R-1 revision, its wording "receives and holds every tag
+at once" becomes "receives pages, and loaded rows grow to the total".
 
-- Decision: `scripts/tagsbench`（Go。merge 済み）が `.local/tagsbench/<規模>/` にデータディレクトリを
-  作る。`internal/store` の役割の型（`SettingsStore.AddMediaFolder`、`ScanIndexStore.UpsertVideo`、
-  `TagStore.ApplyVideoTags`）で親 Issue の規模の行を書く。動画のファイルは作らず、登録フォルダの下の
-  所在の行だけを書く。同じプログラムがビルド済みの単一バイナリをそのデータで起動し、
-  `web/bench/tags-admin.bench.ts`（Playwright、`web/e2e/` の試験とは別の設定で、`task test-e2e` と CI
-  には入れない）が場面を測って表に出す。手順は `docs/how-to/tags-admin-benchmark.md` に書き、PR の
-  本文に結果を残す（[quickstart.md](quickstart.md)）。
-- 改訂で足す規模と場面: 規模にタグ 30,000 個を足す。その動画の数は 30,000 本（タグ 3,000 個の規模と
-  同じ）にし、`-videos N` で動画の数を規模から切り離す（省けば今までどおり 10 倍）。場面に、開いた
-  ときに `GET /api/tags` が返した件数と応答の大きさ（受け入れ条件 2）と、30,000 個の一覧を末尾まで
-  続きを読み込みながらスクロールする間のフレーム時間（受け入れ条件 4）を足す。
-- Rationale: 受け入れ条件は本番ビルドをヘッドレス Chromium から測るよう求めていて、数値（1 秒・
-  0.2 秒・50ms・同じ転送量）は規模のデータが無いと確かめられない。`docs/how-to/preview-benchmark.md` の
-  `scripts/previewbench` と同じく、測る対象は本番のコードそのもので、計測の仕掛けを製品に入れない。
-  店（store）の公開の操作だけで行を書くのは、`SQL` を `internal/store` の外に出さないため
-  （ARCHITECTURE.md「`store.DB` does not hand out its `*sql.DB`」）。30,000 個の規模の動画を 10 倍の
-  300,000 本にしないのは、親 Issue がその規模に動画の数を添えておらず（表の見出しは「タグ 30,000 個の
-  ライブラリ」）、測りたいのがタグの数による差だからである。動画を 3,000 個の規模と同じにすれば、
-  3,000 個と 30,000 個の違いはタグの数だけになる。
-- Alternatives considered: `web/e2e/` に入れて `task test-e2e` で測る（30,000 本の投入と計測で e2e が
-  数分伸び、数値のばらつきで CI が不安定になる）。実ファイルを生成して取り込む（ffprobe で
-  規模の準備に時間がかかり、測りたいのは管理画面であって取り込みではない）。Vitest の jsdom で測る
-  （描画の時間が実ブラウザと違い、受け入れ条件の数値に意味が無い）。30,000 個の規模も動画を 10 倍に
-  する（規模のデータの作成が 1 時間を超え、親 Issue の表に無い動画の数を測ることになる）。
+## R-3: The TypeScript port of `FoldForMatch` decides on the screen whether a loaded row still matches
 
-## R-10: 名前の自然順の鍵 `sort_key` を `tag_names` と `rejected_tag_names` に持ち、起動時の鍵の埋め直しで作る
+**Decision**: Keep `web/src/lib/foldForMatch.ts` (merged; NFKC, then lowercasing per code point, then
+hiragana to katakana) and `internal/domain/testdata/fold_for_match.json`, which Go and Vitest both read. Its
+role changes: the server searches with `search_key` (R-1), so the screen no longer matches search terms with
+it. The screen uses it after create, rename, confirm and reject to decide, without a round trip, whether the
+row still meets the current conditions (search term, `Tentative only`, `Unused only`) (R-12).
 
-- Decision: `tag_names` と `rejected_tag_names` に `sort_key text not null default ''` を足し、
-  `domain.NaturalSortKey(name)`（`FoldForMatch` を掛けたうえで数字の連続を桁数付きに置き換えた、
-  バイト順で自然順になる鍵。[013 の data-model.md §4](../013-library-search/data-model.md#4-title_key-の規則)）
-  を名前の行を書くとき（作成・シノニム登録・付与での作成・改名・却下）に同じ取引で書く。既存の行は、
-  移行が `search_version` を 0 に戻し（`rejected_tag_names` には `search_version` も足す）、起動時の
-  `TagStore.RefreshSearchKeys` が `search_key` と一緒に埋める（[014 の data-model.md §7](../014-video-tags/data-model.md#7-検索欄でのタグ名の照合)
-  と同じ時点）。サーバーの名前の順はこの鍵のバイト順、同じなら `id`（[data-model.md §0](data-model.md#0-マイグレーション)）。
-- Rationale: R-1 の keyset カーソルは「名前の順で次の行」を SQL で引く必要があり、`CompareNatural`
-  （Go の関数）では引けない。ライブラリの題名順が `video_locations.title_key` に同じ鍵を持って
-  `order by` と カーソルに使っている前例（`listing.go` の `sortText`）に乗る。却下した名前にも足すのは、
-  要件 12 が却下した名前の一覧も表示に要る分だけ読むことを求め、その並びが名前の自然順
-  （[031 の contracts/screen-api.md §3](../031-tentative-tags/contracts/screen-api.md#3-却下した名前)）だから
-  である。起動時の埋め直しに乗せるのは、SQL では `NaturalSortKey` を計算できず、鍵の規則の版と作り直しの
-  仕組みがすでにあるためである。
-- Alternatives considered: `order by name collate nocase`（大文字小文字しか同一視せず、`2` と `10` の
-  数値の順にならない。今の一覧の自然順から後退する）。鍵を保存せず Go で全件を並べてから `limit` を
-  切る（毎ページ全件を読んで並べることになり、ページで読む意味が無い）。`search_key` を鍵に流用する
-  （照合形は数字の連続を桁数付きにしないので、`tag 2` が `tag 10` の後ろに来る）。別の版の列
-  `sort_version` を足す（`search_version` の意味は「鍵の規則の版」で、鍵が 2 つになっても版は 1 つで
-  足りる）。
-- 名前の順の定義が変わる点: 改訂前の `ListTags` は Go の `SortTags`（`CompareNatural` を元の名前に掛け、
-  同順位は元の文字列）で並べていた。`NaturalSortKey` は照合形（全角・半角・かなを同一視）に掛けるので、
-  `アニメ` と `あにめ` のように照合形が同じ名前の前後が `id` で決まるようになる。ライブラリの題名順と
-  同じ定義にそろうので、契約の「名前の自然順」の文言は変えない。
+| Option | Verdict |
+| --- | --- |
+| **Keep the port for the per-row check** | Chosen |
+| Drop the port and refetch the list after every action | Rejected: brings back per-action refetching, as the rationale explains |
+| Drop the port and keep an acted-on row even when it no longer matches | Rejected: a row renamed during a search so it no longer matches stays until the next refetch and disagrees with the server's list |
 
-## R-11: 続きは画面の末尾に近づいたら 100 件ずつ読み、`id` で重複を捨て、件数が食い違えば知らせて取り直させる
+**Rationale**: Before the revision the port let the screen match every tag. With paging, checking one row by
+a round trip would mean a list refetch per row action, one of the causes of the "freezes every time" before
+the revision; with the server's matching form on the screen, the check is synchronous. The machinery that
+catches disagreements between the two languages on the same input set is already merged.
 
-- Decision: 画面は 1 ページ 100 件（`limit=100`。`GET /api/library` の 60 件より多いのは、行が 1 列で
-  軽く、1 画面に 12 行以上出るため）で、仮想化が描く最後の行が読み込んだ行の末尾から数行以内に
-  入ったら `nextCursor` で次を 1 回だけ要求する（同時に 2 つの続きは送らない）。届いた行は `id` で
-  重複を捨てて末尾に足す（`videosData.ts` の `appendUnique` と同じ）。続きの応答の `totalAll` が画面の
-  持つ値と違えば、行はそのまま残して「一覧が変わった」の 1 行と「取り直す」を出し、続きの読み込みは
-  止める（`videosData.ts` の `inconsistent` と同じ形）。続きの読み込みに失敗したら、読み込んだ行は残し、
-  末尾に失敗の 1 行と「Retry」を出して同じカーソルで読み直せる。検索・絞り込み・並び順を変えたら、
-  進行中の要求を `AbortController` で打ち切り、世代の番号で古い応答を捨て、先頭から読み直す
-  （[data-model.md §4](data-model.md#4-画面の側で持つ状態)）。
-- Rationale: Edge Case「続きを読むあいだに別のタブでタグが増えたり消えたりしたとき: 同じタグが二重に
-  出たり、行が抜けたまま気づけなかったりしない」の前半は keyset と `id` の重複捨てで、後半は
-  `totalAll` の食い違いの知らせで満たす。keyset は「カーソルより前に並ぶようになった行」を続きに
-  出さないので、抜けそのものは防げない（[013 の list-api.md §5](../013-library-search/contracts/list-api.md#5-カーソルと誤り)
-  が同じ範囲の保証）。黙って取り直すと、選んでいる行とスクロール位置を失う。Edge Case「続きを読んで
-  いる最中に検索・絞り込み・並び順を変えたとき: 古い条件の続きは一覧に混ざらない」は、打ち切りと
-  世代の番号で満たす（`web/src/api/tags.ts` の `generation` と同じ考え）。
-- Alternatives considered: `IntersectionObserver` の番兵（ライブラリの形。仮想化の一覧では番兵が
-  描かれる位置の制御が仮想化の外に出るので、仮想化が持つ「描いた最後の行の位置」を使う方が短い）。
-  食い違いを見つけたら黙って先頭から読み直す（選択とスクロール位置を失う。`useScanIssues` のように
-  読んだ分まで読み直す形は、数千行を読み直すことになる）。`total` でも食い違いを見る（`total` は自分の
-  操作でも変わり、画面が局所で数え直す値なので、他のタブの変化の印には `totalAll` の方が確かである。
-  自分の操作も `totalAll` を局所で数え直す）。ページを 200 件にする（1 ページの応答が 3 倍近くなり、
-  受け入れ条件 2 の「最初に読み込む量」を無駄に増やす）。
+Lowercasing and the remaining difference (code points missing from Node's Unicode version are excluded as
+known exceptions) follow the merged implementation and tests and are not decided again here.
 
-## R-12: 操作のあとの反映は読み込んだ行の中で行い、並びの位置は `NaturalSortKey` の移植で決める
+## R-4: Bulk confirm, reject and delete use one `POST /api/tags/batch` transaction that skips and counts misses
 
-- Decision: 1 件とまとめての操作のあと、画面はサーバーの一覧を取り直さず、読み込んだ行をその場で
-  書き換える。確定は行の `tentative` を偽に、却下・削除・統合元は行を取り除き、統合先は応答の `tag` に
-  差し替えて（読み込んでいない統合先は差し込んで）並びの位置を直し、改名は行の名前を差し替えて並びの
-  位置を直す。位置が読み込んだ範囲の外（最後の行より後ろで `nextCursor` がある）になる行は `rows` に
-  置かず、続きのページに任せる。keyset の続きは最後の行の鍵より後ろだけを返すので、範囲の外の行を
-  残すと続きと二重になり、範囲の中へ動いた行（`countDesc` で本数が増えた、読み込んでいない統合先）を
-  画面が置かないと、取り直すまで一覧から抜けたまま件数にだけ数えられる。作成した行は、今の条件に合えば（R-3 の
-  `foldForMatch` で検索語に、`tentative`・`videoCount` で絞り込みに照らす）並びの位置に差し込み、
-  合わなければ入れない。`total`・`totalAll` は局所で増減する。並びの位置は `web/src/lib/naturalSortKey.ts`
-  （`NaturalSortKey` の移植。`foldForMatch` の上に数字の連続の置き換えを足す）で作った鍵を符号位置の
-  順で比べ、本数・作った日の並びでは先にその値で比べる。`notFoundIds` を受けたときだけ先頭から
-  取り直す（R-4）。共有の保持（`web/src/api/tags.ts`）の `afterTagChanged` は、購読者がいるときだけ
-  取り直し、いなければ `held` を捨てて次の `getTags` に取らせる。
-- Rationale: 操作のたびに先頭から取り直すと、末尾まで読んだ 30,000 行が 1 ページに戻り、スクロール位置と
-  選択を失う。読んだ分を読み直す形は数千行の往復になる。読み込んだ行の中で書き換えれば往復は 0 で、
-  受け入れ条件 3・10 の「固まらない」にも届く。位置をサーバーと同じ鍵で決めるのは、取り直したときに
-  行が別の場所へ動かないためで、`compareNatural`（元の名前に掛ける）では R-10 の鍵と前後が食い違う。
-  共有の保持の取り直しを購読者がいるときに限るのは、タグ管理画面には購読者が無く、操作のたびに
-  30,000 個の全件を取り直すと転送量が総数に比例して戻ってしまうからである（要件 2・3。全件の
-  JSON の解釈は 0.2 秒の長いタスクになりうる）。
-- Alternatives considered: 操作のたびに先頭から取り直す（上の Rationale）。`compareNatural` で位置を
-  決める（照合形が同じ名前の前後がサーバーと違う）。鍵を比べずに作成・改名した行を先頭に置く
-  （「作った日」の新しい順では正しいが、名前の順では取り直すまで並びが崩れる）。共有の保持の取り直しを
-  今のまま続ける（上の Rationale）。
-- 移植の検査: `NaturalSortKey` の入力と期待の組を `fold_for_match.json` と同じ要領で
-  `internal/domain/testdata/natural_sort_key.json` に置き、Go の試験と Vitest の試験が同じファイルを読む。
-  鍵の比較は Go がバイト順、画面は符号位置の順で行い、どちらも同じ順になる（UTF-8 のバイト順と
-  符号位置の順は一致する。UTF-16 のコード単位の順は一致しないので `<` で文字列を比べない）。
+**Decision**: The route takes `{ action: confirm | reject | delete, ids }` and, in one transaction, processes
+only the ids that are existing tags of the kind the action works on (confirm and reject: tentative tags;
+delete: confirmed tags). The response has three arrays: processed ids, ids not found, and ids skipped for the
+wrong kind ([contracts/screen-api.md §1](contracts/screen-api.md#1-post-apitagsbatch),
+[data-model.md §2](data-model.md#2-store-operations)). The single-tag routes (`POST /api/tags/{id}/confirm`
+and others) stay, and row actions keep using them (requirement 8, "the existing per-row rules do not
+change").
 
-## R-13: 却下した名前は `GET /api/tags/rejected-names` のページで受け、窓の中で続きを読む
+The rule below sorts each id in `ids`.
 
-- Decision: `GET /api/tags/rejected-names` に `cursor`・`limit`（既定 100、最大 200）を足し、応答に
-  `total` と `nextCursor` を足す（[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-のパラメータ)）。
-  並びは `sort_key`（R-10）、同じなら `name` のバイト順。画面は開いたときに 1 ページだけ受けて入口に
-  `total` を出し、窓を開いたあと窓の中身を末尾までスクロールしたら続きを受ける。× で外した名前は
-  局所で取り除き `total` を 1 減らす。却下・作成・改名・シノニムの追加のあとの取り直しは先頭の
-  1 ページだけを取り直す（031 のきっかけのまま）。
-- Rationale: 要件 12 の後半「却下した名前の一覧も、開いたときに表示に要る分だけを読み込む」。
-  却下した名前は外部連携 API が仮のタグを作るたびに増えうるので、タグと同じく総数に比例した読み込みに
-  しない。既定を 100 件にするのは R-11 と同じ。
-- Alternatives considered: 全件のまま（要件 12 と相反する）。入口の件数のために `total` だけ返す経路を
-  足す（1 ページの応答に `total` を載せれば足りる）。
-- 追記（見た目のレビューのあとの直し）: 窓と入口は、見出しの下のタブ「Rejected names 〈`total`〉」と
-  その本文に置き換えた（[ui-design.md「Rejected names tab」](ui-design.md#rejected-names-tab)）。続きは
-  本文のスクロール（表示域を根にした番兵）で受ける。ページの受け方・件数・取り直しの規則は上のまま。
+```mermaid
+flowchart LR
+    I[id in ids] --> E{Tag exists?}
+    E -- no --> N[notFoundIds]
+    E -- yes --> K{Kind fits action?}
+    K -- no --> S[notApplicableIds]
+    K -- yes --> P[appliedIds]
+```
 
-## R-14: 統合の窓の統合先の候補は `GET /api/tags?q=…&limit=…` で引く
+| Option | Verdict |
+| --- | --- |
+| **One route, one transaction, skip and report misses** | Chosen |
+| One route per action (`/api/tags/confirm`, `/reject`, `/delete`) | Rejected: same body and response shape, so nothing justifies splitting |
+| The screen calls the single-tag routes in turn | Rejected: requests equal the selection size, and the handling of a mid-way failure is left to the screen; this is the freezing itself |
+| Fail the whole request with `404` for a missing id | Rejected: the Edge Case asks for the rest to be processed |
 
-- Decision: `MergeTagDialog` の統合先の候補は、入力の照合形で `GET /api/tags` を `q`・`limit`
-  （候補の最大の行数。[ui-design.md「Merge dialog」](ui-design.md#merge-dialog) の 8 行）付きで呼んで
-  作る（R-1 の経路）。行から開いたときは応答から統合元を除き、選んだ中から開いたとき（`fromSelection`）は
-  除かない（要件 9「統合先は選んだ中からでも」と Edge Case「統合先は統合元から外す」。merge 済みの
-  `MergeTagDialog` と同じ）。候補の並びはサーバーの名前の順のまま。入力が変わったら
-  進行中の要求を打ち切り、応答を待つ間は前の候補を残す。`tags` の prop（画面が持つ全件）は外す。
-- Rationale: 改訂前は画面が全件を持っていたので候補はそこから作れた。ページで読む形（R-1）では画面は
-  読み込んだ行しか持たず、要件 9 は「統合先は選んでいないタグからでも選べる」と求めるので、読み込んで
-  いないタグも候補に要る。共有の保持（全件の `getTags`）を窓を開くときに取る形は、30,000 個の規模で
-  窓を開くたびに全件の転送と JSON の解釈（0.2 秒を超える長いタスクになりうる。要件 3 の「統合…の
-  どれをしても固まらない」）が起きる。サーバーの検索は照合形（R-1）で引くので、候補の照合も
-  `toLowerCase().includes` から全角・半角・かなを同一視する形にそろう。
-- Alternatives considered: 共有の保持の全件から作る（上の Rationale。親 Issue の「対象外」が全件の
-  候補を #674・#675 に渡したのは管理画面の外の話で、管理画面の中の窓はこの feature が持つ）。
-  読み込んだ行だけから作る（要件 9 と相反する）。
-- 範囲: 「タグを付ける」の候補（`web/src/library/tagChoices.tsx`・`AddTagPopover`・`VideoTags`）は
-  変えない（親 Issue の「対象外」）。
+**Rationale**: Confirming 100 tentative tags as 100 requests and 100 refetches is what the parent Issue's
+"freezes every time" is; one transaction means one request and one screen update, which meets acceptance
+criterion 10. The Edge Cases "selecting kinds the action does not apply to" and "another tab removes some of
+the targets" both say "process the rest and report the count", so the result is not all-or-nothing and
+skipped ids are returned by reason. A failed transaction applies nothing, so "the done and not-done parts are
+clear, and the not-done part stays selected" holds when the screen removes only `appliedIds` from the
+selection.
+
+**Limit**: `ids` holds 1 to 20,000 ids, for the same reason as `videoIds` of `POST /api/video-tags` (fits the
+1 MiB body limit and passes to `json_each` as one argument). Over the limit returns `400` with reason
+`too_many_tags` (with `limit`). The limit counts the ids sent, so when the loaded rows exceed it the screen
+disables only the header checkbox (select all loaded), and disables bulk actions only when the selection
+exceeds it. Requirement 10 targets the loaded rows, so a 30,000-tag list scrolled to the end cannot use
+select all, but a row-by-row selection still works (requirements 8 and 9); gating bulk actions on loaded rows
+would block a selection of a few rows just because the user scrolled near the end.
+
+## R-5: Merge takes `sourceIds` (one or more) in `POST /api/tags/{id}/merge`, also for a single merge
+
+**Decision**: `MergeTagRequest` becomes `{ sourceIds: int64[] }`, and `sourceId` is removed. The response is
+`{ tag: Tag, notFoundIds: int64[] }`. A missing target `{id}` returns `404 tag_not_found`; `{id}` inside
+`sourceIds` returns `400` (reason `merge_same_tag`, as today). Missing sources are skipped and listed in
+`notFoundIds`, and the rest merge in one transaction
+([contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-changes)).
+
+| Option | Verdict |
+| --- | --- |
+| **`sourceIds` only** | Chosen |
+| Keep `sourceId` and add an optional `sourceIds` | Rejected: a shape that needs exactly one of the two adds `oneOf` handling to the generated code, the shape [014 contracts/tags-api.md §1](../014-video-tags/contracts/tags-api.md#1-schemas) avoided |
+| A separate route only for bulk merge | Rejected: the same transaction would live in two places |
+
+**Rationale**: The merge transaction (copy assignments, move names, delete the source, confirm the target)
+only repeats per source, so one and many need no different shapes. `api/openapi.yaml` is the screen's
+contract and its only caller is `mergeTag` in `web/src/api/tags.ts`; the external API
+(`api/external-v1.yaml`) has no merge.
+
+**Statement count independent of the number of sources**: calling the single `mergeTagInto` per source runs
+the target's `tagByID` (a recount and a read of the growing synonym list) each time, holding the write
+transaction for long in a 20,000-tag merge. The source set goes to `json_each`; copying assignments, moving
+names and deleting sources are one statement each, and the target is read once at the end (`mergeTagsInto`
+in [data-model.md §2](data-model.md#2-store-operations)).
+
+When the target is among the sources, the screen removes it from the sources (Edge Case). The server still
+rejects that with `400`.
+
+## R-6: `POST /api/tags/impact` counts affected videos without duplicates for the confirmation
+
+**Decision**: The route takes `{ action, ids }` and returns the number of `ids` that exist and that `action`
+(`reject`, `delete`, `merge`) works on, and the number of videos now in the library carrying any of them
+(manually added or from the folder name,
+[014 data-model.md §5](../014-video-tags/data-model.md#5-video-counts)), deduplicated by video `id`
+([contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)).
+
+| Option | Verdict |
+| --- | --- |
+| **A read route that counts with the batch rule** | Chosen |
+| Sum of `videoCount` | Rejected: counts duplicates, which the requirement forbids |
+| Return counts per kind and let the screen choose | Rejected: the screen would hold a second copy of the rule, which can drift from the server's processing |
+| Add `dryRun` to `POST /api/tags/batch` | Rejected: mixes reads and writes in one route; `POST /api/video-tags/summary` is the precedent for a read route |
+
+**Rationale**: Requirement 11 and acceptance criteria 11 and 12 ask for a count without duplicates; a sum of
+the screen's `videoCount` counts a video with two of the tags twice. A single delete or merge confirmation
+still uses `videoCount` (014's "no route for confirmation" is about single tags; the bulk confirmation is a
+request this feature adds).
+
+**Why `action`**: bulk reject and delete can mix tentative and confirmed tags (requirement 8), and
+`POST /api/tags/batch` skips kinds that do not apply (R-4). Counting all `ids` would show 101 videos when
+deleting a tentative tag on 100 videos together with a confirmed tag on 1 video, although only the confirmed
+tag is deleted. The count covers only what the action changes, so it uses the same rule as the processing
+(`TagImpactApplies`, following `TagBatchApplies`,
+[data-model.md §1](data-model.md#1-values-added-to-domain)).
+
+## R-7: The sort order is a per-device preference in `localStorage`; filters stay in screen state
+
+**Decision**: `readTagListPreferences` and `writeTagListPreferences` in
+`web/src/preferences/tagListPreferences.ts` (merged) store only the sort order. They are total functions like
+`viewPreferences.ts` (never throw; a broken value reads as the default, `Name`). `Tentative only`,
+`Unused only` and the search term are not stored and not put in the URL. The sort values are the five values
+of the API's `TagSort` (`name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc`), and the screen sends
+the stored value as the `sort` parameter (R-1).
+
+| Option | Verdict |
+| --- | --- |
+| **Device preference in `localStorage`** | Chosen |
+| URL query | Rejected: same shape as the library, but back and forward change the sort, and reopening the browser loses it |
+| The server's `settings` table | Rejected: a per-device display preference has no reason to be a server setting |
+
+**Rationale**: Requirement 5 asks only the sort order to survive leaving the screen and reopening the
+browser. A device preference fits because the library's sort is also kept on the device by `viewPreferences`,
+and the management screen's URL is not meant to be shared. Filters are not stored because nothing changes the
+judgement of [031 research.md R-8](../031-tentative-tags/research.md#r-8-the-tentative-only-filter-and-the-rejected-name-list-live-in-the-screen)
+that kept `Tentative only` in screen state, and the unused filter has the same nature. The stored values equal
+the API's because sorting moved to the server (R-1), leaving no reason for the screen to keep a mapping
+table.
+
+**Values**: `name` (default), `countDesc`, `countAsc`, `createdDesc`, `createdAsc`. `Name` has no direction
+(as in the current order). Ties are broken by the server as in R-1.
+
+**Addendum (fix after the visual review)**: with search, filters and sort moved into the shared top bar used
+by the library, the search term, `Tentative only`, `Unused only`, the sort order and the tab under the heading
+go into the URL query (`q`, `tentative=1`, `unused=1`, `sort`, `tab=rejected`), like the library's list
+conditions ([ui-design.md "URL state"](ui-design.md#url-state), `web/src/tags/tagListUrl.ts`). Conditions
+then survive reload and back and forward, as in the library; this replaces "not put in the URL" above.
+`localStorage` still keeps only the sort order, used when the URL has no `sort`.
+
+## R-8: "Date created" is `tags.created_at` exposed as `Tag.createdAt`; tags created in the same second sort by name
+
+**Decision**: `GET /api/tags` and every response that returns a `Tag` gain `createdAt` (`date-time`)
+(merged). The value is the existing `tags.created_at` (Unix seconds), so there is no migration and no column
+change. The `Date created` sort compares `created_at` and, on a tie, uses the name order like every other sort
+(requirement 4).
+
+| Option | Verdict |
+| --- | --- |
+| **Existing `created_at` in seconds, ties by name** | Chosen |
+| Ties by `id` descending (creation order) | Rejected: conflicts with requirement 4, "tags with the same value are ordered by name" |
+| Store `created_at` in milliseconds | Rejected: mixes units with existing rows, and copying in a migration cannot restore the precision |
+
+**Rationale**: The column exists and `insertTag` writes it. Finer precision would change the column's meaning
+and mix with existing rows. Bulk tagging in the external API creates several tags in one transaction, so
+they share a second, and requirement 4 sets their order to the name order.
+
+The external API's response (`listTags` in `api/external-v1.yaml`) does not change: only `domain.Tag` gains a
+field, and `internal/httpapi/external.go` maps to the external types explicitly.
+
+## R-9: `scripts/tagsbench` builds scale data and a Playwright script measures the production build
+
+**Decision**: `scripts/tagsbench` (Go, merged) creates a data directory under `.local/tagsbench/<scale>/`.
+It writes the parent Issue's scale through the role types of `internal/store`
+(`SettingsStore.AddMediaFolder`, `ScanIndexStore.UpsertVideo`, `TagStore.ApplyVideoTags`). It creates no
+video files, only location rows under the registered folder. The same program starts the built single binary
+on that data, and `web/bench/tags-admin.bench.ts` (Playwright, configured apart from the `web/e2e/` tests and
+not part of `task test-e2e` or CI) measures the scenarios and prints a table. The steps are in
+`docs/how-to/tags-admin-benchmark.md`, and the results go in the PR body ([quickstart.md](quickstart.md)).
+
+The flow below shows how the data and the measurement connect.
+
+```mermaid
+flowchart LR
+    T[scripts/tagsbench] -->|store role types| D[.local/tagsbench/scale]
+    T -->|starts| B[single binary]
+    B --> D
+    P[tags-admin.bench.ts] -->|headless Chromium| B
+    P --> R[result table]
+```
+
+**Scales and scenarios added by the revision**: a 30,000-tag scale with 30,000 videos (as at 3,000 tags);
+`-videos N` decouples the video count from the scale (omitted, it stays 10 times the tag count). Two
+scenarios are added: the count and response size `GET /api/tags` returns on open (acceptance criterion 2),
+and the frame times while scrolling the 30,000-tag list to the end with more rows loading (acceptance
+criterion 4).
+
+| Option | Verdict |
+| --- | --- |
+| **Separate benchmark on the production build** | Chosen |
+| Put it in `web/e2e/` and run with `task test-e2e` | Rejected: loading 30,000 videos and measuring adds minutes to e2e, and timing noise makes CI unstable |
+| Generate and scan real files | Rejected: ffprobe makes preparing the scale slow, and the target is the management screen, not the scan |
+| Measure in Vitest's jsdom | Rejected: render time differs from a real browser, so the acceptance numbers mean nothing |
+| 10 times the videos at 30,000 tags too | Rejected: building the data takes over an hour, and it measures a video count the parent Issue's table does not have |
+
+**Rationale**: The acceptance criteria measure the production build from headless Chromium, and their numbers
+(1 second, 0.2 seconds, 50 ms, the same transfer size) cannot be checked without scale data. As with
+`scripts/previewbench` in `docs/how-to/preview-benchmark.md`, the target is the production code itself, and
+no measurement hooks go into the product; rows are written only through the store's public operations so no
+SQL leaves `internal/store` (ARCHITECTURE.md "`store.DB` does not hand out its `*sql.DB`"). The 30,000-tag
+scale does not use 300,000 videos because the parent Issue gives no video count for it (the table heading is
+"a library of 30,000 tags") and the aim is the difference by tag count; with the same videos as at 3,000
+tags, the only difference between the two scales is the number of tags.
+
+## R-10: A natural-order name key `sort_key` on `tag_names` and `rejected_tag_names`, filled by the startup key refresh
+
+**Decision**: Add `sort_key text not null default ''` to `tag_names` and `rejected_tag_names`. It holds
+`domain.NaturalSortKey(name)` (`FoldForMatch` applied, then each digit run replaced with a length-prefixed
+form, so byte order is natural order;
+[013 data-model.md §4](../013-library-search/data-model.md#4-title_key-rules)), written in the same
+transaction whenever a name row is written (create, synonym, create on assignment, rename, reject). For
+existing rows the migration resets `search_version` to 0 (and adds `search_version` to
+`rejected_tag_names`), and `TagStore.RefreshSearchKeys` at startup fills the key together with `search_key`
+(the same point as
+[014 data-model.md §7](../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box)). The
+server's name order is the byte order of this key, then `id` ([data-model.md §0](data-model.md#0-migration)).
+
+| Option | Verdict |
+| --- | --- |
+| **Stored key filled by the startup refresh** | Chosen |
+| `order by name collate nocase` | Rejected: folds only case and does not order `2` before `10`, a step back from today's natural order |
+| No stored key; sort everything in Go, then cut `limit` | Rejected: every page reads and sorts every tag, defeating paging |
+| Reuse `search_key` as the key | Rejected: the matching form does not length-prefix digit runs, so `tag 2` sorts after `tag 10` |
+| A separate `sort_version` column | Rejected: `search_version` means "the version of the key rules", and one version covers two keys |
+
+**Rationale**: The keyset cursor of R-1 has to fetch "the next row in name order" in SQL, which the Go
+function `CompareNatural` cannot do; the library's title order already keeps the same key in
+`video_locations.title_key` for `order by` and the cursor (`sortText` in `listing.go`). Rejected names get the
+key too because requirement 12 asks their list to load only what it shows, in natural name order
+([031 contracts/screen-api.md §3](../031-tentative-tags/contracts/screen-api.md#3-rejected-names)). The
+startup refresh is used because SQL cannot compute `NaturalSortKey`, and the key-rule version and rebuild
+machinery already exist.
+
+**Change in the name order**: before the revision, `ListTags` sorted with Go's `SortTags` (`CompareNatural`
+on the primary name, ties by the raw string). `NaturalSortKey` works on the matching form (full-width,
+half-width and kana folded), so names with the same matching form, such as `アニメ` and `あにめ`, are now
+ordered by `id`. This is the same definition as the library's title order, so the contract's wording "natural
+name order" stays.
+
+## R-11: More rows load 100 at a time near the end, duplicates are dropped by `id`, and a count mismatch asks for a reload
+
+**Decision**: A page is 100 tags (`limit=100`; more than the 60 of `GET /api/library` because rows are one
+light column and more than 12 fit on one screen). When the last row the virtualizer renders comes within a
+few rows of the end of the loaded rows, the screen requests the next page with `nextCursor` once (never two
+in flight). Arriving rows are appended with duplicates dropped by `id` (as `appendUnique` in `videosData.ts`).
+On a cancelled or failed load, or a mismatch, the rules in the diagram apply
+([data-model.md §4](data-model.md#4-screen-state)).
+
+The diagram below shows the loading states of the list.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> LoadingMore: last rendered row near end
+    LoadingMore --> Idle: page appended
+    LoadingMore --> Failed: request fails
+    Failed --> LoadingMore: Retry, same cursor
+    LoadingMore --> ListChanged: totalAll differs
+    ListChanged --> [*]: Reload from first page
+    Idle --> [*]: conditions change
+    LoadingMore --> [*]: conditions change, abort
+```
+
+When `totalAll` in a next-page response differs from the screen's value, the rows stay, more loading stops,
+and the screen shows the list-changed line with `Reload` (the same shape as `inconsistent` in
+`videosData.ts`). A failed next page keeps the loaded rows and shows a failure row with `Retry` at the end,
+which retries the same cursor. Changing search, filters or sort aborts the request in flight with
+`AbortController`, discards stale responses by a generation number, and loads from the first page.
+
+| Option | Verdict |
+| --- | --- |
+| **Trigger from the virtualizer's last rendered row** | Chosen |
+| An `IntersectionObserver` sentinel (the library's form) | Rejected: in a virtualized list the sentinel's position is controlled outside the virtualizer; the virtualizer's last rendered row is shorter |
+| Silently reload from the first page on a mismatch | Rejected: loses the selection and scroll position; reloading everything read so far, as `useScanIssues` does, means reloading thousands of rows |
+| Also check `total` for a mismatch | Rejected: `total` changes with the user's own actions and is recounted locally, so `totalAll` is the surer sign of another tab's change; own actions recount `totalAll` locally too |
+| 200 tags per page | Rejected: nearly triples one page's response and inflates "the amount first loaded" of acceptance criterion 2 |
+
+**Rationale**: The Edge Case "another tab adds or removes tags while more rows load: no tag appears twice and
+no row goes missing unnoticed" is met in its first half by keyset and `id` deduplication and in its second
+half by the `totalAll` mismatch notice. Keyset does not return rows that moved before the cursor, so it cannot
+prevent the gap itself ([013 list-api.md §5](../013-library-search/contracts/list-api.md#5-cursor-and-errors)
+gives the same guarantee), and a silent reload loses the selection and scroll position. The Edge Case
+"changing search, filters or sort while more rows load: the old conditions' rows do not mix in" is met by the
+abort and the generation number (the same idea as `generation` in `web/src/api/tags.ts`).
+
+## R-12: Actions update the loaded rows in place, positioned with a port of `NaturalSortKey`
+
+**Decision**: After single and bulk actions, the screen does not refetch the list but rewrites the loaded rows:
+
+| Action | Change to the loaded rows |
+| --- | --- |
+| Confirm | Set the row's `tentative` to false |
+| Reject, delete, merge source | Remove the row |
+| Merge target | Replace with the response's `tag` (insert it if not loaded) and reposition |
+| Rename | Replace the name and reposition |
+| Create | Insert at its position if it meets the current conditions, otherwise leave it out |
+
+Whether a created row meets the conditions uses `foldForMatch` from R-3 for the search term, and `tentative`
+and `videoCount` for the filters. `total` and `totalAll` change locally. A refetch from the first page
+happens only when `notFoundIds` arrives (R-4). The shared cache's `afterTagChanged` (`web/src/api/tags.ts`)
+refetches only when there are subscribers, and otherwise drops `held` for the next `getTags` to fetch.
+
+The rule below places a repositioned or created row.
+
+```mermaid
+flowchart LR
+    R[row to place] --> K[compute key]
+    K --> P{Position past last row?}
+    P -- no --> I[place in rows]
+    P -- yes --> C{nextCursor?}
+    C -- yes --> L[leave to next page]
+    C -- no --> I
+```
+
+The key comes from `web/src/lib/naturalSortKey.ts` (a port of `NaturalSortKey`: `foldForMatch` plus the
+digit-run replacement) and is compared by code point; the video-count and date-created sorts compare their
+value first. A row placed outside the loaded range would repeat in the next page, because the keyset returns
+only rows after the last row's key; a row that moves into the loaded range (a merge target not yet loaded, or
+one whose count rose under `countDesc`) is counted but missing until a refetch unless the screen places it.
+
+| Option | Verdict |
+| --- | --- |
+| **Rewrite loaded rows, position with the ported key** | Chosen |
+| Refetch from the first page after every action | Rejected: as the rationale explains |
+| Position with `compareNatural` | Rejected: names with the same matching form order differently from the server |
+| Put created and renamed rows at the top without comparing keys | Rejected: correct for newest-first `Date created`, but the name order stays broken until a refetch |
+| Keep refetching the shared cache as today | Rejected: as the rationale explains |
+
+**Rationale**: Refetching from the start after each action shrinks 30,000 loaded rows back to one page and
+loses the scroll position and selection, and reloading what was read is a round trip of thousands of rows;
+rewriting in place needs no round trip and meets "does not freeze" of acceptance criteria 3 and 10.
+Positioning with the server's key keeps rows from jumping on a refetch, whereas `compareNatural` (on the
+primary name) disagrees with the R-10 key. The shared cache refetches only for subscribers because the tag
+management screen has none, and refetching all 30,000 tags per action would bring back transfer that grows
+with the total (requirements 2 and 3; parsing the full JSON can be a 0.2-second long task).
+
+**Port check**: input and expected pairs for `NaturalSortKey` live in
+`internal/domain/testdata/natural_sort_key.json`, like `fold_for_match.json`, and the Go and Vitest tests
+read the same file. Go compares keys by bytes and the screen by code points; both give the same order (UTF-8
+byte order equals code point order; UTF-16 code unit order does not, so strings are not compared with `<`).
+
+## R-13: Rejected names load in pages from `GET /api/tags/rejected-names`, with more loaded on scroll
+
+**Decision**: `GET /api/tags/rejected-names` gains `cursor` and `limit` (default 100, maximum 200), and the
+response gains `total` and `nextCursor`
+([contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-parameters)). The order is
+`sort_key` (R-10), then the byte order of `name`. On open the screen receives one page and shows `total` at
+the entry point, and loads more when the list is scrolled to the end. A name removed with `Allow again` is
+removed locally and `total` drops by 1. After reject, create, rename and adding a synonym, only the first page
+is refetched (the 031 triggers, unchanged).
+
+| Option | Verdict |
+| --- | --- |
+| **Paged route with `total`** | Chosen |
+| Keep the full list | Rejected: conflicts with requirement 12 |
+| A separate route returning only `total` for the entry point | Rejected: `total` on the page response is enough |
+
+**Rationale**: The second half of requirement 12 asks the rejected-name list to load only what it shows on
+open. Rejected names can grow each time the external API creates a tentative tag, so like tags they must not
+load in proportion to the total. The default of 100 follows R-11.
+
+**Addendum (fix after the visual review)**: the dialog and its entry point were replaced by the tab
+`Rejected names 〈total〉` under the heading and its body
+([ui-design.md "Rejected names tab"](ui-design.md#rejected-names-tab)). More rows load as the body scrolls (a
+sentinel rooted at the viewport). The paging, count and refetch rules above are unchanged.
+
+## R-14: Merge target candidates come from `GET /api/tags?q=…&limit=…`
+
+**Decision**: The target candidates in `MergeTagDialog` come from `GET /api/tags` with `q` (the folded input)
+and `limit` (the maximum candidate rows, 8 in [ui-design.md "Merge dialog"](ui-design.md#merge-dialog)), the
+route of R-1. Opened from a row, the sources are removed from the response; opened from the selection
+(`fromSelection`), they are not (requirement 9, "the target can also be one of the selected tags", and the
+Edge Case "the target is removed from the sources"; as in the merged `MergeTagDialog`). Candidates keep the
+server's name order. A change of input aborts the request in flight, and the previous candidates stay while
+waiting. The `tags` prop (the full list held by the screen) is removed.
+
+| Option | Verdict |
+| --- | --- |
+| **Fetch candidates from the server per input** | Chosen |
+| Build from the shared cache's full list | Rejected: as the rationale explains; the parent Issue's `対象外` hands full-list candidates outside the management screen to #674 and #675, but the dialog inside it belongs to this feature |
+| Build from the loaded rows only | Rejected: conflicts with requirement 9 |
+
+**Rationale**: Before the revision the screen held every tag, so candidates came from there. With paging
+(R-1) the screen holds only loaded rows, and requirement 9 lets the target be any tag not selected, including
+tags not loaded. Fetching the shared cache's full list on each dialog open would, at 30,000 tags, transfer and
+parse everything (a long task that can exceed 0.2 seconds; requirement 3, "merge… does not freeze"). The
+server searches in the matching form (R-1), so candidate matching moves from `toLowerCase().includes` to
+folding full-width, half-width and kana.
+
+**Scope**: the `Add tag` candidates (`web/src/library/tagChoices.tsx`, `AddTagPopover`, `VideoTags`) do not
+change (the parent Issue's `対象外`).

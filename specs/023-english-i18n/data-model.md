@@ -1,42 +1,50 @@
-# Data Model: 失敗理由のコード
+# Data Model: Failure reason codes
 
-この feature が足すのは、解析と取り込みの失敗理由のコードを入れる 3 列だけである。既存の列、
-特に自由文の `videos.probe_error`・`scans.error`・`jobs.last_error` は形も既存の値も変えない
-（要件 8）。どちらの表も作り直せるデータ（[ARCHITECTURE.md「Rebuildable and user data」](../../ARCHITECTURE.md#rebuildable-and-user-data)）
-で、区分は変わらない。
+This feature adds only three columns, holding the failure reason codes for
+probing and importing. Existing columns, in particular the free-text
+`videos.probe_error`, `scans.error` and `jobs.last_error`, keep their shape and
+existing values (requirement 8). Both tables are rebuildable data
+([Running VVMDM, "Data and recovery"](../../docs/how-to/running-vv.md#data-and-recovery)),
+and that classification does not change.
 
-移行は `internal/store/migrations/00016_failure_codes.sql` の 1 本で、3 列を `null` 可の
-`text` として足すだけである。既存の行は `null`（コードの無いアップグレード前の失敗）のまま残し、
-過去の自由文を解析してコードを埋めない（[research.md R-6](research.md#r-6-失敗理由は機械可読なコードを保存し画面は自由文を出さない)）。
+The migration is a single file, `internal/store/migrations/00016_failure_codes.sql`,
+which only adds the three columns as nullable `text`. Existing rows stay `null`
+(failures from before the upgrade, without a code); past free text is not
+parsed to fill in codes
+([research.md R-6](research.md#r-6-store-a-machine-readable-failure-code-and-show-no-free-text-on-screen)).
 
-コードの値は `internal/domain` の定数と、`api/openapi.yaml` の enum
-（[contracts/error-api.md §2・§3](contracts/error-api.md)）で同じ綴りにする。コードを付けて失敗を
-包む型も `internal/domain` に置き、`errors.As` で取り出す。分類できない失敗は `internal` である。
+Code values are spelled the same in the `internal/domain` constants and the
+`api/openapi.yaml` enums ([contracts/error-api.md §2 and §3](contracts/error-api.md)).
+The type that wraps a failure with a code also lives in `internal/domain` and is
+extracted with `errors.As`. A failure that cannot be classified is `internal`.
 
 ## 1. `videos.probe_error_code`
 
-`probe_state` を `failed` にするとき、`probe_error`（英語の自由文）と一緒に書く。`probe_error` を
-`null` に戻す箇所（解析の成功、再解析の開始）では一緒に `null` に戻す。
+Written together with `probe_error` (English free text) when `probe_state`
+becomes `failed`. Where `probe_error` is reset to `null` (a successful probe,
+the start of a re-probe), it is reset to `null` too.
 
-| コード | 状況（失敗を作る箇所） |
+| Code | Situation (where the failure is created) |
 | --- | --- |
-| `file_unavailable` | 解析の前後でファイルを確かめられない、通常ファイルでない（`internal/media/probe.go`・`assets.go`） |
-| `probe_unavailable` | `ffprobe` を起動できない（`internal/media/probe.go`） |
-| `probe_failed` | `ffprobe` が失敗した。壊れた・対応しないファイル、時間切れを含む（同上） |
-| `invalid_metadata` | `ffprobe` の出力を解釈できない、尺が読めない・不正（同上） |
-| `internal` | それ以外（`internal/app`・`internal/store` の失敗、未知のジョブの種類など） |
+| `file_unavailable` | The file cannot be checked before or after the probe, or is not a regular file (`internal/media/probe.go`, `assets.go`) |
+| `probe_unavailable` | `ffprobe` cannot be started (`internal/media/probe.go`) |
+| `probe_failed` | `ffprobe` failed, including broken or unsupported files and timeouts (same as above) |
+| `invalid_metadata` | The `ffprobe` output cannot be parsed, or the duration is unreadable or invalid (same as above) |
+| `internal` | Anything else (failures in `internal/app` or `internal/store`, an unknown job kind, and so on) |
 
-`jobs.last_error` は API に出ないので、コードの列を足さない。文は英語にする。
+`jobs.last_error` is not exposed by the API, so it gets no code column. Its text
+becomes English.
 
-## 2. `scans.error_code` と `scans.error_path`
+## 2. `scans.error_code` and `scans.error_path`
 
-`state` を `failed` にするとき（`FinishScan`、起動時の `FailInterruptedScans`）、`error`（英語の
-自由文）と一緒に書く。`error_path` は理由が特定の場所に結び付くときだけ入れ、それ以外は `null`。
+Written together with `error` (English free text) when `state` becomes `failed`
+(`FinishScan`, and `FailInterruptedScans` at startup). `error_path` is set only
+when the reason is tied to a specific place, and is `null` otherwise.
 
-| コード | `error_path` | 状況（失敗を作る箇所） |
+| Code | `error_path` | Situation (where the failure is created) |
 | --- | --- | --- |
-| `media_folder_unreadable` | メディアフォルダ | メディアフォルダを読めない（`internal/scanner` の走査の開始、取り込み後の確認） |
-| `media_folder_not_directory` | メディアフォルダ | メディアフォルダがディレクトリでない、シンボリックリンクである（同上） |
-| `location_unreadable` | 読めなかった場所 | 走査の途中で読めない場所があった、取り込み後に親ディレクトリを確かめられない（同上） |
-| `interrupted` | — | 停止の指示で打ち切った、取り込みの途中でアプリケーションが止まった（`internal/app/scans.go`・`internal/store/scans.go` の `FailInterruptedScans`） |
-| `internal` | — | それ以外（進捗を記録できない、処理の panic など） |
+| `media_folder_unreadable` | The media folder | The media folder cannot be read (start of the walk in `internal/scanner`, the check after import) |
+| `media_folder_not_directory` | The media folder | The media folder is not a directory, or is a symbolic link (same as above) |
+| `location_unreadable` | The unreadable place | A place could not be read during the walk, or a parent directory could not be checked after import (same as above) |
+| `interrupted` | — | Cut off by a stop instruction, or the application stopped during import (`internal/app/scans.go`, `FailInterruptedScans` in `internal/store/scans.go`) |
+| `internal` | — | Anything else (progress could not be recorded, a panic during processing, and so on) |

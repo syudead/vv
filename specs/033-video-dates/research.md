@@ -1,166 +1,226 @@
-# Research: 動画の更新日時とファイルの作成日時
+# Research: Video edit time and file creation time
 
-親 Issue: #630。技術スタック・境界・依存方向・索引と利用者データの区分は
-[ARCHITECTURE.md](../../ARCHITECTURE.md) と
-[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) が正本で、
-ここでは変えない。利用者データを内容の識別子に結ぶ規則は
-[specs/029-video-overrides/research.md R-1](../029-video-overrides/research.md)、集まり（バージョン）の
-利用者データの鍵は [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵)
-にある。ここには、この feature が足す決定だけを書く。
+Parent Issue: #630.
 
-## R-1: 更新日時は内容の識別子に結ぶ利用者データの表 `video_edits` に持ち、読み出しで追加日時に倒す
+Inherited decisions: the tech stack, boundaries, dependency direction, and the
+split between index and user data are defined by
+[ARCHITECTURE.md](../../ARCHITECTURE.md) and
+[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
+and do not change here. The rule for keying user data to the content key is in
+[specs/029-video-overrides/research.md R-1](../029-video-overrides/research.md),
+and the user-data key of a bundle (versions) is in
+[specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key).
+This file records only the decisions this feature adds.
 
-- **Decision**: `video_edits(content_key primary key, edited_at)` を足す。動画を返す読み出しは
-  `coalesce(video_edits.edited_at, videos.added_at)` を `Video.EditedAt` に載せる。行が無い動画の更新日時は
-  追加日時であり、既存の動画の埋め戻しは要らない（要件 2）。同じパスの中身の引き継ぎ
-  （`moveUserData`）はこの表の行も付け替える（Edge Case「新しいバージョンへ引き継がれた動画」）。
-- **Rationale**: 更新日時は所有者の操作の記録で、スキャンでは作り直せない利用者データである。
-  `playback_progress`・`public_videos`・`video_overrides` と同じく内容の識別子に結べば、再スキャン・移動・
-  改名を越えて残り、既存の引き継ぎの仕組み（`moveUserData` の表の一覧に 1 つ足す）にそのまま乗る。
-- **Alternatives considered**:
-  - `videos.edited_at` の列。`videos` は作り直せる索引で、中身が変わると行ごと消える。引き継ぎは消えた
-    行の値を `video_successions` に写して持ち回る必要があり、ARCHITECTURE.md の区分（索引と利用者データ）
-    も崩れる。却下。
-  - 利用者データの鍵（集まりなら `bundle:<id>`）に結ぶ。初期値が各動画の追加日時で、集まりのメンバーは
-    追加日時が違うので、集まりで 1 つの値にできない。却下。集まりの値（タグ・公開）を変えたときは、
-    その鍵が指す全メンバーの内容の識別子に書く（`VisibilityStore.SetVideosPublic` が内容ごとの鍵を
-    返すのと同じ広げ方、`contentKeysForUserKeys`）。
+## R-1: The edit time lives in a user-data table `video_edits` keyed by content key, and reads fall back to the added time
 
-## R-2: 更新日時を進めるのは動画の情報を書く 4 種の操作だけで、タグ自体・集まり・取り込みでは進めない
+**Decision**: Add `video_edits(content_key primary key, edited_at)`. Reads that
+return videos put `coalesce(video_edits.edited_at, videos.added_at)` into
+`Video.EditedAt`. A video without a row has its added time as its edit time, so
+existing videos need no backfill (requirement 2). The same-path content
+succession (`moveUserData`) also moves this table's rows (edge case "a video
+carried over to a new version").
 
-- **Decision**: 進めるのは次の書き込みだけである。
-  - 表示名: `OverrideStore.SetDisplayName`・`SetDisplayNames`
-  - 代表サムネイルの位置: `OverrideStore.SetThumbnailPosition`（指定と解除）
-  - 公開の設定: `VisibilityStore.SetVideosPublic`
-  - 手で付けるタグの付け外し: `TagStore.AttachTagByID`・`AttachTagByName`・`DetachTag`・
-    `ApplyVideoTags`（外部連携 API と MCP の一括）
+**Rationale**: The edit time records the owner's actions; it is user data that a
+scan cannot rebuild. Keyed by content key like `playback_progress`,
+`public_videos` and `video_overrides`, it survives rescans, moves and renames, and
+it rides the existing succession mechanism (one more entry in `moveUserData`'s
+table list).
 
-  進めないのは、再生位置（`PlaybackStore`）、スキャン・解析・サムネイル・プレビュー・指紋の取り込み
-  （`ScanIndexStore`・`IngestStore`）、タグ自体の操作（作成・改名・削除・統合・シノニム・仮の確定と却下。
-  `video_tags` の行が連鎖して変わっても進めない）、フォルダ名由来のタグの変化（フォルダの索引の作り直し、
-  グループのタグ化）、バージョンの束ね・代表の変更・外す（`VersionStore`）、同じパスの引き継ぎである。
-- **Rationale**: 親 Issue の要件 1 は「所有者が動画の情報を変えたとき」であり、受け入れ条件 1 の 4 つが
-  それである。タグの削除や統合は 1 回の操作で何千本もの動画の `video_tags` を変えるので、進めると
-  「この動画を最後にいつ直したか」が分からなくなる。束ねる操作は値を複製する構造の操作で、動画の
-  情報を書き換えない。フォルダ名由来のタグは走査が付け、所有者の編集ではない。
-- **Alternatives considered**:
-  - `video_tags`・`public_videos`・`video_overrides` の変化すべてを進める（トリガーで一律に）。上の理由で
-    タグの削除・統合・引き継ぎ・束ねでも進んでしまう。却下。
+**Alternatives considered**:
 
-## R-3: 変わらなかった編集は進めず、進める対象は書き込みが実際に変えた内容の識別子だけにする
+| Option | Verdict |
+| --- | --- |
+| A column `videos.edited_at` | Rejected: `videos` is a rebuildable index, and its row disappears when the content changes. Succession would have to copy the vanished row's value into `video_successions` and carry it along, and it breaks the index/user-data split in ARCHITECTURE.md |
+| Key by the user-data key (`bundle:<id>` for a bundle) | Rejected: the initial value is each video's added time, and bundle members have different added times, so a bundle cannot hold one value. When a bundle value (tags, visibility) changes, the time is written to the content key of every member the key points to (`contentKeysForUserKeys`, the same expansion as `VisibilityStore.SetVideosPublic` returning per-content keys) |
 
-- **Decision**: 各操作は、書き込みの中で実際に行が変わった利用者データの鍵を集め、その鍵が指す内容の
-  識別子（集まりなら全メンバー）にだけ `touchEditedAt`（[data-model.md §3](data-model.md#3-更新日時を進める規則)）を
-  書く。変わったかどうかは次で決める。
-  - `video_tags`・`public_videos`: `insert or ignore` と `delete` の `RowsAffected`（1 鍵ずつ書く経路）、
-    json_each で集合に書く `applyManualTags` は、同じ取引で書き込みの前に 1 文で変わる鍵を求める
-    （add は集合に付いていないタグがある鍵、remove は集合のタグが付いている鍵、replace はそのどちらかか
-    集合に無いタグが付いている鍵）。`returning content_key` で受け取ると変わった行ごと（上限の
-    20000 件 × 100 件で約 200 万行）を書き込みの取引の中で受け取ることになるので、使わない。
-  - 表示名: 取引の初めに対象の今の `display_name` を読み、取引の最後に残る名前（`SetDisplayNames` の一括で
-    同じ内容の識別子を何度か書いたときは最後の名前）と同じ（未設定どうしを含む）なら進めない。1 回ずつの
-    書き込みの前後で比べると、A→B→A の一括で値が変わらないのに進んでしまう。
-  - 代表サムネイルの位置: 書く前に今の `thumbnail_position_ms` を読み、同じ（解除どうしを含む）なら
-    進めない。画像の作り直し自体はこれまでどおり行う。
+## R-2: Only the four writes of video information advance the edit time; tag-level operations, bundles and ingestion do not
 
-  書く文の数は鍵の数によらず一定にする（`touchEditedAt` は json_each で渡した集合を 1 文で書く）。上限の
-  一括操作でも書き込みの取引の中で受け取る行は鍵の数まで、文は数個で、他の書き込みを待たせる時間を
-  SQLite の中の処理だけに抑える。
+**Decision**: Only these writes advance it:
 
-  書き込みが失敗して取引が戻れば、同じ取引に書く `video_edits` も戻る（Edge Case「編集が失敗したとき」）。
-- **Rationale**: Edge Case「編集の前後で値が変わらなかったときは、更新日時を進めない」と「一括操作では
-  変わった動画それぞれ」を満たすには、操作の単位ではなく行の単位で変化を知る必要がある。
-- **Alternatives considered**:
-  - 操作が成功すれば対象すべてを進める。既に付いているタグを付け直す・同じ表示名を保存するだけで
-    進んでしまう。却下。
+| Information | Writes |
+| --- | --- |
+| Display name | `OverrideStore.SetDisplayName`, `SetDisplayNames` |
+| Thumbnail position | `OverrideStore.SetThumbnailPosition` (set and clear) |
+| Visibility | `VisibilityStore.SetVideosPublic` |
+| Attaching and detaching manual tags | `TagStore.AttachTagByID`, `AttachTagByName`, `DetachTag`, `ApplyVideoTags` (bulk through the external API and MCP) |
 
-## R-4: ファイルの作成日時は所在の列 `video_locations.file_created_at` に持ち、取れなければ null にして読み出しで mtime に倒す
+These do not advance it: playback position (`PlaybackStore`); ingesting scans,
+probes, thumbnails, previews and fingerprints (`ScanIndexStore`, `IngestStore`);
+operations on tags themselves (create, rename, delete, merge, synonyms, confirming
+and rejecting tentative tags; not even when `video_tags` rows change by cascade);
+changes to folder-name tags (rebuilding the folder index, group-to-tag
+conversion); bundling, changing the representative and unbundling versions
+(`VersionStore`); and same-path succession.
 
-- **Decision**: `video_locations` に nullable の `file_created_at`（Unix 秒）を足す。走査が読めた作成日時を
-  書き、ファイルシステムが持たなければ null にする（前の走査で入った値も、読めなくなれば null に戻す。
-  [R-6](#r-6-登録済みの所在は変わっていないファイルでも作成日時が違えば次の走査で書き直す)）。値は
-  `mtime` と同じく秒で持つ。動画を返す読み出しと並べ替えは、一覧に出す所在の
-  `coalesce(file_created_at, mtime)` を `Video.FileCreatedAt` と `createdAsc`/`createdDesc` の値にする
-  （要件 3・5、Edge Case「既に登録済みの動画」）。
-- **Rationale**: 作成日時はファイルの事実なので、`mtime`・`size_bytes` と同じ所在の列である（作り直せる
-  索引）。null を保てば、作成日時を持たないファイルシステムから持つものへ移したとき（コピー先が
-  ext4 など）に、次の走査が本物の値で埋められる。倒す規則は読み出し側に 1 か所置く。
-- **Alternatives considered**:
-  - 取れないときに mtime を書く。代用と本物を後から区別できず、取れるようになっても更新されない。却下。
-  - `videos` の列。所在が複数ある動画は所在ごとに作成日時が違い、代表が変われば値も変わる
-    （Edge Case）。却下。
+**Rationale**: Requirement 1 in the parent Issue says "when the owner changes the
+video's information", and the four writes in acceptance criterion 1 are exactly
+those. Deleting or merging a tag changes `video_tags` for thousands of videos in
+one action, so advancing on it would hide when each video was last edited.
+Bundling is a structural operation that copies values and does not rewrite video
+information. Folder-name tags are attached by the scan, not edited by the owner.
 
-## R-5: 作成日時はファイルシステムのアダプタ `internal/scanner` が OS ごとに読み、Linux は `golang.org/x/sys/unix` の statx を使う
+**Alternatives considered**: Advance on every change to `video_tags`,
+`public_videos` and `video_overrides` (uniformly, with triggers). Rejected: for the
+reasons above, it would also advance on tag delete, merge, succession and
+bundling.
 
-- **Decision**: `internal/scanner` に `fileCreatedAt(path string, info fs.FileInfo) (time.Time, bool)` を置き、
-  build tag で分ける。
-  - Linux: `unix.Statx` に `STATX_BTIME` を求め、`Mask` に立っているときだけ返す。
-    `golang.org/x/sys` を直接依存にする（今は間接依存）。
-  - darwin・freebsd・netbsd: `info.Sys().(*syscall.Stat_t)` の `Birthtimespec`。1 つのファイル
-    `file_created_at_bsd.go` に `//go:build darwin || freebsd || netbsd` で置く（`_darwin.go` という名前は
-    GOOS の暗黙の制約になり、freebsd・netbsd では読まれない）。
-  - windows: `info.Sys().(*syscall.Win32FileAttributeData).CreationTime`。
-  - それ以外（`file_created_at_other.go`、上の OS を除く build tag）: 常に取れない。
+## R-3: Unchanged edits do not advance, and only the content keys a write actually changed advance
 
-  読めなかったことは失敗にせず、作成日時無しとして登録する。`domain` はこの関数を知らない。
-- **Rationale**: 標準ライブラリの `os.FileInfo` は Linux で作成日時を出さず、vv の主な配置先は
-  Linux のコンテナである（ARCHITECTURE.md「Intended topology」）。`x/sys/unix` は既に間接依存に
-  あり、ファイルシステムの事実を読むのはアダプタの仕事である（依存方向）。
-- **Alternatives considered**:
-  - 標準ライブラリだけで済ませ、Linux では常に mtime に倒す。要件 3 の「取れるときは作成日時」が
-    主な配置先で成り立たない。却下。
-  - `ffprobe` の `creation_time` タグ。コンテナのメタデータで、書き出しの日時とは限らず、無いことも多い。
-    ファイルの作成日時という要求と違う。却下。
+**Decision**: Each operation collects the user-data keys whose rows the write
+actually changed and writes `touchEditedAt`
+([data-model.md §3](data-model.md#3-edit-time-rules)) only for the content keys
+those keys point to (every member for a bundle). Change is determined as follows:
 
-## R-6: 登録済みの所在は、変わっていないファイルでも作成日時が違えば次の走査で書き直す
+| Data | How change is detected |
+| --- | --- |
+| `video_tags`, `public_videos` | `RowsAffected` of `insert or ignore` and `delete` (paths that write one key at a time). `applyManualTags`, which writes a set through json_each, finds the changing keys with one statement in the same transaction before writing (add: keys missing some tag of the set; remove: keys carrying some tag of the set; replace: either of those, or keys carrying a tag outside the set). `returning content_key` is not used, because it would deliver every changed row (up to 20000 × 100, about 2 million rows) inside the write transaction |
+| Display name | Read the targets' current `display_name` at the start of the transaction; if the name left at the end of the transaction (the last name when a `SetDisplayNames` bulk writes the same content key several times) is the same (including both unset), do not advance. Comparing before and after each single write would advance on an A→B→A bulk whose value does not change |
+| Thumbnail position | Read the current `thumbnail_position_ms` before writing; if it is the same (including both cleared), do not advance. The image is still regenerated as before |
 
-- **Decision**: 走査は変わっていないファイル（大きさと mtime が同じ）でも作成日時を読み、索引の値
-  （`IndexedVideo.FileCreatedAt`。無ければゼロ値）と違えば `Index.UpdateLocationCreatedAt(ctx, locationID,
-  createdAt)` で所在の列だけを書く。中身の識別子は計算し直さず、job も積まず、`videos.updated_at` も
-  イベントも動かさない。中身が変わったファイルは `UpsertVideo` が `VideoFile.FileCreatedAt` を他の
-  事実と一緒に書く（Edge Case「同じパスで差し替えられて作成日時が変わった」）。比べるのは `mtime` と同じく
-  秒で、読めなかったときはゼロ値として比べる（索引に値があれば null に戻す、R-4）。
-- **Rationale**: 既存の動画に作成日時を入れるのは「次のスキャンで」（Edge Case）であり、メディア
-  フォルダを歩くのは利用者が始めた走査だけである（ARCHITECTURE.md）。費用: darwin・BSD・Windows は
-  走査が既に読んだ `entry.Info()` から取れるので増えない。Linux は `entry.Info()`（lstat）が作成日時を
-  持たないので、メディアファイルごとに `statx` を 1 回足す。中身は読まないメタデータの問い合わせだが、
-  ネットワークのマウントでは 1 ファイルあたりの往復が増える。要件 3 と Edge Case「既に登録済みの動画」は
-  変わっていないファイルにも作成日時を求めるので、この費用を受け入れる。
-- **Alternatives considered**:
-  - 起動時に全所在を `stat` して埋める。利用者が始めた走査以外でメディアフォルダに触れる経路を
-    1 つ足す。却下。
-  - Linux で索引に値がある変わっていないファイルは `statx` を省く。読めなくなった所在を null に戻せず、
-    大きさと mtime を保った差し替え（`cp -p` など）で作成日時が古いまま残る。却下。
-  - 作成日時の違いを「変わった」として `UpsertVideo` に通す。中身の識別子（先頭・末尾 1 MiB の
-    sha256）を全ファイルで読み直すことになる。却下。
+The number of statements is constant regardless of the number of keys
+(`touchEditedAt` writes the set passed through json_each in one statement). Even
+for a bulk operation at the limit, the write transaction receives at most as many
+rows as keys and runs a few statements, so the time other writes wait is limited
+to work inside SQLite.
 
-## R-7: 応答の項目は `updatedAt`（vv 上の更新日時）と `fileCreatedAt`（所在の作成日時）で、画面と外部連携で同じ名前にする
+If a write fails and the transaction rolls back, `video_edits`, written in the
+same transaction, rolls back too (edge case "when an edit fails").
 
-- **Decision**: `Video`（画面）と `ExternalVideo`（外部連携）に必須の `updatedAt` と `fileCreatedAt`
-  （どちらも date-time）を足す。ゲストの応答にも入れる（追加日と同じく公開の動画の事実で、所有者の
-  データを漏らさない）。`VideoSort` に `createdAsc`・`createdDesc` を足し、ゲストにも許す
-  （`played*` のように所有者のデータに依らない）。`modifiedAsc`・`modifiedDesc` は名前も値も変えない
-  （要件 7）。`domain.Video` の項目は、既にある `UpdatedAt`（`videos.updated_at`、取り込みの行の更新）と
-  取り違えないよう `EditedAt` にする。
-- **Rationale**: 親 Issue の語は「更新日時」と「作成日時」で、`updatedAt` はそのまま。`createdAt` は
-  API の利用者が行の作成日時と読むので、ファイルの事実であることを名前に出す。
-- **Alternatives considered**:
-  - `editedAt`。親 Issue と画面の語（更新日時）から離れる。却下。
-  - `createdAt`。`VideoLocation.createdAt`（所在の行の作成）と同じ名前で意味が違う。却下。
-  - 所在ごとの `ExternalVideoLocation.createdAt`。要件 6 は動画の情報に含めることで、一覧に出す所在の
-    値で足りる。所在ごとの値は対象外のまま。却下。
+**Rationale**: The edge cases "do not advance the edit time when the value did not
+change" and "in a bulk operation, each video that changed" require knowing change
+per row, not per operation.
 
-## R-8: 再生画面は、タグと公開の設定を変えたあと動画を取り直し、新しいドメインイベントは足さない
+**Alternatives considered**: Advance every target when the operation succeeds.
+Rejected: re-attaching an attached tag or saving the same display name would
+advance it.
 
-- **Decision**: `VideoTags` と `VisibilitySwitch` に成功時の `onChanged` を足し、`VideoPage` が
-  `useVideoDetail` の `refresh` で動画を取り直す（表示名と代表サムネイルは、応答の `Video` を `replace`
-  する今の経路で `updatedAt` も入れ替わる）。`TagStore`・`VisibilityStore` はイベントを発行しない
-  まま。
-- **Rationale**: 受け入れ条件 1 は再生画面で更新日時が進んで見えること。進んだ値を知るのは
-  その操作をした画面だけで、1 回の `GET /api/videos/{id}` で足りる。ARCHITECTURE.md は
-  「タグの変更は副作用を持たないのでイベントを発行しない」と定め、`TagStore` は通知に依存しない。
-- **Alternatives considered**:
-  - `VideoOverrideChanged` のようなイベントを `TagStore`・`VisibilityStore` から発行し、`/api/events`
-    の `video` に写す。上の設計を崩し、一覧の全カードがタグの付け外しのたびに取り直す。却下。
-  - タグの付け外しの応答を `Video` に変える。`POST /api/video-tags` は複数の動画への一括操作で、
-    応答の形を変える理由にならない。却下。
+## R-4: The file creation time lives in a location column `video_locations.file_created_at`, null when unavailable, and reads fall back to mtime
+
+**Decision**: Add a nullable `file_created_at` (Unix seconds) to
+`video_locations`. The scan writes the creation time it could read, and null when
+the file system does not provide one (a value from an earlier scan also returns to
+null once it can no longer be read;
+[R-6](#r-6-a-registered-location-is-rewritten-on-the-next-scan-when-its-creation-time-differs-even-if-the-file-is-unchanged)).
+The value is stored in seconds, like `mtime`. Reads that return videos and the
+sort use `coalesce(file_created_at, mtime)` of the listed location as
+`Video.FileCreatedAt` and as the value for `createdAsc` / `createdDesc`
+(requirements 3 and 5, edge case "videos already registered").
+
+**Rationale**: The creation time is a fact about the file, so it is a location
+column like `mtime` and `size_bytes` (a rebuildable index). Keeping null means
+that when a file moves from a file system without creation times to one with them
+(copied onto ext4, for example), the next scan can fill in the real value. The
+fallback rule sits in one place, on the read side.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Write mtime when the creation time is unavailable | Rejected: a substitute cannot later be told from a real value, and it is never updated once the real value becomes available |
+| A column on `videos` | Rejected: a video with several locations has a different creation time per location, and the value would change with the representative (edge case) |
+
+## R-5: The file-system adapter `internal/scanner` reads the creation time per OS; Linux uses statx from `golang.org/x/sys/unix`
+
+**Decision**: Put
+`fileCreatedAt(path string, info fs.FileInfo) (time.Time, bool)` in
+`internal/scanner`, split by build tag:
+
+| OS | Implementation |
+| --- | --- |
+| Linux | `unix.Statx` requesting `STATX_BTIME`; returns a value only when the bit is set in `Mask`. `golang.org/x/sys` becomes a direct dependency (it is indirect today) |
+| darwin, freebsd, netbsd | `Birthtimespec` of `info.Sys().(*syscall.Stat_t)`. One file, `file_created_at_bsd.go`, with `//go:build darwin \|\| freebsd \|\| netbsd` (the name `_darwin.go` would add an implicit GOOS constraint, and freebsd and netbsd would not compile it) |
+| windows | `info.Sys().(*syscall.Win32FileAttributeData).CreationTime` |
+| Others (`file_created_at_other.go`, a build tag excluding the OSes above) | Always unavailable |
+
+A failed read is not an error; the video is registered without a creation time.
+`domain` does not know this function.
+
+**Rationale**: The standard library's `os.FileInfo` does not expose the creation
+time on Linux, and vv's main deployment target is a Linux container
+(ARCHITECTURE.md "Intended topology"). `x/sys/unix` is already an indirect
+dependency, and reading file-system facts is the adapter's job (dependency
+direction).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Standard library only, always falling back to mtime on Linux | Rejected: requirement 3's "the creation time when available" would not hold on the main deployment target |
+| The `creation_time` tag from `ffprobe` | Rejected: it is container metadata, not necessarily when the file was written, and often missing. It is not the file creation time the requirement asks for |
+
+## R-6: A registered location is rewritten on the next scan when its creation time differs, even if the file is unchanged
+
+**Decision**: The scan reads the creation time even for unchanged files (same size
+and mtime). If it differs from the indexed value (`IndexedVideo.FileCreatedAt`,
+zero value when absent), the scan writes only the location column through
+`Index.UpdateLocationCreatedAt(ctx, locationID, createdAt)`. It does not recompute
+the content key, does not enqueue jobs, and moves neither `videos.updated_at` nor
+any event. For a file whose content changed, `UpsertVideo` writes
+`VideoFile.FileCreatedAt` together with the other facts (edge case "the file was
+replaced at the same path and its creation time changed"). The comparison is in
+seconds, like `mtime`, and a failed read compares as the zero value (if the index
+has a value, it returns to null; R-4).
+
+**Rationale**: The edge case says existing videos get their creation time "on the
+next scan", and only a user-started scan walks the media folders
+(ARCHITECTURE.md). Cost: on darwin, the BSDs and Windows the value comes from
+`entry.Info()`, which the scan already reads, so nothing is added. On Linux
+`entry.Info()` (lstat) has no creation time, so each media file costs one more
+`statx`. It is a metadata query that reads no content, but on a network mount it
+adds a round trip per file. Requirement 3 and the edge case "videos already
+registered" require the creation time for unchanged files too, so this cost is
+accepted.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| `stat` every location at startup to fill the value | Rejected: it adds a path that touches the media folders outside a user-started scan |
+| On Linux, skip `statx` for unchanged files whose index already has a value | Rejected: a location that can no longer be read cannot return to null, and a replacement that keeps size and mtime (`cp -p` and similar) leaves a stale creation time |
+| Treat a creation-time difference as "changed" and pass it through `UpsertVideo` | Rejected: the content key (sha256 of the first and last 1 MiB) would be re-read for every file |
+
+## R-7: The response fields are `updatedAt` (edit time in vv) and `fileCreatedAt` (location creation time), with the same names in the screen and external APIs
+
+**Decision**: Add required `updatedAt` and `fileCreatedAt` (both date-time) to
+`Video` (screen) and `ExternalVideo` (external). Guest responses include them too
+(like the added time, they are facts about a public video and reveal no owner
+data). Add `createdAsc` and `createdDesc` to `VideoSort` and allow them for
+guests (unlike `played*`, they do not depend on owner data). `modifiedAsc` and
+`modifiedDesc` keep their names and values (requirement 7). The `domain.Video`
+field is named `EditedAt` so it is not confused with the existing `UpdatedAt`
+(`videos.updated_at`, the update time of the ingested row).
+
+**Rationale**: The parent Issue's terms are `更新日時` (update time) and
+`作成日時` (creation time), so `updatedAt` follows directly. API users read
+`createdAt` as the row's creation time, so the name states that it is a fact
+about the file.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| `editedAt` | Rejected: departs from the term in the parent Issue and the screen (update time) |
+| `createdAt` | Rejected: the same name as `VideoLocation.createdAt` (creation of the location row) with a different meaning |
+| Per-location `ExternalVideoLocation.createdAt` | Rejected: requirement 6 asks for the value in the video's information, and the listed location's value is enough. Per-location values stay out of scope |
+
+## R-8: The video page reloads the video after tag and visibility changes, and no new domain event is added
+
+**Decision**: Add a success callback `onChanged` to `VideoTags` and
+`VisibilitySwitch`, and have `VideoPage` reload the video with `refresh` from
+`useVideoDetail` (for the display name and thumbnail, the current path that
+`replace`s the screen's video with the response's `Video` also swaps
+`updatedAt`). `TagStore` and `VisibilityStore` still publish no events.
+
+**Rationale**: Acceptance criterion 1 is that the edit time visibly advances on
+the video page. Only the screen that performed the action knows the value
+advanced, and one `GET /api/videos/{id}` is enough. ARCHITECTURE.md states that
+tag changes have no side effects and therefore publish no events, and `TagStore`
+does not depend on notifications.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Publish an event like `VideoOverrideChanged` from `TagStore` and `VisibilityStore` and map it to `video` on `/api/events` | Rejected: breaks the design above, and every card in the list would reload on each tag attach or detach |
+| Change the tag attach/detach response to `Video` | Rejected: `POST /api/video-tags` is a bulk operation on several videos, which is no reason to change its response shape |

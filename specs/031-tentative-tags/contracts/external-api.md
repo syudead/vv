@@ -1,21 +1,23 @@
-# Contract: 外部連携 API v1 と MCP の仮の付与
+# Contract: Tentative attach in the external API v1 and MCP
 
-正本は `api/external-v1.yaml` で、この文書は足す項目の差分だけを書く。共通の規則（Bearer、誤りの形、
-`VideoRef`、`index`、件数の上限）は
-[specs/026-external-api/contracts/external-api.md](../../026-external-api/contracts/external-api.md)
-のまま。決定は [research.md R-7](../research.md#r-7-外部連携-api-は-tentative-を要求の-1-項目飛ばした名前を応答の-1-項目として足す)。
-互換の方針どおり、項目の追加だけを行う。新しい操作は足さない。
+Source of truth: `api/external-v1.yaml`. This document describes only the fields
+this feature adds. The shared rules (Bearer, the error shape, `VideoRef`, `index`,
+count limits) stay as in
+[specs/026-external-api/contracts/external-api.md](../../026-external-api/contracts/external-api.md).
+The decision is [research.md R-7](../research.md#r-7-the-external-api-adds-tentative-to-the-request-and-skipped-names-to-the-response).
+Following the compatibility policy, the change only adds fields; it adds no
+operation.
 
-## 0. スキーマの差分
+## 0. Schema changes
 
-| スキーマ | 足す項目 | 規則 |
+| Schema | Added field | Rule |
 | --- | --- | --- |
-| `Tag`（`GET /api/v1/tags`） | `tentative: boolean`（`required`） | 画面の `Tag` と同じ |
-| `ExternalVideoTag` | `tentative: boolean`（`required`） | 動画に付いたタグの状態 |
-| `VideoTagsRequest` | `tentative: boolean`（任意、省略時は `false`） | §1 |
-| `VideoTagsResponse` | `skippedTags: string[]`（`required`） | §1。飛ばした名前が無ければ空の配列 |
+| `Tag` (`GET /api/v1/tags`) | `tentative: boolean` (`required`) | Same as the screen's `Tag` |
+| `ExternalVideoTag` | `tentative: boolean` (`required`) | The state of a tag on a video |
+| `VideoTagsRequest` | `tentative: boolean` (optional, `false` when omitted) | §1 |
+| `VideoTagsResponse` | `skippedTags: string[]` (`required`) | §1. An empty array when no name was skipped |
 
-## 1. `POST /api/v1/video-tags` の差分
+## 1. Changes to `POST /api/v1/video-tags`
 
 ```json
 { "videos": [{ "path": "/media/a.mp4" }],
@@ -24,20 +26,16 @@
   "tentative": true }
 ```
 
-- `tentative` が `false` か省略: 今と同じ。無い名前は確定したタグとして作り、その名前が却下した名前なら
-  一覧から消える（要件 3・15）。
-- `tentative` が `true` で `add`・`replace`:
-  - 既存のタグの名前かシノニムに当たる名前は、今と同じくそのタグを付ける。そのタグが仮でも確定でも状態は
-    変えない（要件 2）。
-  - どのタグにも当たらない名前は、却下した名前の一覧に無ければ**仮のタグ**として作って付ける。
-    1 つの要求で同じ名前が複数の動画に付くときも作るのは 1 つ（Edge Case）。
-  - 却下した名前（綴りの完全一致。要件 13）は飛ばす。タグを作らず、付けず、`skippedTags` に整えた名前を
-    `tags` の順で 1 回ずつ返す。残りの名前は処理し、要求は `200` で成功する（要件 11・12）。
-  - `replace` では、飛ばした名前は最初から送られなかったものとして扱い、置き換え後の集合に入らない。
-    `tags` がすべて却下した名前なら空の集合で置き換えたのと同じになる（Edge Case）。
-- `tentative` が `true` で `remove`: 今と同じ（どのタグにも当たらない名前は何もしない）。`skippedTags` は
-  空の配列。
-- 応答:
+| Case | Behaviour |
+| --- | --- |
+| `tentative` is `false` or omitted | As today. A missing name is created as a confirmed tag; if the name is a rejected name, it is removed from the list (requirements 3 and 15) |
+| `tentative` is `true` with `add` or `replace`: a name matching an existing tag's name or synonym | As today: attaches that tag. Its state does not change, tentative or confirmed (requirement 2) |
+| `tentative` is `true` with `add` or `replace`: a name matching no tag | Unless it is in the rejected-name list, it is created as a **tentative tag** and attached. When one request attaches the same name to several videos, only one tag is created (edge case) |
+| `tentative` is `true` with `add` or `replace`: a rejected name (exact spelling match; requirement 13) | Skipped: no tag is created or attached, and the normalized name is returned once in `skippedTags`, in `tags` order. The other names are processed and the request succeeds with `200` (requirements 11 and 12) |
+| `tentative` is `true` with `replace` | A skipped name is treated as if it had never been sent and does not enter the replacement set. If every name in `tags` is rejected, the result equals replacing with an empty set (edge case) |
+| `tentative` is `true` with `remove` | As today (a name matching no tag does nothing). `skippedTags` is an empty array |
+
+Response:
 
 ```json
 { "items": [{ "video": { "id": 1, "contentKey": "…" },
@@ -45,18 +43,24 @@
   "skippedTags": ["高画質"] }
 ```
 
-- 誤りの `code`・`reason` は変えない。`tentative` が真偽値でなければ `400 invalid_request`（本文の形の
-  誤りとして、今の `readJSONBody` の扱い）。
+Error `code` and `reason` values do not change. A `tentative` that is not a
+boolean returns `400 invalid_request` (a malformed body, handled by the current
+`readJSONBody`).
 
 ## 2. MCP
 
-`update_video_tags` の入力は `VideoTagsRequest` の型から導いているので、`tentative` はそのまま入る。
-ツールの説明に「`tentative: true` で、新しく作るタグを仮のタグにし、却下した名前を飛ばして
-`skippedTags` に返す」を足す。`list_tags`・`get_video`・`list_videos` の出力は §0 の差分をそのまま含む。
-ツールの数と注釈は変えない（[specs/026-external-api/contracts/mcp.md](../../026-external-api/contracts/mcp.md)）。
+The input of `update_video_tags` is derived from the `VideoTagsRequest` type, so
+`tentative` arrives as is. The tool description gains: "with `tentative: true`,
+tags created by this call are tentative, and rejected names are skipped and
+returned in `skippedTags`". The output of `list_tags`, `get_video` and
+`list_videos` carries the §0 changes as is. The number of tools and their
+annotations do not change
+([specs/026-external-api/contracts/mcp.md](../../026-external-api/contracts/mcp.md)).
 
 ## 3. `docs/how-to/external-api.md`
 
-「動画にタグを付ける」に `tentative` と `skippedTags` の説明と、スクレイパーの例（LLM が出した名前は
-`tentative: true` で付け、利用者が管理画面で片付ける）を足す。仮のタグの確定・却下・却下した名前の
-一覧は画面の操作で、この API にはない。
+The section on tagging videos (`動画にタグを付ける`) gains a description of
+`tentative` and `skippedTags` and a scraper example (attach names an LLM produced
+with `tentative: true`, and the user sorts them out on the tag management page).
+Confirming and rejecting tentative tags and the rejected-name list are screen
+operations and are not part of this API.

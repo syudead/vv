@@ -1,9 +1,12 @@
-# Contract: 画面の API の差分
+# Contract: Screen API changes
 
-親 Issue: #630。正本は [api/openapi.yaml](../../../api/openapi.yaml) で、ここには足す項目と値だけを書く。
-`task generate` で `internal/httpapi/gen/` と `web/src/api/gen/` を作り直す。
+Parent Issue: #630.
 
-## 0. `Video` に足す項目
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This file lists
+only the added fields and values. `task generate` regenerates
+`internal/httpapi/gen/` and `web/src/api/gen/`.
+
+## 0. Fields added to `Video`
 
 ```yaml
 Video:
@@ -13,46 +16,58 @@ Video:
       type: string
       format: date-time
       description: |
-        vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
-        一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
+        When the video's information (display name, tags, visibility, thumbnail) was last
+        edited in vv. Equal to addedAt if never edited (specs/033-video-dates/data-model.md §3)
     fileCreatedAt:
       type: string
       format: date-time
       description: |
-        一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
-        更新日時（mtime）（specs/033-video-dates/research.md R-4）
+        Creation time of the listed location's file. The file's modification time (mtime) when
+        the file system does not provide one (specs/033-video-dates/research.md R-4)
 ```
 
-- 動画を返すすべての応答（一覧、`GET /api/videos/{id}`、関連、バージョン、`retry` の probe、
-  `PUT /api/videos/{id}/display-name`・`thumbnail-position` の応答）に入る。
-- ゲストの応答にも入る（[R-7](../research.md#r-7-応答の項目は-updatedatvv-上の更新日時と-filecreatedat所在の作成日時で画面と外部連携で同じ名前にする)）。
-  `guest-api.md` の省く項目の一覧は変わらない。
-- `LibraryGroup`（グループのカード）には足さない（対象外）。
+- The fields appear in every response that returns videos (lists,
+  `GET /api/videos/{id}`, related, versions, the `retry` probe, and the responses
+  of `PUT /api/videos/{id}/display-name` and `thumbnail-position`).
+- Guest responses include them too
+  ([R-7](../research.md#r-7-the-response-fields-are-updatedat-edit-time-in-vv-and-filecreatedat-location-creation-time-with-the-same-names-in-the-screen-and-external-apis)).
+  The list of omitted fields in `guest-api.md` does not change.
+- `LibraryGroup` (group cards) does not get them (out of scope).
 
-## 1. `VideoSort` に足す値
+## 1. Values added to `VideoSort`
 
 ```yaml
 VideoSort:
   enum: [..., modifiedAsc, modifiedDesc, createdAsc, createdDesc, ...]
   description: |
-    …、modified = 一覧に出す所在の更新日時（mtime）、created = 一覧に出す所在の作成日時
-    （取れなければ mtime）、…
+    …, modified = modification time (mtime) of the listed location, created = creation time
+    of the listed location (mtime when unavailable), …
 ```
 
-`GET /api/videos`、`GET /api/folders/{rootId}/videos`、`GET /api/library` の `sort` で受け付ける。
-`GET /api/library/ids`（所有者だけの「すべて選択」）は `sort` を持たず並びを決めないので、変わらない。ゲストにも許す。`modifiedAsc`・`modifiedDesc` は名前も並びも変えない（要件 7）。
+Accepted in `sort` on `GET /api/videos`, `GET /api/folders/{rootId}/videos` and
+`GET /api/library`. `GET /api/library/ids` (the owner-only "select all") has no
+`sort` and decides no order, so it does not change. Guests are allowed these
+values. `modifiedAsc` and `modifiedDesc` keep their names and order
+(requirement 7).
 
-## 2. 変わらない経路
+## 2. Unchanged routes
 
-経路・誤りの形・イベントは足さない。タグの付け外し（`POST /api/video-tags`）と公開の切り替え
-（`PUT /api/video-visibility`）の応答は今のまま。再生画面はそれらの成功後に `GET /api/videos/{id}` で
-取り直す（[R-8](../research.md#r-8-再生画面はタグと公開の設定を変えたあと動画を取り直し新しいドメインイベントは足さない)）。
+No route, error shape or event is added. The responses of tag attach/detach
+(`POST /api/video-tags`) and visibility toggling (`PUT /api/video-visibility`)
+stay as they are. The video page reloads with `GET /api/videos/{id}` after either
+succeeds
+([R-8](../research.md#r-8-the-video-page-reloads-the-video-after-tag-and-visibility-changes-and-no-new-domain-event-is-added)).
 
-## 3. `web/src/api` の差分
+## 3. `web/src/api` changes
 
-- `videoSorts` に `createdAsc`・`createdDesc` を足す（`isVideoSort` がそれを受け付ける）。
-- 画面の一覧の条件（`listCriteria` の URL の往復と `viewPreferences` の端末の設定）は、`videoSorts` のうち
-  `sortKinds` に種類があるもの（`isListSort`）だけを受け付け、無い値は解釈できない sort と同じく端末の設定や
-  既定に戻す。メニューに無い値を受け付けると、並べ替えの表示がランダムになり向きも切り替えられないからである。
-  `created*` は「一覧の並び順に「作成日」を足す」で `sortKinds` に `created` を足したときに受け付けられる。
-- 生成された `Video` 型で `updatedAt`・`fileCreatedAt` が必須になるので、Vitest の fixture を追従させる。
+- Add `createdAsc` and `createdDesc` to `videoSorts` (`isVideoSort` then accepts
+  them).
+- The screen's list criteria (the URL round trip in `listCriteria` and the device
+  setting in `viewPreferences`) accept only the `videoSorts` values whose kind is
+  in `sortKinds` (`isListSort`); any other value falls back to the device setting
+  or the default, like an unparseable sort. Accepting a value missing from the
+  menu would show the sort as Random and make the direction impossible to toggle.
+  `created*` becomes accepted when the unit "Add "Date created" to the list sort
+  orders" adds `created` to `sortKinds`.
+- The generated `Video` type makes `updatedAt` and `fileCreatedAt` required, so
+  the Vitest fixtures are updated.

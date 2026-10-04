@@ -1,65 +1,85 @@
-# Contract: 動画の隣の字幕ファイル
+# Contract: Sidecar subtitle files
 
-正本は `api/openapi.yaml` で、この文書は足す 2 つの経路だけを書く。既存の応答の形は変えない。
-どちらの `security` も `getVideoStream` と同じ（所有者とゲスト）で、`internal/httpapi/auth.go`
-の `accessRoutes` に「ゲストも」として載せる。動画は `lookupServedVideo` で引くので、ゲストが
-公開でない動画を指すと存在しない動画と同じ 404 `video_not_found` になる（親 Issue の要件 11）。
+Source of truth: `api/openapi.yaml`, operations `listVideoSubtitles` and
+`getVideoSubtitle`. This document covers only the two routes this feature adds;
+existing response shapes do not change.
+
+Both routes have the same `security` as `getVideoStream` (owner and guest) and
+are listed as "guests too" in `accessRoutes` in `internal/httpapi/auth.go`. The
+video is looked up with `lookupServedVideo`, so a guest pointing at a video that
+is not public gets the same 404 `video_not_found` as for a missing video
+(requirement 11 of the parent Issue).
 
 ## 1. `GET /api/videos/{id}/subtitles`
 
-`operationId: listVideoSubtitles`。再生画面が動画を開くたびに呼ぶ。
+`operationId: listVideoSubtitles`. The playback screen calls it each time it
+opens a video.
 
-- 200: `{ "subtitles": SubtitleTrack[] }`。無ければ空の配列。
-  - `SubtitleTrack`（`required: [file, label, format]`、`additionalProperties: false`）
-    - `file`: string。字幕ファイルの名前（フォルダを含まない）。§2 の `{file}` に使う。
-    - `label`: string。ファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は `""`。
-    - `format`: `srt` | `vtt`。元のファイルの形式。
-- 並びと重複の規則は [research.md R-3](../research.md#r-3-名前の照合と重複の規則は-internaldomain-の純粋関数が持つ)
-  （ラベル無しが先頭、続いてラベルの自然順。同じラベルの `.srt` と `.vtt` は `.vtt` だけ。
-  4 MiB を超えるファイルは載せない）。
-- 探すフォルダは、配信が開く所在のフォルダ
-  （[R-2](../research.md#r-2-探すフォルダは配信が開く所在のフォルダである)）。どの所在も開けなければ
-  404 `file_unavailable`（`reason`。`getVideoStream` と同じ）。フォルダが読めなければ空の配列を
-  返し、理由をログに残す（字幕が無いことと区別しない。再生そのものは止めない）。
-- 中身は読まない。壊れたファイルもここには載り、§2 で 404 になる
-  （[R-7](../research.md#r-7-壊れたファイルは一覧には出し取得で-404-にする)）。
-- 404 `video_not_found`: 動画が無い、ゲストが公開でない動画を指した。
-- 応答は `Cache-Control: no-store`。開き直すたびにフォルダの今の状態を返す（要件 2）。
+**Response**: 200 with `{ "subtitles": SubtitleTrack[] }`, an empty array when
+there are none. `SubtitleTrack` has `required: [file, label, format]` and
+`additionalProperties: false`:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `file` | string | The subtitle file name (without the folder). Used as `{file}` in §2. |
+| `label` | string | The label from the file name (`ja`, `en.forced`); `""` for an unlabelled subtitle. |
+| `format` | `srt` \| `vtt` | The format of the original file. |
+
+- Order and duplicate rules are in
+  [research.md R-3](../research.md#r-3-name-matching-and-duplicate-rules-live-in-pure-functions-in-internaldomain)
+  (unlabelled first, then labels in natural order; for the same label in `.srt`
+  and `.vtt`, only the `.vtt`; files over 4 MiB are not listed).
+- The searched folder is the folder of the location that streaming opens
+  ([R-2](../research.md#r-2-the-searched-folder-is-the-folder-of-the-location-that-streaming-opens)).
+- File content is not read. Broken files are listed here too and get 404 in §2
+  ([R-7](../research.md#r-7-broken-files-appear-in-the-list-and-return-404-on-fetch)).
+- The response has `Cache-Control: no-store` and returns the folder's current
+  state every time the video is opened (requirement 2).
+
+| Status | `code` / `reason` | When |
+| --- | --- | --- |
+| 200, empty array | — | The folder cannot be read. The cause is logged; this is not distinguished from having no subtitles, and playback itself does not stop. |
+| 404 | `reason` `file_unavailable` | No location opens (same as `getVideoStream`). |
+| 404 | `video_not_found` | The video does not exist, or a guest pointed at a video that is not public. |
 
 ## 2. `GET /api/videos/{id}/subtitles/{file}`
 
-`operationId: getVideoSubtitle`。§1 の `file` を渡す。
+`operationId: getVideoSubtitle`. Takes a `file` returned by §1.
 
-- 引数:
-  - `file`（path）: §1 が返した名前。サーバーは §1 と同じ一覧を作り直し、`file` がその中の 1 つと
-    一致するときだけ開く（一致は文字列の完全一致。一覧に無い名前、`.srt` が `.vtt` に隠れた
-    名前、上限を超える名前はすべて 404）。パスの区切りや `..` の検査は要らない。一覧に無い
-    ものは開かないからである。
-  - `offsetMs`（query、任意、既定 0、`minimum: 0`）: 再生の時間軸の 0 が元動画のどの時刻か
-    （ミリ秒）。すべての cue の時刻からこの値を引く。終了時刻が 0 以下になる cue は返さず、
-    開始時刻が負になる cue は 0 から始める
-    （[R-6](../research.md#r-6-ライブ変換の時刻合わせはサーバーが-offsetms-だけ時刻をずらした-webvtt-を返す)）。
-    負や整数でない値は 400 `invalid_request`。
-- 200: `Content-Type: text/vtt; charset=utf-8`。本文は UTF-8 の WebVTT。SRT は変換し
-  （[R-8](../research.md#r-8-srt-の書式の揺れは時刻の行だけを正規化しcue-の本文はそのまま通す)）、
-  WebVTT はヘッダーを確かめて `offsetMs` だけずらして返す。文字コードは
-  [R-5](../research.md#r-5-文字コードは-bom--utf-8-の妥当性--shift_jis-の順で決める) の順で決める。
-  応答は `Cache-Control: private, no-cache` と、変換した本文のダイジェストの `ETag` を持ち、
-  `If-None-Match` が一致すれば 304（生成物の配信と同じ扱い。guest-api.md §5）。
-- 404 `subtitle_unavailable`（`reason`、`code` は `not_found`）: `file` が一覧に無い、開けない、
-  空、上限を超える、復号できない、SRT の cue が 1 つも読めない、WebVTT のヘッダーが無い。
-  理由はサーバーのログに `Warn` で残す（[R-7](../research.md#r-7-壊れたファイルは一覧には出し取得で-404-にする)）。
-- 404 `video_not_found` / `file_unavailable`: §1 と同じ。
-- 400 `invalid_request`: `offsetMs` の形式が違う。
+| Field | In | Type | Required | Meaning |
+| --- | --- | --- | --- | --- |
+| `file` | path | string | Yes | A name §1 returned. The server rebuilds the same list as §1 and opens `file` only when it equals one entry (exact string match). A name not in the list, an `.srt` hidden by a `.vtt`, and a name over the limit all get 404. No path-separator or `..` check is needed, because nothing outside the list is opened. |
+| `offsetMs` | query | integer, `minimum: 0` | No (default 0) | Which time in the original video, in milliseconds, the playback timeline's 0 is. Subtracted from the time of every cue. A cue whose end time becomes 0 or less is not returned; a cue whose start time becomes negative starts at 0 ([R-6](../research.md#r-6-live-transcode-timing-the-server-returns-webvtt-shifted-by-offsetms)). A negative or non-integer value is 400 `invalid_request`. |
 
-## 3. プレイヤーの使い方
+**Response**: 200 with `Content-Type: text/vtt; charset=utf-8` and a UTF-8
+WebVTT body. SRT is converted
+([R-8](../research.md#r-8-srt-format-variations-normalize-only-timing-lines-pass-cue-text-through));
+WebVTT has its header checked and is shifted by `offsetMs`. The encoding is
+decided in the order of
+[R-5](../research.md#r-5-character-encoding-is-decided-by-bom-then-utf-8-validity-then-shift_jis).
+The response has `Cache-Control: private, no-cache` and an `ETag` that is a
+digest of the converted body; a matching `If-None-Match` gets 304 (the same
+handling as generated artifacts, guest-api.md §5).
 
-- 再生画面は動画を開いたとき（`VideoPlayer` を作る前後）に §1 を呼び、結果を `VideoPlayer` に
-  渡す。取得に失敗したら字幕無しとして扱い、再生は止めない。
-- `VideoPlayer` は再生の時間軸の offset が決まるたびに、既存の字幕トラックを外し、§2 の URL に
-  その offset を `offsetMs` として付けて付け直す。直接再生では 0。ライブ変換では、`liveOffset.ts`
-  が `transcode-start` の報告を待っている間は付けず、報告が届いた（または 404 で指定位置に
-  決まった）時点の offset で付ける。source を作り直すシークでも同じ。
-- 付け直しの前に表示していた字幕（ラベル）は、付け直したトラックでも `showing` にする。
-  付け直しは保存値（[R-9](../research.md#r-9-字幕の選択は-websrcpreferences-に音量と同じ形で保存する)）を
-  書き換えない。
+| Status | `code` / `reason` | When |
+| --- | --- | --- |
+| 404 | `reason` `subtitle_unavailable`, `code` `not_found` | `file` is not in the list, cannot be opened, is empty, exceeds the limit, cannot be decoded, has no readable SRT cue, or lacks the WebVTT header. The cause is logged at `Warn` on the server ([R-7](../research.md#r-7-broken-files-appear-in-the-list-and-return-404-on-fetch)). |
+| 404 | `video_not_found` / `file_unavailable` | Same as §1. |
+| 400 | `invalid_request` | `offsetMs` is malformed. |
+
+## 3. Client use
+
+- The playback screen calls §1 when it opens a video (around creating
+  `VideoPlayer`) and passes the result to `VideoPlayer`. When the call fails,
+  the video is treated as having no subtitles and playback does not stop.
+- Each time the playback timeline's offset is settled, `VideoPlayer` removes the
+  existing subtitle tracks and reattaches them with that offset as `offsetMs` on
+  the §2 URL. The offset is 0 for direct playback. For live transcode, nothing
+  is attached while `liveOffset.ts` waits for the `transcode-start` report;
+  tracks are attached with the offset at the moment the report arrives (or is
+  settled to the requested position by a 404). Seeks that rebuild the source
+  behave the same.
+- The subtitle (label) that was showing before reattachment is set to
+  `showing` on the reattached track. Reattachment does not rewrite the stored
+  value
+  ([R-9](../research.md#r-9-the-subtitle-selection-is-stored-in-websrcpreferences-like-the-volume)).

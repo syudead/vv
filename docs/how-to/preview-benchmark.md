@@ -1,78 +1,108 @@
-# 動くプレビューとシーク用サムネイルの生成を測る
+# Measure motion preview and seek thumbnail generation
 
-動くプレビュー（一覧カードの hover 再生）やシーク用サムネイル（再生画面のシークバーの
-プレビュー）の生成方式を変える PR で、変更前と変更後の壁時計時間とピークメモリを同じ
-入力・同じ環境で測り、PR に残す手順。測るのは本番の生成コードそのもので、
-`scripts/previewbench` がそれを呼ぶ。動くプレビューは `internal/media` の
-`GeneratePreview`、シーク用は `GenerateSeekThumbnailSet` である。理由は
-[specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-計測の方法)。
+A PR that changes how motion previews (hover playback on library cards) or seek
+thumbnails (the preview over the player's seek bar) are generated records
+wall-clock time and peak memory before and after the change, with the same
+inputs on the same environment. `scripts/previewbench` runs the production
+generation code; the reasoning is in
+[specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-measurement-method).
 
-## 入力を作る
+The measurement runs in this order; step 4 applies only when comparing
+approaches for long HD videos.
 
-`ffmpeg` の `testsrc2` から作る。置き場所はリポジトリの外でも `.local/` の下でもよい
-（`.local/` は git に入らない）。ここでは `.local/bench/` に置く。
+```mermaid
+flowchart LR
+  inputs[Create inputs] --> after[Measure PR branch]
+  after --> before[Measure base commit]
+  before --> record[Record in PR]
+  record --> hd{Long HD approach?}
+  hd -->|yes| hdrun[Measure HD inputs]
+  hd -->|no| hover[Check on hover]
+  hdrun --> hover
+```
+
+## Prerequisites
+
+- Go and `ffmpeg` (with `ffprobe`).
+- A checkout of the PR branch.
+
+## Steps
+
+### 1. Create the inputs
+
+Generate the inputs from `ffmpeg`'s `testsrc2` into `.local/bench/` (git
+ignores `.local/`; any folder outside the repository also works).
 
 ```sh
 mkdir -p .local/bench
 
-# 2 時間・640×360・30fps・H.264（長尺。数分かかる）
+# 2 hours, 640x360, 30 fps, H.264 (long input; takes a few minutes)
 ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=640x360:rate=30:duration=7200 \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p .local/bench/long-2h.mp4
 
-# 2 分・1280×720・H.264/AAC（短尺）
+# 2 minutes, 1280x720, H.264/AAC (short input)
 ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=1280x720:rate=30:duration=120 \
   -f lavfi -i sine=frequency=440:duration=120 \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p -c:a aac -shortest .local/bench/short-2m-720p.mp4
 
-# hover 確認用: 回転情報（90 度）を持つ縦長の入力（1 分）
+# For the hover check: a portrait input with rotation metadata (90 degrees, 1 minute)
 ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=640x360:rate=30:duration=60 \
   -c:v libx264 -preset ultrafast -pix_fmt yuv420p .local/bench/landscape.mp4
 ffmpeg -nostdin -v error -display_rotation 90 -i .local/bench/landscape.mp4 \
   -c copy .local/bench/portrait-rotated.mp4
 ```
 
-`ffprobe .local/bench/portrait-rotated.mp4` の出力に `rotation of 90.00 degrees`
-（displaymatrix）が出ていれば、回転情報が入っている。
+`ffprobe .local/bench/portrait-rotated.mp4` prints `rotation of 90.00 degrees`
+(displaymatrix) when the rotation metadata is present.
 
-## 測る
+### 2. Measure
 
 ```sh
 go run ./scripts/previewbench [-kind preview|seek] [-runs N] <video>
 ```
 
-`-kind` は測る生成の種類で、`preview`（既定）が動くプレビュー、`seek` がシーク用
-サムネイルである。入力ごとに生成を `-runs` 回（既定 2）走らせ、回ごとの壁時計時間と、Linux と macOS
-では ffmpeg のピークメモリ（全回の最大）を表示する。Windows では壁時計時間だけを表示する。
-`-kind seek` では、回ごとに出力ディレクトリのファイル数と合計バイト数も表示する。
-生成した出力は回ごとに消し、終了後に一時ディレクトリは残らない。
-存在しない入力や ffmpeg の失敗では、理由を出して 0 以外の終了コードで終わる。
+`-kind` is `preview` (the default, motion previews) or `seek` (seek
+thumbnails). The tool runs the generation `-runs` times per input (default 2)
+and prints:
 
-ピークメモリは終了した子プロセス全体の最大なので、**入力ごとに実行を分ける**。
-1 回の実行に複数の入力を渡すと、後の入力に前の入力の値が残る。
+| Output | Shown on |
+| --- | --- |
+| Wall-clock time of each run | All OSes |
+| ffmpeg peak memory (the maximum over all runs) | Linux and macOS; not on Windows |
+| File count and total bytes in the output directory, per run | `-kind seek` only |
 
-変更前と変更後を同じ環境で続けて測る。`scripts/previewbench` が無いコミット
-（変更前）を測るときは、変更後のプログラムを worktree へ写して走らせる。
+The tool deletes its output after each run. A missing input or an ffmpeg
+failure prints the reason and exits with a non-zero code.
+
+Peak memory is the maximum over all finished child processes, so **run each
+input separately**: with several inputs in one run, a later input carries the
+earlier input's value.
+
+Measure before and after back to back on the same environment. When the base
+commit has no `scripts/previewbench`, copy the PR branch's program into a
+worktree of the base commit.
 
 ```sh
-# 変更後（PR のブランチ）
+# After (the PR branch)
 go run ./scripts/previewbench .local/bench/long-2h.mp4
 go run ./scripts/previewbench .local/bench/short-2m-720p.mp4
 
-# 変更前（PR の base のコミット）
+# Before (the PR's base commit)
 bench="$PWD/.local/bench"
-git worktree add ../vv-before <base のコミット>
-cp -r scripts/previewbench ../vv-before/scripts/   # base に無いときだけ
+git worktree add ../vv-before <base commit>
+cp -r scripts/previewbench ../vv-before/scripts/   # only when the base lacks it
 (cd ../vv-before && go run ./scripts/previewbench "$bench/long-2h.mp4")
 (cd ../vv-before && go run ./scripts/previewbench "$bench/short-2m-720p.mp4")
 git worktree remove --force ../vv-before
 ```
 
-時間はディスクのキャッシュで変わるので、`-runs` の 1 回目と 2 回目を分けて載せる。
+Times vary with the disk cache, so report the first and second run separately.
 
-## PR に残す形
+### 3. Record the results in the PR
 
-環境（OS、CPU、ffmpeg の版）と、入力ごとの値を表にする。値は各回の壁時計時間と
-ピークメモリ。
+Record the environment (OS, CPU, ffmpeg version) and, per input, the wall-clock
+time of each run and the peak memory. The template is Japanese because PR
+bodies are.
 
 ```markdown
 環境: Linux x86_64, <CPU>, ffmpeg <版>
@@ -83,14 +113,16 @@ git worktree remove --force ../vv-before
 | 2 分・1280×720・H.264/AAC | 00.000 秒 | 00.000 秒 | 0.0 MiB | 00.000 秒 | 00.000 秒 | 0.0 MiB |
 ```
 
-変更前が失敗した（メモリ不足で落ちたなど）ときは、その旨と表示された理由を表の欄に書く。
-Windows では「ピーク」の欄を「測らない」とする。
+| Case | Cell content |
+| --- | --- |
+| The "before" side failed (for example, out of memory) | That fact and the printed reason |
+| Windows, peak columns | `測らない` (not measured) |
 
-### シーク用サムネイル
+#### Seek thumbnails
 
-`-kind seek` で、同じ 2 時間の `long-2h.mp4` と 2 分の `short-2m-720p.mp4` を入力ごとに
-実行を分けて測る。ファイル数と合計は、`GenerateSeekThumbnailSet` が出力ディレクトリに
-書いたものを全部数えた値である。合計は MiB で載せる。
+Measure `long-2h.mp4` and `short-2m-720p.mp4` with `-kind seek`, one run per
+input. The file count and total cover everything the generation wrote to the
+output directory; report the total in MiB.
 
 ```sh
 go run ./scripts/previewbench -kind seek .local/bench/long-2h.mp4
@@ -106,31 +138,14 @@ go run ./scripts/previewbench -kind seek .local/bench/short-2m-720p.mp4
 | 2 分・1280×720・H.264/AAC | 00.000 秒 | 00.000 秒 | 0 MiB | 0 | 0.0 MiB | 00.000 秒 | 00.000 秒 | 0 MiB | 0 | 0.0 MiB |
 ```
 
-ピークメモリが取れない OS（Windows など）では、ピークメモリの欄を「取得不可」とする。
+Where peak memory is not available (such as Windows), write `取得不可` (not
+available) in the peak memory columns.
 
-## hover で確かめる
+### 4. Measure long HD input-side seeking
 
-`task preview` の組み込みサンプルは 20 秒以下なので、長尺の確認には使わない。作った入力を
-`.local/preview/media/` に置いて `task preview` を起動し直す。`task preview` は起動のたびに
-そのフォルダを取り込む（[Codespaces で PR を確かめる](codespaces-preview.md)）。
-
-```sh
-mkdir -p .local/preview/media
-cp .local/bench/long-2h.mp4 .local/bench/portrait-rotated.mp4 .local/preview/media/
-task preview   # 動いていれば Ctrl+C で止めてから起動し直す
-```
-
-プレビューの生成が終わってから、一覧のカードに hover して次を確かめる。
-
-- 2 時間の入力: 冒頭から末尾まで分散した場面（`testsrc2` の時刻表示で分かる）が、
-  時系列順に約 9 秒で、無音でループして流れる。
-- 縦長の入力: 縦長のまま流れ、縦横比が崩れない。
-
-### 長尺HDの入力側シーク
-
-長尺HD向けの方式を比較するときは、上の360p入力に加えて次の1080p入力を使う。
-30秒の素材をストリームコピーで反復するため、2時間を再エンコードする必要はない。
-映像内容は合成素材の繰り返しで、実動画やNASのI/O性能を再現するものではない。
+When comparing approaches for long HD videos, add these 1080p inputs to the
+360p one. They repeat a 30-second source by stream copy, so the 2 hours need no
+re-encoding; the content does not reproduce real videos or NAS I/O performance.
 
 ```sh
 ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=30 \
@@ -150,6 +165,26 @@ go run ./scripts/previewbench -kind seek .local/bench/h264-hd-2h.mp4
 go run ./scripts/previewbench -kind seek .local/bench/hevc-hd-2h.mp4
 ```
 
-コピー時のフレーム境界によって長さが7200秒を少し超える場合もある。手計算した
-7200秒を渡さず、ベンチマークがffprobeから得た実際の長さを使う。
-方式の選択条件と欠落時の動作は[設計文書](../design-docs/seek-sprite-generation.md)を参照。
+The copy can end slightly past 7200 seconds at a frame boundary, so use the
+length the benchmark reads from ffprobe, not a hand-computed 7200. The
+conditions that select an approach and the behaviour when frames are missing
+are in the [design document](../design-docs/seek-sprite-generation.md).
+
+## Check the result on hover
+
+The built-in samples of `task preview` are 20 seconds or shorter, so put the
+generated inputs in `.local/preview/media/`, which `task preview` scans on every
+start ([Check a PR in Codespaces](codespaces-preview.md)).
+
+```sh
+mkdir -p .local/preview/media
+cp .local/bench/long-2h.mp4 .local/bench/portrait-rotated.mp4 .local/preview/media/
+task preview   # if it is running, stop it with Ctrl+C first, then start it again
+```
+
+After preview generation finishes, hover over the library cards:
+
+| Input | Expected |
+| --- | --- |
+| 2-hour input | Scenes from start to end (see the `testsrc2` clock) play in order for about 9 seconds, silently, in a loop |
+| Portrait input | It plays in portrait without a distorted aspect ratio |

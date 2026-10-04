@@ -1,73 +1,85 @@
-# Data model: ライブ変換用の解析情報
+# Data model: Probe data for live transcoding
 
-親 Issue #371 の要件 7〜10 のうち、保存するものとその規則だけを書く。既存の表（`videos`・
-`video_locations`・`jobs` ほか）は変えない。表の区分は [ARCHITECTURE.md](../../ARCHITECTURE.md) の
-「Rebuildable and user data」に従い、この表は索引である。
+This file covers only what parent Issue #371 requirements 7–10 store and the
+rules for it. The existing tables (`videos`, `video_locations`, `jobs` and the
+rest) do not change. The new table is an index under "Rebuildable and user
+data" in [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
-## 1. マイグレーション
+## 1. Migration
 
-`internal/store/migrations/00013_transcode_probes.sql` を足す。
+Add `internal/store/migrations/00013_transcode_probes.sql`.
 
 ```sql
--- ライブ変換に要る解析情報。索引であり、消えても次の変換か再解析で埋まる（要件 10）。
+-- Probe data a live transcode needs. An index: if lost, the next transcode or a re-probe fills it again (requirement 10).
 create table video_transcode_probes (
     video_id   integer primary key references videos (id) on delete cascade,
-    -- domain.TranscodeProbeVersion。違えば「無い」と読む（§3）。
+    -- domain.TranscodeProbeVersion. A different value reads as "absent" (§3).
     version    integer not null,
-    -- 解析したファイルの os.Stat の大きさと更新時刻（Unix ナノ秒）。要求時に開いたファイルと比べる（§4）。
+    -- os.Stat size and modification time (Unix nanoseconds) of the probed file. Compared with the file opened at request time (§4).
     size_bytes integer not null,
     mtime_ns   integer not null,
-    -- domain.TranscodeProbe の JSON（§2）。
+    -- JSON of domain.TranscodeProbe (§2).
     probe      text    not null,
     updated_at integer not null
 ) without rowid;
 ```
 
-`videos` の行が消えると連鎖で消える。動画の内容が変わって行が作り直されるときも同じで、新しい
-行は要件 10 の経路で埋まる。
+**Relationships**: the row is deleted by cascade when its `videos` row is
+deleted. The same happens when a video's content changes and its row is
+recreated; the new row is filled through the path of requirement 10.
 
-## 2. 保存する値: `domain.TranscodeProbe`
+## 2. Stored value: `domain.TranscodeProbe`
 
-`internal/domain` の値型。`domain.Probe` に `Transcode *TranscodeProbe` として載り、取り込みの解析
-（`app.Ingest.Probe`）はそのまま store へ渡す。使える映像 stream（非添付で寸法がある）が無い動画では
-nil で、行を書かない（その動画はライブ変換できない）。
+A value type in `internal/domain`. It travels on `domain.Probe` as
+`Transcode *TranscodeProbe`, and the ingest probe (`app.Ingest.Probe`) passes it
+to the store as is. For a video with no usable video stream (not an attachment,
+with dimensions) it is nil, and no row is written (that video cannot be
+transcoded live).
 
-| 項目 | 内容 | 使う場所 |
+| Field | Content | Used for |
 | --- | --- | --- |
-| `FormatName` | `format.format_name`（小文字） | MOV の二入力の判定 |
-| `Video.Index` | 選んだ映像 stream の `index`（最初の非添付 stream） | `-map` |
-| `Video.CodecName`・`Profile`・`Level`・`PixelFormat`・`BitsPerRawSample` | 映像の符号化 | `videoCanCopy` |
-| `Video.Width`・`Height`・`SampleAspectNum`・`SampleAspectDen`・`Rotation` | 幾何（回転は Display Matrix か `rotate` タグ） | 寸法・縦横比・回転の扱い |
-| `Video.FPS`・`RealFPS` | `avg_frame_rate`・`r_frame_rate` | 可変フレームレートの判定と fps の上限 |
-| `Audio`（nil 可） | 選んだ音声 stream（最初の stream）の `Index`・`CodecName`・`Profile`・`SampleRate`・`Channels` | `-map`・`audioCanCopy` |
+| `FormatName` | `format.format_name` (lowercase) | Deciding the two-input MOV case |
+| `Video.Index` | `index` of the chosen video stream (the first non-attachment stream) | `-map` |
+| `Video.CodecName`, `Profile`, `Level`, `PixelFormat`, `BitsPerRawSample` | Video coding | `videoCanCopy` |
+| `Video.Width`, `Height`, `SampleAspectNum`, `SampleAspectDen`, `Rotation` | Geometry (rotation from the Display Matrix or the `rotate` tag) | Handling dimensions, aspect ratio and rotation |
+| `Video.FPS`, `RealFPS` | `avg_frame_rate`, `r_frame_rate` | Detecting variable frame rate and capping fps |
+| `Audio` (may be nil) | `Index`, `CodecName`, `Profile`, `SampleRate`, `Channels` of the chosen audio stream (the first stream) | `-map`, `audioCanCopy` |
 
-項目は今の `transcodeMetadata`（[internal/media/transcode.go](../../internal/media/transcode.go)）と同じで、
-型を `internal/domain` へ移す。JSON の欄名は Go の欄名をそのまま使い、項目を足す・意味を変えるときは
-`domain.TranscodeProbeVersion` を上げる。
+The fields are the same as today's `transcodeMetadata`
+([internal/media/transcode.go](../../internal/media/transcode.go)); the type
+moves to `internal/domain`. JSON field names are the Go field names. Adding a
+field or changing a field's meaning bumps `domain.TranscodeProbeVersion`.
 
-## 3. 使ってよいかの判定: `domain.TranscodeProbeUsable`
+## 3. Rules
 
-純粋関数。次のすべてが成り立つときだけ保存値を使う。
+`domain.TranscodeProbeUsable` is a pure function. The stored value is used only
+when all of the following hold:
 
-1. 行がある。
-2. `version` が今の `domain.TranscodeProbeVersion` と等しい（Edge Case「ffprobe の出力形式が変わる」は、
-   保存する形が parser 側の値なので版で扱う）。
-3. `probe` が `TranscodeProbe` として読める。
-4. `size_bytes` と `mtime_ns` が、変換で実際に開いたファイルの `Stat` と等しい（要件 9。同じ内容の
-   別の所在でも、開いた所在の値で比べる）。
+1. The row exists.
+2. `version` equals the current `domain.TranscodeProbeVersion`. (The edge case
+   "the ffprobe output format changes" is handled by the version, because the
+   stored shape is the parser's value.)
+3. `probe` decodes as a `TranscodeProbe`.
+4. `size_bytes` and `mtime_ns` equal the `Stat` of the file the transcode
+   actually opened (requirement 9; for another location with the same content,
+   the values of the opened location are compared).
 
-成り立たなければ「無い」として扱い、要求時に ffprobe を実行して結果で行を置き換える（要件 9・10）。
+Otherwise the value is treated as absent: ffprobe runs at request time and its
+result replaces the row (requirements 9 and 10).
 
-## 4. 書く時点と読む時点
+## 4. When the value is written and read
 
-| 時点 | 操作 | 同一性 |
+| When | Operation | Identity |
 | --- | --- | --- |
-| 取り込みの解析ジョブ（`ApplyProbeForJob`）と `ApplyProbe` | `videos` の更新と同じ取引で upsert | `media.Probe` が ffprobe の直前に取った `os.Stat` |
-| 再解析（`POST /api/videos/{id}/probe`） | 上と同じ（ジョブ経由） | 同上 |
-| ライブ変換でその場の ffprobe を実行したとき（`SaveTranscodeProbe`） | upsert 1 文 | 変換で開いたファイルの `Stat` |
-| ライブ変換の開始（`LibraryStore.TranscodeProbe`） | 1 件読む | §3 で比べる |
+| Ingest probe job (`ApplyProbeForJob`) and `ApplyProbe` | Upsert in the same transaction as the `videos` update | The `os.Stat` that `media.Probe` takes right before ffprobe |
+| Re-probe (`POST /api/videos/{id}/probe`) | Same as above (through a job) | Same as above |
+| A live transcode runs ffprobe on the spot (`SaveTranscodeProbe`) | One upsert statement | `Stat` of the file the transcode opened |
+| A live transcode starts (`LibraryStore.TranscodeProbe`) | Read one row | Compared as in §3 |
 
-- upsert は 1 文（`insert … on conflict (video_id) do update`）で、取り込みと変換が同時に書いても
-  壊れた値を残さず、後に書いた行が残る（Edge Case「同時に複数の要求」）。
-- 途中で打ち切られた ffprobe は誤りで終わるので、保存に至らない（Edge Case「要求を途中でやめたとき」）。
-- 起動時と取り込み時に既存の動画をまとめて埋める処理は無い（要件 10）。
+- The upsert is one statement (`insert … on conflict (video_id) do update`).
+  When ingest and a transcode write at the same time, no corrupt value remains
+  and the later write wins (edge case "several requests at once").
+- An ffprobe that is cut off ends in an error and is never saved (edge case
+  "the request is abandoned midway").
+- Nothing backfills existing videos in bulk at startup or at ingest
+  (requirement 10).

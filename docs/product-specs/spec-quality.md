@@ -1,85 +1,105 @@
-# 仕様品質の規則: 要求の縮退を防ぐ
+# Specification quality rules: no degraded requirements
 
-仕様を書く・変えるときに従う規則。仕様の置き場所は親 Issue であり、UI の仕様は
-`ui-design.md` がこれを引き継ぐ。
+Follow these rules when writing or changing a specification. The specification
+lives in the parent Issue, and for UI, `ui-design.md` carries it forward.
 
-狙いは1つである。**曖昧だが本質的なユーザー要求を、機械的に検査しやすい離散条件だけへ
-変換しない。** 忠実に実装してもユーザーが求める成果物にならない仕様を、仕様の段階で落とす。
+The aim: **do not convert a vague but essential user requirement into only
+discrete conditions that are easy to check mechanically.** Catch, at the
+specification stage, a specification that would not produce what the user wants
+even if implemented faithfully.
 
-規則の番号は導入時のまま据え置く。Q-1（要求の引用保持）と Q-2（受け入れ条件と要求の
-対応付け）は、要求の正本が親 Issue 自身になったことで適用先を失ったため廃止した。
+Rule numbers stay as they were when introduced. Q-1 (keep the requirement
+quoted) and Q-2 (map acceptance criteria to the requirement) were retired: once
+the parent Issue itself became the source of truth for the requirement, they no
+longer had anything to apply to.
 
-## 用語
+## Terms
 
-- **要求者**: この feature を作ってほしいと言った人。質問を向ける相手であり、
-  工程を動かしている人である。
-- **利用者**: 出来上がったプロダクトを使う人。Issue の 要件 と 受け入れ条件 が扱う
-  相手であり、質問を向ける相手ではない。
+| Term | Meaning |
+| --- | --- |
+| **Requester** | The person who asked for this feature. The one to ask questions, and the one running the process |
+| **User** | The person who uses the finished product. The subject of the Issue's `要件` and `受け入れ条件`, not someone to ask questions |
 
-「回答によって利用者が得るものが変わる」は、この feature が世に出たあとに使う人の
-体験が変わる、という意味である。その判断を下すのは要求者である。
+"The answer changes what the user gets" means it changes the experience of the
+people who will use this feature after it ships. The requester makes that call.
 
-## 規則
+## Rules
 
-### Q-3: UI 仕様には 5 観点の基準を書く
+### Q-3: A UI specification states criteria for five aspects
 
-UI を含む仕様では、部品の有無だけでなく次の5観点の基準を明文化する。
+A specification that includes UI states criteria for these five aspects, not
+just which parts exist:
 
-- 視覚的階層（何が主で何が従か）
-- 情報密度（詰めるのか空けるのか）
-- 余白のリズム
-- タイポグラフィ
-- 操作の優先順位（何を先に触れるべきか）
+- Visual hierarchy (what is primary and what is secondary)
+- Information density (packed or spacious)
+- Rhythm of spacing
+- Typography
+- Priority of actions (what should be touched first)
 
-あわせて次も書く。誰が何を改善されたと感じるべきか、現状のどこが「まともでない」のか、
-参照画像から維持すべき視覚的特徴は何か、何を変えると要求を満たしたことにならないか。
+It also states who should feel what has improved, where the current state is
+"not decent", which visual traits of the reference images must be kept, and
+what change would fail to meet the requirement.
 
-### Q-4: 「要素が存在する」だけでは UI 品質の基準を満たせない
+### Q-4: "The element exists" does not meet a UI quality criterion
 
-部品の有無と並び順だけを判定する受け入れ条件は、UI 品質の基準として認めない。
-基準には、Q-3 の観点で「どうあれば良いのか」が判定できる形で書く。
-数値化できない総合評価（「実用品に見えるか」等）は数値に無理やり落とさず、
-人がどの観点で判定するかを書く（非目標: すべてを数値だけで定義しない）。
+Acceptance criteria that judge only the presence and order of parts are not
+accepted as UI quality criteria. Write criteria so that "what good looks like"
+can be judged on the aspects of Q-3. Do not force an overall judgement that
+cannot be quantified ("does it look like a real product?") into numbers; state
+which aspects a person judges it on (non-goal: defining everything by numbers
+alone).
 
-### Q-5: プレースホルダーを追加する場合は価値と誤認リスクを明示する
+### Q-5: A placeholder states its value and its risk of being mistaken
 
-操作不能な要素・裏側の無い入口を置く場合は、1 件ごとに次を書く。
+When placing an element that cannot be operated, or an entry point with nothing
+behind it, state for each one:
 
-- 置くことで得られるユーザー価値
-- 利用者が「使える」と誤認するリスクと、その抑止策
+- The user value of placing it
+- The risk that users mistake it for something usable, and how that is
+  prevented
 
-価値に対して誤認リスクが見合わないものは置かない。「構図を埋める」は価値ではない。
+Do not place anything whose risk of being mistaken outweighs its value.
+"Filling out the composition" is not a value.
 
-### Q-6: 具体化できない曖昧さは独自解釈せず、明確化へ戻す
+### Q-6: Vagueness that cannot be made concrete goes back for clarification, not private interpretation
 
-この規則は「迷ったら聞く」ではない。まず自分で答えを出す。リポジトリの設計文書と
-既存画面、仕様自身の記述、同種の現行プロダクトが収束している形——この順で探し、
-見つかったらそれを仕様に書く。答えのある事項を質問に変えることは、要求者の注意を
-浪費する欠陥である。
+This rule is not "ask when in doubt". First find the answer yourself. Look, in
+this order, at the repository's design documents and existing screens, the
+specification's own text, and the form that comparable current products have
+converged on; when you find the answer, write it into the specification. Turning
+a matter that has an answer into a question is a defect that wastes the
+requester's attention.
 
-質問にするのは、次のすべてに当てはまるときだけである。
+Ask a question only when all of the following hold:
 
-- 回答によって利用者が得るもの（範囲、操作、データの保護のされ方）が変わる
-- 上の参照で答えが出ない、または結果が大きく異なる有力な答えが2つ以上ある
-- 誤ると取り消しに費用がかかる
+- The answer changes what the user gets (scope, operations, how data is
+  protected)
+- The references above give no answer, or give two or more strong answers with
+  very different outcomes
+- A wrong choice is costly to undo
 
-曖昧な要求を十分に具体化できない場合は、もっともらしい解釈で埋めない。要求者へ質問に
-戻し、回答または「この曖昧さのまま進める」という明示的な合意が得られるまで仕様を
-固めない。合意なき解釈は縮退の入口である。
+When a vague requirement cannot be made concrete enough, do not fill it with a
+plausible interpretation. Go back to the requester with a question, and do not
+settle the specification until there is an answer or an explicit agreement to
+"proceed with this vagueness". Interpretation without agreement is where
+degradation starts.
 
-### Q-7: 実装上の制約を製品要件に格上げしない
+### Q-7: Do not promote implementation constraints to product requirements
 
-「その作り方が難しい」「標準の部品では届かない」は、要求を狭める理由にならない。
-実装上の制約に気づいたら、仕様を書き換えずに要求として質問へ戻す（Q-6）。
+"That approach is hard" or "standard components cannot do it" is no reason to
+narrow the requirement. When you notice an implementation constraint, do not
+rewrite the specification; take it back to the requester as a question (Q-6).
 
-実装の都合で要求を満たせないと判断した場合は、その判断自体を質問にする。
-「この制約があるため A ではなく B になるが、それでよいか」と聞き、回答を得てから書く。
+When you judge that the requirement cannot be met for implementation reasons,
+make that judgement itself the question: "Because of this constraint it would be
+B instead of A; is that acceptable?" Write it only after the answer.
 
-利用者の体験が変わる選択は、実装の難易度ではなく要求者が決める。難易度は、選択肢を
-提示するときに添える情報であって、選択そのものではない。
+The requester, not implementation difficulty, decides choices that change the
+user's experience. Difficulty is information to attach when presenting the
+options, not the choice itself.
 
-## 非目標
+## Non-goals
 
-- すべての UI を数値だけで定義すること
-- デザイナー不在時にモデルの判断を禁止すること
-- 原案への完全なピクセル一致を要求すること
+- Defining all UI by numbers alone
+- Forbidding the model from making judgements when there is no designer
+- Requiring a pixel-perfect match with the original draft

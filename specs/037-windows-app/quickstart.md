@@ -1,50 +1,62 @@
-# Quickstart: Windows 版の確かめ方
+# Quickstart: Checking the Windows app by hand
 
-CI（`task check`、`.github/workflows/windows-app.yml`）は、ビルド・同梱の `ffmpeg` のエンコーダ・Go の試験までを
-確かめる。ウィンドウ・ファイアウォール・GPU・別端末からの接続は CI では確かめられないので、実機で
-次を行う。開発環境の用意とコマンドは [docs/how-to/development.md](../../docs/how-to/development.md) にある。
-手順の番号は親 Issue #653 の受け入れ条件の番号に対応する。
+These steps cover the window, the firewall, the GPU and connections from
+another device, which CI (`task check`, `.github/workflows/windows-app.yml`)
+cannot check; CI covers the build, the encoders of the bundled `ffmpeg` and
+the Go tests. Development setup and commands are in
+[docs/how-to/development.md](../../docs/how-to/development.md). Step numbers
+match the acceptance criterion numbers of parent Issue #653.
 
-## 用意
+## Prerequisites
 
-- zip: `task build-windows-app`（`dist/VVMDM-<版>-windows-amd64.zip`）か、workflow の手動実行の成果物。
-- Windows 10/11 x64 の PC。ffmpeg・Go・Node が入っていないこと（`where ffmpeg` が何も返さない）。
-  受け入れ条件 3 には NVIDIA か Intel の GPU が要る。
-- 同じ LAN のスマートフォンかもう 1 台の PC。
-- 前の版での確認（受け入れ条件 8）には、この feature の最初の zip とその次の zip の 2 つ。
+- A zip: from `task build-windows-app` (`dist/VVMDM-<version>-windows-amd64.zip`)
+  or the artifact of a manual run of the workflow.
+- A Windows 10/11 x64 PC without ffmpeg, Go or Node installed (`where ffmpeg`
+  returns nothing). Acceptance criterion 3 needs an NVIDIA or Intel GPU.
+- A smartphone or a second PC on the same LAN.
+- For the check against a previous version (acceptance criterion 8), two zips:
+  the first zip of this feature and the one after it.
 
-## 手順
+## Steps
 
-1. zip を「すべて展開」し、`VVMDM.exe` を実行する（SmartScreen は「詳細情報 → 実行」）。コンソール窓が
-   出ず、`VVMDM` の題名のウィンドウに初期設定の画面が出る。`%LOCALAPPDATA%\VVMDM\data\mdm.db` ができている。
-2. アカウントを作り、設定でメディアフォルダ（ブラウザで再生できない形式、たとえば `.mkv` の HEVC を含む）を
-   登録してスキャンする。サムネイルとメタデータが付き、その動画がライブ変換で再生される。
-   取り込みの間にコンソール窓が一瞬でも出ないこと。
-3. 設定の「Video conversion」で、GPU に合う方式（NVENC か QSV）が選択可能として出る。
-4. 動画のページで「既定のアプリで開く」を押すと、Windows の既定のアプリで開く。
-5. ウィンドウを閉じる。同じ PC のブラウザで `http://localhost:47880/` が応答しない。タスクマネージャーに
-   `VVMDM.exe` と `ffmpeg.exe` が残っていない。
-6. 大きなフォルダでスキャンを始め、途中でウィンドウを閉じようとする。確認が出る。「続ける」でスキャンが
-   続く。もう一度閉じて「閉じる」を選び、起動し直すと、設定の取り込みの状況でスキャンが走っていて、
-   終わると全てのファイルが取り込まれている。取り込みが終わっているときに閉じると確認は出ない。
-7. LAN の端末で `http://<PC のアドレス>:47880/` を開くと接続できない。設定の「Network」で許可をオンにすると、
-   ファイアウォールの許可が求められ（プライベート ネットワークで許可する）、節に出たアドレスで LAN の端末から
-   開ける。アプリを起動し直しても許可はオンのまま開ける。オフに戻すと再び接続できない。
-8. 前の版の zip でアカウント作成・タグ付け・再生（途中で止める）を行う。閉じて、展開したフォルダを
-   新しい版の zip の中身で置き換えて起動する。同じアカウントでサインインでき、タグと再生位置が残っている。
+1. **Extract All** on the zip and run `VVMDM.exe` (for SmartScreen, **More
+   info → Run anyway**). No console window appears, and a window titled
+   `VVMDM` shows the account setup screen. `%LOCALAPPDATA%\VVMDM\data\mdm.db`
+   exists.
+2. Create the account, add a media folder in Settings that contains a format
+   the browser cannot play (for example, HEVC in `.mkv`), and scan. Thumbnails
+   and metadata appear, and the video plays through live transcode. No console
+   window appears during the import, not even for a moment.
+3. In **Video conversion** in Settings, the method that matches the GPU (NVENC
+   or QSV) is listed as selectable.
+4. On a video's page, **Open file** opens the video in the Windows default app.
+5. Close the window. In a browser on the same PC, `http://localhost:47880/`
+   does not respond. Task Manager shows no `VVMDM.exe` and no `ffmpeg.exe`.
+6. Start a scan of a large folder and try to close the window partway. A
+   confirmation appears; **Keep running** lets the scan continue. Close again
+   and choose **Close**, then start VVMDM again: **Scan status** in Settings
+   shows the scan running, and when it ends every file is imported. Closing
+   after the import has finished shows no confirmation.
+7. On a LAN device, `http://<PC address>:47880/` does not connect. Turn on
+   **Allow connections from the local network** in **Network** in Settings:
+   Windows Firewall asks for permission (allow on private networks), and the
+   LAN device opens one of the addresses the section lists. After VVMDM
+   restarts, the setting stays on and the address still opens. After it is
+   turned off, the LAN device cannot connect again.
+8. With the previous version's zip, create the account, add tags and play a
+   video (stopping partway). Close VVMDM, replace the contents of the extracted
+   folder with the contents of the new version's zip, and start it. Sign-in
+   with the same account works, and the tags and the playback position remain.
 
-## Edge Cases
+## Edge cases
 
-- ポート: `python -m http.server 47880` などでポートを塞いで起動すると、ポート番号と `--port` の案内の
-  ダイアログが出て終わる。`--port 47881` のショートカットからは起動できる。
-- 二重起動: 起動中にもう一度 `VVMDM.exe` を実行すると、新しいウィンドウは出ず、最小化していた既存の
-  ウィンドウが前面に出る。同じ利用者でリモート デスクトップの別のセッションから `--port 47881` で起動すると、
-  別のサインインで起動中であることを示すダイアログが出て終わる。
-- サインアウト: スキャンの途中で Windows からサインアウトし、サインインし直して起動すると、スキャンが
-  始め直されて終わる。DB は開けて（起動できて）いる。
-- zip から直接: エクスプローラーで zip を開き、中の `VVMDM.exe` をダブルクリックすると、展開を求める
-  ダイアログが出る。
-- 書けない場所: 読み取り専用の共有フォルダに展開して実行しても、通常どおり起動する（データは
-  `%LOCALAPPDATA%` に書く）。
-- ネットワークドライブ: `\\NAS\video` や割り当てたドライブ文字のフォルダを登録・再生できる。
-- 全画面: 動画の全画面ボタンで画面いっぱいになり、`Esc` で元のウィンドウに戻る。
+| Case | What to do | Expected result |
+| --- | --- | --- |
+| Port | Hold the port (for example with `python -m http.server 47880`) and start VVMDM. | A dialog names the port and points to `--port`, then VVMDM exits. A shortcut with `--port 47881` starts it. |
+| Second launch | Run `VVMDM.exe` again while it is running. | No new window appears; the existing window, even when minimized, comes to the front. |
+| Second launch from another session | As the same user, start VVMDM with `--port 47881` from another Remote Desktop session. | A dialog says VVMDM is running under another sign-in, then VVMDM exits. |
+| Sign-out | Sign out of Windows during a scan, sign in again and start VVMDM. | The scan starts over and finishes. The DB opens (VVMDM starts). |
+| Running from inside the zip | Open the zip in File Explorer and double-click the `VVMDM.exe` inside. | A dialog asks for the zip to be extracted. |
+| Read-only location | Extract to a read-only shared folder and run it. | VVMDM starts as usual (data goes to `%LOCALAPPDATA%`). |
+| Network drive | Add a folder on `\\NAS\video` or on a mapped drive letter. | The folder can be added and its videos play. |
+| Full screen | Press the video's full-screen button, then `Esc`. | The video fills the screen, and `Esc` returns to the original window. |

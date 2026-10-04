@@ -1,105 +1,136 @@
-# Data model: シーク用サムネイルの段階
+# Data model: Seek thumbnail stage
 
-親 Issue #388。既存の索引（`videos`・`jobs`）と生成物の
-置き場は [ARCHITECTURE.md](../../ARCHITECTURE.md) と
-[internal/artifacts/store.go](../../internal/artifacts/store.go) のままで、ここには足す列と
-ジョブの種類、その状態遷移、取り出しの条件、移行だけを書く。
+Parent Issue #388. The existing index (`videos`, `jobs`) and the storage of
+generated files stay as in [ARCHITECTURE.md](../../ARCHITECTURE.md) and
+[internal/artifacts/store.go](../../internal/artifacts/store.go). This file
+covers only the added column and job kind, their state transitions, the claim
+condition, and the migration.
 
 ## 1. `videos.seek_thumbnail_state`
 
-| 列 | 型 | 値 | 意味 |
+| Column | Type | Values | Meaning |
 | --- | --- | --- | --- |
-| `seek_thumbnail_state` | `text not null default 'pending'` | `pending` / `done` / `failed` | シーク用サムネイルの生成の状態。`thumbnail_state`・`preview_state` と同じ形 |
+| `seek_thumbnail_state` | `text not null default 'pending'` | `pending` / `done` / `failed` | State of seek thumbnail generation. Same shape as `thumbnail_state` and `preview_state` |
 
-`domain.Video`・`domain.IndexedVideo` に `SeekThumbnailState`（既存の型
-`domain.SeekThumbnailState`。値は保存する値になる）、`domain.UpsertResult` に
-`NeedsSeekThumbnail`（`seek_thumbnail_state <> 'done'`）を足す。`thumbnail_state` の意味は
-代表 JPEG だけになる。
+`domain.Video` and `domain.IndexedVideo` gain `SeekThumbnailState` (the
+existing type `domain.SeekThumbnailState`, whose values become the stored
+values), and `domain.UpsertResult` gains `NeedsSeekThumbnail`
+(`seek_thumbnail_state <> 'done'`). `thumbnail_state` now means the cover JPEG
+only.
 
-作り直せる索引である（ARCHITECTURE.md「Rebuildable and user data」）。
+The column is a rebuildable index (ARCHITECTURE.md, "Rebuildable and user
+data").
 
 ## 2. `jobs.kind = 'seek_thumbnail'`
 
-`domain.JobSeekThumbnail = "seek_thumbnail"`。`jobs.kind` の CHECK に加える（SQLite は CHECK を
-その場で変えられないので、`00006` と同じく表を作り直す）。部分ユニーク索引
-`jobs_pending_kind_video_idx`（未完了は `(kind, video_id)` に 1 行）はそのまま効く。
+`domain.JobSeekThumbnail = "seek_thumbnail"` is added to the `jobs.kind` CHECK
+(SQLite cannot alter a CHECK in place, so the table is rebuilt as in `00006`).
+The partial unique index `jobs_pending_kind_video_idx` (one unfinished row per
+`(kind, video_id)`) keeps working as is.
 
-`domain.JobKinds` の順は `probe, thumbnail, seek_thumbnail, preview`。ワーカーは段階ごとに 1 本で、
-`seek_thumbnail` も 1 本・直列である。
+The order of `domain.JobKinds` is `probe, thumbnail, seek_thumbnail, preview`.
+There is one worker per stage, and `seek_thumbnail` also has one worker that
+runs jobs serially.
 
-`domain.Processing` に `SeekThumbnail` を足し、`Remaining()` に含める。`IngestStore.Processing`
-は既存の `group by kind` に 1 つ case を足すだけである。
+`domain.Processing` gains `SeekThumbnail`, included in `Remaining()`.
+`IngestStore.Processing` only adds one case to the existing `group by kind`.
 
-## 3. 状態遷移
+## 3. State transitions
 
-| 起点 | 操作 | `seek_thumbnail_state` | 積む仕事 |
+| Trigger | Operation | `seek_thumbnail_state` | Jobs queued |
 | --- | --- | --- | --- |
-| 新しい内容の取り込み（`UpsertVideo`） | 行の挿入 | `pending`（既定値） | `probe`・`thumbnail`・`seek_thumbnail`（`NeedsSeekThumbnail`） |
-| 既存の動画の再走査（`ensurePendingJobs`） | `pending` なら | 変えない | `seek_thumbnail`（`EnsureJob`。`failed` は積み直さない） |
-| `seek_thumbnail` ジョブの成功 | `SetSeekThumbnailStateForJob(done)` | `done`（専有時の内容鍵・所在・所在の世代が今も同じときだけ） | なし |
-| `seek_thumbnail` ジョブの終端失敗 | `recordTerminalFailure` | `failed`（`<> 'done'` かつ同一性が同じときだけ） | なし |
-| `thumbnail` ジョブの終端失敗 | `recordTerminalFailure` | 変えない | なし |
-| 読み取りのやり直し（`RetryProbe`） | `failed` なら | `pending` | `probe`、`thumbnail`（`thumbnail_state` を戻したとき）、`seek_thumbnail`（戻したとき） |
-| `done` なのに置き場が無い（`Catalog.SeekThumbnailState`） | `RequeueMissingSeekThumbnails(id, contentKey)` | `pending`（`done` かつ内容鍵が同じときだけ、1 つの取引で） | `seek_thumbnail` |
-| 動画の行の削除 | 連鎖 | 行ごと消える | `ContentUnreferenced` で生成物を消す（既存） |
+| Ingest of new content (`UpsertVideo`) | Insert the row | `pending` (default) | `probe`, `thumbnail`, `seek_thumbnail` (`NeedsSeekThumbnail`) |
+| Rescan of an existing video (`ensurePendingJobs`) | If `pending` | Unchanged | `seek_thumbnail` (`EnsureJob`; `failed` is not requeued) |
+| `seek_thumbnail` job succeeds | `SetSeekThumbnailStateForJob(done)` | `done` (only when the content key, location and location generation at claim time are still the same) | None |
+| `seek_thumbnail` job fails terminally | `recordTerminalFailure` | `failed` (only when `<> 'done'` and the identity is the same) | None |
+| `thumbnail` job fails terminally | `recordTerminalFailure` | Unchanged | None |
+| Probe retry (`RetryProbe`) | If `failed` | `pending` | `probe`; `thumbnail` (when `thumbnail_state` was reset); `seek_thumbnail` (when reset) |
+| `done` but the stored files are missing (`Catalog.SeekThumbnailState`) | `RequeueMissingSeekThumbnails(id, contentKey)` | `pending` (only when `done` and the content key matches, in one transaction) | `seek_thumbnail` |
+| The video row is deleted | Cascade | The row is gone | `ContentUnreferenced` removes the generated files (existing) |
 
-`Catalog.SeekThumbnailState` の導出: 置き場があれば `done`。無ければ列が `done` のときは
-`RequeueMissingSeekThumbnails` を頼んで `pending`（積めなくても応答は `pending`。ホバー
-プレビューの `RequeueMissingPreview` と同じ）、そうでなければ列の値。`ThumbnailJobActive` は
-使わないので消す。
+`Catalog.SeekThumbnailState` derives the state: if the stored files exist, it
+is `done`. If not and the column is `done`, it asks
+`RequeueMissingSeekThumbnails` and returns `pending` (the response is `pending`
+even if nothing could be queued, the same as `RequeueMissingPreview` for the
+hover preview); otherwise it is the column's value. `ThumbnailJobActive` is no
+longer used and is removed.
 
-`RetryProbe` は置き場の有無の引数を持たなくなる。`done` で置き場が無い動画は、再生画面を
-開いた `GET /api/videos/{id}` が上の行で積み直す。
+`RetryProbe` loses its argument for whether the stored files exist. A video
+that is `done` with missing stored files is requeued by the row above when
+`GET /api/videos/{id}` is called from the playback screen.
 
-`Ingest.SeekThumbnails`（新しいハンドラ）は `Ingest.Thumbnail` と同じ順で進む: `GetVideo`、
-`JobIdentityCurrent`、`CheckSource`、内容ごとの錠の中で `PublishSeekThumbnails`（置き場があれば
-書かない）→ `SetSeekThumbnailStateForJob(done)`、反映されなければ（生成中に動画が消えた）
-`removeIfUnreferencedLocked`、最後に `removeIfUnreferencedLocked`。`Ingest.Thumbnail` からは
-`PublishSeekThumbnails` の呼び出しが無くなる。
+`Ingest.SeekThumbnails` (a new handler) proceeds in the same order as
+`Ingest.Thumbnail`:
 
-## 4. 取り出しの条件
+1. `GetVideo`
+2. `JobIdentityCurrent`
+3. `CheckSource`
+4. Inside the per-content lock: `PublishSeekThumbnails` (writes nothing when
+   the stored files exist), then `SetSeekThumbnailStateForJob(done)`; if that
+   is not applied (the video disappeared during generation),
+   `removeIfUnreferencedLocked`.
+5. Finally, `removeIfUnreferencedLocked`.
 
-`domain.ClaimConditionFor` を次にする。`internal/store` の `claimConditionSQL` は各条件を SQL へ
-写し、`Allows` と同じ判断になるように書く。
+`Ingest.Thumbnail` no longer calls `PublishSeekThumbnails`.
 
-| 種類 | 登録済みの所在 | 解析が終わっている | 取り出せる `thumbnail` の仕事が無い |
+## 4. Claim condition
+
+`domain.ClaimConditionFor` becomes the following. `claimConditionSQL` in
+`internal/store` translates each condition into SQL and is written to reach the
+same decision as `Allows`.
+
+| Kind | Registered location | Probe finished | No claimable `thumbnail` job |
 | --- | --- | --- | --- |
-| `probe` | 要る | — | — |
-| `thumbnail` | 要る | 要る | — |
-| `seek_thumbnail` | 要る | 要る | 要る |
-| `preview` | 要る | — | — |
+| `probe` | Required | — | — |
+| `thumbnail` | Required | Required | — |
+| `seek_thumbnail` | Required | Required | Required |
+| `preview` | Required | — | — |
 
-「取り出せる `thumbnail` の仕事が無い」は、`state in ('queued', 'running')` かつ登録済みの所在が
-ある `thumbnail` の行が 1 件も無いこと（`IngestStore.Processing` が数える範囲と同じ）。
-解析待ちで取り出せない `thumbnail` も数えるので、走査の直後は解析→代表サムネイルが全部終わる
-まで `seek_thumbnail` は始まらない。これが要件 1（代表が先）と要件 3（スキャン中に代表 JPEG の
-流れとシーク用の全編デコードを競わせない）を満たす。
+"No claimable `thumbnail` job" means there is no `thumbnail` row with
+`state in ('queued', 'running')` and a registered location (the same range that
+`IngestStore.Processing` counts). It also counts `thumbnail` jobs that cannot be
+claimed yet because they wait for the probe, so right after a scan
+`seek_thumbnail` does not start until every probe and cover thumbnail has
+finished. This satisfies requirement 1 (cover first) and requirement 3 (during
+a scan, the full-video decode for seek thumbnails does not compete with the
+flow of cover JPEGs).
 
-この条件は取り出しの時点だけで判断し、走っている `seek_thumbnail` を止めない。取り出した後に
-新しい `thumbnail` が積まれれば（走査やフォルダの変更）、その代表 JPEG は走っている 1 件の
-シーク用と並んで走る（要件 1 は待つことを許さない）。並ぶのはその 1 件が終わるまでで、次の
-`seek_thumbnail` は `thumbnail` の残りが無くなるまで取り出されない。全編を読む ffmpeg
-（シーク用・ホバープレビュー）が同時に 2 本を超えることは無く、重なるのは入力側シークで
-1 枚だけ取る代表 JPEG（1 本 0.1〜0.3 秒）で、今も解析の `ffprobe` が同じ形で重なっている。
+The condition is evaluated only at claim time and does not stop a running
+`seek_thumbnail`. If a new `thumbnail` is queued after the claim (a scan or a
+folder change), that cover JPEG runs alongside the one running seek thumbnail
+job (requirement 1 does not allow it to wait). They overlap only until that one
+job finishes; the next `seek_thumbnail` is not claimed until no `thumbnail`
+remains. No more than two ffmpeg processes that read the whole video (seek
+thumbnail and hover preview) run at once; what overlaps is the cover JPEG,
+which takes one frame with an input-side seek (0.1–0.3 seconds each), the same
+way the probe's `ffprobe` overlaps today.
 
-起床（`cmd/mdm/events.go`）: `seek_thumbnail` のワーカーは、`JobsQueued` にその種類があるとき
-（既存の一般則）に加え、`VideoIngestChanged` の `Stage` が `probe`・`thumbnail`・空（動画の行が
-消えた）のときに起きる。メディアフォルダの変更は既存どおり `JobsQueued` を全種類で発行する。
+Wake-up (`cmd/mdm/events.go`): the `seek_thumbnail` worker wakes when
+`JobsQueued` includes its kind (the existing general rule), and also when the
+`Stage` of `VideoIngestChanged` is `probe`, `thumbnail`, or empty (the video
+row was removed). A media folder change publishes `JobsQueued` for all kinds as
+before.
 
-## 5. 移行
+## 5. Migration
 
 `internal/store/migrations/00014_seek_thumbnail_stage.sql`:
 
-- Up: `videos` に `seek_thumbnail_state` を足す（既定 `pending`、CHECK）。`jobs` を `kind` の
-  CHECK に `seek_thumbnail` を含めて作り直す（`00006` と同じ手順。既存の行と索引を保つ）。
-  `probe_state <> 'pending'` で所在が 1 つ以上ある動画に `seek_thumbnail` を `queued` で積む
-  （`00006` のプレビューの積み直しと同じ形）。`thumbnail` の行は消さない。
-- Down: `seek_thumbnail` の行を消し、`jobs` を元の CHECK で作り直し、列を落とす。
+- Up: add `seek_thumbnail_state` to `videos` (default `pending`, with CHECK).
+  Rebuild `jobs` with `seek_thumbnail` in the `kind` CHECK (same procedure as
+  `00006`, keeping existing rows and indexes). Queue `seek_thumbnail` as
+  `queued` for every video with `probe_state <> 'pending'` and at least one
+  location (the same shape as the preview requeue in `00006`). `thumbnail` rows
+  are not deleted.
+- Down: delete the `seek_thumbnail` rows, rebuild `jobs` with the original
+  CHECK, and drop the column.
 
-既存の動画は `thumbnail_state` に関わらず全部 `pending` になる。完成済みの動画の
-`seek_thumbnail` ジョブは `PublishSeekThumbnails` が置き場を見て書かずに終わるので、作り直しは
-起きない（要件 5）。代表 JPEG の後でシーク用だけ失敗していた動画（`thumbnail_state = done` の
-まま）は、ここで初めて独立に再試行される（親 Issue Edge Cases）。
+Every existing video becomes `pending` regardless of `thumbnail_state`. For a
+video whose files are already complete, the `seek_thumbnail` job sees the
+stored files in `PublishSeekThumbnails` and ends without writing, so nothing is
+rebuilt (requirement 5). A video whose seek thumbnails failed after its cover
+JPEG (still `thumbnail_state = done`) is retried independently here for the
+first time (parent Issue edge cases).
 
-移行の時点で `queued` / `running` の `thumbnail` ジョブは、新しい版では代表 JPEG だけを作る。
-その動画のシーク用は移行が積んだ `seek_thumbnail` が作る。
+A `thumbnail` job that is `queued` / `running` at migration time creates only
+the cover JPEG in the new version. That video's seek thumbnails are created by
+the `seek_thumbnail` job the migration queued.

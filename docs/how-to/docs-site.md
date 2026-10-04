@@ -1,50 +1,107 @@
-# 文書サイト
+# Work with the documentation site
 
-`docs/` と `specs/` の文書は、`main` に入るたびに GitHub Pages へ公開される。
+The documents in `docs/`, `specs/` and `ARCHITECTURE.md` are published to GitHub
+Pages on every merge to `main`, in English at <https://syudead.github.io/vv/>
+and in Japanese under <https://syudead.github.io/vv/ja/>. Agent instructions
+(`.agents/`, `.claude/`), `AGENTS.md` and the root `README.md` are not
+published. The design behind the Japanese pages is in
+[japanese-translation.md](../design-docs/japanese-translation.md).
 
-- 公開先: <https://syudead.github.io/vv/>
-- 公開するのは `docs/` と `specs/` だけで、リポジトリ直下の文書や `.agents/`・`.claude/`
-  などのエージェント向けの文書は出さない。
+Both languages are built from the repository as follows.
 
-## 手元で見る
-
-```bash
-mise exec --command "task docs"
+```mermaid
+flowchart LR
+  en[English documents] --> vp[VitePress build]
+  tr[translations/ja] --> gen[Generate ja pages]
+  gen --> vp
+  vp --> pages[GitHub Pages]
+  agent[doc-translator] --> tr
 ```
 
-表示された URL（<http://localhost:5174/vv/>）を開く。文書を直すと、その場で表示が
-変わる。初回は `task setup`（`docs-site/` の依存を入れる）が必要である。
+The `doc-translator` subagent writes `translations/ja/`; the build generates
+the Japanese pages from it into `ja/` (not version controlled).
 
-CI と同じ作り方で確かめるときは `task docs-build` を使う。出力は
-`docs-site/.vitepress/dist/` に出る（版管理の外）。
+## Prerequisites
 
-## 公開の流れ
+- `task setup` has installed the `docs-site/` dependencies.
 
-`.github/workflows/docs.yml` が行う。
+## Preview the site locally
 
-- PR: `docs/`・`specs/`・`docs-site/` を変えたときに、サイトを作れることだけを確かめる。
-  公開はしない。
-- `main` への push: サイトを作り、GitHub Pages へ公開する。
-- 公開には、リポジトリの Settings → Pages で Source を「GitHub Actions」にしておく
-  必要がある。
+1. Start the development server:
 
-## 書き方の注意
+   ```bash
+   mise exec --command "task docs"
+   ```
 
-- 文書どうしのリンクは今までどおり相対パスで書く。`README.md` はそのディレクトリの
-  入口ページ（`/docs/how-to/` など）になる。
-- 公開範囲の外（ソース、設定ファイル、リポジトリ直下の文書）へのリンクは、サイトでは
-  GitHub の表示へ向く。
-- リンク先が見つからないとサイトの作成が失敗する。`http://localhost:…` の例は例外として
-  許している。
-- 見出しの anchor は GitHub と同じ規則で作るので、`#r-3-…` のような日本語の見出しへの
-  リンクも GitHub とサイトの両方で通る。
-- サイドバーはディレクトリの構成から自動で作る。項目の名前は各文書の見出し1である。
-  サイドバーは `task docs` の起動時に作るので、起動中に文書を足したり消したり、
-  見出し1を変えたりしたときは、`task docs` を起動し直すと一覧に反映される（本文の
-  変更はその場で反映される）。
+2. Open the printed URL (<http://localhost:5174/vv/>). Edits to a document show
+   at once.
 
-設定は `docs-site/.vitepress/config.mts` にある。
+The sidebar is built when the server starts, so restart `task docs` after
+adding or removing a document or changing its first heading.
 
-`docs-site/package.json` の `overrides` で vite を 6.4.3 に上げている。VitePress 1.6.4 が
-依存する vite 5 系と esbuild 0.21 には既知の脆弱性（GHSA-4w7w-66w2-5vf9 など）があり、
-VitePress の安定版では直っていないためである。VitePress の修正版が出たら外す。
+`task docs-build` builds as CI does, into `docs-site/.vitepress/dist/` (not
+version controlled). A document without a translation shows its English text
+under an "untranslated" notice.
+
+## How publishing works
+
+`.github/workflows/docs.yml` runs on every pull request and push to `main` that
+touches published paths, `translations/` or `docs-site/`. It tests the
+translation tools, checks the translations and builds the site; on `main` it
+also deploys. Repository Settings → Pages must have Source set to "GitHub
+Actions".
+
+## Translate a changed document
+
+Translate after the English of the change is final, in the same pull request.
+
+1. Hand the changed paths to the `doc-translator` subagent (for example,
+   "translate `docs/how-to/docs-site.md`"). It writes
+   `translations/ja/<path>` and runs `stamp` on it.
+2. For a deleted or renamed document, name both paths; the subagent deletes or
+   moves the translation.
+3. Run the check, then commit the translations with the change:
+
+   ```bash
+   mise exec --command "task docs-test"
+   ```
+
+Never edit a translation by hand. Fix the English source, or the
+[translation rules](../design-docs/japanese-translation.md#translation-rules),
+and translate again.
+
+### Commands
+
+| Command | What it does |
+| --- | --- |
+| `node docs-site/translate/ja.mjs stamp <path>...` | Pins each heading's English anchor, records the source hash, and checks the structure |
+| `node docs-site/translate/ja.mjs check` (`task docs-test`) | Fails on a broken translation or one whose source is gone; warns on a stale one |
+| `node docs-site/translate/ja.mjs status` (`task docs-ja-status`) | Lists published documents whose translation is stale or missing |
+
+### What readers see
+
+| Situation | What the reader sees | What fixes it |
+| --- | --- | --- |
+| The English document changed after its translation | The old translation with an out-of-date notice | Translating the document again |
+| A document without a translation | The English text with a not-translated-yet notice | Translating the document |
+| The English document was deleted or renamed | No Japanese page at the old path; `check` fails | Deleting or moving the translation |
+
+## Writing notes
+
+- Link between documents with relative paths. A `README.md` becomes its
+  directory's index page (`/docs/how-to/`).
+- Links to files outside the published set (code, configuration, root
+  documents other than `ARCHITECTURE.md`) point at GitHub on the site.
+- A broken link fails the build. `http://localhost:…` examples are allowed.
+- Heading anchors follow GitHub's rules, so the same `#anchor` works on GitHub
+  and on the site. Japanese pages keep the English anchors.
+- Write documents to [writing-quality.md](../design-docs/writing-quality.md).
+
+## Configuration
+
+The site configuration is `docs-site/.vitepress/config.mts`.
+
+`docs-site/package.json` overrides vite to 6.4.3 because VitePress 1.6.4
+depends on vite 5 and esbuild 0.21, which have known vulnerabilities
+(GHSA-4w7w-66w2-5vf9 and others) that no stable VitePress release fixes. Remove
+the override when a fixed VitePress is released.

@@ -1,107 +1,128 @@
-# Plan品質の規則: 空欄を埋めるための記述を防ぐ
+# Plan quality rules: no text written only to fill a slot
 
-Planを書く・変えるときに従う規則。Issue #65
-「Planテンプレートを既存設計参照とfeature固有差分中心にする」の方針を、成果物側の
-判断規則として文書化したもの。
+Follow these rules when writing or changing a Plan. They turn the policy of
+Issue #65 ("Plan templates centred on references to existing design and
+feature-specific differences") into decision rules for the artifacts.
 
-狙いは1つである。**Planに、決めていないことを書かない。** テンプレートに枠があるという
-理由だけで生まれた記述は、読む側に判断があったと誤認させ、正本の更新時に陳腐化し、
-本当の判断を埋もれさせる。
+The aim: **a Plan states nothing that was not decided.** Text that exists only
+because the template has a slot for it makes readers believe a decision was
+made, goes stale when the source of truth changes, and buries the real
+decisions.
 
-Planに入りうるものは次の4つだけである。このうち1と4は常に置き、2と3はそれに当たる
-判断があるときだけ現れる（P-7）。
+A Plan can contain only these four things. Items 1 and 4 are always present;
+items 2 and 3 appear only when there is a decision of that kind (P-7).
 
-1. 何を作るかの要約（要求そのものは親Issueにある）
-2. 既存の正本への参照と、そこからのfeature固有の差分
-3. 変更対象の所有境界と構造上の判断
-4. 実装単位の分解（子Issueとimplementation PRの単位）
+1. A summary of what is being built (the requirement itself is in the parent
+   Issue)
+2. References to existing sources of truth, and the feature-specific
+   differences from them
+3. Ownership boundaries of what changes, and structural decisions
+4. The breakdown into units of implementation work (child Issues and
+   implementation PRs)
 
-## 規則
+## Rules
 
-### P-1: Planは決定を書く。調査の経過はresearch.mdへ
+### P-1: A Plan records decisions; research goes in research.md
 
-Planの各節には、選んだものとその理由だけを書く。何を調べたか、どこまで分かったかは
-`research.md` に置く。決定が無い節は、節ごと消すか「該当なし」の1行で終える。
+Each Plan section states only what was chosen and why. What was investigated
+and how far it got goes in `research.md`. A section with no decision is deleted
+or ends with a single line, "Not applicable".
 
-「Planに書いてあるが、これを読んで何かが決まるわけではない」という記述は、決定ではなく
-調査の残骸である。
+Text that is in the Plan but decides nothing when read is not a decision; it is
+leftover research.
 
-### P-2: 書くことが無い成果物は作らない
+### P-2: Do not create an artifact with nothing to say
 
-`research.md`、`data-model.md`、`contracts/`、`quickstart.md` は、feature固有の内容が
-存在するときだけ作る。存在しないなら、その成果物を作らず、Planにその旨を1行書く。
+Create `research.md`, `data-model.md`, `contracts/` and `quickstart.md` only
+when feature-specific content exists. When it does not, do not create the
+artifact; say so in one line in the Plan.
 
-枠を満たすために概念を発明しない。成果物を作る前に、そこに書く内容が実在するかを
-確かめる。エンティティを追加しないfeatureには`data-model.md`が無く、外部に見える口を
-変えないfeatureには`contracts/`が無い。それが正しい状態である。
+Do not invent concepts to fill a slot. Before creating an artifact, confirm that
+its content exists. A feature that adds no entity has no `data-model.md`, and a
+feature that changes no externally visible interface has no `contracts/`. That
+is the correct state.
 
-既存のPlanを改訂して、ある成果物がfeature固有の内容を失った場合は、同じ変更で
-そのファイルを削除する。残したままでは後続工程の入力であり続ける。内容に残す価値が
-あるなら、先に正本へ移してリンクしてから削除する。履歴はgitが持っている。
+When a revision of an existing Plan leaves an artifact without feature-specific
+content, delete the file in the same change. Left in place, it remains an input
+to later stages. If its content is worth keeping, move it to the source of truth
+and link it first, then delete. Git keeps the history.
 
-### P-3: 既存の正本はリンクで済ませ、差分だけを書く
+### P-3: Link to existing sources of truth and write only the differences
 
-技術スタック、依存方向、共通コマンド、リポジトリ全体の構成は、正本へのリンクで示す。
-Plan成果物に書くのは、このfeatureが追加・変更する部分と、正本が扱っていない
-feature固有の制約だけである。
+Show the tech stack, dependency direction, common commands and repository-wide
+structure by linking to their sources of truth. A Plan's artifacts contain only
+what this feature adds or changes, and feature-specific constraints the sources
+of truth do not cover.
 
-正本が存在しない場合（新規リポジトリなど）はPlanに書いてよい。その場合、後の変更で
-恒久的な置き場所へ移し、Planからはそこへリンクする。
+When no source of truth exists (a new repository, for example), the Plan may
+state it. A later change then moves it to a permanent location, and the Plan
+links there.
 
-### P-4: 各決定に、却下した代案と却下の理由を書く
+### P-4: Each decision names the rejected alternatives and why
 
-決定には、検討して採らなかった案と、採らなかった理由を1行ずつ添える。これが書けない
-ものは決定ではなく、既定値をそのまま通しただけである。その場合は決定として書かず、
-P-1に従って落とす。
+Each decision comes with the alternatives considered and not taken, one line
+each, with the reason. Anything for which this cannot be written is not a
+decision; it is a default passed through unchanged. Do not record it as a
+decision; drop it under P-1.
 
-理由は「一般に良いとされるため」ではなく、このfeatureとこのリポジトリの事情で書く。
+Give reasons specific to this feature and this repository, not "because it is
+generally considered good".
 
-この規則が対象にするのは技術上・構造上の決定である。`## Implementation Work` の
-実装単位は決定ではなく作業の分割なので、代案を書く必要はない（P-5に従う）。ただし
-分割の仕方そのものに判断があった場合は、決定としてP-4に従って書く。
+This rule covers technical and structural decisions. The units in
+`## Implementation Work` are a division of work, not decisions, so they need no
+alternatives (follow P-5). When the way of dividing the work itself involved a
+judgement, record it as a decision under P-4.
 
-### P-5: 実装単位は1 PRに収まり、受け入れ証拠が観測可能である（Planと子Issue化の分業）
+### P-5: A unit of implementation fits in one PR and has observable acceptance evidence (division of labour between the Plan and child Issue creation)
 
-`## Implementation Work` の各単位には、範囲、依存、受け入れ証拠を書く。受け入れ証拠は
-観測できる事実（検査が通る、指定の応答が返る、画面で確認できる）にする。
-「正しく実装されている」は証拠ではない。
+Each unit in `## Implementation Work` states its scope, dependencies and
+acceptance evidence. Acceptance evidence is an observable fact (a check passes,
+a specified response comes back, something is visible on screen). "Implemented
+correctly" is not evidence.
 
-1単位が1 PRに収まらない大きさなら分割する。永続的なtask IDを振らず、`tasks.md` も
-作らない。実装作業の分解はPlanが持ち、`sdd-plan-to-issues` がそこから子Issueを作る。
+Split a unit that is too large for one PR. Do not assign persistent task IDs and
+do not create `tasks.md`. The Plan holds the breakdown of implementation work,
+and `sdd-plan-to-issues` creates child Issues from it.
 
-Planが各単位について確定させるのは、範囲、依存、受け入れ証拠の3点である。実装者向けの
-説明文を書き切る必要はない。`sdd-plan-to-issues` が、この3点と成果物を材料に子Issueの
-本文を書き起こす。Planは判断を確定させる場で、子Issue化はその判断を実装者向けに
-展開する場である。
+For each unit the Plan settles three things: scope, dependencies and acceptance
+evidence. It does not need to write out the full explanation for implementers.
+`sdd-plan-to-issues` drafts each child Issue body from those three things and
+the artifacts. The Plan is where decisions are settled; child Issue creation is
+where they are expanded for implementers.
 
-その分業が成り立つよう、Planの側では次を満たす。見出しはPlanの外でも意味が通る題名に
-する（そのまま子Issueの題名になる）。依存は相手の見出しで指す（この時点でIssue番号は
-存在しない）。詳細を持つ成果物があれば、その節を指す。単位の集合はfeature全体を覆い、
-互いに重ならない。
+For that division of labour to work, the Plan meets the following. Each heading
+is a title that makes sense outside the Plan (it becomes the child Issue title
+as is). Dependencies refer to the other unit's heading (no Issue numbers exist
+yet). When an artifact holds the details, point to its section. The set of units
+covers the whole feature with no overlap.
 
-子Issue化の段階で新しい決定が必要になった場合は、そこで作らずPlanへ戻す。Planは人が
-承認した文書であり、子Issueは実装者への恒久的な指示だからである。
+When child Issue creation finds that a new decision is needed, it does not make
+it there; it goes back to the Plan. The Plan is a document people approved, and
+child Issues are lasting instructions to implementers.
 
-画面が変わる単位は、受け入れ証拠にその旨を書く。実装では視覚と操作を確認する。
+A unit that changes a screen says so in its acceptance evidence. The
+implementation then checks the visuals and the interaction.
 
-### P-6: 該当しない項目は「該当なし」で終える
+### P-6: An item that does not apply ends with "Not applicable"
 
-テンプレートの項目に該当する内容が無いとき、もっともらしい文で埋めない。項目ごと
-落とすか、「該当なし」と書いて終える。
+When a template item has no matching content, do not fill it with plausible
+text. Drop the item or write "Not applicable" and stop.
 
-書こうとしている文が、親Issueや既存文書のどこから来た要求なのかを言えるか確かめる。
-言えないものは、その項目に該当する内容が存在しない証拠である。
+Check whether you can say where in the parent Issue or an existing document the
+requirement behind the sentence you are writing comes from. If you cannot, that
+is evidence the item has no content.
 
-### P-7: 計画の量は判断の量で決まる
+### P-7: The amount of planning follows the amount of judgement
 
-Planの形は変更の規模に合わせる。常に置くのは `## Summary` と
-`## Implementation Work` の2節だけで、他の節は判断を持つときに現れ、持たないときは
-削除する。
+Match the shape of the Plan to the size of the change. Only `## Summary` and
+`## Implementation Work` are always present; other sections appear when they
+carry a judgement and are deleted when they do not.
 
-1つのパッケージの中で完結し、依存も構造も変わらず、検討すべきゲートも無い変更のPlanは
-2節で終わる。それは省略形ではなく、完成したPlanである。逆に、複数の境界にまたがる変更や、
-実在する選択肢から選ぶ変更は、すべての節を必要な長さで埋める。
+A Plan for a change that stays within one package, changes no dependency or
+structure, and has no gate to consider ends after two sections. That is not an
+abbreviated Plan; it is a complete one. Conversely, a change that crosses several
+boundaries or chooses among real options fills every section to the length it
+needs.
 
-節や成果物の数を一定に保とうとしない。埋めるために判断を作り出すことは、判断を
-省くことと同じだけ品質を下げる。
-
+Do not try to keep the number of sections or artifacts constant. Inventing
+judgements to fill slots lowers quality as much as omitting judgements does.

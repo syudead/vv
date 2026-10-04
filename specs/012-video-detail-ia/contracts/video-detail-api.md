@@ -1,45 +1,49 @@
-# Contract: 動画詳細画面のための API の差分
+# Contract: API changes for the video detail screen
 
-正本は [api/openapi.yaml](../../../api/openapi.yaml) である。ここに書くのは、この feature が
-足す項目・経路・誤りの意味だけである。各実装単位が、自分の担当分をそこへ移す。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
+covers only the fields, endpoints and error meanings this feature adds. Each
+implementation unit moves its own part into the schema.
 
-`Error` の形（`code`・`message`）と、既存の経路の意味は変えない。`Error.code` の enum には
-`probe_not_failed`・`open_unavailable`・`file_missing` の 3 つを足す。403 には既存の
-`forbidden` を使う。
+The shape of `Error` (`code`, `message`) and the meaning of existing endpoints do
+not change. Three values are added to the `Error.code` enum: `probe_not_failed`,
+`open_unavailable` and `file_missing`. 403 uses the existing `forbidden`.
 
-## `Video` の追加項目
+## Added `Video` fields
 
-どちらも任意項目で、`GET /api/videos/{id}` の応答にだけ入る。次の応答には入れない。
+Both fields are optional and appear only in the response of
+`GET /api/videos/{id}`. They are not in these responses:
 
 - `GET /api/videos`
 - `GET /api/folders/{rootId}/videos`
-- 関連動画
+- Related videos
 
-| 項目 | 型 | 意味 |
+| Field | Type | Meaning |
 | --- | --- | --- |
-| `location` | object | 代表の所在。登録フォルダの下に所在が無い動画はそもそも 404 なので、この応答では常に入る |
-| `location.path` | string | 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパスになる |
-| `location.openable` | boolean | 次のすべてを満たすとき `true`。要求元がループバックであること、`Host` がループバックの名前であること、サーバーが既定アプリを起動できる環境であること（「ファイルを開く」の 403・409 `open_unavailable` と同じ条件） |
-| `folder` | object | 代表の所在が置かれたフォルダ（`rootId`・`path`・`rootName`）。再生画面の見出しのパンくずに使う。`rootName` は登録フォルダの表示名（`FolderSummary.name` と同じ規則）で、この応答にだけ入る。所在がどの登録フォルダにも含まれなければ省く。`folder` 自体は一覧の応答にも入る（013 の list-api.md） |
-| `seekThumbnailState` | `pending` \| `done` \| `failed` | シーク用プレビューの状態。既存の `seekThumbnailUrl` と同じ条件（読み取り済み・長さが正・映像コーデックあり・内容鍵あり）のときだけ入る |
+| `location` | object | The representative location. A video with no location under a registered folder is a 404 anyway, so this response always has it |
+| `location.path` | string | The absolute path of the representative location, as the server sees it (inside a container, the path inside the container) |
+| `location.openable` | boolean | `true` when all of these hold: the request comes from loopback, `Host` is a loopback name, and the server runs where it can start the default application (the same conditions as 403 and 409 `open_unavailable` of "open file") |
+| `folder` | object | The folder that holds the representative location (`rootId`, `path`, `rootName`). Used for the breadcrumb in the player screen heading. `rootName` is the registered folder's display name (the same rule as `FolderSummary.name`) and appears only in this response. Omitted when the location is in no registered folder. `folder` itself also appears in list responses (013's list-api.md) |
+| `seekThumbnailState` | `pending` \| `done` \| `failed` | The state of the seek preview. Present only under the same conditions as the existing `seekThumbnailUrl` (probed, positive duration, has a video codec, has a content key) |
 
-代表の所在の選び方は、既存の `GetVideo` と同じとする。登録フォルダの下にある所在のうち、
-パスが最小のものである。
+The representative location is chosen as in the existing `GetVideo`: the location
+under a registered folder with the smallest path.
 
-`seekThumbnailState` の導き方は次のとおり。
+`seekThumbnailState` is derived as follows:
 
-- `done`：置き場（`thumbnails/seek/<prefix>/<contentKey>/`）が存在する
-- `pending`：置き場が無く、`thumbnail_state` が `pending` であるか、その動画の `thumbnail`
-  ジョブが `queued`・`running` である
-- `failed`：それ以外（ジョブが `failed`、またはジョブの行が保持期間を過ぎて消えている）
+| Value | Condition |
+| --- | --- |
+| `done` | The storage directory (`thumbnails/seek/<prefix>/<contentKey>/`) exists |
+| `pending` | The storage directory does not exist, and `thumbnail_state` is `pending` or the video's `thumbnail` job is `queued` or `running` |
+| `failed` | Anything else (the job is `failed`, or the job row is gone after its retention period) |
 
-サムネイルのジョブが代表サムネイルより前の段で終端失敗したときも、`thumbnail_state` は同じ
-取引で `failed` になる（plan の Structural Decisions 13）。そのため、ジョブが `failed` なのに
-`thumbnail_state` だけが `pending` のまま残ることは無い。
+When the thumbnail job fails terminally at a stage before the representative
+thumbnail, `thumbnail_state` also becomes `failed` in the same transaction (the
+plan's Structural Decisions 13). So a `failed` job never leaves `thumbnail_state`
+at `pending`.
 
-## 関連動画: `GET /api/videos/{id}/related`
+## Related videos: `GET /api/videos/{id}/related`
 
-応答は 200 で、`RelatedVideos` を返す。
+The response is 200 with `RelatedVideos`.
 
 ```yaml
 RelatedVideos:
@@ -54,96 +58,108 @@ RelatedVideos:
     nextId:
       type: integer
       format: int64
-      description: 同じディレクトリで自然順の次の動画。無ければ省く
+      description: The next video in natural order in the same directory. Omitted when there is none
     prevId:
       type: integer
       format: int64
       description: |
-        同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+        The previous video in natural order in the same directory. Omitted when there is none. Not necessarily in items
 ```
 
-`items` の各 `Video` には、一覧と同じく `progress` を付ける。
+Each `Video` in `items` carries `progress`, as in the list.
 
-並びは次の順で、最大 20 件とする。
+The order is as follows, up to 20 items:
 
-1. 代表の所在と同じディレクトリの直下にある動画のうち、ファイル名の自然順
-   （`domain.CompareNatural`）でこの動画より後のもの
-2. 同じディレクトリの直下にある、この動画より前のもの
-3. 1 と 2 に入らなかった動画を、追加日時の差の小さい順に並べたもの。差が同じなら `id` の
-   大きい方を先にする
+1. Videos directly in the same directory as the representative location that
+   come after this video in natural order of file name (`domain.CompareNatural`)
+2. Videos directly in the same directory that come before this video
+3. Videos not in 1 or 2, by the smallest difference in date added. On equal
+   differences, the larger `id` comes first
 
-補足:
+Notes:
 
-- 1 と 2 の順序は全順序とする。`CompareNatural` が 0 のときはファイル名のバイト順、それも
-  同じなら `id` の小さい方を先にする。
-- 同じディレクトリに所在を 2 つ持つ動画は、パスの小さい方の所在のファイル名で並べ、
-  1 件として数える。
-- 1 と 2 の比較に使うこの動画自身のファイル名は、代表の所在のものである。
-- この動画自身は含めない。登録フォルダの下に所在の無い動画も含めない。
-- `nextId` は 1 の先頭の `id` で、1 が空なら省く。画面はこれを「次の動画」として使う。
-- `prevId` は 2 の末尾（この動画の直前）の `id` で、2 が空なら省く。画面はこれを
-  プレイヤーの左端の「前の動画」として使う。2 は昇順に並ぶので、20 件で切られて `items` に
-  入らないことがある。画面は `id` だけで移り、題名が分からなければ出さない。
-  - 却下: 画面が `items[0]` を次の動画とみなす案。1 が空のとき `items[0]` は先行や
-    追加日時の近い動画になり、要件 14「次の動画が無いときは『もう一度見る』だけ」を満たせない。
-    また、関連動画の各項目は `location` を持たないので、画面でディレクトリを比べることも
-    できない。
+- The order in 1 and 2 is total. When `CompareNatural` returns 0, the byte order
+  of the file name decides, and then the smaller `id` comes first.
+- A video with two locations in the same directory is sorted by the file name of
+  the location with the smaller path, and counts as one item.
+- This video's own file name used for the comparison in 1 and 2 is that of the
+  representative location.
+- This video itself is excluded, as are videos with no location under a
+  registered folder.
+- `nextId` is the `id` of the first item of 1, omitted when 1 is empty. The screen
+  uses it as "next video".
+- `prevId` is the `id` of the last item of 2 (right before this video), omitted
+  when 2 is empty. The screen uses it as "previous video" at the left end of the
+  player. 2 is in ascending order, so it can be cut at 20 items and not be in
+  `items`. The screen navigates by `id` only, and does not show a title it does
+  not know.
+  - Rejected: the screen treating `items[0]` as the next video. When 1 is empty,
+    `items[0]` is a preceding video or one with a close date added, which breaks
+    requirement 14 ("when there is no next video, only `もう一度見る`"). Related
+    video items also have no `location`, so the screen cannot compare directories
+    either.
 
-誤り:
+Errors:
 
-| 状態 | 状況 | `code` |
+| Status | Situation | `code` |
 | --- | --- | --- |
-| 404 | 知らない id、または登録フォルダの下に所在が無い | `not_found` |
+| 404 | Unknown id, or no location under a registered folder | `not_found` |
 
-## 読み取りのやり直し: `POST /api/videos/{id}/probe`
+## Probe again: `POST /api/videos/{id}/probe`
 
-要求の本文は無い。
+The request has no body.
 
-- 成功は 202 で、更新後の `Video`（`probeState: pending`）を返す。
-- サーバーは 1 つの取引の中で次を行う（`RequeuePreviewRepair` と同じ形）。
-  - `where probe_state='failed'` を付けて、`probe_state` を `pending` に戻し、`probe_error` を
-    消す。更新が 0 行なら 409 とする。
-  - `thumbnail_state` が `done` でなければ `pending` に戻す。
-  - `thumbnail_state` が `done` でも、シーク用プレビューの置き場が無ければ、状態はそのままで
-    `thumbnail` ジョブを積む。既存の `thumbnailHandler` は、代表サムネイルがあれば作り直さず、
-    シーク用プレビューだけを作る。
-  - `preview_state` が `failed` なら `pending` に戻す。
-  - `probe` ジョブを積む。`thumbnail_state` を戻したとき、またはシーク用プレビューの置き場が
-    無いときは、`thumbnail` ジョブも積む。
-    どちらも、その種類の終わった行を消してから `on conflict … do nothing` で挿入する。
-- プレビューのジョブは、読み取りの成功後に既存の `probeHandler` が積む。
-- `probe_state='failed'` は、その動画の読み取りのジョブが終わっていることを意味する。
-  終端の失敗は、ジョブを `failed` にするのと同じ取引で記録するからである（plan の
-  Structural Decisions 13）。このため、ここで積む新しいジョブが、まだ動いている古いジョブとの
-  重複防止で省かれることは無い。
+- Success is 202 with the updated `Video` (`probeState: pending`).
+- In one transaction, the server does the following (the same shape as
+  `RequeuePreviewRepair`):
+  - With `where probe_state='failed'`, set `probe_state` back to `pending` and
+    clear `probe_error`. If 0 rows are updated, return 409.
+  - If `thumbnail_state` is not `done`, set it back to `pending`.
+  - If `thumbnail_state` is `done` but the seek preview's storage directory does
+    not exist, leave the state and enqueue a `thumbnail` job. The existing
+    `thumbnailHandler` does not rebuild the representative thumbnail when it
+    exists and builds only the seek preview.
+  - If `preview_state` is `failed`, set it back to `pending`.
+  - Enqueue a `probe` job. When `thumbnail_state` was set back, or when the seek
+    preview's storage directory does not exist, also enqueue a `thumbnail` job.
+    For both, delete the finished rows of that kind first, then insert with
+    `on conflict … do nothing`.
+- The preview job is enqueued by the existing `probeHandler` after a successful
+  probe.
+- `probe_state='failed'` means the video's probe job has finished, because a
+  terminal failure is recorded in the same transaction that marks the job
+  `failed` (the plan's Structural Decisions 13). So the new job enqueued here is
+  never skipped by duplicate prevention against an old job that is still running.
 
-| 状態 | 状況 | `code` |
+| Status | Situation | `code` |
 | --- | --- | --- |
-| 404 | 知らない id、または登録フォルダの下に所在が無い | `not_found` |
-| 409 | `probeState` が `failed` でない（読み取り中・読み取り済み） | `probe_not_failed` |
+| 404 | Unknown id, or no location under a registered folder | `not_found` |
+| 409 | `probeState` is not `failed` (probing or probed) | `probe_not_failed` |
 
-画面は 409 を「すでにやり直し中」とみなし、動画を取り直して段階表示へ移る。
+The screen treats 409 as "already being retried", refetches the video and moves
+to the stage display.
 
-## ファイルを開く: `POST /api/videos/{id}/open`
+## Open file: `POST /api/videos/{id}/open`
 
-要求の本文は無い。パスは受け取らない。
+The request has no body and accepts no path.
 
-- 成功は 204 である。代表の所在を、サーバーの PC の既定アプリで開く子プロセスを起動した
-  時点で返す。
-- アプリが開いたかどうかは確かめない。
+- Success is 204, returned once a child process that opens the representative
+  location with the server PC's default application has started.
+- Whether the application actually opened is not checked.
 
-判定は表の上から順に行い、最初に当たったものを返す。
+The checks run from the top of the table, and the first match is returned.
 
-| 状態 | 状況 | `code` |
+| Status | Situation | `code` |
 | --- | --- | --- |
-| 404 | 知らない id、または登録フォルダの下に所在が無い | `not_found` |
-| 409 | サーバーが既定アプリを起動できない環境である（コマンドが見つからない、画面が無い。要求元を問わない） | `open_unavailable` |
-| 403 | 要求元がループバックでない、または `Host` がループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）でない | `forbidden`（既存） |
-| 409 | 代表の所在にファイルが無い（移動・削除された） | `file_missing` |
-| 500 | 子プロセスを起動できなかった | `internal` |
+| 404 | Unknown id, or no location under a registered folder | `not_found` |
+| 409 | The server runs where it cannot start the default application (command not found, no display; regardless of the requester) | `open_unavailable` |
+| 403 | The request does not come from loopback, or `Host` is not a loopback name (`localhost`, `127.0.0.1`, `[::1]`) | `forbidden` (existing) |
+| 409 | The representative location has no file (moved or deleted) | `file_missing` |
+| 500 | The child process could not be started | `internal` |
 
-既存の POST の同一オリジン確認（`mutationBoundary`）は、この経路にもそのまま掛かる。
-`Host` の確認は、それを DNS rebinding で通り抜けられないようにするためである。
+The existing same-origin check for POST (`mutationBoundary`) applies to this
+endpoint unchanged. The `Host` check keeps DNS rebinding from getting around it.
 
-403 と 409 `open_unavailable` の判定は、`location.openable` と同じ条件で行う。
-画面が `openable: false` でリンクを出さないのは、この 2 つを利用者に見せないためである。
+403 and 409 `open_unavailable` are decided with the same conditions as
+`location.openable`. The screen shows no link when `openable: false` so that the
+user never sees these two.

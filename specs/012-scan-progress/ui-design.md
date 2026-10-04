@@ -1,138 +1,172 @@
-# UI Design: 動画取り込みの進捗表示
+# UI Design: Scan progress display
 
 **Feature**: [parent Issue #170](https://github.com/syudead/vv/issues/170)
 
-> **今の UI の正本ではない。** 右下の表示・概要・設定の「取り込み状況」が**何を示すか**は、
-> [取り込みの進捗と結果の UI 設計](../024-import-progress/ui-design.md)（024）が置き換えた。
-> 本書のうち今も有効なのは、置き場所と操作（右下に1つだけ固定する、押すと
-> `/settings#scan-status` へ移る、hover と focus で概要を開く、閉じる button、設定の section の
-> 位置、取得の一時失敗の扱い）だけである。「Floating Indicator」の文言の行、
-> 「Summary Popover」の表示内容、「Settings Scan Status」の件数と時刻の行、「States」の表は、
-> 024 を読む。
+> **This is not the source of truth for the current UI.** **What** the bottom-right
+> display, the summary and the settings `取り込み状況` show was replaced by
+> [the UI design for import progress and results](../024-import-progress/ui-design.md)
+> (024). Of this document, only the placement and the interaction remain valid:
+> one fixed display at the bottom right, pressing it goes to
+> `/settings#scan-status`, hover and focus open the summary, the close button, the
+> position of the settings section, and the handling of temporary fetch failures.
+> For the wording rows in "Floating Indicator", the content of "Summary Popover",
+> the count and time rows in "Settings Scan Status", and the table in "States",
+> read 024.
 
-見た目の規則、シェル、一覧の密度は
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の role token に従う。本書は、取り込み進捗の
-フローティング表示と設定画面の「取り込み状況」がそれらに足すものだけを定める。新しい色、
-半径、影の token は追加しない。
+Sources: the visual rules, the shell and the list density follow
+[Library UI: visual rules and list layout](../../docs/design-docs/library-ui.md)
+and the role tokens in [`web/src/index.css`](../../web/src/index.css). This
+document defines only what the floating scan progress display and the settings
+screen's `取り込み状況` add to them. No new colour, radius or shadow token is
+added.
 
 ## Screen Boundary
 
-- フローティング進捗は route より上に1度だけ配置し、ライブラリ、フォルダ、設定、再生画面で
-  同じ表示インスタンスを使う。通常画面では右下に固定する。再生画面は独立したシアターモードの
-  まま保ち、進捗表示は通常画面と同じ右下に固定する。再生画面の右上には閉じる × があるため
-  （[動画詳細画面の UI](../012-video-detail-ia/ui-design.md)「Close」）、そこへは置かない。
-- トップバーの「ライブラリを更新」は待機時の開始操作として残す。取り込み中の割合、件数、
-  失敗結果はトップバーへ出さず、開始ボタンは実行中であることだけを短く示す。
-- 設定画面には `id="scan-status"` の section をメディアフォルダ設定より前に置く。`/settings#scan-status`
-  を直接開いたときも、現在または直近の取り込み状況が最初に確認できる。
-- フローティング表示と設定 section は `scanPresentation.ts` の共有表示モデルから同じ状態名、
-  progress、件数、時刻、失敗理由を読む。画面ごとに `done + failed > 0` や総数未確定を
-  別解釈しない。
+- The floating progress display is placed once, above the routes, and the
+  library, folder, settings and player screens share the same instance. On normal
+  screens it is fixed at the bottom right. The player screen stays an independent
+  theatre mode, and the progress display is fixed at the same bottom right as on
+  normal screens. The player screen's top right holds the close × ([the video
+  detail screen UI](../012-video-detail-ia/ui-design.md), "Close"), so the display
+  does not go there.
+- The top bar's `ライブラリを更新` stays as the start action when idle. The
+  percentage, counts and failures during a scan are not shown in the top bar; the
+  start button only briefly indicates that a scan is running.
+- The settings screen places a section with `id="scan-status"` before the media
+  folder settings. Opening `/settings#scan-status` directly also shows the current
+  or most recent scan status first.
+- The floating display and the settings section read the same state name,
+  progress, counts, times and failure reason from the shared presentation model in
+  `scanPresentation.ts`. No screen interprets `done + failed > 0` or an
+  undetermined total on its own.
 
 ## Floating Indicator
 
-インジケーターは補助的な運用状態であり、ライブラリカード、検索、フィルタ、フォルダ移動、
-再生への導線より弱く見せる。どの画面・どの幅でも右下に `fixed` で置き、本文の layout と scroll へ
-参加しない。route 種別の判定は `app/App.tsx` が所有し、Toast の置き方だけを切り替える。
+The indicator is secondary operational state and looks weaker than the library
+cards, search, filters, folder navigation and the way into playback. On every
+screen and at every width it sits `fixed` at the bottom right and does not take
+part in the body's layout or scrolling. `app/App.tsx` owns the route-type check,
+and it switches only how the Toast is placed.
 
-- 待機中と一度も取り込みがない状態では表示しない。
-- 実行中はアイコン、状態名、確定している場合だけ割合を1行で表示する。総数が 0 または未確定の
-  間は割合を出さず、「確認中」または「件数確認中」と読む文言にする。
-- 完了と一部失敗は同じ位置で結果表示へ切り替え、8秒間表示したあと自動で閉じる。hover または
-  focus で概要を読んでいる間は閉じず、pointer/focus が外れてから残り時間を再開する。一部失敗は
-  件数と文言で失敗を示す。
-- 全体失敗は利用者が閉じるか設定詳細へ進むまで表示を残す。失敗時だけインジケーター内に小さな
-  icon button を出し、accessible name は「取り込み失敗の通知を閉じる」とする。Tab 順では
-  設定詳細へ進む trigger の直後に置き、Enter または Space で閉じる。失敗状態は文言と icon を
-  組み合わせ、色だけに依存しない。
-- 失敗の強調は、`bg-elevated` の面では `text-fg` と icon、`border-border-strong`、必要なら
-  `danger-soft` の wash で示す。`text-danger` は `bg` 上の補助文または badge に限る。`danger` を `elevated` や `surface` 上の文字として使う場合は、
-  `tokens.test.ts` の contrast pair に含める。
-- 表面は `bg-elevated`、`border-border-strong`、`shadow-elevated` を使う。角丸は既存の
-  compact control に合わせて `rounded-md` までに留め、ページ section のような大きな card にはしない。
-- 360px でも右端と下端から安全領域を残す。既存 Toast と同時に出る場合は Toast より上へ逃がし、
-  どちらの文言も読める位置関係にする。再生画面では閉じる × と重ならない。
+| Situation | Indicator |
+| --- | --- |
+| Idle, or no scan has ever run | Not shown |
+| Running | Icon, state name and, only when determined, the percentage, in one line. While the total is 0 or undetermined, no percentage; the text reads as `確認中` or `件数確認中` |
+| Completed or partly failed | Switches to the result in the same place, shows it for 8 seconds, then closes automatically. While the summary is read through hover or focus it does not close; the remaining time resumes after the pointer or focus leaves. A partial failure shows the failure through the count and the text |
+| Failed entirely | Stays until the user closes it or goes to the settings details |
+
+- Only on failure, a small icon button appears inside the indicator, with the
+  accessible name `取り込み失敗の通知を閉じる`. In the Tab order it comes right after
+  the trigger that goes to the settings details, and Enter or Space closes it. The
+  failure state combines text and an icon and does not rely on colour alone.
+- On the `bg-elevated` surface, failure is emphasised with `text-fg` and an icon,
+  `border-border-strong` and, when needed, a `danger-soft` wash. `text-danger` is
+  limited to supporting text or badges on `bg`. When `danger` is used as text on
+  `elevated` or `surface`, add it to the contrast pairs in `tokens.test.ts`.
+- The surface uses `bg-elevated`, `border-border-strong` and `shadow-elevated`.
+  The corner radius stays at most `rounded-md`, matching the existing compact
+  controls; it is not a large card like a page section.
+- At 360px it keeps a safe margin from the right and bottom edges. When it
+  appears together with an existing Toast, it moves above the Toast so that both
+  texts are readable. On the player screen it does not overlap the close ×.
 
 ## Summary Popover
 
-概要は hover と keyboard focus で同じ内容を開く。hover できない端末では、activation が
-設定詳細への導線になるため、概要の存在を操作条件にしない。
+Hover and keyboard focus open the same summary. On devices without hover,
+activation leads to the settings details, so the summary is not required to
+operate anything.
 
-- 表示内容は、状態、progress bar、処理済み件数、総件数、失敗件数だけにする。開始時刻、
-  完了時刻、失敗理由、再試行は設定 section に寄せる。
-- progress bar は総数が 1 以上に確定している実行中、完了、一部失敗で determinate とする。
-  総数未確定、開始要求中、取得の一時失敗では indeterminate 表示にし、0% や 100% を連想させる
-  数値を出さない。`done(total=0, completed=0)` は完了状態として文言と時刻を表示するが、概要に
-  determinate bar や 100% は出さない。
-- Popover は画面中央側へ開くことを基本にし、右下では左上へ展開する。Radix の
-  collision handling で画面外へはみ出さない。360pxの再生画面ではplayer下の空き領域へ開き、本文を
-  長時間覆わない横幅へ収める。件数は折り返さず表のように読める。
-- pointer を trigger から popover へ移しても閉じない。Escape、focus 移動、pointer leave で閉じる。
-- trigger の click、tap、Enter、Space は popover toggle ではなく `/settings#scan-status` への移動に使う。
+- The content is only the state, a progress bar, the processed count, the total
+  count and the failure count. The start time, end time, failure reason and retry
+  belong to the settings section.
+- The progress bar is determinate while running with a total determined as 1 or
+  more, on completion and on partial failure. While the total is undetermined,
+  while the start request is pending and during a temporary fetch failure, it is
+  indeterminate, and no number suggesting 0% or 100% is shown.
+  `done(total=0, completed=0)` shows the text and time of the completed state, but
+  the summary shows no determinate bar or 100%.
+- The popover normally opens towards the centre of the screen; from the bottom
+  right it expands to the upper left. Radix collision handling keeps it on screen.
+  On the 360px player screen it opens into the free area below the player and
+  keeps a width that does not cover the body for long. Counts do not wrap and read
+  like a table.
+- Moving the pointer from the trigger to the popover does not close it. Escape,
+  moving focus and pointer leave close it.
+- Click, tap, Enter and Space on the trigger navigate to `/settings#scan-status`;
+  they do not toggle the popover.
 
 ## Settings Scan Status
 
-「取り込み状況」は設定画面の運用情報として、ページタイトルより弱く、メディアフォルダ設定より
-先に読める位置へ置く。既存 section の余白、区切り、文字サイズを継承し、独立した dashboard
-のように大きくしない。
+`取り込み状況` is operational information on the settings screen, placed weaker
+than the page title and readable before the media folder settings. It inherits
+the existing sections' padding, dividers and text sizes, and is not enlarged like
+a separate dashboard.
 
-上から次の順に並べる。
+Top to bottom:
 
-1. 見出し「取り込み状況」と、現在の状態を示す短い status badge。
-2. 状態説明と progress bar。未実行と `done(total=0, completed=0)` では空または 100% の bar を
-   出さず、それぞれ「まだ取り込んでいません」「対象はありませんでした」の文言で区別する。
-3. 件数の行。処理済み、総件数、失敗件数を tabular numbers で揃える。総数未確定の場合は
-   「確認中」とし、0 件とは区別する。
-4. 時刻の行。開始時刻、完了時刻を表示し、未確定の値は空欄ではなく「未完了」などの文言にする。
-5. 全体失敗だけ、折り返し可能な理由と主操作の「再試行」を表示する。長い理由は section 幅内で
-   折り返し、操作を押し出さない。
+1. The heading `取り込み状況` and a short status badge for the current state.
+2. The state description and the progress bar. When nothing has run and for
+   `done(total=0, completed=0)`, no empty or 100% bar is shown; the two are told
+   apart by the texts `まだ取り込んでいません` and `対象はありませんでした`.
+3. The count row: processed, total and failed, aligned with tabular numbers. An
+   undetermined total reads `確認中`, distinct from 0.
+4. The time row: the start time and the end time. An undetermined value shows
+   text such as `未完了` instead of a blank.
+5. Only on total failure: the reason, which may wrap, and the primary action
+   `再試行`. A long reason wraps within the section width and does not push the
+   action out.
 
-取得の一時失敗中は、最後に取得できた scan があればそれを残したまま補足として「最新状態を再確認中」
-を出す。最後の scan が無い場合は、空の progress ではなく取得失敗の文言と自動再試行中であることを
-表示する。
+During a temporary fetch failure, when an earlier scan was fetched, it stays and
+`最新状態を再確認中` is added as a note. When there is no earlier scan, the section
+shows the fetch-failure text and that it is retrying automatically, instead of an
+empty progress bar.
 
 ## States
 
-| State              | Floating indicator                                                                       | Summary popover                        | Settings section                              |
-| ------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------- | --------------------------------------------- |
-| 未実行             | 表示しない                                                                               | なし                                   | 「まだ取り込んでいません」。progress bar なし |
-| 開始要求中         | 「開始中」                                                                               | indeterminate、件数確認中              | 開始要求中として自動更新中                    |
-| 総数未確定の実行中 | 「取り込み中」                                                                           | indeterminate、処理済みと失敗件数      | 実行中、総件数は確認中                        |
-| 総数確定の実行中   | 「取り込み中 NN%」                                                                       | determinate、状態と件数                | 同じ割合と件数、開始時刻                      |
-| 0件完了            | 8秒間「完了」                                                                            | bar なし、対象なし                     | 対象なし、開始時刻、完了時刻                  |
-| 完了               | 8秒間「完了」                                                                            | determinate、最終件数                  | 完了、開始時刻、完了時刻                      |
-| 一部失敗           | 期限中だけ「一部失敗」                                                                   | determinate、失敗件数                  | 一部失敗、最終件数、時刻                      |
-| 全体失敗           | 確認まで「失敗」、閉じる button                                                          | indeterminate または最終件数、失敗件数 | 失敗理由と再試行                              |
-| 取得一時失敗       | 既知の scan があれば最後の状態を保ち、補足だけ弱く表示。既知の scan が無ければ表示しない | 最新状態を再確認中                     | 最後の状態または自動再試行中                  |
+| State | Floating indicator | Summary popover | Settings section |
+| --- | --- | --- | --- |
+| Never run | Not shown | None | `まだ取り込んでいません`. No progress bar |
+| Start requested | `開始中` | Indeterminate, counts being checked | Auto-refreshing as start requested |
+| Running, total undetermined | `取り込み中` | Indeterminate, processed and failed counts | Running, total being checked |
+| Running, total determined | `取り込み中 NN%` | Determinate, state and counts | The same percentage and counts, start time |
+| Completed with 0 items | `完了` for 8 seconds | No bar, nothing to scan | Nothing to scan, start time, end time |
+| Completed | `完了` for 8 seconds | Determinate, final counts | Completed, start time, end time |
+| Partly failed | `一部失敗` while the timer runs | Determinate, failure count | Partly failed, final counts, times |
+| Failed entirely | `失敗` until acknowledged, close button | Indeterminate or final counts, failure count | Failure reason and retry |
+| Temporary fetch failure | With a known scan, keeps its last state and adds a weak note. Without a known scan, not shown | Re-checking the latest state | The last state, or retrying automatically |
 
 ## Responsive Layout
 
-- 360px: 通常画面と再生画面で右下に収まる幅にし、本文、player control、映像情報、詳細 tab、
-  モバイルナビゲーション、Toast と重ならない。再生画面のPopoverはplayer下の空き領域へ開き、
-  長い文言は2行まで自然に折り返す。設定 section は1列。
-- 768px: サイドバーや toolbar と視覚的に競合しない右下に置く。再生画面でも右下とし、プレイヤーの
-  右上に重なる閉じる × を避ける。Popover は件数を2列相当で読める幅を取り、主要操作を覆い続けない。
-- 1280px: インジケーターは画面端の補助表示として小さく保つ。Popover が大きな card に見えない
-  密度を保ち、一覧 grid の主従を崩さない。
-- 200% 拡大と長い失敗理由では、インジケーターの label は折り返しを許し、設定 section の理由は
-  `break-words` 相当で欄内に収める。
+| Width | Layout |
+| --- | --- |
+| 360px | Narrow enough to fit at the bottom right on normal screens and the player screen, without overlapping the body, player controls, video information, detail tabs, mobile navigation or Toasts. On the player screen the popover opens into the free area below the player, and long text wraps naturally to at most two lines. The settings section is one column |
+| 768px | At the bottom right, where it does not visually compete with the sidebar or the toolbar. On the player screen also at the bottom right, avoiding the close × at the player's top right. The popover is wide enough to read the counts as roughly two columns and does not keep covering the main controls |
+| 1280px | The indicator stays small, as a helper at the edge of the screen. The popover keeps a density that does not look like a large card and does not upset the primacy of the list grid |
+
+At 200% zoom and with long failure reasons, the indicator label may wrap, and the
+settings section's reason stays inside the section with the equivalent of
+`break-words`.
 
 ## Accessibility
 
-- インジケーター trigger は button または button 相当の要素とし、accessible name に状態と遷移先を
-  含める。例: 「取り込み中 70%。取り込み状況を開く」。
-- trigger は Tab で到達でき、focus-visible outline は既存の `link` 色を使う。Enter と Space は
-  `/settings#scan-status` へ移動する。
-- 概要は hover だけに依存せず、focus で同じ内容を表示する。Escape で閉じる。
-- 進捗の通知は `role="status"` を使い、状態の更新を毎回読み上げない。状態変化、総数確定、
-  完了、一部失敗、全体失敗のような意味のある節目を優先する。
-- progress bar は accessible name と value を持つ。indeterminate では `aria-valuenow` を付けず、
-  文言で総数未確定を伝える。
-- 状態は色に加えて文言と lucide icon で区別する。追加する icon は `RefreshCw`、`CheckCircle2`、
-  `AlertTriangle`、`XCircle` の既存体系に近い線アイコンを使う。
-- 設定 section へ hash 移動したときは、`id="scan-status"` の section を scroll 位置の対象にし、
-  その中の見出しへ programmatic focus を移す。見出しは `tabindex="-1"` を持ち、visible focus ring
-  は出してよい。click、Enter、Space の後は「取り込み状況」の見出しまたは直後の
-  status summary が active element になる。ブラウザ標準の hash scroll を尊重し、
-  余分な page-level scroll owner を増やさない。
+- The indicator trigger is a button or a button-like element, and its accessible
+  name includes the state and the destination, for example
+  `取り込み中 70%。取り込み状況を開く`.
+- The trigger is reachable with Tab, and its focus-visible outline uses the
+  existing `link` colour. Enter and Space navigate to `/settings#scan-status`.
+- The summary does not rely on hover alone; focus shows the same content. Escape
+  closes it.
+- Progress announcements use `role="status"` and do not read every state update.
+  Meaningful milestones come first: state changes, the total becoming determined,
+  completion, partial failure and total failure.
+- The progress bar has an accessible name and value. When indeterminate it has no
+  `aria-valuenow`, and the text conveys that the total is undetermined.
+- States are told apart by text and lucide icons in addition to colour. Added
+  icons are line icons close to the existing set of `RefreshCw`, `CheckCircle2`,
+  `AlertTriangle` and `XCircle`.
+- On a hash navigation to the settings section, the section with
+  `id="scan-status"` is the scroll target, and programmatic focus moves to the
+  heading inside it. The heading has `tabindex="-1"` and may show a visible focus
+  ring. After click, Enter or Space, the `取り込み状況` heading or the status
+  summary right after it is the active element. The browser's standard hash
+  scroll is respected, and no extra page-level scroll owner is added.

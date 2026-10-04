@@ -1,12 +1,14 @@
-# Contract: LAN からの接続の許可（`/api/settings/network`）
+# Contract: Allowing connections from the LAN (`/api/settings/network`)
 
-正本は [api/openapi.yaml](../../../api/openapi.yaml)。ここに書くのは、この feature が足す経路・スキーマ・
-エラーだけで、認証・同じオリジンの確認・`Error` の形は今の契約
-（[specs/016-single-account-auth](../../016-single-account-auth/)、
-[specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md)）に従う。
-決定の理由は [research.md R-14](../research.md#r-14-lan-からの接続の許可は設定表に保存し切り替えたら待ち受けを開き直す既定はループバックだけ)。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
+covers only the routes, schemas and errors this feature adds. Authentication,
+the same-origin check and the shape of `Error` follow the existing contracts
+([specs/016-single-account-auth](../../016-single-account-auth/),
+[specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md)).
+The reasons for the decisions are in
+[research.md R-14](../research.md#r-14-lan-access-is-stored-in-the-settings-table-switching-it-reopens-the-listener-and-the-default-is-loopback-only).
 
-## 1. スキーマ
+## 1. Schemas
 
 ```yaml
 NetworkSettings:
@@ -15,13 +17,13 @@ NetworkSettings:
   additionalProperties: false
   properties:
     lanAccess:
-      type: boolean       # 保存した選択。行が無ければ false
+      type: boolean       # The saved choice. false when there is no row
     port:
-      type: integer       # 今の待ち受けのポート
+      type: integer       # The port currently listened on
     addresses:
-      type: array         # lanAccess が true のときだけ要素が入る。false なら空
+      type: array         # Has elements only when lanAccess is true; empty when false
       items:
-        type: string      # "http://192.168.1.20:47880/" の形。上がっている非ループバックの IPv4 ごとに 1 つ
+        type: string      # In the form "http://192.168.1.20:47880/". One per non-loopback IPv4 address that is up
 UpdateNetworkSettingsRequest:
   type: object
   required: [lanAccess]
@@ -31,32 +33,37 @@ UpdateNetworkSettingsRequest:
       type: boolean
 ```
 
-`Error.code` の列挙に `not_desktop` は足さない（`404` は `not_found`）。`Error.reason` に `listen_failed` を足す。
+The `Error.code` enumeration gets no `not_desktop` (`404` is `not_found`).
+`Error.reason` gets `listen_failed`.
 
 ## 2. `GET /api/settings/network`
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 所有者のセッションでない | 今の認証の境界が `401` `unauthenticated` を返す（`/api/settings/transcoding` と同じ。ハンドラに届かない） |
-| デスクトップ版でない（Docker・直接起動） | `404` `not_found` |
-| それ以外 | `200` `NetworkSettings` |
+| Not an owner session | The existing authentication boundary returns `401` `unauthenticated` (the same as `/api/settings/transcoding`; the request does not reach the handler) |
+| Not the desktop app (Docker, direct start) | `404` `not_found` |
+| Otherwise | `200` `NetworkSettings` |
 
-判定の順は上から。SPA（所有者）は `404` を「この節を出さない」と読む。
+The rows are checked from the top. The SPA (owner) reads `404` as "do not show
+this section".
 
 ## 3. `PUT /api/settings/network`
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 所有者のセッションでない | `401` `unauthenticated`（認証の境界） |
-| 同じオリジンでない | `403` `forbidden`・reason `cross_origin`（今の境界） |
-| デスクトップ版でない | `404` `not_found` |
-| 本文が不正 | `400` `invalid_request` |
-| 今と同じ値 | 何もせず `200` `NetworkSettings` |
-| 新しいアドレスで待ち受けを開き直せない | 元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason `listen_failed` |
-| 開き直せたが保存に失敗した（ディスクの満杯・I/O の誤り） | 待ち受けを元のアドレスへ開き直し、`500` `internal` |
-| それ以外 | 待ち受けを開き直し、保存してから `200` `NetworkSettings`（開き直したあとの値） |
+| Not an owner session | `401` `unauthenticated` (authentication boundary) |
+| Not the same origin | `403` `forbidden`, reason `cross_origin` (existing boundary) |
+| Not the desktop app | `404` `not_found` |
+| Malformed body | `400` `invalid_request` |
+| Same value as now | Does nothing and returns `200` `NetworkSettings` |
+| The listener cannot be reopened on the new address | Restores the listener on the original address, leaves the saved value unchanged, and returns `409` `conflict`, reason `listen_failed` |
+| Reopened, but saving failed (disk full, I/O error) | Reopens the listener on the original address and returns `500` `internal` |
+| Otherwise | Reopens the listener, saves, then returns `200` `NetworkSettings` (the values after reopening) |
 
-- 開き直しのあいだも、確立済みの接続（この要求自身、SSE の `/api/events`、配信中の動画）は切らない。
-- `true` から `false` にしたあと、LAN の端末からの新しい接続は TCP の段で拒まれる（受け入れ条件 7）。
-- 同時に来た 2 つの `PUT` は 1 つずつ処理する。
-- どの誤りの応答でも、応答のあとの待ち受けのアドレスは保存値と一致する（許可していないのに `0.0.0.0` で待ち受けたまま残らない）。
+- Reopening does not drop established connections (this request itself, SSE
+  on `/api/events`, videos being streamed).
+- After a change from `true` to `false`, new connections from LAN devices are
+  refused at the TCP level (acceptance criterion 7).
+- Two concurrent `PUT` requests are processed one at a time.
+- After any error response, the listener's address matches the saved value
+  (the listener never stays on `0.0.0.0` when access is not allowed).

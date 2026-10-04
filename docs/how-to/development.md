@@ -2,8 +2,8 @@
 
 ## Set up the toolchain
 
-Go, Node.js, and Task versions are pinned in `mise.toml`. `ffmpeg`, Docker, Git,
-and bash are system dependencies and are checked by `task doctor`.
+Go, Node.js and Task versions are pinned in `mise.toml`. `ffmpeg`, Docker, Git
+and bash are system dependencies, checked by `task doctor`.
 
 ```bash
 mise trust
@@ -12,8 +12,8 @@ mise exec --command "task setup"
 mise exec --command "task doctor"
 ```
 
-`task setup` is the only task that installs npm dependencies. Stop a running
-development server before repeating it on Windows because native dependency
+`task setup` is the only task that installs npm dependencies. On Windows, stop
+a running development server before repeating it, because native dependency
 files may be locked.
 
 ## Run locally
@@ -23,13 +23,13 @@ mise exec --command "task dev"
 ```
 
 Open <http://localhost:5173>. The command starts the Go server with automatic
-restart and the Vite development server. `MDM_ADDR` changes the Go listen
-address and the default Vite API proxy target; set `MDM_API_TARGET` only when
-the proxy should use a different target.
+restart and the Vite development server.
 
-On Windows, a directly started Go binary requires an absolute `MDM_DATA_DIR`
-including the drive letter. `task dev` supplies an absolute development path
-automatically.
+| Setting | Effect |
+| --- | --- |
+| `MDM_ADDR` | Go listen address and the default Vite API proxy target |
+| `MDM_API_TARGET` | Vite API proxy target, when it differs from `MDM_ADDR` |
+| `MDM_DATA_DIR` | Data folder; a Go binary started directly on Windows needs an absolute path with the drive letter (`task dev` supplies one) |
 
 ## Validate changes
 
@@ -37,14 +37,14 @@ automatically.
 mise exec --command "task check"
 ```
 
-`task check` runs formatting checks, static analysis, unit tests, generated-file
-checks, migration checks, and the Windows build check. Run it before every push
-of a code or configuration change, and `task check-docs` as well whenever the
-push changes Markdown, `docs/` or `specs/`; a push that skips them tends to come
-back as a formatting or lint fix from CI. `task fmt` rewrites Go and Web sources
-into the checked format.
+`task check` runs formatting checks, static analysis, unit tests,
+generated-file checks, migration checks and the Windows build check. Before
+every push, run it for a code or configuration change and `task check-docs` for
+a change to Markdown, `docs/` or `specs/`; a skipped run tends to come back as a
+formatting or lint fix from CI. `task fmt` rewrites Go and Web sources into the
+checked format.
 
-Lint findings are fixed in the code, never silenced. `task check` fails on any
+Lint findings are fixed in the code, never silenced: `task check` fails on any
 `//nolint` comment in Go sources (`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
 (`linterOptions.noInlineConfig`).
@@ -55,15 +55,26 @@ Browser tests are a separate command:
 mise exec --command "task test-e2e"
 ```
 
-Use `task help` for the full command list. `Taskfile.yml` is the supported entry
-point for developer commands.
+`task help` lists every command; `Taskfile.yml` is the supported entry point
+for developer commands.
 
-CI always checks the changed paths, then reports the result through the required
-`Checks` job. Pull requests and pushes that change only Markdown, `docs/`,
-or `specs/` run `task check-docs` for links and repository artifact rules,
-while skipping `task check`, browser E2E, and the Docker image build. Code and
-configuration changes run `task check`; browser E2E and the Docker build run
-only on a push to `main`, that is, after a pull request is merged.
+CI picks its jobs from the changed paths and reports through the required
+`Checks` job.
+
+```mermaid
+flowchart LR
+  change[Changed paths] --> code{Code or config?}
+  code -->|no| docs[task check-docs]
+  code -->|yes| check[task check]
+  docs --> checks[Checks job]
+  check --> checks
+  code -->|yes| push{Push to main?}
+  push -->|yes| more[E2E and Docker build]
+```
+
+"No" means only Markdown, `docs/` or `specs/` changed. A push to `main` is a
+merged pull request, so browser E2E and the Docker image build never run on a
+pull request.
 
 When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit

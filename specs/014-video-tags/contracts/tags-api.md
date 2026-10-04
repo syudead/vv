@@ -1,34 +1,35 @@
-# Contract: タグの API
+# Contract: Tag API
 
-親 Issue: #193。
+Parent Issue: #193.
 
-API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は足す経路・
-スキーマ・誤りの差分だけを書く。誤りの形（`Error {code, message}`）、同一オリジンの
-検査、JSON 本文の読み方は既存のまま使う（`internal/httpapi/router.go`・
-`media_folders.go` の `readJSONBody`）。本文を持つ経路は、`requiresJSONBody` と
-`openapi_routes_test.go` の対応にも足す。`message` は既存と同じく画面にそのまま出せる
-日本語にする。
+Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
+covers only the routes, schemas and errors this feature adds. The error shape
+(`Error {code, message}`), the same-origin check and JSON body reading stay as
+they are (`internal/httpapi/router.go`, `readJSONBody` in `media_folders.go`).
+Routes with a body are also added to `requiresJSONBody` and to the mapping in
+`openapi_routes_test.go`. As with existing errors, `message` is Japanese that
+the screen can show as is.
 
-## 1. スキーマ
+## 1. Schemas
 
 ```yaml
-TagRef:            # 動画に付いたタグ。名前は常に元の名前
+TagRef:            # A tag attached to a video. The name is always the original name
   type: object
   required: [id, name]
   properties:
     id:   { type: integer, format: int64 }
     name: { type: string }
 
-Tag:               # 管理画面と候補の1件
+Tag:               # One entry on the management page and in suggestions
   type: object
   required: [id, name, synonyms, videoCount]
   properties:
     id:         { type: integer, format: int64 }
     name:       { type: string }
-    synonyms:   { type: array, items: { type: string } }   # 名前の自然順
-    videoCount: { type: integer }  # いまライブラリにある動画の本数（data-model.md §5）
+    synonyms:   { type: array, items: { type: string } }   # natural order of names
+    videoCount: { type: integer }  # videos currently in the library (data-model.md §5)
 
-TagInput:          # 付与で使うタグの指定
+TagInput:          # The tag to use when adding
   type: object
   additionalProperties: false
   properties:
@@ -36,125 +37,147 @@ TagInput:          # 付与で使うタグの指定
     name: { type: string }
 ```
 
-`TagInput` は `id` と `name` のちょうど一方を持つ。両方あるか、どちらも無いときは
-`invalid_request`（400）にする。`oneOf` にしないのは、既存のスキーマがすべて
-`additionalProperties: false` の平たい object で、`oneOf` から生成される Go と
-TypeScript の型を扱う前例がリポジトリに無いためである。
+`TagInput` has exactly one of `id` and `name`. Both or neither is
+`invalid_request` (400). It is not a `oneOf` because every existing schema is a
+flat object with `additionalProperties: false`, and the repository has no
+precedent for handling the Go and TypeScript types generated from `oneOf`.
 
-`Video` に、必須の `tags: TagRef[]` を足す。並びは名前の自然順（`domain.CompareNatural`、
-同じなら `id`）である。`Video` を返す経路はすべてこの欄を埋める。今それに当たるのは、
-`progressFor` を呼んでいる次の5つである。
+`Video` gains a required `tags: TagRef[]`, sorted by the natural order of names
+(`domain.CompareNatural`, then `id`). Every route that returns `Video` fills
+it. Those are the five routes that currently call `progressFor`:
 
-- `listVideos`（`GET /api/videos`）
-- `getVideo`（`GET /api/videos/{id}`）
-- `listFolderVideos`（`GET /api/folders/{rootId}/videos`）
-- `getRelatedVideos`（`GET /api/videos/{id}/related`）
-- `reprobeVideo`（`POST /api/videos/{id}/probe`）
+- `listVideos` (`GET /api/videos`)
+- `getVideo` (`GET /api/videos/{id}`)
+- `listFolderVideos` (`GET /api/folders/{rootId}/videos`)
+- `getRelatedVideos` (`GET /api/videos/{id}/related`)
+- `reprobeVideo` (`POST /api/videos/{id}/probe`)
 
-タグが1つも無い動画は空の配列を返し、`null` にしない。フォルダ画面は、この欄を受け取っても
-表示しない。
+A video with no tags returns an empty array, never `null`. The folder screen
+receives the field but does not show it.
 
-## 2. 足す誤りの `code`
+## 2. Added error codes
 
-| code | 状態 | 意味 |
+| `code` | Status | Meaning |
 | --- | --- | --- |
-| `tag_not_found` | 404 | 指定したタグがもう無い（別のタブで削除・統合された） |
-| `tag_name_taken` | 409 | その名前は既に別のタグの名前かシノニムである。`message` はどのタグの名前か、どのタグのシノニムかを示す |
-| `tag_merge_required` | 409 | シノニムにしようとした名前が既存のタグの元の名前で、そのタグの統合の承諾が無い（承諾したタグと、いまその名前を持つタグが違う場合を含む） |
+| `tag_not_found` | 404 | The specified tag no longer exists (deleted or merged in another tab) |
+| `tag_name_taken` | 409 | The name is already another tag's name or synonym. `message` says which tag it is the name or synonym of |
+| `tag_merge_required` | 409 | The name to add as a synonym is an existing tag's original name, and merging that tag was not accepted (including when the accepted tag differs from the tag that now has the name) |
 
-名前が空・制御文字を含む・100 符号位置超は、既存の `invalid_request`（400）にする（[data-model.md §2](../data-model.md#2-名前の規則)）。
+A name that is empty, contains a control character, or exceeds 100 code points
+is the existing `invalid_request` (400)
+([data-model.md §2](../data-model.md#2-name-rules)).
 
-## 3. タグの管理
+## 3. Tag management
 
-| 経路 | 本文 | 成功 | 誤り |
+| Route | Body | Success | Errors |
 | --- | --- | --- | --- |
-| `GET /api/tags` | — | 200 `{ items: Tag[] }`。名前の自然順、本数 0 を含む | — |
-| `POST /api/tags` | `{ name }` | 201 `Tag` | 400、409 `tag_name_taken` |
-| `PATCH /api/tags/{id}` | `{ name }` | 200 `Tag`（今と同じ名前なら何も変えずに返す） | 400、404 `tag_not_found`、409 `tag_name_taken` |
+| `GET /api/tags` | — | 200 `{ items: Tag[] }`, in the natural order of names, including tags with 0 videos | — |
+| `POST /api/tags` | `{ name }` | 201 `Tag` | 400, 409 `tag_name_taken` |
+| `PATCH /api/tags/{id}` | `{ name }` | 200 `Tag` (the same name as now returns it unchanged) | 400, 404 `tag_not_found`, 409 `tag_name_taken` |
 | `DELETE /api/tags/{id}` | — | 204 | 404 `tag_not_found` |
-| `POST /api/tags/{id}/merge` | `{ sourceId }` | 200 `Tag`（統合先。統合元の名前とシノニムは、統合先のシノニムに入る） | 400（`sourceId` が `id` と同じ）、404 `tag_not_found`（どちらかが無い） |
-| `POST /api/tags/{id}/synonyms` | `{ name, mergeTagId? }` | 200 `Tag` | 400、404 `tag_not_found`、409 `tag_name_taken`、409 `tag_merge_required` |
-| `DELETE /api/tags/{id}/synonyms?name=…` | — | 204（その名前がこのタグのシノニムでなければ、何も変えずに 204） | 404 `tag_not_found`（タグが無い） |
+| `POST /api/tags/{id}/merge` | `{ sourceId }` | 200 `Tag` (the target; the source's name and synonyms become the target's synonyms) | 400 (`sourceId` equals `id`), 404 `tag_not_found` (either is missing) |
+| `POST /api/tags/{id}/synonyms` | `{ name, mergeTagId? }` | 200 `Tag` | 400, 404 `tag_not_found`, 409 `tag_name_taken`, 409 `tag_merge_required` |
+| `DELETE /api/tags/{id}/synonyms?name=…` | — | 204 (unchanged 204 when the name is not a synonym of this tag) | 404 `tag_not_found` (the tag is missing) |
 
-- 既にこのタグのシノニムである名前の登録は、何も変えずに 200 を返す。このタグの元の
-  名前の登録は 409 `tag_name_taken` にする（[data-model.md §4](../data-model.md#4-書き換えの規則)）。
-- `mergeTagId` は、利用者が統合を承諾したタグの `id` である。名前が別のタグ S の元の名前の
-  とき、`mergeTagId` が S の `id` と一致すれば、同じトランザクションで S をこのタグへ統合する。
-  統合で S の名前はこのタグのシノニムになる（受け入れ条件 17）。`mergeTagId` が無いか S と違えば、
-  `tag_merge_required` を返して何も変えない。名前が別のタグの元の名前でないときは
-  `mergeTagId` を無視する。
-- 画面は、`GET /api/tags` の本数で確認をとり、確認に出したタグの `id` を `mergeTagId` に
-  入れて送る。承諾を真偽値にしないのは、確認の後に別のタブで改名や作成が起きて、その
-  名前がほかのタグに移ったとき、確認していないタグを統合してしまうからである。
-  `tag_merge_required` を受けた画面は、タグの一覧を取り直して確認をやり直す。
-- シノニムの解除で名前をパスに置かないのは、`/` や `%` を含む名前を1段のパスとして
-  扱う取り決めを増やさないためである。
-- 削除と統合の確認に出す本数は、`GET /api/tags` の `videoCount` を使う。確認のための
-  経路は足さない。
+- Adding a name that is already a synonym of this tag returns 200 without
+  changes. Adding this tag's original name is 409 `tag_name_taken`
+  ([data-model.md §4](../data-model.md#4-write-rules)).
+- `mergeTagId` is the `id` of the tag whose merge the user accepted. When the
+  name is the original name of another tag S and `mergeTagId` equals S's `id`,
+  S is merged into this tag in the same transaction, and S's name becomes a
+  synonym of this tag (acceptance criterion 17). When `mergeTagId` is missing or
+  differs from S, the route returns `tag_merge_required` and changes nothing.
+  When the name is not another tag's original name, `mergeTagId` is ignored.
+- The screen confirms using the counts from `GET /api/tags` and sends the `id`
+  of the tag it showed in the confirmation as `mergeTagId`. Acceptance is not a
+  boolean because, if another tab renames or creates a tag after the
+  confirmation and the name moves to a different tag, a boolean would merge a tag
+  the user never confirmed. On `tag_merge_required` the screen refetches the tag
+  list and confirms again.
+- Removing a synonym does not put the name in the path, so the API needs no
+  convention for carrying names containing `/` or `%` as one path segment.
+- The delete and merge confirmations use `videoCount` from `GET /api/tags`. No
+  route is added for the confirmation.
 
-## 4. 付与と取り外し
+## 4. Adding and removing tags on videos
 
-| 経路 | 本文 | 成功 | 誤り |
+| Route | Body | Success | Errors |
 | --- | --- | --- | --- |
-| `POST /api/video-tags` | `{ videoIds, action: "add", tag: TagInput }` | 200 `{ tag: TagRef, applied }` | 400、404 `tag_not_found`（`tag.id` が無い） |
-| `POST /api/video-tags` | `{ videoIds, action: "remove", tag: TagInput }` | 200 `{ tag: TagRef, applied }` | 400（`name` での指定）、404 `tag_not_found` |
+| `POST /api/video-tags` | `{ videoIds, action: "add", tag: TagInput }` | 200 `{ tag: TagRef, applied }` | 400, 404 `tag_not_found` (`tag.id` is missing) |
+| `POST /api/video-tags` | `{ videoIds, action: "remove", tag: TagInput }` | 200 `{ tag: TagRef, applied }` | 400 (specified by `name`), 404 `tag_not_found` |
 | `POST /api/video-tags/summary` | `{ videoIds }` | 200 `{ total, items: [{ tag: TagRef, count }] }` | 400 |
 
-- 再生画面の1本も、選択バーの複数本も、同じ `POST /api/video-tags` を使う。
-- `videoIds` は 1 件以上 20000 件以下。重複は1つとして扱う。20000 は、規模の前提
-  （1万本）の全件を選んでも収まる数で、`id` が最大の 19 桁でも本文が `readJSONBody` の
-  1 MiB に収まる（20000 × 20 バイト）。上限を設けない案は、本文の上限で 400 になる
-  境目が `id` の桁数で変わり、利用者に説明できないので採らない。サーバーは `json_each` に
-  1つの引数で渡し、SQLite の引数の上限に掛からないようにする。
-- 取り外しは `name` で指定できない。画面が外す候補はいつも付いているタグで、`id` を
-  持っているからである。
-- `tag: { name }` の付与は、名前をシノニムを含めて引き、無ければ作る
-  （[data-model.md §3・§4](../data-model.md#3-名前の引き方)）。
-- `applied` は、`videoIds` のうち、いまライブラリにある動画の数である。既に付いていた・
-  付いていなかった動画も数に入る（重複した付与と取り外しは誤りにしない）。
-- `summary` の `total` は `videoIds` のうちライブラリにある動画の数、`count` はそのうち
-  そのタグが付いている数である。`count < total` のタグが「一部にだけ付いている」
-  （要件 2）。`items` は1本以上に付いているタグだけで、名前の自然順に並ぶ。
-- 処理は1つのトランザクションで、全部に反映するか1つも反映しない。
+- A single video on the video page and several videos in the selection bar use
+  the same `POST /api/video-tags`.
+- `videoIds` holds 1 to 20000 entries; duplicates count once. 20000 covers
+  selecting every video at the assumed scale (10,000 videos), and even with
+  19-digit `id`s the body fits in `readJSONBody`'s 1 MiB (20000 × 20 bytes).
+  Having no limit is rejected: the point at which the body limit returns 400
+  would then depend on the number of digits in the `id`s, which cannot be
+  explained to the user. The server passes the ids to `json_each` as one
+  argument, which stays clear of SQLite's argument limit.
+- Removal cannot be specified by `name`. The screen only offers tags that are
+  attached, and it has their `id`s.
+- Adding with `tag: { name }` looks the name up including synonyms and creates
+  the tag when it is missing
+  ([data-model.md §3 and §4](../data-model.md#3-name-lookup)).
+- `applied` is the number of `videoIds` that are currently in the library.
+  Videos that already had the tag, or did not have it, are counted too (adding or
+  removing again is not an error).
+- In `summary`, `total` is the number of `videoIds` in the library and `count`
+  is how many of those have the tag. A tag with `count < total` is "attached to
+  some" (requirement 2). `items` holds only tags attached to at least one video,
+  in the natural order of names.
+- Processing is one transaction: it applies to all or to none.
 
-## 5. 一覧の絞り込みと「すべて選択」
+## 5. List filter and Select all
 
-#195 の [list-api.md](../../013-library-search/contracts/list-api.md) の一覧に、次を足す。
+The list in #195's
+[list-api.md](../../013-library-search/contracts/list-api.md) gains:
 
-| 名前 | 型 | 既定 | 意味 |
+| Name | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `tag` | integer の配列（`tag=3&tag=8`、最大 16 個） | 空 | 各タグをすべて持つ動画だけにする（AND）。存在しない `id` は無視する |
+| `tag` | Array of integers (`tag=3&tag=8`, at most 16) | Empty | Only videos that have every listed tag (AND). Nonexistent `id`s are ignored |
 
-`VideoPage` に、任意の `missingTagIds: integer[]` を足す。`tag` のうち存在しなかった
-`id` で、1つも無ければ省く。画面はこれを受けて、そのタグがもう無いことを伝え、タグの
-一覧を取り直し、URL からその `id` を取り除く（[list-url.md §1](list-url.md#1-パラメータ)、
-Edge Case「ほかの画面での並行した変更」）。無い `id` を `404` にしないのは、同じ Edge Case が
-「URL に残った存在しないタグの絞り込みは無視し、ほかの条件だけで一覧を出す」と求めるから
-である。
+`VideoPage` gains an optional `missingTagIds: integer[]`: the `id`s in `tag` that
+did not exist, omitted when there are none. On receiving it, the screen reports
+that the tag no longer exists, refetches the tag list and removes the `id` from
+the URL ([list-url.md §1](list-url.md#1-parameters), Edge Case
+`ほかの画面での並行した変更`). A missing `id` is not a `404` because the same
+Edge Case requires that a filter on a nonexistent tag left in the URL be ignored
+and the list be shown with the other conditions.
 
-- `listVideos`（`GET /api/videos`）に足す。`listFolderVideos` には足さない（フォルダ画面の
-  タグ絞り込みは対象外）。
-- `total` は、`tag` も含めたすべての条件を適用した数である。
-- 17 個以上は `400` にする。画面は 16 個を超えて足さない（[list-url.md §2](list-url.md#2-タグを押したときと外したとき)）。
+- Added to `listVideos` (`GET /api/videos`). Not added to `listFolderVideos`
+  (tag filtering on the folder screen is out of scope).
+- `total` is the count with every condition applied, including `tag`.
+- 17 or more is `400`. The screen never adds more than 16
+  ([list-url.md §2](list-url.md#2-adding-and-removing-a-tag)).
 
-`listVideos` と `listFolderVideos` の `query` は、題名と相対パスに加えて、動画に付いた
-タグの元の名前とシノニムにも照合する（[data-model.md §7](../data-model.md#7-検索欄でのタグ名の照合)）。
-書き方・上限・照合形は #195 の [list-api.md §1](../../013-library-search/contracts/list-api.md#1-検索語の書き方) の
-とおりで変わらない。パラメータと応答の形も変わらない。一覧の項目に出す所在は、#195 の
-[list-api.md §4](../../013-library-search/contracts/list-api.md#4-一覧に出す所在と-videofolder) の
-規則のまま決まる。タグ名だけで式を満たす動画では、範囲の中のパスが最初の所在になる。
+The `query` of `listVideos` and `listFolderVideos` matches, in addition to the
+title and relative path, the original names and synonyms of the tags attached
+to a video ([data-model.md §7](../data-model.md#7-matching-tag-names-in-the-search-box)).
+Syntax, limits and the matching form follow #195's
+[list-api.md §1](../../013-library-search/contracts/list-api.md#1-query-syntax)
+unchanged, as do the parameters and the response shape. The location shown for
+a list entry follows the rules of #195's
+[list-api.md §4](../../013-library-search/contracts/list-api.md#4-listed-location-and-videofolder).
+For a video that satisfies the expression by tag names alone, the first
+location is a path within the scope.
 
-「すべて選択」のために、次の経路を足す。
+For Select all, this route is added:
 
-| 経路 | パラメータ | 成功 |
+| Route | Parameters | Success |
 | --- | --- | --- |
-| `GET /api/videos/ids` | `listVideos` の `query`・`watch`・`playable`・`tag` | 200 `{ ids: integer[], missingTagIds?: integer[] }` |
+| `GET /api/videos/ids` | `query`, `watch`, `playable`, `tag` of `listVideos` | 200 `{ ids: integer[], missingTagIds?: integer[] }` |
 
-- 返す `id` の集合は、同じ条件の `listVideos` の全ページの `id` の集合と同じである。
-  並びは決めない。
-- `missingTagIds` の意味は一覧と同じである。画面は、これが空でなければ `ids` で選択を
-  作らない。一覧と同じくもう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
-  選択は、利用者が直った一覧でもう一度「すべて選択」したときに作る。一覧を開いた後に
-  絞り込み中のタグが消えたとき、条件の欠けた広い集合に一括で付け外ししないためである。
-- `/api/videos/{id}` とは、Go の `ServeMux` の「字面の段が優先する」規則で区別される。
-  `openapi_routes_test.go` にこの経路が `{id}` に取られないことの検査を足す。
+- The returned set of `id`s equals the set of `id`s across all pages of
+  `listVideos` with the same conditions. The order is unspecified.
+- `missingTagIds` means the same as in the list. When it is not empty, the
+  screen does not build a selection from `ids`. As with the list, it reports the
+  missing tag, refetches the tag list and removes the `id` from the URL. A
+  selection is built when the user presses Select all again on the corrected
+  list. This prevents a bulk add or remove on a wider set that lacks a condition
+  when an active filter tag disappears after the list was opened.
+- Go's `ServeMux` tells it apart from `/api/videos/{id}` by its rule that a
+  literal segment takes precedence. `openapi_routes_test.go` gains a check that
+  `{id}` does not capture this route.

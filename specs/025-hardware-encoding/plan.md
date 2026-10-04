@@ -1,4 +1,4 @@
-# Implementation Plan: ライブ変換でハードウェアエンコードを使えるようにする
+# Implementation Plan: Hardware encoding for live transcoding
 
 **Branch**: `feature/025-hardware-encoding` | **Parent Issue**: #370
 
@@ -6,103 +6,107 @@
 
 ## Summary
 
-ライブ変換（`GET /api/videos/{id}/transcode.mp4`）の映像エンコードを、`libx264` だけでなく
-サーバーのハードウェアエンコーダー（NVENC・Quick Sync・VAAPI・VideoToolbox）でも行えるようにする。
-所有者が設定画面の新しい区画「動画の変換」で方式（ソフトウェア・各ハードウェア・自動）を選び、
-SQLite に保存し、再起動なしに次の変換の要求から効かせる。
+Live transcoding (`GET /api/videos/{id}/transcode.mp4`) encodes video with the
+server's hardware encoders (NVENC, Quick Sync, VAAPI, VideoToolbox) as well as
+`libx264`. The owner picks the encoder (software, one of the hardware encoders, or
+automatic) in a new Settings section, Video conversion. The choice is stored in
+SQLite and applies from the next transcode request without a restart.
 
-- **方式の決定**: 保存した選択と起動時の確認結果から、実際に使う方式を `internal/domain` の
-  純粋関数が決め、`internal/app` の `TranscodeSettings` がメモリに持つ
-  （[research.md R-3](research.md#r-3-実際に使う方式はドメインの純粋関数が決めapp-がメモリに持つ)、
-  [R-4](research.md#r-4-保存先は汎用の-settings-表key-value)）。
-- **起動時の確認**: 方式ごとに短い実エンコードを並行して試し、HTTP の待ち受けを待たせない
-  （[R-2](research.md#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）。
-- **変換**: `internal/media` が方式ごとの符号化器の引数を組み立て、共通のフィルターと
-  キーフレームの指定で出力の約束を守る。ハードウェアが最初のデータを出す前に失敗したら、同じ
-  要求の中でソフトウェアに切り替える（[R-6](research.md#r-6-要求の中での切り替えはエンコードの段でハードウェア--ソフトウェアの順に試す)、
-  [R-7](research.md#r-7-エンコード引数は方式ごとの符号化器の指定だけを差し替え出力の約束は共通の引数で守る)）。
-- **API と画面**: `GET`/`PUT /api/settings/transcoding`
-  （[contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)）と、設定画面の
-  区画。見た目と操作の基準は親 Issue の「UI品質」がそのまま仕様である（`ui` ラベルは無く、
-  design 段階は無い）。
-- **同梱イメージと文書**: 同梱の Docker イメージは #491 より前と同じ Alpine のままソフトウェア
-  エンコードだけとし、コンテナの中では起動時の確認がハードウェアの方式をすべて使えないと報告する。
-  ハードウェアエンコードはホスト（Windows・Linux・macOS）に直接入れた VVMDM で使い、その前提と
-  手順を文書に書く（[R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)、
-  [R-9](research.md#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
+| Part | Approach |
+| --- | --- |
+| Deciding the encoder | A pure function in `internal/domain` decides the effective encoder from the stored choice and the startup check results, and `TranscodeSettings` in `internal/app` holds it in memory ([research.md R-3](research.md#r-3-a-pure-domain-function-decides-the-effective-encoder-and-app-holds-it-in-memory), [R-4](research.md#r-4-storage-is-a-generic-key-value-settings-table)). |
+| Startup check | Short real encodes per encoder run in parallel without holding up the HTTP listener ([R-2](research.md#r-2-the-startup-check-runs-a-short-real-encode-per-encoder-in-parallel)). |
+| Transcoding | `internal/media` builds the codec arguments per encoder; common filters and keyframe options keep the output guarantees. When hardware fails before producing initial data, the same request switches to software ([R-6](research.md#r-6-in-request-fallback-tries-hardware-then-software-at-the-encode-step), [R-7](research.md#r-7-encode-arguments-swap-only-the-per-encoder-codec-options-common-arguments-keep-the-output-guarantees)). |
+| API and screen | `GET`/`PUT /api/settings/transcoding` ([contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)) and the Settings section. The look and interaction criteria are the parent Issue's `UI品質` section as written (no `ui` label, so no design stage). |
+| Bundled image and documents | The bundled Docker image stays on Alpine with software encoding only, as before #491, and inside the container the startup check reports every hardware encoder as unavailable. Hardware encoding is used with VVMDM installed directly on the host (Windows, Linux, macOS), and the documents describe the prerequisites and steps ([R-1](research.md#r-1-the-bundled-image-stays-on-alpine-with-software-encoding-only), [R-9](research.md#r-9-hardware-encoding-runs-on-a-direct-host-install-documented-with-prerequisites-and-steps)). |
 
 ## Technical Context
 
 **Canonical definitions**:
 
-- 境界と依存方向、設定のデータの区分、認証の境界: [ARCHITECTURE.md](../../ARCHITECTURE.md)
-  （「Intended dependency direction」「Rebuildable and user data」、認証の段落）
-- 今のライブ変換: [docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md)、
-  [docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md)、
-  [internal/media/transcode.go](../../internal/media/transcode.go)（`Start` の切り替えの梯子、
-  `buildTranscodeArgs`、`videoEncodeArgs`）、[internal/httpapi/transcode.go](../../internal/httpapi/transcode.go)、
+- Boundaries and dependency direction, the settings data classification, the
+  authentication boundary: [ARCHITECTURE.md](../../ARCHITECTURE.md) ("Intended
+  dependency direction", "Rebuildable and user data", the authentication
+  paragraph)
+- Today's live transcoding:
+  [docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md),
+  [docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md),
+  [internal/media/transcode.go](../../internal/media/transcode.go) (the fallback
+  ladder in `Start`, `buildTranscodeArgs`, `videoEncodeArgs`),
+  [internal/httpapi/transcode.go](../../internal/httpapi/transcode.go),
   [internal/domain/live_transcode.go](../../internal/domain/live_transcode.go)
-- 起動の順序と配線: [cmd/mdm/main.go](../../cmd/mdm/main.go)、
+- Startup order and wiring: [cmd/mdm/main.go](../../cmd/mdm/main.go),
   [internal/media/preflight.go](../../internal/media/preflight.go)
-- 今の設定の作り: [internal/store/media_folders.go](../../internal/store/media_folders.go)
-  （`SettingsStore`）、[internal/app/media_folders.go](../../internal/app/media_folders.go)、
-  [internal/httpapi/media_folders.go](../../internal/httpapi/media_folders.go)、
-  [web/src/settings/SettingsPage.tsx](../../web/src/settings/SettingsPage.tsx)、
+- How settings work today:
+  [internal/store/media_folders.go](../../internal/store/media_folders.go)
+  (`SettingsStore`), [internal/app/media_folders.go](../../internal/app/media_folders.go),
+  [internal/httpapi/media_folders.go](../../internal/httpapi/media_folders.go),
+  [web/src/settings/SettingsPage.tsx](../../web/src/settings/SettingsPage.tsx),
   [web/src/settings/ScanStatusSection.tsx](../../web/src/settings/ScanStatusSection.tsx)
-- API の正本とエラーの形: [api/openapi.yaml](../../api/openapi.yaml)、
-  [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md)、
-  画面の文言: [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)
-- 同梱イメージと運用の文書: [Dockerfile](../../Dockerfile)、[compose.yaml](../../compose.yaml)、
-  [compose.hosting.yaml](../../compose.hosting.yaml)、
-  [docs/how-to/running-vv.md](../../docs/how-to/running-vv.md)、
-  [docs/how-to/hosting-vv.md](../../docs/how-to/hosting-vv.md)、
-  [.github/workflows/ci.yml](../../.github/workflows/ci.yml)（`linux/amd64,linux/arm64` の公開）
-- 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task generate`）
+- API source of truth and error shape: [api/openapi.yaml](../../api/openapi.yaml),
+  [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md);
+  screen text: [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)
+- Bundled image and operations documents: [Dockerfile](../../Dockerfile),
+  [compose.yaml](../../compose.yaml),
+  [compose.hosting.yaml](../../compose.hosting.yaml),
+  [docs/how-to/running-vv.md](../../docs/how-to/running-vv.md),
+  [docs/how-to/hosting-vv.md](../../docs/how-to/hosting-vv.md),
+  [.github/workflows/ci.yml](../../.github/workflows/ci.yml) (publishes
+  `linux/amd64,linux/arm64`)
+- Check entry points: [Taskfile.yml](../../Taskfile.yml) (`task check`,
+  `task check-docs`, `task generate`)
 
 **Feature-specific context**:
 
-- Go と npm の依存は足さない。`Dockerfile` と compose のファイルは #491 より前の内容（`e5acc24`）
-  から変えない（R-1）。
-  ハードウェアエンコードの前提（ドライバー、ハードウェアエンコーダーを含む ffmpeg）は、直接
-  インストールするホストの側で利用者が用意する（R-9）。
-- SQLite は表を 1 つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations` の
-  次の番号を使う。
-- ハードウェアエンコーダーは CI に無い。実機の確認は GPU のあるホストに直接入れて
-  [quickstart.md](quickstart.md) で行い、
-  自動テストは ffmpeg を差し替える（R-10）。
-- 親 Issue の要件 10 は #371（`main` に入っている）の「出力の時刻で 2 秒以下」のキーフレーム間隔を
-  含む。`-force_key_frames` の指定は方式に依らず共通なので、そのまま守る（R-7）。
-- #371 が決めたコピーの経路（`videoCanCopy`、`CopySeekAllowance`）は変えない。方式の設定は
-  エンコードする要求にだけ効く（要件 12）。
+- No Go or npm dependency is added. The `Dockerfile` and compose files keep their
+  content from before #491 (`e5acc24`) (R-1). The prerequisites for hardware
+  encoding (drivers, an ffmpeg that includes the hardware encoders) are provided
+  by the user on the host where VVMDM is installed directly (R-9).
+- SQLite gains one table ([data-model.md](data-model.md)). The migration takes the
+  next number in `internal/store/migrations`.
+- CI has no hardware encoder. On-hardware checks run with VVMDM installed directly
+  on a host with a GPU, following [quickstart.md](quickstart.md); automated tests
+  substitute ffmpeg (R-10).
+- Requirement 10 of the parent Issue includes the keyframe interval of 2 seconds
+  or less in output time from #371 (merged to `main`). The `-force_key_frames`
+  option is common to every encoder, so it keeps holding (R-7).
+- The copy path decided by #371 (`videoCanCopy`, `CopySeekAllowance`) does not
+  change. The encoder setting applies only to requests that encode
+  (requirement 12).
 
 ## Constitution Check
 
-- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。
-  - `internal/domain`: 方式の値、選択の解釈、実際に使う方式を決める規則、OS ごとの確認対象。
-    純粋関数と列挙だけで、`os/exec` も `runtime` の値も受け取る引数にする。
-  - `internal/media`: 方式ごとの引数、確認用の実エンコード、要求の中の切り替え。store も
-    logger も持たず、切り替えの事実は値で返す（R-6）。
-  - `internal/app`: 保存値と確認結果を持ち、確認を走らせ、ログを書く。store と checker は
-    自分が宣言する interface で受け取る。
-  - `internal/store`: `settings` 表の読み書きだけ。
-  - `internal/httpapi`: 要求の解釈と `gen` の型への変換だけ。方式の決定は app に聞く。
-  - `cmd/mdm`: 配線と、起動時の確認の goroutine の開始。兄弟のパッケージを互いに import しない
-    （depguard の規則は変えない）。
-- **API の正本**（ARCHITECTURE.md）: 合格。`api/openapi.yaml` を変えて `task generate` し、生成物は
-  手で直さない（AGENTS.md）。
-- **認証の境界**（ARCHITECTURE.md の認証の段落、要件 13）: 合格。新しい経路は `accessRoutes` に
-  足さず所有者だけになり、`openapi_routes_test.go` が `security` との一致を確かめる。設定画面は
-  既に所有者だけの経路なので、ゲストに区画は出ない。
-- **索引と利用者データの区別**（ARCHITECTURE.md「Rebuildable and user data」）: 合格。`settings` は
-  設定のデータで、一覧に足す。
-- **ドメインイベント**（ARCHITECTURE.md のイベントの段落）: 該当なし。方式の変更はイベントを出さない
-  （R-5）。
-- **サーバーの出力は英語**（`.golangci.yml` の gosmopolitan、023 の方針）: 合格。ログ・`message`・
-  理由のコードは英語で、画面の文言はカタログが持つ。
-- **文書は変更と同じ PR で直す**（core-beliefs.md、AGENTS.md）: 合格。各単位が ARCHITECTURE.md・
-  設計文書・how-to を直す。
+- **Dependency direction** (ARCHITECTURE.md "Intended dependency direction"):
+  pass.
 
-Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
+  | Package | Role in this feature |
+  | --- | --- |
+  | `internal/domain` | Encoder values, interpreting the choice, the rule that decides the effective encoder, the check targets per OS. Pure functions and enums only; `os/exec` and `runtime` values come in as arguments. |
+  | `internal/media` | Per-encoder arguments, the real encode for checking, the in-request fallback. Holds neither the store nor a logger, and returns the fact of a fallback as a value (R-6). |
+  | `internal/app` | Holds the stored value and check results, runs the check, writes logs. Receives the store and the checker through interfaces it declares. |
+  | `internal/store` | Only reads and writes the `settings` table. |
+  | `internal/httpapi` | Only interprets requests and converts to `gen` types. Asks app for the encoder decision. |
+  | `cmd/mdm` | Wiring, and starting the startup check goroutine. |
+
+  Sibling packages do not import each other (the depguard rules do not change).
+- **API source of truth** (ARCHITECTURE.md): pass. Change `api/openapi.yaml` and
+  run `task generate`; generated files are not hand-edited (AGENTS.md).
+- **Authentication boundary** (the authentication paragraph of ARCHITECTURE.md,
+  requirement 13): pass. The new routes are not added to `accessRoutes`, so they
+  are owner-only, and `openapi_routes_test.go` checks that they match `security`.
+  The Settings page is already owner-only, so guests do not see the section.
+- **Index versus user data** (ARCHITECTURE.md "Rebuildable and user data"): pass.
+  `settings` is settings data and is added to the list.
+- **Domain events** (the events paragraph of ARCHITECTURE.md): not applicable. A
+  change of encoder publishes no event (R-5).
+- **Server output is English** (gosmopolitan in `.golangci.yml`, the 023
+  approach): pass. Logs, `message` and reason codes are English, and the catalog
+  holds the screen text.
+- **Documents change in the same PR** (core-beliefs.md, AGENTS.md): pass. Each unit
+  updates ARCHITECTURE.md, the design documents and the how-to guides.
+
+The verdicts are the same after Phase 1. Complexity Tracking has no violation to
+list.
 
 ## Project Structure
 
@@ -112,190 +116,246 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/025-hardware-encoding/
 ├── plan.md                              # This file
 │                                        # No spec.md — the parent Issue is the specification
-├── research.md                          # 実行環境、確認、決定の規則、保存先、切り替え、引数、API、文書、検査、文書への案内
-├── data-model.md                        # settings 表とメモリに持つ値
-├── quickstart.md                        # GPU のあるホストでの実機の確認
+├── research.md                          # Runtime environment, check, decision rule, storage, fallback, arguments, API, documents, testing, link to documents
+├── data-model.md                        # settings table and in-memory values
+├── quickstart.md                        # On-hardware check on a host with a GPU
 └── contracts/
     └── transcoding-settings-api.md      # GET/PUT /api/settings/transcoding
 ```
 
-`ui-design.md` は作らない（`ui` ラベルが無い）。画面の基準は親 Issue の「UI品質」にある。
+There is no `ui-design.md` (no `ui` label). The screen criteria are in the parent
+Issue's `UI品質` section.
 
 ### Source Code
 
 **Affected boundaries**:
 
-- `internal/domain`: `VideoEncoder`・`EncoderChoice`・`EncoderAvailability`・`TranscodeEncoding`、
-  `ParseEncoderChoice`・`ResolveVideoEncoder`・`HardwareEncoderCandidates`、
-  `LiveTranscodeRequest.VideoEncoder`、`LiveTranscode` に使った方式と切り替えの事実
-- `internal/store`: 移行、`SettingsStore` の読み書き
-- `internal/app`: `TranscodeSettings`
-- `internal/media`: 方式ごとの引数、`EncoderCheck`、`Start` の梯子
-- `api/openapi.yaml`・`internal/httpapi`（新しい経路、`transcode.go`、`requiresJSONBody`）・
-  `cmd/mdm/main.go`
-- `web/src/api`・`web/src/settings`・`web/src/i18n`
-- `docs/how-to/running-vv.md`・`docs/how-to/hosting-vv.md`・`ARCHITECTURE.md`・`docs/design-docs/`
-  （`Dockerfile`・`compose.yaml`・`compose.hosting.yaml` は #491 より前の内容（`e5acc24`）のままで、
-  この feature の差分に含めない）
+| Boundary | What changes |
+| --- | --- |
+| `internal/domain` | `VideoEncoder`, `EncoderChoice`, `EncoderAvailability`, `TranscodeEncoding`; `ParseEncoderChoice`, `ResolveVideoEncoder`, `HardwareEncoderCandidates`; `LiveTranscodeRequest.VideoEncoder`; the encoder used and the fact of a fallback on `LiveTranscode` |
+| `internal/store` | Migration; `SettingsStore` reads and writes |
+| `internal/app` | `TranscodeSettings` |
+| `internal/media` | Per-encoder arguments, `EncoderCheck`, the `Start` ladder |
+| `api/openapi.yaml`, `internal/httpapi` (new routes, `transcode.go`, `requiresJSONBody`), `cmd/mdm/main.go` | API and wiring |
+| `web/src/api`, `web/src/settings`, `web/src/i18n` | Screen |
+| `docs/how-to/running-vv.md`, `docs/how-to/hosting-vv.md`, `ARCHITECTURE.md`, `docs/design-docs/` | Documentation. `Dockerfile`, `compose.yaml` and `compose.hosting.yaml` keep their content from before #491 (`e5acc24`) and are not part of this feature's diff. |
 
 **New paths**:
 
-- `internal/store/migrations/000NN_settings.sql`（実装の時点の次の番号）
+- `internal/store/migrations/000NN_settings.sql` (the next number at
+  implementation time)
 - `internal/domain/video_encoder.go`
 - `internal/app/transcode_settings.go`
 - `internal/media/encoder_check.go`
 - `internal/httpapi/transcoding_settings.go`
 - `web/src/settings/TranscodingSection.tsx`
-- `docs/design-docs/hardware-encoding.md`（方式の決定・確認・切り替え・引数の現行設計。
-  `docs/design-docs/index.md` に載せる）
+- `docs/design-docs/hardware-encoding.md` (the current design of encoder
+  selection, checking, fallback and arguments; listed in
+  `docs/design-docs/index.md`)
 
-**Structure decision**: 既存の配置に従う（[ARCHITECTURE.md](../../ARCHITECTURE.md)）。方式の決定と
-確認結果の保持は `internal/app` の `TranscodeSettings` にした。値がメモリ（確認結果）と SQLite
-（選択）にまたがり、`MediaFolders` と同じく設定画面の操作の使用例だからである。httpapi が store を
-直接読んで決める案は、決定の規則と確認結果の置き場が HTTP の層に入るので採らない。media が
-store を読む案は依存方向に反する。
+**Structure decision**: Follows the existing layout
+([ARCHITECTURE.md](../../ARCHITECTURE.md)). The encoder decision and the check
+results live in `TranscodeSettings` in `internal/app`, because the values span
+memory (check results) and SQLite (the choice), and, like `MediaFolders`, it is a
+use case behind a Settings page action. Having httpapi read the store directly and
+decide was rejected, because the decision rule and the check results would move
+into the HTTP layer. Having media read the store was rejected because it goes
+against the dependency direction.
 
 ## Implementation Work
 
-### ライブ変換の映像エンコード方式を保存し、起動時の確認結果から実際に使う方式を決める
+### Store the live transcoding video encoder and decide the effective encoder from startup check results
 
-**Scope**: 方式の値と決定の規則、保存、app の状態。
-- `internal/domain`: [data-model.md](data-model.md) §2・§3 の値と、`ParseEncoderChoice`・
-  `ResolveVideoEncoder`・`HardwareEncoderCandidates`
-  （[R-3](research.md#r-3-実際に使う方式はドメインの純粋関数が決めapp-がメモリに持つ)）。
-- `internal/store`: [data-model.md](data-model.md) §1 の移行と、`SettingsStore` の
-  `TranscodeEncoderChoice`・`SaveTranscodeEncoderChoice`
-  （[R-4](research.md#r-4-保存先は汎用の-settings-表key-value)）。
-- `internal/app`: `TranscodeSettings`（保存値の読み込み、checker interface による確認の並行実行と
-  エンコーダーごとの上限時間、`Current`、`Select`、起動時と変更時のログ。
-  [R-2](research.md#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)・R-3）。
-  `Select` は使えない方式に `domain.ErrEncoderUnavailable` を返す。
-- 文書: ARCHITECTURE.md の「Rebuildable and user data」に `settings` を、`internal/app` と
-  `SettingsStore` の説明に `TranscodeSettings` と設定の読み書きを足す。
+**Scope**: Encoder values and decision rule, storage, app state.
+
+- `internal/domain`: the values of [data-model.md](data-model.md) §2 and §3, and
+  `ParseEncoderChoice`, `ResolveVideoEncoder` and `HardwareEncoderCandidates`
+  ([R-3](research.md#r-3-a-pure-domain-function-decides-the-effective-encoder-and-app-holds-it-in-memory)).
+- `internal/store`: the migration of [data-model.md](data-model.md) §1, and
+  `TranscodeEncoderChoice` and `SaveTranscodeEncoderChoice` on `SettingsStore`
+  ([R-4](research.md#r-4-storage-is-a-generic-key-value-settings-table)).
+- `internal/app`: `TranscodeSettings` (loading the stored value, running the
+  checks in parallel through the checker interface with a per-encoder time limit,
+  `Current`, `Select`, logging at startup and on change;
+  [R-2](research.md#r-2-the-startup-check-runs-a-short-real-encode-per-encoder-in-parallel)
+  and R-3). `Select` returns `domain.ErrEncoderUnavailable` for an unavailable
+  encoder.
+- Documentation: add `settings` to "Rebuildable and user data" in ARCHITECTURE.md,
+  and `TranscodeSettings` and settings reads and writes to the descriptions of
+  `internal/app` and `SettingsStore`.
 
 **Dependencies**: None.
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通る。
-- `internal/domain` のテスト: 未選択・未知の値が `software` になる。`auto` は使える方式を
-  `nvenc`・`qsv`・`vaapi`・`videotoolbox` の順で選び、無ければ `software` で `fallbackReason` が無い。
-  ハードウェアの方式は使えなければ `software` と `selected_unavailable`、確認中なら `checking`。
-  OS ごとの確認対象（linux・windows・darwin・その他）。
-- `internal/store` のテスト: 行が無ければ未選択。保存して読み戻せる。2 度保存すると後の値が残る。
-- `internal/app` のテスト（fake の checker）: 確認中は `Current()` が `checking` で
-  `software`。確認が終わると結果が反映され、ログに選択・実際の方式・理由が出る。1 つの確認が
-  上限時間を超えても他の結果は出て、その方式は `timed_out`。`Select` は使えない方式を拒み、
-  保存値を変えない。
+**Acceptance**: The following checks exist, and `task check` and
+`task check-docs` pass.
 
-### ffmpeg のハードウェアエンコーダーで変換し、確認用の短いエンコードとソフトウェアへの切り替えを行う
+- `internal/domain` tests: no choice and an unknown value become `software`.
+  `auto` picks an available encoder in the order `nvenc`, `qsv`, `vaapi`,
+  `videotoolbox`, and when none is available gives `software` with no
+  `fallbackReason`. An unavailable hardware encoder gives `software` with
+  `selected_unavailable`, or `checking` while the check runs. The check targets
+  per OS (linux, windows, darwin, other).
+- `internal/store` tests: no row means not chosen. A saved value reads back.
+  Saving twice keeps the later value.
+- `internal/app` tests (fake checker): while checking, `Current()` is `checking`
+  with `software`. When the check ends, the results apply, and the log shows the
+  choice, the effective encoder and the reason. When one check exceeds the time
+  limit, the other results still appear and that encoder is `timed_out`. `Select`
+  rejects an unavailable encoder and leaves the stored value unchanged.
 
-**Scope**: `internal/media` の変更。
-- `videoEncodeArgs` を方式で分岐させる。`software` の引数は変えない
-  （[R-7](research.md#r-7-エンコード引数は方式ごとの符号化器の指定だけを差し替え出力の約束は共通の引数で守る)）。
-- `LiveTranscodeRequest.VideoEncoder` を受け取り、`Start` の梯子のエンコードの段を
-  「ハードウェア → ソフトウェア」の 2 段にする。使った方式と、切り替えたときのハードウェアの誤りを
-  `LiveTranscode` に載せる（[R-6](research.md#r-6-要求の中での切り替えはエンコードの段でハードウェア--ソフトウェアの順に試す)）。
-- `EncoderCheck`: 上限時間つきの `-encoders` の読み取りと、方式ごとの短い実エンコード
-  （[R-2](research.md#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）。
-  前の単位の checker interface を満たす。
+### Transcode with ffmpeg hardware encoders, with a short check encode and fallback to software
 
-**Dependencies**: `ライブ変換の映像エンコード方式を保存し、起動時の確認結果から実際に使う方式を決める`
-（`domain.VideoEncoder`・`EncoderAvailability` と checker interface を使う）。
+**Scope**: Changes in `internal/media`.
 
-**Acceptance**: 次の検査があり、`task check` が通る。
-- 引数のテスト: `software` の引数が今のテストの期待と 1 文字も変わらない。各ハードウェアの方式で
-  `-c:v h264_<方式>`、High・Level 5.1、4:2:0 8bit への変換、`-force_key_frames` の指定、VAAPI の
-  `hwupload`、MOV の二入力が今までどおりある。コピーできる要求では方式に依らず `-c:v copy`。
-- helper process のテスト: ハードウェアが最初のデータを出さずに終わると、同じ要求の中で `libx264`
-  で始まり、`LiveTranscode` に切り替えの事実が載る。期限切れと取り消しでは切り替えない。最初の
-  データを出したあとの失敗では切り替えない。
-- `EncoderCheck` のテスト: `-encoders` に無い方式は実行せずに `encoder_missing`。`-encoders` が
-  上限時間を超えて固まると、確認対象がすべて `timed_out` になり結果が返る。実エンコードの
-  失敗は `check_failed`、固まる helper は上限時間で `timed_out`、成功は `available`。
-- ffmpeg 付きの既存のテスト（回転・縦横比・4K・キーフレーム間隔・MOV・切断時の後始末）が
-  そのまま通る。
+- `videoEncodeArgs` branches on the encoder. The `software` arguments do not
+  change
+  ([R-7](research.md#r-7-encode-arguments-swap-only-the-per-encoder-codec-options-common-arguments-keep-the-output-guarantees)).
+- Accept `LiveTranscodeRequest.VideoEncoder`, and make the encode step of the
+  `Start` ladder two steps, "hardware → software". `LiveTranscode` carries the
+  encoder used and, after a fallback, the hardware error
+  ([R-6](research.md#r-6-in-request-fallback-tries-hardware-then-software-at-the-encode-step)).
+- `EncoderCheck`: reading `-encoders` with a time limit, and a short real encode
+  per encoder
+  ([R-2](research.md#r-2-the-startup-check-runs-a-short-real-encode-per-encoder-in-parallel)).
+  It satisfies the checker interface from the previous unit.
 
-### 設定 API とライブ変換の経路をつなぎ、方式の変更を再起動なしで効かせる
+**Dependencies**: `Store the live transcoding video encoder and decide the effective encoder from startup check results`
+(uses `domain.VideoEncoder`, `EncoderAvailability` and the checker interface).
 
-**Scope**: API・経路・配線・設計文書。
-- `api/openapi.yaml` に [contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)
-  の型と経路を足し、`task generate` する。エラーの reason に `encoder_unavailable` を足す。
-- `internal/httpapi`: `getTranscodingSettings`・`updateTranscodingSettings`、`requiresJSONBody`。
-  `transcode.go` は要求ごとに `TranscodeSettings.Current()` の実際の方式を要求に載せ、切り替えが
-  起きたら `Warn`（動画、方式、ffmpeg の誤りの末尾）を記録する。
-- `cmd/mdm/main.go`: `TranscodeSettings` を作り、保存値を読み、待ち受けを待たせずに確認の goroutine
-  を始め、停止時に止める。
-- 文書: `docs/design-docs/hardware-encoding.md` を書き、`docs/design-docs/index.md` と
-  ARCHITECTURE.md（ライブ変換の段落、設定 API）を直す。
+**Acceptance**: The following checks exist, and `task check` passes.
+
+- Argument tests: the `software` arguments match the current test expectations
+  character for character. Each hardware encoder has `-c:v h264_<encoder>`, High
+  and Level 5.1, conversion to 4:2:0 8-bit, the `-force_key_frames` option, VAAPI's
+  `hwupload`, and the MOV dual input as before. A request that can copy gets
+  `-c:v copy` whatever the encoder.
+- Helper process tests: when hardware ends without producing initial data, the
+  same request starts with `libx264`, and `LiveTranscode` carries the fact of the
+  fallback. A deadline or cancellation does not fall back. A failure after the
+  initial data does not fall back.
+- `EncoderCheck` tests: an encoder missing from `-encoders` is `encoder_missing`
+  without running. When `-encoders` hangs past the time limit, every target
+  becomes `timed_out` and the result is returned. A failed real encode is
+  `check_failed`, a hanging helper is `timed_out` at the time limit, and success is
+  `available`.
+- The existing ffmpeg tests (rotation, aspect ratio, 4K, keyframe interval, MOV,
+  cleanup on disconnect) pass unchanged.
+
+### Connect the settings API and the live transcode route so encoder changes apply without a restart
+
+**Scope**: API, route, wiring, design document.
+
+- Add the types and routes of
+  [contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)
+  to `api/openapi.yaml` and run `task generate`. Add `encoder_unavailable` to the
+  error reasons.
+- `internal/httpapi`: `getTranscodingSettings`, `updateTranscodingSettings`,
+  `requiresJSONBody`. `transcode.go` puts the effective encoder from
+  `TranscodeSettings.Current()` on every request, and when a fallback happens,
+  logs `Warn` (video, encoder, tail of the ffmpeg error).
+- `cmd/mdm/main.go`: create `TranscodeSettings`, load the stored value, start the
+  check goroutine without holding up the listener, and stop it on shutdown.
+- Documentation: write `docs/design-docs/hardware-encoding.md`, and update
+  `docs/design-docs/index.md` and ARCHITECTURE.md (the live transcoding
+  paragraph, the settings API).
 
 **Dependencies**:
-- `ライブ変換の映像エンコード方式を保存し、起動時の確認結果から実際に使う方式を決める`
-- `ffmpeg のハードウェアエンコーダーで変換し、確認用の短いエンコードとソフトウェアへの切り替えを行う`
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通り、`task generate` で差分が
-出ない。
-- `internal/httpapi` のテスト: `GET` が契約の形を返す。`PUT` で `software`・`auto`・使える方式が
-  保存され応答に反映される。使えない方式は 409 `encoder_unavailable`、列挙に無い値は 400。
-  ゲストは 401／403 で、`openapi_routes_test.go` が通る。
-- `internal/httpapi/transcode_test.go`（helper process）: 方式を変えたあとの要求から
-  `-c:v h264_<方式>` で始まる。変える前に始まった要求はそのまま続く。ハードウェアの失敗を注入した
-  要求が 200 で本文を返し、`Warn` のログが出る（受け入れ条件 8）。
-- `cmd/mdm` のテスト: 確認が終わる前に `/api/health` が応答する。起動ログに方式の行がある。
+- `Store the live transcoding video encoder and decide the effective encoder from startup check results`
+- `Transcode with ffmpeg hardware encoders, with a short check encode and fallback to software`
 
-### 設定画面に「動画の変換」区画を足し、方式の選択と使える方式の表示を行う
+**Acceptance**: The following checks exist, `task check` and `task check-docs`
+pass, and `task generate` produces no diff.
 
-**Scope**: 設定画面の区画。基準は親 Issue の「UI品質」と「要件 1・6・8」。
-- `web/src/api/client.ts`: `getTranscodingSettings`・`updateTranscodingSettings`。
-- `web/src/settings/TranscodingSection.tsx`: 見出し・説明（公開文書サイトの
-  `docs/how-to/running-vv.md`「Hardware encoding」への外部リンク。
-  [R-11](research.md#r-11-設定画面の説明文は公開文書サイトの節を指す)）・「今使われている方式」・
-  選択肢（radio、1 行に 1 つ、方式名と状態）。使えない方式は選べず理由を添える。確認中は「確認中」を出し、終わるまで数秒ごとに
-  読み直す（[R-5](research.md#r-5-変更の知らせは出さず画面は表示時と保存の応答で合わせる)）。
-  選んだ時点で保存し、保存中は「保存中…」を出して二重の変更を防ぐ。失敗したら選択を元に戻し、
-  区画内に理由を出す。`fallbackReason` の警告は `text-warning` で選択肢より上に出す。
-  `SettingsPage` に `ScanStatusSection`・メディアフォルダと同じ余白（`mt-8`、見出し下の区切り線）
-  で置く。
-- `web/src/i18n/en.ts`: 区画の文言、方式名、理由（`unsupported_os`・`encoder_missing`・
-  `check_failed`・`timed_out`・`checking`）、reason `encoder_unavailable` の文。
+- `internal/httpapi` tests: `GET` returns the contract shape. `PUT` saves
+  `software`, `auto` and an available encoder and reflects them in the response.
+  An unavailable encoder returns 409 `encoder_unavailable`, and a value outside the
+  enum returns 400. A guest gets 401 / 403, and `openapi_routes_test.go` passes.
+- `internal/httpapi/transcode_test.go` (helper process): after the encoder
+  changes, requests start with `-c:v h264_<encoder>`. A request started before the
+  change continues as it was. A request with an injected hardware failure returns
+  200 with a body, and the `Warn` log appears (acceptance criterion 8).
+- `cmd/mdm` tests: `/api/health` responds before the check ends. The startup log
+  has the encoder line.
 
-**Dependencies**: `設定 API とライブ変換の経路をつなぎ、方式の変更を再起動なしで効かせる`。
+### Add the Video conversion section to Settings for choosing an encoder and showing which encoders are available
 
-**Acceptance**: 画面が変わる単位なので、360px・768px・1280px 幅で見た目と操作を確認する。次の検査が
-あり、`task check` が通る。
-- `web/src/settings` の単体テストで、次を確かめる。
-  - 未選択の応答でソフトウェアが選ばれている。
-  - 使えない方式の radio が disabled で、理由の文が添えられている。
-  - 選ぶと `PUT` が送られ、「保存中…」の間は他の選択肢が操作できず、応答で「今使われている
-    方式」が変わる。
-  - `PUT` の失敗で選択が元に戻り、区画内に `role="alert"` の理由が出る（受け入れ条件 10）。
-  - `fallbackReason: selected_unavailable` で警告が選択肢より上に出る。
-  - 説明文のリンクの `href` が R-11 の URL で、新しいタブで開く（`target="_blank"`・
-    `rel="noreferrer"`）。
-  - `checking: true` で確認中の表示になり、`false` を返す応答で置き換わる。
-  - 疑似ロケールの検査（`expectCatalogTextOnly`）を通り、ゲストの画面に区画が無い
-    （`/settings` が所有者だけであることを既存のテストで確かめる）。
+**Scope**: The Settings section. The criteria are the parent Issue's `UI品質`
+section and requirements 1, 6 and 8.
 
-### Docker イメージはソフトウェアエンコードのままにし、ハードウェアエンコードを直接インストールで使う手順を書く
+- `web/src/api/client.ts`: `getTranscodingSettings`, `updateTranscodingSettings`.
+- `web/src/settings/TranscodingSection.tsx`:
+  - Content: heading; description (with an external link to the "Hardware
+    encoding" section of `docs/how-to/running-vv.md` on the published
+    documentation site;
+    [R-11](research.md#r-11-the-settings-description-links-to-the-published-documentation-site-section));
+    the encoder in use now; the choices (radio buttons, one per line, with encoder
+    name and state).
+  - An unavailable encoder cannot be selected and shows its reason.
+  - While checking, show "Checking…" and reload every few seconds until the check
+    ends
+    ([R-5](research.md#r-5-no-change-notification-the-screen-syncs-on-display-and-on-the-save-response)).
+  - Selecting saves at once. While saving, show "Saving…" and prevent a second
+    change. On failure, revert the selection and show the reason inside the
+    section.
+  - The `fallbackReason` warning appears in `text-warning` above the choices.
+  - Place it in `SettingsPage` with the same spacing as `ScanStatusSection` and
+    Media folders (`mt-8`, a divider under the heading).
+- `web/src/i18n/en.ts`: the section text, the encoder names, the reasons
+  (`unsupported_os`, `encoder_missing`, `check_failed`, `timed_out`, `checking`),
+  and the text for reason `encoder_unavailable`.
 
-**Scope**: 同梱イメージの範囲の確定と利用者向けの文書。
-- `Dockerfile`・`compose.yaml`・`compose.hosting.yaml`: #491 より前の内容（`e5acc24` の時点）に
-  戻す（実行段は Alpine で
-  `ffmpeg` だけを入れる。GPU のドライバーも GPU を渡す設定も足さない。
-  [R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。feature ブランチの #491
-  が入れた Debian の実行段・GPU のドライバー・compose の変更は、すべて取り除く。
-- `docs/how-to/running-vv.md`: 「Hardware encoding」の節（ハードウェアエンコードにはホストへの直接
-  インストールが要ること、同梱の Docker イメージはソフトウェアエンコードだけで、コンテナの中では
-  ハードウェアの方式がすべて使えないと表示されること、方式ごとの前提（ドライバー、デバイス、OS、
-  ハードウェアエンコーダーを含む ffmpeg）、直接インストールの手順への案内、設定画面での有効化）。
-  GPU をコンテナに渡す override の例は置かない
-  （[R-9](research.md#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
-  `docs/how-to/hosting-vv.md` から節を指す。
-- [quickstart.md](quickstart.md) を GPU のあるホストに直接入れて実行し、結果を PR の本文に残す。
+**Dependencies**: `Connect the settings API and the live transcode route so encoder changes apply without a restart`.
 
-**Dependencies**: `設定画面に「動画の変換」区画を足し、方式の選択と使える方式の表示を行う`。
+**Acceptance**: This unit changes a screen, so look and interaction are checked at
+360px, 768px and 1280px. The following checks exist, and `task check` passes.
 
-**Acceptance**: `task check-docs` が通る。`Dockerfile` と compose のファイルに `e5acc24`（#491 より前）との
-差分が無く、
-CI の `Docker image` のビルド（`linux/amd64,linux/arm64`）が通る。同梱イメージで起動すると、設定画面で
-ハードウェアの方式がすべて使えない状態で表示され、ライブ変換はソフトウェアで動く。文書を読んで、
-直接インストールしたホストで前提を満たし、設定画面からハードウェアエンコードを有効にできる
-（受け入れ条件 11）。quickstart の各手順の結果が PR の本文にある。
+- Unit tests in `web/src/settings` confirm:
+  - With a not-chosen response, Software is selected.
+  - An unavailable encoder's radio is disabled and has its reason text.
+  - Selecting sends `PUT`; during "Saving…" the other choices cannot be operated;
+    the response changes the encoder in use now.
+  - A failed `PUT` reverts the selection and shows the reason inside the section
+    with `role="alert"` (acceptance criterion 10).
+  - `fallbackReason: selected_unavailable` shows the warning above the choices.
+  - The description link's `href` is the R-11 URL and opens in a new tab
+    (`target="_blank"`, `rel="noreferrer"`).
+  - `checking: true` shows the checking state, which a response with `false`
+    replaces.
+  - The pseudo-locale check (`expectCatalogTextOnly`) passes, and the guest screen
+    has no section (existing tests confirm `/settings` is owner-only).
+
+### Keep the Docker image on software encoding and document using hardware encoding with a direct install
+
+**Scope**: Settle the scope of the bundled image and write the user documents.
+
+- `Dockerfile`, `compose.yaml`, `compose.hosting.yaml`: restore the content from
+  before #491 (as of `e5acc24`). The runtime stage is Alpine and installs only
+  `ffmpeg`; no GPU driver and no GPU passthrough setting are added
+  ([R-1](research.md#r-1-the-bundled-image-stays-on-alpine-with-software-encoding-only)).
+  Remove everything #491 added on the feature branch: the Debian runtime stage,
+  the GPU drivers and the compose changes.
+- `docs/how-to/running-vv.md`: a "Hardware encoding" section covering:
+  - hardware encoding needs a direct install on the host
+  - the bundled Docker image is software only, and inside the container every
+    hardware encoder shows as unavailable
+  - the prerequisites per encoder (driver, device, OS, an ffmpeg that includes
+    the hardware encoder)
+  - a pointer to the direct-install procedure
+  - turning it on in Settings
+
+  No override example that passes a GPU to the container
+  ([R-9](research.md#r-9-hardware-encoding-runs-on-a-direct-host-install-documented-with-prerequisites-and-steps)).
+  `docs/how-to/hosting-vv.md` points to the section.
+- Run [quickstart.md](quickstart.md) with VVMDM installed directly on a host with
+  a GPU, and record the results in the PR body.
+
+**Dependencies**: `Add the Video conversion section to Settings for choosing an encoder and showing which encoders are available`.
+
+**Acceptance**: `task check-docs` passes. The `Dockerfile` and compose files have
+no diff against `e5acc24` (before #491), and the CI `Docker image` build
+(`linux/amd64,linux/arm64`) passes. Started from the bundled image, the Settings
+page shows every hardware encoder as unavailable, and live transcoding runs in
+software. Reading the document, a user can meet the prerequisites on a host with a
+direct install and turn on hardware encoding in Settings (acceptance
+criterion 11). The PR body has the result of each quickstart step.

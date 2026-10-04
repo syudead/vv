@@ -1,65 +1,79 @@
-# 依存の更新（Renovate）
+# Handle dependency updates (Renovate)
 
-依存の更新 PR は [Renovate](https://docs.renovatebot.com/) の GitHub App が
-`renovate.json` に従って作る。設定の意図はこの文書に置き、`renovate.json`
-自体には書かない。
+The [Renovate](https://docs.renovatebot.com/) GitHub App opens dependency update
+PRs according to `renovate.json`; the intent behind that configuration lives
+here.
 
-## 何が起きるか
+## What Renovate does
 
-- 毎週月曜の早朝（JST）に、Go modules / web npm / tools npm / GitHub Actions /
-  mise tools / container images の 6 グループに分けて PR が出る。脆弱性対応の
-  PR は曜日を待たずに出る。
-- マイナー・パッチ・lockfile 保守・ダイジェスト更新は、PR の必須チェック
-  （Checks）が通れば Renovate が自動でマージする。Browser E2E と Docker image は
-  マージ後の `main` への push で回る。
-- メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
-- GitHub Actions はコミットハッシュに固定され、コメントでタグ名を併記する
-  （`config:best-practices` の既定）。
-- `Dockerfile` のベースイメージは `タグ@sha256:ダイジェスト` で固定する。同じ
-  タグの中身が更新されると、Renovate がダイジェスト更新の PR を出す。
+Renovate decides per update whether it merges the PR itself.
 
-## 対象外にしているもの
+```mermaid
+flowchart LR
+  upd[Update found] --> excl{Excluded?}
+  excl -->|yes| none[No PR]
+  excl -->|no| major{Major update?}
+  major -->|yes| person[Person merges]
+  major -->|no| checks{Checks pass?}
+  checks -->|yes| auto[Renovate merges]
+  checks -->|no| person
+```
 
-- `Dockerfile` の `golang` / `node` イメージと `mise.toml` の `go` / `node`。
-  ランタイム版は `go.mod` の `go` 行と揃える必要があるので、人が
-  `go.mod` を上げるときに一緒に変える。mise manager は `go` を `golang/go`、
-  `node` を `nodejs` という packageName で扱うため、除外は `matchPackageNames`
-  ではなく両 manager に共通の `matchDepNames` で指定している。
-  止めるのはバージョンの変更（major / minor / patch）だけで、`Dockerfile` の
-  イメージのダイジェスト更新は対象内に残す。
-- `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
-  mise tools / container images グループに入る。
-- Windows 版の zip に同梱する FFmpeg（`scripts/build/windows_app.go` の
-  `ffmpegVersion` と `ffmpegSHA256`）。Renovate はこの定数を読まないので、
-  人が下の [FFmpeg の版の上げ方](#ffmpeg-の版の上げ方)で上げる。
-- Dependabot の security updates はリポジトリ設定で無効にしている。
-  Renovate の `vulnerabilityAlerts` が同じ役割を果たす。
+- PRs open early every Monday morning (JST) in 6 groups: Go modules, web npm,
+  tools npm, GitHub Actions, mise tools and container images. Vulnerability fix
+  PRs open at any time.
+- Minor, patch, pin, digest and lockfile maintenance updates are merged
+  automatically once the required `Checks` job passes. Browser E2E and the
+  Docker image run on the push to `main` after the merge.
+- A person reads the breaking changes of a major update before merging it.
+- GitHub Actions are pinned to commit hashes, with the tag name in a comment
+  (the `config:best-practices` default).
+- Base images in `Dockerfile` are pinned as `tag@sha256:digest`; when the
+  content behind a tag changes, Renovate opens a digest update PR.
 
-## FFmpeg の版の上げ方
+## Excluded dependencies
 
-Windows 版の zip は、`GyanD/codexffmpeg` の GitHub Releases にある Gyan.dev の
-essentials（`ffmpeg-<版>-essentials_build.zip`）を版と SHA-256 で固定して同梱する
-（[Windows デスクトップ版の配布](../design-docs/windows-app.md#配布)）。上げるときは次を 1 つの PR で行う。
+| Dependency | Treatment | Reason |
+| --- | --- | --- |
+| `golang` / `node` images in `Dockerfile`; `go` / `node` in `mise.toml` | Version updates are excluded; digest updates of the `Dockerfile` images stay in scope | The runtime version must match the `go` line in `go.mod`, so a person changes them together |
+| `task` and `jq` in `mise.toml`; `alpine` in `Dockerfile` | In scope, in the mise tools and container images groups | — |
+| FFmpeg bundled in the Windows zip (`ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`) | Raised by a person ([Raise the bundled FFmpeg version](#raise-the-bundled-ffmpeg-version)) | Renovate does not read these constants |
+| Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` does the same job |
 
-1. 新しい版の Release に `ffmpeg-<版>-essentials_build.zip` があることを確かめ、その
-   SHA-256 を Gyan.dev が公開する値（<https://www.gyan.dev/ffmpeg/builds/> の
-   `.sha256`）で確かめる。
-2. `scripts/build/windows_app.go` の `ffmpegVersion` と `ffmpegSHA256` を変える。
-   SHA-256 が合わなければ `task build-windows-app` は期待値と実際の値を示して失敗する。
-3. `task build-windows-app` で zip を組み、中身の `ffmpeg/README.txt` の版を確かめる。
-4. マージ後に `main` で動く `Windows app` workflow が通り、同梱の `ffmpeg` に `h264_nvenc` と
-   `h264_qsv` があることを確かめる。
+The exclusion uses `matchDepNames`, not `matchPackageNames`, because the mise
+manager names `go` as `golang/go` and `node` as `nodejs`, while the dependency
+name is shared by both managers.
 
-`ffmpeg` の中のエンコーダの名前や引数が変わったときは、
-[hardware-encoding.md](../design-docs/hardware-encoding.md) と `internal/media` も合わせる。
+## Raise the bundled FFmpeg version
 
-## Renovate の PR に対する扱い
+The Windows zip bundles Gyan.dev's essentials build
+(`ffmpeg-<version>-essentials_build.zip`) from the GitHub Releases of
+`GyanD/codexffmpeg`, pinned by version and SHA-256
+([Windows desktop app distribution](../design-docs/windows-app.md#distribution)).
+Raise it in one PR:
 
-- 自動マージが止まっている PR は、CI の失敗か、コンフリクトか、メジャー更新
-  のどれか。Renovate の Dependency Dashboard Issue に一覧が出る。
-- 更新を一時的に止めたいときは、PR を閉じる（同じ版は再作成されない）か、
-  `renovate.json` の `packageRules` で `enabled: false` にする。
+1. Check that the new release has `ffmpeg-<version>-essentials_build.zip` and
+   that its SHA-256 matches the `.sha256` value at
+   <https://www.gyan.dev/ffmpeg/builds/>.
+2. Change `ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`.
+   On a mismatch, `task build-windows-app` fails and prints the expected and
+   actual values.
+3. Build the zip with `task build-windows-app` and check the version in its
+   `ffmpeg/README.txt`.
+4. After the merge, check that the `Windows app` workflow run on `main` passes,
+   which confirms the bundled `ffmpeg` has `h264_nvenc` and `h264_qsv`.
 
-## 設定を変えたら
+When `ffmpeg` changes encoder names or arguments, update
+[hardware-encoding.md](../design-docs/hardware-encoding.md) and
+`internal/media` to match.
 
-`npx --package renovate renovate-config-validator` で検証してから push する。
+## Renovate PRs that need a person
+
+- A PR left open has a CI failure, a conflict, or is a major update; Renovate's
+  Dependency Dashboard Issue lists them.
+- To pause an update, close the PR (the same version is not opened again) or set
+  `enabled: false` in `packageRules` in `renovate.json`.
+
+## Changing the configuration
+
+Validate with `npx --package renovate renovate-config-validator` before pushing.

@@ -1,477 +1,507 @@
-# UI Design: 同じ動画の別バージョンを束ねる
+# UI design: Bundle versions of the same video
 
-**Feature**: [parent Issue #572](https://github.com/syudead/vv/issues/572) ・
-[plan.md](plan.md) ・ [contracts/screen-api.md](contracts/screen-api.md) ・
-[research.md R-8](research.md#r-8-集まりは動画の-id-で指しバージョンの一覧束ねる代表外す候補の経路を足す)・
-[R-9](research.md#r-9-束ねの変化は-domainvideobundlechanged-を発行し画面の-video-の知らせに写す)・
-[R-11](research.md#r-11-集まりの再生位置がそのバージョンの尺以上なら画面が最初から再生する)
+**Feature**: [parent Issue #572](https://github.com/syudead/vv/issues/572) ·
+[plan.md](plan.md) · [contracts/screen-api.md](contracts/screen-api.md) ·
+[research.md R-8](research.md#r-8-bundles-are-addressed-by-video-id-new-routes-for-listing-versions-bundling-the-representative-removal-and-candidates) ·
+[R-9](research.md#r-9-a-bundle-change-publishes-domainvideobundlechanged-mapped-to-the-screens-video-notification) ·
+[R-11](research.md#r-11-when-the-bundles-playback-position-is-at-or-past-that-versions-duration-the-screen-plays-from-the-beginning)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+Sources: the visual rules come from these documents and are not decided again here.
 
-- 配色・操作状態・幅の出し分け・一覧と再生画面の構成: [ライブラリ UI](../../docs/design-docs/library-ui.md)
-  （「6. 一覧の構成」の選択バー、「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- 再生画面の列・「Video facts」の 2 行と右端の操作・失敗の 1 行・Esc の例外:
-  [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md) と今の
+- Colours, interaction states, width breakpoints, library and player layout:
+  [Library UI](../../docs/design-docs/library-ui.md) (the selection bar in §6, library layout, and §8, player
+  screen layout)
+- Role tokens: `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy
+  values
+- Pairs checked for contrast: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
+- Player screen columns, the two "Video facts" lines and their right-hand actions, the single failure line, the
+  Esc exceptions: [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md) and the current
   [`web/src/player/VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx)
-- 情報の行の項目に画像と操作を足した先例（サムネイルの項目）:
-  [specs/029-video-overrides/ui-design.md「Thumbnail fact」](../029-video-overrides/ui-design.md#thumbnail-fact)
-- 選択バーのポップオーバーと失敗の行、管理画面の窓（`ModalFrame`）と行の密度:
-  [specs/014-video-tags/ui-design.md「Selection bar」「Tag management page」](../014-video-tags/ui-design.md#selection-bar)
-- 選択バーのメニューと上限の扱い、ゲストに出さないものの扱い:
-  [specs/016-single-account-auth/ui-design.md「Selection bar」「Guest degradation」](../016-single-account-auth/ui-design.md#selection-bar)
-- 再生画面の従の行のメニュー、関連動画の列の行の密度、今の行の `aria-current`:
-  [specs/017-folder-groups/ui-design.md「Group line」「Member list」](../017-folder-groups/ui-design.md#group-line)
-- 設定画面の一覧の行（置き場所の省略の仕方、リンクの行）:
-  [specs/024-import-progress/ui-design.md「Issue List」](../024-import-progress/ui-design.md#issue-list)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+- Precedent for adding an image and an action to a facts-line item (the thumbnail item):
+  [specs/029-video-overrides/ui-design.md "Thumbnail fact"](../029-video-overrides/ui-design.md#thumbnail-fact)
+- Selection bar popover and failure line, management dialogs (`ModalFrame`) and row density:
+  [specs/014-video-tags/ui-design.md "Selection bar" and "Tag management page"](../014-video-tags/ui-design.md#selection-bar)
+- Selection bar menu and limits, what is hidden from guests:
+  [specs/016-single-account-auth/ui-design.md "Selection bar" and "Guest degradation"](../016-single-account-auth/ui-design.md#selection-bar)
+- Menu on the player's secondary line, row density in the related-videos column, `aria-current` on the current
+  row: [specs/017-folder-groups/ui-design.md "Group line" and "Member list"](../017-folder-groups/ui-design.md#group-line)
+- List rows on the settings screen (how locations are shortened, link rows):
+  [specs/024-import-progress/ui-design.md "Issue List"](../024-import-progress/ui-design.md#issue-list)
+- Where screen text lives and its format: [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md).
+  The English in this document shows intent; after implementation the catalog
+  [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth
 
-この feature が画面に足すのは次の 3 つで、どれも新しい色・半径・影のトークンを足さない。
+This feature adds three things to the screens, none of which adds a colour, radius or shadow token:
 
-1. 再生画面（`/videos/:id`）の情報の行の**バージョンの項目**と、開いたときの**バージョンの一覧**
-   （要件 6・7・12、受け入れ条件 7・8・9・12）
-2. ライブラリの選択バーの**「Bundle as versions」**と、代表を選ぶ**窓**（要件 11、受け入れ条件 6）
-3. 所有者だけの**候補の画面**（`/duplicates`）と、サイドバーの入口（要件 9・10、受け入れ条件 3・4・5）
+1. On the player screen (`/videos/:id`), a **versions item** in the facts line and, when opened, the **versions
+   list** (requirements 6, 7 and 12; acceptance criteria 7, 8, 9 and 12)
+2. **"Bundle as versions"** in the library selection bar, with a **dialog** to pick the representative
+   (requirement 11; acceptance criterion 6)
+3. An owner-only **candidate screen** (`/duplicates`) with an entry in the sidebar (requirements 9 and 10;
+   acceptance criteria 3, 4 and 5)
 
-一覧のカード・リスト表示の行・フォルダのカード・グループのカード・関連動画の行は変えない。
-代表以外のバージョンはどの一覧にも出ず（要件 5）、代表の 1 件は今の動画の 1 件と同じ見た目である
-（UI品質「視覚的階層」「要求を満たしたことにならない変更」）。束ねたことをカードに印で出さない。
+Library cards, list-view rows, folder cards, group cards and related-video rows do not change.
+Non-representative versions appear in no list (requirement 5), and the representative's item looks the same as
+any video's item today (`UI品質` "visual hierarchy" and "changes that do not meet the requirement"). Bundling is
+not marked on cards.
 
-## Why here and not elsewhere
+## Why this shape
 
-- バージョンの導線を**情報の行の項目**にし、プレイヤーの操作バー・題名の横・関連動画の列に
-  置かないのは次の理由による。
-  - 親 Issue は「詳細画面の情報の 1 つ」「ファイルの情報と並ぶ従の情報」と言い、UI品質は「ほかに
-    バージョンがあることと、その数が 1 行で分かる程度」を求める。情報の行の項目は、長さ・サイズ・
-    追加日と同じ段（`text-sm text-fg-muted`）に「3 versions」と並ぶだけで、この条件をそのまま
-    満たす。029 のサムネイルの項目が、同じ行に状態と操作を置いた先例である。
-  - 操作バーは 360px で 1 行に収める前提で、画質・字幕・速度のあと余地が無い（029「Why here」）。
-    プレイヤーの中に置くと再生操作と同じ重さになる。
-  - 関連動画の列は「次に見るもの」の列で、同じ動画の別ファイルは関連でも次でもない。
-- 各バージョンを**押して開く浮き出し（`ui/Popover`）**に並べ、常に開いた欄やタブにしないのは、
-  UI品質「情報密度」（違いは導線を開いたときに初めて並べる）と「要求を満たしたことにならない
-  変更」（常に開いた大きな欄やタブ）による。比較対象の現行製品（メディアサーバーの項目画面の
-  バージョンの切り替え）も、押すと開く一覧に収束している。
-- 選択バーからの束ねを**窓（`ModalFrame`）**にし、ポップオーバーやメニューにしないのは、代表を
-  選ぶ操作が「どちらのタグ・再生位置・公開の設定が集まりのものになるか」を決める、取り消しに
-  手間の要る選択だからである。タグの統合（014「Merge and delete」）と同じく、選ぶ相手の一覧と
-  結果の 1 文を同じ窓で読ませる。候補の画面の「Same video」も同じ窓を使い、代表の選び方を
-  2 か所で別にしない。
-- 候補の一覧を**サイドバーの所有者だけの入口 `/duplicates`** にし、設定画面の節や一覧の絞り込みに
-  しないのは次の理由による。
-  - 候補を確かめて束ねる作業は、タグの整理と同じ「ライブラリを整える」作業で、取り込みの設定
-    ではない。設定画面は登録フォルダ・変換・API トークンの置き場で、既に長い。
-  - 一覧の絞り込みは 1 本ずつを出す形で、「2 本を並べて違いを見る」ができない。
-  - 写真・動画の管理の現行製品（重複の確認の画面）は、サイドバーの専用の入口に収束している。
-  - サイドバーに件数の印は付けない。件数だけを返す経路が無く、シェルを開くたびに候補の全件を
-    読むことになるため。件数は画面の見出しの行で分かる。
+The versions entry point is an **item in the facts line**, not in the player's control bar, next to the title,
+or in the related-videos column:
+
+- The parent Issue calls it "one piece of the detail screen's information" and "secondary information alongside
+  the file's details", and `UI品質` asks for "enough to see in one line that other versions exist and how many".
+  An item in the facts line sits in the same tier as length, size and date added (`text-sm text-fg-muted`) as
+  "3 versions", which meets this as it stands. 029's thumbnail item is the precedent for putting a state and an
+  action in the same line.
+- The control bar must fit in one line at 360px, and there is no room after quality, subtitles and speed
+  (029 "Why here"). Inside the player it would carry the same weight as playback controls.
+- The related-videos column is "what to watch next"; another file of the same video is neither related nor next.
+
+Versions are listed in a **popover opened on press (`ui/Popover`)**, not an always-open panel or a tab, because
+of `UI品質` "information density" (differences are listed only once the entry point is opened) and "changes that
+do not meet the requirement" (an always-open large panel or tab). The comparable current products (version
+switching on a media server's item screen) have also converged on a list opened on press.
+
+Bundling from the selection bar is a **dialog (`ModalFrame`)**, not a popover or menu, because picking the
+representative decides "whose tags, playback position and visibility become the bundle's", a choice that takes
+effort to undo. As with tag merging (014 "Merge and delete"), the dialog shows the list to choose from and a
+one-sentence result together. "Same video" on the candidate screen uses the same dialog, so the representative
+is not chosen two different ways.
+
+The candidate list is an **owner-only sidebar entry `/duplicates`**, not a section of the settings screen or a
+library filter:
+
+- Checking candidates and bundling them is "tidying the library", like organising tags, not an ingest setting.
+  The settings screen holds media folders, conversion and API tokens, and is already long.
+- A library filter shows one video per item and cannot "put two side by side and see the differences".
+- Current photo and video management products (duplicate review screens) have converged on a dedicated sidebar
+  entry.
+- The sidebar shows no count badge. There is no route that returns only a count, and the shell would read every
+  candidate each time it opens. The count is visible in the screen's heading line.
 
 ## Words
 
-| 場所 | 英語（案） |
+| Place | Text (proposal) |
 | --- | --- |
-| 情報の行の項目（本数） | 3 versions |
-| 項目の読み上げ名・`title` | 3 versions of this video. Show versions |
-| バージョンの一覧の読み上げ名 | Versions |
-| 一覧の中の代表の印 | Representative |
-| 一覧の中の今の動画の印（視覚的に隠す） | Now playing |
-| 一覧の各行のリンクの読み上げ名 | Play {題名}, {解像度} {コンテナ} {サイズ} |
-| 行のメニューの引き金 | More actions for {題名} |
-| メニューの項目 | Make representative / Remove from versions |
-| 一覧の失敗の 1 行 | Couldn't change the versions: {理由} |
-| 外したときのトースト | Removed "{題名}" from the versions |
-| 選択バーの操作 | Bundle as versions |
-| 窓の題名 | Bundle as versions |
-| 窓の説明 | These {N} videos become versions of one video. Pick the one to show in the library. The library keeps that video's tags, position and visibility; the others' are set aside and come back if you remove them. |
-| 窓の一覧の読み上げ名 | Representative |
-| 窓の行の補足（既に束ねてある動画） | Already {N} versions — all of them join |
-| 窓の主操作 | Bundle |
-| 窓の失敗の 1 行 | Couldn't bundle: {理由} |
-| 束ねたときのトースト | Bundled {N} videos as versions of "{題名}" |
-| サイドバーの入口・`document.title` | Duplicates |
-| 候補の画面の `h1` | Possible duplicates |
-| 件数の行 | 12 pairs / 1 pair / Showing 200 of 340 pairs |
-| 組の見出しの行 | Same length · similar frames |
-| 「同じ動画」 | Same video… |
-| 「違う動画」 | Different videos |
-| 却下のトースト | Marked as different videos. They won't be suggested again |
-| 組が消えていたときのトースト | This pair is no longer a candidate |
-| 空の状態 | No possible duplicates / When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself. |
-| 読み込み失敗 | Couldn't load the candidates / Retry |
+| Facts-line item (count) | 3 versions |
+| Item's accessible name and `title` | 3 versions of this video. Show versions |
+| Versions list's accessible name | Versions |
+| Representative marker in the list | Representative |
+| Current-video marker in the list (visually hidden) | Now playing |
+| Accessible name of each row's link | Play {title}, {resolution} {container} {size} |
+| Row menu trigger | More actions for {title} |
+| Menu items | Make representative / Remove from versions |
+| List failure line | Couldn't change the versions: {reason} |
+| Toast on removal | Removed "{title}" from the versions |
+| Selection bar action | Bundle as versions |
+| Dialog title | Bundle as versions |
+| Dialog description | These {N} videos become versions of one video. Pick the one to show in the library. The library keeps that video's tags, position and visibility; the others' are set aside and come back if you remove them. |
+| Dialog list's accessible name | Representative |
+| Dialog row note (video already bundled) | Already {N} versions — all of them join |
+| Dialog primary action | Bundle |
+| Dialog failure line | Couldn't bundle: {reason} |
+| Toast on bundling | Bundled {N} videos as versions of "{title}" |
+| Sidebar entry and `document.title` | Duplicates |
+| Candidate screen `h1` | Possible duplicates |
+| Count line | 12 pairs / 1 pair / Showing 200 of 340 pairs |
+| Pair heading line | Same length · similar frames |
+| "Same video" | Same video… |
+| "Different videos" | Different videos |
+| Toast on dismissal | Marked as different videos. They won't be suggested again |
+| Toast when the pair is gone | This pair is no longer a candidate |
+| Empty state | No possible duplicates / When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself. |
+| Load failure | Couldn't load the candidates / Retry |
 | `too_few_videos` | Select at least two videos |
-| `too_many_videos` | Too many videos selected（今の上限の文と同じ形） |
-| 選択バーの操作の無効の理由（`maxVideoTagsSelection` ではなく `maxBundleSelection` を超えたとき） | Bundle up to 20 videos at a time |
+| `too_many_videos` | Too many videos selected (same form as the current limit message) |
+| Reason the selection bar action is disabled (when `maxBundleSelection` is exceeded, not `maxVideoTagsSelection`) | Bundle up to 20 videos at a time |
 | `representative_not_selected` | Pick which video to show in the library |
 | `not_bundled` | This video isn't bundled with others |
 
-- 「version」の語は、動画ページ・選択バー・窓で 1 つの意味（同じ動画の別ファイル）に使う。候補の
-  画面だけ「duplicates」を使うのは、そこに並ぶのはまだ束ねていない「重複かもしれない 2 本」で、
-  利用者がそう呼ぶものだからである。決めたあとは同じ「versions」になる。
-- 理由の 4 つは `web/src/i18n/errors.ts` の `reason` の表に足す（[contracts/screen-api.md §2〜§4](contracts/screen-api.md#2-post-apivideo-bundles)）。
-  `video_not_found` は今の文のまま。
+- "Version" has one meaning (another file of the same video) on the video page, in the selection bar and in the
+  dialog. Only the candidate screen uses "duplicates": what it lists are two not-yet-bundled videos that "might
+  be duplicates", which is what users call them. Once decided they become "versions" too.
+- The four reasons are added to the `reason` table in `web/src/i18n/errors.ts`
+  ([contracts/screen-api.md §2 to §4](contracts/screen-api.md#2-post-apivideo-bundles)). `video_not_found` keeps
+  its current text.
 
 ## Video page
 
 ### Versions fact
 
-`Video.versions` があり `count` が 2 以上のとき、ファイルの情報の行（`VideoFacts` の 1 行目）の
-長さ・サイズ・追加日の**あと**（所有者ではサムネイルの項目の前）に項目を 1 つ置く。所有者にも
-ゲストにも出す（要件 12）。
+When `Video.versions` is present and `count` is 2 or more, one item is placed in the file facts line (the first
+line of `VideoFacts`) **after** length, size and date added (for owners, before the thumbnail item). It is shown
+to owners and guests (requirement 12).
 
-- 中身は左から、lucide `Layers`（`size-4`、`text-fg-subtle`、`aria-hidden`）→ 「3 versions」
-  （`tabular-nums`）→ `ChevronDown`（`size-3.5`）。項目の中は `gap-1.5`、他の項目との間は今の
-  `gap-x-4`（`sm` 以上 `gap-x-5`）。
-- 項目全体が `PopoverTrigger` の `button` で、文字は他の項目と同じ `text-sm text-fg-muted`、hover で
-  `text-fg`。面も枠も持たず、アクセント色を使わない（UI品質「タイポグラフィ」「視覚的階層」）。
-  `-mx-1 px-1 rounded-sm` で hover の `bg-hover-wash` を文字の周りだけに出す。読み上げ名は
-  「3 versions of this video. Show versions」、`title` も同じ。
-- `count` が 1 のとき（ほかのバージョンのファイルが全部消えている）は項目を出さない。切り替える
-  相手が無く、「1 version」は意味を持たない。集まりと値は残り、ファイルが戻れば項目も戻る
-  （Edge Case「代表のファイルがディスクから消えても」）。
-- 情報の行の他の項目・右端の操作・技術情報の行・行の間隔（`gap-3`）は変えない（UI品質「余白の
-  リズム」）。項目が増えた分は、他の項目と同じく折り返す。
+- From left to right: lucide `Layers` (`size-4`, `text-fg-subtle`, `aria-hidden`) → "3 versions"
+  (`tabular-nums`) → `ChevronDown` (`size-3.5`). `gap-1.5` inside the item; the gap to other items stays the
+  current `gap-x-4` (`gap-x-5` from `sm`).
+- The whole item is the `PopoverTrigger` `button`. Its text is `text-sm text-fg-muted` like the other items,
+  `text-fg` on hover. It has no surface or border and no accent colour (`UI品質` "typography" and "visual
+  hierarchy"). `-mx-1 px-1 rounded-sm` keeps the hover `bg-hover-wash` tight around the text. The accessible
+  name is "3 versions of this video. Show versions", and `title` is the same.
+- When `count` is 1 (every other version's file is gone), the item is not shown. There is nothing to switch to,
+  and "1 version" means nothing. The bundle and its values remain, and the item returns when the files return
+  (Edge Case "even if the representative's file disappears from disk").
+- The other facts-line items, the right-hand actions, the technical-details line and the line spacing (`gap-3`)
+  do not change (`UI品質` "spacing rhythm"). The added item wraps like the other items.
 
 ### Versions list
 
-項目を押すと、項目の下に `ui/Popover`（`side="bottom"`、`align="start"`）を開く。中は上から次のとおり。
+Pressing the item opens a `ui/Popover` below it (`side="bottom"`, `align="start"`). Its content, from top to
+bottom:
 
-- 幅は `w-[min(28rem,calc(100vw-2rem))]`。面は今の `PopoverContent` のまま（`bg-elevated`、
-  `shadow-elevated`）。
-- 一覧は `ul`（読み上げ名「Versions」）で、`divide-y divide-border` の行の並び。行の順は応答の順
-  （代表が先頭、続きは題名の自然順。[contracts §1](contracts/screen-api.md#1-get-apivideosidversions)）。
-  行は `py-2`、6 本を超えたら `max-h-80 overflow-y-auto` で中だけをスクロールさせる。
-- 各行は `grid grid-cols-[1fr_auto] gap-x-2` で、左に 2 行の文字、右に所有者だけの操作を置く。
-  - 1 行目: 題名（`text-sm text-fg`、1 行で省略、`title` に全体）。代表の行は題名の右に
-    `text-xs text-fg-muted` の「Representative」を添える（`shrink-0`）。色や太さで区別せず、
-    文字で示す。
-  - 2 行目: 違い（`text-xs text-fg-muted tabular-nums`、1 行で省略）。解像度 → コンテナ → 映像
-    コーデック → サイズ → 置き場所 の順で、項目の間は `text-fg-subtle` の「·」。分からない
-    値（解析前）は項目ごと省く。置き場所は「登録フォルダの表示名 / 相対パス」を `folder` から
-    作り、末尾（ファイルに近い側）を優先して残す（024「Issue List」と同じ省略）。所有者では行の
-    `title` に絶対パス（`location.path`）を入れ、ゲストでは相対の置き場所だけにする
-    （016「Guest degradation」）。
-  - 左の 2 行全体が**再生への `Link`**（`/videos/{id}`）で、読み上げ名は「Play {題名}, {違い}」。
-    hover で行に `bg-hover-wash`。`state.from` は今の画面の `backTo` をそのまま渡し、戻り先を
-    変えない。再生中（`status.playing || status.ended`）に選んだときは `autoplay` を付け、移った
-    先で再生を続ける（前後のつまみと同じ）。
-  - **今の動画の行**: リンクにせず `aria-current="true"`、面を `bg-active-wash`、左端に
-    `border-l-2 border-accent`（017「Member list」の今のメンバーと同じ）。視覚的に隠した
-    「Now playing」を題名の前に置く。押せないので hover の面も変えない。
-  - **所有者の操作**（右の列）: `IconButton`（ghost・`sm`、lucide `Ellipsis`、`text-fg-muted`、
-    hover で `text-fg`）が `ui/Menu` を開く（読み上げ名「More actions for {題名}」）。項目は上から
-    「Make representative」（lucide `Star`。代表の行では出さない）、区切り線、「Remove from
-    versions」（lucide `Unlink`）。再生は行そのもの、代表の変更はメニューの先頭、外すのは区切りの
-    下の最後、という順で UI品質「操作の優先順位」（再生 → 代表 → 外す）を表す。外すのを
-    `text-danger` にしない。取り消せる操作（また束ねられる）で、削除ではない。
-  - **ゲスト**は右の列が無く、行はリンクだけである（要件 12）。
-- 一覧の下に失敗の 1 行を置く場所を持つ（下の「Failure」）。
-- 開いたときの最初のフォーカスは、今の動画以外の最初の行のリンク（無ければ最初の操作）。
-  Tab は行の順に、行のリンク → その行の `Ellipsis` → 次の行 と進む。
-- 開いている間の Esc は浮き出しを閉じるだけにし、画面を閉じない。フォーカスは項目に戻る。
-  012「Interaction details」の Esc の例外（速度のメニュー・吹き出し・`role="menu"`）に、
-  この `role="dialog"` の浮き出しを足す。行のメニューが開いているときの Esc はメニューだけを
-  閉じる（`ui/Menu` の既定）。
-- 中身は開くたびに `GET /api/videos/{id}/versions` で取る。取るまでは行の場所に `Skeleton`
-  （`h-10`）を `count` 本。取れなければ中に `text-xs text-danger` の 1 行（`role="alert"`）
-  「Couldn't load the versions」と ghost・`sm` の「Retry」。`video` の知らせで動画を取り直したとき
-  （`useVideoDetail`）、浮き出しが開いていれば一覧も取り直す。閉じているときは次に開くときに取る。
+- Width `w-[min(28rem,calc(100vw-2rem))]`. The surface is the current `PopoverContent` (`bg-elevated`,
+  `shadow-elevated`).
+- The list is a `ul` (accessible name "Versions") of rows with `divide-y divide-border`. Rows follow the response
+  order (representative first, then natural title order;
+  [contracts §1](contracts/screen-api.md#1-get-apivideosidversions)). Rows are `py-2`; beyond 6 rows,
+  `max-h-80 overflow-y-auto` scrolls only the inside.
+- Each row is `grid grid-cols-[1fr_auto] gap-x-2`, with two lines of text on the left and owner-only actions on
+  the right.
+  - Line 1: the title (`text-sm text-fg`, truncated to one line, full text in `title`). The representative's row
+    adds "Representative" in `text-xs text-fg-muted` to the right of the title (`shrink-0`). It is marked by
+    text, not by colour or weight.
+  - Line 2: the differences (`text-xs text-fg-muted tabular-nums`, truncated to one line), in the order
+    resolution → container → video codec → size → location, separated by "·" in `text-fg-subtle`. Unknown values
+    (before probing) are omitted item by item. The location is "media folder display name / relative path" built
+    from `folder`, keeping the end (the side nearest the file) when shortened (the same shortening as 024 "Issue
+    List"). For owners the row's `title` holds the absolute path (`location.path`); for guests, only the relative
+    location (016 "Guest degradation").
+  - The left two lines together are a **`Link` to playback** (`/videos/{id}`) with the accessible name "Play
+    {title}, {differences}". Hover gives the row `bg-hover-wash`. `state.from` passes the current screen's
+    `backTo` unchanged, so the back destination does not change. When chosen during playback
+    (`status.playing || status.ended`), `autoplay` is added so playback continues on the new page (as with the
+    previous/next controls).
+  - **The current video's row** is not a link: `aria-current="true"`, surface `bg-active-wash`, and
+    `border-l-2 border-accent` on the left edge (the same as the current member in 017 "Member list"). A visually
+    hidden "Now playing" precedes the title. It cannot be pressed, so its hover surface does not change.
+  - **Owner actions** (right column): an `IconButton` (ghost, `sm`, lucide `Ellipsis`, `text-fg-muted`, `text-fg`
+    on hover) opens a `ui/Menu` (accessible name "More actions for {title}"). Items from the top: "Make
+    representative" (lucide `Star`; not shown on the representative's row), a separator, "Remove from versions"
+    (lucide `Unlink`). Playback is the row itself, changing the representative is the first menu item, and
+    removal is last below the separator; this order expresses `UI品質` "action priority" (play → representative →
+    remove). Removal is not `text-danger`: it can be undone (bundle again) and is not a deletion.
+  - **Guests** have no right column; rows are links only (requirement 12).
+- Below the list there is a place for a single failure line (see "Failure" below).
+- On open, focus goes to the first row link other than the current video (or to the first action if there is
+  none). Tab moves in row order: row link → that row's `Ellipsis` → next row.
+- While open, Esc only closes the popover, not the screen, and focus returns to the item. This `role="dialog"`
+  popover is added to 012 "Interaction details" Esc exceptions (speed menu, tooltips, `role="menu"`). When a
+  row's menu is open, Esc closes only the menu (the `ui/Menu` default).
+- The content is fetched with `GET /api/videos/{id}/versions` each time it opens. Until it arrives, `count`
+  `Skeleton`s (`h-10`) fill the rows. If the fetch fails, one `text-xs text-danger` line (`role="alert"`)
+  "Couldn't load the versions" and a ghost `sm` "Retry" are shown inside. When the video is refetched on a
+  `video` notification (`useVideoDetail`), an open popover refetches the list too; a closed one fetches on next
+  open.
 
 ### Make representative
 
-- メニューの「Make representative」を押すと `POST /api/videos/{id}/make-representative` を送る。
-  送っている間はその行の `Ellipsis` を `LoaderCircle`（`animate-spin`、`aria-disabled`）にし、
-  ほかの行の操作は押せるままにする。
-- `200` を受けたら応答の `VideoVersions` で一覧を差し替える。「Representative」の印がその行へ
-  移り、行の順が変わる（代表が先頭）。浮き出しは開いたまま、トーストは出さない。印が移ることが
-  結果である。あわせて動画を取り直す（`versions.representativeId` が変わる）。
-- 一覧の 1 件の題名とサムネイルが新しい代表のものになる（要件 7）のは、`video` の知らせを受けた
-  一覧の取り直し（`useItemRefresh`）で起きる。この画面では伝えない。ライブラリの控えは捨てない。
-  戻ったときの一覧は、控えの上に届いた知らせで差し替わっている。
+- Pressing "Make representative" in the menu sends `POST /api/videos/{id}/make-representative`. While sending,
+  that row's `Ellipsis` becomes `LoaderCircle` (`animate-spin`, `aria-disabled`); other rows' actions stay
+  pressable.
+- On `200`, the list is replaced with the response's `VideoVersions`. The "Representative" marker moves to that
+  row and the order changes (representative first). The popover stays open and no toast is shown; the marker
+  moving is the result. The video is refetched too (`versions.representativeId` changes).
+- The library item's title and thumbnail becoming the new representative's (requirement 7) happens when the
+  library refetches on the `video` notification (`useItemRefresh`). This screen does not announce it. The library
+  cache is not discarded; on return, the list has been updated on top of the cache by the notifications that
+  arrived.
 
 ### Unbundle
 
-- メニューの「Remove from versions」を押すと `POST /api/videos/{id}/unbundle` を送る。確認の窓は
-  出さない。また束ねればもとに戻り、外した動画は束ねる前の値（要件 3）に戻るだけで、失うものが
-  無い。送っている間の見え方は代表の変更と同じ。
-- `200` を受けたら:
-  - 外したのが**別の行**なら、その行を一覧から消し、項目の本数を減らす。トースト「Removed
-    "{題名}" from the versions」。残りが 1 本になったら集まりは解けている（契約 §4）ので、浮き出しを
-    閉じ、動画を取り直し、項目が消える。
-  - 外したのが**今の動画**なら、浮き出しを閉じ、応答の `Video` で動画を差し替える（`versions` が
-    無くなり、`tags`・`progress`・`public` が自分の値になる）。項目が消え、タグの並びと公開の
-    切り替えが自分の値で描き直される。同じトースト。
-- フォーカスは、浮き出しが閉じたときは項目のあった場所に最も近い要素（技術情報の行の前の操作
-  か、右端の操作の先頭）へ、開いたままのときは次の行のリンク（無ければ前の行）へ移す。
+- Pressing "Remove from versions" in the menu sends `POST /api/videos/{id}/unbundle`. There is no confirmation
+  dialog: bundling again restores it, and the removed video only returns to its values from before bundling
+  (requirement 3), so nothing is lost. While sending it looks the same as changing the representative.
+- On `200`:
+
+  | Removed row | Result |
+  | --- | --- |
+  | **Another row** | That row leaves the list and the item's count decreases. Toast "Removed "{title}" from the versions". If one version remains, the bundle has been dissolved (contract §4): the popover closes, the video is refetched, and the item disappears |
+  | **The current video** | The popover closes and the video is replaced with the response's `Video` (`versions` gone; `tags`, `progress` and `public` are its own values). The item disappears and the tag list and visibility toggle redraw with its own values. Same toast |
+
+- When the popover has closed, focus moves to the element nearest where the item was (the action before the
+  technical-details line, or the first right-hand action); while it stays open, focus moves to the next row's
+  link (or the previous row if there is none).
 
 ### Failure
 
-- 代表の変更・外すのどちらも、失敗したら一覧の下に `text-xs text-danger` の 1 行（`role="alert"`、
-  先頭に `AlertCircle` `size-4`）「Couldn't change the versions: {理由}」を出す。理由は `errorText`
-  （上の「Words」）。浮き出しと一覧は開いたまま残す。次に操作したとき、または閉じたときに消える。
-- `404 video_not_found`・`400 not_bundled`（別のタブで先に変わった）: 行を出したうえで一覧と動画を
-  取り直す。
-- 情報の行の下の失敗の 1 行（012・029 の場所）は使わない。浮き出しの中で起きたことは浮き出しの
-  中で伝える。
+- When changing the representative or removing fails, one `text-xs text-danger` line (`role="alert"`, preceded
+  by `AlertCircle` `size-4`) "Couldn't change the versions: {reason}" appears below the list. The reason comes
+  from `errorText` ("Words" above). The popover and list stay open. The line disappears on the next action or
+  when the popover closes.
+- `404 video_not_found` and `400 not_bundled` (changed first in another tab): show the line, then refetch the
+  list and the video.
+- The failure line below the facts line (012 and 029's place) is not used. What happens in the popover is
+  reported in the popover.
 
 ### Resume position
 
-- 集まりの `progress.positionMs` がそのバージョンの `durationMs` 以上のときは 0 から再生する
-  （R-11、Edge Case「バージョンの長さが違う」）。判断は `pageDecisions.resumePosition` に足す。
-  プレイヤーの中に「最初から再生します」の文言は出さない。位置の数字は操作バーが示す。
-- 代表以外のバージョンを再生しても、再生位置の保存は今のまま `PUT /api/videos/{id}/progress` で、
-  集まりの位置が進む（要件 2、受け入れ条件 7）。画面は鍵を選ばない（R-2）。
+- When the bundle's `progress.positionMs` is at or past that version's `durationMs`, playback starts from 0
+  (R-11; Edge Case "versions differ in length"). The decision is added to `pageDecisions.resumePosition`. No
+  "playing from the beginning" message appears in the player; the control bar shows the position.
+- Playing a non-representative version saves the position through `PUT /api/videos/{id}/progress` as now, and the
+  bundle's position advances (requirement 2, acceptance criterion 7). The screen never chooses a key (R-2).
 
-### Group line と versions の関係
+### Group line and versions
 
-グループのメンバーであり集まりのメンバーでもある動画は、題名の上のグループ名の行と、情報の
-行のバージョンの項目の両方を持つ。2 つは別の事実（置き場所のまとまりと、同じ動画の別ファイル）で、
-1 つにまとめない。「続けて再生」の並びには代表だけが出る（要件 5、data-model.md §4）。
+A video that is both a group member and a bundle member has both the group-name line above the title and the
+versions item in the facts line. They are separate facts (a grouping by location, and other files of the same
+video) and are not merged. The "play next" sequence shows only representatives (requirement 5, data-model.md
+§4).
 
 ## Selection bar
 
 ### Bundle action
 
-- 「公開」の直後、縦線の前に「Bundle as versions」（lucide `Layers` + 文言、`Button` の ghost・`sm`）を
-  置く。`sm` 未満の下の段では、タグの 2 つ・「公開」に続く 4 つ目になり、今の規則（3 つが収まらない
-  幅で右端に回る）をそのまま受ける: 4 つが 1 行に収まる幅では等分、収まらなければ「公開」と
-  「Bundle as versions」が次の段の右端に回る。`SelectionBar` の容器の問い合わせの幅を 4 つ分に
-  直す。
-- 選んだ本数が **2 本未満のときは出さない**（親 Issue の要件 11、plan の受け入れ条件「1 本の選択では
-  出ない」）。`disabled` にして理由を添える案は、選択の大半（1 本）で常に灰色の操作が見えることに
-  なるので採らない。2 本目を選んだときに現れる。
-- 選んだ本数が **束ねる操作の上限 `maxBundleSelection`（20 本）を超えるとき**は、タグの操作の
-  上限と同じ扱いで `disabled` にし、理由「Bundle up to 20 videos at a time」を添える
-  （library-ui.md §6）。タグの操作の上限（`maxVideoTagsSelection`、20,000 本）はここでは使わない。
-  窓は選んだ 1 本ごとに `GET /api/videos/{id}` を送り、1 本ごとに代表の候補の行を並べるので、
-  「すべて選択」で数千本を選んだまま開くと、その本数の要求が一度に出て画面が固まる。代表を行の
-  並びから読んで選べるのも数十本までである。上限は画面の側だけのもので、契約 §2 のサーバーの
-  上限（`too_many_videos`）は変えない。
-- 押すと下の「Bundle dialog」を開く。ポップオーバーではなく窓なのは「Why here」のとおり。
+- "Bundle as versions" (lucide `Layers` + text, ghost `sm` `Button`) goes right after "Visibility", before the
+  vertical rule. In the lower row below `sm`, it is the fourth after the two tag actions and "Visibility", and
+  follows the current rule (move to the right end when three do not fit): where four fit in one line they share
+  the width equally; otherwise "Visibility" and "Bundle as versions" move to the right end of the next row. The
+  container query width of `SelectionBar` is adjusted for four.
+- **Not shown with fewer than 2 selected** (parent Issue requirement 11; the plan's acceptance "not shown for a
+  single selection"). Making it `disabled` with a reason was rejected: most selections (one video) would always
+  show a greyed action. It appears when the second video is selected.
+- **When the selection exceeds the bundle limit `maxBundleSelection` (20)**, it is `disabled` with the reason
+  "Bundle up to 20 videos at a time", as with the tag actions' limit (library-ui.md §6). The tag actions' limit
+  (`maxVideoTagsSelection`, 20,000) is not used here. The dialog sends `GET /api/videos/{id}` for each selected
+  video and lists one representative row per video, so opening it with thousands selected through "Select all"
+  would fire that many requests at once and freeze the screen. Reading and choosing a representative from the
+  rows also works only up to a few dozen. The limit is screen-side only; the server limit in contract §2
+  (`too_many_videos`) does not change.
+- Pressing it opens the "Bundle dialog" below. It is a dialog rather than a popover for the reason in "Why this
+  shape".
 
 ### Bundle dialog
 
-`ModalFrame` の窓「Bundle as versions」。中は上から次のとおり。
+A `ModalFrame` dialog "Bundle as versions". Content from top to bottom:
 
-- 説明の 1 段落（`text-sm text-fg-muted`、上の「Words」の「窓の説明」）。何が起きるかを選ぶ前に
-  読ませる。
-- 代表の一覧（`radiogroup`、読み上げ名「Representative」）。`divide-y divide-border` の行の並びで、
-  枠やカードで囲わない。各行は `label` で、左に `input[type=radio]`（`size-4`、`accent-accent`。
-  `Checkbox` と同じ大きさと色の扱い）、右に 2〜3 行の文字。
-  - 1 行目: 題名（`text-sm text-fg`、1 行で省略、`title` に全体）。
-  - 2 行目: 違い（「Versions list」の 2 行目と同じ書式と順）。
-  - 3 行目（あるときだけ）: `text-xs text-fg-muted` で、手で付けたタグの名前を「·」でつないだ
-    もの（`tags` のうちフォルダ名からだけ付いたものを除く）。どのタグが集まりのものになり、
-    どれが脇に置かれるかを、選ぶ前に見せるためである。既に集まりに属する動画（`versions` が
-    ある）は、この行の先頭に「Already 3 versions — all of them join」を置く（契約 §2）。
-  - 行は `py-2`。6 本を超えたら `max-h-80 overflow-y-auto` で中だけをスクロールさせる。窓の
-    残りの高さは `ModalFrame` の規則に従う。
-  - 行の並びは、選択バーからは選んだ順（`selectedIds` の順）、候補の画面からは組の順（id の昇順）。
-- 一覧の中身は `GET /api/videos/{id}` を選んだ id ごとに取る（多くて `maxBundleSelection` の 20 本。
-  選択バーからは一覧の項目を持たない id もあるため。候補の画面からは組の 2 本の `Video` をそのまま渡し、取らない）。取るまでは
-  行の場所に `Skeleton`（`h-12`）。1 本でも取れなければ（404 を含む）、一覧の場所に `text-sm
-  text-danger` の 1 行（`role="alert"`）「Couldn't load the selected videos」と ghost・`sm` の
-  「Retry」を出し、「Bundle」を `disabled` にする。
-- 操作の行（`border-t border-border`、右寄せ、`gap-2`）: secondary「Cancel」（最初のフォーカス）
-  と primary「Bundle」。**代表を選ぶまで「Bundle」は `disabled`**。既定で先頭を選んでおく案は、
-  読まずに押した 1 回でどちらの値が残るかが決まってしまうので採らない（014「Merge and delete」と
-  同じ扱い）。
-- 「Bundle」を押すと `POST /api/video-bundles`（`videoIds` は選んだ id、`representativeId` は選んだ
-  代表）を送る。送っている間は両方のボタンを `disabled` にし、「Bundle」に `LoaderCircle`
-  （設定画面のフォルダの削除の確認と同じ）。
-- `200` を受けたら窓を閉じ、トースト「Bundled {N} videos as versions of "{題名}"」（N は応答の
-  `items.length`、題名は代表の）。
-  - 選択バーから: 選択を解除し、ライブラリの一覧を取り直す（代表以外の項目が一覧から消える。
-    受け入れ条件 6）。取り直しの間、格子の位置は保つ。フォーカスは「すべて選択」のあった場所へ
-    移す（バーは消えているので、格子の最初のカード）。
-  - 候補の画面から: 下の「Deciding」。
-- 失敗したときは窓を開いたまま、操作の行の上に `text-sm text-danger` の 1 行（`role="alert"`）
-  「Couldn't bundle: {理由}」を出す。選んだ代表は残す。`404 video_not_found`（選んだ中に消えた
-  動画がある）は、行を出したうえで一覧を取り直す。
-- Esc と「Cancel」は何も送らずに閉じ、フォーカスは引き金（「Bundle as versions」、または候補の
-  画面の「Same video…」）に戻る。
+- One paragraph of description (`text-sm text-fg-muted`, "Dialog description" in "Words"), so the user reads
+  what will happen before choosing.
+- The representative list (`radiogroup`, accessible name "Representative"): rows with `divide-y divide-border`,
+  not wrapped in a border or card. Each row is a `label` with an `input[type=radio]` on the left (`size-4`,
+  `accent-accent`; the same size and colour treatment as `Checkbox`) and two or three lines of text on the right.
+  - Line 1: the title (`text-sm text-fg`, truncated to one line, full text in `title`).
+  - Line 2: the differences (same format and order as line 2 of "Versions list").
+  - Line 3 (only when present): in `text-xs text-fg-muted`, the names of hand-added tags joined by "·" (`tags`
+    minus those that come only from folder names). It shows, before choosing, which tags become the bundle's and
+    which are set aside. A video already in a bundle (has `versions`) starts this line with "Already 3 versions —
+    all of them join" (contract §2).
+  - Rows are `py-2`. Beyond 6 rows, `max-h-80 overflow-y-auto` scrolls only the inside. The rest of the dialog's
+    height follows the `ModalFrame` rules.
+  - Row order: from the selection bar, the selection order (`selectedIds`); from the candidate screen, the pair
+    order (ascending id).
+- The list content is fetched with `GET /api/videos/{id}` per selected id (at most `maxBundleSelection`, 20),
+  because from the selection bar some ids have no list item loaded. From the candidate screen the pair's two
+  `Video`s are passed as they are and nothing is fetched. Until loaded, `Skeleton`s (`h-12`) fill the rows. If any
+  one fails (including 404), one `text-sm text-danger` line (`role="alert"`) "Couldn't load the selected videos"
+  and a ghost `sm` "Retry" replace the list, and "Bundle" is `disabled`.
+- The action row (`border-t border-border`, right-aligned, `gap-2`): secondary "Cancel" (initial focus) and
+  primary "Bundle". **"Bundle" is `disabled` until a representative is chosen.** Preselecting the first row was
+  rejected: one press without reading would decide whose values remain (same treatment as 014 "Merge and
+  delete").
+- Pressing "Bundle" sends `POST /api/video-bundles` (`videoIds` are the selected ids, `representativeId` the
+  chosen representative). While sending, both buttons are `disabled` and "Bundle" shows `LoaderCircle` (as in the
+  settings screen's folder-deletion confirmation).
+- On `200`, the dialog closes and the toast "Bundled {N} videos as versions of "{title}"" appears (N is the
+  response's `items.length`; the title is the representative's).
+  - From the selection bar: the selection is cleared and the library list is refetched (non-representative items
+    leave the list; acceptance criterion 6). The grid position is kept during the refetch. Focus moves to where
+    "Select all" was (the bar is gone, so the first card of the grid).
+  - From the candidate screen: see "Deciding" below.
+- On failure the dialog stays open and one `text-sm text-danger` line (`role="alert"`) "Couldn't bundle:
+  {reason}" appears above the action row. The chosen representative is kept. On `404 video_not_found` (a selected
+  video has gone), the line is shown and the list is refetched.
+- Esc and "Cancel" close without sending; focus returns to the trigger ("Bundle as versions", or "Same video…" on
+  the candidate screen).
 
 ### Card
 
-一覧のカード・リスト表示の行は変えない。束ねたあとの代表の 1 件は、束ねる前と同じ見た目である
-（UI品質「一覧の 1 件は、今の動画の 1 件と同じ見た目にする」）。
+Library cards and list-view rows do not change. After bundling, the representative's item looks the same as
+before bundling (`UI品質` "a list item looks the same as a video's item today").
 
 ## Duplicates page
 
 ### Entry
 
-- サイドバーの上段の「タグ」の直後に「Duplicates」（lucide `Layers`、`/duplicates`、所有者だけ。
-  `navEntries` の `ownerOnly`）を足す。展開・レール・ドロワーの見え方は他の項目と同じ。件数の印は
-  付けない（「Why here」）。
-- 経路は `/tags` と同じ形（`AppShell` の中、使うときだけ読み込む）。ゲストがこの URL を開いた
-  ときの扱いは `/tags` と同じ（所有者だけの応答の 401 はゲートが扱う。016「Gate」）。
-- `document.title` は「Duplicates」。
+- "Duplicates" (lucide `Layers`, `/duplicates`, owner only; `ownerOnly` in `navEntries`) is added right after
+  "Tags" in the sidebar's upper section. Expanded, rail and drawer views behave as for the other entries. No count
+  badge ("Why this shape").
+- The route has the same shape as `/tags` (inside `AppShell`, loaded only when used). A guest opening this URL is
+  handled as for `/tags` (the gate handles the 401 from owner-only responses; 016 "Gate").
+- `document.title` is "Duplicates".
 
 ### Layout
 
-- タグ管理画面と同じ本文の幅と余白（`mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8`）。上から
-  `h1`「Possible duplicates」（`text-xl font-semibold`）、件数の行、組の一覧。トップバーには何も
-  置かない。検索や絞り込みは置かない（候補は多くて 200 組で、決めれば減る）。
-- 件数の行は `text-xs text-fg-muted tabular-nums`、`role="status"`・`aria-live="polite"`。
-  「12 pairs」。`total` が 200 を超えるときは「Showing 200 of 340 pairs」。
-- 組の一覧は `ul`、`divide-y divide-border` の行の並び。枠やカードで囲わない。1 組は `py-4`
-  （タグの行より広い。中に 2 本の動画が入るため）。
+- The same body width and padding as the tag management screen (`mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8`).
+  From the top: `h1` "Possible duplicates" (`text-xl font-semibold`), the count line, the list of pairs. Nothing
+  goes in the top bar. No search or filter (at most 200 pairs, and the number drops as decisions are made).
+- The count line is `text-xs text-fg-muted tabular-nums`, `role="status"`, `aria-live="polite"`: "12 pairs".
+  When `total` exceeds 200: "Showing 200 of 340 pairs".
+- The pair list is a `ul` of rows with `divide-y divide-border`, not wrapped in a border or card. A pair is `py-4`
+  (wider than a tag row because it holds two videos).
 
 ### Pair
 
-1 組（`li`）は上から次の 2 段である。
+A pair (`li`) has two tiers from the top:
 
-1. **見出しの行**（`flex items-center justify-between gap-3`）: 左に `text-xs text-fg-muted` の
-   「Same length · similar frames」（なぜ候補なのかを 1 行で言う。`distance` の数字は出さない。
-   閾値の内側という事実しか意味を持たず、利用者が比べられる値ではない）。右に操作を 2 つ
-   （`gap-2`）: `Button` の secondary・`sm`「Different videos」と primary・`sm`「Same video…」
-   （lucide `Layers`）。DOM の順もこの順で、組の中で最初に Tab が届くのは「Different videos」、
-   次が「Same video…」である。判断が先、動画の中身は後（UI品質「候補一覧では「同じ動画」
-   「違う動画」の判断を先に置く」）。「Same video…」を primary にするのは、この画面に来た人が
-   主にする判断が「同じ」で、「違う」は例外の記録だからである。
-2. **2 本の並び**（`mt-3 grid gap-3 sm:grid-cols-2`）: 組の `videos` を id の昇順で左・右（`sm`
-   未満は上・下）に置く。各 1 本は次のとおり（関連動画の行と同じ密度、017「Member list」）。
-   - `flex gap-3`。左にサムネイル（`w-40 shrink-0`、`aspect-video`、`rounded-md`、`bg-surface`、
-     無ければ `ImageOff` の箱。右下に長さの札。関連動画の行と同じ部品）。
-   - 右に 3 行: 題名（`text-sm font-medium text-fg`、2 行で省略、`title` に全体）、違い
-     （「Versions list」の 2 行目と同じ書式。ただし置き場所は次の行へ分ける）、置き場所（`text-xs
-     text-fg-muted`、末尾を優先して 1 行で省略、`title` に絶対パス）。
-   - 1 本全体は `/videos/{id}` への `Link`（`state.from` は `/duplicates`）。hover で `bg-hover-wash`
-     （行の `-m-1.5 p-1.5` の外形）。読み上げ名は「{題名} {長さ}」（関連動画の行と同じ）。
-     見比べたいときに再生画面を開いて戻れる。戻り先は候補の画面で、決めていない組はそのまま
-     残っている。
-   - 2 本のサムネイルは同じ大きさで、どちらかを強調しない。違いは 2 行目の数字で読む。
-     解像度・サイズが大きい方に印を付ける案は採らない。「良い方」を機械が示すと、代表の
-     選択を誘導する。
-- 組の見出しの行と 2 本の並びの間は `gap-3`、組と組の間は `divide-y` と `py-4`。組の中に線や
-  枠は無い。
+1. **Heading line** (`flex items-center justify-between gap-3`): on the left, "Same length · similar frames" in
+   `text-xs text-fg-muted` (says in one line why it is a candidate). The `distance` number is not shown: only the
+   fact that it is within the threshold means anything, and it is not a value users can compare. On the right,
+   two actions (`gap-2`): secondary `sm` `Button` "Different videos" and primary `sm` "Same video…" (lucide
+   `Layers`). The DOM order is the same, so the first Tab stop in a pair is "Different videos", then "Same
+   video…". The decision comes first and the videos' contents after (`UI品質` "put the "same video" and
+   "different videos" decisions first in the candidate list"). "Same video…" is primary because the main decision
+   of someone on this screen is "same", and "different" records an exception.
+2. **The two videos** (`mt-3 grid gap-3 sm:grid-cols-2`): the pair's `videos` in ascending id order, left and right
+   (top and bottom below `sm`). Each one is as follows (same density as a related-video row, 017 "Member list"):
+   - `flex gap-3`. A thumbnail on the left (`w-40 shrink-0`, `aspect-video`, `rounded-md`, `bg-surface`; an
+     `ImageOff` box when missing; a length badge at the bottom right; the same component as related-video rows).
+   - Three lines on the right: the title (`text-sm font-medium text-fg`, truncated to two lines, full text in
+     `title`), the differences (same format as line 2 of "Versions list", but the location moves to the next
+     line), and the location (`text-xs text-fg-muted`, truncated to one line keeping the end, absolute path in
+     `title`).
+   - The whole video is a `Link` to `/videos/{id}` (`state.from` is `/duplicates`). Hover gives `bg-hover-wash`
+     (outline from the row's `-m-1.5 p-1.5`). The accessible name is "{title} {length}" (as in related-video
+     rows). The user can open the player screen to compare and come back; the back destination is the candidate
+     screen, and undecided pairs are still there.
+   - The two thumbnails are the same size and neither is emphasised. Differences are read from the numbers on
+     line 2. Marking the one with the larger resolution or size was rejected: if the machine points at "the better
+     one", it steers the choice of representative.
+- `gap-3` separates the heading line from the two videos; `divide-y` and `py-4` separate pairs. There are no
+  lines or borders inside a pair.
 
 ### Deciding
 
-- **「Same video…」**: 「Bundle dialog」を開く。一覧は組の 2 本（応答の `Video` をそのまま。
-  取り直さない）。「Bundle」で `200` を受けたら窓を閉じ、その組を一覧から消し、件数を減らし、
-  トースト（「Bundle dialog」と同じ文言）を出す。一覧の取り直しは `scan` の知らせに任せる。
-  フォーカスは次の組の「Different videos」へ、無ければ前の組、1 組も無ければ `h1` へ移す。
-- **「Different videos」**: 確認の窓を出さず、`POST /api/version-candidates/dismiss` を送る。
-  送っている間はその組の 2 つのボタンを `disabled` にし、押した方に `LoaderCircle`。`204` で
-  組を消し、件数を減らし、トースト「Marked as different videos. They won't be suggested again」。
-  取り消せない（要件 10）が、結果は「候補に出なくなる」だけで、手動で束ねる道（選択バー）は
-  残るので、確認の窓を挟まない。トーストの文で「二度と出ない」ことを言う。フォーカスの移し方は
-  「Same video…」と同じ。
-- **消えていた組**（`404 video_not_found`。確かめている間に片方がスキャンで消えた）: トースト
-  「This pair is no longer a candidate」を出し、一覧を取り直す（Edge Case）。
-- そのほかの失敗: トースト「Couldn't bundle: {理由}」（窓の中なら窓の 1 行）または
-  `errorText` の文。組は残す。
+| Action | Behaviour |
+| --- | --- |
+| **"Same video…"** | Opens the "Bundle dialog" with the pair's two videos (the response's `Video`s as they are; not refetched). On `200` from "Bundle", the dialog closes, the pair leaves the list, the count decreases, and a toast appears (same text as the "Bundle dialog"). Refetching the list is left to the `scan` notification. Focus moves to the next pair's "Different videos", or the previous pair's, or the `h1` when no pair is left |
+| **"Different videos"** | Sends `POST /api/version-candidates/dismiss` with no confirmation dialog. While sending, the pair's two buttons are `disabled` and the pressed one shows `LoaderCircle`. On `204` the pair leaves the list, the count decreases, and the toast "Marked as different videos. They won't be suggested again" appears. Focus moves as for "Same video…" |
+| **Pair gone** (`404 video_not_found`; one side disappeared in a scan while the user was checking) | Toast "This pair is no longer a candidate" and the list is refetched (Edge Case) |
+| Other failures | Toast "Couldn't bundle: {reason}" (the dialog's line when inside the dialog) or the `errorText` text. The pair stays |
+
+"Different videos" cannot be undone (requirement 10), but its only result is "no longer offered as a
+candidate", and bundling by hand (selection bar) is still possible, so no confirmation dialog is inserted. The
+toast says it will not come back.
 
 ### Refresh
 
-- 開いたときに `GET /api/version-candidates` を読む。所有者のシェルが受ける `scan` の知らせで取り
-  直す（`fingerprint` の job の成否で流れる。契約 §6）。取り直しの間、一覧の見た目は変えない
-  （骨組みにしない）。応答が届いたら差し替え、スクロールの位置は保つ。新しい組が先頭に足され、
-  片方が消えた組は消える（取り込み中に候補が増える・減ることに耐える）。
-- 開いている窓の組が取り直しで消えていても、窓は閉じない。「Bundle」の 404 で伝える。
+- `GET /api/version-candidates` is read on open. It is refetched on the `scan` notification the owner's shell
+  receives (sent on success or failure of a `fingerprint` job; contract §6). During a refetch the list looks
+  unchanged (no skeleton). When the response arrives it replaces the list and the scroll position is kept. New
+  pairs are added at the top and pairs whose side has gone disappear (copes with candidates being added and
+  removed during ingest).
+- If the pair in an open dialog disappears on refetch, the dialog does not close. The 404 from "Bundle" reports
+  it.
 
 ### States
 
-| 状態 | 見え方 |
+| State | What the screen shows |
 | --- | --- |
-| 読み込み中 | 件数の行は「Loading…」、一覧の場所に `Skeleton`（`h-24`）を 3 組 |
-| 読み込み失敗 | `EmptyState`（danger・`AlertCircle`）「Couldn't load the candidates」、`Button`「Retry」 |
-| 候補が 1 組も無い | `EmptyState`（lucide `Layers`）「No possible duplicates」、説明「When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself.」。ボタンは置かない。取り込みの入口は上部バーの「更新」にある |
-| 決めて 0 組になった | 同じ空の状態に切り替わる。件数の行は「0 pairs」のまま残さず、空の状態の見出しが件数の代わりになる |
-| 操作の失敗 | 上の「Deciding」 |
+| Loading | The count line says "Loading…"; three `Skeleton`s (`h-24`) fill the list |
+| Load failed | `EmptyState` (danger, `AlertCircle`) "Couldn't load the candidates", `Button` "Retry" |
+| No candidates | `EmptyState` (lucide `Layers`) "No possible duplicates", description "When a scan finds files that look like the same video, they show up here for you to confirm. You can also select videos in the library and bundle them yourself." No button; the ingest entry point is "Refresh library" in the top bar |
+| Decided down to 0 pairs | Switches to the same empty state. The count line does not stay as "0 pairs"; the empty state's heading replaces the count |
+| Action failed | See "Deciding" above |
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS で出し分ける（library-ui.md 4）。判定する幅は
-360px・768px・1280px（再生画面は `lg` の 2 列）。
+Breakpoints are Tailwind's defaults only, applied in CSS (library-ui.md §4). The widths judged are 360px, 768px
+and 1280px (the player screen has two columns from `lg`).
 
-| 幅 | バージョンの項目と一覧 | 選択バー | 窓 | 候補の画面 |
+| Width | Versions item and list | Selection bar | Dialog | Candidate screen |
 | --- | --- | --- | --- | --- |
-| 1280px | 長さ・サイズ・追加日・「3 versions」が 1 行。浮き出しは `28rem` で項目の左端にそろう | 「Bundle as versions」がタグの 2 つ・「公開」に続く 4 つ目で 1 行 | 幅 `max-w-lg`、一覧は 6 本まで伸び、それ以上は中でスクロール | 2 本が左右に並び、サムネイルは `w-40`。見出しの行の右に 2 つのボタン |
-| 768px | 同上 | 同上（`sm` 以上の 1 行） | 同上 | 同上 |
-| 360px | 項目は他の項目と同じく折り返す。浮き出しは画面幅から `2rem` を引いた幅で、行の 2 行目は省略される。横スクロールは出ない | 下の段に 4 つが収まらず、「公開」と「Bundle as versions」が次の段の右端に回る（今の規則） | 画面幅いっぱい（`ModalFrame` の既定）。行の 2 行目は省略 | 2 本が上下に積まれ、それぞれサムネイルと 3 行の文字は横に並んだまま。見出しの行のボタンは折り返して右寄せのまま |
+| 1280px | Length, size, date added and "3 versions" on one line. The popover is `28rem`, aligned to the item's left edge | "Bundle as versions" is the fourth after the two tag actions and "Visibility", in one line | Width `max-w-lg`; the list grows to 6 rows, then scrolls inside | Two videos side by side, thumbnails `w-40`. Two buttons on the right of the heading line |
+| 768px | Same | Same (one line from `sm`) | Same | Same |
+| 360px | The item wraps like the other items. The popover is the screen width minus `2rem`, and line 2 of rows is truncated. No horizontal scroll | Four do not fit in the lower row, so "Visibility" and "Bundle as versions" move to the right end of the next row (current rule) | Full screen width (`ModalFrame` default). Line 2 of rows is truncated | The two videos stack vertically; each keeps its thumbnail and three lines side by side. The heading line's buttons wrap and stay right-aligned |
 
-- 浮き出しの行の 2 行目は、どの幅でも 1 行で省略し、全体は行の `title` で読める。
-- 候補の画面の置き場所の行は、どの幅でも末尾（ファイル名に近い側）を残す。
+- Line 2 of a popover row is truncated to one line at every width; the full text is in the row's `title`.
+- The candidate screen's location line keeps the end (nearest the file name) at every width.
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md 5）。「ある」だけでは満たさない（Q-4）。
+Judged by looking at the real screen (library-ui.md §5). "It exists" alone does not satisfy a criterion (Q-4).
 
-- **視覚的階層（再生画面）**: 束ねた動画のページを開いて、プレイヤー → 題名 → タグ の順に目が
-  行き、「3 versions」は長さ・サイズ・追加日と同じ強さで、それらより先に読まれない。束ねていない
-  動画のページと並べたとき、題名・タグ・情報の 2 行の位置と間隔に違いが無く、違いは項目が 1 つ
-  多いことだけ（UI品質「視覚的階層」「余白のリズム」）。
-- **視覚的階層（一覧）**: 束ねた代表のカードと、束ねていない動画のカードを並べたとき、見分けが
-  付かない。カードに印・数字・帯が増えていない（受け入れ条件 6、UI品質「要求を満たしたことに
-  ならない変更」）。リスト表示の行も同じ。
-- **情報密度（再生画面）**: 浮き出しを開く前に見えるバージョンの情報は「3 versions」の 1 項目だけで、
-  各バージョンの解像度・サイズ・場所はどこにも出ていない。開くと、各行の 2 行目で 2 本の違い
-  （解像度・コーデック・サイズ・場所）が数字で読め、行の間に説明の文や見出しが無い（UI品質
-  「情報密度」）。
-- **タイポグラフィ**: 項目の文字と浮き出しの行の題名は、情報の行と同じ `text-sm`。行の 2 行目は
-  技術情報の行と同じ `text-xs` の従の色。太字・大きな見出し・アクセント色の文字が、浮き出しの
-  中に無い（UI品質「タイポグラフィ」）。「Representative」は文字の印で、色や太さで代表を示して
-  いない。
-- **操作の優先順位（再生画面）**: 浮き出しを開いてから、行を 1 回押すだけで別のバージョンの
-  ファイルが再生され（受け入れ条件 7）、再生中に選んだときは移った先で再生が続く。代表の変更は
-  `Ellipsis` → 先頭の項目の 2 回、外すのは `Ellipsis` → 区切りの下の 2 回で、行の面には出ていない。
-  最初に触れるのは今までどおり再生で、浮き出しを開かない限り画面は変わらない。
-- **代表の変更と外すことの結果**: 代表を B に替えると、浮き出しの「Representative」が B の行へ
-  移り、ライブラリへ戻ると 1 件の題名とサムネイルが B のもので、タグは X のまま（受け入れ条件 8）。
-  B を外すと B のページのタグが Y に戻り、ライブラリに B が独立した 1 件として現れ、A の集まりの
-  タグは X のまま（受け入れ条件 9）。どちらも、ページを離れずに結果が浮き出しの中で見える。
-- **再開の位置**: 集まりの再生位置がそのバージョンの尺以上のとき、そのバージョンが 0 から
-  始まる。操作バーの位置が 0 で、文言や層は出ない。
-- **選択バー**: 1 本を選んだバーに「Bundle as versions」が無く、2 本目を選ぶと現れる。押した窓で
-  代表を選ぶまで「Bundle」が押せず、選んで押すと一覧に代表の 1 件だけが残り、選択が解けている
-  （受け入れ条件 6）。21 本以上を選ぶと「Bundle as versions」が押せず理由が読め、窓は開かない。
-  360px で下の段が崩れず、横スクロールが出ない。
-- **窓**: 説明の 1 段落 → 行の並び → 操作の順で、行に枠が無く、各行の 3 行目でどのタグが残るかが
-  選ぶ前に分かる。既に束ねてある動画の行に「Already N versions — all of them join」が出る。
-- **候補の画面（階層と密度）**: 1 組を見て、まず右上の 2 つのボタンに目が行き、次に 2 本の
-  サムネイルと題名、最後に違いの数字と置き場所が読める。2 本のサムネイルは同じ大きさで、
-  どちらかが強調されていない。組の中に線・枠・カードが無く、組と組は線 1 本で分かれる。
-  360px で 2 本が上下に積まれ、はみ出しも重なりも無い。
-- **候補の画面（判断）**: 「Same video…」→ 代表を選ぶ → 「Bundle」で組が消え、ライブラリに
-  1 件だけが出る（受け入れ条件 3・6）。「Different videos」で組が消え、再スキャン後もその組が
-  出ない（受け入れ条件 5）。取り込み中に新しい組が先頭に足されても、読んでいた組の位置が
-  動かない。
-- **状態の見え方**: 送っている間は押したボタンか `Ellipsis` に回転の印が出て、押し直しても二重に
-  送られない。失敗は赤い 1 行がその場（浮き出しの下、窓の操作の上）に出て、開いたものは閉じない。
-  候補の画面の失敗だけがトーストである（行が消えているか、消すべきかを 1 行で言えるため）。
-- **キーボード**: 再生画面で Tab が項目に届き、Enter で開くと最初の別のバージョンの行に
-  フォーカスがあり、Esc で閉じて項目に戻り、もう一度 Esc で画面が閉じる。候補の画面では、Tab が
-  組ごとに「Different videos」→「Same video…」→ 左の動画 → 右の動画 の順に進む。
-- **ゲスト**: ログアウトして束ねた動画を開くと、「3 versions」の項目と浮き出しがあり、行を押すと
-  B が再生できる（受け入れ条件 12）。行に `Ellipsis` が無い。サイドバーに「Duplicates」が無く、
-  選択バーそのものが無い。
-- **要求を満たしたことにならない例**（UI品質）: 一覧に代表以外のバージョンが出る。再生画面に
-  バージョンの一覧が常に開いた欄やタブとして出ている。「3 versions」が題名の隣やプレイヤーの
-  中にあり、タグより先に目に入る。束ねたカードに印や本数が出て、ほかのカードと見た目が
-  そろわない。候補の画面で、2 本のどちらかが「おすすめ」として先に強調されている。
+1. **Visual hierarchy (player screen)**: on a bundled video's page, the eye goes player → title → tags, and "3
+   versions" has the same weight as length, size and date added and is not read before them. Side by side with
+   an unbundled video's page, the positions and spacing of the title, tags and the two facts lines are the same;
+   the only difference is one more item (`UI品質` "visual hierarchy" and "spacing rhythm").
+2. **Visual hierarchy (library)**: a bundled representative's card and an unbundled video's card cannot be told
+   apart. No marker, number or band is added to cards (acceptance criterion 6; `UI品質` "changes that do not meet
+   the requirement"). The same holds for list-view rows.
+3. **Information density (player screen)**: before the popover opens, the only versions information is the "3
+   versions" item; no version's resolution, size or location appears anywhere. When opened, line 2 of each row
+   gives the differences between the two (resolution, codec, size, location) as numbers, with no explanatory text
+   or headings between rows (`UI品質` "information density").
+4. **Typography**: the item's text and the popover's row titles are `text-sm`, like the facts line. Line 2 of rows
+   is `text-xs` in the secondary colour, like the technical-details line. The popover has no bold, large heading
+   or accent-coloured text (`UI品質` "typography"). "Representative" is a text marker; the representative is not
+   shown by colour or weight.
+5. **Action priority (player screen)**: after opening the popover, one press on a row plays another version's
+   file (acceptance criterion 7), and choosing during playback continues playing on the new page. Changing the
+   representative takes two presses (`Ellipsis` → first item) and removal two (`Ellipsis` → below the separator);
+   neither is on the row's surface. Playback is still the first thing touched, and the screen does not change
+   unless the popover is opened.
+6. **Results of changing the representative and removing**: changing the representative to B moves
+   "Representative" in the popover to B's row; back in the library, the single item's title and thumbnail are B's
+   and the tags stay X (acceptance criterion 8). Removing B returns B's page tags to Y, B appears in the library as
+   a separate item, and A's bundle tags stay X (acceptance criterion 9). Both results are visible in the popover
+   without leaving the page.
+7. **Resume position**: when the bundle's playback position is at or past that version's duration, the version
+   starts from 0. The control bar's position is 0 and no message or layer appears.
+8. **Selection bar**: with one video selected the bar has no "Bundle as versions"; it appears when a second is
+   selected. In the dialog, "Bundle" cannot be pressed until a representative is chosen; choosing and pressing
+   leaves only the representative in the list and clears the selection (acceptance criterion 6). With 21 or more
+   selected, "Bundle as versions" cannot be pressed, its reason is readable, and the dialog does not open. At
+   360px the lower row does not break and there is no horizontal scroll.
+9. **Dialog**: order is description paragraph → rows → actions; rows have no border, and line 3 of each row shows
+   which tags remain before choosing. A row for an already bundled video shows "Already N versions — all of them
+   join".
+10. **Candidate screen (hierarchy and density)**: looking at a pair, the eye goes first to the two buttons at the
+    top right, then the two thumbnails and titles, and last to the difference numbers and locations. The two
+    thumbnails are the same size and neither is emphasised. There are no lines, borders or cards inside a pair,
+    and pairs are separated by one line. At 360px the two videos stack with no overflow or overlap.
+11. **Candidate screen (deciding)**: "Same video…" → choose a representative → "Bundle" removes the pair and the
+    library shows one item (acceptance criteria 3 and 6). "Different videos" removes the pair, and it does not come
+    back after a rescan (acceptance criterion 5). When new pairs are added at the top during ingest, the pair being
+    read does not move.
+12. **State display**: while sending, the pressed button or `Ellipsis` shows a spinner, and pressing again does
+    not send twice. A failure is a red line in place (below the popover list, above the dialog's actions), and
+    what is open stays open. Only the candidate screen's failures are toasts (because one line can say whether the
+    row is gone or should be removed).
+13. **Keyboard**: on the player screen Tab reaches the item; Enter opens it with focus on the first other version's
+    row; Esc closes it and returns to the item; a second Esc closes the screen. On the candidate screen Tab moves
+    per pair: "Different videos" → "Same video…" → left video → right video.
+14. **Guest**: logged out, a bundled video has the "3 versions" item and popover, and pressing a row plays B
+    (acceptance criterion 12). Rows have no `Ellipsis`. The sidebar has no "Duplicates", and there is no selection
+    bar at all.
+15. **Examples that do not meet the requirement** (`UI品質`): non-representative versions appear in a list; the
+    versions list appears on the player screen as an always-open panel or tab; "3 versions" is next to the title or
+    inside the player and is seen before the tags; a bundled card has a marker or count and looks different from
+    other cards; on the candidate screen one of the two is emphasised first as "recommended".
 
 ## Colour
 
-新しく使う組は無い。浮き出しと窓の文字は `fg`・`fg-muted` on `elevated`、失敗の行は `danger` on
-`elevated`（014 の「Accessibility」で足した組）、候補の画面の文字は `fg`・`fg-muted` on `bg`、
-トーストは今のまま。`fg-subtle` は印（`Layers`・「·」）だけに使い、文字には使わない。
-`bg-hover-wash`・`bg-active-wash`・`border-accent` は文字ではなく、`pairs` の対象外である。
-新しいトークンは足さない。
+No new pair is used. Popover and dialog text is `fg` and `fg-muted` on `elevated`; the failure line is `danger` on
+`elevated` (the pair added in 014 "Accessibility"); candidate screen text is `fg` and `fg-muted` on `bg`; toasts
+are unchanged. `fg-subtle` is used only for markers (`Layers`, "·"), never for text. `bg-hover-wash`,
+`bg-active-wash` and `border-accent` are not text and are outside `pairs`. No new token is added.
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前だけを決める（012・029 と同じ範囲）。
+The parent Issue does not ask for screen-reader or contrast design, so only names are decided (the same scope as
+012 and 029).
 
-- 項目の読み上げ名: 「3 versions of this video. Show versions」。浮き出しは `role="dialog"` で
-  読み上げ名「Versions」。
-- 行のリンク: 「Play {題名}, {違い}」。今の動画の行は `aria-current="true"` と隠した「Now
-  playing」。代表の印「Representative」は見える文字で、隠さない。
-- 行のメニューの引き金: 「More actions for {題名}」。
-- 窓の一覧: `radiogroup`、読み上げ名「Representative」。各 `label` は題名と違いを含む。
-- 候補の画面: 各組は `li` で、見出しの行の「Same length · similar frames」を組の名前にはしない
-  （全組で同じ文になる）。2 本のリンクの読み上げ名は「{題名} {長さ}」。ボタンの読み上げ名は
-  見える文言に「for {題名 A} and {題名 B}」を続ける（「Same video, for A and B」）。
-- 失敗の行は `role="alert"`。回転の印は `aria-hidden`、送信中の要素は `aria-disabled` か `disabled`。
+- The item's accessible name: "3 versions of this video. Show versions". The popover is `role="dialog"` with the
+  accessible name "Versions".
+- Row links: "Play {title}, {differences}". The current video's row has `aria-current="true"` and a hidden "Now
+  playing". The "Representative" marker is visible text and is not hidden.
+- Row menu trigger: "More actions for {title}".
+- Dialog list: `radiogroup`, accessible name "Representative". Each `label` includes the title and the
+  differences.
+- Candidate screen: each pair is an `li`; the heading line's "Same length · similar frames" is not used as the
+  pair's name (it is the same for every pair). The two links' accessible names are "{title} {length}". Button
+  accessible names append "for {title A} and {title B}" to the visible text ("Same video, for A and B").
+- Failure lines are `role="alert"`. Spinners are `aria-hidden`; elements being sent are `aria-disabled` or
+  `disabled`.

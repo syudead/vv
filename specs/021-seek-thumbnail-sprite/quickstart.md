@@ -1,19 +1,25 @@
-# Validation Quickstart: シーク用サムネイルのスプライトシート
+# Validation Quickstart: Seek thumbnail sprite sheets
 
-共通の検査は [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task test-e2e`）で、
-ここにはこの feature だけの入力と手順を書く。入力は
-[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) と同じく `testsrc2`
-（時刻が画面に描かれる）から作り、`.local/bench/` に置く。私的な動画やファイル名は使わない。
+These steps cover the inputs and checks specific to this feature; the common
+checks are in [Taskfile.yml](../../Taskfile.yml) (`task check`,
+`task check-docs`, `task test-e2e`). Inputs are made from `testsrc2` (which
+draws the time on screen), as in
+[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md), and
+placed in `.local/bench/`. Do not use private videos or file names.
 
-## 1. 改善前後の生成時間・ファイル数・合計サイズ（受け入れ条件 1・2）
+## 1. Generation time, file count and total size before and after (acceptance criteria 1 and 2)
 
-`docs/how-to/preview-benchmark.md` の 2 時間の入力 `long-2h.mp4` と 2 分の入力 `short-2m-720p.mp4`
-を使い、`go run ./scripts/previewbench -kind seek <video>` を変更前と変更後の両方で走らせる。
-変更前は、生成を変える前のコミット（previewbench にシーク用の種類を足した直後）で測る。
+Using the 2-hour input `long-2h.mp4` and the 2-minute input
+`short-2m-720p.mp4` from `docs/how-to/preview-benchmark.md`, run
+`go run ./scripts/previewbench -kind seek <video>` both before and after the
+change. Measure "before" at the commit before generation changed (right after
+the seek kind was added to previewbench).
 
-PR には環境（OS、CPU、ffmpeg の版）と次の表を載せる。ファイル数と合計は previewbench の出力
-ディレクトリ（`GenerateSeekThumbnailSet` が書くもの）を全部数える。変更後はシートだけで、
-2 時間は 6、2 分は 1 になる（`sprite.json` は保存の側が書くので含まない）。
+Put the environment (OS, CPU, ffmpeg version) and the following table in the
+PR. File count and total cover everything in previewbench's output directory
+(what `GenerateSeekThumbnailSet` writes). After the change there are only
+sheets: 6 for 2 hours and 1 for 2 minutes (`sprite.json` is written by the
+storage side and is not included).
 
 ```markdown
 | 入力 | 変更前 1 回目 | 変更前 2 回目 | 変更前ピークメモリ | 変更前ファイル数 | 変更前合計 | 変更後 1 回目 | 変更後 2 回目 | 変更後ピークメモリ | 変更後ファイル数 | 変更後合計 |
@@ -22,42 +28,50 @@ PR には環境（OS、CPU、ffmpeg の版）と次の表を載せる。ファ�
 | 2 分・1280×720・H.264/AAC | 00.000 秒 | 00.000 秒 | 0 MiB | 24 | 0.0 MiB | 00.000 秒 | 00.000 秒 | 0 MiB | 1 | 0.0 MiB |
 ```
 
-ピークメモリが取れない OS では「取得不可」と書く。2 分の入力で 5 秒間隔、2 時間の入力で 12 秒間隔・
-600 コマになることは `internal/domain` のテストが検査する。
+On an OS where peak memory cannot be taken, write `取得不可`. Tests in
+`internal/domain` check that the 2-minute input gets a 5-second interval and
+the 2-hour input a 12-second interval with 600 frames.
 
-## 2. 再生画面での確認（受け入れ条件 3〜6）
+## 2. Checks on the playback screen (acceptance criteria 3–6)
 
-追加の入力を作る。縦長は `preview-benchmark.md` の `portrait-rotated.mp4`、ライブ変換用は同じ
-内容を MKV（ブラウザで再生できない容器）にしたもの。
+Create the additional inputs: for portrait, `portrait-rotated.mp4` from
+`preview-benchmark.md`; for live transcoding, the same content as MKV (a
+container the browser cannot play).
 
 ```sh
 ffmpeg -nostdin -v error -i .local/bench/long-2h.mp4 -c copy .local/bench/long-2h.mkv
 mkdir -p .local/preview/media
 cp .local/bench/long-2h.mp4 .local/bench/long-2h.mkv .local/bench/portrait-rotated.mp4 .local/preview/media/
-task preview   # 動いていれば Ctrl+C で止めてから起動し直す
+task preview   # if it is running, stop it with Ctrl+C and start it again
 ```
 
-処理状況のシーク用サムネイルの残りが 0 になってから、各動画の再生画面で確かめる。
+After the remaining seek thumbnail count in the processing status reaches 0,
+check on each video's playback screen.
 
-| Case | 操作 | Expected evidence |
+| Case | Action | Expected evidence |
 | --- | --- | --- |
-| 先頭・中間・末尾（3） | 2 時間の MP4 でシークバーの先頭、中央、末尾近くをポイント | 表示されるコマに描かれた時刻が、その位置の区間 `[k*12s, (k+1)*12s)` の中にある |
-| 追従（4） | ブラウザの開発者ツールのネットワーク記録を開き、シークバー上でポインターを端から端まで連続して動かす | 配置情報 1 回と、通過したシートそれぞれ 1 回の要求だけがあり、同じシートの再要求が無い |
-| 縦長（5） | `portrait-rotated.mp4` でポイント | コマが縦長のまま枠に収まり、隣のコマの一部が見えない |
-| ライブ変換（6） | `long-2h.mkv` と `long-2h.mp4` で同じ位置（たとえば中央）をポイント | 同じ時刻のコマが出る |
-| 短い動画 | `task preview` の組み込みサンプル（20 秒以下） | 1 シート・数コマで、末尾でも黒いコマが出ない |
+| Start, middle, end (3) | On the 2-hour MP4, point at the start, centre, and near the end of the seek bar | The time drawn in the shown frame lies within the range `[k*12s, (k+1)*12s)` for that position |
+| Following (4) | Open the network log in the browser's developer tools and move the pointer continuously across the seek bar from end to end | Only one request for the layout information and one per sheet passed over; no repeated request for the same sheet |
+| Portrait (5) | Point on `portrait-rotated.mp4` | The frame stays portrait inside the box, and no part of a neighbouring frame shows |
+| Live transcode (6) | Point at the same position (for example the centre) on `long-2h.mkv` and `long-2h.mp4` | The frame for the same time appears |
+| Short video | The built-in samples of `task preview` (20 seconds or shorter) | One sheet with a few frames; no black frame even at the end |
 
-360px・768px・1280px のそれぞれで、先頭・中央・末尾の表示を撮影して PR に載せる。プレビューの
-大きさ・位置・時刻表示が変更前と同じであることも比べる。
+At each of 360px, 768px and 1280px, capture the display at the start, centre
+and end and put the captures in the PR. Also compare that the preview's size,
+position and time display are the same as before the change.
 
-## 3. 中断・差し替え・削除と既存の JPEG の回収（受け入れ条件 7・8）
+## 3. Interruption, replacement, deletion, and reclaiming existing JPEGs (acceptance criteria 7 and 8)
 
-- 生成中（処理状況にシーク用サムネイルの残りがある間）に `task preview` を Ctrl+C で止めて起動し
-  直すと、`MDM_DATA_DIR/thumbnails/.tmp/` が空になり、その動画の置き場に `sprite.json` の無い
-  ディレクトリが残らない。
-- 生成中に `.local/preview/media/` の入力を別の内容の同名ファイルに置き換えて再スキャンすると、
-  古い内容のスプライトが配信されず（`GET /api/videos/{id}/seek-thumbnail` が新しい版で 409 のあと
-  200 になる）、新しい内容で作り直される。
-- 変更前のデータディレクトリ（`seek/<p>/<s>/000000.jpg` … の個別 JPEG）で起動し直すと、処理状況に
-  シーク用サムネイルの残りが出る。終わるとその置き場にシートと `sprite.json` だけが残る。残りが
-  ある間も、その動画の再生画面で再生・シーク・時刻の表示が使える。
+- Stopping `task preview` with Ctrl+C during generation (while the processing
+  status shows remaining seek thumbnails) and starting it again leaves
+  `MDM_DATA_DIR/thumbnails/.tmp/` empty, and no directory without `sprite.json`
+  remains in that video's location.
+- Replacing an input in `.local/preview/media/` during generation with a file
+  of the same name and different content and rescanning: the old content's
+  sprite is not served (`GET /api/videos/{id}/seek-thumbnail` returns 409 for
+  the new version, then 200), and it is rebuilt with the new content.
+- Restarting with a data directory from before the change (individual JPEGs
+  `seek/<p>/<s>/000000.jpg` …) shows remaining seek thumbnails in the processing
+  status. When they finish, only the sheets and `sprite.json` remain in that
+  location. While work remains, playback, seeking and the time display work on
+  that video's playback screen.

@@ -1,374 +1,460 @@
-# UI Design: 動画詳細画面の情報設計
+# UI Design: Information architecture of the video detail screen
 
 **Feature**: [parent Issue #171](https://github.com/syudead/vv/issues/171)
 
-見た目の規則は [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。本書は、動画詳細画面
-（`/videos/:id`）がそれらに**足す**ものと**変える**ものだけを定める。
+Sources: the visual rules follow
+[Library UI: visual rules and list layout](../../docs/design-docs/library-ui.md)
+and `@theme` in [`web/src/index.css`](../../web/src/index.css). This document
+defines only what the video detail screen (`/videos/:id`) **adds** to them and
+**changes**.
 
-- 新しい色・半径・影のトークンは足さない。
-- 部品は `web/src/ui/` の既存のもの（`Button`・`IconButton`・`Skeleton`・`Tooltip`・`Popover`）を使う。
+- No new colour, radius or shadow token is added.
+- Components are the existing ones in `web/src/ui/` (`Button`, `IconButton`,
+  `Skeleton`, `Tooltip`, `Popover`).
 
 ## Screen boundary
 
-- 再生画面は、既存どおり `AppShell` の外に置く（ARCHITECTURE.md「Web layer」）。一覧の
-  上部バー（☰・更新）は持たず、代わりに再生画面だけの見出しの帯（「Video header」）を置く。
-  一覧の上に重なった画面を × で閉じる、という体験は変えない。
-- 画面の構成要素は、見出しの帯・プレイヤー・題名とタグ・ファイルの情報（「Video facts」）・
-  関連動画とする（親 Issue 要件 1）。
-- 次のものは描かない（要件 4・5）。
-  - チップ
-  - 題名の下の要約の行
-  - 題名の近くの大きな操作ボタン（「ファイルを開く」「パスをコピー」は情報の行の右端の小さな
-    アイコンに留める）
-  - タブ
-  - 枠やカードで囲った詳細欄
-- 次の既存の部品は置き換える。
-  - 旧 `VideoHeader`・`FileDetails`：題名と情報の行に置き換えた（今の `VideoHeader` は見出しの
-    帯で、別のものである）。
-  - プレイヤーの下の赤帯・`Blocked`：プレイヤーの中の状態表示に置き換える。
+- The player screen stays outside `AppShell`, as before (ARCHITECTURE.md "Web
+  layer"). It has no list top bar (☰, refresh); instead it has its own heading
+  band ("Video header"). The experience of a screen layered over the list and
+  closed with × does not change.
+- The screen consists of the heading band, the player, the title and tags, the
+  file information ("Video facts") and related videos (parent Issue
+  requirement 1).
+- The following are not drawn (requirements 4 and 5):
+  - chips
+  - a summary line below the title
+  - large action buttons near the title (`ファイルを開く` and `パスをコピー` stay as
+    small icons at the right end of the information row)
+  - tabs
+  - a details area enclosed in a frame or card
+- The following existing components are replaced:
+  - The old `VideoHeader` and `FileDetails`: replaced by the title and the
+    information rows (today's `VideoHeader` is the heading band, a different
+    thing).
+  - The red band below the player and `Blocked`: replaced by the state display
+    inside the player.
 
 ## Layout and responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS だけで出し分ける（library-ui.md 4）。
+Only Tailwind's default breakpoints are used, and the switching is CSS only
+(library-ui.md 4).
 
-### `lg`（1024px）以上: 2 列
+### `lg` (1024px) and up: two columns
 
-- ページの上端に見出しの帯（高さ `h-navbar`）を置き、その下を 2 列にする。
-- 列の部分は左右 `px-6`、上 `pt-6`。下は左の列が `pb-6`、関連動画の並びが `pb-6`。列の間は `gap-6`。
-- 左列（`minmax(0, 1fr)`）には、上から順に次を置く。
-  - プレイヤー
-  - 作成中の 1 行（ある場合）
-  - 題名とタグ
-  - ファイルの情報の行と技術情報の行
-- 右列は `lg` で `w-80`、`xl` 以上で `w-96`。関連動画の見出しと、関連動画の縦の並びを置く。
-- 右列の上端はプレイヤーの上端と揃える。
-- プレイヤーは `rounded-lg`、`overflow-hidden`、`bg-navbar`。幅は 16:9 の動画が画面の高さに
-  収まる幅（16:9 より横長の動画はその比率で収まる幅）に制限する。既存の
-  `max-w-[calc(max(100dvh-17rem,15rem)*16/9)]` とする。帯（`3.25rem`）・列の上下の余白・題名とタグ・
-  情報の 2 行までが左の列に収まる高さで、ふだんは左の列がスクロールしない（`lg` 未満は
-  ページ全体がスクロールするので `12.25rem` のまま）。背の低い窓でプレイヤーが消えないよう、
-  高さの項は `15rem` を下回らせない（そのときはみ出す分は左の列がスクロールする）。左の列の下の余白は `pb-6` とする。上限で
-  列より細くなったプレイヤーは、題名と左端をそろえるため左に寄せる（`lg:ml-0`）。
-  高さは動画の縦横比（解像度が分からない間は 16:9、極端な比率は 9:16〜21:9 に丸める）に合わせ、
-  画面に収まる高さまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出し、前後の動画へのつまみと
-  操作バーは横長の動画と同じ位置・幅に保つ。
-- 左列の要素の間隔は `gap-5`（要件「余白のリズム」）。区切り線や枠は使わない。
+- The heading band (height `h-navbar`) sits at the top of the page, with two
+  columns below it.
+- The column area has `px-6` left and right and `pt-6` at the top. At the bottom,
+  the left column has `pb-6` and the related video list has `pb-6`. The gap
+  between columns is `gap-6`.
+- The left column (`minmax(0, 1fr)`) holds, top to bottom:
+  - the player
+  - the creating line (when present)
+  - the title and tags
+  - the file information row and the technical information row
+- The right column is `w-80` at `lg` and `w-96` at `xl` and up. It holds the
+  related videos heading and the vertical list of related videos.
+- The top of the right column aligns with the top of the player.
+- The player is `rounded-lg`, `overflow-hidden`, `bg-navbar`. Its width is
+  limited so that a 16:9 video fits the screen height (a video wider than 16:9
+  fits at its own ratio), with the existing
+  `max-w-[calc(max(100dvh-17rem,15rem)*16/9)]`. That height leaves room in the
+  left column for the band (`3.25rem`), the column's top and bottom padding, the
+  title and tags and the two information rows, so the left column normally does
+  not scroll (below `lg` the whole page scrolls, so it stays `12.25rem`). So that
+  the player does not vanish in a short window, the height term never goes below
+  `15rem` (the overflow then scrolls inside the left column). The left column's
+  bottom padding is `pb-6`. A player that becomes narrower than the column at
+  this limit aligns left, flush with the title (`lg:ml-0`). Its height follows
+  the video's aspect ratio (16:9 while the resolution is unknown; extreme ratios
+  are clamped to 9:16–21:9) and grows up to the height that fits the screen. A
+  portrait video is shown centred in the frame with side margins, and the
+  previous/next handles and the control bar keep the same position and width as
+  for landscape videos.
+- Elements in the left column are spaced with `gap-5` (requirement `余白のリズム`).
+  No dividers or frames are used.
 
-### `lg` 未満: 縦積み
+### Below `lg`: stacked
 
-- 見出しの帯はページの上端に留まる（`sticky top-0`）。スクロールしても × とロゴに届く。
-- プレイヤーは帯の下に端から端まで（`rounded-none`、左右の余白なし）置く。プレイヤーの上に
-  × は重ねない。
-- その下は `px-4`（`sm` 以上は `px-6`）の本文で、次の順に並べる。
-  - 作成中の 1 行
-  - 題名とタグ
-  - ファイルの情報の行と技術情報の行
-  - 関連動画
-- 360px・768px のどちらでも横スクロールを出さない（受け入れ条件 2）。
+- The heading band stays at the top of the page (`sticky top-0`). × and the logo
+  stay reachable while scrolling.
+- The player sits below the band, edge to edge (`rounded-none`, no side padding).
+  No × is overlaid on the player.
+- Below it is the body with `px-4` (`px-6` at `sm` and up), in this order:
+  - the creating line
+  - the title and tags
+  - the file information row and the technical information row
+  - related videos
+- Neither 360px nor 768px shows horizontal scrolling (acceptance criterion 2).
 
 ## Hierarchy and typography
 
-強さの順は、プレイヤー ＞ 題名 ＞ 関連動画 ＞ ファイルの情報 ＞ 技術情報（要件「視覚的階層」）。
+From strongest to weakest: player > title > related videos > file information >
+technical information (requirement `視覚的階層`).
 
-| 要素 | 書式 |
+| Element | Style |
 | --- | --- |
-| 題名 | `h1`。`text-xl`（`sm` 以上 `text-2xl`）・`font-semibold`・`text-fg`・`leading-snug`。区切りの無いファイル名でも折り返す（`[overflow-wrap:anywhere]`）。画面でいちばん大きい文字にする |
-| ファイルの情報 | `text-sm`・`text-fg`・`tabular-nums`。各値の前に `size-4` の `text-fg-subtle` のアイコン。ラベルは文字で出さない |
-| 技術情報 | `text-xs`・`uppercase`・`tracking-wider`・`text-fg-muted`・`tabular-nums`。英語なので `lang="en"`。コーデックと形式は大文字（`H.264`・`AAC`・`MKV`） |
-| パンくず | `text-sm`。途中の段は `text-fg-muted`、最後の段（置き場所のフォルダ）は `font-medium`・`text-fg` |
-| 関連動画の見出し | `h2`。`text-sm`・`font-semibold`・`text-fg` |
-| 関連動画の題名 | `text-sm`・`font-medium`・`text-fg`・2 行で省略（`line-clamp-2`） |
+| Title | `h1`. `text-xl` (`text-2xl` at `sm` and up), `font-semibold`, `text-fg`, `leading-snug`. Wraps even for file names without breaks (`[overflow-wrap:anywhere]`). The largest text on the screen |
+| File information | `text-sm`, `text-fg`, `tabular-nums`. A `size-4` `text-fg-subtle` icon before each value. No visible text labels |
+| Technical information | `text-xs`, `uppercase`, `tracking-wider`, `text-fg-muted`, `tabular-nums`. English, so `lang="en"`. Codecs and formats in capitals (`H.264`, `AAC`, `MKV`) |
+| Breadcrumb | `text-sm`. Intermediate segments `text-fg-muted`; the last segment (the folder holding the video) `font-medium`, `text-fg` |
+| Related videos heading | `h2`. `text-sm`, `font-semibold`, `text-fg` |
+| Related video title | `text-sm`, `font-medium`, `text-fg`, truncated at two lines (`line-clamp-2`) |
 
 ## Video facts
 
-題名とタグの下に、区切り線も枠もラベルも使わず、次の 2 行を置く（`gap-3`）。
+Below the title and tags, two rows are placed (`gap-3`), with no divider, frame
+or label.
 
-- **ファイルの情報の行**：`ul`（読み上げ名「ファイルの情報」）に、次の順で並べる。
-  - 長さ（lucide の `Clock`）。長さが分からない間（読み取り前など）は項目ごと出さない。
-  - サイズ（`HardDrive`）。
-  - 追加日（`CalendarPlus`）。日付だけ（`2026/09/20`）。
-  - 各項目はアイコンと値の組（`gap-1.5`）で、項目の間は `gap-x-4`（`sm` 以上は `gap-x-5`）。収まらない幅では折り返す。
-  - アイコンは `aria-hidden` とし、代わりに視覚的に隠した「長さ」「サイズ」「追加日」を値の前に
-    置く。`title` にも同じ名前を入れる。
-  - 最後に見た日時は出さない（要求者の判断）。
-- **操作**：情報の行の右端に `IconButton`（`size="sm"`）を 2 つ置く（`text-fg-muted`、hover で `text-fg`）。
-  - 「ファイルを開く」（`ExternalLink`）：開けるとき（`location.openable`）だけ置く。押すと
-    `POST /api/videos/{id}/open` を送る。
-  - 「パスをコピー」（`Copy`）：所在の絶対パスをクリップボードへ書き、トーストで
-    「パスをコピーしました」（失敗なら「パスをコピーできませんでした」）と伝える。
-    `navigator.clipboard` は安全な接続（HTTPS・localhost）にしか無いので、LAN のアドレスで
-    開いたときや書き込みを断られたときは、見えない入力欄を選んでコピーする方法に切り替える。
-  - 所在（`location`）が無いときは、どちらも置かない。
-- **技術情報の行**：`ul`（読み上げ名「技術情報」）に、解像度・コンテナ・映像・音声の順で値だけを
-  並べる。項目の間は `border-l border-border-strong` の縦線と `px-2.5` で区切る。どの項目にも
-  線と余白を付け、並び全体をその幅だけ左へずらして外側（`overflow-hidden`）で切る。折り返した
-  行の先頭にも線と余白が残らないようにするためである。
-  分からない値（音声が無いなど）は項目ごと省く。
+- **File information row**: a `ul` (accessible name `ファイルの情報`) in this order:
+  - Duration (lucide `Clock`). While the duration is unknown (for example before
+    probing), the item is omitted.
+  - Size (`HardDrive`).
+  - Date added (`CalendarPlus`). Date only (`2026/09/20`).
+  - Each item is an icon and value pair (`gap-1.5`); items are spaced with
+    `gap-x-4` (`gap-x-5` at `sm` and up). They wrap when the width runs out.
+  - Icons are `aria-hidden`; instead, visually hidden `長さ`, `サイズ` and `追加日`
+    precede the values. `title` holds the same name.
+  - The last-watched time is not shown (the requester's decision).
+- **Actions**: two `IconButton`s (`size="sm"`) at the right end of the
+  information row (`text-fg-muted`, `text-fg` on hover).
+  - `ファイルを開く` (`ExternalLink`): present only when the file can be opened
+    (`location.openable`). Pressing it sends `POST /api/videos/{id}/open`.
+  - `パスをコピー` (`Copy`): writes the absolute path of the location to the
+    clipboard and reports `パスをコピーしました` in a toast (on failure,
+    `パスをコピーできませんでした`). `navigator.clipboard` exists only on secure
+    connections (HTTPS, localhost), so when the page is opened by LAN address or
+    the write is refused, it falls back to selecting a hidden input and copying.
+  - Without a location (`location`), neither is present.
+- **Technical information row**: a `ul` (accessible name `技術情報`) listing only
+  the values, in the order resolution, container, video, audio. Items are
+  separated by a vertical `border-l border-border-strong` line and `px-2.5`. Every
+  item gets the line and padding, and the whole list is shifted left by that
+  width and clipped by the outer element (`overflow-hidden`), so that no line or
+  padding is left at the start of a wrapped row. Unknown values (no audio, for
+  example) are omitted with their item.
 
-  | 状況 | 技術情報の行 |
+  | Situation | Technical information row |
   | --- | --- |
-  | 読み取り前 | 「技術情報を読み取り中」（`text-fg-muted`） |
-  | 読み取り失敗 | 「技術情報を読み取れませんでした」（`text-warning`） |
+  | Before probing | `技術情報を読み取り中` (`text-fg-muted`) |
+  | Probe failed | `技術情報を読み取れませんでした` (`text-warning`) |
 
-- 開けなかったとき（409 `file_missing` など）は、情報の行のすぐ下（技術情報の行の上）に 1 行出す。
-  - `text-sm text-danger`、先頭に `AlertCircle`（`size-4`）、`role="alert"`。
-  - 文言は `file_missing` なら「開けませんでした: ファイルが見つかりません」、
-    それ以外なら「開けませんでした」とする。
-  - 次に開く操作をしたとき、または別の動画へ移ったときに消える。
-  - 帯・トースト・ダイアログは使わない（要件「要求を満たしたことにならない変更」）。
+- When opening fails (409 `file_missing` and others), one line appears right
+  below the information row (above the technical information row).
+  - `text-sm text-danger`, with `AlertCircle` (`size-4`) first, `role="alert"`.
+  - The text is `開けませんでした: ファイルが見つかりません` for `file_missing`, and
+    `開けませんでした` otherwise.
+  - It disappears on the next open action or when moving to another video.
+  - No band, toast or dialog is used (requirement
+    `要求を満たしたことにならない変更`).
 
 ## Related videos
 
-- 見出しは `h2`「関連動画」。× は置かない（見出しの帯にある）。
-- 関連動画が 0 件のときは、`h2` と並びを出さない（Edge Case）。
-- 各項目は 1 つのリンクで、行全体を押せる。
-  - 左にサムネイル（`w-40`、16:9、`rounded-md`、`overflow-hidden`、`bg-surface`）、右に題名を
-    置く（`gap-3`）。
-  - サムネイルが無いときは、`VideoCard` と同じ代わりの表示にする。
-  - サムネイルの右下に長さを置く（`bg-overlay`、`text-xs`、`text-fg`、`tabular-nums`、
-    `rounded-sm`、`px-1`）。
-  - 途中まで見た動画だけ、サムネイルの下端に `accent` の進捗バー（高さ 3px、割合は
-    `watchedRatio`）を出す（要件 15）。
-  - 追加日時・「次に再生」・理由の文字は出さない（要件 15）。
-- 項目の間は `gap-3`。hover では行に `bg-hover-wash` を敷く（行の外側に `p-1.5 -m-1.5` と
-  `rounded-lg`）。キーボードのフォーカスはグローバルの `:focus-visible` の輪郭で示す。
-- マウスを乗せると、一覧のカードと同じ規則で一覧用プレビューを流す（library-ui.md の hover
-  プレビュー）。400ms 後に無音で繰り返し流し、離すと止める。タッチ・ペンとプレビュー未完成の動画では
-  流さない。
-- `lg` 以上ではページを画面の高さに留め（`h-dvh`、ページ自体はスクロールしない）、左の列と
-  右の列がそれぞれ中でスクロールする。右の列は見出しの行を上に残し、関連動画の並びだけが動く。
-  ページと列が二重にスクロールしないようにするためである。`lg` 未満はページ全体を 1 つとして
-  スクロールする。
-- 列ごとに常にスクロールバーが並ぶと騒がしいので、次のようにする（`web/src/index.css`）。
-  スクロール自体はどちらもいつでもできる。
-  - 左の列は `scrollbar-none` でスクロールバーを描かない。プレイヤーの高さの上限で、ふだんは
-    はみ出さない。題名の折り返しや作成中の 1 行で少しだけはみ出すときも、動画の上にある
-    マウスで線が出続けないようにする。
-  - 関連動画の並びは `scrollbar-on-hover` で細くし、ふだんは透明にして、並びにマウスが
-    乗っているかフォーカスがあるときだけ見せる。
-- 状態:
-  - **読み込み中**: 骨組みの行を 6 つ出す（サムネイルと 2 行の `Skeleton`）。
-  - **読み込み失敗**: 見出しの下に `text-sm text-fg-muted`「関連動画を取得できませんでした」と、
-    `ghost` の「再試行」を出す。
+- The heading is the `h2` `関連動画`. No × here (it is in the heading band).
+- With zero related videos, neither the `h2` nor the list is shown (Edge Case).
+- Each item is one link, and the whole row is clickable.
+  - Thumbnail on the left (`w-40`, 16:9, `rounded-md`, `overflow-hidden`,
+    `bg-surface`), title on the right (`gap-3`).
+  - Without a thumbnail, the same fallback as `VideoCard` is shown.
+  - The duration sits at the bottom right of the thumbnail (`bg-overlay`,
+    `text-xs`, `text-fg`, `tabular-nums`, `rounded-sm`, `px-1`).
+  - Only partly watched videos show an `accent` progress bar at the bottom edge
+    of the thumbnail (3px high, ratio `watchedRatio`) (requirement 15).
+  - No date added, `次に再生` or reason text is shown (requirement 15).
+- Items are spaced with `gap-3`. On hover the row gets `bg-hover-wash` (with
+  `p-1.5 -m-1.5` and `rounded-lg` outside the row). Keyboard focus is shown by the
+  global `:focus-visible` outline.
+- Hovering with the mouse plays the list preview under the same rules as list
+  cards (the hover preview in library-ui.md): after 400ms it plays muted and
+  looping, and stops on leave. It does not play for touch, pen, or videos whose
+  preview is not ready.
+- At `lg` and up the page is held to the screen height (`h-dvh`; the page itself
+  does not scroll), and the left and right columns each scroll inside. The right
+  column keeps its heading row at the top and only the related video list moves.
+  This prevents the page and a column from scrolling at the same time. Below `lg`
+  the whole page scrolls as one.
+- Scrollbars always shown in each column would be noisy, so (in
+  `web/src/index.css`) both can always be scrolled, and:
+  - The left column uses `scrollbar-none` and draws no scrollbar. The player
+    height limit normally keeps it from overflowing. When a wrapped title or the
+    creating line makes it overflow slightly, a mouse resting over the video does
+    not keep a bar visible.
+  - The related video list uses `scrollbar-on-hover`: thin, normally
+    transparent, and shown only while the mouse is over the list or it has focus.
+- States:
+
+  | State | What the screen shows |
+  | --- | --- |
+  | Loading | Six skeleton rows (a thumbnail and a two-line `Skeleton`) |
+  | Load failed | Below the heading, `関連動画を取得できませんでした` in `text-sm text-fg-muted` and a `ghost` `再試行` |
 
 ## Video header
 
-- ページの上端の帯で、一覧のトップバーと同じ高さ（`h-navbar`）・`border-b border-border`・
-  `bg-bg/90`・`backdrop-blur-md` とする。狭い幅でも広い幅でも `sticky top-0` で上に留まる。
-- 左から次を置く。
-  - ロゴ（`●` と「vv」）：`/`（ホーム）へのリンク。読み上げ名は「ホーム」。
-  - パンくず（`nav`、読み上げ名「フォルダ」）：登録フォルダの表示名から、動画の置かれた
-    フォルダまでの段を `ChevronRight`（`size-3.5`、`text-fg-subtle`）で区切って並べる。
-    - どの段もそのフォルダ画面（`/folders/{rootId}/…`）へのリンクである。今いる画面は動画なので、
-      最後の段もリンクにする。
-    - 値は `GET /api/videos/{id}` の `folder`（`rootId`・`path`・`rootName`）から作る。
-      `folder` か `rootName` が無ければ（登録を外した直後など）パンくずごと出さない。
-    - `md` より狭い幅では、最後の段だけを残し、途中の段は「…」に畳む。出し分けは CSS だけで
-      行う（library-ui.md 4）。
-    - 動画の題名は帯に出さない（すぐ下の `h1` と重なるため）。
-  - 右端に ×（lucide の `X`、`size-5`）：`IconButton`、読み上げ名は「閉じる」。
-- × はこの帯の 1 か所だけに置く。プレイヤーの上と関連動画の見出しには置かない。
-- 再生画面のトースト（「パスをコピー」の結果・取り込みの通知）は、帯の上の中央に一時的に重なり、
-  パンくずを隠すことがある。左右に `4rem` ずつ空けるので × には重ならない。
-- × は `state.from` の一覧へ戻る。Esc も同じ操作である。
+- The band at the top of the page has the same height as the list top bar
+  (`h-navbar`), `border-b border-border`, `bg-bg/90` and `backdrop-blur-md`. It
+  stays at the top with `sticky top-0` at every width.
+- Left to right:
+  - The logo (`●` and `vv`): a link to `/` (home), accessible name `ホーム`.
+  - The breadcrumb (`nav`, accessible name `フォルダ`): the segments from the
+    registered folder's display name to the folder holding the video, separated
+    by `ChevronRight` (`size-3.5`, `text-fg-subtle`).
+    - Every segment links to its folder screen (`/folders/{rootId}/…`). The
+      current screen is the video, so the last segment is a link too.
+    - The values come from `folder` (`rootId`, `path`, `rootName`) in
+      `GET /api/videos/{id}`. Without `folder` or `rootName` (for example right
+      after the registration was removed), the whole breadcrumb is omitted.
+    - Below `md`, only the last segment stays and the intermediate segments
+      collapse to `…`. The switching is CSS only (library-ui.md 4).
+    - The video title is not shown in the band (it would duplicate the `h1` right
+      below).
+  - × at the right end (lucide `X`, `size-5`): an `IconButton` with the
+    accessible name `閉じる`.
+- × appears only in this band; not over the player and not in the related videos
+  heading.
+- Toasts on the player screen (the `パスをコピー` result, scan notifications)
+  temporarily overlay the centre of the band and may hide the breadcrumb. They
+  leave `4rem` on each side, so they never cover ×.
+- × returns to the list in `state.from`. Esc does the same.
 
 ## Player
 
 ### Control bar
 
-操作バーの見た目は既存の `.vv-video-player` の規則（`index.css`）を保ち、並びだけを変える
-（要件 6）。
+The control bar keeps the look of the existing `.vv-video-player` rules
+(`index.css`); only the arrangement changes (requirement 6).
 
-- 左から次の順に置く。
-  - 最初に戻る（lucide `RotateCcw`。再生位置を 0 にし、再生/一時停止の状態は変えない。キーは 0）
-  - 再生/一時停止
-  - 音量（ミュート）
-  - 現在時刻 / 長さ
-  - 右寄せの空き
-  - 「変換して再生中」（変換で再生しているときだけ）
-  - 再生速度
-  - ピクチャーインピクチャー
-  - 全画面
-- 秒数送り（10 秒戻る/進む）は、ボタンもキー（←/→）も置かない。
-- 前後の動画は操作バーに置かず、プレイヤーの左右の端に置く（下の「Neighbor arrows」）。
-- 再生バーは既存どおり操作バーの上にあり、シーク位置サムネイルもそのまま残す。
-- 残り時間は出さない（要件 5）。
-- 音量とミュート状態はブラウザに保存し、次に開いた動画へ引き継ぐ。保存値が壊れている、または
-  ブラウザの保存領域を使えない場合は、音量 100%・ミュート解除で再生する。
-- 再生速度の選択肢は 0.5・0.75・1・1.25・1.5・2 とする。
-- キーボード操作を持つボタンには、`aria-keyshortcuts` と、ポイントしたときの説明に
-  キーを添える（「一時停止（Space）」など）。
-- 「変換して再生中」は次のように出す。
-  - lucide の `Info`（`size-3.5`）と文字を `text-xs text-fg-muted` で出す。
-  - これを `web/src/ui/Popover.tsx` の引き金（`button`）にする。クリック・タップ・Enter で、
-    理由の「ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに
-    数秒かかります。」を小さな吹き出しで開く。
-    - ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
-      届かなくなるからである（要件 10）。
-  - 見た目は他の操作バーのボタンより控えめにする（枠も面も無く、文字色は `fg-muted`）。
+- Left to right:
+  - Back to start (lucide `RotateCcw`; sets the position to 0 without changing
+    play or pause; key 0)
+  - Play/pause
+  - Volume (mute)
+  - Current time / duration
+  - Right-aligned spacer
+  - `変換して再生中` (only while playing through transcoding)
+  - Playback speed
+  - Picture-in-picture
+  - Fullscreen
+- There is no seek-by-seconds (10 seconds back or forward), neither as a button
+  nor as a key (←/→).
+- Previous and next videos are not in the control bar; they sit at the left and
+  right edges of the player ("Neighbor arrows" below).
+- The progress bar stays above the control bar as before, and so does the seek
+  thumbnail.
+- The remaining time is not shown (requirement 5).
+- Volume and mute are saved in the browser and carried to the next video. When
+  the saved value is broken or browser storage is unavailable, playback uses
+  100% volume, unmuted.
+- The speed options are 0.5, 0.75, 1, 1.25, 1.5 and 2.
+- Buttons with keyboard shortcuts get `aria-keyshortcuts`, and their hover
+  description includes the key (such as `一時停止（Space）`).
+- `変換して再生中` is shown as follows:
+  - lucide `Info` (`size-3.5`) and text in `text-xs text-fg-muted`.
+  - It is the trigger (`button`) of `web/src/ui/Popover.tsx`. Click, tap and Enter
+    open a small bubble with the reason
+    `ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに数秒かかります。`
+    - It is not a tooltip that opens only on hover, because touch and keyboard
+      users could not reach the reason (requirement 10).
+  - It looks quieter than the other control bar buttons (no frame, no surface,
+    text colour `fg-muted`).
 
 ### Neighbor arrows
 
-- プレイヤーの左右の端にぴったり寄せて、前後の動画へ移るつまみを置く。左は lucide
-  `ChevronLeft` で同じフォルダの自然順の前の動画、右は `ChevronRight` で次の動画へ移る。
-- 映像を隠さないよう幅は細く、押しやすいよう縦に長くする。
-  - `sm` 以上：幅 `w-8`、高さはプレイヤーの 50%（最小 `min-h-24`）。
-  - `sm` 未満：幅 `w-7`、高さはプレイヤーの 55%（最小 `min-h-18`）。
-  - 操作バー（約 3rem）を除いた映像の上下中央に置く。
-  - 面は `bg-overlay`、ポイントしたら `bg-bg`。端に接する側は角を付けず、内側だけ `rounded-lg`。
-    端の暗がり（グラデーション）は付けない。
-- 見せる時期は操作バーと同じとし、再生終了の間も見せる。見えない間は押せなくし、
-  キーボードでフォーカスが来たときだけ見せる。
-- 関連動画の応答の `prevId`・`nextId` が無い側（フォルダの先頭・末尾、関連動画の読み込み中・
-  失敗）は出さない。
-- ポイントしたら、つまみの内側にツールチップで「前の動画: {題名}」／「次の動画: {題名}」を出す。
-  読み上げ名も同じにする。移り先が関連動画の並びに無く題名が分からないときは「前の動画」／
-  「次の動画」だけにする。
-- 再生中か見終えた後に移ったときは、移った先で再生を始める。止まっている間に移ったときは
-  始めない。戻り先（`state.from`）は持ち越す。
+- Handles for moving to the previous and next video sit flush against the left
+  and right edges of the player. The left one (lucide `ChevronLeft`) goes to the
+  previous video in natural order in the same folder; the right one
+  (`ChevronRight`) to the next.
+- They are narrow so as not to hide the video, and tall so they are easy to hit.
+
+  | Width | Handle size |
+  | --- | --- |
+  | `sm` and up | Width `w-8`, height 50% of the player (minimum `min-h-24`) |
+  | Below `sm` | Width `w-7`, height 55% of the player (minimum `min-h-18`) |
+
+  - They are centred vertically on the video area excluding the control bar
+    (about 3rem).
+  - The surface is `bg-overlay`, `bg-bg` on hover. The side touching the edge has
+    no rounding; only the inner side is `rounded-lg`. No dark gradient at the
+    edges.
+- They are visible at the same times as the control bar, and also while playback
+  has ended. While hidden they cannot be pressed, and they appear when they get
+  keyboard focus.
+- A side is not shown when the related videos response has no `prevId` or
+  `nextId` for it (the start or end of the folder, or while related videos load
+  or after they failed).
+- On hover, a tooltip inside the handle shows `前の動画: {題名}` / `次の動画: {題名}`,
+  and the accessible name is the same. When the destination is not in the related
+  video list and its title is unknown, only `前の動画` / `次の動画`.
+- Moving while playing or after the video ended starts playback at the
+  destination. Moving while paused does not. The return target (`state.from`) is
+  carried over.
 
 ### Touch controls
 
-- ポインターが粗い端末（`pointer: coarse`）だけで、プレイヤーの中央に再生/一時停止の丸い
-  ボタン（`size-15`）を 1 つ置く（要件 8）。秒数送りのボタンは置かない。
-  - 面は `bg-overlay`、アイコンは `text-fg`。
-- 見せる時期は操作バーと同じとする。この端末では video.js の大きな再生ボタンは出さない。
-- マウスの端末では出さない。出し分けは CSS の `pointer` のメディア条件だけで行う。
+- Only on devices with a coarse pointer (`pointer: coarse`), one round
+  play/pause button (`size-15`) sits at the centre of the player
+  (requirement 8). No seek-by-seconds buttons.
+  - The surface is `bg-overlay` and the icon `text-fg`.
+- It is visible at the same times as the control bar. On these devices video.js's
+  big play button is not shown.
+- Not shown on mouse devices. The switching uses only the CSS `pointer` media
+  condition.
 
 ### Overlay layer
 
-プレイヤーの上には、1 つの入れ物の中に層を重ねる。
-上から順に次のとおりで、同時に出るのは 1 つだけである。
+Layers over the player are stacked inside one container. From the top:
 
-1. 状態表示
-2. 再生終了
-3. タッチ用の中央操作
+1. State display
+2. Playback ended
+3. Centre touch control
 
-状態表示と再生終了の層が出ている間は、中央操作を出さない。
+Only one shows at a time. While the state display or the ended layer is shown,
+the centre control is not.
 
-状態表示は、どれもプレイヤーの領域の中に収める（要件 10）。
+Every state display stays inside the player area (requirement 10).
 
-- 領域の外に出すのは、作成中の 1 行（プレイヤーの直下）だけである。
-- 内容が動画の縦横比に収まらない幅（360px の段階表示など）では、領域の高さを内容に合わせて
-  伸ばす。動画の縦横比は下限として保つ。
-- 再生失敗と再生終了の層は、重なりの順で video.js の操作バーの**下**に置く。暗くするのは
-  映像だけで、操作バーは押せるまま見えるようにする。
-- 層の中の文字は、`bg-overlay` の上に直接置かない。`bg-overlay` は半透明で、明るい最後の
-  コマの上では `fg-muted` や `accent` の文字の対比が足りなくなる。文字の塊は
-  `bg-navbar`・`rounded-lg`・`p-5` の不透明な面に載せる。
+- Only the creating line (right below the player) is outside the area.
+- At widths where the content does not fit the video's aspect ratio (such as the
+  stage display at 360px), the area grows to fit the content. The video's aspect
+  ratio is kept as a minimum.
+- The playback-failed and ended layers sit **below** the video.js control bar in
+  stacking order. Only the video is dimmed; the control bar stays visible and
+  operable.
+- Text in a layer is never placed directly on `bg-overlay`. `bg-overlay` is
+  translucent, and over a bright last frame `fg-muted` or `accent` text lacks
+  contrast. Text blocks sit on an opaque `bg-navbar`, `rounded-lg`, `p-5`
+  surface.
 
-| 状態 | 見え方 |
+| State | What the screen shows |
 | --- | --- |
-| 読み込み中 | サムネイルがあれば背景に出し、中央に `LoaderCircle`（`size-7`、`text-accent`、回転）を置く。視覚的に隠した「読み込み中」を `role="status"` で読む。操作バーは読み込みが終わるまで出さない |
-| 変換して再生中 | 上の「Control bar」を参照。重ねる層は無い |
-| 再生失敗 | 映像に `bg-overlay` を敷く。中央の `bg-navbar` の面（`max-w-md`）に `AlertCircle`（`size-8`、`text-danger`）、`h2`「再生できませんでした」（`text-lg font-semibold`）、理由（`text-sm text-fg-muted`）、`secondary` の「{m:ss} からもう一度試す」（`RotateCcw`）を縦に並べる。`role="alert"` |
-| 取り込み中（読み取り前） | 下の「Processing stages」 |
-| 読み取り失敗 | `bg-navbar` の面の中央（`max-w-lg`）に、`AlertTriangle`（`size-8`、`text-warning`）、`h2`「この動画を読み取れませんでした」、説明「ファイルが壊れているか、途中までしか書き込まれていない可能性があります。」（`text-sm text-fg-muted`）、理由の原文、操作を縦に並べる。理由の原文は `bg-field`・`border border-border`・`rounded-md`・`font-mono text-xs text-fg`・`break-all` で、3 行を超えたら中でスクロールする。操作は `secondary` の「もう一度読み取る」（`RefreshCw`）で、開けるときだけ `secondary` の「ファイルを開く」（`FolderOpen`）も並べる。送っている間はボタンを無効にし、アイコンを回転中の `LoaderCircle` に替える。応答が 202 か 409 `probe_not_failed` なら、動画を取り直して段階表示へ移る（409 は、別のタブや連打ですでにやり直しが始まっている）。それ以外の失敗では、ボタンの下に `text-sm text-danger` の「読み取りを始められませんでした」を出し、ボタンを押せる状態に戻す。`role="alert"` |
-| 動画が消えた（404） | `bg-navbar` の面の中央に、`AlertCircle`（`text-fg-muted`）、`h2`「この動画は開けません」、「ライブラリから外れたか、ファイルが無くなりました。」を置く。`role="alert"` とし、取り直しや再生でこの表示に切り替わったときに読み上げられるようにする。戻る操作は × に任せ、ボタンは足さない |
+| Loading | The thumbnail in the background when there is one, and `LoaderCircle` (`size-7`, `text-accent`, spinning) at the centre. A visually hidden `読み込み中` is read through `role="status"`. The control bar stays hidden until loading finishes |
+| Playing through transcoding | See "Control bar" above. No layer |
+| Playback failed | `bg-overlay` over the video. A central `bg-navbar` surface (`max-w-md`) stacks `AlertCircle` (`size-8`, `text-danger`), the `h2` `再生できませんでした` (`text-lg font-semibold`), the reason (`text-sm text-fg-muted`) and a `secondary` `{m:ss} からもう一度試す` (`RotateCcw`). `role="alert"` |
+| Scanning (before probing) | "Processing stages" below |
+| Probe failed | At the centre of a `bg-navbar` surface (`max-w-lg`): `AlertTriangle` (`size-8`, `text-warning`), the `h2` `この動画を読み取れませんでした`, the explanation `ファイルが壊れているか、途中までしか書き込まれていない可能性があります。` (`text-sm text-fg-muted`), the raw reason and the actions, stacked. The raw reason is in `bg-field`, `border border-border`, `rounded-md`, `font-mono text-xs text-fg`, `break-all`, and scrolls inside beyond three lines. The action is a `secondary` `もう一度読み取る` (`RefreshCw`), plus a `secondary` `ファイルを開く` (`FolderOpen`) only when the file can be opened. While sending, the button is disabled and its icon becomes a spinning `LoaderCircle`. On 202 or 409 `probe_not_failed`, the video is refetched and the screen moves to the stage display (409 means a retry already started from another tab or a double press). On any other failure, `読み取りを始められませんでした` in `text-sm text-danger` appears below the button, and the button becomes pressable again. `role="alert"` |
+| Video gone (404) | At the centre of a `bg-navbar` surface: `AlertCircle` (`text-fg-muted`), the `h2` `この動画は開けません` and `ライブラリから外れたか、ファイルが無くなりました。`. `role="alert"`, so it is read when a refetch or playback switches to this display. Going back is left to ×; no button is added |
 
 ### Processing stages
 
-取り込み中（`probeState=pending`）の面の書き方である（要件 12）。
+How the surface looks while scanning (`probeState=pending`) (requirement 12).
 
-- 面は `bg-navbar` で、中央に左揃えの塊（`max-w-sm`）を置く。
-- 塊の中身は上から次の順に並べる。
-  - `h2`「再生の準備をしています」（`text-lg font-semibold`）
-  - 説明「動画の情報を読み取っています。終わるとこの画面のまま再生できるようになります。」
-    （`text-sm text-fg-muted`）
-  - 段階の `ol`
-  - 注記「再生できるのは『動画情報の読み取り』が終わってからです。残りは再生中に作られます。」
-    （`text-xs text-fg-muted`）
-- 段階は次の 5 つで、並びは固定する。
-  - ファイルの検出
-  - 動画情報の読み取り
-  - サムネイル
-  - シーク用プレビュー
-  - 一覧用プレビュー
-- 各行は、アイコン・名前（`text-sm`）・右端の状態の文字（`text-xs`）を並べる。
-- 「ファイルの検出」の行は常に「完了」とする。動画の行が存在することが、検出が済んだことを
-  意味する。他の 4 行は、それぞれ `probeState`・
-  `thumbnailState`・`seekThumbnailState`・`previewState` から決める。
+- The surface is `bg-navbar`, with a left-aligned block (`max-w-sm`) at the
+  centre.
+- The block contains, top to bottom:
+  - the `h2` `再生の準備をしています` (`text-lg font-semibold`)
+  - the explanation `動画の情報を読み取っています。終わるとこの画面のまま再生できるようになります。`
+    (`text-sm text-fg-muted`)
+  - the `ol` of stages
+  - the note `再生できるのは『動画情報の読み取り』が終わってからです。残りは再生中に作られます。`
+    (`text-xs text-fg-muted`)
+- The five stages, in a fixed order:
 
-| 行の状態 | アイコン | 名前 | 状態の文字 |
+  | Stage | Shown as | Derived from |
+  | --- | --- | --- |
+  | File detection | `ファイルの検出` | Always `完了`: the video row exists, so detection has finished |
+  | Probe | `動画情報の読み取り` | `probeState` |
+  | Thumbnail | `サムネイル` | `thumbnailState` |
+  | Seek preview | `シーク用プレビュー` | `seekThumbnailState` |
+  | List preview | `一覧用プレビュー` | `previewState` |
+
+- Each row shows an icon, the name (`text-sm`) and the state text at the right
+  end (`text-xs`).
+
+| Row state | Icon | Name | State text |
 | --- | --- | --- | --- |
-| 完了 | `CircleCheck`（`text-success`） | `text-fg` | 「完了」`text-fg-muted` |
-| 処理中 | `LoaderCircle`（`text-accent`、回転） | `text-fg font-medium` | 「処理中」`text-accent` |
-| 待機中 | `Circle`（`text-fg-muted`） | `text-fg-muted` | 「待機中」`text-fg-muted` |
-| 作成できませんでした | `AlertCircle`（`text-warning`） | `text-fg-muted` | 「作成できませんでした」`text-fg-muted` |
+| Done | `CircleCheck` (`text-success`) | `text-fg` | `完了` in `text-fg-muted` |
+| Processing | `LoaderCircle` (`text-accent`, spinning) | `text-fg font-medium` | `処理中` in `text-accent` |
+| Waiting | `Circle` (`text-fg-muted`) | `text-fg-muted` | `待機中` in `text-fg-muted` |
+| Could not be created | `AlertCircle` (`text-warning`) | `text-fg-muted` | `作成できませんでした` in `text-fg-muted` |
 
-- 行の間は `gap-3`、アイコンと名前の間は `gap-2.5` とする。
-- `sm` 未満では、説明と注記を出さず、行の間を `gap-1.5` に詰める。
-- 塊は `role="status"`（`aria-live="polite"`）とし、段が進んだときだけ読まれるようにする。
-  2 秒ごとの取り直しで中身が変わらないときに、読み直させない。
+- Rows are spaced with `gap-3`, and the icon and name with `gap-2.5`.
+- Below `sm`, the explanation and the note are omitted, and rows tighten to
+  `gap-1.5`.
+- The block is `role="status"` (`aria-live="polite"`), so it is read only when a
+  stage advances. A refetch every 2 seconds that does not change the content does
+  not make it read again.
 
 ### Creating line
 
-読み取りは終わっていて、作成中のものが残っているときだけ、プレイヤーの直下に 1 行出す
-（要件 11）。
+Only when probing has finished and something is still being created, one line
+appears right below the player (requirement 11).
 
-- 作成中とは、サムネイル・シーク用プレビュー・一覧用プレビューのどれかが `pending` である
-  ことをいう。
-- 書式は `flex items-center gap-2`・`text-xs text-fg-muted`。先頭に `LoaderCircle`（`size-3.5`、
-  `text-accent`、回転）を置く。
-- 文言は「{作成中のもの}を作成中 · 再生はできます」とする。作成中のものは、上の段の名前を
-  「と」でつなぐ（例:「シーク用プレビューと一覧用プレビューを作成中 · 再生はできます」）。
-  件数や割合は出さない。
-- `role="status"` とする。`pending` が無くなったら行ごと消す（`failed` だけが残っても消す）。
+- "Being created" means that the thumbnail, the seek preview or the list preview
+  is `pending`.
+- Style: `flex items-center gap-2`, `text-xs text-fg-muted`, with `LoaderCircle`
+  (`size-3.5`, `text-accent`, spinning) first.
+- The text is `{作成中のもの}を作成中 · 再生はできます`, where the items being created
+  are the stage names above joined with `と` (for example
+  `シーク用プレビューと一覧用プレビューを作成中 · 再生はできます`). No counts or
+  percentages.
+- `role="status"`. When nothing is `pending` any more, the whole line disappears
+  (also when only `failed` remains).
 
 ### Ended
 
-最後まで再生すると、次の層を出す（要件 14）。
+When playback reaches the end, this layer appears (requirement 14).
 
-- 映像に `bg-overlay` を敷く。操作バーは、その上に出したままにする（もう一度見るのにも
-  使える）。
-- **次の動画があるとき**は、中央の `bg-navbar` の面（`max-w-lg`）に次を縦に並べる。
-  - ラベル「次の動画」（`text-xs font-semibold text-accent`）
-  - 次の動画へのリンク：サムネイル（`w-56`、16:9、`rounded-md`、長さの札付き）と題名
-    （`text-base font-semibold`、2 行で省略）を横に並べる
-  - 操作：`primary` の「次を再生」（`Play`）と、`secondary` の「もう一度見る」（`RotateCcw`）
-  - `sm` 未満ではサムネイルを出さず、題名と操作だけにする。
-- **次の動画が無いとき**は、中央に `secondary` の「もう一度見る」だけを置く。ラベルも置かない。
-- 自動では再生しない。カウントダウンも出さない。
-- 層が出たときは、視覚的に隠した「再生が終わりました」を `role="status"` で読む。
-  - フォーカスがプレイヤーの中にあったときだけ、「次を再生」（無ければ「もう一度見る」）へ
-    フォーカスを移す。
-  - プレイヤーの外（関連動画など）にいる人のフォーカスは奪わない。
+- `bg-overlay` over the video. The control bar stays shown above it (it can also
+  be used to watch again).
+- **When there is a next video**, a central `bg-navbar` surface (`max-w-lg`)
+  stacks:
+  - the label `次の動画` (`text-xs font-semibold text-accent`)
+  - a link to the next video: the thumbnail (`w-56`, 16:9, `rounded-md`, with the
+    duration tag) and the title (`text-base font-semibold`, truncated at two
+    lines), side by side
+  - actions: a `primary` `次を再生` (`Play`) and a `secondary` `もう一度見る`
+    (`RotateCcw`)
+  - Below `sm`, the thumbnail is omitted and only the title and the actions are
+    shown.
+- **When there is no next video**, only a `secondary` `もう一度見る` sits at the
+  centre, with no label.
+- Nothing plays automatically, and there is no countdown.
+- When the layer appears, a visually hidden `再生が終わりました` is read through
+  `role="status"`.
+  - Only when focus was inside the player does focus move to `次を再生` (or
+    `もう一度見る` when there is none).
+  - Focus of someone outside the player (in related videos, for example) is not
+    taken.
 
 ## Interaction details
 
-- **キーボード**：←/→ の秒数送りは
-  置かない。
-  - 再生速度のメニューが開いているときの Esc は、メニューを閉じるだけにする。
-  - 全画面中の Esc は、全画面の解除だけにする。
-- **Tab の順**：DOM の順に次のとおり。
-  - どの幅でも：見出しの帯（ロゴ → パンくず → ×）→ プレイヤー（中央操作 → 状態表示・
-    再生終了の層の操作 → 操作バー）→ タグ → 情報の行の操作 → 関連動画の各項目。
-- **動きを減らす設定**（`prefers-reduced-motion: reduce`）：回転（`LoaderCircle`）と、層の出入りの
-  `animate-fade-in` を止める。状態の見え方は変えない（library-ui.md 4）。
+- **Keyboard**: there is no ←/→ seek-by-seconds.
+  - Esc while the speed menu is open only closes the menu.
+  - Esc in fullscreen only leaves fullscreen.
+- **Tab order**: DOM order, at every width: heading band (logo → breadcrumb → ×)
+  → player (centre control → actions in the state or ended layer → control bar)
+  → tags → information row actions → each related video.
+- **Reduced motion** (`prefers-reduced-motion: reduce`): spinning
+  (`LoaderCircle`) and the `animate-fade-in` of layers appearing and disappearing
+  stop. How states look does not change (library-ui.md 4).
 
 ## Accessibility
 
-- 読み上げ名を付けるもの：
-  - × の「閉じる」
-  - 中央操作の「再生」／「一時停止」
-  - 操作バーの「最初に戻る」
-  - 左右の端の「前の動画: {題名}」「次の動画: {題名}」
-  - ロゴの「ホーム」、パンくずの `nav` の「フォルダ」
-  - 情報の行の「ファイルを開く」「パスをコピー」
-  - ファイルの情報・技術情報の `ul` の「ファイルの情報」「技術情報」
-- ファイルの情報の各値の前には、視覚的に隠した名前（「長さ」など）を置く。技術情報の行には
-  `lang="en"` を付ける。
-- 読み方を決めておくもの：
-  - 状態として（`status`）読む：段階表示・作成中の 1 行・読み込み中・再生終了
-  - 警告として（`alert`）読む：再生失敗・読み取り失敗・動画が消えた（404）・開けなかった 1 行
-- 題名は `h1` で、`document.title` は既存どおり「{題名} - vv」とする。
-- 色とコントラストの組：
-  - 新しく使う組は、`fg-muted` on `navbar` だけである（段階表示・読み取り失敗・再生失敗の
-    説明）。実装の PR で `tokens.test.ts` の `pairs` に足す。
-  - 層の中の文字は、どれも不透明な `bg-navbar` の上に置く（「Overlay layer」）。半透明の
-    `bg-overlay` の上の文字は `pairs` で検査できないので、そこに文字は置かない。
-  - それ以外（`fg`・`fg-muted` on `bg`、`warning` on `bg`、`fg`・`accent`・`success` on
-    `navbar`）はすでに入っている。
-  - アイコンだけに使う色（`danger`・`warning` on `navbar` など）は、文字ではないので組に
-    足さない。
+- Accessible names:
+  - × `閉じる`
+  - the centre control `再生` / `一時停止`
+  - the control bar's `最初に戻る`
+  - the edge handles `前の動画: {題名}` and `次の動画: {題名}`
+  - the logo `ホーム`, and the breadcrumb `nav` `フォルダ`
+  - the information row's `ファイルを開く` and `パスをコピー`
+  - the `ul`s for file and technical information, `ファイルの情報` and `技術情報`
+- Each file information value is preceded by a visually hidden name (such as
+  `長さ`). The technical information row has `lang="en"`.
+- How things are announced:
+
+  | Role | Elements |
+  | --- | --- |
+  | Status (`status`) | The stage display, the creating line, loading, playback ended |
+  | Alert (`alert`) | Playback failed, probe failed, video gone (404), the open-failed line |
+
+- The title is the `h1`, and `document.title` stays `{題名} - vv` as before.
+- Colour and contrast pairs:
+  - The only new pair is `fg-muted` on `navbar` (the explanations in the stage
+    display, probe failure and playback failure). The implementation PR adds it
+    to `pairs` in `tokens.test.ts`.
+  - All text in layers sits on the opaque `bg-navbar` ("Overlay layer"). Text on
+    translucent `bg-overlay` cannot be checked through `pairs`, so no text goes
+    there.
+  - The others (`fg` and `fg-muted` on `bg`, `warning` on `bg`, and `fg`,
+    `accent` and `success` on `navbar`) are already included.
+  - Colours used only for icons (such as `danger` and `warning` on `navbar`) are
+    not text, so they are not added as pairs.
