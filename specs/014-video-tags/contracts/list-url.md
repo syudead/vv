@@ -1,45 +1,53 @@
-# Contract: タグの絞り込みを表す URL
+# Contract: URL for the tag filter
 
-親 Issue: #193。
+Parent Issue: #193.
 
-ライブラリ一覧（`/`）の条件の URL は、#195 の
-[list-url.md](../../013-library-search/contracts/list-url.md) が正本である。この文書は、
-そこへ足すパラメータと、その扱いの差分だけを書く。フォルダ画面の URL は変えない。
+The source of truth for the library list (`/`) URL is #195's
+[list-url.md](../../013-library-search/contracts/list-url.md). This document
+covers only the parameter this feature adds and how it is handled. The folder
+screen URL does not change.
 
-## 1. パラメータ
+## 1. Parameters
 
-| 名前 | 値 | 省略時 |
+| Name | Value | When omitted |
 | --- | --- | --- |
-| `tag` | タグの `id`。選んだタグごとに1つ（`?tag=3&tag=8`）。最大 16 個 | タグで絞らない |
+| `tag` | A tag `id`, one per selected tag (`?tag=3&tag=8`). At most 16 | No tag filter |
 
-- 名前ではなく `id` を載せる。改名しても同じ絞り込みのまま URL が使え、シノニムの名前で
-  選んでも元のタグの `id` になるので、同じ条件が2つの URL を持たない（要件 7）。
-- 書く順は `id` の昇順にそろえる。選んだ順で URL が変わらないようにし、
-  [listSnapshot](../../../web/src/api/listSnapshot.ts) の鍵の一致を保つ。
-- 数でない値、重複、17 個目以降は捨てる。誤りは出さない。
-- 一覧の応答の `missingTagIds`（[tags-api.md §5](tags-api.md#5-一覧の絞り込みとすべて選択)）に
-  ある `id` を URL から取り除く。履歴は増やさず、今の項目を置き換える。同時に、その
-  タグがもう無いことを伝え、タグの一覧を取り直す（Edge Case「ほかの画面での並行した
-  変更」）。一覧そのものは、サーバーが無い `id` を無視して返したものをそのまま出す。
-- 一覧の控え（`listSnapshot`）の鍵に、整えた `tag` の並びを含める。`/?tag=1` から戻って
-  `/` の控えが使われないようにする。
-- 控えから一覧を戻したときは、一覧の要求をしないので `missingTagIds` が届かない。そこで
-  画面は、戻したときに取り直す共有のタグの一覧と URL の
-  `tag` を突き合わせる。一覧に無い `id` があれば、`missingTagIds` を受けたときと同じく
-  伝えて URL から取り除く。条件が変わるので控えは使われず、一覧は取り直される。
+- The URL carries the `id`, not the name. A renamed tag keeps the same filter
+  and URL, and choosing a tag by a synonym yields the original tag's `id`, so one
+  condition never has two URLs (requirement 7).
+- The `id`s are written in ascending order. The URL does not depend on the order
+  of selection, which keeps the
+  [listSnapshot](../../../web/src/api/listSnapshot.ts) keys matching.
+- Non-numeric values, duplicates, and values beyond the 16th are dropped without
+  an error.
+- `id`s listed in the list response's `missingTagIds`
+  ([tags-api.md §5](tags-api.md#5-list-filter-and-select-all)) are removed from
+  the URL by replacing the current history entry, not adding one. The screen
+  also reports that the tag no longer exists and refetches the tag list (Edge
+  Case `ほかの画面での並行した変更`). The list itself is shown as the server
+  returned it, with the missing `id`s ignored.
+- The list snapshot (`listSnapshot`) key includes the normalized `tag`
+  sequence, so returning from `/?tag=1` does not reuse the snapshot of `/`.
+- When the list is restored from a snapshot, no list request is made and no
+  `missingTagIds` arrives. The screen therefore compares the URL's `tag` with the
+  shared tag list it refetches on restore. An `id` missing from the tag list is
+  reported and removed from the URL, as when `missingTagIds` arrives. The
+  condition changes, so the snapshot is not used and the list is refetched.
 
-## 2. タグを押したときと外したとき
+## 2. Adding and removing a tag
 
-- ライブラリ一覧のカードでタグを押すと、今の URL の `tag` にその `id` を足す。検索語
-  （`q`）・視聴状態・再生可否・並べ替えはそのまま残す（要件 5）。すでに `tag` にある
-  `id` なら何も変えない。16 個ある状態で押したときは足さずに、足せないことを伝える。
-- 再生画面でタグを押したとき、管理画面でタグを選んだときは、`/?tag=<id>` を開く。ほかの
-  条件は付けない（受け入れ条件 7・16）。並べ替えは #195 の規則どおり端末に保存したものになる。
-- 一覧の上の絞り込み中のタグを外すと、URL の `tag` からその `id` だけを取り除く。ほかの
-  条件はそのまま残す。
-- タグを足す・外すたびに、#195 の視聴状態と同じく履歴を1つ増やす。
-- #195 の「条件を解除」は `tag` も消す。#195 の `ui-design.md` は、「条件を解除」を出す
-  条件を視聴状態・再生可否と検索語だけで書いている。タグ絞り込みがあるときにも出す見た目は、
-  この feature の design 工程で決める。
-- 絞り込み中のタグは一覧の上に別に並べるので、#195 の「絞り込み（n 件適用中）」の n には
-  数えない。「絞り込み」のメニューにタグの選択欄は置かない（対象外）。
+| Action | URL change |
+| --- | --- |
+| Press a tag on a library list card | Add its `id` to the current URL's `tag`; keep the search term (`q`), watch state, playability and sort (requirement 5). Nothing changes when the `id` is already in `tag`. With 16 tags already present, the tag is not added and the screen says it cannot be added |
+| Press a tag on the video page, or choose a tag on the management page | Open `/?tag=<id>` with no other conditions (acceptance criteria 7 and 16). The sort is the one saved on the device, per #195's rules |
+| Remove an active tag filter above the list | Remove only that `id` from `tag`; keep the other conditions |
+
+- Each add or remove pushes one history entry, as #195's watch state does.
+- #195's `条件を解除` also clears `tag`. #195's `ui-design.md` shows
+  `条件を解除` only for watch state, playability and the search term. How it
+  appears when a tag filter is active is decided in this feature's design
+  stage.
+- Active tag filters are listed separately above the list, so they do not count
+  toward n in #195's `絞り込み（n 件適用中）`. The `絞り込み` menu has no tag
+  selector (out of scope).

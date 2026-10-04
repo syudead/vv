@@ -1,54 +1,64 @@
-# Contract: 一覧の条件を表す URL
+# Contract: URL for list conditions
 
-親 Issue: #195。
+Parent Issue: #195.
 
-ライブラリ（`/`）、フォルダ画面の最上位（`/folders`）、各フォルダ
-（`/folders/{rootId}/{段}…`）は、同じクエリパラメータで一覧の条件を表す（要件 16・18）。
-フォルダの位置は既存のパスで表す。見た目と操作の配置は
-[UI 設計](../ui-design.md)に記す。
+The library (`/`), the top of the folder screen (`/folders`) and each folder
+(`/folders/{rootId}/{segment}…`) express the list conditions with the same query
+parameters (requirements 16 and 18). The folder position is expressed by the
+existing path. The visual layout and the controls are in the
+[UI design](../ui-design.md).
 
-## 1. パラメータ
+## 1. Parameters
 
-| 名前 | 値 | 省略時 |
+| Name | Value | When omitted |
 | --- | --- | --- |
-| `q` | 検索語。前後の空白を落とし、100 符号位置で切る（サーバーの `[]rune` の数え方と同じ） | 検索しない |
-| `watch` | `unwatched` \| `inProgress` \| `watched` | すべて |
-| `playable` | `1` | 絞らない |
-| `sort` | [list-api.md §3](list-api.md#3-videosort-の値) の値 | 端末に保存した並べ替え（既定 `addedDesc`） |
-| `seed` | 1 以上 2147483647 以下の整数 | `sort=random` のときは画面が作って足す |
+| `q` | The query. Leading and trailing spaces are dropped, and it is cut at 100 code points (the same counting as the server's `[]rune`) | No search |
+| `watch` | `unwatched` \| `inProgress` \| `watched` | All |
+| `playable` | `1` | No filtering |
+| `sort` | A value from [list-api.md §3](list-api.md#3-videosort-values) | The sort saved on the device (default `addedDesc`) |
+| `seed` | An integer from 1 to 2147483647 | For `sort=random`, the screen generates and adds one |
 
-- `watch=all` と `playable` の偽は URL に書かない。同じ条件が2つの URL を持たないようにし、
-  [listSnapshot](../../../web/src/api/listSnapshot.ts) の鍵の一致を保つ（鍵は URL ではなく解釈した
-  条件から作るので、`sort` の有無で控えが外れることはない）。
-- `sort` は、条件を変えて履歴を増やすときに必ず書く。省くと「端末に保存した並べ替え」の意味になり、
-  並べ替えを変えたあとの戻るで前の並べ替えに戻れないためである。条件を変える前の `/` は `sort` を
-  書かずに開き、最初に履歴を増やす直前に、今の項目を今の並べ替えを書いた URL へ置き換える
-  （戻ると `/?sort=addedDesc` のように並べ替えを書いた URL に戻る）。
-- 解釈できない値（未知の `sort`・`watch`、数でない `seed`、`playable` の `1` 以外）は
-  既定として扱い、誤りを出さない。今の形式の URL（`?q=…&sort=addedDesc`）は同じ意味の
-  一覧になる（Edge Case「古い URL」）。
-- `sort=random` で `seed` が無いか壊れているときは、画面が新しい `seed` を作り、履歴を
-  増やさずに URL へ書き足す。以後、再読み込み・共有・戻る/進むで同じ並びになる。
-- 「並べ直す」は新しい `seed` を作って URL を変える。
+- `watch=all` and a false `playable` are not written into the URL, so that one
+  set of conditions never has two URLs and the keys of
+  [listSnapshot](../../../web/src/api/listSnapshot.ts) stay equal. (The key is
+  built from the interpreted conditions, not the URL, so whether `sort` is
+  present does not make the snapshot miss.)
+- `sort` is always written when a condition change adds a history entry.
+  Omitting it means "the sort saved on the device", so after changing the sort,
+  Back could not return to the previous sort. `/` is opened without `sort` before
+  any condition change, and right before the first history entry is added, the
+  current entry is replaced with a URL that carries the current sort (Back then
+  returns to a URL with the sort written, such as `/?sort=addedDesc`).
+- Values that cannot be interpreted (unknown `sort` or `watch`, a non-numeric
+  `seed`, `playable` other than `1`) are treated as the defaults without an error.
+  A URL in the current form (`?q=…&sort=addedDesc`) gives a list with the same
+  meaning (Edge Case "old URLs").
+- When `sort=random` has no `seed` or a broken one, the screen generates a new
+  `seed` and adds it to the URL without adding a history entry. From then on,
+  reload, sharing and Back/Forward give the same order.
+- "Shuffle" generates a new `seed` and changes the URL.
 
-## 2. フォルダ画面での意味
+## 2. Meaning on the folder screen
 
-- `q` が空でないとき、そのフォルダと配下すべてを対象に検索する（`listFolderVideos` を
-  `scope=subtree` で呼ぶ）。最上位（`/folders`）では `listVideos` で全体を検索する。
-- `q` が空で `watch`・`playable` だけがあるときは、直下の動画だけを絞る（`scope=direct`）。
-  子フォルダのカードはそのまま出す（要件 20）。
-- 最上位（`/folders`）で `q` が空のときは、登録フォルダのカードだけを出し、`watch`・
-  `playable` は URL に残っても効かない。それらの操作を出すか隠すかは `ui-design.md` が
-  決める。
-- 「条件を解除」は `q`・`watch`・`playable` を消し、`sort`・`seed` とフォルダの位置は残す
-  （要件 21）。
+| Location and conditions | Behaviour |
+| --- | --- |
+| A folder, `q` not empty | Searches the folder and everything below it (`listFolderVideos` with `scope=subtree`) |
+| The top (`/folders`), `q` not empty | Searches everything with `listVideos` |
+| A folder, `q` empty, only `watch` or `playable` | Filters only the videos directly in the folder (`scope=direct`); the child folder cards are shown unchanged (requirement 20) |
+| The top (`/folders`), `q` empty | Shows only the registered folder cards; `watch` and `playable` have no effect even if they stay in the URL. `ui-design.md` decides whether those controls are shown or hidden |
 
-## 3. 履歴
+"Clear filters" removes `q`, `watch` and `playable`, and keeps `sort`, `seed`
+and the folder position (requirement 21).
 
-- 視聴状態・再生可否・並べ替え・向き・並べ直す・条件を解除は、それぞれ履歴を1つ増やす
-  （受け入れ条件 12 の戻る/進む）。今の画面は並べ替えと検索語を `replace` で書き換えて
-  おり、戻るで前の条件に戻れない。受け入れ条件 12 を満たすため、これを改める。
-- 検索語の入力は、検索欄にフォーカスが入ってから外れるか Esc で抜けるまでの一続きの入力で
-  履歴を1つだけ増やす。続けて打った文字ごとには増やさない。
-- 端末に保存するのは並べ替え（`sort`）だけで、検索語・絞り込み・`seed` は保存しない。
-  ランダムを保存した端末で URL に `sort` が無いときは、新しい `seed` で開く。
+## 3. History
+
+- Watch state, playability, sort, direction, Shuffle and Clear filters each add
+  one history entry (Back/Forward in acceptance criterion 12). The current screen
+  rewrites the sort and the query with `replace`, so Back cannot return to the
+  previous conditions. This changes to meet acceptance criterion 12.
+- Typing a query adds only one history entry for one continuous input, from when
+  focus enters the search field until it leaves or Esc exits. Each typed
+  character does not add one.
+- Only the sort (`sort`) is saved on the device; the query, the filters and
+  `seed` are not. On a device that saved random, when the URL has no `sort`, the
+  list opens with a new `seed`.

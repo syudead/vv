@@ -1,162 +1,151 @@
-# Research: 一覧のカードでサムネイル下端をなぞって動画の中身を見渡せるようにする
+# Research: Scrub along the bottom of a library card's thumbnail to skim the video
 
-継承する技術の決定は [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
-と [ARCHITECTURE.md](../../ARCHITECTURE.md)（Web layer）にある。ここに書くのは、この feature が
-足す決定だけである。親 Issue は #616。
+Inherited decisions: [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
+and [ARCHITECTURE.md](../../ARCHITECTURE.md) (Web layer). This file records only the decisions this feature adds.
+The parent Issue is #616.
 
-## R-1: コマ選びと切り出しの共有の置き場
+## R-1: Shared home for frame selection and cropping
 
-**Decision**: `web/src/player/seekPreview.ts` にある位置からコマを決める純粋関数
-`seekSpriteCell` と、シートをコマの箱に敷いて列・行の分だけずらす計算（`showCell` の
-`background-size` / `background-position` と `offsetPercent`）を `web/src/lib/seekSprite.ts` へ
-移し、プレイヤーのシークバーとカードの帯の両方がそこから使う。帯の横位置から位置
-（ミリ秒）を決める規則も同じファイルに置き、`seekPreviewTarget` の位置の計算（右端で
-`ceil(durationMs) - 1` に丸める）を共有する。`attachSeekPreview` 自体は DOM を直に組み立てる
-プレイヤー専用の取り付けなので動かさない。
+**Decision**: the pure function `seekSpriteCell` in `web/src/player/seekPreview.ts`, which picks a frame from a
+position, and the calculation that lays a sheet over the frame box and shifts it by column and row (`showCell`'s
+`background-size` / `background-position` and `offsetPercent`) move to `web/src/lib/seekSprite.ts`. Both the
+player's seek bar and the card band use them from there. The rule that turns the band's horizontal position into
+a position (milliseconds) goes in the same file and shares `seekPreviewTarget`'s position calculation (rounded to
+`ceil(durationMs) - 1` at the right end). `attachSeekPreview` itself stays: it is a player-only attachment that
+builds the DOM directly.
 
-**Rationale**: 要件 5 は「プレイヤーと一覧で同じ位置に別のコマが出ない」ことを求める。
-同じ関数を呼ぶのが、規則を 2 か所に書いて揃え続けるより確実で、テストも 1 か所で済む。
-`web/src/lib/` は locale に依らない計算の置き場で、`api/client` の型だけを読む前例がある
-（ARCHITECTURE.md「Web layer」）。`videoList/` と `player/` は互いを import していないので、
-どちらかに置くと新しい依存の向きが生まれる。
-
-**Alternatives considered**:
-
-- `attachSeekPreview` をカードにも取り付ける: 吹き出し（`.vv-seek-preview`）とその時刻表示を
-  自分で作り、`pointerdown` でポインタを捕まえる作りで、サムネイルの面にコマを出す帯には
-  合わない。React の状態（時間表示の差し替え、ループの一時停止）とも噛み合わない。却下。
-- 規則を `web/src/ui/` に書き写す: 同じ式が 2 か所になり、`intervalMs` の扱いを片方だけ
-  変える事故を招く。却下。
-
-## R-2: ループ再生と帯の関係
-
-**Decision**: 帯に入ったら、ループの状態に応じてこうする。
-
-- 400ms の待ちの間（timer が動いている）: timer を消す。帯からカードの中へ出たら、
-  そこから 400ms を数え直す。
-- 再生中（`playing`）または読み込み中（`attempting` で `playing` 前）: `video` 要素を
-  `pause()` し、`src` と要素は保つ。帯からカードの中へ出たら `play()` で再開する。
-- 帯からカードの外へ出た、別のカードのプレビューが始まった、`previewResetEpoch` が
-  変わった、選択モードに入った: 今の `releasePreview` と同じく解放する。
-
-この「一時停止」と「再開」を `useCardPreview`（`web/src/videoList/cardPreview.tsx`）と
-`useHoverPreview`（`web/src/player/useHoverPreview.ts`）のそれぞれに
-`suspendPreview()` / `resumePreview()` として足し、帯の hook（R-3）は帯への出入りで
-それを呼ぶだけにする。帯の hook はループの作りを知らない。
-
-**Rationale**: 要件 3 は「帯から出てカードの中に留まっていればループ再生に戻る」と
-「待ちは帯にいる間は進まず、帯から出たところから数え直す」を求める。`pause()` で止めると、
-Edge Cases の「ループ再生中に帯へ入ったなら、止めた時点の画面を見せ続ける」が
-`video` 要素の最後のフレームでそのまま満たせる。解放して 400ms から始め直すと、戻りが
-遅く、取得待ちの間に見せる画面も失う。
+**Rationale**: requirement 5 says "the player and the library never show different frames for the same
+position". Calling the same function is more reliable than writing the rule in two places and keeping them in
+step, and it is tested in one place. `web/src/lib/` is the home for locale-independent calculation, with a
+precedent of reading only types from `api/client` (ARCHITECTURE.md "Web layer"). `videoList/` and `player/` do not
+import each other, so placing it in either would create a new dependency direction.
 
 **Alternatives considered**:
 
-- 帯に入ったらループを解放し、出たら 400ms から始め直す: 要件 3 の「ループ再生に戻る」を
-  満たさない（戻るまで 400ms 以上かかり、読み込みもやり直す）。却下。
-- `useHoverPreview` を `useCardPreview` に統合してから帯を付ける: 2 つの hook は 010 と
-  012 で別々に育ち、調整（`activePreviewId`）の有無が違う。統合は別の変更で、この feature
-  の範囲（要件 8）を超える。両方に同じ 2 つの操作を足す方が小さい。却下。
+| Option | Verdict |
+| --- | --- |
+| Attach `attachSeekPreview` to cards too | Rejected: it builds its own tooltip (`.vv-seek-preview`) with its time display and captures the pointer on `pointerdown`, which does not fit a band that shows the frame on the thumbnail itself. It also does not mesh with React state (swapping the time display, pausing the loop) |
+| Copy the rule into `web/src/ui/` | Rejected: the same formula in two places invites changing the handling of `intervalMs` in only one |
 
-## R-3: 帯の hook と、配置情報・シートの取得の規則
+## R-2: Loop playback and the band
 
-**Decision**: `web/src/ui/ScrubPreview.tsx` に hook `useScrubPreview` と、コマを出す層
-`ScrubFrame`、帯 `ScrubBand` を置く。hook は 1 カードにつき 1 つで、次を持つ。
+**Decision**: on entering the band, the action depends on the loop's state:
 
-- 帯の有効条件: `video.seekThumbnailUrl` があり、`durationMs` が正で、
-  `unplayableText(video) === null`、選択モードでなく、`pointerType === "mouse"`。
-  `previewState` には依らない（Edge Cases: ループが無くてもスプライトがあれば帯は働く）。
-- 取得: そのカードでポインタが帯に**初めて**入ったとき `fetchSeekThumbnailSprite` を呼び、
-  配置情報が来たら今の位置のコマが載るシートを `fetchSeekThumbnailSheet` で取り、
-  object URL で持つ。複数シートの旧形式（最大 6 シート）は、指した位置のシートだけを
-  必要になったときに取る。持っているシートと配置情報は再取得しない（受け入れ条件 5）。
-- 打ち切り: ポインタがカードを出たら進行中の取得を `AbortController` で打ち切る。帯を出て
-  カードの中に留まっている間は取得を続け、終わってもコマは出さない（次に帯へ入ったときに
-  使う）。
-- 失敗（`409`・`404`・ネットワーク）: 状態を「使えない」にし、サムネイルのまま何も出さない。
-  ポインタがカードを出て入り直すまで取得し直さない。プレイヤーの 5 秒の再試行は使わない。
-- 表示: 取得が終わった時点の最新のポインタ位置のコマから出す。取得待ちの間は何も
-  描かない（`ScrubFrame` は配置情報とシートが揃うまで要素を出さない）。
-- 帯の外へ出たら、位置と表示を消す。配置情報とシートは保つ。
+| Loop state | On entering the band | On leaving the band into the card |
+| --- | --- | --- |
+| During the 400ms wait (timer running) | Clear the timer | Count 400ms again from there |
+| Playing (`playing`) or loading (`attempting`, before `playing`) | `pause()` the `video` element, keeping `src` and the element | Resume with `play()` |
 
-**Rationale**: 要件 7 と Edge Cases の「帯に入らずに通り過ぎるだけでは取得しない」
-「カードを出た場合は取得を打ち切る」「ポインタがカードを出て入り直せば改めて取得を試す」
-をそのまま状態にした。プレイヤーの再試行（5 秒）は、同じシークバーの上に留まり続ける
-操作のためのもので、カードを離れれば入り直すという一覧の操作とは合わない。
-`web/src/ui/` は `videoList/`（`CardMedia`）と `player/`（`VideoThumbnail`）の両方が既に
-import している唯一の置き場（`ThumbnailBackdrop`）で、ここに置けば新しい依存の向きを
-作らない。`ui/` が `api/client` の取得関数を呼ぶのは、「サーバーと話すのは `web/src/api/`
-だけ」（ARCHITECTURE.md）に沿う。
+Leaving the band to outside the card, another card's preview starting, a change of `previewResetEpoch`, or
+entering selection mode releases the preview, as the current `releasePreview` does.
+
+This "suspend" and "resume" are added to both `useCardPreview` (`web/src/videoList/cardPreview.tsx`) and
+`useHoverPreview` (`web/src/player/useHoverPreview.ts`) as `suspendPreview()` / `resumePreview()`, and the band
+hook (R-3) only calls them on entering and leaving the band. The band hook does not know how the loop works.
+
+**Rationale**: requirement 3 asks that "leaving the band while staying on the card returns to loop playback" and
+"the wait does not progress while in the band and counts again from where the pointer left the band". Stopping
+with `pause()` meets the Edge Case "if the band is entered during loop playback, keep showing the frame at the
+moment it stopped" with the `video` element's last frame as it is. Releasing and restarting from 400ms would
+return slowly and also lose the picture to show while waiting for the fetch.
 
 **Alternatives considered**:
 
-- `web/src/videoList/` に置いて `player/` から import する: 再生画面がライブラリとフォルダ
-  画面の共有部品に依存する新しい向きになる。却下。
-- シートを object URL にせず `sheets[n]` の URL をそのまま `background-image` に使う:
-  シートは `private, no-cache` と `ETag` で返るので、帯を出入りするたびに再検証の要求が
-  出て受け入れ条件 5 を破る。却下。
-- 配置情報だけを一覧の応答に載せて事前に取る: サーバーと API は対象外。却下。
+| Option | Verdict |
+| --- | --- |
+| Release the loop on entering the band and restart from 400ms on leaving | Rejected: does not meet requirement 3's "returns to loop playback" (returning takes 400ms or more and reloads) |
+| Merge `useHoverPreview` into `useCardPreview` before adding the band | Rejected: the two hooks grew separately in 010 and 012 and differ in coordination (`activePreviewId`). Merging is a separate change beyond this feature's scope (requirement 8); adding the same two operations to both is smaller |
 
-## R-4: 保持したシートの解放
+## R-3: The band hook, and rules for fetching the layout and sheets
 
-**Decision**: hook が持つ object URL は、カードの unmount に加えて、カードが viewport から
-外れたとき（`IntersectionObserver`、`rootMargin` は viewport 1 つ分）に解放する。
-解放したら配置情報も捨て、次に帯へ入ったときに取り直す。
+**Decision**: `web/src/ui/ScrubPreview.tsx` holds the hook `useScrubPreview`, the frame layer `ScrubFrame`, and the
+band `ScrubBand`. There is one hook per card, holding the following:
 
-**Rationale**: Edge Cases は「保持していたシートは、カードが画面から外れたときに解放する」
-と言う。一覧は無限スクロールでカードを足し続け、unmount しないので、unmount だけでは
-数百枚のシート（復号済みの bitmap）を持ち続ける。
+| Concern | Rule |
+| --- | --- |
+| When the band is active | `video.seekThumbnailUrl` exists, `durationMs` is positive, `unplayableText(video) === null`, not in selection mode, and `pointerType === "mouse"`. It does not depend on `previewState` (Edge Cases: the band works whenever there is a sprite, even with no loop) |
+| Fetching | When the pointer enters the band on that card **for the first time**, call `fetchSeekThumbnailSprite`; when the layout arrives, fetch the sheet holding the current position's frame with `fetchSeekThumbnailSheet` and hold it as an object URL. For the old multi-sheet format (up to 6 sheets), fetch only the sheet for the pointed position when it is needed. Held sheets and the layout are not fetched again (acceptance criterion 5) |
+| Aborting | When the pointer leaves the card, abort fetches in progress with `AbortController`. While the pointer has left the band but stays on the card, fetching continues; when it finishes, no frame is shown (it is used on the next entry into the band) |
+| Failure (`409`, `404`, network) | Set the state to "unavailable" and show nothing but the thumbnail. Do not fetch again until the pointer leaves the card and comes back. The player's 5-second retry is not used |
+| Display | Show the frame for the latest pointer position at the moment fetching finishes. Draw nothing while waiting (`ScrubFrame` renders no element until both the layout and the sheet are present) |
+| Leaving the band | Clear the position and the display. Keep the layout and sheets |
 
-**Alternatives considered**:
-
-- unmount でだけ解放する: 上のとおり、スクロールした分だけ増え続ける。却下。
-- ページ全体で LRU の上限（例: 20 シート）を持つ: 画面に見えているカードのシートまで
-  捨てることがあり、受け入れ条件 5（同じカードで再取得しない）と衝突する。却下。
-
-## R-5: コマの収め方と帯の形
-
-**Decision**: `ScrubFrame` はサムネイルの面に重ねる 1 つの要素で、
-`aspect-ratio: frameWidth / frameHeight`・`max-width: 100%`・`max-height: 100%` を中央に
-置き、その箱にシートを `columns × 100% / rows × 100%` で敷いて R-1 の位置にずらす。
-これで `object-contain` の `<img>` と同じ枠・同じ収め方になり、縦長の動画では既存の
-`ThumbnailBackdrop`（ぼかしたサムネイル）がそのまま後ろに残る。コマの切り替えに遷移は
-付けない（動きを減らす設定でも同じ）。
-
-帯 `ScrubBand` はサムネイルの面の下端に置く透明な要素（高さは面の 5 分の 1）で、
-`Link` の中、再生時間の表示と視聴位置のバーより前（z 順）、選択のチェックより後ろに置く。
-hover で拡大する media 層（`group-hover:scale-[1.03]`）の外に置き、帯の幅は拡大に
-影響されない。帯はポインタの出入りと移動を受け取るだけで、クリックは `Link` に届く
-（要件 9）。
-
-**Rationale**: 要件 6 は「サムネイルと同じ枠・同じ収め方」、UI 品質は「帯の存在を示す
-外枠・ラベル・アイコンを追加しない」。再生時間の表示は面の右下（`bottom-2`）にあって
-帯の高さに入るので、帯を前に置かないと、表示の上にポインタが来たときに帯から出た扱いに
-なり、コマが消える。
+**Rationale**: this turns requirement 7 and the Edge Cases "passing over without entering the band does not
+fetch", "leaving the card aborts the fetch" and "leaving the card and coming back tries fetching again" directly
+into state. The player's retry (5 seconds) is for an interaction that stays on the same seek bar; it does not fit
+the library's interaction of leaving a card and coming back. `web/src/ui/` is the only place that both
+`videoList/` (`CardMedia`) and `player/` (`VideoThumbnail`) already import (`ThumbnailBackdrop`), so putting the
+hook there creates no new dependency direction. `ui/` calling the fetch functions of `api/client` follows "only
+`web/src/api/` talks to the server" (ARCHITECTURE.md).
 
 **Alternatives considered**:
 
-- `<canvas>` にコマを描く: シートの復号と描画を自前で持ち、拡大のぼけ方が `<img>` と
-  変わる。CSS の背景で足りる。却下。
-- `<img src=sheet>` を `object-fit: none` と `object-position` で切り出す: `object-position`
-  はコマの大きさの整数倍のずれを割合で表しにくく、プレイヤーと別の計算になる。却下。
+| Option | Verdict |
+| --- | --- |
+| Put it in `web/src/videoList/` and import it from `player/` | Rejected: a new direction in which the player screen depends on a component shared by the library and folder screens |
+| Use the `sheets[n]` URL directly as `background-image` instead of an object URL | Rejected: sheets are served with `private, no-cache` and an `ETag`, so every entry into the band sends a revalidation request and breaks acceptance criterion 5 |
+| Put the layout in the list response and fetch ahead | Rejected: the server and API are out of scope |
 
-## R-6: 時間表示とバーの差し替え
+## R-4: Releasing held sheets
 
-**Decision**: 帯にいる間、カードの再生時間の表示を「スクラブ位置 / 動画の長さ」に、視聴位置の
-バーをスクラブ位置のバーに差し替える。文字列は `web/src/i18n/en.ts` に
-`t.list.card.scrubTime(position, duration)` を足して作る。バーは既存の `role="progressbar"`
-の要素を使い回さず、帯にいる間だけ `aria-hidden` の別の要素を同じ場所に出す。
-色・区切り・端の見え方は design 段階の `ui-design.md` が決める。
+**Decision**: the object URLs the hook holds are released on card unmount and also when the card leaves the
+viewport (`IntersectionObserver`, `rootMargin` of one viewport). On release the layout is discarded too, and it is
+fetched again on the next entry into the band.
 
-**Rationale**: 要件 4 と UI 品質（既存の表示を兼用し、新しい文字の指定を増やさない）。
-視聴位置の `progressbar` は支援技術に「視聴した割合」を伝える要素で、ポインタの位置で
-値を書き換えると読み上げが意味を失う（010 の ui-design.md「Accessibility」: ポインタ専用の
-一時的な視覚情報は読み上げに割り込ませない）。固定の文字列（` / `）は
-`web/src/i18n/` の外に置けない（ARCHITECTURE.md「Web layer」の ESLint の規則）。
+**Rationale**: the Edge Cases say "held sheets are released when the card leaves the screen". The library keeps
+adding cards with infinite scroll and does not unmount them, so releasing only on unmount would keep hundreds of
+sheets (decoded bitmaps) alive.
 
 **Alternatives considered**:
 
-- 既存の `progressbar` の `aria-valuenow` をスクラブ位置で上書きする: 上のとおり読み上げの
-  意味が変わる。却下。
-- 時刻を帯の上の吹き出し（プレイヤーと同じ `.vv-seek-preview-time`）で出す: UI 品質は
-  「時刻は既存の再生時間の表示を兼用」と言う。却下。
+| Option | Verdict |
+| --- | --- |
+| Release only on unmount | Rejected: as above, the count grows with every scroll |
+| A page-wide LRU limit (for example 20 sheets) | Rejected: can discard sheets of cards still on screen, conflicting with acceptance criterion 5 (no refetch on the same card) |
+
+## R-5: How frames fit and the band's shape
+
+**Decision**: `ScrubFrame` is one element laid over the thumbnail surface: a centred box with
+`aspect-ratio: frameWidth / frameHeight`, `max-width: 100%` and `max-height: 100%`, over which the sheet is laid
+at `columns × 100% / rows × 100%` and shifted to the R-1 position. This gives the same frame and the same fit as an
+`object-contain` `<img>`, and for portrait videos the existing `ThumbnailBackdrop` (blurred thumbnail) stays
+behind as it is. Switching frames has no transition (also with reduced motion).
+
+The band `ScrubBand` is a transparent element at the bottom of the thumbnail surface (one fifth of the surface's
+height), inside the `Link`, in front of the duration display and the watch-position bar (z-order), and behind the
+selection check. It sits outside the media layer that scales on hover (`group-hover:scale-[1.03]`), so its width is
+not affected by the scaling. The band only receives pointer enter, leave and move; clicks reach the `Link`
+(requirement 9).
+
+**Rationale**: requirement 6 asks for "the same frame and the same fit as the thumbnail", and `UI品質` says "add no
+border, label or icon that signals the band". The duration display sits at the bottom right of the surface
+(`bottom-2`) within the band's height, so unless the band is in front, the pointer over the display counts as
+leaving the band and the frame disappears.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Draw frames on a `<canvas>` | Rejected: would own sheet decoding and drawing, and scaling blurs differently from `<img>`. A CSS background is enough |
+| Crop `<img src=sheet>` with `object-fit: none` and `object-position` | Rejected: `object-position` cannot easily express offsets of whole multiples of the frame size as percentages, and the calculation would differ from the player's |
+
+## R-6: Swapping the time display and the bar
+
+**Decision**: while the pointer is in the band, the card's duration display becomes "scrub position / video
+length", and the watch-position bar becomes a scrub-position bar. The string comes from
+`t.list.card.scrubTime(position, duration)`, added to `web/src/i18n/en.ts`. The bar does not reuse the existing
+`role="progressbar"` element; a separate `aria-hidden` element is shown in the same place only while in the band.
+The colour, separator and end appearance are decided by the design stage's `ui-design.md`.
+
+**Rationale**: requirement 4 and `UI品質` (reuse the existing display and add no new text styling). The
+watch-position `progressbar` tells assistive technology "the fraction watched"; rewriting its value with the
+pointer position would make the announcement meaningless (010 ui-design.md "Accessibility": temporary
+pointer-only visual information does not interrupt the screen reader). A fixed string (` / `) cannot live outside
+`web/src/i18n/` (the ESLint rule in ARCHITECTURE.md "Web layer").
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Overwrite the existing `progressbar`'s `aria-valuenow` with the scrub position | Rejected: as above, it changes what is announced |
+| Show the time in a tooltip above the band (`.vv-seek-preview-time`, as in the player) | Rejected: `UI品質` says "the time reuses the existing duration display" |

@@ -1,234 +1,256 @@
-# UI Design: 一覧のカードでサムネイル下端をなぞって動画の中身を見渡す
+# UI design: Scrub along the bottom of a library card's thumbnail to skim the video
 
-**Feature**: [parent Issue #616](https://github.com/syudead/vv/issues/616) ・
-[plan.md](plan.md) ・
-[research.md R-2](research.md#r-2-ループ再生と帯の関係)・
-[R-3](research.md#r-3-帯の-hook-と配置情報シートの取得の規則)・
-[R-5](research.md#r-5-コマの収め方と帯の形)・
-[R-6](research.md#r-6-時間表示とバーの差し替え)
+**Feature**: [parent Issue #616](https://github.com/syudead/vv/issues/616) ·
+[plan.md](plan.md) ·
+[research.md R-2](research.md#r-2-loop-playback-and-the-band) ·
+[R-3](research.md#r-3-the-band-hook-and-rules-for-fetching-the-layout-and-sheets) ·
+[R-5](research.md#r-5-how-frames-fit-and-the-bands-shape) ·
+[R-6](research.md#r-6-swapping-the-time-display-and-the-bar)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+Sources: the visual rules come from these documents and are not decided again here.
 
-- 配色・操作状態・幅の出し分け・一覧と再生画面の構成:
-  [ライブラリ UI](../../docs/design-docs/library-ui.md)（「6. 一覧の構成」のカード、「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- カードのホバープレビュー（400ms、同時に 1 件、解放の契機、選択モードとの優先順位、サムネイルと
-  動画を同じ media 層に置いて hover の拡大で跳ねさせない、動きを減らす設定での即時の切り替え）:
-  [specs/010-hover-video-preview/ui-design.md](../010-hover-video-preview/ui-design.md) と今の
-  [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)・
-  [`cardPreview.tsx`](../../web/src/videoList/cardPreview.tsx)・
-  [`web/src/player/RelatedVideos.tsx`](../../web/src/player/RelatedVideos.tsx)（`VideoThumbnail`）
-- プレイヤーのシークバーの吹き出し（コマの選び方・時刻の書式・取得の状態）:
-  [specs/009-seek-thumbnail-preview/ui-design.md](../009-seek-thumbnail-preview/ui-design.md)、
+- Colours, interaction states, width breakpoints, library and player layout:
+  [Library UI](../../docs/design-docs/library-ui.md) (cards in §6, library layout, and §8, player screen layout)
+- Role tokens: `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy
+  values
+- Pairs checked for contrast: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
+- Card hover preview (400ms, one at a time, release triggers, priority versus selection mode, thumbnail and video in
+  the same media layer so the hover scaling does not jump, an immediate switch under reduced motion):
+  [specs/010-hover-video-preview/ui-design.md](../010-hover-video-preview/ui-design.md) and the current
+  [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx),
+  [`cardPreview.tsx`](../../web/src/videoList/cardPreview.tsx) and
+  [`web/src/player/RelatedVideos.tsx`](../../web/src/player/RelatedVideos.tsx) (`VideoThumbnail`)
+- The player's seek-bar tooltip (frame selection, time format, fetch states):
+  [specs/009-seek-thumbnail-preview/ui-design.md](../009-seek-thumbnail-preview/ui-design.md),
   [specs/021-seek-thumbnail-sprite](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)
-- 縦長の動画の左右にぼかしたサムネイルを敷く収め方: [`web/src/ui/ThumbnailBackdrop.tsx`](../../web/src/ui/ThumbnailBackdrop.tsx)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+- The fit that lays a blurred thumbnail left and right of a portrait video:
+  [`web/src/ui/ThumbnailBackdrop.tsx`](../../web/src/ui/ThumbnailBackdrop.tsx)
+- Where screen text lives and its format: [Screen text and formatting (i18n)](../../docs/design-docs/i18n.md).
+  The English in this document shows intent; after implementation the catalog
+  [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is the source of truth
 
-この feature が画面に足すのは、動画のサムネイルの面の中だけで完結する次の 3 つである。
+This feature adds three things, all contained within a video's thumbnail surface:
 
-1. サムネイルの下端 5 分の 1 を占める、見えない**帯**（要件 1・10）
-2. 帯にいる間、サムネイルの面に出る**コマ**（要件 1・5・6）
-3. 帯にいる間だけ差し替わる**時刻の表示**と**スクラブ位置のバー**（要件 4）
+1. An invisible **band** covering the bottom fifth of the thumbnail (requirements 1 and 10)
+2. A **frame** shown on the thumbnail surface while the pointer is in the band (requirements 1, 5 and 6)
+3. A **time display** and a **scrub-position bar** that switch only while the pointer is in the band
+   (requirement 4)
 
-対象は、ライブラリとフォルダ画面（検索結果を含む）の格子表示の `VideoCard` と、再生画面の関連動画
-（「続けて再生」のメンバーと関連動画）の `VideoThumbnail`（要件 8）。リスト表示の行、グループの
-カード、再生画面で今見ているメンバーの行、「次の動画」の案内、プレイヤーのシークバーは変えない。
-所有者とゲストで同じ。新しい色・半径・影・文字の token は足さず、`tokens.test.ts` の `pairs` にも
-足さない（下の「Colour」）。
+In scope: `VideoCard` in the grid view of the library and the folder screen (including search results), and
+`VideoThumbnail` of related videos on the player screen (members of "play next" and related videos; requirement
+8). List-view rows, group cards, the row of the member being watched on the player screen, the "next video" prompt
+and the player's seek bar do not change. Owners and guests see the same thing. No colour, radius, shadow or text
+token is added, and nothing is added to `pairs` in `tokens.test.ts` ("Colour" below).
 
 ## Why this shape
 
-- **帯は見えない**。外枠・ラベル・アイコン・hover で浮く印を置かない（UI品質「視覚的階層」）。
-  現行の動画サービスの一覧は、サムネイルの下端の進捗バーの位置をなぞるとその位置の場面が出る形に
-  収束していて、利用者はその場所を探さずに触れる。帯の存在を伝えるのは、帯に入った瞬間に時刻と
-  バーがポインタに追従し始めることだけである。
-- **コマはサムネイルの面そのものに出す**。プレイヤーの吹き出し（009）のように枠と影を持った別の
-  箱を浮かせない。カードの面が一次情報であり（UI品質「視覚的階層」）、吹き出しを置くと隣の
-  カードに重なって格子の読みを乱すからである。
-- **時刻は右下の再生時間の表示を兼用し、バーは視聴位置のバーの場所を使う**（UI品質「情報密度」）。
-  面の中に文字と線を足さず、今ある 2 つの印の中身だけが変わる。
-- **スクラブ位置のバーは `fg`、視聴位置のバーは今までどおり `accent`**。accent は
-  [ライブラリ UI 1](../../docs/design-docs/library-ui.md#1-なぜ見た目の値を-css-の-1-か所に置き対比をテストで保証するのか)
-  で「主要操作・選択・利用者の状態」の色であり、視聴位置のバーはその「どこまで見たか」である。
-  スクラブ位置はポインタの一時的な位置で利用者の状態ではないので、別の色で区別する。
-  同じ accent にすると、帯を出た瞬間にバーが縮む・消える動きが「視聴位置が戻った」と誤読される。
-- **時刻とバーは、コマより先に、帯に入った瞬間から追従する**。取得待ちの間（UI品質「要求を
-  満たしたことにならないもの」: スピナーや空白を見せない）も、帯が反応していることを時刻とバーが
-  伝え、コマは届いた時点のポインタ位置から出る。
+- **The band is invisible.** No border, label, icon or marker that appears on hover (`UI品質` "visual
+  hierarchy"). Current video services' lists have converged on showing the scene at a position when the pointer
+  traces the spot of the progress bar at the bottom of the thumbnail, so users touch that spot without looking for
+  it. The only thing that signals the band is that the time and bar start following the pointer the moment it
+  enters.
+- **The frame is shown on the thumbnail surface itself.** No separate floating box with a border and shadow like
+  the player's tooltip (009). The card surface is the primary information (`UI品質` "visual hierarchy"), and a
+  tooltip would overlap the neighbouring card and disturb how the grid reads.
+- **The time reuses the duration display at the bottom right, and the bar uses the place of the watch-position
+  bar** (`UI品質` "information density"). No text or line is added to the surface; only the contents of the two
+  existing markers change.
+- **The scrub-position bar is `fg`; the watch-position bar stays `accent`.** In
+  [Library UI 1](../../docs/design-docs/library-ui.md#1-visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)
+  accent is the colour of "primary actions, selection and the user's state", and the watch-position bar is that
+  state, "how far you watched". The scrub position is the pointer's temporary position, not the user's state, so a
+  different colour tells them apart. With the same accent, the bar shrinking or disappearing the moment the pointer
+  leaves the band would be misread as "the watch position went back".
+- **The time and bar follow from the moment the pointer enters the band, ahead of the frame.** While waiting for
+  the fetch (`UI品質` "what does not meet the requirement": no spinner or blank), the time and bar show that the
+  band is responding, and the frame appears from the pointer position at the moment it arrives.
 
 ## Words
 
-| 場所 | 英語（案） |
+| Place | Text (proposal) |
 | --- | --- |
-| 帯にいる間の時刻の表示（`t.list.card.scrubTime(position, duration)`） | `1:23 / 4:56`（`formatDuration` の `m:ss`・`h:mm:ss`） |
+| Time display while in the band (`t.list.card.scrubTime(position, duration)`) | `1:23 / 4:56` (`m:ss` and `h:mm:ss` from `formatDuration`) |
 
-- 区切りは半角の空白・`/`・空白で、プレイヤーの操作バーの現在時刻/長さと同じ読み方にする。
-  位置と長さの両方を `formatDuration` で表し、同じ動画の中で桁の形を混ぜない（`0:05 / 1:02:30` は
-  そのまま。長さが 1 時間を超えても位置を `0:00:05` に揃えない。プレイヤーの吹き出しと同じ表記）。
-- 帯にいる間に読み上げ用の文言は足さない。帯・コマ・スクラブ位置のバーはすべて支援技術から隠す
-  （下の「Accessibility」）。
+- The separator is a space, `/`, and a space, read the same way as the current time / length in the player's
+  control bar. Both position and length use `formatDuration`, so digit shapes are not mixed within one video
+  (`0:05 / 1:02:30` stays as is; the position is not padded to `0:00:05` when the length exceeds an hour). This is
+  the same notation as the player's tooltip.
+- No screen-reader text is added while in the band. The band, the frame and the scrub-position bar are all hidden
+  from assistive technology ("Accessibility" below).
 
 ## Band
 
 ### Geometry
 
-- 帯はサムネイルの面（`aspect-video` の箱）の下端に置く透明な要素で、幅は面の幅いっぱい、高さは
-  面の高さの 5 分の 1（CSS の割合。JavaScript は帯の矩形を位置の計算に読むだけ）。
-  カード幅 220px（`card-0`）では約 25px、関連動画の `w-40`（160px）では 18px、360px 幅の画面の
-  1 列のカードでは約 37px になる。
-- 帯の左端が動画の先頭（0ms）、右端が末尾（最後のコマ。R-1 の `ceil(durationMs) − 1`）に対応し、
-  間は横位置の割合で線形に対応する。帯の左右の端より外へ出た分は端に丸める。
-- 帯は hover で拡大する media 層（`group-hover:scale-[1.03]`）の**外**に置く（R-5）。帯の矩形は
-  拡大に影響されず、カードの左端と右端がそのまま先頭と末尾になる。
-- 重なりの順は、下から media 層（サムネイル・ループの動画・コマ）→ 時刻の表示と視聴位置のバー →
-  **帯** → 全面の警告 → 選択のチェック。帯が時刻の表示とバーより前にあるのは、右下の時刻の表示の
-  上にポインタが来ても帯から出た扱いにならないためである（R-5）。帯は押せる要素ではなく、
-  クリックは下の `Link` に届く（要件 9）。
-- 帯の上のカーソルは `Link` の `pointer` のまま。`col-resize`・`ew-resize` などの印に変えない。
-  帯は見るための操作で、押せば動画が開くことを cursor が伝え続ける。
-- 帯を置かない面: `seekThumbnailUrl` の無い動画、`durationMs` が 0 以下の動画、全面の警告
-  （`unplayableText`）が出る動画、選択モード中のカード、リスト表示の行、グループのカード、
-  再生画面の今見ているメンバーの行と「次の動画」の案内（要件 8、Edge Cases）。
+- The band is a transparent element at the bottom of the thumbnail surface (the `aspect-video` box), the full width
+  of the surface and one fifth of its height (a CSS percentage; JavaScript only reads the band's rectangle to
+  compute the position). That is about 25px on a 220px card (`card-0`), 18px on a related video's `w-40` (160px),
+  and about 37px on a one-column card on a 360px-wide screen.
+- The band's left end maps to the start of the video (0ms) and its right end to the end (the last frame;
+  `ceil(durationMs) − 1` from R-1), linearly by horizontal fraction in between. Positions beyond the band's left
+  and right ends are clamped to the ends.
+- The band sits **outside** the media layer that scales on hover (`group-hover:scale-[1.03]`) (R-5). Its rectangle
+  is not affected by the scaling, so the card's left and right edges are exactly the start and the end.
+- Stacking order from the bottom: the media layer (thumbnail, loop video, frame) → the time display and the
+  watch-position bar → **the band** → the full-surface warning → the selection check. The band is in front of the
+  time display and bar so that the pointer over the time display at the bottom right does not count as leaving the
+  band (R-5). The band is not a pressable element; clicks reach the `Link` below (requirement 9).
+- The cursor over the band stays the `Link`'s `pointer`; it does not change to `col-resize`, `ew-resize` or similar.
+  The band is for looking, and the cursor keeps saying that pressing opens the video.
+- No band on: videos without `seekThumbnailUrl`, videos whose `durationMs` is 0 or less, videos showing the
+  full-surface warning (`unplayableText`), cards in selection mode, list-view rows, group cards, the row of the
+  member being watched on the player screen, and the "next video" prompt (requirement 8, Edge Cases).
 
 ### Pointer rules
 
-- 反応するのは `pointerType === "mouse"` だけ（要件 10）。タッチ・ペンは帯を素通りし、今までどおり
-  押せば動画が開く。キーボードフォーカスでは何も起きない。
-- 帯に入る: 時刻の表示とスクラブ位置のバーをポインタの横位置に合わせて即時に出し、ループ再生中
-  なら止める（R-2）。400ms の待ちの間なら待ちを止める。
-- 帯の中を動く: 時刻・バー・コマが同じ `pointermove` で一緒に更新される。コマだけが遅れて
-  追いつく形にしない（UI品質「ポインタを動かしてからコマが追いつくまでに目に見える遅れ」）。
-- 帯から上へ出てカードの中に留まる: 時刻の表示とバーを元に戻し、コマを消す。止めていたループを
-  その場面から再開し、待ちの途中なら 400ms を数え直す（要件 3）。
-- カードの外へ出る: 上と同じに戻し、ループは今の規則どおり解放する。進行中の取得は打ち切る。
-- 帯にいる間に別のカードのプレビューが始まった、並び替え・絞り込み・ページ追加・表示切り替え・
-  画面幅の変更・画面遷移・選択モードの開始が起きた: 帯から出たのと同じに戻す（Edge Cases）。
+Only `pointerType === "mouse"` reacts (requirement 10). Touch and pen pass through the band and pressing opens the
+video as before. Keyboard focus does nothing.
+
+| Pointer event | Behaviour |
+| --- | --- |
+| Enters the band | The time display and scrub-position bar appear immediately at the pointer's horizontal position; loop playback stops if running (R-2); the 400ms wait stops if running |
+| Moves within the band | Time, bar and frame update together on the same `pointermove`. The frame does not lag behind and catch up (`UI品質` "visible delay between moving the pointer and the frame catching up") |
+| Leaves the band upwards and stays on the card | The time display and bar return to normal and the frame disappears. The stopped loop resumes from that scene; a wait in progress counts 400ms again (requirement 3) |
+| Leaves the card | Returns as above; the loop is released by the current rule. Fetches in progress are aborted |
+| Another card's preview starts while in the band, or sorting, filtering, adding a page, switching view, changing screen width, navigating or entering selection mode happens | Returns as when leaving the band (Edge Cases) |
 
 ## Frame
 
-- コマはサムネイルと同じ media 層の中に、サムネイル・ループの動画の**前**に置く 1 つの要素で、
-  サムネイルの `object-contain` と同じ枠に収める（R-5）。横長の動画では面いっぱい、縦長・正方形に
-  近い動画では面の高さに合わせて中央に置き、左右には今の `ThumbnailBackdrop`（ぼかしたサムネイル）
-  がそのまま見える（要件 6）。サムネイルの無い動画（代わりの表示が出ている動画）では、代わりの
-  表示の上に同じ枠で出し、左右はその面の今の色のまま（カードは `navbar`、関連動画の
-  `VideoThumbnail` は `surface`）。
-- コマは 1 コマ長辺 160px を枠へ拡大して出す。拡大のぼけは許容し、ぼかしの補正・鮮鋭化・枠線・
-  角丸・影は足さない（対象外「解像度やコマ数の見直し」）。
-- コマの切り替え（サムネイル→コマ、コマ→コマ、コマ→サムネイル）はすべて即時で、フェード・
-  拡大・位置の遷移を付けない。動きを減らす設定でも同じ（Edge Cases）。
-- 取得待ちの間はコマの要素を出さず、サムネイル（ループ再生中に帯へ入ったなら、止めた時点の
-  画面）が見え続ける。スピナー・空白・薄暗い面・「読み込み中」の文字を出さない。取得が終わった
-  時点のポインタ位置のコマから出る（R-3）。
-- 配置情報またはシートの取得に失敗した、スプライトが生成中・失敗の動画: サムネイルのまま変わらず、
-  エラーの文字・トースト・印を出さない。時刻の表示とバーは失敗に関わらず帯にいる間は差し替わる
-  （要件 4 は帯にいる間を条件にし、コマの有無を条件にしない。帯が壊れているようには見せない）。
-- コマが出ている間も、面の上の印（公開の印と時刻の表示、バー、選択のチェック）は今と同じ場所に
-  同じ形で前面にある。010 の「preview 中」と同じで、コマの明暗に依らず読めるのは、時刻の表示が
-  `navbar/90` と `backdrop-blur` の面に載っているからである。コマのために面を変えない。
+- The frame is one element in the same media layer as the thumbnail, **in front of** the thumbnail and the loop
+  video, fitted to the same frame as the thumbnail's `object-contain` (R-5). A landscape video fills the surface; a
+  portrait or near-square video is centred at the surface's height, with the current `ThumbnailBackdrop` (blurred
+  thumbnail) still visible on the left and right (requirement 6). For a video with no thumbnail (showing the
+  fallback), the frame appears in the same frame over the fallback, and the left and right keep that surface's
+  current colour (`navbar` on cards, `surface` on related videos' `VideoThumbnail`).
+- The frame is shown by scaling one 160px-long-side frame up to the frame box. Blur from scaling is accepted; no
+  blur correction, sharpening, border, rounded corners or shadow is added (out of scope: "revisiting resolution or
+  frame count").
+- Every switch (thumbnail → frame, frame → frame, frame → thumbnail) is immediate, with no fade, scaling or position
+  transition. The same under reduced motion (Edge Cases).
+- While waiting for the fetch, the frame element is not rendered and the thumbnail stays visible (or, if the band
+  was entered during loop playback, the frame at the moment it stopped). No spinner, blank, dimmed surface or
+  "loading" text. The frame appears from the pointer position at the moment the fetch finishes (R-3).
+- When the layout or sheet fetch fails, or the sprite is still being generated or failed: the thumbnail stays
+  unchanged, with no error text, toast or marker. The time display and bar still switch while in the band
+  regardless of the failure (requirement 4 is conditioned on being in the band, not on a frame being present; the
+  band does not look broken).
+- While a frame is shown, the markers on the surface (the public marker and time display, the bar, the selection
+  check) stay in front in the same places and shapes. As with 010's "while previewing", they are readable regardless
+  of the frame's brightness because the time display sits on a `navbar/90` surface with `backdrop-blur`. The
+  surface is not changed for the frame.
 
 ## Time and bar
 
 ### Time
 
-- 帯にいる間、右下の再生時間の表示の文字だけを `scrubTime` に差し替える。箱（`rounded-sm`・
-  `bg-navbar/90`・`px-1.5 py-0.5`・`text-[11px] font-medium tabular-nums`、関連動画では
-  `bg-overlay`・`px-1`・`text-xs`）と右下の位置（`right-2 bottom-2`、関連動画は `right-1 bottom-1`）は
-  変えない（UI品質「タイポグラフィ」）。公開の印が付く所有者のカードでは、印と時刻の並びも
-  そのまま。
-- 表示は右端に留まったまま左へ伸びる（`absolute right-*`）。カードの高さ、箱の高さは変わらない。
-  `formatDuration` の時は桁数に上限が無いので、表示の長さにも上限は無い。10 時間を超える動画の
-  `10:00:00 / 10:00:00`（19 文字）を含めて、`card-0`（220px）の面にも関連動画の `w-40` の面にも
-  収まることを下の「Review criteria」で確かめる。
-- 再生時間の無い動画（`durationMs` 不明）には帯が無いので、`scrubTime` が長さ無しで出ることは無い。
+- While in the band, only the text of the duration display at the bottom right switches to `scrubTime`. The box
+  (`rounded-sm`, `bg-navbar/90`, `px-1.5 py-0.5`, `text-[11px] font-medium tabular-nums`; `bg-overlay`, `px-1`,
+  `text-xs` on related videos) and its bottom-right position (`right-2 bottom-2`; `right-1 bottom-1` on related
+  videos) do not change (`UI品質` "typography"). On owner cards with the public marker, the order of marker and
+  time stays the same.
+- The display stays anchored at the right and grows to the left (`absolute right-*`). The card's height and the
+  box's height do not change. `formatDuration` has no upper limit on the hour digits, so the display has no length
+  limit either. "Review criteria" below confirms it fits, including `10:00:00 / 10:00:00` (19 characters) for a
+  video over 10 hours, on both the `card-0` (220px) surface and a related video's `w-40` surface.
+- A video without a duration (`durationMs` unknown) has no band, so `scrubTime` never appears without a length.
 
 ### Scrub position bar
 
-- 帯にいる間、視聴位置のバーと同じ場所・同じ高さ（カード `h-[5px]`、関連動画 `h-[3px]`）・同じ
-  track（カード `bg-navbar/90`、関連動画 `bg-fg-subtle/50`）に、左端からポインタの横位置までを
-  `bg-fg` で塗ったバーを出す。つまみ・縦線・数字は足さない。
-- 視聴位置のバー（`role="progressbar"`）は帯にいる間は見えない。要素は保ち値も変えず、見た目だけを
-  隠す（`opacity-0`。`invisible`・`hidden` は支援技術からも外すので使わない。R-6: 視聴した割合の
-  読み上げを保ち、値をポインタで書き換えない）。帯を出ると元の視聴位置が同じ場所に戻る。
-- 未視聴の動画でも帯にいる間はスクラブ位置のバーを出し、帯を出ると消える（要件 4）。
-- バーの長さはポインタに即時追従し、`transition` を付けない。帯を出るときも即時に戻す。
-- バーとコマは同じ横位置を指す。帯の右端ではバーが面の右端まで届き、コマは最後のコマ（空き升目
-  ではない）になる（Edge Cases）。
+- While in the band, a bar filled with `bg-fg` from the left edge to the pointer's horizontal position appears in
+  the same place, at the same height (`h-[5px]` on cards, `h-[3px]` on related videos) and on the same track
+  (`bg-navbar/90` on cards, `bg-fg-subtle/50` on related videos) as the watch-position bar. No knob, vertical line
+  or number is added.
+- The watch-position bar (`role="progressbar"`) is not visible while in the band. The element is kept and its value
+  unchanged; only its appearance is hidden (`opacity-0`; `invisible` and `hidden` are not used because they also
+  remove it from assistive technology. R-6: keep the announcement of the fraction watched, and do not rewrite the
+  value with the pointer). On leaving the band, the original watch position returns in the same place.
+- An unwatched video also shows the scrub-position bar while in the band, and it disappears on leaving
+  (requirement 4).
+- The bar's length follows the pointer immediately, with no `transition`. It also returns immediately on leaving
+  the band.
+- The bar and the frame point at the same horizontal position. At the band's right end the bar reaches the
+  surface's right edge, and the frame is the last frame (not an empty cell) (Edge Cases).
 
 ## Colour
 
-- 使う token は `fg`（スクラブ位置のバー）、`navbar`・`overlay`・`fg-subtle`（今の track と時刻の面）、
-  `accent`（視聴位置のバー。今のまま）だけで、新しい token は足さない。
-- `tokens.test.ts` の `pairs` には足さない。足す文字は時刻の表示の中で、`fg` on `navbar` は既に組に
-  ある。バーは文字ではなく、太さ（5px / 3px）と位置で読む線なので対比の組に載せない。
+- The tokens used are `fg` (scrub-position bar), `navbar`, `overlay` and `fg-subtle` (the current track and time
+  surface), and `accent` (watch-position bar, unchanged). No new token is added.
+- Nothing is added to `pairs` in `tokens.test.ts`. The only text added is inside the time display, and `fg` on
+  `navbar` is already a pair. The bar is not text; it is a line read by thickness (5px / 3px) and position, so it is
+  not a contrast pair.
 
-## Responsive
+## Responsive behaviour
 
-- 幅による出し分けは作らない。帯の高さは面の 5 分の 1 の割合なので、カード幅（表示倍率
-  `card-0`〜`card-3`）と画面幅に追従する。
-- 360px（1 列、カードが画面幅に近い）、768px、1280px の格子、768px と 1280px の関連動画の列で、
-  時刻の表示が面の中に収まり、コマが面の枠と一致し、カードの高さ・格子の折り返し・関連動画の行の
-  高さと列の幅が帯の出入りで変わらないことを確かめる（下の「Review criteria」）。
-- 画面幅が変わったら帯から出たのと同じに戻す（010 の reset と同じ契機）。
+- There is no width-specific variant. The band's height is a fraction (one fifth) of the surface, so it follows the
+  card width (zoom levels `card-0` to `card-3`) and the screen width.
+- At 360px (one column, the card near the screen width), 768px and 1280px grids, and the related-video column at
+  768px and 1280px, confirm that the time display fits within the surface, the frame matches the surface's frame,
+  and card height, grid wrapping, related-video row height and column width do not change when entering and
+  leaving the band ("Review criteria" below).
+- A change of screen width returns the card to the state of leaving the band (the same trigger as 010's reset).
 
 ## Motion
 
-- コマ・時刻・バーの切り替えはすべて即時で遷移を持たない。動きを減らす設定でも変わらない
-  （[ライブラリ UI 4](../../docs/design-docs/library-ui.md#4-幅の分岐を-css-で行う理由とサイドバーの例外)
-  は装飾の動きを止める規則で、ここには止める動きが無い）。
-- カードの hover の浮き上がりと media 層の拡大は今のまま。帯に入っても拡大の度合いは変えない。
+- Every switch of frame, time and bar is immediate with no transition. Reduced motion does not change this
+  ([Library UI 4](../../docs/design-docs/library-ui.md#4-width-breakpoints-in-css-and-the-sidebar-exception) is the rule
+  that stops decorative motion, and there is no motion to stop here).
+- The card's hover lift and the media layer's scaling stay as they are. Entering the band does not change the
+  amount of scaling.
 
 ## Accessibility
 
-- ここに書くのは新しい設計ではなく、R-6 と plan の Canonical definitions が 010 から引き継ぐ規則と
-  要件 10 の当てはめだけである。
-- 帯・コマ・スクラブ位置のバーは `aria-hidden` にし、リンクの読み上げ名（題名、関連動画では題名と
-  長さ）を変えない。時刻の表示の差し替えも読み上げに載せない（010 の「pointer 専用の一時的な
-  視覚情報は読み上げに割り込ませない」）。
-- 帯は tab stop・button・link を足さない。キーボードでは今のリンクとチェックの操作だけが働く。
-- 親 Issue は帯の支援技術向けの設計を求めていないので、これ以上の設計（読み上げ・ARIA・対比）は
-  ここに書かない。
+- This section adds no new design; it only applies the rules that R-6 and the plan's Canonical definitions inherit
+  from 010, and requirement 10.
+- The band, frame and scrub-position bar are `aria-hidden`, and the link's accessible name (the title; the title
+  and length on related videos) does not change. The swapped time display is not announced either (010:
+  "temporary pointer-only visual information does not interrupt the screen reader").
+- The band adds no tab stop, button or link. Keyboard users have only the current link and check actions.
+- The parent Issue does not ask for assistive-technology design for the band, so no further design (announcements,
+  ARIA, contrast) is written here.
 
 ## System states
 
-| 状態 | 面に見えるもの | 時刻 / バー |
+| State | What the surface shows | Time / bar |
 | --- | --- | --- |
-| 帯の外（idle・400ms の待ち・ループ再生中） | 今のまま（010） | 再生時間 / 視聴位置（無ければ無し） |
-| 帯に入った直後、取得待ち | サムネイル、またはループを止めた画面。印・空白なし | `位置 / 長さ` / スクラブ位置（`fg`） |
-| 帯の中、コマあり | ポインタ位置のコマ。縦長はぼかしの背景の上に中央 | 同上 |
-| 帯の中、取得失敗・スプライト生成中・失敗 | サムネイルのまま。エラーの印なし | 同上 |
-| 帯から上へ出てカードの中 | サムネイル、またはループの再開（止めた場面から） | 再生時間 / 視聴位置 |
-| カードの外へ出た | 今のまま（解放） | 再生時間 / 視聴位置 |
-| タッチ・ペン・キーボードフォーカス | 今のまま | 再生時間 / 視聴位置 |
-| 選択モード・リスト表示の行・グループのカード・今見ているメンバー | 帯なし。今のまま | 今のまま |
+| Outside the band (idle, 400ms wait, loop playing) | As now (010) | Duration / watch position (none if unwatched) |
+| Just entered the band, waiting for the fetch | The thumbnail, or the stopped loop's frame. No marker or blank | `position / length` / scrub position (`fg`) |
+| In the band, frame available | The frame at the pointer position. Portrait videos centred over the blurred background | Same |
+| In the band, fetch failed, sprite being generated or failed | The thumbnail unchanged. No error marker | Same |
+| Left the band upwards, still on the card | The thumbnail, or the loop resuming (from the stopped scene) | Duration / watch position |
+| Left the card | As now (released) | Duration / watch position |
+| Touch, pen, keyboard focus | As now | Duration / watch position |
+| Selection mode, list-view row, group card, member being watched | No band. As now | As now |
 
 ## Review criteria
 
-実装の PR に 360px・768px・1280px（関連動画は 768px・1280px）の画像を残し、次を見て判定する。
+The implementation PR keeps images at 360px, 768px and 1280px (768px and 1280px for related videos), judged on the
+following.
 
-1. **視覚的階層**: 帯にいるカードで、目が先に向くのはコマで、次に右下の時刻、最後に下端のバー
-   である。帯の存在を示す線・枠・アイコン・色の変化が無く、帯の外の状態と並べて見比べたときに
-   「コマが差し替わっている」以外の違いが面の周りに無い。隣のカードは何も変わっていない。
-2. **情報密度**: 帯にいるカードの面の上にある印の数が帯の外と同じ（公開の印と時刻の箱、バー、
-   hover 中のチェック）。時刻の箱の中が `3:45` から `1:20 / 3:45` に変わるだけで、箱の位置と
-   高さが同じ。1 時間を超える動画の `h:mm:ss / h:mm:ss` と 10 時間を超える動画の
-   `10:00:00 / 10:00:00` が、`card-0` の面と関連動画の `w-40` の面で右下の箱に 1 行で収まり、
-   公開の印と重ならない。
-3. **余白のリズム**: 帯に入る前・取得待ち・コマあり・帯を出た後の 4 枚で、カードの矩形、格子の
-   折り返し、関連動画の行の高さと列の幅、スクロール位置が一致する。縦長の動画のコマが、同じ動画の
-   サムネイルと同じ高さ・同じ中央の位置にあり、左右のぼかした背景が同じに見える。
-4. **タイポグラフィ**: 時刻の文字が帯の外の再生時間と同じ大きさ・太さ・等幅数字で、`/` の前後の
-   空白が 1 つずつ。関連動画の時刻も同じ。文字の大きさや色が帯にいる間だけ変わっていない。
-5. **操作の優先順位**: 帯の上のカーソルがリンクの `pointer` のままで、押すと再生画面が開く。
-   hover 中のチェックが帯の上に無く、チェックの上では帯が働かない。ループ再生中に帯へ入ると
-   映像が止まってコマに替わり、帯から上へ出ると止めた場面から動き出す（動画の先頭からやり直して
-   いない）。
-6. **バー**: 帯にいる間のバーの色が `fg` で、視聴位置の `accent` のバーが見えない。帯の右端で
-   バーが面の右端まで届き、コマが黒い空き升目でない。未視聴の動画でも帯にいる間はバーがある。
-   帯を出ると、途中まで見た動画では `accent` の視聴位置が同じ場所に戻り、未視聴の動画では
-   バーが無い。
-7. **コマの一致**: 同じ動画で、帯のある割合の位置のコマと、再生画面のシークバーの同じ割合の
-   位置の吹き出しのコマが同じ場面である（受け入れ条件 3）。
-8. **待ちと失敗**: 取得待ちの画像と取得失敗の画像のどちらにも、スピナー・空白の面・薄暗い面・
-   文字が無く、サムネイル（またはループを止めた画面）に時刻とバーだけが重なっている。
+1. **Visual hierarchy**: on a card with the pointer in the band, the eye goes first to the frame, then the time at
+   the bottom right, and last the bar at the bottom edge. There is no line, border, icon or colour change marking
+   the band; side by side with the outside-the-band state, the only difference around the surface is "the frame has
+   replaced the thumbnail". The neighbouring cards are unchanged.
+2. **Information density**: the number of markers on the surface while in the band equals the number outside it
+   (the public marker and time box, the bar, the check while hovered). Only the time box's content changes, from
+   `3:45` to `1:20 / 3:45`, with the same box position and height. `h:mm:ss / h:mm:ss` for a video over an hour and
+   `10:00:00 / 10:00:00` for a video over 10 hours fit on one line in the bottom-right box on both the `card-0`
+   surface and a related video's `w-40` surface, without overlapping the public marker.
+3. **Spacing rhythm**: across the four images (before entering the band, waiting for the fetch, frame shown, after
+   leaving the band), the card's rectangle, grid wrapping, related-video row height and column width, and scroll
+   position match. A portrait video's frame has the same height and the same centred position as that video's
+   thumbnail, and the blurred background on the left and right looks the same.
+4. **Typography**: the time text has the same size, weight and tabular digits as the duration outside the band,
+   with one space on each side of `/`. The same holds for related videos. Text size and colour do not change only
+   while in the band.
+5. **Action priority**: the cursor over the band stays the link's `pointer`, and pressing opens the player screen.
+   The check shown on hover is not over the band, and the band does not act over the check. Entering the band
+   during loop playback stops the video and switches to the frame; leaving the band upwards resumes from the stopped
+   scene (not from the start of the video).
+6. **Bar**: the bar while in the band is `fg`, and the `accent` watch-position bar is not visible. At the band's
+   right end the bar reaches the surface's right edge, and the frame is not a black empty cell. An unwatched video
+   also has the bar while in the band. On leaving the band, a partly watched video shows its `accent` watch position
+   in the same place again, and an unwatched video has no bar.
+7. **Frame match**: for the same video, the frame at a given fraction of the band and the tooltip frame at the same
+   fraction of the player screen's seek bar show the same scene (acceptance criterion 3).
+8. **Waiting and failure**: neither the waiting image nor the failure image has a spinner, blank surface, dimmed
+   surface or text; only the time and bar are laid over the thumbnail (or the stopped loop's frame).

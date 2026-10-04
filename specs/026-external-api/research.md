@@ -1,187 +1,239 @@
-# Research: 外部連携 API と MCP
+# Research: External API and MCP
 
-親 Issue: #493。
+Parent Issue: #493.
 
-受け継ぐ技術の決定は [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
-と [ARCHITECTURE.md](../../ARCHITECTURE.md) にある（Go の単一バイナリ、SQLite、`api/openapi.yaml` を
-正本にした生成、認証の境界 `internal/httpapi/auth.go`、単一アカウントのセッション
-[specs/016-single-account-auth/data-model.md](../016-single-account-auth/data-model.md)）。
-ここには、この feature が足す決定だけを書く。
+Inherited decisions: [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
+and [ARCHITECTURE.md](../../ARCHITECTURE.md) (a single Go binary, SQLite, code generated from
+`api/openapi.yaml` as the source of truth, the authentication boundary in `internal/httpapi/auth.go`,
+and the single-account session in
+[specs/016-single-account-auth/data-model.md](../016-single-account-auth/data-model.md)).
+This file records only the decisions this feature adds.
 
-## R-1: トークンは接頭辞付きの 256 ビットの乱数にし、SHA-256 だけを保存する
+## R-1: Tokens are prefixed 256-bit random values, and only the SHA-256 is stored
 
-- **Decision**: 平文は `vvt_` と 32 バイトの乱数の base64url（パディング無し、43 文字）をつないだ
-  47 文字にする。DB には平文の SHA-256（16 進）だけを置き、要求のたびにそれで引く。形式が合わない
-  値は DB を引かずに 401 にする。
-- **Rationale**: セッション（`sessions.token_hash`）と同じ作りなので、`internal/store` と
-  `internal/app` の既存の関数と試験の形をそのまま使える。256 ビットの乱数は総当たりできないので、
-  パスワードのような遅いハッシュは要らない。接頭辞は、利用者が設定ファイルやログの中で vv の
-  トークンと見分けるためと、漏洩検査の規則を書けるようにするためである。
-- **Alternatives considered**:
-  - Argon2id で保存する: 要求のたびに数十ミリ秒かかる。高エントロピーの値には効果が無い。
-  - 識別子と秘密の 2 つに分けて識別子で引く: SHA-256 の主キーで 1 回で引けるので、分ける利点が無い。
+**Decision**: The plaintext is `vvt_` followed by the unpadded base64url encoding of 32 random
+bytes (43 characters), 47 characters in total. The database holds only the SHA-256 (hex) of the
+plaintext, and every request looks the token up by that hash. A value with the wrong format is
+rejected with 401 without querying the database.
 
-## R-2: アカウントの変更はトークンの行を消し、版の一致でも確かめる
+**Rationale**: This is the same design as sessions (`sessions.token_hash`), so the existing
+functions and test shapes in `internal/store` and `internal/app` carry over unchanged. A 256-bit
+random value cannot be brute-forced, so a slow password hash is unnecessary. The prefix lets users
+recognise a vv token in configuration files and logs, and makes it possible to write leak-detection
+rules.
 
-- **Decision**: `api_tokens` の各行は、発行したときの `account.version` を持つ。有効なのは
-  `api_tokens.account_version = account.version` のときだけにする。ユーザー名・パスワードの変更
-  （`AuthStore.changeCredentials`）は、`sessions` と同じトランザクションで `api_tokens` も全件消す。
-  `mdm account` の出力に「API トークンもすべて失効した」旨を足す。
-- **Rationale**: 要件 8。行を消すので、設定ページの一覧からも消え、使えないトークンが一覧に
-  残らない。版の一致は、画面での発行（古い版を読んだセッション）とホストのコマンドが競ったときに、
-  古い資格情報のもとで作ったトークンが生き残らないためで、セッションの §4 の 3 と同じ理由である。
-- **Alternatives considered**: 行を残して「無効」と表示する: 使い道の無い行が一覧に残り、利用者は
-  結局作り直す。要件にも無い。
+**Alternatives considered**:
 
-## R-3: 外部連携 API は `/api/v1/` の下に置き、境界に「Bearer」の分類を足す
+| Option | Verdict |
+| --- | --- |
+| Store with Argon2id | Rejected: costs tens of milliseconds per request and adds nothing for a high-entropy value. |
+| Split into an identifier and a secret and look up by identifier | Rejected: a SHA-256 primary key already finds the row in one lookup, so splitting gains nothing. |
 
-- **Decision**: 外部連携 API は `/api/v1/…`、MCP は `/mcp`（要件 9 で固定）に置く。
-  `classifyRequest` に 4 つ目の分類 `accessBearer` を足し、`path.Clean` した経路が `/api/v1/` の下か
-  `/mcp` なら、この分類にする。
-  - Bearer の分類では Cookie を読まず、`Authorization: Bearer <token>` だけで所有者を決める。
-    無い・形式が違う・無効・失効済みは `401 unauthenticated` と `WWW-Authenticate: Bearer` を返す
-    （要件 7、受け入れ条件 7）。
-  - それ以外の `/api/*` では、今どおり Cookie だけを読み、`Authorization` は見ない。Bearer だけの
-    要求はゲストになる（受け入れ条件 7 の後半）。トークンの管理 API もここにあるので、Bearer では
-    扱えない（要件 4、受け入れ条件 8）。
-  - `/api/v1/` の下の未定義の経路も Bearer の分類になり、認証の後に JSON の 404 を返す。
-  - 符号化した区切り（`%2F` など）の扱いは今の規則のまま、どちらかの形が `/api/` の下なら
-    所有者だけに倒す。Bearer の分類は、符号化の前後が一致したときだけ選ぶ。
-- **Rationale**: 画面の API と外部連携 API の認証を経路の接頭辞で分けると、1 つの要求がどちらの
-  資格情報で扱われるかが経路だけで決まり、今の `accessRoutes` と `openapi_routes_test.go` の作りに
-  そのまま載る。`/api/` の下に置けば、SPA の経路の名前空間を取らず、未定義の経路の JSON 404 も
-  今の仕組みで返る。
-- **Alternatives considered**:
-  - 最上位の `/v1/`: SPA の経路（`/api/` の外はすべて SPA）から名前を取り、SPA の後始末と JSON の
-    404 を別に足す必要がある。
-  - 同じ経路で Cookie と Bearer の両方を受ける: 要件 5 が Cookie での利用を禁じている。画面の API の
-    挙動も変わる。
+## R-2: Changing the account deletes the token rows, and the version is checked as well
 
-## R-4: Bearer の要求には同一オリジンの検査をかけない
+**Decision**: Each `api_tokens` row carries the `account.version` at the time it was issued. A
+token is valid only when `api_tokens.account_version = account.version`. Changing the username or
+password (`AuthStore.changeCredentials`) deletes every `api_tokens` row in the same transaction as
+`sessions`. The `mdm account` output gains a statement that every API token was revoked too.
 
-- **Decision**: `mutationBoundary` の同一オリジンの検査（`acceptsSameOrigin`）は Cookie の分類の
-  要求だけにかけ、Bearer の分類の要求には `Origin` を問わない。JSON の本文を要求する規則は外部連携 API
-  にもかける。
-- **Rationale**: 同一オリジンの検査は、ブラウザが自動で送る Cookie を使った CSRF を防ぐためにある。
-  `Authorization` はブラウザが自動では付けないので、この攻撃は成り立たない。スクレイパーや MCP
-  クライアントは `Origin` を送らないか、vv と違うオリジンを送る。
-- **Alternatives considered**: 検査をそのまま当てる: `Origin` を送るクライアント（ブラウザ上の
-  ツールなど）が理由無く拒まれる。守るものが無い。
+**Rationale**: Requirement 8. Because the rows are deleted, they also disappear from the list on the
+settings page, so unusable tokens never linger in it. The version check covers a race between an
+issue on the screen (by a session that read the old version) and the host command: a token created
+under the old credentials must not survive. This is the same reason as item 3 of §4 of the session data model (016).
 
-## R-5: 外部連携 API の契約は別の OpenAPI の文書にし、Go だけを生成する
+**Alternatives considered**: Keep the rows and show them as "invalid". Rejected: rows with no use
+stay in the list and the user ends up creating new tokens anyway. The requirement does not ask for
+it either.
 
-- **Decision**: `api/external-v1.yaml` を外部連携 API の正本にし、
-  `api/oapi-codegen-external.yaml` で `internal/httpapi/extgen/` に Go の型とハンドラの口を生成する。
-  TypeScript は生成しない。`scripts/generate` がこれも生成し、`task generate-check` が差分を見る。
-  公開はこの文書そのもので、`docs/how-to/external-api.md` から案内する。サーバーからは配らない。
-  互換の方針: `v1` の中では項目と操作の追加だけを行い、既存の項目の意味・型・必須を変えるときは
-  `v2` を足す。
-- **Rationale**: 画面の API は画面の都合で変わり（背景）、外部連携 API は変えない約束である。
-  1 つの文書に混ぜると、ある変更が外部の約束を破るかが文書を見ても分からない。別の文書なら、
-  `api/external-v1.yaml` の差分が約束の変更そのものになる。画面は外部連携 API を呼ばないので
-  TypeScript の型は要らない。
-- **Alternatives considered**:
-  - `api/openapi.yaml` に足してタグで分ける: 上の理由に加え、画面向けの TypeScript の生成物に外部の
-    型が混ざる。
-  - サーバーから `GET /api/v1/openapi.yaml` で配る: `api/` をバイナリへ埋め込む例外（`web/embed.go`
-    と同じ種類）が要り、要件はリポジトリで公開すれば満たせる。
+## R-3: The external API lives under `/api/v1/`, and the boundary gains a Bearer class
 
-## R-6: 動画の一覧は `(added_at, id)` の keyset のカーソルで読む
+**Decision**: The external API lives at `/api/v1/…` and MCP at `/mcp` (fixed by requirement 9).
+`classifyRequest` gains a fourth class, `accessBearer`, chosen when the `path.Clean`ed path is under
+`/api/v1/` or is `/mcp`.
 
-- **Decision**: `GET /api/v1/videos` は、登録フォルダの下に所在を持つ動画を `(added_at, id)` の昇順で
-  並べ、画面の一覧と同じ keyset のカーソル（並びの値と id を符号化した不透明な文字列。
-  `internal/store/listing.go` の `encodeCursor`・`decodeCursor` と同じ作り）でページを分けて返す。
-  応答は `{ items, nextCursor }` で、続きが無ければ `nextCursor` は空。
-  - 変更の追跡はしない。「前回の続きから新しい動画だけを取る」口も、変わった動画・消えた動画を知らせる
-    口も持たない。新しい動画を知りたい利用者は一覧を読み直し、持っている動画が消えたことは `lookup` の
-    `404` で知る。表と列は足さない。
-  - ページングの途中で動画が増える・消える・移動しても、続きの要求は失敗せずその時点の続きを返す。
-    読み通しの間の取りこぼしと重複を防ぐ約束はしない（Edge Cases）。
-  - 一覧は登録フォルダの下に所在を持つ動画だけを返す。登録外の所在だけで残った動画は、行が消えた動画と
-    同じく返らない。
-- **Rationale**: 親 Issue が求めるのは「新しい動画を見つける → タグを付ける」を回せることで、差分の
-  取得ではない（要件 6.1、受け入れ条件 3）。一覧を読み直せば足りるので、変更を追跡する列・カウンタと、
-  走査・メディアフォルダの操作のすべての書き込みで番号を進める規則を持たずに済む。keyset は画面の
-  `ListVideos` がすでに使っている方式で、読み出しの作りと試験の形を流用できる。`(added_at, id)` は
-  行が動いても値が変わらないので、続きの要求が同じ場所から再開できる。
-- **Alternatives considered**:
-  - 単調に増える番号（`added_seq`・`changed_seq`）で「前回の続きから増えた・変わった動画だけ」を
-    返すカーソル: 動画の行を作る・所在を足す・消す・付け替える・メディアフォルダを足す・置き換える・
-    消す・長さを解析するの各箇所で番号を進める規則と、その取りこぼし・重複の試験が要る。要求者が
-    一覧の読み直しで足りると判断したので、この feature からは外した。
-  - `offset` によるページ: 走査で行が増減した瞬間に取りこぼしと重複が起き、画面の一覧が keyset を
-    選んだ理由（`listing.go`）と同じ。
-  - `updated_at` の順: 取り込みの段が進むたびに変わるので、読み通しの途中で並びが変わる。
+| Request | Behaviour |
+| --- | --- |
+| Bearer class | Cookies are not read; the owner is determined from `Authorization: Bearer <token>` alone. A missing, malformed, invalid or revoked token returns `401 unauthenticated` with `WWW-Authenticate: Bearer` (requirement 7, acceptance criterion 7). |
+| Any other `/api/*` path | As today, only the cookie is read and `Authorization` is ignored. A request carrying only a Bearer token is a guest (second half of acceptance criterion 7). The token management API is here too, so it cannot be used with a Bearer token (requirement 4, acceptance criterion 8). |
+| Undefined path under `/api/v1/` | Also the Bearer class; after authentication it returns a JSON 404. |
+| Encoded separators (`%2F` and so on) | The current rule stands: if either form is under `/api/`, the request falls to owner-only. The Bearer class is chosen only when the path before and after decoding agree. |
 
-## R-7: タグの操作は厳格な一括操作として `TagStore` に足す
+**Rationale**: Splitting authentication for the screen API and the external API by path prefix
+means the path alone decides which credential handles a request, which fits the current
+`accessRoutes` and `openapi_routes_test.go` design as is. Placing the API under `/api/` takes no name
+from the SPA's route namespace, and the existing mechanism already returns JSON 404s for undefined
+paths.
 
-- **Decision**: `TagStore.ApplyVideoTags(ctx, videos []domain.VideoRef, action, names)` を足す。
-  1 つのトランザクションで、動画の指定（id・内容キー・所在のパスのいずれか）を今ライブラリにある動画へ
-  引き当て、1 つでも引けなければ動画が無い誤り（`domain.ErrNotFound` を包み、何番目の指定かを持つ値）で全体を失敗させる。
-  - `add`: 名前をシノニムを含めて引き、無ければ作る（`findOrCreateTag`、画面の付与と同じ）。
-  - `remove`: 名前をシノニムを含めて引き、あるタグだけを外す。どのタグにも当たらない名前は何もしない。
-  - `replace`: 名前ごとに `add` と同じく引く・作り、各動画の手で付けたタグ（`video_tags` の行）を
-    ちょうどその集合にする。空の集合は手で付けたタグをすべて外す。
-  - 3 つとも書き換えるのは手で付けたタグだけで、祖先のフォルダ名から付くタグ
-    （[017 data-model.md §4](../017-folder-groups/data-model.md#4-フォルダ由来のタグ)）は変えない。
-    画面の取り外し（`DetachTag`）と同じ規則である。応答のタグは出所（`manual`・`fromFolder`、
-    `domain.VideoTag`）を持つので、利用者はフォルダ由来で残ったタグを見分けられる。
-  - 同じタグに当たる名前は 1 つにまとめる。結果として、各動画の操作後のタグを返す。
-  - 名前の検証は `domain.NormalizeTagName`、動画の件数の上限は画面と同じ `maxVideoTagsIDs`
-    （20000）。名前の件数の上限は 100 とする。
-  `internal/app` は通さない。
-- **Rationale**: 要件 6.4・10。今の付与（`AttachTagByName`）は 1 つのトランザクションで済むので
-  `internal/app` を通していない（`httpapi.Tags` のコメント）。同じ理由でここも store に置く。画面の
-  付与は消えた動画を飛ばすが、外部連携 API は Edge Case が要求全体の失敗を求めるので、引き当ての規則は
-  別にする。同じ付与・除去の繰り返しは状態を変えずに成功する（受け入れ条件 5）。付与と除去は
-  `(content_key, tag_id)` の行ごとの挿入・削除なので、画面と同時に付けても両方が残る。
-- **Alternatives considered**:
-  - `replace` でフォルダ由来のタグも消す: 付き方がフォルダ名から毎回導かれるので、動画ごとに打ち消す
-    新しい仕組み（除外の表）が要る。親 Issue にその要求は無く、画面にも無い。
-  - 画面の `POST /api/video-tags` と同じく 1 回に 1 タグ: スクレイパーは 1 本の動画に複数のタグを
-    付けるので要求が増え、複数のタグの間でトランザクションが分かれる。
-  - `internal/app` に新しい use case を置く: 副作用もイベントも無く、1 トランザクションで閉じる。
-    今のタグの操作の置き場所と揃わなくなる。
+**Alternatives considered**:
 
-## R-8: MCP は公式の Go SDK を stateless で `internal/httpapi` の中に置く
+| Option | Verdict |
+| --- | --- |
+| Top-level `/v1/` | Rejected: takes a name from the SPA routes (everything outside `/api/` is SPA), and needs separate SPA fallback handling and a separate JSON 404. |
+| Accept both cookie and Bearer on the same paths | Rejected: requirement 5 forbids cookie use, and the screen API's behaviour would change. |
 
-- **Decision**: `github.com/modelcontextprotocol/go-sdk`（v1.8.0 時点）の
-  `mcp.NewStreamableHTTPHandler` を `Stateless: true`・`JSONResponse: true` で使い、`/mcp` に載せる。
-  - ハンドラは `internal/httpapi` の中に置き、境界（R-3 の Bearer の分類）の内側に入れる。
-  - ツールは外部連携 API の操作と 1 対 1 にし、入力と出力は `api/external-v1.yaml` と同じ JSON にする。
-    実装は REST のハンドラと同じ関数を呼ぶ。
-- **Rationale**: 要件 9。stateless ならサーバーがクライアントごとの会話の状態を持たず、要求ごとに
-  Bearer を確かめるので、失効したトークンの会話が残らない。ツールは要求と応答だけで、サーバーから
-  始める通知は要らない。`internal/httpapi` に置けば、動画の応答への変換と認証の境界を REST と共有
-  でき、兄弟のパッケージ同士の import の規則（depguard）にも触れない。
-- **Alternatives considered**:
-  - `github.com/mark3labs/mcp-go`: 利用者は多いが、公式の SDK が v1 の互換を約束して保守されている。
-  - JSON-RPC を自前で書く: 版の交渉や Streamable HTTP の細部を持ち続けることになる。
-  - stateful（セッション ID と GET のストリーム）: サーバーが会話の状態を持ち、トークンの失効と別に
-    寿命を管理する必要がある。
-  - `internal/mcpapi` という別のパッケージ: 動画の応答への変換を重複して持ち、境界の配線も別に要る。
+## R-4: Bearer requests skip the same-origin check
 
-## R-9: 最終使用日時は 1 分に 1 回だけ書く。失効は実行中の要求も止める
+**Decision**: The same-origin check in `mutationBoundary` (`acceptsSameOrigin`) applies only to
+cookie-class requests; Bearer-class requests are accepted whatever their `Origin`. The rule that
+requires a JSON body applies to the external API too.
 
-- **Decision**:
-  - 有効なトークンの要求で、保存した `last_used_at` が空か 60 秒以上前なら、その場で書き換える
-    （条件付きの `update`）。書き込みの失敗はログに残し、要求は続ける。
-  - 境界の `sessionLedger` に Bearer の要求も載せる。画面で失効したら、そのトークンの実行中の応答を
-    すぐに打ち切る。ホストのコマンドによる失効は、今と同じ 30 秒ごとの再確認で打ち切る。
-- **Rationale**: Edge Cases（最終使用日時は間引いてよい、長く続く要求は失効で打ち切る）。
-  条件付きの `update` なら、1 分に何回呼ばれても書くのは 1 回で、メモリに溜めて後で書く仕組みが要らない。
-  ログアウトとホストのコマンドでセッションの要求を止める今の仕組みがそのまま使える。
-- **Alternatives considered**: メモリに溜めて定期的に書く: 停止時に失われ、書き出しの goroutine と
-  停止の順序が増える。
+**Rationale**: The same-origin check exists to stop CSRF that rides on cookies the browser sends
+automatically. Browsers never attach `Authorization` automatically, so that attack does not apply.
+Scrapers and MCP clients either send no `Origin` or send an origin different from vv's.
 
-## R-10: トークンの名前の規則はタグ名と同じ形にする
+**Alternatives considered**: Apply the check unchanged. Rejected: clients that send `Origin` (such as
+browser-based tools) would be refused for no reason, and there is nothing to protect.
 
-- **Decision**: 名前は前後の空白を除いて 1〜100 文字（Unicode のコードポイント）で、制御文字を
-  含まない。`domain.NormalizeAPITokenName` に置き、誤りは画面の API の `invalid_request` に新しい
-  `reason`（`api_token_name_empty`・`api_token_name_control_characters`・`api_token_name_too_long`、
-  上限は `limit`）で返す。同じ名前は重複してよい。
-- **Rationale**: Edge Cases（空・長すぎる名前は発行しない、同じ名前は複数作れる）。画面の
-  エラーの作り（[023 error-api.md](../023-english-i18n/contracts/error-api.md)）に載せると、画面は
-  `reason` から文言を作れる。
-- **Alternatives considered**: タグ名の `reason` を流用する: 画面の文言が「タグ名」になり、
-  利用者に誤った対象を示す。
+## R-5: The external API contract is a separate OpenAPI document, generating Go only
+
+**Decision**: `api/external-v1.yaml` is the source of truth for the external API, and
+`api/oapi-codegen-external.yaml` generates Go types and handler interfaces into
+`internal/httpapi/extgen/`. No TypeScript is generated. `scripts/generate` generates it as well, and
+`task generate-check` checks for drift. The document itself is the publication, linked from
+`docs/how-to/external-api.md`; the server does not serve it. Compatibility policy: within `v1`, only
+fields and operations are added; changing the meaning, type or required status of an existing field
+means adding `v2`.
+
+**Rationale**: The screen API changes to suit the screen (the Issue's background), while the external API
+promises not to change. Mixing them in one document makes it impossible to tell from the document
+whether a change breaks the external promise. With a separate document, the diff of
+`api/external-v1.yaml` is the change to the promise. The screen does not call the external API, so it
+needs no TypeScript types.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Add to `api/openapi.yaml` and separate by tag | Rejected: the reason above, and external types would also mix into the screen's generated TypeScript. |
+| Serve it from the server at `GET /api/v1/openapi.yaml` | Rejected: needs an exception that embeds `api/` in the binary (the same kind as `web/embed.go`), and publishing it in the repository already satisfies the requirement. |
+
+## R-6: The video list is read with an `(added_at, id)` keyset cursor
+
+**Decision**: `GET /api/v1/videos` orders videos that have a location under a registered folder by
+`(added_at, id)` ascending, and pages through them with the same keyset cursor as the screen's list
+(an opaque string encoding the sort value and id, built like `encodeCursor` and `decodeCursor` in
+`internal/store/listing.go`). The response is `{ items, nextCursor }`, and `nextCursor` is empty when
+there is nothing more.
+
+- There is no change tracking. There is no endpoint for "only new videos since last time", and none
+  that reports changed or removed videos. A user who wants new videos reads the list again, and
+  learns that a video they hold is gone from a `404` on `lookup`. No table or column is added.
+- If videos are added, removed or moved during paging, the next request does not fail and returns
+  the continuation as of that moment. There is no promise against missed or duplicated items across
+  a full read (Edge Cases).
+- The list returns only videos with a location under a registered folder. A video left only with
+  locations outside the registered folders is omitted, the same as a video whose row is gone.
+
+**Rationale**: The parent Issue asks for the loop "find new videos → tag them" to work, not for
+fetching differences (requirement 6.1, acceptance criterion 3). Reading the list again is enough, so
+this avoids change-tracking columns or counters and the rule that every scan and media-folder write
+must advance a number. Keyset is the method the screen's `ListVideos` already uses, so the read code
+and test shapes carry over. `(added_at, id)` does not change when a row moves, so the next request
+resumes from the same place.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| A cursor on monotonically increasing numbers (`added_seq`, `changed_seq`) that returns only videos added or changed since last time | Rejected: needs a rule to advance the number at every point that creates a video row, adds, removes or reassigns a location, adds, replaces or removes a media folder, or analyses the duration, plus tests for missed and duplicated items. The requester judged that re-reading the list is enough, so it was dropped from this feature. |
+| `offset` paging | Rejected: rows added or removed by a scan cause missed and duplicated items at that instant; this is why the screen's list chose keyset (`listing.go`). |
+| Order by `updated_at` | Rejected: it changes each time an ingest stage advances, so the order shifts during a full read. |
+
+## R-7: Tag operations are added to `TagStore` as a strict batch operation
+
+**Decision**: Add `TagStore.ApplyVideoTags(ctx, videos []domain.VideoRef, action, names)`. In one
+transaction it resolves each video reference (an id, a content key or a location path) to a video now
+in the library; if any one cannot be resolved, the whole call fails with a video-not-found error (a
+value that wraps `domain.ErrNotFound` and carries the position of the reference).
+
+| `action` | Behaviour |
+| --- | --- |
+| `add` | Looks up each name including synonyms and creates the tag if missing (`findOrCreateTag`, as the screen's attach does). |
+| `remove` | Looks up each name including synonyms and detaches only tags that exist. A name that matches no tag does nothing. |
+| `replace` | Looks up or creates each name as `add` does, then makes each video's manually attached tags (`video_tags` rows) exactly that set. An empty set detaches every manually attached tag. |
+
+- All three rewrite only manually attached tags; tags derived from ancestor folder names
+  ([017 data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags)) do not change. This
+  is the same rule as the screen's detach (`DetachTag`). Tags in the response carry their source
+  (`manual`, `fromFolder`, `domain.VideoTag`), so the user can tell which tags remained because they
+  come from a folder.
+- Names that resolve to the same tag are merged into one. The result is each video's tags after the
+  operation.
+- Names are validated with `domain.NormalizeTagName`; the video count limit is the screen's
+  `maxVideoTagsIDs` (20000). The name count limit is 100.
+
+It does not go through `internal/app`.
+
+**Rationale**: Requirements 6.4 and 10. The existing attach (`AttachTagByName`) fits in one
+transaction and therefore does not go through `internal/app` (see the comment on `httpapi.Tags`); the
+same reason places this in the store. The screen's attach skips vanished videos, but the external API
+has an Edge Case that requires the whole request to fail, so the resolution rule is separate.
+Repeating the same add or remove succeeds without changing state (acceptance criterion 5). Add and
+remove insert and delete per `(content_key, tag_id)` row, so tagging concurrently with the screen
+keeps both.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Have `replace` remove folder-derived tags too | Rejected: those tags are derived from folder names every time, so cancelling them per video needs a new mechanism (an exclusion table). The parent Issue does not ask for it, and the screen does not have it. |
+| One tag per request, like the screen's `POST /api/video-tags` | Rejected: scrapers attach several tags to one video, so requests multiply and the tags split across transactions. |
+| A new use case in `internal/app` | Rejected: there are no side effects or events and it closes within one transaction; it would no longer match where the current tag operations live. |
+
+## R-8: MCP uses the official Go SDK, stateless, inside `internal/httpapi`
+
+**Decision**: Use `mcp.NewStreamableHTTPHandler` from `github.com/modelcontextprotocol/go-sdk` (as of
+v1.8.0) with `Stateless: true` and `JSONResponse: true`, mounted at `/mcp`.
+
+- The handler lives in `internal/httpapi`, inside the boundary (the Bearer class from R-3).
+- Tools map one-to-one to external API operations, and their input and output are the same JSON as
+  `api/external-v1.yaml`. The implementation calls the same functions as the REST handlers.
+
+**Rationale**: Requirement 9. Stateless means the server keeps no per-client conversation state and
+checks the Bearer token on every request, so no conversation outlives a revoked token. Tools are
+request and response only; no server-initiated notifications are needed. Placing it in
+`internal/httpapi` shares the video response conversion and the authentication boundary with REST,
+and stays clear of the rule against imports between sibling packages (depguard).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| `github.com/mark3labs/mcp-go` | Rejected: widely used, but the official SDK promises v1 compatibility and is maintained. |
+| Hand-written JSON-RPC | Rejected: we would carry version negotiation and the details of Streamable HTTP ourselves. |
+| Stateful (session ID and a GET stream) | Rejected: the server keeps conversation state and has to manage its lifetime separately from token revocation. |
+| A separate `internal/mcpapi` package | Rejected: duplicates the video response conversion and needs separate boundary wiring. |
+
+## R-9: Last-used time is written at most once a minute; revocation also stops in-flight requests
+
+**Decision**:
+
+- On a request with a valid token, if the stored `last_used_at` is empty or at least 60 seconds old,
+  it is rewritten on the spot (a conditional `update`). A write failure is logged and the request
+  continues.
+- Bearer requests are also registered in the boundary's `sessionLedger`. Revoking on the screen cuts
+  off that token's in-flight responses immediately. Revocation by the host command cuts them off
+  through the existing re-check every 30 seconds.
+
+**Rationale**: Edge Cases (the last-used time may be thinned out; long-running requests are cut off
+by revocation). A conditional `update` writes once however many times it is called per minute, so no
+mechanism is needed to buffer in memory and write later. The existing mechanism that stops session
+requests on logout and on the host command is reused as is.
+
+**Alternatives considered**: Buffer in memory and write periodically. Rejected: lost on shutdown,
+and adds a flushing goroutine and shutdown ordering.
+
+## R-10: Token names follow the same rules as tag names
+
+**Decision**: After trimming surrounding whitespace, a name is 1–100 characters (Unicode code points)
+and contains no control characters. The rule lives in `domain.NormalizeAPITokenName`, and errors are
+returned as the screen API's `invalid_request` with new `reason` values
+(`api_token_name_empty`, `api_token_name_control_characters`, `api_token_name_too_long`, with the
+limit in `limit`). Duplicate names are allowed.
+
+**Rationale**: Edge Cases (an empty or too-long name is not issued; several tokens can share a name).
+Using the screen's error design ([023 error-api.md](../023-english-i18n/contracts/error-api.md)) lets
+the screen build its message from `reason`.
+
+**Alternatives considered**: Reuse the tag-name `reason` values. Rejected: the screen's message would
+say "tag name" and point the user at the wrong thing.

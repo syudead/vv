@@ -1,7 +1,10 @@
-# Implementation Plan: シーク用サムネイルをスプライトシートにし、枚数とファイル数に上限を設ける
+# Implementation Plan: Seek thumbnails as sprite sheets, with limits on frame and file count
 
-> 生成方式は、その後の[長尺動画のシーク用スプライト生成](../../docs/design-docs/seek-sprite-generation.md)で更新した。
-> 以下の全編デコードの記述は初期実装の判断で、現在は索引からも区間ごとの抽出でも作れない入力にだけ使う。
+> The generation method was later updated by
+> [seek sprite generation for long videos](../../docs/design-docs/seek-sprite-generation.md).
+> The full-video decode described below is the decision of the initial
+> implementation; it is now used only for inputs that can be built neither from
+> the index nor by per-segment extraction.
 
 **Branch**: `feature/021-seek-thumbnail-sprite` | **Parent Issue**: #389
 
@@ -9,99 +12,93 @@
 
 ## Summary
 
-今のシーク用サムネイルは 5 秒ごとの JPEG を 1 枚ずつ個別ファイルとして保存し、プレイヤーは
-位置が変わるたびに 1 枚ずつ取得する。枚数は動画の長さに比例して上限が無い（2 時間で 1,440
-ファイル）。これを、1 本の動画につき最大 6 枚のスプライトシート（10 列 × 10 行、最大 600 コマ）と、
-その並びを表す配置情報に置き換える。
+Seek thumbnails are currently stored as one JPEG per 5 seconds, each its own
+file, and the player fetches them one at a time whenever the position changes.
+Their number grows with the video's length without limit (1,440 files for 2
+hours). This feature replaces them with at most 6 sprite sheets per video (10
+columns × 10 rows, at most 600 frames) plus layout information that describes
+the arrangement.
 
-- コマの間隔・コマ数・シートの枚数は `internal/domain` の純粋関数が動画の長さから決める。
-  50 分までは今の 5 秒間隔のままで、それを超える動画だけ間隔を広げる
-  （[research.md R-1](research.md#r-1-上限と間隔の規則)）。
-- 生成は今と同じ 1 回の全編デコードだが、`select` の代わりに `fps` フィルタで間隔ごとに 1 コマを
-  取り、`tile` フィルタで格子に並べる。コマの無い区間は前のコマで埋め、末尾に映像が無ければ最後の
-  コマを複製するので、コマの番号と再生位置の対応が崩れない（[R-2](research.md#r-2-コマの選び方)）。
-- 置き場は今の `seek/<p>/<s>/` のまま、シートの JPEG と配置情報 `sprite.json` を置く。完成の印は
-  `sprite.json` の有無で、これが無い置き場（旧形式の個別 JPEG を含む）は未完成として作り直し、
-  公開のときに旧形式のファイルを回収する（[R-3](research.md#r-3-置き場と完成の印)）。
-- `GET /api/videos/{id}/seek-thumbnail` は `positionMs` の JPEG ではなく配置情報（JSON）を返し、
-  シートは `GET /api/videos/{id}/seek-thumbnail/{sheet}` で返す
-  （[contracts/seek-sprite-api.md](contracts/seek-sprite-api.md)、[R-4](research.md#r-4-api-の形)）。
-- プレイヤーは配置情報を 1 回、シートを必要になったときに 1 回だけ取得し、同じ動画の間は
-  取得し直さずにコマを切り替える。コマは配置情報の大きさで切り出し、隣のコマを見せない
-  （[R-5](research.md#r-5-プレイヤーの取得と切り出し)）。
-- 既存の動画は移行で `seek_thumbnail` ジョブを積み直し、再取り込みなしにスプライトへ作り直す。
-  作り直しが終わるまでは今の `pending` と同じで、時刻の表示・再生・シークは使える
-  （[R-6](research.md#r-6-既存の個別-jpeg-からの移行)）。
-- 生成物の再利用（同じ内容の動画は 1 回だけ生成）、元動画の差し替え・削除時の無効化、中断時の
-  一時ファイルの削除、直接配信とライブ変換で同じ論理時刻を使う規則は変えない。
+- Pure functions in `internal/domain` derive the frame interval, frame count
+  and sheet count from the video length. Up to 50 minutes the interval stays at
+  today's 5 seconds; only longer videos get a wider interval
+  ([research.md R-1](research.md#r-1-limits-and-interval-rule)).
+- Generation is still one full-video decode, but instead of `select` the `fps`
+  filter takes one frame per interval and the `tile` filter lays them out in a
+  grid. A range with no frames is filled with the previous frame, and the last
+  frame is cloned when there is no video at the end, so frame numbers keep
+  matching playback positions ([R-2](research.md#r-2-frame-selection)).
+- The location stays `seek/<p>/<s>/` and holds the sheet JPEGs and the layout
+  information `sprite.json`. The completion marker is the presence of
+  `sprite.json`; a location without it (including old-format individual JPEGs)
+  is treated as incomplete and rebuilt, and old-format files are reclaimed at
+  publish time ([R-3](research.md#r-3-storage-location-and-completion-marker)).
+- `GET /api/videos/{id}/seek-thumbnail` returns the layout information (JSON)
+  instead of a `positionMs` JPEG, and sheets are returned by
+  `GET /api/videos/{id}/seek-thumbnail/{sheet}`
+  ([contracts/seek-sprite-api.md](contracts/seek-sprite-api.md),
+  [R-4](research.md#r-4-api-shape)).
+- The player fetches the layout information once and each sheet once when it is
+  needed, and switches frames without refetching for the same video. It crops
+  frames by the size in the layout information and never shows the
+  neighbouring frame
+  ([R-5](research.md#r-5-player-fetching-and-frame-cropping)).
+- For existing videos, a migration requeues `seek_thumbnail` jobs, rebuilding
+  them as sprites without a re-ingest. Until the rebuild finishes they behave
+  like today's `pending`: the time display, playback and seeking work
+  ([R-6](research.md#r-6-migration-from-existing-individual-jpegs)).
+- Unchanged: reuse of generated files (content shared between videos is
+  generated once), invalidation when the source video is replaced or deleted,
+  removal of temporary files on interruption, and the rule that direct delivery
+  and live transcoding use the same logical time.
 
 ## Technical Context
 
 **Canonical definitions**:
 
-- 境界と依存方向、生成物の所有、段階ごとのワーカー: [ARCHITECTURE.md](../../ARCHITECTURE.md)
-  （「Generated files have one owner」「Intended dependency direction」の段落）
-- 今の生成: [internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go)
-  （`select` と `scale` の式、30 分の上限）、置き場と読み出し:
-  [internal/artifacts/store.go](../../internal/artifacts/store.go)
-  （`PublishSeekThumbnails`・`SeekThumbnail`・`SeekThumbnailsAvailable`・`RemoveContent`）、
-  間隔の定数: `domain.SeekThumbnailInterval`（[internal/domain/video.go](../../internal/domain/video.go)）
-- ジョブと状態: [specs/020-seek-thumbnail-stage/data-model.md](../020-seek-thumbnail-stage/data-model.md)
-  （`seek_thumbnail` ジョブ、`videos.seek_thumbnail_state`、置き場を失った `done` の積み直し
-  `RequeueMissingSeekThumbnails`）、`Ingest.SeekThumbnails` と `Catalog.SeekThumbnailState`
-  （[internal/app/ingest.go](../../internal/app/ingest.go)、[internal/app/catalog.go](../../internal/app/catalog.go)）
-- 今の HTTP 契約: [api/openapi.yaml](../../api/openapi.yaml)（`getVideoSeekThumbnail`、
-  `Video.seekThumbnailUrl`・`seekThumbnailState`）、
-  [internal/httpapi/seek_thumbnail.go](../../internal/httpapi/seek_thumbnail.go)、
-  ゲストにも返す経路の表（[internal/httpapi/auth.go](../../internal/httpapi/auth.go)）、
-  生成物のキャッシュ指示（[specs/016-single-account-auth/contracts/guest-api.md §5](../016-single-account-auth/contracts/guest-api.md#5-生成物のキャッシュ)）
-- 今のプレイヤー側: [web/src/player/seekPreview.ts](../../web/src/player/seekPreview.ts)
-  （5 秒の bucket、要求の中断、5 秒の再試行の保留、`fetchSeekThumbnail`）、
-  [web/src/player/VideoPlayer.tsx](../../web/src/player/VideoPlayer.tsx) の取り付け、
-  表示の規則: [specs/009-seek-thumbnail-preview/ui-design.md](../009-seek-thumbnail-preview/ui-design.md)、
-  [web/src/index.css](../../web/src/index.css) の `.vv-seek-preview`
-- ライブ変換でも元動画の論理時刻を使う判断:
-  `specs/009-seek-thumbnail-preview/plan.md`（Structural Decisions。完了した feature の
-  Plan として `main` から外され、git の履歴にだけ残る）
-- 前例: ホバープレビューの manifest（`preview/<p>/<s>.mp4.sha256`、`internal/artifacts`）、
-  既存動画への積み直しの移行
-  [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql)、
-  生成方式の変更を測る手順 [docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md)
-  と [scripts/previewbench](../../scripts/previewbench/main.go)
-- 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task generate`・
-  `task test-e2e`）
+| Topic | Source |
+| --- | --- |
+| Boundaries and dependency direction, ownership of generated files, per-stage workers | [ARCHITECTURE.md](../../ARCHITECTURE.md) (paragraphs "Generated files have one owner" and "Intended dependency direction") |
+| Current generation | [internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go) (the `select` and `scale` expressions, the 30-minute limit) |
+| Storage and reading | [internal/artifacts/store.go](../../internal/artifacts/store.go) (`PublishSeekThumbnails`, `SeekThumbnail`, `SeekThumbnailsAvailable`, `RemoveContent`) |
+| Interval constant | `domain.SeekThumbnailInterval` ([internal/domain/video.go](../../internal/domain/video.go)) |
+| Jobs and state | [specs/020-seek-thumbnail-stage/data-model.md](../020-seek-thumbnail-stage/data-model.md) (`seek_thumbnail` job, `videos.seek_thumbnail_state`, `RequeueMissingSeekThumbnails` for a `done` that lost its files); `Ingest.SeekThumbnails` and `Catalog.SeekThumbnailState` ([internal/app/ingest.go](../../internal/app/ingest.go), [internal/app/catalog.go](../../internal/app/catalog.go)) |
+| Current HTTP contract | [api/openapi.yaml](../../api/openapi.yaml) (`getVideoSeekThumbnail`, `Video.seekThumbnailUrl`, `seekThumbnailState`), [internal/httpapi/seek_thumbnail.go](../../internal/httpapi/seek_thumbnail.go), the table of paths also returned to guests ([internal/httpapi/auth.go](../../internal/httpapi/auth.go)), cache directives for generated files ([specs/016-single-account-auth/contracts/guest-api.md §5](../016-single-account-auth/contracts/guest-api.md#5-cache-of-generated-files)) |
+| Current player side | [web/src/player/seekPreview.ts](../../web/src/player/seekPreview.ts) (5-second buckets, request abort, 5-second retry hold, `fetchSeekThumbnail`), mounting in [web/src/player/VideoPlayer.tsx](../../web/src/player/VideoPlayer.tsx) |
+| Display rules | [specs/009-seek-thumbnail-preview/ui-design.md](../009-seek-thumbnail-preview/ui-design.md), `.vv-seek-preview` in [web/src/index.css](../../web/src/index.css) |
+| Using the source video's logical time with live transcoding too | `specs/009-seek-thumbnail-preview/plan.md` (Structural Decisions; removed from `main` as the Plan of a finished feature, remains only in git history) |
+| Precedents | The hover preview manifest (`preview/<p>/<s>.mp4.sha256`, `internal/artifacts`); the requeue migration for existing videos [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql); the procedure for measuring a generation change, [docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) and [scripts/previewbench](../../scripts/previewbench/main.go) |
+| Check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`, `task test-e2e`) |
 
 **Feature-specific context**:
 
-- 追加する依存は無い。ffmpeg の `fps`・`tpad`・`trim`・`tile` は同梱の ffmpeg（6.1）で動くことを
-  確かめた（[research.md R-2](research.md#r-2-コマの選び方)）。
-- SQLite の schema は変えない。移行 `00015` は既存の動画の `seek_thumbnail_state` を `pending` に
-  戻してジョブを積むだけである（[R-6](research.md#r-6-既存の個別-jpeg-からの移行)）。
-- 上限は「1 本あたり最大 600 コマ・最大 6 シート」とし、2 時間の動画は 12 秒間隔の 600 コマになる。
-  数の根拠は [R-1](research.md#r-1-上限と間隔の規則)。
-- `GET /api/videos/{id}/seek-thumbnail` の応答の種類が JPEG から JSON に変わる。SPA はバイナリに
-  同梱されて一緒に更新されるので、旧 SPA との互換は保たない（これまでの契約変更と同じ扱い）。
+- No dependency is added. ffmpeg's `fps`, `tpad`, `trim` and `tile` were
+  confirmed to work with the bundled ffmpeg (6.1)
+  ([research.md R-2](research.md#r-2-frame-selection)).
+- The SQLite schema does not change. Migration `00015` only resets existing
+  videos' `seek_thumbnail_state` to `pending` and queues jobs
+  ([R-6](research.md#r-6-migration-from-existing-individual-jpegs)).
+- The limit is "at most 600 frames and 6 sheets per video"; a 2-hour video gets
+  600 frames at a 12-second interval. The numbers are justified in
+  [R-1](research.md#r-1-limits-and-interval-rule).
+- The response type of `GET /api/videos/{id}/seek-thumbnail` changes from JPEG
+  to JSON. The SPA ships inside the binary and updates with it, so
+  compatibility with an old SPA is not kept (the same treatment as earlier
+  contract changes).
 
 ## Constitution Check
 
-- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。配置の規則は
-  `internal/domain` の純粋関数で、`internal/media` はそれを ffmpeg の引数に写すだけ、
-  `internal/artifacts` は置き場・manifest・読み出しを持ち、`internal/app` と `internal/httpapi` は
-  自分が宣言した interface 越しに使う。
-- **生成物の所有**（ARCHITECTURE.md「Generated files have one owner」）: 合格。置き場のディレクトリは
-  `seek/<p>/<s>/` のまま。中身の形式は変わるが、旧形式のファイルは `internal/artifacts` だけが
-  見分けて回収する。生成途中のものは今と同じく `.tmp` の下にあり、ディレクトリごと改名するので
-  配信されない（要件 8）。
-- **索引と利用者データの区別**（ARCHITECTURE.md「Two kinds of data」）: 合格。移行が触るのは
-  作り直せる `videos.seek_thumbnail_state` と `jobs` だけである。
-- **API の正本**（ARCHITECTURE.md）: 合格。配置情報の schema と経路は `api/openapi.yaml` に足し、
-  Go と TypeScript は `task generate` で作る。
-- **ゲストの応答とキャッシュ**（guest-api.md §5）: 合格。配置情報とシートはどちらも
-  `private, no-cache` と `ETag` で返し、ゲストにも返す経路の表に足す。
-- **文書は変更と同じ PR で直す**（core-beliefs.md）: 合格。ARCHITECTURE.md の生成物の段落は
-  保存と配信を切り替える単位が、技術選定と `specs/009` の記述は移行の単位が直す（要件 10）。
+| Gate | Verdict |
+| --- | --- |
+| **Dependency direction** (ARCHITECTURE.md, "Intended dependency direction") | Pass. The layout rule is a pure function in `internal/domain`; `internal/media` only maps it to ffmpeg arguments; `internal/artifacts` owns the location, the manifest and reading; `internal/app` and `internal/httpapi` use them through interfaces they declare themselves. |
+| **Ownership of generated files** (ARCHITECTURE.md, "Generated files have one owner") | Pass. The location directory stays `seek/<p>/<s>/`. The content format changes, but only `internal/artifacts` recognises and reclaims old-format files. Files being generated sit under `.tmp` as today and the directory is renamed as a whole, so they are never served (requirement 8). |
+| **Index versus user data** (ARCHITECTURE.md, "Two kinds of data") | Pass. The migration touches only the rebuildable `videos.seek_thumbnail_state` and `jobs`. |
+| **API source of truth** (ARCHITECTURE.md) | Pass. The layout information schema and paths are added to `api/openapi.yaml`, and Go and TypeScript are generated by `task generate`. |
+| **Guest responses and caching** (guest-api.md §5) | Pass. Layout information and sheets are both returned with `private, no-cache` and `ETag`, and are added to the table of paths also returned to guests. |
+| **Documents are fixed in the same PR as the change** (core-beliefs.md) | Pass. The generated-files paragraph of ARCHITECTURE.md is fixed by the unit that switches storage and delivery; the tech stack selection and the `specs/009` text are fixed by the migration unit (requirement 10). |
 
-Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
+The verdicts are the same after Phase 1. There is no violation for Complexity
+Tracking.
 
 ## Project Structure
 
@@ -111,129 +108,187 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/021-seek-thumbnail-sprite/
 ├── plan.md                        # This file
 │                                  # No spec.md — the parent Issue is the specification
-├── research.md                    # 上限と間隔、コマの選び方、置き場、API の形、切り出し、移行の決定
-├── quickstart.md                  # 2 時間・縦長・ライブ変換の入力と、改善前後の計測の手順
+├── research.md                    # Decisions on limits and interval, frame selection, location, API shape, cropping, migration
+├── quickstart.md                  # 2-hour, portrait and live-transcode inputs, and the before/after measurement procedure
 └── contracts/
-    └── seek-sprite-api.md         # 配置情報とシートの経路、Video.seekThumbnailUrl の意味の変更
+    └── seek-sprite-api.md         # Layout information and sheet paths, the change in meaning of Video.seekThumbnailUrl
 ```
 
-`data-model.md` は作らない。SQLite に足す列も表も無く、配置情報は生成物と一緒に置くファイルで、
-その形は [research.md R-3](research.md#r-3-置き場と完成の印) が持つ。`ui-design.md` は作らない。
-プレビューの見た目（大きさ・位置・時刻表示）は変えず、切り出しの規則は
-[R-5](research.md#r-5-プレイヤーの取得と切り出し) にある。
+No `data-model.md`: SQLite gains no column or table, and the layout information
+is a file stored with the generated files, whose shape is in
+[research.md R-3](research.md#r-3-storage-location-and-completion-marker). No
+`ui-design.md`: the preview's look (size, position, time display) does not
+change, and the cropping rule is in
+[R-5](research.md#r-5-player-fetching-and-frame-cropping).
 
 ### Source Code
 
 **Affected boundaries**:
 
-- `internal/domain`: スプライトの配置（間隔・コマ数・列・行・シート数）を動画の長さから決める
-  純粋関数と定数。`SeekThumbnailInterval` は最小の間隔になる。
-- `internal/media`: `fps`・`tpad`・`trim`・`scale`・`tile` による 1 回の ffmpeg でシートを書く。
-  計測の境界 `GenerateSeekThumbnailSet`。
-- `internal/artifacts`: シートと `sprite.json` の公開（コマの大きさをシートの JPEG から読む）、
-  完成の判定、配置情報とシートの読み出し、旧形式の置き場の回収。
-- `internal/app`: `Ingest.SeekThumbnails` が動画の長さから配置を決めて生成に渡す。
-  `Catalog.SeekThumbnailState` は完成の判定の変更をそのまま受ける。
-- `api/openapi.yaml`・`internal/httpapi`: 配置情報の応答、シートの経路、ゲストにも返す経路の表。
-- `web/src/player`・`web/src/api`: 配置情報とシートの取得、コマの切り出し、`web/e2e` の待ち合わせ。
-- `internal/store/migrations`: 既存の動画の積み直し。
-- `scripts/previewbench`・`docs/how-to/preview-benchmark.md`: シーク用サムネイルの生成の計測。
-- `ARCHITECTURE.md`・`docs/design-docs/tech-stack-selection.md`・`specs/009-seek-thumbnail-preview`:
-  方式の記述。
+| Boundary | What changes |
+| --- | --- |
+| `internal/domain` | Pure functions and constants that derive the sprite layout (interval, frame count, columns, rows, sheet count) from the video length. `SeekThumbnailInterval` becomes the minimum interval. |
+| `internal/media` | One ffmpeg run with `fps`, `tpad`, `trim`, `scale` and `tile` writes the sheets. The measurement boundary `GenerateSeekThumbnailSet`. |
+| `internal/artifacts` | Publishing sheets and `sprite.json` (frame size read from the sheet JPEG), the completion check, reading layout information and sheets, reclaiming old-format locations. |
+| `internal/app` | `Ingest.SeekThumbnails` derives the layout from the video length and passes it to generation. `Catalog.SeekThumbnailState` takes the changed completion check as is. |
+| `api/openapi.yaml`, `internal/httpapi` | The layout information response, the sheet path, the table of paths also returned to guests. |
+| `web/src/player`, `web/src/api` | Fetching layout information and sheets, cropping frames, the waits in `web/e2e`. |
+| `internal/store/migrations` | Requeueing existing videos. |
+| `scripts/previewbench`, `docs/how-to/preview-benchmark.md` | Measuring seek thumbnail generation. |
+| `ARCHITECTURE.md`, `docs/design-docs/tech-stack-selection.md`, `specs/009-seek-thumbnail-preview` | Descriptions of the method. |
 
-**New paths**: `internal/store/migrations/00015_seek_thumbnail_sprite.sql`。
+**New paths**: `internal/store/migrations/00015_seek_thumbnail_sprite.sql`.
 
-**Structure decision**: 既存の配置に従う（[ARCHITECTURE.md](../../ARCHITECTURE.md)）。
+**Structure decision**: Follows the existing layout
+([ARCHITECTURE.md](../../ARCHITECTURE.md)).
 
 ## Implementation Work
 
-### previewbench でシーク用サムネイルの生成も測れるようにする
+The units depend on each other in a chain:
 
-**Scope**: `scripts/previewbench` に測る対象の種類（動くプレビュー・シーク用サムネイル）を足す。
-シーク用の計測の境界として、`internal/media` に
-`GenerateSeekThumbnailSet(ctx, videoPath, outputDir string, durationMs int64) error` を足す。
-今はこれが今の生成で個別 JPEG を `outputDir` に書き、previewbench のシーク用はこの関数だけを呼んで、
-壁時計時間とピークメモリに加えて `outputDir` のファイル数と合計バイト数を出す。後の単位はこの
-関数の中身だけを変え、`scripts/previewbench` には触れない。
-[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) にシーク用の測り方と
-PR に残す表の形を足す（[quickstart.md](quickstart.md) §1）。生成そのものは変えない。
+```mermaid
+graph LR
+  bench[Measure seek thumbnail generation in previewbench] --> gen[Seek thumbnail layout rule and sprite sheet generation]
+  gen --> serve[Store and serve seek thumbnails as sprite sheets and crop them in the player]
+  serve --> migrate[Rebuild existing seek thumbnails as sprites and align the tech stack and 009 docs]
+```
+
+### Measure seek thumbnail generation in previewbench
+
+**Scope**: Add a kind of target to `scripts/previewbench` (animated preview or
+seek thumbnail). As the measurement boundary for seek thumbnails, add
+`GenerateSeekThumbnailSet(ctx, videoPath, outputDir string, durationMs int64) error`
+to `internal/media`. For now it writes individual JPEGs to `outputDir` with the
+current generation; the seek kind of previewbench calls only this function and
+prints, besides wall-clock time and peak memory, the file count and total bytes
+in `outputDir`. Later units change only this function's body and do not touch
+`scripts/previewbench`. Add to
+[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) how
+to measure seek thumbnails and the table format to record in the PR
+([quickstart.md](quickstart.md) §1). Generation itself does not change.
 
 **Dependencies**: None.
 
-**Acceptance**: `go run ./scripts/previewbench -kind seek <video>` が、今の生成で 2 時間の入力に対して
-壁時計時間、ピークメモリ、ファイル数、合計バイト数を表示し、終了後に一時出力が残らない。
-`scripts/previewbench` のテストが、種類の解釈とシーク用の集計を検査する。`task check` と
-`task check-docs` が通る。
+**Acceptance**: `go run ./scripts/previewbench -kind seek <video>` prints
+wall-clock time, peak memory, file count and total bytes for the 2-hour input
+with the current generation, and no temporary output remains afterwards. Tests
+in `scripts/previewbench` check the parsing of the kind and the seek
+aggregation. `task check` and `task check-docs` pass.
 
-### シーク用サムネイルの配置の規則とスプライトシートの生成を作る
+### Seek thumbnail layout rule and sprite sheet generation
 
-**Scope**: [research.md R-1](research.md#r-1-上限と間隔の規則) の配置の規則を `internal/domain` に
-置き、[R-2](research.md#r-2-コマの選び方) の ffmpeg の引数でシートを書く生成関数を
-`internal/media` に足す（配置を受け取り、1 回の ffmpeg でシートを書く。`Assets` からも呼べる形に
-する）。`GenerateSeekThumbnailSet` の中身を、動画の長さから配置を決めてこの生成関数を呼ぶ形に
-変える。保存・配信・プレイヤーは変えないので、再生画面の挙動はこの単位では変わらない。
+**Scope**: Put the layout rule of
+[research.md R-1](research.md#r-1-limits-and-interval-rule) in
+`internal/domain`, and add to `internal/media` a generation function that
+writes sheets with the ffmpeg arguments of [R-2](research.md#r-2-frame-selection)
+(it takes the layout and writes the sheets in one ffmpeg run, in a form also
+callable from `Assets`). Change the body of `GenerateSeekThumbnailSet` to derive
+the layout from the video length and call this generation function. Storage,
+delivery and the player do not change, so the playback screen behaves the same
+after this unit.
 
-**Dependencies**: `previewbench でシーク用サムネイルの生成も測れるようにする`。
+**Dependencies**: `Measure seek thumbnail generation in previewbench`.
 
-**Acceptance**: `internal/domain` のテストが、50 分以下で 5 秒間隔のままであること、2 時間で
-12 秒間隔・600 コマ・6 シートになること、どの長さでも 600 コマ・6 シートを超えないこと、1 コマだけの
-短い動画を検査する。`internal/media` のテストが（ffmpeg があるとき）、時刻を描いたテスト入力で
-先頭・中間・末尾のコマの時刻がそれぞれの区間の中にあること、映像が容器の長さより短い入力で
-末尾のコマが最後の場面になること、間隔の半分より短い（1 秒の）入力で 1 コマのシートができること、
-縦長の入力でコマが縦横比を保ち 1 本の中で同じ大きさになることを検査する。PR に、同じ 2 時間と
-2 分の入力での改善前後の生成時間・ピークメモリ・ファイル数・合計サイズの表
-（[quickstart.md](quickstart.md) §1）が載る。`task check` と `task check-docs` が通る。
+**Acceptance**:
 
-### シーク用サムネイルをスプライトシートで保存・配信し、プレイヤーで切り出して表示する
+- Tests in `internal/domain` check: the interval stays 5 seconds up to 50
+  minutes; 2 hours gives a 12-second interval, 600 frames and 6 sheets; no
+  length exceeds 600 frames or 6 sheets; a short video with a single frame.
+- Tests in `internal/media` (when ffmpeg is available) check, on a test input
+  that draws the time: the times of the first, middle and last frames lie in
+  their ranges; for an input whose video is shorter than the container, the
+  last frame is the last scene; an input shorter than half an interval (1
+  second) produces a sheet with one frame; for a portrait input, frames keep
+  their aspect ratio and all frames of one video have the same size.
+- The PR carries the table of generation time, peak memory, file count and
+  total size before and after on the same 2-hour and 2-minute inputs
+  ([quickstart.md](quickstart.md) §1).
+- `task check` and `task check-docs` pass.
 
-**Scope**: `internal/artifacts` を [R-3](research.md#r-3-置き場と完成の印) の置き場・`sprite.json`・
-完成の判定・旧形式の回収にし、`internal/app` の `Ingest.SeekThumbnails` が動画の長さから配置を
-決めて前の単位の生成関数に渡すようにする。呼ばれなくなった `internal/media` の個別 JPEG の生成
-（`GenerateSeekThumbnails` と `Assets.SeekThumbnails`）を消す。
-[contracts/seek-sprite-api.md](contracts/seek-sprite-api.md) に従い `api/openapi.yaml` を変えて
-`task generate`、`internal/httpapi` の配置情報とシートの応答と `auth.go` の表を直す。
-[R-5](research.md#r-5-プレイヤーの取得と切り出し) に従い `web/src/player/seekPreview.ts` を、
-配置情報を 1 回取得し、必要になったシートを 1 回だけ取得して object URL で保持し、コマを配置情報の
-大きさで切り出す形にする。5 秒の bucket と `fetchSeekThumbnail` の 1 枚ずつの取得はやめ、
-`web/src/api/client.ts` の取得関数を配置情報とシートに合わせる。`VideoPlayer.tsx` は
-`seekThumbnailState` が変わったら取り付け直す。表示の見た目（大きさ・位置・時刻表示）は変えない。
-`web/e2e/playback.e2e.ts`（待ち合わせとシークプレビューのテスト）はこの単位だけが直す。
-ARCHITECTURE.md の生成物とワーカーの段落を直す。API とプレイヤーは同じ単位で切り替える。今の
-プレイヤーは新しい応答を読めず、分けると間の feature branch でシークプレビューが壊れるため。
+### Store and serve seek thumbnails as sprite sheets and crop them in the player
 
-**Dependencies**: `シーク用サムネイルの配置の規則とスプライトシートの生成を作る`。
+**Scope**:
 
-**Acceptance**: `internal/artifacts` のテストが、`sprite.json` が無い置き場を未完成と判定すること、
-公開で旧形式の個別 JPEG が消えてシートと `sprite.json` に置き換わること、中断で一時置き場に何も
-残らないこと、`RemoveContent` が消すことを検査する。`internal/httpapi` のテストが、配置情報が
-契約の形で `private, no-cache` と `ETag` 付きで返り `If-None-Match` で 304 になること、シートの
-番号が範囲外なら 404、生成中は 409 になることを検査する。web の単体テストが、位置からコマとシートを
-決める規則が配置情報の間隔を使い 5 秒を前提にしないこと、同じシートの中の移動で取得が起きない
-こと、シートをまたぐ移動で次のシートを 1 回だけ取得すること、取得が終わる前に離れたシートへ
-戻っても 2 回目の取得が起きないこと、配置情報やシートの取得に失敗しても時刻の表示が続き 5 秒後に
-再試行すること、取り外しで進行中の取得が中断され object URL が解放されることを検査する。
-`task test-e2e` の再生のテストが、直接配信とライブ変換の両方で同じ位置に同じコマが出ることを
-検査する。画面が変わるので、時刻を描いた 2 時間の入力と縦長の入力（[quickstart.md](quickstart.md)
-§2）で、先頭・中間・末尾近くのコマの時刻が区間の中にあること、縦長でも隣のコマが見えないこと、
-シークバー上でポインターを連続して動かしたときにブラウザのネットワーク記録に同じ動画のシートの
-追加要求が無いことを 360px・768px・1280px で確かめ、結果を PR に残す。支援技術ではプレビューが
-読み上げの対象にならないままであることを確かめる。`task check` と `task check-docs` が通る。
+- Change `internal/artifacts` to the location, `sprite.json`, completion check
+  and old-format reclaiming of
+  [R-3](research.md#r-3-storage-location-and-completion-marker), and make
+  `Ingest.SeekThumbnails` in `internal/app` derive the layout from the video
+  length and pass it to the previous unit's generation function. Remove the
+  now-unused individual-JPEG generation in `internal/media`
+  (`GenerateSeekThumbnails` and `Assets.SeekThumbnails`).
+- Change `api/openapi.yaml` per
+  [contracts/seek-sprite-api.md](contracts/seek-sprite-api.md), run
+  `task generate`, and fix the layout information and sheet responses in
+  `internal/httpapi` and the table in `auth.go`.
+- Per [R-5](research.md#r-5-player-fetching-and-frame-cropping), change
+  `web/src/player/seekPreview.ts` to fetch the layout information once, fetch
+  each needed sheet once and hold it as an object URL, and crop frames by the
+  size in the layout information. Drop the 5-second buckets and the
+  one-at-a-time fetching of `fetchSeekThumbnail`, and align the fetch functions
+  in `web/src/api/client.ts` with layout information and sheets.
+  `VideoPlayer.tsx` remounts when `seekThumbnailState` changes. The display's
+  look (size, position, time display) does not change.
+- Only this unit changes `web/e2e/playback.e2e.ts` (the waits and the seek
+  preview test).
+- Fix the generated-files and workers paragraphs of ARCHITECTURE.md.
 
-### 既存のシーク用サムネイルをスプライトに作り直し、技術選定と 009 の記述を合わせる
+The API and the player switch in the same unit: the current player cannot read
+the new response, and splitting them would break the seek preview on the
+feature branch in between.
 
-**Scope**: [research.md R-6](research.md#r-6-既存の個別-jpeg-からの移行) に従い、移行
-`00015_seek_thumbnail_sprite.sql` で `seek_thumbnail_state = done` の動画を `pending` に戻し、解析が
-終わり所在のある動画に未完了の `seek_thumbnail` ジョブが無ければ積む。
-`docs/design-docs/tech-stack-selection.md` のシークプレビューの記述をスプライトシートに合わせ、
-`specs/009-seek-thumbnail-preview` の `plan.md`・`research.md`・`contracts/seek-thumbnail.md`・
-`quickstart.md` の 5 秒間隔・個別 JPEG・`positionMs` の記述を、この feature の契約への参照に
-置き換える（要件 10）。
+**Dependencies**: `Seek thumbnail layout rule and sprite sheet generation`.
 
-**Dependencies**: `シーク用サムネイルをスプライトシートで保存・配信し、プレイヤーで切り出して表示する`。
+**Acceptance**:
 
-**Acceptance**: `internal/store` のテストが、`00015` が `done` の動画を `pending` に戻して
-`seek_thumbnail` を積み、`failed` の動画と未完了のジョブがある動画には積まないこと、`up` / `down` が
-通ること（`task migrations-check`）を検査する。変更前の個別 JPEG を置いたデータディレクトリで
-`task preview` を起動し直すと、処理状況にシーク用サムネイルの残りが出て、終わると `seek/<p>/<s>/` に
-シートと `sprite.json` だけが残り、その間も再生画面で再生・シーク・時刻の表示が使える
-（[quickstart.md](quickstart.md) §3）。`task check` と `task check-docs` が通る。
+- Tests in `internal/artifacts` check: a location without `sprite.json` is
+  judged incomplete; publishing deletes old-format individual JPEGs and
+  replaces them with sheets and `sprite.json`; an interruption leaves nothing
+  in the temporary location; `RemoveContent` deletes them.
+- Tests in `internal/httpapi` check: the layout information is returned in the
+  contract's shape with `private, no-cache` and `ETag`, and `If-None-Match`
+  gives 304; an out-of-range sheet number gives 404; generation in progress
+  gives 409.
+- Web unit tests check: the rule that picks frame and sheet from the position
+  uses the interval from the layout information and does not assume 5 seconds;
+  moving within one sheet causes no fetch; moving across sheets fetches the next
+  sheet once; returning to a sheet that was left before its fetch finished
+  causes no second fetch; when fetching the layout information or a sheet
+  fails, the time display continues and a retry happens after 5 seconds;
+  unmounting aborts in-flight fetches and releases the object URLs.
+- The playback test in `task test-e2e` checks that the same frame appears at
+  the same position for both direct delivery and live transcoding.
+- The screen changes, so with the 2-hour input that draws the time and the
+  portrait input ([quickstart.md](quickstart.md) §2), confirm at 360px, 768px
+  and 1280px that the times of frames near the start, middle and end lie in
+  their ranges, that no neighbouring frame shows even in portrait, and that the
+  browser's network log shows no additional sheet requests for the same video
+  while the pointer moves continuously over the seek bar; record the results in
+  the PR. Confirm that assistive technology still does not read the preview.
+- `task check` and `task check-docs` pass.
+
+### Rebuild existing seek thumbnails as sprites and align the tech stack and 009 docs
+
+**Scope**: Per
+[research.md R-6](research.md#r-6-migration-from-existing-individual-jpegs),
+migration `00015_seek_thumbnail_sprite.sql` resets videos with
+`seek_thumbnail_state = done` to `pending`, and queues a `seek_thumbnail` job
+for each probed video with a location that has no unfinished one. Align the
+seek preview description in `docs/design-docs/tech-stack-selection.md` with
+sprite sheets, and replace the 5-second interval, individual JPEG and
+`positionMs` descriptions in `plan.md`, `research.md`,
+`contracts/seek-thumbnail.md` and `quickstart.md` of
+`specs/009-seek-thumbnail-preview` with references to this feature's contract
+(requirement 10).
+
+**Dependencies**: `Store and serve seek thumbnails as sprite sheets and crop
+them in the player`.
+
+**Acceptance**: Tests in `internal/store` check that `00015` resets `done`
+videos to `pending` and queues `seek_thumbnail`, does not queue for `failed`
+videos or videos with an unfinished job, and that `up` / `down` pass
+(`task migrations-check`). Restarting `task preview` with a data directory
+holding the pre-change individual JPEGs shows remaining seek thumbnails in the
+processing status; when they finish, only the sheets and `sprite.json` remain
+in `seek/<p>/<s>/`, and in the meantime playback, seeking and the time display
+work on the playback screen ([quickstart.md](quickstart.md) §3). `task check`
+and `task check-docs` pass.

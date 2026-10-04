@@ -1,251 +1,365 @@
-# Windows デスクトップ版（VVMDM.exe）
+# Windows desktop app (VVMDM.exe)
 
-- ステータス: 採用
-- スコープ: Windows で zip を展開して `VVMDM.exe` を実行するだけで使える形（専用ウィンドウ・同じプロセスの
-  サーバー・データの置き場・同梱の `ffmpeg`・起動の失敗の示し方・閉じ方・LAN からの接続・配布）
-- 経緯: [specs/037-windows-app/](../../specs/037-windows-app/plan.md)（親 Issue #653）
+- Status: adopted
+- Scope: the form that works on Windows after extracting a zip and running
+  `VVMDM.exe` (a dedicated window, the server in the same process, the data
+  location, the bundled `ffmpeg`, how startup failures are shown, closing,
+  connections from the LAN, and distribution)
+- Background: [specs/037-windows-app/](../../specs/037-windows-app/plan.md)
+  (parent Issue #653)
 
-Docker と直接起動の形（`MDM_*`、`mdm account`、イメージ）は
-[docs/how-to/running-vv.md](../how-to/running-vv.md) が正本で、この文書は扱わない。
-zip の中身・起動の引数とダイアログの文の意味・データの置き場の一覧は
-[contracts/windows-app.md](../../specs/037-windows-app/contracts/windows-app.md) にある。
+The Windows app runs the VVMDM server and its UI in one GUI process built from
+`cmd/mdm` with the `desktop` build tag; the Windows-specific parts live in
+`internal/desktop`. The Docker and direct-run forms (`MDM_*`, `mdm account`,
+the image) are documented in [docs/how-to/running-vv.md](../how-to/running-vv.md),
+and this document does not cover them. The zip contents, the meaning of the
+startup arguments and dialog messages, and the list of data locations are in
+[contracts/windows-app.md](../../specs/037-windows-app/contracts/windows-app.md).
 
-## プロセスとウィンドウ
-
-### Context
-
-`cmd/mdm` は唯一の組み立ての場所で、HTTP サーバー・走査・取り込みのワーカーを 1 つのプロセスで動かし、
-停止の指示で段階的に止める（HTTP の停止 → ワーカーの取り消し → 走査の終わりを待つ → DB を閉じる）。
-Windows の利用者には、コンソール窓を出さず、ブラウザでなく専用のウィンドウで使えて、ウィンドウを
-閉じればサーバーも止まる形が要る。
-
-### Decision
-
-- `cmd/mdm` を `desktop` ビルドタグで Windows GUI の exe として組む
-  （`GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags desktop -ldflags "-H=windowsgui" ./cmd/mdm`）。
-  入口は `cmd/mdm/desktop_windows.go`（`//go:build windows && desktop`）で、タグなしの入口
-  （`cmd/mdm/main_server.go`、環境変数と `mdm account`）は組み込まれない。どちらの入口も同じ起動・停止の
-  手順 `run` を呼ぶので、組み立ては 1 つだけである。
-- デスクトップ版の入口は組み立てと配線だけを持つ。Win32 のウィンドウ、WebView2 の埋め込み、ダイアログ、
-  ジョブオブジェクト、データの置き場の解決は adapter `internal/desktop` が持つ。`internal/desktop` を読むのは
-  `cmd/mdm` だけで、`internal/desktop` は他の `internal/*` を読まない（depguard の兄弟の規則）。
-- 起動の順序: ジョブオブジェクトに入る → 引数を読む → データの置き場とログを用意する → 起動前の確認
-  （[起動の失敗](#起動の失敗)）→ `run` を別の goroutine で始め、待ち受けを開いたらウィンドウを出す。
-  ウィンドウは待ち受けの後にしか出ないので、空白のまま残らない。
-- 待ち受けはループバックの `127.0.0.1:<ポート>`。ポートは既定 `47880`、`--port <1-65535>` で変えられ、
-  それ以外の引数は「使えない引数」のダイアログで終わる。デスクトップ版の前に逆プロキシは無いので、
-  転送ヘッダを読まない（`MDM_TRUSTED_PROXIES=none` 相当）。
-- ウィンドウは自前の Win32 ウィンドウ（題名 `VVMDM`、クラス名 `VVMDMWindow`）に
-  `github.com/wailsapp/go-webview2` の `pkg/edge`（`edge.Chromium`）を埋め込み、`http://localhost:<ポート>/` を
-  開く。SPA・API・動画の配信は HTTP サーバーをそのまま通るので、「既定のアプリで開く」のループバックと
-  `Host` の確認、同じオリジンの確認、`vv_session` の Cookie は直接起動と同じに働く。
-  - 初期の大きさは 1280×800（画面の DPI に合わせて広げる）で、主画面の作業領域より大きければ収めて
-    中央に置く。
-  - 動画の全画面（`ContainsFullScreenElementChanged`）では、ウィンドウを枠なし（`WS_POPUP`）でそのモニターの
-    全体に広げ、抜けたら元のスタイル・位置・大きさ（`WINDOWPLACEMENT`）に戻す。
-  - 描画プロセスが落ちたか応答しなくなったら（`ProcessFailed`）、今のページを開き直す。ブラウザの
-    プロセスが終わると WebView2 は使えないので、続けられない誤りとしてダイアログを出し、停止手順を
-    通して終わる。
-- ウィンドウを閉じると（`WM_CLOSE`）、先にウィンドウを隠してから停止の指示を出し、`run` が停止手順を
-  終えたらウィンドウを壊してプロセスを終える。待ち受けを失うなど、`run` が誤りで戻ったときも同じ道で
-  ウィンドウを壊し、理由をダイアログで示す。
-
-### Alternatives considered
-
-- 新しい `cmd/vvmdm` と、組み立てを `internal/server` へ移す。組み立ての場所が 2 つになるか、3,500 行の
-  組み立てを動かすことになる。却下（research.md R-1）。
-- ランチャーの exe が今の `mdm.exe` を子プロセスとして起こす。GUI の親からコンソールの子へ穏当な停止を
-  送る手段が無い。却下（R-1）。
-- `github.com/jchv/go-webview2` の高水準 API、Wails、Edge の `--app=`、Electron・Tauri。閉じる操作を自分で
-  受けられないか、資産のオリジンが変わるか、実行環境が増える。却下（R-2）。
-
-## データと ffmpeg
+## Process and window
 
 ### Context
 
-利用者は環境変数を設定せず、`ffmpeg` も入れない。展開した zip は新しい版で置き換えられ、
-`Program Files` や読み取り専用の共有フォルダに置かれることもある。
+`cmd/mdm` is the only composition root. It runs the HTTP server, scanning and
+the import workers in one process, and on a stop request it shuts them down in
+stages (stop HTTP → cancel the workers → wait for the scan to end → close the
+DB). Windows users need a form that shows no console window, runs in a
+dedicated window rather than a browser, and stops the server when the window
+is closed.
 
 ### Decision
 
-- データは利用者ごとの `%LOCALAPPDATA%\VVMDM` に置く（既知のフォルダ `FOLDERID_LocalAppData` として読む）。
-  `data\`（`MDM_DATA_DIR` と同じ中身: `mdm.db` と `thumbnails\`）、`webview2\`（WebView2 の利用者データ）、
-  `logs\` を作る。環境変数 `MDM_*` は読まない。exe の隣には何も書かないので、zip の置き換えでデータは
-  消えず、書けない場所に展開しても動く。
-- ログは今の JSON のまま `logs\vvmdm.log` に書き、起動のたびに前回分を `vvmdm.1.log` へ移す（前々回は消える）。
-- 起動時に `<exe のフォルダ>\ffmpeg` を `PATH` の先頭に足す。`internal/media` のコマンド名と起動前の
-  `exec.LookPath` の確認はそのままで、利用者が別の `ffmpeg` を入れていても同梱の版が使われる。
-- `internal/media` が起こす `ffmpeg`/`ffprobe` には、Windows では `CREATE_NO_WINDOW` が付く（全ての起動方法）。
-- 起動の最初に自分を `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` のジョブオブジェクトへ入れる。子プロセスも同じ
-  ジョブに入るので、プロセスが強制終了されてもライブ変換の `ffmpeg` が残らない。ジョブに入れなくても
-  起動は続け、ログに残す。
+- `cmd/mdm` is built as a Windows GUI exe with the `desktop` build tag
+  (`GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags desktop -ldflags "-H=windowsgui" ./cmd/mdm`).
+  The entry point is `cmd/mdm/desktop_windows.go`
+  (`//go:build windows && desktop`), and the untagged entry point
+  (`cmd/mdm/main_server.go`, environment variables and `mdm account`) is not
+  compiled in. Both entry points call the same start and stop procedure
+  `run`, so there is only one composition.
+- The desktop entry point holds only composition and wiring. The adapter
+  `internal/desktop` owns the Win32 window, the WebView2 embedding, the
+  dialogs, the job object and resolving the data location. Only `cmd/mdm`
+  imports `internal/desktop`, and `internal/desktop` imports no other
+  `internal/*` package (the depguard sibling rule).
+- Startup order: join the job object → parse the arguments → prepare the data
+  location and the log → run the pre-start checks
+  ([Startup failures](#startup-failures)) → start `run` in a separate
+  goroutine, and show the window once the listener is open. The window appears
+  only after the listener exists, so it never stays blank.
+- The listener is on the loopback address `127.0.0.1:<port>`. The port
+  defaults to `47880` and can be changed with `--port <1-65535>`; any other
+  argument ends with the "unusable argument" dialog. No reverse proxy sits in
+  front of the desktop app, so it does not read forwarding headers (equivalent
+  to `MDM_TRUSTED_PROXIES=none`).
+- The window is a custom Win32 window (title `VVMDM`, class name
+  `VVMDMWindow`) that embeds `pkg/edge` (`edge.Chromium`) from
+  `github.com/wailsapp/go-webview2` and opens `http://localhost:<port>/`. The
+  SPA, the API and video delivery go through the HTTP server unchanged, so the
+  loopback and `Host` checks for "open in default app", the same-origin check
+  and the `vv_session` cookie work the same as in a direct run.
+  - The initial size is 1280×800 (scaled up for the screen DPI). If that is
+    larger than the primary screen's work area, the window is shrunk to fit
+    and centred.
+  - In video full screen (`ContainsFullScreenElementChanged`) the window
+    becomes borderless (`WS_POPUP`) and covers the whole of its monitor; on
+    exit it returns to its previous style, position and size
+    (`WINDOWPLACEMENT`).
+  - When the renderer process crashes or stops responding (`ProcessFailed`),
+    the current page is reloaded. When the browser process ends, WebView2 is
+    unusable, so the app shows a dialog for an unrecoverable error and exits
+    through the stop procedure.
+- On closing the window (`WM_CLOSE`), the app first hides the window, then
+  issues the stop request; once `run` finishes the stop procedure, it destroys
+  the window and ends the process. When `run` returns with an error, such as
+  losing the listener, the app destroys the window along the same path and
+  shows the reason in a dialog.
 
 ### Alternatives considered
 
-- exe の隣（ポータブル）や `%APPDATA%`（Roaming）にデータを置く。zip の置き換えで消えやすいか、大きな
-  生成物がサインインのたびに同期される。却下（R-5）。
-- `ffmpeg`/`ffprobe` のパスを設定として `internal/media` の各所へ渡す。呼び出し元はデスクトップ版だけで、
-  変更が広がる。却下（R-11）。
+- A new `cmd/vvmdm`, with composition moved to `internal/server`. This would
+  create two composition roots or move 3,500 lines of composition. Rejected
+  (research.md R-1).
+- A launcher exe that starts the current `mdm.exe` as a child process. A GUI
+  parent has no way to send a graceful stop to a console child. Rejected
+  (R-1).
+- The high-level API of `github.com/jchv/go-webview2`, Wails, Edge `--app=`,
+  Electron or Tauri. Each one either cannot receive the close action itself,
+  changes the origin of the assets, or adds a runtime. Rejected (R-2).
 
-## 起動の失敗
+## Data and ffmpeg
 
 ### Context
 
-GUI の exe には標準出力も標準エラーも無い。起動に失敗して黙って終わると、利用者には何も起きないように
-見える。
+Users set no environment variables and do not install `ffmpeg`. The extracted
+zip is replaced by each new version, and may be placed in `Program Files` or a
+read-only shared folder.
 
 ### Decision
 
-ウィンドウを出す前に次を順に確かめ、最初に失敗したものだけを Windows 標準のダイアログ（`MessageBox`、
-題名 `VVMDM`、OK だけ、文は英語）で示して終わる。どの文にもログの場所を添える（ログを書けない 2 番目を除く）。
-文は `internal/desktop` の `Message*` が組み立てる。
-
-1. `VVMDM.exe` が一時フォルダ（長い形のパス）の下になく、隣に `ffmpeg\ffmpeg.exe` と `ffmpeg\ffprobe.exe`
-   がある。エクスプローラーで zip の中の exe を開くと exe だけが一時フォルダへ展開されるので、これで
-   判定できる。失敗したら、zip を「すべて展開」して展開先の `VVMDM.exe` を実行するよう示す。
-2. `%LOCALAPPDATA%\VVMDM` の下のフォルダを作って書ける。失敗したら、書けなかったフォルダを示す。
-3. WebView2 ランタイムがある。無ければ、要ることと入手先の URL を示す。
-4. DB を開いて移行できる。
-5. ポートで待ち受けられる。失敗したら、ポート番号、他のプログラムが使っている可能性、`--port` での
-   変え方を示す。
-
-4 と 5 は `run` の中で起こるので、`run` は失敗の段階（`startupStage`: DB・待ち受け・その他）を誤りに添えて
-返し、入口はそれで文を選ぶ。誤りの文はそのままなので、タグなしの入口の出力は変わらない。
-どれにも当たらない失敗（`ffmpeg` が `PATH` から見つからないなど）と、ウィンドウを出した後の失敗
-（WebView2 の続けられない誤り、待ち受けを失った）は、要約とログの場所を示す。
+- Data lives in the per-user `%LOCALAPPDATA%\VVMDM` (read as the known folder
+  `FOLDERID_LocalAppData`). The app creates `data\` (the same contents as
+  `MDM_DATA_DIR`: `mdm.db` and `thumbnails\`), `webview2\` (the WebView2 user
+  data) and `logs\`. It reads no `MDM_*` environment variables. Nothing is
+  written next to the exe, so replacing the zip does not delete data, and the
+  app works when extracted to a location it cannot write.
+- The log stays in the existing JSON format in `logs\vvmdm.log`; each start
+  moves the previous log to `vvmdm.1.log` (the one before that is deleted).
+- At startup the app prepends `<exe folder>\ffmpeg` to `PATH`. The command
+  names in `internal/media` and the pre-start `exec.LookPath` check stay
+  unchanged, and the bundled version is used even when the user has installed
+  another `ffmpeg`.
+- On Windows, the `ffmpeg`/`ffprobe` processes that `internal/media` starts get
+  `CREATE_NO_WINDOW` (in every way of running the app).
+- First thing at startup, the process puts itself into a job object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. Child processes join the same job, so a
+  forcibly terminated process leaves no live-transcoding `ffmpeg` behind. If
+  joining the job fails, startup continues and the failure is logged.
 
 ### Alternatives considered
 
-- WebView2 に失敗のページを出す。WebView2 ランタイムが無いか初期化に失敗したときに出せない。却下（R-10）。
+- Keeping data next to the exe (portable) or in `%APPDATA%` (Roaming). The
+  data would be easy to lose when the zip is replaced, or large generated files
+  would sync on every sign-in. Rejected (R-5).
+- Passing the `ffmpeg`/`ffprobe` paths as settings to each place in
+  `internal/media`. The desktop app is the only caller, and the change would
+  spread. Rejected (R-11).
 
-## 閉じる・二重起動・サインアウト
+## Startup failures
 
 ### Context
 
-閉じると取り込みが中断されることを、利用者は知らずに閉じうる（親 Issue 要件 6）。同じ利用者が 2 つ目を
-起動すると、同じ `%LOCALAPPDATA%\VVMDM` の DB を 2 つのプロセスが開くことになる（要件 7）。サインアウトや
-シャットダウンでは、確認を待たずに Windows がプロセスを終わらせる。
+A GUI exe has no standard output or standard error. If startup fails and the
+app exits silently, the user sees nothing happen.
 
 ### Decision
 
-- **閉じる前の確認**: `WM_CLOSE` で `app.Scans.Busy`（走っている走査がある、または `queued`/`running` の仕事が
-  1 件以上ある）を読む。`run` は走査を用意したあと、この問いを `runOptions.OnBusyProbe` で入口へ渡す。偽なら
-  確認なしで閉じる。真か読めなければ、Windows 標準の TaskDialog（題名 `VVMDM`、「Import is in progress」、
-  閉じると中断され次の起動で続きから再開すること、ボタンは `Close` と `Keep running`、既定は `Keep running`）
-  を出す。`Keep running`・Esc・ダイアログを閉じる操作では何もしない。`Close` なら、先にウィンドウを隠して
-  から停止の指示を出し、停止手順を最後まで通して DB を閉じ、終了する。ライブ変換の配信は再開の対象で
-  ないので判定に含めない。TaskDialog は Common Controls v6（exe の manifest で選ぶ）にしか無いので、
-  manifest の無いビルドでは同じ文の「はい・いいえ」の `MessageBox`（既定は「いいえ」）で問う。
-- **二重起動**: 起動の最初、ログと DB を開く前に、`Global\VVMDM-<利用者の SID>-<データの置き場のハッシュ>` の
-  名前付きミューテックスを、作った利用者だけが開ける DACL（`D:P(A;;GA;;;<SID>)`）で取り、プロセスの
-  終わりまで持つ。その前に、同じ名前の `Local\`（セッションごと）のミューテックスを作って持つ。この順なので、
-  `Global\` の持ち主は必ず `Local\` を持っている。
-  - `Global\` を取れなければ、自分の `Local\` を閉じて確かめ直す。`Local\` がまだある（持ち主が同じ
-    セッションにいる）なら、`Local\` を持ち直して、`VVMDMWindow` のウィンドウが
-    表に出ていれば最小化を戻して前面に出し、ダイアログなしで終わる。表に出ていなければ（前のプロセスが
-    ウィンドウを隠して停止の途中か、まだウィンドウを出す前）、表に出るかミューテックスが放されるのを
-    最大 30 秒待つ。放されたら起動を続け、30 秒で決まらなければ起動中であることを示して終わる。
-  - `Local\` が無い（同じ利用者が別のセッションで起動中）なら、待たずにそのことを示すダイアログを出して
-    終わる。
-- **サインアウト・シャットダウン**: `WM_QUERYENDSESSION` には常に「終了してよい」と答え、
-  `ShutdownBlockReasonCreate` で「VVMDM is stopping」を登録する。`WM_ENDSESSION`（終了が確定）で、確認を
-  出さずに同じ停止手順を同期で通し（上限 30 秒）、終わってから手続きを返す。終了が取り消されたら理由を
-  消す。止めきれずに終了されても、次の起動で走査の始め直しと `RequeueRunningJobs` が続きを始める。
+Before showing the window, the app checks the following in order and shows
+only the first failure in a standard Windows dialog (`MessageBox`, title
+`VVMDM`, OK only, text in English), then exits. Every message includes the log
+location (except the second, where the log cannot be written). The `Message*`
+functions in `internal/desktop` build the messages.
+
+1. `VVMDM.exe` is not under the temporary folder (as a long path), and
+   `ffmpeg\ffmpeg.exe` and `ffmpeg\ffprobe.exe` are next to it. Opening the exe
+   inside the zip in Explorer extracts only the exe to the temporary folder, so
+   this detects that case. On failure, the message tells the user to use
+   **Extract All** on the zip and run the extracted `VVMDM.exe`.
+2. The folders under `%LOCALAPPDATA%\VVMDM` can be created and written. On
+   failure, the message names the folder that could not be written.
+3. The WebView2 Runtime is installed. If not, the message says it is required
+   and gives the download URL.
+4. The DB opens and migrates.
+5. The app can listen on the port. On failure, the message gives the port
+   number, says another program may be using it, and explains how to change it
+   with `--port`.
+
+Checks 4 and 5 happen inside `run`, so `run` attaches the failing stage
+(`startupStage`: DB, listen, or other) to the error it returns, and the entry
+point chooses the message from it. The error text itself is unchanged, so the
+output of the untagged entry point does not change. A failure that matches
+none of these (for example, `ffmpeg` not found on `PATH`) and a failure after
+the window is shown (an unrecoverable WebView2 error, a lost listener) show a
+summary and the log location.
 
 ### Alternatives considered
 
-- HTML の `beforeunload` や SPA の中の確認。ウィンドウを閉じる操作は WebView2 に届かないか、SPA の読み込み
-  前や描画プロセスの異常時に閉じられなくなる。却下（R-7）。
-- `Local\` だけのミューテックス、ロックファイル、ポートの衝突で判定する。セッションをまたいで同じ DB を
-  開けるか、強制終了で残るか、他のプログラムとの衝突と区別できない。却下（R-6）。
-- `WM_QUERYENDSESSION` で終了を拒んで確認を出す。Windows は確認を待たずに先へ進む。却下（R-8）。
+- Showing a failure page in WebView2. It cannot be shown when the WebView2
+  Runtime is missing or fails to initialise. Rejected (R-10).
 
-## LAN からの接続
+## Closing, second launch and sign-out
 
 ### Context
 
-デスクトップ版は既定でその PC からしか開けないが、所有者が許可すれば同じ LAN のスマートフォンや別の PC からも
-使えるようにしたい（親 Issue 要件 8・9、受け入れ条件 7）。許可していない間は LAN から TCP の接続そのものが
-できないこと、最初の起動で Windows ファイアウォールの許可ダイアログを出さないことが要る。
+Users may close the app without knowing that closing interrupts an import
+(parent Issue requirement 6). If the same user starts a second instance, two
+processes open the DB in the same `%LOCALAPPDATA%\VVMDM` (requirement 7). On
+sign-out or shutdown, Windows ends the process without waiting for a
+confirmation.
 
 ### Decision
 
-- **保存**: 既存の `settings` 表の鍵 `desktop.lan_access`（値 `true`/`false`）。行が無いか `true` でなければ
-  偽。移行は足さない（`internal/store` の `SettingsStore.LANAccess`・`SaveLANAccess`）。
-- **起動時**: `run` は `runOptions.Desktop` が真のとき、DB を開いて移行したあと、ジョブや待ち受けを動かす前に
-  保存値を読み、真なら `0.0.0.0:<ポート>`、偽なら `127.0.0.1:<ポート>` で待ち受ける（`cmd/mdm` の
-  `startNetworkSettings`、アドレスは `domain.LANListenAddr`）。読めなければ DB の段階の起動の失敗にする。
-- **経路**: 所有者だけの `GET`/`PUT /api/settings/network`（`NetworkSettings`: `lanAccess`・`port`・`addresses`）。
-  認証と同じオリジンの確認は `/api/settings/transcoding` と同じ境界で、デスクトップ版でない起動（タグなしの
-  `main`）は `httpapi.Options.NetworkSettings` を渡さないので、経路は `404` `not_found` を返す。SPA はこれを
-  「節を出さない」と読む
-  （[contracts/network-settings-api.md](../../specs/037-windows-app/contracts/network-settings-api.md)）。
-- **切り替え**（`internal/app` の `NetworkSettings.SetLANAccess`）: 切り替えを 1 つずつにする錠の中で、今と
-  同じ値なら何もしない。違えば `cmd/mdm` の開き直せる待ち受けで新しいアドレスへ開き直し、開けたら保存する。
-  - 新しいアドレスで開けなければ、待ち受けの部品が元のアドレスへ戻し、保存値は変えずに
-    `domain.ErrListenFailed` を返す。経路は `409` `conflict`・reason `listen_failed` にする。
-  - 開き直せたが保存に失敗したら、待ち受けを元のアドレスへ開き直して `500` `internal` にする。
-  - 保存は要求の取り消しを継がない（`context.WithoutCancel`）。開き直したあとに要求が切れても、待ち受けと
-    保存値を食い違わせない。
-  - 開き直しは今の待ち受けを閉じて同じ `http.Server` で新しい待ち受けを `Serve` するので、確立済みの接続
-    （この要求、`/api/events` の SSE、配信中の動画）は切れない。許可をやめたあと、LAN からの新しい接続は
-    TCP の段で拒まれる。
-- **`addresses`**: 許可中だけ、上がっているネットワークインターフェースのループバックでない IPv4 アドレスごとに
-  `http://<アドレス>:<ポート>/` を返す（`cmd/mdm` の `lanAddresses`）。偽なら空。インターフェースを読めない
-  ときは許可を効かせたまま空にし、記録に残す。
+- **Confirmation before closing**: on `WM_CLOSE` the app reads
+  `app.Scans.Busy` (a scan is running, or at least one job is `queued` or
+  `running`). After `run` prepares scanning, it hands this query to the entry
+  point through `runOptions.OnBusyProbe`. If it is false, the window closes
+  without asking. If it is true or cannot be read, the app shows a standard
+  Windows TaskDialog (title `VVMDM`, "Import is in progress", saying that
+  closing interrupts it and that it resumes on the next start; buttons `Close`
+  and `Keep running`, default `Keep running`). `Keep running`, Esc and closing
+  the dialog do nothing. `Close` first hides the window, then issues the stop
+  request, runs the stop procedure to the end, closes the DB and exits. Live
+  transcoding is not something that resumes, so it is not part of the check.
+  TaskDialog exists only in Common Controls v6 (selected by the exe
+  manifest), so a build without the manifest asks with a Yes/No `MessageBox`
+  with the same text (default No).
+- **Second launch**: first thing at startup, before opening the log and the
+  DB, the app takes the named mutex
+  `Global\VVMDM-<user SID>-<hash of the data location>` with a DACL that only
+  the creating user can open (`D:P(A;;GA;;;<SID>)`) and holds it until the
+  process ends. Before that, it creates and holds a `Local\` (per-session)
+  mutex with the same name. Because of this order, the owner of `Global\`
+  always holds `Local\`.
+  - If `Global\` cannot be taken, the app closes its own `Local\` and checks
+    again. If `Local\` still exists (the owner is in the same session), the app
+    takes `Local\` again; if a `VVMDMWindow` window is visible, it restores it
+    from minimised, brings it to the front, and exits without a dialog. If no
+    window is visible (the previous process has hidden its window and is
+    stopping, or has not shown its window yet), the app waits up to 30 seconds
+    for the window to appear or the mutex to be released. If the mutex is
+    released, startup continues; if nothing is settled within 30 seconds, the
+    app shows that VVMDM is starting and exits.
+  - If `Local\` does not exist (the same user is running VVMDM in another
+    session), the app shows a dialog saying so without waiting, and exits.
+- **Sign-out and shutdown**: the app always answers `WM_QUERYENDSESSION` with
+  "OK to end" and registers "VVMDM is stopping" with
+  `ShutdownBlockReasonCreate`. On `WM_ENDSESSION` (the end is confirmed), it
+  runs the same stop procedure synchronously without asking (up to 30
+  seconds) and returns from the handler once it finishes. If the end is
+  cancelled, the reason is removed. If the process is ended before it stops,
+  the scan restart and `RequeueRunningJobs` on the next start continue the
+  work.
 
 ### Alternatives considered
 
-- 常に `0.0.0.0` で待ち受け、許可していない間は非ループバックの接続をすぐ切る。最初の起動でファイアウォールの
-  ダイアログが出る。却下（R-14）。
-- 許可したときに `0.0.0.0` の待ち受けを `127.0.0.1` と並べて足す。同じポートのワイルドカードと特定アドレスの
-  同時の待ち受けは Windows のソケットの設定に依存する。却下（R-14）。
-- 設定をデータの置き場のファイルに持つ。保存の仕組みが 2 つになる。却下（R-14）。
+- HTML `beforeunload` or a confirmation inside the SPA. The window close
+  action either does not reach WebView2, or the window cannot be closed before
+  the SPA loads or when the renderer process fails. Rejected (R-7).
+- Detecting a second instance with only a `Local\` mutex, a lock file, or a
+  port conflict. These allow the same DB to be opened across sessions, are
+  left behind by a forced termination, or cannot be told apart from a conflict
+  with another program. Rejected (R-6).
+- Refusing the end in `WM_QUERYENDSESSION` and showing a confirmation. Windows
+  moves on without waiting for the confirmation. Rejected (R-8).
 
-## 配布
+## Connections from the LAN
 
 ### Context
 
-利用者が取れる配布物の置き場が要る（親 Issue 要件 1）。今の CI は `main` への push で Docker イメージを
-出すだけである。zip だけで動くには `ffmpeg` を同梱し（要件 2）、置き換えて更新できる形にする（要件 10）。
-高 DPI の画面で WebView2 の表示がぼやけないことと、閉じる確認の TaskDialog（Common Controls v6）には
-exe の manifest が要る。
+By default the desktop app opens only on its own PC, but when the owner allows
+it, phones and other PCs on the same LAN should be able to use it too (parent
+Issue requirements 8 and 9, acceptance criterion 7). While it is not allowed,
+no TCP connection from the LAN may be possible, and the first start must not
+show the Windows Firewall permission dialog.
 
 ### Decision
 
-- **zip**: `VVMDM-<版>-windows-amd64.zip`。根に同じ名前のフォルダを 1 つ持ち、`VVMDM.exe`、`README.txt`
-  （展開して実行すること・SmartScreen の通し方・データの場所・更新の仕方）、`ffmpeg\`（`ffmpeg.exe`・
-  `ffprobe.exe`・`LICENSE.txt`・版とソースの入手先の `README.txt`）を入れる。`<版>` はタグから `v` を除いた
-  もの、タグが無ければ commit の `sha-<12 桁>`。README は Windows のメモ帳向けに CRLF で書く。対象は
-  `windows/amd64` だけ。
-- **組み立て**: `task build-windows-app`（`scripts/build -windows-app`）が SPA を組み、`go-winres` で
-  `cmd/mdm/winres/`（アイコンと、DPI 対応 per monitor v2・Common Controls v6 の manifest）から
-  `cmd/mdm/rsrc_windows_amd64.syso` を作り、`GOOS=windows GOARCH=amd64 CGO_ENABLED=0`、
-  `-tags desktop -ldflags "-H=windowsgui -X main.version=<版>"` で `VVMDM.exe` を組んで `dist/` に zip を書く。
-  `.syso` は同じ `GOOS`/`GOARCH` の `cmd/mdm` の全ビルドに入るので、組み立ての間だけ置いて消し、版管理に
-  入れない。版が数（`a.b.c.d` まで）なら exe の版情報にも入れる。`go-winres` の版は `tools/go.mod` が固定する。
-- **FFmpeg**: `GyanD/codexffmpeg` の GitHub Releases の `ffmpeg-<版>-essentials_build.zip` を、
-  `scripts/build/windows_app.go` に固定した版と SHA-256 で取る。取ったものは `dist/cache/` に置き、使うたびに
-  SHA-256 を確かめ、合わなければ消してビルドを失敗させる（期待値と実際の値を示す）。zip から取り出すのは
-  `bin\ffmpeg.exe`・`bin\ffprobe.exe`・`LICENSE` だけである。Windows のハードウェアエンコーダは
-  [hardware-encoding.md](hardware-encoding.md) の NVENC と QSV のままで、AMF は足さない。
-- **workflow** `.github/workflows/windows-app.yml`: `v*` のタグの push と手動実行で動く。
-  - Linux のジョブが `task build-windows-app` で zip を組み、workflow の成果物 `windows-app` に残す。
-  - Windows のジョブが zip を展開し、中身の並びと、同梱の `ffmpeg -hide_banner -encoders` に `h264_nvenc` と
-    `h264_qsv` があることを確かめる。無ければ失敗する。ランナーに GPU は無いので、確かめるのは
-    エンコーダが組み込まれていることまでで、実際の GPU での変換は実機で確かめる
-    （[quickstart.md](../../specs/037-windows-app/quickstart.md)）。
-  - タグのときだけ、両方が通ったあとに GitHub Release に zip を添付する。Release が無ければ作り、あれば
-    zip を差し替える。
-- exe は署名しない。初回の SmartScreen の通し方は zip の `README.txt` と
-  [running-vv.md](../how-to/running-vv.md#windows-app) に書く。
+- **Storage**: the key `desktop.lan_access` (value `true`/`false`) in the
+  existing `settings` table. If there is no row or the value is not `true`, the
+  setting is false. No migration is added (`SettingsStore.LANAccess` and
+  `SaveLANAccess` in `internal/store`).
+- **At startup**: when `runOptions.Desktop` is true, `run` reads the stored
+  value after opening and migrating the DB and before starting the jobs and
+  the listener. If it is true, the app listens on `0.0.0.0:<port>`; if false,
+  on `127.0.0.1:<port>` (`startNetworkSettings` in `cmd/mdm`, with the address
+  from `domain.LANListenAddr`). If the value cannot be read, startup fails at
+  the DB stage.
+- **Route**: owner-only `GET`/`PUT /api/settings/network`
+  (`NetworkSettings`: `lanAccess`, `port`, `addresses`). Authentication and
+  the same-origin check sit at the same boundary as
+  `/api/settings/transcoding`. A run that is not the desktop app (the untagged
+  `main`) does not pass `httpapi.Options.NetworkSettings`, so the route
+  returns `404` `not_found`, which the SPA reads as "do not show the Network
+  section"
+  ([contracts/network-settings-api.md](../../specs/037-windows-app/contracts/network-settings-api.md)).
+- **Switching** (`NetworkSettings.SetLANAccess` in `internal/app`): under a
+  lock that serialises switches, the app does nothing when the value equals
+  the current one. Otherwise the reopenable listener in `cmd/mdm` reopens on
+  the new address, and on success the value is saved.
+  - If the new address cannot be opened, the listener component returns to
+    the previous address, the stored value stays unchanged, and
+    `domain.ErrListenFailed` is returned. The route answers `409` `conflict`
+    with reason `listen_failed`.
+  - If the reopen succeeds but saving fails, the listener reopens on the
+    previous address and the route answers `500` `internal`.
+  - Saving does not inherit the request's cancellation
+    (`context.WithoutCancel`). Even if the request is cancelled after the
+    reopen, the listener and the stored value do not diverge.
+  - Reopening closes the current listener and calls `Serve` on the same
+    `http.Server` with the new listener, so established connections (this
+    request, the `/api/events` SSE, video being delivered) stay open. After
+    access is turned off, new connections from the LAN are refused at the TCP
+    level.
+- **`addresses`**: only while access is allowed, one `http://<address>:<port>/`
+  per non-loopback IPv4 address of each network interface that is up
+  (`lanAddresses` in `cmd/mdm`). When access is off, the list is empty. If the
+  interfaces cannot be read, access stays in effect, the list is empty, and
+  the failure is logged.
 
 ### Alternatives considered
 
-- `main` への push ごとに zip を作る。利用者向けの版の区切りが無い。却下（R-13）。
-- `windows/arm64` も作る。固定できる `ffmpeg` の arm64 版が無く、x64 の exe はエミュレーションで動く。
-  却下（R-13）。
-- BtbN/FFmpeg-Builds の `ffmpeg` を同梱する。版ごとの固定の Release が残らず、固定した版を後から取れない。
-  却下（R-12）。
-- `.syso` を版管理に入れる。タグなしの Windows 向けビルド（`mdm.exe`）にもアイコンと manifest が入り、
-  版情報も古いまま残る。却下。
+- Always listening on `0.0.0.0` and dropping non-loopback connections at once
+  while access is not allowed. The firewall dialog would appear on the first
+  start. Rejected (R-14).
+- Adding a `0.0.0.0` listener alongside `127.0.0.1` when access is allowed.
+  Listening on a wildcard and a specific address on the same port at the same
+  time depends on Windows socket options. Rejected (R-14).
+- Keeping the setting in a file in the data location. This would create a
+  second storage mechanism. Rejected (R-14).
+
+## Distribution
+
+### Context
+
+Users need a place to get the distribution from (parent Issue requirement 1).
+The current CI only publishes the Docker image on a push to `main`. For the
+zip alone to work, it bundles `ffmpeg` (requirement 2) and is updated by
+replacement (requirement 10). Keeping the WebView2 rendering sharp on high-DPI
+screens and the close-confirmation TaskDialog (Common Controls v6) both need
+an exe manifest.
+
+### Decision
+
+- **zip**: `VVMDM-<version>-windows-amd64.zip`. Its root holds one folder with
+  the same name, containing `VVMDM.exe`, `README.txt` (extract and run, how to
+  get past SmartScreen, where the data is, how to update) and `ffmpeg\`
+  (`ffmpeg.exe`, `ffprobe.exe`, `LICENSE.txt`, and a `README.txt` with the
+  version and where to get the source). `<version>` is the tag without the
+  leading `v`, or `sha-<12 characters>` of the commit when there is no tag. The
+  READMEs use CRLF line endings for Windows Notepad. The only target is
+  `windows/amd64`.
+- **Build**: `task build-windows-app` (`scripts/build -windows-app`) builds the
+  SPA, uses `go-winres` to produce `cmd/mdm/rsrc_windows_amd64.syso` from
+  `cmd/mdm/winres/` (the icon, and a manifest for per-monitor v2 DPI awareness
+  and Common Controls v6), builds `VVMDM.exe` with
+  `GOOS=windows GOARCH=amd64 CGO_ENABLED=0` and
+  `-tags desktop -ldflags "-H=windowsgui -X main.version=<version>"`, and
+  writes the zip to `dist/`. The `.syso` goes into every `cmd/mdm` build for
+  the same `GOOS`/`GOARCH`, so it exists only during the build, is deleted
+  afterwards, and is not under version control. When the version is numeric
+  (up to `a.b.c.d`), it also goes into the exe's version information.
+  `tools/go.mod` pins the `go-winres` version.
+- **FFmpeg**: the build fetches `ffmpeg-<version>-essentials_build.zip` from
+  the GitHub Releases of `GyanD/codexffmpeg`, at the version and SHA-256
+  pinned in `scripts/build/windows_app.go`. The download is kept in
+  `dist/cache/` and its SHA-256 is checked on every use; on a mismatch the file
+  is deleted and the build fails, showing the expected and actual values. Only
+  `bin\ffmpeg.exe`, `bin\ffprobe.exe` and `LICENSE` are taken from the zip. The
+  Windows hardware encoders stay NVENC and QSV as in
+  [hardware-encoding.md](hardware-encoding.md); AMF is not added.
+- **Workflow** `.github/workflows/windows-app.yml`: runs on a push of a `v*`
+  tag and on manual dispatch.
+  - A Linux job builds the zip with `task build-windows-app` and keeps it as
+    the workflow artifact `windows-app`.
+  - A Windows job extracts the zip and checks the layout of its contents and
+    that the bundled `ffmpeg -hide_banner -encoders` lists `h264_nvenc` and
+    `h264_qsv`; if not, it fails. The runner has no GPU, so the check stops at
+    the encoders being compiled in; actual GPU transcoding is checked on real
+    hardware ([quickstart.md](../../specs/037-windows-app/quickstart.md)).
+  - Only for a tag, after both jobs pass, the zip is attached to the GitHub
+    Release. If the Release does not exist it is created; if it exists the zip
+    is replaced.
+- The exe is not code-signed. How to get past SmartScreen on the first run is
+  written in the zip's `README.txt` and in
+  [running-vv.md](../how-to/running-vv.md#windows-app).
+
+### Alternatives considered
+
+- Building the zip on every push to `main`. There would be no user-facing
+  version boundary. Rejected (R-13).
+- Also building `windows/arm64`. No pinnable arm64 build of `ffmpeg` exists,
+  and the x64 exe runs under emulation. Rejected (R-13).
+- Bundling `ffmpeg` from BtbN/FFmpeg-Builds. It keeps no fixed Release per
+  version, so a pinned version cannot be fetched later. Rejected (R-12).
+- Putting the `.syso` under version control. The untagged Windows build
+  (`mdm.exe`) would also get the icon and the manifest, and the version
+  information would stay stale. Rejected.

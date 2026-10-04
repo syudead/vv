@@ -1,16 +1,17 @@
-# Contract: ライブ変換の映像エンコード方式の設定
+# Contract: Live transcoding video encoder setting
 
-正本は `api/openapi.yaml` で、この文書は足す経路と型、変える引数だけを書く。ライブ変換の本体
-（`transcodeVideo`）と `transcode-start` の応答の形は変えない。エラーの形は
-[specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md) に従う。
+Source of truth: `api/openapi.yaml`. This document covers only the routes and
+types added and the request field that changes. The live transcode itself
+(`transcodeVideo`) and the `transcode-start` response shape do not change. Errors
+follow [specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md).
 
-## 1. 型
+## 1. Types
 
 ```yaml
-VideoEncoderChoice:        # 所有者が選ぶ値（親 Issue 要件 1）
+VideoEncoderChoice:        # The value the owner picks (parent Issue requirement 1)
   type: string
   enum: [software, nvenc, qsv, vaapi, videotoolbox, auto]
-VideoEncoder:              # 実際に使う方式
+VideoEncoder:              # The encoder actually used
   type: string
   enum: [software, nvenc, qsv, vaapi, videotoolbox]
 EncoderUnavailableReason:
@@ -23,18 +24,18 @@ EncoderAvailability:
   type: object
   required: [encoder, state]
   properties:
-    encoder: { $ref: VideoEncoder }        # software は載らない（常に使える）
+    encoder: { $ref: VideoEncoder }        # software is not listed (always available)
     state:   { type: string, enum: [checking, available, unavailable] }
-    reason:  { $ref: EncoderUnavailableReason }   # state が unavailable のときだけ
+    reason:  { $ref: EncoderUnavailableReason }   # only when state is unavailable
 TranscodingSettings:
   type: object
   required: [videoEncoder, effectiveEncoder, checking, encoders]
   properties:
-    videoEncoder:      { $ref: VideoEncoderChoice }   # 保存値の解釈。未選択と未知の値は software
-    effectiveEncoder:  { $ref: VideoEncoder }         # 今のライブ変換の要求が使う方式（要件 6）
-    fallbackReason:    { $ref: EncoderFallbackReason } # 選んだ方式が使えず software のときだけ（要件 8）
-    checking:          { type: boolean }              # 起動時の確認が終わっていない
-    encoders:          # nvenc・qsv・vaapi・videotoolbox の順で常に 4 件
+    videoEncoder:      { $ref: VideoEncoderChoice }   # the interpreted stored value; not chosen and unknown values are software
+    effectiveEncoder:  { $ref: VideoEncoder }         # the encoder current live transcode requests use (requirement 6)
+    fallbackReason:    { $ref: EncoderFallbackReason } # only when the chosen encoder is unavailable and software is used (requirement 8)
+    checking:          { type: boolean }              # the startup check has not finished
+    encoders:          # always 4 entries, in the order nvenc, qsv, vaapi, videotoolbox
       type: array
       items: { $ref: EncoderAvailability }
 UpdateTranscodingSettingsRequest:
@@ -45,33 +46,44 @@ UpdateTranscodingSettingsRequest:
     videoEncoder: { $ref: VideoEncoderChoice }
 ```
 
-`auto` で使えるものが無く software になるのは fallback ではないので、`fallbackReason` は載らない。
+When `auto` finds nothing available and uses software, that is not a fallback, so
+`fallbackReason` is absent.
 
 ## 2. `GET /api/settings/transcoding`
 
-`operationId: getTranscodingSettings`。`security` は既定（所有者だけ。`accessRoutes` に足さない）。
+`operationId: getTranscodingSettings`. `security` is the default (owner only; not
+added to `accessRoutes`).
 
-- 200: `TranscodingSettings`。`Cache-Control: no-store`。
-- 401 `unauthenticated`／403: 境界の扱い（ゲストは方式も一覧も見られない。要件 13）。
+| Status | `code` | When |
+| --- | --- | --- |
+| 200 | | `TranscodingSettings`, with `Cache-Control: no-store` |
+| 401 | `unauthenticated` | Boundary handling; a guest sees neither the encoder nor the list (requirement 13) |
+| 403 | | Same |
 
 ## 3. `PUT /api/settings/transcoding`
 
-`operationId: updateTranscodingSettings`。所有者だけ。`Content-Type: application/json` を要求する
-（`requiresJSONBody` に足す）。
+`operationId: updateTranscodingSettings`. Owner only. Requires
+`Content-Type: application/json` (added to `requiresJSONBody`).
 
-- 本文: `UpdateTranscodingSettingsRequest`。
-- 200: 保存後の `TranscodingSettings`（`GET` と同じ形。画面はこれで表示を置き換える）。
-  `Cache-Control: no-store`。保存は次に始まるライブ変換の要求から効く（要件 4）。
-- 400 `invalid_request`: `videoEncoder` が列挙に無い、本文が JSON でない。
-- 409 `conflict`、reason `encoder_unavailable`: `state` が `available` でないハードウェアの方式を
-  選んだ（確認中を含む）。`software` と `auto` は常に受け付ける。保存値は変えない。
-- 500 `internal`: 保存に失敗した。画面は選択を元に戻し、区画内に理由を出す（親 Issue UI品質）。
+**Request**: `UpdateTranscodingSettingsRequest`.
 
-## 4. ライブ変換の要求への効き方
+**Response**: 200 with the saved `TranscodingSettings` (the same shape as `GET`;
+the screen replaces its display with it) and `Cache-Control: no-store`. The saved
+value applies from the next live transcode request that starts (requirement 4).
 
-`transcodeVideo` は要求ごとに `TranscodingSettings.effectiveEncoder` に当たる方式を
-`domain.LiveTranscodeRequest.VideoEncoder` に載せる。映像をコピーできる要求は方式に依らず
-コピーする（要件 12）。ハードウェアで最初のデータを出す前に失敗した要求は同じ要求の中で
-`software` でやり直し、応答は成功する（要件 11。
-[research.md R-6](../research.md#r-6-要求の中での切り替えはエンコードの段でハードウェア--ソフトウェアの順に試す)）。
-応答の形もヘッダーも変えない。
+| Status | `code` | When |
+| --- | --- | --- |
+| 400 | `invalid_request` | `videoEncoder` is not in the enum, or the body is not JSON |
+| 409 | `conflict`, reason `encoder_unavailable` | A hardware encoder whose `state` is not `available` was chosen (including while checking). `software` and `auto` are always accepted. The stored value does not change |
+| 500 | `internal` | Saving failed. The screen reverts the selection and shows the reason inside the section (parent Issue `UI品質`) |
+
+## 4. Effect on live transcode requests
+
+`transcodeVideo` puts the encoder that corresponds to
+`TranscodingSettings.effectiveEncoder` into
+`domain.LiveTranscodeRequest.VideoEncoder` on every request. A request whose video
+can be copied is copied whatever the encoder (requirement 12). A request where
+hardware fails before producing initial data retries with `software` within the
+same request, and the response succeeds (requirement 11;
+[research.md R-6](../research.md#r-6-in-request-fallback-tries-hardware-then-software-at-the-encode-step)).
+Neither the response shape nor its headers change.

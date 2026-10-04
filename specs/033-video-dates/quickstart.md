@@ -1,30 +1,26 @@
-# Quickstart: 作成日時をファイルシステムで確かめる
+# Quickstart: Checking creation times on a real file system
 
-親 Issue #630 の受け入れ条件のうち、自動テストが実際のファイルシステムの作成日時に依存できないもの
-（受け入れ条件 4・5）を、動いているサーバーで確かめる手順である。ほかの受け入れ条件は `task check` が
-走らせる store・scanner・httpapi・Vitest の試験で確かめる。結果は、走査の単位
-（「走査がファイルの作成日時を読み、所在に記録する」）の実装 PR の本文に残す。
+These steps check, on a running server, the acceptance criteria of parent Issue
+#630 that automated tests cannot verify because they depend on real file-system
+creation times (acceptance criteria 4 and 5). The other acceptance criteria are
+verified by the store, scanner, httpapi and Vitest tests that `task check` runs.
+Record the results in the body of the implementation PR for the scan unit ("Read
+file creation times during the scan and record them on locations").
 
-## 前提
+## Prerequisites
 
-- [docs/how-to/development.md](../../docs/how-to/development.md) のとおり `task dev` で起動し、所有者で
-  ログインし、メディアフォルダを 1 つ登録している。以下 `BASE=http://localhost:8080`。
-- 作成日時を持つファイルシステム（Linux の ext4・xfs・btrfs、macOS の APFS、Windows の NTFS）の上に
-  メディアフォルダがあること。
+- The server is running with `task dev` as in
+  [docs/how-to/development.md](../../docs/how-to/development.md), you are logged
+  in as the owner, and one media folder is registered. Below,
+  `BASE=http://localhost:8080`.
+- The media folder is on a file system that records creation times (ext4, xfs or
+  btrfs on Linux, APFS on macOS, NTFS on Windows).
 
-## 手順
+## Steps
 
-1. メディアフォルダに動画を 1 本コピーし、OS の作成日時を控える（Linux: `stat -c %w <path>`、
-   macOS: `stat -f %SB <path>`、Windows: エクスプローラーのプロパティ）。
-2. スキャンを実行し、動画ページを開く。情報欄の作成日時が 1 の値と一致する（受け入れ条件 4）。
-   `curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup?path=<path>"` の `fileCreatedAt`
-   も同じである（受け入れ条件 7）。
-3. 作成日時を持たないファイルシステム（`tmpfs`、または `stat -c %w` が `-` を返す場所）の上に
-   メディアフォルダを登録して同じ手順を踏むと、作成日時がそのファイルの更新日時（`stat -c %y`）と
-   一致する（受け入れ条件 5）。
-4. この feature より前に登録した動画（移行前のデータベース）は、スキャンの前は作成日時が更新日時と
-   同じで、スキャンの後に OS の作成日時になる（Edge Case「既に登録済みの動画」）。
-
-## 期待する結果
-
-上のそれぞれが成り立つ。
+| Step | Expected result | Acceptance |
+| --- | --- | --- |
+| 1. Copy one video into the media folder and note its OS creation time (Linux: `stat -c %w <path>`; macOS: `stat -f %SB <path>`; Windows: the file's Properties in Explorer) | — | — |
+| 2. Run a scan, open the video page, and run `curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup?path=<path>"` | The creation time in the facts row matches the value from step 1, and so does `fileCreatedAt` | 4, 7 |
+| 3. Register a media folder on a file system without creation times (`tmpfs`, or a place where `stat -c %w` returns `-`) and repeat the steps | The creation time matches the file's modification time (`stat -c %y`) | 5 |
+| 4. For a video registered before this feature (a database from before the migration), compare before and after a scan | Before the scan the creation time equals the modification time; after the scan it is the OS creation time | Edge case "videos already registered" |

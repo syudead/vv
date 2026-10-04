@@ -1,96 +1,89 @@
-# 技術選定: MDM（Media Data Management）
+# Technology selection: MDM (Media Data Management)
 
-- スコープ: 動画ファイルを管理し、ブラウザで再生できるシステムの技術選定
+This document records the technology chosen for a system that manages video
+files and plays them in a browser, and why. The current feature and data
+boundaries are in [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
-## 1. 選定の前提
+## 1. Premises
 
-以下は現在の選定理由である。現行の機能とデータの境界は
-[`ARCHITECTURE.md`](../../ARCHITECTURE.md) に記す。
-
-| 項目 | 決定 |
+| Item | Decision |
 | --- | --- |
-| デプロイ形態 | セルフホスト（個人／自宅の1台、NAS や小型サーバー上の Docker） |
-| クライアント | Web ブラウザのみ（PC／スマートフォン） |
-| 動画の扱い | 対応形式は元ファイルを配信し、非対応形式はリクエスト中にライブ変換する |
-| 利用者数 | 単一アカウント。公開動画はゲストも閲覧できる |
-| ライブラリ規模 | 〜数万本、数 TB をローカルディスク上に想定 |
+| Deployment | Self-hosted (one personal or home machine, Docker on a NAS or small server) |
+| Client | Web browser only (PC and smartphone) |
+| Video handling | Supported formats are served from the original file; unsupported formats are live-transcoded during the request |
+| Users | A single account. Guests can view public videos |
+| Library size | Up to tens of thousands of videos, several TB, on local disk |
 
-## 2. 選定の判断基準
+## 2. Selection criteria
 
-セルフホストの単一ユーザー用途であるため、スループットよりも
-**運用の単純さ**と**壊れても復旧できること**を優先する。
+The system is self-hosted for a single user, so **simple operation** and
+**recovery after failure** take priority over throughput.
 
-1. **1プロセス・1コンテナで動くこと。** 常時稼働の外部ミドルウェア
-   （Redis、メッセージブローカー、別 DB サーバー）を増やさない。
-2. **再構築できる索引と利用者データを分けること。** 動画ファイルはスキャンで
-   索引に戻せるが、再生位置や認証情報などは戻せない
-   （[データの区別](../../ARCHITECTURE.md#rebuildable-and-user-data)）。
-3. **境界を機械的に守れること。** `ARCHITECTURE.md` の原則に沿い、ドメイン層が
-   HTTP・DB・ffmpeg に依存しない構造を lint で強制する。
-4. **重い処理を境界の内側に置くこと。** `ffmpeg` を使う処理はアダプタに閉じ、
-   HTTP や保存層の責務と混ぜない。
+1. **One process in one container.** Add no always-running external middleware
+   (Redis, a message broker, a separate DB server).
+2. **Keep the rebuildable index separate from user data.** A scan restores the
+   index from the video files; it cannot restore playback positions or
+   credentials ([data classification](../../ARCHITECTURE.md#rebuildable-and-user-data)).
+3. **Boundaries enforced by tools.** Following the principles in
+   `ARCHITECTURE.md`, lint enforces that the domain layer does not depend on
+   HTTP, the DB or ffmpeg.
+4. **Heavy processing inside a boundary.** Code that runs `ffmpeg` stays in an
+   adapter and does not mix with HTTP or storage responsibilities.
 
-## 3. 決定事項
+## 3. Decisions
 
-| レイヤ | 採用 | 主な理由 |
+| Layer | Choice | Main reason |
 | --- | --- | --- |
-| バックエンド言語 | Go（使用版は `go.mod`） | 単一バイナリで配布でき、常駐プロセスと子プロセス管理が標準ライブラリで完結する。NAS 上でのメモリ使用量も小さい |
-| HTTP サーバー | 標準ライブラリ `net/http`（Go 1.22 以降の `ServeMux`） | メソッド付きルーティングとパスワイルドカードが標準で使える。`http.ServeContent` が Range 配信を正しく実装済み |
-| 動画配信 | 対応形式は `http.ServeContent`、非対応形式はリクエスト単位の fragmented MP4 ライブ変換 | 元ファイルの Range 配信を標準実装に任せ、変換結果は保存しない（[ライブ変換のシーク](live-transcode-seek.md)） |
-| フロント | React + Vite + React Router + Tailwind CSS | 静的ビルドを Go バイナリに `embed` して配る SPA。画面遷移は React Router で管理する |
-| API 契約 | OpenAPI 3.1 を真実とし、Go は `oapi-codegen`、TS は `openapi-typescript` で生成 | 2言語構成で唯一増えるコスト（型のずれ）を機械的に防ぐ |
-| DB | SQLite（`modernc.org/sqlite`、CGO 不要、WAL モード） | 静的バイナリのままクロスコンパイルでき、alpine ベースの小さいイメージに載る |
-| クエリ | `database/sql` で SQL を手書き | FTS5 を含む SQL を一次資料として保てる |
-| マイグレーション | `goose`（`embed.FS` にマイグレーションを同梱） | 外部ツールのインストール不要でバイナリ単体で適用できる |
-| 全文検索 | SQLite FTS5（`tokenize='trigram'`） | 日本語をトークナイザ追加なしで部分一致検索できる。外部検索エンジン不要 |
-| メディア解析 | `ffprobe` / `ffmpeg` を `os/exec` で実行（`context` でタイムアウト） | ラッパーを挟まず引数と失敗理由が明示的になる。プロセス停止の制御も標準機能で足りる |
-| 認証 | ユーザー名とパスワードの組（`golang.org/x/crypto/argon2` の Argon2id）＋ HttpOnly Cookie セッション（セッションは SQLite に保存） | 単一ユーザーに必要十分。外部公開は HTTPS の逆プロキシを必須とする |
-| 非同期処理 | SQLite のジョブテーブル + goroutine のワーカー（`context` でグレースフル停止） | 別プロセスもブローカーも不要。再起動後にジョブを再開できる |
-| ログ | 標準ライブラリ `log/slog`（JSON ハンドラ） | 追加依存なしで構造化ログになる |
-| テスト | Go 標準 `testing` + `net/http/httptest`（Range の検証）+ Playwright（再生の E2E） | 「実際に再生が始まる」ことは E2E でしか担保できない |
-| lint | `golangci-lint`（`depguard` で層をまたぐ import を禁止） | 依存方向の制約を CI で機械的に落とせる |
-| 配布 | Docker（multi-stage、alpine + ffmpeg）+ Compose。Windows では `VVMDM.exe` と同梱の `ffmpeg` の zip をタグで GitHub Release に添付する（[Windows デスクトップ版](windows-app.md#配布)） | CGO 不要なので alpine でそのまま動き、イメージが小さい。同じ理由で Windows の exe も Linux からクロスコンパイルでき、zip を展開するだけで Docker も `ffmpeg` の導入も要らない |
+| Backend language | Go (version in `go.mod`) | Ships as a single binary, and the standard library covers a resident process and child-process management. Memory use on a NAS is small |
+| HTTP server | Standard library `net/http` (the Go 1.22+ `ServeMux`) | Method routing and path wildcards are built in. `http.ServeContent` already implements Range serving correctly |
+| Video delivery | `http.ServeContent` for supported formats; per-request fragmented MP4 live transcoding for unsupported formats | Range serving of the original file is left to the standard implementation, and transcoded output is not stored ([live transcoding seek](live-transcode-seek.md)) |
+| Frontend | React + Vite + React Router + Tailwind CSS | An SPA whose static build is embedded in the Go binary with `embed`. React Router manages navigation |
+| API contract | OpenAPI 3.1 is the source of truth; Go is generated with `oapi-codegen`, TS with `openapi-typescript` | Prevents, by tooling, the one cost a two-language setup adds: type drift |
+| DB | SQLite (`modernc.org/sqlite`, no CGO, WAL mode) | Cross-compiles as a static binary and fits a small alpine-based image |
+| Queries | Hand-written SQL through `database/sql` | Keeps SQL, including FTS5, as the primary source |
+| Migrations | `goose` (migrations bundled in an `embed.FS`) | The binary applies them on its own with no external tool to install |
+| Full-text search | SQLite FTS5 (`tokenize='trigram'`) | Substring search of Japanese without an added tokenizer. No external search engine |
+| Media analysis | `ffprobe` / `ffmpeg` run through `os/exec` (timeout via `context`) | No wrapper, so arguments and failure reasons are explicit. The standard library is enough to stop processes |
+| Authentication | Username and password (Argon2id from `golang.org/x/crypto/argon2`) + HttpOnly cookie session (sessions stored in SQLite) | Sufficient for a single user. Public exposure requires an HTTPS reverse proxy |
+| Asynchronous work | A SQLite job table + goroutine workers (graceful stop via `context`) | No separate process or broker. Jobs resume after a restart |
+| Logging | Standard library `log/slog` (JSON handler) | Structured logs with no added dependency |
+| Tests | Go `testing` + `net/http/httptest` (Range checks) + Playwright (playback E2E) | Only E2E can show that playback actually starts |
+| Lint | `golangci-lint` (`depguard` forbids imports across layers) | CI rejects dependency-direction violations automatically |
+| Distribution | Docker (multi-stage, alpine + ffmpeg) + Compose. On Windows, a zip of `VVMDM.exe` and the bundled `ffmpeg` attached to the GitHub Release on each tag ([Windows desktop app](windows-app.md#distribution)) | Without CGO the binary runs on alpine as is, and the image is small. For the same reason the Windows exe cross-compiles from Linux, and extracting the zip needs neither Docker nor an `ffmpeg` install |
 
-依存方向とパッケージの責務は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) に記す。
-SQLite には再構築できる索引と利用者データが共存するため、復旧時の区別は
-[同文書のデータ分類](../../ARCHITECTURE.md#rebuildable-and-user-data) を正本とする。
-ファイルの移動・改名後も同じ動画として扱う content key は、先頭と末尾の各 1 MiB
-とファイルサイズから作る。ファイル全体を読まずに識別でき、標準ライブラリの
-SHA-256 だけで実装できるためである。
+Dependency direction and package responsibilities are in
+[ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction). SQLite
+holds both the rebuildable index and user data; the
+[data classification in the same document](../../ARCHITECTURE.md#rebuildable-and-user-data)
+is the source of truth for telling them apart during recovery.
 
-## 4. 採用しなかった選択肢
+The content key, which identifies a video as the same video after a move or
+rename, is built from the first and last 1 MiB and the file size. It identifies
+a file without reading all of it and needs only the standard library's SHA-256.
 
-| 候補 | 却下理由 |
+## 4. Rejected alternatives
+
+| Candidate | Reason rejected |
 | --- | --- |
-| TypeScript / Node.js バックエンド | Range 配信とプロセス管理を自前で書く必要があり、ネイティブ依存（`better-sqlite3`）の再ビルド運用も抱える |
-| Python + FastAPI | ライブラリは豊富だが、配布が重く、常駐ワーカーと依存管理の運用コストがセルフホスト用途に合わない |
-| Echo / Gin / Fiber | 標準 `ServeMux` で足りる規模であり、ルーティングのために依存を増やす理由がない。Fiber は `net/http` 互換でないため `ServeContent` の利点も失う |
-| GORM / ent | FTS5 を含む SQL を一次資料として保てるため、ORM の抽象より手書きの SQL を選んだ |
-| `sqlc` | FTS5 を含む SQL をそのまま管理する方針で採用しなかった |
-| `mattn/go-sqlite3` | CGO が必要で、クロスコンパイルと alpine ビルドの運用が増える |
-| PostgreSQL | 単一アカウントの運用に別コンテナと別のバックアップ手順を増やしたくない |
-| Meilisearch / Elasticsearch | 検索品質は上だが常駐プロセスが増える。FTS5 trigram で数万件なら実用的 |
-| SvelteKit | 軽量で有力。React を選んだのはエコシステムと将来の人手確保の観点のみで、技術的な優劣ではない |
-| 起動時の HLS 一括トランスコード | ストレージと CPU を大量に消費するため採用せず、リクエスト単位のライブ変換を使う |
-| Redis + 外部ジョブキュー | 解析・サムネイル・プレビューは段階ごとに1件ずつ処理する。SQLite のジョブテーブルと goroutine で足りる |
-| S3 / MinIO | ローカルディスクが真実である前提と合わず、Range 配信に中継が増える |
-| Jellyfin / Plex の採用 | 既製品で要件は満たせるが、本リポジトリは自作を前提とする。機能比較の参照先としてのみ扱う |
+| TypeScript / Node.js backend | Range serving and process management would be hand-written, and native dependencies (`better-sqlite3`) need rebuild maintenance |
+| Python + FastAPI | Rich libraries, but distribution is heavy and running a resident worker and managing dependencies costs too much for self-hosting |
+| Echo / Gin / Fiber | The standard `ServeMux` is enough at this size, so there is no reason to add a dependency for routing. Fiber is not `net/http`-compatible and would lose the benefit of `ServeContent` |
+| GORM / ent | Hand-written SQL was chosen over an ORM abstraction to keep SQL, including FTS5, as the primary source |
+| `sqlc` | Not adopted, under the policy of managing SQL, including FTS5, as written |
+| `mattn/go-sqlite3` | Needs CGO, which adds cross-compilation and alpine build maintenance |
+| PostgreSQL | Would add a separate container and a separate backup procedure to a single-account deployment |
+| Meilisearch / Elasticsearch | Better search quality, but adds a resident process. FTS5 trigram is practical for tens of thousands of items |
+| SvelteKit | Light and a strong candidate. React was chosen only for its ecosystem and future staffing, not for technical superiority |
+| Bulk HLS transcoding at startup | Consumes large amounts of storage and CPU; per-request live transcoding is used instead |
+| Redis + an external job queue | Analysis, thumbnails and previews are processed one at a time per stage. A SQLite job table and goroutines are enough |
+| S3 / MinIO | Conflicts with the premise that local disk is the source of truth, and adds a relay to Range serving |
+| Adopting Jellyfin / Plex | Off-the-shelf products meet the requirements, but this repository is built from scratch by design. They serve only as references for feature comparison |
 
-## 5. 既知のリスクと対処
+## 5. Known risks and mitigations
 
-- **フロントとバックエンドの2言語化。** 型のずれと二重のビルド／CI が増える。
-  API は `api/openapi.yaml` を唯一の真実とし、Go と TypeScript の両方を
-  生成物にすることで、ずれをコンパイルエラーとして検出する。ビルドは
-  `Taskfile.yml` の単一タスク（`task build` で SPA ビルド → embed → Go build）に
-  まとめる。
-- **FTS5 の trigram トークナイザ。** `modernc.org/sqlite` で作成と検索を検証済み。
-  trigram は2文字以下の検索語に `MATCH` が一致しないため、検索は
-  「3文字以上は `MATCH`、1〜2文字は照合用の鍵 `search_key` への `instr`」の2経路にする
-  （振り分けは `internal/store/search.go` の `termUsesMatch`、検証は
-  `internal/store/fts_test.go`）。
-- **ファイル名の Unicode 正規化。** 実在パスはファイルシステムが返した綴りを保持する。
-  表示名と検索用文字列だけをNFCへ正規化する（`golang.org/x/text/unicode/norm`）。
-  実在パスの正規化は、Linux等で別の存在しないentryを指し得るため行わない。
-- **大量スキャン時の I/O 飽和。** 解析・サムネイル・プレビューは段階ごとのワーカーが
-  それぞれ1件ずつ処理する（段階内の並列度は1）。進捗は `jobs` テーブルから数え、
-  `/api/events` で UI へ送る。
+| Risk | Mitigation |
+| --- | --- |
+| Two languages for frontend and backend | Type drift and doubled build/CI. `api/openapi.yaml` is the single source of truth for the API, and both Go and TypeScript are generated from it, so drift becomes a compile error. The build is one task in `Taskfile.yml` (`task build`: SPA build → embed → Go build) |
+| FTS5 trigram tokenizer | Creation and search are verified with `modernc.org/sqlite`. Trigram `MATCH` does not match search terms of two characters or fewer, so search has two paths: `MATCH` for 3 or more characters, `instr` on the matching key `search_key` for 1–2 characters (routing in `termUsesMatch` in `internal/store/search.go`, tests in `internal/store/fts_test.go`) |
+| Unicode normalization of file names | Real paths keep the spelling the file system returned. Only display names and search strings are normalized to NFC (`golang.org/x/text/unicode/norm`). Real paths are not normalized because, on Linux and similar systems, the normalized path can point at a different, non-existent entry |
+| I/O saturation during a large scan | Analysis, thumbnails and previews each have a per-stage worker that processes one item at a time (concurrency 1 within a stage). Progress is counted from the `jobs` table and sent to the UI over `/api/events` |

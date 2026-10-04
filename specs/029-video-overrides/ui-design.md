@@ -1,306 +1,411 @@
-# UI Design: 動画ページで表示名を編集し、今の場面を代表サムネイルにする
+# UI design: Editing the display name and using the current frame as the representative thumbnail on the video page
 
-**Feature**: [parent Issue #517](https://github.com/syudead/vv/issues/517) ・
-[plan.md](plan.md) ・ [contracts/screen-api.md](contracts/screen-api.md) ・
-[research.md R-4](research.md#r-4-サムネイルの位置の指定は要求の中で生成してから記録する)・
-[R-8](research.md#r-8-画面の-api-は動画ごとの-2-つの-put-にし空の表示名と-null-の位置が解除である)・
-[R-10](research.md#r-10-表示名の規則はタグ名の規則にそろえ上限は-200-符号位置にする)
+**Feature**: [parent Issue #517](https://github.com/syudead/vv/issues/517) ·
+[plan.md](plan.md) · [contracts/screen-api.md](contracts/screen-api.md) ·
+[research.md R-4](research.md#r-4-a-thumbnail-position-is-generated-within-the-request-then-recorded) ·
+[R-8](research.md#r-8-the-screen-api-is-two-puts-per-video-an-empty-display-name-and-a-null-position-clear) ·
+[R-10](research.md#r-10-display-name-rules-follow-tag-name-rules-with-a-200-code-point-limit)
 
-見た目の規則は次の文書に従い、ここでは決め直さない。
+Sources: the visual rules follow these documents and are not decided again
+here.
 
-- 配色・操作状態・幅の出し分け・再生画面の構成: [ライブラリ UI](../../docs/design-docs/library-ui.md)
-  （「6. 一覧の構成」のカード、「8. 再生画面の構成」）
-- role token: [`web/src/index.css`](../../web/src/index.css) の `@theme`。値は写さず、名前で呼ぶ
-- 対比を検査する組: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
-- 再生画面の列・題名の書式・「Video facts」の 2 行と右端の操作・失敗の 1 行:
-  [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md)
-  と今の [`web/src/player/VideoPage.tsx`](../../web/src/player/VideoPage.tsx)・
-  [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx)
-- 題名とタグのまとまり・「タグを追加」の入力とキー操作:
-  [specs/014-video-tags/ui-design.md「Video page tags」](../014-video-tags/ui-design.md#video-page-tags)
-- 題名の上のグループ名の行（題名より従の 1 行の書式）:
-  [specs/017-folder-groups/ui-design.md「Group line」](../017-folder-groups/ui-design.md#group-line)
-- 公開の切り替え（送信中・失敗の行の扱い）:
-  [specs/016-single-account-auth/ui-design.md「Visibility toggle」](../016-single-account-auth/ui-design.md#visibility-toggle)
-- 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は意図を
-  示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる
+| Topic | Source |
+| --- | --- |
+| Colour, interaction states, width breakpoints, playback screen structure | [Library UI](../../docs/design-docs/library-ui.md) (the cards in section 6 on list structure, and section 8 on the playback screen structure) |
+| Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Referred to by name; values are not copied |
+| Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
+| Playback screen columns, title format, the two "Video facts" rows with their right-hand actions, the failure line | [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md) and the current [`web/src/player/VideoPage.tsx`](../../web/src/player/VideoPage.tsx) and [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |
+| The title-and-tags group, the "Add tag" input and its keys | [specs/014-video-tags/ui-design.md "Video page tags"](../014-video-tags/ui-design.md#video-page-tags) |
+| The group name line above the title (the format of a one-line secondary to the title) | [specs/017-folder-groups/ui-design.md "Group line"](../017-folder-groups/ui-design.md#group-line) |
+| The visibility toggle (handling of sending and the failure line) | [specs/016-single-account-auth/ui-design.md "Visibility toggle"](../016-single-account-auth/ui-design.md#visibility-toggle) |
+| Where strings live and their format | [Screen strings and formatting (i18n)](../../docs/design-docs/i18n.md). The English here is a draft of the intent; after implementation the catalog [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) is canonical |
 
-この feature が画面に足すのは、再生画面（`/videos/:id`）の**所有者**だけの 3 つである。
+This feature adds three things to the playback screen (`/videos/:id`), all for
+the **owner** only:
 
-1. 題名の**編集**（要件 1・2、受け入れ条件 1・2）
-2. 表示名が設定されているときの、題名の下の**ファイル名の行**（要件 7、受け入れ条件 7）
-3. ファイルの情報の行の**サムネイルの項目と操作**（要件 5・6、受け入れ条件 5・6）
+1. **Editing** the title (requirements 1 and 2, acceptance criteria 1 and 2).
+2. The **file name line** under the title when a display name is set
+   (requirement 7, acceptance criterion 7).
+3. The **thumbnail item and actions** in the file details row (requirements 5
+   and 6, acceptance criteria 5 and 6).
 
-それ以外は変えない。一覧のカード・フォルダ画面・リスト表示・関連動画・グループのカードは `title` を
-描くだけなので、表示名は API の `title` に載って自然に出る（要件 1、[contracts/screen-api.md §0](contracts/screen-api.md#0-video-の差分)）。
-カードにファイル名は出ない（UI品質「要求を満たしたことにならない例」）。ゲストの再生画面は今の
-ままで、3 つのどれも出ない（要件 9）。プレイヤーの中（操作バー・層）は変えない。新しい色・半径・影の
-token は足さず、`tokens.test.ts` の `pairs` にも足さない（下の「Colour」）。
+Nothing else changes. List cards, the folder screen, the list view, related
+videos and group cards only draw `title`, so the display name appears there
+through the API's `title` (requirement 1,
+[contracts/screen-api.md §0](contracts/screen-api.md#0-video-changes)). Cards do
+not show the file name (the `UI品質` examples of "does not meet the
+requirement"). The guest playback screen stays as it is and shows none of the
+three (requirement 9). The inside of the player (control bar, layers) does not
+change. No new colour, radius or shadow token is added, and nothing is added to
+`pairs` in `tokens.test.ts` (see "Colour" below).
 
 ## Why here and not elsewhere
 
-- 題名の編集を**その場**（`h1` の位置）で行い、設定画面や別の窓へ移さないのは、要件「動画ページから
-  移動せずに完了する」と、比較対象の現行製品（ストレージ・写真・動画管理の画面の名前の変更）が
-  収束している「名前の場所で直す」形に従うためである。ダイアログにすると題名の文字の大きさで
-  確かめられず、狭い幅ではプレイヤーが隠れる。
-- 「今の場面をサムネイルにする」を**プレイヤーの操作バーではなく**、ファイルの情報の行の右端の
-  操作（「ファイルを開く」「パスをコピー」の隣）に置くのは次の理由による。
-  - 操作バーの部品は再生操作と同じ重さになる。編集は「再生操作より目立たせない」（UI品質「視覚的
-    階層」「操作の優先順位」）。
-  - 操作バーは 360px でも 1 行に収める前提で、画質・字幕・速度を足した今、もう 1 つ足す余地が無い
-    （specs/027 の「Responsive behaviour」）。
-  - サムネイルを場面から選ばせる現行製品（動画の公開サービスの「このフレームを使う」）は、
-    プレイヤーの下にその操作を置いている。
-  - 指定の結果と解除の入口（下の「Thumbnail fact」）も同じ行にまとまり、状態・操作・失敗が
-    1 か所で読める。
-- ファイル名の行を**表示名が設定されているときだけ**出すのは、UI品質「情報密度」（元のファイル名は
-  表示名があるときだけ、題名より従の扱いで見られればよい）による。行があること自体が「この動画は
-  上書きされている」の印になる（要件 7）。
+The title is edited **in place** (where the `h1` is), not in settings or a
+separate window, because the requirement says "completes without leaving the
+video page", and the current products compared (renaming in storage, photo and
+video management screens) converge on "fix the name where the name is". A
+dialog would not let the user check the name at the title's text size, and on
+narrow widths it would hide the player.
+
+"Use the current frame as the thumbnail" sits **not in the player's control
+bar** but among the actions at the right end of the file details row (next to
+"Open file" and "Copy path"), for these reasons:
+
+- A control bar component carries the same weight as playback controls, and
+  editing is to be "less prominent than playback controls" (`UI品質` "visual
+  hierarchy" and "action priority").
+- The control bar is meant to fit on one line even at 360px, and with quality,
+  subtitles and speed added there is no room for another control (specs/027
+  "Responsive behaviour").
+- Current products that let users choose a thumbnail from a frame (video
+  publishing services' "use this frame") put that action below the player.
+- The result of the choice and the entry point for clearing it (see "Thumbnail
+  fact" below) are in the same row, so state, action and failure read in one
+  place.
+
+The file name line appears **only when a display name is set** because of
+`UI品質` "information density" (the original file name only needs to be
+visible, as secondary to the title, when there is a display name). The line's
+presence itself marks "this video is overridden" (requirement 7).
 
 ## Words
 
-| 場所 | 英語（案） |
-| --- | --- |
-| 題名の横の編集ボタンの読み上げ名・ツールチップ | Edit name |
-| 編集の入力の読み上げ名 | Display name |
-| 編集の入力のプレースホルダー | ファイル名由来の題名そのもの（利用者のデータ。翻訳しない） |
-| 保存 | Save |
-| 取り消し | Cancel |
-| ファイル名の行の読み上げ用のラベル・`title` | File name |
-| サムネイルの項目の読み上げ用のラベル・`title`・画像の `alt` | Thumbnail at 1:23（時刻は `formatDuration` の書式） |
-| サムネイルを指定するボタンの読み上げ名・ツールチップ | Use current frame as thumbnail |
-| 指定を解除する × の読み上げ名・ツールチップ | Use automatic thumbnail |
-| 名前を保存できなかった 1 行 | Couldn't save the name: {理由} |
-| サムネイルを指定・解除できなかった 1 行 | Couldn't change the thumbnail: {理由} |
-| `display_name_control_characters` | The name can't contain control characters |
-| `display_name_too_long` | The name can't be longer than {limit} characters |
-| `duration_unknown` | The video's length isn't known yet |
-| `thumbnail_position_out_of_range` | The position is past the end of the video |
-| `thumbnail_frame_unavailable` | No image could be made from this frame |
+| Place | Text | Notes |
+| --- | --- | --- |
+| Accessible name and tooltip of the edit button next to the title | Edit name | |
+| Accessible name of the edit input | Display name | |
+| Placeholder of the edit input | The file-name title itself | User data; not translated |
+| Save | Save | |
+| Cancel | Cancel | |
+| Accessible label and `title` of the file name line | File name | |
+| Accessible label, `title` and image `alt` of the thumbnail item | Thumbnail at 1:23 | The time uses the `formatDuration` format |
+| Accessible name and tooltip of the button that sets the thumbnail | Use current frame as thumbnail | |
+| Accessible name and tooltip of the × that clears it | Use automatic thumbnail | |
+| Line when the name could not be saved | Couldn't save the name: {reason} | |
+| Line when the thumbnail could not be set or cleared | Couldn't change the thumbnail: {reason} | |
+| `display_name_control_characters` | The name can't contain control characters | |
+| `display_name_too_long` | The name can't be longer than {limit} characters | |
+| `duration_unknown` | The video's length isn't known yet | |
+| `thumbnail_position_out_of_range` | The position is past the end of the video | |
+| `thumbnail_frame_unavailable` | No image could be made from this frame | |
 
-- 理由の 5 つは `web/src/i18n/errors.ts` の `reason` の表に足す（[contracts/screen-api.md §3](contracts/screen-api.md#3-足す-codereason)）。
-  `file_unavailable`・`video_not_found` は今の文のまま。
-- 「Thumbnail」と「name」の語は、一覧のカードと同じもの（サムネイル）・題名の編集（名前）を指す。
-  「display name」という語は入力の読み上げ名にだけ使い、画面に見える文言には出さない。所有者に
-  とっては「動画の名前」であり、「表示名」と「ファイル名」の区別はファイル名の行が見せる。
+- The five reasons are added to the `reason` table in
+  `web/src/i18n/errors.ts`
+  ([contracts/screen-api.md §3](contracts/screen-api.md#3-added-code-and-reason-values)).
+  `file_unavailable` and `video_not_found` keep their current text.
+- "Thumbnail" and "name" refer to the same things as on list cards (the
+  thumbnail) and to title editing (the name). The term "display name" is used
+  only as the input's accessible name and does not appear in visible text. To
+  the owner it is "the video's name"; the file name line shows the difference
+  between display name and file name.
 
 ## Title editing
 
 ### Placement and weight
 
-- 題名（`h1`）の右に、編集の入口として `IconButton`（`size="sm"`、ghost、lucide `Pencil`）を 1 つ
-  置く。`h1` と同じ行に `flex items-start gap-2` で並べ、`h1` は `min-w-0 flex-1`、ボタンは
-  `shrink-0`。ボタンの縦の中心は題名の**1 行目**にそろえる（`h-8` のボタンを `text-2xl`・
-  `leading-snug` の 1 行目に合わせるため、`sm` 以上は `mt-0.5`、それ未満は `-mt-0.5` 程度）。
-  題名が折り返しても、ボタンは右上に留まり、下へ落ちない。
-- 色は「ファイルを開く」「パスをコピー」と同じ `text-fg-muted`、hover で `text-fg`。面も枠も
-  無い。アクセント色は使わない。題名（`text-xl`〜`text-2xl`・`font-semibold`・`text-fg`）より
-  先に目に入らず、タグのチップ（`bg-elevated` の面を持つ）より弱い（UI品質「視覚的階層」）。
-- 常に見せる。ポイントしたときだけ出す形にしないのは、hover の無い端末で入口が消えるからである。
-  ゲストには置かない（`h1` だけ。今のまま）。
-- 題名の書式は変えない。表示名も、ファイル名由来の題名と同じ `h1` の書式で出る（UI品質
-  「タイポグラフィ」）。
+- One `IconButton` (`size="sm"`, ghost, lucide `Pencil`) sits to the right of
+  the title (`h1`) as the entry point for editing. It shares the `h1`'s row
+  with `flex items-start gap-2`; the `h1` is `min-w-0 flex-1` and the button
+  `shrink-0`. The button's vertical centre aligns with the **first line** of the
+  title (to fit the `h-8` button to the first line of `text-2xl`
+  `leading-snug`, about `mt-0.5` at `sm` and above and `-mt-0.5` below). When
+  the title wraps, the button stays at the top right and does not drop down.
+- Colour is `text-fg-muted`, `text-fg` on hover, the same as "Open file" and
+  "Copy path". No surface or border, and no accent colour. It is not noticed
+  before the title (`text-xl` to `text-2xl`, `font-semibold`, `text-fg`), and
+  is weaker than the tag chips (which have a `bg-elevated` surface) (`UI品質`
+  "visual hierarchy").
+- Always visible. It is not shown only on pointer hover, because the entry point
+  would disappear on devices without hover. Guests do not get it (only the
+  `h1`, as today).
+- The title format does not change. A display name appears in the same `h1`
+  format as a file-name title (`UI品質` "typography").
 
 ### Edit mode
 
-編集ボタンを押すと、`h1` の位置がそのまま**入力**に変わる（編集中は `h1` を描かない）。
+Pressing the edit button turns the `h1`'s position into an **input** in place
+(the `h1` is not drawn while editing).
 
-- 入力は `input[type=text]`。文字の大きさ・太さ・行間は題名と同じ（`text-xl`〜`text-2xl`・
-  `font-semibold`・`text-fg`・`leading-snug`）。面は `bg-field`、枠は `border border-border`、
-  `rounded-md`、`px-2 py-1`。文字の左端を題名の左端にそろえるため `-mx-2`（グループ名の行の
-  `-ml-2` と同じ考え方）。フォーカスで `border-accent`（検索欄・「タグを追加」と同じ）。幅は
-  列いっぱい（`w-full`）。
-- 初期値は今の `title`（表示名があればそれ、無ければファイル名由来の題名）。全選択した状態で
-  フォーカスを入力に移す。プレースホルダーは `fileTitle` で、入力を空にすると「空 ＝ ファイル名に
-  戻る」がその場で見える（説明の文は足さない）。
-- 入力の右（`sm` 未満は下）に、**Save**（`Button` primary・`sm`）と **Cancel**（ghost・`sm`）を
-  `gap-2` で置く。編集中だけ現れる一時の状態なので、Save のアクセント色は「編集を再生操作より
-  目立たせない」に反しない。`sm` 未満では入力が 1 行目、2 つのボタンが 2 行目の左寄せ。
-- 編集中は、題名の下のファイル名の行（下の「File name line」）を出さない。入力のプレースホルダーが
-  その役を負う。タグ・公開の切り替え・ファイルの情報は編集中もそのまま見える。
-- キー: Enter で保存、Esc で取り消し。入力にフォーカスがある間は再生画面のキーの操作（Space・
-  F・M・C・0・Esc）は効かない（今の `keyboard.ts` の `isEditable`。014「Add input」と同じ）。
-  画面を閉じるのは、入力の外で押した Esc だけである。
-- 取り消し（Cancel・Esc）は何も送らず、`h1` に戻し、フォーカスを編集ボタンへ返す。
+- The input is `input[type=text]`. Text size, weight and line height are the
+  title's (`text-xl` to `text-2xl`, `font-semibold`, `text-fg`,
+  `leading-snug`). Surface `bg-field`, border `border border-border`,
+  `rounded-md`, `px-2 py-1`. `-mx-2` aligns the text's left edge with the
+  title's left edge (the same idea as the group name line's `-ml-2`). Focus
+  gives `border-accent` (the same as the search box and "Add tag"). Width is
+  the full column (`w-full`).
+- The initial value is the current `title` (the display name if there is one,
+  otherwise the file-name title). Focus moves to the input with all text
+  selected. The placeholder is `fileTitle`, so emptying the input shows "empty
+  = back to the file name" in place (no explanatory sentence is added).
+- To the right of the input (below it under `sm`), **Save** (`Button` primary,
+  `sm`) and **Cancel** (ghost, `sm`) sit with `gap-2`. They appear only during
+  this temporary state, so Save's accent colour does not break "editing is less
+  prominent than playback controls". Under `sm`, the input is on the first line
+  and the two buttons on the second, aligned left.
+- While editing, the file name line under the title (see "File name line"
+  below) is hidden; the input's placeholder takes its role. Tags, the
+  visibility toggle and the file details stay visible while editing.
+- Keys: Enter saves and Esc cancels. While the input has focus, the playback
+  screen keys (Space, F, M, C, 0, Esc) do not act (`isEditable` in the current
+  `keyboard.ts`; the same as 014 "Add input"). Only Esc pressed outside the
+  input closes the screen.
+- Cancelling (Cancel or Esc) sends nothing, returns to the `h1`, and returns
+  focus to the edit button.
 
 ### Save
 
-- 保存は `PUT /api/videos/{id}/display-name` を 1 回送る（[contracts/screen-api.md §1](contracts/screen-api.md#1-put-apivideosiddisplay-name)）。
-  - 入力の値が今の `title` と同じで、表示名が設定されていないときは、何も送らずに取り消しと同じに
-    する（ファイル名と同じ表示名を作らない）。
-  - 空（空白だけを含む）は解除として送る（`displayName: ""`。Edge Case「空文字や空白だけ」）。
-    表示名が設定されていない動画で空を送っても、応答は `200` で何も変わらない。
-- 送信中は入力を `readOnly`、Save を `aria-disabled`（`disabled` にしない。フォーカスを失わない
-  ため。016「Visibility toggle」と同じ）にし、Save のアイコンを lucide `LoaderCircle`
-  （`animate-spin motion-reduce:animate-none`）にする。Cancel は押せるままにし、押したら応答を
-  待たずに `h1` へ戻す（届いた応答は動画の差し替えにだけ使う）。
-- `200` を受けたら、応答の `Video` で `useVideoDetail` の動画を差し替え、`h1` に戻す。題名・
-  ファイル名の行・`document.title` が新しい値になる。フォーカスは編集ボタンへ返す。トーストは
-  出さない。題名そのものが変わることが結果である（受け入れ条件 1・2）。
-- 失敗したら編集を続ける。入力の文字は残し、入力とボタンの行の**すぐ下**に 1 行
-  （`role="alert"`、`text-sm text-danger`、先頭に lucide `AlertCircle` `size-4`）で
-  「Couldn't save the name: {理由}」を出す（012「Video facts」の開けなかったときの行と同じ形）。
-  理由は `errorText`（上の「Words」）。次に保存したとき、取り消したとき、別の動画へ移ったときに
-  消える。帯・トースト・ダイアログは使わない。
-  - `display_name_too_long`（Edge Case「長すぎる」）: 理由に `limit` の 200 が入る。入力に
-    `maxLength` は付けない。符号位置の数え方がブラウザと違い、貼り付けた文字が黙って切れる
-    からである。
-  - `404 video_not_found`: 動画を取り直す（消えていれば今の「動画が消えた」の層になる）。
-- 編集中に `/api/events` の `video` で動画が取り直されても（別のタブや外部 API からの変更。
-  Edge Case「同時に変更」）、入力の文字は書き換えない。保存すればこちらが後勝ちになり、
-  取り消せば取り直した題名が見える。
+- Saving sends one `PUT /api/videos/{id}/display-name`
+  ([contracts/screen-api.md §1](contracts/screen-api.md#1-put-apivideosiddisplay-name)).
+  - When the input value equals the current `title` and no display name is set,
+    nothing is sent and it acts as Cancel (no display name identical to the
+    file name is created).
+  - Empty (including whitespace only) is sent as a clear (`displayName: ""`;
+    edge case "empty or whitespace only"). Sending empty for a video without a
+    display name returns `200` and changes nothing.
+- While sending, the input is `readOnly` and Save is `aria-disabled` (not
+  `disabled`, so focus is not lost; the same as 016 "Visibility toggle"), and
+  Save's icon becomes lucide `LoaderCircle`
+  (`animate-spin motion-reduce:animate-none`). Cancel stays pressable; pressing
+  it returns to the `h1` without waiting for the response (a response that
+  arrives is used only to replace the video).
+- On `200`, the response `Video` replaces the video in `useVideoDetail`, and the
+  view returns to the `h1`. The title, the file name line and `document.title`
+  take the new values. Focus returns to the edit button. No toast: the changed
+  title is the result (acceptance criteria 1 and 2).
+- On failure, editing continues. The input text is kept, and one line appears
+  **directly below** the row of the input and buttons (`role="alert"`,
+  `text-sm text-danger`, led by lucide `AlertCircle` `size-4`) saying
+  "Couldn't save the name: {reason}" (the same shape as the could-not-open line
+  in 012 "Video facts"). The reason is `errorText` (see "Words" above). The line
+  clears on the next save, on cancel, or on moving to another video. No banner,
+  toast or dialog.
+  - `display_name_too_long` (edge case "too long"): the reason includes the
+    `limit` of 200. The input gets no `maxLength`, because the browser counts
+    code points differently and pasted text would be cut silently.
+  - `404 video_not_found`: the video is refetched (if it is gone, the current
+    "video is gone" layer appears).
+- When a `video` event on `/api/events` refetches the video during editing (a
+  change from another tab or the external API; edge case "concurrent change"),
+  the input text is not overwritten. Saving makes this change the last write;
+  cancelling shows the refetched title.
 
 ## File name line
 
-表示名が設定されている（`displayName` がある）動画で、所有者にだけ、題名のすぐ下に 1 行置く
-（要件 7、受け入れ条件 7）。
+For a video with a display name set (`displayName` present), one line sits
+directly under the title, for the owner only (requirement 7, acceptance
+criterion 7).
 
-- 中身は左から、lucide `FileVideo`（`size-3.5`、`text-fg-subtle`、`aria-hidden`）→ `fileTitle`
-  （`text-fg-muted`、1 行で省略、`title` に「File name: 〈ファイル名〉」）。全体は `text-xs`
-  （`sm` 以上 `text-sm`）。グループ名の行と同じ書式で、題名より小さく従の色（UI品質
-  「タイポグラフィ」「元のファイル名は補助情報の扱い」）。読み上げ用に視覚的に隠した「File name」を
-  値の前に置く。
-- `h1`（と編集ボタン）の行とこの行を `flex flex-col gap-1` の 1 つの小さなまとまりにし、その
-  まとまりを今の題名とタグのまとまり（`gap-2`）の中に置く。題名とファイル名の間（`gap-1`）を
-  題名とタグの間（`gap-2`）より狭くして、ファイル名が題名に属する補足で、タグと同格でないことを
-  間隔で示す。まとまりの外側の間隔（`gap-2`・`gap-5`）は変えない（UI品質「余白のリズム」）。
-- 押せない。リンクにもボタンにもしない（Q-5: 裏側が無い要素だが、文字色が `fg-muted` で印も
-  hover の面も無く、押せると誤認する要素は無い。価値は要件 7 そのもの）。
-- 表示名が無い動画には出さない。ゲストには出さない（ゲストの応答に `displayName`・`fileTitle` は
-  無い）。
-- 広い画面（`lg` 以上）の左の列の高さの予算（プレイヤーの `max-w-[calc(max(100dvh-17rem,15rem)*…)]`）
-  は変えない。この 1 行で列がはみ出す窓では、グループ名の行と同じく左の列がスクロールする
-  （012「`lg`（1024px）以上」）。
+- Contents from left: lucide `FileVideo` (`size-3.5`, `text-fg-subtle`,
+  `aria-hidden`) → `fileTitle` (`text-fg-muted`, truncated to one line,
+  `title` set to `File name: {file name}`). The whole line is `text-xs`
+  (`text-sm` at `sm` and above). The same format as the group name line:
+  smaller than the title and in a secondary colour (`UI品質` "typography" and
+  "the original file name is supporting information"). A visually hidden "File
+  name" precedes the value for screen readers.
+- The row of the `h1` (with the edit button) and this line form one small group
+  with `flex flex-col gap-1`, placed inside the current title-and-tags group
+  (`gap-2`). The gap between title and file name (`gap-1`) is narrower than the
+  gap between title and tags (`gap-2`), so spacing shows that the file name is
+  a supplement belonging to the title, not a peer of the tags. The spacing
+  outside the group (`gap-2`, `gap-5`) does not change (`UI品質` "spacing
+  rhythm").
+- Not pressable; neither a link nor a button (Q-5: an element with nothing
+  behind it, but the text colour is `fg-muted` with no mark and no hover
+  surface, so nothing suggests it can be pressed. Its value is requirement 7
+  itself).
+- Not shown for videos without a display name. Not shown to guests (guest
+  responses have no `displayName` or `fileTitle`).
+- The height budget of the left column on wide screens (`lg` and above; the
+  player's `max-w-[calc(max(100dvh-17rem,15rem)*…)]`) does not change. In a
+  window where this line makes the column overflow, the left column scrolls, as
+  with the group name line (012 "`lg` (1024px) and above").
 
 ## Thumbnail fact
 
-ファイルの情報の行（`VideoFacts` の 1 行目）に、所有者だけ、次の 2 つを足す。
+Two things are added to the file details row (the first row of `VideoFacts`),
+for the owner only.
 
-### Item（指定されているときだけ）
+### Item (only when set)
 
-`thumbnailPositionMs` があるときだけ、長さ・サイズ・追加日の**あと**に 4 つ目の項目として置く。
+Only when `thumbnailPositionMs` is present, a fourth item sits **after**
+length, size and added date.
 
-- 中身は左から、lucide `Image`（`size-4`、`text-fg-subtle`、`aria-hidden`）→ 今の代表サムネイルの
-  小さな画像（`img`、`thumbnailUrl`、高さ `h-6`、16:9 の幅、`rounded-sm`、`overflow-hidden`、
-  `bg-surface`、`object-cover`）→ 位置（`formatDuration(thumbnailPositionMs)`、`tabular-nums`）→
-  解除の ×。項目の中は `gap-1.5`、他の項目との間は今の `gap-x-4`（`sm` 以上 `gap-x-5`）。
-- 小さな画像を置くのは、「指定した場面の画像になった」ことをこの画面で確かめられるようにする
-  ためである。一覧のカードは戻らないと見えず、位置の数字だけでは黒い場面を選んだことに
-  気づけない。画像の `alt` は「Thumbnail at 1:23」。読み込めない間・失敗したときは `bg-surface`
-  の空の箱のままにする。
-- 時刻に `Clock` の長さと見分けが付くのは、隣に画像と `Image` の印があるためである。文字の
-  ラベルは他の項目と同じく出さず、視覚的に隠した「Thumbnail at 1:23」と `title` で持つ。
-- 解除の ×: `size-6` の正方形のボタン、lucide `X`（`size-3`）、`text-fg-muted`、hover で
-  `text-fg`（タグのチップの × と同じ大きさ）。読み上げ名は「Use automatic thumbnail」。押すと
-  `PUT /api/videos/{id}/thumbnail-position` に `positionMs: null` を送る。送信中は × を
-  `LoaderCircle`（回転）にし、`aria-disabled`。`200` で項目が消え、画像は自動の位置に戻る
-  （受け入れ条件 6）。
-- 幅が足りなければ行の他の項目と同じく折り返す。
+- Contents from left: lucide `Image` (`size-4`, `text-fg-subtle`,
+  `aria-hidden`) → a small image of the current representative thumbnail
+  (`img`, `thumbnailUrl`, height `h-6`, 16:9 width, `rounded-sm`,
+  `overflow-hidden`, `bg-surface`, `object-cover`) → the position
+  (`formatDuration(thumbnailPositionMs)`, `tabular-nums`) → the clearing ×.
+  Inside the item `gap-1.5`; between items the current `gap-x-4` (`gap-x-5` at
+  `sm` and above).
+- The small image lets the user confirm on this screen that "the image became
+  the chosen frame". List cards are visible only after going back, and the
+  position number alone does not reveal that a black frame was chosen. The
+  image's `alt` is "Thumbnail at 1:23". While loading or after a failure it
+  stays an empty `bg-surface` box.
+- The time is distinguishable from the `Clock` length because the image and the
+  `Image` mark sit next to it. Like the other items, it shows no text label; a
+  visually hidden "Thumbnail at 1:23" and `title` carry it.
+- The clearing ×: a `size-6` square button, lucide `X` (`size-3`),
+  `text-fg-muted`, `text-fg` on hover (the same size as the × on tag chips).
+  Accessible name "Use automatic thumbnail". Pressing it sends
+  `positionMs: null` to `PUT /api/videos/{id}/thumbnail-position`. While
+  sending, the × becomes `LoaderCircle` (spinning) and is `aria-disabled`. On
+  `200` the item disappears and the image returns to the automatic position
+  (acceptance criterion 6).
+- When the width is not enough, it wraps like the row's other items.
 
 ### Capture button
 
-- 情報の行の右端の操作の一群（`ml-auto`）の**先頭**（「ファイルを開く」の左）に、`IconButton`
-  （`size="sm"`、ghost、lucide `Camera`、`text-fg-muted`、hover で `text-fg`）を置く。読み上げ名・
-  ツールチップは「Use current frame as thumbnail」。「ファイルを開く」「パスをコピー」の 2 つは
-  隣り合ったまま右へ寄る。所在の無い動画（右の一群が今は無い）でも、所有者でプレイヤーが
-  出ていればこのボタンだけの一群を置く。
-- 押すと、押した瞬間のプレイヤーの論理上の再生位置（再生位置の保存が読むのと同じ値）を
-  ミリ秒で `PUT /api/videos/{id}/thumbnail-position` に送る。再生中でも一時停止中でも 1 回の
-  操作で済み、時刻を入力させない（UI品質「操作の優先順位」、plan の受け入れ条件）。再生は
-  止めない。
-- 押せる条件: プレイヤーが出ていて（`showPlayer`）、この動画の最初の映像が読み込まれて論理上の
-  再生位置が確定し（最初の `loadedmetadata` を受け、続きからの位置を当て終えた後。今の
-  `PlayerStatus` にこの合図は無いので、implement で `VideoPlayer` から画面へ知らせる口を足す）、
-  映像の上に状態の層（読み込み失敗・取り込み中・読み取り失敗・再生できない・再生失敗）も再生終了の
-  層（と次の予告）も無いとき。それ以外は `aria-disabled`（見た目は `opacity-50`）にする。最初の
-  読み込みの前は場面がまだ映っておらず、位置も 0 や続きを当てる前の値で、押した人の見ている場面と
-  違う値を送ってしまう。層が映像を覆っている間は「今表示している場面」が無く、再生終了の位置は
-  尺以上で受け付けられない（契約 §2）。一度確定した後の、データ待ちの読み込み中の輪・再接続中・
-  タッチの中央操作は映像を覆わず位置も保たれるので押せる。
-- 送信中（数秒。生成が終わるまで応答が返らない）はアイコンを `LoaderCircle`（回転）にし、
-  `aria-disabled`。もう一度押しても送らない。別のタブや外部 API との競合は、サーバーの「最後に
-  記録した位置の画像が残る」（契約 §2）が扱う。
-- `200` を受けたら応答の `Video` で動画を差し替える。指定の項目（上の「Item」）が現れる、または
-  位置と画像が新しくなる。トーストは出さない。項目の画像と位置が変わることが結果である
-  （受け入れ条件 5）。一覧のカードは `video` 通知で新しい `thumbnailUrl` を読む。
-- `thumbnailState` が `pending` の動画（取り込みの job がまだ作っていない）でも押せる。生成は
-  要求の中で行われ、応答で `done` になる。
+- An `IconButton` (`size="sm"`, ghost, lucide `Camera`, `text-fg-muted`,
+  `text-fg` on hover) sits at the **start** of the group of actions at the
+  right end of the details row (`ml-auto`), to the left of "Open file". Its
+  accessible name and tooltip are "Use current frame as thumbnail". "Open file"
+  and "Copy path" stay next to each other and shift right. For a video without
+  a location (which today has no right-hand group), a group with only this
+  button is placed when the viewer is the owner and the player is shown.
+- Pressing it sends the player's logical playback position at that moment (the
+  same value the saved playback position reads), in milliseconds, to
+  `PUT /api/videos/{id}/thumbnail-position`. It takes one action whether playing
+  or paused, and no time is typed (`UI品質` "action priority", and the plan's
+  acceptance criteria). Playback does not stop.
+- Pressable when: the player is shown (`showPlayer`); this video's first frame
+  has loaded and the logical playback position is settled (after the first
+  `loadedmetadata` and after the resume position has been applied; the current
+  `PlayerStatus` has no such signal, so implement adds a way for `VideoPlayer`
+  to tell the screen); and no state layer (load failure, importing, read
+  failure, cannot play, playback failure) and no playback-ended layer (with the
+  next-video notice) covers the picture. Otherwise it is `aria-disabled`
+  (`opacity-50`). Before the first load, no frame is on screen yet and the
+  position is 0 or the value before the resume position is applied, so it would
+  send a value different from the frame the user sees. While a layer covers the
+  picture there is no "frame currently shown", and the ended position is at
+  least the duration and is rejected (contract §2). Once settled, the loading
+  spinner while waiting for data, reconnecting, and the central touch controls
+  do not cover the picture and keep the position, so the button stays
+  pressable.
+- While sending (seconds; the response returns only after generation finishes),
+  the icon becomes `LoaderCircle` (spinning) and is `aria-disabled`. Pressing
+  again sends nothing. Conflicts with another tab or the external API are
+  handled by the server's "the image of the last recorded position remains"
+  (contract §2).
+- On `200`, the response `Video` replaces the video. The item (see "Item"
+  above) appears, or its position and image update. No toast: the item's
+  changed image and position are the result (acceptance criterion 5). List
+  cards read the new `thumbnailUrl` through the `video` notification.
+- It is pressable even for a video whose `thumbnailState` is `pending` (the
+  import job has not made it yet). Generation happens within the request, and
+  the response has `done`.
 
 ### Failure
 
-- 指定・解除のどちらも、失敗したら情報の行のすぐ下（技術情報の行の上。開けなかったときの行と
-  同じ場所）に 1 行出す。`role="alert"`、`text-sm text-danger`、先頭に `AlertCircle`（`size-4`）、
-  文は「Couldn't change the thumbnail: {理由}」。理由は `errorText`（上の「Words」）。
-- 前の項目（位置と画像）は残す。`thumbnail_frame_unavailable` ではサーバーも前の画像を残す
-  （Edge Case「生成に失敗した場合」、契約 §2）。
-- 開けなかったときの行と同時には出さず、後から起きたものが前の行を置き換える（この場所は
-  一度に 1 行）。次に指定・解除・開く操作をしたとき、または別の動画へ移ったときに消える。
-- `404 video_not_found`・`file_unavailable`: 行を出したうえで動画を取り直す。
+- For both setting and clearing, a failure shows one line directly below the
+  details row (above the technical details row; the same place as the
+  could-not-open line): `role="alert"`, `text-sm text-danger`, led by
+  `AlertCircle` (`size-4`), with the text "Couldn't change the thumbnail:
+  {reason}". The reason is `errorText` (see "Words" above).
+- The previous item (position and image) is kept. For
+  `thumbnail_frame_unavailable`, the server also keeps the previous image
+  (edge case "generation fails", contract §2).
+- It is never shown together with the could-not-open line; the later one
+  replaces the earlier (this place holds one line at a time). It clears on the
+  next set, clear or open action, or on moving to another video.
+- `404 video_not_found` and `file_unavailable`: the line is shown and the video
+  is refetched.
 
 ## Responsive behaviour
 
-幅の境界は Tailwind の既定だけを使い、CSS で出し分ける（library-ui.md 4）。判定する幅は
-360px・768px・1280px（`lg` の 2 列）。
+Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md
+4). The widths judged are 360px, 768px and 1280px (the two `lg` columns).
 
-| 幅 | 題名と編集ボタン | 編集中 | ファイル名の行 | サムネイルの項目と操作 |
+| Width | Title and edit button | While editing | File name line | Thumbnail item and actions |
 | --- | --- | --- | --- | --- |
-| 1280px | `text-2xl` の題名の右上に `h-8` のボタン | 入力・Save・Cancel が 1 行 | `text-sm` | 長さ・サイズ・追加日・サムネイルが 1 行、右端に 3 つの操作 |
-| 768px | 同上 | 同上 | `text-sm` | 同上（1 行に収まる） |
-| 360px | `text-xl` の題名の右上に `h-8` のボタン。題名は折り返す | 入力が 1 行目、Save・Cancel が 2 行目の左寄せ | `text-xs`、1 行で省略 | 項目は折り返し、右端の操作は最後の行の右に寄る。横スクロールは出ない |
+| 1280px | `h-8` button at the top right of the `text-2xl` title | Input, Save and Cancel on one line | `text-sm` | Length, size, added date and thumbnail on one line; three actions at the right end |
+| 768px | Same as above | Same as above | `text-sm` | Same as above (fits on one line) |
+| 360px | `h-8` button at the top right of the `text-xl` title; the title wraps | Input on the first line; Save and Cancel on the second, aligned left | `text-xs`, truncated to one line | Items wrap; the right-end actions move to the right of the last line. No horizontal scroll |
 
-- 編集ボタンは `shrink-0` で、長い題名でも押せる大きさ（`h-8 w-8`）のまま右上に残る。
-- 表示名が長いとき（Edge Case）: 題名は今と同じく折り返して全体を出し（`[overflow-wrap:anywhere]`）、
-  一覧のカードは今の 2 行の省略（`line-clamp-2`）と `title` で収まる。カードは変えない。
+- The edit button is `shrink-0` and stays at the top right at a pressable size
+  (`h-8 w-8`) even with a long title.
+- A long display name (edge case): the title wraps and shows in full as today
+  (`[overflow-wrap:anywhere]`), and list cards fit it with the current two-line
+  truncation (`line-clamp-2`) and `title`. Cards do not change.
 
 ## Review criteria
 
-判定は実機で見て行う（library-ui.md 5）。「ある」だけでは満たさない（Q-4）。
+Judged by looking at a real device (library-ui.md 5). "It exists" alone does
+not pass (Q-4).
 
-- **視覚的階層**: 再生画面を開いて、プレイヤー → 題名 → タグ の順に目が行き、編集ボタンと
-  カメラのボタンはそのあとで気づく。どちらも「ファイルを開く」「パスをコピー」と同じ重さで、
-  アクセント色・面・枠が無い。ファイル名の行は題名の下で明らかに小さく薄く、題名より先に
-  読まれない。表示名を設定した動画と設定していない動画を並べて開いたとき、題名の大きさ・太さ・
-  色に違いが無い（UI品質「タイポグラフィ」）。
-- **情報密度**: 表示名の無い動画の題名の周りは、編集ボタン 1 つ以外は今と同じで、ラベル・
-  説明の文・枠が増えていない。表示名のある動画で増えるのはファイル名の 1 行だけ。指定していない
-  動画の情報の行は、カメラのボタン 1 つ以外は今と同じ（UI品質「ヘッダの情報量を増やさない」）。
-- **余白のリズム**: 題名とタグの間・タグと公開の切り替えの間・そのまとまりと情報の行の間が、
-  この feature の前と同じ。ファイル名の行は題名に寄り（タグより近い）、編集中の入力の文字の
-  左端は題名の左端と同じ。プレイヤーと題名の間隔は変わらない（UI品質「余白のリズム」）。
-- **タイポグラフィ**: 編集を始めても文字の大きさ・太さ・行間が題名と同じで、入力に変わった
-  ことは面と枠だけで分かる。入力を空にしたとき、プレースホルダーにファイル名由来の題名が薄く
-  見える。サムネイルの項目の時刻は `tabular-nums` で、長さの数字と同じ字形。
-- **操作の優先順位**: 一時停止してカメラのボタンを 1 回押すだけで、数秒後に情報の行の項目に
-  その場面の小さな画像と位置が出る（受け入れ条件 5）。その間、再生・シーク・音量・タグの操作は
-  すべてそのまま使える。時刻を入力する欄はどこにも無い。× 1 回で項目が消える（受け入れ条件 6）。
-  題名の編集は Enter で保存され、画面を離れない（受け入れ条件 1）。入力を空にして保存すると
-  題名がファイル名由来に戻り、ファイル名の行が消える（受け入れ条件 2）。
-- **状態の見え方**: 保存中は Save に回転の印、指定中はカメラが回転の印、解除中は × が回転の印に
-  なり、押し直しても二重に送られない。失敗は赤い 1 行がその場（入力の下、または情報の行の下）に
-  出て、題名・前の画像・前の位置は変わらない（Edge Case「長すぎる」「生成に失敗」）。トースト・
-  ダイアログは出ない。
-- **キーボード**: Tab で編集ボタン → 入力（全選択）→ Save → Cancel → タグ → … と進み、Esc は
-  入力の中では取り消し、外では画面を閉じる。Space・F・M は入力の中では文字入力になり、再生を
-  止めない。
-- **ゲスト**: ログアウトして同じ動画を開くと、題名が表示名のまま（受け入れ条件 1）、編集ボタン・
-  ファイル名の行・サムネイルの項目・カメラのボタンのどれも無い（受け入れ条件 9）。
-- **要求を満たしたことにならない例**（UI品質）: 編集が設定画面や別の窓でしか始められない。
-  サムネイルの指定に時刻の入力欄がある。表示名を設定した動画のカード・フォルダ画面・
-  リスト表示・関連動画・グループのカードのどこかにファイル名が出る。編集ボタンやカメラの
-  ボタンがアクセント色や面を持ち、タグや再生操作より先に目に入る。
+1. **Visual hierarchy**: on opening the playback screen, the eye goes player →
+   title → tags, and the edit button and the camera button are noticed after
+   that. Both carry the same weight as "Open file" and "Copy path", with no
+   accent colour, surface or border. The file name line is clearly smaller and
+   lighter under the title and is not read before it. Opening a video with a
+   display name next to one without, the title's size, weight and colour do not
+   differ (`UI品質` "typography").
+2. **Information density**: around the title of a video without a display
+   name, everything is as today except the one edit button; no label,
+   explanatory sentence or border is added. For a video with a display name,
+   only the file name line is added. The details row of a video without a
+   chosen thumbnail is as today except the one camera button (`UI品質` "do not
+   add to the header's information").
+3. **Spacing rhythm**: the gaps between title and tags, between tags and the
+   visibility toggle, and between that group and the details row are the same
+   as before this feature. The file name line sits close to the title (closer
+   than the tags), and the left edge of the input text while editing matches
+   the title's left edge. The gap between player and title does not change
+   (`UI品質` "spacing rhythm").
+4. **Typography**: starting to edit keeps the text size, weight and line height
+   of the title, so the change to an input shows only through surface and
+   border. When the input is emptied, the file-name title shows faintly as the
+   placeholder. The thumbnail item's time uses `tabular-nums`, with the same
+   glyphs as the length digits.
+5. **Action priority**: pausing and pressing the camera button once makes the
+   small image of that frame and its position appear in the details row item a
+   few seconds later (acceptance criterion 5). Meanwhile play, seek, volume and
+   tag actions all keep working. There is no field for typing a time anywhere.
+   One press of × removes the item (acceptance criterion 6). Title editing
+   saves with Enter without leaving the screen (acceptance criterion 1).
+   Emptying the input and saving returns the title to the file-name title and
+   removes the file name line (acceptance criterion 2).
+6. **Visible state**: while saving, Save shows a spinner; while setting, the
+   camera shows a spinner; while clearing, the × shows a spinner; pressing again
+   does not send twice. A failure shows a red line in place (below the input or
+   below the details row), and the title, previous image and previous position
+   do not change (edge cases "too long" and "generation fails"). No toast or
+   dialog appears.
+7. **Keyboard**: Tab goes edit button → input (all selected) → Save → Cancel →
+   tags → …; Esc cancels inside the input and closes the screen outside it.
+   Space, F and M type text inside the input and do not stop playback.
+8. **Guest**: after signing out and opening the same video, the title is still
+   the display name (acceptance criterion 1), and none of the edit button, the
+   file name line, the thumbnail item or the camera button is present
+   (acceptance criterion 9).
+9. **Examples that do not meet the requirement** (`UI品質`): editing can only
+   start in settings or a separate window. Choosing a thumbnail has a time
+   input field. The file name appears anywhere on cards, the folder screen, the
+   list view, related videos or group cards of a video with a display name. The
+   edit or camera button has an accent colour or a surface and is noticed
+   before the tags or playback controls.
 
 ## Colour
 
-新しく使う組は無い。入力は `fg` on `field`（`pairs` にある）、失敗の行は `danger` on `bg`
-（開けなかったときの行と同じ）、従の行は `fg-muted` on `bg`。`fg-subtle` は印だけに使い、文字には
-使わない。小さな画像の下地 `surface` は画像の代わりで、文字を載せない。
+No new pair is used. The input is `fg` on `field` (in `pairs`), the failure
+line is `danger` on `bg` (the same as the could-not-open line), and the
+secondary line is `fg-muted` on `bg`. `fg-subtle` is used only for marks, never
+for text. The small image's backdrop `surface` stands in for the image and
+carries no text.
 
 ## Accessibility
 
-親 Issue は読み上げ・対比の設計を求めていないので、名前だけを決める（012 と同じ範囲）。
+The parent Issue does not ask for screen reader or contrast design, so only the
+names are decided (the same scope as 012).
 
-- 編集ボタンの読み上げ名: 「Edit name」。入力の読み上げ名: 「Display name」。
-- ファイル名の行: 視覚的に隠した「File name」を値の前に置き、`title` にも同じ名前を入れる。
-- サムネイルの項目: 視覚的に隠した「Thumbnail at 1:23」と、画像の `alt`。× は「Use automatic
-  thumbnail」。カメラは「Use current frame as thumbnail」。
-- 失敗の 2 種類の行は `role="alert"`。回転の印は `aria-hidden`、送信中の要素は `aria-disabled`。
+- The edit button's accessible name: "Edit name". The input's accessible name:
+  "Display name".
+- The file name line: a visually hidden "File name" precedes the value, and
+  `title` carries the same name.
+- The thumbnail item: a visually hidden "Thumbnail at 1:23" and the image's
+  `alt`. The × is "Use automatic thumbnail". The camera is "Use current frame
+  as thumbnail".
+- Both kinds of failure line are `role="alert"`. Spinners are `aria-hidden`, and
+  elements that are sending are `aria-disabled`.

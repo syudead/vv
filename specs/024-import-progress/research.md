@@ -1,206 +1,300 @@
-# Research: 取り込みの進捗と結果を、利用者が知りたいことに答える形に作り直す
+# Research: Rebuild import progress and results around what the user wants to know
 
-技術スタック、依存方向、イベントの配り方は [ARCHITECTURE.md](../../ARCHITECTURE.md) と
-[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) のとおりで、
-この feature では変えない。以下は、この feature が加える判断だけである。表と列の形は
-[data-model.md](data-model.md)、HTTP と SSE の形は [contracts/scan-api.md](contracts/scan-api.md) にある。
+Inherited decisions: the tech stack, the dependency direction and event delivery
+follow [ARCHITECTURE.md](../../ARCHITECTURE.md) and
+[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+and this feature does not change them. This file records only the decisions this
+feature adds. Table and column shapes are in [data-model.md](data-model.md); the
+HTTP and SSE shapes are in [contracts/scan-api.md](contracts/scan-api.md).
 
-## R-1: 取り込みの対象を、走査の記録に紐づく動画の集合として保存する
+## R-1: Import videos stored as a set tied to the scan record
 
-- **Decision**: 直近の走査（`scans` の最新行）に属する動画の集合を `scan_videos` に保存する。
-  動画は、仕事（`jobs`）が積まれた時点で、同じトランザクションの中で直近の走査に加わる。
-  「済み」は保存せず、読み出すときに「その動画に `queued`・`running` の仕事が残っていない」
-  ことから決める。仕事の状態がそのまま正本なので、停止・再起動のあとも二重に数えない。
-- **Rationale**: 要件 1 の分母は「その取り込みで準備が必要な動画」で、走査で変化のあった
-  ファイルに限らない。変化の無い動画に積み直された仕事、前回から持ち越した仕事、取り込み操作の
-  外で積まれた仕事（プレビューとシーク用サムネイルの作り直し、解析のやり直し、メディアフォルダの
-  追加・付け替え）も含む（Edge Cases）。これらの入口はすべて `internal/store` が `jobs` へ行を入れる
-  箇所なので、そこで集合に加えれば漏れない。
-- **Alternatives considered**:
-  - 集合を持たず、`queued`・`running` の仕事がある動画をその都度数える: 仕事が終わった動画が
-    分母から消えるので、「済み」が増えずに分母が減る。進み具合にならない。
-  - 動画ごとに「済みにした時刻」を列で持つ: 仕事の状態と二重の正本になり、再起動や
-    やり直しのたびに合わせ直す必要がある。
+**Decision**: Store the set of videos that belong to the latest scan (the newest
+`scans` row) in `scan_videos`. A video joins the latest scan when a job (`jobs`)
+is enqueued for it, inside the same transaction. "Settled" is not stored: it is
+derived on read from "the video has no `queued` or `running` job left". The job
+state itself is the source of truth, so a stop and restart never counts a video
+twice.
 
-## R-2: 解析の結果とプレビューの仕事の積み込みを、1つのトランザクションにする
+**Rationale**: The denominator in requirement 1 is "the videos that need
+preparing in this import", which is not limited to files the scan found changed.
+It also covers jobs re-enqueued for unchanged videos, jobs carried over from the
+previous scan, and jobs enqueued outside the import action (regenerating
+previews and seek thumbnails, retrying analysis, adding or relinking a media
+folder) (Edge Cases). Every one of these entry points is a place where
+`internal/store` inserts a row into `jobs`, so adding the video to the set there
+misses none.
 
-- **Decision**: `ApplyProbeForJob` の中でプレビューの仕事も積む。今は `internal/app` が解析の結果を
-  書いたあとに別のトランザクションで `EnqueueJob(preview)` を呼んでいる。
-- **Rationale**: 受け入れ条件 3「済みの本数は減らない」。R-1 の判定では、2つのトランザクションの
-  あいだは仕事が1件も残っていないので、その動画が一瞬「済み」に数えられ、次の瞬間に戻る。
-  解析の仕事は `CompleteClaimedJob` まで `running` のままなので、結果と同じトランザクションで積めば、
-  隙間は生まれない。
-- **Alternatives considered**: 解析が終わった動画は、プレビューの仕事が積まれるまで済みにしない、
-  という判定を足す: 状態列の組み合わせで「次に積まれるはずの仕事」を推測することになり、段階が
-  増えるたびに判定を直す必要がある。
+**Alternatives considered**:
 
-## R-3: 集合は直近の走査の分だけを持ち、新しい走査の開始で入れ替える
+| Option | Verdict |
+| --- | --- |
+| Keep no set; count videos with a `queued` or `running` job each time | Rejected: a video leaves the denominator when its jobs finish, so the denominator shrinks instead of "settled" growing. That is not progress. |
+| Store a per-video "settled at" column | Rejected: a second source of truth beside the job state, which has to be reconciled after every restart and retry. |
 
-- **Decision**: `StartScan` のトランザクションで、前の走査の `scan_videos` と `scan_issues` を消す。
-  そのとき `queued`・`running` の仕事が残っている動画は、新しい走査の集合へ移す。
-- **Rationale**: 要件 7（問題の一覧は直近の取り込みの分だけ）と、Edge Cases「前回の準備が終わる前に
-  新しい取り込みを始める」。過去の取り込みの履歴は対象外なので、古い行を持ち続ける理由が無い。
-- **Alternatives considered**: 走査ごとの行を残し、読み出しで最新の走査に絞る: 対象外の履歴のために
-  行が増え続ける。持ち越しの判定も、古い走査の行を読むたびに要る。
+## R-2: Probe result and preview job enqueue in one transaction
 
-## R-4: 「完了」は、走査が閉じて、集合に残りの仕事が無いときにする
+**Decision**: Enqueue the preview job inside `ApplyProbeForJob`. Today
+`internal/app` writes the probe result and then calls `EnqueueJob(preview)` in a
+separate transaction.
 
-- **Decision**: 利用者に見せる状態を `internal/domain` の純粋関数で、次の入力から決める。
-  - 走査の状態（`running`・`done`・`failed`）
-  - 走査が対象のファイルを数え終えたか
-  - 集合の本数と、そのうち済みの本数
-  - 問題の件数（失敗と代用に分けたもの）
+**Rationale**: Acceptance criterion 3 says the settled count never decreases.
+Under the R-1 rule, between the two transactions the video has no job left, so it
+counts as settled for a moment and then drops back. The probe job stays `running`
+until `CompleteClaimedJob`, so enqueuing in the same transaction as the result
+leaves no gap.
 
-  状態は `finding`・`running`・`done`・`partial`・`failed` の5つである。
-  - `failed` は走査そのものが失敗した場合で、ほかより優先する。
-  - `done` と `partial` は、走査が閉じて、残りの仕事が無いときにだけなる。どちらになるかは、
-    失敗の問題があるかで決まる。
+**Alternatives considered**: Add a rule that a probed video is not settled until
+its preview job is enqueued. Rejected: it infers "the job that should be enqueued
+next" from combinations of state columns, and the rule must change whenever a
+stage is added.
 
-  完了の時刻は `scans.settled_at` に保存する。`internal/store` は、残りの仕事の数が変わりうる
-  トランザクションで、コミットの前に `refreshScanSettled` を呼ぶ。対象は、今 `ProcessingChanged`
-  を発行するトランザクション、仕事の専有・成否の記録・走査の終了である。これには、仕事を積む
-  トランザクション、動画の行を消すトランザクション、メディアフォルダの削除・付け替えで仕事を
-  着手できなくするトランザクションも含まれる。`refreshScanSettled` は、直近の走査が閉じていて
-  集合に残りの仕事が無ければ、値が無いときだけ時刻を入れる。残りがあれば `null` に戻す。
-  呼び出し先は、コミットの後にイベントを集めている変更の記録（`changes`）にぶら下げる。こうして、
-  新しい書き込みの箇所が呼び忘れないようにする。
-- **Rationale**: 要件 2・4・6。状態は保存された行から毎回導くので、再読み込みや再起動のあとも
-  同じになる（要件 10）。保存が要るのは、あとから導けない「すべて済んだ時刻」だけである。
-- **Alternatives considered**:
-  - 完了の時刻を、集合の仕事の `updated_at` の最大値から読み出しのたびに導く: 仕事の行は
-    積み直しや動画の削除で消えるので、時刻が後から変わる。
-  - 状態を列として保存する: 仕事の状態と食い違う余地ができる。
-  - `internal/app` が、走査の終了と仕事の成否のあとにだけ判定を呼ぶ: メディアフォルダの削除・
-    付け替えや動画の行の削除で残りが無くなった場合に、呼ばれないまま時刻が欠ける。
+## R-3: The set holds only the latest scan and is replaced when a new scan starts
 
-## R-5: 走査中の分母は、集合に「まだ登録していない対象のファイル」の数を足す
+**Decision**: In the `StartScan` transaction, delete the previous scan's
+`scan_videos` and `scan_issues` rows. Videos that still have a `queued` or
+`running` job move into the new scan's set.
 
-- **Decision**: 走査中の分母は次の3つの和にする。
-  - 集合の本数
-  - 登録できなかったファイルの問題の数
-  - 走査が数えた対象のうち、まだ登録を試していないファイルの数（今の `scans.total` −
-    `completed` − `failed`）
+**Rationale**: Requirement 7 (the issue list covers only the latest import) and
+the Edge Case "a new import starts before the previous preparation finishes".
+History of past imports is out of scope, so there is no reason to keep old rows.
 
-  済みの本数は次の2つの和にする。
-  - 集合のうち済みの本数
-  - 登録できなかったファイルの問題の数（失敗として終わっているので済みに数える）
+**Alternatives considered**: Keep rows per scan and filter to the latest scan on
+read. Rejected: rows grow without bound for history that is out of scope, and the
+carry-over decision has to read the old scan's rows every time.
 
-  走査が対象を数え終えるまで（今の「total が 0 のまま列挙している」あいだ）は `finding` とし、
-  分母を返さない。
-- **Rationale**: 要件 1 の「対象がまだ分からないあいだは割合を出さない」と、「10 本のうち何本」を
-  登録の途中から示すこと。走査の列挙は全ルートを数えてから登録に進むので
-  （[internal/scanner/scanner.go](../../internal/scanner/scanner.go) の `Scan`）、列挙後の数は分母の
-  見込みとして確かである。持ち越した動画のファイルが変化して登録し直された場合だけ、分母が1本
-  減りうる。済みの本数は減らないので、受け入れ条件 3 は満たす。
-- **Alternatives considered**: 走査が閉じるまで分母を出さない: 数秒で終わる走査では問題にならないが、
-  多数のファイルを登録するあいだ「10 本のうち何本」を示せない。
+## R-4: Done only when the scan is closed and the set has no remaining jobs
 
-## R-6: 問題は出来事ごとの行で保存し、読み出しで動画ごとの1件にまとめる
+**Decision**: A pure function in `internal/domain` derives the status shown to
+the user from these inputs:
 
-- **Decision**: `scan_issues` に1出来事1行（直近の走査、動画またはファイル、種類）で保存し、
-  API は動画（未登録ならファイルのパス）ごとに1件へまとめて返す。
-  - まとめた件の重さは、失敗の種類を1つでも含めば「失敗」、そうでなければ「代用」にする。
-  - 失敗を先に、同じ重さの中はファイル名の順に並べる。
-  - 一覧はカーソルで区切って返す。
+- the scan state (`running`, `done`, `failed`)
+- whether the scan has finished counting its target files
+- the number of videos in the set, and how many of them are settled
+- the issue counts, split into failures and substitutions
 
-  問題を記録する箇所は次のとおりである。
-  - 仕事の上限までの失敗: `recordTerminalFailure` と同じトランザクションで記録する。
-  - 走査中のファイルの失敗: `internal/scanner` が宣言する報告先を通して記録する。
-  - 代用: 生成の結果が返す印から記録する（R-7）。
+There are five statuses: `finding`, `running`, `done`, `partial`, `failed`.
 
-  あとで同じ段階が成功したときは、その動画のその段階の失敗の行を、成功を書くトランザクションで
-  消す。
-- **Rationale**: 要件 5 と Edge Cases「1本の動画で失敗と代用が両方起きる」「問題が数千件ある」。
-  出来事ごとの行なら、書く側は自分の出来事だけを入れればよく、まとめ方と重さの規則は読み出しの
-  1か所に集まる。動画の行を消すと `on delete cascade` で問題も消えるので、対象から外れた動画は
-  問題にも数えない（Edge Cases）。解析のやり直しで成功した動画は一覧から外れる（受け入れ条件 9）。
-- **Alternatives considered**: 動画ごとに1行を持ち、出来事のたびに更新する: 書く側が重さの規則と
-  既存の行との合わせ方を知る必要があり、段階ごとの成功で一部だけ取り消すのも難しくなる。
+- `failed` means the scan itself failed, and takes precedence over all others.
+- `done` and `partial` apply only when the scan is closed and no job remains.
+  Which of the two depends on whether there is a failure issue.
 
-## R-7: 代用は、生成の関数が結果の値として返す
+The completion time is stored in `scans.settled_at`. `internal/store` calls
+`refreshScanSettled` before commit in every transaction that can change the
+number of remaining jobs: the transactions that publish `ProcessingChanged` today,
+job claiming, recording a job's success or failure, and finishing a scan. This
+includes transactions that enqueue jobs, delete video rows, and make jobs
+unclaimable by deleting or relinking a media folder. `refreshScanSettled` sets the
+time only when it is empty, provided the latest scan is closed and the set has no
+remaining job; when jobs remain it resets the value to `null`. The call hangs off
+the change record (`changes`) that collects events for after commit, so a new
+write path cannot forget it.
 
-- **Decision**: `internal/media` の生成の関数が、代用したかを値として返す。
-  - `Thumbnail`: 指定位置で取れず先頭のコマで作ったか
-  - `GenerateSeekSprite`: 区間ごとの抽出にも失敗して全編から作ったか
+**Rationale**: Requirements 2, 4 and 6. The status is derived from stored rows
+every time, so it is the same after a reload or a restart (requirement 10). The
+only value that must be stored is "the time everything settled", which cannot be
+derived later.
 
-  `internal/app` の `Generator` はその値を受け取り、結果を書く store の呼び出しに渡す。
-  索引から作れない入力が区間ごとの抽出に進む経路は、代用に数えない。
-- **Rationale**: 要件 5 の対象は「代表サムネイルを先頭のコマで代用」「シーク用サムネイルを全編から
-  作り直した」の2つである。区間ごとの抽出は索引が使えない入力の通常の経路で、見た目の質も
-  変わらない（[seek-sprite-generation.md](../../docs/design-docs/seek-sprite-generation.md)）。
-  値で返せば、`internal/media` はイベントや store を知らずに済み、依存方向を変えない。
-- **Alternatives considered**: `internal/media` が代用のたびにログのように報告先を呼ぶ: `internal/media`
-  にどの動画・どの走査かの文脈を持ち込むことになる。
+**Alternatives considered**:
 
-## R-8: 今の処理は保存せず、`internal/app` がメモリに持つ
+| Option | Verdict |
+| --- | --- |
+| Derive the completion time on each read from the maximum `updated_at` of the set's jobs | Rejected: job rows disappear on re-enqueue and video deletion, so the time changes after the fact. |
+| Store the status as a column | Rejected: it can disagree with the job state. |
+| Have `internal/app` evaluate only after a scan finishes and after each job outcome | Rejected: when deleting or relinking a media folder or deleting a video row leaves no remaining job, nothing calls it and the time is never set. |
 
-- **Decision**: `internal/app` に今の処理を持つ値を置く。
-  - 持つもの: 何をしているか（`registering`・`probe`・`thumbnail`・`seekThumbnail`・`preview`）、
-    動画の id（あれば）、ファイルのパス
-  - 誰が知らせるか: 走査は1ファイルごとに、ワーカーは仕事の開始と終了で知らせる（`jobs` の
-    `Started` と今の `Finished`）
-  - 複数が同時に動くとき: 最後に始まったものを示し、それが終わったら動いている残りの1つに戻す
-  - 変化の知らせ方: `domain.ScanActivityChanged` を発行する
+## R-5: The denominator during a scan adds files not yet registered
 
-  `/api/events` は、この変化を今の `scan` と同じく合流させ、送る時点の値を読む。
+**Decision**: During a scan, the denominator is the sum of:
 
-  走査の件数を20件ごとにだけ知らせる挙動（`progressInterval`）はやめ、1ファイルごとに進みを
-  知らせる。
-- **Rationale**: 要件 3 は「処理が止まっていないと分かる」ことで、再起動をまたいで残す意味が無い。
-  再起動のあとは、そのとき動いている処理が示されれば足りる。送信は接続ごとに合流するので
-  （[internal/httpapi/events.go](../../internal/httpapi/events.go)）、1ファイルごとに知らせても、
-  遅い接続に古い値が積もることはない。
-- **Alternatives considered**: 今の処理を `scans` の列に書く: 1ファイル・1仕事ごとに書き込みが増える
-  うえ、再起動で古い値が残る。
+- the number of videos in the set
+- the number of "registration failed" file issues
+- the number of target files the scan counted but has not yet tried to register
+  (today's `scans.total` − `completed` − `failed`)
 
-## R-9: API は `/api/scans` を作り直し、`/api/processing` と SSE の `processing` をなくす
+The settled count is the sum of:
 
-- **Decision**: `Scan` の形を、利用者向けの状態・本数・問題の件数・完了の時刻・今の処理に作り直す
-  （[contracts/scan-api.md](contracts/scan-api.md)）。問題の一覧は `GET /api/scans/current/issues` で
-  返す。
-  - 経路の名前（`/api/scans`、SSE の `scan`）は変えない。
-  - 仕事の種類ごとの数（`Processing`）は API から消す。
-  - 走査の段階の状態 `state` は、一覧の読み直しと再試行のために残し、画面には出さない。
-- **Rationale**: 要件 8 は、右下と設定画面が同じ値の要約と全体であることである。両方が同じ1つの
-  応答を読めば、そうなる。経路の名前は利用者に見えないので、変える利点が無い。変えれば、
-  e2e とテストの fixture がすべて書き換えになる。
-- **Alternatives considered**:
-  - 新しく `/api/imports` を作る: 振る舞いは同じで、呼び出し元と fixture の書き換えだけが増える。
-  - `Processing` を残して新しい値を足す: 画面が段階ごとの数字を再び組み立てられる形が残り、
-    要件 1 の置き換えが API で担保されない。
+- the settled videos in the set
+- the number of "registration failed" file issues (they ended as failures, so
+  they count as settled)
 
-## R-10: 画面の言葉は、サーバーが返す種類から SPA が組み立てる
+Until the scan finishes counting its targets (today's "enumerating with `total`
+still 0"), the status is `finding` and no denominator is returned.
 
-- **Decision**: 問題の影響と理由、今の処理、走査の失敗の理由は、API では種類（列挙値）で返す。
-  SPA が利用者の言葉にする。
-- **Rationale**: 英語化の feature（[#463](https://github.com/syudead/vv/pull/463)、
-  `specs/023-english-i18n`）は、次の方針をとっている
-  （[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)）。
-  - 画面の文字列を、SPA のカタログ `web/src/i18n/en.ts` に集める。
-  - API の `message` は画面に出さない。
-  - 失敗の理由はコードで返し、画面が言葉にする。
+**Rationale**: Requirement 1 says not to show a ratio while the target is still
+unknown, and to show "N of 10" while registration is in progress. The scan's
+enumeration counts all roots before it starts registering (`Scan` in
+[internal/scanner/scanner.go](../../internal/scanner/scanner.go)), so the count
+after enumeration is a reliable estimate of the denominator. The denominator can
+drop by one only when a carried-over video's file changed and is registered
+again. The settled count never decreases, so acceptance criterion 3 holds.
 
-  種類で返せば、この方針のまま、言葉を SPA の側だけで決められる。カタログは種類をキーにした
-  `Record` で持てるので、種類の漏れは型検査で見つかる。走査の失敗の理由は、023 が `Scan` に
-  足した `errorCode`・`errorPath` をそのまま引き継ぐ。
-- **Alternatives considered**: サーバーが英語の文を返す: 023 の方針（`message` を画面に出さない）と
-  衝突する。言語を足すときに API を変えることにもなる。
+**Alternatives considered**: Return no denominator until the scan closes.
+Rejected: harmless for a scan that ends in seconds, but it cannot show "N of 10"
+while many files are being registered.
 
-## R-11: 移行は、今の行から分かる結果だけを直近の走査へ移す
+## R-6: Issues stored as one row per event and grouped per video on read
 
-- **Decision**: 移行で、直近の走査に次の2つを入れる（[data-model.md §1](data-model.md)）。
-  - 未完了の仕事が残っている動画: `scan_videos` へ入れる
-  - いま準備のどれかが `failed` の動画: `*_failed` の問題として入れる
+**Decision**: Store one row per event in `scan_issues` (latest scan, video or
+file, kind). The API returns one item per video (per file path when the file is
+not registered):
 
-  走査が登録した動画の集合と、走査中のファイルの失敗は、移行前の行に残っていないので復元しない。
-  そのため移行直後の直近の取り込みは、次のように示す。
-  - 失敗が残っていれば `partial`
-  - 未完了の仕事があれば `running`
+- An item's severity is "failure" when it contains at least one failure kind, and
+  "substitution" otherwise.
+- Failures come first; within a severity, items are ordered by file name.
+- The list is paged with a cursor.
 
-  本数は、移した動画と問題の分だけになる。次の取り込みを始めると入れ替わる（R-3）。
-- **Rationale**: 移行前の最新の走査を「0 本・問題なし」と示すと、失敗していた取り込みを完了と
-  誤って伝える。準備の失敗は動画の行に状態として残っているので、利用者への影響（要件 5 の
-  「その動画がどうなっているか」）は正しく示せる。登録した本数は、今の `scans.total` が
-  「変化のあったファイル」の数で、動画の集合ではないので、分母に使えない。
-- **Alternatives considered**: 移行前の走査にだけ「結果不明」の状態を足す: 一度きりの移行のために、
-  6つ目の状態と、その言葉と表示を画面に持ち込むことになる。
+Issues are recorded at these points:
+
+| Event | Where it is recorded |
+| --- | --- |
+| A job fails up to the retry limit | In the same transaction as `recordTerminalFailure` |
+| A file fails during the scan | Through a reporter that `internal/scanner` declares |
+| A substitution | From the marker the generation result returns (R-7) |
+
+When the same stage later succeeds, the transaction that writes the success
+deletes that video's failure row for that stage.
+
+**Rationale**: Requirement 5 and the Edge Cases "one video has both a failure and
+a substitution" and "there are thousands of issues". With one row per event, each
+writer inserts only its own event, and the grouping and severity rules live in one
+place, the read. Deleting a video row deletes its issues through
+`on delete cascade`, so a video that left the target is not counted as an issue
+either (Edge Cases). A video whose analysis succeeds on retry drops out of the
+list (acceptance criterion 9).
+
+**Alternatives considered**: One row per video, updated on each event. Rejected:
+every writer would need to know the severity rules and how to merge with the
+existing row, and undoing only part of the row when one stage succeeds becomes
+hard.
+
+## R-7: Generation functions return substitution as a result value
+
+**Decision**: The generation functions in `internal/media` return whether they
+substituted, as a value:
+
+- `Thumbnail`: the frame at the requested position could not be taken and the
+  first frame was used.
+- `GenerateSeekSprite`: per-segment extraction also failed and the sprite was
+  built from the whole video.
+
+`Generator` in `internal/app` receives the value and passes it to the store call
+that writes the result. The path where an input that cannot be built from the
+index goes on to per-segment extraction is not counted as a substitution.
+
+**Rationale**: Requirement 5 covers two cases: "the representative thumbnail was
+substituted with the first frame" and "the seek thumbnails were rebuilt from the
+whole video". Per-segment extraction is the normal path for inputs whose index
+cannot be used, and the visual quality does not change
+([seek-sprite-generation.md](../../docs/design-docs/seek-sprite-generation.md)).
+Returning a value keeps `internal/media` unaware of events and the store, so the
+dependency direction does not change.
+
+**Alternatives considered**: `internal/media` calls a reporter on every
+substitution, like logging. Rejected: it brings the context of which video and
+which scan into `internal/media`.
+
+## R-8: Current activity held in memory by `internal/app`, not stored
+
+**Decision**: `internal/app` holds a value for the current activity.
+
+| Aspect | Decision |
+| --- | --- |
+| What it holds | What is happening (`registering`, `probe`, `thumbnail`, `seekThumbnail`, `preview`), the video id (when there is one), the file path |
+| Who reports it | The scan reports per file; the worker reports at job start and end (`Started` in `jobs`, and today's `Finished`) |
+| Several running at once | Show the one that started last; when it ends, fall back to one of the others still running |
+| How a change is announced | Publish `domain.ScanActivityChanged` |
+
+`/api/events` coalesces this change the same way as today's `scan` and reads the
+value at send time.
+
+Reporting the scan count only every 20 files (`progressInterval`) stops; progress
+is reported per file.
+
+**Rationale**: Requirement 3 is that the user can tell processing has not stalled,
+so there is no point keeping the value across a restart. After a restart, showing
+whatever is running at that moment is enough. Sends are coalesced per connection
+([internal/httpapi/events.go](../../internal/httpapi/events.go)), so reporting per
+file does not pile up stale values on a slow connection.
+
+**Alternatives considered**: Write the current activity to a `scans` column.
+Rejected: it adds a write per file and per job, and a stale value survives a
+restart.
+
+## R-9: API reshapes `/api/scans` and removes `/api/processing` and the SSE `processing` event
+
+**Decision**: Reshape `Scan` into the user-facing status, video counts, issue
+counts, completion time and current activity
+([contracts/scan-api.md](contracts/scan-api.md)). The issue list is returned by
+`GET /api/scans/current/issues`.
+
+- The route names (`/api/scans`, the SSE `scan` event) stay.
+- The per-job-kind counts (`Processing`) leave the API.
+- The scan-stage state `state` stays for reloading the list and for retry, and is
+  not shown on screen.
+
+**Rationale**: Requirement 8 is that the bottom-right indicator and the Settings
+page show a summary and the whole of the same values. Both reading the same single
+response achieves that. Route names are invisible to users, so renaming them gains
+nothing; renaming would rewrite every e2e and test fixture.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Add a new `/api/imports` | Rejected: same behaviour, only more caller and fixture rewrites. |
+| Keep `Processing` and add the new values | Rejected: the screen could still rebuild per-stage numbers, so the API would not guarantee the replacement requirement 1 asks for. |
+
+## R-10: The SPA builds screen text from kinds the server returns
+
+**Decision**: The API returns the issue impact and reason, the current activity,
+and the scan failure reason as kinds (enum values). The SPA turns them into user
+wording.
+
+**Rationale**: The English i18n feature ([#463](https://github.com/syudead/vv/pull/463),
+`specs/023-english-i18n`) takes this approach
+([docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)):
+
+- Screen strings live in the SPA catalog `web/src/i18n/en.ts`.
+- The API `message` is not shown on screen.
+- Failure reasons are returned as codes, and the screen turns them into words.
+
+Returning kinds keeps that approach and lets the SPA alone decide the wording. The
+catalog can hold a `Record` keyed by kind, so a missing kind is caught by the type
+check. The scan failure reason keeps the `errorCode` and `errorPath` that 023
+added to `Scan`.
+
+**Alternatives considered**: The server returns English sentences. Rejected: it
+conflicts with 023's rule that `message` is not shown, and adding a language would
+change the API.
+
+## R-11: Migration moves only results derivable from existing rows into the latest scan
+
+**Decision**: The migration puts two things into the latest scan
+([data-model.md §1](data-model.md)):
+
+| Videos | Destination |
+| --- | --- |
+| Videos with unfinished jobs | `scan_videos` |
+| Videos with any preparation currently `failed` | `*_failed` issues |
+
+The set of videos the scan registered and the file failures during the scan are
+not in the pre-migration rows, so they are not restored. The latest import right
+after migration therefore shows:
+
+- `partial` when a failure remains
+- `running` when unfinished jobs remain
+
+The counts cover only the moved videos and issues. The next import replaces them
+(R-3).
+
+**Rationale**: Showing the latest pre-migration scan as "0 videos, no issues"
+would wrongly report a failed import as complete. Preparation failures remain as
+state on the video rows, so the impact on the user (requirement 5's "what state is
+that video in") is shown correctly. The registered count cannot serve as the
+denominator, because today's `scans.total` is the number of changed files, not a
+set of videos.
+
+**Alternatives considered**: Add an "unknown result" status only for the
+pre-migration scan. Rejected: a one-off migration would bring a sixth status, with
+its wording and display, into the screen.

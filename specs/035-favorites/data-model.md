@@ -1,149 +1,168 @@
-# Data model: 動画とグループのお気に入り
+# Data model: Favorite videos and groups
 
-親 Issue: #574。既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が
-正本で、データの区分は [ARCHITECTURE.md](../../ARCHITECTURE.md)「Rebuildable and user data」、利用者
-データの鍵は [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-利用者データの鍵)、
-フォルダの鍵は [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-マイグレーション)
-にある。ここには、この feature が足す表、値、読み書きの規則だけを書く。書いていない表は変えない。
+Parent Issue: #574. The rest of the model is unchanged. Sources of truth:
 
-## 1. マイグレーション
+| Topic | Source |
+| --- | --- |
+| Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
+| Data classes | [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user data" |
+| User key | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
+| Folder key | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
 
-`00029_favorites.sql`（`main` の最後は `00028_video_file_created_at.sql`。実装の時点で番号を確かめる）:
+This file covers only the tables, values and read and write rules this feature adds. Tables not named here do
+not change.
+
+## 1. Migration
+
+`00029_favorites.sql` (the last migration on `main` is `00028_video_file_created_at.sql`; confirm the number
+when implementing):
 
 ```sql
--- お気に入り（specs/035-favorites/research.md R-1）。どちらも作り直せない利用者データで、
--- 再スキャン・メディアフォルダの変更・フォルダの索引の作り直しで消えてはならない。
--- videos・folder_groups・media_folders への外部キーを張らない。
+-- Favorites (specs/035-favorites/research.md R-1). Both are user data that cannot be rebuilt
+-- and must survive rescans, media folder changes and folder index rebuilds.
+-- No foreign keys to videos, folder_groups or media_folders.
 
--- 動画のお気に入り。鍵は利用者データの鍵（集まりのメンバーなら 'bundle:<id>'、そうでなければ
--- content_key。public_videos と同じ）。
+-- Video favorites. The key is the user key ('bundle:<id>' for a bundle member, otherwise
+-- content_key; the same as public_videos).
 create table video_favorites (
     content_key  text    primary key,
     favorited_at integer not null
 ) without rowid;
 
--- グループのお気に入り。鍵はフォルダの絶対パスを domain.FolderKey で整えたもの
--- （folder_group_overrides.path と同じ）。
+-- Group favorites. The key is the folder's absolute path normalised by domain.FolderKey
+-- (the same as folder_group_overrides.path).
 create table folder_favorites (
     path         text    primary key,
     favorited_at integer not null
 ) without rowid;
 ```
 
-Down は 2 つの表を落とす。
+Down drops both tables.
 
-不変条件（`internal/store/invariants_test.go` に足す）: `video_favorites` に空の `content_key` の行は無い。
-`folder_favorites.path` は `domain.FolderKey(path)` と等しい（整えた鍵しか書かない）。
+Invariants (added to `internal/store/invariants_test.go`):
 
-区分: どちらも作り直せない利用者データで、ARCHITECTURE.md の一覧に足す。生成物の片付け
-（`RemoveContent`）、`releaseContentIndex`、`rebuildFolderIndex`、メディアフォルダの削除はどちらにも触れない。
-
-引き継ぎと束ね:
-
-| 経路 | 変更 |
+| Rule | Enforced in |
 | --- | --- |
-| `moveUserData`（同じパスの中身の引き継ぎ、[030 §5](../030-video-versions/data-model.md#5-同じパスの中身の引き継ぎ)） | 表の一覧に `video_favorites` を足す。`from` に行があれば `to` の行を置き換える |
-| `userDataTables`（束ねる・代表を替える・外す、[030 §8](../030-video-versions/data-model.md#8-保存層の操作versionstore)） | `{"video_favorites", "favorited_at"}` を足す。束ねると代表の値が集まりの鍵に写り、外したメンバーは自分の鍵の値に戻る |
-| `folder_favorites` | どの経路も写さない。フォルダの改名・移動で外れるのは要件どおり（Edge Case） |
+| `video_favorites` has no row with an empty `content_key` | `internal/store/invariants_test.go` |
+| `folder_favorites.path` equals `domain.FolderKey(path)` (only normalised keys are written) | `internal/store/invariants_test.go` |
 
-## 2. `domain` に足す値
+Class: both are user data that cannot be rebuilt, added to the list in ARCHITECTURE.md. Generated-file cleanup
+(`RemoveContent`), `releaseContentIndex`, `rebuildFolderIndex` and media folder removal touch neither table.
 
-| 値 | 中身 |
+Succession and bundling:
+
+| Path | Change |
 | --- | --- |
-| `Video.Favorite` | `bool`。利用者データの鍵が `video_favorites` にあるか。動画を返す読み出しが埋める（§5） |
-| `LibraryGroup.Favorite` | `bool`。グループのフォルダの鍵が `folder_favorites` にあるか。`loadGroups` が埋める |
-| `VideoQuery.FavoriteOnly`・`FolderVideoQuery.FavoriteOnly` | `bool`。お気に入りのみに絞る（§5） |
-| `SortFavoritedAsc` / `SortFavoritedDesc` | `VideoSort` の `favoritedAsc` / `favoritedDesc`。`Valid` に足す |
-| `FavoriteChange` | `FavoriteStore.SetFavorites` の入力。`VideoIDs []int64`、`FolderPaths []string`（絶対パス）、`Favorite bool` |
-| `FavoriteApplied` | 結果。`Videos int`（`VideoIDs` のうち鍵を引けた異なる id の数。同じ集まりの id も 1 本ずつ数える）、`Folders int`（今グループで書いたフォルダの数） |
-| `Audience.CheckVideoQuery` | ゲストでは `FavoriteOnly` と `favorited*` を `ErrGuestQueryNotAllowed` にする（[research.md R-5](research.md#r-5-ゲストにはお気に入りを出さず絞り込みと並び順は視聴状態と同じ-400-にする)） |
+| `moveUserData` (same-path succession, [030 §5](../030-video-versions/data-model.md#5-carry-over-of-content-at-the-same-path)) | Add `video_favorites` to its table list. A row on `from` replaces the row on `to` |
+| `userDataTables` (bundle, change representative, remove, [030 §8](../030-video-versions/data-model.md#8-store-operations-versionstore)) | Add `{"video_favorites", "favorited_at"}`. Bundling copies the representative's value to the bundle key; a removed member returns to the value under its own key |
+| `folder_favorites` | No path copies it. Renaming or moving a folder drops its favorite, as required (Edge Case) |
 
-`favorited_at` は `domain` に出さない。並び順は保存層の SQL だけが使い、応答にも載せない
-（[contracts/screen-api.md §0](contracts/screen-api.md#0-video-と-librarygroup-に足す項目)）。
+## 2. `domain` values added
 
-## 3. 読み出しの列
-
-動画を返す読み出し（`videoColumnsTemplate`・`listColumns`。外部連携の `readVideosByIDs` は `videoColumns` を
-使うが `ExternalVideo` には写さない）に 1 列を足し、`scanVideo` が `Video.Favorite` に写す。
-
-| 列 | 式 |
+| Value | Content |
 | --- | --- |
-| `favorite` | `exists (select 1 from video_favorites fav where fav.content_key = <userKeyExpr("videos")> and videos.content_key <> '')`（`publicColumn` と同じ形） |
+| `Video.Favorite` | `bool`. Whether the user key is in `video_favorites`. Filled by every read that returns videos (§5) |
+| `LibraryGroup.Favorite` | `bool`. Whether the group folder's key is in `folder_favorites`. Filled by `loadGroups` |
+| `VideoQuery.FavoriteOnly`, `FolderVideoQuery.FavoriteOnly` | `bool`. Limit to favorites (§5) |
+| `SortFavoritedAsc` / `SortFavoritedDesc` | `VideoSort` values `favoritedAsc` / `favoritedDesc`. Added to `Valid` |
+| `FavoriteChange` | Input to `FavoriteStore.SetFavorites`: `VideoIDs []int64`, `FolderPaths []string` (absolute paths), `Favorite bool` |
+| `FavoriteApplied` | Result: `Videos int` (the number of distinct ids in `VideoIDs` whose key resolved; ids in the same bundle each count), `Folders int` (the number of folders written because they are groups now) |
+| `Audience.CheckVideoQuery` | For a guest, `FavoriteOnly` and `favorited*` return `ErrGuestQueryNotAllowed` ([research.md R-5](research.md#r-5-favorites-hidden-from-guests-filter-and-sort-return-400)) |
 
-グループ（`loadGroups`）は `folder_groups` に `left join folder_favorites ff on ff.path = g.path_key` を足し、
-`ff.path is not null` を `LibraryGroup.Favorite` に写す。`FolderGroup`（取り直し）も同じ経路なので同じ値を返す。
+`favorited_at` is not exposed in `domain`. Only the store's SQL uses it for sorting, and responses do not carry
+it ([contracts/screen-api.md §0](contracts/screen-api.md#0-fields-added-to-video-and-librarygroup)).
 
-## 4. 書き込み（`FavoriteStore`）
+## 3. Read columns
 
-新しい役割の型 `FavoriteStore struct{ sql *sql.DB }`（`db.Favorites()`）。`VisibilityStore` と同じく共有する
-SQLite 接続だけを持ち、索引の型・通知・他の役割の公開メソッドに依存しない。ドメインイベントは発行しない
-（[research.md R-6](research.md#r-6-画面はドメインイベントを足さず公開の切り替えと同じ購読の仕組みで一覧と再生画面に反映し再生画面は動画を取り直す)）。
+The reads that return videos (`videoColumnsTemplate`, `listColumns`; the external API's `readVideosByIDs` uses
+`videoColumns` but does not copy the value into `ExternalVideo`) gain one column, which `scanVideo` copies to
+`Video.Favorite`.
 
-`SetFavorites(ctx, change domain.FavoriteChange) (domain.FavoriteApplied, error)` は 1 つの取引で次を行う。
-途中で失敗したら何も残さない。
+| Column | Expression |
+| --- | --- |
+| `favorite` | `exists (select 1 from video_favorites fav where fav.content_key = <userKeyExpr("videos")> and videos.content_key <> '')` (the same shape as `publicColumn`) |
 
-1. `change.VideoIDs` を `userKeysForVideoIDs` で、いまライブラリにある動画の利用者データの鍵へ引き直す
-   （同じ集まりは 1 つ、引けない id と空の `content_key` は含めない）。`Videos` は鍵の数でなく、鍵を引けた
-   異なる id の数（`userKeysForVideoIDs` と同じ条件で `count(distinct v.id)` を同じ取引で数える）。同じ集まりの
-   2 本を送っても 2 で、画面が「異なる id の数より少ない＝一部にしか反映されなかった」と取り違えない
-   （`api/visibility.ts` の判定と同じ比べ方、[contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)）。
-2. `change.FolderPaths` の各パスを `domain.FolderKey` にし、`folder_groups.path_key` にあるものだけを残す
-   （所有者から見て今グループのフォルダ）。残った数が `Folders`。同じフォルダの重複は 1 つに数える。
-3. `Favorite` が真なら `insert or ignore into video_favorites (content_key, favorited_at)` と
-   `insert or ignore into folder_favorites (path, favorited_at)`（既にある行の日時は変えない）、偽なら
-   それぞれ `delete`。鍵の数によらず json_each で 1 文ずつ書く（`touchEditedAt` と同じ形）。
-4. `video_edits` には触れない（[research.md R-8](research.md#r-8-お気に入りの付け外しは動画の更新日時video_editsを進めない)）。
+For groups, `loadGroups` adds `left join folder_favorites ff on ff.path = g.path_key` to `folder_groups` and
+copies `ff.path is not null` to `LibraryGroup.Favorite`. `FolderGroup` (the refetch) uses the same path and
+returns the same value.
 
-`favorited_at` は Unix ミリ秒で、取引の中で `max(今の時刻, 2 表の favorited_at の最大値 + 1)` を 1 度だけ求め、
-同じ取引の対象はすべてその値にする。書き込みの取引は SQLite で直列になるので、別々の付け外しは必ず後のものが
-大きい値を持ち、同じ秒・同じミリ秒の続けての操作や時計の巻き戻りでも「最後に付けたものが先頭」「外して
-付け直すと先頭」が `id` の決着に頼らずに成り立つ（2 表の最大値を取るのは、ライブラリの項目が動画とグループの
-値を同じ列で並べるため）。
+## 4. Writes (`FavoriteStore`)
 
-## 5. 読み出しと一覧
+New role type `FavoriteStore struct{ sql *sql.DB }` (`db.Favorites()`). Like `VisibilityStore`, it holds only
+the shared SQLite connection and depends on no index type, no notification and no other role's public method.
+It publishes no domain event
+([research.md R-6](research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern)).
 
-### 動画の一覧（`ListVideos`・`ListFolderVideos`・`CountVideos`）
+`SetFavorites(ctx, change domain.FavoriteChange) (domain.FavoriteApplied, error)` does the following in one
+transaction. A failure partway leaves nothing behind.
 
-`filteredFrom` に `left join video_favorites fav on fav.content_key = <userKeyExpr("videos")> and videos.content_key <> ''`
-を足す。`FavoriteOnly` なら条件 `fav.content_key is not null` を掛ける。並べ替えは
-[013 の表](../013-library-search/contracts/list-api.md#3-videosort-の値)と同じ形で次を足す。
+1. Resolve `change.VideoIDs` with `userKeysForVideoIDs` to the user keys of videos currently in the library
+   (one per bundle; ids that do not resolve and empty `content_key` are excluded). `Videos` is not the number
+   of keys but the number of distinct ids whose key resolved (`count(distinct v.id)` under the same conditions
+   as `userKeysForVideoIDs`, in the same transaction). Sending two ids of the same bundle gives 2, so the
+   screen does not mistake "fewer than the distinct ids sent" for a partial result (the same comparison as
+   `api/visibility.ts`, [contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)).
+2. Turn each path in `change.FolderPaths` into `domain.FolderKey` and keep only those in
+   `folder_groups.path_key` (folders that are groups for the owner now). The number kept is `Folders`.
+   Duplicates of the same folder count once.
+3. When `Favorite` is true, `insert or ignore into video_favorites (content_key, favorited_at)` and
+   `insert or ignore into folder_favorites (path, favorited_at)` (existing rows keep their time); when false,
+   `delete` from each. Each table is written with one statement over `json_each` regardless of the number of
+   keys (the same shape as `touchEditedAt`).
+4. Do not touch `video_edits` ([research.md R-8](research.md#r-8-favoriting-does-not-advance-video_edits)).
 
-| 並べ替え | 昇順 | 降順 | 使う値 | 値が無いとき |
+`favorited_at` is Unix milliseconds. The transaction computes
+`max(<current time>, <largest favorited_at in both tables> + 1)` once and uses it for every target in that
+transaction. SQLite serialises write transactions, so a later toggle always gets a larger value. "The last one
+favorited comes first" and "unfavorite and favorite again to move to the top" then hold without relying on the
+`id` tie-breaker, even for consecutive actions in the same second or millisecond and when the clock goes back.
+The maximum is taken over both tables because library items sort videos and groups on the same column.
+
+## 5. Reads and lists
+
+### Video lists (`ListVideos`, `ListFolderVideos`, `CountVideos`)
+
+Add `left join video_favorites fav on fav.content_key = <userKeyExpr("videos")> and videos.content_key <> ''`
+to `filteredFrom`. With `FavoriteOnly`, add the condition `fav.content_key is not null`. Add the following
+sort in the same shape as [the 013 table](../013-library-search/contracts/list-api.md#3-videosort-values).
+
+| Sort | Ascending | Descending | Value | When there is no value |
 | --- | --- | --- | --- | --- |
-| お気に入りにした日時 | `favoritedAsc` | `favoritedDesc` | `fav.favorited_at` | NULL。向きに関係なく末尾（`nullable`） |
+| Date favorited | `favoritedAsc` | `favoritedDesc` | `fav.favorited_at` | NULL; last in either direction (`nullable`) |
 
-### ライブラリの項目（`libraryItemsCTE`、`ListLibrary`・`LibraryIDs`）
+### Library items (`libraryItemsCTE`, `ListLibrary`, `LibraryIDs`)
 
-[027 §1](../027-partial-group-search/contracts/library-api.md#1-get-apilibrary-の項目の作り方) の `matched`・`gm`・
-`live`・`hits`・`whole`・`mv` は変えない。`items` を次のように変える（`favoriteOnly` は `FavoriteOnly`、
-`gf(group_id)` はフォルダが `folder_favorites` にあるグループ、`vf(video_id)` は鍵が `video_favorites` にある
-動画）。
+`matched`, `gm`, `live`, `hits`, `whole` and `mv` from
+[027 §1](../027-partial-group-search/contracts/library-api.md#1-how-get-apilibrary-builds-items) do not change.
+`items` changes as follows (`favoriteOnly` is `FavoriteOnly`, `gf(group_id)` is the groups whose folder is in
+`folder_favorites`, and `vf(video_id)` is the videos whose key is in `video_favorites`).
 
-| 項目 | 今の条件 | 足す条件 |
+| Item | Current condition | Added condition |
 | --- | --- | --- |
-| グループの項目 | `whole` のグループ（再生可否はメンバーのどれか） | `not favoriteOnly or group_id in gf` |
-| 動画の項目 | 当たった動画で `whole` のグループに属さない（再生可否はその動画） | `favoriteOnly` のとき: 属するグループが `whole` でも `gf` に無ければ項目にする。さらに `video_id in vf` |
+| Group item | Groups in `whole` (playable when any member is) | `not favoriteOnly or group_id in gf` |
+| Video item | Matched videos that do not belong to a `whole` group (playable when the video is) | With `favoriteOnly`: also an item when its group is in `whole` but not in `gf`; and `video_id in vf` |
 
-`items` に `favorited_at` 列を足す。動画の項目は `video_favorites.favorited_at`、グループの項目は
-`folder_favorites.favorited_at`、無ければ NULL。`itemOrderValues` の `favoritedAsc`・`favoritedDesc` はこの列で、
-`listOrders` と同じ `nullable`。値が同じなら `id` で決着させる。
+Add a `favorited_at` column to `items`: `video_favorites.favorited_at` for a video item,
+`folder_favorites.favorited_at` for a group item, NULL otherwise. `favoritedAsc` and `favoritedDesc` in
+`itemOrderValues` use this column, `nullable` as in `listOrders`. Equal values are settled by `id`.
 
-視聴状態・再生可否・`total`・keyset・`LibraryIDs` は、この `items` に今までどおり掛かる。
+Watch state, playability, `total`, the keyset and `LibraryIDs` apply to these `items` as before.
 
-`LibraryIDs` は動画の項目の id と、グループの項目ごとのフォルダのパスとメンバーの id を分けて返す
-（`domain.LibrarySelection{VideoIDs []int64; Groups []LibraryGroupSelection{Path string; VideoIDs []int64}}`）。
-`internal/httpapi` が今の `ids`（全部の和）と新しい `groups` を作る
-（[contracts/screen-api.md §3](contracts/screen-api.md#3-get-apilibraryids-に足す項目)）。
+`LibraryIDs` returns the ids of video items separately from each group item's folder path and member ids
+(`domain.LibrarySelection{VideoIDs []int64; Groups []LibraryGroupSelection{Path string; VideoIDs []int64}}`).
+`internal/httpapi` builds the existing `ids` (the union of all) and the new `groups`
+([contracts/screen-api.md §3](contracts/screen-api.md#3-fields-added-to-get-apilibraryids)).
 
-受け入れ条件との対応:
+Mapping to the acceptance criteria:
 
-| 受け入れ条件 | `favorite=true` の一覧 |
+| Acceptance criterion | `favorite=true` list |
 | --- | --- |
-| 4（A だけがお気に入り、G はお気に入りでない） | G は `gf` に無いのでグループの項目にならず、A は `vf` にあるので動画の項目。G の他のメンバーは出ない |
-| 5（G がお気に入り） | G は `whole`（絞り込みが無い）かつ `gf` にあるのでグループの項目 1 件。メンバーは動画の項目にならない |
-| 9（タグと同時） | `matched` にタグが掛かる。一部のメンバーだけが当たった G は `whole` でないので、当たったメンバーのうち `vf` にあるものが動画の項目 |
+| 4 (only A is a favorite; G is not) | G is not in `gf`, so it is not a group item; A is in `vf`, so it is a video item. G's other members are not listed |
+| 5 (G is a favorite) | G is in `whole` (no filter) and in `gf`, so it is one group item. Its members are not video items |
+| 9 (with a tag) | The tag applies to `matched`. A group G with only some members matching is not in `whole`, so the matching members in `vf` are video items |
 
-### ゲスト
+### Guests
 
-`CheckVideoQuery` が `400` にするので、ゲストの一覧の SQL に `FavoriteOnly`・`favorited*` は来ない。
-`Video.Favorite`・`LibraryGroup.Favorite` の列は読むが、`internal/httpapi` がゲストの応答から省く。
+`CheckVideoQuery` returns `400`, so `FavoriteOnly` and `favorited*` never reach the SQL of a guest list. The
+`Video.Favorite` and `LibraryGroup.Favorite` columns are read, and `internal/httpapi` omits them from guest
+responses.

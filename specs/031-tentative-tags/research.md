@@ -1,127 +1,205 @@
-# Research: 仮のタグと却下した名前
+# Research: Tentative tags and rejected names
 
-技術スタック、境界と依存方向、索引と利用者データの区分、認証の境界、タグの表と名前の規則は正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)、
-[ARCHITECTURE.md](../../ARCHITECTURE.md)、
-[specs/014-video-tags/data-model.md](../014-video-tags/data-model.md)、
-[specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-フォルダ由来のタグ)、
-[specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md)）。
-ここにはこの feature が足す決定だけを書く。
+Inherited decisions: the tech stack, boundaries and dependency direction, the
+split between index and user data, the authentication boundary, and the tag
+tables and name rules follow their sources of truth
+([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+[ARCHITECTURE.md](../../ARCHITECTURE.md),
+[specs/014-video-tags/data-model.md](../014-video-tags/data-model.md),
+[specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags),
+[specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md)).
+This file records only the decisions this feature adds.
 
-## R-1: 仮かどうかは `tags` の 1 列で持つ
+## R-1: Tentative state is one column on `tags`
 
-- Decision: `tags` に `tentative integer not null default 0 check (tentative in (0, 1))` を足す
-  （[data-model.md §1](data-model.md#1-マイグレーション)）。既存の行は既定値で確定したタグになる（要件 16、
-  Edge Case「既存データの移行」）。確定は `tentative = 0` に書き換えるだけで、`tag_names`・`video_tags` は
-  触らない（要件 8.1「付いている動画は変わらない」）。
-- Rationale: 仮かどうかはタグ 1 件の状態で、タグを返す読み出し（一覧・1 件・動画のタグ・要約）はどれも
-  `tags` を起点に結んでいる。列にすれば、その読み出しに 1 列足すだけで要件 5 の全応答に出る。付け外し・
-  絞り込み・検索・本数は `video_tags`・`tag_names` を読むので、列を足しても今の動きのまま（要件 4）。
-- Alternatives considered: 仮のタグの `id` を持つ別の表（読み出しごとに `exists` を足すことになり、
-  「確定」が行の削除になって、列の書き換えより見通しが悪い。状態が 2 値で、行の有無で表す利点が無い）。
-  `tag_names.canonical` に第 3 の値を足す（名前の行の種類と、タグの状態は別の事柄で、
-  `tag_names_canonical_idx` の部分索引と 014 の不変条件を崩す）。
+**Decision**: Add `tentative integer not null default 0 check (tentative in (0, 1))`
+to `tags` ([data-model.md §1](data-model.md#1-migration)). Existing rows take the
+default and become confirmed tags (requirement 16, edge case "migrating existing
+data"). Confirming rewrites the column to `tentative = 0` and touches neither
+`tag_names` nor `video_tags` (requirement 8.1: "the videos the tag is on do not
+change").
 
-## R-2: 却下した名前は名前だけの表 `rejected_tag_names` に置き、タグの名前と同じ完全一致で引く
+**Rationale**: Tentative or not is the state of one tag, and every read that
+returns tags (the list, one tag, a video's tags, the summary) starts from `tags`
+and joins outward. As a column, adding it to those reads puts it in every response
+requirement 5 names. Attaching, detaching, filtering, search and counts read
+`video_tags` and `tag_names`, so the new column leaves their behaviour unchanged
+(requirement 4).
 
-- Decision: 却下は「タグを消し、その元の名前を `rejected_tag_names (name primary key, created_at)` に
-  入れる」の 1 つの取引で行う（[data-model.md §2](data-model.md#2-rejected_tag_names)）。照合は
-  `tag_names.name` と同じ既定の BINARY で、綴りが完全に一致するときだけ当たる（要件 13）。
-  `tentative` が真の作成は、名前が無く、かつこの表に無いときだけ仮のタグを作る（要件 11）。
-- Rationale: 却下した名前は、タグでも動画への付与でもない。「次から作らない」だけの事実で、
-  `tag_names` に置くと `tags` への外部キーと 014 の不変条件（どのタグにも元の名前が 1 行）に合わない。
-  要件 14 の一覧と取り外し、要件 15 の「手で決めたら外す」は、名前を主キーにした表の
-  `select`・`delete` で足りる。
-- Alternatives considered: タグの行を消さず「却下」の状態を足す（要件 8.2 はタグの削除と動画からの取り外しを
-  求めている。残った行は `id` での絞り込みや `GET /api/tags` に出さないための条件を全読み出しに足すことになる）。
-  却下した名前を `NormalizeTagName` 以上に正規化して照合する（要件 13 が完全一致と決めている。表記揺れは
-  統合で吸収する）。
+**Alternatives considered**:
 
-## R-3: 名前を `tag_names` に書く取引は、同じ名前を `rejected_tag_names` から外す
+| Option | Verdict |
+| --- | --- |
+| A separate table holding the `id` of each tentative tag | Rejected: every read needs an extra `exists`, and confirming becomes a row delete, which is harder to follow than a column update. The state has two values, so representing it by row presence gains nothing |
+| A third value for `tag_names.canonical` | Rejected: the kind of a name row and the state of a tag are separate concerns, and a third value breaks the partial index `tag_names_canonical_idx` and the 014 invariants |
 
-- Decision: `tag_names` に名前の行を足す（作成、シノニム登録、名前での付与での作成、グループのタグ化）と
-  改名で名前を書き換える取引は、同じ取引でその名前を `rejected_tag_names` から消す。仮の作成は、却下した
-  名前をその前に飛ばしているので、この規則をそのまま通しても何も消さない
-  （[data-model.md §3](data-model.md#3-書き換えの規則)）。
-- Rationale: 要件 15 は「手で決めたことを優先し、却下した名前の一覧から外す」を、画面の作成・改名・
-  シノニムと `tentative` が偽の API のすべてに求めている。名前を書く入口は `insertTagName` と改名の 1 文に
-  集まっているので、そこに置けば経路ごとの呼び忘れが起きない。この規則で「同じ名前が `tag_names` と
-  `rejected_tag_names` の両方にある」状態が生まれず、それを不変条件として検査できる。
-- Alternatives considered: 各 API のハンドラで消す（`internal/httpapi` に SQL の都合が漏れ、グループの
-  タグ化のような別の役割の経路を見落とす）。両方にある状態を許し、読み出しで `tag_names` を優先する
-  （要件 14 の一覧に、もう名前として使われている名前が残る）。
+## R-2: Rejected names live in a name-only table `rejected_tag_names`, matched exactly like tag names
 
-## R-4: 仮のタグへの手入れ（改名・シノニム・統合先）は同じ取引で確定にする
+**Decision**: Rejecting is one transaction: delete the tag and insert its canonical
+name into `rejected_tag_names (name primary key, created_at)`
+([data-model.md §2](data-model.md#2-rejected_tag_names)). Matching uses the default
+BINARY collation, the same as `tag_names.name`, so a name matches only when the
+spelling is identical (requirement 13). A create with `tentative` true makes a
+tentative tag only when the name does not exist and is not in this table
+(requirement 11).
 
-- Decision: `RenameTag`（名前が変わるとき）、`AddSynonym`（名前を足すとき、承諾した統合を伴うときとも）、
-  `MergeTag` の統合先は、対象が仮なら同じ取引で `tentative = 0` にする（要件 9）。
-  改名で今と同じ名前を送ったときは、今の契約どおり何も変えない（仮のままにする）。仮のタグどうしの統合は、
-  統合先が確定し統合元が消える（Edge Case）。「確定する」は独立の操作 `ConfirmTag` としても置く（要件 8.1）。
-- Rationale: 仮のタグに名前やシノニムを与えた時点で、利用者はそのタグを使うと決めている。同じ取引で書けば
-  「改名したのに仮のまま」の中間状態が無い。仮のタグがシノニムを持たない（要件 9）ことは、この規則から
-  導かれ、不変条件として検査できる。
-- Alternatives considered: 画面が改名のあとに `confirm` を続けて送る（2 要求の間で別のタブの却下と
-  競合し、確定したはずのタグが消える。API の利用者にも同じ手順を求めることになる）。
+**Rationale**: A rejected name is neither a tag nor an assignment to a video. It
+records only "do not create this again". In `tag_names` it would conflict with the
+foreign key to `tags` and with the 014 invariant (each tag has exactly one
+canonical name row). The list and removal in requirement 14, and "a manual
+decision removes the name" in requirement 15, need only a `select` and a `delete`
+on a table keyed by name.
 
-## R-5: 「却下する」は仮のタグにだけ効き、確定したタグには `409 tag_not_tentative` で何もしない
+**Alternatives considered**:
 
-- Decision: `RejectTag` は取引の中でタグが仮であることを確かめ、仮でなければ
-  `domain.ErrTagNotTentative`（API は `409 tag_not_tentative`）を返して何も変えない。`ConfirmTag` は既に
-  確定したタグにも `200` で今の状態を返す
-  （[contracts/screen-api.md §2](contracts/screen-api.md#2-仮のタグの操作)）。
-- Rationale: 却下はタグの削除を伴う。別のタブや API で先に確定されたタグ（Edge Case「操作の競合」）を、
-  古い画面の「却下する」で消してはならない。確定したタグの削除は今の `DELETE`（名前を覚えない）にだけ
-  任せる（要件 10）。確定は状態を進めるだけで、重ねても害が無いので、`tag_not_found` と同じ扱いを
-  求めない。画面は `tag_not_tentative` を `tag_not_found` と同じく一覧の取り直しにする。
-- Alternatives considered: 確定したタグへの「却下」を削除として受け付ける（要件 10 に反し、競合で
-  名前を覚える削除が起きる）。`confirm` も `409` にする（画面は取り直すだけで、要求者に見せる違いが無い。
-  API の利用者には冪等な方が扱いやすい）。
+| Option | Verdict |
+| --- | --- |
+| Keep the tag row and add a "rejected" state | Rejected: requirement 8.2 requires deleting the tag and removing it from its videos. A surviving row would need a condition in every read to keep it out of `id` filters and `GET /api/tags` |
+| Normalize rejected names beyond `NormalizeTagName` before matching | Rejected: requirement 13 specifies exact matching. Spelling variants are absorbed by merging |
 
-## R-6: 却下と、同じ名前の仮の付与は、SQLite の書き込みの直列化に任せる
+## R-3: A transaction that writes a name to `tag_names` removes it from `rejected_tag_names`
 
-- Decision: 却下の取引（仮の確認 → `tags` の削除 → `rejected_tag_names` への挿入）と、仮の付与の取引
-  （名前を引く → 却下した名前を確かめる → 仮のタグを作る → 付ける）は、どちらも書き込みの取引として
-  始める（`internal/store` の即時ロックのプール）。特別なロックや再試行は足さない。
-- Rationale: 書き込みの取引は 1 つずつ走る。却下が先なら付与は却下した名前を見て飛ばし、付与が先なら
-  却下はそのタグを消して名前を覚える。どちらの順でも「却下した名前なのにタグが残る」状態にならない
-  （Edge Case「操作の競合」）。
-- Alternatives considered: 却下の取引の後に同じ名前のタグを探して消し直す（直列化で起き得ないことへの
-  対処で、読み手に競合があると誤解させる）。
+**Decision**: Every transaction that adds a name row to `tag_names` (create,
+synonym registration, create during attach-by-name, group-to-tag conversion) or
+rewrites a name by rename removes that name from `rejected_tag_names` in the same
+transaction. A tentative create has already skipped rejected names, so passing it
+through this rule removes nothing
+([data-model.md §3](data-model.md#3-write-rules)).
 
-## R-7: 外部連携 API は `tentative` を要求の 1 項目、飛ばした名前を応答の 1 項目として足す
+**Rationale**: Requirement 15 requires that a manual decision wins and removes the
+name from the rejected list, for the screen's create, rename and synonym actions
+and for the API with `tentative` false. All name writes go through
+`insertTagName` and the one rename statement, so placing the removal there means
+no path can forget it. The rule also guarantees that no name is in both
+`tag_names` and `rejected_tag_names`, which can be checked as an invariant.
 
-- Decision: `POST /api/v1/video-tags` の本文に `tentative`（真偽値、省略時は偽）を、応答に
-  `skippedTags: string[]`（整えた名前、`tags` の順、重複なし。無ければ空）を足す。`add`・`replace` で
-  却下した名前を飛ばす。`remove` は名前が無ければ元から何もしないので、`tentative` は受け付けるが
-  何も変えず、`skippedTags` は空にする。`Tag`・`ExternalVideoTag` に `tentative` を足す。MCP の
-  `update_video_tags` は同じ本文の型から入力の形を導いているので、`tentative` は説明を足すだけで入る
-  （[contracts/external-api.md](contracts/external-api.md)）。
-- Rationale: 要件 1・11・12 の形をそのまま契約にする。応答の項目の追加と本文の任意の項目の追加は、
-  026 の互換の方針（項目と操作の追加だけ）に収まる。`remove` で「飛ばした」と返すと、無い名前を
-  外そうとした（今も何も起きない）ときと区別が付かず、利用者に意味の無い項目を読ませる。
-- Alternatives considered: 却下した名前を含む要求を `400` にする（要件 11 が失敗にしないと決めている）。
-  仮の付与を別の操作にする（同じ本文に 1 項目足す方が、スクレイパーの変更が最小で、`replace` との組み合わせも
-  1 つの規則で済む）。
+**Alternatives considered**:
 
-## R-8: 仮のタグだけの絞り込みと却下した名前の一覧は、画面の側で持つ
+| Option | Verdict |
+| --- | --- |
+| Remove the name in each API handler | Rejected: SQL concerns leak into `internal/httpapi`, and paths owned by another role, such as group-to-tag conversion, are missed |
+| Allow a name in both tables and let reads prefer `tag_names` | Rejected: the list in requirement 14 would keep names that are already in use |
 
-- Decision: 「仮のタグだけ」の絞り込みは、`GET /api/tags` に引数を足さず、共有の一覧
-  （`web/src/api/tags.ts`）を管理画面が `tentative` で絞る。却下した名前の一覧は
-  `GET /api/tags/rejected-names` で別に読み、管理画面だけが使う。
-- Rationale: タグの一覧は全件を 1 回で持ち、名前の検索も画面の側で絞っている（014 の管理画面）。
-  引数を足すと共有の保持が条件ごとに分かれる。却下した名前はタグではなく、候補（combobox）や
-  チップには要らないので、共有の一覧に混ぜない。
-- Alternatives considered: `GET /api/tags` の応答に `rejectedNames` を同居させる（タグの一覧を読む
-  すべての画面が、使わない配列を受け取る。取り直しの単位も別で済む）。
+## R-4: Edits to a tentative tag (rename, synonym, merge target) confirm it in the same transaction
 
-## R-9: 画面の API は仮のタグに 2 つの `POST`、却下した名前に `GET` と `DELETE` を足す
+**Decision**: `RenameTag` (when the name changes), `AddSynonym` (when it adds a
+name, including with an accepted merge), and the target of `MergeTag` set
+`tentative = 0` in the same transaction when the tag is tentative (requirement 9).
+A rename to the current name changes nothing, as in the current contract, so the
+tag stays tentative. Merging one tentative tag into another confirms the target
+and deletes the source (edge case). Confirming is also a standalone operation,
+`ConfirmTag` (requirement 8.1).
 
-- Decision: `POST /api/tags/{id}/confirm`、`POST /api/tags/{id}/reject`、`GET /api/tags/rejected-names`、
-  `DELETE /api/tags/rejected-names?name=…` の 4 経路（[contracts/screen-api.md](contracts/screen-api.md)）。
-  取り外しの名前はシノニムの解除と同じくクエリで渡す。
-- Rationale: 確定と却下は「そのタグへの操作」で、統合・シノニムと同じ `POST /api/tags/{id}/…` の形に
-  そろえる。却下は削除を伴うが `DELETE /api/tags/{id}` とは結果（名前を覚える）が違うので、別の経路に
-  して混同を防ぐ。名前をパスに置かないのは 014 の決定（`/` や `%` を含む名前）のまま。
-- Alternatives considered: `PATCH /api/tags/{id}` に `tentative: false` を足す（改名の要求と混ざり、
-  `tentative: true` を送れる形になる。仮に戻す操作は要件に無い）。`DELETE /api/tags/{id}?reject=true`
-  （同じ経路で結果が変わり、古い画面の削除が名前を覚える事故につながる）。
+**Rationale**: Giving a tentative tag a name or a synonym means the user has
+decided to keep it. Writing the state in the same transaction leaves no
+intermediate "renamed but still tentative" state. That a tentative tag has no
+synonyms (requirement 9) follows from this rule and can be checked as an
+invariant.
+
+**Alternatives considered**: The screen sends `confirm` after the rename. Rejected:
+between the two requests a reject from another tab can race and delete a tag that
+was meant to be confirmed, and API users would have to follow the same two-step
+sequence.
+
+## R-5: Reject applies only to tentative tags; a confirmed tag gets `409 tag_not_tentative` and no change
+
+**Decision**: `RejectTag` checks inside its transaction that the tag is tentative.
+Otherwise it returns `domain.ErrTagNotTentative` (`409 tag_not_tentative` in the
+API) and changes nothing. `ConfirmTag` on an already confirmed tag returns `200`
+with the current state
+([contracts/screen-api.md §2](contracts/screen-api.md#2-tentative-tag-operations)).
+
+**Rationale**: Rejecting deletes the tag. A tag already confirmed from another tab
+or through the API (edge case "conflicting operations") must not be deleted by
+"Reject" on a stale screen. Deleting a confirmed tag stays with the existing
+`DELETE`, which does not remember the name (requirement 10). Confirming only moves
+the state forward and repeating it is harmless, so it does not need the treatment
+`tag_not_found` gets. The screen handles `tag_not_tentative` like `tag_not_found`:
+it reloads the list.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Accept "reject" on a confirmed tag as a delete | Rejected: violates requirement 10, and a race would produce a delete that remembers the name |
+| Return `409` from `confirm` too | Rejected: the screen only reloads, so the user sees no difference, and API users find an idempotent call easier to handle |
+
+## R-6: Rejection and a tentative attach of the same name rely on SQLite write serialization
+
+**Decision**: The reject transaction (check tentative → delete from `tags` →
+insert into `rejected_tag_names`) and the tentative attach transaction (look up
+the name → check rejected names → create the tentative tag → attach) both start
+as write transactions (the immediate-lock pool in `internal/store`). No extra
+lock or retry is added.
+
+**Rationale**: Write transactions run one at a time. If the reject runs first, the
+attach sees the rejected name and skips it. If the attach runs first, the reject
+deletes that tag and remembers the name. In either order no tag survives with a
+rejected name (edge case "conflicting operations").
+
+**Alternatives considered**: After the reject transaction, search for a tag with
+the same name and delete it again. Rejected: it handles a case serialization rules
+out, and it misleads readers into thinking a race exists.
+
+## R-7: The external API adds `tentative` to the request and skipped names to the response
+
+**Decision**: Add `tentative` (boolean, default false) to the body of
+`POST /api/v1/video-tags` and `skippedTags: string[]` to its response (normalized
+names, in `tags` order, without duplicates, empty when none). `add` and `replace`
+skip rejected names. `remove` already does nothing for a name that does not
+exist, so it accepts `tentative` but changes nothing, and `skippedTags` is empty.
+Add `tentative` to `Tag` and `ExternalVideoTag`. MCP's `update_video_tags`
+derives its input shape from the same body type, so `tentative` arrives with only
+a description change
+([contracts/external-api.md](contracts/external-api.md)).
+
+**Rationale**: The contract takes the shape of requirements 1, 11 and 12 as is.
+Adding a response field and an optional body field fits the 026 compatibility
+policy (only fields and operations are added). Reporting "skipped" for `remove`
+would be indistinguishable from removing a name that does not exist (which
+already does nothing) and would make users read a field with no meaning.
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Return `400` for a request that contains a rejected name | Rejected: requirement 11 says it must not fail |
+| A separate operation for tentative attach | Rejected: one more field on the same body is the smallest change for a scraper, and one rule covers its combination with `replace` |
+
+## R-8: The tentative-only filter and the rejected-name list live in the screen
+
+**Decision**: The "tentative only" filter adds no parameter to `GET /api/tags`;
+the tag management page filters the shared list (`web/src/api/tags.ts`) by
+`tentative`. The rejected-name list is read separately from
+`GET /api/tags/rejected-names` and is used only by the tag management page.
+
+**Rationale**: The tag list is held whole from one request, and name search is
+already filtered in the screen (the 014 tag management page). A parameter would
+split the shared cache per condition. Rejected names are not tags and are not
+needed by the candidates (combobox) or the chips, so they stay out of the shared
+list.
+
+**Alternatives considered**: Put `rejectedNames` in the `GET /api/tags` response.
+Rejected: every screen that reads the tag list would receive an array it does not
+use, and keeping them separate lets each be reloaded on its own.
+
+## R-9: The screen API adds two `POST` routes for tentative tags and `GET` and `DELETE` for rejected names
+
+**Decision**: Four routes: `POST /api/tags/{id}/confirm`,
+`POST /api/tags/{id}/reject`, `GET /api/tags/rejected-names`, and
+`DELETE /api/tags/rejected-names?name=…`
+([contracts/screen-api.md](contracts/screen-api.md)). The name to remove is
+passed in the query, as when removing a synonym.
+
+**Rationale**: Confirm and reject are operations on one tag, so they take the same
+`POST /api/tags/{id}/…` shape as merge and synonyms. Reject deletes the tag but
+its result differs from `DELETE /api/tags/{id}` (it remembers the name), so a
+separate route prevents confusing the two. Names stay out of the path, following
+the 014 decision (names can contain `/` and `%`).
+
+**Alternatives considered**:
+
+| Option | Verdict |
+| --- | --- |
+| Add `tentative: false` to `PATCH /api/tags/{id}` | Rejected: it mixes with the rename request and makes `tentative: true` sendable. No requirement asks to make a tag tentative again |
+| `DELETE /api/tags/{id}?reject=true` | Rejected: one route with two results, so a delete from a stale screen could remember the name by accident |

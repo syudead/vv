@@ -1,30 +1,38 @@
-# Quickstart: 字幕の表示を人が確かめる手順
+# Quickstart: Checking subtitle display by hand
 
-準備・起動・検査は [Taskfile.yml](../../Taskfile.yml)（`task dev`・`task check`・`task test-e2e`）に
-従う。文字コード、名前の照合、時刻のずらし、API のアクセス制御は Go のテストが、字幕ボタン・
-メニュー・記憶・`c` キー・ライブ変換での付け直しは Vitest と Playwright が確かめる。ここに書くのは、
-自動のテストが届かない、人の目とブラウザの実装に依る確認だけである。
+These steps cover only what depends on human eyes and on browser
+implementations, which the automated tests do not reach. Setup, startup and
+checks follow [Taskfile.yml](../../Taskfile.yml) (`task dev`, `task check`,
+`task test-e2e`). Go tests cover encodings, name matching, time shifting and API
+access control; Vitest and Playwright cover the subtitle button, the menu, the
+remembered selection, the `c` key and reattachment during live transcode.
 
-## 1. 全画面と操作バーとの重なり（受け入れ条件 10）
+## 1. Full screen and overlap with the control bar (acceptance criterion 10)
 
-1. `movie.mp4` の隣に `movie.srt` を置き、再生画面で字幕をオンにする。
-2. 全画面にする（`F`）。字幕が映像の上に出ること。
-3. 全画面のままマウスを動かして操作バーを出す。字幕の文字が上へ寄り、操作バー（再生バーを含む）
-   と重ならないこと。操作バーが消えると元の位置へ戻ること。
-4. 縦長の動画（`web/e2e/media-fixtures.mjs` の縦長の fixture）でも同じであること。
+1. Put `movie.srt` next to `movie.mp4` and turn subtitles on in the playback
+   screen.
+2. Go full screen (`F`). The subtitles appear over the picture.
+3. Still in full screen, move the mouse to show the control bar. The subtitle
+   text moves up and does not overlap the control bar (including the progress
+   bar). When the control bar hides, the text returns to its original position.
+4. The same holds for a portrait video (the portrait fixture in
+   `web/e2e/media-fixtures.mjs`).
 
-## 2. Safari と iOS（ブラウザ標準のトラック表示）
+## 2. Safari and iOS (native track display)
 
-video.js は Safari ではブラウザ標準の字幕表示を使う。Chrome・Firefox は Playwright が確かめるので、
-Safari だけを人が見る。
+video.js uses the browser's native subtitle display in Safari. Playwright
+checks Chrome and Firefox, so only Safari is checked by hand.
 
-1. macOS の Safari と iOS の Safari で、手順 1 の動画を開き、字幕をオンにする。字幕が出ること。
-2. iOS でプレイヤーを全画面にしても字幕が出ること。
-3. ライブ変換で再生する動画（`container-only.mkv`）で途中へシークし、字幕が映像の時刻に合って
-   いること（受け入れ条件 9 の Safari での確認）。
+1. In Safari on macOS and on iOS, open the video from section 1 and turn
+   subtitles on. The subtitles appear.
+2. On iOS, the subtitles still appear when the player is full screen.
+3. With a video played through live transcode (`container-only.mkv`), seek
+   partway. The subtitles match the picture's time (the Safari check for
+   acceptance criterion 9).
 
-## 3. 実在の日本語 SRT（受け入れ条件 5 の実ファイル）
+## 3. A real Japanese SRT (the real-file check for acceptance criterion 5)
 
-Go のテストは作った fixture で 4 種類の文字コードを確かめる。手元にある実際の Shift_JIS の
-SRT（Windows のツールで作ったもの）を 1 つ置き、日本語が化けずに出ることを見る。化ける場合は、
-その先頭 16 バイト（`xxd -l 16`）を Issue に添える。
+The Go tests check the four encodings with generated fixtures. Put one real
+Shift_JIS SRT you have (made with a Windows tool) next to a video and check
+that the Japanese text is not garbled. If it is, attach its first 16 bytes
+(`xxd -l 16`) to the Issue.

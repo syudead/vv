@@ -1,224 +1,304 @@
-# 再生の画質
+# Playback quality
 
-- ステータス: 採用
-- スコープ: ライブ変換（`GET /api/videos/{id}/transcode.mp4`）の画質ごとの縮小とビットレートの上限、
-  再生画面での画質の選択と切り替え、回線の遅さで途切れているときの警告
-- 経緯: [specs/027-playback-quality/](../../specs/027-playback-quality/plan.md)（親 Issue #521）
+- Status: adopted
+- Scope: per-quality downscaling and bitrate caps for live transcoding
+  (`GET /api/videos/{id}/transcode.mp4`), choosing and switching quality on the
+  playback screen, and the warning shown when playback stalls on a slow
+  connection
+- Background: [specs/027-playback-quality/](../../specs/027-playback-quality/plan.md)
+  (parent Issue #521)
 
-ライブ変換の開始（解析情報の用意、コピーとエンコードの切り替え）は
-[live-transcode-seek.md](live-transcode-seek.md) に、映像の符号化器の選択と方式ごとの引数は
-[hardware-encoding.md](hardware-encoding.md) に書いてある。この文書は、画質を指定したライブ変換が
-何を変えるかを扱う。
+This document covers what a live transcode with a quality changes. Starting a
+live transcode (preparing the probe, switching between copy and encode) is in
+[live-transcode-seek.md](live-transcode-seek.md), and the video encoder choice
+and per-encoder arguments are in [hardware-encoding.md](hardware-encoding.md).
 
-## 変換
+## Transcoding
 
 ### Context
 
-回線の遅い環境では、元の画質のままのライブ変換（映像をコピーできればコピーし、エンコードしても
-一定品質）は回線の速さを超え、再生が途切れる。見る人が画質を選んだときに、映像の寸法と
-ビットレート、音声のビットレートを合わせて軽くする必要がある。
+On a slow connection, a live transcode at the original quality (copying the
+video when possible, and constant quality when encoding) exceeds the connection
+speed and playback stalls. When the viewer picks a quality, the video
+dimensions, the video bitrate and the audio bitrate all have to come down
+together.
 
 ### Decision
 
-画質は `domain.TranscodeQuality`（`1080p`・`720p`・`480p`・`360p`）で、`internal/domain/transcode_quality.go`
-の純粋関数が値を持つ。知らない文字列は `ParseTranscodeQuality` で解釈できない。
+A quality is a `domain.TranscodeQuality` (`1080p`, `720p`, `480p`, `360p`);
+pure functions in `internal/domain/transcode_quality.go` hold the values.
+`ParseTranscodeQuality` does not accept unknown strings.
 
-| 画質 | 表示の短辺 | 映像の上限（`-maxrate`） | `-bufsize` | 音声（AAC） |
+| Quality | Display short side | Video cap (`-maxrate`) | `-bufsize` | Audio (AAC) |
 | --- | --- | --- | --- | --- |
 | `1080p` | 1080 | 5000 kbps | 10000 kbps | 128 kbps |
 | `720p` | 720 | 2500 kbps | 5000 kbps | 128 kbps |
 | `480p` | 480 | 1200 kbps | 2400 kbps | 96 kbps |
 | `360p` | 360 | 700 kbps | 1400 kbps | 64 kbps |
 
-画質が動画に使えるのは、その短辺が動画の表示の短辺（回転を反映済み）より小さいときだけで、
-寸法の無い動画にはどれも使えない（`TranscodeQuality.Available`）。拡大や同じ寸法への変換は重く
-するだけだからである。
+A quality is available for a video only when its short side is smaller than the
+video's display short side (with rotation applied), and none is available for a
+video without dimensions (`TranscodeQuality.Available`). Upscaling or
+transcoding to the same size only makes the stream heavier.
 
-`domain.LiveTranscodeRequest.Quality` が空なら、変換の引数は画質を足す前と 1 文字も変わらない。
-画質があるとき、`internal/media` の変換は次のようにする。
+When `domain.LiveTranscodeRequest.Quality` is empty, the transcode arguments
+are byte-for-byte the same as before qualities existed. With a quality, the
+transcode in `internal/media` does the following:
 
-- 映像はコピーできる動画でも必ずエンコードする。コピーを試さないので、途中からの変換も指定位置
-  そのものから始まる。
-- 寸法は表示の寸法（`displayGeometry`）から `qualityDimensions` で決め、`scale=W:H` を出す。縮める比は
-  「画質の短辺への比」と「今の変換の枠（長辺 3840・短辺 2160）への比」の小さい方で、幅・高さとも
-  最も近い偶数に丸める。短辺で決めるので、縦長の 1080×1920 の `480p` は 480×854 になり、横長と
-  同じ重さになる。長辺が枠を超える極端に細長い動画だけは短辺が画質より小さくなる
-  （1200×12000 の `1080p`・`720p`・`480p` は 384×3840、`360p` は 360×3600）。既存の `setsar` の
-  扱いはそのまま通し、表示の縦横比を保つ。
-- 符号化器には表の上限を付ける。software と NVENC は一定品質に上限を重ね、QSV・VAAPI・
-  VideoToolbox は上限の VBR にする（[方式ごとの引数](hardware-encoding.md#方式ごとの引数)）。
-  ハードウェアが使えず software に切り替えたときも、同じ寸法と上限で変換する。
-- 音声はコピーせず、常に AAC（`-ac 2 -ar 48000`）で表の kbps にエンコードする。コピーだと元の
-  256〜320 kbps が残る。
-- H.264 High・Level 5.1・4:2:0 8bit、`-force_key_frames`（出力の時刻で 2 秒ごと）、`-movflags`、
-  fps の扱いは画質の無い変換と同じである。
+- Video is always encoded, even when it could be copied. Copy is not attempted,
+  so a mid-file transcode starts exactly at the requested position.
+- Dimensions come from the display dimensions (`displayGeometry`) through
+  `qualityDimensions`, which emits `scale=W:H`. The scale factor is the smaller
+  of "the ratio to the quality's short side" and "the ratio to the current
+  transcode frame (long side 3840, short side 2160)", and width and height are
+  each rounded to the nearest even number. Because the short side decides, a
+  portrait 1080×1920 at `480p` becomes 480×854, the same weight as landscape.
+  Only extremely elongated videos whose long side exceeds the frame get a short
+  side smaller than the quality (1200×12000 becomes 384×3840 at `1080p`, `720p`
+  and `480p`, and 360×3600 at `360p`). The existing `setsar` handling passes
+  through unchanged and keeps the display aspect ratio.
+- The encoder gets the cap from the table. Software and NVENC put the cap on
+  top of constant quality; QSV, VAAPI and VideoToolbox use capped VBR
+  ([encoder arguments](hardware-encoding.md#encoder-arguments)). When hardware
+  is unusable and the transcode falls back to software, it uses the same
+  dimensions and cap.
+- Audio is never copied; it is always encoded to AAC (`-ac 2 -ar 48000`) at the
+  table's kbps. A copy would keep the original 256–320 kbps.
+- H.264 High, Level 5.1, 4:2:0 8-bit, `-force_key_frames` (every 2 seconds of
+  output time), `-movflags` and fps handling are the same as for a transcode
+  without a quality.
 
-上限が効いていることは ffmpeg 付きの Go テスト（`TestTranscodeQualityCapsBitrateWithFFmpeg`）が、
-一面のノイズの入力を `480p` で変換し、出力の短辺が 480、映像の平均ビットレート（パケットの大きさの
-合計を最初と最後の `pts_time` の差で割る）が 1200 kbps の 1.2 倍以下であることで確かめる。
-ハードウェアの方式の上限は CI では確かめられないので、
-[quickstart.md](../../specs/027-playback-quality/quickstart.md) の手順で実機で確かめる。
+A Go test with ffmpeg (`TestTranscodeQualityCapsBitrateWithFFmpeg`) verifies the
+cap: it transcodes full-frame noise at `480p` and checks that the output short
+side is 480 and the average video bitrate (the sum of packet sizes divided by
+the difference between the first and last `pts_time`) is at most 1.2 times
+1200 kbps. CI cannot verify the caps of hardware encoders; they are verified on
+real hardware with the steps in
+[quickstart.md](../../specs/027-playback-quality/quickstart.md).
 
 ### Alternatives
 
-- **長辺で縮める**: 縦長の動画で `720p` が 405×720 になり、横長の `720p` より軽くなる。
-- **`-b:v` だけの平均ビットレート**: 瞬間の上限が無く、動きの多い場面で回線を超える。
-- **`scale=-2:480` で寸法の計算を ffmpeg に任せる**: 縦長の向きの判定を ffmpeg 側にも持つことになり、
-  Go の計算とテストが二重になる。
-- **画質の短辺をそのまま守って枠を超える**: 1080×10800 は H.264 Level 5.1 の 1 フレームの上限を超える。
+- **Scale by the long side**: a portrait video at `720p` would become 405×720,
+  lighter than a landscape `720p`.
+- **Average bitrate with `-b:v` only**: no instantaneous cap, so high-motion
+  scenes exceed the connection.
+- **Let ffmpeg compute dimensions with `scale=-2:480`**: ffmpeg would also need
+  to know about portrait orientation, duplicating the Go calculation and its
+  tests.
+- **Keep the quality's short side and exceed the frame**: 1080×10800 exceeds the
+  per-frame limit of H.264 Level 5.1.
 
 ## API
 
 ### Context
 
-画質は見る人が選び、再生の途中でも切り替える。経路を増やしたりサーバーに画質を覚えさせたりすると、
-シークや再開の要求と画質の対応を別に管理することになる。
+The viewer picks the quality and can switch it during playback. Adding routes or
+making the server remember the quality would mean tracking separately which
+quality goes with which seek or resume request.
 
 ### Decision
 
-`GET /api/videos/{id}/transcode.mp4` に任意の `quality`（`1080p`・`720p`・`480p`・`360p`）を足す
-（[contracts/transcode-quality-api.md §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-get-apivideosidtranscodemp4-の-quality)）。
-サーバーは画質を覚えず、要求ごとに `quality` から決める。
+`GET /api/videos/{id}/transcode.mp4` takes an optional `quality` (`1080p`,
+`720p`, `480p`, `360p`)
+([contracts/transcode-quality-api.md §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-quality-on-get-apivideosidtranscodemp4)).
+The server does not remember the quality; each request decides it from
+`quality`.
 
-- `quality` が無ければ元の画質で、変換は今までと同じである。
-- `internal/httpapi/transcode.go` は値を `domain.ParseTranscodeQuality` で解釈し、動画の `Width`・
-  `Height`（表示の寸法）で `TranscodeQuality.Available` を確かめる。列挙に無い値、動画の短辺以上の
-  画質、寸法の無い動画は 400 `invalid_request`（英語の `message`）で、変換を始めない。
-- 使える画質は `LiveTranscodeRequest.Quality` に載せ、開始のログ（Debug）に `quality` を添える。
-  画質の無い要求は `quality=original` と書く。
-- `startMs`・`attempt` は今までどおり組み合わせられる。画質のある変換は映像をエンコードして
-  `startMs` の位置そのものから始まるので、`transcode-start` は `startMs` と同じ値を返す。
-- 応答の形（fragmented MP4、`Cache-Control: no-store`）とエラーの形は変えない。境界はゲストも
-  使える経路のまま（公開の動画だけ）である。
+- Without `quality` the quality is the original, and the transcode is unchanged.
+- `internal/httpapi/transcode.go` parses the value with
+  `domain.ParseTranscodeQuality` and checks `TranscodeQuality.Available` with
+  the video's `Width` and `Height` (display dimensions). A value not in the
+  enumeration, a quality at or above the video's short side, or a video without
+  dimensions returns 400 `invalid_request` (with an English `message`) and does
+  not start a transcode.
+- An available quality goes into `LiveTranscodeRequest.Quality`, and the start
+  log (Debug) carries `quality`. A request without a quality logs
+  `quality=original`.
+- `startMs` and `attempt` combine as before. A transcode with a quality encodes
+  video and starts exactly at `startMs`, so `transcode-start` returns the same
+  value as `startMs`.
+- The response shape (fragmented MP4, `Cache-Control: no-store`) and the error
+  shape are unchanged. The boundary stays a guests-too route (public videos
+  only).
 
 ### Alternatives
 
-- **画質ごとの経路**: 開始位置の台帳や公開の境界を経路ごとに重ねることになる。
-- **サーバーが見る人ごとに画質を覚える**: ゲストには見る人の識別が無く、要求の URL だけでは
-  出力が決まらなくなる。
-- **使えない画質を黙って元の画質か最大の画質に直す**: 画面の選択と実際の画質がずれる。
+- **A route per quality**: the start position ledger and the public boundary
+  would be duplicated for each route.
+- **The server remembers the quality per viewer**: guests have no viewer
+  identity, and the request URL alone would no longer determine the output.
+- **Silently map an unavailable quality to the original or the largest
+  quality**: the selection on screen and the actual quality would disagree.
 
-## 選択肢と覚え方
+## Options and remembered quality
 
 ### Context
 
-画質は見る人の回線に合わせて選ぶもので、動画ごとではなくブラウザごとに決まる。一度選んだら
-次に開く動画でも、シークや通信の失敗からの読み込み直しでも同じ画質で再生し続ける必要がある。
-一方で、動画の短辺以上の画質はサーバーが 400 で拒む（上の「API」）。
+Quality is chosen to suit the viewer's connection, so it is decided per browser,
+not per video. Once chosen, it has to stay in effect for the next video opened,
+after a seek, and after a reload following a network failure. Meanwhile the
+server rejects a quality at or above the video's short side with 400 (see
+[API](#api)).
 
 ### Decision
 
-- 選んだ画質は `web/src/preferences/playbackQuality.ts` が `localStorage` の
-  `vv.playback-quality.v1` に JSON の文字列（`"480p"`・`"original"`）で持つ。音量
-  （`playbackVolume.ts`）と同じ作りで、保存値が無い・壊れている・列挙に無い・保存領域が
-  使えないときは「元の画質」（`"original"`）で再生する。サーバーには送らない。
-- 選択肢は `web/src/player/quality.ts` の `qualityOptions` が動画の `width`・`height` から作る。
-  短辺より小さい画質だけを大きい順に出し、寸法の無い動画は空にする。規則はサーバーの
-  `TranscodeQuality.Available` と同じ短辺の比較だけで、変換の枠による縮小（1200×12000 など）は
-  考えない。
-- 覚えている画質が選択肢に無い動画（360p の動画での `480p` など）は、`effectiveQuality` が
-  「元の画質」で再生すると決める。覚えている値は書き換えず、次に大きい動画を開けばまた
-  その画質で再生する。
-- プレイヤー（`VideoPlayer.tsx`）は作るときに 1 回だけ覚えた画質を読み、`createPlaybackAttempt`
-  に渡す。`PlaybackAttempt.quality` が「元の画質」以外なら経路は直接再生できる動画でも変換で、
-  `sourceOffsetMs` は再開する位置になる。「元の画質」なら今までどおり、直接再生できる動画だけを
-  直接再生する。
-- 画質は変換の source が持ち続ける。`transcodeUrl` と `liveSource` は `quality` を URL と
-  source の `vvQuality` に載せ、未 buffer のシーク（`liveOffset.ts` の `reloadAt`）は source の
-  画質で作り直し、通信の失敗からの読み込み直し（`VideoPlayer.tsx` の `reload`）は attempt の
-  画質で作り直す。どちらも画質の無い要求に戻らない。
-- 「変換して再生中」は、元の画質なら今までどおりの文言、選んだ画質なら `Converting to 480p` と
-  縮めていることと戻し方の説明にする（[ui-design.md「Control bar: transcode indicator」](../../specs/027-playback-quality/ui-design.md#control-bar-transcode-indicator)）。
-  画質の名前は翻訳しない。
+- `web/src/preferences/playbackQuality.ts` keeps the chosen quality in
+  `localStorage` under `vv.playback-quality.v1` as a JSON string (`"480p"`,
+  `"original"`). It is built like volume (`playbackVolume.ts`): when the saved
+  value is missing, broken, not in the enumeration, or storage is unavailable,
+  playback uses the original quality (`"original"`). It is not sent to the
+  server.
+- `qualityOptions` in `web/src/player/quality.ts` builds the options from the
+  video's `width` and `height`: only qualities smaller than the short side,
+  largest first, and none for a video without dimensions. The rule is the same
+  short-side comparison as the server's `TranscodeQuality.Available`; downscaling
+  forced by the transcode frame (1200×12000 and the like) is not considered.
+- For a video whose options do not include the remembered quality (`480p` on a
+  360p video, for example), `effectiveQuality` decides to play the original
+  quality. The remembered value is not rewritten, so the next larger video plays
+  at that quality again.
+- The player (`VideoPlayer.tsx`) reads the remembered quality once when it is
+  created and passes it to `createPlaybackAttempt`. When `PlaybackAttempt.quality`
+  is anything but the original, the route is a transcode even for a video that
+  can play directly, and `sourceOffsetMs` is the resume position. With the
+  original quality, as before, only videos that can play directly play
+  directly.
+- The transcode source keeps the quality. `transcodeUrl` and `liveSource` put
+  `quality` in the URL and in the source's `vvQuality`; an unbuffered seek
+  (`reloadAt` in `liveOffset.ts`) rebuilds with the source's quality, and a
+  reload after a network failure (`reload` in `VideoPlayer.tsx`) rebuilds with
+  the attempt's quality. Neither falls back to a request without a quality.
+- The transcode indicator keeps its existing text for the original quality; for
+  a chosen quality it reads `Converting to 480p` with an explanation that the
+  video is downscaled and how to go back
+  ([ui-design.md, Control bar: transcode indicator](../../specs/027-playback-quality/ui-design.md#control-bar-transcode-indicator)).
+  Quality names are not translated.
 
 ### Alternatives
 
-- **サーバーに画質を覚えさせる**: ゲストには見る人の識別が無い（上の「API」）。
-- **使えない画質を覚えた値ごと「元の画質」に書き換える**: 小さい動画を 1 本開いただけで、
-  回線に合わせて選んだ画質が失われる。
-- **選択肢をサーバーの応答に載せる**: 規則が寸法の比較だけなのに `Video` の形と往復が増える。
+- **The server remembers the quality**: guests have no viewer identity (see
+  [API](#api)).
+- **Overwrite an unavailable remembered quality with the original**: opening one
+  small video would lose the quality chosen for the connection.
+- **Put the options in the server response**: the rule is only a dimension
+  comparison, and this would add to the `Video` shape and to round trips.
 
-## 切り替え
+## Switching
 
 ### Context
 
-回線の速さは再生の途中で変わる。画質を変えるたびに先頭から、あるいは止めた状態からやり直すと、
-画質を変える操作そのものが視聴を途切れさせる。
+Connection speed changes during playback. If every quality change restarted
+from the beginning or from a stopped state, changing quality would itself
+interrupt viewing.
 
 ### Decision
 
-- 画質は操作バーの画質メニュー（`web/src/player/qualityMenu.ts`）で選ぶ。video.js の
-  `MenuButton`・`MenuItem` を継承した部品を `QualityMenuButton` として登録し、`controlBarChildren`
-  の再生速度の前に置く。項目は「元の画質」（`Original (1080p)`）と `qualityOptions` の画質で、
-  選べる画質が無い動画は押せない補足の行（`No smaller sizes for this video`）を出す。ボタンの
-  文字は今の画質（元の画質なら動画の短辺、寸法が無ければ `Orig`）で、文言はカタログから作る。
-- 部品は選ばれた画質を `vvqualityselect` のイベントで知らせるだけで、切り替えは
-  `VideoPlayer.tsx` が行う。選択肢と今の画質は `setQualityMenu` で部品に渡す。
-- 選んだ画質はその時点で `playbackQuality.ts` に書く。今と同じ画質も書くだけで、source は
-  差し替えない。覚えた画質がこの動画に使えず元の画質で再生しているときに「元の画質」を選び
-  直せば、覚えた画質はそこで「元の画質」に置き換わる。
-- 切り替えはプレイヤーを作り直さない。論理上の位置と再生の意図（再生中か）を読み、
-  `switchQuality`（`playbackAttempt.ts`）で attempt を新しい画質と経路で作り直して、source を
-  差し替える。縮めた画質は切り替えた位置からの変換、「元の画質」は直接再生できる動画なら
-  直接再生（`stream`）に戻す。直接再生が読めず変換へ切り替えた動画は、元の画質でも変換のまま
-  である。
-- 直接再生の source は位置を持たず 0 から読み込むので、メタデータが来た時点で論理上の位置へ
-  シークする（読み込み直しの `finishRecovery` と同じ）。そのあと再生中だったなら再生を続け、
-  止めていたら止めたままにする。再生速度は差し替えで既定に戻るので、切り替える前の速度に戻す。
-- 待っている切り替えは 1 つだけで、切り替えるたびに置き換える（これが切り替えの世代になる）。
-  続けて変えたときに残るのは最後の画質の source だけで、前の切り替えのメタデータの処理（直接再生への
-  シーク、再生速度と再生の意図の復元）は新しい source に効かない。
-  video.js は source を少し遅らせて要素へ渡すので、どの画質への切り替えも、届いたメタデータが
-  要素の今の source（`currentSrc`）のものかを確かめてから使う。要素は source を替えると前の
-  source の待っている出来事を捨てるので、切り替えた source が要素に渡った（`loadstart`）あとは、
-  変換の未 buffer シークで URL が変わってもそのメタデータで切り替えを終える。前の要求はブラウザが打ち切り、
-  サーバーの変換は要求の取り消しで止まる。古い変換の開始位置の報告は `liveOffset.ts` が
-  attempt で見分けて捨てる。
-- 通信の失敗から読み込み直そうとしている間に選んでも、待ちを取り消して選んだ画質で読み込む。
-  切り替えた source の失敗は今の誤りの経路（`playbackRecovery.ts`）がそのまま種類で分けて伝え、
-  再試行の位置は切り替えた位置になる。失敗の層が出ている間の選択は覚えるだけで、再試行が
-  覚えた画質でプレイヤーを作り直す。
+- Quality is chosen from the quality menu on the control bar
+  (`web/src/player/qualityMenu.ts`). A component inheriting from video.js
+  `MenuButton` and `MenuItem` is registered as `QualityMenuButton` and placed
+  before playback speed in `controlBarChildren`. The items are the original
+  quality (`Original (1080p)`) and the qualities from `qualityOptions`; a video
+  with no selectable quality shows a non-interactive note row
+  (`No smaller sizes for this video`). The button label is the current quality
+  (for the original quality, the video's short side; without dimensions,
+  `Orig`), and its text comes from the catalog.
+- The component only reports the chosen quality through the `vvqualityselect`
+  event; `VideoPlayer.tsx` performs the switch. The options and the current
+  quality are passed to the component through `setQualityMenu`.
+- The chosen quality is written to `playbackQuality.ts` at that moment. Choosing
+  the current quality only writes it and does not replace the source. When the
+  remembered quality is unavailable for this video and the original is playing,
+  choosing the original again replaces the remembered quality with the original.
+- Switching does not recreate the player. It reads the logical position and the
+  playback intent (whether playing), rebuilds the attempt with the new quality
+  and route through `switchQuality` (`playbackAttempt.ts`), and replaces the
+  source. A reduced quality transcodes from the switch position; the original
+  quality returns to direct playback (`stream`) for a video that can play
+  directly. A video that fell back to transcoding because direct playback could
+  not be read stays transcoded even at the original quality.
+- A direct playback source has no position and loads from 0, so when metadata
+  arrives it seeks to the logical position (the same as `finishRecovery` in a
+  reload). Then playback continues if it was playing and stays paused if it was
+  paused. Replacing the source resets playback speed to the default, so the
+  speed from before the switch is restored.
+- Only one switch waits at a time, and each switch replaces it (this is the
+  switch generation). After several changes in a row, only the source for the
+  last quality remains, and the metadata handling of an earlier switch (the seek
+  for direct playback, restoring speed and intent) does not apply to the new
+  source. Video.js hands the source to the element slightly later, so every
+  switch checks that arriving metadata belongs to the element's current source
+  (`currentSrc`) before using it. The element discards pending events of the
+  previous source when its source changes, so once the switched source has
+  reached the element (`loadstart`), the switch finishes with that metadata even
+  if an unbuffered transcode seek changes the URL. The browser aborts the
+  previous request, and the server's transcode stops on request cancellation.
+  `liveOffset.ts` tells stale transcode start-position reports apart by
+  attempt and discards them.
+- A choice made while a reload after a network failure is pending cancels the
+  wait and loads the chosen quality. A failure of the switched source is reported
+  by kind through the existing error path (`playbackRecovery.ts`), and the retry
+  position is the switch position. A choice made while the failure layer is
+  showing is only remembered; the retry recreates the player with the remembered
+  quality.
 
 ### Alternatives
 
-- **プレイヤーを作り直す**（`VideoPage` の attempt を進める）: ポスターに戻って操作バーが消え、
-  全画面の内側の状態も作り直しになる。
-- **React の吹き出しでメニューを作る**: 再生速度のメニューと見た目・開き方・キーボードの扱いを
-  作り直してそろえ続けることになる（research.md R-4）。
+- **Recreate the player** (advance the attempt in `VideoPage`): returns to the
+  poster, the control bar disappears, and state inside full screen is rebuilt.
+- **Build the menu as a React popover**: the look, opening behaviour and keyboard
+  handling of the playback speed menu would have to be rebuilt and kept in sync
+  (research.md R-4).
 
-## 途切れの警告
+## Stall warning
 
 ### Context
 
-回線が動画のビットレートに追いつかないと、再生はデータ待ちで何度も止まる。見る人は原因が
-回線なのか動画なのか分からない。一方で、シークや再生の開始、画質の切り替えの直後の読み込み待ちは
-回線が十分でも起きるので、それを数えると警告が出過ぎる。
+When the connection cannot keep up with the video's bitrate, playback stops
+repeatedly waiting for data. The viewer cannot tell whether the cause is the
+connection or the video. Waiting for data right after a seek, the start of
+playback, or a quality switch happens even on a fast enough connection, and
+counting those would show the warning too often.
 
 ### Decision
 
-- 判断は純粋な状態機械（`web/src/player/stallMonitor.ts`）が行う。データ待ちは、数えている間に
-  届いた `waiting` から次の `playing` までとし、始まった時刻を持つ。60 秒の窓の中に始まった
-  データ待ちが 3 回以上になったか、1 回のデータ待ちが 10 秒を超えたら、途切れていると判断する。
-- 数えるのは `playing` のあとだけである。シーク（`seeking`）・source の設定（`loadstart`。最初の
-  読み込み・画質の切り替え・読み込み直しを含む）・再生の開始（`play`）のあとは、次の `playing`
-  までの待ちを数えない。止めたとき（`pause`）と、通信の失敗で読み込み直すとき（`recovering`）は
-  それまでの回数を捨てて数え直す。
-- 10 秒の判定は、数えているデータ待ちが始まった時点で `VideoPlayer.tsx` がタイマーを掛けて行う。
-  判断は `PlayerStatus.stalled` として `VideoPage` へ伝え、再生の終わりと失敗で下ろす。再生は
-  止めず、画質も変えない。
-- 警告（`web/src/player/StallWarning.tsx`）は状態表示の入れ物（`data-overlay-layer`）とは別に、
-  プレイヤーの左上に小さな帯で出す。`role="status"` で、× 以外は `pointer-events-none` にして
-  下の操作を遮らない。失敗・再生終了・次の予告・再接続中・取り込み中の層が出ている間は出さず、
-  データ待ちの読み込み中の輪とは並べて出す（10 秒の判断は待ちの最中に立つので、読み込み中で
-  隠すと続いている途切れの間に見えない）。
-- 閉じた記録は `VideoPage` が動画の id で持つ。同じ動画の間は失敗からの再試行のあとも出し直さず、
-  別の動画へ移れば忘れる。警告に画質を切り替える操作や勧めは置かず、自動で画質を下げる仕組みも
-  持たない。
+- A pure state machine (`web/src/player/stallMonitor.ts`) decides. A data wait
+  runs from a `waiting` received while counting to the next `playing`, and keeps
+  its start time. Playback is judged stalled when 3 or more data waits start
+  within a 60-second window, or one data wait exceeds 10 seconds.
+- Counting happens only after `playing`.
+
+  | Event | Effect on counting |
+  | --- | --- |
+  | Seek (`seeking`) | The wait until the next `playing` is not counted |
+  | Source set (`loadstart`; includes the first load, quality switches and reloads) | The wait until the next `playing` is not counted |
+  | Playback start (`play`) | The wait until the next `playing` is not counted |
+  | Pause (`pause`) | Discard the count so far and start again |
+  | Reload after a network failure (`recovering`) | Discard the count so far and start again |
+
+- For the 10-second rule, `VideoPlayer.tsx` sets a timer when a counted data
+  wait starts. The judgement goes to `VideoPage` as `PlayerStatus.stalled` and is
+  cleared at the end of playback and on failure. Playback is not stopped and
+  quality is not changed.
+- The warning (`web/src/player/StallWarning.tsx`) is a small banner at the
+  player's top left, separate from the status overlay container
+  (`data-overlay-layer`). It has `role="status"`, and everything except the ×
+  is `pointer-events-none` so it does not block the controls beneath. It is not
+  shown while the failure, playback-ended, up-next, reconnecting or importing
+  layers are showing, and it is shown alongside the loading spinner for a data
+  wait (the 10-second judgement is made during the wait, so hiding it behind the
+  spinner would keep it invisible during an ongoing stall).
+- `VideoPage` keeps the dismissal by video id. For the same video the warning is
+  not shown again, even after a retry from a failure; moving to another video
+  forgets it. The warning offers no action or suggestion to switch quality, and
+  there is no automatic quality reduction.
 
 ### Alternatives
 
-- **`buffered` の残りや `progress` の間隔から回線の速さを推定する**: 速さを測る作りは自動の
-  画質の切り替えへ向かい、`progress` の間隔はブラウザごとの差が大きい。
-- **状態表示の入れ物の層の 1 つにする**: 入れ物は一度に 1 つで、中央の操作と排他になる。
-  再生を止めず操作もふさがないという要件に反する。
-- **トーストで画面の隅に出す**: 全画面では見えず、プレイヤーと結び付かない。
+- **Estimate connection speed from remaining `buffered` or `progress`
+  intervals**: measuring speed leads toward automatic quality switching, and
+  `progress` intervals differ widely between browsers.
+- **Make it one of the layers of the status overlay container**: the container
+  shows one layer at a time, exclusive with the central controls. That conflicts
+  with the requirement to neither stop playback nor block the controls.
+- **Show a toast in a screen corner**: invisible in full screen, and not tied to
+  the player.

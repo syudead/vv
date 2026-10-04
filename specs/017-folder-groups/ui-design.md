@@ -1,361 +1,417 @@
-# UI Design: フォルダのグループを1件として並べ、続けて再生する
+# UI design: Listing a folder group as one entry and playing it continuously
 
 **Feature**: [parent Issue #326](https://github.com/syudead/vv/issues/326)
 
-見た目の規則・シェル・一覧の密度は
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。再生画面の構成と再生終了の層は
-[012 の ui-design.md](../012-video-detail-ia/ui-design.md)、フォルダ画面の構成は
-[011 の ui-design.md](../011-folder-browser/ui-design.md) と
-[013 の ui-design.md「Folder screen」](../013-library-search/ui-design.md#folder-screen)、
-タグのチップ・選択バー・combobox は [014 の ui-design.md](../014-video-tags/ui-design.md)、
-ゲストへの縮退は [016 の ui-design.md「Guest degradation」](../016-single-account-auth/ui-design.md#guest-degradation)
-に従う。画面が使う応答と経路は [contracts/library-api.md](contracts/library-api.md) と
-[contracts/folder-groups-api.md](contracts/folder-groups-api.md)、グループの視聴状態と開くメンバーの
-決め方は [data-model.md §6](data-model.md#6-グループの視聴状態と開くメンバー) で決まっており、
-ここでは決め直さない。
+Sources: visual rules, the shell and list density follow
+[Library UI: visual rules and list structure](../../docs/design-docs/library-ui.md)
+and the `@theme` in [`web/src/index.css`](../../web/src/index.css). The video
+page structure and the end-of-playback layer follow
+[012's ui-design.md](../012-video-detail-ia/ui-design.md); the folder screen
+structure follows [011's ui-design.md](../011-folder-browser/ui-design.md) and
+[013's ui-design.md "Folder screen"](../013-library-search/ui-design.md#folder-screen);
+tag chips, the selection bar and the combobox follow
+[014's ui-design.md](../014-video-tags/ui-design.md); guest degradation follows
+[016's ui-design.md "Guest degradation"](../016-single-account-auth/ui-design.md#guest-degradation).
+The responses and routes the screens use are fixed in
+[contracts/library-api.md](contracts/library-api.md) and
+[contracts/folder-groups-api.md](contracts/folder-groups-api.md), and how a
+group's watch state and member to open are decided is in
+[data-model.md §6](data-model.md#6-group-watch-state-and-the-member-to-open);
+this document does not revisit them.
 
-本書は、グループのカード・フォルダ由来のタグの区別・再生画面のグループの並びと自動再生の予告・
-フォルダ画面と再生画面のまとめ方の操作が、既存の画面に**足す・変える**ものだけを定める。
-新しい色・半径・影のトークンは追加せず、`tokens.test.ts` の `pairs` にも足さない（下の
-「Accessibility」）。
+This document defines only what the group card, the folder-derived tag
+distinction, the video page's member list and autoplay notice, and the grouping
+controls on the folder screen and video page **add to or change in** existing
+screens. No new color, radius or shadow tokens are added, and nothing is added
+to `pairs` in `tokens.test.ts` ("Accessibility" below).
 
 ## Screen boundary
 
-- **ライブラリ（`/`）の格子とリスト表示**: 項目が `LibraryItem` になり、グループの項目を
-  グループのカード（`web/src/library/`）とグループの行で出す。
-  ふつうの動画の項目は今の `VideoCard`・`VideoRow` のままで、見た目を変えない。区画・見出し・
-  タブは設けない（要件 15）。
-- **カードと再生画面のタグ**: フォルダ由来のタグを、手で付けたタグと形で区別する（要件 13）。
-  絞り込み中のタグの行・候補の一覧・管理画面は変えない。
-- **選択バー**: 「N 件を選択中」の N と、「タグを外す」の候補が変わる（要件 21・13）。部品の
-  並びは変えない。
-- **再生画面（`/videos/:id`）**: グループのメンバーを開いたときだけ、題名の上に1行
-  （「Group line」）、関連動画の列の上にメンバーの並びと境目（「Member list」）、再生終了の
-  予告（「Autoplay notice」）を足す。グループに属さない動画の画面は今のまま（要件 27 後半・
-  受け入れ条件 17）。
-- **フォルダ画面（`/folders/{rootId}/…`）**: 「動画 N」の見出しの行の右端に、まとめ方の
-  メニューを足す（「Folder grouping menu」）。一覧は今のまま1本ずつ出す（要件 22）。
-  最上位（`/folders`）と検索結果には足さない。
-- **ゲスト**: グループのカードから視聴状態と見終えた本数を省き、まとめ方のメニュー・
-  再生画面のメニュー・タグを出さない（[data-model.md §7](data-model.md#7-見る人ごとの見え方)）。
+| Place | What changes |
+| --- | --- |
+| Library (`/`) grid and list view | Entries become `LibraryItem`; group entries appear as group cards (`web/src/library/`) and group rows. Ordinary video entries keep the current `VideoCard` and `VideoRow` with no visual change. No sections, headings or tabs (requirement 15) |
+| Tags on cards and the video page | Folder-derived tags differ in form from tags attached by hand (requirement 13). The active tag filter row, the suggestion list and the management page do not change |
+| Selection bar | N in `N 件を選択中` and the `タグを外す` suggestions change (requirements 21 and 13). The order of controls does not change |
+| Video page (`/videos/:id`) | Only when a group member is open: one line above the title ("Group line"), the member list and divider above the related videos column ("Member list"), and the end-of-playback notice ("Autoplay notice"). The page for a video outside a group is unchanged (second half of requirement 27, acceptance criterion 17) |
+| Folder screen (`/folders/{rootId}/…`) | A grouping menu at the right end of the `動画 N` heading line ("Folder grouping menu"). The list still shows one video at a time (requirement 22). Nothing is added at the top level (`/folders`) or to search results |
+| Guest | The group card omits watch state and the watched count; the grouping menu, the video page menu and tags are not shown ([data-model.md §7](data-model.md#7-visibility-per-audience)) |
 
 ## Group card
 
 ### Structure
 
-ふつうの動画のカード（`VideoCard`）と同じ箱（`rounded-lg`・`bg-surface`・`shadow-card`、hover の
-持ち上げ、選択の `ring-2 ring-accent`）を使い、同じ場所に同じ大きさで並べる（要件 16、UI品質
-「視覚的階層」「情報密度」）。サムネイルの枠には、フォルダ画面のフォルダカードと同じフォルダの
-絵柄を描き、グループが「中身の揃ったフォルダ」に見えるようにする。
+The group card uses the same box as an ordinary video card (`VideoCard`)
+(`rounded-lg`, `bg-surface`, `shadow-card`, the hover lift, the selection
+`ring-2 ring-accent`) and sits in the same place at the same size
+(requirement 16, `UI品質` "visual hierarchy" and "information density"). The
+thumbnail frame draws the same folder artwork as the folder cards on the folder
+screen, so a group looks like "a folder of matching content".
 
-- **フォルダの絵柄**: フォルダカードと共有の `FolderArt`（`web/src/videoList/FolderArt.tsx`）を
-  そのまま使う。タブ付きの背板に、`previews`（サムネイル生成済みのメンバーを並びの順に最大4件）を
-  斜めに重ね、マウスを横に動かすと位置に応じた1枚が前に出てプレビュー動画を流す。サムネイルの
-  あるメンバーが無ければ背板だけを描く。
-- **本数と長さの面**: 背板の右下（`right-5 bottom-4`）に、動画のカードの長さと同じ面
-  （`bg-navbar/85`・`text-[11px]`・`tabular-nums`）で「12 本」→ 合計の長さの順に重ねる。前に
-  出た1枚より上に置き（`z-20`）、押せない（`pointer-events-none`）。合計の長さ（`durationMs`）が
-  無ければ本数だけにする。見終えた本数は数字で出さない。絵柄がすでにフォルダを表すので、
-  lucide `Folder` の目印も付けない。
-- **左上**: 選択のチェック（今と同じ位置）。
-- **下端の進捗**: `watchState = inProgress` のときだけ、動画のカードと同じ `h-[5px]` の帯を
-  出し、`bg-accent` の幅を `watchedCount / videoCount` にする。`watchedCount = 0` の視聴中
-  （最初のメンバーを途中まで見た）では、帯の下地（`bg-fg-subtle/50`）だけが見え、それが
-  「見始めた」の印になる。`role="progressbar"` の `aria-valuenow` も同じ割合で、読み上げ名は
-  「視聴済みの本数の割合」。`unwatched`・`watched` では出さない。
-- **題名**: グループ名を `h3`・`text-sm font-medium`・2行で省略、`title` に全体。動画の題名と
-  同じ書式（UI品質「タイポグラフィ」）。`watched` のときは動画と同じく `text-fg-muted` にする。
-- **タグの行**: メンバーのタグの和集合（`tags`）を、動画のカードと同じ `CardTagRow` で出す。
-  フォルダ由来だけのタグは「Folder-derived tag chip」の形になる。タグが無ければ行を出さない。
-- **公開の印**: グループの項目には `public` が無いので出さない。
-- 追加日時・大きさ・「フォルダ」の文字は出さない。カードに足すのは本数と長さの面だけで、高さは
-  動画のカードとそろう（UI品質「情報密度」）。
+| Part | Form |
+| --- | --- |
+| **Folder artwork** | The shared `FolderArt` (`web/src/videoList/FolderArt.tsx`) used as is: on a tabbed back panel, `previews` (up to four members with generated thumbnails, in order) overlap at an angle; moving the mouse sideways brings the one at that position forward and plays its preview. With no member thumbnails, only the back panel is drawn |
+| **Count and duration badge** | At the back panel's bottom right (`right-5 bottom-4`), on the same surface as a video card's duration (`bg-navbar/85`, `text-[11px]`, `tabular-nums`): `12 本` then the total duration. It sits above the forward image (`z-20`) and is not interactive (`pointer-events-none`). Without a total duration (`durationMs`) it shows only the count. The watched count is not shown as a number. The artwork already shows a folder, so there is no lucide `Folder` mark either |
+| **Top left** | The selection checkbox (same position as now) |
+| **Bottom progress** | Only when `watchState = inProgress`: the same `h-[5px]` bar as a video card, with the `bg-accent` width at `watchedCount / videoCount`. In progress with `watchedCount = 0` (the first member partly watched) only the bar's track (`bg-fg-subtle/50`) shows, which marks "started". `aria-valuenow` of `role="progressbar"` is the same ratio, with the accessible name `視聴済みの本数の割合`. Not shown for `unwatched` or `watched` |
+| **Title** | The group name as `h3`, `text-sm font-medium`, truncated to two lines, full name in `title`. Same style as a video title (`UI品質` "typography"). When `watched`, `text-fg-muted` as for videos |
+| **Tag row** | The union of the members' tags (`tags`) in the same `CardTagRow` as a video card. Tags only from folders take the "Folder-derived tag chip" form. No row without tags |
+| **Public mark** | Not shown: a group entry has no `public` |
+
+- Date added, size and the word `フォルダ` are not shown. The card adds only the
+  count and duration badge, and its height matches a video card (`UI品質`
+  "information density").
 
 ### Pressing and selection
 
-- カード全体が1つのリンクで、行き先は `/videos/{openVideoId}`、`state.from` は今の一覧の URL
-  （動画のカードと同じ）。メンバーの一覧画面は開かない（要件 23、「要求を満たしたことに
-  ならない変更」）。読み上げ名は「〈名〉、〈N〉本のグループ」。`watchedCount` が 1 以上なら
-  「、〈M〉本を視聴済み」を続ける。ゲストでは本数まで。
-- 選択のチェック（読み上げ名「「〈名〉」のグループを選択」）を入れると、`videoIds` の全メンバーが
-  選択に入る。外すと全メンバーが選択から外れる。カードが選択中に見えるのは、全メンバーが
-  選択に入っているときである（要件 21）。選択バーの「N 件を選択中」の N は動画の本数
-  （メンバーを数える）で、カードの枚数ではない。タグの付け外しと「公開」の対象がその本数
-  だからである。
-- そのため選択バーの「すべて選択」の無効の条件は、選んだ本数と `total`（項目＝カードの数）の
-  比較（今の `count >= total`）にしない。グループを1つ選ぶだけで本数が `total` を超え、
-  未選択の項目が残っていても押せなくなるからである。無効にするのは、送っている間と、選択が
-  直前の「すべて選択」（`GET /api/library/ids`）の応答の `ids` と同じ集合である間だけにする。
-  1本でも外す・足す、または条件が変わって選択が消えたら、また押せる。読み込み済みの項目が
-  全部選ばれていても、読んでいない項目が残りうるので押せるままにする。
-- 選択中（1件以上選んでいる）にカードを押すと、動画のカードと同じく選択の切り替えになる。
-- カードの上に、まとめの解除やタグ化の操作は置かない（UI品質「操作の優先順位」）。それらは
-  再生画面の「Group line」とフォルダ画面の「Folder grouping menu」にある。
+- The whole card is one link to `/videos/{openVideoId}`, with `state.from` set
+  to the current list URL (as a video card). It does not open a member list
+  screen (requirement 23, `要求を満たしたことにならない変更`). The accessible
+  name is `〈名〉、〈N〉本のグループ`, followed by `、〈M〉本を視聴済み` when
+  `watchedCount` is 1 or more. For guests it stops at the count.
+- Checking the selection checkbox (accessible name
+  `「〈名〉」のグループを選択`) adds every member in `videoIds` to the selection;
+  unchecking removes every member. The card looks selected when every member is
+  selected (requirement 21). N in the selection bar's `N 件を選択中` is the
+  number of videos (members are counted), not cards, because tag add and
+  remove and `公開` act on that number.
+- So the selection bar's Select all is not disabled by comparing the selected
+  count with `total` (entries, that is cards; the current `count >= total`):
+  selecting one group would push the count past `total` and disable the button
+  while unselected entries remain. It is disabled only while sending, and while
+  the selection equals the set of `ids` in the response to the latest Select
+  all (`GET /api/library/ids`). Removing or adding even one video, or a
+  condition change that clears the selection, enables it again. When every
+  loaded entry is selected it stays enabled, since unloaded entries may remain.
+- While selecting (one or more selected), pressing the card toggles its
+  selection, as a video card.
+- No ungroup or tag conversion controls on the card (`UI品質` "action
+  priority"). They are in "Group line" on the video page and "Folder grouping
+  menu" on the folder screen.
 
 ### List view row
 
-リスト表示（ライブラリだけ）のグループの行は、動画の行（`VideoRow`）と同じ列に次を出す。
+A group row in list view (library only) fills the same columns as a video row
+(`VideoRow`):
 
-| 列 | グループの行 |
+| Column | Group row |
 | --- | --- |
-| 選択 | 動画の行と同じチェック。意味は「Pressing and selection」のとおり |
-| サムネイル | 先頭のメンバーのサムネイル（`previews` の先頭）。下端の進捗は `inProgress` のとき `watchedCount / videoCount` |
-| 題名 | グループ名（リンク、`/videos/{openVideoId}`）。その下に `text-xs text-fg-muted` の1行で lucide `Folder`（`size-3`）と「12 本」 |
-| 視聴済み | `watched` は動画と同じ `Check`。`inProgress` は `tabular-nums` で「3 / 12」。`unwatched` は空 |
-| 長さ | 合計の長さ（無ければ空） |
-| 画質 | 空（メンバーごとに違うので出さない） |
-| 大きさ | 合計 |
-| 追加日時 | `addedAt`（メンバーの最新） |
+| Selection | The same checkbox as a video row, with the meaning in "Pressing and selection" |
+| Thumbnail | The first member's thumbnail (the first of `previews`). The bottom progress is `watchedCount / videoCount` when `inProgress` |
+| Title | The group name (a link to `/videos/{openVideoId}`). Below it, one `text-xs text-fg-muted` line with lucide `Folder` (`size-3`) and `12 本` |
+| Watched | `Check` for `watched`, as for videos. `3 / 12` in `tabular-nums` for `inProgress`. Empty for `unwatched` |
+| Duration | The total duration (empty when unknown) |
+| Quality | Empty (it differs per member) |
+| Size | The total |
+| Date added | `addedAt` (the latest member) |
 
 ### Refresh and removal
 
-- 一覧に残っているグループのカードは、メンバーの再生位置・タグ・`video` イベントの変化で
-  `GET /api/folders/{rootId}/group` から取り直す。取り直しの
-  間、カードの見た目は変えない（骨組みにしない）。応答が届いたら差し替える。
-- 取り直しが 404 のときは、そのカードを一覧から外す。件数の行の `total` は次に一覧を読むまで
-  そのままでよい。カードを外すときに何も伝えない。再生から戻ったときに例外の変更で単体に
-  戻っていた、という場面が主で、一覧を読み直せばそろうからである。
+- A group card still in the list is refetched from
+  `GET /api/folders/{rootId}/group` when members' playback positions, tags or
+  `video` events change. While refetching the card looks the same (no
+  skeleton), and it is replaced when the response arrives.
+- When the refetch returns 404, the card is removed from the list. `total` in
+  the count line may stay until the list is next read. Nothing is announced on
+  removal: the main case is returning from playback to find an override change
+  has turned the group back into single videos, and rereading the list makes it
+  consistent.
 
 ## Folder-derived tag chip
 
-タグのチップの3つの形（014「Tag chip」）に、出所の区別を足す。大きさ（`h-5`・`h-6`・`text-xs`）は
-変えず、形と面で区別する（要件 13、UI品質「タイポグラフィ」）。
+The source distinction is added to the three tag chip forms (014 "Tag chip").
+Size (`h-5`, `h-6`, `text-xs`) does not change; form and surface tell them
+apart (requirement 13, `UI品質` "typography").
 
-| 出所（`VideoTag`） | 形 |
+| Source (`VideoTag`) | Form |
 | --- | --- |
-| `manual` だけ、または `manual` と `fromFolder` の両方 | 今の動画のタグのチップ（`bg-elevated`、面あり） |
-| `fromFolder` だけ | 面を持たず、`border border-dashed border-border-strong` の破線の枠。名前の前に lucide `Folder`（`size-3`、`text-fg-subtle`、`aria-hidden`） |
+| `manual` only, or both `manual` and `fromFolder` | The current video tag chip (`bg-elevated`, with a surface) |
+| `fromFolder` only | No surface; a dashed frame `border border-dashed border-border-strong`. Lucide `Folder` (`size-3`, `text-fg-subtle`, `aria-hidden`) before the name |
 
-- 破線の枠は「フォルダの形から借りている」ことの形であり、色だけの違いにしない（UI品質
-  「アクセシビリティ」）。文字の色は今のチップと同じ（カードは `text-fg-muted`、再生画面は
-  `text-fg`）で、面が無いので文字は親の面（カードの `surface`、再生画面の `bg`、「+N」の
-  ポップオーバーの `elevated`）に載る。どの組も `pairs` に既にある。
-- 読み上げ名は、押せる形（カード）では「〈名〉で絞り込む」のまま、名前の後に視覚的に隠した
-  「（フォルダ名から）」を添える。
-- 押したときの振る舞い（そのタグで絞り込む）は出所によらず同じ。
-- **再生画面**: `fromFolder` だけのチップには × を出さない（要件 13）。名前の部分は今と同じ
-  `/?tag=<id>` へのリンクである。両方から付いているチップは今の形（名前 ＋ 縦線 ＋ ×）で、
-  × を押すと手で付けた分だけが外れ、応答を受けてから同じ位置で破線の形に変わる（消えない。
-  受け入れ条件 9）。フォーカスは、外した × の次のチップの × へ、無ければ前のチップの × へ、
-  無ければ「タグを追加」の入力へ移す（014 と同じ規則。破線のチップは × を持たないので飛ばす）。
-- **「タグを追加」の候補**: その動画にフォルダ由来だけで付いているタグは候補に出す。確定すると
-  手でも付き、チップが面のある形に変わる。
-- **選択バーの「タグを外す」**: 候補は要約のうち `manualCount >= 1` のタグだけにする。
-  フォルダ由来だけのタグは外せないので、候補に出さない（`disabled` の行も出さない）。
-  「一部」の判定と本数は `manualCount` で行い、「一部 1 / 3 件」の分母は選んだ本数のまま。
-  選んだ動画のどれにも手で付けたタグが無いときの文言は「選んだ動画に、外せるタグはありません」
-  にする（フォルダ由来のタグはあるかもしれないので「タグはありません」とは言わない）。
-- 並びは API の順（名前の自然順）のままで、出所で分けない。
+- The dashed frame is a shape that says "borrowed from the folder structure",
+  not a color-only difference (`UI品質` "accessibility"). The text color is the
+  same as the current chip (`text-fg-muted` on cards, `text-fg` on the video
+  page). Without a surface the text sits on the parent surface (`surface` on a
+  card, `bg` on the video page, `elevated` in the `+N` popover). Every pair is
+  already in `pairs`.
+- The accessible name in the interactive form (card) stays `〈名〉で絞り込む`,
+  followed by a visually hidden `（フォルダ名から）`.
+- Pressing (filter by the tag) behaves the same whatever the source.
+- **Video page**: a `fromFolder`-only chip has no × (requirement 13). Its name
+  part is the same link to `/?tag=<id>` as now. A chip attached from both
+  sources keeps the current form (name + vertical rule + ×); pressing × removes
+  only the hand-attached part, and after the response the chip turns dashed in
+  the same place (it does not disappear; acceptance criterion 9). Focus moves to
+  the × of the next chip, else the previous chip's ×, else the `タグを追加`
+  input (the same rule as 014; dashed chips have no × and are skipped).
+- **`タグを追加` suggestions**: tags attached to the video only from folders
+  are suggested. Committing one attaches it by hand too, and the chip takes the
+  form with a surface.
+- **Selection bar `タグを外す`**: suggestions are only summary tags with
+  `manualCount >= 1`. Folder-only tags cannot be removed, so they are not
+  suggested (no `disabled` rows either). "Some" and the count are decided by
+  `manualCount`, and the denominator of `一部 1 / 3 件` stays the number
+  selected. When none of the selected videos has a hand-attached tag, the
+  wording is `選んだ動画に、外せるタグはありません` (folder-derived tags may
+  exist, so it does not say `タグはありません`).
+- Order stays the API order (natural order of names), not split by source.
 
 ## Video page
 
 ### Group line
 
-`Video.group` があるときだけ、題名（`h1`）の**上**に1行置く（要件 25）。題名とタグのまとまり
-（`flex flex-col gap-2`）の先頭に入れ、題名との間は `gap-2`。
+Only when `Video.group` exists, one line goes **above** the title (`h1`)
+(requirement 25). It is the first item in the title and tag group
+(`flex flex-col gap-2`), with `gap-2` to the title.
 
-- 中身は左から、lucide `Folder`（`size-3.5`、`text-fg-subtle`、`aria-hidden`）→ グループ名
-  （`text-fg-muted`、1行で省略、`title` に全体）→ `text-fg-subtle` の「·」→ 「3 / 12」
-  （`tabular-nums`）。全体は `text-xs`（`sm` 以上 `text-sm`）。題名（`text-xl`〜`text-2xl`）より
-  小さく、従の色で、上にあっても題名より先に目に入らない（UI品質「視覚的階層」）。
-- 見出しの帯のパンくずが同じフォルダへのリンクを既に持つので、グループ名をリンクにしない。
-- **所有者**では、この行全体を `Button` の ghost・`sm`（`-ml-2` で文字の左端を題名にそろえる）
-  にし、末尾に `ChevronDown`（`size-3.5`）を付けて `ui/Menu` を開く（要件 29）。読み上げ名は
-  「グループ「〈名〉」、12 本中 3 本目。まとめ方のメニュー」。項目は次のとおり。
-  - 「まとめを解除」（lucide `Ungroup`）: `PUT /api/folders/{rootId}/grouping`、`mode: ungroup`。
-  - 「グループをタグに変える」（lucide `Tag`）: `POST /api/folders/{rootId}/grouping/tag`。
-    `group.folder.path` が空（登録フォルダそのもの）のときは出さない（contracts/folder-groups-api.md §2）。
-  - 「直下をまとめる」は置かない。再生画面で見ているのは既にグループで、付ける意味が無い。
-- メニューが開いている間の Esc はメニューを閉じるだけにし、画面を閉じない。フォーカスは
-  引き金に戻る（`ui/Menu` の既定）。再生画面の Esc は `window` の capture 段階で受けるので、
-  今の例外（速度のメニュー・吹き出し）と同じく、開いている `ui/Menu`（`role="menu"`）も
-  除外に足す。012「Interaction details」の Esc の例外に、これを1つ足す。
-- **ゲスト**では押せない文字の行にする（`Video.group` はゲストでも公開のメンバーで作られる）。
-- 操作の後: 動画（`GET /api/videos/{id}`）と関連動画を取り直す。`group` が無くなるので、この行・
-  「Member list」・前後のつまみがふつうの動画の形に戻る。あわせてライブラリの控えを捨て、
-  閉じたときに一覧が読み直されるようにする（Structural Decisions 10、受け入れ条件 3・4・5）。
-  トーストで伝える。
-  - まとめを解除: 「「〈名〉」のまとめを解除しました」
-  - タグに変えた: `created` が true なら「タグ「〈名〉」を作り、まとめを解除しました」、false なら
-    「タグ「〈名〉」を付け、まとめを解除しました」
-- 送っている間はメニューの引き金を `disabled` にする。メニューを開く操作なので、取り消し用の
-  確認の窓は出さない。どちらの操作もフォルダ画面のメニューで「自動」に戻せる（タグは管理画面で
-  消せる）。
-- 失敗: トーストで伝え、画面は変えない。
-  - 400 `invalid_request`（タグ名の規則）: 「「〈名〉」はタグの名前に使えないため、タグに
-    変えられません」（Edge Case「グループをタグに変えられない名前」）
-  - 409 `conflict`: 「このフォルダはもうグループではありません」と伝え、動画と関連動画を
-    取り直す（別のタブで先に変わった）
-  - 404・その他: 「変更できませんでした」
+- From the left: lucide `Folder` (`size-3.5`, `text-fg-subtle`,
+  `aria-hidden`) → the group name (`text-fg-muted`, one line truncated, full
+  name in `title`) → `·` in `text-fg-subtle` → `3 / 12` (`tabular-nums`). The
+  whole line is `text-xs` (`text-sm` from `sm`). Smaller than the title
+  (`text-xl` to `text-2xl`) and in a secondary color, it does not catch the eye
+  before the title despite sitting above it (`UI品質` "visual hierarchy").
+- The breadcrumb in the header band already links to the same folder, so the
+  group name is not a link.
+- For the **owner**, the whole line is a ghost `sm` `Button` (`-ml-2` aligns the
+  text's left edge with the title) ending in `ChevronDown` (`size-3.5`) that
+  opens a `ui/Menu` (requirement 29). The accessible name is
+  `グループ「〈名〉」、12 本中 3 本目。まとめ方のメニュー`. Items:
+
+| Item | Action |
+| --- | --- |
+| `まとめを解除` (lucide `Ungroup`) | `PUT /api/folders/{rootId}/grouping`, `mode: ungroup` |
+| `グループをタグに変える` (lucide `Tag`) | `POST /api/folders/{rootId}/grouping/tag`. Not shown when `group.folder.path` is empty (the registered folder itself) (contracts/folder-groups-api.md §2) |
+
+- There is no `直下をまとめる`: what the video page shows is already a group, so
+  it would mean nothing.
+- While the menu is open, Esc only closes the menu and does not close the page;
+  focus returns to the trigger (the `ui/Menu` default). The video page receives
+  Esc in the `window` capture phase, so an open `ui/Menu` (`role="menu"`) is
+  added to the exclusions, like the current ones (speed menu, popovers). This is
+  one more Esc exception in 012 "Interaction details".
+- For **guests** the line is non-interactive text (`Video.group` is built from
+  public members for guests too).
+- After an action, the video (`GET /api/videos/{id}`) and related videos are
+  refetched. `group` disappears, so this line, "Member list" and the
+  previous/next arrows return to the ordinary video form. The library snapshot
+  is discarded too, so closing the page rereads the list (Structural Decisions
+  10, acceptance criteria 3, 4 and 5). A toast reports it:
+
+| Action | Toast |
+| --- | --- |
+| Ungroup | `「〈名〉」のまとめを解除しました` |
+| Turned into a tag, `created` true | `タグ「〈名〉」を作り、まとめを解除しました` |
+| Turned into a tag, `created` false | `タグ「〈名〉」を付け、まとめを解除しました` |
+
+- While sending, the menu trigger is `disabled`. Opening a menu is the action,
+  so there is no confirmation dialog for undoing. Both actions can be reverted
+  to `自動` in the folder screen menu (and the tag can be deleted on the
+  management page).
+- Failures show a toast and leave the screen unchanged:
+
+| Response | Toast |
+| --- | --- |
+| 400 `invalid_request` (tag name rules) | `「〈名〉」はタグの名前に使えないため、タグに変えられません` (Edge Case `グループをタグに変えられない名前`) |
+| 409 `conflict` | `このフォルダはもうグループではありません`; the video and related videos are refetched (another tab changed it first) |
+| 404, others | `変更できませんでした` |
 
 ### Member list
 
-`RelatedVideos.group` があるときの右の列（`lg` 未満は下）である（要件 26）。
+The right column (below under `lg`) when `RelatedVideos.group` exists
+(requirement 26).
 
-- 列の先頭の見出し（`h2`、`text-sm font-semibold text-fg`）を「続けて再生」にし、その右に
-  `text-xs text-fg-muted tabular-nums` で「3 / 12」を置く（`flex items-baseline justify-between`）。
-  上にあるのが自動で続く範囲だと、境目を見る前に読めるようにするためである。
-- その下に、メンバーを並びの順に全件出す（数百本でも切らない。Edge Case「大きなグループ」）。
-  各行は今の関連動画の行（サムネイル `w-40`・長さの札・題名 `text-sm font-medium`・行の間
-  `gap-3`・hover の `bg-hover-wash`）と同じ密度で（UI品質「情報密度」）、次を足す。
-  - 行の先頭（サムネイルの左）に並びの番号を `w-5 text-right text-xs text-fg-muted tabular-nums`
-    で置く。番号があると、今の位置と残りが数えなくても分かる。
-  - 視聴済みのメンバー: 題名を `text-fg-muted` にし、題名の右に lucide `Check`（`size-3.5`、
-    `text-success`）を置く。読み上げは視覚的に隠した「視聴済み」で、アイコンは `aria-hidden`。
-  - 途中まで見たメンバー: 今と同じ下端の進捗バー。
-  - **今見ているメンバー**: リンクではなく `aria-current="true"` の行にし、面を `bg-active-wash`、
-    左端に `border-l-2 border-accent`（行の `-m-1.5 p-1.5` の外形の左辺）を付ける。視覚的に隠した
-    「再生中」を題名の前に置く。押せないので hover の面も変えない。
-- **境目**: メンバーの並びと関連動画の間に、`border-t border-border` の線を1本置く。線の上下は
-  `pt-5`・`pb-2`（行の間 `gap-3` より一段大きい間。UI品質「余白のリズム」）。線の下に `h2`
-  「関連動画」（今の見出し）を置き、その下は今の関連動画の並び（同じグループのメンバーを
-  含まない。contracts/folder-groups-api.md §3）。関連動画が 0 件のときは、境目の線と「関連動画」の
-  見出しを出さない。
-- `lg` 以上のスクロール: 012 のとおり列の最初の見出しの行（ここでは「続けて再生」）を上に残し、
-  その下（メンバーの並び → 境目 → 「関連動画」→ 関連動画）を1つの入れ物で中でスクロールさせる。
-  画面を開いたとき（別のメンバーへ移ったときを含む）、今のメンバーの行が入れ物の中で見える
-  位置になるよう、`scrollIntoView({ block: "nearest" })` で入れ物だけを動かす（Edge Case
-  「大きなグループ」、受け入れ条件「数百本」）。ページや左の列は動かさない。`lg` 未満では
-  ページを動かさない（プレイヤーが画面の上から消えるため）。
-- グループのメンバーの行も、関連動画の行と同じく hover で一覧用プレビューを流す。
-- 読み込み中・失敗の見え方は今の関連動画と同じ（骨組み6行、「関連動画を取得できませんでした」と
-  「再試行」）。関連動画の応答が無い間はメンバーの並びも出せないので、見出しは「関連動画」の
-  ままにし、応答が届いてから「続けて再生」に変わる。
-- **ゲスト**: `group.items` は公開のメンバーだけで、視聴済みの印と進捗は出ない（`progress` が
-  無い）。番号は公開のメンバーの中の順である。
+- The column's first heading (`h2`, `text-sm font-semibold text-fg`) is
+  `続けて再生`, with `3 / 12` in `text-xs text-fg-muted tabular-nums` to its
+  right (`flex items-baseline justify-between`). The range that continues
+  automatically is then readable at the top, before reaching the divider.
+- Below it, every member in order (not cut even at hundreds; Edge Case
+  `大きなグループ`). Each row has the density of the current related video rows
+  (thumbnail `w-40`, duration badge, title `text-sm font-medium`, `gap-3`
+  between rows, hover `bg-hover-wash`) (`UI品質` "information density"), plus:
+
+| Member | Form |
+| --- | --- |
+| Every row | The order number at the start (left of the thumbnail) in `w-5 text-right text-xs text-fg-muted tabular-nums`, so the current position and the remainder read without counting |
+| Watched | Title in `text-fg-muted`, with lucide `Check` (`size-3.5`, `text-success`) to its right. A visually hidden `視聴済み` is read; the icon is `aria-hidden` |
+| Partly watched | The same bottom progress bar as now |
+| **Currently playing** | Not a link: a row with `aria-current="true"`, surface `bg-active-wash`, and `border-l-2 border-accent` on the left (the left edge of the row's `-m-1.5 p-1.5` outline). A visually hidden `再生中` precedes the title. It is not interactive, so the hover surface does not change |
+
+- **Divider**: one `border-t border-border` line between the member list and
+  the related videos, with `pt-5` and `pb-2` around it (one step larger than the
+  `gap-3` between rows; `UI品質` "spacing rhythm"). Below the line is the `h2`
+  `関連動画` (the current heading), then the current related videos (which do
+  not include members of the same group; contracts/folder-groups-api.md §3).
+  With 0 related videos, neither the divider nor the `関連動画` heading appears.
+- Scrolling at `lg` and up: as in 012, the column's first heading line (here
+  `続けて再生`) stays at the top, and everything below it (member list →
+  divider → `関連動画` → related videos) scrolls inside one container. When the
+  page opens (including moving to another member),
+  `scrollIntoView({ block: "nearest" })` scrolls only the container so the
+  current member's row is visible in it (Edge Case `大きなグループ`, acceptance
+  criterion `数百本`). The page and the left column do not move. Under `lg` the
+  page does not move (the player would leave the top of the screen).
+- Member rows play the list preview on hover, as related video rows do.
+- Loading and failure look the same as the current related videos (six skeleton
+  rows; `関連動画を取得できませんでした` and `再試行`). The member list cannot be
+  shown until the related videos response arrives, so the heading stays
+  `関連動画` until then and changes to `続けて再生` when it arrives.
+- **Guests**: `group.items` holds only public members, with no watched marks or
+  progress (no `progress`). Numbers are the order among public members.
 
 ### Neighbor arrows
 
-前後のつまみ（012「Neighbor arrows」）は、関連動画の応答の `prevId`・`nextId` に従うので、
-メンバーのときはグループの中の前後になり、最初のメンバーの左と最後のメンバーの右は出ない
-（要件 28）。読み上げ名とツールチップは今の「前の動画: 〈題名〉」「次の動画: 〈題名〉」の
-ままにする。題名は `group.items` から引く。
+The previous/next arrows (012 "Neighbor arrows") follow `prevId` and `nextId`
+from the related videos response, so for a member they move within the group:
+no left arrow on the first member and no right arrow on the last
+(requirement 28). Accessible names and tooltips stay the current
+`前の動画: 〈題名〉` and `次の動画: 〈題名〉`, with titles taken from
+`group.items`.
 
 ### Autoplay notice
 
-メンバーの再生が終わり、`nextId` があるときは、今の再生終了の層の代わりに予告の層を出す
-（要件 27）。層の重なりの順・`bg-overlay`・操作バーを出したままにする扱いは 012「Ended」と
-同じで、同時に出るのは1つだけである。
+When a member finishes playing and `nextId` exists, a notice layer replaces the
+current end-of-playback layer (requirement 27). Layer order, `bg-overlay` and
+keeping the control bar visible are as in 012 "Ended"; only one layer shows at a
+time.
 
-- 中央の `bg-navbar`・`rounded-lg`・`p-5`・`max-w-lg` の面に、上から次を縦に並べる（`gap-3`）。
-  - 1行目: `text-xs font-semibold text-accent` の「続けて再生」と、その右に `text-xs text-fg-muted
-    tabular-nums` の「5 秒後」（残り秒数。毎秒減る）。
-  - 次のメンバーへのリンク: サムネイル（`w-56`、`sm` 未満では出さない）と題名（`text-base
-    font-semibold`、2行で省略）。今の「次の動画」の形と同じ。
-  - 面の幅いっぱいの `h-1 rounded-full bg-fg-subtle/50` の帯に、`bg-accent` の残りが 5 秒かけて
-    右から縮む。動きを減らす設定では帯を残し、なめらかな縮みだけを止めて、秒数が減るたびに
-    段階で縮める（`motion-reduce:transition-none`。状態の見え方は変えず動きだけを止める、
-    library-ui.md §4・012「Interaction details」）。
-  - 操作: `secondary` の「取り消す」（lucide `X`）を**左**に、`primary` の「今すぐ再生」（`Play`）を
-    その右に置く。DOM の順も同じで、最初に Tab が届くのは「取り消す」である（UI品質
-    「操作の優先順位」）。
-- 秒数は 5 秒。予告が出た時点から数え、0 になったら次のメンバーへ移る（`state.from` を
-  引き継ぎ、移った先で再生を始める）。
-- **取り消す**: 予告の層を消し、今の再生終了の層（「次の動画」＝次のメンバー、「次を再生」
-  「もう一度見る」）を出す（要件 27）。フォーカスは「取り消す」にあったなら「次を再生」へ移す。
-- **Esc**: 予告の層が出ている間の Esc は取り消しの操作にし、画面を閉じない。予告を取り消した
-  後の Esc は今のとおり画面を閉じる。012「Interaction details」の Esc の例外（速度のメニュー・
-  全画面）に、これを1つ足す。
-- **次のメンバーが消えたとき**（Structural Decisions 12 の確かめで 404）: 予告の層を消し、
-  「次の動画が無いとき」の再生終了の層（「もう一度見る」だけ）を出す。文言で理由は伝えない。
-  次に開き直したときは最新のグループで判断する。
-- **最後のメンバー**（`nextId` 無し）: 予告は出さず、「もう一度見る」だけの今の層を出す
-  （受け入れ条件 16）。
-- **自動で開いたメンバーが再生に失敗**: 今の再生失敗の層（`PlaybackFailure`）で止まり、
-  それ以上は進まない（Edge Case）。
-- 操作バーの「最初に戻る」「再生」を押したときは、今の再生終了と同じく予告を消して再生に戻る。
-- **読み上げ**: 層が出たとき、視覚的に隠した `role="status"` で「再生が終わりました。5 秒後に
-  次の動画「〈題名〉」を再生します」を**一度だけ**読む。残り秒数の文字と帯は `aria-hidden`
-  にし、毎秒読み直させない（UI品質「アクセシビリティ」）。フォーカスがプレイヤーの中にあった
-  ときだけ「取り消す」へフォーカスを移す（012「Ended」と同じ）。
-- タッチ用の中央操作は、予告の層が出ている間は出さない（012「Overlay layer」）。
+- A centered `bg-navbar`, `rounded-lg`, `p-5`, `max-w-lg` surface stacks, from
+  the top (`gap-3`):
+
+| Part | Form |
+| --- | --- |
+| First line | `続けて再生` in `text-xs font-semibold text-accent`, with `5 秒後` (seconds left, counting down every second) to its right in `text-xs text-fg-muted tabular-nums` |
+| Link to the next member | Thumbnail (`w-56`, hidden under `sm`) and title (`text-base font-semibold`, truncated to two lines). The same form as the current `次の動画` |
+| Countdown bar | A full-width `h-1 rounded-full bg-fg-subtle/50` track whose `bg-accent` remainder shrinks from the right over 5 seconds. With reduced motion the bar stays, but the smooth shrink stops and it shrinks in steps as the seconds drop (`motion-reduce:transition-none`; the state stays visible and only motion stops, library-ui.md §4 and 012 "Interaction details") |
+| Actions | Secondary `取り消す` (lucide `X`) on the **left** and primary `今すぐ再生` (`Play`) to its right. DOM order is the same, so Tab reaches `取り消す` first (`UI品質` "action priority") |
+
+- The countdown is 5 seconds from when the notice appears. At 0 the next member
+  opens (carrying `state.from` over) and starts playing.
+
+| Event | Behaviour |
+| --- | --- |
+| **Cancel** (`取り消す`) | The notice layer goes and the current end-of-playback layer appears (`次の動画` = the next member, `次を再生`, `もう一度見る`) (requirement 27). If focus was on `取り消す`, it moves to `次を再生` |
+| **Esc** | While the notice shows, Esc cancels and does not close the page. After cancelling, Esc closes the page as now. One more Esc exception in 012 "Interaction details" (speed menu, fullscreen) |
+| **The next member has disappeared** (404 from the check in Structural Decisions 12) | The notice goes and the end-of-playback layer for "no next video" (only `もう一度見る`) appears. The wording gives no reason. Reopening decides with the latest group |
+| **Last member** (no `nextId`) | No notice; the current layer with only `もう一度見る` (acceptance criterion 16) |
+| **An automatically opened member fails to play** | It stops at the current playback failure layer (`PlaybackFailure`) and goes no further (Edge Case) |
+| `最初に戻る` or play on the control bar | As with the current end of playback, the notice goes and playback resumes |
+
+- **Announcement**: when the layer appears, a visually hidden `role="status"`
+  reads `再生が終わりました。5 秒後に次の動画「〈題名〉」を再生します` **once**.
+  The seconds text and the bar are `aria-hidden` so they are not reread every
+  second (`UI品質` "accessibility"). Focus moves to `取り消す` only when it was
+  inside the player (as 012 "Ended").
+- Touch center controls are hidden while the notice shows (012 "Overlay
+  layer").
 
 ## Folder grouping menu
 
-フォルダ画面の「動画 N」の見出しの行に、そのフォルダのまとめ方の操作を置く（要件 22、
-要件 7・11）。子フォルダのカードには置かない。カードは開くためのリンクで、そこに操作を
-足すと Tab の数が倍になる（013「Search results」と同じ理由）。
+The folder screen's `動画 N` heading line holds the grouping controls for that
+folder (requirement 22, requirements 7 and 11). Child folder cards do not: they
+are links for opening, and adding controls would double the Tab stops (the same
+reason as 013 "Search results").
 
-- `Section` の見出しの行を `flex items-center justify-between` にし、左に今の `h2`「動画 N」、
-  右に `Button` の ghost・`sm` の引き金を置く。引き金の中は lucide のアイコン ＋ 文言 ＋
-  `ChevronDown`（`size-3.5`）で、`FolderSummary.grouping.grouped` で変わる。
+- The `Section` heading line becomes `flex items-center justify-between`, with
+  the current `h2` `動画 N` on the left and a ghost `sm` `Button` trigger on the
+  right. The trigger holds a lucide icon + wording + `ChevronDown`
+  (`size-3.5`), changing with `FolderSummary.grouping.grouped`:
 
-  | `grouped` | アイコン | 文言 |
+  | `grouped` | Icon | Wording |
   | --- | --- | --- |
-  | true | `Group` | 「ライブラリで 1 件」 |
-  | false | `Ungroup` | 「ライブラリで 1 本ずつ」 |
+  | true | `Group` | `ライブラリで 1 件` |
+  | false | `Ungroup` | `ライブラリで 1 本ずつ` |
 
-  読み上げ名は「ライブラリでのまとめ方: 1 件にまとめて表示。メニューを開く」「…: 1 本ずつ
-  表示。…」。文言は今の状態を述べ、押すと変えられる。`grouped` は例外と自動の結果なので、
-  例外を付けても直下が 1 本なら「1 本ずつ」のままになり、効いていないことがここで分かる。
-- 引き金は `text-fg-muted`（ghost の既定）で、見出し（`text-xs font-semibold text-fg-muted`）と
-  同じ弱さにする。格子より先に目に入らない（UI品質「操作の優先順位」）。
-- メニュー（`ui/Menu`、`align="end"`）の中は上から次のとおり。
-  - `MenuLabel`「ライブラリでのまとめ方」
-  - `MenuRadioGroup`（今の `grouping.mode`）: 「自動」（`auto`）・「まとめを解除」（`ungroup`）・
-    「直下をまとめる」（`groupDirect`）。項目の右の説明は付けず、下の1行で補う。
-  - `text-xs text-fg-muted` の1行「自動: 登録フォルダより下で、子フォルダが無く動画が 2 本以上の
-    フォルダをまとめる」（`MenuLabel` と同じ余白、押せない。要件 2 の3条件を全部言い、登録
-    フォルダそのものの画面でも「自動」がまとめないことが読めるようにする）。
-  - `taggable` が true のときだけ、区切り線と「グループをタグに変える」（lucide `Tag`）。
-    false のときは項目を出さない（contracts/folder-groups-api.md §2。無効の項目を残す案は
-    採らない。登録フォルダそのものでは理由を1行で言えないため）。
-- ラジオを選ぶと `PUT /api/folders/{rootId}/grouping` を送り、応答の `grouping` で引き金の文言と
-  ラジオを更新する。トーストは出さない。文言が変わることが結果である。同じ値を選び直しても
-  送る（200）。
-- 「グループをタグに変える」は `POST …/grouping/tag` を送り、トースト（「Group line」と同じ
-  文言）で伝える。応答の `grouping`（`ungroup`）で引き金を更新する。
-- どちらも、応答を受けたらライブラリの控えを捨てる（Structural Decisions 10）。次にライブラリを
-  開くと、再スキャンなしにカードが変わる（受け入れ条件 3・4・5）。
-- ラジオの変更では、フォルダ画面の一覧は1本ずつのままで中身も変わらないので読み直さない
-  （`FolderSummary` の `grouping` だけ応答で差し替える）。
-- タグ化の成功では、`grouping` の差し替えに加えて、フォルダ画面の動画の一覧を読み直す
-  （スクロールの位置は保つ）。タグが新しく作られると、中の動画に次の読み出しからフォルダ由来の
-  タグが付く（data-model.md §4）が、表示中のカードの `tags` は応答に含まれず古いままだからである
-  （要件 11 の結果をその場で見せる）。
-- 送っている間は引き金を `disabled` にし、アイコンを `LoaderCircle`（`animate-spin`）にする。
-- 失敗はトースト: 400 `invalid_request` は「「〈名〉」はタグの名前に使えないため、タグに
-  変えられません」、409 は「このフォルダはもうグループではありません」（フォルダの一覧を
-  取り直す）、404 は「このフォルダは見つかりません」、それ以外は「変更できませんでした」。
-- 「動画」の一群が無いフォルダ（直下に動画が無い）では見出しの行ごと無いので、メニューも無い。
-  登録フォルダそのもの（`path` が空）でも同じ行に同じメニューを出す（「直下をまとめる」は
-  ルートでも効く。要件 7）。
-- **ゲスト**には `grouping` が無いので、引き金を出さない（見出しの行は今のまま）。
-- 子フォルダのカードにグループの印は付けない。要件に無く、カードの下半分に情報を足すと
-  011 の「件数」の行と競う。
+  Accessible names are
+  `ライブラリでのまとめ方: 1 件にまとめて表示。メニューを開く` and
+  `…: 1 本ずつ表示。…`. The wording states the current state, and pressing
+  changes it. `grouped` is the result of the override and the automatic rule,
+  so an override on a folder with one direct video still reads `1 本ずつ`,
+  showing here that it has no effect.
+- The trigger is `text-fg-muted` (the ghost default), as weak as the heading
+  (`text-xs font-semibold text-fg-muted`), and does not catch the eye before the
+  grid (`UI品質` "action priority").
+- The menu (`ui/Menu`, `align="end"`) holds, from the top:
+  - `MenuLabel` `ライブラリでのまとめ方`
+  - `MenuRadioGroup` (the current `grouping.mode`): `自動` (`auto`),
+    `まとめを解除` (`ungroup`), `直下をまとめる` (`groupDirect`). No
+    descriptions to the right of items; the line below explains.
+  - One `text-xs text-fg-muted` line
+    `自動: 登録フォルダより下で、子フォルダが無く動画が 2 本以上のフォルダをまとめる`
+    (same padding as `MenuLabel`, not interactive). It states all three
+    conditions of requirement 2, so even on the registered folder's own screen
+    it reads that `自動` does not group it.
+  - Only when `taggable` is true, a divider and `グループをタグに変える` (lucide
+    `Tag`). When false the item is absent (contracts/folder-groups-api.md §2).
+    Keeping a disabled item is rejected: for the registered folder itself the
+    reason cannot be given in one line.
+- Choosing a radio sends `PUT /api/folders/{rootId}/grouping` and updates the
+  trigger wording and radios from the response's `grouping`. No toast: the
+  changed wording is the result. Choosing the same value again still sends
+  (200).
+- `グループをタグに変える` sends `POST …/grouping/tag` and reports with a toast
+  (the same wording as "Group line"). The trigger updates from the response's
+  `grouping` (`ungroup`).
+- Both discard the library snapshot on response (Structural Decisions 10). The
+  next time the library opens, cards change without a rescan (acceptance
+  criteria 3, 4 and 5).
+- A radio change does not reread the folder screen list: it still shows one
+  video at a time and its content does not change (only `grouping` in
+  `FolderSummary` is replaced from the response).
+- A successful tag conversion replaces `grouping` and also rereads the folder
+  screen's video list (keeping the scroll position). Once the tag is created,
+  the videos inside get the folder-derived tag from the next read
+  (data-model.md §4), but `tags` on the cards on screen are not in the response
+  and would stay stale (this shows requirement 11's result on the spot).
+- While sending, the trigger is `disabled` and its icon becomes `LoaderCircle`
+  (`animate-spin`).
+- Failures show a toast:
+
+| Response | Toast |
+| --- | --- |
+| 400 `invalid_request` | `「〈名〉」はタグの名前に使えないため、タグに変えられません` |
+| 409 | `このフォルダはもうグループではありません` (the folder list is refetched) |
+| 404 | `このフォルダは見つかりません` |
+| Others | `変更できませんでした` |
+
+- A folder without a `動画` group (no direct videos) has no heading line, so no
+  menu. The registered folder itself (empty `path`) shows the same menu on the
+  same line (`直下をまとめる` works at the root too; requirement 7).
+- **Guests** have no `grouping`, so no trigger (the heading line stays as now).
+- Child folder cards get no group mark. It is not required, and adding
+  information to the bottom half of the card would compete with 011's count
+  line.
 
 ## Interaction states
 
-- グループのカード・行: `VideoCard`・`VideoRow` と同じ（hover の持ち上げと影、`has-[a:focus-visible]`
-  の外側輪郭、選択の `ring-2 ring-accent`、`selectionMode` の `select-none`）。
-- 破線のチップ: hover で `text-fg` にし、枠を `border-border-strong` のまま実線にする
-  （面の無い形で `ring` を重ねると二重の枠に見えるため）。フォーカスはグローバルの
-  `:focus-visible`（カードの中では 014 と同じ内側の輪郭）。
-- 「Group line」の引き金・「Folder grouping menu」の引き金: `Button` の ghost の状態を受け継ぐ。
-  `disabled` は送信中だけ。
-- メンバーの行: 関連動画の行と同じ hover。今のメンバーの行は押せず、hover で変わらない。
-- 予告の層の操作: `Button` の secondary・primary の状態を受け継ぐ。
+| Control | States |
+| --- | --- |
+| Group card and row | Same as `VideoCard` and `VideoRow` (hover lift and shadow, outer outline from `has-[a:focus-visible]`, selection `ring-2 ring-accent`, `select-none` in `selectionMode`) |
+| Dashed chip | On hover, text `text-fg` and the frame turns solid while staying `border-border-strong` (adding a `ring` to a surfaceless form would look like a double frame). Focus is the global `:focus-visible` (inside a card, the inner outline as in 014) |
+| "Group line" trigger, "Folder grouping menu" trigger | Inherit ghost `Button` states. `disabled` only while sending |
+| Member row | The same hover as a related video row. The current member's row is not interactive and does not change on hover |
+| Notice layer actions | Inherit secondary and primary `Button` states |
 
 ## Accessibility
 
-- 読み上げ名:
-  - グループのカードのリンク: 「〈名〉、〈N〉本のグループ」（所有者で `watchedCount >= 1` なら
-    「、〈M〉本を視聴済み」を続ける）
-  - グループのカードのチェック: 「「〈名〉」のグループを選択」
-  - グループのカードの進捗: 「視聴済みの本数の割合」
-  - 破線のチップ: 「〈名〉で絞り込む」＋ 隠した「（フォルダ名から）」
-  - 「Group line」の引き金: 「グループ「〈名〉」、〈N〉本中〈M〉本目。まとめ方のメニュー」
-  - メンバーの行: 今の関連動画と同じ「〈題名〉 〈長さ〉」。今のメンバーは `aria-current="true"` と
-    隠した「再生中」、視聴済みは隠した「視聴済み」
-  - 予告の層: `role="status"` の「再生が終わりました。5 秒後に次の動画「〈題名〉」を再生します」
-    （一度だけ）。「取り消す」「今すぐ再生」
-  - 「Folder grouping menu」の引き金: 「ライブラリでのまとめ方: 1 件にまとめて表示。メニューを
-    開く」「ライブラリでのまとめ方: 1 本ずつ表示。メニューを開く」
-- まとまり: メンバーの並びは「続けて再生」の `h2` の下の `ul`、関連動画は「関連動画」の `h2` の
-  下の `ul`。2つの `ul` を1つにまとめない。境目が読み上げでも分かるようにするためである。
-- 予告の残り秒数と帯は `aria-hidden`。取り消しは Tab で最初に届くボタンと Esc の両方で行える。
-- 色の組: 新しく使う組は無い。破線のチップの文字は親の面（`surface`・`bg`・`elevated`）に
-  `fg`・`fg-muted` で載り、予告の層の文字は `navbar` に `fg`・`fg-muted`・`accent` で載る。どれも
-  `pairs` にある。`border-border-strong`・`bg-active-wash`・`bg-fg-subtle/50` は文字ではなく、
-  半透明なので `pairs` の対象外である。新しいトークンは足さない。
+- Accessible names:
+
+| Control | Name |
+| --- | --- |
+| Group card link | `〈名〉、〈N〉本のグループ` (for the owner with `watchedCount >= 1`, followed by `、〈M〉本を視聴済み`) |
+| Group card checkbox | `「〈名〉」のグループを選択` |
+| Group card progress | `視聴済みの本数の割合` |
+| Dashed chip | `〈名〉で絞り込む` + hidden `（フォルダ名から）` |
+| "Group line" trigger | `グループ「〈名〉」、〈N〉本中〈M〉本目。まとめ方のメニュー` |
+| Member row | As the current related videos, `〈題名〉 〈長さ〉`. The current member has `aria-current="true"` and hidden `再生中`; watched members have hidden `視聴済み` |
+| Notice layer | `role="status"` `再生が終わりました。5 秒後に次の動画「〈題名〉」を再生します` (once). `取り消す`, `今すぐ再生` |
+| "Folder grouping menu" trigger | `ライブラリでのまとめ方: 1 件にまとめて表示。メニューを開く` or `ライブラリでのまとめ方: 1 本ずつ表示。メニューを開く` |
+
+- Grouping: the member list is a `ul` under the `続けて再生` `h2`, and related
+  videos a `ul` under the `関連動画` `h2`. The two `ul`s are not merged, so the
+  divider is clear to screen readers too.
+- The notice's seconds and bar are `aria-hidden`. Cancelling works both with
+  the first button Tab reaches and with Esc.
+- Color pairs: no new pair is used. Dashed chip text sits on the parent surface
+  (`surface`, `bg`, `elevated`) in `fg` and `fg-muted`, and notice layer text on
+  `navbar` in `fg`, `fg-muted` and `accent`; all are in `pairs`.
+  `border-border-strong`, `bg-active-wash` and `bg-fg-subtle/50` are not text
+  and are translucent, so they are outside `pairs`. No new tokens are added.
