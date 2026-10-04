@@ -8,16 +8,16 @@ The decision is [research.md R-7](../research.md#r-7-the-external-api-adds-tenta
 Following the compatibility policy, the change only adds fields; it adds no
 operation.
 
-## 0. Schema changes
+## Schema changes
 
 | Schema | Added field | Rule |
 | --- | --- | --- |
 | `Tag` (`GET /api/v1/tags`) | `tentative: boolean` (`required`) | Same as the screen's `Tag` |
 | `ExternalVideoTag` | `tentative: boolean` (`required`) | The state of a tag on a video |
-| `VideoTagsRequest` | `tentative: boolean` (optional, `false` when omitted) | §1 |
-| `VideoTagsResponse` | `skippedTags: string[]` (`required`) | §1. An empty array when no name was skipped |
+| `VideoTagsRequest` | `tentative: boolean` (optional, `false` when omitted) | [Changes to `POST /api/v1/video-tags`](#changes-to-post-apiv1video-tags) |
+| `VideoTagsResponse` | `skippedTags: string[]` (`required`) | [Changes to `POST /api/v1/video-tags`](#changes-to-post-apiv1video-tags). An empty array when no name was skipped |
 
-## 1. Changes to `POST /api/v1/video-tags`
+## Changes to `POST /api/v1/video-tags`
 
 ```json
 { "videos": [{ "path": "/media/a.mp4" }],
@@ -47,17 +47,17 @@ Error `code` and `reason` values do not change. A `tentative` that is not a
 boolean returns `400 invalid_request` (a malformed body, handled by the current
 `readJSONBody`).
 
-## 2. MCP
+## MCP
 
 The input of `update_video_tags` is derived from the `VideoTagsRequest` type, so
 `tentative` arrives as is. The tool description gains: "with `tentative: true`,
 tags created by this call are tentative, and rejected names are skipped and
 returned in `skippedTags`". The output of `list_tags`, `get_video` and
-`list_videos` carries the §0 changes as is. The number of tools and their
+`list_videos` carries the [Schema changes](#schema-changes) changes as is. The number of tools and their
 annotations do not change
 ([specs/026-external-api/contracts/mcp.md](../../026-external-api/contracts/mcp.md)).
 
-## 3. `docs/how-to/external-api.md`
+## `docs/how-to/external-api.md`
 
 The section on tagging videos (`動画にタグを付ける`) gains a description of
 `tentative` and `skippedTags` and a scraper example (attach names an LLM produced

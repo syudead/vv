@@ -14,8 +14,8 @@ and include both on videos in the external API. The existing "Date modified"
 
 | Area | Decision |
 | --- | --- |
-| Edit time | Kept in a user-data table `video_edits` keyed by content key; reads fall back to the added time. Only four kinds of writes advance it (display name, thumbnail position, visibility, attaching and detaching manual tags), and only for content keys whose rows actually changed. Same-path succession re-keys it ([research.md R-1](research.md#r-1-the-edit-time-lives-in-a-user-data-table-video_edits-keyed-by-content-key-and-reads-fall-back-to-the-added-time), [R-2](research.md#r-2-only-the-four-writes-of-video-information-advance-the-edit-time-tag-level-operations-bundles-and-ingestion-do-not), [R-3](research.md#r-3-unchanged-edits-do-not-advance-and-only-the-content-keys-a-write-actually-changed-advance), [data-model.md §1 and §3](data-model.md)) |
-| Creation time | The scan writes the location column `video_locations.file_created_at` (null when unavailable); reads and sorting use `coalesce(file_created_at, mtime)`. `internal/scanner` reads it per OS (statx from `x/sys/unix` on Linux) and rewrites only the location column when an unchanged file's value differs ([R-4](research.md#r-4-the-file-creation-time-lives-in-a-location-column-video_locationsfile_created_at-null-when-unavailable-and-reads-fall-back-to-mtime), [R-5](research.md#r-5-the-file-system-adapter-internalscanner-reads-the-creation-time-per-os-linux-uses-statx-from-golangorgxsysunix), [R-6](research.md#r-6-a-registered-location-is-rewritten-on-the-next-scan-when-its-creation-time-differs-even-if-the-file-is-unchanged), [data-model.md §4 and §5](data-model.md)) |
+| Edit time | Kept in a user-data table `video_edits` keyed by content key; reads fall back to the added time. Only four kinds of writes advance it (display name, thumbnail position, visibility, attaching and detaching manual tags), and only for content keys whose rows actually changed. Same-path succession re-keys it ([research.md R-1](research.md#r-1-the-edit-time-lives-in-a-user-data-table-video_edits-keyed-by-content-key-and-reads-fall-back-to-the-added-time), [R-2](research.md#r-2-only-the-four-writes-of-video-information-advance-the-edit-time-tag-level-operations-bundles-and-ingestion-do-not), [R-3](research.md#r-3-unchanged-edits-do-not-advance-and-only-the-content-keys-a-write-actually-changed-advance), [data-model.md, Migration](data-model.md#migration) and [Edit time rules](data-model.md#edit-time-rules)) |
+| Creation time | The scan writes the location column `video_locations.file_created_at` (null when unavailable); reads and sorting use `coalesce(file_created_at, mtime)`. `internal/scanner` reads it per OS (statx from `x/sys/unix` on Linux) and rewrites only the location column when an unchanged file's value differs ([R-4](research.md#r-4-the-file-creation-time-lives-in-a-location-column-video_locationsfile_created_at-null-when-unavailable-and-reads-fall-back-to-mtime), [R-5](research.md#r-5-the-file-system-adapter-internalscanner-reads-the-creation-time-per-os-linux-uses-statx-from-golangorgxsysunix), [R-6](research.md#r-6-a-registered-location-is-rewritten-on-the-next-scan-when-its-creation-time-differs-even-if-the-file-is-unchanged), [data-model.md, Reads](data-model.md#reads) and [Scan and location writes](data-model.md#scan-and-location-writes)) |
 | API | Required `updatedAt` and `fileCreatedAt` on `Video` and `ExternalVideo`; `createdAsc` and `createdDesc` on `VideoSort` ([R-7](research.md#r-7-the-response-fields-are-updatedat-edit-time-in-vv-and-filecreatedat-location-creation-time-with-the-same-names-in-the-screen-and-external-apis), [contracts/screen-api.md](contracts/screen-api.md), [contracts/external-api.md](contracts/external-api.md)) |
 | Screens | Two facts in the video page's facts row and "Date created" in the list sort orders. The video is reloaded after tag and visibility changes ([R-8](research.md#r-8-the-video-page-reloads-the-video-after-tag-and-visibility-changes-and-no-new-domain-event-is-added)). The Issue has the `ui` label, so the next stage, design, settles appearance, the facts' names and order, and the sort name in `ui-design.md` against the parent Issue's `UI品質` section. List cards do not change |
 
@@ -28,7 +28,7 @@ and include both on videos in the external API. The existing "Date modified"
 | Boundaries, dependency direction, index versus user data, role-type rules, domain events, authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
 | Scan and locations | [internal/scanner/scanner.go](../../internal/scanner/scanner.go) (`Index` interface, the unchanged-file branch), [internal/store/scan_index.go](../../internal/store/scan_index.go) (`UpsertVideo`, `IndexedVideosByPath`), [internal/domain/video.go](../../internal/domain/video.go) (`VideoFile`, `IndexedVideo`) |
 | Video reads and lists | [internal/store/videos.go](../../internal/store/videos.go) (`videoColumnsTemplate`), [internal/store/listing.go](../../internal/store/listing.go) (`listColumns`, `listOrders`), [internal/store/library_items.go](../../internal/store/library_items.go) (`libraryItemsCTE`, `itemOrderValues`), [internal/domain/library.go](../../internal/domain/library.go) (`VideoSort`), [specs/013-library-search/contracts/list-api.md](../013-library-search/contracts/list-api.md), [specs/017-folder-groups/contracts/library-api.md](../017-folder-groups/contracts/library-api.md) |
-| User data keyed by content key, and its writes | [specs/029-video-overrides/data-model.md](../029-video-overrides/data-model.md), [internal/store/overrides.go](../../internal/store/overrides.go), [internal/store/visibility.go](../../internal/store/visibility.go), [internal/store/video_tags.go](../../internal/store/video_tags.go), [internal/store/external_video_tags.go](../../internal/store/external_video_tags.go), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeysForVideoIDs`, `contentKeysForUserKeys`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [specs/030-video-versions/data-model.md](../030-video-versions/data-model.md) §3 and §5 |
+| User data keyed by content key, and its writes | [specs/029-video-overrides/data-model.md](../029-video-overrides/data-model.md), [internal/store/overrides.go](../../internal/store/overrides.go), [internal/store/visibility.go](../../internal/store/visibility.go), [internal/store/video_tags.go](../../internal/store/video_tags.go), [internal/store/external_video_tags.go](../../internal/store/external_video_tags.go), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeysForVideoIDs`, `contentKeysForUserKeys`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key) and [Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path) |
 | Responses to guests | [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md) |
 | External API | [api/external-v1.yaml](../../api/external-v1.yaml), [specs/026-external-api/contracts/external-api.md](../026-external-api/contracts/external-api.md), [internal/httpapi/external_videos.go](../../internal/httpapi/external_videos.go), [docs/how-to/external-api.md](../../docs/how-to/external-api.md) |
 | Screen API and conversion | [api/openapi.yaml](../../api/openapi.yaml), [internal/httpapi/videos.go](../../internal/httpapi/videos.go) (`toAPIVideo`) |
@@ -51,8 +51,8 @@ and include both on videos in the external API. The existing "Date modified"
 | Gate | Verdict |
 | --- | --- |
 | Dependency direction (ARCHITECTURE.md "Intended dependency direction") | Pass. `internal/domain`: `time.Time` fields on `Video`, `VideoFile`, `IndexedVideo` and `VideoLocation`, and two `VideoSort` values; touches neither `os` nor `x/sys`. `internal/scanner`: reading the creation time (per-OS build tags); the adapter reads file-system facts. `internal/store`: migrations, read columns, `touchEditedAt`, `UpdateLocationCreatedAt`. `internal/httpapi`: response conversion and `sort` validation. `internal/app` and `cmd/mdm`: untouched |
-| A role type does not call another role's public methods (ARCHITECTURE.md, `store.DB` paragraph) | Pass. `touchEditedAt` is a package-internal function that `OverrideStore`, `VisibilityStore` and `TagStore` each call inside their own transactions (data-model.md §3) |
-| Index versus user data | Pass. `video_edits` is user data and `video_locations.file_created_at` is index; both are added to the list in ARCHITECTURE.md (data-model.md §1) |
+| A role type does not call another role's public methods (ARCHITECTURE.md, `store.DB` paragraph) | Pass. `touchEditedAt` is a package-internal function that `OverrideStore`, `VisibilityStore` and `TagStore` each call inside their own transactions (data-model.md, [Edit time rules](data-model.md#edit-time-rules)) |
+| Index versus user data | Pass. `video_edits` is user data and `video_locations.file_created_at` is index; both are added to the list in ARCHITECTURE.md (data-model.md, [Migration](data-model.md#migration)) |
 | Only a user-started scan walks the media folders (ARCHITECTURE.md, `internal/scanner` paragraph) | Pass. Creation times of existing locations are also filled in during the scan (R-6) |
 | API sources of truth and generated files (AGENTS.md) | Pass. Edit `api/openapi.yaml` and `api/external-v1.yaml`, then run `task generate`. The external API only gains fields (the 026 compatibility policy) |
 | Guests do not see the owner's data (guest-api.md) | Pass. The two fields and the `created*` sort orders are facts about public videos, and no owner-operation route is added (R-7) |
@@ -94,7 +94,7 @@ The next stage, design, creates `ui-design.md` (`ui` label).
   `web/src/videoList` (sort order), `web/src/preferences`, `web/src/i18n`
 - `ARCHITECTURE.md`, `docs/how-to/external-api.md`. Nothing is added to
   `specs/013-library-search/contracts/list-api.md`; this feature's
-  [data-model.md §4](data-model.md#4-reads) holds the delta
+  [data-model.md, Reads](data-model.md#reads) holds the delta
 
 **New paths**:
 
@@ -120,11 +120,11 @@ place that uses the scan's `stat` result is `scanner`.
 
 ### Advance a video's edit time on edits and carry it in video reads
 
-**Scope**: `00027_video_edits.sql` ([data-model.md §1](data-model.md#1-migration)),
-`Video.EditedAt` in `domain` ([§2](data-model.md#2-values-added-to-domain)),
+**Scope**: `00027_video_edits.sql` ([data-model.md, Migration](data-model.md#migration)),
+`Video.EditedAt` in `domain` ([Values added to `domain`](data-model.md#values-added-to-domain)),
 `touchEditedAt` with its calls and change detection in the four kinds of writes
-([§3](data-model.md#3-edit-time-rules)), the addition to `moveUserData`, the
-`edited_at` column in reads that return videos ([§4](data-model.md#4-reads)), and
+([Edit time rules](data-model.md#edit-time-rules)), the addition to `moveUserData`, the
+`edited_at` column in reads that return videos ([Reads](data-model.md#reads)), and
 the invariant in `invariants_test.go`. The user-data list and the `TagStore`,
 `VisibilityStore` and `OverrideStore` paragraphs in ARCHITECTURE.md.
 
@@ -149,15 +149,15 @@ the invariant in `invariants_test.go`. The user-data list and the `TagStore`,
 ### Store each location's file creation time and use it in video reads and the "Date created" sort
 
 **Scope**: `00028_video_file_created_at.sql`
-([data-model.md §1](data-model.md#1-migration)); `FileCreatedAt` on `Video`,
+([data-model.md, Migration](data-model.md#migration)); `FileCreatedAt` on `Video`,
 `VideoFile`, `IndexedVideo` and `VideoLocation` in `domain`, and the two
-`VideoSort` values ([§2](data-model.md#2-values-added-to-domain)); the
+`VideoSort` values ([Values added to `domain`](data-model.md#values-added-to-domain)); the
 `file_created_at` column in reads that return videos and in `VideoLocations`
-([§4](data-model.md#4-reads)); the list sort values (`listOrders`,
+([Reads](data-model.md#reads)); the list sort values (`listOrders`,
 `itemOrderValues`, `libraryItemsCTE` and `VideoSort.Valid` for `createdAsc` and
 `createdDesc`); `file_created_at` in `UpsertVideo`, `IndexedVideosByPath`, and the
 new `UpdateLocationCreatedAt`
-([§5](data-model.md#5-scan-and-location-writes); the call from the scan is the
+([Scan and location writes](data-model.md#scan-and-location-writes); the call from the scan is the
 next unit). The `ScanIndexStore` paragraph in ARCHITECTURE.md.
 
 **Dependencies**: Advance a video's edit time on edits and carry it in video reads
@@ -185,7 +185,7 @@ making `golang.org/x/sys` a direct dependency in `go.mod`, setting
 `VideoFile.FileCreatedAt`, and calling `UpdateLocationCreatedAt` for unchanged
 files
 ([R-6](research.md#r-6-a-registered-location-is-rewritten-on-the-next-scan-when-its-creation-time-differs-even-if-the-file-is-unchanged),
-[data-model.md §5](data-model.md#5-scan-and-location-writes)); the addition to the
+[data-model.md, Scan and location writes](data-model.md#scan-and-location-writes)); the addition to the
 `scanner.Index` interface and updates to the test fakes. The `internal/scanner`
 paragraph in ARCHITECTURE.md. The checks in [quickstart.md](quickstart.md).
 
@@ -212,10 +212,10 @@ The results of steps 1 to 4 in quickstart.md are recorded in the PR body
 
 **Scope**: `Video.updatedAt`, `Video.fileCreatedAt` and the two `VideoSort` values
 in `api/openapi.yaml`, with the generated files
-([contracts/screen-api.md §0 and §1](contracts/screen-api.md#0-fields-added-to-video));
+([contracts/screen-api.md, Fields added to `Video`](contracts/screen-api.md#fields-added-to-video) and [Values added to `VideoSort`](contracts/screen-api.md#values-added-to-videosort));
 the conversion in `toAPIVideo`; `sort` validation (allowed for guests too);
 `videoSorts` in `web/src/api` and updates to Vitest fixtures
-([§3](contracts/screen-api.md#3-websrcapi-changes)). "thirteen sort orders" in
+([`web/src/api` changes](contracts/screen-api.md#websrcapi-changes)). "thirteen sort orders" in
 ARCHITECTURE.md.
 
 **Dependencies**: Advance a video's edit time on edits and carry it in video

@@ -7,7 +7,7 @@ checks follow [Taskfile.yml](../../Taskfile.yml) (`task dev`, `task check`,
 access control; Vitest and Playwright cover the subtitle button, the menu, the
 remembered selection, the `c` key and reattachment during live transcode.
 
-## 1. Full screen and overlap with the control bar (acceptance criterion 10)
+## Full screen and overlap with the control bar (acceptance criterion 10)
 
 1. Put `movie.srt` next to `movie.mp4` and turn subtitles on in the playback
    screen.
@@ -18,19 +18,19 @@ remembered selection, the `c` key and reattachment during live transcode.
 4. The same holds for a portrait video (the portrait fixture in
    `web/e2e/media-fixtures.mjs`).
 
-## 2. Safari and iOS (native track display)
+## Safari and iOS (native track display)
 
 video.js uses the browser's native subtitle display in Safari. Playwright
 checks Chrome and Firefox, so only Safari is checked by hand.
 
-1. In Safari on macOS and on iOS, open the video from section 1 and turn
+1. In Safari on macOS and on iOS, open the video from [Full screen and overlap with the control bar (acceptance criterion 10)](#full-screen-and-overlap-with-the-control-bar-acceptance-criterion-10) and turn
    subtitles on. The subtitles appear.
 2. On iOS, the subtitles still appear when the player is full screen.
 3. With a video played through live transcode (`container-only.mkv`), seek
    partway. The subtitles match the picture's time (the Safari check for
    acceptance criterion 9).
 
-## 3. A real Japanese SRT (the real-file check for acceptance criterion 5)
+## A real Japanese SRT (the real-file check for acceptance criterion 5)
 
 The Go tests check the four encodings with generated fixtures. Put one real
 Shift_JIS SRT you have (made with a Windows tool) next to a video and check

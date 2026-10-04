@@ -4,13 +4,13 @@ Source of truth: `api/openapi.yaml`. This document describes only the parameter
 this feature changes and the path it adds. The response shape of the live
 transcode itself (`transcodeVideo`) does not change.
 
-## 1. `attempt` parameter of `transcodeVideo`
+## `attempt` parameter of `transcodeVideo`
 
 `GET /api/videos/{id}/transcode.mp4?startMs=…&attempt=…`
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `attempt` | query | string, `[A-Za-z0-9_-]{1,64}` | No | A random value the player creates per request; the key for §2. A value that does not match the format returns 400 `invalid_request`. |
+| `attempt` | query | string, `[A-Za-z0-9_-]{1,64}` | No | A random value the player creates per request; the key for [`GET /api/videos/{id}/transcode-start`](#get-apivideosidtranscode-start). A value that does not match the format returns 400 `invalid_request`. |
 
 - With `attempt`, the server enters it in the ledger when it starts serving the
   transcode request, and records the actual start position once it is known
@@ -20,14 +20,14 @@ transcode itself (`transcodeVideo`) does not change.
 - A request without `attempt` behaves as before and is not entered in the
   ledger.
 
-## 2. `GET /api/videos/{id}/transcode-start`
+## `GET /api/videos/{id}/transcode-start`
 
 `operationId: getTranscodeStart`. `security` is the same as `transcodeVideo`
 (owner and guest).
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
-| `attempt` | query | string, same format as §1 | Yes | The `attempt` sent with the transcode request. |
+| `attempt` | query | string, same format as [`attempt` parameter of `transcodeVideo`](#attempt-parameter-of-transcodevideo) | Yes | The `attempt` sent with the transcode request. |
 
 **Response**: 200 `{ "startMs": integer }` — the time in the source video, in
 milliseconds, that time 0 of the transcode output corresponds to.
@@ -55,7 +55,7 @@ nothing is resolved by then, the response is 404.
   report request made right after a reload can still read the value of a
   transcode that has finished.
 
-## 3. Client use
+## Client use
 
 - When `startMs > 0`, `liveSource` creates an `attempt`, adds it to the URL, and
   calls `getTranscodeStart` right after `setSource`. Until the answer arrives,

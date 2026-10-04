@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/writing-quality.md
-sourceHash: ef5c151c1a77831c47be12e33be1fa208bfe11945edadac7136b76b8b1661935
+sourceHash: fbce8f7c0b6c3481696156ac81578e250d755bce4812ada1fd332da748070736
 ---
 
 # 文書の品質: 型に沿った技術英語 {#writing-quality-typed-technical-english}
@@ -88,6 +88,8 @@ sourceHash: ef5c151c1a77831c47be12e33be1fa208bfe11945edadac7136b76b8b1661935
 ### W-9: 安定した見出し {#w-9-stable-headings}
 
 見出しは名詞句か決定事項（`R-3: Glossary and product terms`）であり、疑問文や文の断片ではない。見出しはリンク先になる: 見出しを変えるとそのアンカーが変わり、その変更では参照元のリンクをすべて更新しなければならない（アンカーが壊れていると `task check-docs` が失敗する）。
+
+見出しには節番号を付けない（`## 3. Rules` ではなく `## Rules`）。番号はアンカーに入るので、節を追加または削除するとそれより後のすべての節の名前が変わり、それらへのリンクと `§3` 形式の参照が壊れる。節は見出しで参照し、そのアンカーにリンクする（`data-model.md, Rules`）。番号付きの見出しがあると `task check-docs` が失敗する。読み手が順に実行する手順は番号付きの見出しではなく、番号付きリスト（W-7）にする。
 
 ### W-10: コードが言えないことを書く {#w-10-write-what-the-code-cannot-say}
 

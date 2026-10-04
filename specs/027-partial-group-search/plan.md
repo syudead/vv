@@ -29,7 +29,7 @@ screen chooses how to render by item kind alone (`web/src/api/libraryItems.ts`,
 | Area | Source |
 | --- | --- |
 | Boundaries, dependency direction, the role of `LibraryStore`, the current library list rules | [ARCHITECTURE.md](../../ARCHITECTURE.md) (the `GET /api/library` paragraph in "Intended topology" and the `LibraryStore` entry) |
-| How items are built today and what each viewer sees | [specs/017-folder-groups/data-model.md §5–§7](../017-folder-groups/data-model.md#5-library-items), [specs/017-folder-groups/contracts/library-api.md](../017-folder-groups/contracts/library-api.md) |
+| How items are built today and what each viewer sees | [specs/017-folder-groups/data-model.md, Library items–Visibility per audience](../017-folder-groups/data-model.md#library-items), [specs/017-folder-groups/contracts/library-api.md](../017-folder-groups/contracts/library-api.md) |
 | Implementation | [internal/store/library_items.go](../../internal/store/library_items.go) (`libraryItemsCTE`, `ListLibrary`, `LibraryIDs`), [internal/store/listing.go](../../internal/store/listing.go) (`chosenLocationsCTE`, `listSpec`), [internal/httpapi/library.go](../../internal/httpapi/library.go) |
 | API source of truth and generated code | [api/openapi.yaml](../../api/openapi.yaml) (`listLibrary`, `listLibraryIds`), `task generate` ([Taskfile.yml](../../Taskfile.yml)) |
 | How the screen holds the list and renders items | [web/src/api/libraryItems.ts](../../web/src/api/libraryItems.ts), [web/src/api/useVideos.ts](../../web/src/api/useVideos.ts), [web/src/library/LibraryPage.tsx](../../web/src/library/LibraryPage.tsx) |
@@ -54,9 +54,9 @@ screen chooses how to render by item kind alone (`web/src/api/libraryItems.ts`,
   `api/openapi.yaml` changes, and the generated code is rebuilt with `task generate`. The schema does
   not change.
 - **Viewer-specific conditions go through `visibleLocationCondition`** (the `LibraryStore` entry in
-  ARCHITECTURE.md, 017 §7): pass. "All members" is counted over the current `gm` (members the viewer
+  ARCHITECTURE.md, [017 data-model.md, Visibility per audience](../017-folder-groups/data-model.md#visibility-per-audience)): pass. "All members" is counted over the current `gm` (members the viewer
   may see), and for guests it is decided over public members only
-  ([contracts/library-api.md §1](contracts/library-api.md#1-how-get-apilibrary-builds-items)).
+  ([contracts/library-api.md, How `GET /api/library` builds items](contracts/library-api.md#how-get-apilibrary-builds-items)).
 - **Constraints are checked by tests** (core-beliefs.md): pass. Store tests fix the rule, and e2e
   checks how it looks on screen.
 - **Documents change in the same PR as the code** (core-beliefs.md, AGENTS.md): pass. The
@@ -75,7 +75,7 @@ specs/027-partial-group-search/
 │                         # No spec.md — the parent Issue is the specification
 ├── research.md           # R-1 to R-3
 └── contracts/
-    └── library-api.md    # Delta in how GET /api/library and /ids build items (replaces items 1–2 of 017 §5)
+    └── library-api.md    # Delta in how GET /api/library and /ids build items (replaces items 1–2 of 017 data-model.md "Library items")
 ```
 
 No `data-model.md` (no entity or table changes). No `quickstart.md` (store tests and `task test-e2e`
@@ -100,12 +100,12 @@ check the acceptance criteria, and there are no feature-specific manual steps).
 ### Show each matched video, instead of the group, when a library search matches only some members
 
 **Scope**: make `libraryItemsCTE` (`internal/store/library_items.go`) follow the rules in
-[contracts/library-api.md §1–§2](contracts/library-api.md#1-how-get-apilibrary-builds-items), effective
+[contracts/library-api.md, How `GET /api/library` builds items–`GET /api/library/ids`](contracts/library-api.md#how-get-apilibrary-builds-items), effective
 for both `ListLibrary` and `LibraryIDs`. Replace the store and httpapi tests that fix the old rule
 (`TestListLibraryFiltersPerMember`, `TestLibraryIDsIncludeAllMembersOfMatchedGroups` and others) with
 the new rule. The `listLibrary` and `listLibraryIds` descriptions in `api/openapi.yaml` and
-`task generate`, the `GET /api/library` paragraph of ARCHITECTURE.md, and the references to 017 §5 in
-code comments ([§4](contracts/library-api.md#4-documents-and-tests-to-update)). Fix the owner's `ゲスト`
+`task generate`, the `GET /api/library` paragraph of ARCHITECTURE.md, and the references to [017 data-model.md, Library items](../017-folder-groups/data-model.md#library-items) in
+code comments ([Documents and tests to update](contracts/library-api.md#documents-and-tests-to-update)). Fix the owner's `ゲスト`
 search scenario in `web/e2e/guest.e2e.ts` so that `公開あり` shows as a group card and `非公開だけ` as
 D's video card (keep the step that selects a group by searching for a term that matches every
 member).

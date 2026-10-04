@@ -6,7 +6,7 @@ generated files stay as in [ARCHITECTURE.md](../../ARCHITECTURE.md) and
 covers only the added column and job kind, their state transitions, the claim
 condition, and the migration.
 
-## 1. `videos.seek_thumbnail_state`
+## `videos.seek_thumbnail_state`
 
 | Column | Type | Values | Meaning |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ only.
 The column is a rebuildable index (ARCHITECTURE.md, "Rebuildable and user
 data").
 
-## 2. `jobs.kind = 'seek_thumbnail'`
+## `jobs.kind = 'seek_thumbnail'`
 
 `domain.JobSeekThumbnail = "seek_thumbnail"` is added to the `jobs.kind` CHECK
 (SQLite cannot alter a CHECK in place, so the table is rebuilt as in `00006`).
@@ -35,7 +35,7 @@ runs jobs serially.
 `domain.Processing` gains `SeekThumbnail`, included in `Remaining()`.
 `IngestStore.Processing` only adds one case to the existing `group by kind`.
 
-## 3. State transitions
+## State transitions
 
 | Trigger | Operation | `seek_thumbnail_state` | Jobs queued |
 | --- | --- | --- | --- |
@@ -73,7 +73,7 @@ that is `done` with missing stored files is requeued by the row above when
 
 `Ingest.Thumbnail` no longer calls `PublishSeekThumbnails`.
 
-## 4. Claim condition
+## Claim condition
 
 `domain.ClaimConditionFor` becomes the following. `claimConditionSQL` in
 `internal/store` translates each condition into SQL and is written to reach the
@@ -111,7 +111,7 @@ Wake-up (`cmd/mdm/events.go`): the `seek_thumbnail` worker wakes when
 row was removed). A media folder change publishes `JobsQueued` for all kinds as
 before.
 
-## 5. Migration
+## Migration
 
 `internal/store/migrations/00014_seek_thumbnail_stage.sql`:
 

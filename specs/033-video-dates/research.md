@@ -9,7 +9,7 @@ split between index and user data are defined by
 and do not change here. The rule for keying user data to the content key is in
 [specs/029-video-overrides/research.md R-1](../029-video-overrides/research.md),
 and the user-data key of a bundle (versions) is in
-[specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key).
+[specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key).
 This file records only the decisions this feature adds.
 
 ## R-1: The edit time lives in a user-data table `video_edits` keyed by content key, and reads fall back to the added time
@@ -69,7 +69,7 @@ bundling.
 
 **Decision**: Each operation collects the user-data keys whose rows the write
 actually changed and writes `touchEditedAt`
-([data-model.md §3](data-model.md#3-edit-time-rules)) only for the content keys
+([data-model.md, Edit time rules](data-model.md#edit-time-rules)) only for the content keys
 those keys point to (every member for a bundle). Change is determined as follows:
 
 | Data | How change is detected |

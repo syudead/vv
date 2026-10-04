@@ -86,7 +86,7 @@ ascending order of the location's path. With none, it is an empty array (Edge Ca
   `titleAsc` is the title of the location in that folder.
   - Addendum (013-library-search): `VideoSort` grew to 13 values, and `titleAsc`
     became natural order. The values and their meaning are owned by
-    [013's contracts/list-api.md §3](../../013-library-search/contracts/list-api.md#3-videosort-values).
+    [013's contracts/list-api.md, `VideoSort` values](../../013-library-search/contracts/list-api.md#videosort-values).
 
 ## Endpoints
 

@@ -32,7 +32,7 @@ in the implementation PR body.
      shows a video short side of 480.
    - `ffprobe -v error -show_entries packet=pts_time,size -of csv=p=0 out.mp4 | awk -F, '$1!="N/A"{if(n==0||$1<a)a=$1;if($1>b)b=$1;s+=$2;n++} END{printf "%.0f kbps\n", s*8/(b-a)/1000}'`
      shows a combined video and audio average of about 1300 kbps or less
-     ([contracts/transcode-quality-api.md §2](contracts/transcode-quality-api.md#2-per-quality-transcode-guarantees)).
+     ([contracts/transcode-quality-api.md, Per-quality transcode guarantees](contracts/transcode-quality-api.md#per-quality-transcode-guarantees)).
      ffmpeg transcodes faster than real time, so divide by the span of packet timestamps, not by the
      time spent receiving.
 6. Open another video (larger than 480p). It starts at "480p", and still does after a page reload.

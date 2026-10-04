@@ -11,7 +11,7 @@ candidate approaches; this file records only the decisions this feature settles.
 ## R-1: Bundles live in user-data tables, and bundle values sit in the existing tables under the bundle's own key
 
 **Decision**: a bundle is held in two user-data tables, `video_bundles` (`user_key`, `representative_key`) and
-`video_bundle_members` (`content_key` → bundle) ([data-model.md §1](data-model.md)). The bundle's tags,
+`video_bundle_members` (`content_key` → bundle) ([data-model.md, Migration](data-model.md#migration)). The bundle's tags,
 playback position and visibility sit in the existing tables `video_tags`, `playback_progress` and
 `public_videos`, keyed by `user_key` (`bundle:<id>`). Bundling copies the chosen representative's values to
 this key. The rows under each member's `content_key` stay as they are.
@@ -35,7 +35,7 @@ in the existing tables means reads only need key resolution (R-2), and the colum
 
 **Decision**: a video's user key is "the bundle's `user_key` if the video is a bundle member, otherwise its
 `content_key`", decided by one expression in `internal/store` (`userKeyExpr`,
-[data-model.md §3](data-model.md)). Every read that returns a video puts it in `domain.Video.UserKey`;
+[data-model.md, User key](data-model.md#user-key)). Every read that returns a video puts it in `domain.Video.UserKey`;
 `internal/httpapi` uses this key to look up playback position and tags (`progressFor`, `tagsFor`,
 `withProgress`, `withTags`) and to save the playback position. `registeredContentKeysForVideoIDs`, used by adding
 and removing tags, tag summaries and toggling visibility, is replaced by `userKeysForVideoIDs`, which resolves to
@@ -59,7 +59,7 @@ responses never chooses a key. Display names and thumbnail positions are close t
 ## R-3: The listing picks shown videos by representative; the search expression applies to all of a bundle's locations, the scope to the representative's
 
 **Decision**: the library, search, folders, related videos and the folder index cover only **shown videos**:
-videos in no bundle, and the effective representative of each bundle ([data-model.md §4](data-model.md)). The
+videos in no bundle, and the effective representative of each bundle ([data-model.md, Shown videos and listing](data-model.md#shown-videos-and-listing)). The
 effective representative is the `representative_key` video if it has a location the viewer may see; otherwise it
 is the member with the smallest `videos.id` among those with such a location. `chosenLocationsCTE` applies the
 scope (registered, public, folder) to the shown videos' locations, and changes the search expression to "some
@@ -94,7 +94,7 @@ folder holding only non-representative versions becomes a folder with no videos.
 the index input changes both the group assignment (the count of direct videos, whether child folders exist) and
 the ancestor folder names consistently. A bundle operation that moves the representative to another folder
 changes the direct counts, so that transaction rebuilds the index (the same treatment as "setting and clearing
-an exception" in 017 §3).
+an exception" in [017 data-model.md, When the index is rebuilt](../017-folder-groups/data-model.md#when-the-index-is-rebuilt)).
 
 **Alternatives considered**:
 
@@ -107,7 +107,7 @@ an exception" in 017 §3).
 
 **Decision**: when `UpsertVideo` creates a new video row because the content at a path changed, and the previous
 video row loses its last location and is deleted, it records `video_successions (new_key, old_key,
-old_duration_ms)` if the previous duration is known ([data-model.md §5](data-model.md)). If the previous key's
+old_duration_ms)` if the previous duration is known ([data-model.md, Carry-over of content at the same path](data-model.md#carry-over-of-content-at-the-same-path)). If the previous key's
 video appears at another path in the same scan (the key `newVideo` creates equals `old_key`), the record is
 deleted. `ApplyProbe` and `ApplyProbeForJob` delete the record for the new key if there is one, and carry over
 only when `domain.DurationsMatch(old, new)` (`max(1 s, 0.5% of the duration)`) holds and no video references
@@ -143,7 +143,7 @@ finished seek thumbnail and the migration (for videos with a finished sprite) qu
 shrinks each frame to 32×32 luma (after cropping black bars on all four sides); `internal/domain` builds a 64-bit
 hash by comparing the low-frequency 8×8 of a 2D DCT (excluding DC) with its median. A frame with small luma
 variance is marked "flat". The fingerprint is stored in `video_fingerprints (content_key, version, interval_ms,
-hashes)` ([data-model.md §6](data-model.md)). Comparing two (`domain.CompareFingerprints`) requires the same
+hashes)` ([data-model.md, Fingerprints](data-model.md#fingerprints)). Comparing two (`domain.CompareFingerprints`) requires the same
 `version`, pairs frames by time (the `b` frame that covers the midpoint of an `a` frame's interval;
 `interval_ms` need not match), takes the median Hamming distance over pairs where neither frame is flat, and does
 not compare when fewer than 3 pairs remain. The threshold is a median of 12 or less. The values are constants in
@@ -174,7 +174,7 @@ stage reuses scan progress, remaining work, failure records and the wake-up mech
 writes the fingerprint. The other side is content with a fingerprint of the same version and a duration within
 the `DurationsMatch` tolerance, excluding dismissed pairs and pairs in the same bundle; pairs for which
 `vv_fingerprint_distance(a, b)` is at or below the threshold go into `video_version_candidates (key_a, key_b,
-distance)` ([data-model.md §7](data-model.md)). `vv_fingerprint_distance` is a deterministic function registered
+distance)` ([data-model.md, Candidates](data-model.md#candidates)). `vv_fingerprint_distance` is a deterministic function registered
 with `modernc.org/sqlite` like `vv_shuffle_key`; it calls `CompareFingerprints` and returns -1 when the two
 cannot be compared. "Different videos" is kept in `video_version_dismissals (key_a, key_b)` and excluded both
 when computing candidates and when `Candidates` reads them. Bundling deletes candidates for pairs that ended up

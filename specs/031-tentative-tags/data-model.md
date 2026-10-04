@@ -7,14 +7,14 @@ The rest of the model is unchanged. Table definitions are in
 name rules and write rules are in
 [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md);
 folder-derived tags are in
-[specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags);
+[specs/017-folder-groups/data-model.md, Folder-derived tags](../017-folder-groups/data-model.md#folder-derived-tags);
 the data categories are in [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable
 and user data". This file records only the column and table this feature adds and
 the rules that read and write them. Tables not named here do not change
 (`tag_names` and `video_tags` stay as they are, and the SQL for attaching,
 detaching, filtering, search and counts does not change).
 
-## 1. Migration
+## Migration
 
 Added as `00022_tentative_tags.sql` (the last migration on `main` is
 `00021_video_overrides.sql`).
@@ -47,21 +47,21 @@ Invariants (added to `internal/store/invariants_test.go`):
 Category: both are user data that cannot be rebuilt. Add `rejected_tag_names` to
 the list of tag tables in ARCHITECTURE.md.
 
-## 2. `rejected_tag_names`
+## `rejected_tag_names`
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `name` | text | No | One rejected name, in the form `domain.NormalizeTagName` produces (a rejected tag's canonical name is always stored in that form) |
 | `created_at` | integer | No | When the name was rejected |
 
-- Only two readers: a create with `tentative` true (§3) and the tag management
-  page's list ([contracts/screen-api.md §3](contracts/screen-api.md#3-rejected-names)).
+- Only two readers: a create with `tentative` true ([Write rules](#write-rules)) and the tag management
+  page's list ([contracts/screen-api.md, Rejected names](contracts/screen-api.md#rejected-names)).
   The table has no matching key (`search_key`) and is not a target of name search.
 - The list is in natural name order (`domain.SortTagNames`).
 
-## 3. Write rules
+## Write rules
 
-These rows extend the table in 014 §4. Every operation runs in one transaction
+These rows extend the table in [014 data-model.md, Write rules](../014-video-tags/data-model.md#write-rules). Every operation runs in one transaction
 and leaves nothing behind if it fails partway.
 
 | Operation | Writes |
@@ -88,7 +88,7 @@ and leaves nothing behind if it fails partway.
 - `remove` does nothing for a name that matches no tag, as today. It accepts
   `tentative` but does not read it.
 
-## 4. Values added to `domain`
+## Values added to `domain`
 
 | Value | Content |
 | --- | --- |
@@ -100,7 +100,7 @@ and leaves nothing behind if it fails partway.
 `NormalizeTagName` and `SortTag*` do not change. Tentative tags follow the same
 name rules as confirmed tags.
 
-## 5. Store operations
+## Store operations
 
 Added to `TagStore`. All of them use only the shared SQLite connection and publish
 no domain events (tag changes have no side effects, as the `TagStore` paragraph
@@ -108,11 +108,11 @@ in ARCHITECTURE.md states).
 
 | Operation | What one transaction does |
 | --- | --- |
-| `ApplyVideoTags(ctx, videos, action, names, tentative bool) (VideoTagsOutcome, error)` | Adds `tentative` to the current `ApplyVideoTags`. `resolveTagNames` receives `tentative`, creates each missing name by the "tentative create" or "manual create" rule in §3, and collects skipped names. Skipped names do not enter the replacement set (edge case "`replace` and `tentative`") |
-| `ConfirmTag(ctx, id) (Tag, error)` | Confirm in §3. `ErrTagNotFound` when absent |
-| `RejectTag(ctx, id) (name string, error)` | Reject in §3. `ErrTagNotFound` when absent, `ErrTagNotTentative` when not tentative |
+| `ApplyVideoTags(ctx, videos, action, names, tentative bool) (VideoTagsOutcome, error)` | Adds `tentative` to the current `ApplyVideoTags`. `resolveTagNames` receives `tentative`, creates each missing name by the "tentative create" or "manual create" rule in [Write rules](#write-rules), and collects skipped names. Skipped names do not enter the replacement set (edge case "`replace` and `tentative`") |
+| `ConfirmTag(ctx, id) (Tag, error)` | Confirm in [Write rules](#write-rules). `ErrTagNotFound` when absent |
+| `RejectTag(ctx, id) (name string, error)` | Reject in [Write rules](#write-rules). `ErrTagNotFound` when absent, `ErrTagNotTentative` when not tentative |
 | `ListRejectedTagNames(ctx) ([]string, error)` | Natural name order |
-| `ForgetRejectedTagName(ctx, name) error` | Removal in §3. `name` is normalized with `NormalizeTagName` before matching; input that cannot be normalized is matched as is (the same handling as `RemoveSynonym`) |
+| `ForgetRejectedTagName(ctx, name) error` | Removal in [Write rules](#write-rules). `name` is normalized with `NormalizeTagName` before matching; input that cannot be normalized is matched as is (the same handling as `RemoveSynonym`) |
 
 Changes to existing operations:
 
@@ -121,20 +121,20 @@ Changes to existing operations:
   `canonicalNameByTagID`), `TagsByContentKeys` (joins `tags`), `Summary`, and the
   external list (shares `ListTags`) read `tentative` and set `TagRef.Tentative`
   and `Tag.Tentative`.
-- `RenameTag`, `AddSynonym` and `mergeTagInto` perform the confirm in §3.
+- `RenameTag`, `AddSynonym` and `mergeTagInto` perform the confirm in [Write rules](#write-rules).
 - `insertTagName` and the `update` in `RenameTag` perform the delete from
-  `rejected_tag_names` in §3. Group-to-tag conversion in `FolderGroupStore` goes
+  `rejected_tag_names` in [Write rules](#write-rules). Group-to-tag conversion in `FolderGroupStore` goes
   through `findOrCreateTag` → `insertTag` → `insertTagName`, so it follows the
   manual-create rule with no change.
 - The `Tags` interface declared by `internal/httpapi` (`router.go`) gains the
   operations above, and the signature of `ApplyVideoTags` changes. The wiring in
   `cmd/mdm` does not change (the same `store.TagStore` satisfies it).
 
-## 6. What does not change
+## What does not change
 
 - Attaching and detaching tags on videos (`AttachTagByID`, `DetachTag`,
-  `applyManualTags`), tag filtering (014 §6), tag-name matching in the search
-  field (014 §7), counts (014 §5), and folder-derived tags (017 §4). None of them
+  `applyManualTags`), tag filtering ([014 data-model.md, Tag filter](../014-video-tags/data-model.md#tag-filter)), tag-name matching in the search
+  field ([014 data-model.md, Matching tag names in the search box](../014-video-tags/data-model.md#matching-tag-names-in-the-search-box)), counts ([014 data-model.md, Video counts](../014-video-tags/data-model.md#video-counts)), and folder-derived tags ([017 data-model.md, Folder-derived tags](../017-folder-groups/data-model.md#folder-derived-tags)). None of them
   reads `tags.tentative` (requirement 4).
 - Responses to guests (`Video.tags` stays an empty array;
   [guest-api.md](../016-single-account-auth/contracts/guest-api.md)).

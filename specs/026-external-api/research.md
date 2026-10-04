@@ -39,7 +39,7 @@ password (`AuthStore.changeCredentials`) deletes every `api_tokens` row in the s
 **Rationale**: Requirement 8. Because the rows are deleted, they also disappear from the list on the
 settings page, so unusable tokens never linger in it. The version check covers a race between an
 issue on the screen (by a session that read the old version) and the host command: a token created
-under the old credentials must not survive. This is the same reason as item 3 of §4 of the session data model (016).
+under the old credentials must not survive. This is the same reason as item 3 of [016 data-model.md, Session validity conditions](../016-single-account-auth/data-model.md#session-validity-conditions).
 
 **Alternatives considered**: Keep the rows and show them as "invalid". Rejected: rows with no use
 stay in the list and the user ends up creating new tokens anyway. The requirement does not ask for
@@ -153,7 +153,7 @@ value that wraps `domain.ErrNotFound` and carries the position of the reference)
 | `replace` | Looks up or creates each name as `add` does, then makes each video's manually attached tags (`video_tags` rows) exactly that set. An empty set detaches every manually attached tag. |
 
 - All three rewrite only manually attached tags; tags derived from ancestor folder names
-  ([017 data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags)) do not change. This
+  ([017 data-model.md, Folder-derived tags](../017-folder-groups/data-model.md#folder-derived-tags)) do not change. This
   is the same rule as the screen's detach (`DetachTag`). Tags in the response carry their source
   (`manual`, `fromFolder`, `domain.VideoTag`), so the user can tell which tags remained because they
   come from a folder.

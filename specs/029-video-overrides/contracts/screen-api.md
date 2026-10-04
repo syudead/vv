@@ -8,7 +8,7 @@ and the changes to `Video`. The decisions are in
 and
 [R-11](../research.md#r-11-position-validation-is-a-pure-function-in-internaldomain-with-three-distinct-errors).
 
-## 0. `Video` changes
+## `Video` changes
 
 | Field | Type | Rule |
 | --- | --- | --- |
@@ -21,11 +21,11 @@ and
 Guest responses receive the display name in `title` (requirement 1) and omit
 the three new fields. `thumbnailUrl` is the same string as for the owner and
 does not contain the position value (the same handling as `location` in
-[specs/016-single-account-auth/contracts/guest-api.md §1](../../016-single-account-auth/contracts/guest-api.md)).
+[specs/016-single-account-auth/contracts/guest-api.md, What guests see](../../016-single-account-auth/contracts/guest-api.md#what-guests-see)).
 The `title` in lists, related videos, library items and `RelatedVideo` is also
 the effective title.
 
-## 1. `PUT /api/videos/{id}/display-name`
+## `PUT /api/videos/{id}/display-name`
 
 `operationId: setVideoDisplayName`. Owner only (`security: sessionCookie`; the
 default category in `accessRoutes`). The body is `{ "displayName": string }`
@@ -43,7 +43,7 @@ A display name equal to another video's is allowed (edge case). The last
 committed transaction wins (concurrent changes: last write wins). After commit,
 `video` for that video is sent on `/api/events`.
 
-## 2. `PUT /api/videos/{id}/thumbnail-position`
+## `PUT /api/videos/{id}/thumbnail-position`
 
 `operationId: setVideoThumbnailPosition`. Owner only. The body is
 `{ "positionMs": integer | null }` (`required`; `null` clears).
@@ -64,7 +64,7 @@ Concurrent choices for the same video are serialized by the generation lock,
 and the image of the last recorded position remains. After commit, a `video`
 notification is sent and list cards read the new `thumbnailUrl`.
 
-## 3. Added `code` and `reason` values
+## Added `code` and `reason` values
 
 Nothing is added to `Error.code` (`conflict`, `invalid_request` and
 `not_found` are used). `ErrorReason` gets `display_name_control_characters`,

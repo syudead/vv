@@ -6,7 +6,7 @@ The source of truth for direct start and Docker (`MDM_*`, `mdm account`, the
 image) is [docs/how-to/running-vv.md](../../../docs/how-to/running-vv.md), and
 this feature does not change them.
 
-## 1. Zip contents
+## Zip contents
 
 The name is `VVMDM-<version>-windows-amd64.zip`. `<version>` is the tag
 (without `v`), or `sha-<12 characters>` for a manual run.
@@ -22,7 +22,7 @@ VVMDM-<version>-windows-amd64/
 └── README.txt           # Extract and run VVMDM.exe, getting past SmartScreen, the data location, how to update
 ```
 
-## 2. Startup arguments and failure messages
+## Startup arguments and failure messages
 
 | Argument | Meaning |
 | --- | --- |
@@ -50,7 +50,7 @@ in the same session only brings the existing window to the front and shows no
 dialog. When VVMDM is running in another session of the same user, a dialog
 says so and the new launch exits. Both cases are detected before the DB opens.
 
-## 3. Data locations
+## Data locations
 
 | Path | Contents |
 | --- | --- |
@@ -62,7 +62,7 @@ says so and the new launch exits. Both cases are detected before the DB opens.
 These stay when the zip is replaced with a new version (requirement 10). The
 new version applies the current migrations at startup.
 
-## 4. Window
+## Window
 
 - Title `VVMDM`, window class name `VVMDMWindow` (used to detect a second
   launch), initial size 1280×800 (fitted to the screen when the screen is

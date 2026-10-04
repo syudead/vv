@@ -6,11 +6,11 @@ The rest of the model is unchanged. Table definitions are in
 [internal/store/migrations/](../../internal/store/migrations/), the data
 categories are in [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user
 data", and the user-data key is in
-[specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key).
+[specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key).
 This file records only the table, column, values and read/write rules this
 feature adds. Tables not named here do not change.
 
-## 1. Migration
+## Migration
 
 Two migrations, each owned by the implementation unit that adds it (the last
 migration on `main` is `00026_video_version_candidates.sql`).
@@ -46,7 +46,7 @@ belongs to the rebuildable index (part of `video_locations`). Cleaning up
 generated files (`RemoveContent`) and `releaseContentIndex` do not touch
 `video_edits`.
 
-## 2. Values added to `domain`
+## Values added to `domain`
 
 | Value | Content |
 | --- | --- |
@@ -60,7 +60,7 @@ generated files (`RemoveContent`) and `releaseContentIndex` do not touch
 
 `domain` does not know how the creation time is read (the per-OS `stat`).
 
-## 3. Edit time rules
+## Edit time rules
 
 One package-internal function,
 `touchEditedAt(ctx, tx, contentKeys []string, now time.Time) error`, runs
@@ -81,13 +81,13 @@ another role's public methods.
 transaction get the same value). No other write touches `video_edits` (R-2).
 
 Same-path content succession (`moveUserData`,
-[specs/030-video-versions/data-model.md §5](../030-video-versions/data-model.md#5-carry-over-of-content-at-the-same-path))
+[specs/030-video-versions/data-model.md, Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path))
 adds `video_edits` to its table list and moves it by the same rule as
 `playback_progress` and `public_videos` (delete the successor's row, then
 re-key). Creating and dissolving bundles (`VersionStore`) does not touch values
 keyed by content key, so it does not touch `video_edits` either.
 
-## 4. Reads
+## Reads
 
 Reads that return videos (`videoColumnsTemplate`, `listColumns`, and the external
 `readVideosByIDs`, which uses `videoColumns`) gain two columns, mapped in
@@ -99,7 +99,7 @@ Reads that return videos (`videoColumnsTemplate`, `listColumns`, and the externa
 | `file_created_at` | `coalesce(l.file_created_at, l.mtime)` of the representative location (`videoColumnsTemplate` uses the same subquery as `mtime`; `listColumns` uses `coalesce(loc.file_created_at, loc.mtime)`) |
 
 Sort (the same form as the table in
-[specs/013-library-search/contracts/list-api.md §3](../013-library-search/contracts/list-api.md#3-videosort-values);
+[specs/013-library-search/contracts/list-api.md, `VideoSort` values](../013-library-search/contracts/list-api.md#videosort-values);
 that document is not changed, and this file holds the delta):
 
 | Sort | Ascending | Descending | Value |
@@ -117,7 +117,7 @@ criterion 6). The expressions for `modifiedAsc` and `modifiedDesc` do not change
 Guest lists allow `createdAsc` and `createdDesc` (they do not depend on owner
 data). The `400` table in `guest-api.md` does not change.
 
-## 5. Scan and location writes
+## Scan and location writes
 
 `internal/scanner` reads `fileCreatedAt(path, info)`
 ([R-5](research.md#r-5-the-file-system-adapter-internalscanner-reads-the-creation-time-per-os-linux-uses-statx-from-golangorgxsysunix))

@@ -9,17 +9,17 @@ exposed to guests (requirement 11; not added to `accessRoutes` in
 stay is in
 [research.md R-9](../research.md#r-9-api-reshapes-apiscans-and-removes-apiprocessing-and-the-sse-processing-event).
 
-## 1. Changed, removed and added routes
+## Changed, removed and added routes
 
 | Route | Change |
 | --- | --- |
-| `POST /api/scans` | The response `Scan` takes the §2 shape. 409 and 403 do not change |
-| `GET /api/scans/current` | The response `Scan` takes the §2 shape. 404 when no scan has ever run, as today |
-| `GET /api/scans/current/issues` | New. §3 |
+| `POST /api/scans` | The response `Scan` takes the [`Scan`](#scan) shape. 409 and 403 do not change |
+| `GET /api/scans/current` | The response `Scan` takes the [`Scan`](#scan) shape. 404 when no scan has ever run, as today |
+| `GET /api/scans/current/issues` | New. [`GET /api/scans/current/issues`](#get-apiscanscurrentissues) |
 | `GET /api/processing` | Removed, along with the `Processing` schema |
-| `GET /api/events` | The `processing` event is removed. `scan` is in §4 |
+| `GET /api/events` | The `processing` event is removed. `scan` is in [`/api/events`](#apievents) |
 
-## 2. `Scan`
+## `Scan`
 
 The latest import's state as the user sees it. The bottom-right indicator and the
 Settings page both read this one value (requirement 8).
@@ -31,10 +31,10 @@ Settings page both read this one value (requirement 8).
 | `videos` | object \| omitted | Progress. Omitted during `finding` |
 | `videos.total` | int, required | The number of target videos ([R-5](../research.md#r-5-the-denominator-during-a-scan-adds-files-not-yet-registered)). 0 means "nothing changed" |
 | `videos.settled` | int, required | The number of settled videos. `0 ≤ settled ≤ total` |
-| `issues` | object, required | Issue counts, counting the grouped items of §3 |
+| `issues` | object, required | Issue counts, counting the grouped items of [`GET /api/scans/current/issues`](#get-apiscanscurrentissues) |
 | `issues.failed` | int, required | Items whose severity is failure |
 | `issues.substituted` | int, required | Items whose severity is substitution |
-| `issues.revision` | int, required | Increases whenever the issue list content changes ([data-model.md §1 and §3](../data-model.md#3-scan_issues-new-table)). It increases when kinds or rows change even if the counts stay the same |
+| `issues.revision` | int, required | Increases whenever the issue list content changes ([data-model.md, `scans.settled_at` and `scans.issues_revision` (added columns)](../data-model.md#scanssettled_at-and-scansissues_revision-added-columns) and [`scan_issues` (new table)](../data-model.md#scan_issues-new-table)). It increases when kinds or rows change even if the counts stay the same |
 | `settledAt` | date-time \| omitted | The time every target settled. Returned only for `done` and `partial` (requirement 4) |
 | `activity` | object \| omitted | The current activity ([R-8](../research.md#r-8-current-activity-held-in-memory-by-internalapp-not-stored)). Omitted when nothing is running |
 | `activity.kind` | `registering` \| `probe` \| `thumbnail` \| `seekThumbnail` \| `preview`, required | What is happening |
@@ -56,10 +56,10 @@ the top that matches wins:
 4. `partial`: `issues.failed > 0`
 5. `done`: otherwise
 
-## 3. `GET /api/scans/current/issues`
+## `GET /api/scans/current/issues`
 
 Returns the latest import's issues, one item per video (per file when
-unregistered) ([data-model.md §3](../data-model.md#3-scan_issues-new-table)).
+unregistered) ([data-model.md, `scan_issues` (new table)](../data-model.md#scan_issues-new-table)).
 
 Query parameters:
 
@@ -89,7 +89,7 @@ The `ScanIssue` shape:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `severity` | `failed` \| `substituted`, required | The grouped item's severity |
-| `kinds` | `ScanIssueKind[]`, required, at least one | The kinds of data-model.md §3, most severe first |
+| `kinds` | `ScanIssueKind[]`, required, at least one | The kinds of data-model.md, [`scan_issues` (new table)](../data-model.md#scan_issues-new-table), most severe first |
 | `fileName` | string, required | |
 | `folder` | `VideoFolder`, required | The folder that holds the location, to tell files with the same name apart |
 | `videoId` | int64 \| omitted | The video id, when registered. The screen can link to `/videos/{id}` (requirement 5) |
@@ -98,15 +98,15 @@ The SPA builds the impact wording (such as `一覧に追加できませんでし
 reason wording from `kinds`
 ([R-10](../research.md#r-10-the-spa-builds-screen-text-from-kinds-the-server-returns)).
 
-## 4. `/api/events`
+## `/api/events`
 
-- The `scan` event carries the §2 `Scan`. As today, it is read at send time,
+- The `scan` event carries the [`Scan`](#scan) `Scan`. As today, it is read at send time,
   coalesced per connection, and sent once right after connecting.
 - `scan` is sent on:
   - today's `domain.ScanChanged`
   - `domain.ProcessingChanged` (a job outcome changes the settled count)
   - the new `domain.ScanActivityChanged`
-- The issue list is not sent over SSE. The screen reloads §3 when `Scan.id` or
+- The issue list is not sent over SSE. The screen reloads [`GET /api/scans/current/issues`](#get-apiscanscurrentissues) when `Scan.id` or
   `Scan.issues.revision` changes. The same applies after reconnecting, so issues
   added while disconnected appear.
 - The `video` event does not change.

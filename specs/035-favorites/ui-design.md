@@ -10,7 +10,7 @@ The visual rules come from the following documents and are not decided again her
 
 | Topic | Source |
 | --- | --- |
-| Colours, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) (§6 for cards, group cards, list view, selection bar and toolbar; §8 for the video page) |
+| Colours, interaction states, width breakpoints, list and video page layout | [Library UI](../../docs/design-docs/library-ui.md) ([List layout](../../docs/design-docs/library-ui.md#list-layout) for cards, group cards, list view, selection bar and toolbar; [Video page layout](../../docs/design-docs/library-ui.md#video-page-layout) for the video page) |
 | Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy values |
 | Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | Card box and how the selection checkbox appears (hover, focus, `hover:none` devices) | The current [`web/src/videoList/VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) and [`web/src/library/GroupCard.tsx`](../../web/src/library/GroupCard.tsx), [specs/017-folder-groups/ui-design.md "Group card"](../017-folder-groups/ui-design.md#group-card) |
@@ -99,7 +99,7 @@ the same icon and the same fill rule, and the toggle itself shows the current st
   "selected" and "focused" marks, and was recognisable as a favorite only from the heart shape. The favorite
   mark should read through both shape and colour, so its colour is one used only by this feature's mark.
   `danger` is still not used, for the earlier reason: red is the semantic colour for danger and failure, and
-  on a card it would compete with the "can't play" warning (library-ui.md §1). Hence a pink outside the
+  on a card it would compete with the "can't play" warning (library-ui.md, [Visual values in one CSS location, with contrast guaranteed by tests](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)). Hence a pink outside the
   `danger` family, added as its own token.
 - **Off is an outline-only white heart** (`text-fg`), with a dark shadow (`drop-shadow-mark`) on cards; on rows
   and the video page it is `text-fg-muted` with neither shadow nor surface. So that cards without a favorite are
@@ -259,7 +259,7 @@ Bundle as versions → divider → Select all → clear.
   "changes who can see". With one more action before visibility, "Visibility" and "Bundle as versions" move
   right.
 - The current state of the selected items is not shown. Both items are always enabled, and items already in the
-  state are not errors (Edge Case, [contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)).
+  state are not errors (Edge Case, [contracts/screen-api.md, `PUT /api/favorites`](contracts/screen-api.md#put-apifavorites)).
 - Confirming sends one `PUT /api/favorites`. `folders` is the chosen groups (chosen by a group card's
   checkbox, or `groups` in the "Select all" response), and `videoIds` is the selected ids that are not members
   of a chosen group (R-7). Deselecting even one member of a group sends the remaining members as videos instead
@@ -291,9 +291,9 @@ Bundle as versions → divider → Select all → clear.
      second row, before the divider, "Select all" and clear. The second row is aligned right.
 
   When step 1 is enough, the actions are not split, because everything before the divider is the group of
-  "what to do with the selection" (library-ui.md §6). When step 2 splits them, it only splits into the two tag
+  "what to do with the selection" (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)). When step 2 splits them, it only splits into the two tag
   actions and the group from "Favorite" onward, so the order reads the same as on one row. Action names are not
-  shortened (library-ui.md §6). Which step is needed depends on the count and the real widths of the actions;
+  shortened (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)). Which step is needed depends on the count and the real widths of the actions;
   check it on a real device at the judged widths (640 and 768px). The five actions including "Bundle as
   versions" already do not fit one row at 768px, so this rule fixes that too.
 - **Below `sm`**: the top tier is unchanged (count, Select all, clear). The bottom tier divides the width
@@ -305,7 +305,7 @@ Bundle as versions → divider → Select all → clear.
   three or more tiers.
 - At 360px (iPhone SE) and 390px: count tier → "Add tag" and "Remove tag" tier → a tier with "Favorite" and
   "Visibility" at the right end. With two or more, "Bundle as versions" is at the right end of the tier below.
-- Action names are not shortened (library-ui.md §6). "Favorite" is not reduced to an icon.
+- Action names are not shortened (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)). "Favorite" is not reduced to an icon.
 
 ## Filter menu
 
@@ -375,11 +375,11 @@ When rendering for a guest, the following are **not shown**. They are neither `d
 | Cards and rows (library, folder screen, search results) | The favorite mark and toggle | The response has no `favorite`. Like the public mark, it has no meaning for a guest |
 | Video page | The toggle at the right end of the facts row | The response has neither `location` nor `favorite`, so the whole right-hand group is absent (as today) |
 | Selection bar | — | Guests have no selection bar |
-| Toolbar | "Favorites only" in the filter, "Date favorited" in the sort | Guests have seven sorts. When the URL still has `fav=1`, `sort=favoritedAsc` or `favoritedDesc`, the request uses the normalised defaults, like `watch` and `played*`, and the URL is corrected (added to the table in [guest-api.md §3](../016-single-account-auth/contracts/guest-api.md#3-conditions-guests-cannot-use)). A sort stored on the device as `favorited*` is normalised the same way, and the stored value is not rewritten |
+| Toolbar | "Favorites only" in the filter, "Date favorited" in the sort | Guests have seven sorts. When the URL still has `fav=1`, `sort=favoritedAsc` or `favoritedDesc`, the request uses the normalised defaults, like `watch` and `played*`, and the URL is corrected (added to the table in [guest-api.md, Conditions guests cannot use](../016-single-account-auth/contracts/guest-api.md#conditions-guests-cannot-use)). A sort stored on the device as `favorited*` is normalised the same way, and the stored value is not rewritten |
 
 ## Responsive behaviour
 
-Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md §4). The judged widths are 360px,
+Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)). The judged widths are 360px,
 640px, 768px and 1280px.
 
 | Width | Card | Selection bar | Video page | Toolbar |
@@ -391,7 +391,7 @@ Only Tailwind's default breakpoints are used, switched in CSS (library-ui.md §4
 
 ## Review criteria
 
-Judge on a real device (library-ui.md §5). "It exists" alone does not pass (Q-4).
+Judge on a real device (library-ui.md, [Layout verified by people, not machines](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines)). "It exists" alone does not pass (Q-4).
 
 1. **Visual hierarchy (cards)**: In the owner's library, a favorite card has only one filled heart in its
    corner, which does not catch the eye before the thumbnail and title. A card that is not a favorite looks no
@@ -466,7 +466,7 @@ tested at the text threshold.
 | `favorite` on `bg` | The list surface (a pair on the same basis as the other colours in `pairs`) |
 
 The thumbnail artwork itself cannot be tested, so on cards the shadow (`drop-shadow-mark`) keeps the mark
-readable ("Card"). There is one dark palette only (library-ui.md §2), and testing uses that palette.
+readable ("Card"). There is one dark palette only (library-ui.md, [Dark scheme only, without a light/dark switch](../../docs/design-docs/library-ui.md#dark-scheme-only-without-a-lightdark-switch)), and testing uses that palette.
 `favorite` is a role name, so if a light palette is ever defined, it needs one more `favorite` value in that
 palette and the same four pairs tested; the screens do not change.
 

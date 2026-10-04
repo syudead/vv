@@ -206,7 +206,7 @@ and on close running the stop sequence (without confirmation) and exiting
 to [R-5](research.md#r-5-data-lives-in-localappdatavvmdm),
 [R-10](research.md#r-10-every-startup-failure-shows-its-reason-in-a-standard-windows-dialog-and-is-logged-under-logs),
 R-11,
-[contracts/windows-app.md §2 to §4](contracts/windows-app.md#2-startup-arguments-and-failure-messages)).
+[contracts/windows-app.md, Startup arguments and failure messages](contracts/windows-app.md#startup-arguments-and-failure-messages) to [Window](contracts/windows-app.md#window)).
 Add `internal/desktop` to depguard. Add a `-tags desktop` build to
 `build-windows-check`, and lint with `GOOS=windows` and the `desktop` tag to
 `task lint`. This unit's sections in
@@ -259,7 +259,7 @@ the listener are passed in", "Windows desktop app `VVMDM.exe`: open in its own
 window and stop the server when it closes"
 
 **Acceptance**: `task check` passes. In the httpapi tests, every row of the
-tables in §2 and §3 of the contract returns its response: `404` when not the
+tables in [`GET /api/settings/network`](contracts/network-settings-api.md#get-apisettingsnetwork) and [`PUT /api/settings/network`](contracts/network-settings-api.md#put-apisettingsnetwork) of the contract returns its response: `404` when not the
 desktop app, `401` for a guest, `403` from another site, `409` `listen_failed`
 with the stored value unchanged when the reopen fails, and `500` with the
 listener back on the original address when saving fails. In the store tests, a
@@ -296,7 +296,7 @@ FFmpeg by version and SHA-256, the icon and manifest via `go-winres`,
 check in a Windows job, attaching to the Release)
 ([R-12](research.md#r-12-the-bundled-ffmpeg-is-gyandevs-windows-essentials-build-pinned-by-version-and-sha-256),
 [R-13](research.md#r-13-github-actions-builds-the-distribution-and-attaches-it-to-a-github-release-on-a-v-tag),
-[contracts/windows-app.md §1](contracts/windows-app.md#1-zip-contents)). The
+[contracts/windows-app.md, Zip contents](contracts/windows-app.md#zip-contents)). The
 Windows app section of running-vv.md (getting it, starting it, SmartScreen,
 data location, updating, `--port`, LAN permission) and this unit's other
 sections in [Documentation ownership](#documentation-ownership).
@@ -307,7 +307,7 @@ to open in the "Network" section of Settings" (so that running-vv.md can
 describe the LAN permission)
 
 **Acceptance**: `task check` passes. `task build-windows-app` creates
-`dist/VVMDM-<version>-windows-amd64.zip`, its contents match §1 of the contract,
+`dist/VVMDM-<version>-windows-amd64.zip`, its contents match [Zip contents](contracts/windows-app.md#zip-contents) of the contract,
 and the build fails for an FFmpeg whose SHA-256 does not match. A manual run of
 the workflow succeeds, the Windows job confirms `h264_nvenc` and `h264_qsv`, and
 the zip remains in the artifacts. On real Windows hardware without ffmpeg, steps

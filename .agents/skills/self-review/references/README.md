@@ -25,7 +25,7 @@ agrees with itself.
 
 ## The five checks
 
-### 1. Reconcile the diff against the sources of truth
+### Reconcile the diff against the sources of truth
 
 For each behaviour the diff adds or changes, quote the parent Issue's `要件` or
 `受け入れ条件`, or the line in `plan.md`, `data-model.md`, `contracts/`,
@@ -47,7 +47,7 @@ numbers kept the overlap, symlink and root rules and lost absolute, exists,
 directory and readable, which read literally permitted registering a folder
 that had just been deleted.
 
-### 2. Enumerate the call sites of every invariant the change touches
+### Enumerate the call sites of every invariant the change touches
 
 Name the invariants the change relies on — "the representative location
 determines `videos.container`", "a queued job refers to a current location",
@@ -58,7 +58,7 @@ A reviewer reading a diff finds the instance in front of it. The author knows
 the invariant, so the author can find all of them at once. An invariant caught
 one call site at a time costs one round per call site.
 
-### 3. Apply the change to state that already exists
+### Apply the change to state that already exists
 
 Ask what happens to a database, a queue, or a cache that was created by the
 previous version. Applied migrations do not re-run; rows written under the old
@@ -67,7 +67,7 @@ rules stay; jobs queued under the old rules get claimed under the new ones.
 A change that is correct on an empty database and wrong on an existing one
 passes every test in the repository.
 
-### 4. Walk the failure paths
+### Walk the failure paths
 
 For each I/O call, loop, and multi-step operation the diff adds: what remains
 if it fails halfway? Name what is left behind, whether the caller can tell, and
@@ -75,7 +75,7 @@ whether a retry is safe. Row iteration that ignores its error, a request whose
 follow-up fetch fails, two writes without a transaction, and a response that
 arrives after a later one all belong here.
 
-### 5. Find the sources of truth this change makes stale
+### Find the sources of truth this change makes stale
 
 List the artifacts, examples, and other features' specifications that the
 change contradicts. `README` and `quickstart` command examples, another

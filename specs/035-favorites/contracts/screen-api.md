@@ -4,7 +4,7 @@ Parent Issue: #574. Source of truth: [api/openapi.yaml](../../../api/openapi.yam
 endpoints, fields and values added. `task generate` regenerates `internal/httpapi/gen/` and
 `web/src/api/gen/`. The external API (`api/external-v1.yaml`) does not change (out of scope).
 
-## 0. Fields added to `Video` and `LibraryGroup`
+## Fields added to `Video` and `LibraryGroup`
 
 ```yaml
 Video:
@@ -13,7 +13,7 @@ Video:
       type: boolean
       description: |
         Whether the owner made this video a favorite. Present only in owner responses
-        (specs/035-favorites/data-model.md §3)
+        (specs/035-favorites/data-model.md, [Read columns](../data-model.md#read-columns))
 
 LibraryGroup:
   properties:
@@ -21,7 +21,7 @@ LibraryGroup:
       type: boolean
       description: |
         Whether the owner made this group a favorite. Independent of the member videos' favorites,
-        and present only in owner responses (specs/035-favorites/data-model.md §3)
+        and present only in owner responses (specs/035-favorites/data-model.md, [Read columns](../data-model.md#read-columns))
 ```
 
 | Field | Where it appears |
@@ -31,12 +31,12 @@ LibraryGroup:
 
 The time a favorite was made is not in any response (the server decides the order).
 
-## 1. `PUT /api/favorites`
+## `PUT /api/favorites`
 
 Owner only (the default class for `/api/*`). Sets the favorite of the videos in `videoIds` and the groups in
 `folders` to `favorite`
 ([research.md R-2](../research.md#r-2-one-owner-only-put-apifavorites-for-videos-and-folders-in-one-transaction),
-[data-model.md §4](../data-model.md#4-writes-favoritestore)).
+[data-model.md, Writes (`FavoriteStore`)](../data-model.md#writes-favoritestore)).
 
 ```yaml
 /api/favorites:
@@ -76,13 +76,13 @@ transaction: all of it applies or none of it does. No `/api/events` notification
 A group member in `videoIds` gets its own favorite. A group in `folders` does not favorite its members
 (requirement 4).
 
-## 2. List `favorite` parameter and new `VideoSort` values
+## List `favorite` parameter and new `VideoSort` values
 
 Add `favorite` (boolean, default false) to `GET /api/videos`, `GET /api/folders/{rootId}/videos`,
 `GET /api/library` and `GET /api/library/ids`. True limits the list to favorites. Each item is judged by its
 own favorite (a video item by the video, a group item by the group), combined with `query`, `tag`, `watch`
 and `playable` by AND. A favorite video in a group that is not a favorite becomes a video item
-([data-model.md §5](../data-model.md#5-reads-and-lists)). The `description` of `GET /api/library` and
+([data-model.md, Reads and lists](../data-model.md#reads-and-lists)). The `description` of `GET /api/library` and
 `GET /api/library/ids` gains this rule.
 
 ```yaml
@@ -97,7 +97,7 @@ VideoSort:
 `GET /api/library/ids` has no `sort` and does not change.
 
 Guests (added to the table in
-[guest-api.md §3](../../016-single-account-auth/contracts/guest-api.md#3-conditions-guests-cannot-use)): the rules apply
+[guest-api.md, Conditions guests cannot use](../../016-single-account-auth/contracts/guest-api.md#conditions-guests-cannot-use)): the rules apply
 to the three endpoints a guest can read, `GET /api/videos`, `GET /api/folders/{rootId}/videos` and
 `GET /api/library`. `GET /api/library/ids` is owner-only and still returns `401` to a guest whatever the
 conditions.
@@ -109,7 +109,7 @@ conditions.
 
 The `message` of `guest_filter_not_allowed` gains "favorites".
 
-## 3. Fields added to `GET /api/library/ids`
+## Fields added to `GET /api/library/ids`
 
 ```yaml
 VideoIdsResponse:
@@ -134,17 +134,17 @@ LibraryGroupIds:
 ([research.md R-7](../research.md#r-7-selection-keeps-chosen-groups-as-groups)). Other endpoints that return
 `VideoIdsResponse`, such as `POST /api/video-tags/summary`, do not include `groups`.
 
-## 4. Unchanged endpoints
+## Unchanged endpoints
 
 `PUT /api/video-visibility`, `POST /api/video-tags` and `POST /api/video-bundles` still take a set of video
 ids. The parameters of `GET /api/folders/{rootId}/group` do not change (its response gains `favorite`). The
 external API and MCP do not change.
 
-## 5. `web/src/api` changes
+## `web/src/api` changes
 
 | Change | Detail |
 | --- | --- |
-| `videoSorts` | Add `favoritedAsc` and `favoritedDesc`. The screen's list criteria accept only sorts whose kind is in `sortKinds`, through `isListSort` (as in 033 §3) |
+| `videoSorts` | Add `favoritedAsc` and `favoritedDesc`. The screen's list criteria accept only sorts whose kind is in `sortKinds`, through `isListSort` (as in [033 screen-api.md, `web/src/api` changes](../../033-video-dates/contracts/screen-api.md#websrcapi-changes)) |
 | `ListFilterParams` | Add `favorite?: boolean`. `listVideos`, `listLibrary`, `listLibraryIds` and `listFolderVideos` send `favorite=true` only when it is true |
 | `favorites.ts` | `updateFavorites(videoIds, folders, favorite)` (`PUT /api/favorites`) and the result subscriptions ([research.md R-6](../research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern)) |
 | Generated `Video` and `LibraryGroup` types | `favorite` is optional, so the Vitest fixtures need no update |

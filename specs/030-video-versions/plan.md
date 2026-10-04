@@ -16,21 +16,21 @@ by fingerprint and offered as candidates.
 
 - **Storage**: bundles live in the user-data tables `video_bundles` and `video_bundle_members`. A bundle's
   values sit in the existing tables `playback_progress`, `video_tags` and `public_videos` under the bundle's own
-  key (`bundle:<id>`) ([research.md R-1](research.md), [data-model.md §1 and §2](data-model.md)).
+  key (`bundle:<id>`) ([research.md R-1](research.md), [data-model.md, Migration](data-model.md#migration) and [Values added to `domain`](data-model.md#values-added-to-domain)).
 - **Key resolution**: every place that reads or writes user data resolves the **user key** (the bundle's key
   for a bundled video, `content_key` otherwise) with one expression, and every read that returns a video puts
-  it in `Video.UserKey` ([R-2](research.md), [data-model.md §3](data-model.md)).
+  it in `Video.UserKey` ([R-2](research.md), [data-model.md, User key](data-model.md#user-key)).
 - **Listing**: the library, search, folders and groups list only **shown videos** (unbundled videos and the
   effective representative of each bundle). The search expression applies to every location of the bundle;
   the scope applies to the representative's locations ([R-3](research.md), [R-4](research.md),
-  [data-model.md §4](data-model.md)).
+  [data-model.md, Shown videos and listing](data-model.md#shown-videos-and-listing)).
 - **Carry-over**: `UpsertVideo` records a change of content at the same path as a succession candidate. Once
   the scan that recorded it closes and the new content's probe has finished, the durations are compared and
-  the values carry over ([R-5](research.md), [data-model.md §5](data-model.md)).
+  the values carry over ([R-5](research.md), [data-model.md, Carry-over of content at the same path](data-model.md#carry-over-of-content-at-the-same-path)).
 - **Detection**: a new ingest stage `fingerprint` makes a fingerprint from the pHash of each seek-sprite frame,
   and the transaction that writes the fingerprint computes candidates and stores them in a table. A "different
   videos" decision is kept as user data ([R-6](research.md), [R-7](research.md),
-  [data-model.md §6 and §7](data-model.md)).
+  [data-model.md, Fingerprints](data-model.md#fingerprints) and [Candidates](data-model.md#candidates)).
 - **API**: new routes list versions, bundle, change the representative, remove a version, list candidates and
   dismiss a candidate. A bundle is addressed by a video id ([R-8](research.md),
   [contracts/screen-api.md](contracts/screen-api.md)). A bundle change is mapped to `video` on `/api/events`
@@ -94,7 +94,7 @@ by fingerprint and offered as candidates.
   (`video_bundles`, `video_bundle_members`, `video_version_dismissals`), `00024_video_successions.sql` adds
   `video_successions`, `00025_video_fingerprints.sql` adds `video_fingerprints` and `fingerprint` in
   `jobs.kind`, and `00026_video_version_candidates.sql` adds `video_version_candidates`
-  ([data-model.md §1](data-model.md)). No column is added to `videos`, `video_locations` or the existing
+  ([data-model.md, Migration](data-model.md#migration)). No column is added to `videos`, `video_locations` or the existing
   user-data tables.
 - No Go or npm dependency is added. The fingerprint is built from the standard library's `image/jpeg` and a
   few dozen lines of DCT, and ffmpeg is not started even once more (R-6).
@@ -132,7 +132,7 @@ by fingerprint and offered as candidates.
   (`rebuildFolderIndex`) are shared as package-level functions.
 - **Index versus user data** ("Rebuildable and user data"): pass. Bundles and dismissals are user data with no
   foreign key to `videos`; fingerprints, candidates and successions are index data, deleted when nothing
-  references the content any more (data-model.md §1 and §6).
+  references the content any more (data-model.md, [Migration](data-model.md#migration) and [Fingerprints](data-model.md#fingerprints)).
 - **Reads shown to guests go through `visibleLocationCondition`**: pass. The shown-videos CTE takes the
   viewer's condition, and visibility is decided by the bundle's key (R-2, R-3).
 - **Generated-file locations do not change** ("Generated files have one owner"): pass. The fingerprint only
@@ -206,10 +206,10 @@ so it goes in `ScanIndexStore` (R-5, R-7). For computing the fingerprint, `inter
 **Scope**: the user-data tables of `00023_video_versions.sql` (`video_bundles`, `video_bundle_members`,
 `video_version_dismissals`) and the `FolderIndexVersion` bump; `domain.Video.UserKey`, `VideoVersions`,
 `VideoBundleChanged`; `VersionStore`'s `Bundle`, `MakeRepresentative`, `Unbundle` and `Versions`
-([data-model.md §1, §2 and §8](data-model.md)). The user-key expression and every read and write path that
+([data-model.md, Migration](data-model.md#migration), [Values added to `domain`](data-model.md#values-added-to-domain) and [Store operations (`VersionStore`)](data-model.md#store-operations-versionstore)). The user-key expression and every read and write path that
 uses it (`Video.UserKey`, `publicVideoCondition`, tag filtering and matching, watch state, `SaveProgress`,
 adding and removing tags, tag summaries and counts, toggling visibility and cutting off guests, the external
-API's list and lookup; [§3](data-model.md)). The screen subscription in `cmd/mdm/events.go`. The user-data list
+API's list and lookup; [User key](data-model.md#user-key)). The screen subscription in `cmd/mdm/events.go`. The user-data list
 and the `store.DB` role list in ARCHITECTURE.md. Collapsing the listing is not done yet (next unit).
 
 **Dependencies**: None
@@ -233,7 +233,7 @@ member; no bundle has fewer than 2 members; no `user_key` does not start with `b
 it: `chosenLocationsCTE` (applies the search expression to every location of the bundle), `libraryItemsCTE`
 and `LibraryIDs`, videos directly in a folder and folder counts (`folders.go`), `DirectVideoPaths` and
 `VideosAddedNear`, the folder index input (`folderIndexLocations`) and its rebuild on bundle operations, tag
-counts ([data-model.md §4](data-model.md)). In `api/openapi.yaml`, the descriptions of `listLibrary`,
+counts ([data-model.md, Shown videos and listing](data-model.md#shown-videos-and-listing)). In `api/openapi.yaml`, the descriptions of `listLibrary`,
 `listVideos`, `listFolderVideos` and folders, and the generated code; the listing paragraph of ARCHITECTURE.md.
 
 **Dependencies**: Store bundles and resolve user-data keys
@@ -254,7 +254,7 @@ non-representative versions.
 `POST /api/videos/{id}/make-representative`, `POST /api/videos/{id}/unbundle`, `Video.versions` on the detail
 response, new `ErrorReason` values, `api/openapi.yaml` and generated code, the functions in
 `web/src/api/client.ts` and the messages in `web/src/i18n/errors.ts`
-([contracts/screen-api.md §0 to §4](contracts/screen-api.md)). Tests in `accessRoutes` (`GET` on `versions` is
+([contracts/screen-api.md, `Video` delta](contracts/screen-api.md#video-delta) to [`POST /api/videos/{id}/unbundle`](contracts/screen-api.md#post-apivideosidunbundle)). Tests in `accessRoutes` (`GET` on `versions` is
 open to guests; the rest are owner-only). The API paragraph of ARCHITECTURE.md.
 
 **Dependencies**: Collapse each bundle to its representative in the library, search, folders and groups
@@ -272,7 +272,7 @@ representative among the videos, or on an unbundled video return the contract's 
 
 ### Carry over values when the content at a path changes during a scan
 
-**Scope**: `video_successions` from `00024_video_successions.sql` ([data-model.md §1 and §5](data-model.md));
+**Scope**: `video_successions` from `00024_video_successions.sql` ([data-model.md, Migration](data-model.md#migration) and [Carry-over of content at the same path](data-model.md#carry-over-of-content-at-the-same-path));
 recording a succession in `UpsertVideo` and cancelling it (when the previous content appears at another path);
 comparing durations and carrying over in `FinishScan` (`done`) and in `ApplyProbe` and `ApplyProbeForJob` (for
 a bundle member, the member's place carries over; otherwise the rows of the three tables are re-keyed);
@@ -297,10 +297,10 @@ published for every member of the bundle the previous content belonged to.
 
 **Scope**: `domain.JobFingerprint` (last in `JobKinds`; its claim condition is a finished seek thumbnail);
 `domain.Fingerprint`, `FrameHash`, `CompareFingerprints`, the thresholds and `FingerprintVersion`
-([data-model.md §6](data-model.md)); `media.SpriteFingerprint` (each frame's 32×32 luma from the sheet JPEGs);
+([data-model.md, Fingerprints](data-model.md#fingerprints)); `media.SpriteFingerprint` (each frame's 32×32 luma from the sheet JPEGs);
 `app.Ingest.Fingerprint`; `IngestStore.ApplyFingerprintForJob` (computing candidates is the next unit); the
 migration of `video_fingerprints` and `jobs.kind` in `00025_video_fingerprints.sql` (it queues the job for
-videos with a finished sprite; [data-model.md §1](data-model.md)); queuing the job in the transaction that
+videos with a finished sprite; [data-model.md, Migration](data-model.md#migration)); queuing the job in the transaction that
 finishes the seek thumbnail; re-queuing missing fingerprints during a scan
 (`IndexedVideo.FingerprintMissing` and `EnsureJob`); wiring for the worker and wake-ups; the `ScanActivity`
 kind and its screen text. The ingest paragraph of ARCHITECTURE.md.
@@ -320,11 +320,11 @@ job, claiming waits for the seek thumbnail to finish, and the job counts as rema
 ### Compute candidates, and the API to list and dismiss them
 
 **Scope**: `video_version_candidates` from `00026_video_version_candidates.sql`
-([data-model.md §1](data-model.md)), `vv_fingerprint_distance`, computing candidates in the transaction that
-writes the fingerprint ([data-model.md §7](data-model.md)), deleting candidates on bundle operations and when
+([data-model.md, Migration](data-model.md#migration)), `vv_fingerprint_distance`, computing candidates in the transaction that
+writes the fingerprint ([data-model.md, Candidates](data-model.md#candidates)), deleting candidates on bundle operations and when
 nothing references the content any more, `VersionStore.Candidates` and `Dismiss`,
 `GET /api/version-candidates` and `POST /api/version-candidates/dismiss`
-([contracts/screen-api.md §5](contracts/screen-api.md)), `api/openapi.yaml` and generated code, the functions in
+([contracts/screen-api.md, Candidates](contracts/screen-api.md#candidates)), `api/openapi.yaml` and generated code, the functions in
 `web/src/api/client.ts`. The ARCHITECTURE.md paragraph.
 
 **Dependencies**: Store bundles and resolve user-data keys; Ingest stage that fingerprints footage from seek

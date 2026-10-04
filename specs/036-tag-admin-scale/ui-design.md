@@ -2,14 +2,14 @@
 
 **Feature**: [parent Issue #651](https://github.com/syudead/vv/issues/651) ·
 [plan.md](plan.md) · [research.md](research.md) (R-1 to R-7, R-11 to R-14) ·
-[data-model.md §4](data-model.md#4-screen-state) ·
-[contracts/screen-api.md](contracts/screen-api.md) (§5, §6)
+[data-model.md, Screen state](data-model.md#screen-state) ·
+[contracts/screen-api.md](contracts/screen-api.md) ([`GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters), [`GET /api/tags/rejected-names` parameters](contracts/screen-api.md#get-apitagsrejected-names-parameters))
 
 The visual rules come from the following sources and are not decided again here.
 
 | Topic | Source |
 | --- | --- |
-| Colours, interaction states, width breakpoints, list layout, selection bar shape | [Library UI](../../docs/design-docs/library-ui.md) (§1, §3, §4, §6) |
+| Colours, interaction states, width breakpoints, list layout, selection bar shape | [Library UI](../../docs/design-docs/library-ui.md) ([Visual values in one CSS location, with contrast guaranteed by tests](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests), [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling), [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), [List layout](../../docs/design-docs/library-ui.md#list-layout)) |
 | Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy values |
 | Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | Skeleton of the tag admin screen (body width, row columns and format, create and rename, synonyms dialog, delete dialog, states table) | [specs/014-video-tags/ui-design.md "Tag management page"](../014-video-tags/ui-design.md#tag-management-page) and the current [`web/src/tags/`](../../web/src/tags/) |
@@ -249,7 +249,7 @@ Search, filters and sort sit in the centre of the shared top bar (`TopBarPortal`
 search, filters and sort do not apply to rejected names (as in 031).
 
 Changing search, "Tentative only", "Unused only" or the sort **reloads the first page from the server** under the
-new conditions ([data-model.md §4](data-model.md#4-screen-state), "Conditions").
+new conditions ([data-model.md, Screen state](data-model.md#screen-state), "Conditions").
 
 ```mermaid
 flowchart LR
@@ -270,7 +270,7 @@ flowchart LR
 
 | Control | Shape and behaviour |
 | --- | --- |
-| Search | The library's `SearchBox` with `syntaxHelp={false}` (no video search syntax help). Accessible name and placeholder "Search tags"; `/` focuses it; Esc clears it and leaves the field (Esc during IME composition is ignored). Requests on every keystroke (`debounceMs={0}`, the previous request is aborted; behaviour since 014). The server matches the names and synonyms of every tag and treats full-width and half-width forms and kana variants as equal, the same rule as tag search in the library (requirement 7, `q` in [contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). Input stops at 100 characters (code points), the limit of `q`, counted as in the library search field. `disabled` when there are no tags |
+| Search | The library's `SearchBox` with `syntaxHelp={false}` (no video search syntax help). Accessible name and placeholder "Search tags"; `/` focuses it; Esc clears it and leaves the field (Esc during IME composition is ignored). Requests on every keystroke (`debounceMs={0}`, the previous request is aborted; behaviour since 014). The server matches the names and synonyms of every tag and treats full-width and half-width forms and kana variants as equal, the same rule as tag search in the library (requirement 7, `q` in [contracts/screen-api.md, `GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters)). Input stops at 100 characters (code points), the limit of `q`, counted as in the library search field. `disabled` when there are no tags |
 | "Filter" | The library's `FilterMenu` button and popover (`FilterPopover`; secondary `Button`, `ListFilter`, text "Filter" at `xl` and up). Two `FilterCheckbox`es: "Tentative only" (hint "Show only tags created by automatic tagging") and "Unused only" (hint "Show only tags that aren't on any videos"). While either applies, the button takes the library's `bg-accent-soft text-link` with the active count (1 or 2), the accessible name becomes "Filter (N applied)", and the popover ends with "Clear filters" (clears both; search and sort stay). A checkbox reloads with `tentative=true` or `unused=true` and leaves the popover open (as in the library). Both together match tags meeting both (requirement 6), over every tag |
 | "Filter" disabled | Before the first page has ever arrived, after a failure with no list, and when `totalAll` is 0 with nothing applied. **Not disabled when `total` reaches 0 while a filter applies**: it is how the user removes the filter and a focus target |
 | Sort, `md` and up | The library's `SortMenu` shape (`SortMenuView`): a secondary `Button` with the current kind ("Name", "Video count", "Date created") and `ChevronDown`, accessible name "Sort by: {kind}". The menu has the heading "Sort by" and three radio items. Icons: Name `ArrowDownAZ` (the library's "Title" icon, meaning name order); Video count `Hash` (a number); Date created `CalendarPlus` (the day the tag was made; the library's "Date created" uses `FileClock` for a file's creation date, a different thing, so the picture differs) |
@@ -291,7 +291,7 @@ reload, back and forward ([`web/src/tags/tagListUrl.ts`](../../web/src/tags/tagL
 | `q` | Search text in the `normalizeQuery` form | |
 | `tentative` | `1` | Not written when false |
 | `unused` | `1` | Not written when false |
-| `sort` | `name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc` | Always written. Leaving it out would mean "the sort stored on this device", and back could not return to the previous sort (as list-url.md §1) |
+| `sort` | `name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc` | Always written. Leaving it out would mean "the sort stored on this device", and back could not return to the previous sort (as [013 list-url.md, Parameters](../013-library-search/contracts/list-url.md#parameters)) |
 | `tab` | `rejected` | Not written for the "Tags" tab |
 
 - A value that cannot be parsed counts as the default.
@@ -325,10 +325,10 @@ The header row is `flex min-h-10 items-center gap-3`: on the left an `h1` "Tags"
 primary "New tag" (`Plus`).
 
 - **Count**: built from the response's `total` and `totalAll`
-  ([contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). "1,000 tags", or "90 of 1,000
+  ([contracts/screen-api.md, `GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters)). "1,000 tags", or "90 of 1,000
   tags" while a filter or search applies (acceptance criterion 8; unloaded tags are counted). **The loaded number
   and page boundaries never appear.** A row kept for an ongoing rename is not counted. Changes after an action are
-  counted locally ([data-model.md §4](data-model.md#4-screen-state), "Applying an action's result").
+  counted locally ([data-model.md, Screen state](data-model.md#screen-state), "Applying an action's result").
   Before the first page arrives the count reads "Loading…".
 - On the "Rejected names" tab the row shows only the `h1`, without the count and "New tag".
 - Selecting one row replaces this row with the selection bar of the same height ([Selection bar](#selection-bar)).
@@ -383,7 +383,7 @@ When load-more adds rows, "All" turns back into "Mixed".
 ### Stale list
 
 This is the shape when the **first page** fails while a list is shown: after a condition change, "Reload", or
-the reload after `notFoundIds` ([data-model.md §4](data-model.md#4-screen-state), "Load failure").
+the reload after `notFoundIds` ([data-model.md, Screen state](data-model.md#screen-state), "Load failure").
 
 ```mermaid
 stateDiagram-v2
@@ -444,7 +444,7 @@ Reloading from the top under new conditions clears every state.
 | Done (no `nextCursor`) | Nothing. No "Everything is loaded" row: the absence of the load-more `Skeleton` is the sign, and the loaded number is not shown |
 
 The trigger is the virtualizer's last drawn row coming within a few rows of the end of the loaded rows
-([data-model.md §4](data-model.md#4-screen-state), "When to load more"), so loading starts before the
+([data-model.md, Screen state](data-model.md#screen-state), "When to load more"), so loading starts before the
 user reaches the end. When an action leaves **no loaded row** (`rows` empty) and a `nextCursor` exists, no row is
 drawn and that trigger cannot fire. The screen then requests the next page once, together with applying the
 action, and shows the loading `Skeleton` instead of the empty state when `total` is not 0. Examples: confirming
@@ -466,7 +466,7 @@ every loaded tentative tag under "Tentative only", or deleting every loaded row 
   during rename. Starting a rename on a selected row deselects it (the selection bar count drops; at zero the header
   row returns). Bulk actions never act on a tag being renamed.
 - The selection is a subset of the **loaded rows** and empties when search, filters or **sort** change (Edge Case,
-  [data-model.md §4](data-model.md#4-screen-state), "Selection"). Ids that leave `rows` after an action
+  [data-model.md, Screen state](data-model.md#screen-state), "Selection"). Ids that leave `rows` after an action
   or a reload drop out. Row checkboxes stay pressable even when the loaded rows exceed the limit
   ([Why this shape](#why-this-shape)).
 - A row being renamed survives a reload from the top under new conditions: if the new `rows` lack it, it is inserted
@@ -482,7 +482,7 @@ every loaded tentative tag under "Tentative only", or deleting every loaded row 
 | Touch (`pointer: coarse`) or below `sm` | One `IconButton` at the right end (`Ellipsis`, accessible name "Actions", no tooltip) opening a menu of labelled items: "Confirm" (`Check`, tentative rows only) → "Rename" (`Pencil`) → "Synonyms" (`Tags`) → "Merge into another tag…" (`Merge`) → separator → "Reject…" (`Ban`, danger, tentative rows) or "Delete…" (`Trash2`, danger, confirmed rows) |
 
 - Item labels reuse the current `IconButton` accessible names and menu items. CSS chooses the variant
-  (`[@media(pointer:coarse)]` and `max-sm:`), without reading `matchMedia` (library-ui.md §4, as `TouchControls`).
+  (`[@media(pointer:coarse)]` and `max-sm:`), without reading `matchMedia` (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), as `TouchControls`).
 - "Confirm" in the menu behaves like the row's "Confirm": no confirmation; while sending, the entry `IconButton` is
   `aria-busy` and ignores further presses. Rename, synonyms, merge, reject and delete behave as their `IconButton`s
   and items. Focus rules from 014 and 031 that target "Rename" or "More actions" target the entry `IconButton`
@@ -604,7 +604,7 @@ stateDiagram-v2
 
 | State | What the dialog shows |
 | --- | --- |
-| Counting | Opening sends `POST /api/tags/impact` (`reject` or `delete`, every selected id). The body is one line "Counting the affected videos…" (`text-sm text-fg-muted`) with `LoaderCircle`. **The danger button stays `disabled`** so nothing runs without a number ([contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)) |
+| Counting | Opening sends `POST /api/tags/impact` (`reject` or `delete`, every selected id). The body is one line "Counting the affected videos…" (`text-sm text-fg-muted`) with `LoaderCircle`. **The danger button stays `disabled`** so nothing runs without a number ([contracts/screen-api.md, `POST /api/tags/impact`](contracts/screen-api.md#post-apitagsimpact)) |
 | Ready | When `tagCount` equals the selected count, the "applies to all" text; when smaller, the "applies to some" text ([Words](#words); selected, applied and skipped counts and `videoCount` filled in). `videoCount` 0 uses the "aren't on any videos" form, never "removed from 0 videos". The paragraph has 014's `border-l-2 border-danger-strong pl-3` |
 | Count failed | `text-sm text-danger` (`role="alert"`) "Couldn't count the affected videos: {reason}" and a ghost `sm` `Button` "Retry"; the danger button stays `disabled` |
 | Sending | Both buttons `disabled`; `LoaderCircle` on the danger button (as the delete dialog) |
@@ -683,7 +683,7 @@ the selection bar's "Merge into one tag…" (the selected tags as sources) open 
 Candidates come from **every tag**: selected, unselected and unloaded (requirement 9). Each input requests
 `GET /api/tags?q={input}&limit=8`
 ([research.md R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit),
-[data-model.md §4](data-model.md#4-screen-state), "Merge dialog candidates").
+[data-model.md, Screen state](data-model.md#screen-state), "Merge dialog candidates").
 
 ```mermaid
 sequenceDiagram
@@ -755,7 +755,7 @@ Selecting the "Rejected names" tab under the heading ([Tabs](#tabs)) lists rejec
 (`role="tabpanel"`; [`web/src/tags/RejectedNames.tsx`](../../web/src/tags/RejectedNames.tsx)). No dialog opens. The
 content arrives in **pages** of `GET /api/tags/rejected-names` and loads more as the body scrolls
 ([research.md R-13](research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll),
-[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-parameters)).
+[contracts/screen-api.md, `GET /api/tags/rejected-names` parameters](contracts/screen-api.md#get-apitagsrejected-names-parameters)).
 
 ```mermaid
 stateDiagram-v2
@@ -827,14 +827,14 @@ These rows add to or change the "States" tables of 014 and 031.
 
 The first-load `Skeleton`, "No tags yet", the "Tentative only" empty state, and the rename, create and single-row
 action states stay as in 014 and 031. Single-row actions also apply within the loaded rows without a reload
-(confirm, reject, delete, rename, create, merge; [data-model.md §4](data-model.md#4-screen-state),
+(confirm, reject, delete, rename, create, merge; [data-model.md, Screen state](data-model.md#screen-state),
 "Applying an action's result"). The visible difference is that actions cause no `Skeleton` or row flicker and the
 scroll position does not move. The sort, "Filter" and the header checkbox are `disabled` before the first page has
 arrived and after a failure with no list. Tabs always show; their counts appear once known.
 
 ## Responsive behaviour
 
-Width variants use only Tailwind's default breakpoints, in CSS (library-ui.md §4). The judged widths are 360px
+Width variants use only Tailwind's default breakpoints, in CSS (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)). The judged widths are 360px
 (covering 390px devices), 768px and 1280px. The top bar varies as the library's `LibraryToolbar` does.
 
 | Width | Top bar | Band | Rows |
@@ -854,7 +854,7 @@ Width variants use only Tailwind's default breakpoints, in CSS (library-ui.md §
 
 ## Review criteria
 
-Judge on a real screen (library-ui.md §5); presence alone does not pass (Q-4). Check mainly at 1280×800, then at
+Judge on a real screen (library-ui.md, [Layout verified by people, not machines](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines)); presence alone does not pass (Q-4). Check mainly at 1280×800, then at
 768px and 360px (on a touch device or with devtools touch emulation). Scale: `tagsbench` with 1,000, 3,000 and
 30,000 tags ([quickstart.md](quickstart.md)); the visual judgement is the same at 30,000.
 

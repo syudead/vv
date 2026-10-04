@@ -85,7 +85,7 @@ to the scrub position. The server and API do not change.
   bar uses existing tokens. Colours the design stage chooses also come from tokens.
 - **No fixed strings outside `web/src/i18n/`**: pass. The time "position / length" is added to `en.ts` as
   `t.list.card.scrubTime` ([R-6](research.md#r-6-swapping-the-time-display-and-the-bar)).
-- **Width branches and reduced motion are handled in CSS** (library-ui.md §4): pass. The band's height is a CSS
+- **Width branches and reduced motion are handled in CSS** (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)): pass. The band's height is a CSS
   percentage, and JavaScript only reads the band's rectangle to compute the position. Switching frames has no
   transition.
 - **Documentation changes in the same PR as the change** (core-beliefs.md): pass. The first unit adds one sentence

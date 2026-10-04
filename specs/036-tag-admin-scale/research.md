@@ -21,7 +21,7 @@ the implementation already merged into the feature branch and do not change.
 ## R-1: The server pages the list and applies search, filters and sort to every tag
 
 **Decision**: `GET /api/tags` gains `q`, `tentative`, `unused`, `sort`, `cursor` and `limit`
-([contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)). On open the screen
+([contracts/screen-api.md, `GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters)). On open the screen
 receives one page (`limit` tags) and fetches the next page with `nextCursor` as it scrolls. Search, filters
 and sort are request parameters that the server applies to every tag before cutting the page. A page carries
 `total` (tags matching the conditions) and `totalAll` (all tags), which the count line shows (acceptance
@@ -43,7 +43,7 @@ sequenceDiagram
 
 The cursor is keyset, as in `GET /api/library` (sort value, name key, `id`). A cursor made under another
 sort returns `400` (`ErrInvalidCursor`,
-[013 list-api.md §5](../013-library-search/contracts/list-api.md#5-cursor-and-errors)).
+[013 list-api.md, Cursor and errors](../013-library-search/contracts/list-api.md#cursor-and-errors)).
 
 | Option | Verdict |
 | --- | --- |
@@ -64,17 +64,17 @@ and the filter check need the full list (the parent Issue's `対象外`, handled
 of R-10), then by `id` (requirement 4, "tags with the same value are ordered by name"; the same tie-break as
 `SortTagRefs`). The video-count and date-created sorts can run opposite to the name order, so the cursor
 condition is "value before, or value equal and (key, id) after", not a single row-value comparison
-([data-model.md §2](data-model.md#2-store-operations)).
+([data-model.md, Store operations](data-model.md#store-operations)).
 
 **Search rule**: `q` is folded with `domain.FoldForMatch` and trimmed; when not empty, it is matched with
 `instr` against `tag_names.search_key` (rows of both the primary name and the synonyms), the same matching
-form as [014 data-model.md §7](../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box)
+form as [014 data-model.md, Matching tag names in the search box](../014-video-tags/data-model.md#matching-tag-names-in-the-search-box)
 (requirement 7). Terms are not split into AND, OR or exclusion: the screen's search before the revision was a
 substring match of one term, and the parent Issue asks for the same matching form, not a query syntax. `q` is
 limited to 100 characters, like `query` on `GET /api/library`.
 
 **Video counts**: one query counts every tag with the existing `taggedVideosSQL` aggregation
-([014 data-model.md §5](../014-video-tags/data-model.md#5-video-counts)) and uses it for the count sorts, the
+([014 data-model.md, Video counts](../014-video-tags/data-model.md#video-counts)) and uses it for the count sorts, the
 `Unused only` filter and the page's counts. The full list before the revision ran the same aggregation once
 per request, so its cost is not new; what is new is that it runs per page. quickstart.md reports the
 `GET /api/tags` response time at 30,000 tags separately. If the aggregation takes 1 second, the way counts
@@ -98,13 +98,13 @@ are stored (server side) has to change, which the parent Issue's `対象外` han
 error text, and the create row goes on top; hand-written windowing would put the bugs in height measurement
 and offsets. The dependency has no runtime dependencies and follows the Renovate process
 ([docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md)). Of the two reasons
-[library-ui.md §3](../../docs/design-docs/library-ui.md#3-no-virtual-scrolling) gives for avoiding virtual
+[library-ui.md, No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) gives for avoiding virtual
 scrolling (a wrapping grid whose cards per line depend on width, and loading only 60 at a time), the first
 does not apply to a one-column list, and the second does not apply after R-1 either: acceptance criterion 4
 scrolls a 30,000-tag list to the end while loading more, so loaded rows reach 30,000 and rendering them all
 brings back the slowness measured before the revision.
 
-**Documents**: `docs/design-docs/library-ui.md` §3 states that the tag list uses this and that the grid still
+**Documents**: `docs/design-docs/library-ui.md`, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) states that the tag list uses this and that the grid still
 does not, for unchanged reasons (merged). After the R-1 revision, its wording "receives and holds every tag
 at once" becomes "receives pages, and loaded rows grow to the total".
 
@@ -135,8 +135,8 @@ known exceptions) follow the merged implementation and tests and are not decided
 **Decision**: The route takes `{ action: confirm | reject | delete, ids }` and, in one transaction, processes
 only the ids that are existing tags of the kind the action works on (confirm and reject: tentative tags;
 delete: confirmed tags). The response has three arrays: processed ids, ids not found, and ids skipped for the
-wrong kind ([contracts/screen-api.md §1](contracts/screen-api.md#1-post-apitagsbatch),
-[data-model.md §2](data-model.md#2-store-operations)). The single-tag routes (`POST /api/tags/{id}/confirm`
+wrong kind ([contracts/screen-api.md, `POST /api/tags/batch`](contracts/screen-api.md#post-apitagsbatch),
+[data-model.md, Store operations](data-model.md#store-operations)). The single-tag routes (`POST /api/tags/{id}/confirm`
 and others) stay, and row actions keep using them (requirement 8, "the existing per-row rules do not
 change").
 
@@ -180,12 +180,12 @@ would block a selection of a few rows just because the user scrolled near the en
 `{ tag: Tag, notFoundIds: int64[] }`. A missing target `{id}` returns `404 tag_not_found`; `{id}` inside
 `sourceIds` returns `400` (reason `merge_same_tag`, as today). Missing sources are skipped and listed in
 `notFoundIds`, and the rest merge in one transaction
-([contracts/screen-api.md §2](contracts/screen-api.md#2-post-apitagsidmerge-changes)).
+([contracts/screen-api.md, `POST /api/tags/{id}/merge` changes](contracts/screen-api.md#post-apitagsidmerge-changes)).
 
 | Option | Verdict |
 | --- | --- |
 | **`sourceIds` only** | Chosen |
-| Keep `sourceId` and add an optional `sourceIds` | Rejected: a shape that needs exactly one of the two adds `oneOf` handling to the generated code, the shape [014 contracts/tags-api.md §1](../014-video-tags/contracts/tags-api.md#1-schemas) avoided |
+| Keep `sourceId` and add an optional `sourceIds` | Rejected: a shape that needs exactly one of the two adds `oneOf` handling to the generated code, the shape [014 contracts/tags-api.md, Schemas](../014-video-tags/contracts/tags-api.md#schemas) avoided |
 | A separate route only for bulk merge | Rejected: the same transaction would live in two places |
 
 **Rationale**: The merge transaction (copy assignments, move names, delete the source, confirm the target)
@@ -197,7 +197,7 @@ contract and its only caller is `mergeTag` in `web/src/api/tags.ts`; the externa
 the target's `tagByID` (a recount and a read of the growing synonym list) each time, holding the write
 transaction for long in a 20,000-tag merge. The source set goes to `json_each`; copying assignments, moving
 names and deleting sources are one statement each, and the target is read once at the end (`mergeTagsInto`
-in [data-model.md §2](data-model.md#2-store-operations)).
+in [data-model.md, Store operations](data-model.md#store-operations)).
 
 When the target is among the sources, the screen removes it from the sources (Edge Case). The server still
 rejects that with `400`.
@@ -207,8 +207,8 @@ rejects that with `400`.
 **Decision**: The route takes `{ action, ids }` and returns the number of `ids` that exist and that `action`
 (`reject`, `delete`, `merge`) works on, and the number of videos now in the library carrying any of them
 (manually added or from the folder name,
-[014 data-model.md §5](../014-video-tags/data-model.md#5-video-counts)), deduplicated by video `id`
-([contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)).
+[014 data-model.md, Video counts](../014-video-tags/data-model.md#video-counts)), deduplicated by video `id`
+([contracts/screen-api.md, `POST /api/tags/impact`](contracts/screen-api.md#post-apitagsimpact)).
 
 | Option | Verdict |
 | --- | --- |
@@ -227,7 +227,7 @@ request this feature adds).
 deleting a tentative tag on 100 videos together with a confirmed tag on 1 video, although only the confirmed
 tag is deleted. The count covers only what the action changes, so it uses the same rule as the processing
 (`TagImpactApplies`, following `TagBatchApplies`,
-[data-model.md §1](data-model.md#1-values-added-to-domain)).
+[data-model.md, Values added to `domain`](data-model.md#values-added-to-domain)).
 
 ## R-7: The sort order is a per-device preference in `localStorage`; filters stay in screen state
 
@@ -331,13 +331,13 @@ tags, the only difference between the two scales is the number of tags.
 **Decision**: Add `sort_key text not null default ''` to `tag_names` and `rejected_tag_names`. It holds
 `domain.NaturalSortKey(name)` (`FoldForMatch` applied, then each digit run replaced with a length-prefixed
 form, so byte order is natural order;
-[013 data-model.md §4](../013-library-search/data-model.md#4-title_key-rules)), written in the same
+[013 data-model.md, `title_key` rules](../013-library-search/data-model.md#title_key-rules)), written in the same
 transaction whenever a name row is written (create, synonym, create on assignment, rename, reject). For
 existing rows the migration resets `search_version` to 0 (and adds `search_version` to
 `rejected_tag_names`), and `TagStore.RefreshSearchKeys` at startup fills the key together with `search_key`
 (the same point as
-[014 data-model.md §7](../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box)). The
-server's name order is the byte order of this key, then `id` ([data-model.md §0](data-model.md#0-migration)).
+[014 data-model.md, Matching tag names in the search box](../014-video-tags/data-model.md#matching-tag-names-in-the-search-box)). The
+server's name order is the byte order of this key, then `id` ([data-model.md, Migration](data-model.md#migration)).
 
 | Option | Verdict |
 | --- | --- |
@@ -351,7 +351,7 @@ server's name order is the byte order of this key, then `id` ([data-model.md §0
 function `CompareNatural` cannot do; the library's title order already keeps the same key in
 `video_locations.title_key` for `order by` and the cursor (`sortText` in `listing.go`). Rejected names get the
 key too because requirement 12 asks their list to load only what it shows, in natural name order
-([031 contracts/screen-api.md §3](../031-tentative-tags/contracts/screen-api.md#3-rejected-names)). The
+([031 contracts/screen-api.md, Rejected names](../031-tentative-tags/contracts/screen-api.md#rejected-names)). The
 startup refresh is used because SQL cannot compute `NaturalSortKey`, and the key-rule version and rebuild
 machinery already exist.
 
@@ -368,7 +368,7 @@ light column and more than 12 fit on one screen). When the last row the virtuali
 few rows of the end of the loaded rows, the screen requests the next page with `nextCursor` once (never two
 in flight). Arriving rows are appended with duplicates dropped by `id` (as `appendUnique` in `videosData.ts`).
 On a cancelled or failed load, or a mismatch, the rules in the diagram apply
-([data-model.md §4](data-model.md#4-screen-state)).
+([data-model.md, Screen state](data-model.md#screen-state)).
 
 The diagram below shows the loading states of the list.
 
@@ -402,7 +402,7 @@ which retries the same cursor. Changing search, filters or sort aborts the reque
 **Rationale**: The Edge Case "another tab adds or removes tags while more rows load: no tag appears twice and
 no row goes missing unnoticed" is met in its first half by keyset and `id` deduplication and in its second
 half by the `totalAll` mismatch notice. Keyset does not return rows that moved before the cursor, so it cannot
-prevent the gap itself ([013 list-api.md §5](../013-library-search/contracts/list-api.md#5-cursor-and-errors)
+prevent the gap itself ([013 list-api.md, Cursor and errors](../013-library-search/contracts/list-api.md#cursor-and-errors)
 gives the same guarantee), and a silent reload loses the selection and scroll position. The Edge Case
 "changing search, filters or sort while more rows load: the old conditions' rows do not mix in" is met by the
 abort and the generation number (the same idea as `generation` in `web/src/api/tags.ts`).
@@ -467,7 +467,7 @@ byte order equals code point order; UTF-16 code unit order does not, so strings 
 
 **Decision**: `GET /api/tags/rejected-names` gains `cursor` and `limit` (default 100, maximum 200), and the
 response gains `total` and `nextCursor`
-([contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-parameters)). The order is
+([contracts/screen-api.md, `GET /api/tags/rejected-names` parameters](contracts/screen-api.md#get-apitagsrejected-names-parameters)). The order is
 `sort_key` (R-10), then the byte order of `name`. On open the screen receives one page and shows `total` at
 the entry point, and loads more when the list is scrolled to the end. A name removed with `Allow again` is
 removed locally and `total` drops by 1. After reject, create, rename and adding a synonym, only the first page

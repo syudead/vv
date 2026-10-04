@@ -10,7 +10,7 @@
 Sources: the visual rules come from these documents and are not decided again here.
 
 - Colours, interaction states, width breakpoints, library and player layout:
-  [Library UI](../../docs/design-docs/library-ui.md) (cards in §6, library layout, and §8, player screen layout)
+  [Library UI](../../docs/design-docs/library-ui.md) (cards in [List layout](../../docs/design-docs/library-ui.md#list-layout), library layout, and [Video page layout](../../docs/design-docs/library-ui.md#video-page-layout), player screen layout)
 - Role tokens: `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy
   values
 - Pairs checked for contrast: [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts)
@@ -56,7 +56,7 @@ token is added, and nothing is added to `pairs` in `tokens.test.ts` ("Colour" be
   bar** (`UI品質` "information density"). No text or line is added to the surface; only the contents of the two
   existing markers change.
 - **The scrub-position bar is `fg`; the watch-position bar stays `accent`.** In
-  [Library UI 1](../../docs/design-docs/library-ui.md#1-visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)
+  [Library UI 1](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)
   accent is the colour of "primary actions, selection and the user's state", and the watch-position bar is that
   state, "how far you watched". The scrub position is the pointer's temporary position, not the user's state, so a
   different colour tells them apart. With the same accent, the bar shrinking or disappearing the moment the pointer
@@ -192,7 +192,7 @@ video as before. Keyboard focus does nothing.
 ## Motion
 
 - Every switch of frame, time and bar is immediate with no transition. Reduced motion does not change this
-  ([Library UI 4](../../docs/design-docs/library-ui.md#4-width-breakpoints-in-css-and-the-sidebar-exception) is the rule
+  ([Library UI 4](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) is the rule
   that stops decorative motion, and there is no motion to stop here).
 - The card's hover lift and the media layer's scaling stay as they are. Entering the band does not change the
   amount of scaling.

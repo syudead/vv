@@ -6,13 +6,13 @@ Parent Issue: #574. The rest of the model is unchanged. Sources of truth:
 | --- | --- |
 | Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
 | Data classes | [running-vv.md, Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery) |
-| User key | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
-| Folder key | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
+| User key | [specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key) |
+| Folder key | [specs/017-folder-groups/data-model.md, Migration](../017-folder-groups/data-model.md#migration) |
 
 This file covers only the tables, values and read and write rules this feature adds. Tables not named here do
 not change.
 
-## 1. Migration
+## Migration
 
 `00029_favorites.sql` (the last migration on `main` is `00028_video_file_created_at.sql`; confirm the number
 when implementing):
@@ -53,26 +53,26 @@ Succession and bundling:
 
 | Path | Change |
 | --- | --- |
-| `moveUserData` (same-path succession, [030 §5](../030-video-versions/data-model.md#5-carry-over-of-content-at-the-same-path)) | Add `video_favorites` to its table list. A row on `from` replaces the row on `to` |
-| `userDataTables` (bundle, change representative, remove, [030 §8](../030-video-versions/data-model.md#8-store-operations-versionstore)) | Add `{"video_favorites", "favorited_at"}`. Bundling copies the representative's value to the bundle key; a removed member returns to the value under its own key |
+| `moveUserData` (same-path succession, [030, Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path)) | Add `video_favorites` to its table list. A row on `from` replaces the row on `to` |
+| `userDataTables` (bundle, change representative, remove, [030, Store operations (`VersionStore`)](../030-video-versions/data-model.md#store-operations-versionstore)) | Add `{"video_favorites", "favorited_at"}`. Bundling copies the representative's value to the bundle key; a removed member returns to the value under its own key |
 | `folder_favorites` | No path copies it. Renaming or moving a folder drops its favorite, as required (Edge Case) |
 
-## 2. `domain` values added
+## `domain` values added
 
 | Value | Content |
 | --- | --- |
-| `Video.Favorite` | `bool`. Whether the user key is in `video_favorites`. Filled by every read that returns videos (§5) |
+| `Video.Favorite` | `bool`. Whether the user key is in `video_favorites`. Filled by every read that returns videos ([Reads and lists](#reads-and-lists)) |
 | `LibraryGroup.Favorite` | `bool`. Whether the group folder's key is in `folder_favorites`. Filled by `loadGroups` |
-| `VideoQuery.FavoriteOnly`, `FolderVideoQuery.FavoriteOnly` | `bool`. Limit to favorites (§5) |
+| `VideoQuery.FavoriteOnly`, `FolderVideoQuery.FavoriteOnly` | `bool`. Limit to favorites ([Reads and lists](#reads-and-lists)) |
 | `SortFavoritedAsc` / `SortFavoritedDesc` | `VideoSort` values `favoritedAsc` / `favoritedDesc`. Added to `Valid` |
 | `FavoriteChange` | Input to `FavoriteStore.SetFavorites`: `VideoIDs []int64`, `FolderPaths []string` (absolute paths), `Favorite bool` |
 | `FavoriteApplied` | Result: `Videos int` (the number of distinct ids in `VideoIDs` whose key resolved; ids in the same bundle each count), `Folders int` (the number of folders written because they are groups now) |
 | `Audience.CheckVideoQuery` | For a guest, `FavoriteOnly` and `favorited*` return `ErrGuestQueryNotAllowed` ([research.md R-5](research.md#r-5-favorites-hidden-from-guests-filter-and-sort-return-400)) |
 
 `favorited_at` is not exposed in `domain`. Only the store's SQL uses it for sorting, and responses do not carry
-it ([contracts/screen-api.md §0](contracts/screen-api.md#0-fields-added-to-video-and-librarygroup)).
+it ([contracts/screen-api.md, Fields added to `Video` and `LibraryGroup`](contracts/screen-api.md#fields-added-to-video-and-librarygroup)).
 
-## 3. Read columns
+## Read columns
 
 The reads that return videos (`videoColumnsTemplate`, `listColumns`; the external API's `readVideosByIDs` uses
 `videoColumns` but does not copy the value into `ExternalVideo`) gain one column, which `scanVideo` copies to
@@ -86,7 +86,7 @@ For groups, `loadGroups` adds `left join folder_favorites ff on ff.path = g.path
 copies `ff.path is not null` to `LibraryGroup.Favorite`. `FolderGroup` (the refetch) uses the same path and
 returns the same value.
 
-## 4. Writes (`FavoriteStore`)
+## Writes (`FavoriteStore`)
 
 New role type `FavoriteStore struct{ sql *sql.DB }` (`db.Favorites()`). Like `VisibilityStore`, it holds only
 the shared SQLite connection and depends on no index type, no notification and no other role's public method.
@@ -101,7 +101,7 @@ transaction. A failure partway leaves nothing behind.
    of keys but the number of distinct ids whose key resolved (`count(distinct v.id)` under the same conditions
    as `userKeysForVideoIDs`, in the same transaction). Sending two ids of the same bundle gives 2, so the
    screen does not mistake "fewer than the distinct ids sent" for a partial result (the same comparison as
-   `api/visibility.ts`, [contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)).
+   `api/visibility.ts`, [contracts/screen-api.md, `PUT /api/favorites`](contracts/screen-api.md#put-apifavorites)).
 2. Turn each path in `change.FolderPaths` into `domain.FolderKey` and keep only those in
    `folder_groups.path_key` (folders that are groups for the owner now). The number kept is `Folders`.
    Duplicates of the same folder count once.
@@ -118,13 +118,13 @@ favorited comes first" and "unfavorite and favorite again to move to the top" th
 `id` tie-breaker, even for consecutive actions in the same second or millisecond and when the clock goes back.
 The maximum is taken over both tables because library items sort videos and groups on the same column.
 
-## 5. Reads and lists
+## Reads and lists
 
 ### Video lists (`ListVideos`, `ListFolderVideos`, `CountVideos`)
 
 Add `left join video_favorites fav on fav.content_key = <userKeyExpr("videos")> and videos.content_key <> ''`
 to `filteredFrom`. With `FavoriteOnly`, add the condition `fav.content_key is not null`. Add the following
-sort in the same shape as [the 013 table](../013-library-search/contracts/list-api.md#3-videosort-values).
+sort in the same shape as [the 013 table](../013-library-search/contracts/list-api.md#videosort-values).
 
 | Sort | Ascending | Descending | Value | When there is no value |
 | --- | --- | --- | --- | --- |
@@ -133,7 +133,7 @@ sort in the same shape as [the 013 table](../013-library-search/contracts/list-a
 ### Library items (`libraryItemsCTE`, `ListLibrary`, `LibraryIDs`)
 
 `matched`, `gm`, `live`, `hits`, `whole` and `mv` from
-[027 §1](../027-partial-group-search/contracts/library-api.md#1-how-get-apilibrary-builds-items) do not change.
+[027, How `GET /api/library` builds items](../027-partial-group-search/contracts/library-api.md#how-get-apilibrary-builds-items) do not change.
 `items` changes as follows (`favoriteOnly` is `FavoriteOnly`, `gf(group_id)` is the groups whose folder is in
 `folder_favorites`, and `vf(video_id)` is the videos whose key is in `video_favorites`).
 
@@ -151,7 +151,7 @@ Watch state, playability, `total`, the keyset and `LibraryIDs` apply to these `i
 `LibraryIDs` returns the ids of video items separately from each group item's folder path and member ids
 (`domain.LibrarySelection{VideoIDs []int64; Groups []LibraryGroupSelection{Path string; VideoIDs []int64}}`).
 `internal/httpapi` builds the existing `ids` (the union of all) and the new `groups`
-([contracts/screen-api.md §3](contracts/screen-api.md#3-fields-added-to-get-apilibraryids)).
+([contracts/screen-api.md, Fields added to `GET /api/library/ids`](contracts/screen-api.md#fields-added-to-get-apilibraryids)).
 
 Mapping to the acceptance criteria:
 

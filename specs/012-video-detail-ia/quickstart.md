@@ -6,7 +6,7 @@ happen, which the automated tests do not. Setup, startup and checks follow
 `task check`, `task test-e2e`). What automated tests can confirm is in each
 implementation unit's acceptance evidence.
 
-## 1. Open file (requirement 18, acceptance criteria 16 and 17)
+## Open file (requirement 18, acceptance criteria 16 and 17)
 
 The result depends on the runtime environment, so a person checks these three
 cases.
@@ -24,7 +24,7 @@ Caution: a reverse proxy on the same PC makes requests from other PCs look like
 loopback. If that setup lets them open files, block this endpoint at the reverse
 proxy (the plan's Structural Decisions 5).
 
-## 2. Stage display and auto-refresh during a scan (requirements 11 and 12, acceptance criteria 10 and 11)
+## Stage display and auto-refresh during a scan (requirements 11 and 12, acceptance criteria 10 and 11)
 
 1. With the video detail screen open, put a new video file in a media folder and
    start a scan from the settings screen.
@@ -37,7 +37,7 @@ proxy (the plan's Structural Decisions 5).
      finishes.
    - Generation progressing after playback starts does not interrupt playback.
 
-## 3. Probe failure and retry (requirement 13, acceptance criterion 12)
+## Probe failure and retry (requirement 13, acceptance criterion 12)
 
 1. Prepare a broken video, for example a valid MP4 cut off partway
    (`head -c 100000 good.mp4 > broken.mp4`), put it in place and scan.
