@@ -83,7 +83,8 @@ type Tags interface {
 	DeleteTag(ctx context.Context, id int64) error
 	MergeTags(ctx context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error)
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
-	RemoveSynonym(ctx context.Context, tagID int64, name string) error
+	// RemoveSynonym は外した後のタグを返す。画面の経路は捨て、外部連携 API が応答に載せる。
+	RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error)
 
 	// 付与・取り外し・要約・一覧の項目のタグ引き。どの操作も1つのトランザクションで済むので、こちらも
 	// internal/app を通さない。
@@ -517,7 +518,8 @@ func requiresJSONBody(r *http.Request) bool {
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
-			"/api/v1/video-display-names", "/api/v1/video-thumbnails":
+			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
+			"/api/v1/tags/synonyms":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {

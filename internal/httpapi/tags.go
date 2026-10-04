@@ -235,7 +235,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 	if err != nil {
 		name = params.Name
 	}
-	if err := s.tags.RemoveSynonym(r.Context(), id, name); err != nil {
+	if _, err := s.tags.RemoveSynonym(r.Context(), id, name); err != nil {
 		s.writeTagError(w, err, "")
 		return
 	}

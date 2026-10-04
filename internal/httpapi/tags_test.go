@@ -107,9 +107,12 @@ func (f *fakeTags) AddSynonym(_ context.Context, tagID int64, name string, merge
 	return domain.Tag{ID: tagID, Name: "target", Synonyms: []string{name}, VideoCount: 0}, nil
 }
 
-func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) error {
+func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) (domain.Tag, error) {
 	f.operation, f.lastID, f.lastName = "remove-synonym", tagID, name
-	return f.err
+	if f.err != nil {
+		return domain.Tag{}, f.err
+	}
+	return domain.Tag{ID: tagID, Name: "target", Synonyms: []string{}}, nil
 }
 
 func (f *fakeTags) AttachTagByID(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {

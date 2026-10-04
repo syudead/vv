@@ -114,7 +114,7 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, o
 	return result.IsError
 }
 
-// SDK のクライアントから接続すると 8 つのツールが契約の注記つきで並び、update_video_tags の
+// SDK のクライアントから接続すると 11 のツールが契約の注記つきで並び、update_video_tags の
 // 結果が REST の lookup に、update_video_display_names の結果が get_video に出る。
 func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	scans := &fakeScans{}
@@ -139,6 +139,10 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		// specs/029-video-overrides/contracts/external-api.md §3
 		"update_video_display_names": {destructive: true, idempotent: true},
 		"update_video_thumbnails":    {destructive: true, idempotent: true},
+		// specs/039-external-tag-admin/contracts/external-api.md §8
+		"merge_tags":          {destructive: true, idempotent: true},
+		"rename_tag":          {destructive: false, idempotent: true},
+		"update_tag_synonyms": {destructive: true, idempotent: true},
 	}
 	var names []string
 	for _, tool := range listed.Tools {

@@ -163,6 +163,43 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "merge_tags",
+		Description: "Merge source tags into a target tag in one transaction (POST /api/v1/tags/merge). " +
+			"Each source's name and synonyms become synonyms of the target, its videos move to the target, " +
+			"and the source is deleted; the target becomes a confirmed tag. sourceIds holds 1 to 20000 ids and " +
+			"must not contain targetId (merge_same_tag). Missing sources are skipped and returned in notFoundIds; " +
+			"a missing target is tag_not_found and changes nothing.",
+		InputSchema: inputSchemaFor[extgen.TagMergeRequest]("merge_tags"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagMergeRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/merge", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "rename_tag",
+		Description: "Change a tag's original name (POST /api/v1/tags/rename). A tentative tag becomes confirmed " +
+			"when its name changes. If the name is another tag's name or synonym, or one of this tag's synonyms, " +
+			"the result is a conflict with reason tag_name_taken and that tag's tagId and tagName, and nothing changes.",
+		InputSchema: inputSchemaFor[extgen.TagRenameRequest]("rename_tag"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &notDestructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagRenameRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/rename", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "update_tag_synonyms",
+		Description: "Add a name to a tag's synonyms or remove one (POST /api/v1/tags/synonyms), returning the tag " +
+			"after the change. add confirms a tentative tag. If the name is this tag's own name or another tag's " +
+			"synonym, add fails with tag_name_taken. If the name is another tag's original name, add fails with " +
+			"tag_merge_required and that tag's tagId and tagName, and nothing changes; call again with mergeTagId " +
+			"set to that tagId to merge that tag into this one. remove of a name that is not a synonym changes nothing.",
+		InputSchema: tagSynonymsInputSchema(),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagSynonymsRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/synonyms", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "update_video_tags",
 		Description: "Add, remove or replace tags on videos by tag name or synonym (POST /api/v1/video-tags). " +
 			"add creates missing tags; replace makes the manually added tags exactly the given set. " +
@@ -224,7 +261,18 @@ func videoTagsInputSchema() *jsonschema.Schema {
 		panic(fmt.Sprintf("update_video_tags input schema: %v", err))
 	}
 	if action := schema.Properties["action"]; action != nil {
-		action.Enum = []any{string(extgen.Add), string(extgen.Remove), string(extgen.Replace)}
+		action.Enum = []any{string(extgen.VideoTagsRequestActionAdd), string(extgen.VideoTagsRequestActionRemove),
+			string(extgen.VideoTagsRequestActionReplace)}
+	}
+	return schema
+}
+
+// tagSynonymsInputSchema は update_tag_synonyms の入力の形である。型から導き、action に契約の値を
+// 足す（update_video_tags と同じやり方）。
+func tagSynonymsInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[extgen.TagSynonymsRequest]("update_tag_synonyms")
+	if action := schema.Properties["action"]; action != nil {
+		action.Enum = []any{string(extgen.TagSynonymsRequestActionAdd), string(extgen.TagSynonymsRequestActionRemove)}
 	}
 	return schema
 }

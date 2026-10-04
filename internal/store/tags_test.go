@@ -569,15 +569,23 @@ func TestRemoveSynonymIsNoopWhenNotASynonym(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Tags().RemoveSynonym(ctx, tag.ID, "無い名前"); err != nil {
+	unchanged, err := db.Tags().RemoveSynonym(ctx, tag.ID, "無い名前")
+	if err != nil {
 		t.Fatalf("RemoveSynonym() error = %v, want nil (何も変えない)", err)
+	}
+	if unchanged.ID != tag.ID || unchanged.Name != "旅行" || len(unchanged.Synonyms) != 0 {
+		t.Errorf("RemoveSynonym(シノニムでない名前) = %+v, want 変わらないタグ", unchanged)
 	}
 
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "旅", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Tags().RemoveSynonym(ctx, tag.ID, "旅"); err != nil {
+	removed, err := db.Tags().RemoveSynonym(ctx, tag.ID, "旅")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if removed.ID != tag.ID || len(removed.Synonyms) != 0 {
+		t.Errorf("RemoveSynonym() = %+v, want シノニムを外したタグ", removed)
 	}
 	gotPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
@@ -588,7 +596,7 @@ func TestRemoveSynonymIsNoopWhenNotASynonym(t *testing.T) {
 		t.Errorf("got = %+v, want シノニムが消えている", got)
 	}
 
-	if err := db.Tags().RemoveSynonym(ctx, 9999, "旅"); !errors.Is(err, domain.ErrTagNotFound) {
+	if _, err := db.Tags().RemoveSynonym(ctx, 9999, "旅"); !errors.Is(err, domain.ErrTagNotFound) {
 		t.Errorf("RemoveSynonym(無いタグ) error = %v, want ErrTagNotFound", err)
 	}
 }

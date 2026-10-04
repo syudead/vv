@@ -332,6 +332,145 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /tags/merge:
+    post:
+      operationId: mergeTags
+      summary: 複数のタグを 1 つのタグへ統合する
+      description: |
+        1 つのトランザクションで、統合元それぞれの元の名前とシノニムを統合先のシノニムにし、付与を
+        統合先へ移して統合元を消す。統合先は確定したタグになる。無い統合元は飛ばして `notFoundIds` に
+        返し、統合元がすべて無ければ `tag` は変わらない統合先である。画面の `POST /api/tags/{id}/merge`
+        と同じ保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §2）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagMergeRequest"
+      responses:
+        "200":
+          description: 統合後の統合先と、無かった統合元
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagMergeResponse"
+        "400":
+          description: >-
+            本文の形が違う（`invalid_request`）、`sourceIds` が空か 20,000 件を超える（`too_many_tags`、
+            `limit`）、`sourceIds` が `targetId` を含む（`merge_same_tag`、何も変えない）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: "`targetId` のタグが無い（`not_found` / `tag_not_found`）。何も変えない"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tags/rename:
+    post:
+      operationId: renameTag
+      summary: タグの元の名前を変える
+      description: |
+        名前が変われば仮のタグは確定する。今と同じ名前なら何も変えない。画面の `PATCH /api/tags/{id}` と
+        同じ保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §3）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagRenameRequest"
+      responses:
+        "200":
+          description: 変更後のタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: >-
+            本文の形が違う（`invalid_request`）、名前の規則違反（`tag_name_empty`・
+            `tag_name_control_characters`・`tag_name_too_long`、`limit`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: "`id` のタグが無い（`not_found` / `tag_not_found`）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: >-
+            名前が別のタグの元の名前かシノニム、または `id` 自身のシノニム（`conflict` / `tag_name_taken`、
+            `tagId`・`tagName`）。何も変えない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tags/synonyms:
+    post:
+      operationId: updateTagSynonyms
+      summary: タグのシノニムを足す・外す
+      description: |
+        `add` は名前をシノニムに足し、名前を足したら仮のタグを確定する。既に `id` のシノニムなら何も
+        変えない。名前が別のタグ S の元の名前なら、`mergeTagId` が S のときだけ S を `id` へ統合し、
+        そうでなければ `409 tag_merge_required`（`tagId` は S）で何も変えない。`remove` はシノニムで
+        ない名前なら何も変えずにタグを返す。画面の `POST`・`DELETE /api/tags/{id}/synonyms` と同じ
+        保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagSynonymsRequest"
+      responses:
+        "200":
+          description: 変更後のタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          description: >-
+            本文の形が違う・`action` が 2 値の外（`invalid_request`）、`add` で名前の規則違反
+            （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`limit`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: "`id` のタグが無い（`not_found` / `tag_not_found`）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: >-
+            `add` で、名前が `id` 自身の元の名前か別のタグのシノニム（`conflict` / `tag_name_taken`）、
+            または別のタグの元の名前で `mergeTagId` がそのタグでない（`conflict` / `tag_merge_required`）。
+            どちらも `tagId`・`tagName` を返し、何も変えない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /scans:
     post:
       operationId: startScan
@@ -444,6 +583,17 @@ components:
           description: >-
             原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイルの操作では
             items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
+        tagId:
+          type: integer
+          format: int64
+          description: >-
+            名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る
+            （specs/039-external-tag-admin/contracts/external-api.md §0）
+        tagName:
+          type: string
+          description: >-
+            名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の
+            ときだけ入る
     ErrorReason:
       type: string
       description: 同じ code の中で状況を区別する下位の理由。
@@ -462,6 +612,10 @@ components:
         - thumbnail_position_out_of_range
         - thumbnail_frame_unavailable
         - file_unavailable
+        - tag_not_found
+        - tag_name_taken
+        - tag_merge_required
+        - merge_same_tag
 
     Tag:
       type: object
@@ -516,6 +670,72 @@ components:
         タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
         createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
         （specs/036-tag-admin-scale/data-model.md §0・§2）
+
+    TagMergeRequest:
+      type: object
+      required: [targetId, sourceIds]
+      additionalProperties: false
+      properties:
+        targetId:
+          type: integer
+          format: int64
+          description: 付与・名前・シノニムを受け取るタグ。確定したタグになる
+        sourceIds:
+          type: array
+          description: >-
+            統合するタグ。送った数で 1〜20,000 件（重複も数に入り、統合は 1 回）。範囲外は `too_many_tags`
+          items:
+            type: integer
+            format: int64
+
+    TagMergeResponse:
+      type: object
+      required: [tag, notFoundIds]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/Tag"
+        notFoundIds:
+          type: array
+          description: 無かったので飛ばした統合元。無ければ空
+          items:
+            type: integer
+            format: int64
+
+    TagRenameRequest:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 新しい元の名前。タグ名と同じ規則で整える
+
+    TagSynonymsRequest:
+      type: object
+      required: [id, action, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: シノニムを変えるタグ
+        action:
+          type: string
+          description: add は足す、remove は外す
+          enum: [add, remove]
+        name:
+          type: string
+          description: シノニム。タグ名と同じ規則で整える
+        mergeTagId:
+          type: integer
+          format: int64
+          description: >-
+            `add` だけ: 統合を受け入れるタグの id。`tag_merge_required` の `tagId` を渡す。名前が別のタグの
+            元の名前でなければ無視する
 
     ExternalVideo:
       type: object
