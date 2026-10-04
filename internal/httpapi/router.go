@@ -439,7 +439,7 @@ func NewRouter(opts Options) http.Handler {
 			}, logger)
 		},
 	})
-	return noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated)))
+	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated))))
 }
 
 // noStoreOnError は 4xx と 5xx の応答に no-store を付け直す。
