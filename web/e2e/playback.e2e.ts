@@ -864,8 +864,17 @@ test.describe.serial("live MP4 playback", () => {
     expect(shownAt).toBeLessThanOrEqual(10);
     expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
 
-    // 止めて位置を保存し、再読み込みで再開位置から始めても同じ offset で取り直す。
-    const { saved, lastSaved } = await pauseAndRecordProgress(page, item);
+    // 再読み込みで再開位置から始めても、同じ offset で取り直す。この動画は 24 秒で、
+    // 残り 15 秒以内（9 秒以降）の位置は視聴済みとして保存され、開き直すと先頭から
+    // 始まる（internal/domain/progress.go の CompletionTailMs）。上で 9〜10 秒の cue を
+    // 見たので、止めたときと離れるときの保存はここで止め、再開位置は 9 秒より前に置く
+    // （止めたときの保存からの再開は、前の試験が確かめる）。
+    const progressUrl = `**/api/videos/${String(item.id)}/progress`;
+    await page.route(progressUrl, (route) => route.abort());
+    await page.locator(".vjs-play-control").click();
+    await page.waitForFunction(() => document.querySelector("video")?.paused === true);
+    const resumeAt = actualStart + 500;
+    await saveProgress(request, item, resumeAt);
     const resumedSubtitle = page.waitForRequest((candidate) =>
       candidate
         .url()
@@ -873,8 +882,8 @@ test.describe.serial("live MP4 playback", () => {
     );
     reported = false;
     const { resumed, startMs } = await reloadAndWaitForTranscode(page, item);
-    expect(startMs).toBe(lastSaved());
-    expect(Math.abs(startMs - saved)).toBeLessThan(1000);
+    await page.unroute(progressUrl);
+    expect(startMs).toBe(resumeAt);
     expect(await reportedStart(page, resumed)).toBe(actualStart);
     await resumedSubtitle;
     await page.locator(".vjs-big-play-button").click();

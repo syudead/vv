@@ -5102,8 +5102,12 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
     expect(list.getAttribute("aria-busy")).toBeNull();
 
-    scrollRejectedToEnd();
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(250));
+    // 足した行を描いたあと、番兵を見張り直す effect が走るまでは、送っても続きを読まない。
+    // 見張り直すまで送り直す（読み込み中は画面が重ねて送らない）。
+    await waitFor(() => {
+      scrollRejectedToEnd();
+      expect(within(list).getAllByRole("listitem")).toHaveLength(250);
+    });
     expect(within(list).getByTitle("Name249")).toBeDefined();
     // 末尾まで読んだら、もう番兵は見張らない。
     expect(observers.size).toBe(0);
