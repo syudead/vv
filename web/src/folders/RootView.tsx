@@ -8,7 +8,7 @@ import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
-import { buttonClassName } from "../ui/legacy/Button";
+import { buttonClassName } from "../ui/Button";
 import { Grid } from "../videoList/Grid";
 import { hasConditions } from "../videoList/listCriteria";
 import { EmptyState, GuestEmpty, LoadFailed } from "../videoList/states";

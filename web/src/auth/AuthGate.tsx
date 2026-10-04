@@ -5,7 +5,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import { type AuthSession, getAuthSession } from "../api/auth";
 import { RequestFailed, setRenderedAudience } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
 import { currentPath, loginPath, reloadPage } from "./pageNavigation";

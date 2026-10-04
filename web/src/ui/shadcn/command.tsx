@@ -21,6 +21,9 @@ function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive
   );
 }
 
+// 入力は共通のフォーカスの輪（index.css の :focus-visible）を出す。上流の outline-hidden は
+// その輪を消すので外し、輪が Command の overflow-hidden で切れないよう入力を行より低い
+// h-6 にしている。
 function CommandInput({
   className,
   icon,
@@ -38,7 +41,7 @@ function CommandInput({
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
-          "flex h-9 w-full min-w-0 rounded-md bg-transparent py-2 text-sm text-foreground outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          "flex h-6 w-full min-w-0 rounded-sm bg-transparent px-1 text-sm text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
           className,
         )}
         {...props}

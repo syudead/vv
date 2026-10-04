@@ -8,12 +8,11 @@ import {
   type VideoTagsSummary,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import { Button } from "../ui/button";
-import type { ComboboxOption } from "../ui/legacy/Combobox";
+import Button from "../ui/Button";
+import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { PopoverContent } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
-import TagCommand from "./TagCommand";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
 
 /**
@@ -22,10 +21,12 @@ import { buildRemoveOptions, removableSummary } from "./tagChoices";
  */
 export default function RemoveTagPopover({
   open,
+  onOpenChange,
   selectedIds,
   onRemoved,
 }: {
   open: boolean;
+  onOpenChange: (open: boolean) => void;
   selectedIds: readonly number[];
   /** タグを外し終えるたびに、外したタグの id を渡して呼ぶ。 */
   onRemoved: (tagId: number) => void;
@@ -33,6 +34,8 @@ export default function RemoveTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // AddTagPopover と同じく、候補の一覧が開いているかを見張る（B2）。
+  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<UiText | null>(null);
@@ -156,6 +159,9 @@ export default function RemoveTagPopover({
           inputRef.current?.focus();
         }
       }}
+      onEscapeKeyDown={(event) => {
+        if (listOpenRef.current) event.preventDefault();
+      }}
     >
       <h2 id={headingId} className="sr-only">
         {t.library.selection.removeTag}
@@ -175,7 +181,7 @@ export default function RemoveTagPopover({
           <p role="alert" className="text-xs text-destructive">
             {t.library.selection.summaryFailed}
           </p>
-          <Button variant="outline" size="sm" onClick={fetchSummary}>
+          <Button variant="ghost" size="sm" onClick={fetchSummary}>
             {t.common.retry}
           </Button>
         </div>
@@ -195,16 +201,31 @@ export default function RemoveTagPopover({
         summary !== null &&
         summary.items.length > 0 && (
           <>
-            <TagCommand
-              label={t.library.selection.removeTag}
-              icon={<Minus aria-hidden="true" />}
+            <Combobox
               value={value}
               onValueChange={setValue}
               options={options}
               exactOption={exactOption}
               onSelect={submit}
+              createLabel={null}
+              placeholder={t.library.selection.removeTag}
+              icon={
+                <Minus
+                  className="size-3 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
+              }
               busy={submitting}
+              side="top"
+              aria-label={t.library.selection.removeTag}
               inputRef={inputRef}
+              onEscapeWhenClosed={() => onOpenChange(false)}
+              onOpenChange={(listOpen) => {
+                listOpenRef.current = listOpen;
+              }}
+              className="w-full"
+              inputClassName="w-full"
+              frameClassName="w-full"
             />
             {errorMessage !== null && (
               <p role="alert" className="mt-1 text-xs text-destructive">

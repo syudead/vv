@@ -5,8 +5,8 @@ import { isAborted, RequestFailed, setVideoDisplayName, type Video } from "../ap
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/legacy/Button";
-import IconButton from "../ui/legacy/IconButton";
+import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 
 const titleType = "text-xl leading-snug font-semibold text-fg sm:text-2xl";
 

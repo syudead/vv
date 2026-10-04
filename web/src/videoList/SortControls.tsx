@@ -21,8 +21,7 @@ import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { Button } from "../ui/button";
-import { Label } from "../ui/label";
+import Button from "../ui/Button";
 import {
   MenuContent,
   MenuLabel,
@@ -31,8 +30,7 @@ import {
   MenuRoot,
   MenuTrigger,
 } from "../ui/Menu";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
-import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
+import SegmentedControl from "../ui/SegmentedControl";
 import Tooltip from "../ui/Tooltip";
 import {
   directionLabel,
@@ -172,24 +170,23 @@ export function CompactSortControls({
           {t.list.sort.shuffle}
         </Button>
       ) : (
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          aria-label={t.list.sort.direction}
+        <SegmentedControl<SortDirection>
+          label={t.list.sort.direction}
           value={direction}
-          onValueChange={(next) => {
-            if (next !== "") onSortChange(withDirection(sort, next as SortDirection));
-          }}
-        >
-          {(["desc", "asc"] as const).map((value) => (
-            <Tooltip key={value} content={directionLabel(sort, value)}>
-              <ToggleGroupItem value={value} aria-label={directionLabel(sort, value)}>
-                {value === "desc" ? <ArrowDownWideNarrow /> : <ArrowUpNarrowWide />}
-              </ToggleGroupItem>
-            </Tooltip>
-          ))}
-        </ToggleGroup>
+          onValueChange={(next) => onSortChange(withDirection(sort, next))}
+          options={[
+            {
+              value: "desc",
+              label: directionLabel(sort, "desc"),
+              icon: <ArrowDownWideNarrow />,
+            },
+            {
+              value: "asc",
+              label: directionLabel(sort, "asc"),
+              icon: <ArrowUpNarrowWide />,
+            },
+          ]}
+        />
       )}
     </CompactSortView>
   );
@@ -236,8 +233,7 @@ export function SortMenuView<T extends string>({
       <MenuRoot>
         <MenuTrigger asChild>
           <Button
-            variant="outline"
-            size="sm"
+            variant="secondary"
             aria-label={currentLabel}
             disabled={disabled}
             className={cn(toggle !== undefined && "rounded-r-none")}
@@ -264,11 +260,10 @@ export function SortMenuView<T extends string>({
       {toggle !== undefined && (
         <Tooltip content={toggle.label}>
           <Button
-            variant="outline"
-            size="icon-sm"
+            variant="secondary"
             aria-label={toggle.label}
             disabled={disabled}
-            className="rounded-l-none border-l-0"
+            className="rounded-l-none px-2"
             onClick={toggle.onClick}
           >
             {toggle.icon}
@@ -306,28 +301,31 @@ export function CompactSortView<T extends string>({
       <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
         {heading}
       </legend>
-      <RadioGroup
-        name={name}
-        value={value}
-        onValueChange={(next) => onValueChange(next as T)}
-        disabled={disabled}
-        className="grid-cols-2 gap-x-3 gap-y-2"
-      >
-        {options.map((option) => {
-          const id = `${name}-${option.value}`;
-          return (
-            <Label
-              key={option.value}
-              htmlFor={id}
-              className="h-8 min-w-0 cursor-pointer font-normal"
-            >
-              <RadioGroupItem id={id} value={option.value} />
-              <option.icon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">{option.label}</span>
-            </Label>
-          );
-        })}
-      </RadioGroup>
+      <div className="grid grid-cols-2 gap-1">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={cn(
+              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
+              value === option.value
+                ? "bg-primary text-primary-foreground"
+                : "text-foreground hover:bg-accent",
+              disabled && "pointer-events-none opacity-50",
+            )}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onValueChange(option.value)}
+              className="sr-only"
+            />
+            <option.icon className="size-4 shrink-0" />
+            <span className="truncate">{option.label}</span>
+          </label>
+        ))}
+      </div>
       {children}
     </fieldset>
   );

@@ -2,7 +2,7 @@ import { AlertCircle } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 
 import { t } from "../i18n";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 
 type PageModule = { default: ComponentType };

@@ -3,7 +3,7 @@ import { ToggleGroup as ToggleGroupPrimitive } from "radix-ui";
 import { type ComponentProps, createContext, useContext } from "react";
 
 import { cn } from "@/lib/cn";
-import { toggleVariants } from "@/ui/toggle";
+import { toggleVariants } from "@/ui/shadcn/toggle";
 
 // shadcn/ui の ToggleGroup（radix）。type="single" は排他の選択（項目は role=radio）、
 // type="multiple" は独立した切り替えの並び。variant と size は項目へ伝わる。

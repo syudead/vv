@@ -2,7 +2,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps, useMemo } from "react";
 
 import { cn } from "@/lib/cn";
-import { Label } from "@/ui/label";
+import { Label } from "@/ui/shadcn/label";
 
 // shadcn/ui の Field。ラベル・部品・説明・誤りを 1 つの欄にまとめる。区切り線
 // （FieldSeparator）は Separator を待つので、この単位では持たない。

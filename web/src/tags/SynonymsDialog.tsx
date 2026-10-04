@@ -4,9 +4,9 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import Chip from "../ui/Chip";
-import { isComposingKeyEvent } from "../ui/legacy/Combobox";
+import { isComposingKeyEvent } from "../ui/Combobox";
 import { ModalFrame } from "../ui/ModalFrame";
 import { tagFieldError, useTagNameField, type TagFieldError } from "./tagNameField";
 

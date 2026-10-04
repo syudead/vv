@@ -9,7 +9,7 @@ import {
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 
 /**
  * NetworkSection は設定画面の「Network」区画である。Windows デスクトップ版で、所有者が

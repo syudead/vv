@@ -12,9 +12,9 @@ import { type FolderRef, maxBundleSelection, type VideoVersions } from "../api/c
 import { maxVideoTagsSelection } from "../api/tags";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import { Button } from "../ui/button";
+import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 import { PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import Tooltip from "../ui/Tooltip";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
 import FavoriteMenu from "./FavoriteMenu";
@@ -321,6 +321,7 @@ export default function SelectionBar({
           </PopoverTrigger>
           <RemoveTagPopover
             open={removeOpen}
+            onOpenChange={setRemoveOpen}
             selectedIds={selectedIds}
             onRemoved={onTagRemoved}
           />
@@ -439,18 +440,15 @@ export default function SelectionBar({
             ? t.library.selection.selectingAll
             : t.library.selection.selectAll}
         </Button>
-        <Tooltip content={t.library.selection.clear}>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t.library.selection.clear}
-            data-bar-item="clear"
-            onClick={onClear}
-            className="order-3 max-sm:mr-auto sm:order-11"
-          >
-            <X />
-          </Button>
-        </Tooltip>
+        <IconButton
+          label={t.library.selection.clear}
+          size="sm"
+          data-bar-item="clear"
+          onClick={onClear}
+          className="order-3 max-sm:mr-auto sm:order-11"
+        >
+          <X />
+        </IconButton>
       </div>
     </div>
   );

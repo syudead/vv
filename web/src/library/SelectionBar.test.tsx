@@ -716,25 +716,37 @@ describe("SelectionBar", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  // 候補の一覧はポップオーバーの中に常に見えている（library/TagCommand）。Esc は 1 回で
-  // ポップオーバーを閉じ、選択は残る（Radix がその Esc を消費するので、選択の解除へは届かない）。
-  it("タグを付ける: Esc でポップオーバーが閉じても選択は残る", async () => {
+  // B2: Radix の DismissableLayer は document の capture 段階で Esc を先に
+  // 拾うため、何もしなければ combobox 自身の Esc 処理より先にポップオーバー
+  // 全体が閉じてしまう。1回目の Esc は候補の一覧だけを閉じ、選択とポップオーバー
+  // は残る。一覧がすでに閉じている2回目の Esc でポップオーバーが閉じ、それでも
+  // 選択は残る（ui-design.md「Combobox」）。
+  it("タグを付ける: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
     const user = userEvent.setup();
     install();
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "Add tag" }));
-    await screen.findByRole("combobox", { name: "Add tag" });
+    const addButton = screen.getByRole("button", { name: "Add tag" });
+    await user.click(addButton);
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
+    // フォーカスで一覧が開く（全タグが候補になる）。
     await screen.findByRole("option", { name: /旅行/ });
 
     await user.keyboard("{Escape}");
+    // 1回目: 一覧だけが閉じ、ポップオーバー（入力）はまだ残る。
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Add tag" })).toBeDefined();
+    expect(input).toHaveProperty("value", "");
+
+    await user.keyboard("{Escape}");
+    // 2回目: ポップオーバーが閉じる。選択（3 件を選択中）は残る。
     await waitFor(() =>
       expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull(),
     );
     expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
-  it("タグを外す: Esc でポップオーバーが閉じても選択は残る", async () => {
+  it("タグを外す: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
     const user = userEvent.setup();
     install();
     server.attached.set(1, new Set([1]));
@@ -745,6 +757,10 @@ describe("SelectionBar", () => {
     await user.click(screen.getByRole("button", { name: "Remove tag" }));
     await screen.findByRole("combobox", { name: "Remove tag" });
     await screen.findByRole("option", { name: /旅行/ });
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "Remove tag" })).toBeDefined();
 
     await user.keyboard("{Escape}");
     await waitFor(() =>
@@ -1023,14 +1039,14 @@ describe("SelectionBar の英語の文言", () => {
     await user.type(addInput, "新規");
     await screen.findByRole("option", { name: /新規/ });
     expectCatalogTextOnly(document.body, [...tagNames, "新規"]);
-    await user.keyboard("{Escape}");
+    await user.keyboard("{Escape}{Escape}");
 
     await user.click(screen.getByRole("button", { name: /Remove tag/ }));
     const removeInput = await screen.findByRole("combobox", { name: /Remove tag/ });
     await user.click(removeInput);
     await screen.findAllByRole("option");
     expectCatalogTextOnly(document.body, tagNames);
-    await user.keyboard("{Escape}");
+    await user.keyboard("{Escape}{Escape}");
 
     rerender(
       barElement({

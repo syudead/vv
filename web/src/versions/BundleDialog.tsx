@@ -11,7 +11,7 @@ import {
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";

@@ -6,7 +6,7 @@ import type { VideoFolder } from "../api/client";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/legacy/IconButton";
+import IconButton from "../ui/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
 
 interface FolderCrumb {

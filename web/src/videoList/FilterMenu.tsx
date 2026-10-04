@@ -1,15 +1,12 @@
 import { ListFilter } from "lucide-react";
-import { type ReactNode, type Ref, useId, useState } from "react";
+import { type ReactNode, type Ref, useState } from "react";
 
 import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Label } from "../ui/label";
+import Button from "../ui/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { watchLabel, watchValues } from "./listSummary";
 
 export interface FilterMenuProps {
@@ -55,7 +52,6 @@ export default function FilterMenu({
   const watchCount = owner && watch !== "all" ? 1 : 0;
   const favoriteCount = owner && favorite ? 1 : 0;
   const filterCount = watchCount + favoriteCount + (playable ? 1 : 0);
-  const idBase = useId();
 
   return (
     <FilterPopover
@@ -69,23 +65,29 @@ export default function FilterMenu({
           <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
             {t.list.filter.watch}
           </legend>
-          <RadioGroup
-            name="watch"
-            value={watch}
-            onValueChange={(next) => onWatchChange(next as WatchFilter)}
-            className="grid-cols-2 gap-x-3 gap-y-2"
-          >
+          <div className="grid grid-cols-2 gap-1">
             {watchValues.map((value) => (
-              <Label
+              <label
                 key={value}
-                htmlFor={`${idBase}-${value}`}
-                className="h-8 cursor-pointer font-normal"
+                className={cn(
+                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
+                  watch === value
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-accent",
+                )}
               >
-                <RadioGroupItem id={`${idBase}-${value}`} value={value} />
+                <input
+                  type="radio"
+                  name="watch"
+                  value={value}
+                  checked={watch === value}
+                  onChange={() => onWatchChange(value)}
+                  className="sr-only"
+                />
                 {watchLabel(value)}
-              </Label>
+              </label>
             ))}
-          </RadioGroup>
+          </div>
         </fieldset>
       )}
 
@@ -142,13 +144,10 @@ export function FilterPopover({
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
-          variant="outline"
-          size="sm"
+          variant="secondary"
           disabled={disabled}
           aria-label={shown > 0 ? t.list.filter.applied(shown) : t.list.filter.label}
-          className={cn(
-            shown > 0 && "border-primary-active bg-primary-soft text-primary",
-          )}
+          className={cn("px-2", shown > 0 && "bg-primary-soft text-primary")}
         >
           <ListFilter />
           <span className="hidden xl:inline">{t.list.filter.label}</span>
@@ -190,24 +189,20 @@ export function FilterCheckbox({
   /** 行の下に添える説明。 */
   hint?: UiText;
 }) {
-  const id = useId();
   return (
-    <div className="flex items-start gap-2">
-      <Checkbox
-        id={id}
+    <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
+      <input
+        type="checkbox"
         checked={checked}
-        onCheckedChange={(next) => onCheckedChange(next === true)}
-        className="mt-0.5"
+        onChange={(event) => onCheckedChange(event.target.checked)}
+        className="mt-0.5 size-4 shrink-0 accent-primary"
       />
-      <Label
-        htmlFor={id}
-        className="cursor-pointer flex-col items-start gap-0.5 font-normal"
-      >
+      <span className="flex min-w-0 flex-col">
         {label}
         {hint !== undefined && (
           <span className="text-xs text-muted-foreground">{hint}</span>
         )}
-      </Label>
-    </div>
+      </span>
+    </label>
   );
 }

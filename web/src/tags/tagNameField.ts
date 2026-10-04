@@ -2,7 +2,7 @@ import { useState, type ClipboardEvent, type FormEvent } from "react";
 
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import { nameReason, newlinePattern } from "../ui/legacy/Combobox";
+import { nameReason, newlinePattern } from "../ui/Combobox";
 
 /**
  * TagFieldError は、作成・改名の入力の下に出すサーバー側の失敗を運ぶ。

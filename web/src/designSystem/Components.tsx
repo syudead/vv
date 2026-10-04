@@ -2,31 +2,31 @@ import { LayoutGrid, List, Plus, Tag as TagIcon, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { t } from "../i18n";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Combobox } from "../ui/combobox";
+import { Button } from "../ui/shadcn/button";
+import { Checkbox } from "../ui/shadcn/checkbox";
+import { Combobox } from "../ui/shadcn/combobox";
 import {
   Command,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
-} from "../ui/command";
-import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/field";
-import { Input } from "../ui/input";
-import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+} from "../ui/shadcn/command";
+import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/shadcn/field";
+import { Input } from "../ui/shadcn/input";
+import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui/select";
-import { Slider } from "../ui/slider";
-import { Switch } from "../ui/switch";
-import { Textarea } from "../ui/textarea";
-import { Toggle } from "../ui/toggle";
-import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
+} from "../ui/shadcn/select";
+import { Slider } from "../ui/shadcn/slider";
+import { Switch } from "../ui/shadcn/switch";
+import { Textarea } from "../ui/shadcn/textarea";
+import { Toggle } from "../ui/shadcn/toggle";
+import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 
 // 見本の部品の節（specs/038-design-system/ui-design.md「Review criteria」4）。部品ごとに
 // variant を行、状態を列に並べる。hover と押下は index.css の data-demo-state で、

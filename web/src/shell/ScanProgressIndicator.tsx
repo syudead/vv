@@ -4,7 +4,7 @@ import { useNavigate } from "react-router";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/legacy/IconButton";
+import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
 import ScanProgressBar from "./ScanProgressBar";

@@ -71,7 +71,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#button (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/button.tsx",
+          "path": "src/ui/shadcn/button.tsx",
           "type": "registry:ui"
         }
       ],
@@ -85,7 +85,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/checkbox.tsx",
+          "path": "src/ui/shadcn/checkbox.tsx",
           "type": "registry:ui"
         }
       ]
@@ -111,7 +111,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/combobox.tsx",
+          "path": "src/ui/shadcn/combobox.tsx",
           "type": "registry:ui"
         }
       ]
@@ -124,7 +124,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/command.tsx",
+          "path": "src/ui/shadcn/command.tsx",
           "type": "registry:ui"
         }
       ],
@@ -138,7 +138,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/field.tsx",
+          "path": "src/ui/shadcn/field.tsx",
           "type": "registry:ui"
         }
       ],
@@ -152,7 +152,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/input.tsx",
+          "path": "src/ui/shadcn/input.tsx",
           "type": "registry:ui"
         }
       ]
@@ -165,7 +165,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/label.tsx",
+          "path": "src/ui/shadcn/label.tsx",
           "type": "registry:ui"
         }
       ]
@@ -217,7 +217,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/radio-group.tsx",
+          "path": "src/ui/shadcn/radio-group.tsx",
           "type": "registry:ui"
         }
       ]
@@ -243,7 +243,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/select.tsx",
+          "path": "src/ui/shadcn/select.tsx",
           "type": "registry:ui"
         }
       ]
@@ -269,7 +269,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#slider (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/slider.tsx",
+          "path": "src/ui/shadcn/slider.tsx",
           "type": "registry:ui"
         }
       ]
@@ -282,7 +282,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/switch.tsx",
+          "path": "src/ui/shadcn/switch.tsx",
           "type": "registry:ui"
         }
       ]
@@ -321,7 +321,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/textarea.tsx",
+          "path": "src/ui/shadcn/textarea.tsx",
           "type": "registry:ui"
         }
       ]
@@ -360,7 +360,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/toggle.tsx",
+          "path": "src/ui/shadcn/toggle.tsx",
           "type": "registry:ui"
         }
       ],
@@ -374,7 +374,7 @@
       "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/toggle-group.tsx",
+          "path": "src/ui/shadcn/toggle-group.tsx",
           "type": "registry:ui"
         }
       ],

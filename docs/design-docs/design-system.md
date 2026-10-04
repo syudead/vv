@@ -172,9 +172,10 @@ The decisions behind the foundations are R-5 and R-8 of
 
 ## Components
 
-Every control is a shadcn/ui component on the radix base, kept in `web/src/ui`
-under the file name upstream gives it (`button.tsx`) and read through its
-registry item. Its structure and variants are upstream's; only colour, radius
+Every control is a shadcn/ui component on the radix base, kept in
+`web/src/ui/shadcn` under the file name upstream gives it (`button.tsx`) and
+read through its registry item. `components.json` points shadcn's `ui` alias at
+that folder, so `shadcn add` writes there. Its structure and variants are upstream's; only colour, radius
 and height change, through the tokens. When to use each one, what it pairs
 with and when not to use it is in
 [components.md](../../web/registry/rules/components.md) (item `vv-rules`).
@@ -193,7 +194,7 @@ The diagram shows how a screen reaches a component and its rules.
 
 ```mermaid
 flowchart LR
-  screen[Screen in web/src] --> comp[web/src/ui component]
+  screen[Screen in web/src] --> comp[web/src/ui/shadcn component]
   comp --> tokens[tokens.css]
   comp --> item[Registry item]
   item --> rules[components.md]
@@ -205,21 +206,24 @@ The components share three behaviours, so a screen never restyles them:
 | --- | --- |
 | Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` is dropped |
 | Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
-| Density | The library uses `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
+| Density | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
 
-Three changes to upstream keep the checks and the catalog rules: `Checkbox`
+Four changes to upstream keep the checks and the catalog rules: `Checkbox`
 draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
-that takes the focus, and `CommandGroup` styles its heading by wrapping it,
-because the attribute selector upstream uses is an arbitrary value. `Select`
+that takes the focus, `CommandGroup` styles its heading by wrapping it,
+because the attribute selector upstream uses is an arbitrary value, and
+`CommandInput` drops upstream's `outline-hidden` and is lower than its row, so
+the shared focus ring shows in full inside the `Command`. `Select`
 and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.
 
-The components the screens used before this tier are kept in
-`web/src/ui/legacy/` until the screen migrations replace their last use, so a
-file name never differs from a new one by case alone. They are not registry
-items. A screen still on them keeps working; new code imports from
-`web/src/ui`.
+This tier changes no existing screen. The components the screens use today
+stay at their paths in `web/src/ui` (`Button.tsx`, `Checkbox.tsx`,
+`Combobox.tsx` and the others the table names) until the screen migrations
+replace their last use. The new components live in their own folder, so a
+file name never differs from an old one by case alone. The old components are
+not registry items; new code imports from `web/src/ui/shadcn`.
 
 The showcase (`/design-system`) lays each component out by variant and state:
 normal, hover, keyboard focus, pressed, selected and disabled. Hover and
@@ -230,6 +234,7 @@ never set it.
 | Rejected | Why |
 | --- | --- |
 | Keeping vv's file names (`Button.tsx`) for the new components | `shadcn add` writes upstream's names, so every later update would be renamed by hand |
+| Moving the old components aside and switching the library screen to the new ones in this tier | The maintainer keeps every existing screen unchanged until its own migration |
 | Restyling the components to look like the old ones | The components are for new screens; the screen migrations replace the old look |
 | A per-component focus ring, as upstream | Each component would carry its own copy, and the arbitrary `ring-[3px]` fails the checks |
 

@@ -682,7 +682,7 @@ async function filterChecked(
 ): Promise<boolean> {
   await user.click(filterButton());
   const box = await screen.findByRole("checkbox", { name: new RegExp(`^${name}`) });
-  const checked = box.getAttribute("aria-checked") === "true";
+  const checked = (box as HTMLInputElement).checked;
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   return checked;
@@ -5369,8 +5369,8 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     await user.click(filterButton());
     const tentative = await screen.findByRole("checkbox", { name: /^Tentative only/ });
     const unused = screen.getByRole("checkbox", { name: /^Unused only/ });
-    expect(tentative.getAttribute("aria-checked")).toBe("false");
-    expect(unused.getAttribute("aria-checked")).toBe("false");
+    expect((tentative as HTMLInputElement).checked).toBe(false);
+    expect((unused as HTMLInputElement).checked).toBe(false);
     // 何も効いていない間は「Clear filters」を出さない。
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 

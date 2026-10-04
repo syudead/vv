@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import { t } from "../i18n";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 

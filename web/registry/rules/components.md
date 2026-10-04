@@ -1,7 +1,7 @@
 # Components rules
 
-Every control on a screen is a component from `web/src/ui`, read through its
-registry item. `task check` fails on a raw `<button>`, `<input>`, `<select>`
+Every control on a new or migrated screen is a component from
+`web/src/ui/shadcn`, read through its registry item. `task check` fails on a raw `<button>`, `<input>`, `<select>`
 or `<textarea>` outside `web/src/ui`. Each component is the shadcn/ui
 component on the radix base, dressed only through the tokens of
 [foundations.md](foundations.md); its structure and variants are upstream's.
@@ -129,8 +129,8 @@ Items `combobox`, `command`. Pick one value from many by typing.
   popover with a search field and the matching options. Use it for a long
   list (folders, tags) where typing is faster than scrolling.
 - `Command` is the filtered list on its own. Put it inside an existing
-  popover when the popover itself is the picker, as the selection bar's
-  "Add tag" and "Remove tag" do; pass `shouldFilter={false}` when the caller
+  popover when the popover itself is the picker, such as a selection bar's
+  "Add tag" and "Remove tag"; pass `shouldFilter={false}` when the caller
   orders and filters the options. Give `Command` and `CommandList` a `label`
   from the catalog; cmdk's own default names are English text outside it.
 

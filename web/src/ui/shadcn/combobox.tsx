@@ -3,7 +3,7 @@ import { Popover as PopoverPrimitive } from "radix-ui";
 import { type ReactNode, useState } from "react";
 
 import { cn } from "@/lib/cn";
-import { Button } from "@/ui/button";
+import { Button } from "@/ui/shadcn/button";
 import {
   Command,
   CommandEmpty,
@@ -11,7 +11,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/ui/command";
+} from "@/ui/shadcn/command";
 
 // shadcn/ui の Combobox（Popover の中の Command）。多くの候補から 1 つを、打って絞って選ぶ。
 // 浮く層は Radix Popover をここで直に組む（Popover の部品は重ね表示の単位が作る）。

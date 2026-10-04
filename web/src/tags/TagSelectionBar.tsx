@@ -3,8 +3,8 @@ import { useId, type Ref } from "react";
 
 import { maxTagBatch } from "../api/tags";
 import { t } from "../i18n";
-import Button from "../ui/legacy/Button";
-import IconButton from "../ui/legacy/IconButton";
+import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 
 /**
  * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、本文の先頭の見出しの行と

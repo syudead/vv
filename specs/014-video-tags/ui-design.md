@@ -217,7 +217,7 @@ with truncation) and are told apart by color and marks.
 
 The video page's `タグを追加`, the selection bar's `タグを付ける` and
 `タグを外す`, and the merge target picker on the management page use one
-component (`web/src/ui/legacy/Combobox.tsx`): an ARIA 1.2 combobox (input + listbox,
+component (`web/src/ui/Combobox.tsx`): an ARIA 1.2 combobox (input + listbox,
 `aria-activedescendant`).
 
 - The suggestion list appears below the input (above it in the selection bar)

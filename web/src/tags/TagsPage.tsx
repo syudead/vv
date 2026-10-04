@@ -48,9 +48,9 @@ import {
   writeTagListPreferences,
 } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/legacy/Button";
-import Checkbox from "../ui/legacy/Checkbox";
-import FilterChip from "../ui/legacy/FilterChip";
+import Button from "../ui/Button";
+import Checkbox from "../ui/Checkbox";
+import FilterChip from "../ui/FilterChip";
 import Skeleton from "../ui/Skeleton";
 import Tabs, { tabId } from "../ui/Tabs";
 import { useToast } from "../ui/Toast";

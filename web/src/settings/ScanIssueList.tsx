@@ -6,7 +6,7 @@ import type { ScanIssue } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { ScanIssueCounts } from "../shell/ScanSummaryParts";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import type { ScanIssueList as ScanIssueListState } from "./useScanIssues";
 
 /** issueLocation は「登録フォルダの表示名 / 相対パス」である。 */

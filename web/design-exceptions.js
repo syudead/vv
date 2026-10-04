@@ -239,7 +239,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/legacy/Checkbox.tsx",
+    file: "ui/Checkbox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5"],
     kind: "migration",
@@ -251,7 +251,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/combobox.tsx",
+    file: "ui/shadcn/combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: [
       "w-\\(--radix-popover-trigger-width\\)",
@@ -262,7 +262,7 @@ export default [
       "Radix sets the list's width and transform origin at run time through its CSS variables; they are positions, not design values.",
   },
   {
-    file: "ui/legacy/Combobox.tsx",
+    file: "ui/Combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
@@ -287,7 +287,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/select.tsx",
+    file: "ui/shadcn/select.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: [
       "max-h-\\(--radix-select-content-available-height\\)",
@@ -333,6 +333,11 @@ export default [
     kind: "migration",
   },
   {
+    file: "videoList/FilterMenu.tsx",
+    rules: ["no-restricted-syntax"],
+    kind: "migration",
+  },
+  {
     file: "videoList/FolderArt.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
@@ -343,8 +348,18 @@ export default [
     kind: "migration",
   },
   {
+    file: "videoList/SearchBox.tsx",
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
     file: "videoList/SearchSyntaxHelp.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
+    file: "videoList/SortControls.tsx",
+    rules: ["no-restricted-syntax"],
     kind: "migration",
   },
   {

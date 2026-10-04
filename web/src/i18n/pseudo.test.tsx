@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import IconButton from "../ui/legacy/IconButton";
+import IconButton from "../ui/IconButton";
 import { formatNumber } from "./format";
 import { t } from "./messages";
 import {

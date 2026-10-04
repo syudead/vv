@@ -9,7 +9,7 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
-import { Checkbox } from "../ui/checkbox";
+import Checkbox from "../ui/Checkbox";
 import FavoriteToggle from "../videoList/FavoriteToggle";
 import FolderArt from "../videoList/FolderArt";
 
@@ -151,8 +151,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         >
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group, next === true)}
-            aria-label={t.library.group.select(group.name)}
+            onCheckedChange={(next) => onSelect(group, next)}
+            label={t.library.group.select(group.name)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
         </div>
@@ -256,8 +256,8 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         <td className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group, next === true)}
-            aria-label={t.library.group.select(group.name)}
+            onCheckedChange={(next) => onSelect(group, next)}
+            label={t.library.group.select(group.name)}
             className={cn(
               "transition-opacity",
               selectionMode || selected

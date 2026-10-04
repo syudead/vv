@@ -3,7 +3,7 @@ import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/legacy/IconButton";
+import IconButton from "../ui/IconButton";
 import { useToast } from "../ui/Toast";
 
 /**

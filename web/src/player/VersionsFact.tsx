@@ -22,8 +22,8 @@ import {
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/legacy/Button";
-import IconButton from "../ui/legacy/IconButton";
+import Button from "../ui/Button";
+import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import Skeleton from "../ui/Skeleton";

@@ -11,9 +11,9 @@ import {
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import Chip from "../ui/Chip";
-import Combobox, { type ComboboxOption } from "../ui/legacy/Combobox";
+import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { ModalFrame } from "../ui/ModalFrame";
 import TentativeMark from "../ui/TentativeMark";
 

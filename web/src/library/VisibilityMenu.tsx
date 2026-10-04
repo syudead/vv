@@ -3,7 +3,7 @@ import { ChevronDown, Globe, Lock } from "lucide-react";
 import { maxVideoTagsSelection } from "../api/tags";
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t } from "../i18n";
-import { Button } from "../ui/button";
+import Button from "../ui/Button";
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import { useToast } from "../ui/Toast";
 import { overLimitMessage } from "./selectionErrors";

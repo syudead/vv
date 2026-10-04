@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { RejectedTagNameList } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/legacy/Button";
+import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
 /**

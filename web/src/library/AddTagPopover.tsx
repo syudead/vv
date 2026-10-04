@@ -12,10 +12,10 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
+import Combobox from "../ui/Combobox";
 import { PopoverContent } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
-import TagCommand from "./TagCommand";
 import { buildAddOptions } from "./tagChoices";
 
 /**
@@ -36,6 +36,10 @@ export default function AddTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Radix の DismissableLayer は document の capture 段階で Esc を先に拾う
+  // ため、combobox の候補の一覧が開いているかをここで見張り、開いていれば
+  // PopoverContent の onEscapeKeyDown で既定の「閉じる」を止める（B2）。
+  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<UiText | null>(null);
@@ -110,6 +114,9 @@ export default function AddTagPopover({
         event.preventDefault();
         if (!overLimit) inputRef.current?.focus();
       }}
+      onEscapeKeyDown={(event) => {
+        if (listOpenRef.current) event.preventDefault();
+      }}
     >
       <h2 id={headingId} className="sr-only">
         {t.library.selection.addTag}
@@ -120,9 +127,7 @@ export default function AddTagPopover({
         </p>
       ) : (
         <>
-          <TagCommand
-            label={t.library.selection.addTag}
-            icon={<Plus aria-hidden="true" />}
+          <Combobox
             value={value}
             onValueChange={setValue}
             options={options}
@@ -130,8 +135,24 @@ export default function AddTagPopover({
             onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
             createLabel={createLabel}
             onCreate={(spelling) => submit({ name: spelling })}
+            placeholder={t.library.selection.addTag}
+            icon={
+              <Plus
+                className="size-3 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            }
             busy={submitting}
+            side="top"
+            aria-label={t.library.selection.addTag}
             inputRef={inputRef}
+            onEscapeWhenClosed={() => onOpenChange(false)}
+            onOpenChange={(listOpen) => {
+              listOpenRef.current = listOpen;
+            }}
+            className="w-full"
+            inputClassName="w-full"
+            frameClassName="w-full"
           />
           {errorMessage !== null && (
             <p role="alert" className="mt-1 text-xs text-destructive">

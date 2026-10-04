@@ -4,8 +4,8 @@ import { createPortal } from "react-dom";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { isComposingNativeKeyEvent } from "./legacy/Combobox";
-import IconButton from "./legacy/IconButton";
+import { isComposingNativeKeyEvent } from "./Combobox";
+import IconButton from "./IconButton";
 
 function focusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(
