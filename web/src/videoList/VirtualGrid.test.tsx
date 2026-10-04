@@ -57,8 +57,11 @@ function useLayout() {
     const scrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
     const height = window.innerHeight;
     window.innerHeight = 800;
-    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation((options) => {
-      const top = typeof options === "object" ? (options.top ?? 0) : 0;
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation((options?: unknown) => {
+      const top =
+        typeof options === "object" && options !== null
+          ? ((options as ScrollToOptions).top ?? 0)
+          : 0;
       Object.defineProperty(window, "scrollY", { configurable: true, value: top });
     });
     restore = [
