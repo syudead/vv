@@ -155,7 +155,11 @@ jobs:
           NOTES="main の最新のコミット ${GITHUB_SHA} から組んだ Windows 版です。正式版ではありません。main に push するたびに差し替わります。"
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${TAG}" -f sha="$GITHUB_SHA" -F force=true > /dev/null
-            gh release upload "$TAG" "$ZIP" --clobber
+            # 同じコミットの再実行では zip の名前も同じになる。--clobber は先に消してから載せるので、
+            # 同じ名前の zip が既にあれば載せ直さない。
+            if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fqx "$ZIP"; then
+              gh release upload "$TAG" "$ZIP"
+            fi
             gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
               if [ "$asset" != "$ZIP" ]; then
                 gh release delete-asset "$TAG" "$asset" --yes
