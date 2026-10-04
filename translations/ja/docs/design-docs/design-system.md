@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: cb2bd8f3e71ee1f0b03e48765972b7bb0bf0185aa3fe697767c1c4e0d6a2bcc5
+sourceHash: 6c375eef92061be18b995ba319f28bcd3473d3dbe12b6d16e947b156185ea5bd
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -48,7 +48,37 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 ## チェックと例外 {#checks-and-exceptions}
 
-[Fail lint on raw controls, arbitrary values and unknown Tailwind classes](https://github.com/syudead/vv/issues/768) が書く。
+`task check` はデザインシステムの外で書かれたコードで失敗する。ESLint（`task lint-web`）は `web/src` 以下のすべてのファイルを検査するが、テスト（`*.test.ts`、`*.test.tsx`）と `src/testing/` は除く。これらは画面ではなくハーネスを描画する。`eslint-plugin-better-tailwindcss` は `web/src/index.css` からテーマを読み、`className` と、`cn()` と `cva()` の文字列引数を検査する。
+
+| 失敗する対象 | ルール | メッセージ |
+| --- | --- | --- |
+| `web/src/ui` の外の `<button>`、`<input>`、`<select>`、`<textarea>` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
+| 任意の値か任意のプロパティを持つクラス、または `(--var)` の短縮記法 | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
+| テーマが生成しないクラス | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
+| トークン外の生の色、既定パレットのクラス、最小値を下回るコントラストの組 | `web/src/theme/tokens.test.ts` | テスト自身のメッセージ |
+
+任意のバリアント（`data-[state=open]:`、`has-[...]:`、`max-[49.5rem]:`）は通る。任意の値のルールは最後のバリアントの後のユーティリティだけを検査する。`h-[3px]` と `[overflow-wrap:anywhere]` は失敗し、`data-[state=open]:bg-accent-soft` は通る。
+
+`noInlineConfig` が `eslint-disable` コメントを無効にするので、例外はすべて `web/design-exceptions.js` の項目になる。
+
+| フィールド | 意味 |
+| --- | --- |
+| `file` | `web/src` 以下のパス。例: `player/VideoPage.tsx` |
+| `rules` | その項目が免除する、上の表のルール名 |
+| `classes` | 省略可。許可する唯一のクラスを表す正規表現で、それぞれクラス全体と照合する。ない場合、ファイルは `rules` から免除される |
+| `kind` | `migration`（そのファイルを移行する PR が削除する）または `special`（残る） |
+| `reason` | `special` では必須。デザインシステムでその見た目を表現できない理由 |
+
+`no-restricted-syntax` の免除は生のコントロールの検査だけを外す。同じルールを共有する i18n の検査は引き続き適用される。`classes` は 2 つのクラスのルールにだけ適用される。
+
+一覧は、チェックが入った時点でチェックに違反していたすべてのファイルを `migration` 項目として始まった。それ以降、チェックに違反する新しいファイルは失敗し、各移行 PR は自分のファイルの項目を削除する（[research.md R-9](../../specs/038-design-system/research.md#r-9-screens-migrate-one-area-per-pr-behind-a-shrinking-exception-list)）。`web/src/theme/designExceptions.test.ts`（`task test-web`）は、項目が存在しないファイルを指す、未知のルールを指す、未知の `kind` を持つ、ファイルを重複させる、または `reason` のない `special` である場合に失敗する。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| 違反箇所ごとの `eslint-disable` コメント | `noInlineConfig` が禁止しており、散らばったコメントは領域ごとに数えることも削除することもできない |
+| テストも検査する | テストは画面ではない素の `<button>` ハーネスを描画する。テストを一覧に載せると、どの画面の移行でも削除されない `migration` 項目が残り続ける |
+
+このチェックの判断は [038 調査](../../specs/038-design-system/research.md) の R-8 と R-9 にある。
 
 ## 基盤 {#foundations}
 
