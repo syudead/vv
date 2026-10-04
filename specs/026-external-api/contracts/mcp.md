@@ -29,7 +29,7 @@ index? }` as external API errors.
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
-| `list_tags` | `GET /api/v1/tags` |
+| `list_tags` | `GET /api/v1/tags`; `limit` defaults to 100 in the tool |
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
@@ -38,6 +38,8 @@ index? }` as external API errors.
 
 The last two were added in 029
 ([specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)).
+039 added the list parameters of `list_tags` and its default `limit`
+([specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)).
 
 | Tool | Hints | Reason |
 | --- | --- | --- |

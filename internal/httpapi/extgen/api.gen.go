@@ -125,6 +125,33 @@ func (e ExternalScanStatus) Valid() bool {
 	}
 }
 
+// Defines values for TagSort.
+const (
+	CountAsc    TagSort = "countAsc"
+	CountDesc   TagSort = "countDesc"
+	CreatedAsc  TagSort = "createdAsc"
+	CreatedDesc TagSort = "createdDesc"
+	Name        TagSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the TagSort enum.
+func (e TagSort) Valid() bool {
+	switch e {
+	case CountAsc:
+		return true
+	case CountDesc:
+		return true
+	case CreatedAsc:
+		return true
+	case CreatedDesc:
+		return true
+	case Name:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoTagsRequestAction.
 const (
 	Add     VideoTagsRequestAction = "add"
@@ -262,8 +289,10 @@ type ExternalVideoTag struct {
 
 // Tag defines model for Tag.
 type Tag struct {
-	Id   int64  `json:"id"`
-	Name string `json:"name"`
+	// CreatedAt タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+	Name      string    `json:"name"`
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`
@@ -278,7 +307,21 @@ type Tag struct {
 // TagList defines model for TagList.
 type TagList struct {
 	Items []Tag `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部のタグの数。ページングとは独立に返る
+	TotalAll int `json:"totalAll"`
 }
+
+// TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+// createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+// （specs/036-tag-admin-scale/data-model.md §0・§2）
+type TagSort string
 
 // VideoDisplayNameChange defines model for VideoDisplayNameChange.
 type VideoDisplayNameChange struct {
@@ -395,6 +438,30 @@ type Internal = Error
 // Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Unauthenticated = Error
 
+// ListTagsParams defines parameters for ListTags.
+type ListTagsParams struct {
+	// Q 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+	// （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+	// タグだけにする。語の分解はしない
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Tentative true なら仮のタグだけにする
+	Tentative *bool `form:"tentative,omitempty" json:"tentative,omitempty"`
+
+	// Unused true なら本数 0 のタグだけにする
+	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
+
+	// Sort 並び順
+	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+	// `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
@@ -432,7 +499,7 @@ type ServerInterface interface {
 	GetCurrentScan(w http.ResponseWriter, r *http.Request)
 	// ListTags タグの一覧を返す
 	// (GET /tags)
-	ListTags(w http.ResponseWriter, r *http.Request)
+	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
 	// UpdateVideoDisplayNames 複数の動画の表示名を設定・解除する
 	// (POST /video-display-names)
 	UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request)
@@ -490,8 +557,92 @@ func (siw *ServerInterfaceWrapper) GetCurrentScan(w http.ResponseWriter, r *http
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTagsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tentative" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tentative", r.URL.Query(), &params.Tentative, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tentative"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tentative", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unused" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unused", r.URL.Query(), &params.Unused, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unused"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unused", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListTags(w, r)
+		siw.Handler.ListTags(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

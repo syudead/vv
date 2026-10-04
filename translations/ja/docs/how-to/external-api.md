@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: f3040acacba9fb9741663a312a9c4cd4273b1b000efd334192282b1fca008a53
+sourceHash: 45a1f5bf9adcb70788f44af5ce539179c6e72132e3b690df935192ce2196481a
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -197,6 +197,31 @@ flowchart LR
 - 応答と `GET /api/v1/tags` の各タグは `tentative` を返す。
 - 仮のタグの確定と却下、却下済みの名前の閲覧と消去は、画面でしかできない。
 
+## タグを整理する {#tidy-up-tags}
+
+### タグを一覧する {#list-tags}
+
+`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する（[specs/039-external-tag-admin/contracts/external-api.md §1](../../specs/039-external-tag-admin/contracts/external-api.md#1-get-apiv1tags)）。
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&q=selfie&sort=countDesc&limit=200"
+```
+
+| パラメータ | 意味 |
+| --- | --- |
+| `q` | 100 文字まで。全角半角、大文字小文字、かなの違いを無視して、名前または同義語の一部に一致する |
+| `tentative` | `true` で仮のタグだけを一覧する |
+| `unused` | `true` でどの動画にも付いていないタグだけを一覧する。`q` と `tentative` との AND |
+| `sort` | `name`（既定、名前の自然順）、`countDesc`、`countAsc`、`createdDesc` または `createdAsc`。同順位は名前、次に `id` で並べる |
+| `limit` | 1 ページあたり 1 から 200 個のタグ。**省略すると、一致するすべてのタグを** `nextCursor` なしで返す |
+| `cursor` | 前回の `nextCursor`。同じ `q`、`tentative`、`unused`、`sort` とともに送る |
+
+- 応答は `{ items, total, totalAll, nextCursor? }` である。どのページでも、`total` は絞り込みに一致するタグの数、`totalAll` はすべてのタグの数である。
+- `limit` を付けたときは、`nextCursor` がなくなるまでそれを `cursor` として渡し返すと、一致するすべてのタグを 1 回ずつ読める。
+- 各タグは `id`、`name`、`synonyms`、`videoCount`、`tentative`、`createdAt` を持つ。
+- 5 つの値以外の `sort`、1 から 200 の範囲外の `limit`、または 100 文字を超える `q` は `400` `invalid_request` を返す。読めないカーソル、または別の `sort` で作られたカーソルは、`reason: invalid_cursor` 付きの `400` `invalid_request` を返す。そのときは最初のページから読み直す。
+
 ## 表示名を設定する {#set-display-names}
 
 `POST /api/v1/video-display-names` は、複数の動画の表示名を設定または消去する。表示名は画面とこの API の `title` に表示され、並べ替えと検索に使われる。ファイル名は変わらない。
@@ -309,7 +334,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
-| `list_tags` | `GET /api/v1/tags` |
+| `list_tags` | `GET /api/v1/tags`。ツールでは `limit` の既定は 100 |
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
