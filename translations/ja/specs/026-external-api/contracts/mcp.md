@@ -52,4 +52,4 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `rename_tag` | `destructiveHint: false`、`idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`、`idempotentHint: true` | `remove` は名前を外す。`mergeTagId` 付きの `add` はタグを統合する。 |
 | `batch_tags` | `destructiveHint: true`、`idempotentHint: true` | `reject` と `delete` はタグを削除する。 |
-| `forget_rejected_tag_name` | `destructiveHint: true`、`idempotentHint: true` | その名前は仮のタグとしての付与で飛ばされなくなる。 |
+| `forget_rejected_tag_name` | `destructiveHint: true`、`idempotentHint: true` | その名前は、仮のタグとしての付与で飛ばされなくなる。 |

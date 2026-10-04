@@ -195,7 +195,7 @@ flowchart LR
 - 却下済みの名前は綴りの完全一致で照合する。その名前を確定タグとして作成すると、却下済みの名前から除かれる。
 - 飛ばした名前でリクエストは失敗せず（`200`）、`replace` の結果にも含まれない。`skippedTags` は飛ばした名前を正規化して `tags` の順に 1 回ずつ並べ、何も飛ばさなかったときは空の配列である。
 - 応答と `GET /api/v1/tags` の各タグは `tentative` を返す。
-- 仮のタグの確定と却下、却下済みの名前の一覧と消去は、[タグを整理する](#tidy-up-tags) のとおりに行う。
+- 仮のタグを確定または却下し、却下済みの名前を一覧または消去するには、[タグを整理する](#tidy-up-tags) に従う。
 
 ## タグを整理する {#tidy-up-tags}
 
@@ -264,7 +264,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグを確定、却下、削除する {#confirm-reject-and-delete-tags}
 
-`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[§5](../../specs/039-external-tag-admin/contracts/external-api.md#5-post-apiv1tagsbatch)）。1 つのタグだけの操作はない。1 つのタグには `"ids": [id]` を送る。
+`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[§5](../../specs/039-external-tag-admin/contracts/external-api.md#5-post-apiv1tagsbatch)）。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
 
 ```json
 { "action": "reject", "ids": [31, 45, 9999] }
@@ -274,17 +274,17 @@ curl -H "Authorization: Bearer $TOKEN" \
 | --- | --- | --- |
 | `confirm` | 仮のタグ | タグは確定タグになる |
 | `reject` | 仮のタグ | タグは削除され、その元の名前は却下済みの名前に入る |
-| `delete` | 確定タグ | タグは削除される。その名前は記憶しない |
+| `delete` | 確定タグ | タグは削除される。その名前は記憶されない |
 
-- 応答は `{ appliedIds, notFoundIds, notApplicableIds }` である。3 つのリストは重ならず、合わせて送った各 id を 1 回ずつ持ち、`ids` の順を保つ。`reject` に送った確定タグのように種類の違うタグは変えずに残し、`notApplicableIds` に入れる。
-- `ids` は重複も数えて 1 から 20000 個の id を持つ。範囲外は `limit` 付きの `400` `too_many_tags` を返す。3 つの値以外の `action` は `400` `invalid_request` を返す。トランザクションが失敗すると `500` `internal` を返し、何も変えない。
+- 応答は `{ appliedIds, notFoundIds, notApplicableIds }` である。3 つのリストは重ならず、合わせて送った各 id を 1 回ずつ持ち、`ids` の順を保つ。`reject` に送った確定タグのような種類の違うタグは、変更されずに残り、`notApplicableIds` に入る。
+- `ids` は重複も数えて 1 から 20,000 個の id を持ち、そうでなければ `limit` 付きの `400` `too_many_tags` を返す。3 つの値以外の `action` は `400` `invalid_request` を返す。トランザクションが失敗すると `500` `internal` を返し、何も変えない。
 
 ### 却下済みの名前 {#rejected-names}
 
-仮のタグとして付けると、却下済みの名前は飛ばされる（[タグを仮のタグとして付ける](#add-tags-as-tentative-tags)）。
+仮のタグとしての付与は、却下済みの名前を飛ばす（[タグを仮のタグとして付ける](#add-tags-as-tentative-tags)）。
 
 - `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[§6](../../specs/039-external-tag-admin/contracts/external-api.md#6-get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
-- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成されるようにする（[§7](../../specs/039-external-tag-admin/contracts/external-api.md#7-delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` である。照合した正規化後の名前と、名前がリストになく何も変わらなかったときに `false` になる値を持つ。`name` がないと `400` `invalid_request` を返す。
+- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[§7](../../specs/039-external-tag-admin/contracts/external-api.md#7-delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
 
 ### 例: 表記の揺れを統合する {#example-merge-spelling-variants}
 
@@ -303,7 +303,7 @@ sequenceDiagram
 1. `tentative=true&limit=200` ですべての仮のタグを読む。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。
 2. `selfie`、`セルフィー`、`自撮り` のような 1 つの名前の揺れをまとめ、最も多くの動画に付いたタグなど、各グループの統合先を選ぶ。
 3. `POST /api/v1/tags/merge` で各グループを統合する。統合元の名前は統合先の同義語になるので、以後その綴りで付けると統合先に届く。
-4. 残すタグを確定し、残りを `POST /api/v1/tags/batch` で却下する。
+4. `POST /api/v1/tags/batch` で、残すタグを確定し、残りを却下する。
 
 ```sh
 # 1. List the tentative tags, most used first.
