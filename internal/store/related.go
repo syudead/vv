@@ -101,7 +101,7 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 		args = append(args, id)
 	}
 
-	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id in (`+
+	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+` where videos.id in (`+
 		placeholders+`) and `+visibleVideoCondition("videos", audience)+` and `+shownVideoCondition("videos", audience), args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read related videos: %w", err)
@@ -222,7 +222,7 @@ func groupMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids
 	if err != nil {
 		return nil, fmt.Errorf("cannot build group member ids: %w", err)
 	}
-	rows, err := tx.QueryContext(ctx, `select `+videoColumns(audience)+` from videos
+	rows, err := tx.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+`
 		where videos.id in (select value from json_each(?))`, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read group members: %w", err)

@@ -58,17 +58,12 @@ func tagConditions(spec listSpec) ([]string, []any) {
 	return conditions, args
 }
 
-// representativeLocationValue は動画（別名 alias の video_id を持つ行）の代表の所在
-// （見せてよい所在のうちパスの最小）の列 column を返す副問い合わせである。
-func representativeLocationValue(alias, column string, audience domain.Audience) string {
-	return representativeLocationExpr(alias, `rl.`+column, audience)
-}
-
-// representativeLocationExpr は representativeLocationValue の、列の代わりに代表の所在
-// （別名 rl）に対する式 expr を返す版である。
-func representativeLocationExpr(alias, expr string, audience domain.Audience) string {
-	return `(select ` + expr + ` from video_locations rl where rl.video_id = ` + alias + `.video_id and ` +
-		visibleLocationCondition("rl", audience) + ` order by rl.path limit 1)`
+// representativeLocationJoin は、動画（別名 alias の video_id を持つ行）に代表の所在
+// （見せてよい所在のうちパスの最小）を rl として結ぶ。列ごとに副問い合わせで代表を
+// 選ぶと、1行につき同じ選び方を列の数だけ繰り返す（issue 674）。
+func representativeLocationJoin(alias string, audience domain.Audience) string {
+	return ` left join video_locations rl on rl.id = (select l.id from video_locations l where l.video_id = ` +
+		alias + `.video_id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
 }
 
 // libraryItemsCTE は項目の表 `items(group_id, id, path, added_at, mtime, created_at, title_key,
@@ -141,13 +136,11 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
 	mv as (
 		select gm.group_id, gm.video_id, gm.position, v.added_at, v.duration_ms,
-			` + representativeLocationValue("gm", "mtime", audience) + ` as mtime,
-			` + representativeLocationExpr("gm", fileCreatedAtExpr("rl"), audience) + ` as created_at,
-			` + representativeLocationValue("gm", "size_bytes", audience) + ` as size_bytes,
+			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
 		from gm join whole on whole.group_id = gm.group_id
-		join videos v on v.id = gm.video_id` + progressJoin("v") + `),
+		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progressJoin("v") + `),
 	items as (
 		select null as group_id, videos.id as id, matched.path as path,
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
@@ -443,7 +436,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, ff.path is not null, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id
 		left join folder_favorites ff on ff.path = g.path_key
-		join videos on videos.id = m.video_id`+progressJoin+`
+		join videos on videos.id = m.video_id`+representativeJoin(audience)+progressJoin+`
 		where g.id in (select value from json_each(?)) and `+visibleVideoCondition("videos", audience)+`
 		order by g.id, m.position`, string(encoded))
 	if err != nil {

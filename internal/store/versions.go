@@ -302,7 +302,7 @@ func videoVersions(ctx context.Context, tx *sql.Tx, audience domain.Audience, vi
 	if video.Versions == nil {
 		return domain.VideoVersions{RepresentativeID: video.ID, Items: []domain.Video{video}}, nil
 	}
-	rows, err := tx.QueryContext(ctx, `select `+videoColumns(audience)+` from videos
+	rows, err := tx.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+`
 		join video_bundle_members vm on vm.content_key = videos.content_key
 		where vm.bundle_id = (select bundle_id from video_bundle_members where content_key = ?) and `+
 		visibleVideoCondition("videos", audience), video.ContentKey)
