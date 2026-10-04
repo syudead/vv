@@ -46,10 +46,11 @@ func videoTagsOf(t *testing.T, db *DB, key string) []domain.VideoTag {
 
 func tagVideoCount(t *testing.T, db *DB, id int64) int {
 	t.Helper()
-	tags, err := db.Tags().ListTags(context.Background())
+	tagsPage, err := db.Tags().ListTags(context.Background(), domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	for _, tag := range tags {
 		if tag.ID == id {
 			return tag.VideoCount
@@ -87,10 +88,11 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 	}
 
 	// 一致しないフォルダ名（Show・Drama）からタグは作られない。
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	if len(tags) != 1 {
 		t.Errorf("tags = %+v, want Anime だけ", tags)
 	}
@@ -127,7 +129,7 @@ func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Tags().MergeTag(ctx, target.ID, anime.ID); err != nil {
+	if _, err := db.Tags().MergeTags(ctx, target.ID, []int64{anime.ID}); err != nil {
 		t.Fatal(err)
 	}
 	want = []domain.VideoTag{{TagRef: domain.TagRef{ID: target.ID, Name: "Cartoon"}, FromFolder: true}}

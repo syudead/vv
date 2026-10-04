@@ -4,6 +4,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { isComposingKeyEvent } from "../ui/Combobox";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
@@ -24,6 +25,17 @@ export interface SearchBoxProps {
   /** 読み上げ名。 */
   label?: UiText;
   placeholder?: UiText;
+  /**
+   * 枠の右端に動画の検索の書き方の手引き（`SearchSyntaxHelp`）を置くか。動画の検索
+   * 構文を持たない一覧（タグ管理画面）は false にする。
+   */
+  syntaxHelp?: boolean;
+  /**
+   * 入力が落ち着くのを待つ時間（ms）。既定は `searchDebounceMs`。タグ管理画面は
+   * 打鍵ごとにサーバーへ引き直す（前の要求は打ち切る）ので 0 にする。
+   */
+  debounceMs?: number;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -83,6 +95,9 @@ export default function SearchBox({
   inputRef,
   label = t.list.search.label,
   placeholder = t.list.search.placeholder,
+  syntaxHelp = true,
+  debounceMs = searchDebounceMs,
+  disabled = false,
   className,
 }: SearchBoxProps) {
   const [input, setInputState] = useState(query);
@@ -120,15 +135,16 @@ export default function SearchBox({
   useEffect(() => {
     const next = normalizeQuery(input);
     if (next === committed.current) return;
-    const timer = setTimeout(() => commit(next), searchDebounceMs);
+    const timer = setTimeout(() => commit(next), debounceMs);
     return () => clearTimeout(timer);
-  }, [commit, input]);
+  }, [commit, input, debounceMs]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest("input, textarea, [contenteditable=true]")) return;
+      if (field.current === null || field.current.disabled) return;
       event.preventDefault();
       field.current?.focus();
       field.current?.select();
@@ -166,6 +182,8 @@ export default function SearchBox({
           session.current.end();
         }}
         onKeyDown={(event) => {
+          // IME の変換中の Esc は変換を取り消すためのもので、検索語を消さない。
+          if (isComposingKeyEvent(event)) return;
           if (event.key === "Escape") {
             event.preventDefault();
             setInput("");
@@ -175,14 +193,17 @@ export default function SearchBox({
         }}
         placeholder={placeholder}
         aria-label={label}
+        disabled={disabled}
         autoComplete="off"
         spellCheck={false}
         className={cn(
           // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
-          input === "" ? "pr-9 sm:pr-15" : "pr-15",
+          // 手引きを置かない検索欄は、クリアか `/` の1つ分だけ空ける。
+          !syntaxHelp ? "pr-9" : input === "" ? "pr-9 sm:pr-15" : "pr-15",
           "h-full w-full rounded-md border border-control-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-link",
+          "disabled:cursor-not-allowed disabled:opacity-50",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
@@ -205,7 +226,7 @@ export default function SearchBox({
             /
           </kbd>
         )}
-        <SearchSyntaxHelp />
+        {syntaxHelp && <SearchSyntaxHelp />}
       </div>
     </div>
   );

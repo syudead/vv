@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -86,12 +87,16 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 	return name, nil
 }
 
-// tagByID はタグ1件を、シノニムと本数を添えて返す。無ければ
+// tagByID はタグ1件を、シノニムと本数と作った時刻を添えて返す。無ければ
 // domain.ErrTagNotFound を返す。
 func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	ref, err := tagRefByID(ctx, q, id)
 	if err != nil {
 		return domain.Tag{}, err
+	}
+	var createdAt int64
+	if err := q.QueryRowContext(ctx, `select created_at from tags where id = ?`, id).Scan(&createdAt); err != nil {
+		return domain.Tag{}, fmt.Errorf("cannot read the tag (id=%d): %w", id, err)
 	}
 	count, err := videoCountByTagID(ctx, q, id)
 	if err != nil {
@@ -101,7 +106,10 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	return domain.Tag{ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative}, nil
+	return domain.Tag{
+		ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative,
+		CreatedAt: time.Unix(createdAt, 0),
+	}, nil
 }
 
 // videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
@@ -138,14 +146,14 @@ func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, er
 	return names, nil
 }
 
-// insertTagName は tag_names に1行足し、照合用の鍵を同じトランザクションで
-// 書く（data-model.md §7）。同じ取引でその名前を却下した名前から外す
+// insertTagName は tag_names に1行足し、照合用の鍵と名前の自然順の鍵を同じ文で
+// 書く（data-model.md §7、specs/036-tag-admin-scale/data-model.md §0）。同じ取引でその名前を却下した名前から外す
 // （specs/031-tentative-tags/research.md R-3）。
 func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
 	if _, err := tx.ExecContext(ctx, `
-		insert into tag_names (name, tag_id, canonical, search_key, search_version)
-		values (?, ?, ?, ?, ?)`,
-		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.SearchKeyVersion,
+		insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+		values (?, ?, ?, ?, ?, ?)`,
+		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.NaturalSortKey(name), domain.SearchKeyVersion,
 	); err != nil {
 		return fmt.Errorf("cannot save the tag name (%s): %w", name, err)
 	}
@@ -162,7 +170,7 @@ func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
 
 // confirmTagInTx はタグ id を確定したタグにする（tentative = 0）。既に 0 なら何も変えない
 // （specs/031-tentative-tags/research.md R-4）。
-func confirmTagInTx(ctx context.Context, tx *sql.Tx, id int64) error {
+func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 	if _, err := tx.ExecContext(ctx, `update tags set tentative = 0 where id = ? and tentative = 1`, id); err != nil {
 		return fmt.Errorf("cannot confirm the tag (id=%d): %w", id, err)
 	}

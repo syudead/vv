@@ -4,6 +4,7 @@ import {
   __resetTagsForTest,
   addTagSynonym,
   attachVideoTagByID,
+  batchTags,
   attachVideoTagByName,
   createTag,
   currentTags,
@@ -12,7 +13,7 @@ import {
   detachVideoTag,
   forgetRejectedTagName,
   getTags,
-  listRejectedTagNames,
+  listRejectedTagNamePage,
   mergeTag,
   refreshTags,
   rejectTag,
@@ -20,6 +21,7 @@ import {
   renameTag,
   subscribeTags,
   summarizeVideoTags,
+  tagImpact,
 } from "./tags";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
@@ -137,6 +139,7 @@ describe("共有のタグの一覧の保持", () => {
   });
 
   it("変更で始まった取り直しは、始まっていた進行中のGETに乗らず、新しい要求を送る（B1）", async () => {
+    subscribeTags(() => undefined);
     let resolveOldGet: (response: Response) => void = () => undefined;
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -218,6 +221,12 @@ describe("共有のタグの一覧の保持", () => {
 });
 
 describe("タグの変更が成功した後の後始末", () => {
+  // 購読者（候補・絞り込みの確かめ）がいるときは、変更のあとに共有の一覧を取り直す
+  // （購読者がいないときは下の「購読者のいない共有の保持」）。
+  beforeEach(() => {
+    subscribeTags(() => undefined);
+  });
+
   function stubMutation(response: Response, refreshedItems: unknown[]) {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -269,13 +278,21 @@ describe("タグの変更が成功した後の後始末", () => {
 
   it("mergeTagは成功後に共有の一覧を取り直し、一覧の控えを捨てる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
-    const fetch = stubMutation(jsonResponse(tag({ id: 1 })), [tag({ id: 1 })]);
+    const fetch = stubMutation(jsonResponse({ tag: tag({ id: 1 }), notFoundIds: [3] }), [
+      tag({ id: 1 }),
+    ]);
 
-    await mergeTag(1, 2);
+    await expect(mergeTag(1, [2, 3])).resolves.toEqual({
+      tag: tag({ id: 1 }),
+      notFoundIds: [3],
+    });
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       "/api/tags/1/merge",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ sourceId: 2 }) }),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ sourceIds: [2, 3] }),
+      }),
     );
     expect(takeListSnapshot(key)).toBeUndefined();
     await vi.waitFor(() => {
@@ -351,8 +368,102 @@ describe("タグの変更が成功した後の後始末", () => {
   });
 });
 
+describe("購読者のいない共有の保持（specs/036-tag-admin-scale/research.md R-12）", () => {
+  it("変更のあと購読者がいなければ全件を取り直さず、保持を捨てて次のgetTagsに取らせる", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 1, name: "旧名" })] }))
+      .mockResolvedValueOnce(jsonResponse(tag({ id: 1, name: "改名後" })))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 1, name: "改名後" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await getTags();
+    expect(currentTags()?.[0]?.name).toBe("旧名");
+
+    await renameTag(1, "改名後");
+    await flush();
+    // 一覧の控えは今までどおり捨てる。
+    expect(takeListSnapshot(key)).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(currentTags()).toBeUndefined();
+
+    await expect(getTags()).resolves.toEqual([tag({ id: 1, name: "改名後" })]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("捨てる前に始まっていた取得の応答は保持に入れず、待つ呼び手には取り直した一覧を返す", async () => {
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+    vi.stubGlobal("fetch", fetch);
+
+    const first = getTags();
+    await deleteTag(1);
+    resolveFirst?.(jsonResponse({ items: [tag({ id: 1 })] }));
+    // 待っていた呼び手には、変更を映していない古い応答ではなく取り直した一覧が届く。
+    await expect(first).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(currentTags()).toEqual([]);
+
+    // 取り直した一覧が共有の保持になり、次の getTags は送らない。
+    await expect(getTags()).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("捨てる前に始まっていた refreshTags を待つ呼び手にも、取り直した一覧を返す", async () => {
+    let resolveFirst: ((response: Response) => void) | undefined;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2, name: "残る" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    const pending = refreshTags();
+    await deleteTag(1);
+    resolveFirst?.(
+      jsonResponse({
+        items: [tag({ id: 1, name: "消した" }), tag({ id: 2, name: "残る" })],
+      }),
+    );
+    await expect(pending).resolves.toEqual([tag({ id: 2, name: "残る" })]);
+    expect(currentTags()).toEqual([tag({ id: 2, name: "残る" })]);
+  });
+
+  it("購読者がいれば今までどおり取り直して知らせる", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
+    vi.stubGlobal("fetch", fetch);
+    const listener = vi.fn();
+    subscribeTags(listener);
+
+    await deleteTag(1);
+    await vi.waitFor(() => {
+      expect(listener).toHaveBeenCalledWith([]);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts/screen-api.md §2・§3）", () => {
-  it("confirmTagはPOST /api/tags/{id}/confirmを送り、成功後に共有の一覧を取り直す", async () => {
+  it("confirmTagはPOST /api/tags/{id}/confirmを送り、成功後に購読者のいる共有の一覧を取り直す", async () => {
+    subscribeTags(() => undefined);
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -369,7 +480,8 @@ describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts
     });
   });
 
-  it("rejectTagはPOST /api/tags/{id}/rejectを送り、成功後に共有の一覧を取り直す", async () => {
+  it("rejectTagはPOST /api/tags/{id}/rejectを送り、成功後に購読者のいる共有の一覧を取り直す", async () => {
+    subscribeTags(() => undefined);
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -401,14 +513,35 @@ describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts
     });
   });
 
-  it("listRejectedTagNamesは却下した名前を返す", async () => {
+  it("listRejectedTagNamePageはパラメータを省くと先頭のページを返す", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(jsonResponse({ items: ["Alpha", "Beta"] }));
+      .mockResolvedValueOnce(jsonResponse({ items: ["Alpha", "Beta"], total: 2 }));
     vi.stubGlobal("fetch", fetch);
 
-    await expect(listRejectedTagNames()).resolves.toEqual(["Alpha", "Beta"]);
+    await expect(listRejectedTagNamePage()).resolves.toEqual({
+      items: ["Alpha", "Beta"],
+      total: 2,
+    });
     expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/rejected-names");
+  });
+
+  it("listRejectedTagNamePageはcursorとlimitをクエリで送り、nextCursorを返す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        jsonResponse({ items: ["Gamma"], total: 3, nextCursor: "next" }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(listRejectedTagNamePage("a+b/c", 2)).resolves.toEqual({
+      items: ["Gamma"],
+      total: 3,
+      nextCursor: "next",
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      `/api/tags/rejected-names?${new URLSearchParams({ cursor: "a+b/c", limit: "2" }).toString()}`,
+    );
   });
 
   it("forgetRejectedTagNameは名前をクエリで送るDELETEで、共有の一覧は取り直さない", async () => {
@@ -535,6 +668,7 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
   // issue 268 の受け入れ条件1: 名前で付けたタグが新しく作られたかもしれないので、
   // createTag と同じく共有の一覧を取り直す（別の動画の再生画面の候補にも出る）。
   it("attachVideoTagByNameは共有のタグの一覧を取り直す", async () => {
+    subscribeTags(() => undefined);
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(jsonResponse({ tag: { id: 9, name: "新規" }, applied: 1 }))
@@ -665,5 +799,77 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
     expect(JSON.parse((init as RequestInit).body as string)).toEqual({
       videoIds: [1, 2, 3],
     });
+  });
+});
+
+describe("まとめての操作と確認の数（specs/036-tag-admin-scale/contracts/screen-api.md §1・§3・§4）", () => {
+  it("batchTagsはPOST /api/tags/batchを送り、成功後に購読者のいる共有の一覧を1回取り直して一覧の控えを捨てる", async () => {
+    subscribeTags(() => undefined);
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const outcome = { appliedIds: [3, 1], notFoundIds: [9], notApplicableIds: [2] };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(outcome))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2 })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(batchTags("confirm", [3, 2, 9, 1])).resolves.toEqual(outcome);
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/batch");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "confirm",
+      ids: [3, 2, 9, 1],
+    });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 2 })]);
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("batchTagsが失敗したら共有の一覧も一覧の控えも変えずに投げる", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      jsonResponse(
+        {
+          code: "invalid_request",
+          message: "x",
+          reason: "too_many_tags",
+          limit: 20000,
+        },
+        400,
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(batchTags("delete", [1])).rejects.toMatchObject({
+      reason: "too_many_tags",
+      limit: 20000,
+    });
+    expect(takeListSnapshot(key)).toBeDefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("tagImpactはPOST /api/tags/impactを送り、共有の保持には触れない", async () => {
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tagCount: 2, videoCount: 101 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(tagImpact("merge", [4, 5])).resolves.toEqual({
+      tagCount: 2,
+      videoCount: 101,
+    });
+    expect(fetch.mock.calls[0]?.[0]).toBe("/api/tags/impact");
+    expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "merge",
+      ids: [4, 5],
+    });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(takeListSnapshot(key)).toBeDefined();
+    expect(currentTags()).toBeUndefined();
   });
 });

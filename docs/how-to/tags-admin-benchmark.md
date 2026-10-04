@@ -1,0 +1,133 @@
+# タグ管理画面を規模のデータで測る
+
+タグ管理画面（`/tags`）を、タグ 1,000 個・動画 10,000 本、タグ 3,000 個・動画 30,000 本、
+タグ 30,000 個・動画 30,000 本のライブラリで本番ビルドに対してヘッドレス Chromium から測り、
+PR に残す手順。何を測り何を期待するかは
+[specs/036-tag-admin-scale/quickstart.md](../../specs/036-tag-admin-scale/quickstart.md)、
+この形にした理由は
+[research.md R-9](../../specs/036-tag-admin-scale/research.md#r-9-受け入れ条件の計測は作り置きの規模のデータを-scriptstagsbench-が作りplaywright-の計測スクリプトが本番ビルドに対して測る)
+にある。
+
+`task check`・`task test-e2e`・CI には入らない。画面の描き方を変える PR で、手で走らせる。
+
+## 前提
+
+- `task build` が通る環境（Go・Node・`ffmpeg`・`ffprobe`。[ローカル開発](development.md)）。
+  動画のファイルは作らないので、`ffmpeg` は vv の起動前確認にだけ使う。
+- `web/` の Playwright の Chromium が入っている（`task test-e2e` と同じ）。入れられない環境では、
+  手元の Chromium を `-chromium` で渡す。
+
+## 測る
+
+```sh
+go run ./scripts/tagsbench -scale 1000
+go run ./scripts/tagsbench -scale 3000
+go run ./scripts/tagsbench -scale 30000 -videos 30000
+```
+
+`scripts/tagsbench` は次を順に行う。
+
+1. 規模のデータが無ければ `.local/tagsbench/<データ名>/seed/` に作る。`-scale` はタグの数で、動画は
+   省けばその 10 倍、`-videos` で別に与える。30,000 個の規模の動画は 30,000 本にし、3,000 個の規模と
+   同じにして違いをタグの数だけにする（R-9）。データ名は動画が 10 倍なら規模（`1000`）、そうで
+   なければ動画の数を添える（`30000-videos-30000`）。各タグには動画が付き、11 個に 1 個（約 9%）は
+   本数 0、半数は仮のタグにする。行は `internal/store` の公開の操作で書き、動画のファイルは作らない
+   （登録フォルダ `.local/tagsbench/<データ名>/media/` の下の所在の行だけ）。初回は 1,000 で約 1 分、
+   3,000 で数分、30,000 で 10 分ほどかかる。
+2. `go run ./scripts/build` で単一バイナリ `bin/mdm` を作る（`-skip-build` で省く）。
+3. `seed/` を `run/` へ写し、そのデータで `bin/mdm` を空いているループバックのポートで起動する。
+   計測は確定や改名で行を書き換えるので、毎回 `seed/` の写しから始める。
+4. `web/bench/tags-admin.bench.ts`（設定は `web/bench/playwright.config.ts`）で場面を測り、
+   表を出して `.local/tagsbench/<データ名>/result.md` に書く。終わると vv を止める。
+
+| 引数 | 意味 |
+| --- | --- |
+| `-scale N` | 規模（タグの数）。必須 |
+| `-videos N` | 動画の数（1 以上）。省けば `-scale` の 10 倍 |
+| `-skip-build` | `bin/mdm` をビルドし直さずに使う |
+| `-chromium PATH` | Playwright が持つものの代わりに使う Chromium の実行ファイル |
+
+規模のデータを作り直すときは `.local/tagsbench/<データ名>/` を消す。作り方（`scripts/tagsbench` の
+`planTags`）を変えたときも消す。
+
+## 表の読み方
+
+場面は quickstart.md の 8 つと内訳の 1 行で、値は場面ごとに次のとおり。
+
+- 開いてから最初の行が出るまで: `/tags` へ移動してから、一覧の最初の行が DOM に現れるまで
+  （ナビゲーションの開始から）。3 回読み込み直して各回と中央値を出す。
+- 開いたときに受け取るタグ: 開いたときの `GET /api/tags` の応答に入った `items` の数と、本文の
+  大きさ（Playwright の `response.body()` のバイト数）。補足に転送の大きさ（`request.sizes()`）と
+  続き（`nextCursor`）の有無を添える。3 つの規模で同じ数・同じ大きさ（±5%）なら、開いたときの
+  転送量がタグの数で増えていない。
+- GET /api/tags の応答（開いたとき・内訳）: 開いたときの `GET /api/tags` の応答時間
+  （`response.timing` の `responseEnd`）。長ければサーバーの側、短ければ描画の側が時間を使っている
+  （quickstart.md「内訳の切り分け」）。
+- 検索の 1 文字目・Esc での取り消し・1 件の確定・1 件の改名・まとめての確定: 操作してから結果が
+  見えるまでの最長のタスク（Long Task）。Long Task は 50 ms を超えるタスクだけが記録されるので、
+  無ければ「なし（50 ms 以下）」。補足の「〜まで」は Playwright の往復を含む参考の値。
+- スクロール: `/tags` を開き直し、一覧の先頭から、続きを読み込みながら末尾（`nextCursor` が尽き、
+  列の見出しの「Select all N loaded tags」の N が見出しの件数に届いて最後のページが描かれた後に、
+  下端に届く。件数に「 · N loaded」を添える 036 の初めの形ではそれが消えた後）までマウスホイールで
+  送る間の `requestAnimationFrame` の間隔。50 ms を超えるフレームが続いた回数と、最長のフレーム。補足に、読み込んだ行の数、続きの要求の回数とその応答時間を添える。
+  位置も読み込んだ行も 60 秒変わらなければ送るのをやめ、「末尾に届かず」と出る。
+- まとめての確定: `/tags` を開き直し、「Tentative only」（トップバーの「Filter」の中。036 の初めの形では
+  押しボタン）で読み込んである仮のタグをすべて選び
+  （「Select all N loaded tags」。変更前の画面では「Select all shown tags」）、選択の行の「Confirm」から
+  結果の通知（「Confirmed N tags」）か「No tentative tags」が出るまで。画面にまとめて選ぶ操作が無い
+  コミットでは「測れない」と出る。
+
+値はマシンとブラウザで変わる。期待の欄と比べるより、同じ環境で測った変更前の値と並べて読む。
+
+## 変更前と変更後を比べる
+
+同じ環境で続けて測る。`scripts/tagsbench` や `web/bench/` が無いか古いコミット（変更前）を測る
+ときは、変更後のものを worktree へ写して走らせる。
+
+規模のデータ（`seed/`）は、それを作った `scripts/tagsbench` の `internal/store` のスキーマで書かれる。
+vv は起動のたびに写し（`run/`）を移行するだけで `seed/` は書き換えないので、変更前のスキーマで
+作った `seed/` は変更前と変更後の両方で使える。逆に、変更後の `scripts/tagsbench` が作った `seed/`
+（新しい版のスキーマ）は変更前の vv では開けない。そこで変更前を先に測って `seed/` を作り、変更後は
+その `seed/` で置き換えてから測る（変更後の `.local/tagsbench` に既にあるデータは変更後が作ったもの
+なので、変更前へは写さない）。写した `scripts/tagsbench` が変更前の `internal/store` の操作と合わずに
+ビルドできないときは、データの作成の部分だけを変更前の操作に合わせる。
+
+```sh
+# 変更前（PR の base のコミット）を先に測る。seed/ は変更前のスキーマで作られる
+git worktree add ../vv-before <base のコミット>
+cp -r scripts/tagsbench ../vv-before/scripts/   # base に無いか古いときだけ
+cp -r web/bench ../vv-before/web/               # base に無いか古いときだけ
+ln -s "$PWD/web/node_modules" ../vv-before/web/node_modules
+(cd ../vv-before && go run ./scripts/tagsbench -scale 1000)
+(cd ../vv-before && go run ./scripts/tagsbench -scale 3000)
+(cd ../vv-before && go run ./scripts/tagsbench -scale 30000 -videos 30000)
+
+# 変更後（PR のブランチ）。変更前が作ったデータで置き換えてから測る
+rm -rf .local/tagsbench
+mkdir -p .local && cp -r ../vv-before/.local/tagsbench .local/
+go run ./scripts/tagsbench -scale 1000
+go run ./scripts/tagsbench -scale 3000
+go run ./scripts/tagsbench -scale 30000 -videos 30000
+git worktree remove --force ../vv-before
+```
+
+## PR に残す形
+
+環境（OS、CPU、ブラウザの版）と、規模ごとに場面の値を表にする。規模は列の見出しで区別する
+（1,000・3,000・30,000）。
+
+```markdown
+環境: Linux x86_64, <CPU>, Chromium <版>
+
+| 場面 | 1,000 変更前 | 1,000 変更後 | 3,000 変更前 | 3,000 変更後 | 30,000 変更前 | 30,000 変更後 | 期待 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 開いてから最初の行が出るまで（中央値） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 1 秒以内 |
+| 開いたときに受け取るタグ（items / 本文） | 0 / 0 B | 0 / 0 B | 0 / 0 B | 0 / 0 B | 0 / 0 B | 0 / 0 B | 3 つの規模で同じ（±5%） |
+| GET /api/tags の応答（内訳） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | — |
+| 検索の 1 文字目（最長のタスク） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0.2 秒を超えない |
+| Esc での取り消し（最長のタスク） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0.2 秒を超えない |
+| 1 件の確定（最長のタスク） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0.2 秒を超えない |
+| 1 件の改名（最長のタスク） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0.2 秒を超えない |
+| スクロール（50 ms 超が続いた回数 / 最長のフレーム） | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | 0 / 0 ms | 2 つ続かない |
+| まとめての確定（最長のタスク） | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0 ms | 0.2 秒を超えない |
+```

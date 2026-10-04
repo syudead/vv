@@ -166,10 +166,11 @@ func TestAttachTagByNameCreatesTagWhenMissing(t *testing.T) {
 	if ref.Name != "新規" {
 		t.Errorf("ref.Name = %q, want 新規", ref.Name)
 	}
-	tags, err := db.Tags().ListTags(ctx)
+	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	tags := tagsPage.Items
 	if len(tags) != 1 || tags[0].ID != ref.ID {
 		t.Errorf("tags = %+v, want 新しく作られた1件", tags)
 	}

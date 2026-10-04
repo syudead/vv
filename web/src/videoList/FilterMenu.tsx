@@ -1,9 +1,9 @@
 import { ListFilter } from "lucide-react";
-import { useState } from "react";
+import { type ReactNode, type Ref, useState } from "react";
 
 import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
-import { formatNumber, t } from "../i18n";
+import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
@@ -48,85 +48,114 @@ export default function FilterMenu({
   onClear,
   disabled,
 }: FilterMenuProps) {
-  const [open, setOpen] = useState(false);
   const owner = useAudience() === "owner";
   const watchCount = owner && watch !== "all" ? 1 : 0;
   const favoriteCount = owner && favorite ? 1 : 0;
-  const filterCount = disabled ? 0 : watchCount + favoriteCount + (playable ? 1 : 0);
+  const filterCount = watchCount + favoriteCount + (playable ? 1 : 0);
+
+  return (
+    <FilterPopover
+      count={filterCount}
+      disabled={disabled}
+      canClear={canClear}
+      onClear={onClear}
+    >
+      {owner && (
+        <fieldset className="mb-4">
+          <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+            {t.list.filter.watch}
+          </legend>
+          <div className="grid grid-cols-2 gap-1">
+            {watchValues.map((value) => (
+              <label
+                key={value}
+                className={cn(
+                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
+                  watch === value
+                    ? "bg-accent text-accent-fg"
+                    : "text-fg hover:bg-hover-wash",
+                )}
+              >
+                <input
+                  type="radio"
+                  name="watch"
+                  value={value}
+                  checked={watch === value}
+                  onChange={() => onWatchChange(value)}
+                  className="sr-only"
+                />
+                {watchLabel(value)}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
+
+      {/* 2 つのチェックは同じ性質の行なので、視聴状態の下の mb-4 より詰めた gap-2 で並べる。 */}
+      <div className="flex flex-col gap-2">
+        {owner && (
+          <FilterCheckbox
+            checked={favorite}
+            onCheckedChange={onFavoriteChange}
+            label={t.list.filter.favoritesOnly}
+          />
+        )}
+        <FilterCheckbox
+          checked={playable}
+          onCheckedChange={onPlayableChange}
+          label={t.list.filter.playableOnly}
+        />
+      </div>
+    </FilterPopover>
+  );
+}
+
+export interface FilterPopoverProps {
+  /** 効いている絞り込みの数。1 以上ならボタンを効いている形にし、数を添える。 */
+  count: number;
+  disabled?: boolean;
+  /** 「条件を解除」を出すか。 */
+  canClear: boolean;
+  /** 「条件を解除」を押した。押すと吹き出しを閉じる。 */
+  onClear: () => void;
+  /** ボタン（絞り込みを外したあとのフォーカスの行き先に使う）。 */
+  triggerRef?: Ref<HTMLButtonElement>;
+  children: ReactNode;
+}
+
+/**
+ * FilterPopover はトップバーの「Filter」のボタンと吹き出しの枠である。ライブラリの
+ * `FilterMenu` とタグ管理画面の絞り込みが同じ見た目を使う（ボタンの形・効いている
+ * 間の色と数・吹き出しの位置・末尾の「Clear filters」）。中身の項目は呼び手が渡す。
+ */
+export function FilterPopover({
+  count,
+  disabled,
+  canClear,
+  onClear,
+  triggerRef,
+  children,
+}: FilterPopoverProps) {
+  const [open, setOpen] = useState(false);
+  const shown = disabled ? 0 : count;
 
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          ref={triggerRef}
           variant="secondary"
           disabled={disabled}
-          aria-label={
-            filterCount > 0 ? t.list.filter.applied(filterCount) : t.list.filter.label
-          }
-          className={cn("px-2.5", filterCount > 0 && "bg-accent-soft text-link")}
+          aria-label={shown > 0 ? t.list.filter.applied(shown) : t.list.filter.label}
+          className={cn("px-2.5", shown > 0 && "bg-accent-soft text-link")}
         >
           <ListFilter />
           <span className="hidden xl:inline">{t.list.filter.label}</span>
-          {filterCount > 0 && (
-            <span className="tabular-nums">{formatNumber(filterCount)}</span>
-          )}
+          {shown > 0 && <span className="tabular-nums">{formatNumber(shown)}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start">
-        {owner && (
-          <fieldset className="mb-4">
-            <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-              {t.list.filter.watch}
-            </legend>
-            <div className="grid grid-cols-2 gap-1">
-              {watchValues.map((value) => (
-                <label
-                  key={value}
-                  className={cn(
-                    "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
-                    watch === value
-                      ? "bg-accent text-accent-fg"
-                      : "text-fg hover:bg-hover-wash",
-                  )}
-                >
-                  <input
-                    type="radio"
-                    name="watch"
-                    value={value}
-                    checked={watch === value}
-                    onChange={() => onWatchChange(value)}
-                    className="sr-only"
-                  />
-                  {watchLabel(value)}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-        )}
-
-        {/* 2 つのチェックは同じ性質の行なので、視聴状態の下の mb-4 より詰めた gap-2 で並べる。 */}
-        <div className="flex flex-col gap-2">
-          {owner && (
-            <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
-              <input
-                type="checkbox"
-                checked={favorite}
-                onChange={(event) => onFavoriteChange(event.target.checked)}
-                className="size-4 accent-accent"
-              />
-              {t.list.filter.favoritesOnly}
-            </label>
-          )}
-          <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
-            <input
-              type="checkbox"
-              checked={playable}
-              onChange={(event) => onPlayableChange(event.target.checked)}
-              className="size-4 accent-accent"
-            />
-            {t.list.filter.playableOnly}
-          </label>
-        </div>
+        {children}
 
         {canClear && (
           <Button
@@ -144,5 +173,34 @@ export default function FilterMenu({
         )}
       </PopoverContent>
     </PopoverRoot>
+  );
+}
+
+/** FilterCheckbox は絞り込みの吹き出しの中のチェックの 1 行である。 */
+export function FilterCheckbox({
+  checked,
+  onCheckedChange,
+  label,
+  hint,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  label: UiText;
+  /** 行の下に添える説明。 */
+  hint?: UiText;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 text-sm text-fg">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onCheckedChange(event.target.checked)}
+        className="mt-0.5 size-4 shrink-0 accent-accent"
+      />
+      <span className="flex min-w-0 flex-col">
+        {label}
+        {hint !== undefined && <span className="text-xs text-fg-muted">{hint}</span>}
+      </span>
+    </label>
   );
 }

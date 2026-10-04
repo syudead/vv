@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -111,6 +112,8 @@ type Tag struct {
 	VideoCount int
 	// Tentative は仮のタグであること（specs/031-tentative-tags/data-model.md §4）。
 	Tentative bool
+	// CreatedAt は tags.created_at（Unix 秒。specs/036-tag-admin-scale/data-model.md §1）。
+	CreatedAt time.Time
 }
 
 // TagSummaryItem は選んだ動画のタグの要約1件である
@@ -201,16 +204,6 @@ func SortTagNames(names []string) {
 			return order
 		}
 		return strings.Compare(a, b)
-	})
-}
-
-// SortTags はタグを Name の自然順に並べる。
-func SortTags(tags []Tag) {
-	slices.SortStableFunc(tags, func(a, b Tag) int {
-		if order := CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return strings.Compare(a.Name, b.Name)
 	})
 }
 

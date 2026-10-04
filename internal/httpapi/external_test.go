@@ -369,15 +369,15 @@ type blockingTags struct {
 	ended   chan error
 }
 
-func (b blockingTags) ListTags(ctx context.Context) ([]domain.Tag, error) {
+func (b blockingTags) ListTags(ctx context.Context, _ domain.TagListQuery) (domain.TagPage, error) {
 	close(b.entered)
 	select {
 	case <-ctx.Done():
 		b.ended <- ctx.Err()
-		return nil, ctx.Err()
+		return domain.TagPage{}, ctx.Err()
 	case <-time.After(10 * time.Second):
 		b.ended <- nil
-		return nil, nil
+		return domain.TagPage{}, nil
 	}
 }
 

@@ -10,7 +10,13 @@ import { TooltipProvider } from "../ui/Tooltip";
 import TagRow from "./TagRow";
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
-  return { synonyms: [], videoCount: 0, tentative: false, ...overrides };
+  return {
+    synonyms: [],
+    videoCount: 0,
+    tentative: false,
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
 }
 
 /**

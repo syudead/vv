@@ -36,11 +36,11 @@ func tagIDByName(t *testing.T, db *DB, name string) int64 {
 
 func rejectedNames(t *testing.T, db *DB) []string {
 	t.Helper()
-	names, err := db.Tags().ListRejectedTagNames(context.Background())
+	page, err := db.Tags().ListRejectedTagNames(context.Background(), "", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return names
+	return page.Items
 }
 
 func applyTentative(t *testing.T, db *DB, refs []domain.VideoRef, action domain.VideoTagsAction, names ...string) domain.VideoTagsOutcome {
@@ -221,10 +221,11 @@ func TestRejectConfirmedTagChangesNothing(t *testing.T) {
 	if _, err := db.Tags().RejectTag(ctx, tag.ID); !errors.Is(err, domain.ErrTagNotTentative) {
 		t.Fatalf("err = %v, want ErrTagNotTentative", err)
 	}
-	got, err := db.Tags().ListTags(ctx)
+	gotPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	got := gotPage.Items
 	if len(got) != 1 || got[0].VideoCount != 1 || len(rejectedNames(t, db)) != 0 {
 		t.Errorf("確定したタグの却下で変わった: %+v, 却下した名前 %v", got, rejectedNames(t, db))
 	}
@@ -294,14 +295,15 @@ func TestManualEditsConfirmTentativeTag(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tag, err := tags.MergeTag(ctx, id("虫"), confirmed.ID); err != nil || tag.Tentative {
-		t.Fatalf("統合 = %+v, %v", tag, err)
+	if merged, err := tags.MergeTags(ctx, id("虫"), []int64{confirmed.ID}); err != nil || merged.Tag.Tentative {
+		t.Fatalf("統合 = %+v, %v", merged, err)
 	}
 
-	list, err := tags.ListTags(ctx)
+	listPage, err := tags.ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	list := listPage.Items
 	for _, tag := range list {
 		if tag.Tentative {
 			t.Errorf("%s が仮のまま", tag.Name)
@@ -415,10 +417,11 @@ func TestTagReadsCarryTentative(t *testing.T) {
 	dog := tagIDByName(t, db, "犬")
 	videoIDs := []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]}
 
-	list, err := tags.ListTags(ctx)
+	listPage, err := tags.ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	list := listPage.Items
 	if len(list) != 1 || !list[0].Tentative {
 		t.Errorf("ListTags = %+v", list)
 	}
@@ -478,10 +481,11 @@ func TestTentativeTagsMigration(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	list, err := db.Tags().ListTags(ctx)
+	listPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	list := listPage.Items
 	if len(list) != 2 {
 		t.Fatalf("ListTags = %+v", list)
 	}

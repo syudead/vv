@@ -46,3 +46,4 @@ Add each new document to this index.
 - [一覧のカードのサムネイル下端をなぞるスクラブの UI](../../specs/032-card-scrub-preview/ui-design.md)
 - [動画ページの更新日時・作成日時と「作成日」の並び順の UI](../../specs/033-video-dates/ui-design.md)
 - [動画とグループのお気に入りの印・付け外し・絞り込み・並び順の UI](../../specs/035-favorites/ui-design.md)
+- [タグ管理画面の規模対応（トップバー・帯・タブ・並び順・選択とまとめての操作）の UI](../../specs/036-tag-admin-scale/ui-design.md)
