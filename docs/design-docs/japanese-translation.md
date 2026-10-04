@@ -144,6 +144,7 @@ The subagent follows these rules. They are part of its prompt.
 | owner, guest | `所有者`, `ゲスト` |
 | tentative tag, folder group, content key | `仮のタグ`, `フォルダのグループ`, `内容の鍵` |
 | workflow, runner | `ワークフロー`, `ランナー` |
+| Rejected (table header), Why | `採用しなかった案`, `理由` |
 | Mermaid | `Mermaid` |
 
 Add a row when a term is translated inconsistently; existing translations keep

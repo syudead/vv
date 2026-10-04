@@ -45,7 +45,7 @@ flowchart LR
 | Start at a seek position | Both inputs get the same `-ss`; the demuxer seeks to a video keyframe and the `-vn` input aligns audio to that time |
 | Video copied from a mid-file position | Audio starts at the video keyframe time; the track difference stays in the output `elst` ([copy path](live-transcode-seek.md#copy-path-and-gap-limit)) |
 | Video encoded | Both inputs start at the requested position |
-| Several video or audio streams | Only the first non-attached video and the first audio the probe chose are output |
+| Several video or audio streams | Only the first video stream that is not an attached picture, and the audio stream the probe chose, are output |
 | `interleaved_read` | Not set; the demuxer keeps its default |
 | Request cancelled | Both inputs stop with the one process; nothing is written to disk or the database |
 

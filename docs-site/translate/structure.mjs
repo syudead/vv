@@ -20,7 +20,8 @@ export function skeleton(markdown) {
         out.push(`code:${node.lang ?? ''}:${node.lang === 'mermaid' ? maskMermaid(node.value) : node.value}`)
         return
       case 'inlineCode':
-        out.push(`ic:${node.value}`)
+        // A line break inside a code span renders as a space (CommonMark).
+        out.push(`ic:${node.value.replace(/\s+/g, ' ')}`)
         return
       case 'link':
       case 'image':

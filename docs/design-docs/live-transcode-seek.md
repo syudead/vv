@@ -231,7 +231,7 @@ picture moves.
 | 200 | Offset becomes `startMs`; `vvOffsetChanged` fires; saved position aligns to it |
 | 404 or error | Keeps the requested position |
 | For a stale `attempt` | Discarded |
-| While waiting for a rebuild after an unbuffered seek | Only the offset changes, so the saved position stays at the chosen one; notified if a seek within the buffer cancels the rebuild |
+| While waiting for a rebuild after an unbuffered seek | Only the offset changes, so the saved position stays at the chosen one; `VideoPlayer` is told the new offset if a seek within the buffer cancels the rebuild |
 
 Sidecar subtitles follow this offset: `vvOffsetPending` fires when waiting
 starts and `vvOffsetSettled` when the offset settles (200, 404, error, or a

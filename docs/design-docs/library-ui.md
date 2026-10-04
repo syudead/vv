@@ -378,7 +378,7 @@ location.
 The owner's favorite toggle opens the right-hand action group, left of
 `Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
 `sm`, `aria-pressed`). It is the group's only control with state, so the eye
-lands on it first, and it is no more prominent than the title: on is a small
+lands on it first; even so, it is no more prominent than the title: on is a small
 `bg-accent-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
@@ -412,7 +412,7 @@ one-at-a-time container.
 | Stacking | Above the video, below the container and the control bar |
 | Input | Passes through to the controls, except its × |
 | Hidden while | Playback failure, playback ended, up next, reconnecting or importing shows |
-| With the spinner | Shown during a data wait |
+| Loading spinner | Shown together with it during a data wait |
 | Dismissed | Not shown again for the same video |
 | Actions | None; no quality change |
 

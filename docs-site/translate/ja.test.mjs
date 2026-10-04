@@ -139,3 +139,7 @@ test('state and sequence diagram labels may be translated, ids may not', () => {
   assert.notEqual(structureDiff(en, ja.replace('Direct --> Waiting', 'Direct --> Wait')), null)
   assert.notEqual(structureDiff(en, ja.replace('A->>B', 'A->>C')), null)
 })
+
+test('a line break inside inline code counts as a space', () => {
+  assert.equal(structureDiff('Use `<branch\nname>` here.\n', '`<branch name>` を使う。\n'), null)
+})

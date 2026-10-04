@@ -58,7 +58,7 @@ video that can be copied is copied whatever the encoder.
 | Trade-off | Effect |
 | --- | --- |
 | State read from memory per request | Starting a transcode adds no SQLite read |
-| No event on an encoder change | Other tabs and devices see it when they next show the section or save |
+| No event on an encoder change | Other tabs and devices see it when they next open **Video conversion** in Settings or save |
 
 ## Startup check
 
@@ -141,7 +141,7 @@ Decoding is software for every encoder.
 
 A transcode with a quality adds that quality's cap `<cap>` with a buffer of
 twice the cap ([values and dimensions](playback-quality.md#transcoding)).
-Software and NVENC keep constant quality under the cap, so quiet scenes come
+Software and NVENC keep constant quality under the cap, so low-motion scenes come
 out lighter. QSV, VAAPI and VideoToolbox honour a cap on constant quality only
 on some drivers, so they switch to VBR. A software fallback uses the same
 quality arguments.
