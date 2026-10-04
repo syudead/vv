@@ -345,7 +345,7 @@ func bundleVersionsRef(ctx context.Context, q rowQueryer, audience domain.Audien
 			  from video_bundle_members self
 			  join video_bundle_members m on m.bundle_id = self.bundle_id
 			  join video_bundles b on b.id = m.bundle_id
-			  join videos v on v.content_key = m.content_key
+			  join videos v on v.content_key = m.content_key and v.content_key <> ''
 			 where self.content_key = ? and `+visibleVideoCondition("v", audience)+`)
 		select count(*), coalesce((select id from shown order by is_representative desc, id limit 1), 0) from shown`,
 		contentKey).Scan(&count, &representativeID)
@@ -399,7 +399,7 @@ func bundleMemberKeys(ctx context.Context, tx *sql.Tx, bundleID int64) ([]string
 func nextRepresentativeKey(ctx context.Context, tx *sql.Tx, bundleID int64) (string, error) {
 	var key string
 	err := tx.QueryRowContext(ctx, `select v.content_key from video_bundle_members m
-		join videos v on v.content_key = m.content_key
+		join videos v on v.content_key = m.content_key and v.content_key <> ''
 		where m.bundle_id = ? and `+registeredVideoCondition("v")+` order by v.id limit 1`, bundleID).Scan(&key)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = tx.QueryRowContext(ctx, `select min(content_key) from video_bundle_members where bundle_id = ?`, bundleID).Scan(&key)

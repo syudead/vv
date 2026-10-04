@@ -101,7 +101,7 @@ type judgeableSuccession struct {
 // judgeableSuccessions は新しい中身の尺が分かっている記録を読み切る。
 func judgeableSuccessions(ctx context.Context, tx *sql.Tx) ([]judgeableSuccession, error) {
 	rows, err := tx.QueryContext(ctx, `select s.new_key, v.duration_ms from video_successions s
-		join videos v on v.content_key = s.new_key
+		join videos v on v.content_key = s.new_key and v.content_key <> ''
 		where v.duration_ms is not null order by s.new_key`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the successions: %w", err)

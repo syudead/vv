@@ -63,8 +63,8 @@ func (s locationScope) condition(alias string) (string, []any) {
 		return visible, nil
 	}
 	prefix := folderPrefix(s.dir)
-	clause := visible + ` and instr(` + folderPathExpr(alias) + `, ?) = 1`
-	args := []any{prefix}
+	inFolder, args := folderPrefixCondition(alias, prefix)
+	clause := visible + ` and ` + inFolder
 	if s.kind == scopeDirect {
 		clause += ` and ` + directChildCondition(alias)
 		args = append(args, prefix)

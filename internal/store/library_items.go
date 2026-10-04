@@ -134,7 +134,9 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		join gm on gm.video_id = matched.video_id
 		join live on live.group_id = gm.group_id
 		group by gm.group_id),
-	whole as (
+	-- materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
+	-- mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える。
+	whole as materialized (
 		select hits.group_id from hits
 		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
 	mv as (
@@ -274,19 +276,18 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		whereWatch = ` where ` + watchClause
 	}
 
-	var total int
-	if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
-		append(append([]any{}, args...), watchArgs...)...).Scan(&total); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
-	}
-
+	// 件数とページを1つの問い合わせで読む。絞り込んだ項目（filtered）は materialized で1回だけ
+	// 組み立て、件数はカーソルを掛ける前の filtered から数える。2回に分けると、全件の項目を
+	// 2回組み立てることになる。
 	// 引数は SQL の文字列に現れる順（CTE・seed・視聴状態・カーソル・件数）に並べる。
+	cteArgs := append([]any{}, args...)
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
 	args = append(args, watchArgs...)
-	query := cte + ` select group_id, id, path, sort_value from (select items.*, ` + order.value +
-		` as sort_value from items` + whereWatch + `) as items`
+	query := cte + `, filtered as materialized (select items.*, ` + order.value +
+		` as sort_value from items` + whereWatch + `)
+	select group_id, id, path, sort_value, (select count(*) from filtered) from filtered`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
@@ -298,12 +299,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	total := -1
 	var keys []itemRow
 	var values []any
 	for rows.Next() {
 		var key itemRow
 		var value any
-		if err := rows.Scan(&key.groupID, &key.id, &key.path, &value); err != nil {
+		if err := rows.Scan(&key.groupID, &key.id, &key.path, &value, &total); err != nil {
 			return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 		}
 		keys = append(keys, key)
@@ -314,6 +316,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 	if err := rows.Close(); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot close the list: %w", err)
+	}
+	if total < 0 {
+		// カーソルの先に項目が無いときは、件数を別に数える（同じ読み取りのスナップショット）。
+		if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
+			append(cteArgs, watchArgs...)...).Scan(&total); err != nil {
+			return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
+		}
 	}
 
 	page := domain.LibraryPage{Total: total, Limit: limit, Items: []domain.LibraryItem{}}
