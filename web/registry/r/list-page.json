@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "list-page",
+  "title": "ListPage",
+  "description": "Page skeleton: header row, toolbar, body (grid or table), selection bar.",
+  "files": [
+    {
+      "path": "src/ui/patterns/list-page.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\n// 一覧ページ（骨格）。見出し行 → ツールバー → 本体（グリッドか表）→ 選択バーの順に\n// 縦に並べる。外側の余白と領域の間の間隔は骨格が持ち、画面は中身を差し込むだけにする。\n// 読み込み中・空・エラーの状態も本体の位置に差し込む。\n// 規則は web/registry/rules/patterns.md の List page。\n\nexport interface ListPageProps {\n  /** PageHeader（題・件数・主操作）。 */\n  header: ReactNode;\n  /** Toolbar（検索・絞り込み・表示の切り替え）。 */\n  toolbar?: ReactNode;\n  /** 選択があるときの SelectionBar。本体の下に貼り付く。 */\n  selectionBar?: ReactNode;\n  /** 本体: CardGrid か DataTable と LoadMoreRow、または状態のブロック。 */\n  children: ReactNode;\n}\n\nexport function ListPage({ header, toolbar, selectionBar, children }: ListPageProps) {\n  return (\n    <div data-slot=\"list-page\" className=\"flex min-h-full flex-col gap-3 p-3 sm:p-4\">\n      {header}\n      {toolbar}\n      <div data-slot=\"list-page-body\" className=\"flex flex-1 flex-col gap-3\">\n        {children}\n      </div>\n      {selectionBar}\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+  "type": "registry:ui"
+}

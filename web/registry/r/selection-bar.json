@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "selection-bar",
+  "title": "SelectionBar",
+  "description": "Section: selected count, Clear selection and bulk actions, stuck to the bottom of the page. Uses tooltip.",
+  "files": [
+    {
+      "path": "src/ui/patterns/selection-bar.tsx",
+      "content": "import { X } from \"lucide-react\";\nimport type { ReactNode } from \"react\";\n\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Tooltip, TooltipContent, TooltipTrigger } from \"@/ui/shadcn/tooltip\";\n\n// 選択バー（区画）。選んだ数、選択の解除と、選んだものへの一括の操作を、ページの下端に\n// 貼り付けて出す。何かを選んでいる間だけ置く。規則は web/registry/rules/patterns.md の\n// Sections。\n\nexport interface SelectionBarProps {\n  /** 選んだ数（「2 selected」）。 */\n  count: ReactNode;\n  /** 選択を解除するボタンの名前（「Clear selection」）。 */\n  clearLabel: string;\n  onClear: () => void;\n  /** 一括の操作（ghost の sm のボタン）。 */\n  children: ReactNode;\n}\n\nexport function SelectionBar({\n  count,\n  clearLabel,\n  onClear,\n  children,\n}: SelectionBarProps) {\n  return (\n    <div\n      data-slot=\"selection-bar\"\n      className=\"sticky bottom-3 z-10 mx-auto flex h-selection-bar w-full max-w-2xl animate-slide-up items-center gap-2 rounded-lg border border-border bg-popover px-2 text-popover-foreground shadow-elevated motion-reduce:animate-none\"\n    >\n      <Tooltip>\n        <TooltipTrigger asChild>\n          <Button\n            variant=\"ghost\"\n            size=\"icon-sm\"\n            aria-label={clearLabel}\n            onClick={onClear}\n          >\n            <X aria-hidden=\"true\" />\n          </Button>\n        </TooltipTrigger>\n        <TooltipContent>{clearLabel}</TooltipContent>\n      </Tooltip>\n      <span\n        data-slot=\"selection-bar-count\"\n        aria-live=\"polite\"\n        className=\"text-sm font-medium whitespace-nowrap tabular-nums\"\n      >\n        {count}\n      </span>\n      <div\n        data-slot=\"selection-bar-actions\"\n        className=\"ml-auto flex min-w-0 items-center gap-1 overflow-x-auto\"\n      >\n        {children}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "density",
+  "title": "Density",
+  "description": "The density a skeleton gives its sections: management (library) or viewing (detail page). Used by patterns only.",
+  "files": [
+    {
+      "path": "src/ui/patterns/density.tsx",
+      "content": "import { createContext, type ReactNode, useContext } from \"react\";\n\n// 画面の密度。管理の画面（一覧・設定・管理表）は management、見る画面（詳細ページ）は\n// viewing で、区画は密度に合わせて行の余白と文字の段を選ぶ\n// （web/registry/rules/foundations.md の Spacing and sizes）。骨格だけが密度を決める。\n\nexport type Density = \"management\" | \"viewing\";\n\nconst DensityContext = createContext<Density>(\"management\");\n\n/** DensityProvider は骨格が自分の区画に密度を渡すために使う。画面は使わない。 */\nexport function DensityProvider({\n  density,\n  children,\n}: {\n  density: Density;\n  children: ReactNode;\n}) {\n  return <DensityContext value={density}>{children}</DensityContext>;\n}\n\n/** useDensity は区画が囲む骨格の密度を読む。 */\nexport function useDensity(): Density {\n  return useContext(DensityContext);\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#shared-rules (item vv-rules).",
+  "type": "registry:ui"
+}

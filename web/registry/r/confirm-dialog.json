@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "confirm-dialog",
+  "title": "ConfirmDialog",
+  "description": "AlertDialog skeleton: what happens, Cancel and a destructive action named by its verb.",
+  "files": [
+    {
+      "path": "src/ui/patterns/confirm-dialog.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport {\n  AlertDialog,\n  AlertDialogAction,\n  AlertDialogCancel,\n  AlertDialogContent,\n  AlertDialogDescription,\n  AlertDialogFooter,\n  AlertDialogHeader,\n  AlertDialogTitle,\n  AlertDialogTrigger,\n} from \"@/ui/shadcn/alert-dialog\";\n\n// 確認ダイアログ（骨格）。取り消せない操作の前に、何が起きるかと、Cancel と動詞で名付けた\n// destructive の操作を出す AlertDialog。規則は web/registry/rules/patterns.md の\n// Confirm dialog。\n\nexport interface ConfirmDialogProps {\n  open?: boolean;\n  onOpenChange?: (open: boolean) => void;\n  /** 開くボタン。開閉を呼び出し側が持つときは渡さない。 */\n  trigger?: ReactNode;\n  /** 何が起きるか（「Delete \"Travel\"?」）。 */\n  title: ReactNode;\n  /** 何に及ぶか、何が残るか。 */\n  description: ReactNode;\n  /** 操作の動詞（「Delete」）。「OK」にしない。 */\n  actionLabel: ReactNode;\n  cancelLabel: ReactNode;\n  onConfirm: () => void;\n}\n\nexport function ConfirmDialog({\n  open,\n  onOpenChange,\n  trigger,\n  title,\n  description,\n  actionLabel,\n  cancelLabel,\n  onConfirm,\n}: ConfirmDialogProps) {\n  return (\n    <AlertDialog open={open} onOpenChange={onOpenChange}>\n      {trigger && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}\n      <AlertDialogContent data-slot=\"confirm-dialog\">\n        <AlertDialogHeader>\n          <AlertDialogTitle>{title}</AlertDialogTitle>\n          <AlertDialogDescription>{description}</AlertDialogDescription>\n        </AlertDialogHeader>\n        <AlertDialogFooter>\n          <AlertDialogCancel>{cancelLabel}</AlertDialogCancel>\n          <AlertDialogAction variant=\"destructive\" onClick={onConfirm}>\n            {actionLabel}\n          </AlertDialogAction>\n        </AlertDialogFooter>\n      </AlertDialogContent>\n    </AlertDialog>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+  "type": "registry:ui"
+}

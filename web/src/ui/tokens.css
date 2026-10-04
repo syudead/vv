@@ -103,6 +103,8 @@
   --spacing-chip-label: 12rem;
   /* メニュー（DropdownMenu）の最小幅 */
   --spacing-menu: 11rem;
+  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx） */
+  --spacing-detail-aside: 20rem;
 
   /* --- 角丸: sm（チェック・バッジ）、md（操作・カード・サムネイル）、lg（浮く層）、full --- */
   --radius-sm: 4px;

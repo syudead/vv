@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "fact-list",
+  "title": "FactList",
+  "description": "Section: term and value pairs in two columns.",
+  "files": [
+    {
+      "path": "src/ui/patterns/fact-list.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\nimport { useDensity } from \"./density\";\n\n// 事実の一覧（区画）。項目名と値の組を 2 列に並べる。詳細ページの情報欄や設定の\n// 読み取り専用の値に使う。規則は web/registry/rules/patterns.md の Fact list。\n\nexport interface Fact {\n  /** 一覧の中で一意な鍵。 */\n  id: string;\n  term: ReactNode;\n  value: ReactNode;\n}\n\nexport interface FactListProps {\n  facts: Fact[];\n}\n\nexport function FactList({ facts }: FactListProps) {\n  const viewing = useDensity() === \"viewing\";\n  return (\n    <dl\n      data-slot=\"fact-list\"\n      className={cn(\"grid grid-cols-3 gap-x-4\", viewing ? \"gap-y-3\" : \"gap-y-2\")}\n    >\n      {facts.map((fact) => (\n        <div key={fact.id} className=\"col-span-3 grid grid-cols-subgrid\">\n          <dt className=\"text-muted-foreground\">{fact.term}</dt>\n          <dd className=\"col-span-2 min-w-0 break-words\">{fact.value}</dd>\n        </div>\n      ))}\n    </dl>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

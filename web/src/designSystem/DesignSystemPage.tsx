@@ -4,6 +4,7 @@ import { t } from "../i18n";
 import Components from "./Components";
 import Foundations from "./Foundations";
 import OverlayComponents from "./OverlayComponents";
+import Patterns from "./Patterns";
 
 const sections: { id: string; title: () => string; body?: () => ReactNode }[] = [
   {
@@ -21,7 +22,11 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
       </div>
     ),
   },
-  { id: "patterns", title: () => t.designSystem.patterns },
+  {
+    id: "patterns",
+    title: () => t.designSystem.patterns,
+    body: () => <Patterns />,
+  },
 ];
 
 /**
