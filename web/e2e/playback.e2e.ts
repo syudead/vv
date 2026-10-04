@@ -291,6 +291,27 @@ async function displayedSeconds(page: Page): Promise<number> {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+/** afterKeyframeCue は sparse-keyframes.srt の 2 つ目の cue（media-fixtures.mjs）の秒数。 */
+const afterKeyframeCue = { start: 9, end: 10 };
+
+/** originalSeconds は、ライブ変換の offset と video の currentTime から元動画の時刻を返す。 */
+async function originalSeconds(page: Page, offsetMs: number): Promise<number> {
+  const current = await page
+    .locator("video")
+    .evaluate((element) => (element as HTMLVideoElement).currentTime);
+  return offsetMs / 1000 + current;
+}
+
+/**
+ * expectWithinCue は、cue が出ている時刻が cue の範囲にあることを確かめる。cue の表示の
+ * 切り替えは timeupdate（数百 ms おき）に合わせて起きるので、その分だけ両端を広げる。
+ */
+function expectWithinCue(seconds: number, cue: { start: number; end: number }) {
+  const slack = 0.5;
+  expect(seconds).toBeGreaterThanOrEqual(cue.start - slack);
+  expect(seconds).toBeLessThanOrEqual(cue.end + slack);
+}
+
 async function saveProgress(request: APIRequestContext, item: Video, positionMs: number) {
   const response = await request.put(`/api/videos/${String(item.id)}/progress`, {
     headers: mutationHeaders,
@@ -802,15 +823,16 @@ test.describe.serial("live MP4 playback", () => {
     const item = video("sparse-keyframes");
     expect(item.playable).toBe(false);
     await saveProgress(request, item, 0);
-    // ラベルの無い字幕をオンにしておく。
-    await page.addInitScript(() => {
+    // ラベルの無い字幕をオンにしておく。あとで同じ context に開くページにも効くよう、
+    // context に入れる。
+    await page.context().addInitScript(() => {
       window.localStorage.setItem(
         "vv.subtitles.v1",
         JSON.stringify({ enabled: true, label: "" }),
       );
     });
     // 表示に出た字幕の文字をすべて記録する（6〜7 秒の cue が一瞬でも出ないことを見る）。
-    await page.addInitScript(() => {
+    await page.context().addInitScript(() => {
       const seen: string[] = [];
       (window as unknown as { vvSeenCues: string[] }).vvSeenCues = seen;
       new MutationObserver(() => {
@@ -818,8 +840,8 @@ test.describe.serial("live MP4 playback", () => {
         if (text) seen.push(text);
       }).observe(document, { subtree: true, childList: true, characterData: true });
     });
-    const seenCues = () =>
-      page.evaluate(() => (window as unknown as { vvSeenCues: string[] }).vvSeenCues);
+    const seenCues = (target: Page = page) =>
+      target.evaluate(() => (window as unknown as { vvSeenCues: string[] }).vvSeenCues);
     const subtitleRequests: { url: string; afterReport: boolean }[] = [];
     let reported = false;
     page.on("response", (response) => {
@@ -859,42 +881,50 @@ test.describe.serial("live MP4 playback", () => {
       subtitleRequests.find((entry) => entry.url === shifted.url())?.afterReport,
     ).toBe(true);
 
-    // 9〜10 秒の cue が、表示の 9〜10 秒台に出る。
+    // 9〜10 秒の cue は、元動画の 9〜10 秒に出る。元動画の時刻は、変換の開始位置
+    // （offset）と video の currentTime の和で読む。表示の文字は秒の切り捨てで、
+    // 更新も遅れるので使わない。offset を誤ると cue は 8 秒以上ずれる。
     const display = page.locator(".vjs-text-track-display");
     await expect(display).toContainText("After keyframe cue", { timeout: 10_000 });
-    const shownAt = await displayedSeconds(page);
-    expect(shownAt).toBeGreaterThanOrEqual(9);
-    expect(shownAt).toBeLessThanOrEqual(10);
+    expectWithinCue(await originalSeconds(page, actualStart), afterKeyframeCue);
     expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
 
-    // 再読み込みで再開位置から始めても、同じ offset で取り直す。この動画は 24 秒で、
-    // 残り 15 秒以内（9 秒以降）の位置は視聴済みとして保存され、開き直すと先頭から
-    // 始まる（internal/domain/progress.go の CompletionTailMs）。上で 9〜10 秒の cue を
-    // 見たので、止めたときと離れるときの保存はここで止め、再開位置は 9 秒より前に置く
-    // （止めたときの保存からの再開は、前の試験が確かめる）。
-    const progressUrl = `**/api/videos/${String(item.id)}/progress`;
-    await page.route(progressUrl, (route) => route.abort());
+    // 再開位置から開き直しても、同じ offset で取り直す。この動画は 24 秒で、残り
+    // 15 秒以内（9 秒以降）の保存は視聴済みになり、開き直すと先頭から始まる
+    // （internal/domain/progress.go の CompletionTailMs）。ここまでに cue を見たので、
+    // このページの保存は止め、再開位置は API で 9 秒より前に置く。開き直しは同じ context
+    // の新しいページで行う。同じページを読み込み直すと、離れるときの保存（keepalive）が
+    // 再開位置を上書きしうるためである（止めたときの保存からの再開は、前の試験が確かめる）。
+    await page.route(`**/api/videos/${String(item.id)}/progress`, (route) =>
+      route.abort(),
+    );
     await page.locator(".vjs-play-control").click();
     await page.waitForFunction(() => document.querySelector("video")?.paused === true);
     const resumeAt = actualStart + 500;
     await saveProgress(request, item, resumeAt);
-    const resumedSubtitle = page.waitForRequest((candidate) =>
+
+    const resumedPage = await page.context().newPage();
+    const resumedPromise = resumedPage.waitForRequest((candidate) =>
+      candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+    );
+    const resumedSubtitle = resumedPage.waitForRequest((candidate) =>
       candidate
         .url()
         .endsWith(`/subtitles/sparse-keyframes.srt?offsetMs=${String(actualStart)}`),
     );
-    reported = false;
-    const { resumed, startMs } = await reloadAndWaitForTranscode(page, item);
-    await page.unroute(progressUrl);
-    expect(startMs).toBe(resumeAt);
-    expect(await reportedStart(page, resumed)).toBe(actualStart);
+    await resumedPage.goto(`/videos/${String(item.id)}`);
+    const resumed = await resumedPromise;
+    expect(Number(new URL(resumed.url()).searchParams.get("startMs"))).toBe(resumeAt);
+    expect(await reportedStart(resumedPage, resumed)).toBe(actualStart);
     await resumedSubtitle;
-    await page.locator(".vjs-big-play-button").click();
-    await expect(display).toContainText("After keyframe cue", { timeout: 10_000 });
-    const resumedAt = await displayedSeconds(page);
-    expect(resumedAt).toBeGreaterThanOrEqual(9);
-    expect(resumedAt).toBeLessThanOrEqual(10);
-    expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
+    await resumedPage.locator(".vjs-big-play-button").click();
+    await expect(resumedPage.locator(".vjs-text-track-display")).toContainText(
+      "After keyframe cue",
+      { timeout: 10_000 },
+    );
+    expectWithinCue(await originalSeconds(resumedPage, actualStart), afterKeyframeCue);
+    expect((await seenCues(resumedPage)).join(" ")).not.toContain("Before keyframe cue");
+    await resumedPage.close();
   });
 
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
