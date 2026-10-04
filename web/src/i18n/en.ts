@@ -260,6 +260,12 @@ export const en = {
     cancel: "Cancel",
     back: "Back",
   },
+  designSystem: {
+    title: "Design system",
+    foundations: "Foundations",
+    components: "Components",
+    patterns: "Page patterns",
+  },
   app: {
     routeLoadFailed: {
       title: "Couldn't load this page",

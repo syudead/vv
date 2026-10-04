@@ -11,6 +11,12 @@ and it is not a place to re-choose things that are already chosen.
 
 Read these before writing, and link them rather than repeating them:
 
+- [docs/design-docs/design-system.md](../../../../docs/design-docs/design-system.md)
+  — the design system and its registry of components, page patterns and usage
+  rules. `ui-design.md` composes those components and patterns; when the
+  feature needs one the design system lacks, it is added to the design system
+  first, and `ui-design.md` then uses it
+
 - [docs/design-docs/library-ui.md](../../../../docs/design-docs/library-ui.md)
   — the visual rules and why they are what they are
   — the layout and information hierarchy the product has settled on

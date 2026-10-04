@@ -1,4 +1,4 @@
-import * as ToggleGroup from "@radix-ui/react-toggle-group";
+import { ToggleGroup } from "radix-ui";
 import type { ReactNode } from "react";
 
 import type { UiText } from "../i18n";

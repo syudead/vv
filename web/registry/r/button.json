@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "button",
+  "title": "Button",
+  "description": "The vv Button component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/Button.tsx",
+      "content": "import { type ButtonHTMLAttributes, forwardRef } from \"react\";\n\nimport { cn } from \"../lib/cn\";\n\nexport type ButtonVariant = \"primary\" | \"secondary\" | \"ghost\" | \"danger\";\nexport type ButtonSize = \"sm\" | \"md\" | \"lg\";\n\nconst base =\n  \"inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-medium \" +\n  \"whitespace-nowrap transition-colors duration-150 select-none \" +\n  \"aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-4\";\n\nconst variants: Record<ButtonVariant, string> = {\n  primary:\n    \"bg-accent text-accent-fg not-disabled:hover:bg-accent-hover not-disabled:active:bg-accent-active\",\n  secondary:\n    \"border border-control-border bg-elevated text-fg not-disabled:hover:bg-surface-hover not-disabled:active:bg-surface\",\n  ghost: \"text-fg not-disabled:hover:bg-hover-wash not-disabled:active:bg-active-wash\",\n  danger: \"bg-danger-strong text-danger-fg not-disabled:hover:bg-danger-strong/80\",\n};\n\nconst sizes: Record<ButtonSize, string> = {\n  sm: \"h-8 px-2.5 text-xs\",\n  md: \"h-9 px-3 text-sm\",\n  lg: \"h-10 px-4 text-sm\",\n};\n\n/** buttonClassName はリンクなど button 以外の要素にボタンの見た目を与える。 */\nexport function buttonClassName(\n  variant: ButtonVariant = \"secondary\",\n  size: ButtonSize = \"md\",\n  className?: string,\n): string {\n  return cn(base, variants[variant], sizes[size], className);\n}\n\nexport interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {\n  variant?: ButtonVariant;\n  size?: ButtonSize;\n}\n\nconst Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(\n  { variant = \"secondary\", size = \"md\", className, type = \"button\", ...rest },\n  ref,\n) {\n  return (\n    <button\n      ref={ref}\n      type={type}\n      className={buttonClassName(variant, size, className)}\n      {...rest}\n    />\n  );\n});\n\nexport default Button;\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

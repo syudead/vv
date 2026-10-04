@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "brand-home-link",
+  "title": "BrandHomeLink",
+  "description": "The vv BrandHomeLink component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/BrandHomeLink.tsx",
+      "content": "import { Link } from \"react-router\";\n\nimport { t } from \"../i18n\";\nimport { cn } from \"../lib/cn\";\n\n/** The link names the destination once; its two responsive images are decorative. */\nexport default function BrandHomeLink({ className }: { className?: string }) {\n  return (\n    <Link\n      to=\"/\"\n      aria-label={t.common.brandHome}\n      className={cn(\n        \"flex h-8 shrink-0 items-center rounded-sm px-1 hover:bg-hover-wash focus-visible:ring-2 focus-visible:ring-link focus-visible:outline-none\",\n        className,\n      )}\n    >\n      <img\n        src=\"/brand/vvmdm-symbol-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"size-7 sm:hidden\"\n      />\n      <img\n        src=\"/brand/vvmdm-wordmark-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"hidden h-8 w-auto sm:block\"\n      />\n    </Link>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

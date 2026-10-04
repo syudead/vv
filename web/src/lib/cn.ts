@@ -1,4 +1,3 @@
-/** cn は条件付きクラス名を結合する。falsy は捨てる。 */
-export function cn(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(" ");
-}
+// クラス名の結合と Tailwind の競合解消は cn パッケージが行う（shadcn/ui の部品が前提にする）。
+// 場所を変えないのは、既存の呼び出しと components.json の aliases.utils をここに揃えるため。
+export { cn } from "cn";

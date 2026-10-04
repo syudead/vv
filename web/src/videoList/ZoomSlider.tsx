@@ -1,4 +1,4 @@
-import * as Slider from "@radix-ui/react-slider";
+import { Slider } from "radix-ui";
 
 import { t } from "../i18n";
 import { cn } from "../lib/cn";

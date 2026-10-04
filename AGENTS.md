@@ -50,6 +50,9 @@ file into a handbook.
   `internal/httpapi/extgen/`, `web/src/api/gen/`); change `api/openapi.yaml` or
   `api/external-v1.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
+- Before building or changing a screen, read
+  [docs/design-docs/design-system.md](docs/design-docs/design-system.md); it
+  routes to the registry of components, tokens and rules every screen uses.
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).

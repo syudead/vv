@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "skeleton",
+  "title": "Skeleton",
+  "description": "The vv Skeleton component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/Skeleton.tsx",
+      "content": "import { cn } from \"../lib/cn\";\n\nexport default function Skeleton({ className }: { className?: string }) {\n  return (\n    <div\n      aria-hidden=\"true\"\n      className={cn(\n        \"rounded-md bg-surface bg-[linear-gradient(90deg,transparent_0%,var(--color-surface-hover)_50%,transparent_100%)] bg-size-[200%_100%] animate-shimmer\",\n        className,\n      )}\n    />\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

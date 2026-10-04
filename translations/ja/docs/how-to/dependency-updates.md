@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: b0e2325dfd14fd5bdb947bcf664c2b94d33a2f9a2b7f06f6b6cbdc062833ca6a
+sourceHash: 1f0a75c319e888de855a2fd0b973738100a35520c728762617b8b0bc437d73af
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -49,6 +49,14 @@ Windows の zip は、`GyanD/codexffmpeg` の GitHub Releases から Gyan.dev �
 4. マージ後、`main` での `Windows app` ワークフローの実行が通ることを確認する。これで同梱の `ffmpeg` に `h264_nvenc` と `h264_qsv` があることが確かめられる。
 
 `ffmpeg` がエンコーダー名や引数を変えたときは、[hardware-encoding.md](../design-docs/hardware-encoding.md) と `internal/media` を合わせて更新する。
+
+## 同梱した shadcn スキルを更新する {#update-the-vendored-shadcn-skill}
+
+shadcn CLI は `web/package.json` の devDependency `shadcn` であり、Renovate が web の npm グループと一緒に更新する。`.agents/skills/shadcn/` の shadcn スキルは Renovate が読まない複製なので、1 つの PR で更新する。
+
+1. [shadcn-ui/ui](https://github.com/shadcn-ui/ui) の新しいコミットから `skills/shadcn/` を `evals/` を除いて複製する。
+2. `npx shadcn@latest`、`pnpm dlx shadcn@latest`、`bunx --bun shadcn@latest` をすべて `npm --prefix web exec shadcn --` に置き換え、`.agents/skills/shadcn/VENDORED.md` のコミットを更新する。
+3. `task test-web` を実行する。`shadcn@` が残っている間、`vendoredSkill.test.ts` は失敗する。
 
 ## 人の対応が必要な Renovate の PR {#renovate-prs-that-need-a-person}
 

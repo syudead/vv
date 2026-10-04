@@ -1,0 +1,4 @@
+# shadcn の MCP サーバー。web/package.json で固定した版を使う（specs/038-design-system/research.md R-7）。
+[mcp_servers.shadcn]
+command = "npm"
+args = ["--prefix", "web", "exec", "--", "shadcn", "mcp"]

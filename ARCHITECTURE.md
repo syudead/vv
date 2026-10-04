@@ -199,7 +199,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
 | `videoList/` | List pieces the library and folder screens share |
-| `ui/` | Reusable primitives |
+| `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |
 | `lib/` | Locale-independent formatting |
 | `i18n/` | Screen text and locale-dependent formatting ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | Per-device display settings |
@@ -214,7 +214,9 @@ memory.
 The playback screen (`/videos/:id`) has no shell: it is a two-pane screen
 under its own header band, and keeping that to one routing decision lets the
 shell stay ignorant of which screen it frames. The visual tokens live only in
-`web/src/index.css`; list behaviour, scrolling and preferences are in
+`web/src/index.css`; the components, tokens and usage rules screens are built
+from are the [design system](docs/design-docs/design-system.md); list
+behaviour, scrolling and preferences are in
 [library-ui.md](docs/design-docs/library-ui.md).
 
 ## Principles
