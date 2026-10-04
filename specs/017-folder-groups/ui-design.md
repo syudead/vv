@@ -223,8 +223,11 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
   `続けて再生`, with `3 / 12` in `text-xs text-fg-muted tabular-nums` to its
   right (`flex items-baseline justify-between`). The range that continues
   automatically is then readable at the top, before reaching the divider.
-- Below it, every member in order (not cut even at hundreds; Edge Case
-  `大きなグループ`). Each row has the density of the current related video rows
+- Below it, the members in order (not cut even at thousands; Edge Case
+  `大きなグループ`). The related videos response carries only a window of up to
+  100 members around the current one (contracts/folder-groups-api.md §3);
+  the list reads the rest with `GET /api/videos/{id}/group-members`, 100 at a
+  time (issue 674, "Reading beyond the window" below). Each row has the density of the current related video rows
   (thumbnail `w-40`, duration badge, title `text-sm font-medium`, `gap-3`
   between rows, hover `bg-hover-wash`) (`UI品質` "information density"), plus:
 
@@ -249,6 +252,17 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
   current member's row is visible in it (Edge Case `大きなグループ`, acceptance
   criterion `数百本`). The page and the left column do not move. Under `lg` the
   page does not move (the player would leave the top of the screen).
+- **Reading beyond the window**: the order numbers and `3 / 12` count in the
+  whole group (`offset` and `total`), not in the window.
+
+  | Edge | `lg` and up | Under `lg` |
+  | --- | --- | --- |
+  | After the last loaded member | Reads the next 100 when the end comes within about 600px of the view, while scrolling the container | The same, while scrolling the page |
+  | Before the first loaded member | Reads the previous 100 when the top comes within about 600px, then shifts the container's scroll by the added height so the rows in view do not move | A ghost button `Show N earlier videos` reads the previous 100. Reading on scroll would start as soon as the page opens, because the top of the list is already in view below the player |
+
+  A failed read keeps the loaded rows and shows `Couldn't load more of the
+  group` with a `Retry` button at that edge. Moving to another member starts
+  again from the new window.
 - Member rows play the list preview on hover, as related video rows do.
 - Loading and failure look the same as the current related videos (six skeleton
   rows; `関連動画を取得できませんでした` and `再試行`). The member list cannot be

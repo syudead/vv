@@ -61,22 +61,35 @@ VideoGroupRef:          # Video.group in GET /api/videos/{id} (only for members)
     count: { type: integer }
 
 RelatedGroup:           # RelatedVideos.group (only for members)
-  required: [folder, name, items]
+  required: [folder, name, items, offset, total]
   properties:
     folder: { $ref: VideoFolder }
     name: { type: string }
-    items: { type: array, items: { $ref: Video } }   # every member, in order, including the current video
+    items: { type: array, maxItems: 100, items: { $ref: Video } }   # consecutive members around the current video, in order
+    offset: { type: integer }   # 0-based position of items[0] in the group's order
+    total: { type: integer }    # number of members
+
+GroupMemberPage:        # GET /api/videos/{id}/group-members?offset=&limit=
+  required: [items, offset, total]
+  properties:
+    items: { type: array, maxItems: 200, items: { $ref: Video } }
+    offset: { type: integer }
+    total: { type: integer }
 ```
 
 - `Video.group` is only in the `GET /api/videos/{id}` response (as `location`
   is), never in list entries.
-- For guests, `position`, `count`, `group.items` and previous/next are built
-  from public members only. When only one member is public, `group` is omitted
+- For guests, `position`, `count`, `group.items`, `group.total` and
+  previous/next are built from public members only. When only one member is public, `group` is omitted
   and the response is the same as for a video outside any group
   ([data-model.md §7](../data-model.md#7-visibility-per-audience)).
 - `GET /api/videos/{id}/related` for a member:
   - It includes `group`. The 20-item limit on `items` does not apply to the
-    group (Edge Case `大きなグループ`).
+    group (Edge Case `大きなグループ`). `group.items` is a window of up to 100
+    consecutive members with the current video in the middle, moved inwards
+    at either end of the group, so the response does not grow with the
+    group (issue 674). `offset` and `total` place the window in the whole
+    group.
   - `nextId` and `prevId` are the next and previous members in the group's
     order. The last member has no `nextId` and the first no `prevId`.
   - `items` (related videos) is built by removing members of the same group
@@ -85,6 +98,15 @@ RelatedGroup:           # RelatedVideos.group (only for members)
     limit applies afterwards, so related videos remain even for groups of more
     than 20. The count passed to `VideosAddedNear` grows to allow for the
     removed members.
+- `GET /api/videos/{id}/group-members` returns up to `limit` (1 to 200,
+  default 100) members from the 0-based `offset` (default 0) in the group's
+  order, in the same form and with the same audience rules as `group.items`.
+  An `offset` at or past `total` returns empty `items`. A video that is not a
+  member, or whose group is not shown to the viewer, is `404`; an `offset`
+  below 0 or a `limit` outside the range is `400`. The video page reads the
+  members outside the first window with it.
+- `GET /api/videos/{id}` reads only the member ids to fill `position` and
+  `count`.
 - Responses for videos outside a group are unchanged (second half of
   requirement 27, acceptance criterion 17).
 

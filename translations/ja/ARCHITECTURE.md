@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 60618717aef780ef96d9ba0e8ceb5120bf774c9d0c2538f4e68c931fe966679d
+sourceHash: caf177ebe0050ae5d085bc3ace955baa2af34ce9271c7a34333ccbf8400c1d06
 ---
 
 # アーキテクチャ {#architecture}
@@ -111,7 +111,7 @@ flowchart LR
 | `internal/artifacts` | `MDM_DATA_DIR/thumbnails` の下の生成ファイルのパス、公開、削除 | [`internal/artifacts`](internal/artifacts) |
 | ライブ変換 (`internal/media`、`internal/httpapi`) | リクエスト単位の fragmented MP4、シーク、エンコーダの選択、画質 | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)、[hardware-encoding.md](docs/design-docs/hardware-encoding.md)、[playback-quality.md](docs/design-docs/playback-quality.md) |
 | `internal/store` | SQLite のスキーマ、マイグレーション、役割の型、検索キー | [013 data-model](specs/013-library-search/data-model.md)、[030 data-model](specs/030-video-versions/data-model.md) |
-| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界 | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
+| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界、クライアントが受け付けるときの JSON と画面用ファイルの gzip | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
 | 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |

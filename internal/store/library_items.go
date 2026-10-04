@@ -114,6 +114,9 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoFavorite = ` and fav.content_key is not null`
 		groupFavorite = ` where ff.path is not null`
 	}
+	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
+	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
+	// （issue 674）。
 	cte += `,
 	matched as (
 		select videos.id as video_id, chosen.path as path
@@ -129,8 +132,6 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		join gm on gm.video_id = matched.video_id
 		join live on live.group_id = gm.group_id
 		group by gm.group_id),
-	-- materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
-	-- mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える。
 	whole as materialized (
 		select hits.group_id from hits
 		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
