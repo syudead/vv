@@ -1,5 +1,6 @@
-# Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を作る。タグ v* の push では GitHub Release に
-# 添付し、main への push と手動実行では workflow の成果物として残す。組み立ては手元の task build-windows-app と
+# Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を作る。タグ v* の push と main への push では
+# GitHub Release に添付し、手動実行では workflow の成果物として残す。main の Release のタグは
+# main-<コミットの 12 桁> にする。組み立ては手元の task build-windows-app と
 # 同じ入口で、同梱の ffmpeg のエンコーダは Windows のランナーで確かめる
 # （specs/037-windows-app/research.md R-12・R-13、docs/design-docs/windows-app.md の「配布」）。
 name: Windows app
@@ -119,7 +120,7 @@ jobs:
   release:
     name: Attach to release
     needs: [build, verify]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,16 +129,27 @@ jobs:
         with:
           name: windows-app
 
-      # Release が無ければ作り、あれば zip を差し替える（同じタグの再実行）。
+      # Release が無ければ作り、あれば zip を差し替える（同じタグ・同じコミットの再実行）。
+      # main の push ではタグ main-<12 桁> をそのコミットに作る。
       - name: GitHub Release に添付する
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           ZIP: ${{ needs.build.outputs.zip }}
         run: |
+          if [ "$REF_TYPE" = tag ]; then
+            TAG="$REF_NAME"
+            TITLE="VVMDM ${TAG#v}"
+            CREATE=(--verify-tag)
+          else
+            TAG="main-${GITHUB_SHA::12}"
+            TITLE="VVMDM main (${GITHUB_SHA::12})"
+            CREATE=(--target "$GITHUB_SHA")
+          fi
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
           else
-            gh release create "$TAG" "$ZIP" --verify-tag --title "VVMDM ${TAG#v}" --generate-notes
+            gh release create "$TAG" "$ZIP" "${CREATE[@]}" --title "$TITLE" --generate-notes
           fi
