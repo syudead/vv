@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/tech-stack-selection.md
-sourceHash: 70efcca7e83bb63503911f22c157f14b550e26e61b222d8c75b040d110e424f7
+sourceHash: 1a73a6aa876ebde9c9986276cda71ced725f4234f857b5aa325f84bba875bdd8
 ---
 
 # 技術選定: MDM (Media Data Management) {#technology-selection-mdm-media-data-management}
@@ -36,7 +36,7 @@ flowchart LR
 システムはその人自身のマシン上で 1 人のユーザーに提供するので、スループットより**運用の単純さ**と**障害後の復旧**を優先する。
 
 1. **1 つのコンテナに 1 つのプロセス。** 常駐するミドルウェア (Redis、メッセージブローカー、別の DB サーバー) を置かない。
-2. **ユーザーデータと分けた、再構築できるインデックス。** スキャンは動画ファイルからインデックスを復元する。再生位置や認証情報は復元できない ([データの分類](../../ARCHITECTURE.md#rebuildable-and-user-data))。
+2. **ユーザーデータと分けた、再構築できるインデックス。** スキャンは動画ファイルからインデックスを復元する。再生位置や認証情報は復元できない ([データの分類](../how-to/running-vv.md#data-and-recovery))。
 3. **ツールで強制する境界。** Lint により、ドメイン層が HTTP、DB、`ffmpeg` に依存するのを止める。
 4. **重い処理は境界の内側に置く。** `ffmpeg` を実行するコードはアダプタに置き、HTTP やストレージから分ける。
 
@@ -61,7 +61,7 @@ flowchart LR
 | Lint | `golangci-lint` (`depguard` を使用) | 層をまたぐ import を CI が拒否する |
 | 配布 | Docker (マルチステージ、alpine + `ffmpeg`) + Compose。Windows では各 GitHub Release に `VVMDM.exe` と `ffmpeg` の zip を置く ([Windows デスクトップアプリ](windows-app.md#distribution)) | CGO がないのでバイナリが alpine で動き、Windows 向けにクロスコンパイルできる。zip は Docker も `ffmpeg` のインストールも要らない |
 
-パッケージの責務と依存の方向は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) にある。SQLite はインデックスとユーザーデータの両方を持ち、復旧時は[データの分類](../../ARCHITECTURE.md#rebuildable-and-user-data)で両者を区別する。
+パッケージの責務と依存の方向は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) にある。SQLite はインデックスとユーザーデータの両方を持ち、復旧時は[データの分類](../how-to/running-vv.md#data-and-recovery)で両者を区別する。
 
 内容の鍵は、移動や名前の変更をまたいで動画を識別する。先頭と末尾の 1 MiB とファイルサイズの SHA-256 だ。ファイル全体を読む必要がなく、標準ライブラリだけで済む。
 

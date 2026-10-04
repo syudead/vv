@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 681b70031c190484db33bd877d220b607c4afe95644695da66f798a1d267b04f
+sourceHash: 33fb8e0d9ed9a537d78572590ad4946c9a2c90df12d32d3537eb036095a81611
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -251,7 +251,16 @@ Automatic は NVENC、Quick Sync、VAAPI、VideoToolbox の順に試す。再起
 
 ## データと復旧 {#data-and-recovery}
 
-Docker の構成では、アプリケーションのデータを `vv_data` ボリュームに保存する。SQLite データベース `MDM_DATA_DIR/mdm.db` と、`MDM_DATA_DIR/thumbnails/` 以下のサムネイルである。データベースには、スキャンでは復元できないユーザーデータと設定データが入っている。[データの分類](../../ARCHITECTURE.md#rebuildable-and-user-data)はすべてのテーブルを挙げ、再構築できるインデックスと区別している。
+Docker の構成では、アプリケーションのデータを `vv_data` ボリュームに保存する。SQLite データベース `MDM_DATA_DIR/mdm.db` と、`MDM_DATA_DIR/thumbnails/` 以下のサムネイルである。データベースには、スキャンでは復元できないユーザーデータと設定データが、スキャンで再構築されるインデックスと並んで入っている:
+
+| 分類 | テーブルとファイル | 復旧の手段 |
+| --- | --- | --- |
+| 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`folder_groups`、`folder_group_members`、`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
+| ユーザーデータ | `playback_progress`、`tags`、`tag_names`、`video_tags`、`rejected_tag_names`、`public_videos`、`video_overrides`、`video_edits`、`video_favorites`、`folder_favorites`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
+| 設定 | `account`、`media_folders`、`settings`、`api_tokens` | バックアップ、または設定し直す |
+| セッション | `sessions` | ログインし直す |
+
+ユーザーデータは再スキャンで再現される値（内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス）をキーにし、動画の行の id をキーにすることはないため、インデックスを再構築しても残る。メディアフォルダを登録するまでスキャンは開始できず、失った API トークンは発行し直す必要がある。
 
 VVMDM をリセットまたは更新する前に、`mdm.db` を含む `vv_data` ボリューム**全体**をバックアップする:
 
