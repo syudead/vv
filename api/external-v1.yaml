@@ -266,7 +266,52 @@ paths:
     get:
       operationId: listTags
       summary: タグの一覧を返す
-      description: 画面のタグ管理と同じ並び（contracts/external-api.md §3）。
+      description: |
+        画面のタグ管理の `GET /api/tags` と同じ検索・絞り込み・並び順・ページで返す。`q`・`tentative`・
+        `unused` は全部のタグに AND で掛かり、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返し、`nextCursor` は入らない
+        （specs/039-external-tag-admin/contracts/external-api.md §1）。
+      parameters:
+        - name: q
+          in: query
+          description: |
+            検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+            （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+            タグだけにする。語の分解はしない
+          schema:
+            type: string
+            maxLength: 100
+        - name: tentative
+          in: query
+          description: true なら仮のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: unused
+          in: query
+          description: true なら本数 0 のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          description: 並び順
+          schema:
+            $ref: "#/components/schemas/TagSort"
+        - name: cursor
+          in: query
+          description: |
+            前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+            `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
       responses:
         "200":
           description: タグの一覧
@@ -274,6 +319,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagList"
+        "400":
+          description: >-
+            `sort` が 5 値の外、`limit` が 1〜200 の外、`q` が 100 文字を超える（`invalid_request`）、
+            カーソルを解釈できないか別の `sort` で作ったもの（`invalid_request` / `invalid_cursor`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "500":
@@ -412,7 +465,7 @@ components:
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount, tentative]
+      required: [id, name, synonyms, videoCount, tentative, createdAt]
       additionalProperties: false
       properties:
         id:
@@ -431,16 +484,38 @@ components:
         tentative:
           type: boolean
           description: 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+        createdAt:
+          type: string
+          format: date-time
+          description: タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
 
     TagList:
       type: object
-      required: [items]
+      required: [items, total, totalAll]
       additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+        total:
+          type: integer
+          description: 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+        totalAll:
+          type: integer
+          description: 全部のタグの数。ページングとは独立に返る
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+
+    TagSort:
+      type: string
+      enum: [name, countDesc, countAsc, createdDesc, createdAsc]
+      default: name
+      description: |
+        タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+        createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+        （specs/036-tag-admin-scale/data-model.md §0・§2）
 
     ExternalVideo:
       type: object

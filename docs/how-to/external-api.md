@@ -231,6 +231,39 @@ flowchart LR
 - Confirming and rejecting tentative tags, and viewing and clearing rejected
   names, are only on the screens.
 
+## Tidy up tags
+
+### List tags
+
+`GET /api/v1/tags` lists tags with the search, filters, sort and pages of the
+tag admin screen
+([specs/039-external-tag-admin/contracts/external-api.md §1](../../specs/039-external-tag-admin/contracts/external-api.md#1-get-apiv1tags)).
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&q=selfie&sort=countDesc&limit=200"
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `q` | Up to 100 characters. Matches part of a name or synonym, ignoring width, case and kana |
+| `tentative` | `true` lists tentative tags only |
+| `unused` | `true` lists tags on no video only. ANDed with `q` and `tentative` |
+| `sort` | `name` (default, natural name order), `countDesc`, `countAsc`, `createdDesc` or `createdAsc`; ties by name, then `id` |
+| `limit` | 1 to 200 tags per page. **Omitted, every matching tag is returned** without `nextCursor` |
+| `cursor` | The previous `nextCursor`, sent with the same `q`, `tentative`, `unused` and `sort` |
+
+- The response is `{ items, total, totalAll, nextCursor? }`. `total` counts the
+  tags matching the filters, `totalAll` every tag, on every page.
+- With `limit`, pass `nextCursor` back as `cursor` until it is absent to read
+  every matching tag once.
+- Each tag has `id`, `name`, `synonyms`, `videoCount`, `tentative` and
+  `createdAt`.
+- `sort` outside the five values, `limit` outside 1 to 200 or `q` over 100
+  characters returns `400` `invalid_request`. A cursor that cannot be read, or
+  that was made under another `sort`, returns `400` `invalid_request` with
+  `reason: invalid_cursor`; read again from the first page.
+
 ## Set display names
 
 `POST /api/v1/video-display-names` sets or clears the display names of several
@@ -374,7 +407,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
-| `list_tags` | `GET /api/v1/tags` |
+| `list_tags` | `GET /api/v1/tags`; `limit` defaults to 100 in the tool |
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |

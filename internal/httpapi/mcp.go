@@ -13,6 +13,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
@@ -80,7 +81,11 @@ type (
 	mcpNoInput     struct{}
 	mcpListVideos  = extgen.ListVideosParams
 	mcpLookupVideo = extgen.LookupVideoParams
+	mcpListTags    = extgen.ListTagsParams
 )
+
+// mcpListTagsDefaultLimit は list_tags が limit を省かれたときに入れる 1 ページの件数である。
+const mcpListTagsDefaultLimit = 100
 
 func (t *mcpTools) register(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
@@ -122,11 +127,39 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_tags",
-		Description: "List every tag with its synonyms and video count (GET /api/v1/tags).",
+		Name: "list_tags",
+		Description: "List tags with their synonyms, video count and creation time, one page at a time " +
+			"(GET /api/v1/tags). q matches a name or synonym ignoring width, case and kana; tentative and unused " +
+			"narrow the list; sort is name, countDesc, countAsc, createdDesc or createdAsc. " +
+			"limit is 1 to 200 and defaults to 100 here. total counts the matching tags and totalAll every tag. " +
+			"Pass nextCursor back as cursor, with the same q, tentative, unused and sort, until it is absent.",
+		InputSchema: listTagsInputSchema(),
 		Annotations: readOnly,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ mcpNoInput) (*mcp.CallToolResult, any, error) {
-		return t.call(ctx, http.MethodGet, "/tags", nil, nil)
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListTags) (*mcp.CallToolResult, any, error) {
+		query := url.Values{}
+		if in.Q != nil {
+			query.Set("q", *in.Q)
+		}
+		if in.Tentative != nil {
+			query.Set("tentative", strconv.FormatBool(*in.Tentative))
+		}
+		if in.Unused != nil {
+			query.Set("unused", strconv.FormatBool(*in.Unused))
+		}
+		if in.Sort != nil {
+			query.Set("sort", string(*in.Sort))
+		}
+		if in.Cursor != nil {
+			query.Set("cursor", *in.Cursor)
+		}
+		// REST の既定（省けば全件）は変えず、ツールだけが 1 ページを既定にする
+		// （specs/039-external-tag-admin/research.md R-1）。
+		limit := mcpListTagsDefaultLimit
+		if in.Limit != nil {
+			limit = *in.Limit
+		}
+		query.Set("limit", strconv.Itoa(limit))
+		return t.call(ctx, http.MethodGet, "/tags", query, nil)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -192,6 +225,28 @@ func videoTagsInputSchema() *jsonschema.Schema {
 	}
 	if action := schema.Properties["action"]; action != nil {
 		action.Enum = []any{string(extgen.Add), string(extgen.Remove), string(extgen.Replace)}
+	}
+	return schema
+}
+
+// listTagsInputSchema は list_tags の入力の形である。型から導き、sort に契約の値を、
+// limit と q に上限を足す（型からは文字列・整数としか分からない）。
+func listTagsInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[mcpListTags]("list_tags")
+	if sort := schema.Properties["sort"]; sort != nil {
+		sort.Enum = []any{
+			string(extgen.Name), string(extgen.CountDesc), string(extgen.CountAsc),
+			string(extgen.CreatedDesc), string(extgen.CreatedAsc),
+		}
+	}
+	if limit := schema.Properties["limit"]; limit != nil {
+		minimum, maximum := 1.0, float64(domain.MaxTagPageLimit)
+		limit.Minimum, limit.Maximum = &minimum, &maximum
+		limit.Default = json.RawMessage(strconv.Itoa(mcpListTagsDefaultLimit))
+	}
+	if q := schema.Properties["q"]; q != nil {
+		maxLength := maxQueryLength
+		q.MaxLength = &maxLength
 	}
 	return schema
 }
