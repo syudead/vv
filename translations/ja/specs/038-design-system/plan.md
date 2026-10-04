@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/plan.md
-sourceHash: 06500b4ce63ac91a2efaa7c6a5171cdcdb2aa8fc1df74c4665e1ab2a0ae2058b
+sourceHash: 78b57e577d44803b3155984899a126d5615707b6007e1fd4eae9fa6e60612ccb
 ---
 
 # 実装計画: shadcn/ui 上の vv デザインシステムを、AI による実装の参照先として使う {#implementation-plan-vv-design-system-on-shadcnui-used-as-the-reference-for-ai-implementation}
@@ -168,7 +168,7 @@ flowchart LR
 
 ### 操作と入力のコンポーネントを shadcn/ui 上に作り直す {#rebuild-the-action-and-input-components-on-shadcnui}
 
-**範囲**: `ui-design.md` の一覧にある操作と入力のコンポーネント (ボタン、テキストと選択の入力、トグル、スライダー、コンボボックス、チップ) を基礎の上に shadcn/ui から作り直す。それぞれをレジストリのアイテムにし、`components.md` の節を持たせ、すべての状態をショーケースに載せ、ライブラリ画面で使う。
+**範囲**: `ui-design.md` の一覧にある操作と入力のコンポーネント (ボタン、テキストと選択の入力、トグルとフィルターのチップ、スライダー、コンボボックス) を基礎の上に shadcn/ui から作り直す。それぞれをレジストリのアイテムにし、`components.md` の節を持たせ、すべての状態をショーケースに載せ、ライブラリ画面で使う。
 
 **依存**: デザインシステムの基礎を定め、ライブラリ画面に適用する
 
