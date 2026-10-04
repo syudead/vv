@@ -60,7 +60,10 @@ export function mermaidLabels(value) {
     // Shapes such as [(db)], [[sub]] and [/in/] wrap the text in extra
     // delimiters; they belong to the shape, not the label.
     const lead = captured.match(/^[\s([{/\\>]*/)[0].length
-    const trail = captured.match(/[\s)\]}/\\]*$/)[0].length
+    // A trailing / or \ closes a shape only when one opened it ([/in/]); a
+    // label such as `seed/` keeps its slash.
+    const closers = /[/\\]/.test(captured.slice(0, lead)) ? /[\s)\]}/\\]*$/ : /[\s)\]}]*$/
+    const trail = captured.match(closers)[0].length
     const label = captured.slice(lead, captured.length - trail)
     if (!label) continue
     const at = m.index + m[0].indexOf(captured) + lead

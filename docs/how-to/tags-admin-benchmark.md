@@ -174,7 +174,7 @@ Details per scene:
   number of loaded rows, the number of load-more requests and their response
   times. The end is reached at the bottom edge after the last page is
   rendered: `nextCursor` is exhausted and N in the column header's "Select all
-  N loaded tags" reaches the header's count (in the first form of 036, after
+  N loaded tags" reaches the tag count in the page header (in the first form of 036, after
   " · N loaded" next to the count disappears). When neither the position nor
   the loaded rows change for 60 seconds, scrolling stops and the note shows
   `末尾に届かず` (did not reach the end).

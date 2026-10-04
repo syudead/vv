@@ -143,3 +143,8 @@ test('state and sequence diagram labels may be translated, ids may not', () => {
 test('a line break inside inline code counts as a space', () => {
   assert.equal(structureDiff('Use `<branch\nname>` here.\n', '`<branch name>` を使う。\n'), null)
 })
+
+test('a Mermaid label ending in a slash keeps it as text', () => {
+  const en = '```mermaid\nflowchart LR\n  a[seed/ at base] --> b[/in/]\n```\n'
+  assert.equal(structureDiff(en, en.replace('seed/ at base', 'ベースの seed/')), null)
+})
