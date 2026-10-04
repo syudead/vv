@@ -134,11 +134,26 @@ jobs:
 
   # e2e はコード変更を含む PR と main への push で回す。PR で回さないと、壊れた変更が
   # マージされてから main で初めて分かる。
+  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
+  # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
+  # e2e のファイルを足したら、どれかの組に入れる。
   e2e:
-    name: Browser E2E
+    name: Browser E2E (${{ matrix.group }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - group: playback
+            files: e2e/playback.e2e.ts
+          - group: tags
+            files: e2e/tags.e2e.ts
+          - group: library
+            files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/hover-preview.e2e.ts
+          - group: scan and search
+            files: e2e/auth.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -220,13 +235,15 @@ jobs:
         run: npx playwright install chromium
 
       - name: 実ブラウザE2E
-        run: task test-e2e
+        env:
+          E2E_FILES: ${{ matrix.files }}
+        run: task test-e2e -- $E2E_FILES
 
       - name: 失敗時のPlaywright artefact
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: playwright-report
+          name: playwright-report-${{ strategy.job-index }}
           path: |
             web/playwright-report/
             web/test-results/
