@@ -4,7 +4,7 @@ Parent Issue #388. Source of truth:
 [api/openapi.yaml](../../../api/openapi.yaml). This document describes only
 what changes.
 
-## 1. `Processing.seekThumbnail`
+## `Processing.seekThumbnail`
 
 `seekThumbnail` (integer, required) is added to `Processing` in the
 `GET /api/processing` response and in the `processing` event of `/api/events`.
@@ -20,11 +20,11 @@ When all are 0 (including `seekThumbnail`), preparation is finished. The web
 `processingRemaining` and the "preparing" check use this sum. The processing
 status breakdown becomes four columns: probe, thumbnail, seek, preview.
 
-## 2. Meaning of `seekThumbnailState`
+## Meaning of `seekThumbnailState`
 
 The meaning of the values of `Video.seekThumbnailState` (present only in
 `GET /api/videos/{id}`, under the same condition as `seekThumbnailUrl`) is
-revised to match [data-model.md §3](../data-model.md#3-state-transitions). The
+revised to match [data-model.md, State transitions](../data-model.md#state-transitions). The
 schema (enum `pending` / `done` / `failed`) does not change.
 
 | Value | Meaning |

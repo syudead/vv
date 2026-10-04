@@ -16,7 +16,7 @@ The responses and routes the screens use are fixed in
 [contracts/library-api.md](contracts/library-api.md) and
 [contracts/folder-groups-api.md](contracts/folder-groups-api.md), and how a
 group's watch state and member to open are decided is in
-[data-model.md §6](data-model.md#6-group-watch-state-and-the-member-to-open);
+[data-model.md, Group watch state and the member to open](data-model.md#group-watch-state-and-the-member-to-open);
 this document does not revisit them.
 
 This document defines only what the group card, the folder-derived tag
@@ -34,7 +34,7 @@ to `pairs` in `tokens.test.ts` ("Accessibility" below).
 | Selection bar | N in `N 件を選択中` and the `タグを外す` suggestions change (requirements 21 and 13). The order of controls does not change |
 | Video page (`/videos/:id`) | Only when a group member is open: one line above the title ("Group line"), the member list and divider above the related videos column ("Member list"), and the end-of-playback notice ("Autoplay notice"). The page for a video outside a group is unchanged (second half of requirement 27, acceptance criterion 17) |
 | Folder screen (`/folders/{rootId}/…`) | A grouping menu at the right end of the `動画 N` heading line ("Folder grouping menu"). The list still shows one video at a time (requirement 22). Nothing is added at the top level (`/folders`) or to search results |
-| Guest | The group card omits watch state and the watched count; the grouping menu, the video page menu and tags are not shown ([data-model.md §7](data-model.md#7-visibility-per-audience)) |
+| Guest | The group card omits watch state and the watched count; the grouping menu, the video page menu and tags are not shown ([data-model.md, Visibility per audience](data-model.md#visibility-per-audience)) |
 
 ## Group card
 
@@ -179,7 +179,7 @@ Only when `Video.group` exists, one line goes **above** the title (`h1`)
 | Item | Action |
 | --- | --- |
 | `まとめを解除` (lucide `Ungroup`) | `PUT /api/folders/{rootId}/grouping`, `mode: ungroup` |
-| `グループをタグに変える` (lucide `Tag`) | `POST /api/folders/{rootId}/grouping/tag`. Not shown when `group.folder.path` is empty (the registered folder itself) (contracts/folder-groups-api.md §2) |
+| `グループをタグに変える` (lucide `Tag`) | `POST /api/folders/{rootId}/grouping/tag`. Not shown when `group.folder.path` is empty (the registered folder itself) (contracts/folder-groups-api.md, [Turning a group into a tag](contracts/folder-groups-api.md#turning-a-group-into-a-tag)) |
 
 - There is no `直下をまとめる`: what the video page shows is already a group, so
   it would mean nothing.
@@ -242,7 +242,7 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
   the related videos, with `pt-5` and `pb-2` around it (one step larger than the
   `gap-3` between rows; `UI品質` "spacing rhythm"). Below the line is the `h2`
   `関連動画` (the current heading), then the current related videos (which do
-  not include members of the same group; contracts/folder-groups-api.md §3).
+  not include members of the same group; contracts/folder-groups-api.md, [Groups of videos and related videos](contracts/folder-groups-api.md#groups-of-videos-and-related-videos)).
   With 0 related videos, neither the divider nor the `関連動画` heading appears.
 - Scrolling at `lg` and up: as in 012, the column's first heading line (here
   `続けて再生`) stays at the top, and everything below it (member list →
@@ -294,7 +294,7 @@ time.
 | --- | --- |
 | First line | `続けて再生` in `text-xs font-semibold text-accent`, with `5 秒後` (seconds left, counting down every second) to its right in `text-xs text-fg-muted tabular-nums` |
 | Link to the next member | Thumbnail (`w-56`, hidden under `sm`) and title (`text-base font-semibold`, truncated to two lines). The same form as the current `次の動画` |
-| Countdown bar | A full-width `h-1 rounded-full bg-fg-subtle/50` track whose `bg-accent` remainder shrinks from the right over 5 seconds. With reduced motion the bar stays, but the smooth shrink stops and it shrinks in steps as the seconds drop (`motion-reduce:transition-none`; the state stays visible and only motion stops, library-ui.md §4 and 012 "Interaction details") |
+| Countdown bar | A full-width `h-1 rounded-full bg-fg-subtle/50` track whose `bg-accent` remainder shrinks from the right over 5 seconds. With reduced motion the bar stays, but the smooth shrink stops and it shrinks in steps as the seconds drop (`motion-reduce:transition-none`; the state stays visible and only motion stops, [library-ui.md, Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) and 012 "Interaction details") |
 | Actions | Secondary `取り消す` (lucide `X`) on the **left** and primary `今すぐ再生` (`Play`) to its right. DOM order is the same, so Tab reaches `取り消す` first (`UI品質` "action priority") |
 
 - The countdown is 5 seconds from when the notice appears. At 0 the next member
@@ -354,7 +354,7 @@ reason as 013 "Search results").
     conditions of requirement 2, so even on the registered folder's own screen
     it reads that `自動` does not group it.
   - Only when `taggable` is true, a divider and `グループをタグに変える` (lucide
-    `Tag`). When false the item is absent (contracts/folder-groups-api.md §2).
+    `Tag`). When false the item is absent (contracts/folder-groups-api.md, [Turning a group into a tag](contracts/folder-groups-api.md#turning-a-group-into-a-tag)).
     Keeping a disabled item is rejected: for the registered folder itself the
     reason cannot be given in one line.
 - Choosing a radio sends `PUT /api/folders/{rootId}/grouping` and updates the
@@ -373,7 +373,7 @@ reason as 013 "Search results").
 - A successful tag conversion replaces `grouping` and also rereads the folder
   screen's video list (keeping the scroll position). Once the tag is created,
   the videos inside get the folder-derived tag from the next read
-  (data-model.md §4), but `tags` on the cards on screen are not in the response
+  (data-model.md, [Folder-derived tags](data-model.md#folder-derived-tags)), but `tags` on the cards on screen are not in the response
   and would stay stale (this shows requirement 11's result on the spot).
 - While sending, the trigger is `disabled` and its icon becomes `LoaderCircle`
   (`animate-spin`).

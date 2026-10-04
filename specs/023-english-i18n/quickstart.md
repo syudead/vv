@@ -4,7 +4,7 @@ These steps cover only this feature's checks; starting, importing and the
 general checks are in [Running vv](../../docs/how-to/running-vv.md) and
 [Taskfile.yml](../../Taskfile.yml) (`task check`, `task test-e2e`).
 
-## 1. No Japanese strings remain
+## No Japanese strings remain
 
 ```sh
 task check          # includes the screen lint (R-3's no-restricted-syntax), gosmopolitan and type checking
@@ -14,7 +14,7 @@ Expected: everything passes. After all units, `web/eslint.config.js` has no
 exclusion list of untranslated directories left
 ([research.md R-3](research.md#r-3-missing-translations-caught-by-lint-and-types)).
 
-## 2. Server output is in English
+## Server output is in English
 
 Start the server with an empty `MDM_DATA_DIR`, then perform initial setup,
 register a media folder, import, register a nonexistent path, and log in with a
@@ -30,7 +30,7 @@ curl -s -X POST localhost:8080/api/auth/login -H 'Content-Type: application/json
 Japanese names the user gave (media folder paths, video names) appearing in the
 logs is correct.
 
-## 3. Import and probe failures
+## Import and probe failures
 
 - Importing an unreadable media folder (`chmod 000` after registering it, or
   unplugging it) shows an English explanation that includes the path, on the
@@ -40,7 +40,7 @@ logs is correct.
   the playback screen an English explanation, and no ffprobe output appears on
   screen (`Video.probeErrorCode = probe_failed`).
 
-## 4. Japanese failure reasons from before the upgrade
+## Japanese failure reasons from before the upgrade
 
 Open, with the translated version, a data directory in which the failures of
 step 3 were created by the pre-translation version (or insert
@@ -54,7 +54,7 @@ failure explanation, and no Japanese appears on screen. `probeError` in
 `GET /api/videos/{id}` and `error` in `GET /api/scans/current` remain the stored
 Japanese, and `probeErrorCode` and `errorCode` are absent.
 
-## 5. Formatting and assistive technology
+## Formatting and assistive technology
 
 - Showing results of one video and of several in the list gives counts of the
   form `1 video` / `2 videos`.

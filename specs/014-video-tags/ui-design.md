@@ -22,7 +22,7 @@ radius or shadow tokens are added.
 | Library (`/`) grid card | A tag row below the title. The library list view rows have no tag row. Folder screen cards have the same tag row; pressing a tag goes to the library filtered by it (`/?tag=<id>`) |
 | Top of the library body | Only while filtering by tag, an active tag filter row above the summary line. Nothing is added to the toolbar (inside the top bar) |
 | Video page (`/videos/:id`) | The tag list below the title |
-| Selection bar | Bulk add and remove tag actions, placed per [library-ui.md §6](../../docs/design-docs/library-ui.md#6-list-layout) |
+| Selection bar | Bulk add and remove tag actions, placed per [library-ui.md, List layout](../../docs/design-docs/library-ui.md#list-layout) |
 | Tag management page (`/tags`) | Inside `AppShell`. The sidebar has a `タグ` entry (lucide `Tags`) right after `フォルダ` |
 
 ## Tag chip
@@ -82,12 +82,12 @@ with truncation) and are told apart by color and marks.
   the same chips. Pressing a chip filters by that tag, as in the card row, and
   closes the popover. Its accessible name is `ほかのタグ N 個を表示`.
 - How many chips fit is decided after rendering by measuring the row and chip
-  widths; CSS alone cannot produce the count. library-ui.md §4 avoids branching
+  widths; CSS alone cannot produce the count. library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) avoids branching
   on screen width in JavaScript, which is different from measuring whether
   content fits. To keep the row from growing and shrinking for one frame before
   measurement, the count is decided before paint (layout effect) and remeasured
   when the card size or the screen width changes. The list does not use virtual
-  scrolling (library-ui.md §3), so every loaded card's row is observed. Instead
+  scrolling (library-ui.md, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling)), so every loaded card's row is observed. Instead
   of one observer per card, one `ResizeObserver` on the list watches all rows.
   Card width is constant per zoom level, so remeasurement runs only when the
   zoom level or screen width changes, or tags change.
@@ -100,7 +100,7 @@ with truncation) and are told apart by color and marks.
   no dividing line.
 - The card's hover lift, shadow and hover preview work over the tag row as now.
 - Each tag chip is a button. Pressing it adds the tag to the current conditions
-  ([list-url.md §2](contracts/list-url.md#2-adding-and-removing-a-tag)); it does
+  ([list-url.md, Adding and removing a tag](contracts/list-url.md#adding-and-removing-a-tag)); it does
   not go to the video page. Pressing a tag that is already an active filter
   changes nothing, and the chip looks like the others (the active mark appears
   only above the list).
@@ -139,7 +139,7 @@ with truncation) and are told apart by color and marks.
 - The filter menu's `条件を解除` (013 "Filter menu") also appears while
   filtering by tag, and pressing it removes the tag filters too. Tags are not
   counted in the filter button's number
-  ([list-url.md §2](contracts/list-url.md#2-adding-and-removing-a-tag)).
+  ([list-url.md, Adding and removing a tag](contracts/list-url.md#adding-and-removing-a-tag)).
 - The summary line keeps its format and does not include tag names. Its count
   is `total` including `tag`.
 - The no-match state (013 "No-match state"), per 013's current contract (PR
@@ -257,7 +257,7 @@ Keys:
   shows no reason while typing (an empty input after a commit or on opening is
   normal); only Enter in that state shows `名前を入力してください`. Characters
   are counted as code points of the name with leading and trailing whitespace
-  removed, matching the server ([data-model.md §2](data-model.md#2-name-rules)),
+  removed, matching the server ([data-model.md, Name rules](data-model.md#name-rules)),
   not as JavaScript `length` (UTF-16 units). The input has no `maxLength`: it
   would silently drop the 101st character with no way to give a reason. The
   input's `aria-describedby` points at the reason line.
@@ -439,11 +439,11 @@ that would add one step.
 - When the Select all response has `missingTagIds`, no selection is built; the
   deleted tag is removed from the filter and reported. The user presses Select
   all again on the corrected list
-  ([tags-api.md §5](contracts/tags-api.md#5-list-filter-and-select-all)).
+  ([tags-api.md, List filter and Select all](contracts/tags-api.md#list-filter-and-select-all)).
 - When the library URL's `tag` includes a tag that no longer exists
   (`missingTagIds`, or the check on restoring from a snapshot), a toast says
   `削除されたタグを絞り込みから外しました` and the chip disappears from the
-  active tag filter row ([list-url.md §1](contracts/list-url.md#1-parameters)).
+  active tag filter row ([list-url.md, Parameters](contracts/list-url.md#parameters)).
   The removed tag's name may not be known from the tag list, so the wording
   does not include it.
 - Tags on cards and the video page may keep old names until the list or video

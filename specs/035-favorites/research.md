@@ -5,8 +5,8 @@ Parent Issue: #574. Inherited decisions:
 | Topic | Source of truth |
 | --- | --- |
 | Tech stack, boundaries, dependency direction, rebuildable index versus user data | [ARCHITECTURE.md](../../ARCHITECTURE.md), [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
-| User key (`bundle:<id>` for a bundle, otherwise `content_key`) | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
-| Folder key (`domain.FolderKey`) and manual group settings | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
+| User key (`bundle:<id>` for a bundle, otherwise `content_key`) | [specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key) |
+| Folder key (`domain.FolderKey`) and manual group settings | [specs/017-folder-groups/data-model.md, Migration](../017-folder-groups/data-model.md#migration) |
 | How library items are built | [specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md) |
 
 This file records only the decisions this feature adds.
@@ -15,7 +15,7 @@ This file records only the decisions this feature adds.
 
 **Decision**: Add `video_favorites(content_key primary key, favorited_at)` and
 `folder_favorites(path primary key, favorited_at)`
-([data-model.md §1](data-model.md#1-migration)). A video's key is `userKeyExpr` (the bundle's key for a
+([data-model.md, Migration](data-model.md#migration)). A video's key is `userKeyExpr` (the bundle's key for a
 bundle member), the same as `public_videos`. A group's key is `domain.FolderKey(<absolute folder path>)`, the
 same as `folder_group_overrides`. Neither table has a foreign key to `videos`, `folder_groups` or
 `media_folders`. Same-path succession (`moveUserData`) and bundling and unbundling (`userDataTables`) also copy
@@ -37,8 +37,8 @@ bundle once #572 lands" is met by the user key, because 030 has already landed.
 
 **Decision**: Add `PUT /api/favorites` (`videoIds`, `folders`, `favorite`). `SetFavorites` on the new role
 type `FavoriteStore` (holds only the `sql` connection, like `VisibilityStore`) writes in one transaction
-([contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites),
-[data-model.md §4](data-model.md#4-writes-favoritestore)). `videoIds` are resolved with
+([contracts/screen-api.md, `PUT /api/favorites`](contracts/screen-api.md#put-apifavorites),
+[data-model.md, Writes (`FavoriteStore`)](data-model.md#writes-favoritestore)). `videoIds` are resolved with
 `userKeysForVideoIDs` to the keys of videos currently in the library. `folders` are turned into absolute paths
 from the registered folder id and relative path, and only paths in `folder_groups.path_key` (folders that are
 groups for the owner now) are written. An id that does not resolve, an unregistered `rootId` and a folder that
@@ -66,7 +66,7 @@ not written.
 `GET /api/folders/{rootId}/videos` it is a per-video condition in `filteredFrom` (a `video_favorites` row
 exists). For `GET /api/library` and `GET /api/library/ids`, the videos matched by search terms and tags
 (`matched`) and the groups whose members all match (`whole`) are built as today, and the item-building step
-changes as follows ([data-model.md §5](data-model.md#5-reads-and-lists)):
+changes as follows ([data-model.md, Reads and lists](data-model.md#reads-and-lists)):
 
 | Item | Built from |
 | --- | --- |
@@ -113,7 +113,7 @@ them for a guest. `PUT /api/favorites` is owner-only (the `/api/*` default). The
 criteria with `guestListCriteria` and shows guests neither the controls nor the marks.
 
 **Rationale**: Requirement 12 and acceptance criterion 10 settle this directly. Treating favorites like watch
-state, the last-played sorts and tags means the contract (guest-api.md §3) and the screen's normalisation each
+state, the last-played sorts and tags means the contract (guest-api.md, [Conditions guests cannot use](../016-single-account-auth/contracts/guest-api.md#conditions-guests-cannot-use)) and the screen's normalisation each
 gain one line in the same place.
 
 **Alternatives considered**: Always return `favorite: false` to guests. The requirement is to hide the state,
@@ -136,7 +136,7 @@ the latest state on the next refetch").
 | --- | --- |
 | **Reuse the visibility subscriptions; refetch the video page** | Chosen |
 | Add an event like `domain.VideoOverrideChanged` and announce it as `video` on `/api/events` | Rejected: every toggle would refetch list items, so favoriting 20,000 at once would mean 20,000 refetches |
-| Remove an unfavorited card from a favorites-only list at once | Rejected: the selection bar's "Remove tag" refetches (library-ui.md §6), but a list that moves on a single card action shifts the card positions and stops repeated presses; leave it to the next load |
+| Remove an unfavorited card from a favorites-only list at once | Rejected: the selection bar's "Remove tag" refetches (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)), but a list that moves on a single card action shifts the card positions and stops repeated presses; leave it to the next load |
 
 **Rationale**: The visibility toggle already solves "replace without refetching", "refetch on a partial
 result" and "settle in the order sent", and favoriting has the same properties: one owner action, the success
@@ -149,7 +149,7 @@ sync other tabs, which the Edge Cases do not ask for.
 with a group card's checkbox (the folder and its member ids). When any member leaves the selection, that
 group leaves the chosen groups. "Select all" takes the chosen groups from `groups`, added to the
 `GET /api/library/ids` response (the folder and member ids of each group item,
-[contracts/screen-api.md §3](contracts/screen-api.md#3-fields-added-to-get-apilibraryids)). The selection
+[contracts/screen-api.md, Fields added to `GET /api/library/ids`](contracts/screen-api.md#fields-added-to-get-apilibraryids)). The selection
 bar's favorite action sends `videoIds` = the selected ids that are not members of a chosen group, and
 `folders` = the chosen groups. Adding and removing tags, visibility and bundling still send the set of video
 ids.

@@ -7,7 +7,7 @@ check, JSON body parsing, and additions to `requiresJSONBody` and
 [specs/014-video-tags/contracts/tags-api.md](../../014-video-tags/contracts/tags-api.md).
 The decisions are [research.md R-5, R-8 and R-9](../research.md).
 
-## 0. Schema changes
+## Schema changes
 
 | Schema | Added field | Rule |
 | --- | --- | --- |
@@ -31,17 +31,17 @@ RejectedTagNameList:
 
 `Error.code` gains `tag_not_tentative`.
 
-## 1. Changed existing routes
+## Changed existing routes
 
 | Route | Change |
 | --- | --- |
-| `PATCH /api/tags/{id}` | When the name changes, a tentative tag is returned as a confirmed tag ([data-model.md §3](../data-model.md#3-write-rules)). A rename to the current name changes nothing |
+| `PATCH /api/tags/{id}` | When the name changes, a tentative tag is returned as a confirmed tag ([data-model.md, Write rules](../data-model.md#write-rules)). A rename to the current name changes nothing |
 | `POST /api/tags/{id}/synonyms` | When a name is added, the tentative tag `{id}` is returned as a confirmed tag |
 | `POST /api/tags/{id}/merge` | The target `{id}` is returned as a confirmed tag. The source is deleted, tentative or confirmed |
 | `POST /api/tags`, `POST /api/video-tags` (when creating with `tag: { name }`) | As today: creates a confirmed tag. If the name is a rejected name, it is removed from the list (requirement 15) |
 | `DELETE /api/tags/{id}` | Unchanged. Remembers no name, tentative or confirmed. The screen does not offer this operation for tentative tags (requirement 10) |
 
-## 2. Tentative tag operations
+## Tentative tag operations
 
 | Route | Body | Success | Errors |
 | --- | --- | --- | --- |
@@ -52,11 +52,11 @@ RejectedTagNameList:
   boundary's default classification returns `401`).
 - The screen handles `tag_not_tentative` like `tag_not_found` (it closes the
   dialog and reloads the list; edge case "conflicting operations").
-- After `reject`, the screen reloads the rejected-name list (§3). The response
+- After `reject`, the screen reloads the rejected-name list ([Rejected names](#rejected-names)). The response
   carries no name because reloading the list is enough, and the same path also
   reflects rejects made in other tabs.
 
-## 3. Rejected names
+## Rejected names
 
 | Route | Body | Success | Errors |
 | --- | --- | --- | --- |
@@ -75,7 +75,7 @@ RejectedTagNameList:
 - A removed name is created again as a tentative tag the next time it is attached
   with `tentative: true` (acceptance criterion 13).
 
-## 4. `web/src/api` functions
+## `web/src/api` functions
 
 Add `confirmTag(id)`, `rejectTag(id)`, `listRejectedTagNames()` and
 `forgetRejectedTagName(name)` to `client.ts` (or `tags.ts`). `confirmTag` and

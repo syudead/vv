@@ -6,7 +6,7 @@ Source of truth: `api/openapi.yaml`. This document records only the parameter ad
 ([specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md)) do not
 change.
 
-## 1. `quality` on `GET /api/videos/{id}/transcode.mp4`
+## `quality` on `GET /api/videos/{id}/transcode.mp4`
 
 ```yaml
 - name: quality
@@ -28,7 +28,7 @@ change.
 | Combined with `startMs` and `attempt` | Works as before. A transcode with `quality` starts exactly at `startMs`, so the `transcode-start` report equals `startMs`. |
 | Access | Stays "guests too" (requirement 8 of the parent Issue). |
 
-## 2. Per-quality transcode guarantees
+## Per-quality transcode guarantees
 
 | `quality` | Display short side | Video cap (`-maxrate`) | `-bufsize` | Audio (AAC) |
 | --- | --- | --- | --- | --- |

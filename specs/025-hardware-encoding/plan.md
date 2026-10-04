@@ -168,10 +168,10 @@ against the dependency direction.
 
 **Scope**: Encoder values and decision rule, storage, app state.
 
-- `internal/domain`: the values of [data-model.md](data-model.md) §2 and §3, and
+- `internal/domain`: the values of [data-model.md, Key `transcode.video_encoder`](data-model.md#key-transcodevideo_encoder) and [In-memory values (not stored)](data-model.md#in-memory-values-not-stored), and
   `ParseEncoderChoice`, `ResolveVideoEncoder` and `HardwareEncoderCandidates`
   ([R-3](research.md#r-3-a-pure-domain-function-decides-the-effective-encoder-and-app-holds-it-in-memory)).
-- `internal/store`: the migration of [data-model.md](data-model.md) §1, and
+- `internal/store`: the migration of [data-model.md, Migration](data-model.md#migration), and
   `TranscodeEncoderChoice` and `SaveTranscodeEncoderChoice` on `SettingsStore`
   ([R-4](research.md#r-4-storage-is-a-generic-key-value-settings-table)).
 - `internal/app`: `TranscodeSettings` (loading the stored value, running the

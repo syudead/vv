@@ -12,11 +12,11 @@ This file covers only the values added to `domain`, the store operations added o
 the screen's state. Operations not named here (single create, rename, delete, confirm, reject, synonyms,
 adding and removing tags on videos, video counts) do not change.
 
-The bulk operations of §1 to §3 (`BatchTags`, `MergeTags`, `TagImpact`) are merged into the feature branch
-and unchanged by the revision of the parent Issue. The migration of §0, the page values of §1, `ListTags`,
-`ListRejectedTagNames` and the key writes of §2, and §4 were added or rewritten by the revision.
+The bulk operations of [Values added to `domain`](#values-added-to-domain) to [Write rules](#write-rules) (`BatchTags`, `MergeTags`, `TagImpact`) are merged into the feature branch
+and unchanged by the revision of the parent Issue. The [Migration](#migration), the page values in [Values added to `domain`](#values-added-to-domain), `ListTags`,
+`ListRejectedTagNames` and the key writes of [Store operations](#store-operations), and [Screen state](#screen-state) were added or rewritten by the revision.
 
-## 0. Migration
+## Migration
 
 One migration, `00030_tag_sort_keys.sql`
 ([research.md R-10](research.md#r-10-a-natural-order-name-key-sort_key-on-tag_names-and-rejected_tag_names-filled-by-the-startup-key-refresh)).
@@ -28,7 +28,7 @@ Table meanings and existing columns do not change.
 | `rejected_tag_names` | `sort_key text not null default ''`, `search_version integer not null default 0` | `sort_key` is `domain.NaturalSortKey(name)`, written by reject; `search_version` means the same as `tag_names.search_version` (`domain.SearchKeyVersion`) |
 
 The migration runs `update tag_names set search_version = 0`, and `TagStore.RefreshSearchKeys` at startup
-fills `sort_key` of existing rows together with `search_key` (§2). Existing `rejected_tag_names` rows default
+fills `sort_key` of existing rows together with `search_key` ([Store operations](#store-operations)). Existing `rejected_tag_names` rows default
 to `search_version` 0, so the same refresh picks them up. The key is a rebuildable derived value, rebuilt by
 the same mechanism when `SearchKeyVersion` is raised.
 
@@ -36,7 +36,7 @@ the same mechanism when `SearchKeyVersion` is raised.
 `name`). `NaturalSortKey` works on the matching form (`FoldForMatch`), so names equal after folding
 full-width, half-width and kana tie and are ordered by `id` (R-10, "Change in the name order").
 
-## 1. Values added to `domain`
+## Values added to `domain`
 
 Merged (bulk operations):
 
@@ -77,7 +77,7 @@ Added by the revision (paging,
 
 `ErrInvalidCursor` is the one from 013 (a cursor made under another sort, or one that cannot be parsed).
 
-## 2. Store operations
+## Store operations
 
 Added to or changed on `TagStore`. Every operation uses only the shared SQLite connection and publishes no
 domain event (tag changes have no side effects; the `TagStore` paragraph of ARCHITECTURE.md is unchanged).
@@ -121,7 +121,7 @@ The cursor is an opaque string wrapping the sort name, the value, `sort_key` and
 sort, or one that cannot be parsed, returns `ErrInvalidCursor` (the same shape as `encodeCursor` and
 `decodeCursor` in `listing.go`, sharing what can be shared).
 
-The two invariants of [031 data-model.md §1](../031-tentative-tags/data-model.md#1-migration) gain a third,
+The two invariants of [031 data-model.md, Migration](../031-tentative-tags/data-model.md#migration) gain a third,
 checked in `invariants_test.go`:
 
 | Rule | Enforced in |
@@ -131,21 +131,21 @@ checked in `invariants_test.go`:
 The signatures of `ListTags` and `ListRejectedTagNames` in the `Tags` interface declared by `internal/httpapi`
 (`router.go`) change. The wiring in `cmd/mdm` does not change.
 
-## 3. Write rules
+## Write rules
 
-The tables of 014 §4 and 031 §3 gain no new kind of write. A bulk operation gives the same result as running
+The tables of [014 data-model.md, Write rules](../014-video-tags/data-model.md#write-rules) and [031 data-model.md, Write rules](../031-tentative-tags/data-model.md#write-rules) gain no new kind of write. A bulk operation gives the same result as running
 the single operation several times in one transaction (merged).
 
 | Bulk operation | Relation to the single operation |
 | --- | --- |
 | Confirm | Same as `ConfirmTag` on each id; an already confirmed tag is skipped and counted (the single route changes nothing and returns 200) |
 | Reject | Same as `RejectTag` on each id; a confirmed tag is skipped and counted (the single route returns `409 tag_not_tentative`) |
-| Delete | Same as `DeleteTag` on each id; a tentative tag is skipped and counted (the single route also deletes tentative tags, but the screen shows no delete on a tentative row, 031 §3) |
+| Delete | Same as `DeleteTag` on each id; a tentative tag is skipped and counted (the single route also deletes tentative tags, but the screen shows no delete on a tentative row, [031 data-model.md, Write rules](../031-tentative-tags/data-model.md#write-rules)) |
 | Merge | `mergeTagsInto` produces the result of merging each source in turn, in a statement count independent of the number of sources; the target is confirmed once |
 
 `sort_key` is written with its name row and removed with it, so it does not affect the write rules.
 
-## 4. Screen state
+## Screen state
 
 The state the tag management screen (`web/src/tags/TagsPage.tsx`) holds, and its rules. The conditions
 (search term, filters, sort) and the tab go into the URL query (`web/src/tags/tagListUrl.ts`,

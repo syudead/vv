@@ -42,7 +42,7 @@ the player.
 | --- | --- |
 | Boundaries, dependency direction, the authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md) |
 | Current live transcoding | [docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md), [docs/design-docs/hardware-encoding.md](../../docs/design-docs/hardware-encoding.md), [docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md), [internal/media/transcode.go](../../internal/media/transcode.go) (`buildTranscodeArgs`, `videoEncodeArgs`, `encoderCodecArgs`, `outputDimensions`), [internal/httpapi/transcode.go](../../internal/httpapi/transcode.go), [internal/domain/live_transcode.go](../../internal/domain/live_transcode.go) |
-| Current player | [docs/design-docs/library-ui.md "Video page layout"](../../docs/design-docs/library-ui.md#8-video-page-layout), [web/src/player/VideoPlayer.tsx](../../web/src/player/VideoPlayer.tsx) (`controlBarChildren`, `TranscodeIndicator`, the `handleFailure` fallback, `reload`), [web/src/player/playbackAttempt.ts](../../web/src/player/playbackAttempt.ts), [web/src/player/liveOffset.ts](../../web/src/player/liveOffset.ts), [web/src/player/playbackRecovery.ts](../../web/src/player/playbackRecovery.ts), [web/src/player/VideoPage.tsx](../../web/src/player/VideoPage.tsx) (the layer container), [web/src/preferences/playbackVolume.ts](../../web/src/preferences/playbackVolume.ts) (the model for remembering a preference) |
+| Current player | [docs/design-docs/library-ui.md "Video page layout"](../../docs/design-docs/library-ui.md#video-page-layout), [web/src/player/VideoPlayer.tsx](../../web/src/player/VideoPlayer.tsx) (`controlBarChildren`, `TranscodeIndicator`, the `handleFailure` fallback, `reload`), [web/src/player/playbackAttempt.ts](../../web/src/player/playbackAttempt.ts), [web/src/player/liveOffset.ts](../../web/src/player/liveOffset.ts), [web/src/player/playbackRecovery.ts](../../web/src/player/playbackRecovery.ts), [web/src/player/VideoPage.tsx](../../web/src/player/VideoPage.tsx) (the layer container), [web/src/preferences/playbackVolume.ts](../../web/src/preferences/playbackVolume.ts) (the model for remembering a preference) |
 | API source of truth and error shape | [api/openapi.yaml](../../api/openapi.yaml), [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md) |
 | Screen text | [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
 | Check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`, `task test-e2e`) |
@@ -150,7 +150,7 @@ the same rule is confined to pure functions in `web/src/player/quality.ts` and i
 - `internal/domain/transcode_quality.go`: `TranscodeQuality` (`1080p`, `720p`, `480p`, `360p`),
   `ParseTranscodeQuality`, each quality's short side, video cap in kbps and audio kbps, and a pure
   function deciding whether a quality is available for a video's display dimensions
-  ([contracts/transcode-quality-api.md §2](contracts/transcode-quality-api.md#2-per-quality-transcode-guarantees),
+  ([contracts/transcode-quality-api.md, Per-quality transcode guarantees](contracts/transcode-quality-api.md#per-quality-transcode-guarantees),
   [research.md R-2](research.md#r-2-quality-scales-the-short-side-of-the-display-and--maxrate-bufsize-caps-the-bitrate),
   [R-3](research.md#r-3-availability-of-a-quality-depends-on-the-videos-short-side-and-the-server-rejects-unavailable-qualities-with-400)).
   `LiveTranscodeRequest.Quality`.
@@ -187,7 +187,7 @@ the same rule is confined to pure functions in `web/src/player/quality.ts` and i
 **Scope**: the contract and the route.
 
 - Add `quality` to `transcodeVideo` in `api/openapi.yaml`
-  ([contracts/transcode-quality-api.md §1](contracts/transcode-quality-api.md#1-quality-on-get-apivideosidtranscodemp4))
+  ([contracts/transcode-quality-api.md, `quality` on `GET /api/videos/{id}/transcode.mp4`](contracts/transcode-quality-api.md#quality-on-get-apivideosidtranscodemp4))
   and run `task generate`.
 - `internal/httpapi/transcode.go`: parse `quality`; if it is not available for the video's
   `Width`/`Height`, return 400 `invalid_request`, otherwise carry it on

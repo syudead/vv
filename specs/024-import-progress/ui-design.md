@@ -120,7 +120,7 @@ current activity line.
 | --- | --- |
 | `done` | "Finished {date and time}" |
 | `partial` | "Finished {date and time}". The status word is already "Some failed", so the time line does not distinguish them. |
-| `failed` | "The scan couldn't finish." and no time. A `failed` `Scan` has no time ([contracts/scan-api.md §2](contracts/scan-api.md#2-scan)); the failure reason and retry tell when the result is from. |
+| `failed` | "The scan couldn't finish." and no time. A `failed` `Scan` has no time ([contracts/scan-api.md, `Scan`](contracts/scan-api.md#scan)); the failure reason and retry tell when the result is from. |
 
 The time is `Scan.settledAt` written with `formatDateTime` (for example, Sep 28,
 2026, 3:04 PM). No time is shown while running (requirement 4).
@@ -136,7 +136,7 @@ The time is `Scan.settledAt` written with `formatDateTime` (for example, Sep 28,
 **Issue impact and reason**: each row of the list shows the impact of the main
 kind as the first sentence and the reason as the second. The main kind is the
 first entry of `kinds`
-([contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)).
+([contracts/scan-api.md, `GET /api/scans/current/issues`](contracts/scan-api.md#get-apiscanscurrentissues)).
 The impact says, in the user's words, what state the video is in
 (requirement 5).
 
@@ -239,14 +239,14 @@ denominator line, item 4 and item 5.
     2. Location: "registered folder display name / relative path" on one
        `text-xs text-fg-muted` line, keeping the end (nearest the file) when
        truncated. This is the same truncation as the registered path on folder
-       cards (library-ui.md §6).
+       cards (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)).
     3. Impact and reason: `text-sm text-fg`, reason after impact, wrapping
        allowed.
     4. Other kinds: the "Also: …" line, only when there are two or more kinds.
   - The full truncated file name and location are readable through `title`. Files
     with the same name are told apart by the location line (Edge Cases). Every
     row in the list is inside a registered folder
-    ([contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)),
+    ([contracts/scan-api.md, `GET /api/scans/current/issues`](contracts/scan-api.md#get-apiscanscurrentissues)),
     so the location line is never empty.
 - **Going to the video**:
 

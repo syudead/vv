@@ -76,7 +76,7 @@ hardware encoders; they are checked on real hardware with
 
 The transcode route takes an optional `quality` (`1080p`, `720p`, `480p`,
 `360p`), and the server decides the quality from each request alone
-([contract §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-quality-on-get-apivideosidtranscodemp4)).
+([contract, `quality` on `GET /api/videos/{id}/transcode.mp4`](../../specs/027-playback-quality/contracts/transcode-quality-api.md#quality-on-get-apivideosidtranscodemp4)).
 
 The viewer switches quality during playback; a server-side memory or a route
 per quality would have to track which quality goes with each seek and resume

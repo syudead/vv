@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: cdfff46be19b2e36a397eb25edc60fa7f615b1f9720f9bceecc9513a5571d595
+sourceHash: 6813d4d95ba9d8c5a320bd64738c55f7486f2b2af59d5ded1e1780e44d8a638f
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -21,7 +21,7 @@ flowchart LR
   people[実機で見る人] -->|レイアウト| screens
 ```
 
-## 1. 視覚値は CSS の 1 か所に置き、コントラストはテストで保証する {#1-visual-values-in-one-css-location-with-contrast-guaranteed-by-tests}
+## 視覚値は CSS の 1 か所に置き、コントラストはテストで保証する {#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests}
 
 画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-surface`、`text-fg-muted`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
 
@@ -58,13 +58,13 @@ flowchart LR
 | 値を TypeScript に置き、CSS を生成する | 画面はどのみち Tailwind のクラス名を使うので、名前が重複し、生成ファイルが 1 つ増える |
 | CI での axe や Lighthouse | 実際のブラウザが要る。コントラスト以外では、どのみち人が見直す指摘を増やす |
 
-## 2. 暗色の配色だけにし、明暗の切り替えは置かない {#2-dark-scheme-only-without-a-lightdark-switch}
+## 暗色の配色だけにし、明暗の切り替えは置かない {#dark-scheme-only-without-a-lightdark-switch}
 
 `html` は `color-scheme: dark` を宣言し、暗色の値が 1 組だけある。`prefers-color-scheme` の分岐も切り替えもない。
 
 切り替えを置くとコントラストを確かめる組が倍になり、片方の組は気づかれないまま古くなる。トークン名は色（`neutral-850`）ではなく役割（`bg`、`surface`、`elevated`、`fg`、`fg-muted`、`accent`、`danger`、`warning`）を表すので、後で明色の配色を加えるときは 2 組目の値を足すだけで、画面は変わらない。
 
-## 3. 仮想スクロールは使わない {#3-no-virtual-scrolling}
+## 仮想スクロールは使わない {#no-virtual-scrolling}
 
 一覧は、仮想スクロールのライブラリを使わず、読み込んだ項目をすべて描画する。目標は入力への即座の応答で、DOM 要素を減らすことではない。
 
@@ -78,7 +78,7 @@ flowchart LR
 
 一覧のスクロール位置の復元、ズームの基準位置の保持、無限スクロールは、どれも `window.scrollY` を読むかビューポートを基準に監視するので、シェルの中にスクロールコンテナを置くと 3 つすべてを書き直すことになる。
 
-## 4. 幅のブレークポイントは CSS に置き、サイドバーは例外とする {#4-width-breakpoints-in-css-and-the-sidebar-exception}
+## 幅のブレークポイントは CSS に置き、サイドバーは例外とする {#width-breakpoints-in-css-and-the-sidebar-exception}
 
 幅による変化には CSS で Tailwind の既定のブレークポイントを使う。JavaScript で幅を読むのはサイドバーだけだ（[`useSidebar.ts`](../../web/src/shell/useSidebar.ts)）。
 
@@ -96,7 +96,7 @@ flowchart LR
 
 動きの抑制（`prefers-reduced-motion`）も CSS で扱う。`motion-reduce:` バリアントは装飾的な遷移を止めるが、最終的な色と対象の印は適用されるので、操作の結果は見えたままになる。
 
-## 5. レイアウトは機械ではなく人が確かめる {#5-layout-verified-by-people-not-machines}
+## レイアウトは機械ではなく人が確かめる {#layout-verified-by-people-not-machines}
 
 機械はコントラスト、生の色がないこと、コンポーネントの振る舞いを確かめる。**レイアウトとその幅による変化は、人が実機で確かめる。**
 
@@ -113,7 +113,7 @@ jsdom は CSS を適用しないので、`position: fixed`、メディアクエ�
 | --- | --- |
 | 見た目の回帰テスト | 新しい依存、環境ごとのグリフの違いによる誤検出、UI を変えるたびに参照画像を更新すること |
 
-## 6. 一覧のレイアウト {#6-list-layout}
+## 一覧のレイアウト {#list-layout}
 
 一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードで、ライブラリとフォルダのページが 1 つのグリッド（[`Grid.tsx`](../../web/src/videoList/Grid.tsx)）を通して共有する。
 
@@ -130,7 +130,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、各画面はその間に自分のツールバーを差し込む。サイドバーには 3 つの状態（展開、レール、ドロワー。[4 節](#4-width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、各画面はその間に自分のツールバーを差し込む。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -252,11 +252,11 @@ flowchart LR
 
 通常、ホバー、focus-visible、押下中、選択中、無効は互いに区別でき、コンポーネント間で一貫している。キーボードフォーカスはアクセント色の外側の輪郭線だ。検索欄は二重の輪郭線を避けるため、内側の `input` ではなく外枠に描く。
 
-## 7. サイドバーのナビゲーション {#7-sidebar-navigation}
+## サイドバーのナビゲーション {#sidebar-navigation}
 
 サイドバーの各項目は、それぞれの画面へ移る。
 
-## 8. 動画ページのレイアウト {#8-video-page-layout}
+## 動画ページのレイアウト {#video-page-layout}
 
 動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。形と文言は [012 UI 設計](../../specs/012-video-detail-ia/ui-design.md) にある。
 
@@ -279,7 +279,7 @@ flowchart LR
 | 公開範囲の切り替え | `role="switch"`。タイトルのまとまりの下、ファイル情報の上 |
 | ゲスト | タグ、公開範囲の切り替え、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
-幅による変化は、[4 節](#4-width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。`lg` 以上では関連動画が右の列になり、それ未満ではすべてが縦に積まれ、`md` 未満ではパンくずが最後の区間だけを表示する。
+幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。`lg` 以上では関連動画が右の列になり、それ未満ではすべてが縦に積まれ、`md` 未満ではパンくずが最後の区間だけを表示する。
 
 ### 情報の行 {#information-rows}
 
@@ -402,9 +402,9 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
 
-中央のタッチ操作は、[4 節](#4-width-breakpoints-in-css-and-the-sidebar-exception)の理由により、`matchMedia` を使わず CSS のメディア条件で `pointer: coarse` の機器に表示する。
+中央のタッチ操作は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)の理由により、`matchMedia` を使わず CSS のメディア条件で `pointer: coarse` の機器に表示する。
 
-## 9. サーバーが適用する一覧の条件 {#9-list-conditions-applied-by-the-server}
+## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
 
@@ -422,7 +422,7 @@ flowchart LR
 
 代表を直接差し込むと、フォルダや絞り込みの外の動画を表示しかねない（[`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)）。
 
-## 10. 既定値を持つ機器ごとの設定 {#10-per-device-preferences-with-defaults}
+## 既定値を持つ機器ごとの設定 {#per-device-preferences-with-defaults}
 
 機器ごとの表示設定は、決して例外を投げない `localStorage` 上の全域関数だ（[`web/src/preferences/`](../../web/src/preferences)）。値がない、壊れている、読めないときは既定値になり、書き込みの失敗は無視する。
 

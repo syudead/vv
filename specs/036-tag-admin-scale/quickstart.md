@@ -91,5 +91,5 @@ server-side slowness to #674 (R-1 "Video counts").
 When scrolling has consecutive frames over 50 ms, compare Long Task times with
 request times to tell whether they follow a response for more rows. If they
 do, appending to `rows` and reattaching the selection are suspect
-([data-model.md §4](data-model.md#4-screen-state)); otherwise row drawing
+([data-model.md, Screen state](data-model.md#screen-state)); otherwise row drawing
 is.

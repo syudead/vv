@@ -12,9 +12,9 @@ to favorites only, and sort them by the date favorited. Guests see neither the s
 
 | Area | Approach |
 | --- | --- |
-| Storage | Two tables: `video_favorites` keyed by the user key, `folder_favorites` keyed by the folder key. Rescans, moves, bundling and succession follow the existing paths of public flags and manual group settings ([research.md R-1](research.md#r-1-two-tables-video_favorites-by-user-key-folder_favorites-by-folder-key), [data-model.md §1](data-model.md#1-migration)) |
-| Toggling | The owner-only `PUT /api/favorites` takes video ids and group folders in one transaction and skips, uncounted, what does not exist and folders that are not groups now ([R-2](research.md#r-2-one-owner-only-put-apifavorites-for-videos-and-folders-in-one-transaction), [contracts/screen-api.md §1](contracts/screen-api.md#1-put-apifavorites)). It does not advance the edit time ([R-8](research.md#r-8-favoriting-does-not-advance-video_edits)) |
-| Lists | `favorite=true` judges each item by its own favorite, and the favorite members of a group that is not a favorite become video items. `favoritedAsc` and `favoritedDesc` put non-favorite items last. Guests get `400` ([R-3](research.md#r-3-favorites-only-filter-applied-where-libraryitemscte-builds-items), [R-4](research.md#r-4-favoritedasc-and-favoriteddesc-sorts-with-non-favorites-last), [R-5](research.md#r-5-favorites-hidden-from-guests-filter-and-sort-return-400), [data-model.md §5](data-model.md#5-reads-and-lists)) |
+| Storage | Two tables: `video_favorites` keyed by the user key, `folder_favorites` keyed by the folder key. Rescans, moves, bundling and succession follow the existing paths of public flags and manual group settings ([research.md R-1](research.md#r-1-two-tables-video_favorites-by-user-key-folder_favorites-by-folder-key), [data-model.md, Migration](data-model.md#migration)) |
+| Toggling | The owner-only `PUT /api/favorites` takes video ids and group folders in one transaction and skips, uncounted, what does not exist and folders that are not groups now ([R-2](research.md#r-2-one-owner-only-put-apifavorites-for-videos-and-folders-in-one-transaction), [contracts/screen-api.md, `PUT /api/favorites`](contracts/screen-api.md#put-apifavorites)). It does not advance the edit time ([R-8](research.md#r-8-favoriting-does-not-advance-video_edits)) |
+| Lists | `favorite=true` judges each item by its own favorite, and the favorite members of a group that is not a favorite become video items. `favoritedAsc` and `favoritedDesc` put non-favorite items last. Guests get `400` ([R-3](research.md#r-3-favorites-only-filter-applied-where-libraryitemscte-builds-items), [R-4](research.md#r-4-favoritedasc-and-favoriteddesc-sorts-with-non-favorites-last), [R-5](research.md#r-5-favorites-hidden-from-guests-filter-and-sort-return-400), [data-model.md, Reads and lists](data-model.md#reads-and-lists)) |
 | Screens | No domain event; lists and the video page update through the same subscriptions as the visibility toggle ([R-6](research.md#r-6-no-domain-event-screens-reuse-the-visibility-subscription-pattern)). Multiple selection remembers chosen groups as groups, and "Select all" learns them from `groups`, added to `GET /api/library/ids` ([R-7](research.md#r-7-selection-keeps-chosen-groups-as-groups)) |
 
 The Issue has the `ui` label, so the look, placement and wording of the mark and the toggle and the names of
@@ -29,7 +29,7 @@ Issue).
 | Topic | Source |
 | --- | --- |
 | Boundaries, dependency direction, index versus user data, role type rules, domain events, authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
-| User key and its writes | [specs/030-video-versions/data-model.md §3, §5, §8](../030-video-versions/data-model.md), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeyExpr`, `userKeysForVideoIDs`), [internal/store/visibility.go](../../internal/store/visibility.go) (`VisibilityStore`, `publicColumn`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [internal/store/versions.go](../../internal/store/versions.go) (`userDataTables`), [internal/store/roles.go](../../internal/store/roles.go) |
+| User key and its writes | [specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key), [Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path) and [Store operations (`VersionStore`)](../030-video-versions/data-model.md#store-operations-versionstore), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeyExpr`, `userKeysForVideoIDs`), [internal/store/visibility.go](../../internal/store/visibility.go) (`VisibilityStore`, `publicColumn`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [internal/store/versions.go](../../internal/store/versions.go) (`userDataTables`), [internal/store/roles.go](../../internal/store/roles.go) |
 | Folder key and group index | [specs/017-folder-groups/data-model.md](../017-folder-groups/data-model.md), [internal/domain/folder_group.go](../../internal/domain/folder_group.go) (`FolderKey`), [internal/store/folder_groups.go](../../internal/store/folder_groups.go) |
 | Lists and items | [internal/store/listing.go](../../internal/store/listing.go) (`filteredFrom`, `listOrders`), [internal/store/library_items.go](../../internal/store/library_items.go) (`libraryItemsCTE`, `itemOrderValues`, `loadGroups`, `LibraryIDs`), [internal/domain/library.go](../../internal/domain/library.go) (`VideoQuery`, `VideoSort`), [internal/domain/library_item.go](../../internal/domain/library_item.go), [specs/013-library-search/contracts/list-api.md](../013-library-search/contracts/list-api.md), [specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md) |
 | Guests | [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md), [internal/domain/auth.go](../../internal/domain/auth.go) (`CheckVideoQuery`), [internal/httpapi/videos.go](../../internal/httpapi/videos.go) (`parseVideoQuery`, `forAudience`) |
@@ -39,7 +39,7 @@ Issue).
 
 **Feature-specific context**:
 
-- One migration (`00029_favorites.sql`, [data-model.md §1](data-model.md#1-migration)). No Go or npm
+- One migration (`00029_favorites.sql`, [data-model.md, Migration](data-model.md#migration)). No Go or npm
   dependency is added. No domain event and no `/api/events` kind is added (R-6). `FolderIndexVersion` and
   `SearchKeyVersion` are not raised.
 - The external API (`api/external-v1.yaml`) and MCP do not change (out of scope).
@@ -52,7 +52,7 @@ Issue).
 | --- | --- |
 | Dependency direction (ARCHITECTURE.md "Intended dependency direction") | Pass. `internal/domain` gains values, two `VideoSort` values and one line in `CheckVideoQuery`. `internal/store` gains the migration, `FavoriteStore`, the read column and the list SQL. `internal/httpapi` gains the endpoint, validation and mapping. `internal/app` and `cmd/mdm` are untouched (`cmd/mdm` gains only one line that wires `db.Favorites()`) |
 | A role type does not call another role's public methods (the `store.DB` paragraph) | Pass. `FavoriteStore` uses only `userKeysForVideoIDs` (a package function) and its own SQL, and reads `folder_groups` in its own transaction |
-| Index versus user data | Pass. Both tables are user data without foreign keys; index rebuilds, media folder removal and generated-file cleanup do not touch them (data-model.md §1). Added to the list in ARCHITECTURE.md |
+| Index versus user data | Pass. Both tables are user data without foreign keys; index rebuilds, media folder removal and generated-file cleanup do not touch them (data-model.md, [Migration](data-model.md#migration)). Added to the list in ARCHITECTURE.md |
 | API source of truth and generated files (AGENTS.md) | Pass. Edit `api/openapi.yaml` and run `task generate`. The authentication classification puts `/api/favorites` in the default owner-only class, and `openapi_routes_test.go` checks it against `security` |
 | Guests do not see the owner's data (guest-api.md) | Pass. The field is only in owner responses, and the conditions return `400` (R-5) |
 | Server output in English, screen text in the catalog (gosmopolitan in `.golangci.yml`, i18n.md) | Pass |
@@ -92,7 +92,7 @@ above).
 | `web/src/folders` | Wiring of the conditions |
 | `web/src/player` | Secondary actions row |
 | `web/src/preferences`, `web/src/i18n` | Preferences and catalog |
-| Documents | `ARCHITECTURE.md`, `docs/design-docs/library-ui.md`. `guest-api.md`, `list-api.md` and the 027 contract are not edited; this feature's [contracts/screen-api.md](contracts/screen-api.md) and [data-model.md §5](data-model.md#5-reads-and-lists) hold the changes |
+| Documents | `ARCHITECTURE.md`, `docs/design-docs/library-ui.md`. `guest-api.md`, `list-api.md` and the 027 contract are not edited; this feature's [contracts/screen-api.md](contracts/screen-api.md) and [data-model.md, Reads and lists](data-model.md#reads-and-lists) hold the changes |
 
 **New paths**:
 
@@ -128,11 +128,11 @@ graph TD
 
 ### Add favorite tables and `FavoriteStore`, and expose favorites on video and group reads
 
-**Scope**: `00029_favorites.sql` and the invariants ([data-model.md §1](data-model.md#1-migration));
+**Scope**: `00029_favorites.sql` and the invariants ([data-model.md, Migration](data-model.md#migration));
 `Video.Favorite`, `LibraryGroup.Favorite`, `FavoriteChange` and `FavoriteApplied` in `domain`
-([§2](data-model.md#2-domain-values-added)); the `favorite` column and the `loadGroups` join
-([§3](data-model.md#3-read-columns)); `FavoriteStore.SetFavorites` and `db.Favorites()`
-([§4](data-model.md#4-writes-favoritestore)); additions to `moveUserData` and `userDataTables`. The user data
+([`domain` values added](data-model.md#domain-values-added)); the `favorite` column and the `loadGroups` join
+([Read columns](data-model.md#read-columns)); `FavoriteStore.SetFavorites` and `db.Favorites()`
+([Writes (`FavoriteStore`)](data-model.md#writes-favoritestore)); additions to `moveUserData` and `userDataTables`. The user data
 list and the role type list in ARCHITECTURE.md.
 
 **Dependencies**: None
@@ -147,7 +147,7 @@ list and the role type list in ARCHITECTURE.md.
 - An id not in the library, a folder that is not a group now and a path outside the registered folders are not
   counted in `Applied` and are not errors; items already in the state are counted and keep their time (Edge
   Case).
-- Sending two ids of the same bundle gives `Applied.Videos` 2 (the number of ids, not keys; data-model.md §4).
+- Sending two ids of the same bundle gives `Applied.Videos` 2 (the number of ids, not keys; data-model.md, [Writes (`FavoriteStore`)](data-model.md#writes-favoritestore)).
 - With a frozen clock, the later of two consecutive favorites has the larger `favorited_at`.
 - `EditedAt` of a favorited video does not change (R-8).
 - Moving the same content to another folder with `UpsertVideo` and deleting the old location keeps
@@ -161,10 +161,10 @@ list and the role type list in ARCHITECTURE.md.
 ### Filter lists to favorites only and sort them by the date favorited
 
 **Scope**: `VideoQuery.FavoriteOnly`, `FolderVideoQuery.FavoriteOnly`, `SortFavoritedAsc`,
-`SortFavoritedDesc`, `Valid` and `CheckVideoQuery` in `domain` ([data-model.md §2](data-model.md#2-domain-values-added));
-`filteredFrom` and `listOrders` ([§5 Video lists](data-model.md#video-lists-listvideos-listfoldervideos-countvideos));
+`SortFavoritedDesc`, `Valid` and `CheckVideoQuery` in `domain` ([data-model.md, `domain` values added](data-model.md#domain-values-added));
+`filteredFrom` and `listOrders` ([data-model.md, Video lists](data-model.md#video-lists-listvideos-listfoldervideos-countvideos));
 the item conditions, the `favorited_at` column and `itemOrderValues` in `libraryItemsCTE`
-([§5 Library items](data-model.md#library-items-libraryitemscte-listlibrary-libraryids));
+([data-model.md, Library items](data-model.md#library-items-libraryitemscte-listlibrary-libraryids));
 `domain.LibrarySelection` from `LibraryIDs` (`internal/httpapi` builds the existing `ids` as the union;
 `groups` belongs to the next API unit). The `GET /api/library` paragraph and "fifteen sort orders" in
 ARCHITECTURE.md.
@@ -192,7 +192,7 @@ ARCHITECTURE.md.
 
 **Scope**: `/api/favorites`, `FavoritesRequest`, `FavoritesResponse`, `Video.favorite` and
 `LibraryGroup.favorite` in `api/openapi.yaml`, and the generated files
-([contracts/screen-api.md §0, §1](contracts/screen-api.md#0-fields-added-to-video-and-librarygroup));
+([contracts/screen-api.md, Fields added to `Video` and `LibraryGroup`](contracts/screen-api.md#fields-added-to-video-and-librarygroup) and [`PUT /api/favorites`](contracts/screen-api.md#put-apifavorites));
 `internal/httpapi/favorites.go` (validation, resolving `folders` to absolute paths, calling `FavoriteStore`);
 `favorite` in `toAPIVideo` and in the group response; omitting it for guests in `forAudience` and
 `itemLookup.group`; wiring in `cmd/mdm`; `openapi_routes_test.go`.
@@ -217,11 +217,11 @@ ARCHITECTURE.md.
 
 **Scope**: `favorite` on the four endpoints, the two `VideoSort` values, `VideoIdsResponse.groups` and
 `LibraryGroupIds` in `api/openapi.yaml`, and the generated files
-([contracts/screen-api.md §2, §3](contracts/screen-api.md#2-list-favorite-parameter-and-new-videosort-values));
+([contracts/screen-api.md, List `favorite` parameter and new `VideoSort` values](contracts/screen-api.md#list-favorite-parameter-and-new-videosort-values) and [Fields added to `GET /api/library/ids`](contracts/screen-api.md#fields-added-to-get-apilibraryids));
 `favorite` in `parseVideoQuery`, `parseIDsQuery` and `listFolderVideos`; the `message` in
 `checkAudienceQuery`; `groups` in `writeVideoIDs` (building `VideoFolder` from the registered folders);
 `videoSorts`, `ListFilterParams.favorite` and the `listLibraryIds` type in `web/src/api/client.ts`
-([§5](contracts/screen-api.md#5-websrcapi-changes)).
+([`web/src/api` changes](contracts/screen-api.md#websrcapi-changes)).
 
 **Dependencies**: `Filter lists to favorites only and sort them by the date favorited`,
 `Add PUT /api/favorites and favorite in responses` (because `VideoSort` and the `description` in
@@ -239,7 +239,7 @@ ARCHITECTURE.md.
   on all three of `GET /api/videos`, `GET /api/folders/{rootId}/videos` and `GET /api/library` (acceptance
   criterion 10).
 - The owner-only `GET /api/library/ids` still returns `401` to a guest with `favorite=true`
-  (contracts/screen-api.md §2).
+  (contracts/screen-api.md, [List `favorite` parameter and new `VideoSort` values](contracts/screen-api.md#list-favorite-parameter-and-new-videosort-values)).
 - `openapi_routes_test.go` and the generated-file check pass.
 
 ### Put the favorite mark and toggle on library and folder cards
@@ -252,7 +252,7 @@ with `GET /api/folders/{rootId}/group` and removed on 404); `FavoriteToggle` (ow
 outside the link) on `VideoCard`, `VideoRow`, `GroupCard` and `GroupRow` (look and placement follow
 `ui-design.md` "Card"); English catalog text; adding the favorite mark and `/api/favorites` to the "not shown
 on the guest screen" scenario in `web/e2e/guest.e2e.ts`. The card description in
-`docs/design-docs/library-ui.md` §6.
+`docs/design-docs/library-ui.md`, [List layout](../../docs/design-docs/library-ui.md#list-layout).
 
 **Dependencies**: `Add PUT /api/favorites and favorite in responses`
 
@@ -278,7 +278,7 @@ Run the guest scenario of `task test-e2e` locally and write the result in the PR
 open file, copy path and use current frame as thumbnail; position and look follow `ui-design.md` "Video
 page"), and after success refetch the video with `refresh()` on `VideoPage` (R-6). Through the
 `useVideoDetail` subscription, a toggle on the list side updates the single video on the video page. English
-catalog text. The video page description in `docs/design-docs/library-ui.md` §8.
+catalog text. The video page description in `docs/design-docs/library-ui.md`, [Video page layout](../../docs/design-docs/library-ui.md#video-page-layout).
 
 **Dependencies**: `Put the favorite mark and toggle on library and folder cards`
 
@@ -307,7 +307,7 @@ counts every member of a group, so reusing the tag and visibility `overLimit` wo
 single group with more than 20000 members. Whether "Select all" is done (`allSelected`) also checks that the
 chosen groups match `groups` in the response, besides the set of video ids: after deselecting one member and
 selecting it again the ids match but the group is not chosen as a group, so "Select all" can be pressed again.
-English catalog text. The selection bar description in `docs/design-docs/library-ui.md` §6.
+English catalog text. The selection bar description in `docs/design-docs/library-ui.md`, [List layout](../../docs/design-docs/library-ui.md#list-layout).
 
 **Dependencies**: `Add the favorite filter, the favorited* sorts and groups on ids to the list API`,
 `Put the favorite mark and toggle on library and folder cards`
@@ -340,7 +340,7 @@ list and an unfiltered list are not confused); `favorited` in `sortKinds` (desce
 `SortControls` (name, icon and the combined panel below `md` follow `ui-design.md` "Filter menu" and "Sort
 and direction"); the `viewPreferences` round trip; wiring in `useConditions`, `LibraryPage` and `FolderPage`
 (passing `favorite` to `listLibrary`, `listLibraryIds` and `listFolderVideos`); the conditions shown by
-`listSummary`; English catalog text. The toolbar description in `docs/design-docs/library-ui.md` §6 (nine sort
+`listSummary`; English catalog text. The toolbar description in `docs/design-docs/library-ui.md`, [List layout](../../docs/design-docs/library-ui.md#list-layout) (nine sort
 kinds).
 
 **Dependencies**: `Add the favorite filter, the favorited* sorts and groups on ids to the list API`

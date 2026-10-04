@@ -271,7 +271,7 @@ change the API.
 ## R-11: Migration moves only results derivable from existing rows into the latest scan
 
 **Decision**: The migration puts two things into the latest scan
-([data-model.md §1](data-model.md)):
+([data-model.md, `scans.settled_at` and `scans.issues_revision` (added columns)](data-model.md#scanssettled_at-and-scansissues_revision-added-columns)):
 
 | Videos | Destination |
 | --- | --- |

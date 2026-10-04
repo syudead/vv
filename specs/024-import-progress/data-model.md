@@ -9,12 +9,12 @@ feature adds only the two tables below and two columns on `scans`.
 All three belong to the rebuildable side of ARCHITECTURE.md "Rebuildable and user
 data": rerunning the scan and preparation produces the same content.
 
-## 1. `scans.settled_at` and `scans.issues_revision` (added columns)
+## `scans.settled_at` and `scans.issues_revision` (added columns)
 
 | Column | Type | Meaning |
 | --- | --- | --- |
 | `settled_at` | `integer null` | The time every target video of this scan settled (Unix seconds) |
-| `issues_revision` | `integer not null default 0` | Incremented by one on every change to this scan's `scan_issues` (§3) |
+| `issues_revision` | `integer not null default 0` | Incremented by one on every change to this scan's `scan_issues` ([`scan_issues` (new table)](#scan_issues-new-table)) |
 
 Rules ([research.md R-4](research.md#r-4-done-only-when-the-scan-is-closed-and-the-set-has-no-remaining-jobs)):
 
@@ -31,16 +31,16 @@ Rules ([research.md R-4](research.md#r-4-done-only-when-the-scan-is-closed-and-t
 - The migration runs in this order:
   1. Put into the latest scan's `scan_videos` the videos that still have a
      claimable `queued` or `running` job (the same condition as the carry-over in
-     §2).
+     [`scan_videos` (new table)](#scan_videos-new-table)).
   2. In the migration that adds `scan_issues`, put into the latest scan's
      `scan_issues` the videos whose `probe_state`, `thumbnail_state`,
      `seek_thumbnail_state` or `preview_state` is currently `failed`, with the
-     matching `*_failed` kind (§3,
+     matching `*_failed` kind ([`scan_issues` (new table)](#scan_issues-new-table),
      [research.md R-11](research.md#r-11-migration-moves-only-results-derivable-from-existing-rows-into-the-latest-scan)).
   3. Set `settled_at` of closed scans to `finished_at`. The latest scan stays
      `null` if step 1 added any video.
 
-## 2. `scan_videos` (new table)
+## `scan_videos` (new table)
 
 The set of target videos of the latest scan
 ([R-1](research.md#r-1-import-videos-stored-as-a-set-tied-to-the-scan-record),
@@ -82,7 +82,7 @@ move, the video row is kept because the content identifies it as the same video,
 and it keeps counting at its new location. `StartScan` deletes the previous scan's
 rows.
 
-## 3. `scan_issues` (new table)
+## `scan_issues` (new table)
 
 Events of the latest scan that the user is told about
 ([R-6](research.md#r-6-issues-stored-as-one-row-per-event-and-grouped-per-video-on-read)).
@@ -140,4 +140,4 @@ registered folder's display name and a relative path by the same rule as
 `domain.LocateVideoFolder`. Counts use the same unit (grouped items). An item
 whose location is not inside any registered folder is left out of both the list
 and the counts
-([contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)).
+([contracts/scan-api.md, `GET /api/scans/current/issues`](contracts/scan-api.md#get-apiscanscurrentissues)).

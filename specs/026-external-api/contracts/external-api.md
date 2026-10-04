@@ -5,7 +5,7 @@ implementation time
 ([research.md R-5](../research.md#r-5-the-external-api-contract-is-a-separate-openapi-document-generating-go-only)).
 This file fixes the operations and rules that document must satisfy.
 
-## 1. Common rules
+## Common rules
 
 - The base is `/api/v1`. Every operation is `security: bearerAuth` (`type: http`, `scheme: bearer`).
 - Authentication
@@ -16,10 +16,10 @@ This file fixes the operations and rules that document must satisfy.
   ([R-4](../research.md#r-4-bearer-requests-skip-the-same-origin-check)).
 - The viewer is always the owner, and private videos are returned too (acceptance criterion 2).
 - Errors have the same shape as the screen API, `{ code, message, reason?, limit?, index? }`. `index`
-  exists only in this API and gives the position (from 0) in §4's `videos` that caused the error. Only
+  exists only in this API and gives the position (from 0) in `videos` of [Video tags](#video-tags) that caused the error. Only
   the `code` and `reason` values listed here go into the enums in `external-v1.yaml`.
 
-## 2. Videos
+## Videos
 
 ```yaml
 ExternalVideo:
@@ -87,14 +87,14 @@ normalisation. Locations are stored in the file system's spelling (including NFD
 `TestScanPreservesPathAndNormalizesTitleToNFC` in `internal/scanner`), so a `path` returned by the
 list can be passed back as is.
 
-## 3. Tags
+## Tags
 
 ### `GET /api/v1/tags`
 
 `200`: `{ items: [{ id, name, synonyms: string[], videoCount }] }`, in the same order as the
 screen's `ListTags`.
 
-## 4. Video tags
+## Video tags
 
 ### `POST /api/v1/video-tags`
 
@@ -119,7 +119,7 @@ too). The rules are in
 
 For name errors, `index` points into `tags`. For every other error, `index` points into `videos`.
 
-## 5. Scans
+## Scans
 
 ```yaml
 ExternalScan:

@@ -9,7 +9,7 @@ receive, and the public flag API, are in [guest-api.md](guest-api.md). The
 implementation adds them to `openapi.yaml` and generates code with
 `task generate`.
 
-## 1. Three access classes
+## Three access classes
 
 Every request falls into one of three classes. Anything not listed is "Owner
 only" (deny by default, requirement 10).
@@ -24,20 +24,20 @@ only" (deny by default, requirement 10).
   as a guest otherwise. Responses handled as a guest follow
   [guest-api.md](guest-api.md).
 - An "Owner only" request without a valid session gets the unauthenticated
-  response of §5.
+  response of [Unauthenticated and other responses](#unauthenticated-and-other-responses).
 - While the account is not configured, every request except "Anyone" gets the
-  unauthenticated response of §5 (the public flag has no effect either,
+  unauthenticated response of [Unauthenticated and other responses](#unauthenticated-and-other-responses) (the public flag has no effect either,
   requirement 2).
 - The boundary is decided on `r.URL.Path` (decoded) after `path.Clean`. Forms
   such as `//api/…`, `/./api/…`, `/%61pi/…` and `/api/../api/…` count as under
   `/api/`.
 - The SPA build output contains no user data. The SPA chooses what to show from
-  the state in §4.
+  the state in [`GET /api/auth/session` and `POST /api/auth/logout`](#get-apiauthsession-and-post-apiauthlogout).
 - A Go test checks that each operation's `security` in `openapi.yaml` matches
   its boundary class. `sessionCookie` is declared as an `apiKey` with
   `in: cookie`.
 
-## 2. `POST /api/auth/setup`
+## `POST /api/auth/setup`
 
 Request (`Content-Type: application/json`, body up to 8 KiB):
 
@@ -47,7 +47,7 @@ Request (`Content-Type: application/json`, body up to 8 KiB):
 
 | Situation | Response |
 | --- | --- |
-| Not configured, and the values satisfy [data-model.md §6](../data-model.md#6-username-and-password-values) | `200` `{ "redirectTo": "/" }` with `Set-Cookie` (§7). The user is logged in |
+| Not configured, and the values satisfy [data-model.md, Username and password values](../data-model.md#username-and-password-values) | `200` `{ "redirectTo": "/" }` with `Set-Cookie` ([Session cookie](#session-cookie)). The user is logged in |
 | The values break the rules | `400` `invalid_request` (`message` may name the field; with no account yet there is nothing to hide) |
 | Already configured (including losing a concurrent first-time setup) | `409` `{ "code": "account_already_configured", "message": "アカウントは既に設定されています" }`. Nothing is written |
 | Not same-origin, not JSON | `403`, `400` as now |
@@ -55,9 +55,9 @@ Request (`Content-Type: application/json`, body up to 8 KiB):
 - The screen compares the confirmation password and does not send on mismatch
   (requirement 5). The server receives one password.
 - Which setup succeeds is decided by the primary key collision in
-  [data-model.md §5](../data-model.md#5-write-rules).
+  [data-model.md, Write rules](../data-model.md#write-rules).
 
-## 3. `POST /api/auth/login`
+## `POST /api/auth/login`
 
 Request (`Content-Type: application/json`, body up to 8 KiB):
 
@@ -69,7 +69,7 @@ Request (`Content-Type: application/json`, body up to 8 KiB):
 
 | Situation | Response |
 | --- | --- |
-| Success | `200` `{ "redirectTo": "<safe return target>" }` with `Set-Cookie` (§7) |
+| Success | `200` `{ "redirectTo": "<safe return target>" }` with `Set-Cookie` ([Session cookie](#session-cookie)) |
 | Wrong, empty or over-limit username or password, or the account not configured | `401` `{ "code": "invalid_credentials", "message": "ユーザー名またはパスワードが違います" }` |
 | The source's "in-progress checks + failures in the last 5 minutes" is 5 or more, or no check slot frees up within 5 seconds | `429` `{ "code": "login_throttled", … }` with `Retry-After` (seconds) |
 | The body is not JSON, exceeds 8 KiB, or the request is not same-origin | `400`, `403` as now |
@@ -98,7 +98,7 @@ Request (`Content-Type: application/json`, body up to 8 KiB):
   - The returned value is the parsed path and query rebuilt, not the input
     itself.
 
-## 4. `GET /api/auth/session` and `POST /api/auth/logout`
+## `GET /api/auth/session` and `POST /api/auth/logout`
 
 `GET /api/auth/session` returns `200` `{ "state": "owner" | "guest" | "setupRequired" }`.
 
@@ -106,11 +106,11 @@ Request (`Content-Type: application/json`, body up to 8 KiB):
   is present.
 - The username is not returned.
 - Called with a `next` query parameter, it also returns `redirectTo`, validated
-  by the rules of §3, when the state is `owner`. A logged-in screen that opened
+  by the rules of [`POST /api/auth/login`](#post-apiauthlogin), when the state is `owner`. A logged-in screen that opened
   `/login` navigates to this value.
 
 `POST /api/auth/logout` returns `204` and clears every authentication cookie
-the request carried (`Max-Age=0`). Unlike the per-scheme reading in §7, logout
+the request carried (`Max-Age=0`). Unlike the per-scheme reading in [Session cookie](#session-cookie), logout
 looks at cookies of both names that arrive:
 
 | Logout over | Cookies that arrive | Sessions ended |
@@ -122,12 +122,12 @@ When an arriving cookie points at a valid session, that session is deleted and
 responses in progress for it are cut off. The same-origin check applies as for
 other state changes.
 
-## 5. Unauthenticated and other responses
+## Unauthenticated and other responses
 
 | Situation | Response |
 | --- | --- |
 | An "Owner only" request with no cookie, a malformed cookie, no matching session, an expired session, a session from before a credential reset, or the account not configured | `401` `{ "code": "unauthenticated", "message": "ログインが必要です" }` |
-| A "Guest too" request pointing at a video hidden from guests | The same `404` as the existing "no such video" ([guest-api.md §2](guest-api.md#2-videos-hidden-from-guests)) |
+| A "Guest too" request pointing at a video hidden from guests | The same `404` as the existing "no such video" ([guest-api.md, Videos hidden from guests](guest-api.md#videos-hidden-from-guests)) |
 | The DB fails while checking the session or the public flag | `500` `{ "code": "internal", … }` (treated as neither owner nor public) |
 
 - 401 causes are not told apart (Edge Case `不正、期限切れ、改ざん済みの Cookie`).
@@ -146,14 +146,14 @@ other state changes.
 - A DB failure is not 401, so the screen does not send the user to the login
   screen only to fail there too.
 
-## 6. `GET /api/health`
+## `GET /api/health`
 
 The response shape does not change (`status`, `version`, `commit`, `builtAt`).
 It carries no library content, settings, username, authentication state, or
 whether first-time setup is needed (acceptance criterion 16). `version` and
 `commit` stay because they identify the running binary.
 
-## 7. Session cookie
+## Session cookie
 
 | Connection | Name | Attributes |
 | --- | --- | --- |
@@ -168,21 +168,21 @@ whether first-time setup is needed (acceptance criterion 16). `version` and
   (requirement 14).
 - For authentication, an HTTPS request reads only `__Host-vv_session` and an
   HTTP request only `vv_session` (logout is the exception and looks at both, as
-  in §4). With separate names, an HTTP response never overwrites the HTTPS
+  in [`GET /api/auth/session` and `POST /api/auth/logout`](#get-apiauthsession-and-post-apiauthlogout)). With separate names, an HTTP response never overwrites the HTTPS
   cookie and the HTTPS cookie is never sent over HTTP (Edge Case
   `HTTP と HTTPS`).
 - Whether a connection is HTTPS is decided by whether it arrived over TLS, or by
   `X-Forwarded-Proto` from a trusted proxy.
 
-## 8. Same-origin check
+## Same-origin check
 
 The existing `acceptsSameOrigin` (`internal/httpapi/media_folders.go`) keeps
 its rule of applying to every `POST`, `PUT`, `PATCH` and `DELETE`, including
 first-time setup, login and logout (requirement 13). The only change is that the
-expected scheme comes from the same decision as §7. Today it looks only at
+expected scheme comes from the same decision as [Session cookie](#session-cookie). Today it looks only at
 `r.TLS`, so behind a TLS-terminating proxy it rejects same-origin requests too.
 
-## 9. Logging
+## Logging
 
 First-time setup, login success, login failure, throttling and logout each log
 one `slog` line at `info`. Attributes are only the event type and the source;

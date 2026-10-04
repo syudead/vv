@@ -27,9 +27,9 @@ tentative creates.
 | --- | --- |
 | Boundaries, dependency direction, index versus user data, role-type rules, authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
 | Tag tables, name rules, write rules, filtering, search, counts | [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md), [specs/014-video-tags/contracts/tags-api.md](../014-video-tags/contracts/tags-api.md), [internal/domain/tag.go](../../internal/domain/tag.go), [internal/store/tags.go](../../internal/store/tags.go), [internal/store/tag_lookup.go](../../internal/store/tag_lookup.go), [internal/store/tag_synonyms.go](../../internal/store/tag_synonyms.go), [internal/store/tag_listing.go](../../internal/store/tag_listing.go), [internal/store/video_tags.go](../../internal/store/video_tags.go), [internal/store/invariants_test.go](../../internal/store/invariants_test.go) |
-| Folder-derived tags and group-to-tag conversion | [specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags), [internal/store/folder_tags.go](../../internal/store/folder_tags.go), [internal/store/folder_groups.go](../../internal/store/folder_groups.go) |
+| Folder-derived tags and group-to-tag conversion | [specs/017-folder-groups/data-model.md, Folder-derived tags](../017-folder-groups/data-model.md#folder-derived-tags), [internal/store/folder_tags.go](../../internal/store/folder_tags.go), [internal/store/folder_groups.go](../../internal/store/folder_groups.go) |
 | Responses to guests | [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md) |
-| Bulk tagging in the external API, and MCP | [api/external-v1.yaml](../../api/external-v1.yaml), [specs/026-external-api/contracts/external-api.md §4](../026-external-api/contracts/external-api.md#4-video-tags), [specs/026-external-api/contracts/mcp.md](../026-external-api/contracts/mcp.md), [internal/domain/external_video_tags.go](../../internal/domain/external_video_tags.go), [internal/store/external_video_tags.go](../../internal/store/external_video_tags.go), [internal/httpapi/external_video_tags.go](../../internal/httpapi/external_video_tags.go), [internal/httpapi/mcp.go](../../internal/httpapi/mcp.go), [docs/how-to/external-api.md](../../docs/how-to/external-api.md) |
+| Bulk tagging in the external API, and MCP | [api/external-v1.yaml](../../api/external-v1.yaml), [specs/026-external-api/contracts/external-api.md, Video tags](../026-external-api/contracts/external-api.md#video-tags), [specs/026-external-api/contracts/mcp.md](../026-external-api/contracts/mcp.md), [internal/domain/external_video_tags.go](../../internal/domain/external_video_tags.go), [internal/store/external_video_tags.go](../../internal/store/external_video_tags.go), [internal/httpapi/external_video_tags.go](../../internal/httpapi/external_video_tags.go), [internal/httpapi/mcp.go](../../internal/httpapi/mcp.go), [docs/how-to/external-api.md](../../docs/how-to/external-api.md) |
 | Screen API and error shape | [api/openapi.yaml](../../api/openapi.yaml), [internal/httpapi/tags.go](../../internal/httpapi/tags.go), [internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags` interface), [specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md) |
 | Screens | [specs/014-video-tags/ui-design.md](../014-video-tags/ui-design.md) (Tag chip, Library card, Video page tags, Tag management page), [web/src/tags/](../../web/src/tags/), [web/src/api/tags.ts](../../web/src/api/tags.ts) (shared list), [web/src/library/CardTagRow.tsx](../../web/src/library/CardTagRow.tsx), [web/src/player/VideoTags.tsx](../../web/src/player/VideoTags.tsx), [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md), [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
 | Generation and check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`) |
@@ -49,8 +49,8 @@ tentative creates.
 | Gate | Verdict |
 | --- | --- |
 | Dependency direction (ARCHITECTURE.md "Intended dependency direction") | Pass. `internal/domain`: `TagRef.Tentative`, `Tag.Tentative`, `ErrTagNotTentative`, `VideoTagsOutcome`; plain values only. `internal/store`: the migration, added and changed `TagStore` operations, invariants. `internal/httpapi`: request parsing, response conversion, the external API and MCP; the rules live in domain and store. `internal/app` and `cmd/mdm`: untouched (tag operations still bypass `internal/app`) |
-| A role type does not call another role's public methods (ARCHITECTURE.md, `store.DB` paragraph) | Pass. Deleting a rejected name happens inside `insertTagName`, and group-to-tag conversion in `FolderGroupStore` keeps using the package-internal `findOrCreateTag` (data-model.md §5) |
-| Index versus user data | Pass. `tags.tentative` and `rejected_tag_names` are user data and are added to the list in ARCHITECTURE.md (data-model.md §1) |
+| A role type does not call another role's public methods (ARCHITECTURE.md, `store.DB` paragraph) | Pass. Deleting a rejected name happens inside `insertTagName`, and group-to-tag conversion in `FolderGroupStore` keeps using the package-internal `findOrCreateTag` (data-model.md, [Store operations](data-model.md#store-operations)) |
+| Index versus user data | Pass. `tags.tentative` and `rejected_tag_names` are user data and are added to the list in ARCHITECTURE.md (data-model.md, [Migration](data-model.md#migration)) |
 | API sources of truth and generated files (AGENTS.md) | Pass. Edit `api/openapi.yaml` and `api/external-v1.yaml`, then run `task generate`. The external API only gains fields (the 026 compatibility policy) |
 | Guests do not see the owner's data (guest-api.md) | Pass. A guest's `tags` stays an empty array, and every new route is owner-only (requirement 4) |
 | Server output in English, screen text in the catalog (`.golangci.yml` gosmopolitan, i18n.md) | Pass |
@@ -112,14 +112,14 @@ methods.
 ### Store tentative tags and rejected names, and carry tentative state in tag reads
 
 **Scope**: `00022_tentative_tags.sql`; the `domain` values
-([data-model.md §4](data-model.md#4-values-added-to-domain)); new `TagStore`
+([data-model.md, Values added to `domain`](data-model.md#values-added-to-domain)); new `TagStore`
 operations and changes to existing ones
-([§3 and §5](data-model.md#3-write-rules)): `tentative` and skipped names in
+([Write rules](data-model.md#write-rules) and [Store operations](data-model.md#store-operations)): `tentative` and skipped names in
 `ApplyVideoTags`, `ConfirmTag`, `RejectTag`, `ListRejectedTagNames`,
 `ForgetRejectedTagName`, confirming on rename, synonym and merge target, deleting
 rejected names at the name-writing entry points, and reads that carry
 `tentative`. The two invariants in `invariants_test.go`
-([§1](data-model.md#1-migration)). Additions to the `httpapi.Tags` interface and
+([Migration](data-model.md#migration)). Additions to the `httpapi.Tags` interface and
 the minimum handler changes to satisfy it (the `ApplyVideoTags` signature). The
 user-data list and the `TagStore` paragraph in ARCHITECTURE.md.
 
@@ -159,11 +159,11 @@ user-data list and the `TagStore` paragraph in ARCHITECTURE.md.
 
 **Scope**: `tentative` on `TagRef`, `VideoTag` and `Tag` in `api/openapi.yaml`,
 `RejectedTagNameList`, `tag_not_tentative`, the four routes and the generated
-files ([contracts/screen-api.md §0 to §3](contracts/screen-api.md#0-schema-changes)).
+files ([contracts/screen-api.md, Schema changes](contracts/screen-api.md#schema-changes) to [Rejected names](contracts/screen-api.md#rejected-names)).
 The handlers in `internal/httpapi/tags.go`, `accessRoutes`, `requiresJSONBody`
 and `openapi_routes_test.go` (`/api/tags/rejected-names` is not captured by
 `{id}`). The types and four functions in `web/src/api`, the `errorText` text
-([§4](contracts/screen-api.md#4-websrcapi-functions)), and updates to Vitest
+([`web/src/api` functions](contracts/screen-api.md#websrcapi-functions)), and updates to Vitest
 fixtures now that the generated types require `tentative`.
 
 **Dependencies**: Store tentative tags and rejected names, and carry tentative

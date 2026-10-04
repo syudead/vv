@@ -100,7 +100,7 @@ server unit.
 sub-reasons), `limit` (an integer) and `tagName` (the original name of the
 colliding tag). `reason` is attached only where one code is used for several
 situations the screen can trigger
-([contracts/error-api.md §1](contracts/error-api.md#1-reason-limit-and-tagname-on-error)).
+([contracts/error-api.md, `reason`, `limit` and `tagName` on `Error`](contracts/error-api.md#reason-limit-and-tagname-on-error)).
 The screen looks up the catalog by `reason`, then by `code`.
 
 **Rationale**: Requirement 5 keeps the existing `code` and HTTP status, so a new

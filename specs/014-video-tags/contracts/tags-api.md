@@ -10,7 +10,7 @@ Routes with a body are also added to `requiresJSONBody` and to the mapping in
 `openapi_routes_test.go`. As with existing errors, `message` is Japanese that
 the screen can show as is.
 
-## 1. Schemas
+## Schemas
 
 ```yaml
 TagRef:            # A tag attached to a video. The name is always the original name
@@ -27,7 +27,7 @@ Tag:               # One entry on the management page and in suggestions
     id:         { type: integer, format: int64 }
     name:       { type: string }
     synonyms:   { type: array, items: { type: string } }   # natural order of names
-    videoCount: { type: integer }  # videos currently in the library (data-model.md §5)
+    videoCount: { type: integer }  # videos currently in the library (data-model.md "Video counts")
 
 TagInput:          # The tag to use when adding
   type: object
@@ -55,7 +55,7 @@ it. Those are the five routes that currently call `progressFor`:
 A video with no tags returns an empty array, never `null`. The folder screen
 receives the field but does not show it.
 
-## 2. Added error codes
+## Added error codes
 
 | `code` | Status | Meaning |
 | --- | --- | --- |
@@ -65,9 +65,9 @@ receives the field but does not show it.
 
 A name that is empty, contains a control character, or exceeds 100 code points
 is the existing `invalid_request` (400)
-([data-model.md §2](../data-model.md#2-name-rules)).
+([data-model.md, Name rules](../data-model.md#name-rules)).
 
-## 3. Tag management
+## Tag management
 
 | Route | Body | Success | Errors |
 | --- | --- | --- | --- |
@@ -81,7 +81,7 @@ is the existing `invalid_request` (400)
 
 - Adding a name that is already a synonym of this tag returns 200 without
   changes. Adding this tag's original name is 409 `tag_name_taken`
-  ([data-model.md §4](../data-model.md#4-write-rules)).
+  ([data-model.md, Write rules](../data-model.md#write-rules)).
 - `mergeTagId` is the `id` of the tag whose merge the user accepted. When the
   name is the original name of another tag S and `mergeTagId` equals S's `id`,
   S is merged into this tag in the same transaction, and S's name becomes a
@@ -99,7 +99,7 @@ is the existing `invalid_request` (400)
 - The delete and merge confirmations use `videoCount` from `GET /api/tags`. No
   route is added for the confirmation.
 
-## 4. Adding and removing tags on videos
+## Adding and removing tags on videos
 
 | Route | Body | Success | Errors |
 | --- | --- | --- | --- |
@@ -120,7 +120,7 @@ is the existing `invalid_request` (400)
   attached, and it has their `id`s.
 - Adding with `tag: { name }` looks the name up including synonyms and creates
   the tag when it is missing
-  ([data-model.md §3 and §4](../data-model.md#3-name-lookup)).
+  ([data-model.md, Name lookup](../data-model.md#name-lookup) and [Write rules](../data-model.md#write-rules)).
 - `applied` is the number of `videoIds` that are currently in the library.
   Videos that already had the tag, or did not have it, are counted too (adding or
   removing again is not an error).
@@ -130,7 +130,7 @@ is the existing `invalid_request` (400)
   in the natural order of names.
 - Processing is one transaction: it applies to all or to none.
 
-## 5. List filter and Select all
+## List filter and Select all
 
 The list in #195's
 [list-api.md](../../013-library-search/contracts/list-api.md) gains:
@@ -142,7 +142,7 @@ The list in #195's
 `VideoPage` gains an optional `missingTagIds: integer[]`: the `id`s in `tag` that
 did not exist, omitted when there are none. On receiving it, the screen reports
 that the tag no longer exists, refetches the tag list and removes the `id` from
-the URL ([list-url.md §1](list-url.md#1-parameters), Edge Case
+the URL ([list-url.md, Parameters](list-url.md#parameters), Edge Case
 `ほかの画面での並行した変更`). A missing `id` is not a `404` because the same
 Edge Case requires that a filter on a nonexistent tag left in the URL be ignored
 and the list be shown with the other conditions.
@@ -151,16 +151,16 @@ and the list be shown with the other conditions.
   (tag filtering on the folder screen is out of scope).
 - `total` is the count with every condition applied, including `tag`.
 - 17 or more is `400`. The screen never adds more than 16
-  ([list-url.md §2](list-url.md#2-adding-and-removing-a-tag)).
+  ([list-url.md, Adding and removing a tag](list-url.md#adding-and-removing-a-tag)).
 
 The `query` of `listVideos` and `listFolderVideos` matches, in addition to the
 title and relative path, the original names and synonyms of the tags attached
-to a video ([data-model.md §7](../data-model.md#7-matching-tag-names-in-the-search-box)).
+to a video ([data-model.md, Matching tag names in the search box](../data-model.md#matching-tag-names-in-the-search-box)).
 Syntax, limits and the matching form follow #195's
-[list-api.md §1](../../013-library-search/contracts/list-api.md#1-query-syntax)
+[list-api.md, Query syntax](../../013-library-search/contracts/list-api.md#query-syntax)
 unchanged, as do the parameters and the response shape. The location shown for
 a list entry follows the rules of #195's
-[list-api.md §4](../../013-library-search/contracts/list-api.md#4-listed-location-and-videofolder).
+[list-api.md, Listed location and `Video.folder`](../../013-library-search/contracts/list-api.md#listed-location-and-videofolder).
 For a video that satisfies the expression by tag names alone, the first
 location is a path within the scope.
 
