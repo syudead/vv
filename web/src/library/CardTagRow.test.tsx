@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { VideoTag } from "../api/client";
 import CardTagRow from "./CardTagRow";
+import { TagRowMeasureProvider } from "./TagRowMeasure";
 
 function tags(...names: string[]): VideoTag[] {
   return names.map((name, index) => ({
@@ -246,5 +247,54 @@ describe("CardTagRow", () => {
       // 見えているチップと同じ TagChip なので、上の試験で足りる）。
       expect(measure?.querySelectorAll("svg.lucide-circle-dashed")).toHaveLength(2);
     });
+  });
+});
+
+describe("CardTagRow measurement cache", () => {
+  /** 行の幅を 100px、チップを 1 つ 40px、「+N」を 30px にする。 */
+  function mockWidths() {
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockReturnValue(100);
+    const rect = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(() => ({ width: 40 }) as DOMRect);
+    return {
+      rect,
+      restore: () => {
+        clientWidth.mockRestore();
+        rect.mockRestore();
+      },
+    };
+  }
+
+  it("一覧の中で同じタグと幅の行を描き直すときは、チップの幅を測り直さない", () => {
+    const { rect, restore } = mockWidths();
+    const row = (key: string, list: VideoTag[]) => (
+      <TagRowMeasureProvider>
+        <CardTagRow
+          key={key}
+          tags={list}
+          selectionMode={false}
+          onPress={vi.fn()}
+          onToggleSelection={vi.fn()}
+        />
+      </TagRowMeasureProvider>
+    );
+    const list = tags("旅行", "2024", "Anime", "Drama");
+    const { rerender } = render(row("a", list));
+    expect(screen.getByRole("button", { name: "Show 3 more tags" })).toBeDefined();
+    const measured = rect.mock.calls.length;
+    expect(measured).toBeGreaterThan(0);
+
+    // スクロールで外れて戻ったカード（同じ Provider の下で作り直した行）。
+    rerender(row("b", list));
+    expect(rect.mock.calls.length).toBe(measured);
+    expect(screen.getByRole("button", { name: "Show 3 more tags" })).toBeDefined();
+
+    // 名前が変われば幅も変わるので測り直す。
+    rerender(row("c", [{ ...list[0]!, name: "旅行の記録" }, ...list.slice(1)]));
+    expect(rect.mock.calls.length).toBeGreaterThan(measured);
+    restore();
   });
 });

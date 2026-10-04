@@ -25,7 +25,7 @@ import Button from "../ui/Button";
 import { hasConditions } from "../videoList/listCriteria";
 import { EmptyState, LoadFailed } from "../videoList/states";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
-import { useZoomAnchor } from "../videoList/useZoomAnchor";
+import type { VirtualGridHandle } from "../videoList/VirtualGrid";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
@@ -89,15 +89,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   useEffect(() => {
     resetPreview();
   }, [resetPreview, videos.items, zoom]);
-  // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
-  const { listRef, capture } = useZoomAnchor(zoom);
-  const changeZoom = useCallback(
-    (next: typeof zoom) => {
-      capture();
-      saveZoom(next);
-    },
-    [capture, saveZoom],
-  );
+  // 子フォルダと動画の格子は画面の近くのカードだけを描く。位置は上端の項目の目印で
+  // 持ち、倍率や列の数が変わったときは各格子が同じ項目を上端へ戻す（issue 675）。
+  const foldersPosition = useRef<VirtualGridHandle | null>(null);
+  const videosPosition = useRef<VirtualGridHandle | null>(null);
+  const changeZoom = saveZoom;
 
   const tagsRow = useFolderTagsRow();
 
@@ -127,7 +123,10 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const backTo = `${location.pathname}${location.search}`;
 
   // --- スクロール位置の復元 ---
-  const pendingScroll = useRef(restored?.scrollY);
+  // 控えに目印があれば格子が戻す。無い（古い形の）控えだけ scrollY で戻す。
+  const pendingScroll = useRef(
+    restored?.anchor === undefined ? restored?.scrollY : undefined,
+  );
   useEffect(() => {
     const previous = history.scrollRestoration;
     history.scrollRestoration = "manual";
@@ -233,6 +232,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         cursor: videos.cursor,
         hasMore: videos.hasMore,
         scrollY: window.scrollY,
+        anchor: foldersPosition.current?.anchor() ?? videosPosition.current?.anchor(),
         scanId: knownScanId.current,
         folderListing: listing.data,
       },
@@ -289,6 +289,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         backTo={backTo}
         preview={preview}
         tagsRow={tagsRow}
+        positionRef={videosPosition}
+        initialAnchor={restored?.anchor}
       />
     );
   } else if (noVideosAtAll) {
@@ -322,6 +324,9 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         preview={preview}
         tagsRow={tagsRow}
         groupingMenu={groupingMenu}
+        foldersPositionRef={foldersPosition}
+        videosPositionRef={videosPosition}
+        initialAnchor={restored?.anchor}
       />
     );
   }
@@ -363,7 +368,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
       />
       {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
-      <div ref={listRef} onClick={saveSnapshot} className="flex flex-col gap-3">
+      <div onClick={saveSnapshot} className="flex flex-col gap-3">
         {body}
       </div>
       <div ref={sentinel} aria-hidden="true" className="h-px" />

@@ -7,7 +7,7 @@ import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import TentativeMark from "../ui/TentativeMark";
-import { useTagRowMeasure } from "./TagRowMeasure";
+import { useTagRowCounts, useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
 
 /** gap-1（0.25rem、16px 基準）と同じ値。 */
@@ -148,18 +148,37 @@ export default function CardTagRow({
   const [visibleCount, setVisibleCount] = useState(tags.length);
   const [open, setOpen] = useState(false);
 
+  const counts = useTagRowCounts();
+  // チップの幅を決める値だけで作る鍵（行の幅は測るときに前へ付ける）。同じ id のタグでも
+  // 名前・仮の印・フォルダ由来の印が変われば幅が変わるので、id ではなくこれらで作る。
+  const signature = tags
+    .map(
+      (tag) =>
+        `${tag.name}\u0001${tag.tentative ? "1" : "0"}${isFolderOnly(tag) ? "1" : "0"}`,
+    )
+    .join("\u0002");
+
   const recompute = useCallback(() => {
     const row = rowRef.current;
     const measureRow = measureRowRef.current;
     const overflowEl = overflowMeasureRef.current;
     if (row === null || measureRow === null || overflowEl === null) return;
     const available = row.clientWidth;
+    const key = `${String(available)}\u0000${signature}`;
+    const known = counts?.get(key);
+    if (known !== undefined) {
+      setVisibleCount(known);
+      return;
+    }
     const widths = Array.from(measureRow.children).map(
       (child) => (child as HTMLElement).getBoundingClientRect().width,
     );
     const overflowWidth = overflowEl.getBoundingClientRect().width;
-    setVisibleCount(computeVisibleTagCount(widths, overflowWidth, GAP_PX, available));
-  }, []);
+    const count = computeVisibleTagCount(widths, overflowWidth, GAP_PX, available);
+    // 幅 0（レイアウトの無い環境、まだ置かれていない行）の結果は控えない。
+    if (available > 0) counts?.set(key, count);
+    setVisibleCount(count);
+  }, [counts, signature]);
 
   // 描画の前（layout effect）に決める。測る前の1フレームで行が伸び縮みしない
   // ようにするためである（ui-design.md「Overflow」）。

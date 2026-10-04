@@ -1,4 +1,5 @@
 import { AlertTriangle, Check, Folder, Globe } from "lucide-react";
+import type { TableRowSlot } from "./VirtualTableBody";
 import {
   memo,
   type MouseEvent,
@@ -428,7 +429,7 @@ function VideoCard(props: VideoCardProps) {
 export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
-export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
+export const VideoRow = memo(function VideoRow(props: VideoCardProps & Partial<TableRowSlot>) {
   const { video, backTo, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
@@ -437,6 +438,10 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   return (
     <tr
       data-video-id={video.id}
+      ref={props.measureRef}
+      data-row-key={props.rowKey}
+      data-index={props.rowIndex}
+      data-stripe={props.striped === true ? "" : undefined}
       className={cn(
         "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
         selected && "bg-accent-soft",

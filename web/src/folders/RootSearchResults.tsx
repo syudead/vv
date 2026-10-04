@@ -12,11 +12,11 @@ import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
-import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
+import VirtualGrid, { type VirtualGridHandle } from "../videoList/VirtualGrid";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
 import { useFolderTagsRow } from "./useFolderTagsRow";
@@ -82,6 +82,10 @@ export default function RootSearchResults({
     reload();
   }, [reload, scan.finished]);
 
+  // 格子は画面の近くのカードだけを描く。位置は上端の項目の目印で控える（issue 675）。
+  const position = useRef<VirtualGridHandle | null>(null);
+  const videoList = itemVideos(items);
+
   const saveSnapshot = useCallback(() => {
     saveListSnapshot(
       { ...criteria, folder: ROOT_SEARCH_KEY },
@@ -91,6 +95,7 @@ export default function RootSearchResults({
         cursor,
         hasMore,
         scrollY: window.scrollY,
+        anchor: position.current?.anchor(),
         scanId: knownScanId.current,
         staleGroups: staleGroups(),
       },
@@ -100,7 +105,10 @@ export default function RootSearchResults({
   // 置き場所を描けるのは登録フォルダ一覧が揃ったときだけ。それまでは位置の復元も
   // 続きの読み込みもしない（失敗中に観測点が見え続けて全件を読みに行かないように）。
   const rootsReady = !roots.loading && roots.error === null;
-  const pendingScroll = useRef(restored?.scrollY);
+  // 控えに目印があれば格子が戻す。無い（古い形の）控えだけ scrollY で戻す。
+  const pendingScroll = useRef(
+    restored?.anchor === undefined ? restored?.scrollY : undefined,
+  );
   useEffect(() => {
     const previous = history.scrollRestoration;
     history.scrollRestoration = "manual";
@@ -165,13 +173,15 @@ export default function RootSearchResults({
             <LoadFailed reason={failure} onRetry={retry} />
           ) : (
             <TagRowMeasureProvider>
-              <Grid zoom={zoom}>
-                {waiting ? (
-                  <CardSkeleton count={12} />
-                ) : (
-                  itemVideos(items).map((video) => (
+              <VirtualGrid
+                ref={position}
+                zoom={zoom}
+                count={waiting ? 0 : videoList.length}
+                itemKey={(index) => `v:${String(videoList[index]!.id)}`}
+                renderItem={(index) => {
+                  const video = videoList[index]!;
+                  return (
                     <VideoCard
-                      key={video.id}
                       video={video}
                       backTo={backTo}
                       selected={false}
@@ -187,10 +197,12 @@ export default function RootSearchResults({
                             )
                       }
                     />
-                  ))
-                )}
-                {loadingMore && <CardSkeleton count={6} />}
-              </Grid>
+                  );
+                }}
+                placeholders={waiting ? 12 : loadingMore ? 6 : 0}
+                renderPlaceholder={() => <CardSkeleton count={1} />}
+                initialAnchor={restored?.anchor}
+              />
             </TagRowMeasureProvider>
           )}
           {error !== null && items.length > 0 && (

@@ -1,16 +1,16 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import type { FolderSummary, Video } from "../api/client";
 import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import { Grid } from "../videoList/Grid";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
+import VirtualGrid, { type ListAnchor, type VirtualGridHandle } from "../videoList/VirtualGrid";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import { Section } from "./layout";
 
@@ -28,6 +28,9 @@ export default function FolderContents({
   preview,
   tagsRow,
   groupingMenu,
+  foldersPositionRef,
+  videosPositionRef,
+  initialAnchor,
 }: {
   criteria: ListCriteria;
   /** 子フォルダの一覧を読んでいる間は true。 */
@@ -47,7 +50,14 @@ export default function FolderContents({
    * 「Folder grouping menu」）。ゲストでは渡さない。
    */
   groupingMenu?: ReactNode;
+  /** 子フォルダの格子の位置の口（控えの目印を読む）。 */
+  foldersPositionRef?: Ref<VirtualGridHandle>;
+  /** 動画の格子の位置の口。 */
+  videosPositionRef?: Ref<VirtualGridHandle>;
+  /** 控えから戻ったときに戻す位置。どちらかの格子の項目を指す。 */
+  initialAnchor?: ListAnchor;
 }) {
+  const videoList = itemVideos(videos.items);
   const showFolders = listingLoading || childFolders.length > 0;
   const filterOnly = hasConditions(criteria);
   const filterOnlyNoMatch =
@@ -64,15 +74,18 @@ export default function FolderContents({
           title={t.folders.subfolders}
           count={listingLoading ? undefined : childFolders.length}
         >
-          <Grid zoom={zoom}>
-            {listingLoading ? (
-              <FolderCardSkeleton count={3} />
-            ) : (
-              childFolders.map((child) => (
-                <FolderCard key={child.path} folder={child} showPath={false} />
-              ))
+          <VirtualGrid
+            ref={foldersPositionRef}
+            zoom={zoom}
+            count={listingLoading ? 0 : childFolders.length}
+            itemKey={(index) => `f:${childFolders[index]!.path}`}
+            renderItem={(index) => (
+              <FolderCard folder={childFolders[index]!} showPath={false} />
             )}
-          </Grid>
+            placeholders={listingLoading ? 3 : 0}
+            renderPlaceholder={() => <FolderCardSkeleton count={1} />}
+            initialAnchor={initialAnchor}
+          />
         </Section>
       )}
       {showVideos && (
@@ -99,24 +112,25 @@ export default function FolderContents({
                 <LoadFailed reason={videos.error} onRetry={videos.reload} />
               ) : (
                 <TagRowMeasureProvider>
-                  <Grid zoom={zoom}>
-                    {videos.loading ? (
-                      <CardSkeleton count={6} />
-                    ) : (
-                      itemVideos(videos.items).map((video) => (
-                        <VideoCard
-                          key={video.id}
-                          video={video}
-                          backTo={backTo}
-                          selected={false}
-                          selectionMode={false}
-                          {...preview}
-                          tagsRow={tagsRow}
-                        />
-                      ))
+                  <VirtualGrid
+                    ref={videosPositionRef}
+                    zoom={zoom}
+                    count={videos.loading ? 0 : videoList.length}
+                    itemKey={(index) => `v:${String(videoList[index]!.id)}`}
+                    renderItem={(index) => (
+                      <VideoCard
+                        video={videoList[index]!}
+                        backTo={backTo}
+                        selected={false}
+                        selectionMode={false}
+                        {...preview}
+                        tagsRow={tagsRow}
+                      />
                     )}
-                    {videos.loadingMore && <CardSkeleton count={6} />}
-                  </Grid>
+                    placeholders={videos.loading || videos.loadingMore ? 6 : 0}
+                    renderPlaceholder={() => <CardSkeleton count={1} />}
+                    initialAnchor={initialAnchor}
+                  />
                 </TagRowMeasureProvider>
               )}
               {videos.error !== null && videos.items.length > 0 && (

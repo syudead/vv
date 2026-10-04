@@ -1,4 +1,5 @@
 import { Check, Folder } from "lucide-react";
+import type { TableRowSlot } from "../videoList/VirtualTableBody";
 import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -237,7 +238,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
  * グループの値を出す（ui-design.md「List view row」）。
  */
-export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
+export const GroupRow = memo(function GroupRow(props: GroupCardProps & Partial<TableRowSlot>) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
@@ -248,6 +249,10 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
     <tr
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
+      ref={props.measureRef}
+      data-row-key={props.rowKey}
+      data-index={props.rowIndex}
+      data-stripe={props.striped === true ? "" : undefined}
       className={cn(
         "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
         selected && "bg-accent-soft",

@@ -86,11 +86,14 @@ with truncation) and are told apart by color and marks.
   on screen width in JavaScript, which is different from measuring whether
   content fits. To keep the row from growing and shrinking for one frame before
   measurement, the count is decided before paint (layout effect) and remeasured
-  when the card size or the screen width changes. The list does not use virtual
-  scrolling (library-ui.md, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling)), so every loaded card's row is observed. Instead
-  of one observer per card, one `ResizeObserver` on the list watches all rows.
+  when the card size or the screen width changes. Instead of one observer per
+  card, one `ResizeObserver` on the list watches the rows of the drawn cards
+  (library-ui.md, [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists)).
   Card width is constant per zoom level, so remeasurement runs only when the
   zoom level or screen width changes, or tags change.
+- The list keeps the count per row width and per chip-width inputs (name,
+  tentative mark, folder-derived mark), so a card drawn again after scrolling
+  away takes the count without measuring its chips.
 
 ### Card structure and pressing
 
@@ -224,6 +227,11 @@ component (`web/src/ui/Combobox.tsx`): an ARIA 1.2 combobox (input + listbox,
   with the same surface as `ui/Popover` (`bg-elevated`, `shadow-elevated`,
   `rounded-md`). Width `w-64`; it scrolls beyond eight rows. It opens on focus
   and shows every suggestion when the input is empty.
+- Only the rows in view, plus a few on each side, are drawn, so a list of
+  thousands of tags opens and narrows without a pause. The active row stays
+  drawn after it scrolls out of view, so `aria-activedescendant` always points
+  at an element. Each row carries `aria-setsize` and `aria-posinset`, so a
+  screen reader announces its position in the whole list.
 - Suggestion rows are `h-8`, `px-2.5`, `text-sm`. The name is `text-fg`,
   truncated to one line, with secondary information on the right in
   `text-xs text-fg-muted tabular-nums` (the count, as on the management page;

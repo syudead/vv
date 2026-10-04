@@ -98,7 +98,7 @@ to keep state in the URL was added to
 | Keyset pages, cursors, the title key `title_key` | [specs/013-library-search/contracts/list-api.md](../013-library-search/contracts/list-api.md), [specs/013-library-search/data-model.md](../013-library-search/data-model.md) ([`title_key` rules](../013-library-search/data-model.md#title_key-rules), [When keys are built, and `search_version`](../013-library-search/data-model.md#when-keys-are-built-and-search_version)), [internal/store/listing.go](../../internal/store/listing.go) (`listOrder`, `encodeCursor`, `decodeCursor`), [internal/store/search_keys.go](../../internal/store/search_keys.go) (startup key refresh) |
 | Screen API and conversion | [api/openapi.yaml](../../api/openapi.yaml), [internal/httpapi/tags.go](../../internal/httpapi/tags.go), [internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags`), [internal/httpapi/external.go](../../internal/httpapi/external.go) (the caller of `listTags` for every tag) |
 | Screen | [web/src/tags/](../../web/src/tags/), [web/src/api/tags.ts](../../web/src/api/tags.ts) (shared cache), [web/src/api/videosData.ts](../../web/src/api/videosData.ts) (`appendUnique`, `inconsistent`), [web/src/lib/foldForMatch.ts](../../web/src/lib/foldForMatch.ts), [web/src/preferences/tagListPreferences.ts](../../web/src/preferences/tagListPreferences.ts), [web/src/ui/Combobox.tsx](../../web/src/ui/Combobox.tsx), [web/src/i18n/en.ts](../../web/src/i18n/en.ts) |
-| Screen layout rules and the virtual scrolling decision | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md) ([No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling), [List layout](../../docs/design-docs/library-ui.md#list-layout)), [ui-design.md](ui-design.md) (follows the earlier Plan; `design` revises it) |
+| Screen layout rules and the virtual scrolling decision | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md) ([Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists), [List layout](../../docs/design-docs/library-ui.md#list-layout)), [ui-design.md](ui-design.md) (follows the earlier Plan; `design` revises it) |
 | Benchmark | [docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md), [scripts/tagsbench](../../scripts/tagsbench/), [web/bench/](../../web/bench/) |
 | Generation and check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`, `task test-e2e`) |
 
@@ -131,10 +131,10 @@ to keep state in the URL was added to
 | Role types do not call other roles' public methods; SQL stays in `internal/store` | Pass. The key refresh runs inside `TagStore.RefreshSearchKeys`, and its startup caller (`cmd/mdm`) does not change. Cursor encoding is shared with `listing.go` |
 | API source of truth and generated files (AGENTS.md) | Pass. Edit `api/openapi.yaml` and run `task generate`. The new `required` fields on `TagList` and `RejectedTagNameList` are a screen contract whose only caller is `web/src/api/tags.ts` |
 | Migration rules (`task migrations-check`, style of [014 data-model.md, Migration](../014-video-tags/data-model.md#migration)) | Pass. `00030` only adds columns and resets `search_version`; Down drops the columns. The keys are rebuildable derived values on the `SearchKeyVersion` mechanism ([013 data-model.md, When keys are built, and `search_version`](../013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
-| Virtual scrolling decision (library-ui.md, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling)) | Pass. Paged reading still grows the loaded rows to the total, so the decision stands (R-2). The [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) statement "receives and holds every tag in one response" is corrected |
+| Virtual scrolling decision (library-ui.md, [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists)) | Pass. Paged reading still grows the loaded rows to the total, so the decision stands (R-2). The [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists) statement "receives and holds every tag in one response" is corrected |
 | Server output in English, screen text in the catalogue (gosmopolitan, i18n.md) | Pass. All new text goes in `web/src/i18n/en.ts` |
 | Guests do not see the owner's data | Pass. `/tags` and the new parameters are on owner-only routes |
-| Design documents describe the present (docs/design-docs/index.md) | Pass. Each unit updates its own part of ARCHITECTURE.md (the `TagStore` and `web/src/tags/` paragraphs), `docs/design-docs/library-ui.md`, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) and `docs/how-to/tags-admin-benchmark.md` |
+| Design documents describe the present (docs/design-docs/index.md) | Pass. Each unit updates its own part of ARCHITECTURE.md (the `TagStore` and `web/src/tags/` paragraphs), `docs/design-docs/library-ui.md`, [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists) and `docs/how-to/tags-admin-benchmark.md` |
 
 The verdicts hold after Phase 1. There is no violation for Complexity Tracking.
 
@@ -381,7 +381,7 @@ Sources: [data-model.md, Screen state](data-model.md#screen-state),
 English catalogue text (loading more, failure, mismatch, "select all" over
 loaded rows; the form follows the revised `ui-design.md`). The
 `web/src/tags/` paragraph of ARCHITECTURE.md, and the statement "receives and
-holds every tag in one response" in `docs/design-docs/library-ui.md`, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling).
+holds every tag in one response" in `docs/design-docs/library-ui.md`, [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists).
 
 **Dependencies**: `Add search, filters, sort and pages to GET /api/tags`, `Port NaturalSortKey to TypeScript`
 

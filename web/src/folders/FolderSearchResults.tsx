@@ -1,16 +1,16 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 import type { FolderRef, Video } from "../api/client";
 import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
+import VirtualGrid, { type ListAnchor, type VirtualGridHandle } from "../videoList/VirtualGrid";
 import { folderLocationLabel } from "./folderPath";
 
 /**
@@ -25,6 +25,8 @@ export default function FolderSearchResults({
   backTo,
   preview,
   tagsRow,
+  positionRef,
+  initialAnchor,
 }: {
   folder: FolderRef;
   videos: VideosState;
@@ -35,7 +37,12 @@ export default function FolderSearchResults({
   preview: PreviewCardProps;
   /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
+  /** 格子の位置の口（控えの目印を読む）。 */
+  positionRef?: Ref<VirtualGridHandle>;
+  /** 控えから戻ったときに戻す位置。 */
+  initialAnchor?: ListAnchor;
 }) {
+  const videoList = itemVideos(videos.items);
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
   const initialLoadError =
     !videos.loading && videos.items.length === 0 ? videos.error : null;
@@ -59,13 +66,15 @@ export default function FolderSearchResults({
             <LoadFailed reason={initialLoadError} onRetry={videos.reload} />
           ) : (
             <TagRowMeasureProvider>
-              <Grid zoom={zoom}>
-                {videos.loading ? (
-                  <CardSkeleton count={12} />
-                ) : (
-                  itemVideos(videos.items).map((video) => (
+              <VirtualGrid
+                ref={positionRef}
+                zoom={zoom}
+                count={videos.loading ? 0 : videoList.length}
+                itemKey={(index) => `v:${String(videoList[index]!.id)}`}
+                renderItem={(index) => {
+                  const video = videoList[index]!;
+                  return (
                     <VideoCard
-                      key={video.id}
                       video={video}
                       backTo={backTo}
                       selected={false}
@@ -78,10 +87,12 @@ export default function FolderSearchResults({
                           : folderLocationLabel(folder, video.folder)
                       }
                     />
-                  ))
-                )}
-                {videos.loadingMore && <CardSkeleton count={6} />}
-              </Grid>
+                  );
+                }}
+                placeholders={videos.loading ? 12 : videos.loadingMore ? 6 : 0}
+                renderPlaceholder={() => <CardSkeleton count={1} />}
+                initialAnchor={initialAnchor}
+              />
             </TagRowMeasureProvider>
           )}
           {videos.error !== null && videos.items.length > 0 && (

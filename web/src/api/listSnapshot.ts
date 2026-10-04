@@ -65,8 +65,14 @@ export interface ListSnapshot {
   cursor?: string;
   /** 次のページがあるか。 */
   hasMore: boolean;
-  /** 離れる直前のスクロール位置。 */
+  /** 離れる直前のスクロール位置。目印（anchor）が無いときだけ戻すのに使う。 */
   scrollY: number;
+  /**
+   * 離れる直前に画面上端にあった項目と、そのずれ（VirtualGrid の ListAnchor）。一覧は
+   * 画面の近くの項目だけを描くので、描いていない行の高さは見積りであり、scrollY では
+   * 同じ項目に戻れない。項目の鍵で探し直して戻す（issue 675）。
+   */
+  anchor?: { key: string; offset: number };
   /** フォルダ画面では、直下の子フォルダの一覧も控える（戻ったときに往復しない）。 */
   folderListing?: FolderListing;
   /**

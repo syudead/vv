@@ -42,7 +42,6 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
-import { Grid } from "../videoList/Grid";
 import {
   CardSkeleton,
   GuestEmpty,
@@ -52,8 +51,9 @@ import {
 } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
-import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import VirtualGrid, { type VirtualGridHandle } from "../videoList/VirtualGrid";
+import VirtualTableBody from "../videoList/VirtualTableBody";
 import ActiveTagFilters from "./ActiveTagFilters";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
@@ -190,16 +190,18 @@ export default function LibraryPage() {
     },
     [apply, criteria, resetPreview, tagIds],
   );
-  // --- 大きさ切替で読んでいた位置を保つ ---
-  const { listRef: list, capture: captureAnchor } = useZoomAnchor(zoom);
+  // --- 一覧の位置 ---
+  // 格子とリスト表示は画面の近くの項目だけを描く（issue 675）。位置は上端の項目の目印で
+  // 持ち、表示倍率や列の数が変わったときは VirtualGrid が同じ項目を上端へ戻す。
+  const list = useRef<HTMLDivElement | null>(null);
+  const position = useRef<VirtualGridHandle | null>(null);
 
   const changeZoom = useCallback(
     (next: Zoom) => {
-      captureAnchor();
       resetPreview();
       savePreferences({ ...preferences, zoom: next });
     },
-    [captureAnchor, preferences, resetPreview, savePreferences],
+    [preferences, resetPreview, savePreferences],
   );
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
@@ -409,7 +411,10 @@ export default function LibraryPage() {
   }, [clearSelection, selectedIds.size]);
 
   // --- スクロール位置の復元 ---
-  const pendingScroll = useRef(restored?.scrollY);
+  // 控えに目印があれば一覧の部品が戻す。無い（古い形の）控えだけ scrollY で戻す。
+  const pendingScroll = useRef(
+    restored?.anchor === undefined ? restored?.scrollY : undefined,
+  );
   useEffect(() => {
     const previous = history.scrollRestoration;
     history.scrollRestoration = "manual";
@@ -481,6 +486,7 @@ export default function LibraryPage() {
         cursor,
         hasMore,
         scrollY: window.scrollY,
+        anchor: position.current?.anchor(),
         scanId: knownScanId.current,
         staleGroups: staleGroups(),
       },
@@ -693,22 +699,25 @@ export default function LibraryPage() {
         {view === "grid" ? (
           // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
           <TagRowMeasureProvider>
-            <Grid zoom={zoom}>
-              {loading ? (
-                <CardSkeleton count={skeletonCount} />
-              ) : (
-                // グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
-                // 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。
-                items.map((item) =>
-                  item.kind === "video" ? (
-                    <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-                  ) : (
-                    <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-                  ),
-                )
-              )}
-              {loadingMore && <CardSkeleton count={6} />}
-            </Grid>
+            <VirtualGrid
+              ref={position}
+              zoom={zoom}
+              count={loading ? 0 : items.length}
+              itemKey={(index) => itemKey(items[index]!)}
+              // グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+              // 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。
+              renderItem={(index) => {
+                const item = items[index]!;
+                return item.kind === "video" ? (
+                  <VideoCard {...rowProps(item.video)} />
+                ) : (
+                  <GroupCard {...groupProps(item.group)} />
+                );
+              }}
+              placeholders={loading ? skeletonCount : loadingMore ? 6 : 0}
+              renderPlaceholder={() => <CardSkeleton count={1} />}
+              initialAnchor={restored?.anchor}
+            />
           </TagRowMeasureProvider>
         ) : loading ? (
           <div aria-hidden="true" className="space-y-2 rounded-lg bg-surface p-3">
@@ -746,15 +755,21 @@ export default function LibraryPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
-                {items.map((item) =>
-                  item.kind === "video" ? (
-                    <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
+              <VirtualTableBody
+                ref={position}
+                count={items.length}
+                columns={owner ? 9 : 7}
+                itemKey={(index) => itemKey(items[index]!)}
+                renderRow={(index, slot) => {
+                  const item = items[index]!;
+                  return item.kind === "video" ? (
+                    <VideoRow key={slot.rowKey} {...rowProps(item.video)} {...slot} />
                   ) : (
-                    <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
-                  ),
-                )}
-              </tbody>
+                    <GroupRow key={slot.rowKey} {...groupProps(item.group)} {...slot} />
+                  );
+                }}
+                initialAnchor={restored?.anchor}
+              />
             </table>
           )
         )}

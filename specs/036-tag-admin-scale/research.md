@@ -98,13 +98,13 @@ are stored (server side) has to change, which the parent Issue's `対象外` han
 error text, and the create row goes on top; hand-written windowing would put the bugs in height measurement
 and offsets. The dependency has no runtime dependencies and follows the Renovate process
 ([docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md)). Of the two reasons
-[library-ui.md, No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) gives for avoiding virtual
+[library-ui.md, Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists) gives for avoiding virtual
 scrolling (a wrapping grid whose cards per line depend on width, and loading only 60 at a time), the first
 does not apply to a one-column list, and the second does not apply after R-1 either: acceptance criterion 4
 scrolls a 30,000-tag list to the end while loading more, so loaded rows reach 30,000 and rendering them all
 brings back the slowness measured before the revision.
 
-**Documents**: `docs/design-docs/library-ui.md`, [No virtual scrolling](../../docs/design-docs/library-ui.md#no-virtual-scrolling) states that the tag list uses this and that the grid still
+**Documents**: `docs/design-docs/library-ui.md`, [Virtual scrolling of long lists](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists) states that the tag list uses this and that the grid still
 does not, for unchanged reasons (merged). After the R-1 revision, its wording "receives and holds every tag
 at once" becomes "receives pages, and loaded rows grow to the total".
 
