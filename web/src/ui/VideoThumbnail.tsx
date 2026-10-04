@@ -1,7 +1,7 @@
 import type * as React from "react";
 
 import { cn } from "@/lib/cn";
-import { Progress } from "@/ui/progress";
+import { Progress } from "@/ui/shadcn/progress";
 
 // VideoThumbnail は vv 固有の部品で、動画・まとめ・フォルダのカードと一覧の行が共有する
 // サムネイルの枠である（specs/038-design-system/ui-design.md「Components」、

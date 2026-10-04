@@ -5,38 +5,46 @@ screen in `web/src` is built from. Read an item from `web/` with
 `npx shadcn view ./registry/r/<item>.json`; the design decisions are in
 [design-system.md](../../docs/design-docs/design-system.md).
 
-| Item                 | Tier                  | When to use                                                              |
-| -------------------- | --------------------- | ------------------------------------------------------------------------ |
-| `vv`                 | Index                 | This list                                                                |
-| `vv-theme`           | Foundations           | `web/src/ui/tokens.css`: every token; read before styling anything       |
-| `vv-rules`           | Rules                 | `web/registry/rules/`: which token, step and component to use where      |
-| `alert`              | Overlays and feedback | A message inside a section: error, warning, done, guidance               |
-| `alert-dialog`       | Overlays and feedback | Confirm an action that cannot be undone                                  |
-| `badge`              | Overlays and feedback | Tag chips, counts, status labels                                         |
-| `brand-home-link`    | vv component          | The logo link in the top bar                                             |
-| `breadcrumb`         | Overlays and feedback | The path to the current folder                                           |
-| `button`             | Existing component    | `web/src/ui/Button.tsx`; rules arrive with the components tier           |
-| `checkbox`           | Existing component    | `web/src/ui/Checkbox.tsx`; rules arrive with the components tier         |
-| `combobox`           | Existing component    | `web/src/ui/Combobox.tsx`; rules arrive with the components tier         |
-| `dialog`             | Overlays and feedback | A modal form or long choice                                              |
-| `dropdown-menu`      | Overlays and feedback | Actions or one choice from a few, from a button                          |
-| `empty`              | Overlays and feedback | The empty state of a list or section                                     |
-| `favorite-toggle`    | vv component          | The favorite heart: mark and toggle                                      |
-| `filter-chip`        | Existing component    | `web/src/ui/FilterChip.tsx`; rules arrive with the components tier       |
-| `icon-button`        | Existing component    | `web/src/ui/IconButton.tsx`; rules arrive with the components tier       |
-| `kbd`                | Overlays and feedback | A key or search operator in text                                         |
-| `popover`            | Overlays and feedback | Options or a short form anchored to a control                            |
-| `progress`           | Overlays and feedback | Progress of a known amount of work                                       |
-| `scrub-preview`      | vv component          | The card scrub inside a thumbnail                                        |
-| `segmented-control`  | Existing component    | `web/src/ui/SegmentedControl.tsx`; rules arrive with the components tier |
-| `separator`          | Overlays and feedback | A hairline between groups                                                |
-| `sheet`              | Overlays and feedback | Edge panel; only the sidebar's narrow-width drawer                       |
-| `sidebar`            | Overlays and feedback | The app's main navigation                                                |
-| `skeleton`           | Overlays and feedback | Shapes of the final layout while loading                                 |
-| `sonner`             | Overlays and feedback | Short passive notices (`toast()`)                                        |
-| `spinner`            | Overlays and feedback | A short wait with no measure                                             |
-| `tabs`               | Overlays and feedback | Switch views of the same content in place                                |
-| `tentative-mark`     | vv component          | The mark after a tentative tag                                           |
-| `thumbnail-backdrop` | vv component          | Blurred fill behind a portrait thumbnail                                 |
-| `tooltip`            | Overlays and feedback | Name an icon-only control, a short hint                                  |
-| `video-thumbnail`    | vv component          | The thumbnail frame of cards and rows                                    |
+| Item                 | Tier         | When to use                                                         |
+| -------------------- | ------------ | ------------------------------------------------------------------- |
+| `vv`                 | Index        | This list                                                           |
+| `vv-theme`           | Foundations  | `web/src/ui/tokens.css`: every token; read before styling anything  |
+| `vv-rules`           | Rules        | `web/registry/rules/`: which token, step and component to use where |
+| `alert`              | Component    | A message inside a section: error, warning, done, guidance          |
+| `alert-dialog`       | Component    | Confirm an action that cannot be undone                             |
+| `badge`              | Component    | Tag chips, counts, status labels                                    |
+| `brand-home-link`    | vv component | The logo link in the top bar                                        |
+| `breadcrumb`         | Component    | The path to the current folder                                      |
+| `button`             | Component    | Actions; one `default` per area (rules: components.md)              |
+| `checkbox`           | Component    | On or off inside a form, a filter or a selection                    |
+| `combobox`           | Component    | Pick one of many by typing; a `command` in a popover                |
+| `command`            | Component    | A list narrowed by typing; the inside of a combobox                 |
+| `dialog`             | Component    | A modal form or long choice                                         |
+| `dropdown-menu`      | Component    | Actions or one choice from a few, from a button                     |
+| `empty`              | Component    | The empty state of a list or section                                |
+| `favorite-toggle`    | vv component | The favorite heart: mark and toggle                                 |
+| `field`              | Component    | Label, control, description and error of one form field             |
+| `input`              | Component    | One line of text                                                    |
+| `kbd`                | Component    | A key or search operator in text                                    |
+| `label`              | Component    | The visible name of a control                                       |
+| `popover`            | Component    | Options or a short form anchored to a control                       |
+| `progress`           | Component    | Progress of a known amount of work                                  |
+| `radio-group`        | Component    | Pick one of a few visible options                                   |
+| `scrub-preview`      | vv component | The card scrub inside a thumbnail                                   |
+| `select`             | Component    | Pick one value from a fixed list in a dropdown                      |
+| `separator`          | Component    | A hairline between groups                                           |
+| `sheet`              | Component    | Edge panel; only the sidebar's narrow-width drawer                  |
+| `sidebar`            | Component    | The app's main navigation                                           |
+| `skeleton`           | Component    | Shapes of the final layout while loading                            |
+| `slider`             | Component    | A value on a range, such as the card size                           |
+| `sonner`             | Component    | Short passive notices (`toast()`)                                   |
+| `spinner`            | Component    | A short wait with no measure                                        |
+| `switch`             | Component    | A setting that takes effect at once                                 |
+| `tabs`               | Component    | Switch views of the same content in place                           |
+| `tentative-mark`     | vv component | The mark after a tentative tag                                      |
+| `textarea`           | Component    | Several lines of text                                               |
+| `thumbnail-backdrop` | vv component | Blurred fill behind a portrait thumbnail                            |
+| `toggle`             | Component    | A button that stays pressed, such as an applied filter              |
+| `toggle-group`       | Component    | Exclusive or independent toggles: view mode, direction              |
+| `tooltip`            | Component    | Name an icon-only control, a short hint                             |
+| `video-thumbnail`    | vv component | The thumbnail frame of cards and rows                               |

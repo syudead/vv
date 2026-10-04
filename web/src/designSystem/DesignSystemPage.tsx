@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { t } from "../i18n";
+import Components from "./Components";
 import Foundations from "./Foundations";
 import OverlayComponents from "./OverlayComponents";
 
@@ -13,7 +14,12 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
   {
     id: "components",
     title: () => t.designSystem.components,
-    body: () => <OverlayComponents />,
+    body: () => (
+      <div className="grid gap-8">
+        <Components />
+        <OverlayComponents />
+      </div>
+    ),
   },
   { id: "patterns", title: () => t.designSystem.patterns },
 ];

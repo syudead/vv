@@ -55,7 +55,7 @@ function BreadcrumbLink({
     <Comp
       data-slot="breadcrumb-link"
       className={cn(
-        "truncate rounded-sm transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+        "truncate rounded-sm transition-colors hover:text-foreground",
         className,
       )}
       {...props}

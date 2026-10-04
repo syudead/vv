@@ -8,11 +8,11 @@
   ],
   "files": [
     {
-      "path": "src/ui/progress.tsx",
+      "path": "src/ui/shadcn/progress.tsx",
       "content": "import { Progress as ProgressPrimitive } from \"radix-ui\";\nimport type * as React from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\n// shadcn/ui の progress（radix-nova）を vv のトークンで着せたもの。取り込みや視聴の進み具合\n// （web/registry/rules/components.md「Progress」）。\n//\n// 上流との違い: 帯の長さを `max` に対する割合で求める（上流は max を 100 と決めている）。\n// `value` が null のときは不確定のバー（Radix の data-state=\"indeterminate\"）で、帯の 3 分の 1 を\n// 明滅させる。\n\nfunction Progress({\n  className,\n  value,\n  max = 100,\n  ...props\n}: React.ComponentProps<typeof ProgressPrimitive.Root>) {\n  const percent = value == null || max <= 0 ? null : Math.min(100, (value / max) * 100);\n  return (\n    <ProgressPrimitive.Root\n      data-slot=\"progress\"\n      value={value}\n      max={max}\n      className={cn(\n        \"relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted\",\n        className,\n      )}\n      {...props}\n    >\n      <ProgressPrimitive.Indicator\n        data-slot=\"progress-indicator\"\n        className={cn(\n          \"h-full bg-primary transition-transform motion-reduce:transition-none\",\n          percent === null\n            ? \"w-1/3 animate-pulse motion-reduce:animate-none\"\n            : \"w-full flex-1\",\n        )}\n        style={\n          percent === null ? undefined : { transform: `translateX(-${100 - percent}%)` }\n        }\n      />\n    </ProgressPrimitive.Root>\n  );\n}\n\nexport { Progress };\n",
       "type": "registry:ui"
     }
   ],
-  "docs": "Usage rules: web/registry/rules/components.md, section \"Progress\" (item vv-rules).",
+  "docs": "Usage rules: web/registry/rules/components.md#progress (item vv-rules).",
   "type": "registry:ui"
 }

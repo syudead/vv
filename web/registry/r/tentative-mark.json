@@ -10,6 +10,6 @@
       "type": "registry:ui"
     }
   ],
-  "docs": "Usage rules: web/registry/rules/components.md, section \"TentativeMark\" (item vv-rules).",
+  "docs": "Usage rules: web/registry/rules/components.md#tentativemark (item vv-rules).",
   "type": "registry:ui"
 }

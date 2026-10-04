@@ -10,6 +10,6 @@
       "type": "registry:ui"
     }
   ],
-  "docs": "Usage rules: web/registry/rules/components.md, section \"ScrubPreview\" (item vv-rules).",
+  "docs": "Usage rules: web/registry/rules/components.md#scrubpreview (item vv-rules).",
   "type": "registry:ui"
 }

@@ -4,6 +4,7 @@ import type * as React from "react";
 
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
+import { Button } from "@/ui/shadcn/button";
 
 // shadcn/ui の sheet（radix-nova）を vv のトークンで着せたもの。画面の端から出る面で、vv では
 // 狭い幅の Sidebar のドロワーに使う（web/registry/rules/components.md「Sheet」）。
@@ -40,10 +41,6 @@ function SheetOverlay({
   );
 }
 
-/** 閉じる ×。Button（Issue 770 の部品）の ghost・icon-sm と同じ見た目を、依存を作らずに持つ。 */
-const closeButtonClassName =
-  "absolute top-3 right-3 inline-flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 [&_svg]:size-4";
-
 function SheetContent({
   className,
   children,
@@ -69,9 +66,11 @@ function SheetContent({
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close data-slot="sheet-close" className={closeButtonClassName}>
-            <XIcon />
-            <span className="sr-only">{t.common.close}</span>
+          <SheetPrimitive.Close data-slot="sheet-close" asChild>
+            <Button variant="ghost" size="icon-sm" className="absolute top-3 right-3">
+              <XIcon />
+              <span className="sr-only">{t.common.close}</span>
+            </Button>
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>

@@ -6,10 +6,12 @@ import * as React from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
-import { Separator } from "@/ui/separator";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/ui/sheet";
-import { Skeleton } from "@/ui/next/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/next/tooltip";
+import { Button } from "@/ui/shadcn/button";
+import { Input } from "@/ui/shadcn/input";
+import { Separator } from "@/ui/shadcn/separator";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/ui/shadcn/sheet";
+import { Skeleton } from "@/ui/shadcn/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
 // shadcn/ui の sidebar（radix-nova）を vv のトークンで着せたもの
 // （web/registry/rules/components.md「Sidebar」）。上流の 3 つの形を vv のサイドバーの 3 態に
@@ -20,8 +22,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/next/tooltip";
 // - 色は sidebar-* の別トークンを作らず、foundations の役割（navbar・accent・secondary・
 //   border・ring）を使う。
 // - 幅は CSS 変数でなく名前つきの段（w-sidebar）で持ち、任意の値を書かない。
-// - SidebarInput は Input（Issue 770 の部品）に依るため持たない。SidebarTrigger は Button の
-//   ghost・icon-sm と同じ見た目を、依存を作らずに持つ。
+// - フォーカスは上流の ring-3 でなく、全部品で同じ index.css の :focus-visible の輪を出す。
 
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -219,18 +220,16 @@ function SidebarTrigger({
   className,
   onClick,
   ...props
-}: React.ComponentProps<"button">) {
+}: React.ComponentProps<typeof Button>) {
   const { toggleSidebar } = useSidebar();
 
   return (
-    <button
-      type="button"
+    <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
-      className={cn(
-        "inline-flex size-8 items-center justify-center rounded-md text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 [&_svg]:size-4",
-        className,
-      )}
+      variant="ghost"
+      size="icon-sm"
+      className={cn(className)}
       onClick={(event) => {
         onClick?.(event);
         toggleSidebar();
@@ -239,7 +238,7 @@ function SidebarTrigger({
     >
       <PanelLeftIcon />
       <span className="sr-only">{t.common.toggleSidebar}</span>
-    </button>
+    </Button>
   );
 }
 
@@ -273,6 +272,17 @@ function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
         "relative flex w-full min-w-0 flex-1 flex-col bg-background",
         className,
       )}
+      {...props}
+    />
+  );
+}
+
+function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {
+  return (
+    <Input
+      data-slot="sidebar-input"
+      data-sidebar="input"
+      className={cn("h-8 w-full bg-background shadow-none", className)}
       {...props}
     />
   );
@@ -351,7 +361,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-muted-foreground outline-hidden transition-all duration-200 ease-out-quart group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-3 focus-visible:ring-ring/50 [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-muted-foreground transition-all duration-200 ease-out-quart group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -393,7 +403,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground outline-hidden transition-all hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -475,7 +485,7 @@ function SidebarMenuAction({
       data-slot="sidebar-menu-action"
       data-sidebar="menu-action"
       className={cn(
-        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-muted-foreground outline-hidden transition-transform peer-hover/menu-button:text-foreground group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 sm:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
+        "absolute top-1.5 right-1 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-muted-foreground transition-transform peer-hover/menu-button:text-foreground group-data-[collapsible=icon]:hidden after:absolute after:-inset-2 hover:bg-accent hover:text-foreground sm:after:hidden [&>svg]:size-4 [&>svg]:shrink-0",
         showOnHover &&
           "group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 aria-expanded:opacity-100 sm:opacity-0",
         className,
@@ -564,7 +574,7 @@ function SidebarMenuSubButton({
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-8 min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-muted-foreground outline-hidden group-data-[collapsible=icon]:hidden hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:text-foreground data-[size=md]:text-sm data-[size=sm]:text-xs [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-8 min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 text-muted-foreground group-data-[collapsible=icon]:hidden hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:text-foreground data-[size=md]:text-sm data-[size=sm]:text-xs [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0",
         className,
       )}
       {...props}
@@ -580,6 +590,7 @@ export {
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
+  SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuAction,

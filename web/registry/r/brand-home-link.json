@@ -10,6 +10,6 @@
       "type": "registry:ui"
     }
   ],
-  "docs": "Usage rules: web/registry/rules/components.md, section \"BrandHomeLink\" (item vv-rules).",
+  "docs": "Usage rules: web/registry/rules/components.md#brandhomelink (item vv-rules).",
   "type": "registry:ui"
 }

@@ -41,3 +41,12 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     disconnect() {}
   };
 }
+
+// cmdk（ui/command.tsx）は選んだ行を scrollIntoView で見える所へ送る。jsdom には無いので
+// 何もしない実装を置く。
+if (
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.scrollIntoView !== "function"
+) {
+  Element.prototype.scrollIntoView = function scrollIntoView() {};
+}

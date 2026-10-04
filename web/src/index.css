@@ -8,10 +8,11 @@
 @import "./ui/tokens.css";
 
 /*
- * 見本（/design-system）で部品の状態を並べるための変種。hover・focus・focus-visible・active を
- * 上書きし、本来の擬似クラスに加えて data-state-preview="hover|focus|active" を持つ要素にも
- * 当てる（specs/038-design-system/ui-design.md「Review criteria」4）。画面のコードは
- * data-state-preview を使わない。
+ * 見本（/design-system）は部品の hover・キーボードのフォーカス・押下の状態を、触らずに
+ * 横に並べて見せる（specs/038-design-system/ui-design.md「Review criteria」4）。
+ * data-demo-state を付けた要素の中では、その状態のクラスを当てたまま描く。フォーカスの輪は
+ * 下の :focus-visible の規則が data-demo-state="focus" の最初の子に描く。画面では
+ * data-demo-state を使わない。hover の既定（hover できる端末だけ）はそのまま残す。
  */
 @custom-variant hover {
   @media (hover: hover) {
@@ -19,31 +20,34 @@
       @slot;
     }
   }
-  &:where([data-state-preview~="hover"]) {
+  [data-demo-state~="hover"] & {
     @slot;
   }
 }
+
 @custom-variant focus {
   &:focus {
     @slot;
   }
-  &:where([data-state-preview~="focus"]) {
+  [data-demo-state~="focus"] & {
     @slot;
   }
 }
+
 @custom-variant focus-visible {
   &:focus-visible {
     @slot;
   }
-  &:where([data-state-preview~="focus"]) {
+  [data-demo-state~="focus"] & {
     @slot;
   }
 }
+
 @custom-variant active {
   &:active {
     @slot;
   }
-  &:where([data-state-preview~="active"]) {
+  [data-demo-state~="active"] & {
     @slot;
   }
 }
@@ -370,7 +374,10 @@
     cursor: pointer;
   }
 
-  :focus-visible {
+  /* フォーカスの輪は全部品でこの 1 つ（web/registry/rules/components.md）。見本は
+     data-demo-state="focus" の最初の子に同じ輪を描く。 */
+  :focus-visible,
+  [data-demo-state~="focus"] > :first-child {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }

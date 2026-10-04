@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 9c910ba600ee16a3f950f50c4e932cb8f68e18470c6897c5ae4d2bda78b74945
+sourceHash: 16d72861dc0c06af5a698a865d34ac1cb80d17fef4f25bdf16c771e865063666
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -122,7 +122,48 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 ## コンポーネント {#components}
 
-[Rebuild the action and input components on shadcn/ui](https://github.com/syudead/vv/issues/770) が書く。
+すべてのコントロールは radix ベースの shadcn/ui のコンポーネントであり、上流が付けるファイル名（`button.tsx`）のまま `web/src/ui/shadcn` に置き、レジストリの項目を通して読む。`components.json` は shadcn の `ui` エイリアスをそのフォルダに向けるので、`shadcn add` はそこに書く。構造とバリアントは上流のものであり、変わるのは色、角丸、高さだけで、それもトークンを通して変える。それぞれをいつ使うか、何と組み合わせるか、いつ使わないかは [components.md](../../web/registry/rules/components.md)（項目 `vv-rules`）にある。
+
+| コンポーネント | 項目 | 置き換えるもの |
+| --- | --- | --- |
+| `Button`（`default`、`secondary`、`outline`、`ghost`、`destructive`、`link`。サイズは `sm`、`default`、`lg`、`icon-sm`、`icon`） | `button` | `ui/Button`、`ui/IconButton` |
+| `Input`、`Textarea`、`Label`、`Field` | `input`、`textarea`、`label`、`field` | 生の `<input>` と `<textarea>` |
+| `Select`、`RadioGroup` | `select`、`radio-group` | 生の `<select>`、並び替えのラジオの列 |
+| `Checkbox`、`Switch` | `checkbox`、`switch` | `ui/Checkbox`、公開範囲のスイッチ |
+| `Toggle`、`ToggleGroup` | `toggle`、`toggle-group` | `ui/FilterChip`、`ui/SegmentedControl` |
+| `Slider` | `slider` | ズームのスライダー |
+| `Combobox`（ポップオーバー内の `Command`）、`Command` | `combobox`、`command` | `ui/Combobox` |
+
+図は、画面がどのようにコンポーネントとその規則にたどり着くかを示す。
+
+```mermaid
+flowchart LR
+  screen[web/src の画面] --> comp[web/src/ui/shadcn のコンポーネント]
+  comp --> tokens[tokens.css]
+  comp --> item[レジストリの項目]
+  item --> rules[components.md]
+```
+
+コンポーネントは 3 つの振る舞いを共有するので、画面がそれらのスタイルを変えることはない。
+
+| 振る舞い | 方法 |
+| --- | --- |
+| キーボードフォーカス | すべてのコンポーネントに共通の 1 つのリング、`web/src/index.css` の `:focus-visible` のアウトライン。上流のコンポーネントごとの `ring-[3px]` は外す |
+| 選択中と押下中 | `primary-soft` の塗りに `primary` の文字（`Toggle`、`ToggleGroup`）、または `primary` の塗り（`Checkbox`、`Switch`、`RadioGroup`） |
+| 密度 | ライブラリの密度の画面は `sm` と `icon-sm`（`h-8`）を使い、動画ページは `default` と `lg` を使う |
+
+上流に対する 4 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
+
+この層は既存の画面を変えない。画面が今使っているコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパス（`Button.tsx`、`Checkbox.tsx`、`Combobox.tsx` と、表が挙げるほかのもの）に残る。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
+
+ショーケース（`/design-system`）は、各コンポーネントをバリアントと状態ごとに並べる。状態は通常、ホバー、キーボードフォーカス、押下中、選択中、無効である。ホバーと押下中はポインターなしで `data-demo-state` 属性によって描かれ、`web/src/index.css` がこの属性を Tailwind の `hover` と `active` のバリアントに加える。画面はこの属性を設定しない。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| 新しいコンポーネントに vv のファイル名（`Button.tsx`）を保つ | `shadcn add` は上流の名前で書くので、以後の更新のたびに手で名前を変えることになる |
+| この層で古いコンポーネントを脇へ移し、ライブラリ画面を新しいものに切り替える | メンテナーは既存の画面をそれぞれの移行まで変えずに保つ |
+| コンポーネントのスタイルを変えて古いものと同じ見た目にする | コンポーネントは新しい画面のためのものであり、古い見た目は画面の移行が置き換える |
+| 上流のような、コンポーネントごとのフォーカスリング | 各コンポーネントが自分の複製を持つことになり、任意値の `ring-[3px]` はチェックで失敗する |
 
 ## ページパターン {#page-patterns}
 

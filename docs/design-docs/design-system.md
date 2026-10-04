@@ -172,8 +172,72 @@ The decisions behind the foundations are R-5 and R-8 of
 
 ## Components
 
-Written by
-[Rebuild the action and input components on shadcn/ui](https://github.com/syudead/vv/issues/770).
+Every control is a shadcn/ui component on the radix base, kept in
+`web/src/ui/shadcn` under the file name upstream gives it (`button.tsx`) and
+read through its registry item. `components.json` points shadcn's `ui` alias at
+that folder, so `shadcn add` writes there. Its structure and variants are upstream's; only colour, radius
+and height change, through the tokens. When to use each one, what it pairs
+with and when not to use it is in
+[components.md](../../web/registry/rules/components.md) (item `vv-rules`).
+
+| Component | Item | Replaces |
+| --- | --- | --- |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
+| `Input`, `Textarea`, `Label`, `Field` | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>` |
+| `Select`, `RadioGroup` | `select`, `radio-group` | Raw `<select>`, the sort radio columns |
+| `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox`, the visibility switch |
+| `Toggle`, `ToggleGroup` | `toggle`, `toggle-group` | `ui/FilterChip`, `ui/SegmentedControl` |
+| `Slider` | `slider` | The zoom slider |
+| `Combobox` (`Command` in a popover), `Command` | `combobox`, `command` | `ui/Combobox` |
+
+The diagram shows how a screen reaches a component and its rules.
+
+```mermaid
+flowchart LR
+  screen[Screen in web/src] --> comp[web/src/ui/shadcn component]
+  comp --> tokens[tokens.css]
+  comp --> item[Registry item]
+  item --> rules[components.md]
+```
+
+The components share three behaviours, so a screen never restyles them:
+
+| Behaviour | How |
+| --- | --- |
+| Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
+| Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
+| Density | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
+
+Four changes to upstream keep the checks and the catalog rules: `Checkbox`
+draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
+that takes the focus, `CommandGroup` styles its heading by wrapping it,
+because the attribute selector upstream uses is an arbitrary value, and
+`CommandInput` drops upstream's `outline-hidden` and is lower than its row, so
+the shared focus ring shows in full inside the `Command`. `Select`
+and `Combobox` read Radix's position variables (`--radix-select-*`,
+`--radix-popover-*`); those classes are `special` entries in
+`web/design-exceptions.js`.
+
+This tier changes no existing screen. The components the screens use today
+stay at their paths in `web/src/ui` (`Button.tsx`, `Checkbox.tsx`,
+`Combobox.tsx` and the others the table names) until the screen migrations
+replace their last use. The new components live in their own folder, so a
+file name never differs from an old one by case alone. The old components are
+not registry items; new code imports from `web/src/ui/shadcn`.
+
+The showcase (`/design-system`) lays each component out by variant and state:
+normal, hover, keyboard focus, pressed, selected and disabled. The states are
+drawn without a pointer by the `data-demo-state` attribute on an element
+around the component: `web/src/index.css` adds it to Tailwind's `hover`,
+`focus`, `focus-visible` and `active` variants, and draws the focus ring on
+the element's first child. Screens never set it.
+
+| Rejected | Why |
+| --- | --- |
+| Keeping vv's file names (`Button.tsx`) for the new components | `shadcn add` writes upstream's names, so every later update would be renamed by hand |
+| Moving the old components aside and switching the library screen to the new ones in this tier | The maintainer keeps every existing screen unchanged until its own migration |
+| Restyling the components to look like the old ones | The components are for new screens; the screen migrations replace the old look |
+| A per-component focus ring, as upstream | Each component would carry its own copy that differs from the shared outline, and the arbitrary `ring-[3px]` fails the checks |
 
 ### Overlays and feedback, and vv components
 
@@ -198,17 +262,13 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, `videoList/FavoriteToggle` | vv components |
 
-Upstream files keep shadcn's kebab-case names (`dropdown-menu.tsx`). Where an
-old component has the same name in another case (`Popover.tsx`), the new one
-lives in `web/src/ui/next/` until the migration deletes the old file:
-TypeScript and case-insensitive file systems refuse two such names in one
-folder.
-
-The showcase shows each state through `data-state-preview`: `index.css`
-redefines the `hover`, `focus`, `focus-visible` and `active` variants to also
-match an element carrying `data-state-preview="hover"`, `"focus"` or
-`"active"`, so one page shows every state side by side. Screens never set the
-attribute.
+The shadcn components live in `web/src/ui/shadcn` under upstream's
+kebab-case names (`dropdown-menu.tsx`), beside the action and input
+components. As upstream, `Dialog` and `Sheet` close with a `ghost`, `icon-sm`
+`Button`, `AlertDialogAction` and `AlertDialogCancel` are `Button`s (`sm` by
+default), and `SidebarTrigger` is a `Button` and `SidebarInput` an `Input`.
+The vv components keep PascalCase names in `web/src/ui`; the `page` form of
+`FavoriteToggle` is a `Toggle` with a `Tooltip`.
 
 Three upstream class patterns read values that Radix computes at runtime or
 that no utility names: the floating layers' transform origin and available

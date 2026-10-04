@@ -1,8 +1,8 @@
-import { cva, type VariantProps } from "class-variance-authority";
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 import type * as React from "react";
 
 import { cn } from "@/lib/cn";
+import { Button } from "@/ui/shadcn/button";
 
 // shadcn/ui の alert-dialog（radix-nova）を vv のトークンで着せたもの。取り消せない操作の確認に
 // 使う（web/registry/rules/components.md「AlertDialog」）。
@@ -130,53 +130,41 @@ function AlertDialogDescription({
 }
 
 /**
- * 確認と取り消しのボタンの見た目。上流は Button（Issue 770 の部品）を asChild で被せるが、
- * 部品の単位を並行して作るため、同じ variant 名（default・outline・destructive）と大きさで
- * ここに持つ。Button が入ったら、上流どおり Button へ戻す。
+ * 確認と取り消しは上流どおり Button を asChild で被せる。大きさは vv の既定の密度（sm）にする。
  */
-const actionVariants = cva(
-  "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md border border-transparent px-3 text-sm font-medium whitespace-nowrap outline-none transition-colors select-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4",
-  {
-    variants: {
-      variant: {
-        default:
-          "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active",
-        outline: "border-input bg-transparent text-foreground hover:bg-accent",
-        destructive:
-          "bg-destructive-strong text-destructive-foreground hover:bg-destructive-strong/80",
-      },
-    },
-    defaultVariants: { variant: "default" },
-  },
-);
-
 function AlertDialogAction({
   className,
   variant = "default",
+  size = "sm",
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
-  VariantProps<typeof actionVariants>) {
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
   return (
-    <AlertDialogPrimitive.Action
-      data-slot="alert-dialog-action"
-      className={cn(actionVariants({ variant }), className)}
-      {...props}
-    />
+    <Button variant={variant} size={size} asChild>
+      <AlertDialogPrimitive.Action
+        data-slot="alert-dialog-action"
+        className={cn(className)}
+        {...props}
+      />
+    </Button>
   );
 }
 
 function AlertDialogCancel({
   className,
   variant = "outline",
+  size = "sm",
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Cancel> &
-  VariantProps<typeof actionVariants>) {
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
   return (
-    <AlertDialogPrimitive.Cancel
-      data-slot="alert-dialog-cancel"
-      className={cn(actionVariants({ variant }), className)}
-      {...props}
-    />
+    <Button variant={variant} size={size} asChild>
+      <AlertDialogPrimitive.Cancel
+        data-slot="alert-dialog-cancel"
+        className={cn(className)}
+        {...props}
+      />
+    </Button>
   );
 }
 

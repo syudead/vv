@@ -3,7 +3,8 @@ import { type MouseEvent, useEffect, useRef, useState } from "react";
 
 import { errorText, t, type UiText } from "@/i18n";
 import { cn } from "@/lib/cn";
-import IconButton from "./IconButton";
+import { Toggle } from "./shadcn/toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./shadcn/tooltip";
 import { useToast } from "./Toast";
 
 /**
@@ -21,10 +22,10 @@ import { useToast } from "./Toast";
  * - 押すと `onToggle` を 1 回呼ぶ。`click` の伝播を止め、カードのリンクも選択も動かさない。
  *   決着するまでは `aria-disabled` で回る印に替え、重ねて送らない。印は応答の通知で
  *   一覧が差し替える（api/favorites.ts）。失敗はトーストで伝え、印は変えない。
- * - `page` は再生画面の情報の行の右端の一群に置く形で、`IconButton`（`sm`、ghost）である
- *   （ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-muted-foreground`、オンは
- *   `active` の面（`bg-primary-soft`）のまま、ハートの色だけを `text-favorite!` で上書きする
- *   （`data-active:text-primary` より詳細度が高いため `!` が要る）。常に見える。失敗は `onFailed` へ渡し、
+ * - `page` は再生画面の情報の行の右端の一群に置く形で、`Toggle`（`sm`）にツールチップを
+ *   添える（ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-muted-foreground`、
+ *   オンは押した状態の面（`bg-primary-soft`）のまま、ハートの色だけを `text-favorite` にする。
+ *   常に見える。失敗は `onFailed` へ渡し、
  *   呼び出し側が情報の行の直下の 1 行に出す（トーストは出さない）。
  */
 export default function FavoriteToggle({
@@ -82,20 +83,28 @@ export default function FavoriteToggle({
   );
   if (variant === "page") {
     return (
-      <IconButton
-        label={label}
-        size="sm"
-        active={favorite}
-        aria-pressed={favorite}
-        aria-disabled={pending || undefined}
-        onClick={press}
-        className={cn(
-          favorite ? "text-favorite!" : "text-muted-foreground! hover:text-foreground!",
-          pending && "cursor-progress",
-        )}
-      >
-        {icon}
-      </IconButton>
+      <Tooltip>
+        {/* Toggle を外に置く。TooltipTrigger を外にすると、その data-state（closed）が
+            押した状態の data-state="on" を上書きする。 */}
+        <Toggle
+          asChild
+          size="sm"
+          pressed={favorite}
+          className={cn(
+            "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite",
+            pending && "cursor-progress",
+          )}
+        >
+          <TooltipTrigger
+            aria-label={label}
+            aria-disabled={pending || undefined}
+            onClick={press}
+          >
+            {icon}
+          </TooltipTrigger>
+        </Toggle>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
     );
   }
   return (
@@ -106,7 +115,7 @@ export default function FavoriteToggle({
       aria-disabled={pending || undefined}
       onClick={press}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150",
         variant === "card" ? "size-8" : "size-6",
         favorite
           ? "text-favorite"

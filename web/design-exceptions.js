@@ -251,6 +251,17 @@ export default [
     kind: "migration",
   },
   {
+    file: "ui/shadcn/combobox.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "w-\\(--radix-popover-trigger-width\\)",
+      "origin-\\(--radix-popover-content-transform-origin\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the list's width and transform origin at run time through its CSS variables; they are positions, not design values.",
+  },
+  {
     file: "ui/Combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
@@ -274,6 +285,19 @@ export default [
     file: "ui/ScrubPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
+  },
+  {
+    file: "ui/shadcn/select.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "max-h-\\(--radix-select-content-available-height\\)",
+      "origin-\\(--radix-select-content-transform-origin\\)",
+      "h-\\(--radix-select-trigger-height\\)",
+      "min-w-\\(--radix-select-trigger-width\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the list's height, width and transform origin at run time through its CSS variables; they are positions, not design values.",
   },
   {
     file: "ui/Skeleton.tsx",
@@ -344,7 +368,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/alert.tsx",
+    file: "ui/shadcn/alert.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["has-\\[>svg\\]:grid-cols-\\[auto_1fr\\]"],
     kind: "special",
@@ -352,7 +376,7 @@ export default [
       "The upstream Alert lays its icon and text out as an auto-width column and a flexible one; Tailwind has no grid template utility for that pair.",
   },
   {
-    file: "ui/dropdown-menu.tsx",
+    file: "ui/shadcn/dropdown-menu.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: [
       "max-h-\\(--radix-dropdown-menu-content-available-height\\)",
@@ -363,7 +387,7 @@ export default [
       "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
   },
   {
-    file: "ui/next/popover.tsx",
+    file: "ui/shadcn/popover.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["origin-\\(--radix-popover-content-transform-origin\\)"],
     kind: "special",
@@ -371,7 +395,7 @@ export default [
       "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
   },
   {
-    file: "ui/next/tooltip.tsx",
+    file: "ui/shadcn/tooltip.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["origin-\\(--radix-tooltip-content-transform-origin\\)"],
     kind: "special",

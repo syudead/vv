@@ -15,7 +15,7 @@ import type { ReactNode } from "react";
 import { toast } from "sonner";
 
 import { t } from "../i18n";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,8 +26,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "../ui/alert-dialog";
-import { Badge } from "../ui/badge";
+} from "../ui/shadcn/alert-dialog";
+import { Badge } from "../ui/shadcn/badge";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import {
   Breadcrumb,
@@ -36,8 +36,8 @@ import {
   BreadcrumbList,
   BreadcrumbPage,
   BreadcrumbSeparator,
-} from "../ui/breadcrumb";
-import Button from "../ui/Button";
+} from "../ui/shadcn/breadcrumb";
+import { Button } from "../ui/shadcn/button";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +46,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "../ui/dialog";
+} from "../ui/shadcn/dialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -55,16 +55,16 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "../ui/dropdown-menu";
+} from "../ui/shadcn/dropdown-menu";
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "../ui/empty";
+} from "../ui/shadcn/empty";
 import FavoriteToggle from "../ui/FavoriteToggle";
-import { Kbd, KbdGroup } from "../ui/kbd";
+import { Kbd, KbdGroup } from "../ui/shadcn/kbd";
 import {
   Popover,
   PopoverContent,
@@ -72,21 +72,21 @@ import {
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-} from "../ui/next/popover";
-import { Progress } from "../ui/progress";
-import { Separator } from "../ui/separator";
+} from "../ui/shadcn/popover";
+import { Progress } from "../ui/shadcn/progress";
+import { Separator } from "../ui/shadcn/separator";
 import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-} from "../ui/sidebar";
-import { Skeleton } from "../ui/next/skeleton";
-import { Toaster } from "../ui/sonner";
-import { Spinner } from "../ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "../ui/next/tabs";
+} from "../ui/shadcn/sidebar";
+import { Skeleton } from "../ui/shadcn/skeleton";
+import { Toaster } from "../ui/shadcn/sonner";
+import { Spinner } from "../ui/shadcn/spinner";
+import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
 import TentativeMark from "../ui/TentativeMark";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/next/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
   VideoThumbnail,
   VideoThumbnailDuration,
@@ -97,9 +97,17 @@ import {
 
 // 見本の「Overlays and feedback」と「vv components」の節（specs/038-design-system/ui-design.md
 // 「Components」「Review criteria」4）。部品ごとに、通常・hover・キーボードのフォーカス・押下・
-// 選択・無効のうち持つ状態を並べる。hover などは index.css の data-state-preview で固定する。
+// 選択・無効のうち持つ状態を並べる。hover・フォーカス・押下は index.css の data-demo-state で、
+// 触らずに見せる（Demo で包む）。
 
 type Preview = "hover" | "focus" | "active";
+
+/** 押下は hover したまま押した形で見せる。 */
+const demoState: Record<Preview, string> = {
+  hover: "hover",
+  focus: "focus",
+  active: "hover active",
+};
 
 /** 検索の書き方の記号（videoList/SearchSyntaxHelp と同じ。訳さない）。 */
 const searchKeys = ["tag:", "-", '"…"'] as const;
@@ -124,6 +132,20 @@ function Item({
       <Code>{name}</Code>
       {children}
     </div>
+  );
+}
+
+/**
+ * Demo は中の部品を、触らずに 1 つの状態で描く（index.css の data-demo-state）。包みは
+ * レイアウトに加わらない（contents）ので、リストや行の直接の子のままに見える。フォーカスの輪は
+ * 最初の子に出る。
+ */
+function Demo({ state, children }: { state?: Preview; children: ReactNode }) {
+  if (state === undefined) return <>{children}</>;
+  return (
+    <span className="contents" data-demo-state={demoState[state]}>
+      {children}
+    </span>
   );
 }
 
@@ -154,7 +176,7 @@ function Overlays() {
       <Item name="Dialog">
         <Dialog>
           <DialogTrigger asChild>
-            <Button variant="secondary" size="sm">
+            <Button variant="secondary" size="sm" className="justify-self-start">
               {o.openDialog}
             </Button>
           </DialogTrigger>
@@ -165,12 +187,10 @@ function Overlays() {
             </DialogHeader>
             <p>{o.dialogBody}</p>
             <DialogFooter>
-              <Button variant="secondary" size="sm">
+              <Button variant="outline" size="sm">
                 {t.common.cancel}
               </Button>
-              <Button variant="primary" size="sm">
-                {o.merge}
-              </Button>
+              <Button size="sm">{o.merge}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -179,7 +199,7 @@ function Overlays() {
       <Item name="AlertDialog">
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button variant="secondary" size="sm">
+            <Button variant="secondary" size="sm" className="justify-self-start">
               <Trash2 />
               {o.openAlertDialog}
             </Button>
@@ -236,13 +256,15 @@ function Overlays() {
                   {o.states.normal}
                 </span>
               </DropdownMenuItem>
-              <DropdownMenuItem data-state-preview="focus">
-                <Lock />
-                {o.makePrivate}
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {o.states.hover}
-                </span>
-              </DropdownMenuItem>
+              <Demo state="focus">
+                <DropdownMenuItem>
+                  <Lock />
+                  {o.makePrivate}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {o.states.hover}
+                  </span>
+                </DropdownMenuItem>
+              </Demo>
               <DropdownMenuCheckboxItem checked>{o.favorite}</DropdownMenuCheckboxItem>
               <DropdownMenuItem disabled>{o.states.disabled}</DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -273,9 +295,9 @@ function Overlays() {
           <Tabs defaultValue="all">
             <TabsList>
               <TabsTrigger value="all">{o.tabs.all}</TabsTrigger>
-              <TabsTrigger value="tentative" data-state-preview="hover">
-                {o.tabs.tentative}
-              </TabsTrigger>
+              <Demo state="hover">
+                <TabsTrigger value="tentative">{o.tabs.tentative}</TabsTrigger>
+              </Demo>
               <TabsTrigger value="rejected" disabled>
                 {o.tabs.rejected}
               </TabsTrigger>
@@ -284,9 +306,9 @@ function Overlays() {
           <Tabs defaultValue="all">
             <TabsList variant="line">
               <TabsTrigger value="all">{o.tabs.all}</TabsTrigger>
-              <TabsTrigger value="tentative" data-state-preview="focus">
-                {o.tabs.tentative}
-              </TabsTrigger>
+              <Demo state="focus">
+                <TabsTrigger value="tentative">{o.tabs.tentative}</TabsTrigger>
+              </Demo>
               <TabsTrigger value="rejected" disabled>
                 {o.tabs.rejected}
               </TabsTrigger>
@@ -333,12 +355,14 @@ function Feedback() {
         <div className="flex flex-wrap items-end gap-4">
           {stateList().map((state) => (
             <State key={state.label} label={state.label}>
-              <Badge asChild variant="secondary">
-                <a href="#components" data-state-preview={state.preview}>
-                  {o.badges.tag}
-                  <TentativeMark />
-                </a>
-              </Badge>
+              <Demo state={state.preview}>
+                <Badge asChild variant="secondary">
+                  <a href="#components">
+                    {o.badges.tag}
+                    <TentativeMark />
+                  </a>
+                </Badge>
+              </Demo>
             </State>
           ))}
         </div>
@@ -398,9 +422,9 @@ function Feedback() {
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbLink href="#components" data-state-preview="hover">
-                {o.breadcrumb.parent}
-              </BreadcrumbLink>
+              <Demo state="hover">
+                <BreadcrumbLink href="#components">{o.breadcrumb.parent}</BreadcrumbLink>
+              </Demo>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
@@ -434,10 +458,12 @@ function Feedback() {
                   .slice(1)
                   .map((state) => (
                     <SidebarMenuItem key={state.label}>
-                      <SidebarMenuButton data-state-preview={state.preview}>
-                        <Folder />
-                        <span>{`${o.sidebar.folders} · ${state.label}`}</span>
-                      </SidebarMenuButton>
+                      <Demo state={state.preview}>
+                        <SidebarMenuButton>
+                          <Folder />
+                          <span>{`${o.sidebar.folders} · ${state.label}`}</span>
+                        </SidebarMenuButton>
+                      </Demo>
                     </SidebarMenuItem>
                   ))}
                 <SidebarMenuItem>
@@ -523,14 +549,16 @@ function VvComponents() {
       <Item name="FavoriteToggle">
         <div className="flex flex-wrap items-end gap-4">
           <State label={o.states.hover}>
-            <div className="group" data-state-preview="hover">
-              <FavoriteToggle
-                favorite={false}
-                label={o.favoriteOff}
-                onToggle={noop}
-                variant="row"
-              />
-            </div>
+            <Demo state="hover">
+              <div className="group">
+                <FavoriteToggle
+                  favorite={false}
+                  label={o.favoriteOff}
+                  onToggle={noop}
+                  variant="row"
+                />
+              </div>
+            </Demo>
           </State>
           <State label={o.states.selected}>
             <FavoriteToggle favorite label={o.favoriteOn} onToggle={noop} variant="row" />
