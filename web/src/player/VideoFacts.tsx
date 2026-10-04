@@ -1,19 +1,5 @@
-import {
-  AlertCircle,
-  CalendarPlus,
-  Camera,
-  Clock,
-  Copy,
-  ExternalLink,
-  FileClock,
-  HardDrive,
-  Image,
-  LoaderCircle,
-  type LucideIcon,
-  PencilLine,
-  X,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertCircle, Camera, Copy, ExternalLink, LoaderCircle, X } from "lucide-react";
+import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   isAborted,
@@ -27,10 +13,14 @@ import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
-import IconButton from "../ui/IconButton";
-import FavoriteToggle from "../videoList/FavoriteToggle";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import FavoriteToggle from "../ui/FavoriteToggle";
+import { type Fact, FactList } from "../ui/patterns/fact-list";
+import { PageSection } from "../ui/patterns/page-section";
+import { Button } from "../ui/shadcn/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
+import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 
@@ -145,94 +135,64 @@ export interface ThumbnailCapture {
   positionMs: () => number | null;
 }
 
-function Fact({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: UiText;
-  value: string;
-}) {
-  return (
-    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
-      <Icon className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
-      <span className="sr-only">{label} </span>
-      {value}
-    </li>
-  );
-}
-
 /**
- * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である
- * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、名前と時刻は
- * `title` と、押して開く吹き出しで読む（ポイントできない端末でも届くように）。
- * 見た目は `Fact` と同じで、引き金であることは hover の地だけで示す。
+ * DateFact はファイルの情報の日付の値（追加日・更新日時・作成日時）である
+ * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、時刻は `title` と、
+ * 押して開く吹き出しで読む（ポイントできない端末でも届くように）。
  */
-function DateFact({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: LucideIcon;
-  label: UiText;
-  value: string;
-}) {
+function DateFact({ label, value }: { label: UiText; value: string }) {
   const date = formatDate(value);
   const dateTime = formatDateTime(value);
   return (
-    <li className="flex items-center whitespace-nowrap">
-      <PopoverRoot>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            // 読み上げ名は隠した名前 + 値（ui-design「Accessibility」）。中の文字の空白の扱いに
-            // 依らないよう、明示する。
-            aria-label={`${label} ${date}`}
-            title={t.player.facts.dateDetail(label, dateTime)}
-            className="-mx-1 flex items-center gap-1.5 rounded-sm px-1 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
-          >
-            <Icon className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
-            <span className="sr-only">{label} </span>
-            {date}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="bottom"
-          align="start"
-          className="w-auto px-3 py-2 text-sm whitespace-nowrap"
-          // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
-          onOpenAutoFocus={(event) => event.preventDefault()}
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="link"
+          // 読み上げ名は項目名 + 値（ui-design「Accessibility」）。
+          aria-label={`${label} ${date}`}
+          title={t.player.facts.dateDetail(label, dateTime)}
+          className={factTrigger}
         >
-          <span className="text-fg">{label}</span>{" "}
-          <span className="text-fg-muted tabular-nums">{dateTime}</span>
-        </PopoverContent>
-      </PopoverRoot>
-    </li>
+          {date}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="bottom"
+        align="start"
+        className="block w-auto whitespace-nowrap"
+        // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <span>{label}</span>{" "}
+        <span className="text-muted-foreground tabular-nums">{dateTime}</span>
+      </PopoverContent>
+    </Popover>
   );
 }
 
 /**
- * VideoFacts は題名とタグの下の 2 行である（ui-design「Video facts」）。
+ * VideoFacts は動画ページの情報欄の「File details」の節である（ui-design「Video facts」、
+ * specs/038-design-system/ui-design.md「Page patterns」の Detail page）。
  *
- * 1 行目はファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）をアイコンを添えて並べ、右端に
- * 「ファイルを開く」（開ける環境のときだけ）と「パスをコピー」を置く。2 行目は技術情報
- * （解像度・コンテナ・コーデック）で、いちばん小さく薄い文字にする。
+ * 節（PageSection）の中に、ファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）を
+ * 項目名と値の組（FactList）で並べ、その下に技術情報（解像度・コンテナ・コーデック）を
+ * いちばん小さく薄い文字の行で置く。節の見出しの右には、操作（お気に入り・今の場面を代表
+ * サムネイルにする・ファイルを開く・パスをコピー）を置く。ファイルを開くは開ける環境のときだけ。
  *
- * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の 4 つ目の項目にその画像・位置・
- * 解除の × を置き、`capture` があれば右端の操作の先頭に「今の場面を代表サムネイルにする」
+ * 所有者には、代表サムネイルの位置が指定されていればその画像・位置・解除の × を
+ * 「Thumbnail」の値に置き、`capture` があれば操作の先頭近くに「今の場面を代表サムネイルにする」
  * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。
  *
- * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
- * 追加日のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
+ * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、作成日時の
+ * あと（サムネイルの項目の前）に「Versions」の項目を置く。所有者にもゲストにも出す
  * （specs/030-video-versions/ui-design.md「Versions fact」）。
  *
- * 所有者には、右端の操作の先頭（撮るボタンの左）にお気に入りの付け外しを置く
+ * 所有者には、操作の先頭にお気に入りの付け外しを置く
  * （specs/035-favorites/ui-design.md「Video page」）。ゲストの応答には `favorite` が無く、出ない。
  * 付け外しは `onFavorite` に任せ、それが取り直しまで終えたら送信中を解く。
  *
  * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
- * 1 行目のすぐ下に 1 行だけ出す。
+ * ファイルの情報のすぐ下に 1 行だけ出す。
  * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
 export default function VideoFacts({
@@ -270,86 +230,94 @@ export default function VideoFacts({
   const actionsRef = useRef<HTMLDivElement | null>(null);
   const versionCount = video.versions?.count ?? 0;
   const favorite = owner && onFavorite !== undefined ? video.favorite : undefined;
+  const f = t.player.facts;
 
   const copyPath = () => {
     if (location === undefined) return;
     // 前の失敗の行は、次の操作で消す（specs/035-favorites/ui-design.md「Video page」）。
     setFailure(null);
     copyText(location.path, {
-      onCopied: () => toast(t.player.facts.pathCopied),
-      onFailed: () => toast(t.player.facts.copyFailed),
+      onCopied: () => toast(f.pathCopied),
+      onFailed: () => toast(f.copyFailed),
     });
   };
 
+  const facts: Fact[] = [];
+  if (duration !== "") facts.push({ id: "duration", term: f.duration, value: duration });
+  facts.push(
+    { id: "size", term: f.size, value: formatBytes(video.sizeBytes) },
+    {
+      id: "added",
+      term: f.added,
+      value: <DateFact label={f.added} value={video.addedAt} />,
+    },
+    {
+      id: "edited",
+      term: f.edited,
+      value: <DateFact label={f.edited} value={video.updatedAt} />,
+    },
+    {
+      id: "created",
+      term: f.created,
+      value: <DateFact label={f.created} value={video.fileCreatedAt} />,
+    },
+  );
+  if (versions !== undefined && versionCount >= 2) {
+    facts.push({
+      id: "versions",
+      term: t.player.versions.label,
+      value: (
+        <VersionsFact
+          video={video}
+          count={versionCount}
+          owner={owner}
+          navigation={versions.navigation}
+          onReplace={versions.onReplace}
+          onRefresh={versions.onRefresh}
+          // 項目が消えるので、フォーカスを節の操作の先頭へ移す。
+          onDissolved={() =>
+            actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
+          }
+        />
+      ),
+    });
+  }
+  if (owner && video.thumbnailPositionMs !== undefined) {
+    facts.push({
+      id: "thumbnail",
+      term: f.thumbnail,
+      value: (
+        <ThumbnailFact
+          url={video.thumbnailUrl}
+          positionMs={video.thumbnailPositionMs}
+          clearing={thumbnail.sending === "clear"}
+          onClear={() => thumbnail.send(null)}
+        />
+      ),
+    });
+  }
+
+  const hasActions =
+    location !== undefined || (owner && capture !== undefined) || favorite !== undefined;
+
   return (
-    <div className="flex flex-col gap-3 border-t border-border pt-3">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <ul
-          aria-label={t.player.facts.label}
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-2 text-sm text-fg-muted tabular-nums"
-        >
-          {duration !== "" && (
-            <Fact icon={Clock} label={t.player.facts.duration} value={duration} />
-          )}
-          <Fact
-            icon={HardDrive}
-            label={t.player.facts.size}
-            value={formatBytes(video.sizeBytes)}
-          />
-          <DateFact
-            icon={CalendarPlus}
-            label={t.player.facts.added}
-            value={video.addedAt}
-          />
-          <DateFact
-            icon={PencilLine}
-            label={t.player.facts.edited}
-            value={video.updatedAt}
-          />
-          <DateFact
-            icon={FileClock}
-            label={t.player.facts.created}
-            value={video.fileCreatedAt}
-          />
-          {versions !== undefined && versionCount >= 2 && (
-            <VersionsFact
-              video={video}
-              count={versionCount}
-              owner={owner}
-              navigation={versions.navigation}
-              onReplace={versions.onReplace}
-              onRefresh={versions.onRefresh}
-              // 項目が消えるので、フォーカスを右端の操作の先頭へ移す。
-              onDissolved={() =>
-                actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
-              }
-            />
-          )}
-          {owner && video.thumbnailPositionMs !== undefined && (
-            <ThumbnailFact
-              url={video.thumbnailUrl}
-              positionMs={video.thumbnailPositionMs}
-              clearing={thumbnail.sending === "clear"}
-              onClear={() => thumbnail.send(null)}
-            />
-          )}
-        </ul>
-        {(location !== undefined ||
-          (owner && capture !== undefined) ||
-          favorite !== undefined) && (
-          <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
+    <PageSection
+      title={f.label}
+      actions={
+        hasActions ? (
+          <div ref={actionsRef} className="flex items-center gap-1">
             {favorite !== undefined && (
               <FavoriteToggle
                 variant="page"
                 favorite={favorite}
-                label={t.player.facts.favorite}
+                label={f.favorite}
                 onToggle={async () => {
                   setFailure(null);
                   // 塗りは取り直した `favorite` で確かめる（R-6、033「Refresh after edits」）。
                   // 取り直しが終わるまで送信中のままにし、前の状態から重ねて送らない。
                   await onFavorite?.(!favorite);
                 }}
-                onFailed={(reason) => setFailure(t.player.facts.favoriteFailed(reason))}
+                onFailed={(reason) => setFailure(f.favoriteFailed(reason))}
               />
             )}
             {owner && capture !== undefined && (
@@ -360,42 +328,62 @@ export default function VideoFacts({
               />
             )}
             {location?.openable === true && (
-              <IconButton
-                label={t.player.facts.openFile}
-                size="sm"
-                onClick={open}
-                className="text-fg-muted! hover:text-fg!"
-              >
+              <ActionButton label={f.openFile} onClick={open}>
                 <ExternalLink aria-hidden="true" />
-              </IconButton>
+              </ActionButton>
             )}
             {location !== undefined && (
-              <IconButton
-                label={t.player.facts.copyPath}
-                size="sm"
-                onClick={copyPath}
-                className="text-fg-muted! hover:text-fg!"
-              >
+              <ActionButton label={f.copyPath} onClick={copyPath}>
                 <Copy aria-hidden="true" />
-              </IconButton>
+              </ActionButton>
             )}
           </div>
-        )}
-      </div>
+        ) : undefined
+      }
+    >
+      <FactList facts={facts} />
       {failure !== null && (
-        <p role="alert" className="-mt-1 flex items-center gap-2 text-sm text-danger">
+        <p role="alert" className="flex items-center gap-2 text-destructive">
           <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
           {failure}
         </p>
       )}
       <TechnicalLine summary={technical} />
-    </div>
+    </PageSection>
   );
 }
 
 /**
- * ThumbnailFact は情報の行の 4 つ目の項目で、指定した代表サムネイルの小さな画像・位置・
- * 解除の × を並べる（ui-design「Item」）。画像を読み込めない間・失敗したときは空の箱にする。
+ * ActionButton は節の見出しの右の、アイコンだけの操作である。お気に入り（Toggle の `sm`）と
+ * 同じ大きさ（`icon-sm`）にそろえ、名前をツールチップでも出す。
+ */
+function ActionButton({
+  label,
+  className,
+  children,
+  ...props
+}: ComponentProps<typeof Button> & { label: UiText }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
+          className={cn("text-muted-foreground", className)}
+          {...props}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * ThumbnailFact は「Thumbnail」の値で、指定した代表サムネイルの小さな画像・位置・解除の × を
+ * 並べる（ui-design「Item」）。画像を読み込めない間・失敗したときは空の箱にする。
  */
 function ThumbnailFact({
   url,
@@ -411,9 +399,8 @@ function ThumbnailFact({
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   const label = t.player.facts.thumbnailAt(formatDuration(positionMs));
   return (
-    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
-      <Image className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
-      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-surface">
+    <span title={label} className="flex items-center gap-2 whitespace-nowrap">
+      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-muted">
         {url !== undefined && url !== brokenUrl && (
           <img
             src={url}
@@ -424,27 +411,25 @@ function ThumbnailFact({
         )}
       </span>
       <span className="sr-only">{label} </span>
-      {formatDuration(positionMs)}
-      <button
-        type="button"
-        aria-label={t.player.facts.useAutomaticThumbnail}
-        title={t.player.facts.useAutomaticThumbnail}
+      <span className="tabular-nums">{formatDuration(positionMs)}</span>
+      <ActionButton
+        label={t.player.facts.useAutomaticThumbnail}
         aria-disabled={clearing || undefined}
         onClick={() => {
           if (!clearing) onClear();
         }}
-        className="flex size-6 shrink-0 items-center justify-center rounded-sm text-fg-muted hover:bg-hover-wash hover:text-fg aria-disabled:cursor-default"
+        className="aria-disabled:cursor-default"
       >
         {clearing ? (
           <LoaderCircle
-            className="size-3 animate-spin motion-reduce:animate-none"
+            className="animate-spin motion-reduce:animate-none"
             aria-hidden="true"
           />
         ) : (
-          <X className="size-3" aria-hidden="true" />
+          <X aria-hidden="true" />
         )}
-      </button>
-    </li>
+      </ActionButton>
+    </span>
   );
 }
 
@@ -464,9 +449,8 @@ function CaptureButton({
 }) {
   const unavailable = !capture.enabled && !sending;
   return (
-    <IconButton
+    <ActionButton
       label={t.player.facts.useCurrentFrame}
-      size="sm"
       aria-disabled={unavailable || sending || undefined}
       onClick={() => {
         if (!capture.enabled || sending) return;
@@ -474,10 +458,7 @@ function CaptureButton({
         if (positionMs === null || !Number.isFinite(positionMs)) return;
         onCapture(Math.max(0, Math.round(positionMs)));
       }}
-      className={cn(
-        "text-fg-muted! hover:text-fg! aria-disabled:cursor-default",
-        unavailable && "opacity-50",
-      )}
+      className={cn("aria-disabled:cursor-default", unavailable && "opacity-50")}
     >
       {sending ? (
         <LoaderCircle
@@ -487,37 +468,35 @@ function CaptureButton({
       ) : (
         <Camera aria-hidden="true" />
       )}
-    </IconButton>
+    </ActionButton>
   );
 }
 
 function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummary> }) {
   const base = "text-xs tracking-wider tabular-nums";
   if (summary.kind === "pending") {
-    return <p className={cn(base, "text-fg-muted")}>{t.player.facts.technicalPending}</p>;
+    return (
+      <p className={cn(base, "text-muted-foreground")}>
+        {t.player.facts.technicalPending}
+      </p>
+    );
   }
   if (summary.kind === "failed") {
     return <p className={cn(base, "text-warning")}>{t.player.facts.technicalFailed}</p>;
   }
   if (summary.values.length === 0) return null;
-  // どの項目も左に縦線と余白を持ち、並び全体をその幅だけ左へずらして外側で切る。
-  // 折り返した行の先頭の項目も、線と余白が切り落とされて行頭に残らない。
   return (
-    <div className="overflow-hidden">
-      <ul
-        aria-label={t.player.facts.technical}
-        lang="en"
-        className={cn(
-          base,
-          "-ml-[calc(0.625rem+1px)] flex flex-wrap items-center gap-y-1 text-fg-muted uppercase",
-        )}
-      >
-        {summary.values.map((value) => (
-          <li key={value} className="border-l border-border-strong px-2.5 leading-none">
-            {value}
-          </li>
-        ))}
-      </ul>
-    </div>
+    <ul
+      aria-label={t.player.facts.technical}
+      lang="en"
+      className={cn(
+        base,
+        "flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground uppercase",
+      )}
+    >
+      {summary.values.map((value) => (
+        <li key={value}>{value}</li>
+      ))}
+    </ul>
   );
 }
