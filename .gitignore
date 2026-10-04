@@ -62,3 +62,6 @@ __pycache__/
 
 # docs-site/translate/site.mjs が translations/ja/ から作る和訳のページ。
 /ja/
+
+# UI screenshots are not kept in the repository.
+/docs/screenshots/

@@ -3,9 +3,9 @@
 The `plan` and `design` stages write or revise documents. Their PR body lets a
 reviewer see what the documents decide without opening them. The body is in
 Japanese ([W-1](../../../../docs/design-docs/writing-quality.md#w-1-documents-are-in-english-issues-and-pr-bodies-are-in-japanese)).
-It replaces the `概要` and `変更点` sections of
+It replaces the sections of
 [the repository PR template](../../../../.github/pull_request_template.md) for
-these PRs; keep its `関連 Issue` and `確認` sections.
+these PRs, except `関連 Issue`, which it keeps.
 
 ## Sections
 

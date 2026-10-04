@@ -21,7 +21,11 @@ file into a handbook.
 - Write documents in technical English to
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
   starting from the type for the document's kind. Issue and PR bodies stay
-  Japanese.
+  Japanese. A PR body fills
+  [the PR template](.github/pull_request_template.md) (behaviour before and
+  after, a diagram when a flow changes) so a reviewer can follow the change
+  without opening the code; `plan` and `design` PRs use
+  [stage-pr-body.md](.agents/skills/issue-handoff/references/stage-pr-body.md).
 - After the English of a change is final, hand every changed, renamed or
   deleted document under `docs/`, `specs/` and `ARCHITECTURE.md` to the
   `doc-translator` subagent and commit its `translations/ja/` output in the
