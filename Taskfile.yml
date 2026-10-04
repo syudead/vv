@@ -20,11 +20,12 @@ tasks:
 
   setup:
     desc: Download dependencies and warm local tool caches.
+    # .claude/hooks/session-start.sh が同じ手順を差分だけで実行している。
+    # 手順を足したり外したりしたら、フックも合わせる。
     cmds:
       - go mod download
       - go -C tools mod download
-      # web-deps 越しではなく直接呼ぶ。setup は「入れ直す」入口なので、
-      # 最新かどうかの判定で飛ばしてはいけない。
+      # setup は「入れ直す」入口なので、最新かどうかの判定で飛ばしてはいけない。
       - npm --prefix web ci
       - npm --prefix tools ci
       - npm --prefix docs-site ci
