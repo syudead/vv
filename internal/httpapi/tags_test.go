@@ -159,9 +159,9 @@ func (f *fakeTags) ListRejectedTagNames(_ context.Context, cursor string, limit 
 	return domain.RejectedTagNamePage{Items: f.rejectedNames, Total: len(f.rejectedNames)}, f.err
 }
 
-func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
+func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) (bool, error) {
 	f.operation, f.lastName = "forget-rejected", name
-	return f.err
+	return f.err == nil, f.err
 }
 
 func (f *fakeTags) BatchTags(_ context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {

@@ -82,6 +82,9 @@ type (
 	mcpListVideos  = extgen.ListVideosParams
 	mcpLookupVideo = extgen.LookupVideoParams
 	mcpListTags    = extgen.ListTagsParams
+	// mcpListRejectedTagNames と mcpForgetRejectedTagName は却下した名前の操作の問い合わせである。
+	mcpListRejectedTagNames  = extgen.ListRejectedTagNamesParams
+	mcpForgetRejectedTagName = extgen.ForgetRejectedTagNameParams
 )
 
 // mcpListTagsDefaultLimit は list_tags が limit を省かれたときに入れる 1 ページの件数である。
@@ -200,6 +203,47 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name: "batch_tags",
+		Description: "Confirm, reject or delete tags in one transaction (POST /api/v1/tags/batch). " +
+			"confirm and reject apply to tentative tags, delete to confirmed tags. reject deletes the tag and adds its " +
+			"name to the rejected names, so a later tentative attach of that name is skipped; delete does not remember " +
+			"the name. ids holds 1 to 20000 ids; for one tag send ids: [id]. The result splits the deduplicated ids into " +
+			"appliedIds, notFoundIds and notApplicableIds (a tag of the wrong kind, left unchanged).",
+		InputSchema: tagBatchInputSchema(),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagBatchRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/batch", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_rejected_tag_names",
+		Description: "List the rejected tag names in natural name order, one page at a time " +
+			"(GET /api/v1/tags/rejected-names). A tentative attach of a rejected name is skipped. limit is 1 to 200 " +
+			"and defaults to 100; total counts every rejected name. Pass nextCursor back as cursor until it is absent.",
+		InputSchema: rejectedTagNamesInputSchema(),
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListRejectedTagNames) (*mcp.CallToolResult, any, error) {
+		query := url.Values{}
+		if in.Cursor != nil {
+			query.Set("cursor", *in.Cursor)
+		}
+		if in.Limit != nil {
+			query.Set("limit", strconv.Itoa(*in.Limit))
+		}
+		return t.call(ctx, http.MethodGet, "/tags/rejected-names", query, nil)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "forget_rejected_tag_name",
+		Description: "Remove one name from the rejected tag names (DELETE /api/v1/tags/rejected-names), so the next " +
+			"tentative attach of that name creates a tag again. The name is normalized as tag names are. The result is " +
+			"the matched name and removed, which is false when the name was not rejected and nothing changed.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpForgetRejectedTagName) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodDelete, "/tags/rejected-names", url.Values{"name": {in.Name}}, nil)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name: "update_video_tags",
 		Description: "Add, remove or replace tags on videos by tag name or synonym (POST /api/v1/video-tags). " +
 			"add creates missing tags; replace makes the manually added tags exactly the given set. " +
@@ -295,6 +339,28 @@ func listTagsInputSchema() *jsonschema.Schema {
 	if q := schema.Properties["q"]; q != nil {
 		maxLength := maxQueryLength
 		q.MaxLength = &maxLength
+	}
+	return schema
+}
+
+// tagBatchInputSchema は batch_tags の入力の形である。型から導き、action に契約の値を足す
+// （update_video_tags と同じやり方）。
+func tagBatchInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[extgen.TagBatchRequest]("batch_tags")
+	if action := schema.Properties["action"]; action != nil {
+		action.Enum = []any{string(extgen.Confirm), string(extgen.Reject), string(extgen.Delete)}
+	}
+	return schema
+}
+
+// rejectedTagNamesInputSchema は list_rejected_tag_names の入力の形である。型から導き、limit に
+// 範囲と既定を足す（型からは整数としか分からない）。
+func rejectedTagNamesInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[mcpListRejectedTagNames]("list_rejected_tag_names")
+	if limit := schema.Properties["limit"]; limit != nil {
+		minimum, maximum := 1.0, float64(domain.MaxTagPageLimit)
+		limit.Minimum, limit.Maximum = &minimum, &maximum
+		limit.Default = json.RawMessage(strconv.Itoa(rejectedTagNamePageDefaultLimit))
 	}
 	return schema
 }

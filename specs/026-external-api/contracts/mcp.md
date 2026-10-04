@@ -38,11 +38,15 @@ index?, tagId?, tagName? }` as external API errors.
 | `merge_tags` | `POST /api/v1/tags/merge` |
 | `rename_tag` | `POST /api/v1/tags/rename` |
 | `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
+| `batch_tags` | `POST /api/v1/tags/batch` |
+| `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names` |
+| `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
 
 `update_video_display_names` and `update_video_thumbnails` were added in 029
 ([specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)).
 039 added the list parameters of `list_tags` and its default `limit`, and the
-tools `merge_tags`, `rename_tag` and `update_tag_synonyms`
+tools `merge_tags`, `rename_tag`, `update_tag_synonyms`, `batch_tags`,
+`list_rejected_tag_names` and `forget_rejected_tag_name`
 ([specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)).
 
 | Tool | Hints | Reason |
@@ -54,3 +58,5 @@ tools `merge_tags`, `rename_tag` and `update_tag_synonyms`
 | `merge_tags` | `destructiveHint: true`, `idempotentHint: true` | Merged sources are deleted. |
 | `rename_tag` | `destructiveHint: false`, `idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`, `idempotentHint: true` | `remove` drops a name; `add` with `mergeTagId` merges a tag. |
+| `batch_tags` | `destructiveHint: true`, `idempotentHint: true` | `reject` and `delete` remove tags. |
+| `forget_rejected_tag_name` | `destructiveHint: true`, `idempotentHint: true` | The name stops being skipped by tentative attaches. |
