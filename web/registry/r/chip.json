@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "chip",
+  "title": "Chip",
+  "description": "The vv Chip component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/Chip.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { cn } from \"../lib/cn\";\n\nconst tones = {\n  neutral: \"bg-elevated text-fg\",\n  // bg-elevated の面（ModalFrame など）の中で使うと neutral と色が重なって面が\n  // 消えるための代わり（ui-design.md「Synonyms」、tokens.test.ts の pairs\n  // [\"fg\", \"bg\"] で検査済み）。\n  onElevated: \"bg-bg text-fg\",\n  accent: \"bg-accent-soft text-link\",\n  success: \"bg-success-soft text-success\",\n  warning: \"bg-warning-soft text-warning\",\n  danger: \"bg-danger-soft text-danger\",\n};\n\nexport default function Chip({\n  children,\n  tone = \"neutral\",\n  className,\n  title,\n}: {\n  children: ReactNode;\n  tone?: keyof typeof tones;\n  className?: string;\n  /** 省略されるときに全体を見せる。 */\n  title?: string;\n}) {\n  return (\n    <span\n      title={title}\n      className={cn(\n        \"inline-flex h-6 items-center gap-1 rounded-sm px-2 text-xs font-medium whitespace-nowrap tabular-nums [&>svg]:size-3.5\",\n        tones[tone],\n        className,\n      )}\n    >\n      {children}\n    </span>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

@@ -80,7 +80,7 @@ func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
 		return errors.New("生成器が落ちた")
 	}
 
-	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", failing); err == nil {
+	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", "shadcn", failing); err == nil {
 		t.Fatal("生成器の失敗を伝えていない")
 	}
 	if !slices.Equal(calls, []string{"oapi-codegen"}) {
@@ -92,10 +92,10 @@ func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
 		calls = append(calls, name)
 		return nil
 	}
-	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", succeeding); err != nil {
+	if err := generate(t.TempDir(), "oapi-codegen", "openapi-typescript", "shadcn", succeeding); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(calls, []string{"oapi-codegen", "oapi-codegen", "openapi-typescript"}) {
+	if !slices.Equal(calls, []string{"oapi-codegen", "oapi-codegen", "openapi-typescript", "shadcn"}) {
 		t.Errorf("生成器の呼び出しが揃っていない: %v", calls)
 	}
 }

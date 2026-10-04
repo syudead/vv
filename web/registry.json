@@ -1,0 +1,255 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "vv",
+  "homepage": "https://github.com/syudead/vv",
+  "items": [
+    {
+      "name": "vv",
+      "type": "registry:file",
+      "title": "vv design system index",
+      "description": "Every item in the vv registry, its tier and when to use it.",
+      "docs": "Start here. Read the items this index names with `npx shadcn view ./registry/r/<item>.json` from web/.",
+      "files": [
+        {
+          "path": "registry/index.md",
+          "type": "registry:file",
+          "target": "registry/index.md"
+        }
+      ]
+    },
+    {
+      "name": "brand-home-link",
+      "type": "registry:ui",
+      "title": "BrandHomeLink",
+      "description": "The vv BrandHomeLink component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/BrandHomeLink.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "The vv Button component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Button.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "checkbox",
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "description": "The vv Checkbox component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Checkbox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "chip",
+      "type": "registry:ui",
+      "title": "Chip",
+      "description": "The vv Chip component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Chip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "combobox",
+      "type": "registry:ui",
+      "title": "Combobox",
+      "description": "The vv Combobox component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Combobox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "filter-chip",
+      "type": "registry:ui",
+      "title": "FilterChip",
+      "description": "The vv FilterChip component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/FilterChip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "icon-button",
+      "type": "registry:ui",
+      "title": "IconButton",
+      "description": "The vv IconButton component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/IconButton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "menu",
+      "type": "registry:ui",
+      "title": "Menu",
+      "description": "The vv Menu component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Menu.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "modal-frame",
+      "type": "registry:ui",
+      "title": "ModalFrame",
+      "description": "The vv ModalFrame component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/ModalFrame.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "popover",
+      "type": "registry:ui",
+      "title": "Popover",
+      "description": "The vv Popover component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Popover.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "scrub-preview",
+      "type": "registry:ui",
+      "title": "ScrubPreview",
+      "description": "The vv ScrubPreview component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/ScrubPreview.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "segmented-control",
+      "type": "registry:ui",
+      "title": "SegmentedControl",
+      "description": "The vv SegmentedControl component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/SegmentedControl.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "skeleton",
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "description": "The vv Skeleton component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Skeleton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tabs",
+      "type": "registry:ui",
+      "title": "Tabs",
+      "description": "The vv Tabs component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Tabs.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tentative-mark",
+      "type": "registry:ui",
+      "title": "TentativeMark",
+      "description": "The vv TentativeMark component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/TentativeMark.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "thumbnail-backdrop",
+      "type": "registry:ui",
+      "title": "ThumbnailBackdrop",
+      "description": "The vv ThumbnailBackdrop component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/ThumbnailBackdrop.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toast",
+      "type": "registry:ui",
+      "title": "Toast",
+      "description": "The vv Toast component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Toast.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "description": "The vv Tooltip component in web/src/ui.",
+      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "files": [
+        {
+          "path": "src/ui/Tooltip.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    }
+  ]
+}

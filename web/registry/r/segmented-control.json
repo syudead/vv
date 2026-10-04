@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "segmented-control",
+  "title": "SegmentedControl",
+  "description": "The vv SegmentedControl component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/SegmentedControl.tsx",
+      "content": "import { ToggleGroup } from \"radix-ui\";\nimport type { ReactNode } from \"react\";\n\nimport type { UiText } from \"../i18n\";\nimport Tooltip from \"./Tooltip\";\n\nexport interface SegmentOption<T extends string> {\n  value: T;\n  label: UiText;\n  icon: ReactNode;\n}\n\n/** SegmentedControl は排他的な少数の選択肢をひとつの枠に並べる。 */\nexport default function SegmentedControl<T extends string>({\n  value,\n  onValueChange,\n  options,\n  label,\n}: {\n  value: T;\n  onValueChange: (value: T) => void;\n  options: readonly SegmentOption<T>[];\n  label: UiText;\n}) {\n  return (\n    <ToggleGroup.Root\n      type=\"single\"\n      value={value}\n      onValueChange={(next) => {\n        if (next !== \"\") onValueChange(next as T);\n      }}\n      aria-label={label}\n      className=\"inline-flex h-9 items-center rounded-md bg-surface shadow-card\"\n    >\n      {options.map((option) => (\n        <Tooltip key={option.value} content={option.label}>\n          <ToggleGroup.Item\n            value={option.value}\n            aria-label={option.label}\n            className=\"inline-flex h-full w-9 items-center justify-center rounded-md border border-transparent text-fg-muted transition-colors first:rounded-r-none last:rounded-l-none hover:text-fg data-[state=on]:border-accent-active data-[state=on]:bg-accent-soft data-[state=on]:text-link disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4\"\n          >\n            {option.icon}\n          </ToggleGroup.Item>\n        </Tooltip>\n      ))}\n    </ToggleGroup.Root>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

@@ -1,4 +1,4 @@
-import * as RadixCheckbox from "@radix-ui/react-checkbox";
+import { Checkbox as RadixCheckbox } from "radix-ui";
 import { Check, Minus } from "lucide-react";
 import type { MouseEvent, Ref } from "react";
 

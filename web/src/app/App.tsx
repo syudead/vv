@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 import { useAudience } from "../auth/audience";
@@ -27,6 +28,12 @@ const DuplicatesPage = await deferredRoute(
 );
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
+// デザインシステムの見本（/design-system）は開発時だけに置く
+// （specs/038-design-system/research.md R-2）。本番のビルドでは import.meta.env.DEV が
+// false に置き換わり、この import ごと出力から消える。
+const DesignSystemPage = import.meta.env.DEV
+  ? lazy(() => import("../designSystem/DesignSystemPage"))
+  : null;
 
 function AppRoutes() {
   const location = useLocation();
@@ -82,6 +89,16 @@ function AppRoutes() {
           }
         />
         <Route path="/videos/:id" element={<VideoPage />} />
+        {DesignSystemPage && (
+          <Route
+            path="/design-system"
+            element={
+              <Suspense fallback={null}>
+                <DesignSystemPage />
+              </Suspense>
+            }
+          />
+        )}
       </Routes>
     </ToastProvider>
   );

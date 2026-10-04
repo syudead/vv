@@ -1,4 +1,5 @@
 // defineConfig は vitest/config から取る。Vite のものは test の項を型として知らない。
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -6,6 +7,10 @@ import tailwindcss from "@tailwindcss/vite";
 // 開発時は Go サーバー（既定 :8080）へ /api を中継する。task dev がこの構成で動く。
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  resolve: {
+    // tsconfig.json の paths と同じ。shadcn/ui の部品が @/ で import する。
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   build: {
     // Go 側が embed する出力先。web/dist は版管理に .gitkeep だけを置いてあり、
     // これが Go の埋め込み対象を空にしないので、SPA をビルドしていなくても

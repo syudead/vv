@@ -67,6 +67,20 @@ When `ffmpeg` changes encoder names or arguments, update
 [hardware-encoding.md](../design-docs/hardware-encoding.md) and
 `internal/media` to match.
 
+## Update the vendored shadcn skill
+
+The shadcn CLI is the `shadcn` devDependency in `web/package.json`, which
+Renovate updates with the web npm group. The shadcn skill in
+`.agents/skills/shadcn/` is a copy that Renovate does not read; refresh it in
+one PR:
+
+1. Copy `skills/shadcn/` from the new commit of
+   [shadcn-ui/ui](https://github.com/shadcn-ui/ui), without `evals/`.
+2. Replace every `npx shadcn@latest`, `pnpm dlx shadcn@latest` and
+   `bunx --bun shadcn@latest` with `npm --prefix web exec shadcn --`, and update
+   the commit in `.agents/skills/shadcn/VENDORED.md`.
+3. Run `task test-web`; `vendoredSkill.test.ts` fails while `shadcn@` remains.
+
 ## Renovate PRs that need a person
 
 - A PR left open has a CI failure, a conflict, or is a major update; Renovate's

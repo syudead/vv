@@ -9,6 +9,9 @@
     // ファイルとして読むために要る。実行時の依存は増やさない。
     "types": ["vite/client", "vitest/globals", "node"],
 
+    // shadcn/ui の部品とその規則は @/ で書かれている（components.json）。既存の相対 import は変えない。
+    "paths": { "@/*": ["./src/*"] },
+
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,

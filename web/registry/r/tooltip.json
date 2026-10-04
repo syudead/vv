@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "tooltip",
+  "title": "Tooltip",
+  "description": "The vv Tooltip component in web/src/ui.",
+  "files": [
+    {
+      "path": "src/ui/Tooltip.tsx",
+      "content": "import { Tooltip as RadixTooltip } from \"radix-ui\";\nimport type { ReactElement, ReactNode } from \"react\";\n\nexport function TooltipProvider({ children }: { children: ReactNode }) {\n  return (\n    <RadixTooltip.Provider delayDuration={400} skipDelayDuration={200}>\n      {children}\n    </RadixTooltip.Provider>\n  );\n}\n\nexport default function Tooltip({\n  content,\n  children,\n  side = \"bottom\",\n  container,\n}: {\n  content: ReactNode;\n  children: ReactElement;\n  side?: \"top\" | \"bottom\" | \"left\" | \"right\";\n  /** 吹き出しを描く先。無ければ body。全画面の要素の中から出すときに渡す。 */\n  container?: HTMLElement | null;\n}) {\n  return (\n    <RadixTooltip.Root>\n      <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>\n      <RadixTooltip.Portal container={container ?? undefined}>\n        <RadixTooltip.Content\n          side={side}\n          sideOffset={6}\n          className=\"z-50 rounded-sm bg-navbar px-2 py-1 text-xs text-fg shadow-elevated animate-fade-in select-none\"\n        >\n          {content}\n        </RadixTooltip.Content>\n      </RadixTooltip.Portal>\n    </RadixTooltip.Root>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "type": "registry:ui"
+}

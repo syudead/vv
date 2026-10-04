@@ -39,6 +39,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read research.md for technical decisions and constraints
    - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md
    - **IF EXISTS**: Read quickstart.md for integration scenarios
+   - **FOR UI WORK**: Read docs/design-docs/design-system.md and build screens from its registry components, tokens and page patterns; a component or pattern the registry lacks is added to the design system first
    For a plain-text request, use the user's request and the relevant code and
    documentation in the current checkout instead.
 
