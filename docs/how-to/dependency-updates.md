@@ -60,8 +60,8 @@ Raise it in one PR:
    actual values.
 3. Build the zip with `task build-windows-app` and check the version in its
    `ffmpeg/README.txt`.
-4. After the merge, run the `Windows app` workflow by hand and check that the
-   bundled `ffmpeg` has `h264_nvenc` and `h264_qsv`.
+4. After the merge, check that the `Windows app` workflow run on `main` passes,
+   which confirms the bundled `ffmpeg` has `h264_nvenc` and `h264_qsv`.
 
 When `ffmpeg` changes encoder names or arguments, update
 [hardware-encoding.md](../design-docs/hardware-encoding.md) and

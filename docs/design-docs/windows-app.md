@@ -281,7 +281,7 @@ image on a push to `main`.
 
 ```mermaid
 flowchart LR
-  tag[v* tag or dispatch] --> build[Linux job builds zip]
+  tag[v* tag, push to main or dispatch] --> build[Linux job builds zip]
   build --> verify[Windows job checks zip]
   verify --> tagged{Tag?}
   tagged -->|yes| release[Attach to Release]
@@ -297,7 +297,8 @@ flowchart LR
 | Exe manifest | Per-monitor v2 DPI and Common Controls v6, from `cmd/mdm/winres/` through `go-winres` (pinned in `tools/go.mod`) |
 | `.syso` | Generated during the build and deleted afterwards, never committed |
 | FFmpeg source | `GyanD/codexffmpeg` `essentials_build` zip at the version and SHA-256 pinned in `scripts/build/windows_app.go` |
-| FFmpeg cache | `dist/cache/`, re-hashed on each use; a mismatch deletes it and fails with expected and actual hashes |
+| FFmpeg cache | `dist/cache/`, re-hashed on each use; a mismatch deletes it and fails with expected and actual hashes. In the workflow it is kept in the Actions cache so the download source cannot turn `main` red |
+| Runs on `main` | Every push builds and checks the zip as an artifact only; a newer push cancels the running one, tag runs are never cancelled |
 | Hardware encoders | NVENC and QSV as in [hardware-encoding.md](hardware-encoding.md); no AMF |
 | Windows check | Layout, and `ffmpeg -hide_banner -encoders` lists `h264_nvenc` and `h264_qsv`; GPU transcoding is checked on real hardware ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
 | Release | Created when missing, the zip replaced when present |
@@ -309,7 +310,7 @@ being compiled in. Workflow: `.github/workflows/windows-app.yml`.
 
 | Rejected | Why |
 | --- | --- |
-| A zip on every push to `main` | No user-facing version boundary (R-13) |
+| A Release on every push to `main` | No user-facing version boundary (R-13); `main` only builds and checks the zip |
 | `windows/arm64` too | No pinnable arm64 `ffmpeg` exists, and the x64 exe runs under emulation (R-13) |
 | `ffmpeg` from BtbN/FFmpeg-Builds | No fixed Release per version, so a pin cannot be fetched later (R-12) |
 | Committing the `.syso` | The untagged `mdm.exe` would get the icon and manifest, and the version information would go stale |

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: db316ec58164e9e9d8676fbab5e50f5e48097271543f95f5fd8ac1ace15bc8fb
+sourceHash: b0e2325dfd14fd5bdb947bcf664c2b94d33a2f9a2b7f06f6b6cbdc062833ca6a
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -46,7 +46,7 @@ Windows の zip は、`GyanD/codexffmpeg` の GitHub Releases から Gyan.dev �
 1. 新しいリリースに `ffmpeg-<version>-essentials_build.zip` があり、その SHA-256 が <https://www.gyan.dev/ffmpeg/builds/> の `.sha256` の値と一致することを確認する。
 2. `scripts/build/windows_app.go` の `ffmpegVersion` と `ffmpegSHA256` を変える。一致しないと `task build-windows-app` は失敗し、期待値と実際の値を表示する。
 3. `task build-windows-app` で zip をビルドし、その `ffmpeg/README.txt` のバージョンを確認する。
-4. マージ後、`Windows app` ワークフローを手動で実行し、同梱の `ffmpeg` に `h264_nvenc` と `h264_qsv` があることを確認する。
+4. マージ後、`main` での `Windows app` ワークフローの実行が通ることを確認する。これで同梱の `ffmpeg` に `h264_nvenc` と `h264_qsv` があることが確かめられる。
 
 `ffmpeg` がエンコーダー名や引数を変えたときは、[hardware-encoding.md](../design-docs/hardware-encoding.md) と `internal/media` を合わせて更新する。
 
