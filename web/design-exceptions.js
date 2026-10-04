@@ -56,94 +56,30 @@ export default [
     kind: "migration",
   },
   {
-    file: "player/AutoplayNotice.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/EndedOverlay.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/NeighborArrows.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/RelatedVideos.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/StallWarning.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/StatusOverlays.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["pb-14", "gap-2\\.5", "size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "player/TouchControls.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-15", "size-7"],
-    kind: "migration",
-  },
-  {
-    file: "player/VersionsFact.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/GroupLine.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "player/VideoFacts.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/VideoHeader.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5", "max-w-40"],
-    kind: "migration",
-  },
-  {
-    file: "player/VideoPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
     file: "player/VideoPlayer.tsx",
     rules: [
       "no-restricted-syntax",
       "better-tailwindcss/no-restricted-classes",
       "better-tailwindcss/no-unknown-classes",
     ],
-    kind: "migration",
+    classes: [
+      "size-\\[1\\.6em\\]",
+      "vv-video-player",
+      "vjs-control",
+      "vjs-button",
+      "vv-bar-button",
+    ],
+    kind: "special",
+    reason:
+      "The video.js control bar is third-party DOM skinned by CSS in index.css; the buttons vv inserts into it (restart) are plain buttons carrying video.js's own classes and sized in em like its icons, so they match the bar instead of a design-system Button.",
   },
   {
-    file: "player/VideoTags.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5", "h-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "player/VideoTitle.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "player/VisibilitySwitch.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["px-2\\.5"],
-    kind: "migration",
+    file: "player/seekPreview.ts",
+    rules: ["better-tailwindcss/no-unknown-classes"],
+    classes: ["vv-seek-preview(?:-frame|-image|-time)?"],
+    kind: "special",
+    reason:
+      "The seek preview over the video.js progress bar (.vv-seek-preview in index.css) is placed from the pointer and the frame size at run time and sized from the seek-preview tokens; it is not a card scrub (ScrubPreview) and has no design-system component.",
   },
   {
     file: "settings/APITokensSection.tsx",

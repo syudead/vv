@@ -20,7 +20,8 @@ import {
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import Skeleton from "../ui/Skeleton";
+import { DetailPage } from "../ui/patterns/detail-page";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
 import EndedOverlay from "./EndedOverlay";
 import GroupLine from "./GroupLine";
@@ -56,6 +57,13 @@ import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
 
 const noSubtitles: readonly SubtitleTrack[] = [];
+
+/**
+ * プレイヤーの枠の高さの上限。見出しの帯と、プレイヤーの下の題名・タグの行までが画面に
+ * 収まる高さにする。背の低い窓でも消えないよう 15rem を下回らせない（はみ出す分は主領域か
+ * ページがスクロールする）。
+ */
+const frameMaxHeight = "max(100dvh - 14rem, 15rem)";
 
 /** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
 interface Attempt {
@@ -100,12 +108,12 @@ export default function VideoPage() {
   const video = detail.kind === "ready" ? detail.video : undefined;
 
   // 一覧をスクロールした位置から来ても、プレイヤーを画面の上に出す。別の動画へ移ったときも
-  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。広い画面では左右の列が
-  // それぞれスクロールするので、左の列も先頭へ戻す。
-  const mainColumnRef = useRef<HTMLDivElement | null>(null);
+  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。広い画面では詳細ページの
+  // 主領域と情報欄がそれぞれスクロールするので、プレイヤーのある主領域も先頭へ戻す。
+  const frameRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
-    mainColumnRef.current?.scrollTo?.(0, 0);
+    frameRef.current?.closest('[data-slot="detail-page-main"]')?.scrollTo?.(0, 0);
   }, [id]);
 
   const [pageId, setPageId] = useState(id);
@@ -127,7 +135,6 @@ export default function VideoPage() {
   const [stallDismissedId, setStallDismissedId] = useState<number | null>(null);
   // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
-  const frameRef = useRef<HTMLDivElement | null>(null);
   // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
   const fullscreenTarget = useCallback(() => frameRef.current, []);
   // 全画面にしている入れ物。前後の矢印の吹き出しは、その間だけ入れ物の中に描く。
@@ -422,172 +429,172 @@ export default function VideoPage() {
   );
 
   return (
-    // 狭い画面はページ全体を 1 つとしてスクロールし、見出しの帯は上に留まる。広い画面は
-    // ページを画面の高さに留め、帯の下で左の列（プレイヤー・題名・情報）と右の列（関連動画）が
-    // それぞれ中でスクロールする。ページと列の両方がスクロールして二重に動くことがないように
-    // するためである。
-    <div className="min-h-dvh bg-bg pb-16 lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden lg:pb-0">
-      <VideoHeader folder={video?.folder} onClose={close} />
-      <div className="flex w-full flex-col gap-5 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <div
-          ref={mainColumnRef}
-          // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
-          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-6"
-        >
-          <div
-            ref={frameRef}
-            data-player-frame=""
-            // 枠の幅は 16:9 の動画と同じ（それより横長なら動画の比率）で、高さは動画の比率に
-            // 合わせて画面に収まるまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出るので、
-            // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
-            // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
-            // 広い画面では、題名・タグ・情報の 2 行までが左の列に収まる高さ（帯・上下の余白・
-            // 下の情報で 17rem）を上限にし、ふだんは列をスクロールさせない。上限で列より細く
-            // なったときは、題名と左端をそろえるため左に寄せる。背の低い窓でも消えないよう、
-            // 高さの上限は 15rem を下回らせない（はみ出す分は左の列がスクロールする）。
-            style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full shrink-0 lg:ml-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] lg:max-w-[calc(max(100dvh-17rem,15rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
-          >
-            {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
-                全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
-            <div
-              aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] lg:max-h-[max(100dvh-17rem,15rem)] [:fullscreen>&]:hidden"
-            />
-            <div
-              data-overlay-layer=""
-              className="pointer-events-none relative z-10 col-start-1 row-start-1 flex min-w-0"
-            >
-              {layer}
-            </div>
-            {stallWarningShown && (
-              <StallWarning onDismiss={() => setStallDismissedId(id)} />
-            )}
-            {showPlayer && (
-              <VideoPlayer
-                key={`${String(id)}:${String(attempt.key)}`}
-                video={video}
-                initialPositionMs={attempt.startMs ?? resumePosition(video)}
-                autoplay={attempt.autoplay}
-                onPosition={rememberProgress}
-                onProgress={savePlayerProgress}
-                onError={onError}
-                onControls={setControls}
-                onStatus={onStatus}
-                onAspectRatio={setMediaAspect}
-                fullscreenTarget={fullscreenTarget}
-                subtitles={subtitles}
-              />
-            )}
-            {showPlayer && (
-              <NeighborArrows
-                previous={neighbor(neighbors?.prevId)}
-                next={neighbor(neighbors?.nextId)}
-                visible={chromeVisible || status.ended}
-                container={fullscreenFrame}
-              />
-            )}
-          </div>
-
-          <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">
-            {detail.kind === "loading" && (
-              <div className="flex flex-col gap-3">
-                <Skeleton className="h-7 w-2/3" />
-                <Skeleton className="h-5 w-1/2" />
-              </div>
-            )}
+    // 詳細ページの型（DetailPage）で組む（specs/038-design-system/ui-design.md「Page patterns」）。
+    // 見出しの帯の下に、主領域（プレイヤー・題名・タグ・公開）と情報欄（ファイルの情報・
+    // 関連動画）を並べる。狭い画面はページ全体を 1 つとしてスクロールする。広い画面はページを
+    // 画面の高さに留め、主領域と情報欄がそれぞれ中でスクロールする。ページと列の両方が
+    // スクロールして二重に動くことがないようにするためである。
+    <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
+      <DetailPage
+        header={<VideoHeader folder={video?.folder} onClose={close} />}
+        aside={
+          <>
             {video !== undefined && (
-              <>
-                <CreatingLine video={video} />
-                {/* 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。 */}
-                <div className="flex flex-col gap-2">
-                  {video.group !== undefined && (
-                    <GroupLine
-                      group={video.group}
-                      owner={owner}
-                      onChanged={() => {
-                        // group が無くなるので、この行・メンバーの並び・前後が
-                        // ふつうの動画の形に戻る（ui-design.md「Group line」）。
-                        void refresh();
-                        retryRelated();
-                      }}
-                    />
-                  )}
-                  <VideoTitle
-                    // 別の動画へ移ったら、編集中の入力と失敗の行を持ち越さない。
-                    key={`title:${String(video.id)}`}
-                    video={video}
-                    owner={owner}
-                    onSaved={(saved, mark) => {
-                      replace(saved, mark);
-                      // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
-                      renameRelated(saved);
-                    }}
-                    onStale={() => void refresh()}
-                  />
-                  {owner && (
-                    <VideoTags
-                      // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
-                      // ルートのまま次の動画へ移ることがある）使い回されるため、
-                      // VideoTags を videoId で作り直し、前の動画の重ねた
-                      // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
-                      key={`tags:${String(video.id)}`}
-                      videoId={video.id}
-                      tags={video.tags}
-                      onStaleVideo={() => void refresh()}
-                      // 更新日時が進むので取り直す。取り直しの間と失敗したときは前の値のまま
-                      // （specs/033-video-dates/ui-design.md「Refresh after edits」）。
-                      onChanged={() => void refresh()}
-                    />
-                  )}
-                  {owner && (
-                    // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
-                    // 別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。
-                    <VisibilitySwitch
-                      key={`visibility:${String(video.id)}`}
-                      videoId={video.id}
-                      isPublic={video.public}
-                      onChanged={() => void refresh()}
-                    />
-                  )}
-                </div>
-                {/* ゲストの応答には location が無いので、開く・コピーの操作は出ない。 */}
-                <VideoFacts
-                  // 別の動画へ移ったら、送信中の指定と失敗の行を持ち越さない。
-                  key={`facts:${String(video.id)}`}
-                  video={video}
-                  owner={owner}
-                  capture={capture}
-                  onChanged={(saved, mark) => {
-                    replace(saved, mark);
-                    // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
-                    rethumbRelated(saved);
-                  }}
-                  onStale={() => void refresh()}
-                  // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
-                  // （specs/035-favorites/ui-design.md「Video page」）。
-                  onFavorite={setFavorite}
-                  versions={{
-                    navigation: {
-                      backTo,
-                      autoplay: status.playing || status.ended,
-                    },
-                    onReplace: replace,
-                    onRefresh: () => void refresh(),
-                  }}
-                />
-              </>
+              // ゲストの応答には location が無いので、開く・コピーの操作は出ない。
+              <VideoFacts
+                // 別の動画へ移ったら、送信中の指定と失敗の行を持ち越さない。
+                key={`facts:${String(video.id)}`}
+                video={video}
+                owner={owner}
+                capture={capture}
+                onChanged={(saved, mark) => {
+                  replace(saved, mark);
+                  // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
+                  rethumbRelated(saved);
+                }}
+                onStale={() => void refresh()}
+                // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
+                // （specs/035-favorites/ui-design.md「Video page」）。
+                onFavorite={setFavorite}
+                versions={{
+                  navigation: {
+                    backTo,
+                    autoplay: status.playing || status.ended,
+                  },
+                  onReplace: replace,
+                  onRefresh: () => void refresh(),
+                }}
+              />
             )}
+            <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
+          </>
+        }
+      >
+        <div
+          ref={frameRef}
+          data-player-frame=""
+          // 枠の幅は 16:9 の動画と同じ（それより横長なら動画の比率）で、高さは動画の比率に
+          // 合わせて画面に収まるまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出るので、
+          // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
+          // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
+          // 高さの上限と、そこから出す幅の上限は、実行時に分かる動画の比率から計算する値なので
+          // クラスの段ではなく style で渡す（CardGrid の列の型と同じ扱い）。上限で主領域より
+          // 細くなったときは、題名と左端をそろえるため広い画面では左に寄せる。
+          style={
+            {
+              "--vv-video-aspect": String(aspect),
+              maxWidth: `calc(${frameMaxHeight} * max(${String(aspect)}, 16 / 9))`,
+            } as CSSProperties
+          }
+          className="relative isolate mx-auto grid w-full shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:ml-0 lg:rounded-md [&:fullscreen]:rounded-none"
+        >
+          {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
+              全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
+          <div
+            aria-hidden="true"
+            style={{ aspectRatio: String(aspect), maxHeight: frameMaxHeight }}
+            className="col-start-1 row-start-1 [:fullscreen>&]:hidden"
+          />
+          <div
+            data-overlay-layer=""
+            className="pointer-events-none relative z-10 col-start-1 row-start-1 flex min-w-0"
+          >
+            {layer}
           </div>
+          {stallWarningShown && (
+            <StallWarning
+              onDismiss={() => setStallDismissedId(id)}
+              container={fullscreenFrame}
+            />
+          )}
+          {showPlayer && (
+            <VideoPlayer
+              key={`${String(id)}:${String(attempt.key)}`}
+              video={video}
+              initialPositionMs={attempt.startMs ?? resumePosition(video)}
+              autoplay={attempt.autoplay}
+              onPosition={rememberProgress}
+              onProgress={savePlayerProgress}
+              onError={onError}
+              onControls={setControls}
+              onStatus={onStatus}
+              onAspectRatio={setMediaAspect}
+              fullscreenTarget={fullscreenTarget}
+              subtitles={subtitles}
+            />
+          )}
+          {showPlayer && (
+            <NeighborArrows
+              previous={neighbor(neighbors?.prevId)}
+              next={neighbor(neighbors?.nextId)}
+              visible={chromeVisible || status.ended}
+              container={fullscreenFrame}
+            />
+          )}
         </div>
 
-        <aside
-          // 広い画面では見出しの行を上に留め、関連動画の並びだけを中でスクロールさせる。
-          className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:border-t-0 lg:border-l lg:pl-5 lg:pt-6"
-        >
-          <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
-        </aside>
-      </div>
+        {detail.kind === "loading" && (
+          <div aria-hidden="true" className="flex flex-col gap-3">
+            <Skeleton className="h-8 w-2/3" />
+            <Skeleton className="h-6 w-1/2" />
+          </div>
+        )}
+        {video !== undefined && <CreatingLine video={video} />}
+        {video !== undefined && (
+          // 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。
+          <div className="flex flex-col gap-3">
+            {video.group !== undefined && (
+              <GroupLine
+                group={video.group}
+                owner={owner}
+                onChanged={() => {
+                  // group が無くなるので、この行・メンバーの並び・前後が
+                  // ふつうの動画の形に戻る（ui-design.md「Group line」）。
+                  void refresh();
+                  retryRelated();
+                }}
+              />
+            )}
+            <VideoTitle
+              // 別の動画へ移ったら、編集中の入力と失敗の行を持ち越さない。
+              key={`title:${String(video.id)}`}
+              video={video}
+              owner={owner}
+              onSaved={(saved, mark) => {
+                replace(saved, mark);
+                // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
+                renameRelated(saved);
+              }}
+              onStale={() => void refresh()}
+            />
+            {owner && (
+              <VideoTags
+                // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
+                // ルートのまま次の動画へ移ることがある）使い回されるため、
+                // VideoTags を videoId で作り直し、前の動画の重ねた
+                // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
+                key={`tags:${String(video.id)}`}
+                videoId={video.id}
+                tags={video.tags}
+                onStaleVideo={() => void refresh()}
+                // 更新日時が進むので取り直す。取り直しの間と失敗したときは前の値のまま
+                // （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+                onChanged={() => void refresh()}
+              />
+            )}
+            {owner && (
+              // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
+              // 別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。
+              <VisibilitySwitch
+                key={`visibility:${String(video.id)}`}
+                videoId={video.id}
+                isPublic={video.public}
+                onChanged={() => void refresh()}
+              />
+            )}
+          </div>
+        )}
+      </DetailPage>
     </div>
   );
 }

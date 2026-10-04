@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import { t } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
@@ -44,17 +44,17 @@ export default function EndedOverlay({
         {t.player.ended.announcement}
       </span>
       {next === undefined ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg bg-navbar p-5 text-center shadow-elevated">
-          <h2 className="text-lg font-semibold text-fg">{t.player.ended.announcement}</h2>
-          <Button ref={primary} variant="secondary" onClick={onReplay}>
+        <div className="flex flex-col items-center gap-3 rounded-lg bg-popover p-6 text-popover-foreground text-center shadow-elevated">
+          <h2 className="text-lg font-semibold">{t.player.ended.announcement}</h2>
+          <Button ref={primary} onClick={onReplay}>
             <RotateCcw aria-hidden="true" />
             {t.player.ended.replay}
           </Button>
         </div>
       ) : (
-        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
-          <h2 className="text-lg font-semibold text-fg">{t.player.ended.announcement}</h2>
-          <span className="text-xs font-semibold text-primary">
+        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-popover p-6 text-popover-foreground shadow-elevated">
+          <h2 className="text-lg font-semibold">{t.player.ended.announcement}</h2>
+          <span className="text-sm font-semibold text-primary">
             {t.player.ended.next}
           </span>
           <Link
@@ -63,17 +63,17 @@ export default function EndedOverlay({
             aria-label={videoLinkLabel(next)}
             className="flex items-start gap-3 rounded-md"
           >
-            <VideoThumbnail video={next} className="hidden w-56 sm:block" />
-            <span className="line-clamp-2 min-w-0 text-base font-semibold text-fg [overflow-wrap:anywhere]">
+            <VideoThumbnail video={next} className="hidden w-card-0 shrink-0 sm:block" />
+            <span className="line-clamp-2 min-w-0 text-base font-semibold wrap-anywhere">
               {next.title}
             </span>
           </Link>
           <div className="flex flex-wrap gap-2">
-            <Button ref={primary} variant="primary" onClick={onPlayNext}>
+            <Button ref={primary} onClick={onPlayNext}>
               <Play aria-hidden="true" />
               {t.player.ended.playNext}
             </Button>
-            <Button variant="secondary" onClick={onReplay}>
+            <Button variant="outline" onClick={onReplay}>
               <RotateCcw aria-hidden="true" />
               {t.player.ended.replay}
             </Button>

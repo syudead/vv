@@ -96,6 +96,12 @@ Item `detail-page`. `DetailPage` puts the header band above a main area and an
 information aside `detail-aside` wide; below `lg` the aside goes under the main
 area. It is at most `max-w-7xl` wide, with `p-4` (`p-6` from `lg`) and `gap-6`.
 
+From `lg`, a screen that keeps the page at the viewport's height (it puts
+`DetailPage` in a `lg:h-dvh` flex column) gets a main area and an aside that
+each scroll on their own, so the header and the media at the top of the main
+area stay in view while the viewer browses the aside. Otherwise the page
+scrolls as one.
+
 | Slot     | Put in it                                                                | Never                       |
 | -------- | ------------------------------------------------------------------------ | --------------------------- |
 | `header` | `PageHeader` with a ghost `Back` button in `leading`, the title, actions | The media itself            |
