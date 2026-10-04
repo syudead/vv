@@ -65,8 +65,10 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | Operation takes a body | Requires `Content-Type: application/json` |
 | Token revoked during a request | The request is cut off |
 
-- The error body is `{ code, message, reason?, limit?, index? }`. `message` is
-  English text; branch on `code` and `reason`.
+- The error body is `{ code, message, reason?, limit?, index?, tagId?, tagName? }`.
+  `message` is English text; branch on `code` and `reason`. `tagId` and
+  `tagName` come only with a tag name conflict
+  ([Tidy up tags](#tidy-up-tags)).
 - The token list on the Settings page shows the last-used time, updated at most
   once a minute.
 
@@ -228,8 +230,184 @@ flowchart LR
   result. `skippedTags` lists each skipped name once, normalized, in the order
   of `tags`, and is an empty array when nothing was skipped.
 - Each tag in the response and in `GET /api/v1/tags` reports `tentative`.
-- Confirming and rejecting tentative tags, and viewing and clearing rejected
-  names, are only on the screens.
+- Confirm or reject tentative tags, and list or clear rejected names, as in
+  [Tidy up tags](#tidy-up-tags).
+
+## Tidy up tags
+
+### List tags
+
+`GET /api/v1/tags` lists tags with the search, filters, sort and pages of the
+tag admin screen
+([specs/039-external-tag-admin/contracts/external-api.md, `GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)).
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&q=selfie&sort=countDesc&limit=200"
+```
+
+| Parameter | Meaning |
+| --- | --- |
+| `q` | Up to 100 characters. Matches part of a name or synonym, ignoring width, case and kana |
+| `tentative` | `true` lists tentative tags only |
+| `unused` | `true` lists tags on no video only. ANDed with `q` and `tentative` |
+| `sort` | `name` (default, natural name order), `countDesc`, `countAsc`, `createdDesc` or `createdAsc`; ties by name, then `id` |
+| `limit` | 1 to 200 tags per page. **Omitted, every matching tag is returned** without `nextCursor` |
+| `cursor` | The previous `nextCursor`, sent with the same `q`, `tentative`, `unused` and `sort` |
+
+- The response is `{ items, total, totalAll, nextCursor? }`. `total` counts the
+  tags matching the filters, `totalAll` every tag, on every page.
+- With `limit`, pass `nextCursor` back as `cursor` until it is absent to read
+  every matching tag once.
+- Each tag has `id`, `name`, `synonyms`, `videoCount`, `tentative` and
+  `createdAt`.
+- `sort` outside the five values, `limit` outside 1 to 200 or `q` over 100
+  characters returns `400` `invalid_request`. A cursor that cannot be read, or
+  that was made under another `sort`, returns `400` `invalid_request` with
+  `reason: invalid_cursor`; read again from the first page.
+
+### Merge tags
+
+`POST /api/v1/tags/merge` merges source tags into a target tag in one
+transaction
+([contract, `POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)).
+
+```json
+{ "targetId": 12, "sourceIds": [31, 45] }
+```
+
+- Each source's name and synonyms become synonyms of the target, its videos
+  move to the target, and the source is deleted. The target becomes a confirmed
+  tag.
+- The response is `{ tag, notFoundIds }`: the target after the merge, and the
+  sources that did not exist and were skipped.
+- `sourceIds` holds 1 to 20,000 ids, duplicates counted, else `400`
+  `too_many_tags` with `limit`. `sourceIds` containing `targetId` returns `400`
+  `merge_same_tag`, and a missing target `404` `tag_not_found`; neither
+  changes anything.
+
+### Rename a tag
+
+`POST /api/v1/tags/rename` with `{ "id": 12, "name": "自撮り" }` changes the
+tag's original name and returns the tag
+([contract, `POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)).
+
+- A tentative tag becomes confirmed when its name changes. The same name as now
+  changes nothing.
+- A name that breaks the name rules returns `400` `tag_name_empty`,
+  `tag_name_control_characters` or `tag_name_too_long`; a missing `id` returns
+  `404` `tag_not_found`.
+- A name that is another tag's name or synonym, or one of this tag's synonyms,
+  returns `409` `conflict` with `reason: tag_name_taken`, and `tagId` and
+  `tagName` name the tag that holds it. Nothing changes.
+
+### Edit synonyms
+
+`POST /api/v1/tags/synonyms` adds a name to a tag's synonyms or removes one,
+and returns the tag after the change
+([contract, `POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)).
+
+```json
+{ "id": 12, "action": "add", "name": "自己撮影" }
+```
+
+| Case | Result |
+| --- | --- |
+| `add` of a new name | `200`; the name is a synonym and a tentative tag becomes confirmed |
+| `add` of a name already a synonym of `id` | `200`, unchanged |
+| `add` of `id`'s own name or another tag's synonym | `409` `tag_name_taken` with `tagId` and `tagName` |
+| `add` of another tag's original name | `409` `tag_merge_required` with that tag's `tagId` and `tagName`; nothing changes |
+| The same `add` with `"mergeTagId": <tagId>` | `200`; that tag is merged into `id` |
+| `remove` | `200`; the name is no longer a synonym, or the tag is unchanged when it was not one |
+
+- `action` other than `add` or `remove` returns `400` `invalid_request`, and a
+  missing `id` `404` `tag_not_found`.
+- `mergeTagId` names the tag whose merge you accept. If another client gives
+  the name to a different tag before you retry, the call fails with
+  `tag_merge_required` again instead of merging a tag you did not see.
+
+### Confirm, reject and delete tags
+
+`POST /api/v1/tags/batch` confirms, rejects or deletes tags in one transaction
+([contract, `POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)).
+There is no single-tag operation; for one tag send `"ids": [id]`.
+
+```json
+{ "action": "reject", "ids": [31, 45, 9999] }
+```
+
+| `action` | Applies to | Effect |
+| --- | --- | --- |
+| `confirm` | Tentative tags | The tag becomes confirmed |
+| `reject` | Tentative tags | The tag is deleted and its original name enters the rejected names |
+| `delete` | Confirmed tags | The tag is deleted; its name is not remembered |
+
+- The response is `{ appliedIds, notFoundIds, notApplicableIds }`. The three
+  lists do not overlap, together hold each sent id once, and keep the order of
+  `ids`. A tag of the wrong kind, such as a confirmed tag sent to `reject`, is
+  left unchanged and listed in `notApplicableIds`.
+- `ids` holds 1 to 20,000 ids, duplicates counted, else `400` `too_many_tags`
+  with `limit`. `action` outside the three values returns `400`
+  `invalid_request`. A failed transaction returns `500` `internal` and changes
+  nothing.
+
+### Rejected names
+
+A tentative attach skips a rejected name
+([Add tags as tentative tags](#add-tags-as-tentative-tags)).
+
+- `GET /api/v1/tags/rejected-names` returns `{ items, total, nextCursor? }` in
+  natural name order
+  ([contract, `GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)).
+  `limit` is 1 to 200 and defaults to 100; pass `nextCursor` back as `cursor`
+  until it is absent. `total` counts every rejected name. `limit` out of range
+  returns `400` `invalid_request`, and an unreadable cursor adds
+  `reason: invalid_cursor`.
+- `DELETE /api/v1/tags/rejected-names?name=…` removes one name, so the next
+  tentative attach of that name creates a tag again
+  ([contract, `DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)).
+  The response is `{ name, removed }`: the normalized name that was matched,
+  and `false` when the name was not in the list and nothing changed. A missing
+  `name` returns `400` `invalid_request`.
+
+### Example: merge spelling variants
+
+An agent reads the tentative tags page by page, groups the names that mean the
+same thing, and merges each group into one tag.
+
+```mermaid
+sequenceDiagram
+  participant A as Agent
+  participant V as VVMDM
+  A->>V: GET /api/v1/tags?tentative=true&limit=200
+  A->>V: GET with nextCursor until it is absent
+  A->>V: POST /api/v1/tags/merge for each group
+  A->>V: POST /api/v1/tags/batch to confirm or reject the rest
+```
+
+1. Read every tentative tag with `tentative=true&limit=200`, passing
+   `nextCursor` back as `cursor` until it is absent.
+2. Group variants of one name, such as `selfie`, `セルフィー` and `自撮り`, and
+   pick the target of each group, such as the tag on the most videos.
+3. Merge each group with `POST /api/v1/tags/merge`. The sources' names become
+   synonyms of the target, so later attaches of those spellings reach the
+   target.
+4. Confirm the tags to keep and reject the rest with `POST /api/v1/tags/batch`.
+
+```sh
+# 1. List the tentative tags, most used first.
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&sort=countDesc&limit=200" |
+  jq -r '.items[] | [.id, .name, .videoCount] | @tsv'
+
+# 3. Merge the variants into the target 12.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/tags/merge" -d '{"targetId":12,"sourceIds":[31,45]}'
+
+# 4. Reject the names that are not tags.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/tags/batch" -d '{"action":"reject","ids":[77,78]}'
+```
 
 ## Set display names
 
@@ -374,12 +552,18 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
-| `list_tags` | `GET /api/v1/tags` |
+| `list_tags` | `GET /api/v1/tags`; `limit` defaults to 100 in the tool |
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+| `merge_tags` | `POST /api/v1/tags/merge` |
+| `rename_tag` | `POST /api/v1/tags/rename` |
+| `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
+| `batch_tags` | `POST /api/v1/tags/batch` |
+| `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names`; `limit` defaults to 100 |
+| `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
 
 - Tool arguments have the shape of the operation's query and body, and the
   structured result the shape of its response body. An operation error is a

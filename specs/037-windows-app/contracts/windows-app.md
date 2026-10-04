@@ -9,7 +9,7 @@ this feature does not change them.
 ## Zip contents
 
 The name is `VVMDM-<version>-windows-amd64.zip`. `<version>` is the tag
-(without `v`), or `sha-<12 characters>` for a manual run.
+(without `v`), or `sha-<12 characters>` for a push to `main` or a manual run.
 
 ```text
 VVMDM-<version>-windows-amd64/

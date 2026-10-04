@@ -70,27 +70,32 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 	return tag, nil
 }
 
-// RemoveSynonym はタグ tagID のシノニム name を解除する。name が tagID の
-// シノニムでなければ何も変えない。tagID が無ければ domain.ErrTagNotFound を
-// 返す。
-func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) error {
+// RemoveSynonym はタグ tagID のシノニム name を解除し、同じトランザクションで読んだ変更後の
+// タグを返す（外部連携 API が応答に載せる。specs/039-external-tag-admin/research.md R-5）。
+// name が tagID のシノニムでなければ何も変えずに今のタグを返す。tagID が無ければ
+// domain.ErrTagNotFound を返す。
+func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return domain.Tag{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := canonicalNameByTagID(ctx, tx, tagID); err != nil {
-		return err
+		return domain.Tag{}, err
 	}
 	if _, err := tx.ExecContext(ctx,
 		`delete from tag_names where name = ? and tag_id = ? and canonical = 0`, name, tagID,
 	); err != nil {
-		return fmt.Errorf("cannot remove the synonym (tag=%d): %w", tagID, err)
+		return domain.Tag{}, fmt.Errorf("cannot remove the synonym (tag=%d): %w", tagID, err)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("cannot remove the synonym: %w", err)
+	tag, err := tagByID(ctx, tx, tagID)
+	if err != nil {
+		return domain.Tag{}, err
 	}
-	return nil
+	if err := tx.Commit(); err != nil {
+		return domain.Tag{}, fmt.Errorf("cannot remove the synonym: %w", err)
+	}
+	return tag, nil
 }

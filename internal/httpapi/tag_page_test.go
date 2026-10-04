@@ -171,8 +171,9 @@ func TestListTagsRejectsInvalidParameters(t *testing.T) {
 	}
 }
 
-// 外部連携 API の一覧は全件を今の形で返し、ページの項目を持たない。
-func TestExternalListTagsKeepsFullListWithoutPageFields(t *testing.T) {
+// 外部連携 API の一覧は limit を省けば画面と同じ並びで全件を返し、nextCursor を持たない
+// （specs/039-external-tag-admin/contracts/external-api.md §1）。
+func TestExternalListTagsWithoutLimitMatchesScreenFullList(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	ctx := context.Background()
 	for i := range 250 {
@@ -181,7 +182,7 @@ func TestExternalListTagsKeepsFullListWithoutPageFields(t *testing.T) {
 		}
 	}
 	token := env.createAPIToken(cookie, "scraper")
-	rec := env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tags?limit=10", header: bearer(token.Secret)})
+	rec := env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tags", header: bearer(token.Secret)})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
@@ -189,8 +190,8 @@ func TestExternalListTagsKeepsFullListWithoutPageFields(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
 	}
-	if len(raw) != 1 || raw["items"] == nil {
-		t.Errorf("外部連携 API の応答の項目 = %s", rec.Body)
+	if raw["nextCursor"] != nil {
+		t.Errorf("limit 無しの応答に nextCursor がある")
 	}
 	var list extgen.TagList
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
@@ -204,8 +205,8 @@ func TestExternalListTagsKeepsFullListWithoutPageFields(t *testing.T) {
 	for _, item := range screen.Items {
 		screenNames = append(screenNames, item.Name)
 	}
-	if len(names) != 250 || !slices.Equal(names, screenNames) {
-		t.Errorf("外部 %d 件、画面の全件と並びが違う", len(names))
+	if len(names) != 250 || !slices.Equal(names, screenNames) || list.Total != 250 || list.TotalAll != 250 {
+		t.Errorf("外部 %d 件（total %d、totalAll %d）、画面の全件と並びが違う", len(names), list.Total, list.TotalAll)
 	}
 }
 

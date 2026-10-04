@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/windows-app.md
-sourceHash: 1067e0932f697566fe7523d950740541e03e2e30344866f72dcc034eb71130ea
+sourceHash: f51bb2291136b586e1146ddcf6098d37b97ead55ad62e75f90b0709ef1e31970
 ---
 
 # Windows デスクトップアプリ (VVMDM.exe) {#windows-desktop-app-vvmdmexe}
@@ -213,7 +213,7 @@ flowchart LR
 
 ## 配布 {#distribution}
 
-`v*` タグで、`ffmpeg` を同梱した `VVMDM-<version>-windows-amd64.zip` を GitHub Release に公開する。exe はコード署名せず、対象は `windows/amd64` だけだ。
+`v*` タグで `ffmpeg` を同梱した `VVMDM-<version>-windows-amd64.zip` を GitHub Release に公開し、`main` へのすべての push で 1 つだけの `nightly` プレリリースの zip を置き換える。exe はコード署名せず、対象は `windows/amd64` だけだ。
 
 ユーザーには、それだけで動き、置き換えで更新できるダウンロードが必要だ (親 Issue の要件 1、2、10)。一方、それ以外では CI は `main` への push で Docker イメージだけを公開する。
 
@@ -221,9 +221,10 @@ flowchart LR
 flowchart LR
   tag[v* タグ、main への push または dispatch] --> build[Linux ジョブが zip をビルド]
   build --> verify[Windows ジョブが zip を確認]
-  verify --> tagged{タグ?}
-  tagged -->|はい| release[Release に添付]
-  tagged -->|いいえ| artifact[アーティファクトのみ]
+  verify --> pushed{トリガーは?}
+  pushed -->|v* タグ| release[タグの Release に添付]
+  pushed -->|main への push| nightly[nightly プレリリースの zip を置き換え]
+  pushed -->|dispatch| artifact[アーティファクトのみ]
 ```
 
 | 項目 | 規則 |
@@ -236,17 +237,18 @@ flowchart LR
 | `.syso` | ビルド中に生成し、その後削除する。コミットはしない |
 | FFmpeg の入手元 | `scripts/build/windows_app.go` で固定したバージョンと SHA-256 の `GyanD/codexffmpeg` `essentials_build` zip |
 | FFmpeg のキャッシュ | `dist/cache/`。使うたびにハッシュを計算し直し、一致しなければ削除して、期待値と実際のハッシュを示して失敗する。ワークフローでは Actions のキャッシュに保持し、ダウンロード元が原因で `main` が赤にならないようにする |
-| `main` での実行 | push のたびに zip をビルドして確認するが、アーティファクトとして残すだけだ。新しい push は実行中のものを取り消し、タグでの実行は決して取り消さない |
+| `main` での実行 | push のたびに zip をビルドして確認し、`nightly` タグをそのコミットに移して、`nightly` プレリリースの zip を置き換える。新しい push は実行中のものを取り消し、タグでの実行は決して取り消さない |
 | ハードウェアエンコーダー | [hardware-encoding.md](hardware-encoding.md) と同じく NVENC と QSV。AMF はない |
 | Windows での確認 | 構成と、`ffmpeg -hide_banner -encoders` が `h264_nvenc` と `h264_qsv` を挙げること。GPU での変換は実機で確認する ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
-| Release | ないときは作り、あるときは zip を置き換える |
+| Release | ないときは作り、あるときは zip を置き換える。`nightly` はプレリリースで、latest には決してせず、短い固定のノートを付ける。古い zip を削除する前に新しい zip をアップロードする |
 | SmartScreen | 手順は `README.txt` と [running-vv.md](../how-to/running-vv.md#windows-app) にある |
 
 そうしないと、`.syso` は同じ `GOOS`/`GOARCH` のすべての `cmd/mdm` のビルドに入ってしまう。Windows のランナーには GPU がないので、CI はエンコーダーが組み込まれていることの確認までで止める。ワークフロー: `.github/workflows/windows-app.yml`。
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| `main` への push ごとの Release | ユーザーに見えるバージョンの区切りがない (R-13)。`main` は zip をビルドして確認するだけだ |
+| `main` への push ごとに `main-<12 characters>` のタグを付けた新しい Release を作る | マージのたびに Releases のページが増え、生成されたノートが履歴全体を挙げる |
+| GitHub Packages | 汎用のファイルのパッケージがなく、コンテナと NuGet のダウンロードにはブラウザではなく CLI かトークンが要る |
 | `windows/arm64` も対象にする | 固定できる arm64 の `ffmpeg` がなく、x64 の exe はエミュレーションで動く (R-13) |
 | BtbN/FFmpeg-Builds の `ffmpeg` | バージョンごとの固定された Release がないので、固定したものを後で取得できない (R-12) |
 | `.syso` をコミットする | タグなしの `mdm.exe` にもアイコンとマニフェストが入り、バージョン情報が古くなる |

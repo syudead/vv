@@ -1,5 +1,6 @@
 # Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を作る。タグ v* の push では GitHub Release に
-# 添付し、main への push と手動実行では workflow の成果物として残す。組み立ては手元の task build-windows-app と
+# 添付し、main への push では prerelease の Release「nightly」1 件の zip を差し替え、手動実行では
+# workflow の成果物として残す。組み立ては手元の task build-windows-app と
 # 同じ入口で、同梱の ffmpeg のエンコーダは Windows のランナーで確かめる
 # （specs/037-windows-app/research.md R-12・R-13、docs/design-docs/windows-app.md の「配布」）。
 name: Windows app
@@ -119,7 +120,7 @@ jobs:
   release:
     name: Attach to release
     needs: [build, verify]
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: github.event_name == 'push' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,16 +129,48 @@ jobs:
         with:
           name: windows-app
 
-      # Release が無ければ作り、あれば zip を差し替える（同じタグの再実行）。
+      # タグ v* では Release が無ければ作り、あれば zip を差し替える（同じタグの再実行）。
+      # main の push では prerelease の Release「nightly」を 1 件だけ使い回す。タグ nightly を
+      # このコミットへ動かし、新しい zip を載せてから前の zip を消すので、落とせる zip が途切れない。
       - name: GitHub Release に添付する
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           ZIP: ${{ needs.build.outputs.zip }}
         run: |
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" "$ZIP" --clobber
-          else
-            gh release create "$TAG" "$ZIP" --verify-tag --title "VVMDM ${TAG#v}" --generate-notes
+          if [ "$REF_TYPE" = tag ]; then
+            if gh release view "$REF_NAME" > /dev/null 2>&1; then
+              gh release upload "$REF_NAME" "$ZIP" --clobber
+            else
+              gh release create "$REF_NAME" "$ZIP" --verify-tag --title "VVMDM ${REF_NAME#v}" --generate-notes
+            fi
+            exit 0
           fi
+
+          TAG=nightly
+          SHORT="${GITHUB_SHA::12}"
+          TITLE="VVMDM nightly (${SHORT})"
+          NOTES="main の最新のコミット ${GITHUB_SHA} から組んだ Windows 版です。正式版ではありません。main に push するたびに差し替わります。"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${TAG}" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            # 同じコミットの再実行では zip の名前も同じになる。--clobber は先に消してから載せるので、
+            # 同じ名前の zip が既にあれば載せ直さない。
+            if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fqx "$ZIP"; then
+              gh release upload "$TAG" "$ZIP"
+            fi
+            gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r asset; do
+              if [ "$asset" != "$ZIP" ]; then
+                gh release delete-asset "$TAG" "$asset" --yes
+              fi
+            done
+            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" --prerelease --latest=false
+          else
+            gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "$TITLE" --notes "$NOTES" --prerelease --latest=false
+          fi
+
+          # 以前は main の push ごとに Release とタグ main-<12 桁> を作っていた。残っていれば消す。
+          gh release list --limit 100 --json tagName --jq '.[].tagName | select(startswith("main-"))' | while read -r old; do
+            gh release delete "$old" --cleanup-tag --yes
+          done

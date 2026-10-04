@@ -330,6 +330,12 @@ same zip. The exe's icon and manifest (DPI awareness, Common Controls v6) are
 embedded as a `.syso` generated with `github.com/tc-hib/go-winres`. The only
 target is `windows/amd64`.
 
+**Revised later**: every push to `main` also builds the zip and replaces the
+zip of a single `nightly` prerelease, whose tag moves to the commit, so the
+newest build can be downloaded without cutting a tag. A `v*` tag still marks a
+version boundary for users. The current rule is in
+[docs/design-docs/windows-app.md](../../docs/design-docs/windows-app.md#distribution).
+
 **Rationale**: Requirement 1 (distribute a zip). The current CI only publishes
 a Docker image on a push to `main`, and there is no place for a distribution
 users can download. Without the manifest, WebView2 renders blurry on high-DPI
@@ -339,7 +345,6 @@ screens.
 
 | Option | Verdict |
 | --- | --- |
-| Build a zip on every push to `main` | Rejected: there are no version boundaries for users, so it is unclear which one to take. |
 | Also build `windows/arm64` | Rejected: there is no arm64 `ffmpeg` build that can be pinned, and Windows on ARM runs x64 exes under emulation. |
 
 ## R-14: LAN access is stored in the settings table, switching it reopens the listener, and the default is loopback only

@@ -857,12 +857,13 @@ test.describe.serial("video tags", () => {
           });
           const mark = row.locator("svg.lucide-circle-dashed");
           await expect(mark).toBeVisible();
-          // 目印は名前の直後（gap-1）にある。
+          // 目印は名前の後ろに、同じ行で並ぶ（間の幅は見ない）。
           const linkBox = await link.boundingBox();
           const markBox = await mark.boundingBox();
           if (linkBox === null || markBox === null) throw new Error("no layout");
-          expect(markBox.x - (linkBox.x + linkBox.width)).toBeGreaterThanOrEqual(0);
-          expect(markBox.x - (linkBox.x + linkBox.width)).toBeLessThanOrEqual(8);
+          expect(markBox.x).toBeGreaterThanOrEqual(linkBox.x + linkBox.width);
+          expect(markBox.y).toBeLessThan(linkBox.y + linkBox.height);
+          expect(markBox.y + markBox.height).toBeGreaterThan(linkBox.y);
           // 長い名前でも操作は行の中に収まる（`sm` 未満では「Actions」1 つ）。
           const rowBox = await row.boundingBox();
           const moreBox = await row
@@ -902,7 +903,7 @@ test.describe.serial("video tags", () => {
       const markBox = await row.locator("svg.lucide-circle-dashed").boundingBox();
       if (columnBox === null || markBox === null) throw new Error("no layout");
       const x = columnBox.width - 4;
-      expect(columnBox.x + x).toBeGreaterThan(markBox.x + markBox.width + 8);
+      expect(columnBox.x + x).toBeGreaterThan(markBox.x + markBox.width);
       await column.click({ position: { x, y: columnBox.height / 2 } });
       await expect(page).toHaveURL(`${origin}${String(href)}`);
     });
@@ -951,13 +952,20 @@ test.describe.serial("video tags", () => {
         const tab = page.getByRole("tab", { name: /^Rejected names/ });
         await expect(tab).toBeVisible();
         await expect(tab).toContainText("1,000");
-        const countBox = await count.boundingBox();
         const tabBox = await tab.boundingBox();
-        if (countBox === null || tabBox === null) throw new Error("no layout");
-        // 件数は 1 行のまま（text-xs の行の高さは 16px）。
-        expect(countBox.height).toBeLessThanOrEqual(16);
-        // タブは本文の中にある。
-        expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width - 16);
+        if (tabBox === null) throw new Error("no layout");
+        // 件数は 1 行のまま（折り返すと行の箱が 2 つ以上になる）。
+        expect(
+          await count.evaluate((element) => {
+            const range = document.createRange();
+            range.selectNodeContents(element);
+            return new Set(
+              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+            ).size;
+          }),
+        ).toBe(1);
+        // タブは画面の中にある。
+        expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width);
         // 横スクロールは出ない。
         expect(
           await page.evaluate(

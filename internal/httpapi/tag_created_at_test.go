@@ -3,7 +3,6 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -11,8 +10,9 @@ import (
 )
 
 // 画面の API の Tag.createdAt（specs/036-tag-admin-scale/contracts/screen-api.md §0、research.md R-8）を、
-// 本物の保存先で確かめる。外部連携 API の listTags には載せない。
-func TestTagCreatedAtOnScreenAPIButNotExternalAPI(t *testing.T) {
+// 本物の保存先で確かめる。外部連携 API の listTags にも同じ値が載る
+// （specs/039-external-tag-admin/contracts/external-api.md §0）。
+func TestTagCreatedAtOnScreenAndExternalAPI(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 
 	rec := env.serve(authRequest{
@@ -53,8 +53,15 @@ func TestTagCreatedAtOnScreenAPIButNotExternalAPI(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("外部の一覧: status = %d: %s", rec.Code, rec.Body)
 	}
-	if strings.Contains(rec.Body.String(), "createdAt") {
-		t.Errorf("外部連携 API の応答に createdAt がある: %s", rec.Body)
+	var external struct{ Items []json.RawMessage }
+	if err := json.Unmarshal(rec.Body.Bytes(), &external); err != nil {
+		t.Fatal(err)
+	}
+	if len(external.Items) != 1 {
+		t.Fatalf("外部の一覧 = %s", rec.Body)
+	}
+	if got := rawCreatedAt(t, external.Items[0]); got != createdAt {
+		t.Errorf("外部の一覧の createdAt = %q, 作成の応答 = %q", got, createdAt)
 	}
 }
 

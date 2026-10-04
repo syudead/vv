@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 1f0a75c319e888de855a2fd0b973738100a35520c728762617b8b0bc437d73af
+sourceHash: 1d26368de753d1cb136726a8875599e46f6e51049d825c1dd452b32d01d63380
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 - PR は毎週月曜の早朝（JST）に 6 つのグループで開く。Go モジュール、web の npm、tools の npm、GitHub Actions、mise のツール、コンテナイメージである。脆弱性修正の PR はいつでも開く。
-- マイナー、パッチ、ピン留め、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。ブラウザ E2E と Docker イメージは、マージ後の `main` への push で実行される。
+- マイナー、パッチ、ピン留め、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` と `Browser E2E` のチェックが通ると自動でマージされる。Docker イメージは、マージ後の `main` への push で実行される。
 - メジャー更新は、人が破壊的変更を読んでからマージする。
 - GitHub Actions はコミットハッシュに固定し、タグ名をコメントに書く（`config:best-practices` の既定）。
 - `Dockerfile` のベースイメージは `tag@sha256:digest` として固定する。タグの指す内容が変わると、Renovate がダイジェスト更新の PR を開く。
@@ -49,14 +49,6 @@ Windows の zip は、`GyanD/codexffmpeg` の GitHub Releases から Gyan.dev �
 4. マージ後、`main` での `Windows app` ワークフローの実行が通ることを確認する。これで同梱の `ffmpeg` に `h264_nvenc` と `h264_qsv` があることが確かめられる。
 
 `ffmpeg` がエンコーダー名や引数を変えたときは、[hardware-encoding.md](../design-docs/hardware-encoding.md) と `internal/media` を合わせて更新する。
-
-## 同梱した shadcn スキルを更新する {#update-the-vendored-shadcn-skill}
-
-shadcn CLI は `web/package.json` の devDependency `shadcn` であり、Renovate が web の npm グループと一緒に更新する。`.agents/skills/shadcn/` の shadcn スキルは Renovate が読まない複製なので、1 つの PR で更新する。
-
-1. [shadcn-ui/ui](https://github.com/shadcn-ui/ui) の新しいコミットから `skills/shadcn/` を `evals/` を除いて複製する。
-2. `npx shadcn@latest`、`pnpm dlx shadcn@latest`、`bunx --bun shadcn@latest` をすべて `npm --prefix web exec shadcn --` に置き換え、`.agents/skills/shadcn/VENDORED.md` のコミットを更新する。
-3. `task test-web` を実行する。`shadcn@` が残っている間、`vendoredSkill.test.ts` は失敗する。
 
 ## 人の対応が必要な Renovate の PR {#renovate-prs-that-need-a-person}
 

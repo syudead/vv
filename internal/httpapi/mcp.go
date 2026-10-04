@@ -13,6 +13,7 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
@@ -80,7 +81,14 @@ type (
 	mcpNoInput     struct{}
 	mcpListVideos  = extgen.ListVideosParams
 	mcpLookupVideo = extgen.LookupVideoParams
+	mcpListTags    = extgen.ListTagsParams
+	// mcpListRejectedTagNames と mcpForgetRejectedTagName は却下した名前の操作の問い合わせである。
+	mcpListRejectedTagNames  = extgen.ListRejectedTagNamesParams
+	mcpForgetRejectedTagName = extgen.ForgetRejectedTagNameParams
 )
+
+// mcpListTagsDefaultLimit は list_tags が limit を省かれたときに入れる 1 ページの件数である。
+const mcpListTagsDefaultLimit = 100
 
 func (t *mcpTools) register(server *mcp.Server) {
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
@@ -122,11 +130,117 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_tags",
-		Description: "List every tag with its synonyms and video count (GET /api/v1/tags).",
+		Name: "list_tags",
+		Description: "List tags with their synonyms, video count and creation time, one page at a time " +
+			"(GET /api/v1/tags). q matches a name or synonym ignoring width, case and kana; tentative and unused " +
+			"narrow the list; sort is name, countDesc, countAsc, createdDesc or createdAsc. " +
+			"limit is 1 to 200 and defaults to 100 here. total counts the matching tags and totalAll every tag. " +
+			"Pass nextCursor back as cursor, with the same q, tentative, unused and sort, until it is absent.",
+		InputSchema: listTagsInputSchema(),
 		Annotations: readOnly,
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ mcpNoInput) (*mcp.CallToolResult, any, error) {
-		return t.call(ctx, http.MethodGet, "/tags", nil, nil)
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListTags) (*mcp.CallToolResult, any, error) {
+		query := url.Values{}
+		if in.Q != nil {
+			query.Set("q", *in.Q)
+		}
+		if in.Tentative != nil {
+			query.Set("tentative", strconv.FormatBool(*in.Tentative))
+		}
+		if in.Unused != nil {
+			query.Set("unused", strconv.FormatBool(*in.Unused))
+		}
+		if in.Sort != nil {
+			query.Set("sort", string(*in.Sort))
+		}
+		if in.Cursor != nil {
+			query.Set("cursor", *in.Cursor)
+		}
+		// REST の既定（省けば全件）は変えず、ツールだけが 1 ページを既定にする
+		// （specs/039-external-tag-admin/research.md R-1）。
+		limit := mcpListTagsDefaultLimit
+		if in.Limit != nil {
+			limit = *in.Limit
+		}
+		query.Set("limit", strconv.Itoa(limit))
+		return t.call(ctx, http.MethodGet, "/tags", query, nil)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "merge_tags",
+		Description: "Merge source tags into a target tag in one transaction (POST /api/v1/tags/merge). " +
+			"Each source's name and synonyms become synonyms of the target, its videos move to the target, " +
+			"and the source is deleted; the target becomes a confirmed tag. sourceIds holds 1 to 20000 ids and " +
+			"must not contain targetId (merge_same_tag). Missing sources are skipped and returned in notFoundIds; " +
+			"a missing target is tag_not_found and changes nothing.",
+		InputSchema: inputSchemaFor[extgen.TagMergeRequest]("merge_tags"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagMergeRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/merge", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "rename_tag",
+		Description: "Change a tag's original name (POST /api/v1/tags/rename). A tentative tag becomes confirmed " +
+			"when its name changes. If the name is another tag's name or synonym, or one of this tag's synonyms, " +
+			"the result is a conflict with reason tag_name_taken and that tag's tagId and tagName, and nothing changes.",
+		InputSchema: inputSchemaFor[extgen.TagRenameRequest]("rename_tag"),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &notDestructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagRenameRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/rename", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "update_tag_synonyms",
+		Description: "Add a name to a tag's synonyms or remove one (POST /api/v1/tags/synonyms), returning the tag " +
+			"after the change. add confirms a tentative tag. If the name is this tag's own name or another tag's " +
+			"synonym, add fails with tag_name_taken. If the name is another tag's original name, add fails with " +
+			"tag_merge_required and that tag's tagId and tagName, and nothing changes; call again with mergeTagId " +
+			"set to that tagId to merge that tag into this one. remove of a name that is not a synonym changes nothing.",
+		InputSchema: tagSynonymsInputSchema(),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagSynonymsRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/synonyms", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "batch_tags",
+		Description: "Confirm, reject or delete tags in one transaction (POST /api/v1/tags/batch). " +
+			"confirm and reject apply to tentative tags, delete to confirmed tags. reject deletes the tag and adds its " +
+			"name to the rejected names, so a later tentative attach of that name is skipped; delete does not remember " +
+			"the name. ids holds 1 to 20000 ids; for one tag send ids: [id]. The result splits the deduplicated ids into " +
+			"appliedIds, notFoundIds and notApplicableIds (a tag of the wrong kind, left unchanged).",
+		InputSchema: tagBatchInputSchema(),
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagBatchRequest) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodPost, "/tags/batch", nil, in)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "list_rejected_tag_names",
+		Description: "List the rejected tag names in natural name order, one page at a time " +
+			"(GET /api/v1/tags/rejected-names). A tentative attach of a rejected name is skipped. limit is 1 to 200 " +
+			"and defaults to 100; total counts every rejected name. Pass nextCursor back as cursor until it is absent.",
+		InputSchema: rejectedTagNamesInputSchema(),
+		Annotations: readOnly,
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListRejectedTagNames) (*mcp.CallToolResult, any, error) {
+		query := url.Values{}
+		if in.Cursor != nil {
+			query.Set("cursor", *in.Cursor)
+		}
+		if in.Limit != nil {
+			query.Set("limit", strconv.Itoa(*in.Limit))
+		}
+		return t.call(ctx, http.MethodGet, "/tags/rejected-names", query, nil)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "forget_rejected_tag_name",
+		Description: "Remove one name from the rejected tag names (DELETE /api/v1/tags/rejected-names), so the next " +
+			"tentative attach of that name creates a tag again. The name is normalized as tag names are. The result is " +
+			"the matched name and removed, which is false when the name was not rejected and nothing changed.",
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpForgetRejectedTagName) (*mcp.CallToolResult, any, error) {
+		return t.call(ctx, http.MethodDelete, "/tags/rejected-names", url.Values{"name": {in.Name}}, nil)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -191,7 +305,62 @@ func videoTagsInputSchema() *jsonschema.Schema {
 		panic(fmt.Sprintf("update_video_tags input schema: %v", err))
 	}
 	if action := schema.Properties["action"]; action != nil {
-		action.Enum = []any{string(extgen.Add), string(extgen.Remove), string(extgen.Replace)}
+		action.Enum = []any{string(extgen.VideoTagsRequestActionAdd), string(extgen.VideoTagsRequestActionRemove),
+			string(extgen.VideoTagsRequestActionReplace)}
+	}
+	return schema
+}
+
+// tagSynonymsInputSchema は update_tag_synonyms の入力の形である。型から導き、action に契約の値を
+// 足す（update_video_tags と同じやり方）。
+func tagSynonymsInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[extgen.TagSynonymsRequest]("update_tag_synonyms")
+	if action := schema.Properties["action"]; action != nil {
+		action.Enum = []any{string(extgen.TagSynonymsRequestActionAdd), string(extgen.TagSynonymsRequestActionRemove)}
+	}
+	return schema
+}
+
+// listTagsInputSchema は list_tags の入力の形である。型から導き、sort に契約の値を、
+// limit と q に上限を足す（型からは文字列・整数としか分からない）。
+func listTagsInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[mcpListTags]("list_tags")
+	if sort := schema.Properties["sort"]; sort != nil {
+		sort.Enum = []any{
+			string(extgen.Name), string(extgen.CountDesc), string(extgen.CountAsc),
+			string(extgen.CreatedDesc), string(extgen.CreatedAsc),
+		}
+	}
+	if limit := schema.Properties["limit"]; limit != nil {
+		minimum, maximum := 1.0, float64(domain.MaxTagPageLimit)
+		limit.Minimum, limit.Maximum = &minimum, &maximum
+		limit.Default = json.RawMessage(strconv.Itoa(mcpListTagsDefaultLimit))
+	}
+	if q := schema.Properties["q"]; q != nil {
+		maxLength := maxQueryLength
+		q.MaxLength = &maxLength
+	}
+	return schema
+}
+
+// tagBatchInputSchema は batch_tags の入力の形である。型から導き、action に契約の値を足す
+// （update_video_tags と同じやり方）。
+func tagBatchInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[extgen.TagBatchRequest]("batch_tags")
+	if action := schema.Properties["action"]; action != nil {
+		action.Enum = []any{string(extgen.Confirm), string(extgen.Reject), string(extgen.Delete)}
+	}
+	return schema
+}
+
+// rejectedTagNamesInputSchema は list_rejected_tag_names の入力の形である。型から導き、limit に
+// 範囲と既定を足す（型からは整数としか分からない）。
+func rejectedTagNamesInputSchema() *jsonschema.Schema {
+	schema := inputSchemaFor[mcpListRejectedTagNames]("list_rejected_tag_names")
+	if limit := schema.Properties["limit"]; limit != nil {
+		minimum, maximum := 1.0, float64(domain.MaxTagPageLimit)
+		limit.Minimum, limit.Maximum = &minimum, &maximum
+		limit.Default = json.RawMessage(strconv.Itoa(rejectedTagNamePageDefaultLimit))
 	}
 	return schema
 }

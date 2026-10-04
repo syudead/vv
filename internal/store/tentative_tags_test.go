@@ -394,10 +394,18 @@ func TestForgetRejectedTagName(t *testing.T) {
 		t.Errorf("却下した名前 = %v, want 自然順", got)
 	}
 
-	for _, name := range []string{" 犬 ", "無い名前", "\t"} {
-		if err := db.Tags().ForgetRejectedTagName(ctx, name); err != nil {
+	// 外したかどうかを返す。整えて照合するので前後の空白は外れ、無い名前と整えられない名前は false。
+	for name, want := range map[string]bool{" 犬 ": true, "無い名前": false, "\t": false} {
+		removed, err := db.Tags().ForgetRejectedTagName(ctx, name)
+		if err != nil {
 			t.Fatalf("ForgetRejectedTagName(%q): %v", name, err)
 		}
+		if removed != want {
+			t.Errorf("ForgetRejectedTagName(%q) = %v, want %v", name, removed, want)
+		}
+	}
+	if removed, err := db.Tags().ForgetRejectedTagName(ctx, "犬"); err != nil || removed {
+		t.Errorf("2 回目の ForgetRejectedTagName = %v, %v, want false", removed, err)
 	}
 	outcome := applyTentative(t, db, bothVideos, domain.VideoTagsAdd, "犬")
 	if len(outcome.SkippedNames) != 0 {

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -53,32 +54,64 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 	})
 }
 
-// ListTags はタグの一覧を返す（GET /api/v1/tags、contracts/external-api.md §3）。
-// 画面の ListTags の limit を省いた全件（TagListQuery{}）と同じもので、保存先の順
-// （名前の自然順）をそのまま返す。ページ・検索・絞り込みは足さない
-// （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
-func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request) {
+// ListTags はタグの一覧を返す（GET /api/v1/tags、
+// specs/039-external-tag-admin/contracts/external-api.md §1）。引数は画面の GET /api/tags と
+// 同じ規則（buildTagListQuery）で読み、画面と同じ TagStore.ListTags を呼ぶ。limit を省いた
+// 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。
+func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params extgen.ListTagsParams) {
+	var sort *string
+	if params.Sort != nil {
+		value := string(*params.Sort)
+		sort = &value
+	}
+	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
+	switch problem {
+	case tagListSortUnknown:
+		e.invalidRequest(w, nil, "Unknown sort order. Use name, countDesc, countAsc, createdDesc or createdAsc.")
+		return
+	case tagListLimitOutOfRange:
+		e.invalidRequest(w, nil, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+		return
+	case tagListSearchTooLong:
+		e.invalidRequest(w, nil, fmt.Sprintf("q must be at most %d characters.", maxQueryLength))
+		return
+	}
 	if e.s.tags == nil {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	page, err := e.s.tags.ListTags(r.Context(), domain.TagListQuery{})
+	page, err := e.s.tags.ListTags(r.Context(), query)
+	if errors.Is(err, domain.ErrInvalidCursor) {
+		reason := extgen.InvalidCursor
+		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q, tentative, unused and sort.")
+		return
+	}
 	if err != nil {
 		e.internalError(w, "Could not load tags.", err)
 		return
 	}
 	items := make([]extgen.Tag, 0, len(page.Items))
 	for _, tag := range page.Items {
-		synonyms := tag.Synonyms
-		if synonyms == nil {
-			synonyms = []string{}
-		}
-		items = append(items, extgen.Tag{
-			Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
-		})
+		items = append(items, toExternalTag(tag))
+	}
+	body := extgen.TagList{Items: items, Total: page.Total, TotalAll: page.TotalAll}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, extgen.TagList{Items: items}, e.s.logger)
+	writeJSON(w, http.StatusOK, body, e.s.logger)
+}
+
+// toExternalTag は domain.Tag を外部連携 API の形へ写す。シノニムが無ければ [] にする。
+func toExternalTag(tag domain.Tag) extgen.Tag {
+	synonyms := tag.Synonyms
+	if synonyms == nil {
+		synonyms = []string{}
+	}
+	return extgen.Tag{
+		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
+		CreatedAt: tag.CreatedAt,
+	}
 }
 
 // StartScan はスキャンを始める（POST /api/v1/scans、contracts/external-api.md §5）。
