@@ -12,6 +12,7 @@ import {
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t } from "../i18n";
+import { inProgress } from "../shell/ScanProvider";
 import { VideoThumbnail, videoLinkLabel } from "../player/RelatedVideos";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
@@ -51,7 +52,7 @@ function pairIds(pair: Pair): [number, number] {
  * 束ねる）か「違う動画」（二度と出さない）かを決めさせる画面である
  * （specs/030-video-versions/ui-design.md「Duplicates page」）。
  *
- * 開いたときに候補を読み、`scan` の知らせで取り直す。取り直しの間は一覧の見た目を変えず、
+ * 開いたときに候補を読み、取り込みが終わったという `scan` の知らせで取り直す。取り直しの間は一覧の見た目を変えず、
  * 届いたら差し替える。取り直しが重なったら、今の取得が終わってからもう 1 度だけ取る。
  * 決めた組はその場で一覧から消し、フォーカスを次の組（無ければ前の組、無ければ見出し）へ移す。
  */
@@ -127,9 +128,20 @@ export default function DuplicatesPage() {
   }, [showPage]);
 
   useEffect(() => {
+    // 取り込みの知らせは、取り込み中は1ファイルごとに届き、つないだ直後にも届く。候補は
+    // 取り込みが終わったときに1度取り直せば足りるので、終わったとき（進行中から終わりへ、
+    // または別の取り込みが終わった状態で届いたとき）だけ取り直す。購読して最初の知らせは
+    // 開いたときの取得と同じ内容なので取り直さない（issue 674）。
+    let lastScan: { id: number; active: boolean } | undefined;
     // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。
     const unsubscribe = subscribeServerEvents({
-      scan: () => load(),
+      scan: (scan) => {
+        const active = inProgress(scan);
+        const previous = lastScan;
+        lastScan = { id: scan.id, active };
+        if (previous === undefined || active) return;
+        if (previous.active || previous.id !== scan.id) load();
+      },
       open: (reconnected) => {
         if (reconnected) load();
       },

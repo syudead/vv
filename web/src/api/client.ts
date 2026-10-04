@@ -82,6 +82,7 @@ export type FolderPreview = components["schemas"]["FolderPreview"];
 export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
+export type GroupMemberPage = components["schemas"]["GroupMemberPage"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
 export type VideoVersions = components["schemas"]["VideoVersions"];
 export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
@@ -550,6 +551,23 @@ export function getRelatedVideos(
   signal?: AbortSignal,
 ): Promise<RelatedVideos> {
   return request<RelatedVideos>(`/api/videos/${String(id)}/related`, { signal });
+}
+
+/**
+ * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
+ * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
+ */
+export function listVideoGroupMembers(
+  id: number,
+  offset: number,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<GroupMemberPage> {
+  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
+  return request<GroupMemberPage>(
+    `/api/videos/${String(id)}/group-members?${query.toString()}`,
+    { signal },
+  );
 }
 
 /**

@@ -166,7 +166,7 @@ filesystem.
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
 | `internal/store` | SQLite schema, migrations, role types, search keys | [013 data-model](specs/013-library-search/data-model.md), [030 data-model](specs/030-video-versions/data-model.md) |
-| `internal/httpapi` | Screen API, `/api/events`, authentication boundary | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md), [error-api.md](specs/023-english-i18n/contracts/error-api.md) |
+| `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md), [error-api.md](specs/023-english-i18n/contracts/error-api.md) |
 | External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md), [mcp.md](specs/026-external-api/contracts/mcp.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |

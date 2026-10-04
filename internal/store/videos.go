@@ -17,14 +17,10 @@ import (
 )
 
 // videoColumns は domain.Video を組み立てるのに要る列である。
-// 並びは scanVideo と対応させる。代表の所在は {visible}（見る人に見せてよい所在）の
-// うちパスの最小の1件である。
-const videoColumnsTemplate = `videos.id,
-	(select path from video_locations l where video_id = videos.id and {visible} order by path limit 1) as path,
-	(select title from video_locations l where video_id = videos.id and {visible} order by path limit 1) as title,
-	(select size_bytes from video_locations l where video_id = videos.id and {visible} order by path limit 1) as size_bytes,
-	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
-	(select coalesce(l.file_created_at, l.mtime) from video_locations l where video_id = videos.id and {visible} order by path limit 1) as file_created_at,
+// 並びは scanVideo と対応させる。代表の所在 rep（見る人に見せてよい所在のうちパスの
+// 最小の1件）は representativeJoin が結ぶ。
+const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
+	rep.mtime as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
 	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
@@ -66,10 +62,10 @@ func registeredVideoCondition(alias string) string {
 		registeredLocationCondition("l") + `)`
 }
 
-// videoColumns は見る人（audience）に見せてよい所在から代表を選ぶ列を返す。
+// videoColumns は動画1件を domain.Video に写す列を返す。パス・題名・大きさ・更新時刻は
+// 代表の所在（rep）のものなので、from 句で videos の後に representativeJoin を結ぶ。
 func videoColumns(audience domain.Audience) string {
 	return strings.NewReplacer(
-		"{visible}", visibleLocationCondition("l", audience),
 		"{public}", publicColumn,
 		"{favorite}", favoriteColumn,
 		"{userKey}", userKeyExpr("videos"),
@@ -115,8 +111,16 @@ func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, i
 	return getVideo(ctx, s.db.sql, audience, id)
 }
 
+// representativeJoin は、videos の行に代表の所在（見る人に見せてよい所在のうちパスの最小）を
+// rep として結ぶ（videoColumns が読む）。列ごとに代表を選ぶ副問い合わせを書くと、1行に
+// つき同じ選び方を列の数だけ繰り返す（issue 674）。代表が無ければ rep の列は NULL になる。
+func representativeJoin(audience domain.Audience) string {
+	return ` left join video_locations rep on rep.id = (select l.id from video_locations l
+		where l.video_id = videos.id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
+}
+
 func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id int64) (domain.Video, error) {
-	row := q.QueryRowContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id = ? and `+
+	row := q.QueryRowContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+` where videos.id = ? and `+
 		visibleVideoCondition("videos", audience), id)
 
 	video, err := scanVideo(row)

@@ -10,7 +10,7 @@ import { itemVideos } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import { useScan } from "../shell/ScanProvider";
+import { useScanControls } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
@@ -70,7 +70,7 @@ export default function RootSearchResults({
     resetPreview();
   }, [items, resetPreview, zoom]);
 
-  const scan = useScan();
+  const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
   useEffect(() => refreshScan(), [refreshScan]);

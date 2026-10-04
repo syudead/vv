@@ -969,6 +969,12 @@ export const en = {
       watchedLink: (label: string) => `${label}, watched`,
       nowPlaying: "Now playing",
       watched: "Watched",
+      /** 窓より前のメンバーを読むボタン（狭い画面。広い画面ではスクロールで読む）。 */
+      earlier: (count: number) =>
+        count === 1
+          ? "Show 1 earlier video"
+          : `Show ${formatNumber(count)} earlier videos`,
+      moreFailed: "Couldn't load more of the group",
     },
     facts: {
       label: "File details",

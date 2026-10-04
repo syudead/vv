@@ -672,3 +672,28 @@ func TestFolderGroup(t *testing.T) {
 		t.Errorf("解除後の項目 = %v, want %v", names, want)
 	}
 }
+
+// TestListLibraryCountsWithoutItemsAfterTheCursor は、カーソルの先に項目が無いページでも
+// total に絞り込み後の項目の数を返すことを確かめる（件数とページを1つの問い合わせで読む
+// とき、行が無いと件数も読めないので数え直す）。
+func TestListLibraryCountsWithoutItemsAfterTheCursor(t *testing.T) {
+	db, _ := itemsFixture(t)
+	ctx := context.Background()
+	first, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortSizeDesc, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := itemNames(first.Items); !slices.Equal(got, []string{"y"}) || first.NextCursor == "" {
+		t.Fatalf("first page = %v (cursor %q), want [y] with a cursor", got, first.NextCursor)
+	}
+	page, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{
+		Sort: domain.SortSizeDesc, Query: "y", Cursor: first.NextCursor, Limit: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 0 || page.Total != 1 || page.NextCursor != "" {
+		t.Errorf("page = %d items, total %d, cursor %q; want 0 items, total 1, no cursor",
+			len(page.Items), page.Total, page.NextCursor)
+	}
+}
