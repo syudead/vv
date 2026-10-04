@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, useLocation } from "react-router";
+import {
+  MemoryRouter,
+  type NavigateFunction,
+  useLocation,
+  useNavigate,
+} from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag, TagSort } from "../api/tags";
@@ -606,10 +611,22 @@ function install() {
 /** latestSearch は `LocationProbe` が最後に見た URL のクエリである。 */
 let latestSearch = "";
 
-/** LocationProbe は今の URL のクエリを `latestSearch` に写す。 */
+/** historyNavigate はブラウザの戻る・進む（`navigate(-1)` など）である。 */
+let historyNavigate: NavigateFunction | null = null;
+
+/** LocationProbe は今の URL のクエリを `latestSearch` に写し、履歴を動かす口を残す。 */
 function LocationProbe() {
   latestSearch = useLocation().search;
+  historyNavigate = useNavigate();
   return null;
+}
+
+/** historyBack はブラウザの「戻る」を押す。 */
+async function historyBack() {
+  await act(async () => {
+    void historyNavigate!(-1);
+    await Promise.resolve();
+  });
 }
 
 /**
@@ -5481,6 +5498,99 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     expect(tagsTab().getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByTitle("Alpha")).toBeDefined();
     expect(latestSearch).not.toContain("tab=");
+  });
+
+  it("作成の送信中に戻るで「Rejected names」へ移っても「Tags」に留まり、失敗すれば下書きと誤りを残して URL を「Tags」へ戻す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(rejectedTab());
+    await screen.findByRole("tabpanel", { name: /Rejected names/ });
+    await user.click(tagsTab());
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    const input = screen.getByRole("textbox", { name: "New tag name" });
+    await user.type(input, "Alpha");
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    await historyBack();
+    expect(latestSearch).toContain("tab=rejected");
+    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("textbox", { name: "New tag name" })).toBe(input);
+
+    release?.();
+    expect(await screen.findByText('A tag named "Alpha" already exists.')).toBeDefined();
+    expect((input as HTMLInputElement).value).toBe("Alpha");
+    await waitFor(() => expect(latestSearch).not.toContain("tab="));
+    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("tabpanel", { name: /Rejected names/ })).toBeNull();
+  });
+
+  it("改名の送信中に戻るで「Rejected names」へ移っても「Tags」に留まり、成功すれば「Rejected names」へ移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(rejectedTab());
+    await screen.findByRole("tabpanel", { name: /Rejected names/ });
+    await user.click(tagsTab());
+    await screen.findByTitle("Alpha");
+
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Rename" }));
+    const input = await screen.findByRole("textbox", { name: 'New name for "Alpha"' });
+    await user.clear(input);
+    await user.type(input, "Trip");
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    await historyBack();
+    expect(latestSearch).toContain("tab=rejected");
+    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("textbox", { name: 'New name for "Alpha"' })).toBe(input);
+
+    release?.();
+    expect(await screen.findByRole("tabpanel", { name: /Rejected names/ })).toBeDefined();
+    expect(rejectedTab().getAttribute("aria-selected")).toBe("true");
+    expect(latestSearch).toContain("tab=rejected");
+  });
+
+  it("作成の送信中は矢印でタブを切り替えず、フォーカスも今のタブに残す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.type(screen.getByRole("textbox", { name: "New tag name" }), "新規");
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "New tag name" }).getAttribute("aria-busy"),
+      ).toBe("true"),
+    );
+
+    tagsTab().focus();
+    await user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(tagsTab());
+    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    await user.click(rejectedTab());
+    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    expect(latestSearch).not.toContain("tab=");
+
+    release?.();
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "New tag name" })).toBeNull(),
+    );
+    tagsTab().focus();
+    await user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(rejectedTab());
+    expect(rejectedTab().getAttribute("aria-selected")).toBe("true");
   });
 
   it("タブを移ると選択を解く", async () => {

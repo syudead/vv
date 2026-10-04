@@ -198,6 +198,13 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(
       box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    // 低い画面でもボタンの行が窓の下端に残るよう、箱を含む本文がまとめて縦に
+    // スクロールし、ボタンの行はその外で縮まない。
+    const body = box.parentElement!.closest(".overflow-y-auto")!;
+    expect(body).not.toBeNull();
+    expect(body.className).toContain("min-h-0");
+    expect(body.contains(footer)).toBe(false);
+    expect(footer.className).toContain("shrink-0");
   });
 
   it("選んだ統合先は一覧で目立たせ、下端に「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {

@@ -28,7 +28,11 @@ export default function Tabs<T extends string>({
   /** タブの並びの読み上げ名。 */
   label: UiText;
   value: T;
-  onValueChange: (value: T) => void;
+  /**
+   * タブを選んだとき。切り替えを断るときは false を返す — 矢印・Home・End で選んだ
+   * ときも、フォーカスを今のタブに残す（選ばれていないタブへ移さない）。
+   */
+  onValueChange: (value: T) => boolean | void;
   items: readonly TabItem<T>[];
   /** タブの id の接頭辞。`tabId(idPrefix, value)` がタブの id になる。 */
   idPrefix: string;
@@ -46,7 +50,7 @@ export default function Tabs<T extends string>({
     if (next === undefined) return;
     event.preventDefault();
     const target = items[next]!.value;
-    onValueChange(target);
+    if (onValueChange(target) === false) return;
     refs.current.get(target)?.focus();
   }
 

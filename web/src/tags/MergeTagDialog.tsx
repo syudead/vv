@@ -233,16 +233,16 @@ export default function MergeTagDialog({
       width="sm:max-w-lg"
     >
       {/*
-        候補の一覧（Combobox）は overflow-y-auto の外に置く。中に置くと、
-        窓の中身がまだ短い（確認の文言が出る前）うちは、この div 自身の
-        高さも短く、候補の一覧（最大8行）が overflow-y-auto によって
-        そこで切り取られてしまう（B3）。確認の文言・失敗の行だけを別の
-        小さな overflow-y-auto に包み、長い文言でもそちらだけが縦に
-        スクロールする。統合元の並びは自分の max-h-32 で縦にスクロールする。
+        本文（統合元の並び・統合先の入力と候補の箱・確認の文言）はまとめて 1 つの
+        overflow-y-auto に入れ、下端のボタンの行は外の shrink-0 に置く。統合元の並び
+        （max-h-32）と候補の箱（h-60 max-h-[40vh]）は縮まないので、低い画面
+        （390×400 など）では本文が窓の高さを超える。本文だけが縦にスクロールし、
+        「Merge」「Cancel」はいつも窓の下端に見える。候補は入力の下の箱に並び、
+        入力の上に重ねて開く一覧ではないので、本文のスクロールで切り取られない。
       */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 sm:p-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
         {sources.length > 1 && (
-          <div>
+          <div className="shrink-0">
             <p
               id={sourcesHeadingId}
               className="mb-1 text-xs font-semibold text-fg-muted uppercase"
@@ -319,7 +319,7 @@ export default function MergeTagDialog({
             </p>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <div className="flex flex-col gap-3">
           {target !== null && effective.length === 0 && (
             <p className="text-sm text-fg-muted">
               {t.tags.mergeDialog.onlyTarget(target.name)}

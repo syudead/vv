@@ -201,7 +201,13 @@ export default function TagsPage() {
    */
   const [preferredSort] = useState<TagListSort>(() => readTagListPreferences().sort);
   const { criteria, apply: applyCriteria } = useTagListCriteria(preferredSort);
-  const { query: search, tentativeOnly, unusedOnly, sort, tab } = criteria;
+  const { query: search, tentativeOnly, unusedOnly, sort, tab: urlTab } = criteria;
+  /**
+   * tab は描いているタブである。ふだんは URL の `tab` に従うが、作成・改名の送信中は
+   * 「Tags」のまま保つ（ui-design.md「Tabs」の「作成・改名の送信中は切り替えない」を、
+   * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
+   */
+  const [tab, setTab] = useState<TagListTab>(urlTab);
   /**
    * appliedSearch は、今の行を読んだときの検索の入力である。空の状態の文言はこれを
    * 出す。新しい検索の先頭のページを待つ間は前の結果が残るので、打ち直した入力を
@@ -847,15 +853,16 @@ export default function TagsPage() {
    * changeTab は「Tags」「Rejected names」のタブを切り替える。選択・作成・改名は
    * 「Tags」のタブの中のものなので、離れるときに閉じる。
    */
-  function changeTab(next: TagListTab) {
-    if (next === tab) return;
-    if (createPending || renamePending) return;
+  function changeTab(next: TagListTab): boolean {
+    if (next === tab) return true;
+    if (createPending || renamePending) return false;
     setSelected(new Set());
     setCreating(false);
     setCreateError(null);
     setRenaming(null);
     setRenameError(null);
     applyCriteria({ tab: next }, "push");
+    return true;
   }
 
   // 検索はサーバーが全部のタグに掛ける（research.md R-1）。照合形は、空白だけの検索を
@@ -884,14 +891,37 @@ export default function TagsPage() {
     filtersRef.current = { tentativeOnly, unusedOnly };
   }, [tentativeOnly, unusedOnly]);
 
-  // 戻る・進むで「Rejected names」のタブへ移ったときも、選択と作成・改名を閉じる
-  // （`changeTab` と同じ）。
-  useEffect(() => {
-    if (tab === "tags") return;
-    setSelected((current) => (current.size === 0 ? current : new Set()));
-    setCreating(false);
-    setRenaming(null);
-  }, [tab]);
+  // 戻る・進むで URL のタブが変わったら、描くタブを追わせる。「Rejected names」へ
+  // 移るときは、選択と作成・改名を閉じる（`changeTab` と同じ）。作成・改名の送信中は
+  // 「Tags」のまま待つ — 閉じると行が消え、失敗したときに下書きと誤りを出す先が無い。
+  // 送信が終わって作成・改名の行が残っている（失敗した）ときは、切り替えを断ったことに
+  // して URL を描いているタブへ戻す（`changeTab` が送信中に何もしないのと同じ結果）。
+  const editPending = createPending || renamePending;
+  const heldTabRef = useRef(false);
+  useLayoutEffect(() => {
+    if (urlTab === tab) {
+      heldTabRef.current = false;
+      return;
+    }
+    if (editPending) {
+      heldTabRef.current = true;
+      return;
+    }
+    if (heldTabRef.current && (creating || renaming !== null)) {
+      heldTabRef.current = false;
+      applyCriteria({ tab }, "replace");
+      return;
+    }
+    heldTabRef.current = false;
+    if (urlTab !== "tags") {
+      setSelected((current) => (current.size === 0 ? current : new Set()));
+      setCreating(false);
+      setCreateError(null);
+      setRenaming(null);
+      setRenameError(null);
+    }
+    setTab(urlTab);
+  }, [urlTab, tab, editPending, creating, renaming, applyCriteria]);
 
   /**
    * shown は、その1件が読み込んだ行の条件（検索と「Tentative only」「Unused only」）で
