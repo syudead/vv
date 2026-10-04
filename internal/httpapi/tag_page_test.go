@@ -107,6 +107,35 @@ func TestListTagsWithoutParametersReturnsEverything(t *testing.T) {
 	}
 }
 
+// TestListTagsReturnsExactSpelling は、綴りが完全に一致するタグが 1 ページ目に入らなくても
+// 応答の exact に入ることを確かめる（統合の窓の統合先）。
+func TestListTagsReturnsExactSpelling(t *testing.T) {
+	env, cookie := newExternalEnv(t, Options{})
+	ctx := context.Background()
+	for _, name := range []string{"a1cat", "a2cat", "cat"} {
+		if _, err := env.db.Tags().CreateTag(ctx, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rec := env.get("/api/tags?q=cat&limit=2", cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	list := decode[gen.TagList](t, rec)
+	if len(list.Items) != 2 || list.Items[0].Name != "a1cat" {
+		t.Errorf("items = %+v", list.Items)
+	}
+	if list.Exact == nil || list.Exact.Name != "cat" {
+		t.Errorf("exact = %+v, want cat", list.Exact)
+	}
+
+	rec = env.get("/api/tags?q=ca&limit=2", cookie)
+	if strings.Contains(rec.Body.String(), `"exact"`) {
+		t.Errorf("綴りの一致が無いのに exact がある: %s", rec.Body)
+	}
+}
+
 func TestListTagsRejectsInvalidParameters(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	for _, target := range []string{

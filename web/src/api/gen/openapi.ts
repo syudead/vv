@@ -894,7 +894,7 @@ export interface paths {
          * @description 統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
          *     統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
          *     無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
-         *     tagは変わらない統合先。sourceIdsが空・多すぎる（too_many_tags）・idを含む
+         *     tagは変わらない統合先。sourceIdsが空か多すぎる（too_many_tags）・idを含む
          *     （merge_same_tag）ときは400、統合先が無いときは404を返す
          *     （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
          */
@@ -1668,6 +1668,12 @@ export interface components {
             totalAll: number;
             /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
             nextCursor?: string;
+            /**
+             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+             *     合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
+             *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
+             */
+            exact?: components["schemas"]["Tag"];
         };
         /**
          * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、

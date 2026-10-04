@@ -132,12 +132,13 @@ func run(opts runOptions) error {
 	logger.Info("rebuilt the search keys", slog.Int("locations", refreshed))
 
 	// タグ名の照合用の鍵も同じ時点で作り直す。メディアフォルダに依らないので
-	// folderMu は取らない（specs/014-video-tags/data-model.md §7）。
+	// folderMu は取らない（specs/014-video-tags/data-model.md §7）。数はタグの名前と
+	// 却下した名前の行の合計なので、属性は names と呼ぶ。
 	tagsRefreshed, err := db.Tags().RefreshSearchKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("cannot rebuild the tag search keys: %w", err)
 	}
-	logger.Info("rebuilt the tag search keys", slog.Int("tag_names", tagsRefreshed))
+	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
 
 	// フォルダの索引（グループとフォルダ名）を、規則の版が古いか前回の作り直しが
 	// 失敗していたときだけ作り直す。title_key は照合用の鍵の規則で作るので、その

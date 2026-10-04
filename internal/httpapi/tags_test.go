@@ -356,7 +356,7 @@ func TestMergeTagsRejectsInvalidSources(t *testing.T) {
 		{"sourceIds に統合先を含む", `{"sourceIds":[5,3]}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonMergeSameTag}},
 		{"sourceIds が空", `{"sourceIds":[]}`,
-			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 		{"sourceIds が 20001 件", `{"sourceIds":` + idsJSON(domain.MaxTagBatch+1) + `}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 		{"廃止した sourceId", `{"sourceId":5}`,

@@ -79,7 +79,7 @@ func TestBatchTagsRejectsInvalidRequests(t *testing.T) {
 		want wantError
 	}{
 		{"ids が空", `{"action":"confirm","ids":[]}`,
-			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 		{"ids が 20001 件", `{"action":"confirm","ids":` + idsJSON(domain.MaxTagBatch+1) + `}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 		{"action が 3 値以外", `{"action":"merge","ids":[1]}`,
@@ -142,7 +142,7 @@ func TestTagImpactRejectsInvalidRequests(t *testing.T) {
 		{"action が 3 値以外", `{"action":"confirm","ids":[1]}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
 		{"ids が空", `{"action":"delete","ids":[]}`,
-			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}},
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 		{"ids が 20001 件", `{"action":"merge","ids":` + idsJSON(domain.MaxTagBatch+1) + `}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTags, limit: domain.MaxTagBatch}},
 	}

@@ -95,7 +95,7 @@ Confirms, rejects or deletes several tags in one transaction.
 
 | Body | Success | Error |
 | --- | --- | --- |
-| `TagBatchRequest` | 200 `TagBatchResponse` | 400 `invalid_request` (`action` is not one of the 3 values, `ids` is empty, `too_many_tags`) |
+| `TagBatchRequest` | 200 `TagBatchResponse` | 400 `invalid_request` (`action` is not one of the 3 values; `ids` empty or too long: reason `too_many_tags`) |
 
 | Case | Rule |
 | --- | --- |
@@ -113,7 +113,7 @@ Merges one or more source tags into the tag `{id}`.
 
 | Body | Success | Error |
 | --- | --- | --- |
-| `{ sourceIds: int64[] }` (1 to 20,000) | 200 `TagMergeResponse` | 400 `invalid_request` (`sourceIds` empty, `too_many_tags`, or `sourceIds` containing `{id}`: reason `merge_same_tag`), 404 `tag_not_found` (the target does not exist) |
+| `{ sourceIds: int64[] }` (1 to 20,000) | 200 `TagMergeResponse` | 400 `invalid_request` (`sourceIds` empty or too long: reason `too_many_tags`; `sourceIds` containing `{id}`: reason `merge_same_tag`), 404 `tag_not_found` (the target does not exist) |
 
 - `sourceId` in `MergeTagRequest` is removed and `sourceIds` is `required`. A
   single merge (the row's "Merge into another tag…") also sends
@@ -145,7 +145,7 @@ changing anything.
 
 | Body | Success | Error |
 | --- | --- | --- |
-| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request` (`action` is not one of the 3 values, `ids` is empty, `too_many_tags`) |
+| `TagImpactRequest` | 200 `TagImpactResponse` | 400 `invalid_request` (`action` is not one of the 3 values; `ids` empty or too long: reason `too_many_tags`) |
 
 | Rule | Detail |
 | --- | --- |
@@ -188,7 +188,7 @@ Added to or changed in `tags.ts`.
 
 | Success | Error |
 | --- | --- |
-| 200 `TagList` (`items`, `total`, `totalAll`, and `nextCursor` when `limit` is set and more remain) | 400 `invalid_request` (`sort` not one of the 5 values, `limit` out of range, `cursor` unreadable or from another sort order, `q` over 100 characters) |
+| 200 `TagList` (`items`, `total`, `totalAll`, `nextCursor` when `limit` is set and more remain, and `exact` as below) | 400 `invalid_request` (`sort` not one of the 5 values, `limit` out of range, `cursor` unreadable or from another sort order, `q` over 100 characters) |
 
 The diagram shows how the screen reads the list in pages.
 
@@ -209,6 +209,7 @@ sequenceDiagram
 | Cursor reuse | Use a `cursor` with the same `q`, `tentative`, `unused` and `sort`. When the conditions change, the screen drops the cursor and reads from the start. A cursor from another `sort` returns `400`; the result of reusing a cursor with other conditions (`q` and so on) is not guaranteed (as in the library) |
 | Changes during paging | When another tab adds, removes or renames tags mid-paging, the guarantee matches the library keyset ([013 list-api.md §5](../../013-library-search/contracts/list-api.md#5-cursor-and-errors)). The screen drops duplicate `id`s and reports a `totalAll` mismatch ([data-model.md §4](../data-model.md#4-screen-state)) |
 | Row content | Video count (`videoCount`), synonyms, `tentative` and `createdAt` are returned as before |
+| `exact` | On a request with `limit` and no `cursor`, the tag whose original name or synonym is spelled exactly as the trimmed `q` (byte for byte, not the matching form), when it also passes `tentative` and `unused`. Absent otherwise. It may be missing from `items`, because `items` is one page of substring matches in `sort` order; the merge dialog uses it to offer the exact target ([ui-design.md "Target candidates"](../ui-design.md#target-candidates)) |
 | External API | `GET /api/v1/tags` does not change (it returns the same result as the request without `limit`, in its current form) |
 | Caching | `Cache-Control: no-store`, as now |
 
