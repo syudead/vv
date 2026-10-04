@@ -177,6 +177,8 @@ control }`: from `lg` the controls stand inline without a visible name, so
 - `SelectionBar`: icon-only actions get an `aria-label` and a `Tooltip`; use
   `ghost` `sm` buttons, and a `destructive` action only through a
   `ConfirmDialog`.
+  While a bulk action is in flight, disable the actions and pass
+  `clearDisabled` so `Clear selection` is disabled too.
 
 ## States
 

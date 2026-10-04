@@ -65,9 +65,8 @@ export default function TagSelectionBar({
       <SelectionBar
         count={t.tags.selection.count(count)}
         clearLabel={t.tags.selection.clear}
-        onClear={() => {
-          if (!busy) onClear();
-        }}
+        clearDisabled={busy}
+        onClear={onClear}
       >
         {hasTentative && (
           <Button

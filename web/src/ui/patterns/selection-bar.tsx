@@ -14,6 +14,8 @@ export interface SelectionBarProps {
   /** 選択を解除するボタンの名前（「Clear selection」）。 */
   clearLabel: string;
   onClear: () => void;
+  /** 選択を解除するボタンを押せなくする（一括の操作の送信中など）。 */
+  clearDisabled?: boolean;
   /** 一括の操作（ghost の sm のボタン）。 */
   children: ReactNode;
 }
@@ -22,6 +24,7 @@ export function SelectionBar({
   count,
   clearLabel,
   onClear,
+  clearDisabled = false,
   children,
 }: SelectionBarProps) {
   return (
@@ -35,6 +38,7 @@ export function SelectionBar({
             variant="ghost"
             size="icon-sm"
             aria-label={clearLabel}
+            disabled={clearDisabled}
             onClick={onClear}
           >
             <X aria-hidden="true" />
