@@ -54,7 +54,9 @@ Node or FFmpeg. It opens in its own window and stops when the window closes.
 ### Get it
 
 Download `VVMDM-<version>-windows-amd64.zip` from the
-[GitHub Releases](https://github.com/syudead/vv/releases). The zip holds
+[GitHub Releases](https://github.com/syudead/vv/releases). A `v*` release is a
+version; the [`nightly`](https://github.com/syudead/vv/releases/tag/nightly)
+prerelease is the newest build of `main`. The zip holds
 `VVMDM.exe`, a `README.txt` and an `ffmpeg` folder with `ffmpeg.exe`,
 `ffprobe.exe` and FFmpeg's license and source information.
 

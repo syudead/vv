@@ -330,9 +330,9 @@ same zip. The exe's icon and manifest (DPI awareness, Common Controls v6) are
 embedded as a `.syso` generated with `github.com/tc-hib/go-winres`. The only
 target is `windows/amd64`.
 
-**Revised later**: every push to `main` also builds the zip and attaches it to
-a GitHub Release tagged `main-<12 characters of the commit>`, so the newest
-build can be downloaded without cutting a tag. A `v*` tag still marks a
+**Revised later**: every push to `main` also builds the zip and replaces the
+zip of a single `nightly` prerelease, whose tag moves to the commit, so the
+newest build can be downloaded without cutting a tag. A `v*` tag still marks a
 version boundary for users. The current rule is in
 [docs/design-docs/windows-app.md](../../docs/design-docs/windows-app.md#distribution).
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 33fb8e0d9ed9a537d78572590ad4946c9a2c90df12d32d3537eb036095a81611
+sourceHash: 1329545b48f5a191630beeca8f29b54fe706f8c2f5ed82a52c1c0db6dc96319c
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -51,7 +51,7 @@ Windows 10 または 11（x64）では、VVMDM は Docker、Go、Node、FFmpeg �
 
 ### 入手する {#get-it}
 
-[GitHub Releases](https://github.com/syudead/vv/releases) から `VVMDM-<version>-windows-amd64.zip` をダウンロードする。zip には、`VVMDM.exe`、`README.txt`、そして `ffmpeg.exe`、`ffprobe.exe`、FFmpeg のライセンスとソースの情報を入れた `ffmpeg` フォルダが入っている。
+[GitHub Releases](https://github.com/syudead/vv/releases) から `VVMDM-<version>-windows-amd64.zip` をダウンロードする。`v*` のリリースはバージョンであり、[`nightly`](https://github.com/syudead/vv/releases/tag/nightly) プレリリースは `main` の最新のビルドだ。zip には、`VVMDM.exe`、`README.txt`、そして `ffmpeg.exe`、`ffprobe.exe`、FFmpeg のライセンスとソースの情報を入れた `ffmpeg` フォルダが入っている。
 
 同じ zip をソースからビルドするには、`task build-windows-app` を実行する。`dist/VVMDM-<version>-windows-amd64.zip` が書き出される。バージョンは先頭の `v` を除いた `VERSION` で、`VERSION` が未設定のときは `sha-<12 characters of the commit>` になる。
 
