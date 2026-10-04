@@ -1224,8 +1224,11 @@ test.describe.serial("live MP4 playback", () => {
     test.setTimeout(30_000);
     const item = video("direct");
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/videos/${String(item.id)}`);
+    // 操作バーは再生を始めるまで出ない（video.js）。再生を始めてから操作バーを出す。
+    // cue は 0.5 秒から。
+    await play(page, item);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+    await page.locator(".video-js").hover();
 
     // 字幕ボタンは再生速度の前に出る。一度も選んでいないのでオフで始まる。
     const button = page.locator(".vjs-control-bar > .vjs-subs-caps-button");
@@ -1241,13 +1244,7 @@ test.describe.serial("live MP4 playback", () => {
     const display = page.locator(".vjs-text-track-display");
     await expect(display).not.toContainText("Default subtitle cue");
 
-    // cue は 0.5 秒から。再生して 0.5 秒を過ぎると、選んだ字幕の文字が出る。
-    await page.evaluate(() => {
-      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
-      if (element === null) throw new Error("video is missing");
-      element.muted = true;
-      void element.play();
-    });
+    // 再生が 0.5 秒を過ぎていれば、選んだ字幕の文字が出る。
     await page.locator(".video-js").hover();
     await button.hover();
     await page.getByRole("menuitemradio", { name: /^Default/ }).click();
@@ -1267,12 +1264,7 @@ test.describe.serial("live MP4 playback", () => {
     await expect(
       button.locator(".vjs-menu-item", { hasText: /^ja/ }).first(),
     ).toHaveAttribute("aria-checked", "true");
-    await page.evaluate(() => {
-      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
-      if (element === null) throw new Error("video is missing");
-      element.muted = true;
-      void element.play();
-    });
+    await play(page, item);
     await expect(display).toContainText("日本語の字幕");
 
     // c キーでオフにし、もう一度で最後に選んだ ja に戻る。
