@@ -393,7 +393,7 @@ The owner's favorite toggle opens the right-hand action group, left of
 `Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
 `sm`, `aria-pressed`). It is the group's only control with state, so the eye
 lands on it first; even so, it is no more prominent than the title: on is a small
-`bg-accent-soft` fill with the pink heart. It is absent on group rows and for
+`bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
 ```mermaid

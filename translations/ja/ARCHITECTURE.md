@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 9213aee2247653fa38a338f87ed9613f2313abc2a3c23cb23417b89f3e7f8ce5
+sourceHash: c7afee3980b3feb27f97c2798e3935a18facc25451ea15802b7ca3533221cb0f
 ---
 
 # アーキテクチャ {#architecture}
@@ -151,7 +151,7 @@ flowchart LR
 
 ページとコンポーネントが自分で `fetch` を呼ぶことは決してないので、サーバーへの到達方法は 1 か所で変わる。認証ゲートはセッションから誰が閲覧しているかを判断し、ゲストを所有者専用の画面から遠ざけ、閲覧者が変わるたびにページを再読み込みする。そのため、前の閲覧者のために読んだものはメモリに残らない。
 
-再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/index.css` にだけ置かれる。画面を組み立てる元になるコンポーネント、トークン、使い方のルールは [デザインシステム](docs/design-docs/design-system.md) である。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
+再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/ui/tokens.css` にだけ置かれる。画面を組み立てる元になるコンポーネント、トークン、使い方のルールは [デザインシステム](docs/design-docs/design-system.md) である。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
 
 ## 原則 {#principles}
 
