@@ -183,7 +183,8 @@ tasks:
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
     cmds:
-      - npm --prefix web run test:e2e
+      # `task test-e2e -- e2e/tags.e2e.ts` のように、後ろの引数は Playwright へ渡す。
+      - npm --prefix web run test:e2e -- {{.CLI_ARGS}}
 
   generate-check:
     desc: Check that committed generated files match OpenAPI.

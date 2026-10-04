@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: b0e2325dfd14fd5bdb947bcf664c2b94d33a2f9a2b7f06f6b6cbdc062833ca6a
+sourceHash: 1d26368de753d1cb136726a8875599e46f6e51049d825c1dd452b32d01d63380
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 - PR は毎週月曜の早朝（JST）に 6 つのグループで開く。Go モジュール、web の npm、tools の npm、GitHub Actions、mise のツール、コンテナイメージである。脆弱性修正の PR はいつでも開く。
-- マイナー、パッチ、ピン留め、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。ブラウザ E2E と Docker イメージは、マージ後の `main` への push で実行される。
+- マイナー、パッチ、ピン留め、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` と `Browser E2E` のチェックが通ると自動でマージされる。Docker イメージは、マージ後の `main` への push で実行される。
 - メジャー更新は、人が破壊的変更を読んでからマージする。
 - GitHub Actions はコミットハッシュに固定し、タグ名をコメントに書く（`config:best-practices` の既定）。
 - `Dockerfile` のベースイメージは `tag@sha256:digest` として固定する。タグの指す内容が変わると、Renovate がダイジェスト更新の PR を開く。

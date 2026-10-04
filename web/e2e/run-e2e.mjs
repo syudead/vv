@@ -75,23 +75,27 @@ function run() {
       "test",
       "cli.js",
     );
-    const test = spawnSync(process.execPath, [playwrightCLI, "test"], {
-      cwd: webRoot,
-      env: {
-        ...process.env,
-        MDM_E2E_RUN_ROOT: runRoot,
-        MDM_E2E_MEDIA_DIR: mediaDir,
-        MDM_E2E_SETTINGS_MEDIA_DIR: settingsMediaDir,
-        MDM_E2E_FOLDERS_MEDIA_DIR: foldersMediaDir,
-        MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR: foldersSearchMediaDir,
-        MDM_E2E_SEARCH_MEDIA_DIR: searchMediaDir,
-        MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
-        MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
-        MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
-        MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
+    const test = spawnSync(
+      process.execPath,
+      [playwrightCLI, "test", ...process.argv.slice(2)],
+      {
+        cwd: webRoot,
+        env: {
+          ...process.env,
+          MDM_E2E_RUN_ROOT: runRoot,
+          MDM_E2E_MEDIA_DIR: mediaDir,
+          MDM_E2E_SETTINGS_MEDIA_DIR: settingsMediaDir,
+          MDM_E2E_FOLDERS_MEDIA_DIR: foldersMediaDir,
+          MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR: foldersSearchMediaDir,
+          MDM_E2E_SEARCH_MEDIA_DIR: searchMediaDir,
+          MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
+          MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
+          MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
+          MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
+        },
+        stdio: "inherit",
       },
-      stdio: "inherit",
-    });
+    );
     if (test.error !== undefined) throw test.error;
     return test.status ?? 1;
   } finally {
