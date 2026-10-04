@@ -1,6 +1,6 @@
 ---
 source: specs/036-tag-admin-scale/ui-design.md
-sourceHash: 6d6d252e19f5bc97742164ba26a0aaad31689815ce860735ad81ccff547921ed
+sourceHash: 0734610cc87c77de8bedabcf2753617413fb610b27671f768fa1e2cf3046dd48
 ---
 
 # UI 設計: 数千から数万のタグでも管理できるタグ管理画面 {#ui-design-tag-admin-screen-that-stays-manageable-with-thousands-to-tens-of-thousands-of-tags}
@@ -308,7 +308,7 @@ stateDiagram-v2
 | `sm` 以上のマウス (`pointer: fine`) | 変わらない: "Confirm"、"Rename"、"Synonyms" の `IconButton` と "More actions" メニュー (031 "Row") |
 | タッチ (`pointer: coarse`) または `sm` 未満 | 右端の 1 つの `IconButton` (`Ellipsis`、アクセシブルな名前 "Actions"、ツールチップなし) が、ラベル付きの項目のメニューを開く: "Confirm" (`Check`、仮の行だけ) → "Rename" (`Pencil`) → "Synonyms" (`Tags`) → "Merge into another tag…" (`Merge`) → 区切り → "Reject…" (`Ban`、危険、仮の行) または "Delete…" (`Trash2`、危険、確定した行) |
 
-- 項目のラベルは、現在の `IconButton` のアクセシブルな名前とメニューの項目を再利用する。どちらの形にするかは `matchMedia` を読まずに CSS で選ぶ (`[@media(pointer:coarse)]` と `max-sm:`。library-ui.md、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)、`TouchControls` と同じ)。
+- 項目のラベルは、現在の `IconButton` のアクセシブルな名前とメニューの項目を再利用する。どちらの形にするかは `matchMedia` を読まずに CSS で選ぶ (`[@media(pointer:coarse)]` と `max-sm:`。library-ui.md、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception))。
 - メニューの "Confirm" は行の "Confirm" と同じく振る舞う: 確認なし。送信中は入口の `IconButton` が `aria-busy` になり、それ以上の押下を無視する。名前の変更、同義語、統合、却下、削除は、それぞれの `IconButton` と項目と同じく振る舞う。"Rename" または "More actions" を対象とする 014 と 031 のフォーカスの規則は、まとめている間は入口の `IconButton` を対象とする。
 - 360px での幅: 本文の `px-4` と行の `px-2` で 312px が残る。そこからチェックボックスの包み `size-8` (32px)、3 つの `gap-2` (24px)、件数の列 `w-16` (64px)、入口の `IconButton` (32px) を引くと、名前の列は約 160px になる (031 の 92px より広い)。横スクロールはない。
 - このまとめはマージ済みである (#683)。
