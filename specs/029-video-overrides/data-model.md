@@ -12,7 +12,7 @@ reading and writing them. Tables not mentioned here do not change: no column is
 added to `videos` or `video_locations`, and `video_locations.title` stays the
 scan's fact.
 
-## 1. `video_overrides`
+## `video_overrides`
 
 Added as `00021_video_overrides.sql` (the last migration on `main` is
 `00020_api_tokens.sql`).
@@ -52,7 +52,7 @@ content changed and became a different logical video has a different
 `content_key`, so the row is not carried over (edge case; same handling as
 tags).
 
-## 2. Values added to `domain`
+## Values added to `domain`
 
 | Value | Content |
 | --- | --- |
@@ -67,7 +67,7 @@ tags).
 | `VideoOverrideChanged{VideoID}` | An override changed ([R-7](research.md#r-7-override-changes-publish-domainvideooverridechanged-mapped-to-the-screens-video-notification)). Implements `Event` |
 | `ExternalVideo` | Unchanged. `Video` carries the added fields |
 
-## 3. Store operations
+## Store operations
 
 Reads add a left join of `video_overrides`
 (`ov.content_key = videos.content_key and videos.content_key <> ''`) to
@@ -81,7 +81,7 @@ A new role, `OverrideStore` (holding only the SQL connection, like
 
 | Operation | What one transaction does |
 | --- | --- |
-| `SetDisplayName(ctx, videoID, name string)` (clears when `name` is empty) | Resolves `videoID` to its content key with `registeredContentKeysForVideoIDs` (`ErrNotFound` when absent). Upserts the row, deleting it when both columns are null. Rewrites the `title_key` and `search_key` of every location of the videos with that content key (§4). After commit, publishes `VideoOverrideChanged` and returns the `Video` with the effective title |
+| `SetDisplayName(ctx, videoID, name string)` (clears when `name` is empty) | Resolves `videoID` to its content key with `registeredContentKeysForVideoIDs` (`ErrNotFound` when absent). Upserts the row, deleting it when both columns are null. Rewrites the `title_key` and `search_key` of every location of the videos with that content key ([Sort and search keys](#sort-and-search-keys)). After commit, publishes `VideoOverrideChanged` and returns the `Video` with the effective title |
 | `SetDisplayNames(ctx, []DisplayNameChange)` (external API bulk) | Resolves each `VideoRef` (`ErrNotFound` with `index` when one is not found) and does the same as above for every item. If any item fails, nothing is kept |
 | `SetThumbnailPosition(ctx, videoID, positionMs *int64)` | Upserts the row (`nil` is null; deleted when both are null). When writing a position, sets `thumbnail_revision` to the larger of the current time in milliseconds and the previous value + 1; `nil` sets it to null. In the same transaction, sets `thumbnail_state` of the videos with that content key to `done` and `indexed_at` to now, and deletes the `thumbnail_first_frame` substitution row (the same table as `applySubstitution`). After commit, publishes `VideoOverrideChanged`. **Only `app.Ingest` calls it, after publishing has finished** ([R-4](research.md#r-4-a-thumbnail-position-is-generated-within-the-request-then-recorded)) |
 
@@ -94,12 +94,12 @@ The interface `app.Ingest` declares (`IngestStore`) gets
 `SetDisplayName` and `SetDisplayNames`, plus `ThumbnailPicker` for calling
 `app.Ingest`'s `SetThumbnailPosition`. `cmd/mdm` wires them.
 
-## 4. Sort and search keys
+## Sort and search keys
 
 [R-3](research.md#r-3-sorting-and-search-fold-the-display-name-into-each-locations-title_key-and-search_key).
 The keys of one location change as follows (adding the display name to the
 rules in
-[specs/013-library-search/data-model.md §3 and §4](../013-library-search/data-model.md)).
+[specs/013-library-search/data-model.md, `search_key` rules](../013-library-search/data-model.md#search_key-rules) and [`title_key` rules](../013-library-search/data-model.md#title_key-rules)).
 
 | Column | Without a display name (same as today) | With a display name |
 | --- | --- | --- |
@@ -120,7 +120,7 @@ display name by joining `video_locations` with `videos` and `video_overrides`:
 `domain`) does not change. The rule that uses line breaks as boundaries stays,
 and `searchKeyPart` turns line breaks into spaces in the third part too.
 
-## 5. Generated artifacts
+## Generated artifacts
 
 The store layout does not change. The image at a chosen position also goes in
 `<p>/<s>.jpg`

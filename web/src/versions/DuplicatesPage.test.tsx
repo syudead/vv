@@ -465,14 +465,15 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     ).toBeNull();
   });
 
-  it("scan の知らせで骨組みにせず取り直し、増えた組と消えた組を反映する", async () => {
+  it("取り込みが終わった scan の知らせで骨組みにせず取り直し、増えた組と消えた組を反映する", async () => {
     renderPage();
     await screen.findByText("2 pairs");
     server.candidates = [
       pair(video(5, { title: "新しい組" }), video(6, { title: "新しい組 (2)" })),
       server.candidates[1]!,
     ];
-    await emitServerEvent("scan", { id: 1, state: "running" });
+    await emitServerEvent("scan", { id: 1, state: "running", status: "running" });
+    await emitServerEvent("scan", { id: 1, state: "done", status: "done" });
 
     await waitFor(() => expect(screen.getByText("新しい組")).toBeDefined());
     expect(screen.queryByText("劇場版 720p")).toBeNull();
@@ -486,9 +487,10 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
   it("取り直しが重なったら、今の取得が終わってから 1 度だけ取り直す", async () => {
     server.holdingList = true;
     renderPage();
-    await emitServerEvent("scan", {});
-    await emitServerEvent("scan", {});
-    await emitServerEvent("scan", {});
+    await emitServerEvent("scan", { id: 1, status: "running" });
+    await emitServerEvent("scan", { id: 1, status: "done" });
+    await emitServerEvent("scan", { id: 2, status: "done" });
+    await emitServerEvent("scan", { id: 3, status: "partial" });
     expect(server.listCalls).toBe(1);
     server.holdingList = false;
     server.holdList.shift()?.();
@@ -497,6 +499,19 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     // 重なった 3 回は 1 回に畳む。
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(server.listCalls).toBe(2);
+  });
+
+  it("つないだ直後の知らせと、取り込み中の1ファイルごとの知らせでは取り直さない", async () => {
+    renderPage();
+    await screen.findByText("2 pairs");
+    await emitServerEvent("scan", { id: 1, status: "done" });
+    await emitServerEvent("scan", { id: 2, status: "finding" });
+    for (let i = 0; i < 5; i++)
+      await emitServerEvent("scan", { id: 2, status: "running" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(server.listCalls).toBe(1);
+    await emitServerEvent("scan", { id: 2, status: "done" });
+    await waitFor(() => expect(server.listCalls).toBe(2));
   });
 
   it("200 組を超えるときは見せている数と全体の数を出す", async () => {

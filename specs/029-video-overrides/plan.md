@@ -12,7 +12,7 @@ external API and MCP. The original file is not touched.
 
 | Concern | Approach |
 | --- | --- |
-| Storage | An override is one row of `video_overrides`, a user-data table keyed by `content_key`, and survives rescans, moves, renames and added locations ([research.md R-1](research.md#r-1-overrides-live-in-one-user-data-table-keyed-by-content_key), [data-model.md §1](data-model.md#1-video_overrides)). |
+| Storage | An override is one row of `video_overrides`, a user-data table keyed by `content_key`, and survives rescans, moves, renames and added locations ([research.md R-1](research.md#r-1-overrides-live-in-one-user-data-table-keyed-by-content_key), [data-model.md, `video_overrides`](data-model.md#video_overrides)). |
 | Title | The store decides the effective title (the display name if there is one, otherwise from the file name) and puts it in `Video.Title`, carrying `FileTitle` and `DisplayName` separately. Sorting and search fold the display name into each location's `title_key` and `search_key` ([R-2](research.md#r-2-the-store-decides-the-effective-title-domainvideo-carries-both-the-display-name-and-the-file-name-title), [R-3](research.md#r-3-sorting-and-search-fold-the-display-name-into-each-locations-title_key-and-search_key)). |
 | Thumbnail | Setting and clearing a position generate the image within the request before recording, and a failure keeps the previous image and position. The import `thumbnail` job also generates at the chosen position. The store layout does not change, and the `thumbnailUrl` version includes a revision number per recorded position ([R-4](research.md#r-4-a-thumbnail-position-is-generated-within-the-request-then-recorded), [R-5](research.md#r-5-the-import-thumbnail-job-also-uses-the-chosen-position-the-automatic-rule-stays-in-internalmedia), [R-6](research.md#r-6-the-thumbnailurl-version-includes-the-position-revision)). |
 | Notification | Override changes are mapped through `domain.VideoOverrideChanged` to `video` on `/api/events` ([R-7](research.md#r-7-override-changes-publish-domainvideooverridechanged-mapped-to-the-screens-video-notification)). |
@@ -44,7 +44,7 @@ external API and MCP. The original file is not touched.
 - No Go or npm dependency is added. `ffmpeg` is used with the same arguments as
   today's one-frame extraction; only the position is specified.
 - `SearchKeyVersion` is not raised. Locations without a display name keep the
-  same key value as today (data-model.md §4).
+  same key value as today (data-model.md, [Sort and search keys](data-model.md#sort-and-search-keys)).
 - No `quickstart.md` is created. The acceptance criteria are checked by store,
   app, httpapi and Vitest tests, and there are no steps to run outside the
   repository's checks.
@@ -55,7 +55,7 @@ external API and MCP. The original file is not touched.
 | --- | --- |
 | Dependency direction (ARCHITECTURE.md "Intended dependency direction") | Pass. See the package table below. |
 | A role type does not call another role's public methods (the `store.DB` paragraph in ARCHITECTURE.md) | Pass. Resolving content keys (`registeredContentKeysForVideoIDs`), rewriting keys (`writeSearchKeys`) and the substitution row (the `applySubstitution` table) are shared as package-level functions. |
-| Index versus user data | Pass. `video_overrides` is added to the list of user data, and artifact cleanup does not touch it (data-model.md §1). |
+| Index versus user data | Pass. `video_overrides` is added to the list of user data, and artifact cleanup does not touch it (data-model.md, [`video_overrides`](data-model.md#video_overrides)). |
 | The artifact store layout does not change (ARCHITECTURE.md "Generated files have one owner") | Pass. Chosen images also go in `<p>/<s>.jpg` (R-5). |
 | Domain events are published after commit, and subscriptions are registered in one place, `cmd/mdm/events.go` | Pass (R-7). |
 | API sources of truth and generated files (AGENTS.md) | Pass. `api/openapi.yaml` and `api/external-v1.yaml` change, then `task generate`. The external API only adds fields and operations (compatibility policy). |
@@ -134,11 +134,11 @@ through that lock (R-4). Saving a display name involves no generation, so like
 **Scope**: `00021_video_overrides.sql`, `domain.NormalizeDisplayName` and the
 error values, `Video.FileTitle`, `DisplayName` and `ThumbnailPositionMs`, and
 `VideoOverrideChanged`
-([data-model.md §1 and §2](data-model.md#1-video_overrides)).
+([data-model.md, `video_overrides`](data-model.md#video_overrides) and [Values added to `domain`](data-model.md#values-added-to-domain)).
 `OverrideStore.SetDisplayName` and `SetDisplayNames`, the left join in every
 read that returns videos (detail, list, library items, related, external API,
 `IngestStore.GetVideo`), and the four key-rewriting paths
-([§3 and §4](data-model.md#3-store-operations)). The screen subscription in
+([Store operations](data-model.md#store-operations) and [Sort and search keys](data-model.md#sort-and-search-keys)). The screen subscription in
 `cmd/mdm/events.go`. The user data list and the `store.DB` role list in
 ARCHITECTURE.md.
 
@@ -163,7 +163,7 @@ name. `VideoOverrideChanged` is published once after commit.
 their omission for guests, the two `ErrorReason` values, the `title`
 description in `api/openapi.yaml` and generated files, the function in
 `web/src/api/client.ts` and the strings in `web/src/i18n/errors.ts`
-([contracts/screen-api.md §0, §1 and §3](contracts/screen-api.md#0-video-changes)).
+([contracts/screen-api.md, `Video` changes](contracts/screen-api.md#video-changes), [`PUT /api/videos/{id}/display-name`](contracts/screen-api.md#put-apivideosiddisplay-name) and [Added `code` and `reason` values](contracts/screen-api.md#added-code-and-reason-values)).
 `accessRoutes` tests (owner only).
 
 **Dependencies**: Store the display name and reflect it in the title, sorting and search
@@ -181,9 +181,9 @@ is too long get `400` with their `reason` and `limit: 200`. `video` is sent on
 ### Regenerate and record the representative thumbnail at a chosen position
 
 **Scope**: `media.ThumbnailAt`
-([data-model.md §5](data-model.md#5-generated-artifacts)),
+([data-model.md, Generated artifacts](data-model.md#generated-artifacts)),
 `domain.CheckThumbnailPosition` and the error values,
-`OverrideStore.SetThumbnailPosition` ([§3](data-model.md#3-store-operations)),
+`OverrideStore.SetThumbnailPosition` ([Store operations](data-model.md#store-operations)),
 `app.Ingest.SetThumbnailPosition` (R-4) and the job's switch to the chosen
 position (R-5), and the `thumbnailURL` version (R-6).
 
@@ -210,7 +210,7 @@ at the given second.
 same rule as `openMediaFile`), the three `ErrorReason` values,
 `api/openapi.yaml` and generated files, the function in
 `web/src/api/client.ts` and the strings
-([contracts/screen-api.md §2 and §3](contracts/screen-api.md#2-put-apivideosidthumbnail-position)).
+([contracts/screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](contracts/screen-api.md#put-apivideosidthumbnail-position) and [Added `code` and `reason` values](contracts/screen-api.md#added-code-and-reason-values)).
 
 **Dependencies**: Regenerate and record the representative thumbnail at a chosen position, Set and clear the display name through the screen API
 

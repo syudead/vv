@@ -13,7 +13,7 @@ This file records only the decisions this feature adds.
 
 **Decision**: The display name and the thumbnail position are one row of
 `video_overrides (content_key primary key, display_name, thumbnail_position_ms, thumbnail_revision, updated_at)`
-([data-model.md §1](data-model.md#1-video_overrides)). There is no foreign key
+([data-model.md, `video_overrides`](data-model.md#video_overrides)). There is no foreign key
 to `videos`, and a row whose two columns are both null is deleted.
 
 **Rationale**: Requirement 4 and the edge case "the same content is in several
@@ -39,7 +39,7 @@ external API's list and lookup) left-joins `video_overrides` and sets
 title". `Video.FileTitle` carries the title from the file name,
 `Video.DisplayName` the display name (empty when unset), and
 `Video.ThumbnailPositionMs` the thumbnail position (nil when unset)
-([data-model.md §2](data-model.md#2-values-added-to-domain)). This is built the
+([data-model.md, Values added to `domain`](data-model.md#values-added-to-domain)). This is built the
 same way as `Video.Public` is filled from `public_videos`.
 
 **Rationale**: The title appears in lists, folder views, the video page,
@@ -62,7 +62,7 @@ of the effective title (the display name if there is one). `search_key` adds
 the display name as a third part to the current "title `\n` relative path"
 (`domain.SearchKeyVersion` is not raised; locations without a display name get
 the same key as today). Keys are rewritten in three places
-([data-model.md §4](data-model.md#4-sort-and-search-keys)):
+([data-model.md, Sort and search keys](data-model.md#sort-and-search-keys)):
 
 | Path | Trigger |
 | --- | --- |
@@ -94,7 +94,7 @@ published, one transaction writes the position to `video_overrides`, sets the
 video's `thumbnail_state` to `done` and deletes the `thumbnail_first_frame`
 substitution row. When generation fails, nothing is written and the error is
 returned
-([contracts/screen-api.md §2](contracts/screen-api.md#2-put-apivideosidthumbnail-position)).
+([contracts/screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](contracts/screen-api.md#put-apivideosidthumbnail-position)).
 The response returns after generation finishes.
 
 **Rationale**: The edge cases require "on failure, keep the previous image and
@@ -255,7 +255,7 @@ returns "clear" when the result is empty, and rejects input longer than
 
 **Rationale**: A title containing a line break does not fit on one card line
 and does not match search terms, so it is rejected for the same reason as tag
-names ([specs/014-video-tags/data-model.md §2](../014-video-tags/data-model.md#2-name-rules)).
+names ([specs/014-video-tags/data-model.md, Name rules](../014-video-tags/data-model.md#name-rules)).
 Clearing on empty is the edge case's decision. The name replaces a file name
 (255 bytes), and cards and the video page already fit titles of that length, so
 the limit is 200, which does not go below that.

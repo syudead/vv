@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/process-lifecycle.md
-sourceHash: da67655676026665782f661137e1ae904d4d1f2c8e81650c58701c559e23790a
+sourceHash: ce75f869571be5e497ef8a4f71f1505f1d7b7381d83bef4a27d76ae32053ff2d
 ---
 
 # プロセスのライフサイクル: 起動と停止の順序 {#process-lifecycle-startup-and-shutdown-order}
@@ -51,8 +51,8 @@ flowchart LR
 | 手順 | 失敗したとき |
 | --- | --- |
 | 設定、`PATH` 上の `ffmpeg`/`ffprobe`、SQLite、マイグレーション | 起動が止まる |
-| 場所とタグ名の検索キー | 起動が止まる。そのため、検索が古い規則で作ったキーで動くことはない ([013 data-model §5](../../specs/013-library-search/data-model.md)) |
-| フォルダ索引 | ログに記録する。次の再構築まで前の索引が残る ([017 data-model §3](../../specs/017-folder-groups/data-model.md)) |
+| 場所とタグ名の検索キー | 起動が止まる。そのため、検索が古い規則で作ったキーで動くことはない ([013 data-model、キーを作る時期と `search_version`](../../specs/013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
+| フォルダ索引 | ログに記録する。次の再構築まで前の索引が残る ([017 data-model、索引を再構築する時期](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
 | `.tmp` 以下の未完成の生成物 | ログに記録する |
 | 中断したスキャンの再開 | ログに記録する。ユーザーはスキャンを開始できる |
 | エンコーダの確認 | バックグラウンドで実行し、リスナーを遅らせることはない ([hardware-encoding.md](hardware-encoding.md)) |

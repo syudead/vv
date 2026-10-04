@@ -11,11 +11,11 @@
 
 The rest of the model is unchanged: [link to the canonical schema or migrations].
 
-## 1. Migration
+## Migration
 
 [The migration this feature adds: file name, and what it creates or alters.]
 
-## 2. `[table_or_entity]`
+## `[table_or_entity]`
 
 <!-- TABLE: one row per field. -->
 
@@ -25,7 +25,7 @@ The rest of the model is unchanged: [link to the canonical schema or migrations]
 
 **Relationships**: [Foreign keys and what happens on delete.]
 
-## 3. Rules
+## Rules
 
 <!-- TABLE: one row per invariant or validation rule, with where it is enforced. -->
 
@@ -33,10 +33,10 @@ The rest of the model is unchanged: [link to the canonical schema or migrations]
 | --- | --- |
 | | |
 
-## 4. State transitions
+## State transitions
 
 <!-- DIAGRAM (Mermaid stateDiagram) when an entity has states. Delete otherwise. -->
 
-## 5. What does not change
+## What does not change
 
 [Entities or fields a reader might expect to change, and why they do not.]

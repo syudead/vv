@@ -7,7 +7,7 @@ Issue #370 and the Edge Case "the stored value is unknown". Following
 table is user and settings data like `media_folders`, and a scan does not restore
 it.
 
-## 1. Migration
+## Migration
 
 Add `internal/store/migrations/000NN_settings.sql` (the next number at
 implementation time).
@@ -28,7 +28,7 @@ drop table if exists settings;
 
 The migration writes no rows. A key with no row means "never chosen".
 
-## 2. Key `transcode.video_encoder`
+## Key `transcode.video_encoder`
 
 | Field | Content |
 | --- | --- |
@@ -50,7 +50,7 @@ The migration writes no rows. A key with no row means "never chosen".
   does not change either (requirement 8). The effective encoder is not stored
   ([research.md R-3](research.md#r-3-a-pure-domain-function-decides-the-effective-encoder-and-app-holds-it-in-memory)).
 
-## 3. In-memory values (not stored)
+## In-memory values (not stored)
 
 `TranscodeSettings` in `internal/app` holds these and rebuilds them on every
 startup.

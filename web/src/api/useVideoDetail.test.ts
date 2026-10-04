@@ -292,6 +292,20 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { thumbnailState: "done" } });
   });
 
+  it("最初の接続では、準備の済んだ動画を取り直さず、つなぎ直したら取り直す", async () => {
+    getVideo.mockResolvedValue(done);
+    renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+
+    await emitServerEvent("open");
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(1);
+
+    await emitServerEvent("open");
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
+  });
+
   it("取り直しが 404 なら missing にする", async () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })

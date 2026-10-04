@@ -32,8 +32,8 @@ type CatalogIndexStore interface {
 	VideosAddedNear(ctx context.Context, audience domain.Audience, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
 	// VideoGroup は動画 id が属するグループを、見る人に見せてよいメンバーだけで返す。
-	// 見る人に見せるグループが無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, id int64) (domain.VideoGroup, bool, error)
+	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, id int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 }
 
 // ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
@@ -131,9 +131,10 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 }
 
 // VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す
-// （GET /api/videos/{id} の group）。見る人に見せるグループが無ければ false。
-func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video) (domain.VideoGroup, bool, error) {
-	return c.index.VideoGroup(ctx, audience, video.ID)
+// （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。メンバーの詳細は
+// window の範囲だけを読む。見る人に見せるグループが無ければ false。
+func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+	return c.index.VideoGroup(ctx, audience, video.ID, window)
 }
 
 // RelatedVideos は関連動画を返す順に並べる。
@@ -148,14 +149,15 @@ func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, vide
 // OrderRelated の入力から先に除いてから並べるので、上限はその後に掛かり、大きなグループ
 // でも関連動画が残る。追加日時の近い動画は、除く本数を見込んで多めに読む。
 func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
-	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID)
+	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID,
+		domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true})
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
 	members := map[int64]struct{}{}
 	if grouped {
-		for _, member := range group.Members {
-			members[member.ID] = struct{}{}
+		for _, member := range group.MemberIDs {
+			members[member] = struct{}{}
 		}
 	}
 	isMember := func(id int64) bool {

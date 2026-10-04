@@ -328,6 +328,8 @@ type fakeCatalog struct {
 	group    domain.VideoGroup
 	grouped  bool
 	groupErr error
+	// groupWindows は VideoGroup に渡された窓を順に持つ。
+	groupWindows []domain.GroupWindow
 
 	retry func(domain.Video) error
 }
@@ -365,7 +367,8 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 	return f.related, f.relatedErr
 }
 
-func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video) (domain.VideoGroup, bool, error) {
+func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+	f.groupWindows = append(f.groupWindows, window)
 	return f.group, f.grouped, f.groupErr
 }
 

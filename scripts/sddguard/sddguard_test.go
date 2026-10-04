@@ -196,6 +196,11 @@ func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
 // 走査ではなく git の追跡一覧を使う。ディレクトリを辿ると、無視されている作業用の
 // チェックアウト（エージェントが作る .claude/worktrees/ など）まで拾い、そこにある
 // 古い内容を現在の違反として報告してしまう。
+// vendoredSkill は上流の shadcn スキルの写しで、リポジトリの文書規則では書かれていない
+// （.agents/skills/shadcn/VENDORED.md）。手元の変更は CLI の置き換えだけに保つので、
+// 見出しや書き方の検査から外す。
+const vendoredSkill = ".agents/skills/shadcn/"
+
 func guardedMarkdown(t *testing.T) []string {
 	t.Helper()
 	repoRoot := repositoryRoot(t)
@@ -207,7 +212,7 @@ func guardedMarkdown(t *testing.T) []string {
 
 	var files []string
 	for _, rel := range strings.Split(string(out), "\x00") {
-		if rel == "" || strings.HasPrefix(rel, "web/") {
+		if rel == "" || strings.HasPrefix(rel, "web/") || strings.HasPrefix(rel, vendoredSkill) {
 			continue
 		}
 		files = append(files, filepath.Join(repoRoot, rel))

@@ -21,7 +21,7 @@ flowchart LR
   people[People on devices] -->|layout| screens
 ```
 
-## 1. Visual values in one CSS location, with contrast guaranteed by tests
+## Visual values in one CSS location, with contrast guaranteed by tests
 
 Screens set visual values only through the utility classes Tailwind generates
 from `@theme` (`bg-card`, `text-muted-foreground`, `rounded-md`), and
@@ -59,7 +59,7 @@ body text on surfaces, the main borders and focus.
 | Values in TypeScript, CSS generated | Screens use Tailwind class names anyway, so names are duplicated and one more generated file appears |
 | axe or Lighthouse in CI | Needs a real browser; beyond contrast it adds findings people review anyway |
 
-## 2. Dark scheme only, without a light/dark switch
+## Dark scheme only, without a light/dark switch
 
 `html` declares `color-scheme: dark` and one dark set of values exists, with no
 `prefers-color-scheme` branch and no switch.
@@ -69,7 +69,7 @@ unseen. Token names describe roles (`bg`, `surface`, `elevated`, `fg`,
 `fg-muted`, `accent`, `danger`, `warning`), not colours (`neutral-850`), so a
 later light scheme is a second set of values with no screen changes.
 
-## 3. No virtual scrolling
+## No virtual scrolling
 
 Lists render every loaded item without a virtual scrolling library; the goal is
 immediate response to input, not fewer DOM elements.
@@ -102,7 +102,7 @@ The list's scroll restoration, zoom anchoring and infinite scroll all read
 `window.scrollY` or observe against the viewport, so a scroll container inside
 the shell would mean rewriting all three.
 
-## 4. Width breakpoints in CSS, and the sidebar exception
+## Width breakpoints in CSS, and the sidebar exception
 
 Width variations use Tailwind's default breakpoints in CSS; only the sidebar
 reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts)).
@@ -126,7 +126,7 @@ Reduced motion (`prefers-reduced-motion`) is also handled in CSS: the
 `motion-reduce:` variant stops decorative transitions, while the final colour
 and the target marker still apply, so the result of an action stays visible.
 
-## 5. Layout verified by people, not machines
+## Layout verified by people, not machines
 
 Machines check contrast, the absence of raw colours and component behaviour;
 **people check the layout and its width variations on real devices**.
@@ -145,7 +145,7 @@ unresolved, and faking them gives passing tests on a broken screen.
 | --- | --- |
 | Visual regression tests | New dependencies, false positives from glyph differences between environments, and every UI change updates reference images |
 
-## 6. List layout
+## List layout
 
 Lists use a dense management-screen layout: a top bar, a filter band and boxed
 cards, shared by the library and folder pages through one grid
@@ -167,7 +167,7 @@ flowchart LR
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
 logo and `Refresh library`, and each screen inserts its toolbar between them.
 The sidebar has three states (expanded, rail, drawer; see
-[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
 it widens the grid, while card width follows the zoom level. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
@@ -342,11 +342,11 @@ consistent across components. Keyboard focus is an outer outline in the accent
 colour; the search field draws it on its outer frame, not the inner `input`, to
 avoid a double outline.
 
-## 7. Sidebar navigation
+## Sidebar navigation
 
 Each sidebar item goes to its screen.
 
-## 8. Video page layout
+## Video page layout
 
 The video page (`/videos/:id`) is for watching, so it is less dense than the
 lists; shapes and text are in
@@ -373,7 +373,7 @@ flowchart LR
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
-[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
 above related videos form a right column, below that everything stacks, and
 below `md` the breadcrumb shows only its last segment.
 
@@ -536,9 +536,9 @@ hide the player.
 
 Central touch controls appear on `pointer: coarse` devices through a CSS media
 condition, without `matchMedia`, for the reason in
-[section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception).
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception).
 
-## 9. List conditions applied by the server
+## List conditions applied by the server
 
 The server applies every list condition (search, filters, sort, shuffle seed),
 and the page never filters the pages it has loaded
@@ -562,7 +562,7 @@ flowchart LR
 Inserting the representative directly could show a video outside the folder
 or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
 
-## 10. Per-device preferences with defaults
+## Per-device preferences with defaults
 
 Per-device display settings are total functions over `localStorage` that
 never throw ([`web/src/preferences/`](../../web/src/preferences)): a missing,

@@ -11,7 +11,7 @@ here.
 
 | Topic | Source |
 | --- | --- |
-| Colour, interaction states, width breakpoints, playback screen structure | [Library UI](../../docs/design-docs/library-ui.md) (the cards in section 6 on list structure, and section 8 on the playback screen structure) |
+| Colour, interaction states, width breakpoints, playback screen structure | [Library UI](../../docs/design-docs/library-ui.md) (the cards in [List layout](../../docs/design-docs/library-ui.md#list-layout) on list structure, and [Video page layout](../../docs/design-docs/library-ui.md#video-page-layout) on the playback screen structure) |
 | Role tokens | `@theme` in [`web/src/index.css`](../../web/src/index.css). Referred to by name; values are not copied |
 | Contrast pairs under test | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | Playback screen columns, title format, the two "Video facts" rows with their right-hand actions, the failure line | [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md) and the current [`web/src/player/VideoPage.tsx`](../../web/src/player/VideoPage.tsx) and [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |
@@ -32,7 +32,7 @@ the **owner** only:
 Nothing else changes. List cards, the folder screen, the list view, related
 videos and group cards only draw `title`, so the display name appears there
 through the API's `title` (requirement 1,
-[contracts/screen-api.md §0](contracts/screen-api.md#0-video-changes)). Cards do
+[contracts/screen-api.md, `Video` changes](contracts/screen-api.md#video-changes)). Cards do
 not show the file name (the `UI品質` examples of "does not meet the
 requirement"). The guest playback screen stays as it is and shows none of the
 three (requirement 9). The inside of the player (control bar, layers) does not
@@ -92,7 +92,7 @@ presence itself marks "this video is overridden" (requirement 7).
 
 - The five reasons are added to the `reason` table in
   `web/src/i18n/errors.ts`
-  ([contracts/screen-api.md §3](contracts/screen-api.md#3-added-code-and-reason-values)).
+  ([contracts/screen-api.md, Added `code` and `reason` values](contracts/screen-api.md#added-code-and-reason-values)).
   `file_unavailable` and `video_not_found` keep their current text.
 - "Thumbnail" and "name" refer to the same things as on list cards (the
   thumbnail) and to title editing (the name). The term "display name" is used
@@ -156,7 +156,7 @@ Pressing the edit button turns the `h1`'s position into an **input** in place
 ### Save
 
 - Saving sends one `PUT /api/videos/{id}/display-name`
-  ([contracts/screen-api.md §1](contracts/screen-api.md#1-put-apivideosiddisplay-name)).
+  ([contracts/screen-api.md, `PUT /api/videos/{id}/display-name`](contracts/screen-api.md#put-apivideosiddisplay-name)).
   - When the input value equals the current `title` and no display name is set,
     nothing is sent and it acts as Cancel (no display name identical to the
     file name is created).
@@ -280,7 +280,7 @@ length, size and added date.
   position is 0 or the value before the resume position is applied, so it would
   send a value different from the frame the user sees. While a layer covers the
   picture there is no "frame currently shown", and the ended position is at
-  least the duration and is rejected (contract §2). Once settled, the loading
+  least the duration and is rejected ([contracts/screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](contracts/screen-api.md#put-apivideosidthumbnail-position)). Once settled, the loading
   spinner while waiting for data, reconnecting, and the central touch controls
   do not cover the picture and keep the position, so the button stays
   pressable.
@@ -288,7 +288,7 @@ length, size and added date.
   the icon becomes `LoaderCircle` (spinning) and is `aria-disabled`. Pressing
   again sends nothing. Conflicts with another tab or the external API are
   handled by the server's "the image of the last recorded position remains"
-  (contract §2).
+  ([contracts/screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](contracts/screen-api.md#put-apivideosidthumbnail-position)).
 - On `200`, the response `Video` replaces the video. The item (see "Item"
   above) appears, or its position and image update. No toast: the item's
   changed image and position are the result (acceptance criterion 5). List
@@ -306,7 +306,7 @@ length, size and added date.
   {reason}". The reason is `errorText` (see "Words" above).
 - The previous item (position and image) is kept. For
   `thumbnail_frame_unavailable`, the server also keeps the previous image
-  (edge case "generation fails", contract §2).
+  (edge case "generation fails", [contracts/screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](contracts/screen-api.md#put-apivideosidthumbnail-position)).
 - It is never shown together with the could-not-open line; the later one
   replaces the earlier (this place holds one line at a time). It clears on the
   next set, clear or open action, or on moving to another video.

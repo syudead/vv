@@ -33,6 +33,8 @@ type fakeCatalogStore struct {
 	lastDir   string
 	// groups は動画 id ごとの、見る人に見せるグループ。
 	groups map[int64]domain.VideoGroup
+	// windows は VideoGroup に渡された窓を順に持つ。
+	windows []domain.GroupWindow
 	// nearLimit は VideosAddedNear が受け取った件数。
 	nearLimit int
 	// audiences は関連動画の読み出しが受け取った見る人を、呼ばれた順に持つ。
@@ -95,10 +97,26 @@ func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audien
 	return out, nil
 }
 
-func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
+// VideoGroup は保存層と同じく、groups の全メンバー（Members）から id を並べ、window の
+// 範囲の詳細だけを返す。
+func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.audiences = append(f.audiences, audience)
+	f.windows = append(f.windows, window)
 	group, ok := f.groups[id]
-	return group, ok, nil
+	if !ok {
+		return domain.VideoGroup{}, false, nil
+	}
+	all := group.Members
+	group.MemberIDs = make([]int64, 0, len(all))
+	for _, member := range all {
+		group.MemberIDs = append(group.MemberIDs, member.ID)
+	}
+	group.Members = nil
+	if window.Limit > 0 {
+		group.Offset = window.Start(len(all), group.Position(id))
+		group.Members = all[group.Offset:min(group.Offset+window.Limit, len(all))]
+	}
+	return group, true, nil
 }
 
 // fakeArtifactFiles は生成物のファイルの有無を決め打ちで答える。
@@ -398,13 +416,16 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.Group == nil || len(got.Group.Members) != size {
+			if got.Group == nil || got.Group.Total() != size || len(got.Group.Members) != size {
 				t.Fatalf("group = %+v, want %d 本の全メンバー", got.Group, size)
 			}
 			for i, member := range got.Group.Members {
 				if member.ID != int64(i+1) {
 					t.Fatalf("group の %d 本目 = %d, want 並びの順", i+1, member.ID)
 				}
+			}
+			if want := (domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}); store.windows[0] != want {
+				t.Errorf("window = %+v, want %+v", store.windows[0], want)
 			}
 			if got.PrevID != tc.prev || got.NextID != tc.next {
 				t.Errorf("前後 = %d・%d, want %d・%d", got.PrevID, got.NextID, tc.prev, tc.next)
@@ -445,19 +466,54 @@ func TestRelatedVideosWithoutGroupKeepsFolderOrder(t *testing.T) {
 	}
 }
 
-// Catalog.VideoGroup は受け取った見る人のまま保存層に問い合わせる。
+// Catalog.VideoGroup は受け取った見る人と窓のまま保存層に問い合わせる。
 func TestVideoGroupPassesAudience(t *testing.T) {
 	group := domain.VideoGroup{Name: "g", Members: []domain.Video{probedVideo(1, "a"), probedVideo(2, "b")}}
 	store := &fakeCatalogStore{groups: map[int64]domain.VideoGroup{1: group}}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"))
+	window := domain.GroupWindow{Offset: 1, Limit: 5}
+	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"), window)
 	if err != nil || !ok || got.Name != "g" {
 		t.Fatalf("VideoGroup = %+v・%v・%v", got, ok, err)
 	}
 	if !slices.Equal(store.audiences, []domain.Audience{domain.AudienceGuest}) {
 		t.Errorf("audiences = %v", store.audiences)
 	}
-	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c")); ok {
+	if !slices.Equal(store.windows, []domain.GroupWindow{window}) {
+		t.Errorf("windows = %v", store.windows)
+	}
+	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c"), window); ok {
 		t.Error("メンバーでない動画にグループがある")
+	}
+}
+
+// 大きなグループでは、関連動画のグループは基準の動画を中ほどに置いた窓だけを持ち、
+// 前後と本数はグループ全体で決まる（issue 674）。
+func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
+	const size = domain.GroupMemberWindow*2 + 50
+	videos := map[int64]domain.Video{}
+	var members []domain.Video
+	for i := range size {
+		id := int64(i + 1)
+		video := probedVideo(id, "m")
+		video.Path = fmt.Sprintf(fixturePath("/media/big/%03d.mp4"), id)
+		videos[id] = video
+		members = append(members, video)
+	}
+	group := domain.VideoGroup{Folder: domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
+	store := &fakeCatalogStore{videos: videos, groups: map[int64]domain.VideoGroup{200: group}}
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[200])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Group == nil || got.Group.Total() != size || len(got.Group.Members) != domain.GroupMemberWindow {
+		t.Fatalf("group = %+v", got.Group)
+	}
+	if want := 200 - 1 - domain.GroupMemberWindow/2; got.Group.Offset != want || got.Group.Members[0].ID != int64(want+1) {
+		t.Errorf("offset = %d (first %d), want %d", got.Group.Offset, got.Group.Members[0].ID, want)
+	}
+	if got.PrevID != 199 || got.NextID != 201 {
+		t.Errorf("前後 = %d・%d, want 199・201", got.PrevID, got.NextID)
 	}
 }

@@ -638,6 +638,9 @@ test.describe.serial("video tags", () => {
      * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
      * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
      * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
+     * 送るたびに行が描かれるのを少し待ち、末尾まで来ても無ければ先頭から送り直す。
+     * 描き直しの途中（読み直した一覧が先頭へ戻すときなど）に末尾と見誤って
+     * やめないよう、回数ではなく時間で区切る。
      */
     async function revealTagRow(page: Page, name: string) {
       const row = tagRowByName(page, name);
@@ -645,20 +648,15 @@ test.describe.serial("video tags", () => {
         page.getByRole("link", { name: /^Open the library filtered by / }).first(),
       ).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
-      for (let step = 0; step < 200 && (await row.count()) === 0; step += 1) {
-        const moved = await page.evaluate(() => {
+      await expect(async () => {
+        if ((await row.count()) > 0) return;
+        await page.evaluate(() => {
           const before = window.scrollY;
           window.scrollBy(0, 400);
-          return window.scrollY !== before;
+          if (window.scrollY === before) window.scrollTo(0, 0);
         });
-        if (!moved) break;
-        await page.evaluate(
-          () =>
-            new Promise<void>((resolve) => {
-              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-            }),
-        );
-      }
+        await expect(row).toBeAttached({ timeout: 300 });
+      }).toPass({ timeout: 15_000, intervals: [0] });
       await row.scrollIntoViewIfNeeded();
       return row;
     }

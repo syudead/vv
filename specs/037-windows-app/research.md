@@ -86,7 +86,7 @@ and a matching `Host`. Over HTTP the session cookie is `vv_session` without
 it (given as an argument in a shortcut). When listening fails, a dialog shows
 the port number, that another program may be using it, and how to change it
 with `--port`, and the app exits
-([contracts/windows-app.md §2](contracts/windows-app.md#2-startup-arguments-and-failure-messages)).
+([contracts/windows-app.md, Startup arguments and failure messages](contracts/windows-app.md#startup-arguments-and-failure-messages)).
 
 **Rationale**: The edge case "the port VVMDM tries to use is taken by another
 program" assumes a fixed port and a stated reason when it is unavailable.
@@ -108,7 +108,7 @@ often collides with development servers and the Docker default.
 **Decision**: The data location that corresponds to `MDM_DATA_DIR` is
 `%LOCALAPPDATA%\VVMDM\data` (`mdm.db` and `thumbnails\`), WebView2's user data
 is `%LOCALAPPDATA%\VVMDM\webview2`, and logs are `%LOCALAPPDATA%\VVMDM\logs`
-([contracts/windows-app.md §3](contracts/windows-app.md#3-data-locations)). The
+([contracts/windows-app.md, Data locations](contracts/windows-app.md#data-locations)). The
 `MDM_*` environment variables are not read.
 
 **Rationale**: This meets requirement 4 (per user, writable, nothing to
@@ -235,7 +235,7 @@ how VVMDM was started.
 **Decision**: Before showing the window, the app checks the following in
 order, and on a failure shows a dialog with the reason and what to do, then
 exits (wording in
-[contracts/windows-app.md §2](contracts/windows-app.md#2-startup-arguments-and-failure-messages)):
+[contracts/windows-app.md, Startup arguments and failure messages](contracts/windows-app.md#startup-arguments-and-failure-messages)):
 
 1. It is not running directly from inside the zip (the exe is not under a
    temporary folder, and `ffmpeg\ffmpeg.exe` and `ffmpeg\ffprobe.exe` are next
@@ -296,7 +296,7 @@ another `ffmpeg` installed, and the command names in the 6 places in
 `ffmpeg-<version>-essentials_build.zip` from the GitHub Releases of
 `GyanD/codexffmpeg`, downloads it, and puts only `ffmpeg.exe`, `ffprobe.exe`,
 FFmpeg's LICENSE and the source location in the zip
-([contracts/windows-app.md §1](contracts/windows-app.md#1-zip-contents)). On a
+([contracts/windows-app.md, Zip contents](contracts/windows-app.md#zip-contents)). On a
 Windows runner the build checks that `ffmpeg -hide_banner -encoders` lists
 `h264_nvenc` and `h264_qsv`, and fails otherwise. The supported Windows
 hardware encoders stay NVENC and QSV from

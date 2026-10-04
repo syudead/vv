@@ -6,8 +6,8 @@ Parent Issue: #757. Inherited decisions:
 | --- | --- |
 | Tech stack (React, Vite, Tailwind CSS) | [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
 | Web layer directories | [ARCHITECTURE.md](../../ARCHITECTURE.md#web-layer) |
-| Token location, raw-colour scan and contrast pairs | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#1-visual-values-in-one-css-location-with-contrast-guaranteed-by-tests) |
-| Dark scheme only | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#2-dark-scheme-only-without-a-lightdark-switch) |
+| Token location, raw-colour scan and contrast pairs | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests) |
+| Dark scheme only | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#dark-scheme-only-without-a-lightdark-switch) |
 | Screen text rules enforced by ESLint | [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
 | Dependency updates | [docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md) |
 

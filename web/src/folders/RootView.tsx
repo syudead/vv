@@ -6,7 +6,7 @@ import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import { useScan } from "../shell/ScanProvider";
+import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { buttonClassName } from "../ui/Button";
 import { Grid } from "../videoList/Grid";
@@ -71,7 +71,7 @@ export default function RootView() {
   const searching = criteria.query !== "";
 
   // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
-  const scan = useScan();
+  const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(scan.finished?.id);
   const { reload } = roots;

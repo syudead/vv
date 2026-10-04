@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: c7afee3980b3feb27f97c2798e3935a18facc25451ea15802b7ca3533221cb0f
+sourceHash: 0d9a5d3a607fb696ad236a10bd3f21fb608e82095d3e4f8869c64122cce85691
 ---
 
 # アーキテクチャ {#architecture}
@@ -111,7 +111,7 @@ flowchart LR
 | `internal/artifacts` | `MDM_DATA_DIR/thumbnails` の下の生成ファイルのパス、公開、削除 | [`internal/artifacts`](internal/artifacts) |
 | ライブ変換 (`internal/media`、`internal/httpapi`) | リクエスト単位の fragmented MP4、シーク、エンコーダの選択、画質 | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)、[hardware-encoding.md](docs/design-docs/hardware-encoding.md)、[playback-quality.md](docs/design-docs/playback-quality.md) |
 | `internal/store` | SQLite のスキーマ、マイグレーション、役割の型、検索キー | [013 data-model](specs/013-library-search/data-model.md)、[030 data-model](specs/030-video-versions/data-model.md) |
-| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界 | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
+| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界、クライアントが受け付けるときの JSON と画面用ファイルの gzip | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
 | 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
@@ -143,7 +143,7 @@ flowchart LR
 | `shell/` | トップバー、サイドバー、スキャンの状態、画面を囲む枠 |
 | `library/`、`folders/`、`settings/`、`tags/`、`player/`、`versions/` | それぞれの製品フロー |
 | `videoList/` | ライブラリ画面とフォルダ画面が共有する一覧の部品 |
-| `ui/` | 再利用できるプリミティブ。`web/registry.json` の shadcn レジストリとして公開される（[design-system.md](docs/design-docs/design-system.md)） |
+| `ui/` | 再利用できるプリミティブ。`web/registry.json` の shadcn レジストリとして公開する ([design-system.md](docs/design-docs/design-system.md)) |
 | `lib/` | ロケールに依存しない書式整形 |
 | `i18n/` | 画面の文言と、ロケールに依存する書式整形 ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | 端末ごとの表示設定 |
@@ -151,7 +151,7 @@ flowchart LR
 
 ページとコンポーネントが自分で `fetch` を呼ぶことは決してないので、サーバーへの到達方法は 1 か所で変わる。認証ゲートはセッションから誰が閲覧しているかを判断し、ゲストを所有者専用の画面から遠ざけ、閲覧者が変わるたびにページを再読み込みする。そのため、前の閲覧者のために読んだものはメモリに残らない。
 
-再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/ui/tokens.css` にだけ置かれる。画面を組み立てる元になるコンポーネント、トークン、使い方のルールは [デザインシステム](docs/design-docs/design-system.md) である。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
+再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/index.css` にだけ置かれる。画面を組み立てるコンポーネント、トークン、使い方のルールは[デザインシステム](docs/design-docs/design-system.md)である。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
 
 ## 原則 {#principles}
 

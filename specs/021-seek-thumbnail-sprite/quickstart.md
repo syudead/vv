@@ -7,7 +7,7 @@ draws the time on screen), as in
 [docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md), and
 placed in `.local/bench/`. Do not use private videos or file names.
 
-## 1. Generation time, file count and total size before and after (acceptance criteria 1 and 2)
+## Generation time, file count and total size before and after (acceptance criteria 1 and 2)
 
 Using the 2-hour input `long-2h.mp4` and the 2-minute input
 `short-2m-720p.mp4` from `docs/how-to/preview-benchmark.md`, run
@@ -32,7 +32,7 @@ On an OS where peak memory cannot be taken, write `取得不可`. Tests in
 `internal/domain` check that the 2-minute input gets a 5-second interval and
 the 2-hour input a 12-second interval with 600 frames.
 
-## 2. Checks on the playback screen (acceptance criteria 3–6)
+## Checks on the playback screen (acceptance criteria 3–6)
 
 Create the additional inputs: for portrait, `portrait-rotated.mp4` from
 `preview-benchmark.md`; for live transcoding, the same content as MKV (a
@@ -60,7 +60,7 @@ At each of 360px, 768px and 1280px, capture the display at the start, centre
 and end and put the captures in the PR. Also compare that the preview's size,
 position and time display are the same as before the change.
 
-## 3. Interruption, replacement, deletion, and reclaiming existing JPEGs (acceptance criteria 7 and 8)
+## Interruption, replacement, deletion, and reclaiming existing JPEGs (acceptance criteria 7 and 8)
 
 - Stopping `task preview` with Ctrl+C during generation (while the processing
   status shows remaining seek thumbnails) and starting it again leaves

@@ -113,7 +113,18 @@ let pendingGet: Promise<Tag[]> | undefined;
  * 入れない。
  */
 let droppedGeneration = 0;
+/** latestPending は `latestFetch` がまだ届いていないかである。 */
+let latestPending = false;
+/** heldAt は `held` を最後に取得で埋めた時刻（`Date.now()`）である。 */
+let heldAt = 0;
 const listeners = new Set<TagsListener>();
+
+/**
+ * revalidateWindowMs は、画面を開いたときの取り直し（`revalidateTags`）で、直前に届いた
+ * 一覧をそのまま使う時間である。同じ画面の部品がそれぞれ開いたときに取り直すと、
+ * 同じ取得が続けて何本も送られる（issue 674）。
+ */
+const revalidateWindowMs = 2000;
 
 function notify(tags: Tag[]): void {
   for (const listener of listeners) listener(tags);
@@ -136,7 +147,9 @@ function notify(tags: Tag[]): void {
 function startFetch(): Promise<Tag[]> {
   generation += 1;
   const myGeneration = generation;
+  latestPending = true;
   const fetchPromise: Promise<Tag[]> = listTags().then((tags): Tag[] | Promise<Tag[]> => {
+    if (myGeneration === generation) latestPending = false;
     if (myGeneration !== generation) {
       // startFetch は generation を上げた直後に必ず latestFetch を自分の
       // Promise へ差し替えるので、ここに来た時点で latestFetch は必ず
@@ -148,8 +161,12 @@ function startFetch(): Promise<Tag[]> {
     // 返す（取り直しが届けば、それが `held` に入る）。
     if (myGeneration <= droppedGeneration) return startFetch();
     held = tags;
+    heldAt = Date.now();
     notify(tags);
     return tags;
+  });
+  fetchPromise.catch(() => {
+    if (myGeneration === generation) latestPending = false;
   });
   latestFetch = fetchPromise;
   return fetchPromise;
@@ -186,6 +203,21 @@ export function refreshTags(): Promise<Tag[]> {
   return startFetch();
 }
 
+/**
+ * revalidateTags は、画面や部品を開いたときに共有の一覧を確かめ直す。取得の途中ならその
+ * 結果を待ち、直前（`revalidateWindowMs` 以内）に届いた一覧があればそれを返し、どちらでも
+ * なければ `refreshTags` と同じく取り直す。タグを変えた後の取り直しは、変更の後に始めた
+ * 取得が要るので `refreshTags` を使う（変更の後の `refreshTags` は新しい取得を始めるので、
+ * ここで待つ途中の取得も変更の後のものになる）。
+ */
+export function revalidateTags(): Promise<Tag[]> {
+  if (latestPending && latestFetch !== undefined) return latestFetch;
+  if (held !== undefined && Date.now() - heldAt < revalidateWindowMs) {
+    return Promise.resolve(held);
+  }
+  return startFetch();
+}
+
 /** subscribeTags は共有の保持が取り直されるたびに呼ばれる。戻り値で購読をやめる。 */
 export function subscribeTags(listener: TagsListener): () => void {
   listeners.add(listener);
@@ -204,6 +236,8 @@ export function __resetTagsForTest(): void {
   held = undefined;
   generation = 0;
   latestFetch = undefined;
+  latestPending = false;
+  heldAt = 0;
   pendingGet = undefined;
   droppedGeneration = 0;
   listeners.clear();

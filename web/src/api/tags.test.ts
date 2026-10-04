@@ -19,6 +19,7 @@ import {
   rejectTag,
   removeTagSynonym,
   renameTag,
+  revalidateTags,
   subscribeTags,
   summarizeVideoTags,
   tagImpact,
@@ -217,6 +218,53 @@ describe("共有のタグの一覧の保持", () => {
     // 落ち着く。
     await expect(first).resolves.toEqual([tag({ id: 1, name: "後から作った" })]);
     expect(currentTags()).toEqual([tag({ id: 1, name: "後から作った" })]);
+  });
+});
+
+describe("開いたときの確かめ直し（revalidateTags、issue 674）", () => {
+  it("取得の途中ならその結果を待ち、直前に届いた一覧はそのまま使い、古ければ取り直す", async () => {
+    let release: (() => void) | undefined;
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(jsonResponse({ items: [tag({ id: 1 })] }));
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      const first = revalidateTags();
+      const second = revalidateTags();
+      await flush();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      release?.();
+      expect(await first).toEqual(await second);
+
+      await revalidateTags();
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      now.mockReturnValue(1_000_000 + 5_000);
+      const third = revalidateTags();
+      await flush();
+      expect(fetch).toHaveBeenCalledTimes(2);
+      release?.();
+      await third;
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("タグを変えた後の refreshTags の取得を待ち、その前の一覧を返さない", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 1 })] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 1 }), tag({ id: 2 })] }));
+    vi.stubGlobal("fetch", fetch);
+    await refreshTags();
+    const changed = refreshTags();
+    expect(await revalidateTags()).toHaveLength(2);
+    await changed;
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -302,7 +302,8 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
 	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
 	if s.catalog != nil {
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video)
+		// 位置と本数だけを使うので、メンバーの詳細は読まない。
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.GroupWindow{})
 		if err != nil {
 			s.internalError(w, "Could not load the video.", err)
 			return
@@ -312,7 +313,7 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 				Folder:   gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
 				Name:     group.Name,
 				Position: group.Position(video.ID),
-				Count:    len(group.Members),
+				Count:    group.Total(),
 			}
 		}
 	}

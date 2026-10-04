@@ -15,7 +15,7 @@ media folder change must not delete them, so they have no foreign key to
 `videos` and link to a video by `content_key`, as `playback_progress` does
 (requirement 9).
 
-## 1. Migration
+## Migration
 
 New file `00008_tags.sql`. The last migration on `main` is #195's
 `00007_location_search.sql`.
@@ -37,7 +37,7 @@ create table tag_names (
     tag_id    integer not null references tags (id) on delete cascade,
     -- 1 is the original name shown on screen, 0 is a synonym.
     canonical integer not null check (canonical in (0, 1)),
-    -- Key for search box matching. Go writes domain.FoldForMatch(name) (§7).
+    -- Key for search box matching. Go writes domain.FoldForMatch(name) (see "Matching tag names in the search box").
     search_key     text    not null default '',
     -- Version of the rule that built search_key. The same domain.SearchKeyVersion as video_locations.search_version.
     search_version integer not null default 0
@@ -68,14 +68,14 @@ Invariants (added to the checks in `internal/store/invariants_test.go`):
 | Every `tags` row has exactly one `tag_names` row with `canonical = 1` | `invariants_test.go` |
 | Every `video_tags.tag_id` and `tag_names.tag_id` points at an existing `tags` row | Foreign keys (`foreign_keys(on)` is already in the DSN) |
 
-## 2. Name rules
+## Name rules
 
 One function in `internal/domain` normalizes input into a name.
 
 1. Input containing a control character (Unicode general category Cc, including
    newline and tab) anywhere is an error (`invalid_request`). A tag name with a
    newline does not fit on one card line or in a tooltip, and search terms fold
-   newlines into spaces, so such a name would not match in search either (§7).
+   newlines into spaces, so such a name would not match in search either ([Matching tag names in the search box](#matching-tag-names-in-the-search-box)).
    - The check runs on the input before whitespace is trimmed. Newline, tab and
      CR are also Unicode White_Space, so applying step 2 first would strip the
      leading or trailing control characters of `"旅行\n"` or `"\t旅行"` and
@@ -99,13 +99,13 @@ One function in `internal/domain` normalizes input into a name.
    and full-width `Ａ` and half-width `A`, are different names (requirement 4,
    acceptance criterion 6).
 
-## 3. Name lookup
+## Name lookup
 
 A tag is looked up from a name with one `tag_names` lookup by `name`. The
 original name and a synonym reach the same tag (requirement 7). The name shown
 on screen is always the `canonical = 1` row.
 
-## 4. Write rules
+## Write rules
 
 Every operation runs in one transaction and leaves nothing behind when it fails
 partway (Edge Case `一括操作・統合の途中失敗`).
@@ -131,17 +131,17 @@ partway (Edge Case `一括操作・統合の途中失敗`).
   resolved to the `content_key`s of videos currently in the library. `id`s that
   do not resolve (videos removed in the meantime) are skipped, and the response
   returns the number applied.
-- When adding by name, the name is looked up as in §3 and the tag is created in
+- When adding by name, the name is looked up as in [Name lookup](#name-lookup) and the tag is created in
   the same transaction when missing (requirement 1).
 
-## 5. Video counts
+## Video counts
 
 The count on the management page joins `video_tags` with `videos.content_key`
 and counts only videos currently in the library (`registeredVideoCondition`)
 (Edge Case `ファイルが見えなくなった動画`). Tags with 0 videos are listed too
 (requirement 8).
 
-## 6. Tag filter
+## Tag filter
 
 Each selected tag adds this condition to the list's videos with AND
 (requirement 5):
@@ -153,12 +153,12 @@ exists (select 1 from video_tags vt where vt.content_key = videos.content_key an
 The primary key `(content_key, tag_id)` is the index for this condition. A
 nonexistent `tag_id` is dropped from the conditions, and the list response
 says which were dropped
-([contracts/tags-api.md §5](contracts/tags-api.md#5-list-filter-and-select-all)).
+([contracts/tags-api.md, List filter and Select all](contracts/tags-api.md#list-filter-and-select-all)).
 
-## 7. Matching tag names in the search box
+## Matching tag names in the search box
 
 #195's search builds each term's condition against one location row
-([013 data-model.md §3](../013-library-search/data-model.md#3-search_key-rules),
+([013 data-model.md, `search_key` rules](../013-library-search/data-model.md#search_key-rules),
 `searchExprCondition` in `internal/store/search.go`). The condition for one term
 widens to this OR (requirement 10):
 

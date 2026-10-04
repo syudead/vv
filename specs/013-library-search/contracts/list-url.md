@@ -8,14 +8,14 @@ parameters (requirements 16 and 18). The folder position is expressed by the
 existing path. The visual layout and the controls are in the
 [UI design](../ui-design.md).
 
-## 1. Parameters
+## Parameters
 
 | Name | Value | When omitted |
 | --- | --- | --- |
 | `q` | The query. Leading and trailing spaces are dropped, and it is cut at 100 code points (the same counting as the server's `[]rune`) | No search |
 | `watch` | `unwatched` \| `inProgress` \| `watched` | All |
 | `playable` | `1` | No filtering |
-| `sort` | A value from [list-api.md §3](list-api.md#3-videosort-values) | The sort saved on the device (default `addedDesc`) |
+| `sort` | A value from [list-api.md, `VideoSort` values](list-api.md#videosort-values) | The sort saved on the device (default `addedDesc`) |
 | `seed` | An integer from 1 to 2147483647 | For `sort=random`, the screen generates and adds one |
 
 - `watch=all` and a false `playable` are not written into the URL, so that one
@@ -38,7 +38,7 @@ existing path. The visual layout and the controls are in the
   reload, sharing and Back/Forward give the same order.
 - "Shuffle" generates a new `seed` and changes the URL.
 
-## 2. Meaning on the folder screen
+## Meaning on the folder screen
 
 | Location and conditions | Behaviour |
 | --- | --- |
@@ -50,7 +50,7 @@ existing path. The visual layout and the controls are in the
 "Clear filters" removes `q`, `watch` and `playable`, and keeps `sort`, `seed`
 and the folder position (requirement 21).
 
-## 3. History
+## History
 
 - Watch state, playability, sort, direction, Shuffle and Clear filters each add
   one history entry (Back/Forward in acceptance criterion 12). The current screen

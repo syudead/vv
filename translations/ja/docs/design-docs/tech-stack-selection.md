@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/tech-stack-selection.md
-sourceHash: 043a1ee5d776a350833581f66c461d366909b8c4f956144d23a26760e54d493d
+sourceHash: 522c12474ecc620fc2bed071d0adbf7b4937f6c49c2f60dd449f548d37c3e007
 ---
 
 # 技術選定: MDM (Media Data Management) {#technology-selection-mdm-media-data-management}
@@ -21,7 +21,7 @@ flowchart LR
   ffmpeg --> files
 ```
 
-## 1. 前提 {#1-premises}
+## 前提 {#premises}
 
 | 項目 | 決定 |
 | --- | --- |
@@ -31,7 +31,7 @@ flowchart LR
 | ユーザー | アカウントは 1 つ。ゲストは公開動画を視聴できる |
 | ライブラリの規模 | ローカルディスク上の最大数万本、数 TB の動画 |
 
-## 2. 選定基準 {#2-selection-criteria}
+## 選定基準 {#selection-criteria}
 
 システムはその人自身のマシン上で 1 人のユーザーに提供するので、スループットより**運用の単純さ**と**障害後の復旧**を優先する。
 
@@ -40,14 +40,14 @@ flowchart LR
 3. **ツールで強制する境界。** Lint により、ドメイン層が HTTP、DB、`ffmpeg` に依存するのを止める。
 4. **重い処理は境界の内側に置く。** `ffmpeg` を実行するコードはアダプタに置き、HTTP やストレージから分ける。
 
-## 3. 決定 {#3-decisions}
+## 決定 {#decisions}
 
 | 層 | 選択 | 主な理由 |
 | --- | --- | --- |
 | バックエンドの言語 | Go (バージョンは `go.mod`) | 単一バイナリになる。標準ライブラリが常駐プロセスと子プロセスを扱える。NAS 上でのメモリ使用量が小さい |
 | HTTP サーバー | 標準の `net/http` (Go 1.22+ の `ServeMux`) | メソッドによるルーティングとパスのワイルドカードが組み込まれており、`http.ServeContent` が Range 配信を実装している |
 | 動画の配信 | 対応形式は `http.ServeContent`、それ以外はリクエストごとの fragmented MP4 | 変換結果は保存しない ([ライブ変換のシーク](live-transcode-seek.md)) |
-| フロントエンド | React + Vite + React Router + Tailwind CSS、コンポーネントは Radix 上の shadcn/ui | 静的ビルドを `embed` でバイナリに埋め込む SPA。コンポーネントとトークンが [デザインシステム](design-system.md) を構成する |
+| フロントエンド | React + Vite + React Router + Tailwind CSS、コンポーネントは Radix 上の shadcn/ui | 静的ビルドを `embed` でバイナリに埋め込む SPA。コンポーネントとトークンが[デザインシステム](design-system.md)を構成する |
 | API 契約 | OpenAPI 3.1 を元にし、Go は `oapi-codegen`、TypeScript は `openapi-typescript` で生成する | 2 言語間の型のずれがコンパイルエラーになる |
 | DB | SQLite (`modernc.org/sqlite`、CGO なし、WAL モード) | 小さな alpine イメージ向けに静的バイナリとしてクロスコンパイルできる |
 | クエリ | `database/sql` を通した手書き SQL | FTS5 を含め、SQL が一次情報のままになる |
@@ -65,7 +65,7 @@ flowchart LR
 
 内容の鍵は、移動や名前の変更をまたいで動画を識別する。先頭と末尾の 1 MiB とファイルサイズの SHA-256 だ。ファイル全体を読む必要がなく、標準ライブラリだけで済む。
 
-## 4. 不採用の候補 {#4-rejected-alternatives}
+## 不採用の候補 {#rejected-alternatives}
 
 | 候補 | 不採用の理由 |
 | --- | --- |
@@ -82,7 +82,7 @@ flowchart LR
 | S3 / MinIO | ローカルディスクを正とする方針と衝突し、Range 配信に中継が加わる |
 | Jellyfin / Plex の採用 | このリポジトリは設計上ゼロから作る。これらは機能の参考にとどめる |
 
-## 5. 既知のリスクと対策 {#5-known-risks-and-mitigations}
+## 既知のリスクと対策 {#known-risks-and-mitigations}
 
 | リスク | 対策 |
 | --- | --- |

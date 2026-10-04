@@ -217,6 +217,48 @@ async function reportedStart(page: Page, transcode: Request): Promise<number> {
   return ((await response.json()) as { startMs: number }).startMs;
 }
 
+/**
+ * pauseAndRecordProgress は再生中の動画を操作バーで止め、止まったあとの保存の位置を返す。
+ * 再生中は 5 秒ごとにも保存を送る（web/src/player/VideoPlayer.tsx の saveIntervalMs）ので、
+ * 押す前に待ち始めた最初の PUT が止めたときの保存とは限らない。止まったのを確かめてから、
+ * 最後に送った保存の位置を使う。`lastSaved` は、そのあと（再読み込みで離れるときの保存も
+ * 含む）に送った最後の位置を返す。
+ */
+async function pauseAndRecordProgress(page: Page, item: Video) {
+  const saves: number[] = [];
+  page.on("request", (candidate) => {
+    if (
+      candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`) &&
+      candidate.method() === "PUT"
+    ) {
+      saves.push((candidate.postDataJSON() as { positionMs: number }).positionMs);
+    }
+  });
+  const before = saves.length;
+  await page.locator(".vjs-play-control").click();
+  await page.waitForFunction(() => document.querySelector("video")?.paused === true);
+  await expect.poll(() => saves.length).toBeGreaterThan(before);
+  const lastSaved = () => {
+    const last = saves.at(-1);
+    if (last === undefined) throw new Error("再生位置の保存が送られていない");
+    return last;
+  };
+  return { saved: lastSaved(), lastSaved };
+}
+
+/** reloadAndWaitForTranscode は再読み込みのあとのライブ変換の要求と、その開始位置を返す。 */
+async function reloadAndWaitForTranscode(page: Page, item: Video) {
+  const resumedPromise = page.waitForRequest((candidate) =>
+    candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+  );
+  await page.reload();
+  const resumed = await resumedPromise;
+  return {
+    resumed,
+    startMs: Number(new URL(resumed.url()).searchParams.get("startMs")),
+  };
+}
+
 /** frameColor は再生中の映像の左上の 1 画素の RGBA を返す。 */
 async function frameColor(page: Page): Promise<number[]> {
   return page.evaluate(() => {
@@ -716,13 +758,7 @@ test.describe.serial("live MP4 playback", () => {
       const element = document.querySelector("video");
       return element !== null && !element.paused && element.readyState >= 2;
     });
-    const progress = page.waitForRequest(
-      (candidate) =>
-        candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`) &&
-        candidate.method() === "PUT",
-    );
-    await page.locator(".vjs-play-control").click();
-    const saved = ((await progress).postDataJSON() as { positionMs: number }).positionMs;
+    const { saved, lastSaved } = await pauseAndRecordProgress(page, item);
     // 表示も保存も、映っている内容の時刻（キーフレーム + 再生した分）になる。
     const elementSeconds = await page
       .locator("video")
@@ -738,15 +774,9 @@ test.describe.serial("live MP4 playback", () => {
     expect(paused[1]).toBeGreaterThan(paused[2] ?? 255);
 
     // 再読み込みすると保存した位置から始まり、同じキーフレームからの同じ場面が映る。
-    const resumedPromise = page.waitForRequest((candidate) =>
-      candidate
-        .url()
-        .includes(
-          `/api/videos/${String(item.id)}/transcode.mp4?startMs=${String(saved)}`,
-        ),
-    );
-    await page.reload();
-    const resumed = await resumedPromise;
+    const { resumed, startMs } = await reloadAndWaitForTranscode(page, item);
+    expect(startMs).toBe(lastSaved());
+    expect(Math.abs(startMs - saved)).toBeLessThan(1000);
     expect(await reportedStart(page, resumed)).toBe(actualStart);
     await page.locator(".vjs-big-play-button").click();
     await page.waitForFunction(() => {
@@ -835,28 +865,16 @@ test.describe.serial("live MP4 playback", () => {
     expect((await seenCues()).join(" ")).not.toContain("Before keyframe cue");
 
     // 止めて位置を保存し、再読み込みで再開位置から始めても同じ offset で取り直す。
-    const progress = page.waitForRequest(
-      (candidate) =>
-        candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`) &&
-        candidate.method() === "PUT",
-    );
-    await page.locator(".vjs-play-control").click();
-    const saved = ((await progress).postDataJSON() as { positionMs: number }).positionMs;
-    const resumedPromise = page.waitForRequest((candidate) =>
-      candidate
-        .url()
-        .includes(
-          `/api/videos/${String(item.id)}/transcode.mp4?startMs=${String(saved)}`,
-        ),
-    );
+    const { saved, lastSaved } = await pauseAndRecordProgress(page, item);
     const resumedSubtitle = page.waitForRequest((candidate) =>
       candidate
         .url()
         .endsWith(`/subtitles/sparse-keyframes.srt?offsetMs=${String(actualStart)}`),
     );
     reported = false;
-    await page.reload();
-    const resumed = await resumedPromise;
+    const { resumed, startMs } = await reloadAndWaitForTranscode(page, item);
+    expect(startMs).toBe(lastSaved());
+    expect(Math.abs(startMs - saved)).toBeLessThan(1000);
     expect(await reportedStart(page, resumed)).toBe(actualStart);
     await resumedSubtitle;
     await page.locator(".vjs-big-play-button").click();

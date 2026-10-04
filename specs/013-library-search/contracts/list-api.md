@@ -8,7 +8,7 @@ describes only the changes to `listVideos` (`GET /api/videos`) and
 meaning of the existing parameters (`cursor`, `limit`, and `path` on
 `listFolderVideos`), do not change.
 
-## 1. Query syntax
+## Query syntax
 
 `query` uses the same syntax on both endpoints. The maximum of 100 characters
 stays. One function in `internal/domain` interprets it, and it returns no error
@@ -31,7 +31,7 @@ for any input (requirement 5).
    `|`, which appears in Unix file names, and its behaviour would not match `OR`.
 5. Drop empty phrases (`""`, `-""`) and phrases that contain only spaces.
 6. Apply the conversion to the match form (`fold`,
-   [data-model.md §3](../data-model.md#3-search_key-rules)) to each term.
+   [data-model.md, `search_key` rules](../data-model.md#search_key-rules)) to each term.
 7. Use the first 16 terms. The 17th term onwards, and the operators attached to
    them, are ignored. Counting from the start lets the user predict that terms
    take effect in the order typed. 16 was chosen as enough for listing the
@@ -67,13 +67,13 @@ Examples (against the titles of acceptance criteria 1 to 5):
 | `OR` / `-` / `"京都` | Contains the literal `or`, `-` or `"京都` |
 | `|` / `""` / spaces only | No filtering |
 
-## 2. Added parameters
+## Added parameters
 
 Added to both endpoints:
 
 | Name | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `watch` | `all` \| `unwatched` \| `inProgress` \| `watched` | `all` | Filters by watch state. Defined in [data-model.md §6](../data-model.md#6-deriving-watch-state) |
+| `watch` | `all` \| `unwatched` \| `inProgress` \| `watched` | `all` | Filters by watch state. Defined in [data-model.md, Deriving watch state](../data-model.md#deriving-watch-state) |
 | `playable` | boolean | `false` | When `true`, only videos with `playable = true` |
 | `seed` | integer (0 to 2147483647) | `0` | Decides the order for `sort=random`. Ignored for other sorts |
 
@@ -81,17 +81,17 @@ Added to `listFolderVideos` only:
 
 | Name | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `query` | string (max 100 characters) | empty | Filters with the syntax in §1 |
+| `query` | string (max 100 characters) | empty | Filters with the syntax in [Query syntax](#query-syntax) |
 | `scope` | `direct` \| `subtree` | `direct` | `direct` covers only locations directly in the folder; `subtree` covers locations in the folder and everything below it |
 
 `scope` and `query` are independent. The screen uses `subtree` only when there is
-a query ([list-url.md](list-url.md)). Matching (§1, item 9) covers only the
+a query ([list-url.md](list-url.md)). Matching ([Query syntax](#query-syntax), item 9) covers only the
 locations in that scope.
 
 `total` is the count of all items after the query, `watch`, `playable` and the
 scope are applied (requirement 13).
 
-## 3. `VideoSort` values
+## `VideoSort` values
 
 The existing `addedDesc` and `titleAsc` keep their names, and the following
 values are added. The default stays `addedDesc`.
@@ -99,7 +99,7 @@ values are added. The default stays `addedDesc`.
 | Sort | Ascending | Descending | Value used |
 | --- | --- | --- | --- |
 | Date added | `addedAsc` | `addedDesc` | `videos.added_at` |
-| Date modified | `modifiedAsc` | `modifiedDesc` | `mtime` of the listed location (§4) |
+| Date modified | `modifiedAsc` | `modifiedDesc` | `mtime` of the listed location ([Listed location and `Video.folder`](#listed-location-and-videofolder)) |
 | Title | `titleAsc` | `titleDesc` | `title_key` of the listed location (natural order) |
 | Duration | `durationAsc` | `durationDesc` | `videos.duration_ms`. Videos without it go last in either direction |
 | File size | `sizeAsc` | `sizeDesc` | `size_bytes` of the listed location |
@@ -114,14 +114,14 @@ The `random` value depends only on `seed` and `id`. With the same `seed`, the
 same video never appears twice, across pages and even when a scan adds or
 removes rows (requirement 15, Edge Case "random order and scans").
 
-## 4. Listed location and `Video.folder`
+## Listed location and `Video.folder`
 
 For one video, the list item's `title`, `sizeBytes` and sort value come from the
 first location, in ascending path order, among the locations that:
 
 - are in the scope (under a registered media folder for the library; within the
   `scope` range for a folder)
-- satisfy the whole §1 expression, when there is a query
+- satisfy the whole [Query syntax](#query-syntax) expression, when there is a query
 
 In the library list without a query, this is the same as today's "first
 location under a registered folder". With a query, the title of the matching
@@ -146,7 +146,7 @@ VideoFolder:
 screen builds the location relative to the open folder from it
 (requirement 19).
 
-## 5. Cursor and errors
+## Cursor and errors
 
 - The guarantee when a scan runs while paging stays within what the current
   keyset approach gives. A video that matched the conditions when the first page

@@ -58,17 +58,12 @@ func tagConditions(spec listSpec) ([]string, []any) {
 	return conditions, args
 }
 
-// representativeLocationValue は動画（別名 alias の video_id を持つ行）の代表の所在
-// （見せてよい所在のうちパスの最小）の列 column を返す副問い合わせである。
-func representativeLocationValue(alias, column string, audience domain.Audience) string {
-	return representativeLocationExpr(alias, `rl.`+column, audience)
-}
-
-// representativeLocationExpr は representativeLocationValue の、列の代わりに代表の所在
-// （別名 rl）に対する式 expr を返す版である。
-func representativeLocationExpr(alias, expr string, audience domain.Audience) string {
-	return `(select ` + expr + ` from video_locations rl where rl.video_id = ` + alias + `.video_id and ` +
-		visibleLocationCondition("rl", audience) + ` order by rl.path limit 1)`
+// representativeLocationJoin は、動画（別名 alias の video_id を持つ行）に代表の所在
+// （見せてよい所在のうちパスの最小）を rl として結ぶ。列ごとに副問い合わせで代表を
+// 選ぶと、1行につき同じ選び方を列の数だけ繰り返す（issue 674）。
+func representativeLocationJoin(alias string, audience domain.Audience) string {
+	return ` left join video_locations rl on rl.id = (select l.id from video_locations l where l.video_id = ` +
+		alias + `.video_id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
 }
 
 // libraryItemsCTE は項目の表 `items(group_id, id, path, added_at, mtime, created_at, title_key,
@@ -119,6 +114,9 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		videoFavorite = ` and fav.content_key is not null`
 		groupFavorite = ` where ff.path is not null`
 	}
+	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
+	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
+	// （issue 674）。
 	cte += `,
 	matched as (
 		select videos.id as video_id, chosen.path as path
@@ -134,18 +132,16 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		join gm on gm.video_id = matched.video_id
 		join live on live.group_id = gm.group_id
 		group by gm.group_id),
-	whole as (
+	whole as materialized (
 		select hits.group_id from hits
 		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
 	mv as (
 		select gm.group_id, gm.video_id, gm.position, v.added_at, v.duration_ms,
-			` + representativeLocationValue("gm", "mtime", audience) + ` as mtime,
-			` + representativeLocationExpr("gm", fileCreatedAtExpr("rl"), audience) + ` as created_at,
-			` + representativeLocationValue("gm", "size_bytes", audience) + ` as size_bytes,
+			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
 		from gm join whole on whole.group_id = gm.group_id
-		join videos v on v.id = gm.video_id` + progressJoin("v") + `),
+		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progressJoin("v") + `),
 	items as (
 		select null as group_id, videos.id as id, matched.path as path,
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
@@ -274,19 +270,18 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		whereWatch = ` where ` + watchClause
 	}
 
-	var total int
-	if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
-		append(append([]any{}, args...), watchArgs...)...).Scan(&total); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
-	}
-
+	// 件数とページを1つの問い合わせで読む。絞り込んだ項目（filtered）は materialized で1回だけ
+	// 組み立て、件数はカーソルを掛ける前の filtered から数える。2回に分けると、全件の項目を
+	// 2回組み立てることになる。
 	// 引数は SQL の文字列に現れる順（CTE・seed・視聴状態・カーソル・件数）に並べる。
+	cteArgs := append([]any{}, args...)
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
 	args = append(args, watchArgs...)
-	query := cte + ` select group_id, id, path, sort_value from (select items.*, ` + order.value +
-		` as sort_value from items` + whereWatch + `) as items`
+	query := cte + `, filtered as materialized (select items.*, ` + order.value +
+		` as sort_value from items` + whereWatch + `)
+	select group_id, id, path, sort_value, (select count(*) from filtered) from filtered`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
@@ -298,12 +293,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	total := -1
 	var keys []itemRow
 	var values []any
 	for rows.Next() {
 		var key itemRow
 		var value any
-		if err := rows.Scan(&key.groupID, &key.id, &key.path, &value); err != nil {
+		if err := rows.Scan(&key.groupID, &key.id, &key.path, &value, &total); err != nil {
 			return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 		}
 		keys = append(keys, key)
@@ -314,6 +310,13 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 	if err := rows.Close(); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot close the list: %w", err)
+	}
+	if total < 0 {
+		// カーソルの先に項目が無いときは、件数を別に数える（同じ読み取りのスナップショット）。
+		if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
+			append(cteArgs, watchArgs...)...).Scan(&total); err != nil {
+			return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
+		}
 	}
 
 	page := domain.LibraryPage{Total: total, Limit: limit, Items: []domain.LibraryItem{}}
@@ -434,7 +437,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, ff.path is not null, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id
 		left join folder_favorites ff on ff.path = g.path_key
-		join videos on videos.id = m.video_id`+progressJoin+`
+		join videos on videos.id = m.video_id`+representativeJoin(audience)+progressJoin+`
 		where g.id in (select value from json_each(?)) and `+visibleVideoCondition("videos", audience)+`
 		order by g.id, m.position`, string(encoded))
 	if err != nil {

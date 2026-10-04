@@ -253,11 +253,36 @@ export interface paths {
          *     id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
          *     順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
          *     小さい方を先にする。
-         *     この動画がグループのメンバーなら、group にグループの全メンバーを載せ、nextId・prevId を
-         *     グループの中の並びにし、同じグループのメンバーを除いてから並べる
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+         *     この動画がグループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本の
+         *     メンバーの窓を載せ、nextId・prevId をグループの中の並びにし、同じグループのメンバーを
+         *     除いてから並べる（specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外の
+         *     メンバーは `listVideoGroupMembers` で読む。
          */
         get: operations["getRelatedVideos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/group-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画が属するグループのメンバーを、並びの範囲で返す
+         * @description この動画が属するグループの見せてよいメンバーを、グループの中の並びで `offset` 本目
+         *     （0 始まり）から最大 `limit` 本返す。メンバーの選び方と形は関連動画の group と同じで、
+         *     ゲストには公開のメンバーだけで数える
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。グループのメンバーでない、
+         *     または見る人に見せるグループが無ければ `404`。`offset` が本数以上なら items は空。
+         */
+        get: operations["listVideoGroupMembers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2270,8 +2295,23 @@ export interface components {
             folder: components["schemas"]["VideoFolder"];
             /** @description フォルダ名 */
             name: string;
-            /** @description 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い */
+            /**
+             * @description 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
+             *     含む）。グループの端では窓を内側へ寄せる。窓の外は `listVideoGroupMembers` で読む
+             */
             items: components["schemas"]["Video"][];
+            /** @description items の先頭のメンバーの、グループの中の並びの位置（0 始まり） */
+            offset: number;
+            /** @description 見せてよいメンバーの本数 */
+            total: number;
+        };
+        /** @description グループのメンバーの、グループの中の並びで連続する範囲 */
+        GroupMemberPage: {
+            items: components["schemas"]["Video"][];
+            /** @description items の先頭のメンバーの、グループの中の並びの位置（0 始まり） */
+            offset: number;
+            /** @description 見せてよいメンバーの本数 */
+            total: number;
         };
         RelatedVideos: {
             /**
@@ -2884,6 +2924,36 @@ export interface operations {
                     "application/json": components["schemas"]["RelatedVideos"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listVideoGroupMembers: {
+        parameters: {
+            query?: {
+                /** @description 返す最初のメンバーの、グループの中の並びの位置（0 始まり） */
+                offset?: number;
+                /** @description 返す本数の上限 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description グループのメンバーの範囲 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMemberPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
         };
     };

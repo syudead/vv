@@ -3,8 +3,8 @@
 Source of truth: `api/openapi.yaml`. This document covers only the routes and
 schemas it adds. The error shape, parameter validation and cursor opacity
 follow [013's list-api.md](../../013-library-search/contracts/list-api.md) and
-[014's tags-api.md §5](../../014-video-tags/contracts/tags-api.md). The query
-itself is in [data-model.md §5](../data-model.md#5-library-items).
+[014's tags-api.md, List filter and Select all](../../014-video-tags/contracts/tags-api.md#list-filter-and-select-all). The query
+itself is in [data-model.md, Library items](../data-model.md#library-items).
 
 Who may use each route (`security`) matches `GET /api/videos`:
 
@@ -14,7 +14,7 @@ Who may use each route (`security`) matches `GET /api/videos`:
 | `GET /api/library/ids` | Owner only (as the current `listVideoIds`) |
 
 Differences in guest responses follow
-[data-model.md §7](../data-model.md#7-visibility-per-audience) and
+[data-model.md, Visibility per audience](../data-model.md#visibility-per-audience) and
 [016 guest-api.md](../../016-single-account-auth/contracts/guest-api.md)
 (`watch`, played sort orders and `tag` are 400).
 
@@ -22,7 +22,7 @@ Differences in guest responses follow
 folder screen root). `GET /api/videos/ids` is removed in the unit that switches
 the library to `GET /api/library/ids`.
 
-## 1. `GET /api/library`
+## `GET /api/library`
 
 - Parameters: the same as `GET /api/videos` (`query`, `watch`, `playable`,
   `sort`, `seed`, `cursor`, `limit`, `tag`).
@@ -46,7 +46,7 @@ LibraryItem:
 
 LibraryGroup:
   required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
-  # watchedCount and watchState are always present for the owner and omitted for guests (data-model.md §7)
+  # watchedCount and watchState are always present for the owner and omitted for guests (data-model.md "Visibility per audience")
   properties:
     folder: { $ref: VideoFolder }   # the group's folder; the key that identifies the group
     name: { type: string }
@@ -58,7 +58,7 @@ LibraryGroup:
     addedAt: { type: string, format: date-time }
     lastPlayedAt: { type: string, format: date-time }  # omitted when none
     previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # up to 4 members with generated thumbnails, in order. Used for the card's folder artwork; a list row uses the first as its thumbnail
-    openVideoId: { type: integer, format: int64 }  # the member opened on press (data-model.md §6)
+    openVideoId: { type: integer, format: int64 }  # the member opened on press (data-model.md "Group watch state and the member to open")
     videoIds: { type: array, items: { type: integer, format: int64 } }  # every member, in order
     tags: { type: array, items: { $ref: VideoTag } }  # union of the members' tags (sources united too)
 ```
@@ -67,7 +67,7 @@ A group's `id` is not exposed; a group is addressed by `folder`. Exposing `id`
 is rejected: the screen would keep a value reassigned on every rebuild as its
 key for selection and refetching.
 
-## 2. `GET /api/library/ids`
+## `GET /api/library/ids`
 
 - Parameters: those of `GET /api/library` without `sort`, `seed`, `cursor` and
   `limit`.
@@ -76,7 +76,7 @@ key for selection and refetching.
   of matching groups. Limits and errors are the same as the current
   `GET /api/videos/ids`.
 
-## 3. One group
+## One group
 
 `GET /api/folders/{rootId}/group?path=…`
 

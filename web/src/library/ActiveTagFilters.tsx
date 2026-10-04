@@ -1,7 +1,13 @@
 import { Tag as TagIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { currentTags, refreshTags, subscribeTags, type Tag } from "../api/tags";
+import {
+  currentTags,
+  refreshTags,
+  revalidateTags,
+  subscribeTags,
+  type Tag,
+} from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
 import FilterChip from "../ui/FilterChip";
@@ -27,11 +33,16 @@ export default function ActiveTagFilters({
   searchFieldRef,
 }: ActiveTagFiltersProps) {
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
+  // 開いたときの確かめ直し（`revalidateTags`）が返ったか。それより前の一覧（古い保持）で
+  // 足りない id を数えると、確かめ直しの取得と並べて全件をもう一度取ってしまう。
+  const [revalidated, setRevalidated] = useState(false);
   useEffect(() => {
     let alive = true;
-    refreshTags()
+    revalidateTags()
       .then((loaded) => {
-        if (alive) setAllTags(loaded);
+        if (!alive) return;
+        setAllTags(loaded);
+        setRevalidated(true);
       })
       .catch(() => undefined);
     const unsubscribe = subscribeTags((loaded) => {
@@ -42,6 +53,21 @@ export default function ActiveTagFilters({
       unsubscribe();
     };
   }, []);
+
+  // 確かめ直しのあとも共有の一覧に無いタグで絞り込んでいたら（使い回した一覧より後に
+  // 別のタブや画面で作られたタグのカードを押したときなど）、一覧を取り直して名前を引く。消えたタグで取り直しを
+  // 繰り返さないよう、取り直しを求めた id は覚えておく。
+  const refreshedFor = useRef(new Set<number>());
+  useEffect(() => {
+    if (!revalidated || allTags === undefined) return;
+    const known = new Set(allTags.map((tag) => tag.id));
+    const missing = tagIds.filter(
+      (id) => !known.has(id) && !refreshedFor.current.has(id),
+    );
+    if (missing.length === 0) return;
+    for (const id of missing) refreshedFor.current.add(id);
+    void refreshTags().catch(() => undefined);
+  }, [allTags, revalidated, tagIds]);
 
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
   const pendingFocus = useRef<number | "search" | null>(null);

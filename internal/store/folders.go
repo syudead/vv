@@ -38,6 +38,16 @@ func folderPrefixFor(dir string, windows bool) string {
 	return prefix
 }
 
+// folderPrefixCondition は、所在（別名 alias）のパスが接頭辞 prefix（folderPrefix の値）で
+// 始まることを表す条件句と引数を返す。instr の比較に加えて、接頭辞で始まる文字列の範囲
+// （prefix 以上、区切りの次の文字に置き換えた値未満）を掛けて、パスの索引で範囲を
+// 引かせる。instr だけでは video_locations を全件走査する。
+func folderPrefixCondition(alias, prefix string) (string, []any) {
+	expr := folderPathExpr(alias)
+	upper := prefix[:len(prefix)-1] + string(prefix[len(prefix)-1]+1)
+	return `(` + expr + ` >= ? and ` + expr + ` < ? and instr(` + expr + `, ?) = 1)`, []any{prefix, upper, prefix}
+}
+
 // folderPathExpr は所在のパスを接頭辞と比べられる形にする。Windows では
 // 大文字小文字を区別しない（registeredLocationCondition と同じ扱い）。
 func folderPathExpr(alias string) string {
@@ -73,15 +83,16 @@ func directChildConditionFor(alias string, windows bool) string {
 // internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
 // 導いたフォルダと件数だけが現れる。
 func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
 	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state,
 			(select ov.thumbnail_position_ms from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> ''),
 			(select ov.thumbnail_revision from video_overrides ov
 				where ov.content_key = videos.content_key and videos.content_key <> '')
 		from video_locations l join videos on videos.id = l.video_id
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+
+		where `+inFolder+` and `+visibleLocationCondition("l", audience)+
 		` and `+shownVideoCondition("videos", audience),
-		folderPrefix(dir))
+		args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 	}
@@ -114,11 +125,12 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 // 見せる動画の所在が1件でもあるかを返す（FolderLocations と同じ範囲）。
 func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	var found int
+	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
 	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
 		join videos on videos.id = l.video_id
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+
+		where `+inFolder+` and `+visibleLocationCondition("l", audience)+
 		` and `+shownVideoCondition("videos", audience)+`)`,
-		folderPrefix(dir)).Scan(&found)
+		args...).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("cannot check whether the folder exists: %w", err)
 	}

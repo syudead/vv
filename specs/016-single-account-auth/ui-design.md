@@ -9,13 +9,13 @@ page structure follows [012's ui-design.md](../012-video-detail-ia/ui-design.md)
 the toolbar, the no-match state and empty states follow
 [013's ui-design.md](../013-library-search/ui-design.md); the selection bar
 structure follows
-[library-ui.md §6](../../docs/design-docs/library-ui.md#6-list-layout); tag
+[library-ui.md, List layout](../../docs/design-docs/library-ui.md#list-layout); tag
 display and actions follow [014's ui-design.md](../014-video-tags/ui-design.md).
 The APIs, states and transitions the screens use are fixed in
 [contracts/auth-api.md](contracts/auth-api.md) (first-time setup, login, state,
 cookies) and [contracts/guest-api.md](contracts/guest-api.md) (guest response
 differences, public toggle); this document does not revisit them. Value rules
-are in [data-model.md §6](data-model.md#6-username-and-password-values).
+are in [data-model.md, Username and password values](data-model.md#username-and-password-values).
 
 This document defines only the first-time setup screen, the login screen, the
 gate, **what changes** in existing screens between a guest (not logged in) and
@@ -155,13 +155,13 @@ Warnings and failures differ by icon and wording as well as color (`UI品質`
 
 - When the confirmation password does not match, the username or password is
   empty, or the username breaks
-  [data-model.md §6](data-model.md#6-username-and-password-values), nothing is
+  [data-model.md, Username and password values](data-model.md#username-and-password-values), nothing is
   sent; the failure line gives the reason and focus moves to that field. The
   wording is `ユーザー名を入力してください`, `パスワードを入力してください`,
   `確認用のパスワードが一致しません`, or
   `ユーザー名は 128 文字まで、前後の空白と制御文字なしにしてください`. During
   first-time setup there is nothing to hide yet, so naming the field is allowed
-  ([auth-api.md §2](contracts/auth-api.md#2-post-apiauthsetup)).
+  ([auth-api.md, `POST /api/auth/setup`](contracts/auth-api.md#post-apiauthsetup)).
 - On mismatch only the confirmation input is cleared.
 - On success the whole page navigates to `redirectTo` (`/`), showing the
   owner's list (acceptance criterion 1).
@@ -249,18 +249,18 @@ Warnings and failures differ by icon and wording as well as color (`UI品質`
 
 When drawing as a guest, the following are **not shown**. They are neither
 `disabled` nor `aria-disabled` (`UI品質` "information density"; the
-"unavailable right now" mark is avoided for the same reason as library-ui.md
-§7).
+"unavailable right now" mark is avoided because it sends the user looking for a
+condition that would enable the control).
 
 | Place | Hidden | Instead |
 | --- | --- | --- |
 | Toolbar (library, folders) | The filter's watch state `fieldset` | The filter popover holds only `再生できるものだけ` and `条件を解除`. The button's number counts only playability |
-| Toolbar | The sort option `最近再生した順` | Six sort options remain. When `sort=playedDesc`, `sort=playedAsc`, `watch` or `tag` remains in the URL, they are rounded to the defaults before requesting, and the URL is corrected ([guest-api.md §3](contracts/guest-api.md#3-conditions-guests-cannot-use)). When the URL has no `sort` and the sort saved on the device (`sort` of `readViewPreferences`) is `playedAsc` or `playedDesc`, the sort returned by `parseListCriteria` is checked and rounded to the default `addedDesc` before requesting. The saved value itself is not rewritten (it returns when the owner logs in again on the same device) |
+| Toolbar | The sort option `最近再生した順` | Six sort options remain. When `sort=playedDesc`, `sort=playedAsc`, `watch` or `tag` remains in the URL, they are rounded to the defaults before requesting, and the URL is corrected ([guest-api.md, Conditions guests cannot use](contracts/guest-api.md#conditions-guests-cannot-use)). When the URL has no `sort` and the sort saved on the device (`sort` of `readViewPreferences`) is `playedAsc` or `playedDesc`, the sort returned by `parseListCriteria` is checked and rounded to the default `addedDesc` before requesting. The saved value itself is not rewritten (it returns when the owner logs in again on the same device) |
 | Library cards | The selection checkbox (on hover and with `hover:none`), the tag row, the playback progress bar | The tag row is absent under the current rule because `tags` is empty. The card ends at the title line with no blank row (as a video without tags today) |
 | Library body | The active tag filter row, the selection bar | — |
 | Library list view rows | The selection checkbox, watched and progress | — |
 | Empty state | `取り込む`, `設定を開く` | Heading `公開されている動画はありません`, note `ログインすると、すべての動画を見られます`, secondary `Button` `ログイン` (`/login?next=` the current URL). The top level of the folder screen uses the same wording |
-| Top level of the folder screen | The path line on registered folder cards (`showPath`), the path in accessible names | The display name comes from `FolderSummary.name`. The breadcrumb `title` is also built from `name`, never assembling an absolute path ([guest-api.md §1](contracts/guest-api.md#1-what-guests-see)) |
+| Top level of the folder screen | The path line on registered folder cards (`showPath`), the path in accessible names | The display name comes from `FolderSummary.name`. The breadcrumb `title` is also built from `name`, never assembling an absolute path ([guest-api.md, What guests see](contracts/guest-api.md#what-guests-see)) |
 | Folder screen search result cards | The absolute path in the location's `title` | `title` is the same relative location as the display |
 | Video page | The tag list (including the input), `ファイルを開く` and `パスをコピー` in the facts line, the read failure's `もう一度読み取る` and `ファイルを開く`, and the `probeError` box | Below the title there are only the two lines of file facts and technical details ([012's ui-design "Video facts"](../012-video-detail-ia/ui-design.md#video-facts)). The response has no `location`, so the facts line has no actions. The breadcrumb in the header band is built from `folder`, so it appears. Playback starts at the beginning (no `progress`) |
 | Video page | Saving playback position (`saveProgress`, `beaconProgress`) | Not sent. The end-of-playback layer stays as now |
@@ -325,7 +325,7 @@ When drawing as a guest, the following are **not shown**. They are neither
   loaded list `Video.public` tells it, but with Select all including unloaded
   pages it cannot be known, which would mean two kinds of display. Both items
   are always enabled, and a video already in the state is not an error
-  ([guest-api.md §4](contracts/guest-api.md#4-switching-the-public-flag)).
+  ([guest-api.md, Switching the public flag](contracts/guest-api.md#switching-the-public-flag)).
 - On commit it sends `PUT /api/video-visibility` and shows the toast
   `N 件を公開にしました` or `N 件を非公開にしました` (N is `applied`). The
   selection remains. The card marks in the list ("Card" below) change after the
@@ -334,7 +334,7 @@ When drawing as a guest, the following are **not shown**. They are neither
   menu has already closed, so the one-line message inside a popover (the tag
   form) is not used.
 - When the selection exceeds the limit (20,000, the same as tags), `公開` is
-  `disabled` with the same reason as the tag actions (library-ui.md §6).
+  `disabled` with the same reason as the tag actions (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)).
 
 ### Card
 

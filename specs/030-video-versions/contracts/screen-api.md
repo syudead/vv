@@ -5,19 +5,19 @@ decisions are [research.md R-8](../research.md) and [R-9](../research.md). The e
 [specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md); guest handling is
 [specs/016-single-account-auth/contracts/guest-api.md](../../016-single-account-auth/contracts/guest-api.md).
 
-## 0. `Video` delta
+## `Video` delta
 
 | Field | Type | Rule |
 | --- | --- | --- |
 | `versions` | `VideoVersionsRef {count, representativeId}` | Only for bundle members, and only in the `GET /api/videos/{id}` response (treated like `group`). `count` is the number of versions with a location the viewer may see; `representativeId` is the effective representative's id |
-| `tags`, `progress`, `public` | Existing | For bundle members, the bundle's values ([data-model.md §3](../data-model.md)). What is omitted for owners and guests does not change |
+| `tags`, `progress`, `public` | Existing | For bundle members, the bundle's values ([data-model.md, User key](../data-model.md#user-key)). What is omitted for owners and guests does not change |
 
 The lists (`GET /api/library`, `GET /api/videos`, `GET /api/folders/{rootId}/videos`) and the folder list never
-show non-representative versions ([data-model.md §4](../data-model.md)). The same applies to
+show non-representative versions ([data-model.md, Shown videos and listing](../data-model.md#shown-videos-and-listing)). The same applies to
 `GET /api/library/ids`. `GET /api/videos/{id}`, `related`, `stream`, `transcode.mp4`, `subtitles`, `thumbnail`,
 `seek-thumbnail` and `preview` work unchanged on non-representative versions.
 
-## 1. `GET /api/videos/{id}/versions`
+## `GET /api/videos/{id}/versions`
 
 `operationId: listVideoVersions`. Guests allowed (same class as `GET /api/videos/{id}`).
 
@@ -29,7 +29,7 @@ show non-representative versions ([data-model.md §4](../data-model.md)). The sa
 Each `Video` in `items` has the same shape as `GET /api/videos/{id}` (`location` for owners, `folder` for both)
 and carries resolution, codec, `sizeBytes` and `container`.
 
-## 2. `POST /api/video-bundles`
+## `POST /api/video-bundles`
 
 `operationId: bundleVideos`. Owner only. Body: `{ "videoIds": int64[], "representativeId": int64 }`.
 
@@ -44,7 +44,7 @@ and carries resolution, codec, `sizeBytes` and `container`.
 When a video already in a bundle is included, every member of that bundle joins the new bundle. If this pair is
 a candidate, the candidate is removed. After commit, `video` is sent on `/api/events` for every member.
 
-## 3. `POST /api/videos/{id}/make-representative`
+## `POST /api/videos/{id}/make-representative`
 
 `operationId: makeRepresentativeVersion`. Owner only. No body.
 
@@ -56,7 +56,7 @@ a candidate, the candidate is removed. After commit, `video` is sent on `/api/ev
 
 The bundle's tags, playback position and visibility do not change (requirement 7).
 
-## 4. `POST /api/videos/{id}/unbundle`
+## `POST /api/videos/{id}/unbundle`
 
 `operationId: unbundleVideo`. Owner only. No body.
 
@@ -69,7 +69,7 @@ The bundle's tags, playback position and visibility do not change (requirement 7
 If one member remains, the bundle is dissolved and that video holds the bundle's values (Edge Case). `video` is
 sent for every former member.
 
-## 5. Candidates
+## Candidates
 
 ### `GET /api/version-candidates`
 
@@ -91,14 +91,14 @@ sent for every former member.
 
 "Same video" passes the two videos and the representative to `POST /api/video-bundles`.
 
-## 6. `/api/events`
+## `/api/events`
 
 | Kind | When |
 | --- | --- |
 | `video` | Bundling, changing the representative, removing, and scan-time carry-over send the ids of every affected member ([R-9](../research.md)) |
 | `scan` | Sent on success or failure of a `fingerprint` job. The candidate screen refetches on it. No new kind is added |
 
-## 7. What does not change
+## What does not change
 
 - `api/external-v1.yaml` ([R-10](../research.md)). `tags` and `POST /api/v1/video-tags` hold the bundle's values.
 - The schemas of list items, `LibraryGroup` and `RelatedVideos`.
