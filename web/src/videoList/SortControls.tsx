@@ -15,9 +15,11 @@ import {
   Timer,
 } from "lucide-react";
 
+import type { ReactNode } from "react";
+
 import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import {
@@ -96,63 +98,41 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
   const options = useSortOptions();
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
-  const activeLabel = sortKindLabel(active.kind);
   const toggleLabel =
     direction === undefined ? t.list.sort.shuffle : directionToggleLabel(sort);
 
   return (
-    <div className="flex">
-      <MenuRoot>
-        <MenuTrigger asChild>
-          <Button
-            variant="secondary"
-            aria-label={t.list.sort.current(activeLabel)}
-            disabled={disabled}
-            className="rounded-r-none"
-          >
-            {activeLabel}
-            <ChevronDown className="-mr-1 text-fg-muted" />
-          </Button>
-        </MenuTrigger>
-        <MenuContent align="start">
-          <MenuLabel>{t.list.sort.heading}</MenuLabel>
-          <MenuRadioGroup
-            value={active.initial}
-            onValueChange={(value) => {
-              const next = sortKindOf(value);
-              if (next.kind !== active.kind) onSortChange(next.initial);
-            }}
-          >
-            {options.map((option) => (
-              <MenuRadioItem key={option.kind} value={option.value}>
-                <option.icon />
-                {sortKindLabel(option.kind)}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuContent>
-      </MenuRoot>
-      <Tooltip content={toggleLabel}>
-        <Button
-          variant="secondary"
-          aria-label={toggleLabel}
-          disabled={disabled}
-          className="rounded-l-none px-2.5"
-          onClick={() => {
-            if (direction === undefined) onShuffle();
-            else onSortChange(withDirection(sort, direction === "asc" ? "desc" : "asc"));
-          }}
-        >
-          {direction === undefined ? (
+    <SortMenuView
+      label={sortKindLabel(active.kind)}
+      currentLabel={t.list.sort.current(sortKindLabel(active.kind))}
+      heading={t.list.sort.heading}
+      value={active.initial}
+      options={options.map((option) => ({
+        value: option.value,
+        label: sortKindLabel(option.kind),
+        icon: option.icon,
+      }))}
+      onValueChange={(value) => {
+        const next = sortKindOf(value);
+        if (next.kind !== active.kind) onSortChange(next.initial);
+      }}
+      toggle={{
+        label: toggleLabel,
+        icon:
+          direction === undefined ? (
             <Dices />
           ) : direction === "desc" ? (
             <ArrowDownWideNarrow />
           ) : (
             <ArrowUpNarrowWide />
-          )}
-        </Button>
-      </Tooltip>
-    </div>
+          ),
+        onClick: () => {
+          if (direction === undefined) onShuffle();
+          else onSortChange(withDirection(sort, direction === "asc" ? "desc" : "asc"));
+        },
+      }}
+      disabled={disabled}
+    />
   );
 }
 
@@ -172,35 +152,18 @@ export function CompactSortControls({
   const direction = sortDirection(sort);
 
   return (
-    <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-        {t.list.sort.heading}
-      </legend>
-      <div className="grid grid-cols-2 gap-1">
-        {options.map((option) => (
-          <label
-            key={option.kind}
-            className={cn(
-              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
-              active.kind === option.kind
-                ? "bg-accent text-accent-fg"
-                : "text-fg hover:bg-hover-wash",
-              disabled && "pointer-events-none opacity-50",
-            )}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={active.kind === option.kind}
-              onChange={() => onSortChange(option.value)}
-              className="sr-only"
-            />
-            <option.icon className="size-4 shrink-0" />
-            <span className="truncate">{sortKindLabel(option.kind)}</span>
-          </label>
-        ))}
-      </div>
+    <CompactSortView
+      name={name}
+      heading={t.list.sort.heading}
+      value={active.initial}
+      options={options.map((option) => ({
+        value: option.value,
+        label: sortKindLabel(option.kind),
+        icon: option.icon,
+      }))}
+      onValueChange={(value) => onSortChange(value)}
+      disabled={disabled}
+    >
       {direction === undefined ? (
         <Button variant="ghost" size="sm" onClick={onShuffle} disabled={disabled}>
           <Dices />
@@ -225,6 +188,145 @@ export function CompactSortControls({
           ]}
         />
       )}
+    </CompactSortView>
+  );
+}
+
+/** SortOption は並べ替えのメニューとまとめの 1 項目である。 */
+export interface SortOption<T extends string> {
+  /** 選んだときの値。 */
+  value: T;
+  label: UiText;
+  icon: LucideIcon;
+}
+
+/**
+ * SortMenuView は並べ替えのメニューボタンと、そのすぐ右に接する向きの切り替えの
+ * 見た目である。ライブラリの `SortMenu` とタグ管理画面が同じ形を使う。`toggle` を
+ * 渡さなければ（向きの無い並び順）メニューボタンだけを角丸で描く。
+ */
+export function SortMenuView<T extends string>({
+  label,
+  currentLabel,
+  heading,
+  value,
+  options,
+  onValueChange,
+  toggle,
+  disabled,
+}: {
+  /** ボタンに出す今の種類の名前。 */
+  label: UiText;
+  /** ボタンの読み上げ名（「Sort by: 〈種類〉」）。 */
+  currentLabel: UiText;
+  /** メニューの見出し。 */
+  heading: UiText;
+  /** メニューで選んでいる項目の値。 */
+  value: T;
+  options: readonly SortOption<T>[];
+  onValueChange: (value: T) => void;
+  toggle?: { label: UiText; icon: ReactNode; onClick: () => void };
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex">
+      <MenuRoot>
+        <MenuTrigger asChild>
+          <Button
+            variant="secondary"
+            aria-label={currentLabel}
+            disabled={disabled}
+            className={cn(toggle !== undefined && "rounded-r-none")}
+          >
+            {label}
+            <ChevronDown className="-mr-1 text-fg-muted" />
+          </Button>
+        </MenuTrigger>
+        <MenuContent align="start">
+          <MenuLabel>{heading}</MenuLabel>
+          <MenuRadioGroup
+            value={value}
+            onValueChange={(next) => onValueChange(next as T)}
+          >
+            {options.map((option) => (
+              <MenuRadioItem key={option.value} value={option.value}>
+                <option.icon />
+                {option.label}
+              </MenuRadioItem>
+            ))}
+          </MenuRadioGroup>
+        </MenuContent>
+      </MenuRoot>
+      {toggle !== undefined && (
+        <Tooltip content={toggle.label}>
+          <Button
+            variant="secondary"
+            aria-label={toggle.label}
+            disabled={disabled}
+            className="rounded-l-none px-2.5"
+            onClick={toggle.onClick}
+          >
+            {toggle.icon}
+          </Button>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CompactSortView は狭い幅のまとめの中の並べ替えの見た目である。種類を 2 列の
+ * ラジオで並べ、その下に `children`（向きの切り替えなど）を置く。
+ */
+export function CompactSortView<T extends string>({
+  name,
+  heading,
+  value,
+  options,
+  onValueChange,
+  disabled,
+  children,
+}: {
+  /** ラジオの name（画面に1つ）。 */
+  name: string;
+  heading: UiText;
+  value: T;
+  options: readonly SortOption<T>[];
+  onValueChange: (value: T) => void;
+  disabled?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <fieldset className="space-y-2" disabled={disabled}>
+      <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+        {heading}
+      </legend>
+      <div className="grid grid-cols-2 gap-1">
+        {options.map((option) => (
+          <label
+            key={option.value}
+            className={cn(
+              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
+              value === option.value
+                ? "bg-accent text-accent-fg"
+                : "text-fg hover:bg-hover-wash",
+              disabled && "pointer-events-none opacity-50",
+            )}
+          >
+            <input
+              type="radio"
+              name={name}
+              value={option.value}
+              checked={value === option.value}
+              onChange={() => onValueChange(option.value)}
+              className="sr-only"
+            />
+            <option.icon className="size-4 shrink-0" />
+            <span className="truncate">{option.label}</span>
+          </label>
+        ))}
+      </div>
+      {children}
     </fieldset>
   );
 }

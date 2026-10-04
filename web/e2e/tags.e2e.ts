@@ -909,11 +909,11 @@ test.describe.serial("video tags", () => {
       await expect(page).toHaveURL(`${origin}${String(href)}`);
     });
 
-    test("狭い幅でも件数の行は件数を折り返さず、却下した名前の入口を省略せずに本文の中に収める", async ({
+    test("狭い幅でも見出しの件数は折り返さず、「Rejected names」のタブを省略せずに本文の中に収める", async ({
       page,
     }) => {
-      // 4 桁の件数と 4 桁の却下した名前で、件数の行が最も長くなる形を作る
-      // （ui-design.md「Count line」「Responsive behaviour」）。
+      // 4 桁の件数と 4 桁の却下した名前で、見出しとタブが最も長くなる形を作る
+      // （ui-design.md「Header」「Tabs」「Responsive behaviour」）。
       const createdAt = "2026-01-01T00:00:00Z";
       const items = Array.from({ length: 1000 }, (_, index) => ({
         id: 900000 + index,
@@ -946,34 +946,31 @@ test.describe.serial("video tags", () => {
       );
       for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 800 });
-        await page.goto("/tags");
-        await page.getByRole("button", { name: "Tentative only", exact: true }).click();
+        // 「Tentative only」が効いた URL で開く（ui-design.md「URL state」）。
+        await page.goto("/tags?tentative=1");
         const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
         await expect(count).toBeVisible();
-        const entry = page.getByRole("button", { name: /^Rejected names/ });
-        await expect(entry).toBeVisible();
-        await expect(entry).toContainText("1,000");
+        const tab = page.getByRole("tab", { name: /^Rejected names/ });
+        await expect(tab).toBeVisible();
+        await expect(tab).toContainText("1,000");
         const countBox = await count.boundingBox();
-        const entryBox = await entry.boundingBox();
-        if (countBox === null || entryBox === null) throw new Error("no layout");
+        const tabBox = await tab.boundingBox();
+        if (countBox === null || tabBox === null) throw new Error("no layout");
         // 件数は 1 行のまま（text-xs の行の高さは 16px）。
         expect(countBox.height).toBeLessThanOrEqual(16);
-        // 入口は本文の中にあり、件数と重ならない。
-        expect(entryBox.x + entryBox.width).toBeLessThanOrEqual(width - 16);
-        const sameLine = entryBox.y < countBox.y + countBox.height;
-        if (sameLine) {
-          expect(entryBox.x).toBeGreaterThanOrEqual(countBox.x + countBox.width);
-        }
+        // タブは本文の中にある。
+        expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width - 16);
         // 横スクロールは出ない。
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
           ),
         ).toBe(true);
-        // 入口は押せる。
-        await entry.click();
-        await expect(page.getByRole("dialog", { name: "Rejected names" })).toBeVisible();
-        await page.keyboard.press("Escape");
+        // タブは押せ、本文に却下した名前が出る。
+        await tab.click();
+        await expect(
+          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("list"),
+        ).toBeVisible();
       }
       await page.setViewportSize({ width: 1280, height: 800 });
     });

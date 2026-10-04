@@ -554,9 +554,21 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
-    // 続きがあるときだけ件数の後ろに添える、読み込んだ行の数
-    // （specs/036-tag-admin-scale/ui-design.md「Count line」）。
-    loadedCount: (loaded: number) => ` · ${formatNumber(loaded)} loaded`,
+    // 見出しの下のタブ（specs/036-tag-admin-scale/ui-design.md「Tabs」）。
+    tabs: {
+      label: "Tag lists",
+      tags: "Tags",
+    },
+    // 一覧の上の列の見出し（ui-design.md「Column header」）。
+    columns: {
+      name: "Name",
+      videos: "Videos",
+    },
+    // 見出しの下の、効いている絞り込みのチップ（ui-design.md「Active filters」）。
+    activeFilters: {
+      label: "Active filters",
+      remove: (name: string) => `Remove the filter "${name}"`,
+    },
     loadFailed: "Couldn't load the tags",
     // 一覧を持ったまま先頭のページを読めなかったとき（ui-design.md「Stale list」）。
     staleList: (reason: string) =>
@@ -625,9 +637,10 @@ export const en = {
     rejectedNames: {
       heading: "Rejected names",
       description:
-        "Automatic tagging won't create these tags. Remove a name to allow it again.",
+        "Automatic tagging won't create these names. Allow a name again to let it be created.",
       empty: "No rejected names",
       allow: (name: string) => `Allow "${name}" again`,
+      allowShort: "Allow again",
       loadFailed: "Couldn't load the rejected names",
       loadMoreFailed: "Couldn't load more rejected names",
       removeFailed: (name: string, reason: string) =>
@@ -752,6 +765,10 @@ export const en = {
       title: (name: string) => `Merge "${name}"`,
       target: "Tag to merge into",
       synonymHint: (synonym: string) => `Synonym: ${synonym}`,
+      // 統合先の候補の一覧が空のとき（ui-design.md「Merge dialog」）。
+      noCandidates: "No matching tags",
+      // 窓の下端の「統合元 → 統合先」。統合元が複数なら数で言う。
+      summarySources: (count: number) => tagCount(count),
       // 統合先の候補をサーバーで引けなかったとき（ui-design.md「Target candidates」）。
       searchFailed: (reason: string) => `Couldn't search tags: ${reason}`,
       videoCount: videos,

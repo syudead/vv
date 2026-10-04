@@ -1,17 +1,17 @@
-import { Ban, Check, Ellipsis, LoaderCircle, Merge, Trash2, X } from "lucide-react";
-import { useId, type ReactNode, type Ref } from "react";
+import { Ban, Check, LoaderCircle, Merge, Trash2, X } from "lucide-react";
+import { useId, type Ref } from "react";
 
 import { maxTagBatch } from "../api/tags";
 import { t } from "../i18n";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
-import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
 
 /**
- * TagSelectionBar はタグ管理画面で 1 件以上選ぶと画面下部に出る選択バーである
- * （specs/036-tag-admin-scale/ui-design.md「Selection bar」）。箱・位置・現れ方・段の
- * 折り返しはライブラリの `SelectionBar` と同じ。前に出す操作は「Confirm」だけで、
- * 却下・削除（と統合）は「More」のメニューに入れる。
+ * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、本文の先頭の見出しの行と
+ * 入れ替わる選択の行である（specs/036-tag-admin-scale/ui-design.md「Selection bar」）。
+ * 左に選択を解く × と「N tags selected」、右にまとめての操作を本物のボタンで並べる。
+ * 選んだタグに働かない操作（仮のタグが無いときの「Confirm」「Reject…」、確定した
+ * タグが無いときの「Delete…」）は薄くせずに出さない。
  */
 export default function TagSelectionBar({
   count,
@@ -26,202 +26,121 @@ export default function TagSelectionBar({
   onMerge,
   onClear,
   confirmRef,
-  moreRef,
+  mergeRef,
+  rejectRef,
+  deleteRef,
 }: {
-  /** 選んだタグの数。0 ならバーを描かない。 */
+  /** 選んだタグの数（1 以上）。 */
   count: number;
-  /** 選んだ中に仮のタグがある（「Confirm」「Reject…」が働く）。 */
+  /** 選んだ中に仮のタグがある（「Confirm」「Reject…」を出す）。 */
   hasTentative: boolean;
-  /** 選んだ中に確定したタグがある（「Delete…」が働く）。 */
+  /** 選んだ中に確定したタグがある（「Delete…」を出す）。 */
   hasConfirmed: boolean;
-  /** 見えている数が `maxTagBatch` を超える。まとめての操作を押せなくする。 */
+  /** 選んだ数が `maxTagBatch` を超える。まとめての操作を押せなくし、理由を添える。 */
   overLimit: boolean;
-  /** まとめての操作の送信中。バーのボタンをすべて disabled にする。 */
+  /** まとめての操作の送信中。ボタンをすべて disabled にする。 */
   busy: boolean;
   /** まとめての確定の送信中。「Confirm」のアイコンを回す。 */
   confirming: boolean;
   onConfirm: () => void;
   onReject: () => void;
   onDelete: () => void;
-  /**
-   * 「Merge into one tag…」を押したとき。渡さなければ項目を出さない（統合の窓は
-   * 「選んだタグをまとめて 1 つのタグへ統合する」の単位が足す）。
-   */
-  onMerge?: () => void;
+  onMerge: () => void;
   onClear: () => void;
   confirmRef?: Ref<HTMLButtonElement>;
-  moreRef?: Ref<HTMLButtonElement>;
+  mergeRef?: Ref<HTMLButtonElement>;
+  rejectRef?: Ref<HTMLButtonElement>;
+  deleteRef?: Ref<HTMLButtonElement>;
 }) {
   const overLimitId = useId();
-  const noTentativeId = useId();
-
-  if (count === 0) return null;
-
-  const confirmDisabled = busy || overLimit || !hasTentative;
-  const confirmReason = overLimit
-    ? t.tags.selection.overLimit(maxTagBatch)
-    : !hasTentative
-      ? t.tags.selection.noTentative
-      : undefined;
+  const disabled = busy || overLimit;
+  const reason = overLimit && !busy ? t.tags.selection.overLimit(maxTagBatch) : undefined;
+  const describedBy = reason === undefined ? undefined : overLimitId;
 
   return (
     <div
       role="region"
       aria-label={t.tags.selection.region}
-      className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
+      className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2"
     >
-      <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-border-strong bg-elevated p-1.5 shadow-elevated animate-slide-up motion-reduce:animate-none sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
-        <span
-          role="status"
-          aria-live="polite"
-          className="order-1 px-1 text-sm text-fg tabular-nums sm:px-0"
-        >
-          {t.tags.selection.count(count)}
-        </span>
-
-        {/* sm 未満では常に 2 段にする（ライブラリの SelectionBar と同じ仕切り）。 */}
-        <span
-          aria-hidden="true"
-          className="order-4 hidden max-sm:block max-sm:h-0 max-sm:w-full max-sm:basis-full"
-        />
-
-        <Button
-          ref={confirmRef}
-          variant="ghost"
-          size="sm"
-          className="order-5 max-sm:flex-1 sm:order-2"
-          disabled={confirmDisabled}
-          title={busy ? undefined : confirmReason}
-          aria-describedby={
-            busy
-              ? undefined
-              : overLimit
-                ? overLimitId
-                : !hasTentative
-                  ? noTentativeId
-                  : undefined
-          }
-          onClick={onConfirm}
-        >
-          {confirming ? (
-            <LoaderCircle
-              aria-hidden="true"
-              className="animate-spin motion-reduce:animate-none"
-            />
-          ) : (
-            <Check aria-hidden="true" />
-          )}
-          {t.tags.selection.confirm}
-        </Button>
-
-        <MenuRoot>
-          <MenuTrigger asChild>
-            <Button
-              ref={moreRef}
-              variant="ghost"
-              size="sm"
-              className="order-6 max-sm:flex-1 sm:order-3"
-              disabled={busy || overLimit}
-              title={
-                overLimit && !busy ? t.tags.selection.overLimit(maxTagBatch) : undefined
-              }
-              aria-describedby={overLimit && !busy ? overLimitId : undefined}
-            >
-              <Ellipsis aria-hidden="true" />
-              {t.tags.selection.more}
-            </Button>
-          </MenuTrigger>
-          <MenuContent side="top">
-            {onMerge !== undefined && (
-              <>
-                <MenuItem onSelect={onMerge}>
-                  <Merge />
-                  {t.tags.selection.mergeInto}
-                </MenuItem>
-                <MenuSeparator />
-              </>
-            )}
-            <ReasonedItem
-              disabled={!hasTentative}
-              reason={t.tags.selection.noTentative}
-              onSelect={onReject}
-            >
-              <Ban />
-              {t.tags.selection.reject}
-            </ReasonedItem>
-            <ReasonedItem
-              disabled={!hasConfirmed}
-              reason={t.tags.selection.noConfirmed}
-              onSelect={onDelete}
-            >
-              <Trash2 />
-              {t.tags.selection.delete}
-            </ReasonedItem>
-          </MenuContent>
-        </MenuRoot>
-
-        {overLimit && (
-          <span id={overLimitId} className="sr-only">
-            {t.tags.selection.overLimit(maxTagBatch)}
-          </span>
-        )}
-        {!overLimit && !hasTentative && (
-          <span id={noTentativeId} className="sr-only">
-            {t.tags.selection.noTentative}
-          </span>
-        )}
-
-        <span
-          aria-hidden="true"
-          className="hidden h-5 w-px bg-border-strong sm:order-4 sm:block"
-        />
-
-        <IconButton
-          label={t.tags.selection.clear}
-          size="sm"
-          onClick={onClear}
-          disabled={busy}
-          className="order-3 ml-auto sm:order-5 sm:ml-0"
-        >
-          <X />
-        </IconButton>
-      </div>
-    </div>
-  );
-}
-
-/**
- * ReasonedItem は押せない理由を `title` と読み上げで添える danger のメニューの項目で
- * ある（ui-design.md「Enabled and disabled」）。
- */
-function ReasonedItem({
-  disabled,
-  reason,
-  onSelect,
-  children,
-}: {
-  disabled: boolean;
-  reason: string;
-  onSelect: () => void;
-  children: ReactNode;
-}) {
-  const reasonId = useId();
-  return (
-    <>
-      <MenuItem
-        tone="danger"
-        onSelect={onSelect}
-        disabled={disabled}
-        title={disabled ? reason : undefined}
-        describedBy={disabled ? reasonId : undefined}
+      <IconButton
+        label={t.tags.selection.clear}
+        onClick={onClear}
+        disabled={busy}
+        className="-ml-2"
       >
-        {children}
-      </MenuItem>
-      {disabled && (
-        <span id={reasonId} className="sr-only">
+        <X />
+      </IconButton>
+      <span
+        role="status"
+        aria-live="polite"
+        className="mr-auto text-lg font-semibold text-fg tabular-nums"
+      >
+        {t.tags.selection.count(count)}
+      </span>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {hasTentative && (
+          <Button
+            ref={confirmRef}
+            variant="primary"
+            disabled={disabled}
+            title={reason}
+            aria-describedby={describedBy}
+            onClick={onConfirm}
+          >
+            {confirming ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <Check aria-hidden="true" />
+            )}
+            {t.tags.selection.confirm}
+          </Button>
+        )}
+        <Button
+          ref={mergeRef}
+          disabled={disabled}
+          title={reason}
+          aria-describedby={describedBy}
+          onClick={onMerge}
+        >
+          <Merge aria-hidden="true" />
+          {t.tags.selection.mergeInto}
+        </Button>
+        {hasTentative && (
+          <Button
+            ref={rejectRef}
+            disabled={disabled}
+            title={reason}
+            aria-describedby={describedBy}
+            onClick={onReject}
+          >
+            <Ban aria-hidden="true" className="text-danger" />
+            <span className="text-danger">{t.tags.selection.reject}</span>
+          </Button>
+        )}
+        {hasConfirmed && (
+          <Button
+            ref={deleteRef}
+            disabled={disabled}
+            title={reason}
+            aria-describedby={describedBy}
+            onClick={onDelete}
+          >
+            <Trash2 aria-hidden="true" className="text-danger" />
+            <span className="text-danger">{t.tags.selection.delete}</span>
+          </Button>
+        )}
+      </div>
+
+      {reason !== undefined && (
+        <p id={overLimitId} className="w-full text-xs text-danger">
           {reason}
-        </span>
+        </p>
       )}
-    </>
+    </div>
   );
 }

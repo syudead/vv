@@ -154,8 +154,8 @@ function rows(page: Page): Locator {
 }
 
 /**
- * filteredCount は絞った件数の行（「12 of 1,000 tags」。続きがあれば「 · 100 loaded」が
- * 添わる）である。
+ * filteredCount は絞った件数（「12 of 1,000 tags」。036 の初めの形では続きがあれば
+ * 「 · 100 loaded」が添わる）である。
  */
 function filteredCount(page: Page): Locator {
   return page
@@ -164,8 +164,8 @@ function filteredCount(page: Page): Locator {
 }
 
 /**
- * countLine は件数の行（「1,000 tags」「12 of 1,000 tags」。続きがあれば「 · 100 loaded」が
- * 添わる）である。
+ * countLine は件数（「1,000 tags」「12 of 1,000 tags」。036 の初めの形では続きがあれば
+ * 「 · 100 loaded」が添わる）である。
  */
 function countLine(page: Page): Locator {
   return page
@@ -175,13 +175,24 @@ function countLine(page: Page): Locator {
 }
 
 /**
- * listFullyRendered は、画面が最後のページを描いたか（件数の行から「 · N loaded」が消えたか）
- * を返す。応答が届いたことと、その行が一覧に描かれたことは別で、描かれる前に下端を読むと
- * 最後のページの行を送らずに末尾と見なしてしまう。変更前の画面（ページが無い）は添えない。
+ * listFullyRendered は、画面が最後のページを描いたかを返す。応答が届いたことと、その行が
+ * 一覧に描かれたことは別で、描かれる前に下端を読むと最後のページの行を送らずに末尾と
+ * 見なしてしまう。件数の行の数（条件に合う全部の数）と、列の見出しの「Select all N loaded
+ * tags」の読み込んだ数が等しくなったら描き終えている。件数の行に「 · N loaded」を添える
+ * 画面（036 の初めの形）はそれが消えたかで見る。どちらも無い画面（ページが無い）は描き終えて
+ * いるものとする。
  */
 async function listFullyRendered(page: Page): Promise<boolean> {
-  const text = await countLine(page).textContent({ timeout: waitTimeout });
-  return !/ · [\d,]+ loaded$/.test(text ?? "");
+  const text = (await countLine(page).textContent({ timeout: waitTimeout })) ?? "";
+  if (/ · [\d,]+ loaded$/.test(text)) return false;
+  const total = /^([\d,]+)/.exec(text)?.[1];
+  const selectAll = page.getByRole("checkbox", {
+    name: /^Select (all [\d,]+ loaded tags|the 1 loaded tag)$/,
+  });
+  if (total === undefined || (await selectAll.count()) === 0) return true;
+  const label = (await selectAll.first().getAttribute("aria-label")) ?? "";
+  const loaded = /([\d,]+) loaded/.exec(label)?.[1] ?? "1";
+  return loaded === total;
 }
 
 interface Row {
@@ -559,8 +570,16 @@ async function measureBulkConfirm(page: Page): Promise<Row> {
   await page.goto("about:blank");
   await page.goto("/tags");
   await rows(page).first().waitFor({ state: "attached", timeout: waitTimeout });
-  const tentativeOnly = page.getByRole("button", { name: "Tentative only" });
-  await tentativeOnly.click();
+  // 「Tentative only」はトップバーの「Filter」の吹き出しの中のチェック（変更前は操作の行の
+  // 押すボタン）。
+  const tentativeButton = page.getByRole("button", { name: "Tentative only" });
+  if ((await tentativeButton.count()) > 0) {
+    await tentativeButton.click();
+  } else {
+    await page.getByRole("button", { name: /^Filter/ }).click();
+    await page.getByRole("checkbox", { name: /^Tentative only/ }).click();
+    await page.keyboard.press("Escape");
+  }
   await filteredCount(page).waitFor({ timeout: waitTimeout });
   // 変更前は「見えているものをすべて選ぶ」、ページで読む画面は「読み込んだ行をすべて選ぶ」。
   const selectAll = page.getByRole("checkbox", {
