@@ -47,8 +47,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function radio(name: string | RegExp): HTMLInputElement {
-  return screen.getByRole("radio", { name }) as HTMLInputElement;
+function radio(name: string | RegExp): HTMLButtonElement {
+  return screen.getByRole("radio", { name }) as HTMLButtonElement;
+}
+
+function checked(element: HTMLElement): boolean {
+  return element.getAttribute("aria-checked") === "true";
 }
 
 function inUse(): string {
@@ -69,7 +73,7 @@ describe("TranscodingSection", () => {
       await screen.findByRole("heading", { level: 2, name: "Video conversion" }),
     ).toBeDefined();
     await screen.findByRole("radiogroup", { name: "Video encoder" });
-    expect(radio("Software").checked).toBe(true);
+    expect(checked(radio("Software"))).toBe(true);
     expect(radio("Software").disabled).toBe(false);
     expect(radio("Automatic").disabled).toBe(false);
     expect(inUse()).toBe("Software");
@@ -128,7 +132,7 @@ describe("TranscodingSection", () => {
     expect(putCall?.[0]).toBe(URL);
     expect(JSON.parse(String(putCall?.[1]?.body))).toEqual({ videoEncoder: "vaapi" });
     expect(screen.getByRole("status").textContent).toBe("Saving…");
-    expect(radio("VAAPI (Intel/AMD)").checked).toBe(true);
+    expect(checked(radio("VAAPI (Intel/AMD)"))).toBe(true);
     expect(radio("Software").disabled).toBe(true);
     expect(radio("Automatic").disabled).toBe(true);
 
@@ -144,7 +148,7 @@ describe("TranscodingSection", () => {
     await waitFor(() => expect(inUse()).toBe("VAAPI (Intel/AMD)"));
     expect(screen.queryByText("Saving…")).toBeNull();
     expect(radio("Software").disabled).toBe(false);
-    expect(radio("VAAPI (Intel/AMD)").checked).toBe(true);
+    expect(checked(radio("VAAPI (Intel/AMD)"))).toBe(true);
   });
 
   it("restores the previous choice and shows the reason when saving fails", async () => {
@@ -167,8 +171,8 @@ describe("TranscodingSection", () => {
     expect(screen.getByRole("region", { name: "Video conversion" }).contains(alert)).toBe(
       true,
     );
-    expect(radio("Software").checked).toBe(true);
-    expect(radio("Automatic").checked).toBe(false);
+    expect(checked(radio("Software"))).toBe(true);
+    expect(checked(radio("Automatic"))).toBe(false);
     expect(inUse()).toBe("Software");
   });
 
@@ -207,7 +211,7 @@ describe("TranscodingSection", () => {
       "That video encoder isn't available on this server.",
     );
     await waitFor(() => expect(radio("NVENC (NVIDIA)").disabled).toBe(true));
-    expect(radio("Software").checked).toBe(true);
+    expect(checked(radio("Software"))).toBe(true);
   });
 
   it("keeps the choices locked until the refresh after a rejected save settles", async () => {
@@ -258,7 +262,7 @@ describe("TranscodingSection", () => {
 
     await waitFor(() => expect(radio("Automatic").disabled).toBe(false));
     expect(radio("NVENC (NVIDIA)").disabled).toBe(true);
-    expect(radio("Software").checked).toBe(true);
+    expect(checked(radio("Software"))).toBe(true);
   });
 
   it("warns above the choices when the selected encoder fell back to software", async () => {
@@ -277,12 +281,12 @@ describe("TranscodingSection", () => {
     const warning = screen.getByText(
       "The selected encoder isn't available on this server, so videos are converted with software.",
     );
-    expect(warning.className).toContain("text-warning");
+    expect(warning.closest("[data-slot=alert]")?.className).toContain("text-warning");
     const group = screen.getByRole("radiogroup");
     expect(
       warning.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(radio("NVENC (NVIDIA)").checked).toBe(true);
+    expect(checked(radio("NVENC (NVIDIA)"))).toBe(true);
     expect(inUse()).toBe("Software");
   });
 

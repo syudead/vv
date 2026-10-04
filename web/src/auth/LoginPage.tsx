@@ -5,7 +5,7 @@ import { useLocation } from "react-router";
 import { login, LoginThrottled } from "../api/auth";
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import {
   connectionWarningId,
   CredentialField,
@@ -92,44 +92,41 @@ export default function LoginPage() {
       title={t.auth.login.title}
       description={t.auth.login.description}
       onSubmit={() => void submit()}
-    >
-      <div className="flex flex-col gap-4">
-        <UsernameField
-          ref={usernameRef}
-          id="login-username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
+      submit={
+        <Button
+          type="submit"
+          disabled={submitting || throttled}
+          aria-busy={submitting}
           aria-describedby={warning}
-        />
-        <CredentialField
-          ref={passwordRef}
-          id="login-password"
-          label={t.auth.fields.password}
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </div>
-      <FailureLine message={failure} />
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        className="w-full"
-        disabled={submitting || throttled}
-        aria-busy={submitting}
+        >
+          {submitting && (
+            <LoaderCircle
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+          )}
+          {submitting ? t.auth.login.submitting : t.auth.login.submit}
+        </Button>
+      }
+    >
+      <UsernameField
+        ref={usernameRef}
+        id="login-username"
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
         aria-describedby={warning}
-      >
-        {submitting && (
-          <LoaderCircle
-            className="animate-spin motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-        )}
-        {submitting ? t.auth.login.submitting : t.auth.login.submit}
-      </Button>
+      />
+      <CredentialField
+        ref={passwordRef}
+        id="login-password"
+        label={t.auth.fields.password}
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+      />
+      <FailureLine message={failure} />
     </CredentialScreen>
   );
 }

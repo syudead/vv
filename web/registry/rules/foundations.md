@@ -58,7 +58,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `card-0` to `card-3`,
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `chip-label`,
-`detail-aside`. Fractions
+`detail-aside`, `issue-list`, `folder-list`. Fractions
 (`w-1/2`), `full`, `auto` and the container widths (`max-w-md`) are allowed.
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value.

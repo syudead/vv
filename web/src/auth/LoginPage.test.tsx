@@ -75,14 +75,15 @@ describe("LoginPage", () => {
     );
     expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeDefined();
     expect(screen.getByText("Sign in with the owner account")).toBeDefined();
-    expect(username.className).toContain("focus-visible:outline-link");
+    // 入力は design system の Input で、フォーカスの輪は全部品で共通のものになる。
+    expect(username.dataset.slot).toBe("input");
   });
 
   it("HTTP では入力前に警告を出し、ユーザー名と主操作から指す", () => {
     renderLogin();
     const warning = screen
       .getByText(/This connection isn't encrypted/)
-      .closest("p") as HTMLElement;
+      .closest("[data-slot=alert]") as HTMLElement;
     const { username, submit } = fields();
 
     expect(warning?.id).toBe("connection-warning");

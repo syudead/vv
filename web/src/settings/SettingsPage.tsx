@@ -1,4 +1,11 @@
-import { Folder, FolderPlus, LoaderCircle, Pencil, Trash2 } from "lucide-react";
+import {
+  CircleAlert,
+  Folder,
+  FolderPlus,
+  LoaderCircle,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -11,9 +18,24 @@ import {
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
-import Button from "../ui/Button";
-import { ModalFrame } from "../ui/ModalFrame";
-import Skeleton from "../ui/Skeleton";
+import { EmptyState } from "../ui/patterns/empty-state";
+import { ErrorState } from "../ui/patterns/error-state";
+import { PageHeader } from "../ui/patterns/page-header";
+import { PageSection } from "../ui/patterns/page-section";
+import { SettingsPage as SettingsPageLayout } from "../ui/patterns/settings-page";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/shadcn/alert-dialog";
+import { Button } from "../ui/shadcn/button";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
@@ -36,37 +58,52 @@ function DeleteDialog({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const cancel = useRef<HTMLButtonElement>(null);
+  // 確認の窓の型（ConfirmDialog）と同じ組み方で、削除が終わるまで窓を開いたままにし、
+  // 失敗を窓の中に出す。
   return (
-    <ModalFrame
-      title={t.settings.removeDialog.title}
-      onClose={onClose}
-      initialFocus={cancel}
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-        <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
-          <p className="mb-1 text-xs text-fg-muted">{t.settings.removeDialog.target}</p>
-          <code className="block break-all text-sm text-fg">{folder.path}</code>
-        </div>
-        <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-          {t.settings.removeDialog.warning}
-        </p>
-        {error !== null && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t.settings.removeDialog.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {t.settings.removeDialog.warning}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="min-w-0 rounded-md bg-muted p-3">
+          <p className="text-xs text-muted-foreground">
+            {t.settings.removeDialog.target}
           </p>
+          <code className="block text-sm break-all">{folder.path}</code>
+        </div>
+        {error !== null && (
+          <Alert variant="destructive">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>{error}</AlertTitle>
+          </Alert>
         )}
-      </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
-        <Button ref={cancel} onClick={onClose} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-        <Button variant="danger" onClick={onDelete} disabled={pending}>
-          {pending && <LoaderCircle className="animate-spin" />}
-          {pending ? t.settings.removeDialog.removing : t.settings.removeDialog.submit}
-        </Button>
-      </div>
-    </ModalFrame>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>{t.common.cancel}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault();
+              onDelete();
+            }}
+          >
+            {pending && (
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+            )}
+            {pending ? t.settings.removeDialog.removing : t.settings.removeDialog.submit}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -204,54 +241,63 @@ export default function SettingsPage() {
 
   const mutationsDisabled = scan.running;
 
-  return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-xl font-semibold">{t.settings.title}</h1>
-      <ScanStatusSection />
-      <section
-        aria-labelledby="media-folders-heading"
-        className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
-      >
-        <div className="border-b border-border pb-4">
-          <h2 id="media-folders-heading" className="text-base font-semibold">
-            {t.settings.mediaFolders.heading}
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-fg-muted">
-            {t.settings.mediaFolders.description}
-          </p>
-          {mutationsDisabled && (
-            <p role="status" className="mt-3 text-sm text-warning">
-              {t.settings.mediaFolders.lockedWhileScanning}
-            </p>
-          )}
-        </div>
+  const text = t.settings.mediaFolders;
 
-        <div aria-label={t.settings.mediaFolders.list} className="divide-y divide-border">
+  return (
+    <SettingsPageLayout header={<PageHeader title={t.settings.title} />}>
+      <ScanStatusSection />
+      <PageSection
+        title={text.heading}
+        description={text.description}
+        actions={
+          <Button
+            ref={addButton}
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setOperationError(null);
+              setPicker("add");
+            }}
+            disabled={
+              loading || loadError !== null || mutationsDisabled || pending !== null
+            }
+            aria-describedby={loadError !== null ? "folder-load-blocked" : undefined}
+          >
+            <FolderPlus />
+            {text.add}
+          </Button>
+        }
+      >
+        {mutationsDisabled && (
+          <p role="status" className="text-warning">
+            {text.lockedWhileScanning}
+          </p>
+        )}
+        {loadError !== null && (
+          <p id="folder-load-blocked" className="text-xs text-muted-foreground">
+            {text.addBlocked}
+          </p>
+        )}
+        <div aria-label={text.list} className="flex flex-col divide-y divide-border">
           {loading && (
-            <div
-              role="status"
-              aria-label={t.settings.mediaFolders.loading}
-              className="space-y-3 py-5"
-            >
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
+            <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
             </div>
           )}
           {!loading && loadError !== null && (
-            <div className="flex flex-col items-start gap-3 py-6">
-              <p role="alert" className="text-sm text-danger">
-                {t.settings.mediaFolders.loadFailed(loadError)}
-              </p>
-              <Button onClick={() => void load()}>{t.common.retry}</Button>
-            </div>
+            <ErrorState
+              title={text.loadFailed(loadError)}
+              retryLabel={t.common.retry}
+              onRetry={() => void load()}
+            />
           )}
           {!loading && loadError === null && folders.length === 0 && (
-            <div className="py-6">
-              <p className="font-medium">{t.settings.mediaFolders.empty}</p>
-              <p className="mt-1 text-sm text-fg-muted">
-                {t.settings.mediaFolders.emptyHint}
-              </p>
-            </div>
+            <EmptyState
+              icon={<Folder />}
+              title={text.empty}
+              description={text.emptyHint}
+            />
           )}
           {!loading &&
             loadError === null &&
@@ -264,33 +310,29 @@ export default function SettingsPage() {
                     if (element === null) rowRefs.current.delete(folder.id);
                     else rowRefs.current.set(folder.id, element);
                   }}
-                  className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-center"
+                  className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-center"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Folder className="mt-2 size-4 shrink-0 text-fg-muted" />
-                    <div className="min-w-0 flex-1 rounded-md border border-control-border bg-field px-3 py-2">
-                      <span className="block text-xs text-fg-muted">
-                        {t.settings.mediaFolders.current}
+                    <Folder className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="text-xs text-muted-foreground">
+                        {text.current}
                       </span>
-                      <code
-                        className="block break-all text-sm leading-5"
-                        title={folder.path}
-                      >
+                      <code className="block break-all" title={folder.path}>
                         {folder.path}
                       </code>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {rowPending && (
-                      <span role="status" className="mr-2 text-xs text-fg-muted">
-                        {pending.kind === "delete"
-                          ? t.settings.mediaFolders.removing
-                          : t.settings.mediaFolders.changing}
+                      <span role="status" className="text-xs text-muted-foreground">
+                        {pending.kind === "delete" ? text.removing : text.changing}
                       </span>
                     )}
                     <Button
+                      variant="outline"
                       size="sm"
-                      aria-label={t.settings.mediaFolders.change}
+                      aria-label={text.change}
                       onClick={() => {
                         setOperationError(null);
                         setPicker(folder);
@@ -298,25 +340,25 @@ export default function SettingsPage() {
                       disabled={rowPending || mutationsDisabled}
                     >
                       <Pencil />
-                      {t.settings.mediaFolders.changeShort}
+                      {text.changeShort}
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
-                      aria-label={t.settings.mediaFolders.remove}
+                      aria-label={text.remove}
                       onClick={() => {
                         setOperationError(null);
                         setDeleting(folder);
                       }}
                       disabled={rowPending || mutationsDisabled}
-                      className="text-danger"
+                      className="text-destructive"
                     >
                       <Trash2 />
-                      {t.settings.mediaFolders.removeShort}
+                      {text.removeShort}
                     </Button>
                   </div>
                   {rowError?.id === folder.id && (
-                    <p role="alert" className="text-sm text-danger sm:basis-full">
+                    <p role="alert" className="text-destructive sm:basis-full">
                       {rowError.message}
                     </p>
                   )}
@@ -324,29 +366,7 @@ export default function SettingsPage() {
               );
             })}
         </div>
-
-        <Button
-          ref={addButton}
-          variant="primary"
-          className="mt-5 w-full sm:w-auto"
-          onClick={() => {
-            setOperationError(null);
-            setPicker("add");
-          }}
-          disabled={
-            loading || loadError !== null || mutationsDisabled || pending !== null
-          }
-          aria-describedby={loadError !== null ? "folder-load-blocked" : undefined}
-        >
-          <FolderPlus />
-          {t.settings.mediaFolders.add}
-        </Button>
-        {loadError !== null && (
-          <p id="folder-load-blocked" className="mt-2 text-xs text-fg-muted">
-            {t.settings.mediaFolders.addBlocked}
-          </p>
-        )}
-      </section>
+      </PageSection>
       <TranscodingSection />
       <APITokensSection />
       <NetworkSection />
@@ -374,6 +394,6 @@ export default function SettingsPage() {
           onDelete={() => void removeFolder()}
         />
       )}
-    </div>
+    </SettingsPageLayout>
   );
 }

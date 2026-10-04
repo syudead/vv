@@ -16,12 +16,6 @@
 /** @type {import("./design-exceptions").DesignException[]} */
 export default [
   {
-    file: "auth/CredentialScreen.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["sm:pt-24"],
-    kind: "migration",
-  },
-  {
     file: "folders/Breadcrumbs.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5", "h-3\\.5", "w-20", "max-w-40"],
@@ -80,35 +74,6 @@ export default [
     kind: "special",
     reason:
       "The seek preview over the video.js progress bar (.vv-seek-preview in index.css) is placed from the pointer and the frame size at run time and sized from the seek-preview tokens; it is not a card scrub (ScrubPreview) and has no design-system component.",
-  },
-  {
-    file: "settings/APITokensSection.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "settings/FolderPicker.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["sm:min-h-72", "min-h-48", "min-h-11"],
-    kind: "migration",
-  },
-  {
-    file: "settings/NetworkSection.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["w-11", "size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "settings/ScanIssueList.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "settings/TranscodingSection.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5", "w-48"],
-    kind: "migration",
   },
   {
     file: "shell/AppShell.tsx",
