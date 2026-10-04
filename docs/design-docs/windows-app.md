@@ -271,9 +271,10 @@ new LAN connections are refused at the TCP level.
 
 ## Distribution
 
-A `v*` tag and every push to `main` publish `VVMDM-<version>-windows-amd64.zip`,
-with `ffmpeg` bundled, to a GitHub Release; the exe is not code-signed, and
-`windows/amd64` is the only target.
+A `v*` tag publishes `VVMDM-<version>-windows-amd64.zip`, with `ffmpeg`
+bundled, to a GitHub Release, and every push to `main` replaces the zip of the
+single `nightly` prerelease; the exe is not code-signed, and `windows/amd64` is
+the only target.
 
 Users need a download that works alone and updates by replacement (parent
 Issue requirements 1, 2 and 10), while CI otherwise publishes only the Docker
@@ -283,8 +284,9 @@ image on a push to `main`.
 flowchart LR
   tag[v* tag, push to main or dispatch] --> build[Linux job builds zip]
   build --> verify[Windows job checks zip]
-  verify --> pushed{Tag or main push?}
-  pushed -->|yes| release[Attach to Release]
+  verify --> pushed{Trigger?}
+  pushed -->|v* tag| release[Attach to tag Release]
+  pushed -->|main push| nightly[Replace zip in nightly prerelease]
   pushed -->|dispatch| artifact[Artifact only]
 ```
 
@@ -298,10 +300,10 @@ flowchart LR
 | `.syso` | Generated during the build and deleted afterwards, never committed |
 | FFmpeg source | `GyanD/codexffmpeg` `essentials_build` zip at the version and SHA-256 pinned in `scripts/build/windows_app.go` |
 | FFmpeg cache | `dist/cache/`, re-hashed on each use; a mismatch deletes it and fails with expected and actual hashes. In the workflow it is kept in the Actions cache so the download source cannot turn `main` red |
-| Runs on `main` | Every push builds and checks the zip and attaches it to a Release tagged `main-<12 characters of the commit>`; a newer push cancels the running one, tag runs are never cancelled |
+| Runs on `main` | Every push builds and checks the zip, moves the `nightly` tag to the commit and replaces the zip of the `nightly` prerelease; a newer push cancels the running one, tag runs are never cancelled |
 | Hardware encoders | NVENC and QSV as in [hardware-encoding.md](hardware-encoding.md); no AMF |
 | Windows check | Layout, and `ffmpeg -hide_banner -encoders` lists `h264_nvenc` and `h264_qsv`; GPU transcoding is checked on real hardware ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
-| Release | Created when missing, the zip replaced when present |
+| Release | Created when missing, the zip replaced when present. `nightly` is a prerelease, never marked latest, with fixed short notes; the new zip is uploaded before the old one is deleted |
 | SmartScreen | Steps in `README.txt` and [running-vv.md](../how-to/running-vv.md#windows-app) |
 
 The `.syso` would otherwise enter every `cmd/mdm` build for the same
@@ -310,6 +312,8 @@ being compiled in. Workflow: `.github/workflows/windows-app.yml`.
 
 | Rejected | Why |
 | --- | --- |
+| A new Release tagged `main-<12 characters>` for every push to `main` | The Releases page grows with every merge, and generated notes list the whole history |
+| GitHub Packages | No generic file package; container and NuGet downloads need a CLI or a token, not a browser |
 | `windows/arm64` too | No pinnable arm64 `ffmpeg` exists, and the x64 exe runs under emulation (R-13) |
 | `ffmpeg` from BtbN/FFmpeg-Builds | No fixed Release per version, so a pin cannot be fetched later (R-12) |
 | Committing the `.syso` | The untagged `mdm.exe` would get the icon and manifest, and the version information would go stale |
