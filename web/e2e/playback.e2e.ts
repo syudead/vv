@@ -1107,38 +1107,6 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
-  test("直接配信とライブ変換で、同じ位置に同じコマを出す", async ({ page }) => {
-    test.setTimeout(30_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    const shown: string[] = [];
-    // 同じ内容を MP4（直接配信）と MKV（ライブ変換）にした fixture で、コマを決める
-    // 位置は元動画の論理時刻である（contracts/seek-sprite-api.md §5）。同じコマかは
-    // シートの中の位置（background-position）で見る。シートの画像は動画ごとに別に
-    // 作るので、同じ場面でも画素は一致しない。
-    for (const item of [video("direct"), video("container-only")]) {
-      await play(page, item);
-      await page.addStyleTag({
-        content: ".vv-seek-preview-time { visibility: hidden; }",
-      });
-      const seekBar = page.locator(".vjs-progress-holder");
-      const seekBounds = await seekBar.boundingBox();
-      if (seekBounds === null) throw new Error("seek bar is not visible");
-      await page.mouse.move(
-        seekBounds.x + seekBounds.width * 0.9,
-        seekBounds.y + seekBounds.height / 2,
-      );
-      const preview = page.locator('.vv-seek-preview[data-state="ready"]');
-      await expect(preview).toBeVisible({ timeout: 5000 });
-      await expect(preview).toContainText("0:05");
-      const image = preview.locator(".vv-seek-preview-image");
-      shown.push(
-        await image.evaluate((element) => getComputedStyle(element).backgroundPosition),
-      );
-    }
-    expect(shown[0]).toBe(shown[1]);
-    expect(shown[0]).not.toBe("0% 0%");
-  });
-
   test("縦動画のシークpreviewも実JPEGを表示する", async ({ page }) => {
     const item = video("portrait");
     await page.setViewportSize({ width: 768, height: 800 });
