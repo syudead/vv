@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d20bddc66ce7ee8b9c541782299bd2a982f21837c4ce62e7f8bbbb15dbf5c4aa
+sourceHash: 76270e56ea93c0592299145f88be396f68fde6f6b713cb7f81b5c3fe8cb214ce
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -121,7 +121,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、各画面はその間に自分のツールバーを差し込む。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、ライブラリはその間に自分のツールバーを差し込む。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストとフォルダ名がページの先頭に立ち、ツールバーはその下に置く（[design-system.md、Page patterns](design-system.md#page-patterns)）。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -136,8 +136,8 @@ flowchart LR
 | 幅 | ツールバー |
 | --- | --- |
 | 広い | すべてのコントロールを横に並べる |
-| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る |
-| `md` 未満 | 並び順は 2 列のラジオに行優先で並ぶ。所有者は 5 行、ゲストは 4 行 |
+| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る（フォルダのページでは `lg` 未満） |
+| `md` 未満 | ライブラリ: 並び順は 2 列のラジオに行優先で並ぶ。所有者は 5 行、ゲストは 4 行。フォルダのページは並べ替えメニューを保つ |
 | `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示 |
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。
