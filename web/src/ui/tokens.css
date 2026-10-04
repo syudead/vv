@@ -105,6 +105,9 @@
   --spacing-menu: 11rem;
   /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx） */
   --spacing-detail-aside: 20rem;
+  /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
+  --spacing-issue-list: 50vh;
+  --spacing-folder-list: 18rem;
 
   /* --- 角丸: sm（チェック・バッジ）、md（操作・カード・サムネイル）、lg（浮く層）、full --- */
   --radius-sm: 4px;

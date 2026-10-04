@@ -1,4 +1,11 @@
-import { Copy, ExternalLink, LoaderCircle, ShieldAlert, Trash2 } from "lucide-react";
+import {
+  CircleAlert,
+  Copy,
+  ExternalLink,
+  LoaderCircle,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from "react";
 
 import {
@@ -9,9 +16,23 @@ import {
 } from "../api/client";
 import { errorText, formatDateTime, formatRelative, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
-import Button from "../ui/Button";
-import { ModalFrame } from "../ui/ModalFrame";
-import Skeleton from "../ui/Skeleton";
+import { ErrorState } from "../ui/patterns/error-state";
+import { PageSection } from "../ui/patterns/page-section";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/shadcn/alert-dialog";
+import { Button } from "../ui/shadcn/button";
+import { Field, FieldDescription, FieldError, FieldLabel } from "../ui/shadcn/field";
+import { Input } from "../ui/shadcn/input";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import { EXTERNAL_API_GUIDE_URL } from "./docsLinks";
 
@@ -35,36 +56,51 @@ function RevokeDialog({
   onRevoke: () => void;
 }) {
   const text = t.settings.revokeTokenDialog;
-  const cancel = useRef<HTMLButtonElement>(null);
+  // 確認の窓の型（ConfirmDialog）と同じ組み方で、失効が終わるまで窓を開いたままにし、
+  // 失敗を窓の中に出す。
   return (
-    <ModalFrame title={text.title} onClose={onClose} initialFocus={cancel}>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-        <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
-          <p className="mb-1 text-xs text-fg-muted">{text.target}</p>
-          <p className="break-words text-sm text-fg">{token.name}</p>
-          <p className="mt-1 text-xs text-fg-muted tabular-nums">
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{text.title}</AlertDialogTitle>
+          <AlertDialogDescription>{text.warning}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <div className="min-w-0 rounded-md bg-muted p-3">
+          <p className="text-xs text-muted-foreground">{text.target}</p>
+          <p className="text-sm break-words">{token.name}</p>
+          <p className="text-xs text-muted-foreground tabular-nums">
             {t.settings.apiTokens.created(formatDateTime(token.createdAt))}
           </p>
         </div>
-        <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-          {text.warning}
-        </p>
         {error !== null && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
+          <Alert variant="destructive">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>{error}</AlertTitle>
+          </Alert>
         )}
-      </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
-        <Button ref={cancel} onClick={onClose} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-        <Button variant="danger" onClick={onRevoke} disabled={pending}>
-          {pending && <LoaderCircle className="animate-spin" />}
-          {pending ? text.revoking : text.submit}
-        </Button>
-      </div>
-    </ModalFrame>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>{t.common.cancel}</AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault();
+              onRevoke();
+            }}
+          >
+            {pending && (
+              <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+            )}
+            {pending ? text.revoking : text.submit}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -83,24 +119,26 @@ function TokenReveal({ revealed, onDone }: { revealed: Revealed; onDone: () => v
     });
 
   return (
-    <div className="mt-4 min-w-0 rounded-md border border-control-border bg-field p-3 sm:p-4">
-      <p className="break-words text-xs text-fg-muted">
+    <div className="flex min-w-0 flex-col gap-3">
+      <p className="text-xs break-words text-muted-foreground">
         {text.revealTitle(revealed.token.name)}
       </p>
-      <code className="mt-2 block select-all break-all font-mono text-sm text-fg">
+      <code className="block rounded-md bg-muted p-3 font-mono text-sm break-all select-all">
         {revealed.secret}
       </code>
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button ref={copyButton} variant="primary" onClick={copy}>
+      <div className="flex flex-wrap gap-2">
+        <Button ref={copyButton} size="sm" onClick={copy}>
           <Copy />
           {text.copy}
         </Button>
-        <Button onClick={onDone}>{text.done}</Button>
+        <Button variant="outline" size="sm" onClick={onDone}>
+          {text.done}
+        </Button>
       </div>
-      <p className="mt-3 flex gap-2 border-l-2 border-warning-strong pl-3 text-sm leading-6 text-warning">
-        <ShieldAlert className="mt-1 size-4 shrink-0" aria-hidden="true" />
-        {text.revealWarning}
-      </p>
+      <Alert variant="warning" role="note">
+        <ShieldAlert aria-hidden="true" />
+        <AlertTitle className="font-normal">{text.revealWarning}</AlertTitle>
+      </Alert>
     </div>
   );
 }
@@ -224,91 +262,80 @@ export default function APITokensSection() {
   const showList = loading || loadError !== null || tokens.length > 0;
 
   return (
-    <section
-      aria-labelledby="api-tokens-heading"
-      className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
-    >
-      <div className="border-b border-border pb-4">
-        <h2 id="api-tokens-heading" className="text-base font-semibold">
-          {text.heading}
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-fg-muted">
+    <PageSection
+      title={text.heading}
+      description={
+        <>
           {text.description}{" "}
           <a
             href={EXTERNAL_API_GUIDE_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-link underline underline-offset-4"
+            className="inline-flex items-center gap-1 text-primary underline underline-offset-4"
           >
             {text.guide}
-            <ExternalLink aria-hidden="true" className="size-3.5" />
+            <ExternalLink aria-hidden="true" className="size-3" />
             <span className="sr-only">{text.opensInNewTab}</span>
           </a>
-        </p>
-      </div>
-
+        </>
+      }
+    >
       {revealed !== null ? (
         <TokenReveal revealed={revealed} onDone={closeReveal} />
       ) : (
-        <form className="pt-4" onSubmit={(event) => void submit(event)} noValidate>
-          <label htmlFor={nameId} className="text-xs font-medium text-fg-muted">
-            {text.name}
-          </label>
-          <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-start">
-            <input
-              ref={nameInput}
-              id={nameId}
-              type="text"
-              autoComplete="off"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              disabled={creating || createBlocked}
-              aria-invalid={createError !== null}
-              aria-describedby={describedBy}
-              className="h-9 w-full rounded-sm border border-control-border bg-field px-3 text-sm text-fg focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-sm"
-            />
-            <Button
-              type="submit"
-              variant="primary"
-              className="w-full sm:w-auto"
-              disabled={trimmed === "" || creating || createBlocked}
-            >
-              {creating && <LoaderCircle className="animate-spin" />}
-              {creating ? text.creating : text.create}
-            </Button>
-          </div>
-          {createError !== null ? (
-            <p id={errorId} role="alert" className="mt-2 text-sm text-danger">
-              {createError}
-            </p>
-          ) : (
-            <p id={hintId} className="mt-2 text-xs text-fg-muted">
-              {text.nameHint}
-            </p>
-          )}
-          {loadError !== null && (
-            <p id={blockedId} className="mt-2 text-xs text-fg-muted">
-              {text.createBlocked}
-            </p>
-          )}
+        <form onSubmit={(event) => void submit(event)} noValidate>
+          <Field data-invalid={createError !== null || undefined}>
+            <FieldLabel htmlFor={nameId}>{text.name}</FieldLabel>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <Input
+                ref={nameInput}
+                id={nameId}
+                type="text"
+                autoComplete="off"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                disabled={creating || createBlocked}
+                aria-invalid={createError !== null}
+                aria-describedby={describedBy}
+                className="h-8 sm:max-w-sm"
+              />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={trimmed === "" || creating || createBlocked}
+              >
+                {creating && (
+                  <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+                )}
+                {creating ? text.creating : text.create}
+              </Button>
+            </div>
+            {createError !== null ? (
+              <FieldError id={errorId}>{createError}</FieldError>
+            ) : (
+              <FieldDescription id={hintId}>{text.nameHint}</FieldDescription>
+            )}
+            {loadError !== null && (
+              <FieldDescription id={blockedId}>{text.createBlocked}</FieldDescription>
+            )}
+          </Field>
         </form>
       )}
 
       {showList && (
-        <div aria-label={text.list} className="mt-5 divide-y divide-border">
+        <div aria-label={text.list} className="flex flex-col divide-y divide-border">
           {loading && (
-            <div role="status" aria-label={text.loading} className="space-y-3 py-5">
-              <Skeleton className="h-12" />
-              <Skeleton className="h-12" />
+            <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
+              <Skeleton className="h-10" />
+              <Skeleton className="h-10" />
             </div>
           )}
           {!loading && loadError !== null && (
-            <div className="flex flex-col items-start gap-3 py-6">
-              <p role="alert" className="text-sm text-danger">
-                {text.loadFailed(loadError)}
-              </p>
-              <Button onClick={() => void load()}>{t.common.retry}</Button>
-            </div>
+            <ErrorState
+              title={text.loadFailed(loadError)}
+              retryLabel={t.common.retry}
+              onRetry={() => void load()}
+            />
           )}
           {!loading &&
             loadError === null &&
@@ -319,11 +346,11 @@ export default function APITokensSection() {
                   if (element === null) rowRefs.current.delete(token.id);
                   else rowRefs.current.set(token.id, element);
                 }}
-                className="flex min-w-0 items-start gap-3 py-4"
+                className="flex min-w-0 items-start gap-3 py-3 first:pt-0 last:pb-0"
               >
-                <div className="min-w-0 flex-1">
-                  <p className="break-words text-sm font-medium text-fg">{token.name}</p>
-                  <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-fg-muted tabular-nums">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <p className="font-medium break-words">{token.name}</p>
+                  <p className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular-nums">
                     <span>{text.created(formatDateTime(token.createdAt))}</span>
                     {token.lastUsedAt === null ? (
                       <span>{text.neverUsed}</span>
@@ -343,7 +370,7 @@ export default function APITokensSection() {
                     setRevoking(token);
                   }}
                   disabled={revoking?.id === token.id && revokePending}
-                  className="text-danger"
+                  className="text-destructive"
                 >
                   <Trash2 />
                   {text.revoke}
@@ -364,6 +391,6 @@ export default function APITokensSection() {
           onRevoke={() => void revoke()}
         />
       )}
-    </section>
+    </PageSection>
   );
 }

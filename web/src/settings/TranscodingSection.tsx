@@ -1,4 +1,4 @@
-import { AlertTriangle, ExternalLink, LoaderCircle } from "lucide-react";
+import { CircleAlert, ExternalLink, LoaderCircle, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -10,8 +10,13 @@ import {
   type VideoEncoderChoice,
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import { ErrorState } from "../ui/patterns/error-state";
+import { FactList } from "../ui/patterns/fact-list";
+import { PageSection } from "../ui/patterns/page-section";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import { Label } from "../ui/shadcn/label";
+import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import { HARDWARE_ENCODING_GUIDE_URL } from "./docsLinks";
 
 /** 確認中の間に `GET` し直す間隔である（research.md R-5）。 */
@@ -139,130 +144,136 @@ export default function TranscodingSection({
   const selected = saving ?? settings?.videoEncoder;
 
   return (
-    <section
-      aria-labelledby="transcoding-heading"
-      className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
-    >
-      <div className="border-b border-border pb-4">
-        <h2 id="transcoding-heading" className="text-base font-semibold">
-          {text.heading}
-        </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-fg-muted">
+    <PageSection
+      title={text.heading}
+      description={
+        <>
           {text.description}{" "}
           <a
             href={HARDWARE_ENCODING_GUIDE_URL}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-link underline underline-offset-4"
+            className="inline-flex items-center gap-1 text-primary underline underline-offset-4"
           >
             {text.guide}
-            <ExternalLink aria-hidden="true" className="size-3.5" />
+            <ExternalLink aria-hidden="true" className="size-3" />
             <span className="sr-only">{text.opensInNewTab}</span>
           </a>
-        </p>
-      </div>
-
+        </>
+      }
+    >
       {loading && settings === null && (
-        <div role="status" aria-label={text.loading} className="space-y-3 py-5">
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-12" />
-          <Skeleton className="h-12" />
+        <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
+          <Skeleton className="h-5 w-1/3" />
+          <Skeleton className="h-8" />
+          <Skeleton className="h-8" />
         </div>
       )}
       {!loading && loadError !== null && settings === null && (
-        <div className="flex flex-col items-start gap-3 py-6">
-          <p role="alert" className="text-sm text-danger">
-            {text.loadFailed(loadError)}
-          </p>
-          <Button onClick={() => void load()}>{t.common.retry}</Button>
+        <div>
+          <ErrorState
+            title={text.loadFailed(loadError)}
+            retryLabel={t.common.retry}
+            onRetry={() => void load()}
+          />
         </div>
       )}
       {settings !== null && (
-        <div className="pt-4">
-          <p className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm text-fg-muted">{text.inUse}</span>
-            <span className="font-medium text-fg">
-              {text.encoder[settings.effectiveEncoder]}
-            </span>
-          </p>
+        <div className="flex flex-col gap-2">
+          <FactList
+            facts={[
+              {
+                id: "in-use",
+                term: text.inUse,
+                value: (
+                  <span className="font-medium">
+                    {text.encoder[settings.effectiveEncoder]}
+                  </span>
+                ),
+              },
+            ]}
+          />
           {settings.checking && (
-            <p
-              role="status"
-              className="mt-2 flex items-center gap-2 text-sm text-fg-muted"
-            >
-              <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+            <p role="status" className="flex items-center gap-2 text-muted-foreground">
+              <LoaderCircle
+                aria-hidden="true"
+                className="size-4 animate-spin motion-reduce:animate-none"
+              />
               {text.checking}
             </p>
           )}
           {settings.fallbackReason === "selected_unavailable" && (
-            <p className="mt-2 flex items-start gap-2 text-sm text-warning">
-              <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-              {text.selectedUnavailable}
-            </p>
+            <Alert variant="warning" role="note">
+              <TriangleAlert aria-hidden="true" />
+              <AlertTitle className="font-normal">{text.selectedUnavailable}</AlertTitle>
+            </Alert>
           )}
-
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <span id="transcoding-choices-label" className="text-sm text-fg-muted">
+        </div>
+      )}
+      {settings !== null && (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <span id="transcoding-choices-label" className="font-medium">
               {text.choices}
             </span>
             {saving !== null && (
-              <span role="status" className="text-xs text-fg-muted">
+              <span role="status" className="text-xs text-muted-foreground">
                 {text.saving}
               </span>
             )}
           </div>
-          <div
-            role="radiogroup"
+          <RadioGroup
+            name="video-encoder"
+            value={selected}
+            onValueChange={(value) => void select(value as VideoEncoderChoice)}
             aria-labelledby="transcoding-choices-label"
-            className="mt-1 divide-y divide-border"
           >
             {choiceOrder.map((choice) => {
               const state = choiceState(choice, settings);
               const disabled = !state.enabled || saving !== null;
+              const itemId = `transcoding-choice-${choice}`;
               const nameId = `transcoding-name-${choice}`;
               const statusId = `transcoding-status-${choice}`;
               return (
-                <label
-                  key={choice}
-                  className={
-                    disabled
-                      ? "flex min-w-0 items-start gap-3 py-3"
-                      : "flex min-w-0 cursor-pointer items-start gap-3 py-3"
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="video-encoder"
+                <div key={choice} className="flex min-w-0 items-start gap-3">
+                  <RadioGroupItem
+                    id={itemId}
                     value={choice}
-                    checked={selected === choice}
                     disabled={disabled}
                     aria-labelledby={nameId}
                     aria-describedby={statusId}
-                    onChange={() => void select(choice)}
-                    className="mt-1 size-4 shrink-0 accent-primary"
+                    className="mt-0.5"
                   />
-                  <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+                  <Label
+                    htmlFor={itemId}
+                    className="flex min-w-0 flex-1 flex-col items-start gap-0.5 font-normal sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                  >
                     <span
                       id={nameId}
-                      className={state.enabled ? "text-fg" : "text-fg-muted"}
+                      className={
+                        state.enabled ? "text-foreground" : "text-muted-foreground"
+                      }
                     >
                       {text.encoder[choice]}
                     </span>
-                    <span id={statusId} className="text-sm text-fg-muted sm:text-right">
+                    <span id={statusId} className="text-muted-foreground sm:text-right">
                       {state.status}
                     </span>
-                  </span>
-                </label>
+                  </Label>
+                </div>
               );
             })}
-          </div>
-          {saveError !== null && (
-            <p role="alert" className="mt-3 text-sm text-danger">
-              {saveError}
-            </p>
-          )}
+          </RadioGroup>
         </div>
       )}
-    </section>
+      {saveError !== null && (
+        <div>
+          <Alert variant="destructive">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>{saveError}</AlertTitle>
+          </Alert>
+        </div>
+      )}
+    </PageSection>
   );
 }

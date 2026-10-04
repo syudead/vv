@@ -299,14 +299,14 @@ describe("APITokensSection", () => {
     renderSection();
 
     await user.click(await screen.findByRole("button", { name: "Revoke claude" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
     expect(document.activeElement).toBe(cancel);
     expect(dialog.textContent).toContain("claude");
     expect(dialog.textContent).toContain("Created ");
 
     await user.click(cancel);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByText("claude")).toBeDefined();
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(
       false,
@@ -320,10 +320,10 @@ describe("APITokensSection", () => {
     renderSection();
 
     await user.click(await screen.findByRole("button", { name: "Revoke b" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("b")).toBeNull();
     expect(await screen.findByText("Revoked")).toBeDefined();
     expect(fake.stored().map((item) => item.name)).toEqual(["c", "a"]);
@@ -340,7 +340,7 @@ describe("APITokensSection", () => {
     renderSection();
 
     await user.click(await screen.findByRole("button", { name: "Revoke claude" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     await waitFor(() =>
@@ -360,7 +360,7 @@ describe("APITokensSection", () => {
     await screen.findByText(SECRET);
 
     await user.click(screen.getByRole("button", { name: "Revoke scraper" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     await waitFor(() => expect(screen.queryByText(SECRET)).toBeNull());
@@ -384,14 +384,14 @@ describe("APITokensSection", () => {
     await screen.findByRole("button", { name: "Creating…" });
 
     await user.click(screen.getByRole("button", { name: "Revoke claude" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     created.resolve(json({ token: token(5, "scraper"), secret: SECRET }, 201));
     expect(await screen.findByText(SECRET)).toBeDefined();
     revoked.resolve(json(null, 204));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(screen.queryByText("claude")).toBeNull();
     expect(rows().map((row) => row.textContent)).toEqual([
       expect.stringContaining("scraper"),
@@ -411,7 +411,7 @@ describe("APITokensSection", () => {
     renderSection();
 
     await user.click(await screen.findByRole("button", { name: "Revoke claude" }));
-    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    const dialog = await screen.findByRole("alertdialog", { name: "Revoke this token?" });
     await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
 
     expect(await within(dialog).findByRole("alert")).toBeDefined();
