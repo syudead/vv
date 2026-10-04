@@ -157,15 +157,21 @@ func decodeRejectedTagNameCursor(cursor string) (sortKey, name string, err error
 	return sortKey, name, nil
 }
 
-// ForgetRejectedTagName は name を却下した名前から外す。無ければ何も変えない。name は
-// domain.NormalizeTagName で整えてから照合し、整えられない入力はそのまま照合する
-// （RemoveSynonym と同じ扱い）。
-func (s *TagStore) ForgetRejectedTagName(ctx context.Context, name string) error {
+// ForgetRejectedTagName は name を却下した名前から外し、外したかどうかを返す（外部連携 API が
+// 応答の removed に載せる。specs/039-external-tag-admin/research.md R-5）。無ければ何も変えずに
+// false を返す。name は domain.NormalizeTagName で整えてから照合し、整えられない入力はそのまま
+// 照合する（RemoveSynonym と同じ扱い）。
+func (s *TagStore) ForgetRejectedTagName(ctx context.Context, name string) (bool, error) {
 	if normalized, err := domain.NormalizeTagName(name); err == nil {
 		name = normalized
 	}
-	if _, err := s.sql.ExecContext(ctx, `delete from rejected_tag_names where name = ?`, name); err != nil {
-		return fmt.Errorf("cannot forget the rejected tag name: %w", err)
+	result, err := s.sql.ExecContext(ctx, `delete from rejected_tag_names where name = ?`, name)
+	if err != nil {
+		return false, fmt.Errorf("cannot forget the rejected tag name: %w", err)
 	}
-	return nil
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("cannot forget the rejected tag name: %w", err)
+	}
+	return removed > 0, nil
 }

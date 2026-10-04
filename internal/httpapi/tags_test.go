@@ -107,9 +107,12 @@ func (f *fakeTags) AddSynonym(_ context.Context, tagID int64, name string, merge
 	return domain.Tag{ID: tagID, Name: "target", Synonyms: []string{name}, VideoCount: 0}, nil
 }
 
-func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) error {
+func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) (domain.Tag, error) {
 	f.operation, f.lastID, f.lastName = "remove-synonym", tagID, name
-	return f.err
+	if f.err != nil {
+		return domain.Tag{}, f.err
+	}
+	return domain.Tag{ID: tagID, Name: "target", Synonyms: []string{}}, nil
 }
 
 func (f *fakeTags) AttachTagByID(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
@@ -156,9 +159,9 @@ func (f *fakeTags) ListRejectedTagNames(_ context.Context, cursor string, limit 
 	return domain.RejectedTagNamePage{Items: f.rejectedNames, Total: len(f.rejectedNames)}, f.err
 }
 
-func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) error {
+func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) (bool, error) {
 	f.operation, f.lastName = "forget-rejected", name
-	return f.err
+	return f.err == nil, f.err
 }
 
 func (f *fakeTags) BatchTags(_ context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {

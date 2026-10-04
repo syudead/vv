@@ -57,35 +57,69 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 // limit が 1〜200 の外、q が 100 文字を超えるときは 400 を書いて false を返す。
 // カーソルの中身は保存層が解く（解けなければ ErrInvalidCursor）。
 func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
-	query := domain.TagListQuery{
-		TentativeOnly: params.Tentative != nil && *params.Tentative,
-		UnusedOnly:    params.Unused != nil && *params.Unused,
-		Sort:          domain.TagSortName,
-	}
+	var sort *string
 	if params.Sort != nil {
-		query.Sort = domain.TagSort(*params.Sort)
-		if !query.Sort.Valid() {
-			s.invalidRequest(w, "Unknown sort order.")
-			return domain.TagListQuery{}, false
-		}
+		value := string(*params.Sort)
+		sort = &value
 	}
-	if params.Limit != nil {
-		limit := *params.Limit
-		if limit < 1 || limit > domain.MaxTagPageLimit {
-			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
-			return domain.TagListQuery{}, false
-		}
-		query.Limit = limit
-		if params.Cursor != nil {
-			query.Cursor = *params.Cursor
-		}
-	}
-	search, ok := s.parseSearchQuery(w, params.Q)
-	if !ok {
+	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
+	switch problem {
+	case tagListSortUnknown:
+		s.invalidRequest(w, "Unknown sort order.")
+		return domain.TagListQuery{}, false
+	case tagListLimitOutOfRange:
+		s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+		return domain.TagListQuery{}, false
+	case tagListSearchTooLong:
+		s.invalidRequestLimit(w, reasonSearchTooLong, maxQueryLength,
+			fmt.Sprintf("Search text must be at most %d characters.", maxQueryLength))
 		return domain.TagListQuery{}, false
 	}
-	query.Search = search
 	return query, true
+}
+
+// tagListProblem は buildTagListQuery が断った理由である。
+type tagListProblem int
+
+const (
+	tagListOK tagListProblem = iota
+	tagListSortUnknown
+	tagListLimitOutOfRange
+	tagListSearchTooLong
+)
+
+// buildTagListQuery はタグの一覧のパラメータを domain.TagListQuery にする。画面の
+// GET /api/tags と外部連携 API の GET /api/v1/tags が同じ規則で使い、誤りの書き方だけを
+// それぞれが持つ（specs/039-external-tag-admin/contracts/external-api.md §1）。sort の省略は
+// 名前の順、limit の省略は全件で、そのときカーソルは無視する。
+func buildTagListQuery(q *string, tentative, unused *bool, sort, cursor *string, limit *int) (domain.TagListQuery, tagListProblem) {
+	query := domain.TagListQuery{
+		TentativeOnly: tentative != nil && *tentative,
+		UnusedOnly:    unused != nil && *unused,
+		Sort:          domain.TagSortName,
+	}
+	if sort != nil {
+		query.Sort = domain.TagSort(*sort)
+		if !query.Sort.Valid() {
+			return domain.TagListQuery{}, tagListSortUnknown
+		}
+	}
+	if limit != nil {
+		if *limit < 1 || *limit > domain.MaxTagPageLimit {
+			return domain.TagListQuery{}, tagListLimitOutOfRange
+		}
+		query.Limit = *limit
+		if cursor != nil {
+			query.Cursor = *cursor
+		}
+	}
+	if q != nil {
+		if len([]rune(*q)) > maxQueryLength {
+			return domain.TagListQuery{}, tagListSearchTooLong
+		}
+		query.Search = *q
+	}
+	return query, tagListOK
 }
 
 func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +235,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 	if err != nil {
 		name = params.Name
 	}
-	if err := s.tags.RemoveSynonym(r.Context(), id, name); err != nil {
+	if _, err := s.tags.RemoveSynonym(r.Context(), id, name); err != nil {
 		s.writeTagError(w, err, "")
 		return
 	}
@@ -380,7 +414,7 @@ func (s *server) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, p
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	if err := s.tags.ForgetRejectedTagName(r.Context(), params.Name); err != nil {
+	if _, err := s.tags.ForgetRejectedTagName(r.Context(), params.Name); err != nil {
 		s.internalError(w, "Could not update rejected tag names.", err)
 		return
 	}

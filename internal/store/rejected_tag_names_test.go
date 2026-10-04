@@ -65,8 +65,8 @@ func TestListRejectedTagNamesPages(t *testing.T) {
 		t.Errorf("3 ページを繋いだ名前が自然順で重複も抜けも無い形でない: 先頭 %v", got[:min(len(got), 12)])
 	}
 
-	if err := db.Tags().ForgetRejectedTagName(ctx, "name 2"); err != nil {
-		t.Fatal(err)
+	if removed, err := db.Tags().ForgetRejectedTagName(ctx, "name 2"); err != nil || !removed {
+		t.Fatalf("ForgetRejectedTagName = %v, %v, want true", removed, err)
 	}
 	result, err := db.Tags().ListRejectedTagNames(ctx, "", 100)
 	if err != nil {

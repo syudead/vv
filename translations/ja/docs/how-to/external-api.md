@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: f3040acacba9fb9741663a312a9c4cd4273b1b000efd334192282b1fca008a53
+sourceHash: 90c1473af96a98ccdb042978a81fa74123d803085dfa65ed888feed2b5cdaab0
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -59,7 +59,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | 操作が本文を取る | `Content-Type: application/json` が必要 |
 | リクエスト中にトークンが失効する | リクエストは打ち切られる |
 
-- エラー本文は `{ code, message, reason?, limit?, index? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。
+- エラー本文は `{ code, message, reason?, limit?, index?, tagId?, tagName? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。`tagId` と `tagName` はタグ名の衝突のときだけ付く（[タグを整理する](#tidy-up-tags)）。
 - Settings ページのトークン一覧は最終使用時刻を表示する。この時刻の更新は最大で 1 分に 1 回である。
 
 ## スキャン {#scans}
@@ -195,7 +195,130 @@ flowchart LR
 - 却下済みの名前は綴りの完全一致で照合する。その名前を確定タグとして作成すると、却下済みの名前から除かれる。
 - 飛ばした名前でリクエストは失敗せず（`200`）、`replace` の結果にも含まれない。`skippedTags` は飛ばした名前を正規化して `tags` の順に 1 回ずつ並べ、何も飛ばさなかったときは空の配列である。
 - 応答と `GET /api/v1/tags` の各タグは `tentative` を返す。
-- 仮のタグの確定と却下、却下済みの名前の閲覧と消去は、画面でしかできない。
+- 仮のタグを確定または却下し、却下済みの名前を一覧または消去するには、[タグを整理する](#tidy-up-tags) に従う。
+
+## タグを整理する {#tidy-up-tags}
+
+### タグを一覧する {#list-tags}
+
+`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する（[specs/039-external-tag-admin/contracts/external-api.md、`GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)）。
+
+```sh
+curl -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&q=selfie&sort=countDesc&limit=200"
+```
+
+| パラメータ | 意味 |
+| --- | --- |
+| `q` | 100 文字まで。全角半角、大文字小文字、かなの違いを無視して、名前または同義語の一部に一致する |
+| `tentative` | `true` で仮のタグだけを一覧する |
+| `unused` | `true` でどの動画にも付いていないタグだけを一覧する。`q` と `tentative` との AND |
+| `sort` | `name`（既定、名前の自然順）、`countDesc`、`countAsc`、`createdDesc` または `createdAsc`。同順位は名前、次に `id` で並べる |
+| `limit` | 1 ページあたり 1 から 200 個のタグ。**省略すると、一致するすべてのタグを** `nextCursor` なしで返す |
+| `cursor` | 前回の `nextCursor`。同じ `q`、`tentative`、`unused`、`sort` とともに送る |
+
+- 応答は `{ items, total, totalAll, nextCursor? }` である。どのページでも、`total` は絞り込みに一致するタグの数、`totalAll` はすべてのタグの数である。
+- `limit` を付けたときは、`nextCursor` がなくなるまでそれを `cursor` として渡し返すと、一致するすべてのタグを 1 回ずつ読める。
+- 各タグは `id`、`name`、`synonyms`、`videoCount`、`tentative`、`createdAt` を持つ。
+- 5 つの値以外の `sort`、1 から 200 の範囲外の `limit`、または 100 文字を超える `q` は `400` `invalid_request` を返す。読めないカーソル、または別の `sort` で作られたカーソルは、`reason: invalid_cursor` 付きの `400` `invalid_request` を返す。そのときは最初のページから読み直す。
+
+### タグを統合する {#merge-tags}
+
+`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する（[契約、`POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)）。
+
+```json
+{ "targetId": 12, "sourceIds": [31, 45] }
+```
+
+- 各統合元の名前と同義語は統合先の同義語になり、その動画は統合先へ移り、統合元は削除される。統合先は確定タグになる。
+- 応答は `{ tag, notFoundIds }` である。統合後の統合先と、存在せず飛ばした統合元を持つ。
+- `sourceIds` は重複も数えて 1 から 20000 個の id を持つ。範囲外は `limit` 付きの `400` `too_many_tags` を返す。`targetId` を含む `sourceIds` は `400` `merge_same_tag` を、存在しない統合先は `404` `tag_not_found` を返す。どちらも何も変えない。
+
+### タグの名前を変える {#rename-a-tag}
+
+`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す（[契約、`POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)）。
+
+- 仮のタグは名前が変わると確定タグになる。今と同じ名前は何も変えない。
+- 名前の規則に反する名前は `400` `tag_name_empty`、`tag_name_control_characters` または `tag_name_too_long` を返す。存在しない `id` は `404` `tag_not_found` を返す。
+- 別のタグの名前か同義語である名前、またはこのタグの同義語の 1 つである名前は、`reason: tag_name_taken` 付きの `409` `conflict` を返し、`tagId` と `tagName` はその名前を持つタグを示す。何も変わらない。
+
+### 同義語を編集する {#edit-synonyms}
+
+`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す（[契約、`POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)）。
+
+```json
+{ "id": 12, "action": "add", "name": "自己撮影" }
+```
+
+| 場合 | 結果 |
+| --- | --- |
+| 新しい名前の `add` | `200`。名前は同義語になり、仮のタグは確定タグになる |
+| すでに `id` の同義語である名前の `add` | `200`。変更なし |
+| `id` 自身の名前、または別のタグの同義語の `add` | `tagId` と `tagName` 付きの `409` `tag_name_taken` |
+| 別のタグの元の名前の `add` | そのタグの `tagId` と `tagName` 付きの `409` `tag_merge_required`。何も変わらない |
+| 同じ `add` に `"mergeTagId": <tagId>` を付ける | `200`。そのタグは `id` へ統合される |
+| `remove` | `200`。名前は同義語でなくなる。同義語でなかったときはタグは変わらない |
+
+- `add` と `remove` 以外の `action` は `400` `invalid_request` を、存在しない `id` は `404` `tag_not_found` を返す。
+- `mergeTagId` は統合を受け入れるタグを示す。再試行の前に別のクライアントがその名前を別のタグに与えた場合、見ていないタグを統合せず、呼び出しは再び `tag_merge_required` で失敗する。
+
+### タグを確定、却下、削除する {#confirm-reject-and-delete-tags}
+
+`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[契約、`POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)）。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
+
+```json
+{ "action": "reject", "ids": [31, 45, 9999] }
+```
+
+| `action` | 対象 | 効果 |
+| --- | --- | --- |
+| `confirm` | 仮のタグ | タグは確定タグになる |
+| `reject` | 仮のタグ | タグは削除され、その元の名前は却下済みの名前に入る |
+| `delete` | 確定タグ | タグは削除される。その名前は記憶されない |
+
+- 応答は `{ appliedIds, notFoundIds, notApplicableIds }` である。3 つのリストは重ならず、合わせて送った各 id を 1 回ずつ持ち、`ids` の順を保つ。`reject` に送った確定タグのような種類の違うタグは、変更されずに残り、`notApplicableIds` に入る。
+- `ids` は重複も数えて 1 から 20,000 個の id を持ち、そうでなければ `limit` 付きの `400` `too_many_tags` を返す。3 つの値以外の `action` は `400` `invalid_request` を返す。トランザクションが失敗すると `500` `internal` を返し、何も変えない。
+
+### 却下済みの名前 {#rejected-names}
+
+仮のタグとしての付与は、却下済みの名前を飛ばす（[タグを仮のタグとして付ける](#add-tags-as-tentative-tags)）。
+
+- `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[契約、`GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
+- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[契約、`DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
+
+### 例: 表記の揺れを統合する {#example-merge-spelling-variants}
+
+エージェントは仮のタグをページごとに読み、同じ意味の名前をまとめ、各グループを 1 つのタグへ統合する。
+
+```mermaid
+sequenceDiagram
+  participant A as エージェント
+  participant V as VVMDM
+  A->>V: GET /api/v1/tags?tentative=true&limit=200
+  A->>V: nextCursor がなくなるまで GET
+  A->>V: グループごとに POST /api/v1/tags/merge
+  A->>V: 残りを確定または却下する POST /api/v1/tags/batch
+```
+
+1. `tentative=true&limit=200` ですべての仮のタグを読む。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。
+2. `selfie`、`セルフィー`、`自撮り` のような 1 つの名前の揺れをまとめ、最も多くの動画に付いたタグなど、各グループの統合先を選ぶ。
+3. `POST /api/v1/tags/merge` で各グループを統合する。統合元の名前は統合先の同義語になるので、以後その綴りで付けると統合先に届く。
+4. `POST /api/v1/tags/batch` で、残すタグを確定し、残りを却下する。
+
+```sh
+# 1. List the tentative tags, most used first.
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/tags?tentative=true&sort=countDesc&limit=200" |
+  jq -r '.items[] | [.id, .name, .videoCount] | @tsv'
+
+# 3. Merge the variants into the target 12.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/tags/merge" -d '{"targetId":12,"sourceIds":[31,45]}'
+
+# 4. Reject the names that are not tags.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/tags/batch" -d '{"action":"reject","ids":[77,78]}'
+```
 
 ## 表示名を設定する {#set-display-names}
 
@@ -309,12 +432,18 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
-| `list_tags` | `GET /api/v1/tags` |
+| `list_tags` | `GET /api/v1/tags`。ツールでは `limit` の既定は 100 |
 | `update_video_tags` | `POST /api/v1/video-tags` |
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+| `merge_tags` | `POST /api/v1/tags/merge` |
+| `rename_tag` | `POST /api/v1/tags/rename` |
+| `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
+| `batch_tags` | `POST /api/v1/tags/batch` |
+| `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names`。`limit` の既定は 100 |
+| `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
 
 - ツールの引数は操作のクエリと本文の形を持ち、構造化された結果は応答本文の形を持つ。操作のエラーは、`isError: true` と [エラー本文](#call-the-api) を持つツール結果になる。
 - 受け付けるのは `POST /mcp` だけで、応答は `application/json` である。サーバーはセッションを保持しないため、`GET` と `DELETE` は `405` を返す。
