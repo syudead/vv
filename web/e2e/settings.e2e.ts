@@ -41,7 +41,7 @@ test("filesystem rootをメディアフォルダとして登録できる", async
   await expect(page.locator("code", { hasText: filesystemRoot })).toBeVisible();
 
   await page.getByRole("button", { name: "Remove folder" }).click();
-  const confirmation = page.getByRole("dialog", { name: "Remove this folder?" });
+  const confirmation = page.getByRole("alertdialog", { name: "Remove this folder?" });
   const remove = page.waitForResponse(
     (response) =>
       response.url().includes("/api/media-folders/") &&
@@ -95,7 +95,7 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
     );
 
     await page.getByRole("button", { name: "Remove folder" }).click();
-    const confirmation = page.getByRole("dialog", { name: "Remove this folder?" });
+    const confirmation = page.getByRole("alertdialog", { name: "Remove this folder?" });
     const remove = page.waitForResponse(
       (response) =>
         response.url().includes("/api/media-folders/") &&

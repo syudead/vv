@@ -1,16 +1,15 @@
-import { AlertCircle, ShieldAlert } from "lucide-react";
-import {
-  type FormEvent,
-  forwardRef,
-  type InputHTMLAttributes,
-  type ReactNode,
-} from "react";
+import { CircleAlert, ShieldAlert } from "lucide-react";
+import type { ComponentProps, FormEvent, ReactNode } from "react";
 
 import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
+import { CenteredForm } from "../ui/patterns/centered-form";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
+import { Input } from "../ui/shadcn/input";
 
 // 初回設定画面とログイン画面が共有する骨格と部品
-// （specs/016-single-account-auth/ui-design.md「Credential screens」）。
+// （specs/016-single-account-auth/ui-design.md「Credential screens」）。画面は中央フォームの型
+// （web/registry/rules/patterns.md「Centered form」）で組み、上の帯にワードマークを置く。
 
 /** CONNECTION_WARNING_ID は接続の警告の要素の id。入力と主操作が aria-describedby で指す。 */
 export const CONNECTION_WARNING_ID = "connection-warning";
@@ -37,78 +36,73 @@ export function CredentialScreen({
   title,
   description,
   onSubmit,
+  submit,
+  footer,
   children,
 }: {
   title: UiText;
   description?: UiText;
   onSubmit: () => void;
+  /** 送信の Button（default、1 つ）。 */
+  submit: ReactNode;
+  /** カードの下の補足（ログイン画面へのリンクなど）。 */
+  footer?: ReactNode;
   children: ReactNode;
 }) {
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit();
   };
 
   return (
-    <div className="min-h-dvh bg-bg px-4 pt-16 pb-16 sm:pt-24">
-      <main className="mx-auto w-full max-w-sm rounded-lg bg-surface p-6 shadow-card sm:p-8">
+    <div className="flex min-h-dvh flex-col bg-background">
+      <header className="flex h-navbar shrink-0 items-center px-4">
+        <img
+          src="/brand/vvmdm-wordmark-cyan.svg"
+          alt={t.common.appName}
+          className="h-9 w-auto max-w-full object-contain object-left"
+        />
+      </header>
+      <main className="flex flex-1 flex-col">
         {/* 送信は web/src/api/auth.ts が行う。method="post" を付けない。 */}
-        <form noValidate onSubmit={submit} className="flex flex-col gap-5">
-          <img
-            src="/brand/vvmdm-wordmark-cyan.svg"
-            alt={t.common.appName}
-            className="h-10 w-auto max-w-full self-start object-contain object-left"
-          />
-          <div className="flex flex-col gap-1.5">
-            <h1 className="text-xl font-semibold text-fg">{title}</h1>
-            {description !== undefined && (
-              <p className="text-sm leading-6 text-fg-muted">{description}</p>
-            )}
-          </div>
+        <CenteredForm
+          title={title}
+          description={description}
+          onSubmit={handleSubmit}
+          submit={submit}
+          footer={footer}
+        >
           <ConnectionWarning />
           {children}
-        </form>
+        </CenteredForm>
       </main>
     </div>
   );
 }
 
-export interface CredentialFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface CredentialFieldProps extends ComponentProps<"input"> {
   id: string;
   label: UiText;
   error?: UiText | null;
 }
 
-export const CredentialField = forwardRef<HTMLInputElement, CredentialFieldProps>(
-  function CredentialField({ id, label, error, className, ...rest }, ref) {
-    return (
-      <div className="flex flex-col">
-        <label htmlFor={id} className="mb-1 text-xs font-medium text-fg-muted">
-          {label}
-        </label>
-        <input
-          ref={ref}
-          id={id}
-          className={cn(
-            "h-9 w-full rounded-sm border border-control-border bg-field px-3 text-sm text-fg focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link",
-            className,
-          )}
-          {...rest}
-        />
-        {error && <FailureLine message={error} className="mt-2" />}
-      </div>
-    );
-  },
-);
+/** CredentialField はラベル付きの 1 行の入力と、その欄を名指しする失敗の行である。 */
+export function CredentialField({ id, label, error, ...rest }: CredentialFieldProps) {
+  return (
+    <Field data-invalid={rest["aria-invalid"] === true || undefined}>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input id={id} {...rest} />
+      {error && <FieldError id={FAILURE_ID}>{error}</FieldError>}
+    </Field>
+  );
+}
 
 /** UsernameField は両画面で同じ、ユーザー名の入力である（ui-design.md「Fields」）。 */
-export const UsernameField = forwardRef<
-  HTMLInputElement,
-  Omit<CredentialFieldProps, "label" | "name" | "type" | "autoComplete">
->(function UsernameField(props, ref) {
+export function UsernameField(
+  props: Omit<CredentialFieldProps, "label" | "name" | "type" | "autoComplete">,
+) {
   return (
     <CredentialField
-      ref={ref}
       label={t.auth.fields.username}
       name="username"
       type="text"
@@ -119,43 +113,31 @@ export const UsernameField = forwardRef<
       {...props}
     />
   );
-});
+}
 
-/** FailureLine は失敗の行である。出た時点で読まれる。 */
-export function FailureLine({
-  message,
-  className,
-}: {
-  message: UiText | null;
-  className?: string;
-}) {
+/** FailureLine は欄を名指ししない失敗の行である。出た時点で読まれる。 */
+export function FailureLine({ message }: { message: UiText | null }) {
   if (message === null) return null;
   return (
-    <p
-      id={FAILURE_ID}
-      role="alert"
-      className={cn("flex gap-2 text-sm text-danger", className)}
-    >
-      <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>{message}</span>
-    </p>
+    <Alert id={FAILURE_ID} variant="destructive">
+      <CircleAlert aria-hidden="true" />
+      <AlertTitle>{message}</AlertTitle>
+    </Alert>
   );
 }
 
 /**
  * ConnectionWarning は HTTP のときだけ出す接続の警告である。HTTPS ではこの行を出さず、
  * 「This connection is secure」のような肯定の文も出さない（ui-design.md「Connection warning」）。
+ * 画面を開いた時点からある注意なので、読み上げを割り込ませる alert にはしない。
  */
 export function ConnectionWarning() {
   if (!isInsecureConnection()) return null;
   return (
-    <p
-      id={CONNECTION_WARNING_ID}
-      className="flex gap-2 border-l-2 border-warning-strong pl-3 text-sm leading-6 text-warning"
-    >
-      <ShieldAlert className="mt-1 size-4 shrink-0" aria-hidden="true" />
-      <span>{t.auth.connectionWarning}</span>
-    </p>
+    <Alert id={CONNECTION_WARNING_ID} variant="warning" role="note">
+      <ShieldAlert aria-hidden="true" />
+      <AlertTitle className="font-normal">{t.auth.connectionWarning}</AlertTitle>
+    </Alert>
   );
 }
 
