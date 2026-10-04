@@ -1,16 +1,16 @@
 ---
 source: specs/026-external-api/contracts/mcp.md
-sourceHash: eeeb1952fd84b251804d3d6969baca3f578ef02b2b0101bbe1cf66d201f5c709
+sourceHash: ec35e4b16a70bb24c05b1d1c19baa78567f7a8f84c19d4fbd4315562bcd5b8f5
 ---
 
 # 契約: `/mcp` の MCP サーバー {#contract-mcp-server-at-mcp}
 
 親 Issue: #493（要件 9）。設計: [research.md R-8](../research.md#r-8-mcp-uses-the-official-go-sdk-stateless-inside-internalhttpapi)。
 
-## 1. 接続 {#1-connection}
+## 接続 {#connection}
 
 - トランスポートはステートレスな Streamable HTTP である。受け付けるのは `POST /mcp` だけで、応答は `application/json` である。`GET` と `DELETE` は `405` を返す。
-- 認証は外部 API と同じく Bearer だけである（[external-api.md §1](external-api.md#1-common-rules)）。トークンがないか無効なとき、境界は MCP の処理が始まる前に `WWW-Authenticate: Bearer` 付きの `401` を返す（受け入れ条件 9）。
+- 認証は外部 API と同じく Bearer だけである（[external-api.md、共通の規則](external-api.md#common-rules)）。トークンがないか無効なとき、境界は MCP の処理が始まる前に `WWW-Authenticate: Bearer` 付きの `401` を返す（受け入れ条件 9）。
 - サーバー名は `vv`、バージョンはバイナリのバージョンである。
 
 接続の例（`docs/how-to/external-api.md` に記載）:
@@ -19,7 +19,7 @@ sourceHash: eeeb1952fd84b251804d3d6969baca3f578ef02b2b0101bbe1cf66d201f5c709
 claude mcp add --transport http vv https://vv.example/mcp --header "Authorization: Bearer vvt_…"
 ```
 
-## 2. ツール {#2-tools}
+## ツール {#tools}
 
 入力と出力（構造化された内容）は、[external-api.md](external-api.md) の同じ操作のパラメータと本文、および応答本文と同じ形を持つ。エラーは `isError: true` を持つツール結果として返り、その本文は外部 API のエラーと同じ `{ code, message, reason?, limit?, index?, tagId?, tagName? }` である。
 
@@ -40,7 +40,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names` |
 | `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
 
-`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms`、`batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` を追加した（[specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)）。
+`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md、MCP ツール](../../029-video-overrides/contracts/external-api.md#mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms`、`batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` を追加した（[specs/039-external-tag-admin/contracts/external-api.md、MCP ツール](../../039-external-tag-admin/contracts/external-api.md#mcp-tools)）。
 
 | ツール | ヒント | 理由 |
 | --- | --- | --- |

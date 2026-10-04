@@ -1,6 +1,6 @@
 ---
 source: specs/039-external-tag-admin/plan.md
-sourceHash: d41182b00693844dab5394c11e8d6fa188742027f652582608aa88b89d69a676
+sourceHash: 3ec76b72fbb513e85f40f4fd7d83bb080765f0c0660bec789aa24e57d8e9934c
 ---
 
 # 実装計画: 外部 API と MCP からタグを整理する (統合、同義語、確定、却下、名前の変更、削除) {#implementation-plan-tidy-up-tags-from-the-external-api-and-mcp-merge-synonyms-confirm-reject-rename-delete}
@@ -15,13 +15,13 @@ AI エージェントなど API トークンを持つクライアントは、`/a
 
 | 関心事 | 方針 |
 | --- | --- |
-| 一覧 | `GET /api/v1/tags` は画面の `q`、`tentative`、`unused`、`sort`、`cursor`、`limit` を受け取る。`limit` がなければ従来どおりすべてのタグを返す。MCP ツール `list_tags` は既定でページ単位にする ([research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default)、[contracts/external-api.md §1](contracts/external-api.md#1-get-apiv1tags)) |
-| 操作 | `POST`、`GET`、`DELETE` の 6 つの固定のルートで、`/api/v1/tags/…` の下にある。タグは本文で指定する ([R-2](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body)、[§2 から §7](contracts/external-api.md#2-post-apiv1tagsmerge)) |
+| 一覧 | `GET /api/v1/tags` は画面の `q`、`tentative`、`unused`、`sort`、`cursor`、`limit` を受け取る。`limit` がなければ従来どおりすべてのタグを返す。MCP ツール `list_tags` は既定でページ単位にする ([research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default)、[contracts/external-api.md、`GET /api/v1/tags`](contracts/external-api.md#get-apiv1tags)) |
+| 操作 | `POST`、`GET`、`DELETE` の 6 つの固定のルートで、`/api/v1/tags/…` の下にある。タグは本文で指定する ([R-2](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body)、[contracts/external-api.md、`POST /api/v1/tags/merge` から `DELETE /api/v1/tags/rejected-names?name=…` まで](contracts/external-api.md#post-apiv1tagsmerge)) |
 | 確定、却下、削除 | 一括操作 1 つだけで、タグ 1 つ用のルートはない。種類の違うタグは対象外として返す ([R-3](research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch)) |
 | 名前の衝突 | 衝突したタグの `tagId` と `tagName` を付けた `409 conflict`。別のタグの元の名前である同義語は、`mergeTagId` があるときだけ統合する ([R-4](research.md#r-4-name-conflicts-answer-409-conflict-with-the-conflicting-tags-tagid-and-tagname)) |
 | ツールの結果 | どの操作も JSON 本文を返す ([R-5](research.md#r-5-every-operation-returns-a-json-body-so-every-tool-has-a-result)) |
 | 画面との一致 | ハンドラは同じインターフェースを通じて同じ `TagStore` の操作を呼ぶ。新しい書き込み経路はない ([R-6](research.md#r-6-the-external-handlers-call-the-same-tags-methods-as-the-screen-with-no-new-write-path)) |
-| MCP | 新しいツール 6 つと変更した `list_tags`。合計 14 ツール ([§8](contracts/external-api.md#8-mcp-tools)) |
+| MCP | 新しいツール 6 つと変更した `list_tags`。合計 14 ツール ([contracts/external-api.md、MCP ツール](contracts/external-api.md#mcp-tools)) |
 
 公開しないもの: `POST /api/tags/impact` (一括操作の前に画面の確認ダイアログが示す件数。ツール呼び出しにはそれを示すダイアログがなく、一括操作の結果が変えたものを挙げる) と、画面のタグ 1 つ用の確定、却下、削除のルート (R-3)。親 Issue のとおり範囲外のもの: タグだけの作成、トークンごとの権限、統合候補の提案、取り消し、タグ管理画面。
 
@@ -33,7 +33,7 @@ AI エージェントなど API トークンを持つクライアントは、`/a
 | --- | --- |
 | 境界、依存の方向、認証の境界、ストアの役割 | [ARCHITECTURE.md](../../ARCHITECTURE.md)、[.golangci.yml](../../.golangci.yml) (depguard) |
 | 外部 API と MCP: 契約、互換性の方針、エラーの形、本文の上限、ツールのつなぎ込み | [api/external-v1.yaml](../../api/external-v1.yaml)、[specs/026-external-api/contracts/external-api.md](../026-external-api/contracts/external-api.md)、[specs/026-external-api/contracts/mcp.md](../026-external-api/contracts/mcp.md)、[specs/026-external-api/research.md](../026-external-api/research.md) (R-3 から R-5、R-7、R-8)、[internal/httpapi/external.go](../../internal/httpapi/external.go)、[internal/httpapi/external_video_tags.go](../../internal/httpapi/external_video_tags.go)、[internal/httpapi/mcp.go](../../internal/httpapi/mcp.go)、[docs/how-to/external-api.md](../../docs/how-to/external-api.md) |
-| 画面が実行するタグの操作: 一覧の問い合わせ、統合、名前の変更、同義語、一括操作、却下した名前 | [specs/014-video-tags/contracts/tags-api.md §3](../014-video-tags/contracts/tags-api.md#3-tag-management)、[specs/031-tentative-tags/contracts/screen-api.md](../031-tentative-tags/contracts/screen-api.md)、[specs/036-tag-admin-scale/contracts/screen-api.md](../036-tag-admin-scale/contracts/screen-api.md)、[internal/httpapi/tags.go](../../internal/httpapi/tags.go)、[internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags`)、[internal/store/tags.go](../../internal/store/tags.go)、[tag_listing.go](../../internal/store/tag_listing.go)、[tag_synonyms.go](../../internal/store/tag_synonyms.go)、[tag_batch.go](../../internal/store/tag_batch.go)、[tentative_tags.go](../../internal/store/tentative_tags.go) |
+| 画面が実行するタグの操作: 一覧の問い合わせ、統合、名前の変更、同義語、一括操作、却下した名前 | [specs/014-video-tags/contracts/tags-api.md、タグの管理](../014-video-tags/contracts/tags-api.md#tag-management)、[specs/031-tentative-tags/contracts/screen-api.md](../031-tentative-tags/contracts/screen-api.md)、[specs/036-tag-admin-scale/contracts/screen-api.md](../036-tag-admin-scale/contracts/screen-api.md)、[internal/httpapi/tags.go](../../internal/httpapi/tags.go)、[internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags`)、[internal/store/tags.go](../../internal/store/tags.go)、[tag_listing.go](../../internal/store/tag_listing.go)、[tag_synonyms.go](../../internal/store/tag_synonyms.go)、[tag_batch.go](../../internal/store/tag_batch.go)、[tentative_tags.go](../../internal/store/tentative_tags.go) |
 | 操作が使うドメインの値 | [internal/domain/tag.go](../../internal/domain/tag.go)、[tag_list.go](../../internal/domain/tag_list.go)、[tag_batch.go](../../internal/domain/tag_batch.go)、[rejected_tag_name.go](../../internal/domain/rejected_tag_name.go) |
 | 2 つの面からの同時編集 | [specs/031-tentative-tags/research.md R-6](../031-tentative-tags/research.md#r-6-rejection-and-a-tentative-attach-of-the-same-name-rely-on-sqlite-write-serialization) |
 | 生成と検査の入口 | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`、`task generate`) |
@@ -104,7 +104,7 @@ flowchart LR
 
 ### 外部 API と MCP でタグの一覧をページ単位で読み、絞り込み、並べ替える {#page-filter-and-sort-the-tag-list-in-the-external-api-and-mcp}
 
-**範囲**: `Tag.createdAt`、`TagList` のフィールド、`TagSort` (`api/external-v1.yaml`)。`GET /api/v1/tags` の 6 つのパラメータとその `400` 応答。`list_tags` ツールの入力 (`limit` の既定は 100) ([contracts/external-api.md §0、§1、§8](contracts/external-api.md#0-schema-changes)、[research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default))。手順書の節の一覧の部分と、MCP の表の `list_tags` の行 ([§9](contracts/external-api.md#9-docshow-toexternal-apimd))。
+**範囲**: `Tag.createdAt`、`TagList` のフィールド、`TagSort` (`api/external-v1.yaml`)。`GET /api/v1/tags` の 6 つのパラメータとその `400` 応答。`list_tags` ツールの入力 (`limit` の既定は 100) ([contracts/external-api.md、スキーマの変更、`GET /api/v1/tags`、MCP ツール](contracts/external-api.md#schema-changes)、[research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default))。手順書の節の一覧の部分と、MCP の表の `list_tags` の行 ([contracts/external-api.md、`docs/how-to/external-api.md`](contracts/external-api.md#docshow-toexternal-apimd))。
 
 **依存**: なし
 
@@ -112,7 +112,7 @@ flowchart LR
 
 ### 外部 API と MCP でタグを統合し、名前を変え、同義語を編集する {#merge-rename-and-edit-synonyms-of-tags-in-the-external-api-and-mcp}
 
-**範囲**: `POST /api/v1/tags/merge`、`/tags/rename`、`/tags/synonyms`。`Error.tagId` と `tagName`。理由 `tag_not_found`、`tag_name_taken`、`tag_merge_required`、`merge_same_tag`。タグを返す `TagStore.RemoveSynonym`。ツール `merge_tags`、`rename_tag`、`update_tag_synonyms` ([contracts/external-api.md §2 から §4 と §8](contracts/external-api.md#2-post-apiv1tagsmerge)、[research.md R-2、R-4、R-5](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body))。手順書と MCP の表のこれらの部分。
+**範囲**: `POST /api/v1/tags/merge`、`/tags/rename`、`/tags/synonyms`。`Error.tagId` と `tagName`。理由 `tag_not_found`、`tag_name_taken`、`tag_merge_required`、`merge_same_tag`。タグを返す `TagStore.RemoveSynonym`。ツール `merge_tags`、`rename_tag`、`update_tag_synonyms` ([contracts/external-api.md、`POST /api/v1/tags/merge`、`POST /api/v1/tags/rename`、`POST /api/v1/tags/synonyms`、MCP ツール](contracts/external-api.md#post-apiv1tagsmerge)、[research.md R-2、R-4、R-5](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body))。手順書と MCP の表のこれらの部分。
 
 **依存**: 外部 API と MCP でタグの一覧をページ単位で読み、絞り込み、並べ替える
 
@@ -120,8 +120,8 @@ flowchart LR
 
 ### 外部 API と MCP でタグを一括で確定、却下、削除し、却下した名前を管理する {#confirm-reject-and-delete-tags-in-bulk-and-manage-rejected-names-in-the-external-api-and-mcp}
 
-**範囲**: `POST /api/v1/tags/batch`、`GET` と `DELETE /api/v1/tags/rejected-names`。`TagStore.ForgetRejectedTagName` が `removed` を報告する。ツール `batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` ([contracts/external-api.md §5 から §8](contracts/external-api.md#5-post-apiv1tagsbatch)、[research.md R-3、R-5](research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch))。手順書の節の残り、エージェントの例、MCP の表、確定と却下は画面専用だという文の削除 ([§9](contracts/external-api.md#9-docshow-toexternal-apimd))。
+**範囲**: `POST /api/v1/tags/batch`、`GET` と `DELETE /api/v1/tags/rejected-names`。`TagStore.ForgetRejectedTagName` が `removed` を報告する。ツール `batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` ([contracts/external-api.md、`POST /api/v1/tags/batch`、`GET /api/v1/tags/rejected-names`、`DELETE /api/v1/tags/rejected-names?name=…`、MCP ツール](contracts/external-api.md#post-apiv1tagsbatch)、[research.md R-3、R-5](research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch))。手順書の節の残り、エージェントの例、MCP の表、確定と却下は画面専用だという文の削除 ([contracts/external-api.md、`docs/how-to/external-api.md`](contracts/external-api.md#docshow-toexternal-apimd))。
 
 **依存**: 外部 API と MCP でタグを統合し、名前を変え、同義語を編集する
 
-**受け入れ**: `task check` が通る。MCP のテストで、`batch_tags` を `action: "reject"` で仮のタグ、確定したタグ、存在しない id に対して実行すると、1 つ目を `appliedIds`、2 つ目を `notApplicableIds`、3 つ目を `notFoundIds` に入れて返し、確定したタグは変わらない (受け入れ条件 4)。続いて `list_rejected_tag_names` は却下した名前を一覧に出し、`update_video_tags` に `tentative: true` とその名前を付けると、その名前を `skippedTags` で返し、タグを作らない (受け入れ条件 3)。`batch_tags` の `confirm` の後、そのタグは `tentative: false` で `list_tags` に現れる。仮のタグの `delete` はそのタグを `notApplicableIds` に入れる。`forget_rejected_tag_name` は 1 回目に `removed: true`、2 回目に `removed: false` を返し、次の仮の付与はタグをもう一度作る。MCP のツールの一覧は §8 のヒントを持つ 14 ツールである。手順書と 026 のツールの表を更新した状態で `task check-docs` が通る。
+**受け入れ**: `task check` が通る。MCP のテストで、`batch_tags` を `action: "reject"` で仮のタグ、確定したタグ、存在しない id に対して実行すると、1 つ目を `appliedIds`、2 つ目を `notApplicableIds`、3 つ目を `notFoundIds` に入れて返し、確定したタグは変わらない (受け入れ条件 4)。続いて `list_rejected_tag_names` は却下した名前を一覧に出し、`update_video_tags` に `tentative: true` とその名前を付けると、その名前を `skippedTags` で返し、タグを作らない (受け入れ条件 3)。`batch_tags` の `confirm` の後、そのタグは `tentative: false` で `list_tags` に現れる。仮のタグの `delete` はそのタグを `notApplicableIds` に入れる。`forget_rejected_tag_name` は 1 回目に `removed: true`、2 回目に `removed: false` を返し、次の仮の付与はタグをもう一度作る。MCP のツールの一覧は、契約の MCP ツールの節のヒントを持つ 14 ツールである。手順書と 026 のツールの表を更新した状態で `task check-docs` が通る。
