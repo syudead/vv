@@ -1,10 +1,10 @@
-import { Tag as TagIcon, X } from "lucide-react";
+import { Tag as TagIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { currentTags, refreshTags, subscribeTags, type Tag } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
+import FilterChip from "../ui/FilterChip";
 import Skeleton from "../ui/Skeleton";
 
 export interface ActiveTagFiltersProps {
@@ -89,26 +89,21 @@ export default function ActiveTagFilters({
           const tag = byId.get(id);
           return (
             <li key={id}>
-              <button
+              <FilterChip
                 ref={(node) => {
                   if (node) buttonRefs.current.set(id, node);
                   else buttonRefs.current.delete(id);
                 }}
-                type="button"
                 // タグの一覧をまだ取得していない間も、読み上げる名前が無くならない
                 // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
-                aria-label={
+                label={
                   tag === undefined
                     ? t.library.activeTags.remove
                     : t.library.activeTags.removeNamed(tag.name)
                 }
-                onClick={() => remove(id)}
-                className={cn(
-                  "flex h-6 items-center gap-1 rounded-sm bg-accent-soft px-1.5 text-xs text-link",
-                  "hover:ring-1 hover:ring-inset hover:ring-border-strong",
-                )}
+                onRemove={() => remove(id)}
+                icon={<TagIcon aria-hidden="true" />}
               >
-                <TagIcon aria-hidden="true" className="size-3 shrink-0" />
                 {tag === undefined ? (
                   <Skeleton className="h-3 w-12" />
                 ) : (
@@ -116,8 +111,7 @@ export default function ActiveTagFilters({
                     {tag.name}
                   </span>
                 )}
-                <X aria-hidden="true" className="size-3 shrink-0" />
-              </button>
+              </FilterChip>
             </li>
           );
         })}

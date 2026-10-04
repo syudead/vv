@@ -35,6 +35,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertVideoBundleInvariant(t, db)
 		assertVersionCandidateInvariant(t, db)
 		assertTentativeTagInvariant(t, db)
+		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
 	})
 	return db
@@ -115,6 +116,51 @@ func assertTentativeTagInvariant(t *testing.T, db *DB) {
 		if count != 0 {
 			t.Errorf("%sが %d 件ある", name, count)
 		}
+	}
+}
+
+// assertTagSortKeyInvariant は、tag_names と rejected_tag_names の search_version が現在の版の
+// 行の sort_key が domain.NaturalSortKey(name) と一致することを確かめる
+// （specs/036-tag-admin-scale/data-model.md §2）。名前の行を書く操作が同じ文で鍵を書き、
+// 版の古い行は起動時の RefreshSearchKeys が埋める。統合で tag_id を付け替えても鍵は変わらない。
+func assertTagSortKeyInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	// down migration を検査するテストは、この時点で列や表を落としている。
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from pragma_table_info('rejected_tag_names') where name in ('sort_key', 'search_version')`,
+	).Scan(&present); err != nil {
+		t.Fatalf("名前の自然順の鍵の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present < 2 {
+		return
+	}
+
+	for _, table := range []string{"tag_names", "rejected_tag_names"} {
+		assertTableSortKeys(t, db, table)
+	}
+}
+
+// assertTableSortKeys は table の現在の版の行の sort_key が NaturalSortKey(name) と一致することを確かめる。
+func assertTableSortKeys(t *testing.T, db *DB, table string) {
+	t.Helper()
+	rows, err := db.sql.Query(`select name, sort_key from `+table+` where search_version = ?`, domain.SearchKeyVersion)
+	if err != nil {
+		t.Fatalf("名前の自然順の鍵の不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var name, key string
+		if err := rows.Scan(&name, &key); err != nil {
+			t.Fatalf("名前の自然順の鍵の不変条件を検査できない: %v", err)
+		}
+		if want := domain.NaturalSortKey(name); key != want {
+			t.Errorf("%s の %q の sort_key = %q, want %q", table, name, key, want)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("名前の自然順の鍵の不変条件を検査できない: %v", err)
 	}
 }
 

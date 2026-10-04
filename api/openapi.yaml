@@ -1410,7 +1410,52 @@ paths:
     get:
       operationId: listTags
       summary: タグを一覧する
-      description: 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+      description: |
+        本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+        AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
+        `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+      parameters:
+        - name: q
+          in: query
+          description: |
+            検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+            （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+            タグだけにする。語の分解はしない
+          schema:
+            type: string
+            maxLength: 100
+        - name: tentative
+          in: query
+          description: true なら仮のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: unused
+          in: query
+          description: true なら本数0のタグだけにする
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          description: 並び順
+          schema:
+            $ref: "#/components/schemas/TagSort"
+        - name: cursor
+          in: query
+          description: |
+            前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+            `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数。省くと全件を返し、`nextCursor` は入らない
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
       responses:
         "200":
           description: タグの一覧
@@ -1418,6 +1463,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
     post:
       operationId: createTag
       summary: タグを1件作る
@@ -1485,11 +1532,14 @@ paths:
   /api/tags/{id}/merge:
     post:
       operationId: mergeTag
-      summary: sourceIdのタグをidのタグへ統合する
+      summary: sourceIdsのタグをidのタグへ統合する
       description: |
-        統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
-        統合元は一覧から消える。sourceIdがidと同じときは400を返す
-        （contracts/tags-api.md §3）。
+        統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
+        統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
+        無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
+        tagは変わらない統合先。sourceIdsが空・多すぎる（too_many_tags）・idを含む
+        （merge_same_tag）ときは400、統合先が無いときは404を返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -1500,11 +1550,11 @@ paths:
               $ref: "#/components/schemas/MergeTagRequest"
       responses:
         "200":
-          description: 統合後の統合先タグ
+          description: 統合後の統合先タグと、もう無かった統合元
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Tag"
+                $ref: "#/components/schemas/TagMergeResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -1609,7 +1659,24 @@ paths:
     get:
       operationId: listRejectedTagNames
       summary: 却下した名前を一覧する
-      description: 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+      description: |
+        名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す
+        （specs/036-tag-admin-scale/contracts/screen-api.md §6）。`limit` が範囲外、`cursor` が
+        解釈できないときは 400 `invalid_request`。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
       responses:
         "200":
           description: 却下した名前の一覧
@@ -1617,6 +1684,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RejectedTagNameList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     delete:
       operationId: forgetRejectedTagName
       summary: 却下した名前を一覧から外す
@@ -1633,6 +1704,61 @@ paths:
       responses:
         "204":
           description: 外した、またはもともと一覧に無かった
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/tags/batch:
+    post:
+      operationId: batchTags
+      summary: 複数のタグをまとめて確定・却下・削除する
+      description: |
+        `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
+        確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
+        `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
+        3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
+        （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagBatchRequest"
+      responses:
+        "200":
+          description: 処理した・無かった・働かなかった id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagBatchResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/tags/impact:
+    post:
+      operationId: tagImpact
+      summary: まとめての却下・削除・統合の確認に出す数を返す
+      description: |
+        `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
+        `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
+        （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
+        何も変えない（specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagImpactRequest"
+      responses:
+        "200":
+          description: 確認に出す数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagImpactResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
@@ -2579,7 +2705,7 @@ components:
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount, tentative]
+      required: [id, name, synonyms, videoCount, tentative, createdAt]
       additionalProperties: false
       description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
       properties:
@@ -2599,20 +2725,42 @@ components:
         tentative:
           type: boolean
           description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+        createdAt:
+          type: string
+          format: date-time
+          description: タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
 
     TagList:
       type: object
-      required: [items]
+      required: [items, total, totalAll]
       additionalProperties: false
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+        total:
+          type: integer
+          description: 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+        totalAll:
+          type: integer
+          description: 全部のタグの数。ページングとは独立に返る
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+
+    TagSort:
+      type: string
+      enum: [name, countDesc, countAsc, createdDesc, createdAsc]
+      default: name
+      description: |
+        タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+        createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+        （specs/036-tag-admin-scale/data-model.md §0・§2）
 
     RejectedTagNameList:
       type: object
-      required: [items]
+      required: [items, total]
       additionalProperties: false
       properties:
         items:
@@ -2620,6 +2768,12 @@ components:
           description: 却下した名前。名前の自然順
           items:
             type: string
+        total:
+          type: integer
+          description: 却下した名前の全部の数
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る。次の要求の `cursor` に渡す
 
     CreateTagRequest:
       type: object
@@ -2641,12 +2795,100 @@ components:
 
     MergeTagRequest:
       type: object
-      required: [sourceId]
+      required: [sourceIds]
       additionalProperties: false
       properties:
-        sourceId:
+        sourceIds:
+          type: array
+          description: 統合元の id。1 件の統合も [sourceId] で送る
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagMergeResponse:
+      type: object
+      required: [tag, notFoundIds]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/Tag"
+        notFoundIds:
+          type: array
+          description: もう無かった統合元
+          items:
+            type: integer
+            format: int64
+
+    TagBatchRequest:
+      type: object
+      required: [action, ids]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [confirm, reject, delete]
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagBatchResponse:
+      type: object
+      required: [appliedIds, notFoundIds, notApplicableIds]
+      additionalProperties: false
+      properties:
+        appliedIds:
+          type: array
+          description: 処理した id
+          items:
+            type: integer
+            format: int64
+        notFoundIds:
+          type: array
+          description: もう無かった id
+          items:
+            type: integer
+            format: int64
+        notApplicableIds:
+          type: array
+          description: 操作が働かない種類だった id
+          items:
+            type: integer
+            format: int64
+
+    TagImpactRequest:
+      type: object
+      required: [action, ids]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [reject, delete, merge]
+          description: 確認をとる操作。数える種類がこれで決まる
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    TagImpactResponse:
+      type: object
+      required: [tagCount, videoCount]
+      additionalProperties: false
+      properties:
+        tagCount:
           type: integer
-          format: int64
+          description: ids のうち今あり、action が働くタグの数
+        videoCount:
+          type: integer
+          description: そのどれかが付いた、いまライブラリにある動画の本数（重複なし）
 
     AddTagSynonymRequest:
       type: object
@@ -3943,6 +4185,7 @@ components:
         - search_too_long
         - too_many_tag_filters
         - too_many_videos
+        - too_many_tags
         - guest_filter_not_allowed
         - invalid_cursor
         - invalid_folder_path

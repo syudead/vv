@@ -844,7 +844,10 @@ export interface paths {
         };
         /**
          * タグを一覧する
-         * @description 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+         *     AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
+         *     `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
          */
         get: operations["listTags"];
         put?: never;
@@ -887,10 +890,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * sourceIdのタグをidのタグへ統合する
-         * @description 統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
-         *     統合元は一覧から消える。sourceIdがidと同じときは400を返す
-         *     （contracts/tags-api.md §3）。
+         * sourceIdsのタグをidのタグへ統合する
+         * @description 統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
+         *     統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
+         *     無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
+         *     tagは変わらない統合先。sourceIdsが空・多すぎる（too_many_tags）・idを含む
+         *     （merge_same_tag）ときは400、統合先が無いときは404を返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
          */
         post: operations["mergeTag"];
         delete?: never;
@@ -978,7 +984,9 @@ export interface paths {
         };
         /**
          * 却下した名前を一覧する
-         * @description 名前の自然順で返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+         * @description 名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §6）。`limit` が範囲外、`cursor` が
+         *     解釈できないときは 400 `invalid_request`。
          */
         get: operations["listRejectedTagNames"];
         put?: never;
@@ -989,6 +997,53 @@ export interface paths {
          *     何も変えずに 204 を返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
          */
         delete: operations["forgetRejectedTagName"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 複数のタグをまとめて確定・却下・削除する
+         * @description `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
+         *     確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
+         *     `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
+         *     3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
+         *     （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+         */
+        post: operations["batchTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * まとめての却下・削除・統合の確認に出す数を返す
+         * @description `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
+         *     `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
+         *     （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
+         *     何も変えない（specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+         */
+        post: operations["tagImpact"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1599,13 +1654,36 @@ export interface components {
             videoCount: number;
             /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
             tentative: boolean;
+            /**
+             * Format: date-time
+             * @description タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+             */
+            createdAt: string;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
+            /** @description 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部のタグの数。ページングとは独立に返る */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
         };
+        /**
+         * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
+         *     createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+         *     （specs/036-tag-admin-scale/data-model.md §0・§2）
+         * @default name
+         * @enum {string}
+         */
+        TagSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
         RejectedTagNameList: {
             /** @description 却下した名前。名前の自然順 */
             items: string[];
+            /** @description 却下した名前の全部の数 */
+            total: number;
+            /** @description 続きがあるときだけ入る。次の要求の `cursor` に渡す */
+            nextCursor?: string;
         };
         CreateTagRequest: {
             name: string;
@@ -1614,8 +1692,40 @@ export interface components {
             name: string;
         };
         MergeTagRequest: {
-            /** Format: int64 */
-            sourceId: number;
+            /** @description 統合元の id。1 件の統合も [sourceId] で送る */
+            sourceIds: number[];
+        };
+        TagMergeResponse: {
+            tag: components["schemas"]["Tag"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
+        };
+        TagBatchRequest: {
+            /** @enum {string} */
+            action: "confirm" | "reject" | "delete";
+            ids: number[];
+        };
+        TagBatchResponse: {
+            /** @description 処理した id */
+            appliedIds: number[];
+            /** @description もう無かった id */
+            notFoundIds: number[];
+            /** @description 操作が働かない種類だった id */
+            notApplicableIds: number[];
+        };
+        TagImpactRequest: {
+            /**
+             * @description 確認をとる操作。数える種類がこれで決まる
+             * @enum {string}
+             */
+            action: "reject" | "delete" | "merge";
+            ids: number[];
+        };
+        TagImpactResponse: {
+            /** @description ids のうち今あり、action が働くタグの数 */
+            tagCount: number;
+            /** @description そのどれかが付いた、いまライブラリにある動画の本数（重複なし） */
+            videoCount: number;
         };
         AddTagSynonymRequest: {
             name: string;
@@ -2353,7 +2463,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3696,7 +3806,27 @@ export interface operations {
     };
     listTags: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
+                 *     （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
+                 *     タグだけにする。語の分解はしない
+                 */
+                q?: string;
+                /** @description true なら仮のタグだけにする */
+                tentative?: boolean;
+                /** @description true なら本数0のタグだけにする */
+                unused?: boolean;
+                /** @description 並び順 */
+                sort?: components["schemas"]["TagSort"];
+                /**
+                 * @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
+                 *     `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+                 */
+                cursor?: string;
+                /** @description 1ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3712,6 +3842,7 @@ export interface operations {
                     "application/json": components["schemas"]["TagList"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
         };
     };
     createTag: {
@@ -3811,13 +3942,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 統合後の統合先タグ */
+            /** @description 統合後の統合先タグと、もう無かった統合元 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Tag"];
+                    "application/json": components["schemas"]["TagMergeResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
@@ -3933,7 +4064,12 @@ export interface operations {
     };
     listRejectedTagNames: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3949,6 +4085,8 @@ export interface operations {
                     "application/json": components["schemas"]["RejectedTagNameList"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     forgetRejectedTagName: {
@@ -3969,6 +4107,58 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    batchTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description 処理した・無かった・働かなかった id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagBatchResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    tagImpact: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagImpactRequest"];
+            };
+        };
+        responses: {
+            /** @description 確認に出す数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagImpactResponse"];
+                };
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];

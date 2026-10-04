@@ -625,6 +625,44 @@ test.describe.serial("video tags", () => {
         .locator("xpath=ancestor::div[@data-tag-id][1]");
     }
 
+    /**
+     * rowMenuName は、幅ごとに行の右端のメニューの読み上げ名を返す。`sm`（640px）
+     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる
+     * （specs/036-tag-admin-scale/ui-design.md「Actions on touch and narrow widths」）。
+     */
+    function rowMenuName(width: number) {
+      return width < 640 ? "Actions" : "More actions";
+    }
+
+    /**
+     * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
+     * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
+     * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
+     */
+    async function revealTagRow(page: Page, name: string) {
+      const row = tagRowByName(page, name);
+      await expect(
+        page.getByRole("link", { name: /^Open the library filtered by / }).first(),
+      ).toBeVisible();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      for (let step = 0; step < 200 && (await row.count()) === 0; step += 1) {
+        const moved = await page.evaluate(() => {
+          const before = window.scrollY;
+          window.scrollBy(0, 400);
+          return window.scrollY !== before;
+        });
+        if (!moved) break;
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+            }),
+        );
+      }
+      await row.scrollIntoViewIfNeeded();
+      return row;
+    }
+
     test("9: 新しいタグを作ると本数0で一覧に並び、再生画面の候補にも出る", async ({
       page,
     }) => {
@@ -657,6 +695,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理改名前");
       await tagRowByName(page, "e2e管理改名前")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -681,6 +720,7 @@ test.describe.serial("video tags", () => {
       // 既存のタグ名と重なる改名は拒否され、理由が画面に出る。
       await createTag(request, "e2e管理既存名");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理改名後");
       await tagRowByName(page, "e2e管理改名後")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -706,6 +746,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理削除対象");
       const row = tagRowByName(page, "e2e管理削除対象");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
@@ -738,6 +779,7 @@ test.describe.serial("video tags", () => {
       expect(detached.ok()).toBe(true);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理残留");
       await expect(tagRowByName(page, "e2e管理残留")).toContainText("0 videos");
 
       await page.goto(`/videos/${String(a.id)}`);
@@ -757,6 +799,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, created.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理移動先");
       await tagRowByName(page, "e2e管理移動先").click();
       await expect(page).toHaveURL(
         new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(created.id)}$`),
@@ -808,6 +851,7 @@ test.describe.serial("video tags", () => {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
         for (const name of [shortName, longName]) {
+          await revealTagRow(page, name);
           const row = tagRowByName(page, name);
           const link = row.getByRole("link", {
             name: `Open the library filtered by ${name}`,
@@ -821,15 +865,16 @@ test.describe.serial("video tags", () => {
           if (linkBox === null || markBox === null) throw new Error("no layout");
           expect(markBox.x - (linkBox.x + linkBox.width)).toBeGreaterThanOrEqual(0);
           expect(markBox.x - (linkBox.x + linkBox.width)).toBeLessThanOrEqual(8);
-          // 長い名前でも操作は行の中に収まる。
+          // 長い名前でも操作は行の中に収まる（`sm` 未満では「Actions」1 つ）。
           const rowBox = await row.boundingBox();
           const moreBox = await row
-            .getByRole("button", { name: "More actions" })
+            .getByRole("button", { name: rowMenuName(width) })
             .boundingBox();
           if (rowBox === null || moreBox === null) throw new Error("no layout");
           expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
         }
         // 長い名前は省略される。
+        await revealTagRow(page, longName);
         const longLink = tagRowByName(page, longName).getByRole("link", {
           name: `Open the library filtered by ${longName}`,
           exact: true,
@@ -847,6 +892,7 @@ test.describe.serial("video tags", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
 
       // 短い名前の行で、名前と目印より右の空白を押す。
+      await revealTagRow(page, shortName);
       const row = tagRowByName(page, shortName);
       const link = row.getByRole("link", {
         name: `Open the library filtered by ${shortName}`,
@@ -861,6 +907,72 @@ test.describe.serial("video tags", () => {
       expect(columnBox.x + x).toBeGreaterThan(markBox.x + markBox.width + 8);
       await column.click({ position: { x, y: columnBox.height / 2 } });
       await expect(page).toHaveURL(`${origin}${String(href)}`);
+    });
+
+    test("狭い幅でも見出しの件数は折り返さず、「Rejected names」のタブを省略せずに本文の中に収める", async ({
+      page,
+    }) => {
+      // 4 桁の件数と 4 桁の却下した名前で、見出しとタブが最も長くなる形を作る
+      // （ui-design.md「Header」「Tabs」「Responsive behaviour」）。
+      const createdAt = "2026-01-01T00:00:00Z";
+      const items = Array.from({ length: 1000 }, (_, index) => ({
+        id: 900000 + index,
+        name: `e2e狭い幅${String(index).padStart(4, "0")}`,
+        synonyms: [],
+        videoCount: 0,
+        tentative: true,
+        createdAt,
+      }));
+      // ページで読む画面はクエリ（sort・limit・tentative）を付けて送る。
+      await page.route(/\/api\/tags(\?.*)?$/, (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: { items, total: items.length, totalAll: items.length },
+            })
+          : route.fallback(),
+      );
+      await page.route("**/api/tags/rejected-names**", (route) =>
+        route.request().method() === "GET"
+          ? route.fulfill({
+              json: {
+                items: Array.from(
+                  { length: 1000 },
+                  (_, index) => `e2e却下${String(index)}`,
+                ),
+                total: 1000,
+              },
+            })
+          : route.fallback(),
+      );
+      for (const width of [320, 360]) {
+        await page.setViewportSize({ width, height: 800 });
+        // 「Tentative only」が効いた URL で開く（ui-design.md「URL state」）。
+        await page.goto("/tags?tentative=1");
+        const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
+        await expect(count).toBeVisible();
+        const tab = page.getByRole("tab", { name: /^Rejected names/ });
+        await expect(tab).toBeVisible();
+        await expect(tab).toContainText("1,000");
+        const countBox = await count.boundingBox();
+        const tabBox = await tab.boundingBox();
+        if (countBox === null || tabBox === null) throw new Error("no layout");
+        // 件数は 1 行のまま（text-xs の行の高さは 16px）。
+        expect(countBox.height).toBeLessThanOrEqual(16);
+        // タブは本文の中にある。
+        expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width - 16);
+        // 横スクロールは出ない。
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+        // タブは押せ、本文に却下した名前が出る。
+        await tab.click();
+        await expect(
+          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("list"),
+        ).toBeVisible();
+      }
+      await page.setViewportSize({ width: 1280, height: 800 });
     });
 
     test("18: 検索は名前とシノニムに大文字小文字を区別せず当たり、消すと全件に戻る", async ({
@@ -886,7 +998,9 @@ test.describe.serial("video tags", () => {
       await expect(tagRowByName(page, "e2eXyz9Drama管理")).toHaveCount(0);
 
       await search.fill("");
+      await revealTagRow(page, "e2eXyz9Anime管理");
       await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
+      await revealTagRow(page, "e2eXyz9Drama管理");
       await expect(tagRowByName(page, "e2eXyz9Drama管理")).toBeVisible();
     });
 
@@ -912,6 +1026,7 @@ test.describe.serial("video tags", () => {
       await page.getByRole("button", { name: "Show all tags" }).click();
       await expect(search).toBeFocused();
       await expect(search).toHaveValue("");
+      await revealTagRow(page, "e2e管理キーボード対象");
       await expect(tagRowByName(page, "e2e管理キーボード対象")).toBeVisible();
     });
 
@@ -950,11 +1065,13 @@ test.describe.serial("video tags", () => {
       for (const width of [360, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
+        await revealTagRow(page, "e2e画像Anime");
         await expect(tagRowByName(page, "e2e画像Anime")).toBeVisible();
         await page.screenshot({ path: path.join(dir, `tags-list-${String(width)}.png`) });
 
+        await revealTagRow(page, "e2e画像旅行");
         await tagRowByName(page, "e2e画像旅行")
-          .getByRole("button", { name: "More actions" })
+          .getByRole("button", { name: rowMenuName(width) })
           .click();
         await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
         const dialog = page.getByRole("dialog", { name: 'Merge "e2e画像旅行"' });
@@ -965,9 +1082,18 @@ test.describe.serial("video tags", () => {
         });
         await page.keyboard.press("Escape");
 
-        await tagRowByName(page, "e2e画像Anime")
-          .getByRole("button", { name: "Synonyms" })
-          .click();
+        await revealTagRow(page, "e2e画像Anime");
+        if (width < 640) {
+          // `sm` 未満では「シノニム」も「Actions」のメニューの項目になる。
+          await tagRowByName(page, "e2e画像Anime")
+            .getByRole("button", { name: rowMenuName(width) })
+            .click();
+          await page.getByRole("menuitem", { name: "Synonyms" }).click();
+        } else {
+          await tagRowByName(page, "e2e画像Anime")
+            .getByRole("button", { name: "Synonyms" })
+            .click();
+        }
         const synonyms = page.getByRole("dialog", { name: 'Synonyms of "e2e画像Anime"' });
         await synonyms.getByRole("textbox", { name: "Add synonym" }).fill("e2e画像旅行");
         await page.keyboard.press("Enter");
@@ -983,6 +1109,7 @@ test.describe.serial("video tags", () => {
     test("削除確認の窓でEscを押すと何も変わらない", async ({ page, request }) => {
       await createTag(request, "e2e管理Esc確認");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理Esc確認");
       const row = tagRowByName(page, "e2e管理Esc確認");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
@@ -1001,6 +1128,7 @@ test.describe.serial("video tags", () => {
     }) => {
       const created = await createTag(request, "e2e管理消滅");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理消滅");
       await tagRowByName(page, "e2e管理消滅")
         .getByRole("button", { name: "Rename" })
         .click();
@@ -1027,6 +1155,7 @@ test.describe.serial("video tags", () => {
     }) => {
       await createTag(request, "e2e管理統合メニュー");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合メニュー");
       const row = tagRowByName(page, "e2e管理統合メニュー");
 
       // 行に直接出るのは「改名」と「シノニム」だけで、統合は行に出ない。
@@ -1054,6 +1183,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, y.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合元X");
       const row = tagRowByName(page, "e2e管理統合元X");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1104,6 +1234,7 @@ test.describe.serial("video tags", () => {
       await createTag(request, "e2e管理統合候補元");
       await createTag(request, "e2e管理統合候補先");
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理統合候補元");
       const row = tagRowByName(page, "e2e管理統合候補元");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1136,6 +1267,7 @@ test.describe.serial("video tags", () => {
       }
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2eB3統合元");
       const row = tagRowByName(page, "e2eB3統合元");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
@@ -1172,6 +1304,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, lower.id);
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2eXyz17Anime");
       await tagRowByName(page, "e2eXyz17Anime")
         .getByRole("button", { name: "Synonyms" })
         .click();
@@ -1193,7 +1326,9 @@ test.describe.serial("video tags", () => {
       await expect(dialog.getByText(/is a tag on/)).toHaveCount(0);
       await expect(input).toHaveValue("e2eXyz17anime");
       await dialog.getByRole("button", { name: "Close" }).click();
+      await revealTagRow(page, "e2eXyz17anime");
       await expect(tagRowByName(page, "e2eXyz17anime")).toBeVisible();
+      await revealTagRow(page, "e2eXyz17Anime");
 
       // もう一度、今度は承諾する。
       await tagRowByName(page, "e2eXyz17Anime")
@@ -1209,6 +1344,7 @@ test.describe.serial("video tags", () => {
       await expect(dialog2.getByText("e2eXyz17anime", { exact: true })).toBeVisible();
       await dialog2.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toHaveCount(0);
+      await revealTagRow(page, "e2eXyz17Anime");
       await expect(tagRowByName(page, "e2eXyz17Anime")).toContainText(
         "Synonyms: e2eXyz17anime",
       );
@@ -1234,6 +1370,7 @@ test.describe.serial("video tags", () => {
       await createTag(request, "e2e管理衝突Drama");
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理衝突Drama");
       await tagRowByName(page, "e2e管理衝突Drama")
         .getByRole("button", { name: "Synonyms" })
         .click();
@@ -1254,6 +1391,7 @@ test.describe.serial("video tags", () => {
       await addSynonym(request, anime.id, "e2e管理解除アニメ");
 
       await page.goto("/tags");
+      await revealTagRow(page, "e2e管理解除Anime");
       await tagRowByName(page, "e2e管理解除Anime")
         .getByRole("button", { name: "Synonyms" })
         .click();

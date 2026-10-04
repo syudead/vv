@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {"note":"空","input":"","want":""},
+    {"note":"記号と数字","input":"#1 best","want":"#00011 best"},
+    {"note":"0 は数値 0","input":"0","want":"0000"},
+    {"note":"00 も数値 0","input":"00","want":"0000"},
+    {"note":"数字と文字の混在（桁の違い）","input":"a1b3c","want":"a00011b00013c"},
+    {"note":"数字と文字の混在","input":"a1b22c333","want":"a00011b000222c0003333"},
+    {"note":"全角の英字と数字","input":"ＡＢＣ１２３","want":"abc0003123"},
+    {"note":"数字の無い名前","input":"tag","want":"tag"},
+    {"note":"数字 1 桁","input":"tag 2","want":"tag 00012"},
+    {"note":"大文字小文字","input":"Tag 2 Extra","want":"tag 00012 extra"},
+    {"note":"先頭の 0 を除く","input":"tag 007","want":"tag 00017"},
+    {"note":"数字 2 桁は 1 桁の後ろ","input":"tag 10","want":"tag 000210"},
+    {"note":"全角の数字は半角","input":"ＴＡＧ１２３","want":"tag0003123"},
+    {"note":"長い数字","input":"v12345678901234567890","want":"v002012345678901234567890"},
+    {"note":"ひらがなはカタカナ","input":"あくしょん2","want":"アクション00012"},
+    {"note":"カタカナ","input":"アクション10","want":"アクション000210"},
+    {"note":"漢字","input":"旅行","want":"旅行"},
+    {"note":"丸数字は NFKC で数字","input":"第①話","want":"第00011話"},
+    {"note":"U+E000 の私用領域","input":"\ue000","want":"\ue000"},
+    {"note":"U+FFFD","input":"\ufffd","want":"\ufffd"},
+    {"note":"サロゲートペアの絵文字（U+1F600）","input":"😀 2","want":"😀 00012"},
+    {"note":"サロゲートペア（U+20BB7）","input":"𠮷野家","want":"𠮷野家"}
+  ]
+}

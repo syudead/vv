@@ -50,3 +50,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Scrubbing along the bottom edge of a card thumbnail: UI](../../specs/032-card-scrub-preview/ui-design.md)
 - [Modified and created dates on the video page, and the "Date created" sort: UI](../../specs/033-video-dates/ui-design.md)
 - [Favorite mark, toggling, filtering and sorting for videos and groups: UI](../../specs/035-favorites/ui-design.md)
+- [Tag admin screen at scale (top bar, band, tabs, sort, selection and bulk actions): UI](../../specs/036-tag-admin-scale/ui-design.md)

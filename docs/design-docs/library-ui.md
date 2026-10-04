@@ -88,6 +88,19 @@ restoration in virtual coordinates. Pages load 60 items
 ([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
 user loaded. **Revisit only after measuring what is slow.**
 
+The tag admin list (`/tags`) is the measured exception: with thousands of tags,
+opening, search and scrolling froze, so it draws only the rows near the
+viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
+[036 research R-2](../../specs/036-tag-admin-scale/research.md)). Neither
+reason above applies there: it is one column, and rows arrive 100 at a time
+from the server for the current conditions. The document stays the scroll
+owner, the list keeps the focused row drawn, and Tab crosses the edge of the
+drawn range, so keyboard order reaches every row. Its toolbar, tab and column
+headings stay as one sticky band under the top bar; the page measures the band
+and passes its height to the virtualizer and to `scroll-padding-top`, so a
+focused row never hides under it
+([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
+
 ## 4. Width breakpoints in CSS, and the sidebar exception
 
 Width variations use Tailwind's default breakpoints in CSS; only the sidebar

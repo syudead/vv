@@ -77,11 +77,11 @@ type MediaFolders interface {
 // Tags はタグ管理画面が操作するタグの保存先である。どの操作も1つのトランザクションで済むので、
 // internal/app は通さず、internal/store の TagStore をここへ直接渡す。
 type Tags interface {
-	ListTags(ctx context.Context) ([]domain.Tag, error)
+	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
 	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
 	DeleteTag(ctx context.Context, id int64) error
-	MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error)
+	MergeTags(ctx context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error)
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 	RemoveSynonym(ctx context.Context, tagID int64, name string) error
 
@@ -104,8 +104,12 @@ type Tags interface {
 	// 仮のタグの確定・却下と、却下した名前（specs/031-tentative-tags/data-model.md §5）。
 	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	RejectTag(ctx context.Context, id int64) (string, error)
-	ListRejectedTagNames(ctx context.Context) ([]string, error)
+	ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error)
 	ForgetRejectedTagName(ctx context.Context, name string) error
+
+	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。
+	BatchTags(ctx context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error)
+	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。internal/media の
@@ -511,7 +515,7 @@ func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
 		switch r.URL.Path {
-		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
+		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails":
 			return true
@@ -541,10 +545,15 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
 		}
 	case http.MethodPatch:
-		// /api/tags/rejected-names は {id} の段ではなく却下した名前の経路で、PATCH を持たない
-		// （specs/031-tentative-tags/contracts/screen-api.md §3）。
+		// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
+		// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
+		// specs/036-tag-admin-scale/contracts/screen-api.md §1）。
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
-			return id != "" && id != "rejected-names" && !strings.Contains(id, "/")
+			switch id {
+			case "", "rejected-names", "batch", "impact":
+				return false
+			}
+			return !strings.Contains(id, "/")
 		}
 	}
 	return false
@@ -634,6 +643,7 @@ const (
 	reasonSearchTooLong                 = gen.ErrorReasonSearchTooLong
 	reasonTooManyTagFilters             = gen.ErrorReasonTooManyTagFilters
 	reasonTooManyVideos                 = gen.ErrorReasonTooManyVideos
+	reasonTooManyTags                   = gen.ErrorReasonTooManyTags
 	reasonGuestFilterNotAllowed         = gen.ErrorReasonGuestFilterNotAllowed
 	reasonInvalidCursor                 = gen.ErrorReasonInvalidCursor
 	reasonInvalidFolderPath             = gen.ErrorReasonInvalidFolderPath

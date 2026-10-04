@@ -77,6 +77,14 @@ describe("errorText", () => {
     expect(errorText(failure)).toBe("Select between 1 and 1 video.");
   });
 
+  it("embeds the tag batch limit", () => {
+    const failure = new RequestFailed(400, "invalid_request", "", {
+      reason: "too_many_tags",
+      limit: 20000,
+    });
+    expect(errorText(failure)).toBe("Select between 1 and 20,000 tags.");
+  });
+
   it("embeds the conflicting tag name", async () => {
     const failure = await toRequestFailed(
       json(

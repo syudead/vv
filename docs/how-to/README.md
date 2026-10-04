@@ -12,4 +12,5 @@ steps themselves; the reasoning behind a decision belongs in `docs/design-docs/`
 - [Check a PR in Codespaces](codespaces-preview.md)
 - [Handle dependency updates (Renovate)](dependency-updates.md)
 - [Measure motion preview and seek thumbnail generation](preview-benchmark.md)
+- [Measure the tag admin screen at scale](tags-admin-benchmark.md)
 - [Work with the documentation site](docs-site.md)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -16,22 +17,71 @@ import (
 // internal/store.TagStore の1つのトランザクションで済み、httpapi は要求の
 // 解釈と契約の形への変換だけを持つ。
 
-func (s *server) ListTags(w http.ResponseWriter, r *http.Request) {
+// ListTags はタグの一覧を返す（GET /api/tags、specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+// limit を省けば条件に合う全件を返し、nextCursor は入らない（候補・絞り込みの確かめの経路）。
+func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.ListTagsParams) {
+	query, ok := s.parseTagListQuery(w, params)
+	if !ok {
+		return
+	}
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	tags, err := s.tags.ListTags(r.Context())
-	if err != nil {
+	page, err := s.tags.ListTags(r.Context(), query)
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
 		s.internalError(w, "Could not load tags.", err)
 		return
 	}
-	out := make([]gen.Tag, 0, len(tags))
-	for _, tag := range tags {
+	out := make([]gen.Tag, 0, len(page.Items))
+	for _, tag := range page.Items {
 		out = append(out, toAPITag(tag))
 	}
+	body := gen.TagList{Items: out, Total: page.Total, TotalAll: page.TotalAll}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.TagList{Items: out}, s.logger)
+	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
+// parseTagListQuery は GET /api/tags のパラメータを検査する。sort が 5 値でない、
+// limit が 1〜200 の外、q が 100 文字を超えるときは 400 を書いて false を返す。
+// カーソルの中身は保存層が解く（解けなければ ErrInvalidCursor）。
+func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
+	query := domain.TagListQuery{
+		TentativeOnly: params.Tentative != nil && *params.Tentative,
+		UnusedOnly:    params.Unused != nil && *params.Unused,
+		Sort:          domain.TagSortName,
+	}
+	if params.Sort != nil {
+		query.Sort = domain.TagSort(*params.Sort)
+		if !query.Sort.Valid() {
+			s.invalidRequest(w, "Unknown sort order.")
+			return domain.TagListQuery{}, false
+		}
+	}
+	if params.Limit != nil {
+		limit := *params.Limit
+		if limit < 1 || limit > domain.MaxTagPageLimit {
+			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+			return domain.TagListQuery{}, false
+		}
+		query.Limit = limit
+		if params.Cursor != nil {
+			query.Cursor = *params.Cursor
+		}
+	}
+	search, ok := s.parseSearchQuery(w, params.Q)
+	if !ok {
+		return domain.TagListQuery{}, false
+	}
+	query.Search = search
+	return query, true
 }
 
 func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
@@ -88,11 +138,13 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	// store.MergeTag はtarget==sourceを何も変えない黙った成功にする
-	// （data-model.mdの統合の規則、#264 レビューの持ち越し）。APIはそれより先に
-	// 400 invalid_requestにする — 統合は違う2つのタグを1つにする操作であり、
-	// 同じidを送るのは要求の誤りだからである。
-	if body.SourceId == id {
+	if !s.validTagBatchIDs(w, "sourceIds", body.SourceIds) {
+		return
+	}
+	// store.MergeTags は統合元に混じった統合先を黙って飛ばす。API はそれより先に
+	// 400 invalid_request にする — 統合は違うタグを 1 つにする操作であり、統合先を
+	// 統合元に送るのは要求の誤りだからである（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+	if slices.Contains(body.SourceIds, id) {
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
 	}
@@ -100,13 +152,16 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	tag, err := s.tags.MergeTag(r.Context(), id, body.SourceId)
+	outcome, err := s.tags.MergeTags(r.Context(), id, body.SourceIds)
 	if err != nil {
 		s.writeTagError(w, err, "")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, toAPITag(tag), s.logger)
+	writeJSON(w, http.StatusOK, gen.TagMergeResponse{
+		Tag:         toAPITag(outcome.Tag),
+		NotFoundIds: nonNilIDs(outcome.NotFoundIDs),
+	}, s.logger)
 }
 
 func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId) {
@@ -184,23 +239,135 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListRejectedTagNames は却下した名前を名前の自然順で返す
-// （GET /api/tags/rejected-names、specs/031-tentative-tags/contracts/screen-api.md §3）。
-func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {
+// BatchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
+// specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは何も変えずに
+// 数えて返し、残りを 1 つの取引で処理する。1 件の経路（confirm・reject・DELETE）は変えない。
+func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
+	var body gen.TagBatchRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	action := domain.TagBatchAction(body.Action)
+	if !action.Valid() {
+		s.invalidRequest(w, "action must be one of confirm, reject or delete.")
+		return
+	}
+	if !s.validTagBatchIDs(w, "ids", body.Ids) {
+		return
+	}
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	names, err := s.tags.ListRejectedTagNames(r.Context())
+	outcome, err := s.tags.BatchTags(r.Context(), action, body.Ids)
 	if err != nil {
+		s.internalError(w, "Could not update the tags.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.TagBatchResponse{
+		AppliedIds:       nonNilIDs(outcome.AppliedIDs),
+		NotFoundIds:      nonNilIDs(outcome.NotFoundIDs),
+		NotApplicableIds: nonNilIDs(outcome.NotApplicableIDs),
+	}, s.logger)
+}
+
+// TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
+// 本数を返す（POST /api/tags/impact、specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+// 何も変えない。
+func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
+	var body gen.TagImpactRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	action := domain.TagImpactAction(body.Action)
+	if !action.Valid() {
+		s.invalidRequest(w, "action must be one of reject, delete or merge.")
+		return
+	}
+	if !s.validTagBatchIDs(w, "ids", body.Ids) {
+		return
+	}
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	impact, err := s.tags.TagImpact(r.Context(), action, body.Ids)
+	if err != nil {
+		s.internalError(w, "Could not count the affected videos.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.TagImpactResponse{TagCount: impact.TagCount, VideoCount: impact.VideoCount}, s.logger)
+}
+
+// validTagBatchIDs は本文の項目 field の ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、
+// 違えば 400 を書いて false を返す。多すぎるときは reason too_many_tags と limit を付ける。
+func (s *server) validTagBatchIDs(w http.ResponseWriter, field string, ids []int64) bool {
+	switch {
+	case len(ids) == 0:
+		s.invalidRequest(w, field+" must contain at least one tag id.")
+		return false
+	case len(ids) > domain.MaxTagBatch:
+		s.invalidRequestLimit(w, reasonTooManyTags, domain.MaxTagBatch,
+			fmt.Sprintf("%s must contain between 1 and %d items.", field, domain.MaxTagBatch))
+		return false
+	}
+	return true
+}
+
+// nonNilIDs は応答の配列を null でなく [] にする。
+func nonNilIDs(ids []int64) []int64 {
+	if ids == nil {
+		return []int64{}
+	}
+	return ids
+}
+
+// rejectedTagNamePageDefaultLimit は limit を省いた GET /api/tags/rejected-names の 1 ページの件数
+// （specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+const rejectedTagNamePageDefaultLimit = 100
+
+// ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
+// （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+// limit が 1〜domain.MaxLimit の外、cursor が解釈できないときは 400 invalid_request。
+func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params gen.ListRejectedTagNamesParams) {
+	if s.tags == nil {
+		s.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	limit := rejectedTagNamePageDefaultLimit
+	if params.Limit != nil {
+		limit = *params.Limit
+		if limit < 1 || limit > domain.MaxLimit {
+			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxLimit))
+			return
+		}
+	}
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
+
+	page, err := s.tags.ListRejectedTagNames(r.Context(), cursor, limit)
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
 		s.internalError(w, "Could not load rejected tag names.", err)
 		return
 	}
+	names := page.Items
 	if names == nil {
 		names = []string{}
 	}
+	body := gen.RejectedTagNameList{Items: names, Total: page.Total}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RejectedTagNameList{Items: names}, s.logger)
+	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
 // ForgetRejectedTagName は名前を却下した名前の一覧から外す
@@ -227,6 +394,7 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 	return gen.Tag{
 		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
+		CreatedAt: tag.CreatedAt,
 	}
 }
 

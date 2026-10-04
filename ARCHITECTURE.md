@@ -662,8 +662,11 @@ does not compile:
 - `PlaybackStore`: playback positions. It holds only the SQL connection and does
   not depend on the rebuildable index stores or their notifications.
 - `TagStore`: tags themselves: create, rename, delete, merge, register or remove
-  a synonym, the counted listing, and the startup refresh of tag-name search keys
-  (`specs/014-video-tags/data-model.md`).
+  a synonym, the counted listing, the startup refresh of each name's match key
+  and natural-order key (`specs/014-video-tags/data-model.md`,
+  `specs/036-tag-admin-scale/data-model.md`), and, for the tag admin screen,
+  bulk confirm, reject or delete in one transaction and the impact count shown
+  before them.
   - It attaches and detaches a tag across a set of video ids (resolved to the
     currently registered videos' user keys, one per bundle, through
     `userKeysForVideoIDs`), summarizes the tags on a selected set of videos, and
@@ -1138,8 +1141,10 @@ candidates screen (`/duplicates`). That screen lists the pairs a scan found to
 look like the same video, bundles a pair through that dialog or records it as
 different videos, and refetches on the `scan` notification.
 
-`web/src/tags/` is the tag admin screen (`/tags`): a list of every tag with its
-video count, an in-page name/synonym search, create, rename and delete.
+`web/src/tags/` is the tag admin screen (`/tags`): tags with their video
+counts, read 100 at a time from the server with the search, filters and sort in
+the shared top bar and the URL, single and bulk actions, and a virtualized list
+([036 UI design](specs/036-tag-admin-scale/ui-design.md)).
 `web/src/shell/navigation.ts` puts its sidebar entry right after "Folders",
 followed by the owner-only "Duplicates" entry. Every sidebar entry links to a
 working screen.
