@@ -1,6 +1,6 @@
 ---
 source: specs/039-external-tag-admin/research.md
-sourceHash: f3055ccc91ccf55425a6325da69bd566791404895094426e504861643bb20acd
+sourceHash: 49bb26d8e6565ed3802a7c52393d20a3a66df7b08a167ff0d976505d533ffcb5
 ---
 
 # 調査: 外部 API と MCP からのタグ管理 {#research-tag-administration-from-the-external-api-and-mcp}
@@ -9,7 +9,7 @@ sourceHash: f3055ccc91ccf55425a6325da69bd566791404895094426e504861643bb20acd
 
 ## R-1: `GET /api/v1/tags` は画面の一覧のパラメータを受け取り、既定でページ単位にするのは MCP ツールだけである {#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default}
 
-**決定**: `GET /api/v1/tags` に、画面の `GET /api/tags` と同じ意味の `q`、`tentative`、`unused`、`sort`、`cursor`、`limit` を加え ([036 contracts/screen-api.md §5](../036-tag-admin-scale/contracts/screen-api.md#5-get-apitags-parameters))、`TagList` に `total`、`totalAll`、`nextCursor` を加える。`Tag` には、`createdDesc` と `createdAsc` の並べ替えが使う値 `createdAt` を加える。`limit` のない要求は従来どおりすべてのタグを返す。MCP ツール `list_tags` は、呼び出し側が `limit` を省くと 100 を入れるので、既定の応答は 1 ページになる ([contracts/external-api.md §1](contracts/external-api.md#1-get-apiv1tags))。
+**決定**: `GET /api/v1/tags` に、画面の `GET /api/tags` と同じ意味の `q`、`tentative`、`unused`、`sort`、`cursor`、`limit` を加え ([036 contracts/screen-api.md、`GET /api/tags` のパラメータ](../036-tag-admin-scale/contracts/screen-api.md#get-apitags-parameters))、`TagList` に `total`、`totalAll`、`nextCursor` を加える。`Tag` には、`createdDesc` と `createdAsc` の並べ替えが使う値 `createdAt` を加える。`limit` のない要求は従来どおりすべてのタグを返す。MCP ツール `list_tags` は、呼び出し側が `limit` を省くと 100 を入れるので、既定の応答は 1 ページになる ([contracts/external-api.md、`GET /api/v1/tags`](contracts/external-api.md#get-apiv1tags))。
 
 | 案 | v1 の互換性 | 2,048 タグのときの引数なしのツール呼び出し | 判定 |
 | --- | --- | --- | --- |
@@ -33,7 +33,7 @@ sourceHash: f3055ccc91ccf55425a6325da69bd566791404895094426e504861643bb20acd
 
 ## R-3: 確定、却下、削除は `POST /api/v1/tags/batch` だけを通る {#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch}
 
-**決定**: タグ 1 つ用の確定、却下、削除の操作はない。一括操作は `action` と `ids` (1 から 20,000) を受け取り、画面の `POST /api/tags/batch` と同じく `appliedIds`、`notFoundIds`、`notApplicableIds` を返す ([036 contracts/screen-api.md §1](../036-tag-admin-scale/contracts/screen-api.md#1-post-apitagsbatch))。タグ 1 つなら `ids: [id]` である。
+**決定**: タグ 1 つ用の確定、却下、削除の操作はない。一括操作は `action` と `ids` (1 から 20,000) を受け取り、画面の `POST /api/tags/batch` と同じく `appliedIds`、`notFoundIds`、`notApplicableIds` を返す ([036 contracts/screen-api.md、`POST /api/tags/batch`](../036-tag-admin-scale/contracts/screen-api.md#post-apitagsbatch))。タグ 1 つなら `ids: [id]` である。
 
 | 案 | `reject` に送られた確定したタグ | 判定 |
 | --- | --- | --- |
@@ -44,12 +44,12 @@ sourceHash: f3055ccc91ccf55425a6325da69bd566791404895094426e504861643bb20acd
 
 ## R-4: 名前の衝突には、衝突したタグの `tagId` と `tagName` を付けた `409 conflict` で答える {#r-4-name-conflicts-answer-409-conflict-with-the-conflicting-tags-tagid-and-tagname}
 
-**決定**: 名前の変更と同義語の追加は、名前が別のタグのものなら理由 `tag_name_taken` の `409 conflict` を返し、名前が別のタグの元の名前で、`mergeTagId` がそのタグを指していないなら `tag_merge_required` を返す。外部の `Error` に `tagId` と `tagName` を加え、この 2 つの理由のときだけ含める。これで呼び出し側は一覧を読み直さずに `mergeTagId` を送れる ([contracts/external-api.md §3 と §4](contracts/external-api.md#3-post-apiv1tagsrename))。
+**決定**: 名前の変更と同義語の追加は、名前が別のタグのものなら理由 `tag_name_taken` の `409 conflict` を返し、名前が別のタグの元の名前で、`mergeTagId` がそのタグを指していないなら `tag_merge_required` を返す。外部の `Error` に `tagId` と `tagName` を加え、この 2 つの理由のときだけ含める。これで呼び出し側は一覧を読み直さずに `mergeTagId` を送れる ([contracts/external-api.md、`POST /api/v1/tags/rename` と `POST /api/v1/tags/synonyms`](contracts/external-api.md#post-apiv1tagsrename))。
 
 | 案 | 判定 |
 | --- | --- |
 | **`mergeTagId` は呼び出し側が統合を受け入れるタグを指し、エラーはそのタグの id を持つ** | 採用 |
-| 真偽値の `merge: true` | 不採用: エラーと再試行の間に別のクライアントが名前を別のタグへ移すことがあり、真偽値は呼び出し側が見ていないタグを統合してしまう ([014 contracts/tags-api.md §3](../014-video-tags/contracts/tags-api.md#3-tag-management)) |
+| 真偽値の `merge: true` | 不採用: エラーと再試行の間に別のクライアントが名前を別のタグへ移すことがあり、真偽値は呼び出し側が見ていないタグを統合してしまう ([014 contracts/tags-api.md、タグの管理](../014-video-tags/contracts/tags-api.md#tag-management)) |
 | 名前が別のタグの元の名前なら、尋ねずに統合する | 不採用: 要件 3 は、呼び出し側が指示したときだけ統合することを求める |
 | 画面のエラーと同じく `tagName` だけ | 不採用: 画面は一覧を読み直して id を見つける。エージェントなら衝突のたびにページを 1 つ読むことになる |
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: 5f06b871bcedf0bc852bf099a0050d556358715b8e63d2f1c8ee528b5cc851a7
+sourceHash: 90c1473af96a98ccdb042978a81fa74123d803085dfa65ed888feed2b5cdaab0
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -201,7 +201,7 @@ flowchart LR
 
 ### タグを一覧する {#list-tags}
 
-`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する（[specs/039-external-tag-admin/contracts/external-api.md §1](../../specs/039-external-tag-admin/contracts/external-api.md#1-get-apiv1tags)）。
+`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する（[specs/039-external-tag-admin/contracts/external-api.md、`GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)）。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" \
@@ -224,7 +224,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグを統合する {#merge-tags}
 
-`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する（[§2](../../specs/039-external-tag-admin/contracts/external-api.md#2-post-apiv1tagsmerge)）。
+`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する（[契約、`POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)）。
 
 ```json
 { "targetId": 12, "sourceIds": [31, 45] }
@@ -236,7 +236,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグの名前を変える {#rename-a-tag}
 
-`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す（[§3](../../specs/039-external-tag-admin/contracts/external-api.md#3-post-apiv1tagsrename)）。
+`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す（[契約、`POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)）。
 
 - 仮のタグは名前が変わると確定タグになる。今と同じ名前は何も変えない。
 - 名前の規則に反する名前は `400` `tag_name_empty`、`tag_name_control_characters` または `tag_name_too_long` を返す。存在しない `id` は `404` `tag_not_found` を返す。
@@ -244,7 +244,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### 同義語を編集する {#edit-synonyms}
 
-`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す（[§4](../../specs/039-external-tag-admin/contracts/external-api.md#4-post-apiv1tagssynonyms)）。
+`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す（[契約、`POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)）。
 
 ```json
 { "id": 12, "action": "add", "name": "自己撮影" }
@@ -264,7 +264,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグを確定、却下、削除する {#confirm-reject-and-delete-tags}
 
-`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[§5](../../specs/039-external-tag-admin/contracts/external-api.md#5-post-apiv1tagsbatch)）。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
+`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[契約、`POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)）。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
 
 ```json
 { "action": "reject", "ids": [31, 45, 9999] }
@@ -283,8 +283,8 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 仮のタグとしての付与は、却下済みの名前を飛ばす（[タグを仮のタグとして付ける](#add-tags-as-tentative-tags)）。
 
-- `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[§6](../../specs/039-external-tag-admin/contracts/external-api.md#6-get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
-- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[§7](../../specs/039-external-tag-admin/contracts/external-api.md#7-delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
+- `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[契約、`GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
+- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[契約、`DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
 
 ### 例: 表記の揺れを統合する {#example-merge-spelling-variants}
 
