@@ -35,7 +35,7 @@ export default [
   {
     file: "folders/FolderGroupingMenu.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["max-w-80", "px-2\\.5"],
+    classes: ["max-w-80", "px-2\\.5", "size-3\\.5"],
     kind: "migration",
   },
   {
@@ -95,6 +95,12 @@ export default [
   {
     file: "player/VersionsFact.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
+    file: "player/GroupLine.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5"],
     kind: "migration",
   },
   {

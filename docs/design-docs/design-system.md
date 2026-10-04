@@ -134,7 +134,7 @@ no renaming, plus vv's own roles that shadcn lacks.
 
 Values are six-digit hex, so `web/src/theme/tokens.test.ts` can check every
 text and border pair on every surface; one dark set exists
-([library-ui.md, section 2](library-ui.md#2-dark-scheme-only-without-a-lightdark-switch)).
+([library-ui.md, Dark scheme only](library-ui.md#dark-scheme-only-without-a-lightdark-switch)).
 The tokens sit in their own file because `shadcn add` writes an upstream
 theme's variables into `index.css`, where the raw-colour scan fails them.
 

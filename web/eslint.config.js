@@ -100,7 +100,7 @@ const spacingSteps = [
 ];
 const spacingUtility = String.raw`-?(?:p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?|space-[xy]|w|h|size|min-[wh]|max-[wh]|inset(?:-[xy])?|top|right|bottom|left|start|end|translate-[xy]|basis|scroll-[mp][xytrblse]?|indent)`;
 const offScaleUtility = [
-  String.raw`${spacingUtility}-(?!(?:${spacingSteps.join("|")})$)\d+(?:\.\d+)?`,
+  String.raw`${spacingUtility}-(?!(?:${spacingSteps.join("|")})!?$)\d+(?:\.\d+)?`,
   String.raw`text-(?:[2-9]xl)`,
   String.raw`rounded(?:-[trblse]{1,2})?-(?:xl|[2-9]xl)`,
   String.raw`font-(?:thin|extralight|light|bold|extrabold|black)`,
@@ -109,14 +109,15 @@ const offScaleMessage =
   "Step outside the design-system scale (web/registry/rules/foundations.md).";
 
 function restrictedClasses(allowed = []) {
-  const allow = allowed.length > 0 ? `(?!(?:${allowed.join("|")})$)` : "";
+  // 末尾（v4）と先頭（v3）の重要度の印 `!` は段階の判定から外す（`p-7!` も落とす）。
+  const allow = allowed.length > 0 ? `(?!!?(?:${allowed.join("|")})!?$)` : "";
   return [
     "error",
     {
       restrict: [
         { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
         {
-          pattern: `^${allow}${variants}(?:${offScaleUtility})$`,
+          pattern: `^${allow}${variants}!?(?:${offScaleUtility})!?$`,
           message: offScaleMessage,
         },
       ],

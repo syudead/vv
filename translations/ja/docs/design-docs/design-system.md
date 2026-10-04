@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 2140328eb6d64be893619ec0b760f50daaa142c20221bfbc664d2b6ab6e8ccb2
+sourceHash: 9c910ba600ee16a3f950f50c4e932cb8f68e18470c6897c5ae4d2bda78b74945
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -96,7 +96,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | `destructive`、`warning`、`success`（それぞれ `-foreground` と `-soft` を伴う）、`destructive-strong` | 状態。必ず言葉とアイコンを伴う |
 | `favorite`、`overlay` | お気に入りのハートだけ。唯一の半透明の色で、ダイアログの背後とサムネイルの上に使う |
 
-値は 6 桁の 16 進数なので、`web/src/theme/tokens.test.ts` はすべての面の上の文字と枠線の組をすべて確かめられる。暗色のセットは 1 つだ（[library-ui.md、2 節](library-ui.md#2-dark-scheme-only-without-a-lightdark-switch)）。トークンを専用のファイルに置くのは、`shadcn add` が上流のテーマの変数を `index.css` に書き込み、そこでは生の色の走査がそれらを失敗にするからだ。
+値は 6 桁の 16 進数なので、`web/src/theme/tokens.test.ts` はすべての面の上の文字と枠線の組をすべて確かめられる。暗色のセットは 1 つだ（[library-ui.md、Dark scheme only](library-ui.md#dark-scheme-only-without-a-lightdark-switch)）。トークンを専用のファイルに置くのは、`shadcn add` が上流のテーマの変数を `index.css` に書き込み、そこでは生の色の走査がそれらを失敗にするからだ。
 
 尺度は閉じている。
 
