@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/windows-app.md
-sourceHash: 5436baf73834aab05ab7d822b84fc86b003f97517847813351ef36e4c7f0794e
+sourceHash: 1067e0932f697566fe7523d950740541e03e2e30344866f72dcc034eb71130ea
 ---
 
 # Windows デスクトップアプリ (VVMDM.exe) {#windows-desktop-app-vvmdmexe}
@@ -219,7 +219,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  tag[v* タグまたは dispatch] --> build[Linux ジョブが zip をビルド]
+  tag[v* タグ、main への push または dispatch] --> build[Linux ジョブが zip をビルド]
   build --> verify[Windows ジョブが zip を確認]
   verify --> tagged{タグ?}
   tagged -->|はい| release[Release に添付]
@@ -235,7 +235,8 @@ flowchart LR
 | exe のマニフェスト | Per-monitor v2 の DPI と Common Controls v6。`cmd/mdm/winres/` から `go-winres` (`tools/go.mod` で固定) を通して作る |
 | `.syso` | ビルド中に生成し、その後削除する。コミットはしない |
 | FFmpeg の入手元 | `scripts/build/windows_app.go` で固定したバージョンと SHA-256 の `GyanD/codexffmpeg` `essentials_build` zip |
-| FFmpeg のキャッシュ | `dist/cache/`。使うたびにハッシュを計算し直し、一致しなければ削除して、期待値と実際のハッシュを示して失敗する |
+| FFmpeg のキャッシュ | `dist/cache/`。使うたびにハッシュを計算し直し、一致しなければ削除して、期待値と実際のハッシュを示して失敗する。ワークフローでは Actions のキャッシュに保持し、ダウンロード元が原因で `main` が赤にならないようにする |
+| `main` での実行 | push のたびに zip をビルドして確認するが、アーティファクトとして残すだけだ。新しい push は実行中のものを取り消し、タグでの実行は決して取り消さない |
 | ハードウェアエンコーダー | [hardware-encoding.md](hardware-encoding.md) と同じく NVENC と QSV。AMF はない |
 | Windows での確認 | 構成と、`ffmpeg -hide_banner -encoders` が `h264_nvenc` と `h264_qsv` を挙げること。GPU での変換は実機で確認する ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
 | Release | ないときは作り、あるときは zip を置き換える |
@@ -245,7 +246,7 @@ flowchart LR
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| `main` への push ごとの zip | ユーザーに見えるバージョンの区切りがない (R-13) |
+| `main` への push ごとの Release | ユーザーに見えるバージョンの区切りがない (R-13)。`main` は zip をビルドして確認するだけだ |
 | `windows/arm64` も対象にする | 固定できる arm64 の `ffmpeg` がなく、x64 の exe はエミュレーションで動く (R-13) |
 | BtbN/FFmpeg-Builds の `ffmpeg` | バージョンごとの固定された Release がないので、固定したものを後で取得できない (R-12) |
 | `.syso` をコミットする | タグなしの `mdm.exe` にもアイコンとマニフェストが入り、バージョン情報が古くなる |
