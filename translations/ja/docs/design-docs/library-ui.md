@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 76270e56ea93c0592299145f88be396f68fde6f6b713cb7f81b5c3fe8cb214ce
+sourceHash: 1791a896d2e0a54fb97b0b0a3d6082afe465eede24257aa17f5405c2693e1168
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -106,7 +106,7 @@ jsdom は CSS を適用しないので、`position: fixed`、メディアクエ�
 
 ## 一覧のレイアウト {#list-layout}
 
-一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードで、ライブラリとフォルダのページが 1 つのグリッド（[`Grid.tsx`](../../web/src/videoList/Grid.tsx)）を通して共有する。
+一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードである。ライブラリのページはカードを [`Grid.tsx`](../../web/src/videoList/Grid.tsx) で並べ、フォルダのページはレジストリのカードグリッド（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)）で並べる。
 
 図は一覧画面の部品を示す。
 
