@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/research.md
-sourceHash: 04ee5f5218476451a8335fc367caeba7ebd85c8aef17c0cba737e89e6ff7bc08
+sourceHash: 2595ed247f83971817fd3cbd1a50291c0a607b0296be1de1ef2634748233debf
 ---
 
 # 調査: shadcn/ui 上の vv デザインシステム {#research-vv-design-system-on-shadcnui}
@@ -98,7 +98,7 @@ flowchart LR
 
 ## R-7: エージェントは AGENTS.md、リポジトリに取り込んだスキル、MCP サーバーを通じてレジストリにたどり着く {#r-7-agents-reach-the-registry-through-agentsmd-a-vendored-skill-and-an-mcp-server}
 
-**決定**: `AGENTS.md` に、UI の作業を `docs/design-docs/design-system.md` へ案内する 1 行を足す。この文書はレジストリ、`vv` 索引アイテム、規則を挙げる。公式の shadcn スキルは固定したコミットで `.agents/skills/shadcn/` に取り込む (`.claude/skills` はそこへリンクする)。固定した devDependency から実行する shadcn MCP サーバーを、Claude 向けには `.mcp.json` に、Codex 向けには `.codex/config.toml` に登録する。`sdd-design`、`sdd-implement`、`design` のリファレンスは UI の作業をデザインシステムへ送り、`ui-design.md` がレジストリのコンポーネントとパターンを組み合わせるように指示し、足りないものは先にデザインシステムに追加させる (要件 6)。
+**決定**: `AGENTS.md` に、UI の作業を `docs/design-docs/design-system.md` へ案内する 1 行を足す。この文書はレジストリ、`vv` 索引アイテム、規則を挙げる。公式の shadcn スキルは固定したコミットで `.agents/skills/shadcn/` に取り込む (`.claude/skills` はそこへリンクする)。ローカルの変更は 1 つだけで、すべての `npx shadcn@latest` を `npm --prefix web exec shadcn --` に置き換える。これで、スキルに従うエージェントは固定した devDependency を実行する (R-4)。取り込んだスキルが `shadcn@` を含むと Vitest のテストが失敗する。同じく固定した devDependency から実行する shadcn MCP サーバーを、Claude 向けには `.mcp.json` に、Codex 向けには `.codex/config.toml` に登録する。`sdd-design`、`sdd-implement`、`design` のリファレンスは UI の作業をデザインシステムへ送り、`ui-design.md` がレジストリのコンポーネントとパターンを組み合わせるように指示し、足りないものは先にデザインシステムに追加させる (要件 6)。
 
 図は、`AGENTS.md` から始めたエージェントがアイテムにたどり着く道を示す。
 
@@ -115,7 +115,8 @@ flowchart LR
 
 | 案 | 判定 |
 | --- | --- |
-| **固定したコミットでリポジトリに取り込んだスキル** | 採用 |
+| **固定したコミットでリポジトリに取り込み、固定した CLI を呼ぶスキル** | 採用 |
+| 取り込んだスキルを変更しない | 不採用: スキルは `npx shadcn@latest` を実行する。これはネットワークを必要とし、上流が最後に公開したスキーマでレジストリを読む |
 | セッション開始時の `npx skills add shadcn/ui` | 不採用: 毎回のセッションでネットワークが要り、レビューなしに上流に追従する |
 | shadcn スキルを使わず、自分たちの規則だけ | 不採用: 要件 5 がスキルを指定している |
 

@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/plan.md
-sourceHash: 28a5d3c1847e78460c2f9acec9e00b9c0d3774433e894fc8a8e29ddf0f10b288
+sourceHash: 06500b4ce63ac91a2efaa7c6a5171cdcdb2aa8fc1df74c4665e1ab2a0ae2058b
 ---
 
 # 実装計画: shadcn/ui 上の vv デザインシステムを、AI による実装の参照先として使う {#implementation-plan-vv-design-system-on-shadcnui-used-as-the-reference-for-ai-implementation}
@@ -116,7 +116,7 @@ specs/038-design-system/
 | `docs/design-docs/library-ui.md` | 1 節と 2 節を最終的なトークンファイルとテーマのリセットに合わせて更新する | 旧トークンを削除し、Tailwind をデザインシステムのスケールに限る |
 | `ARCHITECTURE.md` | Web 層: `ui/` の行とトークンの場所 | shadcn/ui と vv レジストリを設定し、エージェントをそこへ案内する |
 | `docs/design-docs/tech-stack-selection.md` | shadcn/ui と Radix | shadcn/ui と vv レジストリを設定し、エージェントをそこへ案内する |
-| `docs/how-to/dependency-updates.md` | リポジトリに取り込んだ shadcn スキルの更新 | shadcn/ui と vv レジストリを設定し、エージェントをそこへ案内する |
+| `docs/how-to/dependency-updates.md` | リポジトリに取り込んだ shadcn スキルの更新と、固定した CLI を呼ぶ変更の再適用 | shadcn/ui と vv レジストリを設定し、エージェントをそこへ案内する |
 
 ## 実装作業 {#implementation-work}
 
@@ -148,7 +148,7 @@ flowchart LR
 
 **依存**: なし
 
-**受け入れ**: `web/` で `npx shadcn view ./registry/r/vv.json` がアイテムを一覧する。`task check` と `task test-e2e` が画面の変化なしで通る。`task generate` を実行せずにコンポーネントを編集すると `generate-check` が失敗する。`/design-system` は `task dev` で開け、`task build` の出力には含まれない。
+**受け入れ**: `web/` で `npx shadcn view ./registry/r/vv.json` がアイテムを一覧する。`task check` と `task test-e2e` が画面の変化なしで通る。リポジトリに取り込んだスキルに `npx shadcn@latest` を戻すと `task test-web` が失敗する。`task generate` を実行せずにコンポーネントを編集すると `generate-check` が失敗する。`/design-system` は `task dev` で開け、`task build` の出力には含まれない。
 
 ### 素のコントロール、任意値、未知の Tailwind クラスで lint を失敗させる {#fail-lint-on-raw-controls-arbitrary-values-and-unknown-tailwind-classes}
 

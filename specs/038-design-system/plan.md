@@ -130,7 +130,7 @@ creates `design-system.md` with every heading below.
 | `docs/design-docs/library-ui.md` | Sections 1 and 2 updated to the final token file and theme reset | Remove the legacy tokens and limit Tailwind to the design-system scale |
 | `ARCHITECTURE.md` | Web layer: `ui/` row and token location | Set up shadcn/ui and the vv registry, and route agents to it |
 | `docs/design-docs/tech-stack-selection.md` | shadcn/ui and Radix | Set up shadcn/ui and the vv registry, and route agents to it |
-| `docs/how-to/dependency-updates.md` | Updating the vendored shadcn skill | Set up shadcn/ui and the vv registry, and route agents to it |
+| `docs/how-to/dependency-updates.md` | Updating the vendored shadcn skill and reapplying its pinned-CLI change | Set up shadcn/ui and the vv registry, and route agents to it |
 
 ## Implementation Work
 
@@ -170,7 +170,8 @@ and this unit's rows in [Documentation ownership](#documentation-ownership).
 **Dependencies**: None
 
 **Acceptance**: `npx shadcn view ./registry/r/vv.json` in `web/` lists the
-items; `task check` and `task test-e2e` pass with no screen change; editing a
+items; `task check` and `task test-e2e` pass with no screen change;
+putting `npx shadcn@latest` back into the vendored skill fails `task test-web`; editing a
 component without `task generate` fails `generate-check`; `/design-system`
 opens under `task dev` and is absent from `task build` output.
 

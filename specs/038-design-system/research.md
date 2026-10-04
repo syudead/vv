@@ -134,8 +134,11 @@ reasons, and links the rules instead of repeating them.
 **Decision**: `AGENTS.md` gains one line pointing UI work to
 `docs/design-docs/design-system.md`, which names the registry, the `vv` index
 item and the rules. The official shadcn skill is vendored at a pinned commit
-into `.agents/skills/shadcn/` (`.claude/skills` links there). The shadcn MCP
-server, run from the pinned devDependency, is registered for Claude in
+into `.agents/skills/shadcn/` (`.claude/skills` links there), with one local
+change: every `npx shadcn@latest` becomes `npm --prefix web exec shadcn --`,
+so an agent following the skill runs the pinned devDependency (R-4). A Vitest
+test fails when the vendored skill contains `shadcn@`. The shadcn MCP server,
+also run from the pinned devDependency, is registered for Claude in
 `.mcp.json` and for Codex in `.codex/config.toml`. `sdd-design`,
 `sdd-implement` and the `design` reference send UI work to the design system,
 and tell `ui-design.md` to compose registry components and patterns, adding
@@ -156,7 +159,8 @@ flowchart LR
 
 | Option | Verdict |
 | --- | --- |
-| **Vendored skill at a pinned commit** | Chosen |
+| **Vendored skill at a pinned commit, calling the pinned CLI** | Chosen |
+| Vendored skill unchanged | Rejected: the skill runs `npx shadcn@latest`, which needs the network and reads the registry with whatever schema upstream released last |
 | `npx skills add shadcn/ui` at session start | Rejected: needs the network every session and follows upstream without review |
 | No shadcn skill, our rules only | Rejected: requirement 5 names the skill |
 
