@@ -1,6 +1,6 @@
 ---
 source: specs/036-tag-admin-scale/ui-design.md
-sourceHash: 6d6d252e19f5bc97742164ba26a0aaad31689815ce860735ad81ccff547921ed
+sourceHash: 73252325b44cc2b89cb9baf40c26e4ea4ed4e854390557e26ceead783dc2c91c
 ---
 
 # UI 設計: 数千から数万のタグでも管理できるタグ管理画面 {#ui-design-tag-admin-screen-that-stays-manageable-with-thousands-to-tens-of-thousands-of-tags}
@@ -11,7 +11,7 @@ sourceHash: 6d6d252e19f5bc97742164ba26a0aaad31689815ce860735ad81ccff547921ed
 
 | 項目 | 出典 |
 | --- | --- |
-| 色、操作の状態、幅のブレークポイント、一覧のレイアウト、選択バーの形 | [Library UI](../../docs/design-docs/library-ui.md) ([視覚値は CSS の 1 か所に置き、コントラストはテストで保証する](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)、[仮想スクロールは使わない](../../docs/design-docs/library-ui.md#no-virtual-scrolling)、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)、[一覧のレイアウト](../../docs/design-docs/library-ui.md#list-layout)) |
+| 色、操作の状態、幅のブレークポイント、一覧のレイアウト、選択バーの形 | [Library UI](../../docs/design-docs/library-ui.md) ([視覚値は CSS の 1 か所に置き、コントラストはテストで保証する](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)、[長い一覧の仮想スクロール](../../docs/design-docs/library-ui.md#virtual-scrolling-of-long-lists)、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)、[一覧のレイアウト](../../docs/design-docs/library-ui.md#list-layout)) |
 | 役割のトークン | [`web/src/index.css`](../../web/src/index.css) の `@theme`。名前で参照し、値をコピーしない |
 | テスト対象のコントラストの組 | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | タグ管理画面の骨格 (本文の幅、行の列と書式、作成と名前の変更、同義語のダイアログ、削除のダイアログ、状態の表) | [specs/014-video-tags/ui-design.md "Tag management page"](../014-video-tags/ui-design.md#tag-management-page) と現在の [`web/src/tags/`](../../web/src/tags/) |

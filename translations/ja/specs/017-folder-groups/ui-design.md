@@ -1,13 +1,13 @@
 ---
 source: specs/017-folder-groups/ui-design.md
-sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
+sourceHash: b800d7541da0c46a1be65e2b2798b1b97c136f2ea2bf0e33d7181d01f7f4fc61
 ---
 
 # UI 設計: フォルダのグループを 1 件として一覧に出し、続けて再生する {#ui-design-listing-a-folder-group-as-one-entry-and-playing-it-continuously}
 
 **機能**: [親 Issue #326](https://github.com/syudead/vv/issues/326)
 
-出典: 見た目の規則、シェル、一覧の密度は [ライブラリ UI: 見た目の規則と一覧の構造](../../docs/design-docs/library-ui.md) と [`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。動画ページの構造と再生終了のレイヤーは [012 の ui-design.md](../012-video-detail-ia/ui-design.md) に従う。フォルダ画面の構造は [011 の ui-design.md](../011-folder-browser/ui-design.md) と [013 の ui-design.md「フォルダ画面」](../013-library-search/ui-design.md#folder-screen) に従う。タグチップ、選択バー、コンボボックスは [014 の ui-design.md](../014-video-tags/ui-design.md) に従う。ゲスト向けの縮退は [016 の ui-design.md「ゲスト向けの縮退」](../016-single-account-auth/ui-design.md#guest-degradation) に従う。画面が使う応答とルートは [contracts/library-api.md](contracts/library-api.md) と [contracts/folder-groups-api.md](contracts/folder-groups-api.md) で決まっており、グループの視聴状態と開くメンバーの決め方は [data-model.md §6](data-model.md#6-group-watch-state-and-the-member-to-open) にある。この文書はそれらを蒸し返さない。
+出典: 見た目の規則、シェル、一覧の密度は [ライブラリ UI: 見た目の規則と一覧の構造](../../docs/design-docs/library-ui.md) と [`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。動画ページの構造と再生終了のレイヤーは [012 の ui-design.md](../012-video-detail-ia/ui-design.md) に従う。フォルダ画面の構造は [011 の ui-design.md](../011-folder-browser/ui-design.md) と [013 の ui-design.md「フォルダ画面」](../013-library-search/ui-design.md#folder-screen) に従う。タグチップ、選択バー、コンボボックスは [014 の ui-design.md](../014-video-tags/ui-design.md) に従う。ゲスト向けの縮退は [016 の ui-design.md「ゲスト向けの縮退」](../016-single-account-auth/ui-design.md#guest-degradation) に従う。画面が使う応答とルートは [contracts/library-api.md](contracts/library-api.md) と [contracts/folder-groups-api.md](contracts/folder-groups-api.md) で決まっており、グループの視聴状態と開くメンバーの決め方は [data-model.md、グループの視聴状態と開くメンバー](data-model.md#group-watch-state-and-the-member-to-open) にある。この文書はそれらを蒸し返さない。
 
 この文書が定めるのは、グループカード、フォルダ由来のタグの区別、動画ページのメンバー一覧と自動再生の通知、フォルダ画面と動画ページのまとめ方の操作が、既存の画面に**加えるもの、または変えるもの**だけである。色、角丸、影のトークンは新しく加えず、`tokens.test.ts` の `pairs` にも何も加えない (後述の「アクセシビリティ」)。
 
@@ -20,7 +20,7 @@ sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
 | 選択バー | `N 件を選択中` の N と `タグを外す` の候補が変わる (要件 21 と 13)。操作の並びは変わらない |
 | 動画ページ (`/videos/:id`) | グループのメンバーを開いたときだけ: 題名の上の 1 行 (「グループの行」)、関連動画の列の上のメンバー一覧と区切り (「メンバー一覧」)、再生終了時の通知 (「自動再生の通知」)。グループ外の動画のページは変わらない (要件 27 の後半、受け入れ条件 17) |
 | フォルダ画面 (`/folders/{rootId}/…`) | `動画 N` 見出し行の右端のまとめ方メニュー (「フォルダのまとめ方メニュー」)。一覧は引き続き動画を 1 本ずつ表示する (要件 22)。最上位 (`/folders`) と検索結果には何も加えない |
-| ゲスト | グループカードは視聴状態と視聴済みの本数を省く。まとめ方メニュー、動画ページのメニュー、タグは表示しない ([data-model.md §7](data-model.md#7-visibility-per-audience)) |
+| ゲスト | グループカードは視聴状態と視聴済みの本数を省く。まとめ方メニュー、動画ページのメニュー、タグは表示しない ([data-model.md、利用者ごとの見え方](data-model.md#visibility-per-audience)) |
 
 ## グループカード {#group-card}
 
@@ -98,7 +98,7 @@ sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
 | 項目 | 動作 |
 | --- | --- |
 | `まとめを解除` (lucide の `Ungroup`) | `PUT /api/folders/{rootId}/grouping`、`mode: ungroup` |
-| `グループをタグに変える` (lucide の `Tag`) | `POST /api/folders/{rootId}/grouping/tag`。`group.folder.path` が空 (登録フォルダそのもの) のときは表示しない (contracts/folder-groups-api.md §2) |
+| `グループをタグに変える` (lucide の `Tag`) | `POST /api/folders/{rootId}/grouping/tag`。`group.folder.path` が空 (登録フォルダそのもの) のときは表示しない (contracts/folder-groups-api.md、[グループをタグに変える](contracts/folder-groups-api.md#turning-a-group-into-a-tag)) |
 
 - `直下をまとめる` はない。動画ページが表示するのはすでにグループなので、意味をなさない。
 - メニューが開いている間、Esc はメニューを閉じるだけでページは閉じない。フォーカスはトリガーに戻る (`ui/Menu` の既定)。動画ページは Esc を `window` のキャプチャ段階で受け取るので、開いた `ui/Menu` (`role="menu"`) を、今の除外 (速度メニュー、ポップオーバー) と同じく除外に加える。これは 012 の「操作の詳細」にある Esc の例外をもう 1 つ増やす。
@@ -134,8 +134,10 @@ sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
 | 途中まで視聴 | 今と同じ下部の進捗バー |
 | **再生中** | リンクではない。`aria-current="true"`、面 `bg-active-wash`、左に `border-l-2 border-accent` (行の `-m-1.5 p-1.5` の輪郭の左端) を持つ行。題名の前に視覚的に隠した `再生中` を置く。操作できないので、ホバーの面は変わらない |
 
-- **区切り**: メンバー一覧と関連動画の間に `border-t border-border` の線を 1 本引き、その上下に `pt-5` と `pb-2` を置く (行間の `gap-3` より 1 段大きい。`UI品質` の「余白のリズム」)。線の下は `h2` の `関連動画` (今の見出し)、続けて今の関連動画 (同じグループのメンバーは含まない。contracts/folder-groups-api.md §3)。関連動画が 0 本なら、区切りも `関連動画` の見出しも現れない。
-- `lg` 以上でのスクロール: 012 と同じく、列の最初の見出し行 (ここでは `続けて再生`) は上端にとどまり、その下のすべて (メンバー一覧 → 区切り → `関連動画` → 関連動画) は 1 つのコンテナの中でスクロールする。ページを開いたとき (別のメンバーへの移動を含む)、`scrollIntoView({ block: "nearest" })` でコンテナだけをスクロールし、現在のメンバーの行をその中に見せる (Edge Case `大きなグループ`、受け入れ条件 `数百本`)。ページと左の列は動かない。`lg` 未満ではページは動かない (プレーヤーが画面の上端から外れてしまう)。
+- **区切り**: メンバー一覧と関連動画の間に `border-t border-border` の線を 1 本引き、その上下に `pt-5` と `pb-2` を置く (行間の `gap-3` より 1 段大きい。`UI品質` の「余白のリズム」)。線の下は `h2` の `関連動画` (今の見出し)、続けて今の関連動画 (同じグループのメンバーは含まない。contracts/folder-groups-api.md、[動画のグループと関連動画](contracts/folder-groups-api.md#groups-of-videos-and-related-videos))。関連動画が 0 本なら、区切りも `関連動画` の見出しも現れない。
+- `lg` 以上でのスクロール: 012 と同じく、列の最初の見出し行 (ここでは `続けて再生`) は上端にとどまり、その下のすべて (メンバー一覧 → 区切り → `関連動画` → 関連動画) は 1 つのコンテナの中でスクロールする。ページを開いたとき (別のメンバーへの移動を含む)、コンテナだけがスクロールし、現在のメンバーの行をその中に見せる (Edge Case `大きなグループ`、受け入れ条件 `数百本`)。ページと左の列は動かない。`lg` 未満ではページは動かない (プレーヤーが画面の上端から外れてしまう)。
+- 描画する行: 読み込んだメンバーのうち見えている範囲の近くだけを、上下にさらに 4 行ずつ加えて描画する。範囲は `lg` 以上ではコンテナを、`lg` 未満ではページを基準に測る (#675)。現在のメンバーの行とフォーカスのある行は描画したまま保つ。
+- `3 / 12` の位置はボタンだ。押すと、どの幅でも現在のメンバーの行を見える位置へスクロールする (`lg` 以上ではコンテナ、`lg` 未満ではページ)。遠くまでスクロールした視聴者もそこへ戻れる。
 - **窓の外の読み込み**: 順番の番号と `3 / 12` は、窓の中ではなくグループ全体 (`offset` と `total`) で数える。
 
   | 端 | `lg` 以上 | `lg` 未満 |
@@ -162,7 +164,7 @@ sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
 | --- | --- |
 | 1 行目 | `text-xs font-semibold text-accent` の `続けて再生`、その右に `text-xs text-fg-muted tabular-nums` の `5 秒後` (残り秒数、1 秒ごとに減る) |
 | 次のメンバーへのリンク | サムネイル (`w-56`、`sm` 未満では隠す) と題名 (`text-base font-semibold`、2 行に切り詰め)。今の `次の動画` と同じ形 |
-| カウントダウンのバー | 全幅の `h-1 rounded-full bg-fg-subtle/50` の溝で、`bg-accent` の残りが 5 秒かけて右から縮む。動きを減らす設定ではバーは残るが、滑らかな縮みは止まり、秒数が減るたびに段階的に縮む (`motion-reduce:transition-none`。状態は見えたままで、止まるのは動きだけ。library-ui.md §4 と 012 の「操作の詳細」) |
+| カウントダウンのバー | 全幅の `h-1 rounded-full bg-fg-subtle/50` の溝で、`bg-accent` の残りが 5 秒かけて右から縮む。動きを減らす設定ではバーは残るが、滑らかな縮みは止まり、秒数が減るたびに段階的に縮む (`motion-reduce:transition-none`。状態は見えたままで、止まるのは動きだけ。[library-ui.md、幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) と 012 の「操作の詳細」) |
 | 操作 | **左**に副次的な `取り消す` (lucide の `X`)、その右に主要な `今すぐ再生` (`Play`)。DOM の順も同じなので、Tab は先に `取り消す` に着く (`UI品質` の「操作の優先度」) |
 
 - カウントダウンは通知が現れてから 5 秒である。0 になると次のメンバーを開き (`state.from` を引き継ぐ)、再生を始める。
@@ -196,12 +198,12 @@ sourceHash: 76a62c16d25c908f1ea060f03ccddae172283801680ce5b4b9a2b57c90ce59b2
   - `MenuLabel` の `ライブラリでのまとめ方`
   - `MenuRadioGroup` (今の `grouping.mode`): `自動` (`auto`)、`まとめを解除` (`ungroup`)、`直下をまとめる` (`groupDirect`)。項目の右に説明は置かない。下の行が説明する。
   - `text-xs text-fg-muted` の 1 行 `自動: 登録フォルダより下で、子フォルダが無く動画が 2 本以上のフォルダをまとめる` (`MenuLabel` と同じ余白、操作できない)。要件 2 の 3 つの条件をすべて述べるので、登録フォルダ自身の画面でも、`自動` がそのフォルダをまとめないことが読める。
-  - `taggable` が true のときだけ、区切りと `グループをタグに変える` (lucide の `Tag`)。false のときは項目がない (contracts/folder-groups-api.md §2)。無効にした項目を残す案は採らない。登録フォルダそのものについては、理由を 1 行で示せない。
+  - `taggable` が true のときだけ、区切りと `グループをタグに変える` (lucide の `Tag`)。false のときは項目がない (contracts/folder-groups-api.md、[グループをタグに変える](contracts/folder-groups-api.md#turning-a-group-into-a-tag))。無効にした項目を残す案は採らない。登録フォルダそのものについては、理由を 1 行で示せない。
 - ラジオを選ぶと `PUT /api/folders/{rootId}/grouping` を送り、応答の `grouping` からトリガーの文言とラジオを更新する。トーストはない。変わった文言が結果である。同じ値を再び選んでも送る (200)。
 - `グループをタグに変える` は `POST …/grouping/tag` を送り、トーストで知らせる (「グループの行」と同じ文言)。トリガーは応答の `grouping` (`ungroup`) から更新する。
 - どちらも応答でライブラリのスナップショットを破棄する (Structural Decisions 10)。次にライブラリを開くと、再スキャンなしでカードが変わる (受け入れ条件 3、4、5)。
 - ラジオの変更ではフォルダ画面の一覧を読み直さない。一覧は引き続き動画を 1 本ずつ表示し、内容は変わらない (`FolderSummary` の `grouping` だけを応答から置き換える)。
-- タグへの変換に成功すると、`grouping` を置き換え、フォルダ画面の動画一覧も読み直す (スクロール位置は保つ)。タグができると、中の動画は次の読み込みからフォルダ由来のタグを持つ (data-model.md §4) が、画面上のカードの `tags` は応答に含まれず古いまま残ってしまう (これで要件 11 の結果をその場で示す)。
+- タグへの変換に成功すると、`grouping` を置き換え、フォルダ画面の動画一覧も読み直す (スクロール位置は保つ)。タグができると、中の動画は次の読み込みからフォルダ由来のタグを持つ (data-model.md、[フォルダ由来のタグ](data-model.md#folder-derived-tags)) が、画面上のカードの `tags` は応答に含まれず古いまま残ってしまう (これで要件 11 の結果をその場で示す)。
 - 送信中、トリガーは `disabled` で、アイコンは `LoaderCircle` (`animate-spin`) になる。
 - 失敗するとトーストを表示する:
 
