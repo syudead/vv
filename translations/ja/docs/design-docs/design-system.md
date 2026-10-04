@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 2cf7056cf788ed9eb46e782fadafd5556bd30e0fa5673179354d8485cad1e8a5
+sourceHash: 06528835b5dcaa3e362b827c0439a3f89e8901f94c8e016a58b1358a34ed9293
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -173,13 +173,13 @@ flowchart LR
 | --- | --- | --- |
 | `Dialog`、`AlertDialog` | `ModalFrame` | `AlertDialog` は取り消せない操作を確認する |
 | `Popover`、`DropdownMenu`、`Tooltip`、`Tabs` | `Popover`、`Menu`、`Tooltip`、`Tabs` | 層の位置は Radix が決める |
-| `Sonner` | `Toast` | アプリはすべての画面について 1 つの変更でこれに切り替える |
+| `Sonner` | `Toast` | すべての画面がこれを使う。`ui/Toast` は同時に表示する数を制限するキューだけを保つ |
 | `Badge` | `Chip`、タグのチップ、件数 | 上流のバリアントに `soft`、`warning`、`success` を加える |
 | `Skeleton`、`Progress`、`Spinner` | `Skeleton`、スキャンと視聴のバー | `Skeleton` はきらめき、`Progress` は `max` を受け取る |
 | `Alert`、`Empty` | 停滞の警告、自動再生の通知、インラインのエラー、空の状態のブロック | `Alert` は `warning` と `success` を加える |
 | `Separator`、`Kbd`、`Breadcrumb` | 区切り線、検索のキー、フォルダのパス | |
 | `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 展開、アイコンのレール、640px 未満ではドロワー |
-| `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、`videoList/FavoriteToggle` | vv のコンポーネント |
+| `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、以前の `videoList/FavoriteToggle` | vv のコンポーネント |
 
 shadcn のコンポーネントは、上流のケバブケースの名前（`dropdown-menu.tsx`）で `web/src/ui/shadcn` に、操作と入力のコンポーネントと並べて置く。上流と同じく、`Dialog` と `Sheet` は `ghost`、`icon-sm` の `Button` で閉じ、`AlertDialogAction` と `AlertDialogCancel` は `Button`（既定は `sm`）であり、`SidebarTrigger` は `Button`、`SidebarInput` は `Input` である。vv のコンポーネントは PascalCase の名前のまま `web/src/ui` に置く。`FavoriteToggle` の `page` 形式は `Tooltip` 付きの `Toggle` である。
 

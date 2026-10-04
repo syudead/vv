@@ -278,14 +278,16 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     // オフは hover・フォーカス・hover:none の端末でだけ見える（チェックと同じ条件）。
     expect(toggle.className).toContain("opacity-0");
     expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
-    // 面も枠も無く、size-7 の中に 22px の白い線のハートを影付きで置く（「Mark」「Card」）。
-    expect(toggle.className).toContain("size-7");
+    // 面も枠も無く、size-8 の中に size-5 の白い線のハートを影付きで置く（「Mark」「Card」、
+    // ui/FavoriteToggle の card）。
+    expect(toggle.className).toContain("size-8");
     expect(toggle.className).toContain("text-foreground");
     expect(toggle.className).not.toMatch(/\bbg-/);
     const heart = toggle.querySelector("svg") as SVGElement;
-    expect(heart.getAttribute("class")).toContain("size-5.5");
+    expect(heart.getAttribute("class")).toContain("size-5");
     expect(heart.getAttribute("class")).toContain("drop-shadow-mark");
-    expect(toggle.parentElement?.className).toContain("top-1.5 right-1.5");
+    expect(toggle.parentElement?.getAttribute("data-slot")).toBe("video-thumbnail-mark");
+    expect(toggle.parentElement?.getAttribute("data-corner")).toBe("top-end");
     // リンクの外、同じ article の中（チェック → リンク → 付け外し）。
     const card = toggle.closest("article") as HTMLElement;
     expect(toggle.closest("a")).toBeNull();
@@ -676,7 +678,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     const bar = screen.getByRole("region", { name: "Selection actions" });
     const names = within(bar)
       .getAllByRole("button")
-      .map((button) => button.textContent);
+      .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 1);
 

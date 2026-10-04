@@ -33,9 +33,13 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
-import TopBarPortal from "../shell/TopBarPortal";
+import { DataTable } from "../ui/patterns/data-table";
+import { ListPage } from "../ui/patterns/list-page";
+import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import { LoadingState } from "../ui/patterns/loading-state";
+import { PageHeader } from "../ui/patterns/page-header";
+import { TableBody, TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
 import { useToast } from "../ui/Toast";
-import Skeleton from "../ui/Skeleton";
 import {
   criteriaKey,
   type HistoryMode,
@@ -43,13 +47,7 @@ import {
   newSeed,
 } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
-import {
-  CardSkeleton,
-  GuestEmpty,
-  LoadFailed,
-  LoadMoreFailed,
-  NoMatches,
-} from "../videoList/states";
+import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
@@ -422,8 +420,7 @@ export default function LibraryPage() {
     if (top === undefined || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
-    // 初回の描画では TopBarPortal がツールバーを本文の流れに置き、直後にトップバーへ
-    // 移す。その分だけ本文が縮み、スクロールの追従で位置がずれるので、描画の前に
+    // 画像や行の高さが決まる前の 1 フレームで位置がずれることがあるので、次の描画の前に
     // もう一度合わせる（フォルダ画面と同じ）。
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [items.length]);
@@ -626,9 +623,92 @@ export default function LibraryPage() {
     tagsRow: renderTagsRow,
   });
 
+  const body = initialLoadFailed ? (
+    <LoadFailed reason={error} onRetry={reload} />
+  ) : empty ? (
+    conditioned ? (
+      <NoMatches onSearch={() => searchField.current?.focus()} />
+    ) : owner ? (
+      <EmptyLibrary onScan={scan.start} scanning={scan.running} />
+    ) : (
+      <GuestEmpty />
+    )
+  ) : loading ? (
+    <LoadingState
+      label={t.list.loading}
+      layout={view === "grid" ? "grid" : "table"}
+      size={zoom}
+      count={view === "grid" ? skeletonCount : 6}
+    />
+  ) : (
+    <div ref={list} onClick={saveSnapshot}>
+      {view === "grid" ? (
+        // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+        <TagRowMeasureProvider>
+          <Grid zoom={zoom}>
+            {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+                見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
+            {items.map((item) =>
+              item.kind === "video" ? (
+                <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+              ) : (
+                <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+              ),
+            )}
+          </Grid>
+        </TagRowMeasureProvider>
+      ) : (
+        <DataTable label={t.library.title}>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              {owner && <TableHead className="w-10" />}
+              <TableHead className="w-list-thumb-cell" />
+              <TableHead className="pr-4">{t.library.columns.title}</TableHead>
+              {owner && <TableHead className="w-8" />}
+              <TableHead className="hidden w-16 pr-4 sm:table-cell" />
+              <TableHead className="w-list-number pr-4 text-right">
+                {t.library.columns.duration}
+              </TableHead>
+              <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
+                {t.library.columns.quality}
+              </TableHead>
+              <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
+                {t.library.columns.size}
+              </TableHead>
+              <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
+                {t.library.columns.added}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((item) =>
+              item.kind === "video" ? (
+                <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
+              ) : (
+                <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
+              ),
+            )}
+          </TableBody>
+        </DataTable>
+      )}
+    </div>
+  );
+
   return (
-    <div className="flex w-full flex-col gap-3 px-3 pt-3 pb-selection-bar-clearance sm:px-4">
-      <TopBarPortal>
+    <ListPage
+      header={
+        <PageHeader
+          title={t.library.title}
+          count={
+            initialLoadFailed ? undefined : (
+              <span role="status" aria-label={t.library.resultsLabel} aria-live="polite">
+                {resultStatus}
+              </span>
+            )
+          }
+        />
+      }
+      toolbar={
         <LibraryToolbar
           query={query}
           onQueryCommit={commitQuery}
@@ -651,138 +731,40 @@ export default function LibraryPage() {
           }}
           zoom={zoom}
           onZoomChange={changeZoom}
+          activeFilters={
+            tagIds.length > 0 && (
+              <ActiveTagFilters
+                tagIds={tagIds}
+                onRemove={removeActiveTag}
+                searchFieldRef={searchField}
+              />
+            )
+          }
         />
-      </TopBarPortal>
-
-      <div className="flex min-w-0 items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          {t.library.title}
-        </h1>
-        {!initialLoadFailed && (
-          <p
-            role="status"
-            aria-label={t.library.resultsLabel}
-            aria-live="polite"
-            className="shrink-0 text-xs text-muted-foreground tabular-nums sm:text-sm"
-          >
-            {resultStatus}
-          </p>
-        )}
-      </div>
-
-      {tagIds.length > 0 && (
-        <ActiveTagFilters
-          tagIds={tagIds}
-          onRemove={removeActiveTag}
-          searchFieldRef={searchField}
-        />
-      )}
-
-      {initialLoadFailed && <LoadFailed reason={error} onRetry={reload} />}
-
-      {empty &&
-        (conditioned ? (
-          <NoMatches onSearch={() => searchField.current?.focus()} />
-        ) : owner ? (
-          <EmptyLibrary onScan={scan.start} scanning={scan.running} />
-        ) : (
-          <GuestEmpty />
-        ))}
-
-      <div ref={list} onClick={saveSnapshot}>
-        {view === "grid" ? (
-          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-          <TagRowMeasureProvider>
-            <Grid zoom={zoom}>
-              {loading ? (
-                <CardSkeleton count={skeletonCount} />
-              ) : (
-                // グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
-                // 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。
-                items.map((item) =>
-                  item.kind === "video" ? (
-                    <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-                  ) : (
-                    <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-                  ),
-                )
-              )}
-              {loadingMore && <CardSkeleton count={6} />}
-            </Grid>
-          </TagRowMeasureProvider>
-        ) : loading ? (
-          <div
-            aria-hidden="true"
-            className="space-y-2 rounded-md border border-border bg-card p-3"
-          >
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="flex items-center gap-3 py-1">
-                <Skeleton className="aspect-video w-list-thumb shrink-0" />
-                <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <Skeleton className="h-4 w-3/5" />
-                  <Skeleton className="h-3 w-1/3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          items.length > 0 && (
-            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-md border border-border bg-card">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground">
-                  {owner && <th className="w-10" />}
-                  <th className="w-list-thumb-cell py-2" />
-                  <th className="py-2 pr-4 font-medium">{t.library.columns.title}</th>
-                  {owner && <th className="w-8 py-2" />}
-                  <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
-                  <th className="w-list-number py-2 pr-4 text-right font-medium">
-                    {t.library.columns.duration}
-                  </th>
-                  <th className="hidden w-list-number py-2 pr-4 text-right font-medium md:table-cell">
-                    {t.library.columns.quality}
-                  </th>
-                  <th className="hidden w-list-number-wide py-2 pr-4 text-right font-medium md:table-cell">
-                    {t.library.columns.size}
-                  </th>
-                  <th className="hidden w-list-date py-2 pr-3 text-right font-medium lg:table-cell">
-                    {t.library.columns.added}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="[&>tr:nth-child(odd)]:bg-accent/40">
-                {items.map((item) =>
-                  item.kind === "video" ? (
-                    <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
-                  ) : (
-                    <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
-                  ),
-                )}
-              </tbody>
-            </table>
-          )
-        )}
-      </div>
-
+      }
+      selectionBar={
+        owner && (
+          <SelectionBar
+            count={selectedIds.size}
+            allSelected={allSelected}
+            selectedIds={selectedIdsArray}
+            favoriteVideoIds={favoriteSelection.videoIds}
+            favoriteFolders={favoriteSelection.folders}
+            selectingAll={selectingAll}
+            onSelectAll={selectAll}
+            onClear={clearSelection}
+            onTagRemoved={onTagRemoved}
+            onBundled={onBundled}
+          />
+        )
+      }
+    >
+      {body}
+      {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
       {error !== null && items.length > 0 && (
         <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
       )}
-
       <div ref={sentinel} aria-hidden="true" className="h-px" />
-
-      {owner && (
-        <SelectionBar
-          count={selectedIds.size}
-          allSelected={allSelected}
-          selectedIds={selectedIdsArray}
-          favoriteVideoIds={favoriteSelection.videoIds}
-          favoriteFolders={favoriteSelection.folders}
-          selectingAll={selectingAll}
-          onSelectAll={selectAll}
-          onClear={clearSelection}
-          onTagRemoved={onTagRemoved}
-          onBundled={onBundled}
-        />
-      )}
-    </div>
+    </ListPage>
   );
 }

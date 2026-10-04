@@ -258,9 +258,12 @@ test.describe.serial("guest", () => {
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "List" })
       .click();
-    const groupCells = page.locator("tr[data-group-root]").first().locator("td:visible");
-    await expect(groupCells.first()).toHaveCSS("border-bottom-width", "1px");
-    await expect(groupCells.last()).toHaveCSS("border-bottom-width", "1px");
+    // 表は枠のある DataTable に入り、行はその中に並ぶ。
+    await expect(page.locator("tr[data-group-root]")).toHaveCount(1);
+    await expect(page.locator('[data-slot="data-table"]')).toHaveCSS(
+      "border-bottom-width",
+      "1px",
+    );
     await page
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "Grid" })

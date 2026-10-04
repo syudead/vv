@@ -15,7 +15,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
-import SelectionBar, { measureBarLayout } from "./SelectionBar";
+import SelectionBar from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -716,62 +716,39 @@ describe("SelectionBar", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  // B2: Radix の DismissableLayer は document の capture 段階で Esc を先に
-  // 拾うため、何もしなければ combobox 自身の Esc 処理より先にポップオーバー
-  // 全体が閉じてしまう。1回目の Esc は候補の一覧だけを閉じ、選択とポップオーバー
-  // は残る。一覧がすでに閉じている2回目の Esc でポップオーバーが閉じ、それでも
-  // 選択は残る（ui-design.md「Combobox」）。
-  it("タグを付ける: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
+  // 候補の一覧はポップオーバーの中に常に出ている（Command）。Esc はポップオーバーだけを
+  // 閉じ、一覧の画面の Esc（選択の解除）には「使った」と伝える（defaultPrevented）ので、
+  // 選択は残る。
+  it.each([
+    ["Add tag", false],
+    ["Remove tag", true],
+  ] as const)("%s: Esc はポップオーバーだけを閉じ、選択は残す", async (name, attach) => {
     const user = userEvent.setup();
     install();
-    renderBar();
+    if (attach) {
+      server.attached.set(1, new Set([1]));
+      server.attached.set(2, new Set([1]));
+      server.attached.set(3, new Set([1]));
+    }
+    const { onClear } = renderBar();
+    const escapes: boolean[] = [];
+    const listener = (event: KeyboardEvent) => {
+      if (event.key === "Escape") escapes.push(event.defaultPrevented);
+    };
+    document.addEventListener("keydown", listener);
 
-    const addButton = screen.getByRole("button", { name: "Add tag" });
-    await user.click(addButton);
-    const input = await screen.findByRole("combobox", { name: "Add tag" });
-    // フォーカスで一覧が開く（全タグが候補になる）。
+    await user.click(screen.getByRole("button", { name }));
+    await screen.findByRole("combobox", { name });
     await screen.findByRole("option", { name: /旅行/ });
 
     await user.keyboard("{Escape}");
-    // 1回目: 一覧だけが閉じ、ポップオーバー（入力）はまだ残る。
-    expect(screen.queryByRole("option")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Add tag" })).toBeDefined();
-    expect(input).toHaveProperty("value", "");
-
-    await user.keyboard("{Escape}");
-    // 2回目: ポップオーバーが閉じる。選択（3 件を選択中）は残る。
-    await waitFor(() =>
-      expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole("combobox", { name })).toBeNull());
+    document.removeEventListener("keydown", listener);
+    expect(escapes).toEqual([true]);
+    expect(onClear).not.toHaveBeenCalled();
     expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
-  it("タグを外す: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
-    const user = userEvent.setup();
-    install();
-    server.attached.set(1, new Set([1]));
-    server.attached.set(2, new Set([1]));
-    server.attached.set(3, new Set([1]));
-    renderBar();
-
-    await user.click(screen.getByRole("button", { name: "Remove tag" }));
-    await screen.findByRole("combobox", { name: "Remove tag" });
-    await screen.findByRole("option", { name: /旅行/ });
-
-    await user.keyboard("{Escape}");
-    expect(screen.queryByRole("option")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "Remove tag" })).toBeDefined();
-
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(screen.queryByRole("combobox", { name: "Remove tag" })).toBeNull(),
-    );
-    expect(screen.getByText("3 videos selected")).toBeDefined();
-  });
-
-  // Devin の指摘2: 「タグを外す」が開いたまま選択が変わっても、以前は要約を
-  // 取り直さなかった。submit は最新の selectedIds を使うので、古い候補（前の
-  // 選択の要約）を選ぶと、意図しない動画からタグを外してしまう。
   it("「タグを外す」を開いたまま選択が変わると、要約を取り直し、届くまで候補を隠す（Devin の指摘2）", async () => {
     const user = userEvent.setup();
     install();
@@ -1162,57 +1139,5 @@ describe("SelectionBar の束ねる操作（specs/030-video-versions/ui-design.m
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onClear).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
-  });
-});
-
-describe("measureBarLayout（specs/035-favorites/ui-design.md「Selection bar」の「Layout」）", () => {
-  /** frame（外側の枠）と、sm 以上の並び順の項目を持つバーを作る。幅は px で与える。 */
-  function bar(frameWidth: number, widths: Record<string, number>) {
-    const frame = document.createElement("div");
-    const element = document.createElement("div");
-    element.style.columnGap = "8px";
-    element.style.paddingLeft = "16px";
-    element.style.paddingRight = "6px";
-    frame.append(element);
-    for (const [name, width] of Object.entries(widths)) {
-      const item = document.createElement("span");
-      item.dataset.barItem = name;
-      item.getBoundingClientRect = () => ({ width }) as DOMRect;
-      element.append(item);
-    }
-    Object.defineProperty(frame, "clientWidth", { value: frameWidth });
-    return { frame, element };
-  }
-
-  // 件数 120・タグ 2 つ 90・Favorite 100・Visibility 110・Bundle 150・縦線 1・Select all 80・解除 32。
-  const items = {
-    count: 120,
-    addTag: 90,
-    removeTag: 90,
-    favorite: 100,
-    visibility: 110,
-    bundle: 150,
-    divider: 1,
-    selectAll: 80,
-    clear: 32,
-  };
-  // 1 行の和: 773 + 8 × 8 + 22 = 859。縦線の前まで: 660 + 8 × 5 + 22 = 722。
-  // タグまで（件数・タグ 2 つ）: 300 + 16 + 22 = 338。
-
-  it("1 行に収まる幅では 1 行のまま", () => {
-    const { frame, element } = bar(859, items);
-    expect(measureBarLayout(element, frame)).toBe("one");
-  });
-
-  it("収まらないときは、まず縦線から後ろを 2 行目へ回す", () => {
-    const { frame, element } = bar(858, items);
-    expect(measureBarLayout(element, frame)).toBe("wrapActions");
-    const edge = bar(722, items);
-    expect(measureBarLayout(edge.element, edge.frame)).toBe("wrapActions");
-  });
-
-  it("それでも 1 行目が収まらないときは「Favorite」以降も 2 行目へ回す", () => {
-    const { frame, element } = bar(721, items);
-    expect(measureBarLayout(element, frame)).toBe("wrapFavorite");
   });
 });

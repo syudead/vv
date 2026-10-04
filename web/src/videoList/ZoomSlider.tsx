@@ -1,8 +1,6 @@
-import { Slider } from "radix-ui";
-
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
 import type { Zoom } from "../preferences/viewPreferences";
+import { Slider } from "../ui/shadcn/slider";
 
 /** ZoomSlider はカードの大きさ（4 段）を選ぶスライダーである。ライブラリとフォルダ画面で使う。 */
 export default function ZoomSlider({
@@ -15,7 +13,8 @@ export default function ZoomSlider({
   className?: string;
 }) {
   return (
-    <Slider.Root
+    <Slider
+      aria-label={t.list.cardSize}
       value={[zoom]}
       min={0}
       max={3}
@@ -23,15 +22,7 @@ export default function ZoomSlider({
       onValueChange={([next]) => {
         if (next !== undefined) onZoomChange(next as Zoom);
       }}
-      className={cn("relative flex h-9 touch-none items-center select-none", className)}
-    >
-      <Slider.Track className="relative h-1 grow rounded-full bg-input">
-        <Slider.Range className="absolute h-full rounded-full bg-primary" />
-      </Slider.Track>
-      <Slider.Thumb
-        aria-label={t.list.cardSize}
-        className="block size-4 rounded-full bg-foreground shadow-card transition-transform hover:scale-110"
-      />
-    </Slider.Root>
+      className={className}
+    />
   );
 }

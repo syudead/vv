@@ -682,7 +682,7 @@ async function filterChecked(
 ): Promise<boolean> {
   await user.click(filterButton());
   const box = await screen.findByRole("checkbox", { name: new RegExp(`^${name}`) });
-  const checked = (box as HTMLInputElement).checked;
+  const checked = box.getAttribute("aria-checked") === "true";
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   return checked;
@@ -4094,7 +4094,14 @@ describe("TagsPage まとめての操作", () => {
       container.querySelector<HTMLElement>('[data-tag-id] [role="checkbox"]')!,
     );
     expectCatalogTextOnly(document.body, ["Alpha", "Beta", "Cat", "Gamma", "ガンマ"]);
-    await user.click(within(screen.getByRole("region")).getAllByRole("button")[3]!);
+    await user.click(
+      within(
+        screen
+          .getAllByRole("region")
+          // 通知（Sonner）の section も region なので外す。
+          .find((region) => region.tagName !== "SECTION")!,
+      ).getAllByRole("button")[3]!,
+    );
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(server.impactCalls).toHaveLength(1));
     await within(dialog).findByText(/videos|video/i);
@@ -5373,15 +5380,18 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     await user.click(filterButton());
     const tentative = await screen.findByRole("checkbox", { name: /^Tentative only/ });
     const unused = screen.getByRole("checkbox", { name: /^Unused only/ });
-    expect((tentative as HTMLInputElement).checked).toBe(false);
-    expect((unused as HTMLInputElement).checked).toBe(false);
+    expect(tentative.getAttribute("aria-checked")).toBe("false");
+    expect(unused.getAttribute("aria-checked")).toBe("false");
     // 何も効いていない間は「Clear filters」を出さない。
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 
     await user.click(tentative);
     await user.click(unused);
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (2 applied)");
-    expect(filterButton().className).toContain("bg-primary-soft");
+    // 効いている数は soft の Badge で添える。
+    expect(filterButton().querySelector('[data-slot="badge"]')?.className).toContain(
+      "bg-primary-soft",
+    );
     expect(filterButton().textContent).toContain("2");
     expect(await screen.findByText("1 of 4 tags")).toBeDefined();
     await user.keyboard("{Escape}");

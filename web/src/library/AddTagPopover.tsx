@@ -12,11 +12,11 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Combobox from "../ui/Combobox";
-import { PopoverContent } from "../ui/Popover";
+import { PopoverContent } from "../ui/shadcn/popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildAddOptions } from "./tagChoices";
+import TagCommand from "./TagCommand";
 
 /**
  * AddTagPopover は選択バーの「タグを付ける」の中身である
@@ -36,10 +36,6 @@ export default function AddTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // Radix の DismissableLayer は document の capture 段階で Esc を先に拾う
-  // ため、combobox の候補の一覧が開いているかをここで見張り、開いていれば
-  // PopoverContent の onEscapeKeyDown で既定の「閉じる」を止める（B2）。
-  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<UiText | null>(null);
@@ -67,7 +63,7 @@ export default function AddTagPopover({
   const createLabel =
     exactOption === null && trimmed !== "" ? (
       <span className="flex min-w-0 items-center gap-2">
-        <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <Plus className="text-muted-foreground" aria-hidden="true" />
         <span className="truncate">{t.library.selection.create(trimmed)}</span>
       </span>
     ) : null;
@@ -109,13 +105,15 @@ export default function AddTagPopover({
       side="top"
       align="start"
       aria-labelledby={headingId}
-      className="w-popover p-3"
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         if (!overLimit) inputRef.current?.focus();
       }}
+      // Esc はポップオーバーだけを閉じ、選択は残す。既定を止めて自分で閉じ、一覧の
+      // Esc（選択の解除）に「使った」と伝える。
       onEscapeKeyDown={(event) => {
-        if (listOpenRef.current) event.preventDefault();
+        event.preventDefault();
+        onOpenChange(false);
       }}
     >
       <h2 id={headingId} className="sr-only">
@@ -127,35 +125,21 @@ export default function AddTagPopover({
         </p>
       ) : (
         <>
-          <Combobox
+          <TagCommand
+            label={t.library.selection.addTag}
             value={value}
             onValueChange={setValue}
-            options={options}
-            exactOption={exactOption}
+            choices={options}
+            exactChoice={exactOption}
             onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
             createLabel={createLabel}
             onCreate={(spelling) => submit({ name: spelling })}
-            placeholder={t.library.selection.addTag}
-            icon={
-              <Plus
-                className="size-3 shrink-0 text-muted-foreground"
-                aria-hidden="true"
-              />
-            }
+            icon={<Plus aria-hidden="true" />}
             busy={submitting}
-            side="top"
-            aria-label={t.library.selection.addTag}
             inputRef={inputRef}
-            onEscapeWhenClosed={() => onOpenChange(false)}
-            onOpenChange={(listOpen) => {
-              listOpenRef.current = listOpen;
-            }}
-            className="w-full"
-            inputClassName="w-full"
-            frameClassName="w-full"
           />
           {errorMessage !== null && (
-            <p role="alert" className="mt-1 text-xs text-destructive">
+            <p role="alert" className="text-xs text-destructive">
               {errorMessage}
             </p>
           )}

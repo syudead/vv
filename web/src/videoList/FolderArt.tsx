@@ -219,10 +219,12 @@ export default function FolderArt({
               data-folder-preview=""
               data-folder-front={isFront ? "" : undefined}
               className={cn(
-                "absolute aspect-video w-[68%] overflow-hidden rounded-sm border border-input bg-navbar transition-[left,top,transform,box-shadow] duration-200 ease-out-quart motion-reduce:transition-none",
+                "absolute aspect-video overflow-hidden rounded-sm border border-input bg-navbar transition-all duration-200 ease-out-quart motion-reduce:transition-none",
                 isFront ? "z-10 shadow-card-hover" : "shadow-card",
               )}
+              // 1 枚の幅は背板の 68%。位置と同じく背板に対する割合なので style で渡す。
               style={{
+                width: "68%",
                 left: `${String(isFront ? frontPlace.left : place.left)}%`,
                 top: `${String(isFront ? frontPlace.top : place.top)}%`,
                 transform: isFront ? "scale(1.12)" : `rotate(${String(place.rotate)}deg)`,

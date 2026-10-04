@@ -218,9 +218,9 @@ for (const width of [360, 640, 768]) {
     await page.getByRole("button", { name: "Menu" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     if (width < 640) {
-      await page
-        .getByRole("button", { name: "Close menu" })
-        .evaluate((button: HTMLButtonElement) => button.click());
+      // 狭い幅のサイドバーは Sheet のドロワーで、Esc で閉じる。
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     }
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
@@ -228,7 +228,11 @@ for (const width of [360, 640, 768]) {
     const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
     if (width >= 640) {
       await page.getByRole("button", { name: "Menu" }).click();
-      await expect(sidebar).toHaveClass(/w-sidebar-rail/);
+      // 畳むとアイコンのレールになる（shadcn/ui の Sidebar の collapsed）。
+      await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute(
+        "data-state",
+        "collapsed",
+      );
     }
     await indicator.hover();
     const summary = page.getByRole("dialog");
@@ -290,9 +294,9 @@ for (const { width, height } of [
       await expect(page.getByText(logoutFailed)).toHaveCount(count);
     }
     if (width < 640) {
-      await page
-        .getByRole("button", { name: "Close menu" })
-        .evaluate((button: HTMLButtonElement) => button.click());
+      // 狭い幅のサイドバーは Sheet のドロワーで、Esc で閉じる。
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog")).toHaveCount(0);
     }
 
     await page.evaluate(() => {

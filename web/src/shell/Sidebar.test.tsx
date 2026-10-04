@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,35 +6,61 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
+import { SidebarProvider, SidebarTrigger } from "../ui/shadcn/sidebar";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ToastProvider } from "../ui/Toast";
 import Sidebar from "./Sidebar";
-import type { SidebarMode } from "./useSidebar";
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../auth/pageNavigation")>()),
   reloadPage: vi.fn(),
 }));
 
+type SidebarMode = "expanded" | "rail" | "drawer";
+
+/** stubWidth は狭い幅（639px 以下）かどうかを matchMedia で決める。 */
+function stubWidth(phone: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) =>
+      ({
+        matches: phone && query.includes("639px"),
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }) as unknown as MediaQueryList,
+  );
+}
+
 function renderSidebar({
   audience = "owner",
   mode = "drawer",
   path = "/",
-  onClose = vi.fn(),
 }: {
   audience?: Audience;
   mode?: SidebarMode;
   path?: string;
-  onClose?: () => void;
 } = {}) {
-  return render(
+  stubWidth(mode === "drawer");
+  const result = render(
     <MemoryRouter initialEntries={[path]}>
       <AudienceProvider audience={audience}>
         <ToastProvider>
-          <Sidebar mode={mode} open onClose={onClose} />
+          <TooltipProvider>
+            <SidebarProvider open={mode === "expanded"} onOpenChange={() => undefined}>
+              <SidebarTrigger />
+              <Sidebar />
+            </SidebarProvider>
+          </TooltipProvider>
         </ToastProvider>
       </AudienceProvider>
     </MemoryRouter>,
   );
+  if (mode === "drawer") {
+    // ドロワーはトップバーの ☰ で開く。
+    act(() => screen.getByRole("button", { name: /Toggle sidebar/ }).click());
+  }
+  return result;
 }
 
 function accountNav() {
@@ -46,6 +72,7 @@ describe("Sidebar", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
+    window.history.replaceState({}, "", "/");
     vi.mocked(reloadPage).mockClear();
   });
 
@@ -54,26 +81,44 @@ describe("Sidebar", () => {
     fetchMock.mockReset();
   });
 
-  it("閉じたドロワーをフォーカス順と支援技術から外す", () => {
+  it("閉じたドロワーは描かず、☰ で開く", () => {
+    stubWidth(true);
     render(
       <MemoryRouter>
         <AudienceProvider audience="owner">
           <ToastProvider>
-            <Sidebar mode="drawer" open={false} onClose={vi.fn()} />
+            <TooltipProvider>
+              <SidebarProvider>
+                <SidebarTrigger />
+                <Sidebar />
+              </SidebarProvider>
+            </TooltipProvider>
           </ToastProvider>
         </AudienceProvider>
       </MemoryRouter>,
     );
 
-    const sidebar = document.querySelector("aside");
-    expect(sidebar?.hasAttribute("inert")).toBe(true);
-    expect(sidebar?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
+    act(() => screen.getByRole("button", { name: "Toggle sidebar" }).click());
+    expect(screen.getByRole("dialog").textContent).toContain("Library");
+  });
+
+  it("ドロワーとその背面の幕はトップバーの下から始める", () => {
+    renderSidebar();
+
+    // ドロワーの置き場は Sheet の data-[side=left]: で決まるため、同じ印で上端を下げる。
+    const drawer = screen.getByRole("dialog");
+    expect(drawer.getAttribute("data-side")).toBe("left");
+    expect(drawer.className).toContain("data-[side=left]:top-navbar");
+    expect(drawer.className).toContain("data-[side=left]:h-auto");
+    expect(drawer.className).not.toContain("data-[side=left]:h-full");
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+    expect(overlay?.className.split(" ")).toContain("top-navbar");
   });
 
   it("設定をサイドバー末尾の実リンクとして表示してdrawerを閉じる", async () => {
     const user = userEvent.setup();
-    const onClose = vi.fn();
-    renderSidebar({ onClose });
+    renderSidebar();
 
     const sidebar = screen.getByRole("complementary", {
       name: "Main navigation",
@@ -83,8 +128,8 @@ describe("Sidebar", () => {
     await user.click(settings);
 
     expect(settings.getAttribute("href")).toBe("/settings");
-    expect(onClose).toHaveBeenCalledOnce();
-    expect(settings.getAttribute("aria-current")).toBe("page");
+    // 押すとドロワーを閉じる。
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it.each<SidebarMode>(["expanded", "rail", "drawer"])(
@@ -95,6 +140,7 @@ describe("Sidebar", () => {
       const names = Array.from(nav.querySelectorAll("a, button")).map(
         (element) => element.textContent,
       );
+      expect(nav.closest("aside")?.getAttribute("aria-label")).toBe("Main navigation");
       expect(names).toEqual(["Settings", "Sign out"]);
     },
   );
@@ -160,8 +206,8 @@ describe("Sidebar", () => {
     "疑似ロケールで %s のサイドバーはカタログの文言だけを描く",
     (audience) => {
       enablePseudoLocale();
-      const { container } = renderSidebar({ audience });
-      expectCatalogTextOnly(container);
+      renderSidebar({ audience });
+      expectCatalogTextOnly(document.body);
     },
   );
 

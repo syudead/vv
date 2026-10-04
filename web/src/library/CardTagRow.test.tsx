@@ -109,23 +109,23 @@ describe("CardTagRow", () => {
         name: "Filter by 京都 (from the folder name)",
       });
       expect(folderOnly.className).toContain("border-dashed");
-      expect(folderOnly.className).not.toContain("bg-popover");
+      expect(folderOnly.className).not.toContain("bg-secondary");
       expect(folderOnly.querySelector("svg[aria-hidden='true']")).not.toBeNull();
 
       for (const name of ["旅行", "夏"]) {
         const chip = screen.getByRole("button", { name: `Filter by ${name}` });
-        expect(chip.className).toContain("bg-popover");
+        expect(chip.className).toContain("bg-secondary");
         expect(chip.className).not.toContain("border-dashed");
         expect(chip.querySelector("svg")).toBeNull();
       }
     });
 
-    it("区別は文字の大きさではなく形で行う（同じ h-5・text-xs）", () => {
+    it("区別は文字の大きさではなく形で行う（同じ h-6・text-xs）", () => {
       renderRow({ tags: mixed });
       const folderOnly = screen.getByRole("button", { name: /京都/ });
       const manual = screen.getByRole("button", { name: "Filter by 夏" });
       for (const chip of [folderOnly, manual]) {
-        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("h-6");
         expect(chip.className).toContain("text-xs");
         expect(chip.className).toContain("text-muted-foreground");
       }
@@ -193,8 +193,8 @@ describe("CardTagRow", () => {
       expect(tentative.getAttribute("title")).toBe("高画質");
 
       for (const chip of [tentative, confirmed]) {
-        expect(chip.className).toContain("bg-popover");
-        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("bg-secondary");
+        expect(chip.className).toContain("h-6");
         expect(chip.className).toContain("text-xs");
         expect(chip.className).toContain("text-muted-foreground");
       }
