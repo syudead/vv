@@ -93,11 +93,12 @@ and raise it; do not fix it in this pull request.
 
 ## What stops the push
 
-- A finding in checks 1–4 that is a defect: fix it, re-run the repository
+- A defect found by any check except the stale-sources check: fix it, re-run the repository
   checks, then push.
 - A finding that contradicts an approved artifact: stop. The artifact is the
   maintainer's to revise, and rewriting it here turns one change into a
   feature-wide rewrite.
-- A finding in check 5 outside this feature's directory: record it in the pull
+- A finding of [Find the sources of truth this change makes stale](#find-the-sources-of-truth-this-change-makes-stale)
+  outside this feature's directory: record it in the pull
   request body and continue. It does not block this push and does not belong
   in this diff.

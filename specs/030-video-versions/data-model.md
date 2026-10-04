@@ -262,7 +262,7 @@ queued again from those two places. The scan therefore restores consistency: `do
 `fingerprint`, `EnsureJob` uses this condition instead of `pending` in a state column, discards a `failed` row and
 queues again (it does not queue when a queued or running row exists). A failed fingerprint is thus rebuilt on the
 next scan, and a version bump catches up without waiting for a migration. Fingerprints built from old six-sheet
-sprites align frames by time too ([Values added to `domain`](#values-added-to-domain) `CompareFingerprints`), so they can be compared with fingerprints of the
+sprites align frames by time too (`CompareFingerprints` in [Values added to `domain`](#values-added-to-domain)), so they can be compared with fingerprints of the
 current layout.
 
 ## Candidates

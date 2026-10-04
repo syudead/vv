@@ -13,7 +13,7 @@ the screen's state. Operations not named here (single create, rename, delete, co
 adding and removing tags on videos, video counts) do not change.
 
 The bulk operations of [Values added to `domain`](#values-added-to-domain) to [Write rules](#write-rules) (`BatchTags`, `MergeTags`, `TagImpact`) are merged into the feature branch
-and unchanged by the revision of the parent Issue. The migration of [Migration](#migration), the page values of [Values added to `domain`](#values-added-to-domain), `ListTags`,
+and unchanged by the revision of the parent Issue. The [Migration](#migration), the page values in [Values added to `domain`](#values-added-to-domain), `ListTags`,
 `ListRejectedTagNames` and the key writes of [Store operations](#store-operations), and [Screen state](#screen-state) were added or rewritten by the revision.
 
 ## Migration

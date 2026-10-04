@@ -17,7 +17,7 @@ Video:
       format: date-time
       description: |
         When the video's information (display name, tags, visibility, thumbnail) was last
-        edited in vv. Equal to addedAt if never edited (specs/033-video-dates/data-model.md, [Edit time rules](../data-model.md#edit-time-rules))
+        edited in vv. Equal to addedAt if never edited (specs/033-video-dates/data-model.md "Edit time rules")
     fileCreatedAt:
       type: string
       format: date-time

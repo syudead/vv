@@ -8,8 +8,9 @@ import (
 )
 
 // numberedHeading matches a heading text that starts with a section number
-// ("4. Rules", "2.1 Reads").
-var numberedHeading = regexp.MustCompile(`^\d+(\.\d+)*\.\s|^\d+(\.\d+)+\s`)
+// ("4. Rules", "2.1. Reads", "4) Rules"). A bare version ("2.1 API") or year
+// ("2026 release notes") is a name, not a number.
+var numberedHeading = regexp.MustCompile(`^\d+(\.\d+)*[.)]\s`)
 
 // TestHeadingsAreNotNumbered fails on a heading that starts with a section
 // number. The number becomes part of the anchor, so adding or removing a
@@ -45,7 +46,9 @@ func TestHeadingsAreNotNumbered(t *testing.T) {
 func TestNumberedHeadingDetection(t *testing.T) {
 	cases := map[string]bool{
 		"4. Rules":               true,
-		"2.1 Reads":              true,
+		"2.1. Reads":             true,
+		"4) Rules":               true,
+		"2.1 API":                false,
 		"0. Migration":           true,
 		"Rules":                  false,
 		"R-3: Glossary":          false,

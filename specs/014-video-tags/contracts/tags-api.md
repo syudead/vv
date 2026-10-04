@@ -27,7 +27,7 @@ Tag:               # One entry on the management page and in suggestions
     id:         { type: integer, format: int64 }
     name:       { type: string }
     synonyms:   { type: array, items: { type: string } }   # natural order of names
-    videoCount: { type: integer }  # videos currently in the library (data-model.md, [Video counts](../data-model.md#video-counts))
+    videoCount: { type: integer }  # videos currently in the library (data-model.md "Video counts")
 
 TagInput:          # The tag to use when adding
   type: object

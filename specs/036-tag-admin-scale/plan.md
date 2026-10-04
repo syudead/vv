@@ -261,7 +261,7 @@ Share cursor encoding with `listing.go`. In `api/openapi.yaml`, the `listTags`
 parameters, `TagSort`, and `total`, `totalAll` and `nextCursor` on `TagList`,
 with generated files. Parameter parsing and `400` in
 `internal/httpapi/tags.go`, the call in `external.go`, `Tags` in `router.go`
-([contracts/screen-api.md, Schema changes, `GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters)).
+([contracts/screen-api.md, Schema changes](contracts/screen-api.md#schema-changes) and [`GET /api/tags` parameters](contracts/screen-api.md#get-apitags-parameters)).
 `listTagPage`, `tagPageLimit` and the `TagSort` type in `web/src/api/tags.ts`
 (`TagListSort` in `tagListOrder.ts` moves to the generated `TagSort`;
 [`web/src/api` functions](contracts/screen-api.md#websrcapi-functions)). The screen does not

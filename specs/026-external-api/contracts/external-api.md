@@ -16,7 +16,7 @@ This file fixes the operations and rules that document must satisfy.
   ([R-4](../research.md#r-4-bearer-requests-skip-the-same-origin-check)).
 - The viewer is always the owner, and private videos are returned too (acceptance criterion 2).
 - Errors have the same shape as the screen API, `{ code, message, reason?, limit?, index? }`. `index`
-  exists only in this API and gives the position (from 0) in [Video tags](#video-tags)'s `videos` that caused the error. Only
+  exists only in this API and gives the position (from 0) in `videos` of [Video tags](#video-tags) that caused the error. Only
   the `code` and `reason` values listed here go into the enums in `external-v1.yaml`.
 
 ## Videos

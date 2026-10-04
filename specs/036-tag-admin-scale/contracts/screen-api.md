@@ -83,7 +83,7 @@ TagSort:
   enum: [name, countDesc, countAsc, createdDesc, createdAsc]
   default: name
   # name is the natural name order (no direction). Tags with the same value sort by
-  # natural name order, then by id (specs/036-tag-admin-scale/data-model.md, [Migration](../data-model.md#migration) and [Store operations](../data-model.md#store-operations))
+  # natural name order, then by id (specs/036-tag-admin-scale/data-model.md "Migration" and "Store operations")
 ```
 
 `ErrorReason` gains `too_many_tags` (with `limit`, the same shape as
@@ -160,8 +160,8 @@ Added to or changed in `tags.ts`.
 
 | Function | Behaviour |
 | --- | --- |
-| `listTagPage(query, signal)` | Added by the revision. Calls `GET /api/tags` with the [`GET /api/tags` parameters](#get-apitags-parameters) parameters and returns `TagList` (`items`, `total`, `totalAll`, `nextCursor`). Does not touch the shared cache. Takes the caller's `AbortSignal`, to abort when the conditions change |
-| `listRejectedTagNamePage(cursor, limit, signal)` | Added by the revision. Calls `GET /api/tags/rejected-names` with the [`GET /api/tags/rejected-names` parameters](#get-apitagsrejected-names-parameters) parameters and returns `RejectedTagNameList`. Replaces the current `listRejectedTagNames` |
+| `listTagPage(query, signal)` | Added by the revision. Calls `GET /api/tags` with the [`GET /api/tags` parameters](#get-apitags-parameters) and returns `TagList` (`items`, `total`, `totalAll`, `nextCursor`). Does not touch the shared cache. Takes the caller's `AbortSignal`, to abort when the conditions change |
+| `listRejectedTagNamePage(cursor, limit, signal)` | Added by the revision. Calls `GET /api/tags/rejected-names` with the [`GET /api/tags/rejected-names` parameters](#get-apitagsrejected-names-parameters) and returns `RejectedTagNameList`. Replaces the current `listRejectedTagNames` |
 | `getTags`, `refreshTags`, `subscribeTags`, `currentTags` | Unchanged (`GET /api/tags` without `limit`, every tag, used by suggestions and filter validation). `listTags` keeps using only `items` |
 | `afterTagChanged` | Changed by the revision. With subscribers (`subscribeTags`) it reloads as before; without, it drops `held` so the next `getTags` reads again ([research.md R-12](../research.md#r-12-actions-update-the-loaded-rows-in-place-positioned-with-a-port-of-naturalsortkey)). `clearListSnapshot` does not change |
 | `batchTags(action, ids)` | `POST /api/tags/batch`. Calls `afterTagChanged` once on success (merged) |

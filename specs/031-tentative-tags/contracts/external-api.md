@@ -53,7 +53,7 @@ The input of `update_video_tags` is derived from the `VideoTagsRequest` type, so
 `tentative` arrives as is. The tool description gains: "with `tentative: true`,
 tags created by this call are tentative, and rejected names are skipped and
 returned in `skippedTags`". The output of `list_tags`, `get_video` and
-`list_videos` carries the [Schema changes](#schema-changes) changes as is. The number of tools and their
+`list_videos` carries the [Schema changes](#schema-changes) as is. The number of tools and their
 annotations do not change
 ([specs/026-external-api/contracts/mcp.md](../../026-external-api/contracts/mcp.md)).
 

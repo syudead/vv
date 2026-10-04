@@ -46,7 +46,7 @@ LibraryItem:
 
 LibraryGroup:
   required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
-  # watchedCount and watchState are always present for the owner and omitted for guests (data-model.md, [Visibility per audience](../data-model.md#visibility-per-audience))
+  # watchedCount and watchState are always present for the owner and omitted for guests (data-model.md "Visibility per audience")
   properties:
     folder: { $ref: VideoFolder }   # the group's folder; the key that identifies the group
     name: { type: string }
@@ -58,7 +58,7 @@ LibraryGroup:
     addedAt: { type: string, format: date-time }
     lastPlayedAt: { type: string, format: date-time }  # omitted when none
     previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # up to 4 members with generated thumbnails, in order. Used for the card's folder artwork; a list row uses the first as its thumbnail
-    openVideoId: { type: integer, format: int64 }  # the member opened on press (data-model.md, [Group watch state and the member to open](../data-model.md#group-watch-state-and-the-member-to-open))
+    openVideoId: { type: integer, format: int64 }  # the member opened on press (data-model.md "Group watch state and the member to open")
     videoIds: { type: array, items: { type: integer, format: int64 } }  # every member, in order
     tags: { type: array, items: { $ref: VideoTag } }  # union of the members' tags (sources united too)
 ```

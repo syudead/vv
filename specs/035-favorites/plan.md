@@ -29,7 +29,7 @@ Issue).
 | Topic | Source |
 | --- | --- |
 | Boundaries, dependency direction, index versus user data, role type rules, domain events, authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
-| User key and its writes | [specs/030-video-versions/data-model.md, User key, Carry-over of content at the same path, Store operations (`VersionStore`)](../030-video-versions/data-model.md), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeyExpr`, `userKeysForVideoIDs`), [internal/store/visibility.go](../../internal/store/visibility.go) (`VisibilityStore`, `publicColumn`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [internal/store/versions.go](../../internal/store/versions.go) (`userDataTables`), [internal/store/roles.go](../../internal/store/roles.go) |
+| User key and its writes | [specs/030-video-versions/data-model.md, User key](../030-video-versions/data-model.md#user-key), [Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path) and [Store operations (`VersionStore`)](../030-video-versions/data-model.md#store-operations-versionstore), [internal/store/user_keys.go](../../internal/store/user_keys.go) (`userKeyExpr`, `userKeysForVideoIDs`), [internal/store/visibility.go](../../internal/store/visibility.go) (`VisibilityStore`, `publicColumn`), [internal/store/successions.go](../../internal/store/successions.go) (`moveUserData`), [internal/store/versions.go](../../internal/store/versions.go) (`userDataTables`), [internal/store/roles.go](../../internal/store/roles.go) |
 | Folder key and group index | [specs/017-folder-groups/data-model.md](../017-folder-groups/data-model.md), [internal/domain/folder_group.go](../../internal/domain/folder_group.go) (`FolderKey`), [internal/store/folder_groups.go](../../internal/store/folder_groups.go) |
 | Lists and items | [internal/store/listing.go](../../internal/store/listing.go) (`filteredFrom`, `listOrders`), [internal/store/library_items.go](../../internal/store/library_items.go) (`libraryItemsCTE`, `itemOrderValues`, `loadGroups`, `LibraryIDs`), [internal/domain/library.go](../../internal/domain/library.go) (`VideoQuery`, `VideoSort`), [internal/domain/library_item.go](../../internal/domain/library_item.go), [specs/013-library-search/contracts/list-api.md](../013-library-search/contracts/list-api.md), [specs/027-partial-group-search/contracts/library-api.md](../027-partial-group-search/contracts/library-api.md) |
 | Guests | [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md), [internal/domain/auth.go](../../internal/domain/auth.go) (`CheckVideoQuery`), [internal/httpapi/videos.go](../../internal/httpapi/videos.go) (`parseVideoQuery`, `forAudience`) |
@@ -162,9 +162,9 @@ list and the role type list in ARCHITECTURE.md.
 
 **Scope**: `VideoQuery.FavoriteOnly`, `FolderVideoQuery.FavoriteOnly`, `SortFavoritedAsc`,
 `SortFavoritedDesc`, `Valid` and `CheckVideoQuery` in `domain` ([data-model.md, `domain` values added](data-model.md#domain-values-added));
-`filteredFrom` and `listOrders` ([Reads and lists Video lists](data-model.md#reads-and-lists));
+`filteredFrom` and `listOrders` ([data-model.md, Video lists](data-model.md#video-lists-listvideos-listfoldervideos-countvideos));
 the item conditions, the `favorited_at` column and `itemOrderValues` in `libraryItemsCTE`
-([Reads and lists Library items](data-model.md#reads-and-lists));
+([data-model.md, Library items](data-model.md#library-items-libraryitemscte-listlibrary-libraryids));
 `domain.LibrarySelection` from `LibraryIDs` (`internal/httpapi` builds the existing `ids` as the union;
 `groups` belongs to the next API unit). The `GET /api/library` paragraph and "fifteen sort orders" in
 ARCHITECTURE.md.
@@ -192,7 +192,7 @@ ARCHITECTURE.md.
 
 **Scope**: `/api/favorites`, `FavoritesRequest`, `FavoritesResponse`, `Video.favorite` and
 `LibraryGroup.favorite` in `api/openapi.yaml`, and the generated files
-([contracts/screen-api.md, Fields added to `Video` and `LibraryGroup`, `PUT /api/favorites`](contracts/screen-api.md#fields-added-to-video-and-librarygroup));
+([contracts/screen-api.md, Fields added to `Video` and `LibraryGroup`](contracts/screen-api.md#fields-added-to-video-and-librarygroup) and [`PUT /api/favorites`](contracts/screen-api.md#put-apifavorites));
 `internal/httpapi/favorites.go` (validation, resolving `folders` to absolute paths, calling `FavoriteStore`);
 `favorite` in `toAPIVideo` and in the group response; omitting it for guests in `forAudience` and
 `itemLookup.group`; wiring in `cmd/mdm`; `openapi_routes_test.go`.
@@ -217,7 +217,7 @@ ARCHITECTURE.md.
 
 **Scope**: `favorite` on the four endpoints, the two `VideoSort` values, `VideoIdsResponse.groups` and
 `LibraryGroupIds` in `api/openapi.yaml`, and the generated files
-([contracts/screen-api.md, List `favorite` parameter and new `VideoSort` values, Fields added to `GET /api/library/ids`](contracts/screen-api.md#list-favorite-parameter-and-new-videosort-values));
+([contracts/screen-api.md, List `favorite` parameter and new `VideoSort` values](contracts/screen-api.md#list-favorite-parameter-and-new-videosort-values) and [Fields added to `GET /api/library/ids`](contracts/screen-api.md#fields-added-to-get-apilibraryids));
 `favorite` in `parseVideoQuery`, `parseIDsQuery` and `listFolderVideos`; the `message` in
 `checkAudienceQuery`; `groups` in `writeVideoIDs` (building `VideoFolder` from the registered folders);
 `videoSorts`, `ListFilterParams.favorite` and the `listLibraryIds` type in `web/src/api/client.ts`

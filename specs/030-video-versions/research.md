@@ -156,7 +156,7 @@ interval depends on the duration: above 405 seconds it is `ceil(duration / 81)`,
 difference in duration changes the interval. Pairing by frame index would keep re-encodes of long videos from
 becoming candidates. Ingest already builds a sprite for each video, so ffmpeg is not started even once more and
 files on network drives are not read again. pHash is more robust than dHash to differences in brightness,
-contrast and blur (earlier study §1.2). Flat frames are excluded because fades and black screens match in any
+contrast and blur (an earlier study on another branch). Flat frames are excluded because fades and black screens match in any
 video. The threshold still has to be tuned on real data, so it is kept as constants with a version. Making it a
 stage reuses scan progress, remaining work, failure records and the wake-up mechanism as they are.
 

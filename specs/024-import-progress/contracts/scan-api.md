@@ -100,7 +100,7 @@ reason wording from `kinds`
 
 ## `/api/events`
 
-- The `scan` event carries the [`Scan`](#scan) `Scan`. As today, it is read at send time,
+- The `scan` event carries the `Scan` of [`Scan`](#scan). As today, it is read at send time,
   coalesced per connection, and sent once right after connecting.
 - `scan` is sent on:
   - today's `domain.ScanChanged`

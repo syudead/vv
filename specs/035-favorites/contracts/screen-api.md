@@ -13,7 +13,7 @@ Video:
       type: boolean
       description: |
         Whether the owner made this video a favorite. Present only in owner responses
-        (specs/035-favorites/data-model.md, [Read columns](../data-model.md#read-columns))
+        (specs/035-favorites/data-model.md "Read columns")
 
 LibraryGroup:
   properties:
@@ -21,7 +21,7 @@ LibraryGroup:
       type: boolean
       description: |
         Whether the owner made this group a favorite. Independent of the member videos' favorites,
-        and present only in owner responses (specs/035-favorites/data-model.md, [Read columns](../data-model.md#read-columns))
+        and present only in owner responses (specs/035-favorites/data-model.md "Read columns")
 ```
 
 | Field | Where it appears |
