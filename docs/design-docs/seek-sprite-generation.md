@@ -1,120 +1,148 @@
 # Seek sprite generation
 
-A newly generated seek preview picks at most 81 frames across the whole video
-and puts them in one 9×9 sprite whose cells fit within 160px on the long side.
-Short videos keep a 5-second interval; longer videos place a frame every
-`ceil(durationMs / 81)` milliseconds. Frame k covers the interval
-`[k × intervalMs, (k + 1) × intervalMs)`. The player picks a frame from the
-playback position using `intervalMs`, `frameCount`, `columns` and `rows` in the
-layout, so the player's calculation does not change.
+A seek preview is one 9×9 sprite of at most 81 frames, each within 160px on the
+long side ([`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)).
+The interval is `max(5 s, ceil(durationMs / 81))`, so short videos keep 5
+seconds and longer ones spread 81 frames evenly; a video of unknown length gets
+one frame. Frame k covers `[k × intervalMs, (k + 1) × intervalMs)`, and the
+player picks a frame from `intervalMs`, `frameCount`, `columns` and `rows` in
+the layout ([`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)).
+
+Generation tries the cheapest method first and falls back on failure.
+
+```mermaid
+flowchart LR
+  job[Sprite job] --> fit{Index can serve?}
+  fit -->|yes| index[From the index]
+  fit -->|no| interval[Per-interval extraction]
+  index -->|fails| interval
+  interval -->|fails| full[Full decode]
+  index --> tile[Tile 9x9 into 000.jpg]
+  interval --> tile
+  full --> tile
+```
 
 ## Frame selection
 
-Before generation starts, the image for each interval is decided. An interval
-often contains no image: when the container is slightly longer than the video
-stream, the last interval starts at the end of the video, and some videos have
-keyframe intervals longer than the sprite interval. Such an interval is not a
-failure; it uses the scene of the previous interval. Only the first interval,
-which has no previous one, uses the next scene. A scene from the next interval
-is never pulled forward otherwise.
+An interval with no image of its own uses the previous interval's image; only
+the first interval, which has no previous one, uses the next.
+
+Empty intervals are normal, not failures: a container slightly longer than its
+video stream leaves the last interval past the end, and some keyframe gaps are
+longer than the sprite interval. A later scene is never pulled forward
+otherwise.
+
+```mermaid
+flowchart LR
+  iv[Interval] --> own{Has an image?}
+  own -->|yes| use[Its own image]
+  own -->|no| first{First interval?}
+  first -->|no| prev[Previous image]
+  first -->|yes| next[Next image]
+```
 
 ## Generation from the index (H.264/HEVC in MP4/MOV)
 
-When the first video track of an MP4/MOV is H.264 or HEVC, the sample table in
-`moov` is read once to get each keyframe's presentation time (computed from
-`stts`, `ctts` and the edit list) and its position in the file. Each interval
-uses the first keyframe inside it; if there is none, the last keyframe before
-it. When the edit list sets the end of the playback range, keyframes after it
-are not candidates.
+When the first video track of an MP4/MOV is H.264 or HEVC, the `moov` sample
+table is read once and each interval uses one keyframe: the first inside it,
+or else the last before it.
 
-Only the bytes of the chosen keyframes are read, up to 8 in parallel, and each is
-written to a temporary directory in start-code-delimited form with the parameter
-sets from the decoder configuration (`avcC`/`hvcC`) prepended. Intervals that
-share a keyframe read and decode it once and duplicate the image.
+Keyframe times come from `stts`, `ctts` and the edit list; keyframes after the
+edit list's end are not candidates. A frame is therefore a nearby keyframe, not
+the exact interval start, which differs little because most videos have
+keyframes a few seconds apart. In exchange, a video reads only the index and
+the chosen keyframes (tens to hundreds of KB each), with no `ffmpeg` start or
+index reread per frame and no decoding up to a target time.
 
-Decoding is one FFmpeg run that produces 160px images.
+The chosen keyframes go through these steps:
 
-| Chosen keyframes | Decoding |
+```mermaid
+flowchart LR
+  read[Read keyframes, 8 parallel] --> prep[Prepend avcC / hvcC]
+  prep --> idr{All IDR?}
+  idr -->|yes| one[One stream, one decoder]
+  idr -->|no| many[One input each, concat]
+  one --> count{Image count matches?}
+  many --> count
+  count -->|yes| rotate[Apply rotation, scale]
+  count -->|no| fallback[Per-interval extraction]
+```
+
+| Step | Rule |
 | --- | --- |
-| All IDR | Concatenated into one stream and decoded by one decoder. An IDR resets the presentation order count and the decoder state |
-| Some not IDR (CRA in an open GOP, or non-IDR I-frames) | In one stream, the order count would continue from the previous keyframe and the decoder would reorder frames across distant keyframes. Each keyframe is therefore a separate input with its own decoder, joined in input order by the `concat` filter. This is slower by the per-input initialization |
+| Shared keyframe | Intervals that share a keyframe read and decode it once and duplicate the image |
+| All IDR | Concatenated into one stream: an IDR resets the order count and the decoder state |
+| Some not IDR (CRA in an open GOP, non-IDR I-frame) | One input per keyframe joined by the `concat` filter; in one stream the order count would carry over and frames would reorder across keyframes. Slower by the per-input start-up |
+| Image count differs | Frames would be misaligned, so the result is discarded |
+| Rotation | The raw stream loses the `tkhd` display matrix; a 90-degree-step rotation is reapplied (`transpose`, `hflip,vflip`) before scaling |
+| Deadline or stop | Reads return without waiting, so an unresponsive storage location cannot hang the job |
 
-If the number of decoded images does not match, the frames would be misaligned,
-so the result is not used.
+These inputs go straight to per-interval extraction:
 
-Decoding the raw stream loses the rotation from the display matrix in `tkhd`.
-When the display matrix is a rotation in 90-degree steps, the same transform
-ffmpeg applies when auto-rotating from the container (`transpose`,
-`hflip,vflip`) is applied before scaling. Other display matrices, such as
-flips, are not handled here.
+| Input | Why |
+| --- | --- |
+| No `moov` (fragmented MP4 and the like) | No sample table to read |
+| Not MP4/MOV, or video not H.264/HEVC | Outside what the index path reads |
+| More than one sample description | Resolution or similar changes midway |
+| More than one non-empty edit | A middle section is cut out |
+| Display matrix beyond rotation (a flip, for example) | The transform is not reapplied |
 
-Reads of the index and keyframes return on the processing deadline or a stop
-without waiting for the read to finish, so that a job does not hang on an
-unresponsive storage location. When everything is ready, FFmpeg tiles the
-images 9×9 into `000.jpg`.
-
-A frame is the first keyframe inside its interval, not the start of the
-interval itself. Most videos have keyframes within a few seconds of each other,
-so the scene difference is small. This method neither starts FFmpeg and rereads
-the index for each frame nor decodes from a keyframe to a target time. A video
-reads only the index and the keyframes (tens to hundreds of KB per frame).
-
-The following inputs are generated by per-interval extraction (next section):
-
-- no `moov` (fragmented MP4 and the like)
-- video that is not H.264/HEVC
-- not MP4/MOV
-- resolution or similar changes midway (more than one sample description)
-- a middle section cut out by editing (more than one non-empty edit)
-- a display matrix that contains more than rotation
-
-When reading or decoding fails, for example because the index is broken, a
-warning is logged and generation switches to per-interval extraction.
+A read or decode failure, such as a broken index, logs a warning and switches
+to per-interval extraction.
 
 ## Per-interval extraction
 
-For inputs the index cannot serve, FFmpeg is started once per frame, seeks on
-the input side to the start of the interval, and writes a BMP to a temporary
-directory. Up to 4 run at once; the frame number is the file name, so placement
-does not depend on the order extractions finish. Each extraction stops at the
-end of its interval. If an interval has no frame, a neighbouring frame is
-duplicated by the rule above. For inputs with several video streams, the first
-video stream that is not an attached picture is chosen. Temporary BMPs are
-deleted on success, failure and cancellation alike. Publication of the job is
-done, as before, after `internal/artifacts` checks the finished output.
+For inputs the index cannot serve, `ffmpeg` starts once per frame, seeks on the
+input side to the interval start, stops at the interval end and writes a BMP
+named by frame number; up to 4 run at once.
 
-Only when FFmpeg exits with an error, or no interval yields an image, does
-generation fall back to a full decode with the same frame count, 160px and 9×9
-layout. A cancellation partway does not start a full decode. The 30-minute
-processing limit covers extraction, tiling and fallback together.
+Naming by frame number makes placement independent of finishing order. Inputs
+with several video streams use the first that is not an attached picture.
+Temporary BMPs are deleted on success, failure and cancellation, and
+`internal/artifacts` checks the finished output before publication.
 
-A full decode is reported in the log and in the return value of
-`GenerateSeekSprite`, and recorded as a recent import problem (substitution,
-`seek_thumbnail_full_decode`)
+Generation falls back to a full decode, with the same frame count, size and
+layout, in two cases.
+
+```mermaid
+flowchart LR
+  ext[Extraction ends] --> cancel{Cancelled?}
+  cancel -->|yes| stop[Stop, no full decode]
+  cancel -->|no| err{ffmpeg error or no image?}
+  err -->|no| ok[Tile]
+  err -->|yes| full[Full decode]
+```
+
+The 30-minute processing limit covers extraction, tiling and fallback together.
+
+A full decode is a substitution: it is logged and recorded as a recent import
+problem `seek_thumbnail_full_decode`
 ([specs/024-import-progress/research.md](../../specs/024-import-progress/research.md)
-R-7). An input the index cannot serve but per-interval extraction can is the
-normal path and does not count as a substitution. Whether a full decode was used
-is also stored as `fullDecode` in `sprite.json`. A rerun after a stop between
-publication and recording completion, or another video with the same content
-adopting the finished sprite, reads it back and records the substitution. An
-older `sprite.json` without `fullDecode` cannot tell whether it substituted, so
-the problem row is left unchanged.
+R-7). Per-interval extraction is the normal path for its inputs and is not a
+substitution.
 
-Older finished sprites (up to 600 frames, 6 sheets) remain readable. There is no
-bulk regeneration for the new method; it applies to newly processed jobs, so the
-existing queue does not grow.
+| Case | Recorded problem |
+| --- | --- |
+| Full decode in this run | Substitution recorded; `fullDecode` stored in `sprite.json` |
+| Rerun after a stop between publication and completion | `fullDecode` read back from `sprite.json` and recorded |
+| Another video with the same content adopts the sprite | `fullDecode` read back and recorded |
+| Older `sprite.json` without `fullDecode` | Problem row left unchanged |
+
+Older sprites of up to 600 frames on 6 sheets stay readable. They are not
+regenerated in bulk; the new method applies to newly processed jobs, so the
+queue does not grow.
 
 ## Speed and limits
 
-For a 21-minute 1080p H.264 video on local disk (81 frames, all keyframes IDR):
+Measured on a 21-minute 1080p H.264 video on local disk, 81 frames, all
+keyframes IDR; each measurement checks the content as well as the time:
 
 | Method | Time | Data read |
 | --- | --- | --- |
-| Per-interval extraction (4 parallel) | 5.6–5.9 s | Several hundred MB per video, because each frame rereads the index and the frames from the keyframe to the target time |
-| Generation from the index | 0.37 s | About 15 MB (index about 4 MB plus 81 keyframes) |
-| Generation from the index, each of the 81 frames as a separate input | 1.6–1.8 s | — (what videos with non-IDR keyframes take) |
+| Per-interval extraction (4 parallel) | 5.6–5.9 s | Several hundred MB: each frame rereads the index and decodes from its keyframe |
+| From the index | 0.37 s | About 15 MB (index about 4 MB plus 81 keyframes) |
+| From the index, 81 separate inputs | 1.6–1.8 s | — (the non-IDR path) |
 
-On storage with slow random reads, the time is set by the number of reads (one
-for the index plus one per keyframe) and the latency of each. Reading less makes
-it faster than per-interval extraction, but one read per frame remains.
-Measurements check both the generated content and the elapsed time.
+On storage with slow random reads, time follows the read count (one for the
+index plus one per keyframe) times the latency. Generation from the index is
+still faster than per-interval extraction there, but keeps one read per frame.

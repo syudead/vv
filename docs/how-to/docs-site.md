@@ -2,13 +2,24 @@
 
 The documents in `docs/`, `specs/` and `ARCHITECTURE.md` are published to GitHub
 Pages on every merge to `main`, in English at <https://syudead.github.io/vv/>
-and in Japanese under <https://syudead.github.io/vv/ja/>. The Japanese pages come
-from `translations/ja/`, written by the `doc-translator` subagent; the design
-behind them is in
+and in Japanese under <https://syudead.github.io/vv/ja/>. Agent instructions
+(`.agents/`, `.claude/`), `AGENTS.md` and the root `README.md` are not
+published. The design behind the Japanese pages is in
 [japanese-translation.md](../design-docs/japanese-translation.md).
 
-Agent instructions (`.agents/`, `.claude/`), `AGENTS.md` and the root
-`README.md` are not published.
+Both languages are built from the repository as follows.
+
+```mermaid
+flowchart LR
+  en[English documents] --> vp[VitePress build]
+  tr[translations/ja] --> gen[Generate ja pages]
+  gen --> vp
+  vp --> pages[GitHub Pages]
+  agent[doc-translator] --> tr
+```
+
+The `doc-translator` subagent writes `translations/ja/`; the build generates
+the Japanese pages from it into `ja/` (not version controlled).
 
 ## Prerequisites
 
@@ -25,25 +36,20 @@ Agent instructions (`.agents/`, `.claude/`), `AGENTS.md` and the root
 2. Open the printed URL (<http://localhost:5174/vv/>). Edits to a document show
    at once.
 
-The sidebar is built from the directory layout when the server starts. After
-adding or removing a document, or changing its first heading, restart
-`task docs`.
+The sidebar is built when the server starts, so restart `task docs` after
+adding or removing a document or changing its first heading.
 
-To build as CI does, run `task docs-build`. The output goes to
-`docs-site/.vitepress/dist/` (not version controlled).
-
-Japanese pages are generated before each build by
-`docs-site/translate/site.mjs` into `ja/` (not version controlled), from
-`translations/ja/`. A document without a translation shows its English text
+`task docs-build` builds as CI does, into `docs-site/.vitepress/dist/` (not
+version controlled). A document without a translation shows its English text
 under an "untranslated" notice.
 
 ## How publishing works
 
 `.github/workflows/docs.yml` runs on every pull request and push to `main` that
 touches published paths, `translations/` or `docs-site/`. It tests the
-translation tools, checks the translations, and builds the site. On `main` it
-also deploys the site. Repository Settings → Pages must have Source set to
-"GitHub Actions".
+translation tools, checks the translations and builds the site; on `main` it
+also deploys. Repository Settings → Pages must have Source set to "GitHub
+Actions".
 
 ## Translate a changed document
 
@@ -52,16 +58,16 @@ Translate after the English of the change is final, in the same pull request.
 1. Hand the changed paths to the `doc-translator` subagent (for example,
    "translate `docs/how-to/docs-site.md`"). It writes
    `translations/ja/<path>` and runs `stamp` on it.
-2. When a document is deleted or renamed, name both paths. The subagent deletes
-   or moves the translation.
-3. Run the check and commit the translations with the change:
+2. For a deleted or renamed document, name both paths; the subagent deletes or
+   moves the translation.
+3. Run the check, then commit the translations with the change:
 
    ```bash
    mise exec --command "task docs-test"
    ```
 
-Never edit a translation by hand. To change a wording, fix the English source,
-or the [translation rules](../design-docs/japanese-translation.md#translation-rules),
+Never edit a translation by hand. Fix the English source, or the
+[translation rules](../design-docs/japanese-translation.md#translation-rules),
 and translate again.
 
 ### Commands
@@ -76,9 +82,9 @@ and translate again.
 
 | Situation | What the reader sees | What fixes it |
 | --- | --- | --- |
-| The English document changed after its translation | The old translation with a notice that it is out of date | Translating the document again |
-| A document without a translation | The English text with a notice that it is not translated yet | Translating the document |
-| The English document was deleted or renamed | No Japanese page at the old path; `check` fails until the translation is deleted or moved | Deleting or moving the translation |
+| The English document changed after its translation | The old translation with an out-of-date notice | Translating the document again |
+| A document without a translation | The English text with a not-translated-yet notice | Translating the document |
+| The English document was deleted or renamed | No Japanese page at the old path; `check` fails | Deleting or moving the translation |
 
 ## Writing notes
 
@@ -89,14 +95,13 @@ and translate again.
 - A broken link fails the build. `http://localhost:…` examples are allowed.
 - Heading anchors follow GitHub's rules, so the same `#anchor` works on GitHub
   and on the site. Japanese pages keep the English anchors.
-- Write documents in English to
-  [writing-quality.md](../design-docs/writing-quality.md).
+- Write documents to [writing-quality.md](../design-docs/writing-quality.md).
 
 ## Configuration
 
 The site configuration is `docs-site/.vitepress/config.mts`.
 
-`docs-site/package.json` overrides vite to 6.4.3. VitePress 1.6.4 depends on
-vite 5 and esbuild 0.21, which have known vulnerabilities (GHSA-4w7w-66w2-5vf9
-and others) that the stable VitePress release has not fixed. Remove the
-override when a fixed VitePress is released.
+`docs-site/package.json` overrides vite to 6.4.3 because VitePress 1.6.4
+depends on vite 5 and esbuild 0.21, which have known vulnerabilities
+(GHSA-4w7w-66w2-5vf9 and others) that no stable VitePress release fixes. Remove
+the override when a fixed VitePress is released.

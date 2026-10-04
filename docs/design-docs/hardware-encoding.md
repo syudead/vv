@@ -1,149 +1,135 @@
 # Hardware encoding for live transcoding
 
-- Status: adopted
-- Scope: for live transcoding (`GET /api/videos/{id}/transcode.mp4`), choosing
-  the video encoder, the startup check, switching within a request, the
-  arguments for each encoder, and the settings API
-  (`GET`/`PUT /api/settings/transcoding`)
-- Background: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md)
-  (parent Issue #370)
-
-This document covers only which encoder the video-encoding step uses. Starting
-a live transcode (preparing the probe, switching between copy and encode) is in
-[live-transcode-seek.md](live-transcode-seek.md), and the two MOV inputs are in
+The owner chooses the video encoder for live transcoding
+(`GET /api/videos/{id}/transcode.mp4`); a startup check decides which hardware
+encoders work, and a failing one falls back to software within the request
+([`internal/app/transcode_settings.go`](../../internal/app/transcode_settings.go)).
+Background: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md)
+(parent Issue #370). Starting a live transcode is in
+[live-transcode-seek.md](live-transcode-seek.md), and the MOV inputs are in
 [mov-live-transcoding.md](mov-live-transcoding.md).
+
+The saved choice and the check results decide the encoder in use, which each
+transcode request reads from memory.
+
+```mermaid
+flowchart LR
+  api[Settings API] -->|save| db[(settings table)]
+  db --> state[Encoder state]
+  check[Startup check] --> state
+  state -->|encoder in use| route[Transcode route]
+  route --> hw[Chosen encoder]
+  hw -->|no first data| sw[Software retry]
+```
 
 ## Encoders and the encoder in use
 
-### Context
+The encoder in use follows from the owner's choice and the startup check
+results; anything not checked and usable becomes software.
 
-Live transcoding encoded video with `libx264`. With a GPU in the server, NVENC,
-Quick Sync, VAAPI and VideoToolbox lower the CPU load. An encoder present in
-the ffmpeg build is still unusable without the device or driver (inside the
-bundled Docker image, without permission on `/dev/dri`, without the NVIDIA
-libraries).
+A GPU lowers the CPU load of encoding, but an encoder in the ffmpeg build is
+still unusable without its device or driver (inside the bundled Docker image,
+without permission on `/dev/dri`, without the NVIDIA libraries).
 
-### Decision
+The choice is one of `software`, `nvenc`, `qsv`, `vaapi`, `videotoolbox` and
+`auto`, saved under `transcode.video_encoder` in the SQLite `settings` table. A
+missing row or unknown string counts as `software`, and the saved value is not
+rewritten.
 
-The owner's choice (`domain.EncoderChoice`) is one of `software`, `nvenc`,
-`qsv`, `vaapi`, `videotoolbox` and `auto`, stored as a string under the key
-`transcode.video_encoder` in the SQLite `settings` table (`SettingsStore`). A
-missing row or an unknown string is treated as `software`, and the saved value
-is not rewritten (`domain.ParseEncoderChoice`).
+```mermaid
+flowchart LR
+  c{Choice} -->|software| sw[Software]
+  c -->|auto| first[First usable, else software]
+  c -->|hardware| st{Check state}
+  st -->|usable| hw[That encoder]
+  st -->|checking| swc[Software, checking]
+  st -->|unusable| swu[Software, selected_unavailable]
+```
 
-The pure function `domain.ResolveVideoEncoder` decides the encoder in use
-(`domain.VideoEncoder`) from the choice and the startup check results.
+`auto` tries `nvenc`, `qsv`, `vaapi`, `videotoolbox` in that order; software
+there is not a fallback and carries no reason. Check results live only in
+memory and are rebuilt at every start. The choice, encoder in use and reason
+are logged at `Info` when the check finishes and on every save.
 
-| Choice | Check state | Encoder in use | Reason |
-| --- | --- | --- | --- |
-| `software` | any | software | none |
-| `auto` | any | The first usable of `nvenc`, `qsv`, `vaapi`, `videotoolbox`, in that order; software if none | none (software here is not a fallback) |
-| A hardware encoder | usable | that encoder | none |
-| A hardware encoder | checking | software | `checking` |
-| A hardware encoder | checked, unusable | software | `selected_unavailable` |
+Each request reads the encoder in use, so a change applies from the next
+request without a restart; transcodes already streaming keep their encoder. A
+video that can be copied is copied whatever the encoder.
 
-`TranscodeSettings` in `internal/app` holds the choice and the check results in
-memory. Check results are rebuilt at every start, so they are not saved.
-`Current()` returns the current state (choice, encoder in use, reason, whether
-checking, result per encoder), and `Select()` saves and updates memory. Unless
-the encoder is a usable hardware encoder (checked and `available`), `Select()`
-returns `domain.ErrEncoderUnavailable` and leaves the saved value unchanged.
-`software` and `auto` are always accepted. When the check finishes and on every
-`Select()`, the choice, encoder in use and reason are logged at `Info`.
-
-The live transcoding route (`internal/httpapi/transcode.go`) puts the encoder in
-use from `Current()` into `domain.LiveTranscodeRequest.VideoEncoder` for each
-request. A change takes effect from the next request; transcodes already
-streaming keep the encoder they started with. No restart is needed. A request
-whose video can be copied is copied regardless of the encoder.
-
-### Trade-offs
-
-- Each request reads the in-memory state, so starting a transcode adds no
-  SQLite read.
-- An encoder change is not announced to screens (no domain event and no
-  `/api/events` type). Other tabs and devices show the right state the next time
-  they display the section, or from the response to their own save.
+| Trade-off | Effect |
+| --- | --- |
+| State read from memory per request | Starting a transcode adds no SQLite read |
+| No event on an encoder change | Other tabs and devices see it when they next show the section or save |
 
 ## Startup check
 
-### Decision
+Each candidate encoder gets a short real encode in the background at startup,
+and HTTP listening does not wait for it.
 
-`cmd/mdm` reads the saved value, creates `TranscodeSettings`, logs the encoder
-line (choice, encoder in use, whether checking), and then starts the check in a
-background goroutine. HTTP listening does not wait for the check. Until the
-check finishes, the encoder in use is software even when a hardware encoder is
-chosen, and the settings API returns `checking: true`. A stop signal cancels the
-check, and the scan and workers are stopped after it ends.
+`ffmpeg -encoders` does not show whether the device or driver exists, so only
+a real encode proves an encoder works. The synthetic `lavfi` input exists in
+every build and needs no file.
 
-The OS decides what is checked (`domain.HardwareEncoderCandidates`).
+The OS decides the candidates:
 
 | OS | Candidates |
 | --- | --- |
 | linux | NVENC, Quick Sync, VAAPI |
 | windows | NVENC, Quick Sync |
 | darwin | VideoToolbox |
-| any other combination | `unsupported_os` |
+| any other | `unsupported_os` |
 
-`EncoderCheck` in `internal/media` checks one encoder:
+The candidates are checked concurrently, each within 10 seconds:
 
-1. Read `ffmpeg -encoders` once and share it among the concurrent checks. An
-   encoder whose name is absent is `encoder_missing` without running anything.
-   A read that exceeds the time limit is `timed_out`.
-2. Encode `-f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8` to
-   `-f null -` with the same encoding arguments as live transcoding. Exit code 0
-   is `available`, a failure is `check_failed`, and exceeding the time limit is
-   `timed_out`.
+```mermaid
+flowchart LR
+  list{In ffmpeg -encoders?} -->|no| missing[encoder_missing]
+  list -->|yes| enc{Test encode}
+  enc -->|exit 0| ok[available]
+  enc -->|failure| failed[check_failed]
+  enc -->|over 10 s| to[timed_out]
+  list -->|over limit| to
+```
 
-The checks for each encoder run concurrently, and `TranscodeSettings` gives each
-a time limit (10 seconds). A check that never returns becomes `timed_out` at the
-limit and does not stay "checking". The tail of a failed check's standard error
-is logged at `Warn` and not exposed through the API. The check runs once, at
-startup.
-
-### Trade-offs
-
-- `-encoders` alone does not show whether the device or driver exists, so a
-  short real encode is run. The synthetic input (`lavfi`) exists in every build
-  and needs no input file.
-- Because the checks run concurrently, even if one encoder hangs the worst-case
-  wait is about 20 seconds including the `-encoders` read. Requests in the
-  meantime transcode with software.
+The `-encoders` list is read once and shared. The test encodes
+`-f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8` to `-f null -` with
+the live transcoding arguments. A failed check's stderr tail is logged at
+`Warn` and not exposed through the API. Until the check ends, the settings API
+returns `checking: true` and requests use software; even with one encoder
+hanging, that lasts about 20 seconds. A stop signal cancels the check, and the
+scan and workers stop after it.
 
 ## Fallback within a request
 
-### Decision
+When the chosen hardware encoder ends without first data, the request restarts
+with `libx264` on the same probe and answers 200 with software output
+([live-transcode-seek.md](live-transcode-seek.md#copy-path-and-gap-limit)).
 
-In the switching ladder of `LiveTranscoder.Start`
-([live-transcode-seek.md](live-transcode-seek.md#copy-path-and-gap-limit)), the
-encode step has two rungs: the request's encoder, then software. If the hardware
-FFmpeg ends without emitting first data, it restarts with `libx264` using the
-same probe. The deadline is still the single `StartupDeadline`; expiry and
-cancellation do not switch. A failure after first data does not switch either.
+Hardware initialization failures (session limit, missing device, unsupported
+input) exit at once, so the single `StartupDeadline` leaves time for the retry.
+Session limits are often temporary, so a failure changes neither the settings
+state nor the next request, which tries the chosen encoder again.
 
-The switch is returned in `LiveTranscode.HardwareFailure` (an error including
-the tail of FFmpeg's standard error), and the route logs it at `Warn` (video,
-encoder, error). The response is 200 with software output, with the same shape
-and headers. The failed encoder is not remembered; the next request tries the
-configured encoder again.
+```mermaid
+flowchart LR
+  hw[Hardware encode] --> first{First data?}
+  first -->|yes| stream[Stream, no switch]
+  first -->|exited| sw[Software retry]
+  first -->|deadline or cancel| fail[Fail, no switch]
+  sw --> log[Warn log]
+```
 
-### Trade-offs
-
-- Hardware initialization failures (session limit, missing device, unsupported
-  input) return an exit code immediately, so time remains for the software retry
-  without a separate deadline.
-- Session limits are often temporary, so a failure is not reflected in the
-  settings state (what the screen shows).
+The `Warn` log names the video, the encoder and the error with FFmpeg's stderr
+tail. The response shape and headers are the same as without a fallback.
 
 ## Encoder arguments
 
-### Decision
+Every encoder produces H.264 High, Level 5.1, 4:2:0 8-bit at constant quality
+with forced keyframes as IDR; only the encoder specification differs.
 
-The common part of `videoEncodeArgs` (the scale, pad, setsar and fps filters,
-`-force_key_frames expr:gte(t,n_forced*2)`), audio and `-movflags` do not depend
-on the encoder. Only the encoder specification (`encoderCodecArgs`) changes per
-encoder. All produce H.264 High, Level 5.1, 4:2:0 8-bit, constant quality, with
-forced keyframes as IDR.
+The filters (scale, pad, setsar, fps), `-force_key_frames expr:gte(t,n_forced*2)`,
+audio and `-movflags` are shared. Keyframes are IDR because `frag_keyframe`
+cuts fragments only at IDR frames, and a later cut delays the first data.
+Decoding is software for every encoder.
 
 | Encoder | Encoder specification |
 | --- | --- |
@@ -153,52 +139,39 @@ forced keyframes as IDR.
 | `vaapi` | `-vaapi_device /dev/dri/renderD128`, `format=nv12,hwupload` at the end of the filter, `-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23` |
 | `videotoolbox` | `-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p -q:v 60 -realtime 1` |
 
-A transcode with a quality (`domain.LiveTranscodeRequest.Quality`) adds the
-quality's caps to the specification above (video cap `<cap>`, `-bufsize` twice
-that). The values and the target dimensions are in
-[playback-quality.md](playback-quality.md).
+A transcode with a quality adds that quality's cap `<cap>` with a buffer of
+twice the cap ([values and dimensions](playback-quality.md#transcoding)).
+Software and NVENC keep constant quality under the cap, so quiet scenes come
+out lighter. QSV, VAAPI and VideoToolbox honour a cap on constant quality only
+on some drivers, so they switch to VBR. A software fallback uses the same
+quality arguments.
 
 | Encoder | Specification with a quality |
 | --- | --- |
-| `software`, `nvenc` | Keep constant quality (`-crf 23` / `-cq 23`) and append `-maxrate <cap>k -bufsize <cap×2>k` |
+| `software`, `nvenc` | Keep `-crf 23` / `-cq 23` and append `-maxrate <cap>k -bufsize <cap×2>k` |
 | `qsv` | Replace `-global_quality 23` with `-b:v <cap>k -maxrate <cap>k -bufsize <cap×2>k` |
 | `vaapi` | Replace `-rc_mode CQP -qp 23` with `-rc_mode VBR -b:v <cap>k -maxrate <cap>k -bufsize <cap×2>k` |
 | `videotoolbox` | Replace `-q:v 60` with `-b:v <cap>k -maxrate <cap>k -bufsize <cap×2>k` |
 
-Software and NVENC can combine constant quality with a cap, so quiet scenes come
-out lighter than the cap. Whether QSV, VAAPI and VideoToolbox honour a cap on
-top of constant quality depends on the driver, so they use VBR, where the cap
-reliably applies. When hardware ends without first data and falls back to
-software, the restart uses the same quality arguments.
-
-Keyframes are IDR because `frag_keyframe` uses keyframes to cut fragments. A
-non-IDR I-frame does not cut a fragment, which delays the first data. Decoding
-is done in software for every encoder.
-
-### Alternatives
-
-- **Also use hardware decoding (`-hwaccel`)**: support differs widely by input
-  format, so it was left out of this feature's scope.
-- **Insert keyframes with `-g 60`**: the frame count after the fps filter thins
-  frames drifts from time. The time-based `-force_key_frames` is used for every
-  encoder.
+| Rejected | Why |
+| --- | --- |
+| Hardware decoding (`-hwaccel`) | Support differs widely by input format; left out of this feature's scope |
+| Keyframes with `-g 60` | The frame count after the fps filter drifts from time, so time-based `-force_key_frames` is used |
 
 ## Settings API
 
-`GET /api/settings/transcoding` and `PUT /api/settings/transcoding` (body
-`{"videoEncoder": …}`) both return the same `TranscodingSettings` (choice,
-encoder in use, `fallbackReason`, `checking`, and four check results with
-reasons in the order `nvenc`, `qsv`, `vaapi`, `videotoolbox`) with
-`Cache-Control: no-store`. They are owner-only routes.
-`internal/httpapi/transcoding_settings.go` only parses the request and converts
-to the contract shape; deciding the encoder and rejecting a choice are left to
-`TranscodeSettings`.
+`GET` and `PUT /api/settings/transcoding` (body `{"videoEncoder": …}`) are
+owner-only and both return the current `TranscodingSettings` with
+`Cache-Control: no-store`
+([contract](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md);
+source of truth [api/openapi.yaml](../../api/openapi.yaml)).
+
+The response carries the choice, the encoder in use, `fallbackReason`,
+`checking`, and the check result with its reason for `nvenc`, `qsv`, `vaapi`
+and `videotoolbox`, in that order. `software` and `auto` are always accepted.
 
 | Case | Response |
 | --- | --- |
-| A value not in the enumeration, or a body that is not JSON | 400 `invalid_request` |
-| An unusable hardware encoder (including while checking) | 409 `conflict`, reason `encoder_unavailable`; the saved value is unchanged |
+| Value not in the enumeration, or body not JSON | 400 `invalid_request` |
+| Hardware encoder not usable, including while checking | 409 `conflict`, reason `encoder_unavailable`; saved value unchanged |
 | Save failure | 500 `internal` |
-
-The source of truth for the contract is [api/openapi.yaml](../../api/openapi.yaml)
-([specs/025-hardware-encoding/contracts/transcoding-settings-api.md](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md)).
