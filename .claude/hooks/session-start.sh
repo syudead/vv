@@ -22,9 +22,31 @@ if [ -z "$task_version" ]; then
   echo "session-start: mise.toml に task の版が見つからない" >&2
   exit 1
 fi
-go install "github.com/go-task/task/v3/cmd/task@v${task_version}"
 gobin="$(go env GOPATH)/bin"
-"$gobin/task" setup
+# コンテナはキャッシュから復元されるので、同じ版が入っていれば入れ直さない。
+if ! "$gobin/task" --version 2>/dev/null | grep -q "v\?${task_version}\b"; then
+  go install "github.com/go-task/task/v3/cmd/task@v${task_version}"
+fi
+
+# task setup は npm ci で node_modules を毎回消して入れ直すため、キャッシュ済みの
+# コンテナでも起動のたびに数十秒かかる。フックでは lockfile が変わったディレクトリ
+# だけ npm ci し、残りの手順（すべて差分だけを取る）は task setup と同じものを呼ぶ。
+npm_ci_if_changed() {
+  local dir="$1" stamp="$1/node_modules/.session-start-lock.sha256" sum
+  sum="$(sha256sum "$dir/package-lock.json" | cut -d' ' -f1)"
+  if [ -f "$stamp" ] && [ "$(cat "$stamp")" = "$sum" ]; then
+    return 0
+  fi
+  npm --prefix "$dir" ci
+  echo "$sum" >"$stamp"
+}
+go mod download
+go -C tools mod download
+for dir in web tools docs-site; do npm_ci_if_changed "$dir"; done
+"$(go -C tools tool -n golangci-lint)" --version
+go -C tools tool air -v
+go -C tools tool oapi-codegen -version
+go build ./...
 
 # 以後のコマンドから task をそのまま呼べるように、セッションの PATH に足す。
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
