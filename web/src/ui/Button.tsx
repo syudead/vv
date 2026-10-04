@@ -12,11 +12,12 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-accent text-accent-fg not-disabled:hover:bg-accent-hover not-disabled:active:bg-accent-active",
+    "bg-primary text-primary-foreground not-disabled:hover:bg-primary-hover not-disabled:active:bg-primary-active",
   secondary:
-    "border border-control-border bg-elevated text-fg not-disabled:hover:bg-surface-hover not-disabled:active:bg-surface",
-  ghost: "text-fg not-disabled:hover:bg-hover-wash not-disabled:active:bg-active-wash",
-  danger: "bg-danger-strong text-danger-fg not-disabled:hover:bg-danger-strong/80",
+    "border border-input bg-popover text-foreground not-disabled:hover:bg-secondary not-disabled:active:bg-card",
+  ghost: "text-foreground not-disabled:hover:bg-accent not-disabled:active:bg-secondary",
+  danger:
+    "bg-destructive-strong text-destructive-foreground not-disabled:hover:bg-destructive-strong/80",
 };
 
 const sizes: Record<ButtonSize, string> = {

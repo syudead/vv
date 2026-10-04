@@ -376,7 +376,7 @@ function VersionRow({
       aria-current={current ? "true" : undefined}
       className={cn(
         "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 pr-2",
-        current && "border-l-2 border-accent bg-active-wash",
+        current && "border-l-2 border-primary bg-active-wash",
       )}
     >
       {current ? (

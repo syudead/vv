@@ -45,7 +45,7 @@ export interface TagRowRefs {
  * （specs/031-tentative-tags/ui-design.md「Row」）。行の高さ・本数の列・改名の
  * 入力は確定した行と同じ。
  *
- * 名前の列の左に行のチェックを置き、選んだ行は面を `accent-soft` にする。
+ * 名前の列の左に行のチェックを置き、選んだ行は面を `primary-soft` にする。
  * タッチの端末（`pointer: coarse`）と `sm` 未満の幅では、行の操作を文字を持つ
  * 1 つのメニュー「Actions」にまとめる。出し分けは CSS だけで行う
  * （specs/036-tag-admin-scale/ui-design.md「Row checkbox」「Actions on touch and
@@ -142,7 +142,7 @@ function TagRow({
         renaming
           ? "bg-elevated ring-1 ring-control-border"
           : // 選んだ行はアクセントの薄い色（10%）で塗る。
-            selected && "bg-accent/10",
+            selected && "bg-primary/10",
       )}
     >
       {/*
@@ -194,7 +194,7 @@ function TagRow({
             }
             aria-busy={pending || undefined}
             aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
-            className="h-8 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link"
+            className="h-8 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-primary focus:outline-none focus:ring-2 focus:ring-link"
           />
         ) : (
           <>

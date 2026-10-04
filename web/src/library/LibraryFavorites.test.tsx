@@ -280,7 +280,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
     // 面も枠も無く、size-7 の中に 22px の白い線のハートを影付きで置く（「Mark」「Card」）。
     expect(toggle.className).toContain("size-7");
-    expect(toggle.className).toContain("text-fg");
+    expect(toggle.className).toContain("text-foreground");
     expect(toggle.className).not.toMatch(/\bbg-/);
     const heart = toggle.querySelector("svg") as SVGElement;
     expect(heart.getAttribute("class")).toContain("size-5.5");
@@ -300,7 +300,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
       { videoIds: [1], folders: [], favorite: true },
     ]);
     expect(toggle.className).toContain("text-favorite");
-    expect(toggle.className).not.toContain("text-link");
+    expect(toggle.className).not.toContain("text-primary");
     expect(toggle.className).not.toContain("opacity-0");
     expect(toggle.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
     // 押しても再生画面は開かない。
@@ -376,7 +376,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     expect(cell.className).toContain("w-8");
     const titleCell = cell.previousElementSibling as HTMLElement;
     expect(within(titleCell).getByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(toggle.className).toContain("text-fg-muted");
+    expect(toggle.className).toContain("text-muted-foreground");
 
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));

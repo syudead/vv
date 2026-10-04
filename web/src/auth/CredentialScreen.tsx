@@ -90,7 +90,7 @@ export const CredentialField = forwardRef<HTMLInputElement, CredentialFieldProps
           ref={ref}
           id={id}
           className={cn(
-            "h-9 w-full rounded-sm border border-control-border bg-field px-3 text-sm text-fg focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link",
+            "h-9 w-full rounded-sm border border-control-border bg-field px-3 text-sm text-fg focus:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link",
             className,
           )}
           {...rest}

@@ -70,12 +70,12 @@ export default function LibraryToolbar({
   onZoomChange,
 }: LibraryToolbarProps) {
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+    <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
       <SearchBox
         query={query}
         onCommit={onQueryCommit}
         inputRef={searchRef}
-        className="min-w-20 flex-1 sm:min-w-40 sm:max-w-md"
+        className="min-w-search-min flex-1 sm:max-w-md sm:min-w-search-min-sm"
       />
 
       <FilterMenu
@@ -107,7 +107,7 @@ export default function LibraryToolbar({
           <ZoomSlider
             zoom={zoom}
             onZoomChange={onZoomChange}
-            className="hidden w-24 xl:flex"
+            className="hidden w-zoom xl:flex"
           />
         </Tooltip>
       )}
@@ -117,12 +117,12 @@ export default function LibraryToolbar({
           <Button
             variant="secondary"
             aria-label={t.list.viewAndSort}
-            className={cn("px-2.5", view === "grid" ? "xl:hidden" : "lg:hidden")}
+            className={cn("px-2", view === "grid" ? "xl:hidden" : "lg:hidden")}
           >
             <SlidersHorizontal />
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-80">
+        <PopoverContent align="end" className="w-popover-wide">
           <div className="space-y-4">
             <div className="md:hidden">
               <CompactSortControls
@@ -134,7 +134,7 @@ export default function LibraryToolbar({
             </div>
 
             <fieldset className="lg:hidden">
-              <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+              <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
                 {t.library.view.label}
               </legend>
               <SegmentedControl
@@ -147,7 +147,7 @@ export default function LibraryToolbar({
 
             {view === "grid" && (
               <fieldset className="hidden sm:block xl:hidden">
-                <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
+                <legend className="mb-1 text-xs font-semibold text-muted-foreground uppercase">
                   {t.list.cardSize}
                 </legend>
                 <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />

@@ -6,7 +6,7 @@
 
 The screens share one set of visual values in CSS, and tests check what a
 machine can check. The values (colours, radii, card widths) live only in
-`@theme` in [`web/src/index.css`](../../web/src/index.css) and the checked
+`@theme` in [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css) and the checked
 pairs only in [`tokens.test.ts`](../../web/src/theme/tokens.test.ts); they are
 not copied here.
 
@@ -14,7 +14,7 @@ The diagram shows where the values live and who checks each part.
 
 ```mermaid
 flowchart LR
-  theme["@theme in index.css"] --> classes[Tailwind utility classes]
+  theme["@theme in tokens.css"] --> classes[Tailwind utility classes]
   classes --> screens[Screens in web/src]
   test[tokens.test.ts] -->|contrast| theme
   test -->|raw colour scan| screens
@@ -24,7 +24,7 @@ flowchart LR
 ## Visual values in one CSS location, with contrast guaranteed by tests
 
 Screens set visual values only through the utility classes Tailwind generates
-from `@theme` (`bg-surface`, `text-fg-muted`, `rounded-md`), and
+from `@theme` (`bg-card`, `text-muted-foreground`, `rounded-md`), and
 `tokens.test.ts` checks that every listed text/surface pair reaches a WCAG 2
 contrast of at least 4.5.
 
@@ -49,18 +49,10 @@ from the pairs is not checked, so **a new text or surface colour must be added
 to the pairs**; the test catches a listed pair missing from CSS, not the
 reverse.
 
-| Role | Token |
-| --- | --- |
-| Shell and surfaces | Supplied dark `navbar`, `bg`, `surface` |
-| Primary action | Cyan `accent`; `accent-hover` on hover; `accent-active` pressed and selected |
-| Borders of shared controls | `control-border` |
-| Keyboard focus | `link` |
-| Danger, warning, success | Own semantic colour, always with text and an icon |
-| Favorite mark | Pink `favorite`, used by nothing else ([035 UI design, Mark](../../specs/035-favorites/ui-design.md)) |
-
-The semantic colours and the pink stay apart from cyan so they are not read as
-interaction states. The test covers body text on surfaces, the main borders and
-focus.
+Which token plays which role (surfaces, the cyan `primary`, control borders,
+focus, the semantic colours and the favorite pink) is set in
+[design-system.md, Foundations](design-system.md#foundations). The test covers
+body text on surfaces, the main borders and focus.
 
 | Rejected | Why |
 | --- | --- |
@@ -401,7 +393,7 @@ The owner's favorite toggle opens the right-hand action group, left of
 `Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
 `sm`, `aria-pressed`). It is the group's only control with state, so the eye
 lands on it first; even so, it is no more prominent than the title: on is a small
-`bg-accent-soft` fill with the pink heart. It is absent on group rows and for
+`bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
 ```mermaid

@@ -32,9 +32,9 @@ export interface CardTagRowProps {
  * 決める。「+N」と、選ぶ余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、
  * 計測した幅のまま出す。
  *
- * surface は面の色。既定はカードの `bg-elevated`。ポップオーバーの中
- * （`PopoverContent` も `bg-elevated`）では `bg-field` にし、チップの面が
- * 窓の面へ溶けて見えなくならないようにする（N5、Synonym の窓の `bg-bg` と
+ * surface は面の色。既定はカードの `bg-popover`。ポップオーバーの中
+ * （`PopoverContent` も `bg-popover`）では `bg-muted` にし、チップの面が
+ * 窓の面へ溶けて見えなくならないようにする（N5、Synonym の窓の `bg-background` と
  * 同じ理由）。
  *
  * folderOnly のチップは面を持たず、破線の枠と Folder の目印で区別する。
@@ -49,20 +49,20 @@ function chipClassName(
   folderOnly = false,
 ): string {
   return cn(
-    "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-fg-muted",
+    "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-muted-foreground",
     "gap-1",
     folderOnly
-      ? "border border-dashed border-border-strong"
+      ? "border border-dashed border-input"
       : surface === "elevated"
-        ? "bg-elevated"
-        : "bg-field",
+        ? "bg-popover"
+        : "bg-muted",
     shrink ? "shrink" : "shrink-0",
     pressable &&
       (folderOnly
-        ? "hover:border-solid hover:text-fg"
-        : "hover:text-fg hover:ring-1 hover:ring-inset hover:ring-border-strong"),
+        ? "hover:border-solid hover:text-foreground"
+        : "hover:text-foreground hover:ring-1 hover:ring-inset hover:ring-input"),
     pressable &&
-      "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
+      "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
   );
 }
 
@@ -82,7 +82,7 @@ function chipLabel(tag: VideoTag, folderOnly: boolean): string {
 
 /** FolderMark は破線のチップの名前の前に置く目印である。 */
 function FolderMark() {
-  return <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />;
+  return <Folder className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
 
 function TagChip({

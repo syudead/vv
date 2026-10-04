@@ -103,14 +103,16 @@ export default function NetworkSection() {
               onClick={() => void toggle()}
               className={cn(
                 "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-control-border transition-colors duration-150 aria-disabled:cursor-default aria-disabled:opacity-60",
-                checked ? "bg-accent" : "bg-field",
+                checked ? "bg-primary" : "bg-field",
               )}
             >
               <span
                 aria-hidden="true"
                 className={cn(
                   "inline-block size-4 rounded-full transition-transform duration-150 motion-reduce:transition-none",
-                  checked ? "translate-x-6 bg-accent-fg" : "translate-x-1 bg-fg-muted",
+                  checked
+                    ? "translate-x-6 bg-primary-foreground"
+                    : "translate-x-1 bg-fg-muted",
                 )}
               />
             </button>

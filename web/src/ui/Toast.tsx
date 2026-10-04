@@ -134,7 +134,7 @@ export function ToastProvider({
           <div
             key={item.id}
             className={cn(
-              "rounded-md bg-elevated px-4 py-2.5 text-sm text-fg shadow-elevated animate-slide-up",
+              "rounded-md bg-popover px-4 py-2.5 text-sm text-foreground shadow-elevated animate-slide-up",
               placement === "playback" &&
                 "max-w-[calc(100vw-8rem)] break-words sm:max-w-72",
             )}

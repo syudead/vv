@@ -114,7 +114,7 @@ export function ModalFrame({
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "flex min-h-0 w-full flex-col bg-elevated shadow-elevated sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg sm:border sm:border-border-strong",
+          "flex min-h-0 w-full flex-col bg-popover shadow-elevated sm:max-h-[calc(100dvh-3rem)] sm:rounded-lg sm:border sm:border-input",
           width,
         )}
       >

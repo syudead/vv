@@ -164,7 +164,7 @@ export default function SearchBox({
 
   return (
     <div className={cn("group relative flex h-9 w-full items-center", className)}>
-      <Search className="pointer-events-none absolute left-3 size-4 text-fg-subtle transition-colors group-focus-within:text-fg-muted" />
+      <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground transition-colors group-focus-within:text-muted-foreground" />
       <input
         ref={field}
         type="search"
@@ -203,9 +203,9 @@ export default function SearchBox({
           // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
           // 手引きを置かない検索欄は、クリアか `/` の1つ分だけ空ける。
           !syntaxHelp ? "pr-9" : input === "" ? "pr-9 sm:pr-15" : "pr-15",
-          "h-full w-full rounded-md border border-control-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
-          "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
-          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-link",
+          "h-full w-full rounded-md border border-input bg-muted pl-9 text-sm text-foreground shadow-[inset_0_1px_2px_var(--color-border)]",
+          "placeholder:text-muted-foreground transition-[border-color,box-shadow] duration-150",
+          "focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring",
           "disabled:cursor-not-allowed disabled:opacity-50",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
@@ -219,13 +219,13 @@ export default function SearchBox({
             onMouseDown={(event) => event.preventDefault()}
             onClick={clear}
             aria-label={t.list.search.clear}
-            className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <X className="size-4" />
           </button>
         )}
         {input === "" && (
-          <kbd className="pointer-events-none mr-1 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
+          <kbd className="pointer-events-none mr-1 hidden rounded-sm border border-input px-1.5 font-sans text-2xs text-muted-foreground sm:block">
             /
           </kbd>
         )}

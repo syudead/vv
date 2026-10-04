@@ -262,7 +262,7 @@ function RepresentativeRow({
         disabled={disabled}
         onChange={onChoose}
         aria-label={t.versions.bundle.row(video.title, versionDetailsText(details, " "))}
-        className="mt-0.5 size-4 shrink-0 accent-accent"
+        className="mt-0.5 size-4 shrink-0 accent-primary"
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="truncate text-sm text-fg" title={video.title}>

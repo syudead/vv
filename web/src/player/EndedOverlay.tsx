@@ -54,7 +54,9 @@ export default function EndedOverlay({
       ) : (
         <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
           <h2 className="text-lg font-semibold text-fg">{t.player.ended.announcement}</h2>
-          <span className="text-xs font-semibold text-accent">{t.player.ended.next}</span>
+          <span className="text-xs font-semibold text-primary">
+            {t.player.ended.next}
+          </span>
           <Link
             to={`/videos/${String(next.id)}`}
             state={{ from: backTo }}

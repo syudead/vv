@@ -18,6 +18,34 @@
       ]
     },
     {
+      "name": "vv-theme",
+      "type": "registry:file",
+      "title": "vv theme tokens",
+      "description": "Every design-system token (colour roles, type, spacing and sizes, radius, shadow, motion) in web/src/ui/tokens.css.",
+      "docs": "Use only the utility classes these tokens generate. Which role each colour plays and which step to use where: web/registry/rules/foundations.md (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/tokens.css",
+          "type": "registry:file",
+          "target": "src/ui/tokens.css"
+        }
+      ]
+    },
+    {
+      "name": "vv-rules",
+      "type": "registry:file",
+      "title": "vv design-system rules",
+      "description": "The usage rules of the vv design system, one file per tier.",
+      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow.",
+      "files": [
+        {
+          "path": "registry/rules/foundations.md",
+          "type": "registry:file",
+          "target": "registry/rules/foundations.md"
+        }
+      ]
+    },
+    {
       "name": "brand-home-link",
       "type": "registry:ui",
       "title": "BrandHomeLink",

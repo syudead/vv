@@ -265,6 +265,17 @@ export const en = {
     foundations: "Foundations",
     components: "Components",
     patterns: "Page patterns",
+    foundation: {
+      surfaces: "Surfaces, darkest first",
+      colours: "Colour roles",
+      type: "Type",
+      spacing: "Spacing and sizes",
+      namedSizes: "Named sizes",
+      radius: "Radius",
+      shadow: "Shadow",
+      sample: "Kyoto Arashiyama, morning walk 1080p 49:10",
+      onSurface: (surface: string) => `Text on ${surface}`,
+    },
   },
   app: {
     routeLoadFailed: {

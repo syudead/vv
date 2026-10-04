@@ -28,7 +28,7 @@ export function MenuContent({
         sideOffset={6}
         collisionPadding={8}
         className={cn(
-          "z-50 min-w-44 rounded-md bg-elevated p-1 shadow-elevated animate-pop-in origin-(--radix-dropdown-menu-content-transform-origin)",
+          "z-50 min-w-44 rounded-md bg-popover p-1 shadow-elevated animate-pop-in origin-(--radix-dropdown-menu-content-transform-origin)",
           className,
         )}
       >
@@ -40,7 +40,7 @@ export function MenuContent({
 
 export function MenuLabel({ children }: { children: ReactNode }) {
   return (
-    <Dropdown.Label className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-fg-subtle">
+    <Dropdown.Label className="px-2.5 pt-1.5 pb-1 text-xs font-medium text-muted-foreground">
       {children}
     </Dropdown.Label>
   );
@@ -52,7 +52,7 @@ export function MenuSeparator() {
 
 const itemBase =
   "relative flex h-8 cursor-default items-center gap-2.5 rounded-sm px-2.5 text-sm outline-none select-none " +
-  "data-highlighted:bg-hover-wash data-disabled:opacity-50 [&>svg]:size-4";
+  "data-highlighted:bg-accent data-disabled:opacity-50 [&>svg]:size-4";
 
 /**
  * itemTone は項目の面ごとの文字とアイコンの色。取り消せない操作（削除など）は
@@ -60,8 +60,8 @@ const itemBase =
  * `cn` が単純結合のためクラスの重なりで色が決まらなくなるのを避ける。
  */
 const itemTone = {
-  default: "text-fg [&>svg]:text-fg-muted",
-  danger: "text-danger [&>svg]:text-danger",
+  default: "text-foreground [&>svg]:text-muted-foreground",
+  danger: "text-destructive [&>svg]:text-destructive",
 } as const;
 
 export function MenuItem({
@@ -120,7 +120,7 @@ export function MenuRadioItem({
   return (
     <Dropdown.RadioItem value={value} className={cn(itemBase, itemTone.default, "pr-9")}>
       {children}
-      <Dropdown.ItemIndicator className="absolute right-2.5 text-accent">
+      <Dropdown.ItemIndicator className="absolute right-2.5 text-primary">
         <Check className="size-4" />
       </Dropdown.ItemIndicator>
     </Dropdown.RadioItem>

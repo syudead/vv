@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 6c375eef92061be18b995ba319f28bcd3473d3dbe12b6d16e947b156185ea5bd
+sourceHash: 9c910ba600ee16a3f950f50c4e932cb8f68e18470c6897c5ae4d2bda78b74945
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -57,7 +57,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | テーマが生成しないクラス | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
 | トークン外の生の色、既定パレットのクラス、最小値を下回るコントラストの組 | `web/src/theme/tokens.test.ts` | テスト自身のメッセージ |
 
-任意のバリアント（`data-[state=open]:`、`has-[...]:`、`max-[49.5rem]:`）は通る。任意の値のルールは最後のバリアントの後のユーティリティだけを検査する。`h-[3px]` と `[overflow-wrap:anywhere]` は失敗し、`data-[state=open]:bg-accent-soft` は通る。
+任意のバリアント（`data-[state=open]:`、`has-[...]:`、`max-[49.5rem]:`）は通る。任意の値のルールは最後のバリアントの後のユーティリティだけを検査する。`h-[3px]` と `[overflow-wrap:anywhere]` は失敗し、`data-[state=open]:bg-primary-soft` は通る。
 
 `noInlineConfig` が `eslint-disable` コメントを無効にするので、例外はすべて `web/design-exceptions.js` の項目になる。
 
@@ -82,7 +82,43 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 ## 基盤 {#foundations}
 
-[Define the design-system foundations and apply them to the library screen](https://github.com/syudead/vv/issues/769) が書く。
+すべての視覚値は `web/src/ui/tokens.css` の `@theme` にあるトークン（レジストリの項目 `vv-theme`）であり、画面はそこから生成されるユーティリティクラスだけを使う。vv は暗い無彩色の面を保ち、シアンを唯一の操作の色とし、shadcn/ui のフラットなスタイルに従う。枠線は細く、グラデーションはなく、影は浮いているレイヤーにだけ付ける。どこでどのトークンを使うかは [foundations.md](../../web/registry/rules/foundations.md)（項目 `vv-rules`）にある。
+
+色のトークンは shadcn/ui の意味に基づく名前を使うので、上流のコンポーネントのコードは名前を変えずに済む。それに加えて、shadcn にない vv 独自の役割を持つ。
+
+| トークン | 役割 |
+| --- | --- |
+| `navbar`、`background`、`muted`、`card`、`popover` | 5 つの面。暗い順。どの 2 つも同じには見えない |
+| `foreground`、`muted-foreground`（と各面の `-foreground`） | 本文と補助の文字。文字の灰色は 2 つで足りる |
+| `secondary`、`accent` | 補助の塗りとホバー中の行。`accent` は shadcn のホバーの役割であり、ブランドの色ではない |
+| `primary`、`primary-hover`、`primary-active`、`primary-foreground`、`primary-soft` | シアン。主な操作、選択、進行 |
+| `border`、`input`、`ring` | 区切り線、コントロールの縁、キーボードフォーカス |
+| `destructive`、`warning`、`success`（それぞれ `-foreground` と `-soft` を伴う）、`destructive-strong` | 状態。必ず言葉とアイコンを伴う |
+| `favorite`、`overlay` | お気に入りのハートだけ。唯一の半透明の色で、ダイアログの背後とサムネイルの上に使う |
+
+値は 6 桁の 16 進数なので、`web/src/theme/tokens.test.ts` はすべての面の上の文字と枠線の組をすべて確かめられる。暗色のセットは 1 つだ（[library-ui.md、Dark scheme only](library-ui.md#dark-scheme-only-without-a-lightdark-switch)）。トークンを専用のファイルに置くのは、`shadcn add` が上流のテーマの変数を `index.css` に書き込み、そこでは生の色の走査がそれらを失敗にするからだ。
+
+尺度は閉じている。
+
+| 尺度 | 段階 |
+| --- | --- |
+| 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階。`font-normal`、`font-medium`、`font-semibold` |
+| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、ポップオーバーの幅） |
+| 角丸 | `sm`、`md`、`lg`、`full` |
+| 影 | `shadow-card-hover`、`shadow-elevated`、`drop-shadow-mark`。静止した面には付けない |
+| 動き | `fade-in`、`pop-in`、`slide-up`、`shimmer`。動きを減らす設定では無効 |
+
+ライブラリは動画ページより密だ。コントロールは `h-8`、コントロールの間は `gap-2`、カードの間は `gap-3`、本文は `text-sm` で、動画ページではそれぞれ `h-9`、`gap-3`、`gap-4`、`text-base` だ。
+
+すべての画面が移行するまで、`no-restricted-classes` のパターンが尺度の外の数値の段階（`p-7`、`gap-2.5`、`text-2xl`、`rounded-xl`、`font-bold`）を `Step outside the design-system scale (web/registry/rules/foundations.md).` で失敗させ、以前のトークン名（`surface`、`fg-muted`、`link` など）は新しい名前の `var()` の別名として定義されたまま残るので、移行していない画面も動き続ける。シアンの `accent` はすべての箇所で一度に `primary` へ改名した。shadcn は `accent` をホバーの塗りに使うからだ。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| vv の名前（`surface`、`fg-muted`）を保つ | 後から追加する shadcn/ui のコンポーネントをすべて手で書き換えることになる |
+| shadcn の既定と同じ oklch の値 | コントラストのテストは 16 進数だけを解析する |
+| shadcn の既定と同じ白い主ボタン | シアンはブランドの操作の色だ |
+
+基盤の判断は [038 調査](../../specs/038-design-system/research.md) の R-5 と R-8、および [038 UI 設計、Foundations](../../specs/038-design-system/ui-design.md#foundations) にある。
 
 ## コンポーネント {#components}
 

@@ -248,7 +248,7 @@ export function CardMedia({
           )}
         />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
           <ImageOff className="size-6" strokeWidth={1.5} />
           <span className="text-xs">
             {video.thumbnailState === "failed"

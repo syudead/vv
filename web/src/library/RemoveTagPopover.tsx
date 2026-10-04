@@ -151,7 +151,7 @@ export default function RemoveTagPopover({
       side="top"
       align="start"
       aria-labelledby={headingId}
-      className="w-72 p-3"
+      className="w-popover p-3"
       onOpenAutoFocus={(event) => {
         if (overLimit || loading || fetchFailed || summary?.items.length === 0) {
           event.preventDefault();
@@ -167,18 +167,18 @@ export default function RemoveTagPopover({
         {t.library.selection.removeTag}
       </h2>
       {overLimit && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-xs text-destructive">
           {overLimitMessage()}
         </p>
       )}
       {!overLimit && loading && (
-        <p role="status" className="text-xs text-fg-muted">
+        <p role="status" className="text-xs text-muted-foreground">
           {t.library.selection.loading}
         </p>
       )}
       {!overLimit && !loading && fetchFailed && (
         <div className="flex flex-col items-start gap-2">
-          <p role="alert" className="text-xs text-danger">
+          <p role="alert" className="text-xs text-destructive">
             {t.library.selection.summaryFailed}
           </p>
           <Button variant="ghost" size="sm" onClick={fetchSummary}>
@@ -191,7 +191,9 @@ export default function RemoveTagPopover({
         !fetchFailed &&
         summary !== null &&
         summary.items.length === 0 && (
-          <p className="text-xs text-fg-muted">{t.library.selection.nothingToRemove}</p>
+          <p className="text-xs text-muted-foreground">
+            {t.library.selection.nothingToRemove}
+          </p>
         )}
       {!overLimit &&
         !loading &&
@@ -208,7 +210,10 @@ export default function RemoveTagPopover({
               createLabel={null}
               placeholder={t.library.selection.removeTag}
               icon={
-                <Minus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />
+                <Minus
+                  className="size-3 shrink-0 text-muted-foreground"
+                  aria-hidden="true"
+                />
               }
               busy={submitting}
               side="top"
@@ -223,7 +228,7 @@ export default function RemoveTagPopover({
               frameClassName="w-full"
             />
             {errorMessage !== null && (
-              <p role="alert" className="mt-1 text-xs text-danger">
+              <p role="alert" className="mt-1 text-xs text-destructive">
                 {errorMessage}
               </p>
             )}

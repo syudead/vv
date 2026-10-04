@@ -239,7 +239,7 @@ export function SortMenuView<T extends string>({
             className={cn(toggle !== undefined && "rounded-r-none")}
           >
             {label}
-            <ChevronDown className="-mr-1 text-fg-muted" />
+            <ChevronDown className="-mr-1 text-muted-foreground" />
           </Button>
         </MenuTrigger>
         <MenuContent align="start">
@@ -263,7 +263,7 @@ export function SortMenuView<T extends string>({
             variant="secondary"
             aria-label={toggle.label}
             disabled={disabled}
-            className="rounded-l-none px-2.5"
+            className="rounded-l-none px-2"
             onClick={toggle.onClick}
           >
             {toggle.icon}
@@ -298,7 +298,7 @@ export function CompactSortView<T extends string>({
 }) {
   return (
     <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+      <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
         {heading}
       </legend>
       <div className="grid grid-cols-2 gap-1">
@@ -306,10 +306,10 @@ export function CompactSortView<T extends string>({
           <label
             key={option.value}
             className={cn(
-              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
+              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
               value === option.value
-                ? "bg-accent text-accent-fg"
-                : "text-fg hover:bg-hover-wash",
+                ? "bg-primary text-primary-foreground"
+                : "text-foreground hover:bg-accent",
               disabled && "pointer-events-none opacity-50",
             )}
           >

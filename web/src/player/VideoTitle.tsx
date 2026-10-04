@@ -140,7 +140,7 @@ export default function VideoTitle({
               // 文字の左端を題名の左端にそろえる（Group line の -ml-2 と同じ考え方。枠の 1px の分だけ内側の余白を減らす）。
               className={cn(
                 titleType,
-                "-mx-2 min-w-0 rounded-md border border-border bg-field px-[7px] py-1 placeholder:text-fg-subtle focus:border-accent focus:outline-none sm:mr-0 sm:flex-1",
+                "-mx-2 min-w-0 rounded-md border border-border bg-field px-[7px] py-1 placeholder:text-fg-subtle focus:border-primary focus:outline-none sm:mr-0 sm:flex-1",
               )}
             />
             <div className="flex shrink-0 items-center gap-2">

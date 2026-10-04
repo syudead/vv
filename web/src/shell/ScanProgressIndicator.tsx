@@ -136,7 +136,7 @@ export default function ScanProgressIndicator() {
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               aria-label={t.shell.scan.openStatus(indicatorName(presentation))}
-              className="inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
+              className="inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-md border border-input bg-popover px-3 py-2 text-sm text-foreground shadow-elevated"
             >
               <ScanStatusIcon state={presentation.state} />
               <span className="font-medium">{presentation.statusText}</span>
@@ -160,7 +160,7 @@ export default function ScanProgressIndicator() {
             <IconButton
               label={t.shell.scan.dismissResult}
               size="sm"
-              className="-ml-1 rounded-md border border-border-strong bg-elevated shadow-elevated"
+              className="-ml-1 rounded-md border border-input bg-popover shadow-elevated"
               onClick={() => notice.acknowledgeTerminalScan()}
             >
               <XCircle />
@@ -200,7 +200,9 @@ export default function ScanProgressIndicator() {
             <ScanDetail presentation={presentation} />
             {(presentation.state === "partial" ||
               (presentation.state === "done" && presentation.issues.substituted > 0)) && (
-              <p className="text-xs text-fg-muted">{t.shell.scan.seeSettingsForList}</p>
+              <p className="text-xs text-muted-foreground">
+                {t.shell.scan.seeSettingsForList}
+              </p>
             )}
           </div>
         </PopoverContent>

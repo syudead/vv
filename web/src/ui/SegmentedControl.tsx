@@ -30,14 +30,14 @@ export default function SegmentedControl<T extends string>({
         if (next !== "") onValueChange(next as T);
       }}
       aria-label={label}
-      className="inline-flex h-9 items-center rounded-md bg-surface shadow-card"
+      className="inline-flex h-9 items-center rounded-md bg-card shadow-card"
     >
       {options.map((option) => (
         <Tooltip key={option.value} content={option.label}>
           <ToggleGroup.Item
             value={option.value}
             aria-label={option.label}
-            className="inline-flex h-full w-9 items-center justify-center rounded-md border border-transparent text-fg-muted transition-colors first:rounded-r-none last:rounded-l-none hover:text-fg data-[state=on]:border-accent-active data-[state=on]:bg-accent-soft data-[state=on]:text-link disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4"
+            className="inline-flex h-full w-9 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors first:rounded-r-none last:rounded-l-none hover:text-foreground data-[state=on]:border-primary-active data-[state=on]:bg-primary-soft data-[state=on]:text-primary disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4"
           >
             {option.icon}
           </ToggleGroup.Item>

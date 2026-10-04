@@ -62,7 +62,7 @@ export default function FilterMenu({
     >
       {owner && (
         <fieldset className="mb-4">
-          <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+          <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
             {t.list.filter.watch}
           </legend>
           <div className="grid grid-cols-2 gap-1">
@@ -70,10 +70,10 @@ export default function FilterMenu({
               <label
                 key={value}
                 className={cn(
-                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
+                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring",
                   watch === value
-                    ? "bg-accent text-accent-fg"
-                    : "text-fg hover:bg-hover-wash",
+                    ? "bg-primary text-primary-foreground"
+                    : "text-foreground hover:bg-accent",
                 )}
               >
                 <input
@@ -147,7 +147,7 @@ export function FilterPopover({
           variant="secondary"
           disabled={disabled}
           aria-label={shown > 0 ? t.list.filter.applied(shown) : t.list.filter.label}
-          className={cn("px-2.5", shown > 0 && "bg-accent-soft text-link")}
+          className={cn("px-2", shown > 0 && "bg-primary-soft text-primary")}
         >
           <ListFilter />
           <span className="hidden xl:inline">{t.list.filter.label}</span>
@@ -190,16 +190,18 @@ export function FilterCheckbox({
   hint?: UiText;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 text-sm text-fg">
+    <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onCheckedChange(event.target.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-accent"
+        className="mt-0.5 size-4 shrink-0 accent-primary"
       />
       <span className="flex min-w-0 flex-col">
         {label}
-        {hint !== undefined && <span className="text-xs text-fg-muted">{hint}</span>}
+        {hint !== undefined && (
+          <span className="text-xs text-muted-foreground">{hint}</span>
+        )}
       </span>
     </label>
   );

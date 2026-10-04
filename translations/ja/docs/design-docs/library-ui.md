@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 6813d4d95ba9d8c5a320bd64738c55f7486f2b2af59d5ded1e1780e44d8a638f
+sourceHash: d20bddc66ce7ee8b9c541782299bd2a982f21837c4ce62e7f8bbbb15dbf5c4aa
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -8,13 +8,13 @@ sourceHash: 6813d4d95ba9d8c5a320bd64738c55f7486f2b2af59d5ded1e1780e44d8a638f
 - 状態: 採用
 - 範囲: `web/` の画面（シェル、一覧、動画ページ）が従う視覚ルールと、そのルールへの準拠を確かめる方法
 
-画面は CSS にある 1 組の視覚値を共有し、機械が確かめられることはテストが確かめる。値（色、角丸、カード幅）は [`web/src/index.css`](../../web/src/index.css) の `@theme` にだけあり、確かめる組は [`tokens.test.ts`](../../web/src/theme/tokens.test.ts) にだけある。ここには写さない。
+画面は CSS にある 1 組の視覚値を共有し、機械が確かめられることはテストが確かめる。値（色、角丸、カード幅）は [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css) の `@theme` にだけあり、確かめる組は [`tokens.test.ts`](../../web/src/theme/tokens.test.ts) にだけある。ここには写さない。
 
 図は、値がどこにあり、各部分を誰が確かめるかを示す。
 
 ```mermaid
 flowchart LR
-  theme["index.css の @theme"] --> classes[Tailwind のユーティリティクラス]
+  theme["tokens.css の @theme"] --> classes[Tailwind のユーティリティクラス]
   classes --> screens[web/src の画面]
   test[tokens.test.ts] -->|コントラスト| theme
   test -->|生の色の走査| screens
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 視覚値は CSS の 1 か所に置き、コントラストはテストで保証する {#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests}
 
-画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-surface`、`text-fg-muted`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
+画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-card`、`text-muted-foreground`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
 
 CSS を元にするのは、画面にトークン名以外の選択肢を残さないからだ。値が 1 つのファイルにあるので、コントラストの確認はそのファイルだけを読む。
 
@@ -42,16 +42,7 @@ flowchart LR
 
 既定パレットの名前は `neutral-*`、`sky-*` などだ。組にない色は確かめられないので、**新しい文字や面の色は組に追加しなければならない**。テストが捕まえるのは CSS にない列挙済みの組で、その逆ではない。
 
-| 役割 | トークン |
-| --- | --- |
-| シェルと面 | 提供された暗色の `navbar`、`bg`、`surface` |
-| 主な操作 | シアンの `accent`。ホバーで `accent-hover`、押下中と選択中は `accent-active` |
-| 共通コントロールの枠線 | `control-border` |
-| キーボードフォーカス | `link` |
-| 危険、警告、成功 | それぞれの意味の色。必ず文字とアイコンを伴う |
-| お気に入りの印 | ピンクの `favorite`。ほかの何にも使わない（[035 UI 設計、Mark](../../specs/035-favorites/ui-design.md)） |
-
-意味の色とピンクは、操作の状態と読まれないよう、シアンから離しておく。テストは面の上の本文、主な枠線、フォーカスを対象にする。
+どのトークンがどの役割（面、シアンの `primary`、コントロールの枠線、フォーカス、意味の色、お気に入りのピンク）を担うかは [design-system.md、Foundations](design-system.md#foundations) で定めている。テストは面の上の本文、主な枠線、フォーカスを対象にする。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
@@ -292,7 +283,7 @@ flowchart LR
 
 パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `IconButton` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-accent-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
+所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `IconButton` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
 
 ```mermaid
 flowchart LR

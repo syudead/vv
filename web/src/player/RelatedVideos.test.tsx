@@ -280,7 +280,7 @@ describe("RelatedVideos", () => {
       const surface = current?.firstElementChild;
       expect(surface?.className).toContain("bg-active-wash");
       expect(surface?.className).toContain("border-l-2");
-      expect(surface?.className).toContain("border-accent");
+      expect(surface?.className).toContain("border-primary");
       expect(screen.queryByRole("link", { name: /ep03/ })).toBeNull();
     });
 

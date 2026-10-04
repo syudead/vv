@@ -13,7 +13,7 @@ import { CircleDashed } from "lucide-react";
 export default function TentativeMark({ size = "chip" }: { size?: "chip" | "row" }) {
   return (
     <CircleDashed
-      className={`${size === "chip" ? "size-3" : "size-3.5"} shrink-0 text-fg-subtle`}
+      className={`${size === "chip" ? "size-3" : "size-3.5"} shrink-0 text-muted-foreground`}
       aria-hidden="true"
     />
   );

@@ -627,7 +627,7 @@ export default function LibraryPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-4 px-3 pt-4 pb-24 sm:px-4">
+    <div className="flex w-full flex-col gap-3 px-3 pt-3 pb-selection-bar-clearance sm:px-4">
       <TopBarPortal>
         <LibraryToolbar
           query={query}
@@ -655,7 +655,7 @@ export default function LibraryPage() {
       </TopBarPortal>
 
       <div className="flex min-w-0 items-baseline justify-between gap-3">
-        <h1 className="text-xl font-semibold tracking-tight text-fg sm:text-2xl">
+        <h1 className="text-xl font-semibold tracking-tight text-foreground">
           {t.library.title}
         </h1>
         {!initialLoadFailed && (
@@ -663,7 +663,7 @@ export default function LibraryPage() {
             role="status"
             aria-label={t.library.resultsLabel}
             aria-live="polite"
-            className="shrink-0 text-xs text-fg-muted tabular-nums sm:text-sm"
+            className="shrink-0 text-xs text-muted-foreground tabular-nums sm:text-sm"
           >
             {resultStatus}
           </p>
@@ -711,10 +711,13 @@ export default function LibraryPage() {
             </Grid>
           </TagRowMeasureProvider>
         ) : loading ? (
-          <div aria-hidden="true" className="space-y-2 rounded-lg bg-surface p-3">
+          <div
+            aria-hidden="true"
+            className="space-y-2 rounded-md border border-border bg-card p-3"
+          >
             {Array.from({ length: 6 }, (_, index) => (
               <div key={index} className="flex items-center gap-3 py-1">
-                <Skeleton className="aspect-video w-28 shrink-0" />
+                <Skeleton className="aspect-video w-list-thumb shrink-0" />
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <Skeleton className="h-4 w-3/5" />
                   <Skeleton className="h-3 w-1/3" />
@@ -724,29 +727,29 @@ export default function LibraryPage() {
           </div>
         ) : (
           items.length > 0 && (
-            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg bg-surface shadow-card">
+            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-md border border-border bg-card">
               <thead>
-                <tr className="text-left text-xs text-fg-muted">
+                <tr className="text-left text-xs text-muted-foreground">
                   {owner && <th className="w-10" />}
-                  <th className="w-32 py-2" />
+                  <th className="w-list-thumb-cell py-2" />
                   <th className="py-2 pr-4 font-medium">{t.library.columns.title}</th>
                   {owner && <th className="w-8 py-2" />}
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
-                  <th className="w-20 py-2 pr-4 text-right font-medium">
+                  <th className="w-list-number py-2 pr-4 text-right font-medium">
                     {t.library.columns.duration}
                   </th>
-                  <th className="hidden w-20 py-2 pr-4 text-right font-medium md:table-cell">
+                  <th className="hidden w-list-number py-2 pr-4 text-right font-medium md:table-cell">
                     {t.library.columns.quality}
                   </th>
-                  <th className="hidden w-24 py-2 pr-4 text-right font-medium md:table-cell">
+                  <th className="hidden w-list-number-wide py-2 pr-4 text-right font-medium md:table-cell">
                     {t.library.columns.size}
                   </th>
-                  <th className="hidden w-28 py-2 pr-3 text-right font-medium lg:table-cell">
+                  <th className="hidden w-list-date py-2 pr-3 text-right font-medium lg:table-cell">
                     {t.library.columns.added}
                   </th>
                 </tr>
               </thead>
-              <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
+              <tbody className="[&>tr:nth-child(odd)]:bg-accent/40">
                 {items.map((item) =>
                   item.kind === "video" ? (
                     <VideoRow key={itemKey(item)} {...rowProps(item.video)} />

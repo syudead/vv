@@ -250,15 +250,17 @@ export default function SelectionBar({
       <div
         ref={barRef}
         className={cn(
-          "flex w-full flex-wrap items-center justify-end gap-x-2 gap-y-1.5 rounded-md border border-border-strong bg-elevated p-1.5 shadow-elevated animate-slide-up motion-reduce:animate-none max-sm:@container sm:pr-1.5 sm:pl-4",
-          wrapped ? "sm:min-h-11" : "sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0",
+          "flex w-full flex-wrap items-center justify-end gap-x-2 gap-y-1.5 rounded-md border border-input bg-popover p-1.5 shadow-elevated animate-slide-up motion-reduce:animate-none max-sm:@container sm:pr-1.5 sm:pl-4",
+          wrapped
+            ? "sm:min-h-selection-bar"
+            : "sm:h-selection-bar sm:w-auto sm:flex-nowrap sm:py-0",
         )}
       >
         <span
           role="status"
           aria-live="polite"
           data-bar-item="count"
-          className="order-1 shrink-0 px-1 text-sm whitespace-nowrap text-fg tabular-nums sm:px-0"
+          className="order-1 shrink-0 px-1 text-sm whitespace-nowrap text-foreground tabular-nums sm:px-0"
         >
           {t.library.selection.count(count)}
         </span>
@@ -423,7 +425,7 @@ export default function SelectionBar({
         <span
           aria-hidden="true"
           data-bar-item="divider"
-          className="hidden h-5 w-px shrink-0 bg-border-strong sm:order-9 sm:block"
+          className="hidden h-5 w-px shrink-0 bg-input sm:order-9 sm:block"
         />
 
         <Button

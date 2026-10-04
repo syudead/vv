@@ -1921,7 +1921,7 @@ describe("VideoPage", () => {
         button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      expect(button.className).toContain("text-fg-muted!");
+      expect(button.className).toContain("text-muted-foreground!");
       expect(button.className).not.toContain("text-favorite");
     });
 
@@ -1957,7 +1957,7 @@ describe("VideoPage", () => {
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
       expect(favoriteButton().getAttribute("data-active")).toBe("true");
       // active の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
-      expect(favoriteButton().className).toContain("data-active:bg-accent-soft");
+      expect(favoriteButton().className).toContain("data-active:bg-primary-soft");
       expect(favoriteButton().className).toContain("text-favorite!");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
