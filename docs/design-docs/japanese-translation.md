@@ -145,6 +145,7 @@ The subagent follows these rules. They are part of its prompt.
 | tentative tag, folder group, content key | `仮のタグ`, `フォルダのグループ`, `内容の鍵` |
 | workflow, runner | `ワークフロー`, `ランナー` |
 | Rejected (table header), Why | `採用しなかった案`, `理由` |
+| version bundle | `バージョンのまとまり` |
 | Mermaid | `Mermaid` |
 
 Add a row when a term is translated inconsistently; existing translations keep

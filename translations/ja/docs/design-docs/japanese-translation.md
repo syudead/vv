@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/japanese-translation.md
-sourceHash: 6bae6c74073e6225d2b8098290ebe72bbce49b487641281f36c44e43e6bb0a1d
+sourceHash: 8531e8da82ed564df25bde7f782fcc24d49d8dc7a5e74c405f3d19c23cb795a2
 ---
 
 # 文書の日本語訳 {#japanese-translation-of-the-documents}
@@ -115,6 +115,7 @@ flowchart LR
 | tentative tag, folder group, content key | `仮のタグ`, `フォルダのグループ`, `内容の鍵` |
 | workflow, runner | `ワークフロー`, `ランナー` |
 | Rejected (table header), Why | `採用しなかった案`, `理由` |
+| version bundle | `バージョンのまとまり` |
 | Mermaid | `Mermaid` |
 
 訳が揺れる用語があれば行を足す。既存の訳は、その英語が変わるまで言い回しを保つ。
