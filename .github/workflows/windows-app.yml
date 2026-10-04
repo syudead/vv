@@ -104,8 +104,11 @@ jobs:
           foreach ($file in 'VVMDM.exe', 'README.txt', 'ffmpeg\ffmpeg.exe', 'ffmpeg\ffprobe.exe', 'ffmpeg\LICENSE.txt', 'ffmpeg\README.txt') {
             if (-not (Test-Path (Join-Path $root $file))) { throw "zip に $file がありません" }
           }
-          & (Join-Path $root 'ffmpeg\ffprobe.exe') -hide_banner -version | Select-Object -First 1
+          # Select-Object -First 1 に直接つなぐと途中でパイプラインを打ち切り、ffprobe の終了コードが
+          # 0 以外になる。出力をいったん受けてから終了コードを確かめる。
+          $version = & (Join-Path $root 'ffmpeg\ffprobe.exe') -hide_banner -version
           if ($LASTEXITCODE -ne 0) { throw "ffprobe が動きません" }
+          $version | Select-Object -First 1
           $encoders = & (Join-Path $root 'ffmpeg\ffmpeg.exe') -hide_banner -encoders
           if ($LASTEXITCODE -ne 0) { throw "ffmpeg -encoders が失敗しました" }
           foreach ($encoder in 'h264_nvenc', 'h264_qsv') {
