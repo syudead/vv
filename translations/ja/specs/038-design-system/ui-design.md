@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/ui-design.md
-sourceHash: 09629ef97cbf3ca502522814cd8e26c4d7ae046b97e52ad7710e9890592ca72d
+sourceHash: 69c3a291a55ec104e0e9de19c6f34dfba174d285c05d285ffb9c0107bea2023d
 ---
 
 # UI 設計: shadcn/ui の上に作る vv デザインシステム {#ui-design-vv-design-system-on-shadcnui}
@@ -93,10 +93,10 @@ flowchart LR
 | 操作と入力 | `ToggleGroup`、`Toggle` | `ui/SegmentedControl`、`ui/FilterChip` |
 | 操作と入力 | `Slider` | ズームのスライダー |
 | 操作と入力 | `Combobox` (`Popover` の中の `Command`) | `ui/Combobox` |
-| 操作と入力 | `Badge` | `ui/Chip`、タグのチップ、件数のバッジ |
 | オーバーレイとフィードバック | `Dialog`、`AlertDialog` | `ui/ModalFrame`。削除と却下の確認には `AlertDialog` |
 | オーバーレイとフィードバック | `Popover`、`DropdownMenu`、`Tooltip`、`Tabs` | `ui/Popover`、`ui/Menu`、`ui/Tooltip`、`ui/Tabs` |
 | オーバーレイとフィードバック | `Sonner` (新しい依存 `sonner`) | `ui/Toast` |
+| オーバーレイとフィードバック | `Badge` | `ui/Chip`、タグのチップ、件数のバッジ |
 | オーバーレイとフィードバック | `Skeleton`、`Progress`、`Spinner` | `ui/Skeleton`、スキャンと視聴の進捗バー |
 | オーバーレイとフィードバック | `Alert`、`Empty` | 停止の警告、自動再生の通知、その場のエラー、空の状態のブロック |
 | オーバーレイとフィードバック | `Separator`、`Kbd`、`Breadcrumb` | 区切り線、検索構文のキー、フォルダのパンくず |
@@ -111,7 +111,7 @@ vv 独自のコンポーネント。独自の規則を持つレジストリの�
 | `TentativeMark` | 仮のタグの印 |
 | `ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | 今と同じで、新しいトークンの上に作る |
 
-2 つの見た目は `special` の例外として残り、それぞれの理由を `web/design-exceptions.js` に書く。`index.css` の CSS でサードパーティの DOM にスタイルを当てる video.js のコントロールバーのスキンと、位置をポインターとフレームの大きさから計算するシークプレビューだ。
+2 つの見た目は `special` の例外として残り、それぞれの理由を `web/design-exceptions.js` に書く。`index.css` の CSS でサードパーティの DOM にスタイルを当てる video.js のコントロールバーのスキンと、video.js の進捗バーの上に出るプレーヤーのシークプレビュー (`.vv-seek-preview`) で、後者の位置はポインターとフレームの大きさから計算する。[032](../032-card-scrub-preview/ui-design.md) のカードのスクラブである `ScrubPreview` は別の要素で、例外を持たない。
 
 ## ページパターン {#page-patterns}
 
@@ -138,6 +138,7 @@ vv 独自のコンポーネント。独自の規則を持つレジストリの�
 | 空 | `Empty`: アイコン、理由を言う 1 行、そして見る人が実行できるときは、それを埋める操作 |
 | エラー | `destructive` の `Alert`: 何が失敗したか、そして再試行が役立つときは `Retry` |
 | 一部 (続きを読み込み中) | 内容と、その末尾の `Spinner` の行 |
+| 続きの読み込みに失敗 | 内容を保ち、その末尾に `Retry` 付きの `Alert` の行。再試行は同じページをもう一度要求する |
 
 図は、リストがこれらの間をどう移るかを示す。
 
@@ -150,6 +151,8 @@ stateDiagram-v2
   Error --> Loading: Retry
   Content --> Partial: 末尾までスクロール
   Partial --> Content: 次のページ
+  Partial --> LoadMoreFailed: リクエスト失敗
+  LoadMoreFailed --> Partial: Retry
 ```
 
 ## 文言 {#words}
@@ -177,7 +180,7 @@ stateDiagram-v2
 
 ## レビューの基準 {#review-criteria}
 
-1. 基礎: ショーケースで、色の役割が 5 段階の面 (navbar、background、card、popover、muted) として読め、どの 2 つも同じに見えない。シアンは操作、選択、フォーカス、進捗にだけ現れる。
+1. 基礎: ショーケースで、色の役割が 5 段階の面 (navbar、background、card、popover、muted) として読め、どの 2 つも同じに見えない。シアンは操作、選択、フォーカス、進捗、ブランドマーク ([022](../022-vvmdm-brand/ui-design.md)) にだけ現れる。
 2. 基礎: 文字の段階が並べて区別でき、ライブラリのカードのタイトル、メタデータ、サムネイルの文字が 3 つの異なる段階を使う。
 3. 基礎: 1440px で、ライブラリは各ズームの段階で 1 行あたり `main` と同じ数以上のカードを表示する。
 4. コンポーネント: ショーケースのどのコンポーネントも、通常、ホバー、キーボードのフォーカス、押下、選択 (あるもののみ)、無効の状態を表示し、フォーカスはどれでも同じリングだ。

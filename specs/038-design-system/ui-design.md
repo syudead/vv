@@ -116,10 +116,10 @@ right column. The two component PRs split along the table.
 | Actions and inputs | `ToggleGroup`, `Toggle` | `ui/SegmentedControl`, `ui/FilterChip` |
 | Actions and inputs | `Slider` | Zoom slider |
 | Actions and inputs | `Combobox` (`Command` in `Popover`) | `ui/Combobox` |
-| Actions and inputs | `Badge` | `ui/Chip`, tag chips, count badges |
 | Overlays and feedback | `Dialog`, `AlertDialog` | `ui/ModalFrame`; `AlertDialog` for delete and reject confirmations |
 | Overlays and feedback | `Popover`, `DropdownMenu`, `Tooltip`, `Tabs` | `ui/Popover`, `ui/Menu`, `ui/Tooltip`, `ui/Tabs` |
 | Overlays and feedback | `Sonner` (new dependency `sonner`) | `ui/Toast` |
+| Overlays and feedback | `Badge` | `ui/Chip`, tag chips, count badges |
 | Overlays and feedback | `Skeleton`, `Progress`, `Spinner` | `ui/Skeleton`, scan and watch progress bars |
 | Overlays and feedback | `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty-state blocks |
 | Overlays and feedback | `Separator`, `Kbd`, `Breadcrumb` | Dividers, search syntax keys, folder breadcrumbs |
@@ -136,8 +136,11 @@ vv's own components, registry items with their own rules:
 
 Two looks stay `special` exceptions, each with its reason in
 `web/design-exceptions.js`: the video.js control bar skin, which styles a
-third-party DOM through CSS in `index.css`, and the seek preview, whose position
-is computed from the pointer and the frame size.
+third-party DOM through CSS in `index.css`, and the player's seek preview over
+the video.js progress bar (`.vv-seek-preview`), whose position is computed
+from the pointer and the frame size. `ScrubPreview`, the card scrub of
+[032](../032-card-scrub-preview/ui-design.md), is a different element and has
+no exception.
 
 ## Page patterns
 
@@ -166,6 +169,7 @@ Every list, table and section shows one of these, from the same blocks.
 | Empty | `Empty`: icon, one line saying why, and the action that fills it when the viewer can take it |
 | Error | `Alert` in `destructive`: what failed, and `Retry` when retrying can help |
 | Partial (more loading) | Content, then a `Spinner` row at the end |
+| Load more failed | Content kept, then an `Alert` row at the end with `Retry`, which requests the same page again |
 
 The diagram shows how a list moves between them.
 
@@ -178,6 +182,8 @@ stateDiagram-v2
   Error --> Loading: Retry
   Content --> Partial: scroll to end
   Partial --> Content: next page
+  Partial --> LoadMoreFailed: request failed
+  LoadMoreFailed --> Partial: Retry
 ```
 
 ## Words
@@ -208,7 +214,8 @@ The breakpoints are those of
 
 1. Foundations: on the showcase, the colour roles read as five levels of
    surface (navbar, background, card, popover, muted) without two looking the
-   same, and cyan appears only on actions, selection, focus and progress.
+   same, and cyan appears only on actions, selection, focus, progress and the
+   brand mark ([022](../022-vvmdm-brand/ui-design.md)).
 2. Foundations: the type steps are distinguishable side by side, and a
    library card's title, metadata and thumbnail text use three different steps.
 3. Foundations: at 1440px, the library shows at least as many cards per row

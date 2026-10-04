@@ -209,7 +209,8 @@ pair on the new names.
 ### Rebuild the action and input components on shadcn/ui
 
 **Scope**: The action and input components of the `ui-design.md` inventory
-(buttons, text and choice inputs, toggles, slider, combobox, chips) rebuilt
+(buttons, text and choice inputs, toggles and filter chips, slider,
+combobox) rebuilt
 from shadcn/ui on the foundations, each as a registry item with its
 `components.md` section, in the showcase with every state, and used by the
 library screen.
