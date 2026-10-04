@@ -8,8 +8,8 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { Separator } from "@/ui/separator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/ui/sheet";
-import { Skeleton } from "@/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
+import { Skeleton } from "@/ui/next/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/next/tooltip";
 
 // shadcn/ui の sidebar（radix-nova）を vv のトークンで着せたもの
 // （web/registry/rules/components.md「Sidebar」）。上流の 3 つの形を vv のサイドバーの 3 態に

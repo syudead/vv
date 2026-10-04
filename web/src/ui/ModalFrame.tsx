@@ -2,10 +2,10 @@ import { X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-import { t, type UiText } from "../../i18n";
-import { cn } from "../../lib/cn";
-import { isComposingNativeKeyEvent } from "../Combobox";
-import IconButton from "../IconButton";
+import { t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
+import { isComposingNativeKeyEvent } from "./Combobox";
+import IconButton from "./IconButton";
 
 function focusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(

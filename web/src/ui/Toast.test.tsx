@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { UiText } from "../../i18n";
+import type { UiText } from "../i18n";
 import { ToastProvider, useToast } from "./Toast";
 
 function Harness() {

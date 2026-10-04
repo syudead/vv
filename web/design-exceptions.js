@@ -233,32 +233,19 @@ export default [
     kind: "migration",
   },
   {
+    file: "ui/BrandHomeLink.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-7"],
+    kind: "migration",
+  },
+  {
     file: "ui/Checkbox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5"],
     kind: "migration",
   },
   {
-    file: "ui/alert.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["has-\\[>svg\\]:grid-cols-\\[auto_1fr\\]"],
-    kind: "special",
-    reason:
-      "The upstream Alert lays its icon and text out as an auto-width column and a flexible one; Tailwind has no grid template utility for that pair.",
-  },
-  {
-    file: "ui/dropdown-menu.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: [
-      "max-h-\\(--radix-dropdown-menu-content-available-height\\)",
-      "origin-\\(--radix-dropdown-menu-content-transform-origin\\)",
-    ],
-    kind: "special",
-    reason:
-      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
-  },
-  {
-    file: "ui/legacy/Chip.tsx",
+    file: "ui/Chip.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["\\[&>svg\\]:size-3\\.5"],
     kind: "migration",
@@ -269,45 +256,40 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/legacy/Menu.tsx",
+    file: "ui/Menu.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/legacy/ModalFrame.tsx",
+    file: "ui/ModalFrame.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/legacy/Popover.tsx",
+    file: "ui/Popover.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/popover.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["origin-\\(--radix-popover-content-transform-origin\\)"],
-    kind: "special",
-    reason:
-      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
-  },
-  {
-    file: "ui/legacy/Skeleton.tsx",
+    file: "ui/ScrubPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/legacy/Toast.tsx",
+    file: "ui/Skeleton.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/tooltip.tsx",
+    file: "ui/TentativeMark.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["origin-\\(--radix-tooltip-content-transform-origin\\)"],
-    kind: "special",
-    reason:
-      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
+    classes: ["size-3\\.5"],
+    kind: "migration",
+  },
+  {
+    file: "ui/Toast.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
   },
   {
     file: "versions/BundleDialog.tsx",
@@ -318,6 +300,12 @@ export default [
   {
     file: "versions/DuplicatesPage.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
+    file: "videoList/FavoriteToggle.tsx",
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-5\\.5", "size-7"],
     kind: "migration",
   },
   {
@@ -354,5 +342,40 @@ export default [
     file: "videoList/cardPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
+  },
+  {
+    file: "ui/alert.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["has-\\[>svg\\]:grid-cols-\\[auto_1fr\\]"],
+    kind: "special",
+    reason:
+      "The upstream Alert lays its icon and text out as an auto-width column and a flexible one; Tailwind has no grid template utility for that pair.",
+  },
+  {
+    file: "ui/dropdown-menu.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "max-h-\\(--radix-dropdown-menu-content-available-height\\)",
+      "origin-\\(--radix-dropdown-menu-content-transform-origin\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
+  },
+  {
+    file: "ui/next/popover.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["origin-\\(--radix-popover-content-transform-origin\\)"],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
+  },
+  {
+    file: "ui/next/tooltip.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["origin-\\(--radix-tooltip-content-transform-origin\\)"],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
   },
 ];

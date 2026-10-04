@@ -1,7 +1,7 @@
 import { Popover as RadixPopover } from "radix-ui";
 import type { ReactNode } from "react";
 
-import { cn } from "../../lib/cn";
+import { cn } from "../lib/cn";
 
 export const PopoverRoot = RadixPopover.Root;
 export const PopoverTrigger = RadixPopover.Trigger;

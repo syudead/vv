@@ -8,8 +8,13 @@ tokens in [foundations.md](foundations.md). A screen composes them; it does not
 restyle them with its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
-Files in `web/src/ui/legacy/` are the components these replace. They stay only
-for screens that have not moved yet; new code never imports them.
+The PascalCase files beside them (`Popover.tsx`, `Menu.tsx`, `ModalFrame.tsx`,
+`Toast.tsx`, `Chip.tsx`, `Tooltip.tsx`, `Tabs.tsx`, `Skeleton.tsx`, and
+`videoList/FavoriteToggle.tsx`) are the components these replace. They stay
+only for screens that have not moved yet; new code never imports them.
+`Popover`, `Tooltip`, `Tabs` and `Skeleton` live in `web/src/ui/next/` until
+the old file of the same name is gone, because two names differing only in
+case cannot share a folder.
 
 ## Overlays and feedback
 
@@ -81,10 +86,10 @@ Short, passive notices of a finished action ("Added 3 videos to favorites").
 Call `toast()` from `sonner` under one `Toaster` for the app. A notice is one
 line and needs no action.
 
-Until every screen moves, the app's notices still go through
-`useToast` from `ui/legacy/Toast`, which also queues notices one at a time on
-the video page. The app switches to `Toaster` in one change, so keep calling
-`useToast` in existing screens.
+Until every screen moves, the app's notices still go through `useToast` from
+`ui/Toast`, which also queues notices one at a time on the video page. The app
+switches to `Toaster` in one change, so keep calling `useToast` in existing
+screens.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.

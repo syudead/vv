@@ -28,9 +28,9 @@ import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
-import FavoriteToggle from "../ui/FavoriteToggle";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
-import { useToast } from "../ui/legacy/Toast";
+import FavoriteToggle from "../videoList/FavoriteToggle";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { useToast } from "../ui/Toast";
 import { technicalSummary } from "./properties";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 

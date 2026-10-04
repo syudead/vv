@@ -24,16 +24,10 @@ import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
-import {
-  MenuContent,
-  MenuItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuTrigger,
-} from "../ui/legacy/Menu";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
-import Skeleton from "../ui/legacy/Skeleton";
-import { useToast } from "../ui/legacy/Toast";
+import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import Skeleton from "../ui/Skeleton";
+import { useToast } from "../ui/Toast";
 import {
   VersionDetailsLine,
   versionDetails,

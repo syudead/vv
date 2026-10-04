@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Tooltip from "../ui/legacy/Tooltip";
+import Tooltip from "../ui/Tooltip";
 
 interface Neighbor {
   /** 移り先の題名。関連動画の並びに無いときは分からない。 */

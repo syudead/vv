@@ -6,9 +6,9 @@ import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
-import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import SegmentedControl from "../ui/SegmentedControl";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import Tooltip from "../ui/Tooltip";
 import FilterMenu from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
@@ -103,19 +103,16 @@ export default function LibraryToolbar({
       </div>
 
       {view === "grid" && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <ZoomSlider
-              zoom={zoom}
-              onZoomChange={onZoomChange}
-              className="hidden w-zoom xl:flex"
-            />
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t.list.cardSize}</TooltipContent>
+        <Tooltip content={t.list.cardSize}>
+          <ZoomSlider
+            zoom={zoom}
+            onZoomChange={onZoomChange}
+            className="hidden w-zoom xl:flex"
+          />
         </Tooltip>
       )}
 
-      <Popover>
+      <PopoverRoot>
         <PopoverTrigger asChild>
           <Button
             variant="secondary"
@@ -158,7 +155,7 @@ export default function LibraryToolbar({
             )}
           </div>
         </PopoverContent>
-      </Popover>
+      </PopoverRoot>
     </div>
   );
 }

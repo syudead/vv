@@ -1256,6 +1256,7 @@ export const en = {
       loggingOut: "Signing out…",
       logoutFailed: "Couldn't sign out",
       menu: "Menu",
+      closeMenu: "Close menu",
     },
     topBar: {
       scanning: "Scanning",

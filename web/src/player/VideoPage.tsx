@@ -20,7 +20,7 @@ import {
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import Skeleton from "../ui/legacy/Skeleton";
+import Skeleton from "../ui/Skeleton";
 import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
 import EndedOverlay from "./EndedOverlay";
 import GroupLine from "./GroupLine";

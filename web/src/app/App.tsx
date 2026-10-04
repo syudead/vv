@@ -9,8 +9,8 @@ import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
-import { ToastProvider } from "../ui/legacy/Toast";
-import { TooltipProvider } from "../ui/tooltip";
+import { ToastProvider } from "../ui/Toast";
+import { TooltipProvider } from "../ui/Tooltip";
 import { deferredRoute } from "./deferredRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から

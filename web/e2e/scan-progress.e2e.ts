@@ -218,8 +218,9 @@ for (const width of [360, 640, 768]) {
     await page.getByRole("button", { name: "Menu" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     if (width < 640) {
-      // 狭い幅のドロワー（Sheet）は Esc で閉じる。
-      await page.keyboard.press("Escape");
+      await page
+        .getByRole("button", { name: "Close menu" })
+        .evaluate((button: HTMLButtonElement) => button.click());
     }
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
@@ -227,10 +228,7 @@ for (const width of [360, 640, 768]) {
     const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
     if (width >= 640) {
       await page.getByRole("button", { name: "Menu" }).click();
-      await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute(
-        "data-state",
-        "collapsed",
-      );
+      await expect(sidebar).toHaveClass(/w-sidebar-rail/);
     }
     await indicator.hover();
     const summary = page.getByRole("dialog");
@@ -292,7 +290,9 @@ for (const { width, height } of [
       await expect(page.getByText(logoutFailed)).toHaveCount(count);
     }
     if (width < 640) {
-      await page.keyboard.press("Escape");
+      await page
+        .getByRole("button", { name: "Close menu" })
+        .evaluate((button: HTMLButtonElement) => button.click());
     }
 
     await page.evaluate(() => {

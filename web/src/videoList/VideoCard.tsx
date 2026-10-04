@@ -28,7 +28,7 @@ import Checkbox from "../ui/Checkbox";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import { CardMedia, useCardPreview } from "./cardPreview";
-import FavoriteToggle from "../ui/FavoriteToggle";
+import FavoriteToggle from "./FavoriteToggle";
 
 export interface VideoCardProps {
   video: Video;

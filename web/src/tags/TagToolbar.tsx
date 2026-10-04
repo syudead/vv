@@ -12,7 +12,7 @@ import type { Ref, RefObject } from "react";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import SegmentedControl from "../ui/SegmentedControl";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";

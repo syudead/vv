@@ -23,7 +23,7 @@ import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import TentativeMark from "../ui/TentativeMark";
-import { useToast } from "../ui/legacy/Toast";
+import { useToast } from "../ui/Toast";
 
 /**
  * VideoTags は再生画面の題名の下のタグの並びである（要件 1・2、

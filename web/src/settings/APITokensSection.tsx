@@ -10,9 +10,9 @@ import {
 import { errorText, formatDateTime, formatRelative, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import Button from "../ui/Button";
-import { ModalFrame } from "../ui/legacy/ModalFrame";
-import Skeleton from "../ui/legacy/Skeleton";
-import { useToast } from "../ui/legacy/Toast";
+import { ModalFrame } from "../ui/ModalFrame";
+import Skeleton from "../ui/Skeleton";
+import { useToast } from "../ui/Toast";
 import { EXTERNAL_API_GUIDE_URL } from "./docsLinks";
 
 /** Revealed は発行直後の平文の表示である。ページの読み直しや「Done」で消え、二度と出ない。 */

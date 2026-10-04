@@ -34,8 +34,8 @@ import {
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
-import { useToast } from "../ui/legacy/Toast";
-import { Skeleton } from "../ui/skeleton";
+import { useToast } from "../ui/Toast";
+import Skeleton from "../ui/Skeleton";
 import {
   criteriaKey,
   type HistoryMode,

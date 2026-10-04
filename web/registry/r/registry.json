@@ -261,7 +261,7 @@
       "docs": "Usage rules: web/registry/rules/components.md, section \"Popover\" (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/popover.tsx",
+          "path": "src/ui/next/popover.tsx",
           "type": "registry:ui"
         }
       ],
@@ -361,7 +361,7 @@
       "docs": "Usage rules: web/registry/rules/components.md, section \"Skeleton\" (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/skeleton.tsx",
+          "path": "src/ui/next/skeleton.tsx",
           "type": "registry:ui"
         }
       ]
@@ -402,7 +402,7 @@
       "docs": "Usage rules: web/registry/rules/components.md, section \"Tabs\" (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/tabs.tsx",
+          "path": "src/ui/next/tabs.tsx",
           "type": "registry:ui"
         }
       ],
@@ -442,7 +442,7 @@
       "docs": "Usage rules: web/registry/rules/components.md, section \"Tooltip\" (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/tooltip.tsx",
+          "path": "src/ui/next/tooltip.tsx",
           "type": "registry:ui"
         }
       ],

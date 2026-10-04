@@ -7,8 +7,8 @@ import {
   useState,
 } from "react";
 
-import type { UiText } from "../../i18n";
-import { cn } from "../../lib/cn";
+import type { UiText } from "../i18n";
+import { cn } from "../lib/cn";
 
 interface ToastItem {
   id: number;

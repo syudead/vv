@@ -72,7 +72,7 @@ import {
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
-} from "../ui/popover";
+} from "../ui/next/popover";
 import { Progress } from "../ui/progress";
 import { Separator } from "../ui/separator";
 import {
@@ -81,12 +81,12 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "../ui/sidebar";
-import { Skeleton } from "../ui/skeleton";
+import { Skeleton } from "../ui/next/skeleton";
 import { Toaster } from "../ui/sonner";
 import { Spinner } from "../ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "../ui/next/tabs";
 import TentativeMark from "../ui/TentativeMark";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/next/tooltip";
 import {
   VideoThumbnail,
   VideoThumbnailDuration,

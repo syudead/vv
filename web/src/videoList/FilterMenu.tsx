@@ -6,7 +6,7 @@ import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { watchLabel, watchValues } from "./listSummary";
 
 export interface FilterMenuProps {

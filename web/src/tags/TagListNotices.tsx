@@ -2,7 +2,7 @@ import { AlertCircle, RefreshCw } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import Skeleton from "../ui/legacy/Skeleton";
+import Skeleton from "../ui/Skeleton";
 
 /**
  * TagLoadingMore は一覧の末尾の続きの読み込み中である（specs/036-tag-admin-scale/

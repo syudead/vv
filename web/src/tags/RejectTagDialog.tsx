@@ -4,7 +4,7 @@ import { useRef } from "react";
 import type { Tag } from "../api/tags";
 import { t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import { ModalFrame } from "../ui/legacy/ModalFrame";
+import { ModalFrame } from "../ui/ModalFrame";
 
 /**
  * RejectTagDialog は仮のタグの却下の確認の窓である

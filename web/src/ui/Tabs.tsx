@@ -1,7 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useRef } from "react";
 
-import type { UiText } from "../../i18n";
-import { cn } from "../../lib/cn";
+import type { UiText } from "../i18n";
+import { cn } from "../lib/cn";
 
 export interface TabItem<T extends string> {
   value: T;

@@ -25,7 +25,7 @@ import {
   type ScrubPreview,
   useScrubPreview,
 } from "../ui/ScrubPreview";
-import Skeleton from "../ui/legacy/Skeleton";
+import Skeleton from "../ui/Skeleton";
 
 /**
  * videoLinkLabel は関連動画と「次の動画」のリンクの読み上げ名である。題名と長さだけにし、

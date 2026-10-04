@@ -21,8 +21,8 @@ import {
   MenuRoot,
   MenuSeparator,
   MenuTrigger,
-} from "../ui/legacy/Menu";
-import { useToast } from "../ui/legacy/Toast";
+} from "../ui/Menu";
+import { useToast } from "../ui/Toast";
 
 /** modes はまとめ方の選択肢の並びである。表示名は描画のたびにカタログから引く。 */
 const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];

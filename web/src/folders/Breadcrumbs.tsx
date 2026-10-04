@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Skeleton from "../ui/legacy/Skeleton";
+import Skeleton from "../ui/Skeleton";
 import type { Crumb } from "./folderPath";
 
 /** collapseFrom は狭い幅で途中の段を畳み始める段数である（ui-design.md）。 */

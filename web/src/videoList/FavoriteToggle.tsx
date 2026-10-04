@@ -1,19 +1,18 @@
 import { Heart, LoaderCircle } from "lucide-react";
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 
-import { errorText, t, type UiText } from "@/i18n";
-import { cn } from "@/lib/cn";
-import IconButton from "./IconButton";
-import { useToast } from "./Toast";
+import { errorText, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
+import IconButton from "../ui/IconButton";
+import { useToast } from "../ui/Toast";
 
 /**
- * FavoriteToggle はカードと行のお気に入りの付け外しである。vv 固有の部品で、使い方は
- * web/registry/rules/components.md「FavoriteToggle」
+ * FavoriteToggle はカードと行のお気に入りの付け外しである
  * （specs/035-favorites/ui-design.md「Mark」「Card」）。印を兼ね、塗りのハートがお気に入り、
  * 線のハートがお気に入りでない。所有者の画面でだけ描く（呼び出し側が決める）。
  *
  * - `card` は格子のカードのサムネイルの右上に重ねる形で、面も枠も付けず、押せる範囲
- *   `size-8` の中に `size-5` のハートだけを置き、暗い影（`drop-shadow-mark`）で明るい絵柄の上でも
+ *   `size-7` の中に 22px のハートだけを置き、暗い影（`drop-shadow-mark`）で明るい絵柄の上でも
  *   読めるようにする。オフは白の線（`text-foreground`）である。`row` はリスト表示の行の列に置く
  *   面も影も無い形（`size-6`、ハート 16px）で、オフは `text-muted-foreground`。オンはどちらも
  *   `text-favorite` の塗りである。オフはカード・行の hover、中へのフォーカス、`hover:none` の
@@ -74,7 +73,7 @@ export default function FavoriteToggle({
     <Icon
       aria-hidden="true"
       className={cn(
-        variant === "card" ? "size-5 drop-shadow-mark" : "size-4",
+        variant === "card" ? "size-5.5 drop-shadow-mark" : "size-4",
         pending && "animate-spin motion-reduce:animate-none",
         favorite && !pending && "fill-current",
       )}
@@ -106,8 +105,8 @@ export default function FavoriteToggle({
       aria-disabled={pending || undefined}
       onClick={press}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-        variant === "card" ? "size-8" : "size-6",
+        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:outline-2 focus-visible:outline-ring",
+        variant === "card" ? "size-7" : "size-6",
         favorite
           ? "text-favorite"
           : variant === "card"

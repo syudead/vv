@@ -12,9 +12,9 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
 import Button from "../ui/Button";
-import { ModalFrame } from "../ui/legacy/ModalFrame";
-import Skeleton from "../ui/legacy/Skeleton";
-import { useToast } from "../ui/legacy/Toast";
+import { ModalFrame } from "../ui/ModalFrame";
+import Skeleton from "../ui/Skeleton";
+import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
 import APITokensSection from "./APITokensSection";

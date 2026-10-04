@@ -7,7 +7,7 @@ import { RequestFailed } from "../api/client";
 import type { Tag } from "../api/tags";
 import { addTagSynonym, refreshTags } from "../api/tags";
 import { t } from "../i18n";
-import { TooltipProvider } from "../ui/legacy/Tooltip";
+import { TooltipProvider } from "../ui/Tooltip";
 import SynonymsDialog from "./SynonymsDialog";
 
 vi.mock("../api/tags", async (importOriginal) => ({

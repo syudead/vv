@@ -17,15 +17,9 @@ import { cn } from "../lib/cn";
 import Checkbox from "../ui/Checkbox";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
-import {
-  MenuContent,
-  MenuItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuTrigger,
-} from "../ui/legacy/Menu";
+import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
 import TentativeMark from "../ui/TentativeMark";
-import Tooltip from "../ui/legacy/Tooltip";
+import Tooltip from "../ui/Tooltip";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 export interface TagRowRefs {

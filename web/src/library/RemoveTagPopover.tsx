@@ -10,8 +10,8 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
-import { PopoverContent } from "../ui/popover";
-import { useToast } from "../ui/legacy/Toast";
+import { PopoverContent } from "../ui/Popover";
+import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
 

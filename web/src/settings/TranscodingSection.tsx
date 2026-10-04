@@ -11,7 +11,7 @@ import {
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import Skeleton from "../ui/legacy/Skeleton";
+import Skeleton from "../ui/Skeleton";
 import { HARDWARE_ENCODING_GUIDE_URL } from "./docsLinks";
 
 /** 確認中の間に `GET` し直す間隔である（research.md R-5）。 */

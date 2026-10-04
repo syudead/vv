@@ -14,7 +14,7 @@ import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
-import { Popover, PopoverTrigger } from "../ui/popover";
+import { PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
 import FavoriteMenu from "./FavoriteMenu";
@@ -275,7 +275,7 @@ export default function SelectionBar({
           className="order-4 hidden max-sm:block max-sm:h-0 max-sm:w-full max-sm:basis-full"
         />
 
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
+        <PopoverRoot open={addOpen} onOpenChange={setAddOpen}>
           <PopoverTrigger asChild>
             <Button
               ref={addTriggerRef}
@@ -297,9 +297,9 @@ export default function SelectionBar({
             selectedIds={selectedIds}
             onDone={() => addTriggerRef.current?.focus()}
           />
-        </Popover>
+        </PopoverRoot>
 
-        <Popover open={removeOpen} onOpenChange={setRemoveOpen}>
+        <PopoverRoot open={removeOpen} onOpenChange={setRemoveOpen}>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
@@ -325,7 +325,7 @@ export default function SelectionBar({
             selectedIds={selectedIds}
             onRemoved={onTagRemoved}
           />
-        </Popover>
+        </PopoverRoot>
         {overLimit && (
           <span id={overLimitId} className="sr-only">
             {overLimitMessage()}

@@ -21,8 +21,8 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
 import { ScanProvider } from "../shell/ScanProvider";
-import { ToastProvider } from "../ui/legacy/Toast";
-import { TooltipProvider } from "../ui/tooltip";
+import { ToastProvider } from "../ui/Toast";
+import { TooltipProvider } from "../ui/Tooltip";
 import { resultCountText } from "../videoList/listSummary";
 import LibraryPage from "./LibraryPage";
 
