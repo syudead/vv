@@ -1053,7 +1053,13 @@ describe("VideoPage", () => {
     const ep02 = member(12, "ep02", 2);
     const ep03 = member(13, "ep03", 3);
     const listed = (value: Video): Video => ({ ...value, group: undefined });
-    const group = { folder, name: "series", items: [ep01, ep02, ep03].map(listed) };
+    const group = {
+      folder,
+      name: "series",
+      items: [ep01, ep02, ep03].map(listed),
+      offset: 0,
+      total: 3,
+    };
 
     beforeEach(() => {
       server.videos.set(11, [ep01]);
@@ -3267,6 +3273,8 @@ describe("VideoPage", () => {
         folder,
         name: "series",
         items: members.map((value) => ({ ...value, group: undefined })),
+        offset: 0,
+        total: members.length,
       };
       server.videos.set(12, [members[1]!]);
       server.related.set(12, { items: [], nextId: 13, prevId: 11, group });

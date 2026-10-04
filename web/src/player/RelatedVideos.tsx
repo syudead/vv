@@ -5,11 +5,13 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
+  useState,
 } from "react";
 import { Link } from "react-router";
 
-import type { Video } from "../api/client";
+import { isAborted, listVideoGroupMembers, type Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { formatNumber, t, type UiText } from "../i18n";
@@ -188,10 +190,15 @@ export default function RelatedVideos({
   onRetry: () => void;
 }) {
   if (state.kind === "ready" && state.related.group !== undefined) {
+    const group = state.related.group;
     return (
       <GroupedRelated
+        // 別のメンバーへ移ったら、読み足した分を捨てて新しい窓から始める。
+        key={state.id}
         currentId={state.id}
-        members={state.related.group.items}
+        members={group.items}
+        offset={group.offset}
+        total={group.total}
         items={state.related.items}
         backTo={backTo}
       />
@@ -243,24 +250,106 @@ export default function RelatedVideos({
   );
 }
 
+/** groupPageSize は、窓の外のメンバーを1回に読む本数である。 */
+const groupPageSize = 100;
+
+/** 窓の外を読む向き。 */
+type GroupSide = "before" | "after";
+
 /**
  * GroupedRelated は、グループのメンバーを開いたときの列である。見出し「続けて再生」と
  * 何本目かを上に留め、その下のメンバーの並び・境目・関連動画を1つの入れ物でスクロールさせる。
  * メンバーの並びと関連動画は別々の `ul` にし、読み上げでも境目が分かるようにする。
+ *
+ * 関連動画の応答のメンバーは、今の動画を中ほどに置いた窓（`offset` から）だけである。
+ * 窓の後ろはスクロールで続きを読み足す。前は、広い画面では入れ物を上へスクロールすると
+ * 読み足し（見ている行が動かないようスクロールの位置を補う）、狭い画面ではボタンで読む。
+ * 狭い画面ではページごと動くので、並びの先頭が見えた時点で読み足すと、開いた直後から
+ * 前のメンバーを次々に読んでしまう（issue 674）。
  */
 function GroupedRelated({
   currentId,
   members,
+  offset,
+  total,
   items,
   backTo,
 }: {
   currentId: number;
   members: Video[];
+  offset: number;
+  total: number;
   items: Video[];
   backTo: string;
 }) {
-  const index = members.findIndex((member) => member.id === currentId);
+  const [before, setBefore] = useState<Video[]>([]);
+  const [after, setAfter] = useState<Video[]>([]);
+  const [loading, setLoading] = useState<GroupSide | null>(null);
+  const [failed, setFailed] = useState<GroupSide | null>(null);
+  const shown = useMemo(() => {
+    const seen = new Set(members.map((member) => member.id));
+    const unique = (list: Video[]) => list.filter((member) => !seen.has(member.id));
+    return [...unique(before), ...members, ...unique(after)];
+  }, [after, before, members]);
+  const first = offset - before.length;
+  const end = offset + members.length + after.length;
+  const index = shown.findIndex((member) => member.id === currentId);
   const currentRef = useRef<HTMLLIElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const loadingRef = useRef(false);
+  const abort = useRef<AbortController | null>(null);
+  // 前を読み足す直前の入れ物の高さ。読み足した後、見ている行が動かないよう補う。
+  const heightBeforePrepend = useRef<number | null>(null);
+
+  useEffect(() => () => abort.current?.abort(), []);
+
+  const load = useCallback(
+    (side: GroupSide) => {
+      if (loadingRef.current) return;
+      const start = side === "before" ? Math.max(0, first - groupPageSize) : end;
+      const limit = side === "before" ? first - start : groupPageSize;
+      if (limit <= 0 || (side === "after" && end >= total)) return;
+      loadingRef.current = true;
+      const controller = new AbortController();
+      abort.current = controller;
+      setLoading(side);
+      setFailed(null);
+      listVideoGroupMembers(currentId, start, limit, controller.signal).then(
+        (page) => {
+          if (controller.signal.aborted) return;
+          loadingRef.current = false;
+          setLoading(null);
+          if (side === "before") {
+            heightBeforePrepend.current = isWideScreen()
+              ? (scrollerRef.current?.scrollHeight ?? null)
+              : null;
+            setBefore((previous) => [...page.items, ...previous]);
+          } else {
+            setAfter((previous) => [...previous, ...page.items]);
+          }
+        },
+        (error: unknown) => {
+          if (controller.signal.aborted || isAborted(error)) return;
+          loadingRef.current = false;
+          setLoading(null);
+          setFailed(side);
+        },
+      );
+    },
+    [currentId, end, first, total],
+  );
+
+  // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
+  useLayoutEffect(() => {
+    const height = heightBeforePrepend.current;
+    const scroller = scrollerRef.current;
+    heightBeforePrepend.current = null;
+    if (height === null || scroller === null) return;
+    scroller.scrollTop += scroller.scrollHeight - height;
+  }, [before]);
+
+  // 端の目印が見えそうになったら続きを読む。前の目印は広い画面だけに置く。
+  const observe = useInfiniteEdge(load);
 
   // 広い画面では、開いたとき（別のメンバーへ移ったときを含む）に今のメンバーの行を入れ物の
   // 中で見える位置へ動かす。ページと左の列は動かさない。狭い画面ではページごと動いて
@@ -270,6 +359,7 @@ function GroupedRelated({
     currentRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [currentId]);
 
+  const wide = isWideScreen();
   return (
     <section
       aria-labelledby="group-heading"
@@ -281,30 +371,58 @@ function GroupedRelated({
         </h2>
         {index >= 0 && (
           <span className="text-xs text-fg-muted tabular-nums">
-            {t.player.related.position(index + 1, members.length)}
+            {t.player.related.position(first + index + 1, total)}
           </span>
         )}
       </div>
-      <div data-related-scroller="" className={cn("flex flex-col", scrollerClass)}>
+      <div
+        ref={scrollerRef}
+        data-related-scroller=""
+        className={cn("flex flex-col", scrollerClass)}
+      >
+        {first > 0 &&
+          (wide && failed !== "before" ? (
+            <div ref={observe("before")} aria-hidden="true" className="h-px" />
+          ) : (
+            <GroupEdge
+              label={
+                failed === "before" ? t.common.retry : t.player.related.earlier(first)
+              }
+              failed={failed === "before"}
+              disabled={loading === "before"}
+              onClick={() => load("before")}
+            />
+          ))}
         <ul className="flex flex-col gap-3">
-          {members.map((member, position) =>
+          {shown.map((member, position) =>
             member.id === currentId ? (
               <CurrentMember
                 key={member.id}
                 ref={currentRef}
                 video={member}
-                position={position + 1}
+                position={first + position + 1}
               />
             ) : (
               <MemberItem
                 key={member.id}
                 video={member}
-                position={position + 1}
+                position={first + position + 1}
                 backTo={backTo}
               />
             ),
           )}
         </ul>
+        {end < total &&
+          (failed === "after" ? (
+            <GroupEdge
+              label={t.common.retry}
+              failed
+              disabled={loading === "after"}
+              onClick={() => load("after")}
+            />
+          ) : (
+            <div ref={observe("after")} aria-hidden="true" className="h-px" />
+          ))}
         {items.length > 0 && (
           <>
             <div className="pt-5 pb-2">
@@ -324,6 +442,64 @@ function GroupedRelated({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * useInfiniteEdge は、端の目印（要素）が画面の近くに入ったら onEdge(side) を呼ぶ ref を返す。
+ * 入れ物の中のスクロールでも、ページのスクロールでも同じに働く（交差は入れ物で切り取って
+ * 判定される）。
+ */
+function useInfiniteEdge(onEdge: (side: GroupSide) => void) {
+  const onEdgeRef = useRef(onEdge);
+  useEffect(() => {
+    onEdgeRef.current = onEdge;
+  });
+  const observers = useRef(new Map<GroupSide, IntersectionObserver>());
+  useEffect(() => {
+    const current = observers.current;
+    return () => {
+      for (const observer of current.values()) observer.disconnect();
+      current.clear();
+    };
+  }, []);
+  return useCallback(
+    (side: GroupSide) => (element: HTMLDivElement | null) => {
+      observers.current.get(side)?.disconnect();
+      observers.current.delete(side);
+      if (element === null || typeof IntersectionObserver === "undefined") return;
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) onEdgeRef.current(side);
+        },
+        { rootMargin: "600px 0px" },
+      );
+      observer.observe(element);
+      observers.current.set(side, observer);
+    },
+    [],
+  );
+}
+
+/** GroupEdge は窓の外を読むボタン（狭い画面の前、読み足しの失敗のやり直し）である。 */
+function GroupEdge({
+  label,
+  failed,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  failed: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-start gap-1 py-2">
+      {failed && <p className="text-sm text-fg-muted">{t.player.related.moreFailed}</p>}
+      <Button variant="ghost" size="sm" onClick={onClick} disabled={disabled}>
+        {label}
+      </Button>
+    </div>
   );
 }
 
