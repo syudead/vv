@@ -12,8 +12,8 @@ its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
 The other PascalCase files in `web/src/ui` (`Button.tsx`, `Popover.tsx`,
-`Menu.tsx`, `ModalFrame.tsx`, `Toast.tsx`, `Chip.tsx` and the rest) and
-`videoList/FavoriteToggle.tsx` are the components these replace. They stay
+`Menu.tsx`, `ModalFrame.tsx`, `Chip.tsx` and the rest) are the components
+these replace. They stay
 only for screens that have not moved yet; new code never imports them.
 
 ## Shared rules
@@ -233,13 +233,12 @@ screen (use links).
 ### Sonner
 
 Item `sonner`. Short, passive notices of a finished action ("Added 3 videos to
-favorites"). Call `toast()` from `sonner` under one `Toaster` for the app. A
-notice is one line and needs no action.
+favorites"). A notice is one line and needs no action.
 
-Until every screen moves, the app's notices still go through `useToast` from
-`ui/Toast`, which also queues notices one at a time on the video page. The app
-switches to `Toaster` in one change, so keep calling `useToast` in existing
-screens.
+The app's one `Toaster` sits in `ToastProvider` (`ui/Toast`), and screens send
+a notice with its `useToast`, which calls `toast()`. It shows at most three
+notices at once on list screens and one at a time on the video page, so a
+notice raised in the shell waits its turn after the viewer opens a video.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.

@@ -1,25 +1,26 @@
-import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
-import type { RefObject } from "react";
+import { LayoutGrid, List } from "lucide-react";
+import type { ReactNode, RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
-import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import SegmentedControl from "../ui/SegmentedControl";
-import Tooltip from "../ui/Tooltip";
+import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
+import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { CompactSortControls, SortMenu } from "../videoList/SortControls";
+import { SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 /** viewOptions は表示形式の選択肢である。文言は描画のたびにカタログから引く。 */
 function viewOptions() {
   return [
-    { value: "grid", label: t.library.view.grid, icon: <LayoutGrid /> },
-    { value: "list", label: t.library.view.list, icon: <List /> },
+    {
+      value: "grid",
+      label: t.library.view.grid,
+      icon: <LayoutGrid aria-hidden="true" />,
+    },
+    { value: "list", label: t.library.view.list, icon: <List aria-hidden="true" /> },
   ] as const;
 }
 
@@ -42,12 +43,15 @@ export interface LibraryToolbarProps {
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
+  /** 絞り込み中のタグ（ActiveTagFilters）。絞り込みの操作の後ろに並べる。 */
+  activeFilters?: ReactNode;
 }
 
 /**
- * LibraryToolbar はライブラリ操作をトップバー内の 1 行に集める。並びは Tab の順で、
- * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ・まとめ
- * （ui-design.md「Toolbar」）。
+ * LibraryToolbar はライブラリの一覧の操作を画面の型の Toolbar に並べる。並びは Tab の
+ * 順で、検索欄 → 絞り込み → 絞り込み中のタグ → 表示形式・大きさ・並べ替え
+ * （ui-design.md「Toolbar」、web/registry/rules/patterns.md「Sections」）。lg より狭い幅では
+ * 表示形式・大きさ・並べ替えを「View and sort」のポップオーバーに畳む。
  */
 export default function LibraryToolbar({
   query,
@@ -68,16 +72,42 @@ export default function LibraryToolbar({
   onViewChange,
   zoom,
   onZoomChange,
+  activeFilters,
 }: LibraryToolbarProps) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
-      <SearchBox
-        query={query}
-        onCommit={onQueryCommit}
-        inputRef={searchRef}
-        className="min-w-search-min flex-1 sm:max-w-md sm:min-w-search-min-sm"
-      />
+  const controls: ToolbarViewControl[] = [
+    {
+      id: "view",
+      label: t.library.view.label,
+      control: (
+        <IconToggleGroup
+          label={t.library.view.label}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
+      ),
+    },
+  ];
+  // 大きさは格子表示のときだけ意味を持つ。
+  if (view === "grid") {
+    controls.push({
+      id: "size",
+      label: t.list.cardSize,
+      control: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" />,
+    });
+  }
+  controls.push({
+    id: "sort",
+    label: t.list.sort.heading,
+    control: <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />,
+  });
 
+  return (
+    <Toolbar
+      search={<SearchBox query={query} onCommit={onQueryCommit} inputRef={searchRef} />}
+      view={controls}
+      viewLabel={t.list.viewAndSort}
+    >
       <FilterMenu
         watch={watch}
         onWatchChange={onWatchChange}
@@ -88,74 +118,7 @@ export default function LibraryToolbar({
         canClear={canClear}
         onClear={onClear}
       />
-
-      <div className="hidden md:block">
-        <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />
-      </div>
-
-      <div className="hidden lg:block">
-        <SegmentedControl
-          label={t.library.view.label}
-          value={view}
-          onValueChange={onViewChange}
-          options={viewOptions()}
-        />
-      </div>
-
-      {view === "grid" && (
-        <Tooltip content={t.list.cardSize}>
-          <ZoomSlider
-            zoom={zoom}
-            onZoomChange={onZoomChange}
-            className="hidden w-zoom xl:flex"
-          />
-        </Tooltip>
-      )}
-
-      <PopoverRoot>
-        <PopoverTrigger asChild>
-          <Button
-            variant="secondary"
-            aria-label={t.list.viewAndSort}
-            className={cn("px-2", view === "grid" ? "xl:hidden" : "lg:hidden")}
-          >
-            <SlidersHorizontal />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-popover-wide">
-          <div className="space-y-4">
-            <div className="md:hidden">
-              <CompactSortControls
-                name="compact-sort"
-                sort={sort}
-                onSortChange={onSortChange}
-                onShuffle={onShuffle}
-              />
-            </div>
-
-            <fieldset className="lg:hidden">
-              <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
-                {t.library.view.label}
-              </legend>
-              <SegmentedControl
-                label={t.library.view.compact}
-                value={view}
-                onValueChange={onViewChange}
-                options={viewOptions()}
-              />
-            </fieldset>
-
-            {view === "grid" && (
-              <fieldset className="hidden sm:block xl:hidden">
-                <legend className="mb-1 text-xs font-semibold text-muted-foreground uppercase">
-                  {t.list.cardSize}
-                </legend>
-                <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
-              </fieldset>
-            )}
-          </div>
-        </PopoverContent>
-      </PopoverRoot>
-    </div>
+      {activeFilters}
+    </Toolbar>
   );
 }

@@ -2,9 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 const storageKey = "vv.sidebar.v2";
 const railBreakpoint = "(max-width: 1023px)";
-const drawerBreakpoint = "(max-width: 639px)";
-
-export type SidebarMode = "expanded" | "rail" | "drawer";
 
 function readStored(): boolean | undefined {
   try {
@@ -32,54 +29,29 @@ function matches(query: string): boolean {
 }
 
 /**
- * useSidebar はサイドバーの開閉を画面幅と利用者の選択から決める。
+ * useSidebarOpen は 640px 以上のサイドバーの開閉（展開かレールか）を、画面幅と利用者の
+ * 選択から決める。値は shadcn/ui の SidebarProvider の `open` と `onOpenChange` に渡す。
  *
  * - 1024px 以上: 利用者の選択（既定は開）。閉じるとレール（アイコンのみ）。
  * - 640–1023px: 既定はレール。開くとレールが展開に変わる。
- * - 639px 以下: ドロワー。開くとオーバーレイで被さる。
+ * - 639px 以下はドロワーで、SidebarProvider が自分で開閉を持つ（保存しない）。
  */
-export function useSidebar(): {
-  mode: SidebarMode;
-  open: boolean;
-  toggle: () => void;
-  close: () => void;
-} {
+export function useSidebarOpen(): { open: boolean; setOpen: (open: boolean) => void } {
   const [narrow, setNarrow] = useState(() => matches(railBreakpoint));
-  const [phone, setPhone] = useState(() => matches(drawerBreakpoint));
   const [preferred, setPreferred] = useState<boolean | undefined>(readStored);
-  const [drawerOpen, setDrawerOpen] = useState(false);
 
   useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
     const rail = window.matchMedia(railBreakpoint);
-    const drawer = window.matchMedia(drawerBreakpoint);
-    const sync = () => {
-      setNarrow(rail.matches);
-      setPhone(drawer.matches);
-    };
+    const sync = () => setNarrow(rail.matches);
     rail.addEventListener("change", sync);
-    drawer.addEventListener("change", sync);
-    return () => {
-      rail.removeEventListener("change", sync);
-      drawer.removeEventListener("change", sync);
-    };
+    return () => rail.removeEventListener("change", sync);
   }, []);
 
-  const open = phone ? drawerOpen : (preferred ?? !narrow);
+  const setOpen = useCallback((next: boolean) => {
+    writeStored(next);
+    setPreferred(next);
+  }, []);
 
-  const toggle = useCallback(() => {
-    if (phone) {
-      setDrawerOpen((value) => !value);
-      return;
-    }
-    setPreferred((current) => {
-      const next = !(current ?? !narrow);
-      writeStored(next);
-      return next;
-    });
-  }, [narrow, phone]);
-
-  const close = useCallback(() => setDrawerOpen(false), []);
-
-  const mode: SidebarMode = phone ? "drawer" : open ? "expanded" : "rail";
-  return { mode, open, toggle, close };
+  return { open: preferred ?? !narrow, setOpen };
 }

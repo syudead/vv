@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d9d8b3bfaeec2fb8789422c76a2bcdd3a059b6e7a14c309f29d9caed584625df
+sourceHash: 10cff34a5974604f54d7fab1bec6a9c58a1d6d97da88e8c2ac99cba579f17d18
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -175,11 +175,11 @@ flowchart LR
 
 ### お気に入りの印 {#favorite-mark}
 
-所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある（[`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx)、[035 UI 設計、Mark、Card](../../specs/035-favorites/ui-design.md)）。
+所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある（[`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx)、[035 UI 設計、Mark、Card](../../specs/035-favorites/ui-design.md)）。
 
 | 観点 | ルール |
 | --- | --- |
-| 形 | 28px の当たり領域に 22px のハート。背後に塗りも枠線もない |
+| 形 | 32px の当たり領域に 20px のハート。背後に塗りも枠線もない |
 | 読みやすさ | カードでは暗い `drop-shadow-mark`。リスト表示ではなし |
 | オン | どこでもピンクの `favorite` で塗る |
 | オフ | 白の輪郭。ホバーかフォーカスのときだけ表示する（ホバーできない環境では常に表示） |

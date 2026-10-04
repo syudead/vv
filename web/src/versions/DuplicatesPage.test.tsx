@@ -10,6 +10,13 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import DuplicatesPage from "./DuplicatesPage";
 
+/** groupList は組の一覧である。通知（Sonner）の並び（ol）は数えない。 */
+function groupList(): HTMLElement | undefined {
+  return screen
+    .queryAllByRole("list")
+    .find((list) => list.closest("[data-sonner-toaster]") === null);
+}
+
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
@@ -178,7 +185,7 @@ function renderPage() {
 }
 
 function pairItems(): HTMLElement[] {
-  return within(screen.getByRole("list")).getAllByRole("listitem");
+  return within(groupList()!).getAllByRole("listitem");
 }
 
 beforeEach(() => {
@@ -350,7 +357,7 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     expect(
       await screen.findByRole("heading", { name: "No possible duplicates" }),
     ).toBeDefined();
-    expect(screen.queryByRole("list")).toBeNull();
+    expect(groupList()).toBeUndefined();
     expect(screen.getByRole("status").textContent).toBe("");
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -400,7 +407,7 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     expect(
       await screen.findByRole("heading", { name: "No possible duplicates" }),
     ).toBeDefined();
-    expect(screen.queryByRole("list")).toBeNull();
+    expect(groupList()).toBeUndefined();
     expect(screen.getByRole("status").textContent).toBe("");
   });
 

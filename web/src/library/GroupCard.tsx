@@ -9,8 +9,16 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
-import Checkbox from "../ui/Checkbox";
-import FavoriteToggle from "../videoList/FavoriteToggle";
+import FavoriteToggle from "../ui/FavoriteToggle";
+import { Checkbox } from "../ui/shadcn/checkbox";
+import { TableCell, TableRow } from "../ui/shadcn/table";
+import {
+  VideoThumbnail,
+  VideoThumbnailDuration,
+  VideoThumbnailImage,
+  VideoThumbnailMark,
+  VideoThumbnailProgress,
+} from "../ui/VideoThumbnail";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -132,18 +140,16 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition duration-200 ease-out-quart",
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring",
-        "motion-reduce:transition-none",
-        "hover:border-input hover:shadow-card-hover",
-        selected && "border-primary ring-2 ring-primary",
+        "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
       )}
     >
       {onSelect !== undefined && (
-        <div
+        // 前に出たサムネイルより上に置く（z-30）。
+        <VideoThumbnailMark
+          corner="top-start"
           className={cn(
-            "absolute top-2 left-2 z-30 transition-opacity duration-150",
+            "z-30 p-1 transition-opacity duration-150",
             selectionMode || selected
               ? "opacity-100"
               : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
@@ -151,11 +157,11 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         >
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group, next)}
-            label={t.library.group.select(group.name)}
+            onCheckedChange={(next) => onSelect(group, next === true)}
+            aria-label={t.library.group.select(group.name)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
-        </div>
+        </VideoThumbnailMark>
       )}
 
       <Link
@@ -169,9 +175,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             onSelect(group, !selected);
           }
         }}
-        className="flex min-w-0 flex-1 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
       >
-        <div className="relative aspect-video w-full">
+        <VideoThumbnail selected={selected}>
           <FolderArt
             previews={group.previews}
             selectionMode={selectionMode}
@@ -180,54 +186,40 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             onPreviewStart={onPreviewStart}
           />
 
-          {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
-              前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}
-          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs font-medium text-foreground tabular-nums">
+          {/* 本数と長さは、動画のカードの長さと同じ面で右下に重ねる。前に出たサムネイルより
+              上に置き、絵柄の下見の操作を妨げない。 */}
+          <VideoThumbnailDuration className="pointer-events-none z-20">
             <span>{countText}</span>
             {duration !== "" && <span>{duration}</span>}
-          </span>
+          </VideoThumbnailDuration>
 
           {ratio !== null && (
-            <span
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(ratio * 100)}
+            <VideoThumbnailProgress
+              value={Math.round(ratio * 100)}
               aria-label={t.library.group.watchedRatio}
-              className="absolute inset-x-0 bottom-0 z-20 h-1 bg-overlay"
-            >
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
+              className="z-20"
+            />
           )}
-        </div>
+        </VideoThumbnail>
 
-        <div
-          className={cn("flex min-w-0 flex-col gap-1 px-3 pt-2", !showTagsRow && "pb-3")}
+        <h3
+          title={group.name}
+          className={cn(
+            "line-clamp-2 text-sm font-medium break-all",
+            state === "watched" ? "text-muted-foreground" : "text-foreground",
+          )}
         >
-          <h3
-            title={group.name}
-            className={cn(
-              "line-clamp-2 text-sm font-medium break-all",
-              state === "watched" ? "text-muted-foreground" : "text-foreground",
-            )}
-          >
-            {group.name}
-          </h3>
-        </div>
+          {group.name}
+        </h3>
       </Link>
       {owner && (
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
-        <div className="absolute top-1.5 right-1.5 z-30 flex">
+        <VideoThumbnailMark className="z-30">
           <GroupFavorite group={group} variant="card" />
-        </div>
+        </VideoThumbnailMark>
       )}
-      {showTagsRow && (
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
-      )}
+      {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );
 });
@@ -244,51 +236,39 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const cover = group.previews[0];
 
   return (
-    <tr
+    <TableRow
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
-      className={cn(
-        "group relative transition-colors hover:bg-accent [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-ring",
-        selected && "bg-primary-soft",
-      )}
+      data-state={selected ? "selected" : undefined}
+      className="group"
     >
       {onSelect !== undefined && (
-        <td className="w-10 pl-3">
+        <TableCell className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(group, next)}
-            label={t.library.group.select(group.name)}
+            onCheckedChange={(next) => onSelect(group, next === true)}
+            aria-label={t.library.group.select(group.name)}
             className={cn(
               "transition-opacity",
               selectionMode || selected
                 ? "opacity-100"
-                : "opacity-40 group-hover:opacity-100",
+                : "opacity-50 group-focus-within:opacity-100 group-hover:opacity-100",
             )}
           />
-        </td>
+        </TableCell>
       )}
-      <td className="w-list-thumb-cell py-1.5 pr-2">
-        <div className="relative aspect-video w-list-thumb overflow-hidden rounded-sm bg-navbar">
-          {cover !== undefined && (
-            <img
-              src={cover.thumbnailUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="relative h-full w-full object-contain"
+      <TableCell className="w-list-thumb-cell">
+        <VideoThumbnail className="w-list-thumb rounded-sm">
+          {cover !== undefined && <VideoThumbnailImage src={cover.thumbnailUrl} />}
+          {ratio !== null && (
+            <VideoThumbnailProgress
+              value={Math.round(ratio * 100)}
+              aria-label={t.library.group.watchedRatio}
             />
           )}
-          {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-1 bg-overlay">
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
-          )}
-        </div>
-      </td>
-      <td className="min-w-0 py-1.5 pr-4">
+        </VideoThumbnail>
+      </TableCell>
+      <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
           to={groupPath(group)}
           state={{ from: backTo }}
@@ -300,7 +280,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
             }
           }}
           className={cn(
-            "line-clamp-2 text-sm font-medium break-all hover:text-primary",
+            "line-clamp-2 rounded-sm text-sm font-medium break-all hover:text-primary",
             state === "watched" ? "text-muted-foreground" : "text-foreground",
           )}
         >
@@ -310,13 +290,13 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <Folder aria-hidden="true" className="size-3 shrink-0" />
           {groupCountText(group.videoCount)}
         </span>
-      </td>
+      </TableCell>
       {owner && (
-        <td className="w-8">
+        <TableCell className="w-8 px-0">
           <GroupFavorite group={group} variant="row" />
-        </td>
+        </TableCell>
       )}
-      <td className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
+      <TableCell className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check
             className="ml-auto size-4 text-success"
@@ -325,17 +305,17 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         )}
         {state === "inProgress" &&
           t.library.group.progress(watchedCount, group.videoCount)}
-      </td>
-      <td className="w-list-number pr-4 text-right text-sm text-foreground tabular-nums">
+      </TableCell>
+      <TableCell className="w-list-number pr-4 text-right tabular-nums">
         {duration}
-      </td>
-      <td className="hidden w-list-number pr-4 md:table-cell" />
-      <td className="hidden w-list-number-wide pr-4 text-right text-sm text-muted-foreground tabular-nums md:table-cell">
+      </TableCell>
+      <TableCell className="hidden w-list-number pr-4 md:table-cell" />
+      <TableCell className="hidden w-list-number-wide pr-4 text-right text-muted-foreground tabular-nums md:table-cell">
         {formatBytes(group.sizeBytes)}
-      </td>
-      <td className="hidden w-list-date pr-3 text-right text-sm text-muted-foreground tabular-nums lg:table-cell">
+      </TableCell>
+      <TableCell className="hidden w-list-date pr-3 text-right text-muted-foreground tabular-nums lg:table-cell">
         {formatRelative(group.addedAt)}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });

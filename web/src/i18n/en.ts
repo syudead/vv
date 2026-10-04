@@ -264,6 +264,7 @@ export const en = {
     loading: "Loading",
     sidebar: "Sidebar",
     toggleSidebar: "Toggle sidebar",
+    notifications: "Notifications",
   },
   designSystem: {
     title: "Design system",

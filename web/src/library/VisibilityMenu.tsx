@@ -3,9 +3,14 @@ import { ChevronDown, Globe, Lock } from "lucide-react";
 import { maxVideoTagsSelection } from "../api/tags";
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t } from "../i18n";
-import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
+import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
@@ -18,15 +23,10 @@ export default function VisibilityMenu({
   selectedIds,
   overLimit,
   overLimitId,
-  className,
-  ...rest
 }: {
   selectedIds: readonly number[];
   overLimit: boolean;
   overLimitId: string;
-  className?: string;
-  /** 選択バーが 1 行に収まるかを測る目印（SelectionBar の measureBarLayout）。 */
-  "data-bar-item"?: string;
 }) {
   const toast = useToast();
 
@@ -50,32 +50,30 @@ export default function VisibilityMenu({
   }
 
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={className}
-          disabled={overLimit}
-          title={overLimit ? overLimitMessage() : undefined}
-          aria-describedby={overLimit ? overLimitId : undefined}
-          {...rest}
-        >
-          <Globe aria-hidden="true" />
-          {t.library.selection.visibility}
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </MenuTrigger>
-      <MenuContent side="top" align="start">
-        <MenuItem onSelect={() => apply(true)}>
+    <DropdownMenu>
+      <WithTooltip label={t.library.selection.visibility}>
+        <DropdownMenuTrigger asChild>
+          <SelectionAction
+            icon={<Globe aria-hidden="true" />}
+            label={t.library.selection.visibility}
+            after={<ChevronDown aria-hidden="true" />}
+            iconOnly
+            disabled={overLimit}
+            title={overLimit ? overLimitMessage() : undefined}
+            aria-describedby={overLimit ? overLimitId : undefined}
+          />
+        </DropdownMenuTrigger>
+      </WithTooltip>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuItem onSelect={() => apply(true)}>
           <Globe aria-hidden="true" />
           {t.library.selection.makePublic}
-        </MenuItem>
-        <MenuItem onSelect={() => apply(false)}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => apply(false)}>
           <Lock aria-hidden="true" />
           {t.library.selection.makePrivate}
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
