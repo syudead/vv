@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/japanese-translation.md
-sourceHash: a0bc4f3695c4a1a9b5165223bdceedbe7c999470e90c73e8dbd26d09015ccc30
+sourceHash: 6bae6c74073e6225d2b8098290ebe72bbce49b487641281f36c44e43e6bb0a1d
 ---
 
 # 文書の日本語訳 {#japanese-translation-of-the-documents}
@@ -114,6 +114,7 @@ flowchart LR
 | owner, guest | `所有者`, `ゲスト` |
 | tentative tag, folder group, content key | `仮のタグ`, `フォルダのグループ`, `内容の鍵` |
 | workflow, runner | `ワークフロー`, `ランナー` |
+| Rejected (table header), Why | `採用しなかった案`, `理由` |
 | Mermaid | `Mermaid` |
 
 訳が揺れる用語があれば行を足す。既存の訳は、その英語が変わるまで言い回しを保つ。
