@@ -39,6 +39,92 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
   };
 }
 
+/** メンバーの1行の高さ（サムネイル）と行の間（px）。 */
+const rowHeight = 90;
+const rowPitch = rowHeight + 12;
+/** 広い画面の列の入れ物の高さ（px）。jsdom の窓の高さは 768px。 */
+const scrollerHeight = 600;
+
+/**
+ * mockLayout は jsdom に無い配置を与え、メンバーの並びの仮想化に表示域と行の高さを
+ * 測らせる。入れ物と文書の中身の高さは並びの高さ（`ul` の `height`）から求める。
+ * 行の上端の位置（getBoundingClientRect）は 0 のままなので、並びの上端は入れ物や
+ * 文書の先頭と見なされる。戻す関数を返す。
+ */
+function mockLayout(): () => void {
+  const proto = HTMLElement.prototype;
+  const names = ["offsetHeight", "scrollHeight", "clientHeight"] as const;
+  const originals = names.map((name) => Object.getOwnPropertyDescriptor(proto, name));
+  const elementScrollTo = Element.prototype.scrollTo;
+  const listHeight = (root: Element) =>
+    parseFloat(root.querySelector<HTMLElement>("ul")?.style.height ?? "") || 0;
+  Object.defineProperty(proto, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (this.hasAttribute("data-index")) return rowHeight;
+      return this.hasAttribute("data-related-scroller") ? scrollerHeight : 0;
+    },
+  });
+  Object.defineProperty(proto, "scrollHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      // 並びの下の関連動画の分として 100px を足す。
+      if (this.hasAttribute("data-related-scroller")) return listHeight(this) + 100;
+      return this === document.documentElement ? listHeight(document.body) + 1000 : 0;
+    },
+  });
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.hasAttribute("data-related-scroller") ? scrollerHeight : 0;
+    },
+  });
+  // スクロールの位置だけを変える。scroll は検査が scrollContainer・scrollPage で送る。
+  Element.prototype.scrollTo = function (
+    this: Element,
+    options?: ScrollToOptions | number,
+  ) {
+    if (typeof options === "object" && options.top !== undefined) {
+      this.scrollTop = options.top;
+    }
+  } as typeof Element.prototype.scrollTo;
+  vi.spyOn(window, "scrollTo").mockImplementation(((options?: ScrollToOptions) => {
+    if (typeof options === "object" && options.top !== undefined) {
+      vi.stubGlobal("scrollY", options.top);
+    }
+  }) as typeof window.scrollTo);
+  return () => {
+    names.forEach((name, index) => {
+      const original = originals[index];
+      if (original === undefined) Reflect.deleteProperty(proto, name);
+      else Object.defineProperty(proto, name, original);
+    });
+    Element.prototype.scrollTo = elementScrollTo;
+    vi.mocked(window.scrollTo).mockRestore();
+  };
+}
+
+/** scroller は広い画面の列の入れ物である。 */
+function scroller(): HTMLElement {
+  return document.querySelector<HTMLElement>("[data-related-scroller]")!;
+}
+
+/** scrollContainer は入れ物を top までスクロールしたことを仮想化へ知らせる。 */
+function scrollContainer(top = scroller().scrollTop) {
+  act(() => {
+    scroller().scrollTop = top;
+    scroller().dispatchEvent(new Event("scroll"));
+  });
+}
+
+/** scrollPage は文書を y までスクロールしたことを仮想化へ知らせる。 */
+function scrollPage(y = window.scrollY) {
+  act(() => {
+    vi.stubGlobal("scrollY", y);
+    window.dispatchEvent(new Event("scroll"));
+  });
+}
+
 function renderList(state: RelatedState) {
   return render(
     <MemoryRouter>
@@ -302,21 +388,22 @@ describe("RelatedVideos", () => {
       expect(screen.getAllByRole("list")).toHaveLength(1);
     });
 
-    it("数百本でも切らずに出し、広い画面では今のメンバーの行を入れ物の中で見える位置へ動かす", () => {
+    describe("数百本のグループ（issue 675）", () => {
       const many = Array.from({ length: 300 }, (_, index) =>
         item(100 + index, { title: `big ${String(index + 1)}` }),
       );
-      vi.stubGlobal("matchMedia", (query: string) => ({
-        matches: query === "(min-width: 64rem)",
-      }));
-      const scrolled: Element[] = [];
-      const original = Element.prototype.scrollIntoView;
-      Element.prototype.scrollIntoView = function (this: Element, options) {
-        expect(options).toEqual({ block: "nearest" });
-        scrolled.push(this);
-      };
-      try {
-        renderList({
+      let restoreLayout: () => void;
+
+      beforeEach(() => {
+        restoreLayout = mockLayout();
+      });
+
+      afterEach(() => {
+        restoreLayout();
+      });
+
+      function renderMany() {
+        return renderList({
           kind: "ready",
           id: 299,
           related: {
@@ -324,14 +411,103 @@ describe("RelatedVideos", () => {
             group: { folder, name: "big", items: many, offset: 0, total: many.length },
           },
         });
-        expect(screen.getAllByRole("listitem")).toHaveLength(300);
-        expect(screen.getByText("200 / 300")).toBeDefined();
-        expect(scrolled).toHaveLength(1);
-        expect(scrolled[0]?.getAttribute("aria-current")).toBe("true");
-        expect(scrolled[0]?.textContent).toContain("big 200");
-      } finally {
-        Element.prototype.scrollIntoView = original;
       }
+
+      function rowTitles() {
+        return within(screen.getAllByRole("list")[0]!)
+          .getAllByRole("listitem")
+          .map((row) => row.textContent);
+      }
+
+      it("見えている近くの行だけを描き、並びは全件の高さを持つ", () => {
+        vi.stubGlobal("matchMedia", () => ({ matches: false }));
+        renderMany();
+        const titles = rowTitles();
+        // 窓の高さ 768px に入る 8 行と、後ろの 4 行と、今のメンバーの行。
+        expect(titles).toHaveLength(13);
+        expect(titles[0]).toContain("big 1");
+        expect(titles[11]).toContain("big 12");
+        expect(titles[12]).toContain("Now playing");
+        const list = screen.getAllByRole("list")[0]!;
+        expect(list.style.height).toBe(`${String(300 * rowPitch - 12)}px`);
+        // 描かない行があっても、何本目かを読み上げる。
+        const row = within(list).getAllByRole("listitem")[0]!;
+        expect(row.getAttribute("aria-posinset")).toBe("1");
+        expect(row.getAttribute("aria-setsize")).toBe("300");
+
+        scrollPage(150 * rowPitch);
+        const scrolled = rowTitles();
+        expect(scrolled.length).toBeLessThan(20);
+        expect(scrolled.some((title) => title?.includes("big 155"))).toBe(true);
+        expect(scrolled.some((title) => title?.includes("big 1:05"))).toBe(false);
+      });
+
+      it("広い画面では今のメンバーの行を入れ物の中で見える位置へ動かす", () => {
+        vi.stubGlobal("matchMedia", (query: string) => ({
+          matches: query === "(min-width: 64rem)",
+        }));
+        const scrollIntoView = vi.fn();
+        const original = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = scrollIntoView;
+        try {
+          renderMany();
+          expect(screen.getByText("200 / 300")).toBeDefined();
+          // 今の行（200 本目）の下端が入れ物の下端から 24px 上に来る位置。
+          const target = 199 * rowPitch + rowHeight + 24 - scrollerHeight;
+          expect(scroller().scrollTop).toBe(target);
+          expect(window.scrollY).toBe(0);
+          expect(scrollIntoView).not.toHaveBeenCalled();
+          scrollContainer();
+          const titles = rowTitles();
+          expect(titles.length).toBeLessThan(20);
+          // 見えている 195〜201 本目と、前後の 4 行。
+          expect(titles[0]).toContain("big 191");
+          expect(titles.at(-1)).toContain("big 205");
+          expect(titles.some((title) => title?.includes("Now playing"))).toBe(true);
+        } finally {
+          Element.prototype.scrollIntoView = original;
+        }
+      });
+
+      it("何本目かを押すと、広い画面では入れ物の中で今のメンバーの行へ戻る", () => {
+        vi.stubGlobal("matchMedia", (query: string) => ({
+          matches: query === "(min-width: 64rem)",
+        }));
+        renderMany();
+        const target = scroller().scrollTop;
+        scrollContainer(0);
+        expect(rowTitles().some((title) => title?.includes("big 194"))).toBe(false);
+
+        fireEvent.click(
+          screen.getByRole("button", { name: "200 / 300, go to the current video" }),
+        );
+        expect(scroller().scrollTop).toBe(target);
+        scrollContainer();
+        expect(rowTitles().some((title) => title?.includes("big 194"))).toBe(true);
+      });
+
+      it("何本目かを押すと、狭い画面ではページを今のメンバーの行までスクロールする", () => {
+        vi.stubGlobal("matchMedia", () => ({ matches: false }));
+        renderMany();
+        // 開いたときは動かさない（仮想化が今の位置へスクロールし直すだけ）。
+        expect(window.scrollY).toBe(0);
+        const button = screen.getByRole("button", {
+          name: "200 / 300, go to the current video",
+        });
+        expect(button.textContent).toBe("200 / 300");
+        expect(button.getAttribute("type")).toBe("button");
+
+        fireEvent.click(button);
+        // 今の行の下端が窓の下端から 24px 上に来る位置。
+        const target = 199 * rowPitch + rowHeight + 24 - window.innerHeight;
+        expect(window.scrollTo).toHaveBeenCalledWith(
+          expect.objectContaining({ top: target }),
+        );
+        scrollPage();
+        const titles = rowTitles();
+        expect(titles.some((title) => title?.includes("big 195"))).toBe(true);
+        expect(titles.some((title) => title?.includes("big 1:05"))).toBe(false);
+      });
     });
 
     it("狭い画面ではページを動かさない", () => {
@@ -339,11 +515,21 @@ describe("RelatedVideos", () => {
       const scrollIntoView = vi.fn();
       const original = Element.prototype.scrollIntoView;
       Element.prototype.scrollIntoView = scrollIntoView;
+      // 仮想化は付けたときに今の位置へ（動かさずに）スクロールし直すので、位置が変わる
+      // 呼び出しだけを数える。
+      const moves: unknown[] = [];
+      const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(((
+        options?: ScrollToOptions,
+      ) => {
+        if (options?.top !== window.scrollY) moves.push(options);
+      }) as typeof window.scrollTo);
       try {
         renderGroup(14);
         expect(scrollIntoView).not.toHaveBeenCalled();
+        expect(moves).toEqual([]);
       } finally {
         Element.prototype.scrollIntoView = original;
+        scrollTo.mockRestore();
       }
     });
   });
@@ -638,8 +824,10 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
     // 6,000 本のうち、今の動画 3000 を中ほどに置いた 2950〜3049 本目の窓。
     const window = Array.from({ length: 100 }, (_, index) => member(2950 + index));
     let intersect: Map<Element, IntersectionObserverCallback>;
+    let restoreLayout: () => void;
 
     beforeEach(() => {
+      restoreLayout = mockLayout();
       intersect = new Map();
       vi.stubGlobal(
         "IntersectionObserver",
@@ -658,6 +846,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
     });
 
     afterEach(() => {
+      restoreLayout();
       vi.unstubAllGlobals();
     });
 
@@ -678,8 +867,17 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       });
     }
 
+    function memberList() {
+      return screen.getAllByRole("list")[0]!;
+    }
+
     function memberRows() {
-      return within(screen.getAllByRole("list")[0]!).getAllByRole("listitem");
+      return within(memberList()).getAllByRole("listitem");
+    }
+
+    /** listHeight は count 行を読み込んだ並びの高さである。 */
+    function listHeight(count: number) {
+      return `${String(count * rowPitch - 12)}px`;
     }
 
     // 端の目印（読み足しの目印）だけ。行のサムネイルも IntersectionObserver を使う。
@@ -714,8 +912,11 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       });
       renderWindow();
       expect(screen.getByText("3,000 / 6,000")).toBeDefined();
-      expect(memberRows()).toHaveLength(100);
+      // 描くのは見えている近くの行と今のメンバーの行だけで、並びは 100 行の高さを持つ。
+      expect(memberRows().length).toBeLessThan(20);
+      expect(memberRows().at(-1)?.getAttribute("aria-current")).toBe("true");
       expect(memberRows()[0]?.textContent).toContain("2950");
+      expect(memberList().style.height).toBe(listHeight(100));
 
       // 狭い画面では、後ろだけを目印で読む。
       expect(edges()).toHaveLength(1);
@@ -726,8 +927,31 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         100,
         expect.anything(),
       );
-      expect(memberRows()).toHaveLength(102);
-      expect(memberRows()[101]?.textContent).toContain("ep 3051");
+      expect(memberList().style.height).toBe(listHeight(102));
+      scrollPage(102 * rowPitch);
+      expect(memberRows().at(-1)?.textContent).toContain("ep 3051");
+    });
+
+    it("読み足しを重ねて数千本を読み込んでも、描く行は見えている近くだけにする（issue 675）", async () => {
+      wide(false);
+      let next = 3050;
+      vi.mocked(listVideoGroupMembers).mockImplementation(async (_id, start, limit) => {
+        const items = Array.from({ length: limit }, (_, index) => member(next + index));
+        next += limit;
+        return { items, offset: start, total: 6000 };
+      });
+      renderWindow();
+      for (let page = 0; page < 20; page++) await reachEdge(0);
+      expect(listVideoGroupMembers).toHaveBeenCalledTimes(20);
+      expect(memberList().style.height).toBe(listHeight(2100));
+      expect(memberRows().length).toBeLessThan(20);
+
+      scrollPage(2100 * rowPitch);
+      const rows = memberRows();
+      expect(rows.length).toBeLessThan(20);
+      expect(rows.at(-1)?.textContent).toContain("ep 5049");
+      // 今のメンバーの行は画面の外でも描き続ける。
+      expect(rows[0]?.getAttribute("aria-current")).toBe("true");
     });
 
     it("狭い画面では、前のメンバーをボタンで読む", async () => {
@@ -746,42 +970,33 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         100,
         expect.anything(),
       );
-      expect(memberRows()).toHaveLength(200);
+      expect(memberList().style.height).toBe(listHeight(200));
       expect(memberRows()[0]?.textContent).toContain("2850");
       expect(screen.getByText("3,000 / 6,000")).toBeDefined();
     });
 
     it("広い画面では、上の端に来たら前を読み足し、見ていた行が動かないよう位置を補う", async () => {
       wide(true);
-      const original = Element.prototype.scrollIntoView;
-      Element.prototype.scrollIntoView = vi.fn();
       vi.mocked(listVideoGroupMembers).mockResolvedValue({
         items: [member(2948), member(2949)],
         offset: 2947,
         total: 6000,
       });
-      try {
-        renderWindow();
-        const scroller = document.querySelector("[data-related-scroller]") as HTMLElement;
-        // 行1本を 10px と見なした高さ。
-        Object.defineProperty(scroller, "scrollHeight", {
-          get: () => scroller.querySelectorAll("li").length * 10,
-        });
-        scroller.scrollTop = 40;
-        expect(edges()).toHaveLength(2);
-        await reachEdge(0);
-        expect(listVideoGroupMembers).toHaveBeenCalledWith(
-          3000,
-          2849,
-          100,
-          expect.anything(),
-        );
-        // 2 本増えた分（20px）だけ下へずらす。
-        expect(scroller.scrollTop).toBe(60);
-        expect(memberRows()[0]?.textContent).toContain("ep 2948");
-      } finally {
-        Element.prototype.scrollIntoView = original;
-      }
+      renderWindow();
+      scrollContainer(40);
+      expect(edges()).toHaveLength(2);
+      await reachEdge(0);
+      expect(listVideoGroupMembers).toHaveBeenCalledWith(
+        3000,
+        2849,
+        100,
+        expect.anything(),
+      );
+      // 2 行増えた分だけ下へずらす。
+      expect(scroller().scrollTop).toBe(40 + 2 * rowPitch);
+      scrollContainer();
+      expect(memberRows()[0]?.textContent).toContain("ep 2948");
+      expect(memberRows()[2]?.textContent).toContain("ep 2950");
     });
 
     it("幅が lg をまたいだら、前の読み方をボタンとスクロールで切り替える", async () => {
@@ -824,7 +1039,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       vi.mocked(listVideoGroupMembers).mockRejectedValueOnce(new Error("offline"));
       renderWindow();
       await reachEdge(0);
-      expect(memberRows()).toHaveLength(100);
+      expect(memberList().style.height).toBe(listHeight(100));
       expect(screen.getByText("Couldn't load more of the group")).toBeDefined();
       vi.mocked(listVideoGroupMembers).mockResolvedValue({
         items: [member(3050)],
@@ -833,7 +1048,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       });
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       await act(async () => Promise.resolve());
-      expect(memberRows()).toHaveLength(101);
+      expect(memberList().style.height).toBe(listHeight(101));
     });
   });
 });

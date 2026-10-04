@@ -1,7 +1,17 @@
 import { Check, ImageOff } from "lucide-react";
 import {
+  defaultRangeExtractor,
+  type Range,
+  useVirtualizer,
+  useWindowVirtualizer,
+  type VirtualItem,
+  type Virtualizer,
+} from "@tanstack/react-virtual";
+import {
+  type FocusEvent,
   type PointerEvent,
   type Ref,
+  type RefObject,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -284,6 +294,10 @@ type GroupSide = "before" | "after";
  * 読み足し（見ている行が動かないようスクロールの位置を補う）、狭い画面ではボタンで読む。
  * 狭い画面ではページごと動くので、並びの先頭が見えた時点で読み足すと、開いた直後から
  * 前のメンバーを次々に読んでしまう（issue 674）。
+ *
+ * 読み込んだメンバーは数千本になりうるので、並びは見えている行の近くだけを描く
+ * （issue 675）。広い画面は入れ物、狭い画面は文書を基準にするので、幅ごとに別の
+ * 部品（WideMemberList・PageMemberList）にする。
  */
 function GroupedRelated({
   currentId,
@@ -313,8 +327,11 @@ function GroupedRelated({
   const first = offset - before.length;
   const end = offset + members.length + after.length;
   const index = shown.findIndex((member) => member.id === currentId);
-  const currentRef = useRef<HTMLLIElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // 並びが描く今のメンバーの行へスクロールする口（何本目かのボタンが呼ぶ）。
+  const jump = useRef<(() => void) | null>(null);
+  // 開いたときの位置合わせを済ませたか。幅が lg をまたいで並びを描き直しても繰り返さない。
+  const opened = useRef(false);
   const loadingRef = useRef(false);
   const abort = useRef<AbortController | null>(null);
   // 前を読み足す直前の入れ物の高さ。読み足した後、見ている行が動かないよう補う。
@@ -359,6 +376,8 @@ function GroupedRelated({
   );
 
   // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
+  // 並びは仮想化しても全件の高さを持つ（読み足した行は見込みの高さで足される）ので、
+  // 入れ物の高さの差がそのまま増えた分になる。
   useLayoutEffect(() => {
     const height = heightBeforePrepend.current;
     const scroller = scrollerRef.current;
@@ -370,13 +389,19 @@ function GroupedRelated({
   // 端の目印が見えそうになったら続きを読む。前の目印は広い画面だけに置く。
   const observe = useInfiniteEdge(load);
 
-  // 広い画面では、開いたとき（別のメンバーへ移ったときを含む）に今のメンバーの行を入れ物の
-  // 中で見える位置へ動かす。ページと左の列は動かさない。狭い画面ではページごと動いて
-  // プレイヤーが画面の上から消えるので、動かさない（Edge Case「大きなグループ」）。
-  useLayoutEffect(() => {
-    if (!isWideScreen()) return;
-    currentRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [currentId]);
+  // 並びの上の前の端。並びの上端の位置はこれで変わる。
+  const beforeEdge: BeforeEdge =
+    first === 0 ? "none" : failed === "before" ? "retry" : wide ? "sentinel" : "button";
+  const listProps: MemberListProps = {
+    beforeEdge,
+    shown,
+    currentIndex: index,
+    first,
+    total,
+    backTo,
+    jump,
+    opened,
+  };
 
   return (
     <section
@@ -388,9 +413,16 @@ function GroupedRelated({
           {t.player.related.group}
         </h2>
         {index >= 0 && (
-          <span className="text-xs text-fg-muted tabular-nums">
+          // 今の動画が並びの見えない所にあっても、ここから位置へ戻れる（Edge Case
+          // 「大きなグループ」、issue 675）。
+          <button
+            type="button"
+            aria-label={t.player.related.jumpToCurrent(first + index + 1, total)}
+            onClick={() => jump.current?.()}
+            className="rounded-sm text-xs text-fg-muted tabular-nums hover:underline focus-visible:underline"
+          >
             {t.player.related.position(first + index + 1, total)}
-          </span>
+          </button>
         )}
       </div>
       <div
@@ -398,8 +430,8 @@ function GroupedRelated({
         data-related-scroller=""
         className={cn("flex flex-col", scrollerClass)}
       >
-        {first > 0 &&
-          (wide && failed !== "before" ? (
+        {beforeEdge !== "none" &&
+          (beforeEdge === "sentinel" ? (
             <div ref={observe("before")} aria-hidden="true" className="h-px" />
           ) : (
             <GroupEdge
@@ -411,25 +443,7 @@ function GroupedRelated({
               onClick={() => load("before")}
             />
           ))}
-        <ul className="flex flex-col gap-3">
-          {shown.map((member, position) =>
-            member.id === currentId ? (
-              <CurrentMember
-                key={member.id}
-                ref={currentRef}
-                video={member}
-                position={first + position + 1}
-              />
-            ) : (
-              <MemberItem
-                key={member.id}
-                video={member}
-                position={first + position + 1}
-                backTo={backTo}
-              />
-            ),
-          )}
-        </ul>
+        {wide ? <WideMemberList {...listProps} /> : <PageMemberList {...listProps} />}
         {end < total &&
           (failed === "after" ? (
             <GroupEdge
@@ -461,6 +475,306 @@ function GroupedRelated({
       </div>
     </section>
   );
+}
+
+/** memberRowHeight はメンバーの1行の見込みの高さ（サムネイル `w-40` の 16:9、px）である。 */
+const memberRowHeight = 90;
+/** memberRowGap は行の間（`gap-3`、px）である。 */
+const memberRowGap = 12;
+/**
+ * memberOverscan は、見えている行の前後に余分に描く行の数である。Tab で次の行へ
+ * 進むとき、その行が描かれているようにする。
+ */
+const memberOverscan = 4;
+/** memberScrollMargin は、行へ動かすときに入れ物や画面の端へ残す間（px）である。 */
+const memberScrollMargin = 24;
+
+/** BeforeEdge は並びの上の前の端（無い・目印・ボタン・やり直し）である。 */
+type BeforeEdge = "none" | "sentinel" | "button" | "retry";
+
+/** MemberListProps はメンバーの並び（広い画面・狭い画面）が受け取るものである。 */
+interface MemberListProps {
+  /** 並びの上の前の端。入れ替わると並びの上端が動くので測り直す。 */
+  beforeEdge: BeforeEdge;
+  /** 読み込んだメンバー（窓と読み足した分）。 */
+  shown: Video[];
+  /** 今のメンバーの shown の中の位置。無ければ -1。 */
+  currentIndex: number;
+  /** shown の先頭のグループ全体の中の位置（0 始まり）。 */
+  first: number;
+  /** グループ全体の本数。 */
+  total: number;
+  backTo: string;
+  /** 今のメンバーの行へスクロールする処理を、何本目かのボタンへ渡す口。 */
+  jump: RefObject<(() => void) | null>;
+  /** 開いたときの位置合わせを済ませたか。 */
+  opened: RefObject<boolean>;
+}
+
+/**
+ * revealMember は index の行が見える位置へスクロールする（既に見えていれば動かない）。
+ *
+ * scrollToIndex は目標を行の番号で持ち、描いた行を測るたびに番号から位置を
+ * 取り直す。前を読み足すと番号がずれ、別の行へ動き直すので、位置を一度だけ求めて
+ * そこへ動かす。行の高さはサムネイルで決まり、見込みと測った値がほぼ変わらない。
+ */
+function revealMember<S extends Element | Window>(
+  virtualizer: Virtualizer<S, Element>,
+  index: number,
+) {
+  if (index < 0) return;
+  const target = virtualizer.getOffsetForIndex(index, "auto");
+  if (target !== undefined) virtualizer.scrollToOffset(target[0]);
+}
+
+/**
+ * useMemberRange は、描く行の範囲に今のメンバーの行とフォーカスを持つ行を足す。
+ * 今のメンバーの行は読み上げの目印（`aria-current`）として、フォーカスを持つ行は
+ * スクロールで画面の外へ出てもフォーカスを失わないよう、描き続ける。
+ */
+function useMemberRange(shown: Video[], currentIndex: number) {
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const focusedIndex =
+    focusedId === null ? -1 : shown.findIndex((member) => member.id === focusedId);
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      const extra = [currentIndex, focusedIndex].filter(
+        (index, i, all) =>
+          index >= 0 &&
+          index < range.count &&
+          !indexes.includes(index) &&
+          all.indexOf(index) === i,
+      );
+      if (extra.length === 0) return indexes;
+      return [...indexes, ...extra].sort((a, b) => a - b);
+    },
+    [currentIndex, focusedIndex],
+  );
+  // 行の高さはメンバーごとに覚え、前を読み足して番号がずれても引き継ぐ。
+  const getItemKey = useCallback((index: number) => shown[index]?.id ?? index, [shown]);
+  const onFocus = (event: FocusEvent<HTMLUListElement>) => {
+    const row = (event.target as Element).closest<HTMLElement>("[data-index]");
+    const member = row === null ? undefined : shown[Number(row.dataset.index)];
+    setFocusedId(member?.id ?? null);
+  };
+  const onBlur = (event: FocusEvent<HTMLUListElement>) => {
+    const next = event.relatedTarget;
+    if (next instanceof Node && event.currentTarget.contains(next)) return;
+    setFocusedId(null);
+  };
+  return { rangeExtractor, getItemKey, onFocus, onBlur };
+}
+
+/**
+ * WideMemberList は広い画面（`lg` 以上）のメンバーの並びである。並びは列の入れ物の
+ * 中でスクロールするので、入れ物を基準に、見えている行と前後の数行だけを描く
+ * （issue 675）。開いたときは今のメンバーの行を入れ物の中で見える位置へ動かす。
+ * ページと左の列は動かさない。
+ */
+function WideMemberList(props: MemberListProps) {
+  const { beforeEdge, shown, currentIndex, jump, opened } = props;
+  const listRef = useRef<HTMLUListElement | null>(null);
+  // 並びの上端の入れ物の中での位置。上には入れ物の余白と前の端（目印かボタン）がある。
+  // 測るまでは null とし、開いたときの位置合わせを待たせる。
+  const [margin, setMargin] = useState<number | null>(null);
+  const scroller = () =>
+    listRef.current?.closest<HTMLElement>("[data-related-scroller]") ?? null;
+  // 前の端は読み込みの失敗で目印とやり直しのボタンが入れ替わるので、そのたびに測る。
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const element = list?.closest<HTMLElement>("[data-related-scroller]");
+    if (list === null || element === null || element === undefined) return;
+    setMargin(
+      list.getBoundingClientRect().top -
+        element.getBoundingClientRect().top +
+        element.scrollTop,
+    );
+  }, [beforeEdge]);
+  const range = useMemberRange(shown, currentIndex);
+  const virtualizer = useVirtualizer({
+    count: shown.length,
+    getScrollElement: scroller,
+    estimateSize: () => memberRowHeight,
+    gap: memberRowGap,
+    overscan: memberOverscan,
+    scrollMargin: margin ?? 0,
+    scrollPaddingStart: memberScrollMargin,
+    scrollPaddingEnd: memberScrollMargin,
+    rangeExtractor: range.rangeExtractor,
+    getItemKey: range.getItemKey,
+  });
+  const reveal = useCallback(
+    () => revealMember(virtualizer, currentIndex),
+    [virtualizer, currentIndex],
+  );
+  useEffect(() => {
+    jump.current = reveal;
+  }, [jump, reveal]);
+  // 開いたとき（別のメンバーへ移ったときを含む）に一度だけ動かす。
+  useLayoutEffect(() => {
+    if (margin === null || opened.current) return;
+    opened.current = true;
+    reveal();
+  }, [margin, opened, reveal]);
+  return (
+    <MemberRows
+      {...props}
+      listRef={listRef}
+      items={virtualizer.getVirtualItems()}
+      totalSize={virtualizer.getTotalSize()}
+      scrollMargin={virtualizer.options.scrollMargin}
+      measure={virtualizer.measureElement}
+      onFocus={range.onFocus}
+      onBlur={range.onBlur}
+    />
+  );
+}
+
+/** navbarHeight は動画ページの上に留まる帯の高さ（px）である。 */
+function navbarHeight(): number {
+  return (
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--spacing-navbar"),
+    ) || 52
+  );
+}
+
+/**
+ * PageMemberList は狭い画面（`lg` 未満）のメンバーの並びである。ページごと
+ * スクロールするので、文書を基準に、見えている行と前後の数行だけを描く（issue 675）。
+ * 開いたときは動かさない。ページごと動いてプレイヤーが画面の上から消える
+ * （Edge Case「大きなグループ」）。
+ */
+function PageMemberList(props: MemberListProps) {
+  const { beforeEdge, shown, currentIndex, jump, opened } = props;
+  const listRef = useRef<HTMLUListElement | null>(null);
+  // 並びの上端の文書の中での位置。上のプレイヤーや題名の高さで動く。
+  const [margin, setMargin] = useState(0);
+  const [paddingStart] = useState(() => navbarHeight() + memberScrollMargin);
+  const measure = useCallback(() => {
+    const list = listRef.current;
+    if (list !== null) setMargin(list.getBoundingClientRect().top + window.scrollY);
+  }, []);
+  // 前の端（ボタンとやり直し）が入れ替わったとき、プレイヤーの大きさや題名の折り返しで
+  // 文書の大きさが変わったときに測り直す。
+  useLayoutEffect(() => {
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    return () => observer.disconnect();
+  }, [beforeEdge, measure]);
+  useEffect(() => {
+    opened.current = true;
+  }, [opened]);
+  const range = useMemberRange(shown, currentIndex);
+  const virtualizer = useWindowVirtualizer({
+    count: shown.length,
+    estimateSize: () => memberRowHeight,
+    gap: memberRowGap,
+    overscan: memberOverscan,
+    scrollMargin: margin,
+    scrollPaddingStart: paddingStart,
+    scrollPaddingEnd: memberScrollMargin,
+    rangeExtractor: range.rangeExtractor,
+    getItemKey: range.getItemKey,
+  });
+  const reveal = useCallback(
+    () => revealMember(virtualizer, currentIndex),
+    [virtualizer, currentIndex],
+  );
+  useEffect(() => {
+    jump.current = reveal;
+  }, [jump, reveal]);
+  return (
+    <MemberRows
+      {...props}
+      listRef={listRef}
+      items={virtualizer.getVirtualItems()}
+      totalSize={virtualizer.getTotalSize()}
+      scrollMargin={virtualizer.options.scrollMargin}
+      measure={virtualizer.measureElement}
+      onFocus={range.onFocus}
+      onBlur={range.onBlur}
+    />
+  );
+}
+
+/**
+ * MemberRows はメンバーの並びのうち、描く行だけを並べる。`ul` は全件の高さを持ち
+ * （後ろの端の目印はその下にある）、各行はその中の位置へ置く。
+ */
+function MemberRows({
+  shown,
+  currentIndex,
+  first,
+  total,
+  backTo,
+  listRef,
+  items,
+  totalSize,
+  scrollMargin,
+  measure,
+  onFocus,
+  onBlur,
+}: MemberListProps & {
+  listRef: Ref<HTMLUListElement>;
+  items: VirtualItem[];
+  totalSize: number;
+  scrollMargin: number;
+  measure: (element: Element | null) => void;
+  onFocus: (event: FocusEvent<HTMLUListElement>) => void;
+  onBlur: (event: FocusEvent<HTMLUListElement>) => void;
+}) {
+  return (
+    <ul
+      ref={listRef}
+      className="relative"
+      style={{ height: totalSize }}
+      onFocus={onFocus}
+      onBlur={onBlur}
+    >
+      {items.map((item) => {
+        const member = shown[item.index]!;
+        const row: MemberRow = {
+          index: item.index,
+          measure,
+          offset: item.start - scrollMargin,
+          position: first + item.index + 1,
+          total,
+        };
+        return item.index === currentIndex ? (
+          <CurrentMember key={item.key} row={row} video={member} />
+        ) : (
+          <MemberItem key={item.key} row={row} video={member} backTo={backTo} />
+        );
+      })}
+    </ul>
+  );
+}
+
+/** MemberRow は描く1行の並びの中の位置である。 */
+interface MemberRow {
+  /** shown の中の位置。仮想化が行を測るときに読む。 */
+  index: number;
+  measure: (element: Element | null) => void;
+  /** 並びの上端からの位置（px）。 */
+  offset: number;
+  /** グループ全体の中の番号（1 始まり）。 */
+  position: number;
+  total: number;
+}
+
+/** memberRowProps は描く行の `li` の属性である。描かない行があっても何本目かを読み上げる。 */
+function memberRowProps(row: MemberRow) {
+  return {
+    ref: row.measure,
+    "data-index": row.index,
+    "aria-posinset": row.position,
+    "aria-setsize": row.total,
+    style: { transform: `translateY(${String(row.offset)}px)` },
+  };
 }
 
 /**
@@ -621,18 +935,18 @@ function useRelatedScrub(video: Video, preview: HoverPreview) {
 }
 
 function MemberItem({
+  row,
   video,
-  position,
   backTo,
 }: {
+  row: MemberRow;
   video: Video;
-  position: number;
   backTo: string;
 }) {
   const preview = useHoverPreview(video);
   const { scrub, release, setLink } = useRelatedScrub(video, preview);
   return (
-    <li>
+    <li {...memberRowProps(row)} className="absolute inset-x-0 top-0">
       <Link
         ref={setLink}
         to={`/videos/${String(video.id)}`}
@@ -642,7 +956,7 @@ function MemberItem({
         onPointerLeave={release}
         className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
       >
-        <MemberNumber position={position} />
+        <MemberNumber position={row.position} />
         <VideoThumbnail video={video} className="w-40" preview={preview} scrub={scrub} />
         <MemberTitle video={video} />
       </Link>
@@ -651,22 +965,13 @@ function MemberItem({
 }
 
 /** CurrentMember は今見ているメンバーの行である。押せないので、リンクにせず hover でも変えない。 */
-function CurrentMember({
-  ref,
-  video,
-  position,
-}: {
-  ref: Ref<HTMLLIElement>;
-  video: Video;
-  position: number;
-}) {
+function CurrentMember({ row, video }: { row: MemberRow; video: Video }) {
   const watched = video.progress?.completed === true;
   return (
-    // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。
-    <li ref={ref} aria-current="true" className="scroll-my-6">
+    <li {...memberRowProps(row)} aria-current="true" className="absolute inset-x-0 top-0">
       {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
       <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-accent bg-active-wash p-1.5 pl-1">
-        <MemberNumber position={position} />
+        <MemberNumber position={row.position} />
         <VideoThumbnail video={video} className="w-40" />
         <span className="sr-only">{t.player.related.nowPlaying}</span>
         <MemberTitle video={video} />

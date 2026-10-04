@@ -965,6 +965,9 @@ export const en = {
       group: "Up next",
       position: (position: number, count: number) =>
         `${formatNumber(position)} / ${formatNumber(count)}`,
+      /** 何本目かのボタンの読み上げ名。押すと並びの今の動画の行へスクロールする。 */
+      jumpToCurrent: (position: number, count: number) =>
+        `${formatNumber(position)} / ${formatNumber(count)}, go to the current video`,
       videoLink: (title: string, duration: string) => `${title} ${duration}`,
       watchedLink: (label: string) => `${label}, watched`,
       nowPlaying: "Now playing",
