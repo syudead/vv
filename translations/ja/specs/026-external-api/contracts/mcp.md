@@ -1,6 +1,6 @@
 ---
 source: specs/026-external-api/contracts/mcp.md
-sourceHash: 3622d12b5573ccfdb19f2a94dc9b9b53309aaea3e0c9c210ed80beedfeb52327
+sourceHash: eeeb1952fd84b251804d3d6969baca3f578ef02b2b0101bbe1cf66d201f5c709
 ---
 
 # 契約: `/mcp` の MCP サーバー {#contract-mcp-server-at-mcp}
@@ -36,8 +36,11 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `merge_tags` | `POST /api/v1/tags/merge` |
 | `rename_tag` | `POST /api/v1/tags/rename` |
 | `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
+| `batch_tags` | `POST /api/v1/tags/batch` |
+| `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names` |
+| `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
 
-`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms` を追加した（[specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)）。
+`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms`、`batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` を追加した（[specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)）。
 
 | ツール | ヒント | 理由 |
 | --- | --- | --- |
@@ -48,3 +51,5 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `merge_tags` | `destructiveHint: true`、`idempotentHint: true` | 統合元は削除される。 |
 | `rename_tag` | `destructiveHint: false`、`idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`、`idempotentHint: true` | `remove` は名前を外す。`mergeTagId` 付きの `add` はタグを統合する。 |
+| `batch_tags` | `destructiveHint: true`、`idempotentHint: true` | `reject` と `delete` はタグを削除する。 |
+| `forget_rejected_tag_name` | `destructiveHint: true`、`idempotentHint: true` | その名前は仮のタグとしての付与で飛ばされなくなる。 |
