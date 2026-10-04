@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import { scanErrorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
 import { ScanDetail, ScanIssueCounts, ScanStatusIcon } from "../shell/ScanSummaryParts";

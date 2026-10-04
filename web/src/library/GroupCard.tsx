@@ -9,7 +9,7 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
-import Checkbox from "../ui/Checkbox";
+import Checkbox from "../ui/legacy/Checkbox";
 import FavoriteToggle from "../videoList/FavoriteToggle";
 import FolderArt from "../videoList/FolderArt";
 

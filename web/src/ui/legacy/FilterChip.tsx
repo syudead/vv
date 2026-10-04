@@ -1,8 +1,8 @@
 import { X } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 
-import type { UiText } from "../i18n";
-import { cn } from "../lib/cn";
+import type { UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
 
 /**
  * FilterChip は「絞り込み中」の行に並べる、押すとその絞り込みを外すチップである。

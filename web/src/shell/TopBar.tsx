@@ -3,7 +3,7 @@ import { Menu, RefreshCw } from "lucide-react";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/IconButton";
+import IconButton from "../ui/legacy/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
 import Tooltip from "../ui/Tooltip";
 import { useScan } from "./ScanProvider";

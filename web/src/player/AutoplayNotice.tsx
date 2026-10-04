@@ -5,7 +5,7 @@ import { Link } from "react-router";
 import { getVideo, isAborted, RequestFailed, type Video } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 

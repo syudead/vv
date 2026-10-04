@@ -10,7 +10,7 @@ import {
   type VideoEncoderChoice,
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import Skeleton from "../ui/Skeleton";
 import { HARDWARE_ENCODING_GUIDE_URL } from "./docsLinks";
 

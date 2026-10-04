@@ -12,7 +12,7 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Combobox from "../ui/Combobox";
+import Combobox from "../ui/legacy/Combobox";
 import { PopoverContent } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";

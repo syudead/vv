@@ -11,7 +11,7 @@ import {
   tagFolderGroup,
 } from "../api/folderGrouping";
 import { t } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import {
   MenuContent,
   MenuItem,

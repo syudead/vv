@@ -27,7 +27,7 @@ import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
-import IconButton from "../ui/IconButton";
+import IconButton from "../ui/legacy/IconButton";
 import FavoriteToggle from "../videoList/FavoriteToggle";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useToast } from "../ui/Toast";

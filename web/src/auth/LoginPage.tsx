@@ -5,7 +5,7 @@ import { useLocation } from "react-router";
 import { login, LoginThrottled } from "../api/auth";
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import {
   connectionWarningId,
   CredentialField,

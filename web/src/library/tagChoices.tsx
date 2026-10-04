@@ -3,7 +3,7 @@ import { CircleDashed } from "lucide-react";
 import type { Tag, VideoTagsSummary } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import type { ComboboxOption } from "../ui/Combobox";
+import type { ComboboxOption } from "../ui/legacy/Combobox";
 
 type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
 

@@ -1,7 +1,7 @@
 import { AlertCircle, RefreshCw } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import Skeleton from "../ui/Skeleton";
 
 /**

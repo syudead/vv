@@ -18,7 +18,7 @@ import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import {
   ScrubBand,
   ScrubFrame,

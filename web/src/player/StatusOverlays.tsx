@@ -15,7 +15,7 @@ import type { Video } from "../api/client";
 import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./VideoFacts";
 import { creatingLine, processingStages, type StageState } from "./processing";

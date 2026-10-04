@@ -11,9 +11,9 @@ import type { Ref, RefObject } from "react";
 
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import SegmentedControl from "../ui/SegmentedControl";
+import SegmentedControl from "../ui/legacy/SegmentedControl";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";

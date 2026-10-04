@@ -2,8 +2,8 @@ import { Checkbox as RadixCheckbox } from "radix-ui";
 import { Check, Minus } from "lucide-react";
 import type { MouseEvent, Ref } from "react";
 
-import type { UiText } from "../i18n";
-import { cn } from "../lib/cn";
+import type { UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
 
 /**
  * Checkbox は選択のチェックである。`checked` に `"indeterminate"` を渡すと中間の

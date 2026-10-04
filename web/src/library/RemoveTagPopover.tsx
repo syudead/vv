@@ -8,8 +8,8 @@ import {
   type VideoTagsSummary,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
+import Button from "../ui/legacy/Button";
+import Combobox, { type ComboboxOption } from "../ui/legacy/Combobox";
 import { PopoverContent } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";

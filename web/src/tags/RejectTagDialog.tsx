@@ -3,7 +3,7 @@ import { useRef } from "react";
 
 import type { Tag } from "../api/tags";
 import { t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 
 /**

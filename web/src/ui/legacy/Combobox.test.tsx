@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { t } from "../i18n";
+import { t } from "../../i18n";
 import Combobox, { nameReason } from "./Combobox";
 
 describe("Combobox の open の通知", () => {

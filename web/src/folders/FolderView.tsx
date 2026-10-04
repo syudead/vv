@@ -21,7 +21,7 @@ import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { hasConditions } from "../videoList/listCriteria";
 import { EmptyState, LoadFailed } from "../videoList/states";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";

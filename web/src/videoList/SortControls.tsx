@@ -21,7 +21,7 @@ import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import {
   MenuContent,
   MenuLabel,
@@ -30,7 +30,7 @@ import {
   MenuRoot,
   MenuTrigger,
 } from "../ui/Menu";
-import SegmentedControl from "../ui/SegmentedControl";
+import SegmentedControl from "../ui/legacy/SegmentedControl";
 import Tooltip from "../ui/Tooltip";
 import {
   directionLabel,

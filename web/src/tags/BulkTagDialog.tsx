@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { tagImpact, type TagImpactResponse } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 
 export type BulkTagAction = "reject" | "delete";

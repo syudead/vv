@@ -12,8 +12,8 @@ import { type FolderRef, maxBundleSelection, type VideoVersions } from "../api/c
 import { maxVideoTagsSelection } from "../api/tags";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
+import Button from "../ui/legacy/Button";
+import IconButton from "../ui/legacy/IconButton";
 import { PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";

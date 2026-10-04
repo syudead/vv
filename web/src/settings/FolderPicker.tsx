@@ -3,8 +3,8 @@ import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "re
 
 import { listDirectories, type DirectoryListing, type MediaFolder } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
+import Button from "../ui/legacy/Button";
+import IconButton from "../ui/legacy/IconButton";
 import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 

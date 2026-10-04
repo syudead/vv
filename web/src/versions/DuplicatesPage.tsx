@@ -14,7 +14,7 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t } from "../i18n";
 import { inProgress } from "../shell/ScanProvider";
 import { VideoThumbnail, videoLinkLabel } from "../player/RelatedVideos";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
 import { EmptyState } from "../videoList/states";

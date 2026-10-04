@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 
 import { t } from "../i18n";
-import Button from "../ui/Button";
-import { isComposingKeyEvent } from "../ui/Combobox";
+import Button from "../ui/legacy/Button";
+import { isComposingKeyEvent } from "../ui/legacy/Combobox";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 /**

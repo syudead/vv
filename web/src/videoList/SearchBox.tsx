@@ -4,7 +4,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { isComposingKeyEvent } from "../ui/Combobox";
+import { isComposingKeyEvent } from "../ui/legacy/Combobox";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
 

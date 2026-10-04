@@ -239,7 +239,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/Checkbox.tsx",
+    file: "ui/legacy/Checkbox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5"],
     kind: "migration",
@@ -251,7 +251,7 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/Combobox.tsx",
+    file: "ui/legacy/Combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },

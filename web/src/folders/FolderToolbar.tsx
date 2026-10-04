@@ -4,7 +4,7 @@ import type { RefObject } from "react";
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import Tooltip from "../ui/Tooltip";
 import FilterMenu from "../videoList/FilterMenu";

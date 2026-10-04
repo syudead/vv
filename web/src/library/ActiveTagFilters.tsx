@@ -10,7 +10,7 @@ import {
 } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import FilterChip from "../ui/FilterChip";
+import FilterChip from "../ui/legacy/FilterChip";
 import Skeleton from "../ui/Skeleton";
 
 export interface ActiveTagFiltersProps {

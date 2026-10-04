@@ -24,7 +24,7 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
-import Checkbox from "../ui/Checkbox";
+import Checkbox from "../ui/legacy/Checkbox";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import { CardMedia, useCardPreview } from "./cardPreview";

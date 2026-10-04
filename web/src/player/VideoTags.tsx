@@ -21,7 +21,7 @@ import {
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
+import Combobox, { type ComboboxOption } from "../ui/legacy/Combobox";
 import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 

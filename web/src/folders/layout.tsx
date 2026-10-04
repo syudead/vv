@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import { formatNumber, t, type UiText } from "../i18n";
-import { buttonClassName } from "../ui/Button";
+import { buttonClassName } from "../ui/legacy/Button";
 import { EmptyState } from "../videoList/states";
 import { FOLDERS_ROOT } from "./folderPath";
 

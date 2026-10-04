@@ -1,7 +1,7 @@
 import { FolderOpen } from "lucide-react";
 
 import { t } from "../i18n";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { EmptyState } from "../videoList/states";
 
 /** EmptyLibrary はライブラリに動画が1本も無いときの状態で、取り込みを促す。 */

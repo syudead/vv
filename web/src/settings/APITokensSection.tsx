@@ -9,7 +9,7 @@ import {
 } from "../api/client";
 import { errorText, formatDateTime, formatRelative, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";

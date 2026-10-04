@@ -16,8 +16,8 @@ import {
   type Ref,
 } from "react";
 
-import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
+import { t, type UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
 
 /** 候補の1行。id は React のキーと aria-activedescendant に使う文字列である。 */
 export interface ComboboxOption {

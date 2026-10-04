@@ -5,7 +5,7 @@ import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
+import Button from "../ui/legacy/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { watchLabel, watchValues } from "./listSummary";
 
