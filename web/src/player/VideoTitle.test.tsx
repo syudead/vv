@@ -113,7 +113,7 @@ describe("VideoTitle", () => {
     renderTitle({ initial: named });
     const line = screen.getByTitle("File name: clip_0042");
     expect(line.textContent).toBe("File name clip_0042");
-    expect(line.className).toContain("text-fg-muted");
+    expect(line.className).toContain("text-muted-foreground");
     expect(line.querySelector("a, button")).toBeNull();
   });
 

@@ -59,7 +59,7 @@ function isDocumentFullscreen(): boolean {
 }
 
 /**
- * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）かメニュー（`ui/Menu`、
+ * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）かメニュー（`DropdownMenu`、
  * role="menu"）が開いているかを返す。取り込み状況の概要のように、再生画面の外の部品が開く
  * 吹き出しや、Group line のまとめ方のメニュー（specs/017-folder-groups/ui-design.md
  * 「Group line」）も含む。そのときの Esc はそれを閉じるためのもので、画面を閉じてはいけない。

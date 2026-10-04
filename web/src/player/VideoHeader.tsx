@@ -1,4 +1,4 @@
-import { ChevronRight, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
@@ -6,8 +6,17 @@ import type { VideoFolder } from "../api/client";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
+import {
+  Breadcrumb,
+  BreadcrumbEllipsis,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbSeparator,
+} from "../ui/shadcn/breadcrumb";
+import { Button } from "../ui/shadcn/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 interface FolderCrumb {
   label: string;
@@ -33,17 +42,15 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
   ];
 }
 
-function Separator() {
-  return <ChevronRight aria-hidden="true" className="size-3.5 shrink-0 text-fg-subtle" />;
-}
-
 /**
- * VideoHeader は再生画面の上端の帯である（ui-design「Video header」）。
+ * VideoHeader は再生画面の見出しの帯で、詳細ページの型（DetailPage）の header に置く
+ * （ui-design「Video header」、specs/038-design-system/ui-design.md「Page patterns」の
+ * Detail page）。
  *
- * 左から ロゴ（ホームへ）・動画の置かれたフォルダまでのパンくず、右端に ×（遷移元の一覧へ
- * 戻る）を置く。画面を閉じる × はここ 1 か所だけにする。パンくずの段はすべてそのフォルダ
- * 画面へのリンクで、`md` より狭い幅では最後の段だけを残して途中を「…」に畳む
- * （出し分けは CSS の幅の分岐だけで行う、library-ui.md 4）。
+ * 左から ロゴ（ホームへ）・動画の置かれたフォルダまでのパンくず（Breadcrumb）、右端に ×
+ * （遷移元の一覧へ戻る）を置く。画面を閉じる × はここ 1 か所だけにする。パンくずの段は
+ * すべてそのフォルダ画面へのリンクで、`md` より狭い幅では最後の段だけを残して途中を
+ * 「…」に畳む（出し分けは CSS の幅の分岐だけで行う、library-ui.md 4）。
  */
 export default function VideoHeader({
   folder,
@@ -56,60 +63,57 @@ export default function VideoHeader({
   const lastIndex = crumbs.length - 1;
 
   return (
-    <header className="sticky top-0 z-40 flex h-navbar shrink-0 items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
+    <header className="flex min-w-0 items-center gap-3">
       <BrandHomeLink />
 
       {crumbs.length > 0 && (
-        <nav
-          aria-label={t.player.header.folder}
-          className="flex min-w-0 flex-1 items-center overflow-hidden"
-        >
-          <ol className="flex min-w-0 items-center gap-0.5 text-sm whitespace-nowrap">
+        <Breadcrumb aria-label={t.player.header.folder} className="flex-1">
+          <BreadcrumbList className="flex-nowrap whitespace-nowrap">
             {crumbs.map((crumb, index) => {
               const last = index === lastIndex;
               return (
                 <Fragment key={crumb.to}>
                   {lastIndex > 0 && last && (
-                    <li
-                      aria-hidden="true"
-                      className="flex items-center gap-0.5 md:hidden"
-                    >
-                      <Separator />
-                      <span className="px-1 text-fg-subtle">…</span>
-                    </li>
+                    <>
+                      <BreadcrumbSeparator className="md:hidden" />
+                      <BreadcrumbItem className="md:hidden">
+                        <BreadcrumbEllipsis />
+                      </BreadcrumbItem>
+                    </>
                   )}
-                  <li
-                    className={cn(
-                      "flex min-w-0 items-center gap-0.5",
-                      !last && "hidden shrink md:flex",
-                    )}
-                  >
-                    <Separator />
-                    <Link
-                      to={crumb.to}
+                  <BreadcrumbSeparator className={cn(!last && "hidden md:block")} />
+                  <BreadcrumbItem className={cn(!last && "hidden md:inline-flex")}>
+                    <BreadcrumbLink
+                      asChild
                       title={crumb.label}
                       className={cn(
-                        "min-w-0 truncate rounded-sm px-1.5 py-0.5 transition-colors hover:bg-hover-wash hover:text-fg",
-                        last ? "font-medium text-fg" : "max-w-40 text-fg-muted",
+                        last ? "font-medium text-foreground" : "max-w-chip-label",
                       )}
                     >
-                      {crumb.label}
-                    </Link>
-                  </li>
+                      <Link to={crumb.to}>{crumb.label}</Link>
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
                 </Fragment>
               );
             })}
-          </ol>
-        </nav>
+          </BreadcrumbList>
+        </Breadcrumb>
       )}
 
-      <IconButton
-        label={t.common.close}
-        onClick={onClose}
-        className="ml-auto [&>svg]:size-5!"
-      >
-        <X aria-hidden="true" />
-      </IconButton>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t.common.close}
+            onClick={onClose}
+            className="ml-auto"
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t.common.close}</TooltipContent>
+      </Tooltip>
     </header>
   );
 }
