@@ -287,7 +287,7 @@ test.describe.serial("video tags", () => {
     function activeTagChip(page: Page, name: string) {
       return page
         .getByRole("list", { name: "Tags in the filter" })
-        .getByRole("button", { name: `Remove the filter for ${name}` });
+        .getByRole("button", { name, pressed: true });
     }
 
     /**
@@ -811,7 +811,7 @@ test.describe.serial("video tags", () => {
       await expect(
         page
           .getByRole("list", { name: "Tags in the filter" })
-          .getByRole("button", { name: "Remove the filter for e2e管理移動先" }),
+          .getByRole("button", { name: "e2e管理移動先", pressed: true }),
       ).toBeVisible();
     });
 

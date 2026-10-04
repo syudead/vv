@@ -172,8 +172,66 @@ The decisions behind the foundations are R-5 and R-8 of
 
 ## Components
 
-Written by
-[Rebuild the action and input components on shadcn/ui](https://github.com/syudead/vv/issues/770).
+Every control is a shadcn/ui component on the radix base, kept in `web/src/ui`
+under the file name upstream gives it (`button.tsx`) and read through its
+registry item. Its structure and variants are upstream's; only colour, radius
+and height change, through the tokens. When to use each one, what it pairs
+with and when not to use it is in
+[components.md](../../web/registry/rules/components.md) (item `vv-rules`).
+
+| Component | Item | Replaces |
+| --- | --- | --- |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
+| `Input`, `Textarea`, `Label`, `Field` | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>` |
+| `Select`, `RadioGroup` | `select`, `radio-group` | Raw `<select>`, the sort radio columns |
+| `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox`, the visibility switch |
+| `Toggle`, `ToggleGroup` | `toggle`, `toggle-group` | `ui/FilterChip`, `ui/SegmentedControl` |
+| `Slider` | `slider` | The zoom slider |
+| `Combobox` (`Command` in a popover), `Command` | `combobox`, `command` | `ui/Combobox` |
+
+The diagram shows how a screen reaches a component and its rules.
+
+```mermaid
+flowchart LR
+  screen[Screen in web/src] --> comp[web/src/ui component]
+  comp --> tokens[tokens.css]
+  comp --> item[Registry item]
+  item --> rules[components.md]
+```
+
+The components share three behaviours, so a screen never restyles them:
+
+| Behaviour | How |
+| --- | --- |
+| Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` is dropped |
+| Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
+| Density | The library uses `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
+
+Three changes to upstream keep the checks and the catalog rules: `Checkbox`
+draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
+that takes the focus, and `CommandGroup` styles its heading by wrapping it,
+because the attribute selector upstream uses is an arbitrary value. `Select`
+and `Combobox` read Radix's position variables (`--radix-select-*`,
+`--radix-popover-*`); those classes are `special` entries in
+`web/design-exceptions.js`.
+
+The components the screens used before this tier are kept in
+`web/src/ui/legacy/` until the screen migrations replace their last use, so a
+file name never differs from a new one by case alone. They are not registry
+items. A screen still on them keeps working; new code imports from
+`web/src/ui`.
+
+The showcase (`/design-system`) lays each component out by variant and state:
+normal, hover, keyboard focus, pressed, selected and disabled. Hover and
+pressed are drawn without a pointer by the `data-demo-state` attribute, which
+`web/src/index.css` adds to Tailwind's `hover` and `active` variants; screens
+never set it.
+
+| Rejected | Why |
+| --- | --- |
+| Keeping vv's file names (`Button.tsx`) for the new components | `shadcn add` writes upstream's names, so every later update would be renamed by hand |
+| Restyling the components to look like the old ones | The components are for new screens; the screen migrations replace the old look |
+| A per-component focus ring, as upstream | Each component would carry its own copy, and the arbitrary `ring-[3px]` fails the checks |
 
 ## Page patterns
 

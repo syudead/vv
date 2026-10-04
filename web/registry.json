@@ -36,12 +36,17 @@
       "type": "registry:file",
       "title": "vv design-system rules",
       "description": "The usage rules of the vv design system, one file per tier.",
-      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow.",
+      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, and components.md before choosing or composing a component.",
       "files": [
         {
           "path": "registry/rules/foundations.md",
           "type": "registry:file",
           "target": "registry/rules/foundations.md"
+        },
+        {
+          "path": "registry/rules/components.md",
+          "type": "registry:file",
+          "target": "registry/rules/components.md"
         }
       ]
     },
@@ -62,24 +67,25 @@
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
-      "description": "The vv Button component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive and link, in sizes sm, default, lg, icon-sm and icon.",
+      "docs": "Usage rules: web/registry/rules/components.md#button (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Button.tsx",
+          "path": "src/ui/button.tsx",
           "type": "registry:ui"
         }
-      ]
+      ],
+      "dependencies": ["class-variance-authority"]
     },
     {
       "name": "checkbox",
       "type": "registry:ui",
       "title": "Checkbox",
-      "description": "The vv Checkbox component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "Turns one option on or off in a form or a selection; has an indeterminate state.",
+      "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Checkbox.tsx",
+          "path": "src/ui/checkbox.tsx",
           "type": "registry:ui"
         }
       ]
@@ -101,37 +107,65 @@
       "name": "combobox",
       "type": "registry:ui",
       "title": "Combobox",
-      "description": "The vv Combobox component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "Picks one value from many by typing to narrow them: a Command in a popover. Uses button and command.",
+      "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Combobox.tsx",
+          "path": "src/ui/combobox.tsx",
           "type": "registry:ui"
         }
       ]
     },
     {
-      "name": "filter-chip",
+      "name": "command",
       "type": "registry:ui",
-      "title": "FilterChip",
-      "description": "The vv FilterChip component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "title": "Command",
+      "description": "A list narrowed by what is typed, chosen with the keyboard; the inside of a combobox.",
+      "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/FilterChip.tsx",
+          "path": "src/ui/command.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["cmdk"]
+    },
+    {
+      "name": "field",
+      "type": "registry:ui",
+      "title": "Field",
+      "description": "One form field: label, control, description and error. Uses label.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/field.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "input",
+      "type": "registry:ui",
+      "title": "Input",
+      "description": "A one-line text field.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/input.tsx",
           "type": "registry:ui"
         }
       ]
     },
     {
-      "name": "icon-button",
+      "name": "label",
       "type": "registry:ui",
-      "title": "IconButton",
-      "description": "The vv IconButton component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "title": "Label",
+      "description": "The visible name of a control; pressing it focuses the control.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/IconButton.tsx",
+          "path": "src/ui/label.tsx",
           "type": "registry:ui"
         }
       ]
@@ -176,6 +210,19 @@
       ]
     },
     {
+      "name": "radio-group",
+      "type": "registry:ui",
+      "title": "RadioGroup",
+      "description": "Picks one value from a few options that stay visible.",
+      "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/radio-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "scrub-preview",
       "type": "registry:ui",
       "title": "ScrubPreview",
@@ -189,14 +236,14 @@
       ]
     },
     {
-      "name": "segmented-control",
+      "name": "select",
       "type": "registry:ui",
-      "title": "SegmentedControl",
-      "description": "The vv SegmentedControl component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "title": "Select",
+      "description": "Picks one value from a fixed list in a dropdown.",
+      "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/SegmentedControl.tsx",
+          "path": "src/ui/select.tsx",
           "type": "registry:ui"
         }
       ]
@@ -210,6 +257,32 @@
       "files": [
         {
           "path": "src/ui/Skeleton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "slider",
+      "type": "registry:ui",
+      "title": "Slider",
+      "description": "Picks a value on a stepped or continuous range, such as the card size.",
+      "docs": "Usage rules: web/registry/rules/components.md#slider (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/slider.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "switch",
+      "type": "registry:ui",
+      "title": "Switch",
+      "description": "Turns a setting on or off with immediate effect.",
+      "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/switch.tsx",
           "type": "registry:ui"
         }
       ]
@@ -241,6 +314,19 @@
       ]
     },
     {
+      "name": "textarea",
+      "type": "registry:ui",
+      "title": "Textarea",
+      "description": "A multi-line text field that grows with its content.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/textarea.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "thumbnail-backdrop",
       "type": "registry:ui",
       "title": "ThumbnailBackdrop",
@@ -265,6 +351,34 @@
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "toggle",
+      "type": "registry:ui",
+      "title": "Toggle",
+      "description": "A button that stays pressed, such as an applied filter.",
+      "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/toggle.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "toggle-group",
+      "type": "registry:ui",
+      "title": "ToggleGroup",
+      "description": "A row of toggles, exclusive (view mode, sort direction) or independent. Uses toggle.",
+      "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/toggle-group.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
     },
     {
       "name": "tooltip",

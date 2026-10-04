@@ -4,7 +4,7 @@ import { Link, useLocation } from "react-router";
 
 import { currentPath, loginPath } from "../auth/pageNavigation";
 import { t, type UiText } from "../i18n";
-import Button, { buttonClassName } from "../ui/legacy/Button";
+import { Button } from "../ui/button";
 import Skeleton from "../ui/Skeleton";
 
 export function EmptyState({
@@ -58,12 +58,9 @@ export function GuestEmpty() {
       title={t.list.guestEmpty.title}
       description={t.list.guestEmpty.description}
       action={
-        <Link
-          to={loginPath(currentPath(location))}
-          className={buttonClassName("secondary")}
-        >
-          {t.list.guestEmpty.signIn}
-        </Link>
+        <Button asChild variant="outline">
+          <Link to={loginPath(currentPath(location))}>{t.list.guestEmpty.signIn}</Link>
+        </Button>
       }
     />
   );
@@ -78,7 +75,7 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
       description={t.list.noMatchesHint}
       action={
         onSearch && (
-          <Button variant="secondary" onClick={onSearch}>
+          <Button variant="outline" onClick={onSearch}>
             {t.list.changeSearch}
           </Button>
         )
@@ -94,7 +91,11 @@ export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () =>
       tone="danger"
       title={t.list.loadFailed}
       description={reason}
-      action={<Button onClick={onRetry}>{t.common.retry}</Button>}
+      action={
+        <Button variant="outline" onClick={onRetry}>
+          {t.common.retry}
+        </Button>
+      }
     />
   );
 }
@@ -114,7 +115,7 @@ export function LoadMoreFailed({
     <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-destructive bg-destructive-soft px-3 py-2 text-sm text-destructive">
       <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
       <p>{t.list.loadMoreFailed(reason)}</p>
-      <Button size="sm" onClick={onRetry}>
+      <Button variant="outline" size="sm" onClick={onRetry}>
         {t.common.retry}
       </Button>
     </div>

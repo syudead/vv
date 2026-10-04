@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "slider",
+  "title": "Slider",
+  "description": "Picks a value on a stepped or continuous range, such as the card size.",
+  "files": [
+    {
+      "path": "src/ui/slider.tsx",
+      "content": "import { Slider as SliderPrimitive } from \"radix-ui\";\nimport { type ComponentProps, useMemo } from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\n// shadcn/ui の Slider（radix）。上流に加えて aria-label をつまみへ渡す（つまみが\n// フォーカスを受けるので、読み上げ名はつまみに要る）。\n// 規則は web/registry/rules/components.md の Slider。\nfunction Slider({\n  className,\n  defaultValue,\n  value,\n  min = 0,\n  max = 100,\n  \"aria-label\": ariaLabel,\n  ...props\n}: ComponentProps<typeof SliderPrimitive.Root>) {\n  const values = useMemo(\n    () =>\n      Array.isArray(value)\n        ? value\n        : Array.isArray(defaultValue)\n          ? defaultValue\n          : [min, max],\n    [value, defaultValue, min, max],\n  );\n\n  return (\n    <SliderPrimitive.Root\n      data-slot=\"slider\"\n      defaultValue={defaultValue}\n      value={value}\n      min={min}\n      max={max}\n      className={cn(\n        \"relative flex w-full touch-none items-center select-none data-[disabled]:opacity-50 data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-16 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col\",\n        className,\n      )}\n      {...props}\n    >\n      <SliderPrimitive.Track\n        data-slot=\"slider-track\"\n        className=\"relative grow overflow-hidden rounded-full bg-input data-[orientation=horizontal]:h-1 data-[orientation=horizontal]:w-full data-[orientation=vertical]:h-full data-[orientation=vertical]:w-1\"\n      >\n        <SliderPrimitive.Range\n          data-slot=\"slider-range\"\n          className=\"absolute bg-primary data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full\"\n        />\n      </SliderPrimitive.Track>\n      {Array.from({ length: values.length }, (_, index) => (\n        <SliderPrimitive.Thumb\n          data-slot=\"slider-thumb\"\n          key={index}\n          aria-label={ariaLabel}\n          className=\"block size-4 shrink-0 rounded-full border border-primary bg-foreground transition-colors hover:border-primary-hover hover:bg-primary-hover active:bg-primary-active disabled:pointer-events-none disabled:opacity-50\"\n        />\n      ))}\n    </SliderPrimitive.Root>\n  );\n}\n\nexport { Slider };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#slider (item vv-rules).",
+  "type": "registry:ui"
+}

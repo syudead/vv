@@ -4,7 +4,7 @@ import type { FolderRef } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t } from "../i18n";
-import Button from "../ui/legacy/Button";
+import { Button } from "../ui/button";
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import { useToast } from "../ui/Toast";
 import { overLimitMessage } from "./selectionErrors";

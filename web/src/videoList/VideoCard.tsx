@@ -24,7 +24,7 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
-import Checkbox from "../ui/legacy/Checkbox";
+import { Checkbox } from "../ui/checkbox";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import { CardMedia, useCardPreview } from "./cardPreview";
@@ -135,8 +135,8 @@ function SelectCheck({
     >
       <Checkbox
         checked={selected}
-        onCheckedChange={(next) => onSelect(video.id, next)}
-        label={t.list.card.select(video.title)}
+        onCheckedChange={(next) => onSelect(video.id, next === true)}
+        aria-label={t.list.card.select(video.title)}
         className={previewing ? "!bg-navbar" : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       />
@@ -452,8 +452,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         <td className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(video.id, next)}
-            label={t.list.card.select(video.title)}
+            onCheckedChange={(next) => onSelect(video.id, next === true)}
+            aria-label={t.list.card.select(video.title)}
             className={cn(
               "transition-opacity",
               selectionMode || selected

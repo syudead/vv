@@ -1,4 +1,4 @@
-import { Tag as TagIcon } from "lucide-react";
+import { Tag as TagIcon, X } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import {
@@ -10,8 +10,8 @@ import {
 } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import FilterChip from "../ui/legacy/FilterChip";
 import Skeleton from "../ui/Skeleton";
+import { Toggle } from "../ui/toggle";
 
 export interface ActiveTagFiltersProps {
   /** 絞り込み中のタグの id（並びは問わない。表示は名前の自然順にそろえる）。 */
@@ -115,21 +115,30 @@ export default function ActiveTagFilters({
           const tag = byId.get(id);
           return (
             <li key={id}>
-              <FilterChip
-                ref={(node) => {
+              {/*
+               * 効いている絞り込みは押した状態の Toggle で、押して戻すとその絞り込みを外す。
+               * 読み上げ名はタグの名前で、title に外す操作を添える。タグの一覧をまだ取得して
+               * いない間も、読み上げる名前が無くならないようにする（N2）。
+               */}
+              <Toggle
+                ref={(node: HTMLButtonElement | null) => {
                   if (node) buttonRefs.current.set(id, node);
                   else buttonRefs.current.delete(id);
                 }}
-                // タグの一覧をまだ取得していない間も、読み上げる名前が無くならない
-                // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
-                label={
+                variant="outline"
+                size="sm"
+                pressed
+                onPressedChange={(pressed) => {
+                  if (!pressed) remove(id);
+                }}
+                aria-label={tag === undefined ? t.library.activeTags.remove : tag.name}
+                title={
                   tag === undefined
-                    ? t.library.activeTags.remove
+                    ? undefined
                     : t.library.activeTags.removeNamed(tag.name)
                 }
-                onRemove={() => remove(id)}
-                icon={<TagIcon aria-hidden="true" />}
               >
+                <TagIcon aria-hidden="true" />
                 {tag === undefined ? (
                   <Skeleton className="h-3 w-12" />
                 ) : (
@@ -137,7 +146,8 @@ export default function ActiveTagFilters({
                     {tag.name}
                   </span>
                 )}
-              </FilterChip>
+                <X aria-hidden="true" />
+              </Toggle>
             </li>
           );
         })}

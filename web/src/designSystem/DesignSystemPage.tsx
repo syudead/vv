@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { t } from "../i18n";
+import Components from "./Components";
 import Foundations from "./Foundations";
 
 const sections: { id: string; title: () => string; body?: () => ReactNode }[] = [
@@ -9,7 +10,11 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
     title: () => t.designSystem.foundations,
     body: () => <Foundations />,
   },
-  { id: "components", title: () => t.designSystem.components },
+  {
+    id: "components",
+    title: () => t.designSystem.components,
+    body: () => <Components />,
+  },
   { id: "patterns", title: () => t.designSystem.patterns },
 ];
 

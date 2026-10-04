@@ -1,0 +1,70 @@
+import type { VariantProps } from "class-variance-authority";
+import { ToggleGroup as ToggleGroupPrimitive } from "radix-ui";
+import { type ComponentProps, createContext, useContext } from "react";
+
+import { cn } from "@/lib/cn";
+import { toggleVariants } from "@/ui/toggle";
+
+// shadcn/ui の ToggleGroup（radix）。type="single" は排他の選択（項目は role=radio）、
+// type="multiple" は独立した切り替えの並び。variant と size は項目へ伝わる。
+// 規則は web/registry/rules/components.md の Toggle and ToggleGroup。
+
+const ToggleGroupContext = createContext<VariantProps<typeof toggleVariants>>({
+  size: "default",
+  variant: "default",
+});
+
+function ToggleGroup({
+  className,
+  variant,
+  size,
+  children,
+  ...props
+}: ComponentProps<typeof ToggleGroupPrimitive.Root> &
+  VariantProps<typeof toggleVariants>) {
+  return (
+    <ToggleGroupPrimitive.Root
+      data-slot="toggle-group"
+      data-variant={variant}
+      data-size={size}
+      className={cn("group/toggle-group flex w-fit items-center rounded-md", className)}
+      {...props}
+    >
+      <ToggleGroupContext.Provider value={{ variant, size }}>
+        {children}
+      </ToggleGroupContext.Provider>
+    </ToggleGroupPrimitive.Root>
+  );
+}
+
+function ToggleGroupItem({
+  className,
+  children,
+  variant,
+  size,
+  ...props
+}: ComponentProps<typeof ToggleGroupPrimitive.Item> &
+  VariantProps<typeof toggleVariants>) {
+  const context = useContext(ToggleGroupContext);
+
+  return (
+    <ToggleGroupPrimitive.Item
+      data-slot="toggle-group-item"
+      data-variant={context.variant ?? variant}
+      data-size={context.size ?? size}
+      className={cn(
+        toggleVariants({
+          variant: context.variant ?? variant,
+          size: context.size ?? size,
+        }),
+        "min-w-0 flex-1 shrink-0 rounded-none first:rounded-l-md last:rounded-r-md focus:z-10 focus-visible:z-10 data-[variant=outline]:border-l-0 data-[variant=outline]:first:border-l",
+        className,
+      )}
+      {...props}
+    >
+      {children}
+    </ToggleGroupPrimitive.Item>
+  );
+}
+
+export { ToggleGroup, ToggleGroupItem };

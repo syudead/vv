@@ -2,12 +2,12 @@ import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
-import Button from "../ui/legacy/Button";
+import { Button } from "../ui/button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import SegmentedControl from "../ui/legacy/SegmentedControl";
+import { ToggleGroup, ToggleGroupItem } from "../ui/toggle-group";
 import Tooltip from "../ui/Tooltip";
 import FilterMenu from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
@@ -21,6 +21,38 @@ function viewOptions() {
     { value: "grid", label: t.library.view.grid, icon: <LayoutGrid /> },
     { value: "list", label: t.library.view.list, icon: <List /> },
   ] as const;
+}
+
+/** ViewToggle は表示形式（格子・一覧）の排他の切り替えである。 */
+function ViewToggle({
+  label,
+  view,
+  onViewChange,
+}: {
+  label: UiText;
+  view: ViewMode;
+  onViewChange: (value: ViewMode) => void;
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      aria-label={label}
+      value={view}
+      onValueChange={(next) => {
+        if (next !== "") onViewChange(next as ViewMode);
+      }}
+    >
+      {viewOptions().map((option) => (
+        <Tooltip key={option.value} content={option.label}>
+          <ToggleGroupItem value={option.value} aria-label={option.label}>
+            {option.icon}
+          </ToggleGroupItem>
+        </Tooltip>
+      ))}
+    </ToggleGroup>
+  );
 }
 
 export interface LibraryToolbarProps {
@@ -94,11 +126,10 @@ export default function LibraryToolbar({
       </div>
 
       <div className="hidden lg:block">
-        <SegmentedControl
+        <ViewToggle
           label={t.library.view.label}
-          value={view}
-          onValueChange={onViewChange}
-          options={viewOptions()}
+          view={view}
+          onViewChange={onViewChange}
         />
       </div>
 
@@ -115,9 +146,10 @@ export default function LibraryToolbar({
       <PopoverRoot>
         <PopoverTrigger asChild>
           <Button
-            variant="secondary"
+            variant="outline"
+            size="icon-sm"
             aria-label={t.list.viewAndSort}
-            className={cn("px-2", view === "grid" ? "xl:hidden" : "lg:hidden")}
+            className={cn(view === "grid" ? "xl:hidden" : "lg:hidden")}
           >
             <SlidersHorizontal />
           </Button>
@@ -137,11 +169,10 @@ export default function LibraryToolbar({
               <legend className="mb-2 text-xs font-semibold text-muted-foreground uppercase">
                 {t.library.view.label}
               </legend>
-              <SegmentedControl
+              <ViewToggle
                 label={t.library.view.compact}
-                value={view}
-                onValueChange={onViewChange}
-                options={viewOptions()}
+                view={view}
+                onViewChange={onViewChange}
               />
             </fieldset>
 

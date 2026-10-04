@@ -445,7 +445,7 @@ describe("LibraryPage", () => {
       // 視聴状態の直下、「Playable only」の上に置く。
       const checks = within(filter)
         .getAllByRole("checkbox")
-        .map((check) => check.closest("label")?.textContent);
+        .map((check) => check.parentElement?.textContent);
       expect(checks).toEqual(["Favorites only", "Playable only"]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
 
@@ -1073,9 +1073,7 @@ describe("LibraryPage", () => {
 
       // 一覧の上のチップでタグの絞り込みを外すと、同じ動画がまだ見えていても
       // 選択は解除する（検索語・視聴状態・再生可否と同じ扱い）。
-      await user.click(
-        screen.getByRole("button", { name: "Remove the filter for 旅行" }),
-      );
+      await user.click(screen.getByRole("button", { name: "旅行", pressed: true }));
       await waitFor(() => expect(screen.queryByText("1 video selected")).toBeNull());
     });
 
@@ -1195,9 +1193,7 @@ describe("LibraryPage", () => {
       renderLibrary("/?tag=1&tag=2&q=abc");
       await screen.findByRole("link", { name: "動画 1" });
 
-      await user.click(
-        screen.getByRole("button", { name: "Remove the filter for 2024" }),
-      );
+      await user.click(screen.getByRole("button", { name: "2024", pressed: true }));
       await waitFor(() => {
         const location = screen.getByTestId("location").textContent ?? "";
         expect(location).toContain("tag=1");

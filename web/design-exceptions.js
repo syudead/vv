@@ -251,6 +251,17 @@ export default [
     kind: "migration",
   },
   {
+    file: "ui/combobox.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "w-\\(--radix-popover-trigger-width\\)",
+      "origin-\\(--radix-popover-content-transform-origin\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the list's width and transform origin at run time through its CSS variables; they are positions, not design values.",
+  },
+  {
     file: "ui/legacy/Combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
@@ -274,6 +285,19 @@ export default [
     file: "ui/ScrubPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
+  },
+  {
+    file: "ui/select.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "max-h-\\(--radix-select-content-available-height\\)",
+      "origin-\\(--radix-select-content-transform-origin\\)",
+      "h-\\(--radix-select-trigger-height\\)",
+      "min-w-\\(--radix-select-trigger-width\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the list's height, width and transform origin at run time through its CSS variables; they are positions, not design values.",
   },
   {
     file: "ui/Skeleton.tsx",
@@ -309,11 +333,6 @@ export default [
     kind: "migration",
   },
   {
-    file: "videoList/FilterMenu.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
     file: "videoList/FolderArt.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
@@ -324,18 +343,8 @@ export default [
     kind: "migration",
   },
   {
-    file: "videoList/SearchBox.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
     file: "videoList/SearchSyntaxHelp.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SortControls.tsx",
-    rules: ["no-restricted-syntax"],
     kind: "migration",
   },
   {

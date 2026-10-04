@@ -51,9 +51,7 @@ describe("ActiveTagFilters", () => {
       await Promise.resolve();
     });
 
-    expect(
-      screen.getByRole("button", { name: "Remove the filter for 旅行" }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "旅行", pressed: true })).toBeDefined();
   });
 
   it("使い回した一覧に無いタグで絞り込むと、一覧を取り直して名前を出す", async () => {
@@ -70,7 +68,7 @@ describe("ActiveTagFilters", () => {
       />,
     );
     expect(
-      await screen.findByRole("button", { name: "Remove the filter for 旅行" }),
+      await screen.findByRole("button", { name: "旅行", pressed: true }),
     ).toBeDefined();
 
     // 届いた直後（取り直しを省く間）に、その一覧より後に作られたタグで絞り込む。
@@ -82,7 +80,7 @@ describe("ActiveTagFilters", () => {
       />,
     );
     expect(
-      await screen.findByRole("button", { name: "Remove the filter for 新しいタグ" }),
+      await screen.findByRole("button", { name: "新しいタグ", pressed: true }),
     ).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -101,7 +99,7 @@ describe("ActiveTagFilters", () => {
       />,
     );
     expect(
-      await screen.findByRole("button", { name: "Remove the filter for 旅行" }),
+      await screen.findByRole("button", { name: "旅行", pressed: true }),
     ).toBeDefined();
     first.unmount();
 
@@ -116,7 +114,7 @@ describe("ActiveTagFilters", () => {
       />,
     );
     expect(
-      await screen.findByRole("button", { name: "Remove the filter for 新しいタグ" }),
+      await screen.findByRole("button", { name: "新しいタグ", pressed: true }),
     ).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -159,13 +157,12 @@ describe("ActiveTagFilters", () => {
     }
     render(<Harness />);
     const button = await screen.findByRole("button", {
-      name: "Remove the filter for 旅行",
+      name: "旅行",
+      pressed: true,
     });
     button.focus();
     fireEvent.click(button);
-    expect(
-      screen.queryByRole("button", { name: "Remove the filter for 旅行" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "旅行", pressed: true })).toBeNull();
     expect(document.activeElement).toBe(
       screen.getByRole("textbox", { name: "Search videos" }),
     );
