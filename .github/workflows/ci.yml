@@ -249,6 +249,21 @@ jobs:
             web/test-results/
           retention-days: 7
 
+  # ブランチ保護が求める「Browser E2E」は、組に分けた e2e のまとめとしてここで出す。
+  # 文書だけの変更で e2e を飛ばしたときも通す。
+  e2e-result:
+    name: Browser E2E
+    needs: [changes, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 組ごとの結果を確かめる
+        env:
+          RESULT: ${{ needs.e2e.result }}
+        run: |
+          echo "e2e: $RESULT"
+          test "$RESULT" = success || test "$RESULT" = skipped
+
   # イメージはコード変更を含む main への push（PR のマージ）でだけ作り、
   # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。
   docker:

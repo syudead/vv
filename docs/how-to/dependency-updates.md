@@ -23,9 +23,8 @@ flowchart LR
   tools npm, GitHub Actions, mise tools and container images. Vulnerability fix
   PRs open at any time.
 - Minor, patch, pin, digest and lockfile maintenance updates are merged
-  automatically once the required `Checks` job passes. Browser E2E runs on
-  the pull request too, but is not required, so a red E2E does not hold the
-  merge. The Docker image runs on the push to `main` after the merge.
+  automatically once the required `Checks` and `Browser E2E` checks pass.
+  The Docker image runs on the push to `main` after the merge.
 - A person reads the breaking changes of a major update before merging it.
 - GitHub Actions are pinned to commit hashes, with the tag name in a comment
   (the `config:best-practices` default).
