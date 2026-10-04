@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/ui-design.md
-sourceHash: 69c3a291a55ec104e0e9de19c6f34dfba174d285c05d285ffb9c0107bea2023d
+sourceHash: 2b2b66e7d060cb3785fe302cffd254c318508ad26e4a37b6f480cfb51deb2824
 ---
 
 # UI 設計: shadcn/ui の上に作る vv デザインシステム {#ui-design-vv-design-system-on-shadcnui}
@@ -176,7 +176,7 @@ stateDiagram-v2
 | 768px | サイドバーはレール。ツールバーは `View and sort` にまとまる |
 | 1440px | サイドバーは展開。ツールバーは横に並ぶ |
 
-ブレークポイントは [library-ui.md の 4 節](../../docs/design-docs/library-ui.md#4-width-breakpoints-in-css-and-the-sidebar-exception)のものだ。
+ブレークポイントは [library-ui.md、Width breakpoints in CSS](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) のものだ。
 
 ## レビューの基準 {#review-criteria}
 

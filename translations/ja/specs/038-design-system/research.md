@@ -1,6 +1,6 @@
 ---
 source: specs/038-design-system/research.md
-sourceHash: 2595ed247f83971817fd3cbd1a50291c0a607b0296be1de1ef2634748233debf
+sourceHash: 1d4e1cb1ed839d90df93764957f26be3fe23dbbc4f07ab43b527632947d18032
 ---
 
 # 調査: shadcn/ui 上の vv デザインシステム {#research-vv-design-system-on-shadcnui}
@@ -11,8 +11,8 @@ sourceHash: 2595ed247f83971817fd3cbd1a50291c0a607b0296be1de1ef2634748233debf
 | --- | --- |
 | 技術スタック (React、Vite、Tailwind CSS) | [docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md) |
 | Web 層のディレクトリ | [ARCHITECTURE.md](../../ARCHITECTURE.md#web-layer) |
-| トークンの場所、生の色の走査、コントラストの組 | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#1-visual-values-in-one-css-location-with-contrast-guaranteed-by-tests) |
-| ダーク配色のみ | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#2-dark-scheme-only-without-a-lightdark-switch) |
+| トークンの場所、生の色の走査、コントラストの組 | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests) |
+| ダーク配色のみ | [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md#dark-scheme-only-without-a-lightdark-switch) |
 | ESLint が強制する画面の文言の規則 | [docs/design-docs/i18n.md](../../docs/design-docs/i18n.md) |
 | 依存関係の更新 | [docs/how-to/dependency-updates.md](../../docs/how-to/dependency-updates.md) |
 

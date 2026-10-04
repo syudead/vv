@@ -208,7 +208,7 @@ Screenshots in each tier PR are taken at these widths.
 | 1440px | Sidebar expanded; toolbar inline |
 
 The breakpoints are those of
-[library-ui.md, section 4](../../docs/design-docs/library-ui.md#4-width-breakpoints-in-css-and-the-sidebar-exception).
+[library-ui.md, Width breakpoints in CSS](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception).
 
 ## Review criteria
 
