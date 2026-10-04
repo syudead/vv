@@ -77,28 +77,56 @@ unseen. Token names describe roles (`bg`, `surface`, `elevated`, `fg`,
 `fg-muted`, `accent`, `danger`, `warning`), not colours (`neutral-850`), so a
 later light scheme is a second set of values with no screen changes.
 
-## No virtual scrolling
+## Virtual scrolling of long lists
 
-Lists render every loaded item without a virtual scrolling library; the goal is
-immediate response to input, not fewer DOM elements.
+Long lists draw only the items near the viewport with `@tanstack/react-virtual`
+(`useWindowVirtualizer` for lists the window scrolls), so the number of
+elements stays near one screen however far the user scrolls (#675).
 
-The list is a wrapping grid whose cards per row change with screen and card
-width, so virtualization would mean computing that count and rebuilding scroll
-restoration in virtual coordinates. Pages load 60 items
-([`PAGE_SIZE`](../../web/src/api/client.ts)), so the DOM holds only what the
-user loaded. **Revisit only after measuring what is slow.**
+| List | Drawn unit | Where |
+| --- | --- | --- |
+| Library, folder and folder search grids | Rows of cards | [`VirtualGrid.tsx`](../../web/src/videoList/VirtualGrid.tsx) |
+| Library list view | Table rows, with spacer rows above and below | [`VirtualTableBody.tsx`](../../web/src/videoList/VirtualTableBody.tsx) |
+| Video page group members | Member rows | [`RelatedVideos.tsx`](../../web/src/player/RelatedVideos.tsx) |
+| Tag suggestions | Options | [`Combobox.tsx`](../../web/src/ui/Combobox.tsx) |
+| Tag admin list | Tag rows | [036 research R-2](../../specs/036-tag-admin-scale/research.md) |
 
-The tag admin list (`/tags`) is the measured exception: with thousands of tags,
-opening, search and scrolling froze, so it draws only the rows near the
-viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
-[036 research R-2](../../specs/036-tag-admin-scale/research.md)). Neither
-reason above applies there: it is one column, and rows arrive 100 at a time
-from the server for the current conditions. The document stays the scroll
-owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. Its toolbar, tab and column
-headings stay as one sticky band under the top bar; the page measures the band
-and passes its height to the virtualizer and to `scroll-padding-top`, so a
-focused row never hides under it
+Measured before this change with 30,000 videos in 1280×800 headless Chromium,
+scrolling the library grid to 1,000 cards grew the document from 4,511 to
+71,712 elements with 38 frames over 50 ms, and returning from a video page
+froze for 2.4 s while every loaded card was drawn again. Pages still load 60
+items at a time ([`PAGE_SIZE`](../../web/src/api/client.ts)).
+
+The grid splits the items into rows of a computed column count, and each row
+is the same `flex justify-center gap-2.5` row the wrapping grid made, so card
+width, spacing, order and the centred last row do not change:
+
+```mermaid
+flowchart LR
+  w{Viewport under sm?} -->|yes| one[1 column]
+  w -->|no| card[card = min of zoom width and grid width]
+  card --> cols["columns = floor((grid + 10) / (card + 10))"]
+```
+
+| Rule | Behaviour |
+| --- | --- |
+| Rows drawn | The viewport and 2 rows above and below; heights are measured after drawing |
+| Loading placeholders | Cards of the same rows, after the last card |
+| Focus | The focused item's row stays drawn; Tab moves into the next drawn row, and the browser scrolls it into view |
+| Position | The key of the item at the top and its offset under the top bar (`ListAnchor`) |
+| Return from the video page | The list snapshot stores the anchor; the row holding that item is scrolled to the same offset |
+| Zoom or column count change | The item that was at the top returns to the top |
+| List view stripes | From the item index (`data-stripe`), so drawing different rows does not swap them |
+| No layout (jsdom) | Every item is drawn |
+
+A restored `scrollY` cannot find the same card, because rows not yet drawn have
+estimated heights; an item key survives both estimates and a changed column
+count. Browser find-in-page does not reach cards outside the drawn rows; the
+list search does.
+
+The tag admin list keeps its own sticky band: the page measures the band and
+passes its height to the virtualizer and to `scroll-padding-top`, so a focused
+row never hides under it
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
 ### The window owns scrolling
@@ -106,9 +134,9 @@ focused row never hides under it
 The document (the window) scrolls the content; the shell's sidebar and toolbar
 are fixed or sticky and own no scroll container.
 
-The list's scroll restoration, zoom anchoring and infinite scroll all read
-`window.scrollY` or observe against the viewport, so a scroll container inside
-the shell would mean rewriting all three.
+The list's virtualizer, position anchor and infinite scroll all read the
+window's scroll position or observe against the viewport, so a scroll container
+inside the shell would mean rewriting all three.
 
 ## Width breakpoints in CSS, and the sidebar exception
 
