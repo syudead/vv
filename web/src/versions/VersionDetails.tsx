@@ -38,7 +38,7 @@ export function versionDetailsText(
 }
 
 /**
- * VersionDetailsLine は 2 行目の表示である。項目の間は `text-fg-subtle` の「·」で、置き場所は
+ * VersionDetailsLine は 2 行目の表示である。項目の間は `text-muted-foreground` の「·」で、置き場所は
  * 末尾（ファイルに近い側）を優先して残し、行全体を 1 行で省略する。
  */
 export function VersionDetailsLine({
@@ -51,7 +51,7 @@ export function VersionDetailsLine({
 }) {
   return (
     <span
-      className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-fg-muted tabular-nums"
+      className="flex min-w-0 items-center gap-1.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground tabular-nums"
       title={title}
     >
       {details.specs.map((value, index) => (
@@ -60,7 +60,7 @@ export function VersionDetailsLine({
           className="flex shrink-0 items-center gap-1.5"
         >
           {index > 0 && (
-            <span className="text-fg-subtle" aria-hidden="true">
+            <span className="text-muted-foreground" aria-hidden="true">
               ·
             </span>
           )}
@@ -70,7 +70,7 @@ export function VersionDetailsLine({
       {details.place !== "" && (
         <>
           {details.specs.length > 0 && (
-            <span className="shrink-0 text-fg-subtle" aria-hidden="true">
+            <span className="shrink-0 text-muted-foreground" aria-hidden="true">
               ·
             </span>
           )}

@@ -1,13 +1,23 @@
-import { LoaderCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import Chip from "../ui/Chip";
-import { isComposingKeyEvent } from "../ui/Combobox";
-import { ModalFrame } from "../ui/ModalFrame";
+import { isComposingKeyEvent, isComposingNativeKeyEvent } from "../ui/Combobox";
+import { Badge } from "../ui/shadcn/badge";
+import { Button } from "../ui/shadcn/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/shadcn/dialog";
+import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
+import { Input } from "../ui/shadcn/input";
+import { Spinner } from "../ui/shadcn/spinner";
+import { DialogError } from "./DialogError";
 import { tagFieldError, useTagNameField, type TagFieldError } from "./tagNameField";
 
 function isTagNotFound(error: unknown): boolean {
@@ -106,7 +116,7 @@ export default function SynonymsDialog({
   const pendingFocusRef = useRef<FocusAfterRemoval | null>(null);
 
   // confirm が変わるたびに、そちらのビューの最初のフォーカス先へ移す（開いた
-  // 直後の最初のフォーカスは ModalFrame の initialFocus に任せるので、ここでは
+  // 直後の最初のフォーカスは DialogContent の onOpenAutoFocus に任せるので、ここでは
   // 実際に切り替わったときだけ動かす）。
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -318,55 +328,67 @@ export default function SynonymsDialog({
   const errorId = "synonym-add-error";
 
   return (
-    <ModalFrame
-      title={t.tags.synonymsDialog.title(tag.name)}
-      onClose={handleClose}
-      initialFocus={inputRef}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5">
+      <DialogContent
+        aria-describedby={undefined}
+        onEscapeKeyDown={(event) => {
+          // IME の変換を取り消す Esc では閉じない。
+          if (isComposingNativeKeyEvent(event)) event.preventDefault();
+        }}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{t.tags.synonymsDialog.title(tag.name)}</DialogTitle>
+        </DialogHeader>
         {confirm === null ? (
-          <>
+          <div className="flex min-w-0 flex-col gap-3">
             {tag.synonyms.length > 0 && (
               <ul
                 aria-label={t.tags.synonymsDialog.list}
-                className="flex flex-wrap gap-1.5"
+                className="flex flex-wrap gap-1"
               >
                 {tag.synonyms.map((name) => (
-                  <li key={name} className="min-w-0 max-w-full">
-                    <Chip
-                      tone="onElevated"
-                      title={name}
-                      className="max-w-full gap-0.5 pr-1"
-                    >
+                  <li key={name} className="max-w-full min-w-0">
+                    {/* 外せるチップは Badge の中に × のボタンを置く（components.md「Badge」）。 */}
+                    <Badge variant="secondary" title={name} className="max-w-full pr-0.5">
                       <span className="min-w-0 truncate">{name}</span>
-                      <button
+                      <Button
                         ref={(node) => {
                           if (node) chipRefs.current.set(name, node);
                           else chipRefs.current.delete(name);
                         }}
-                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
                         aria-label={t.tags.synonymsDialog.remove(name)}
                         aria-busy={removing.has(name) || undefined}
                         onClick={() => {
                           if (removing.has(name)) return;
                           void removeSynonym(name);
                         }}
-                        className="flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-hover-wash disabled:opacity-50"
+                        className="size-5 rounded-sm"
                       >
-                        <X className="size-3" aria-hidden="true" />
-                      </button>
-                    </Chip>
+                        <X aria-hidden="true" />
+                      </Button>
+                    </Badge>
                   </li>
                 ))}
               </ul>
             )}
 
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1">
-                <label htmlFor="synonym-add-input" className="sr-only">
-                  {t.tags.synonymsDialog.add}
-                </label>
-                <input
+            <Field data-invalid={field.reason !== null || addError !== null || undefined}>
+              <FieldLabel htmlFor="synonym-add-input" className="sr-only">
+                {t.tags.synonymsDialog.add}
+              </FieldLabel>
+              <div className="flex items-center gap-2">
+                <Input
                   id="synonym-add-input"
                   ref={inputRef}
                   value={field.value}
@@ -393,37 +415,41 @@ export default function SynonymsDialog({
                   aria-invalid={
                     field.reason !== null || addError?.kind === "taken" || undefined
                   }
-                  className="h-9 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-primary focus:outline-none focus:ring-2 focus:ring-link"
+                  className="h-8"
                 />
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (!addPending) void submitAdd();
+                  }}
+                >
+                  {t.tags.synonymsDialog.submit}
+                </Button>
               </div>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  if (!addPending) void submitAdd();
-                }}
-              >
-                {t.tags.synonymsDialog.submit}
-              </Button>
-            </div>
-            {field.reason !== null && (
-              <p id={reasonId} className="-mt-2 text-xs text-danger">
-                {field.reason}
-              </p>
-            )}
-            {field.reason === null && addError !== null && addError.kind === "taken" && (
-              <p id={errorId} className="-mt-2 text-xs text-danger">
-                {addError.message}
-              </p>
-            )}
-            {field.reason === null && addError !== null && addError.kind === "other" && (
-              <p id={errorId} role="alert" className="-mt-2 text-sm text-danger">
-                {addError.message}
-              </p>
-            )}
-          </>
+              {field.reason !== null && (
+                <FieldError id={reasonId} role={undefined}>
+                  {field.reason}
+                </FieldError>
+              )}
+              {field.reason === null &&
+                addError !== null &&
+                addError.kind === "taken" && (
+                  <FieldError id={errorId} role={undefined}>
+                    {addError.message}
+                  </FieldError>
+                )}
+              {field.reason === null &&
+                addError !== null &&
+                addError.kind === "other" && (
+                  <FieldError id={errorId} className="text-sm">
+                    {addError.message}
+                  </FieldError>
+                )}
+            </Field>
+          </div>
         ) : (
           <>
-            <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
+            <p className="text-sm text-muted-foreground">
               {t.tags.synonymsDialog.mergeWarning(
                 confirm.sourceName,
                 confirm.videoCount,
@@ -431,28 +457,31 @@ export default function SynonymsDialog({
                 confirm.hasSynonyms,
               )}
             </p>
-            {confirmError !== null && (
-              <p role="alert" className="text-sm text-danger">
-                {confirmError}
-              </p>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button ref={backRef} onClick={backFromConfirm} disabled={confirmPending}>
+            {confirmError !== null && <DialogError message={confirmError} />}
+            <DialogFooter>
+              <Button
+                ref={backRef}
+                variant="outline"
+                size="sm"
+                onClick={backFromConfirm}
+                disabled={confirmPending}
+              >
                 {t.tags.synonymsDialog.back}
               </Button>
               <Button
                 ref={confirmMergeButton}
-                variant="danger"
+                variant="destructive"
+                size="sm"
                 onClick={() => void acceptMerge()}
                 disabled={confirmPending}
               >
-                {confirmPending && <LoaderCircle className="animate-spin" />}
+                {confirmPending && <Spinner aria-hidden="true" />}
                 {t.tags.synonymsDialog.merge}
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
-      </div>
-    </ModalFrame>
+      </DialogContent>
+    </Dialog>
   );
 }

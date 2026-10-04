@@ -87,10 +87,12 @@ viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
 reason above applies there: it is one column, and rows arrive 100 at a time
 from the server for the current conditions. The document stays the scroll
 owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. Its toolbar, tab and column
-headings stay as one sticky band under the top bar; the page measures the band
-and passes its height to the virtualizer and to `scroll-padding-top`, so a
-focused row never hides under it
+drawn range, so keyboard order reaches every row. The screen is the admin
+table page pattern: the header, tabs and toolbar scroll with the page, the
+rows are the body of a `DataTable`, and rows outside the drawn range are kept
+as empty spacer rows so the columns stay aligned. The page passes the fixed top
+bar's height (`--spacing-navbar`) to the virtualizer and to
+`scroll-padding-top`, so a focused row never hides under the top bar
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
 ### The window owns scrolling

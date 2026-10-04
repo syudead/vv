@@ -204,16 +204,14 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(
       box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 低い画面でもボタンの行が窓の下端に残るよう、箱を含む本文がまとめて縦に
-    // スクロールし、ボタンの行はその外で縮まない。
-    const body = box.parentElement!.closest(".overflow-y-auto")!;
-    expect(body).not.toBeNull();
-    expect(body.className).toContain("min-h-0");
-    expect(body.contains(footer)).toBe(false);
-    expect(footer.className).toContain("shrink-0");
+    // 低い画面では、フォームダイアログ（FormDialog）の窓全体が縦にスクロールし、
+    // ボタンの行まで届く。
+    expect(modal.className).toContain("overflow-y-auto");
+    expect(modal.className).toContain("max-h-full");
+    expect(modal.contains(footer)).toBe(true);
   });
 
-  it("選んだ統合先は一覧で目立たせ、下端に「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {
+  it("選んだ統合先は一覧で目立たせ、「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {
     const user = userEvent.setup();
     render(dialog());
     const modal = await screen.findByRole("dialog");
@@ -229,8 +227,8 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     const chosen = await within(modal).findByRole("option", { name: /Anime/ });
     expect(chosen.getAttribute("data-chosen")).toBe("true");
     expect(chosen.className).toContain("bg-primary-soft");
-    const footer = mergeButton.parentElement!;
-    expect(footer.textContent).toContain("旅行 → Anime");
+    // 「統合元 → 統合先」は確認の文言の後、ボタンの行の前に出す。
+    expect(modal.textContent).toContain("旅行 → Anime");
     await waitFor(() => expect(mergeButton).toHaveProperty("disabled", false));
   });
 
@@ -472,7 +470,7 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
     vi.mocked(listTagPage).mockRejectedValueOnce(offline);
     await user.type(combo, "D");
     const failure = await within(modal).findByText(failureText);
-    expect(failure.className).toContain("text-danger");
+    expect(failure.className).toContain("text-destructive");
     expect(combo.getAttribute("aria-describedby")).toBe(failure.id);
     expect(within(modal).getByRole("option", { name: /Anime/ })).toBeDefined();
     expect(within(modal).queryByRole("button", { name: t.common.retry })).toBeNull();

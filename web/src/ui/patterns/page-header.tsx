@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ReactNode, Ref } from "react";
 
 // ページ見出し（区画）。題・件数・説明と、ページの主操作を 1 行に置く。前に戻る操作や
 // パンくずは leading に入れる。外の余白は骨格が持つので、この区画は持たない。
@@ -15,6 +15,11 @@ export interface PageHeaderProps {
   leading?: ReactNode;
   /** ページの主操作。default のボタンは 1 つまで。 */
   actions?: ReactNode;
+  /**
+   * 題の h1。渡すと h1 をフォーカスできるようにする（tabIndex -1）。一覧の最後の項目を
+   * 片付けた後など、ほかにフォーカスを置く先が無いときに使う。
+   */
+  titleRef?: Ref<HTMLHeadingElement>;
 }
 
 export function PageHeader({
@@ -23,6 +28,7 @@ export function PageHeader({
   description,
   leading,
   actions,
+  titleRef,
 }: PageHeaderProps) {
   return (
     <header data-slot="page-header" className="flex flex-col gap-2">
@@ -34,7 +40,13 @@ export function PageHeader({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-baseline gap-2">
-            <h1 className="min-w-0 truncate text-xl font-semibold">{title}</h1>
+            <h1
+              ref={titleRef}
+              tabIndex={titleRef === undefined ? undefined : -1}
+              className="min-w-0 truncate text-xl font-semibold"
+            >
+              {title}
+            </h1>
             {count !== undefined && (
               <span
                 data-slot="page-header-count"

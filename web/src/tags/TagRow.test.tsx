@@ -27,21 +27,27 @@ function row(current: Tag, renaming: boolean): ReactElement {
   return (
     <MemoryRouter>
       <TooltipProvider>
-        <TagRow
-          tag={current}
-          renaming={renaming}
-          pending={false}
-          blockStart={false}
-          error={null}
-          registerRefs={() => {}}
-          onStartRename={() => {}}
-          onCancelRename={() => {}}
-          onSubmitRename={() => {}}
-          onOpenSynonyms={() => {}}
-          onOpenMerge={() => {}}
-          onDelete={() => {}}
-          onDraftChange={() => {}}
-        />
+        <table>
+          <tbody>
+            <TagRow
+              index={0}
+              measureRef={() => {}}
+              tag={current}
+              renaming={renaming}
+              pending={false}
+              blockStart={false}
+              error={null}
+              registerRefs={() => {}}
+              onStartRename={() => {}}
+              onCancelRename={() => {}}
+              onSubmitRename={() => {}}
+              onOpenSynonyms={() => {}}
+              onOpenMerge={() => {}}
+              onDelete={() => {}}
+              onDraftChange={() => {}}
+            />
+          </tbody>
+        </table>
       </TooltipProvider>
     </MemoryRouter>
   );
