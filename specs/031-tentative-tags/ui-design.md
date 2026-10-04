@@ -36,7 +36,7 @@ selection bar's "Add tag" and "Remove tag", the merge-target candidates, the
 selection bar, the list view, or the location row of folder-page search results.
 Candidate rows get no mark because a candidate answers "which tag to attach", and
 being tentative does not change that choice (the attached tag stays tentative;
-[data-model.md §3](data-model.md#3-write-rules)). Guests see no tags
+[data-model.md, Write rules](data-model.md#write-rules)). Guests see no tags
 (requirement 4), so none of the four appears for them. No new colour, radius or
 shadow token is added, and nothing is added to `pairs` in `tokens.test.ts` (see
 "Colour" below).
@@ -247,7 +247,7 @@ height (`py-2`), the count column and the rename input are unchanged (`UI品質`
   unchanged ("Merge into another tag…", divider, "Delete…").
 - When the tag is renamed, gains a synonym, or becomes a merge target, the
   response's `Tag` comes back with `tentative: false`
-  ([contracts/screen-api.md §1](contracts/screen-api.md#1-changed-existing-routes)).
+  ([contracts/screen-api.md, Changed existing routes](contracts/screen-api.md#changed-existing-routes)).
   The row is replaced with it: the mark and "Confirm" disappear and the menu
   takes the confirmed-row form (acceptance criterion 11). A rename to the current
   name changes nothing and the tag stays tentative.
@@ -305,7 +305,7 @@ height (`py-2`), the count column and the rename input are unchanged (`UI品質`
 - `409 tag_not_tentative` (confirmed first from another tab or the API) closes
   the dialog, shows the toast "This tag was already confirmed, so the list was
   reloaded", and reloads the list (edge case "conflicting operations",
-  screen-api.md §2). `404 tag_not_found` is handled like today's "the tag no
+  screen-api.md, [Tentative tag operations](contracts/screen-api.md#tentative-tag-operations)). `404 tag_not_found` is handled like today's "the tag no
   longer exists". Other failures show `errorText` in one line of
   `text-sm text-danger` (`role="alert"`) inside the dialog, and the dialog stays
   open (as in the delete dialog).

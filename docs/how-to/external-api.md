@@ -239,7 +239,7 @@ flowchart LR
 
 `GET /api/v1/tags` lists tags with the search, filters, sort and pages of the
 tag admin screen
-([specs/039-external-tag-admin/contracts/external-api.md §1](../../specs/039-external-tag-admin/contracts/external-api.md#1-get-apiv1tags)).
+([specs/039-external-tag-admin/contracts/external-api.md, `GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)).
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" \
@@ -270,7 +270,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 `POST /api/v1/tags/merge` merges source tags into a target tag in one
 transaction
-([§2](../../specs/039-external-tag-admin/contracts/external-api.md#2-post-apiv1tagsmerge)).
+([contract, `POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)).
 
 ```json
 { "targetId": 12, "sourceIds": [31, 45] }
@@ -290,7 +290,7 @@ transaction
 
 `POST /api/v1/tags/rename` with `{ "id": 12, "name": "自撮り" }` changes the
 tag's original name and returns the tag
-([§3](../../specs/039-external-tag-admin/contracts/external-api.md#3-post-apiv1tagsrename)).
+([contract, `POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)).
 
 - A tentative tag becomes confirmed when its name changes. The same name as now
   changes nothing.
@@ -305,7 +305,7 @@ tag's original name and returns the tag
 
 `POST /api/v1/tags/synonyms` adds a name to a tag's synonyms or removes one,
 and returns the tag after the change
-([§4](../../specs/039-external-tag-admin/contracts/external-api.md#4-post-apiv1tagssynonyms)).
+([contract, `POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)).
 
 ```json
 { "id": 12, "action": "add", "name": "自己撮影" }
@@ -329,7 +329,7 @@ and returns the tag after the change
 ### Confirm, reject and delete tags
 
 `POST /api/v1/tags/batch` confirms, rejects or deletes tags in one transaction
-([§5](../../specs/039-external-tag-admin/contracts/external-api.md#5-post-apiv1tagsbatch)).
+([contract, `POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)).
 There is no single-tag operation; for one tag send `"ids": [id]`.
 
 ```json
@@ -358,14 +358,14 @@ A tentative attach skips a rejected name
 
 - `GET /api/v1/tags/rejected-names` returns `{ items, total, nextCursor? }` in
   natural name order
-  ([§6](../../specs/039-external-tag-admin/contracts/external-api.md#6-get-apiv1tagsrejected-names)).
+  ([contract, `GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)).
   `limit` is 1 to 200 and defaults to 100; pass `nextCursor` back as `cursor`
   until it is absent. `total` counts every rejected name. `limit` out of range
   returns `400` `invalid_request`, and an unreadable cursor adds
   `reason: invalid_cursor`.
 - `DELETE /api/v1/tags/rejected-names?name=…` removes one name, so the next
   tentative attach of that name creates a tag again
-  ([§7](../../specs/039-external-tag-admin/contracts/external-api.md#7-delete-apiv1tagsrejected-namesname)).
+  ([contract, `DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)).
   The response is `{ name, removed }`: the normalized name that was matched,
   and `false` when the name was not in the list and nothing changed. A missing
   `name` returns `400` `invalid_request`.

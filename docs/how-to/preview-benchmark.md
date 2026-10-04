@@ -28,7 +28,7 @@ flowchart LR
 
 ## Steps
 
-### 1. Create the inputs
+### Create the inputs
 
 Generate the inputs from `ffmpeg`'s `testsrc2` into `.local/bench/` (git
 ignores `.local/`; any folder outside the repository also works).
@@ -55,7 +55,7 @@ ffmpeg -nostdin -v error -display_rotation 90 -i .local/bench/landscape.mp4 \
 `ffprobe .local/bench/portrait-rotated.mp4` prints `rotation of 90.00 degrees`
 (displaymatrix) when the rotation metadata is present.
 
-### 2. Measure
+### Measure
 
 ```sh
 go run ./scripts/previewbench [-kind preview|seek] [-runs N] <video>
@@ -98,7 +98,7 @@ git worktree remove --force ../vv-before
 
 Times vary with the disk cache, so report the first and second run separately.
 
-### 3. Record the results in the PR
+### Record the results in the PR
 
 Record the environment (OS, CPU, ffmpeg version) and, per input, the wall-clock
 time of each run and the peak memory. The template is Japanese because PR
@@ -141,7 +141,7 @@ go run ./scripts/previewbench -kind seek .local/bench/short-2m-720p.mp4
 Where peak memory is not available (such as Windows), write `取得不可` (not
 available) in the peak memory columns.
 
-### 4. Measure long HD input-side seeking
+### Measure long HD input-side seeking
 
 When comparing approaches for long HD videos, add these 1080p inputs to the
 360p one. They repeat a 30-second source by stream copy, so the 2 hours need no

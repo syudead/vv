@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/tags-admin-benchmark.md
-sourceHash: 4e5222edef9d66da8a7580c55e1585340876306d3a35500425f9b8c7f35d7538
+sourceHash: 55871690023f8994c72ffd7089dbbfb814691af4173d3ce7b33bfa0be3991341
 ---
 
 # 大規模データでタグ管理画面を測る {#measure-the-tag-admin-screen-with-scale-data}
@@ -16,7 +16,7 @@ sourceHash: 4e5222edef9d66da8a7580c55e1585340876306d3a35500425f9b8c7f35d7538
 
 ## 手順 {#steps}
 
-### 1. 測る {#1-measure}
+### 測る {#measure}
 
 ```sh
 go run ./scripts/tagsbench -scale 1000
@@ -68,7 +68,7 @@ flowchart LR
 
 規模データを作り直すには、`.local/tagsbench/<data name>/` を削除する。データの作り方（`scripts/tagsbench` の `planTags`）を変えた後も削除する。
 
-### 2. 変更前と変更後を比べる {#2-compare-before-and-after}
+### 変更前と変更後を比べる {#compare-before-and-after}
 
 変更前と変更後は、同じ環境で続けて測る。変更前のコミットに `scripts/tagsbench` や `web/bench/` がない、または古いときは、PR ブランチのものを worktree にコピーしてそこで実行する。
 
@@ -102,7 +102,7 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
 git worktree remove --force ../vv-before
 ```
 
-### 3. 結果を PR に記録する {#3-record-the-results-in-the-pr}
+### 結果を PR に記録する {#record-the-results-in-the-pr}
 
 環境（OS、CPU、ブラウザのバージョン）と、規模ごとの各場面の値を記録する。規模は列見出し（1,000、3,000、30,000）で区別する。PR 本文が日本語なので、雛形も日本語である。
 

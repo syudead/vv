@@ -4,17 +4,17 @@ Parent Issue: #135.
 
 Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This document
 covers only how responses differ when a "Guest too" request
-([auth-api.md §1](auth-api.md#1-three-access-classes)) is handled as a guest,
+([auth-api.md, Three access classes](auth-api.md#three-access-classes)) is handled as a guest,
 and the route that switches the public flag. List parameters and response
 shapes stay as in
 [013 list-api.md](../../013-library-search/contracts/list-api.md) and
 [014 tags-api.md](../../014-video-tags/contracts/tags-api.md); only the
 differences here are added.
 
-## 1. What guests see
+## What guests see
 
 Guest responses contain only public videos as defined in
-[data-model.md §3](../data-model.md#3-audience-and-the-public-video-condition).
+[data-model.md, Audience and the public video condition](../data-model.md#audience-and-the-public-video-condition).
 This applies to list entries and `total`, `getVideo`, related videos, folder
 lists with their counts and previews, and streaming, thumbnails, seek previews,
 hover previews and live transcoding (requirement 16).
@@ -38,7 +38,7 @@ Video and folder `id`s and `rootId`s are the same sequential numbers as for the
 owner. That the `id`s of public videos let a guest estimate the library's size
 is allowed by requirement 16 of the parent Issue.
 
-## 2. Videos hidden from guests
+## Videos hidden from guests
 
 When `getVideo`, `getRelatedVideos`, `streamVideo`, `getVideoPreview`,
 `transcodeVideo`, `getVideoThumbnail` or `getVideoSeekThumbnail`, handled as a
@@ -57,7 +57,7 @@ Folders behave the same way:
   registered folder itself always "exists"; this check is added so a guest
   cannot enumerate registered folder `rootId`s.
 
-## 3. Conditions guests cannot use
+## Conditions guests cannot use
 
 These list conditions depend on the owner's data (playback position, tags), so
 guests cannot use them.
@@ -67,12 +67,12 @@ guests cannot use them.
 | `watch` other than `all` | `400 invalid_request` |
 | `sort` of `playedAsc` or `playedDesc` | `400 invalid_request` |
 | `tag` | `400 invalid_request` |
-| `query` | Matched against the title and relative path only, not tag names or synonyms (the matching of [014 data-model.md §7](../../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box) is removed) |
+| `query` | Matched against the title and relative path only, not tag names or synonyms (the matching of [014 data-model.md, Matching tag names in the search box](../../014-video-tags/data-model.md#matching-tag-names-in-the-search-box) is removed) |
 
 For guests the screen does not offer these options. When they remain in the
 URL, the screen rounds them to the defaults before requesting.
 
-## 4. Switching the public flag
+## Switching the public flag
 
 `Video` gains a required `public: boolean`, filled by every route that returns
 `Video`.
@@ -86,11 +86,11 @@ URL, the screen rounds them to the defaults before requesting.
 - The limit on the number of `videoIds`, the handling of duplicates, the
   meaning of `applied` and applying in one transaction are the same as adding
   and removing tags
-  ([014 tags-api.md §4](../../014-video-tags/contracts/tags-api.md#4-adding-and-removing-tags-on-videos)).
+  ([014 tags-api.md, Adding and removing tags on videos](../../014-video-tags/contracts/tags-api.md#adding-and-removing-tags-on-videos)).
 - A video already in the requested state is not an error.
 - Added to `requiresJSONBody` and the mapping in `openapi_routes_test.go`.
 
-## 5. Cache of generated files
+## Cache of generated files
 
 Successful responses for thumbnails, seek previews and hover previews drop the
 current `public, max-age=31536000, immutable` (`cacheImmutable` in
@@ -107,7 +107,7 @@ both the owner and guests.
 - The video file itself (`private, max-age=0, must-revalidate`) and live
   transcoding (`no-store`) already have the same property and do not change.
 
-## 6. Streams when a video stops being public
+## Streams when a video stops being public
 
 When a video is made private, streaming, live transcoding and preview responses
 for it that are in progress as a guest are cut off (Edge Case

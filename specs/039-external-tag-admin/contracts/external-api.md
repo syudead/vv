@@ -3,7 +3,7 @@
 Source of truth: `api/external-v1.yaml`. This document describes only the
 parameters, operations, fields and errors this feature adds. The shared rules
 (Bearer, the error shape, count limits, the 32 MiB body) stay as in
-[specs/026-external-api/contracts/external-api.md §1](../../026-external-api/contracts/external-api.md#1-common-rules).
+[specs/026-external-api/contracts/external-api.md, Common rules](../../026-external-api/contracts/external-api.md#common-rules).
 Following the compatibility policy, only fields, parameters, operations and
 `reason` values are added. Each operation runs the store operation the screen
 runs ([research.md R-6](../research.md#r-6-the-external-handlers-call-the-same-tags-methods-as-the-screen-with-no-new-write-path)),
@@ -27,20 +27,20 @@ flowchart LR
   forget["DELETE /tags/rejected-names"] --> ForgetRejectedTagName
 ```
 
-## 0. Schema changes
+## Schema changes
 
 | Schema | Added | Rule |
 | --- | --- | --- |
 | `Tag` | `createdAt: string, format: date-time` (`required`) | `tags.created_at`, the value `createdDesc` and `createdAsc` order by |
 | `TagList` | `total: integer` (`required`), `totalAll: integer` (`required`), `nextCursor: string` (optional) | As the screen's `TagList`: `total` counts the tags matching `q`, `tentative` and `unused`; `totalAll` counts every tag; `nextCursor` is present only on a request with `limit` when more remain |
 | `Error` | `tagId: integer, format: int64`, `tagName: string` (both optional) | The conflicting tag's id and original name. Present only with `tag_name_taken` and `tag_merge_required` |
-| `ErrorReason` | `tag_not_found`, `tag_name_taken`, `tag_merge_required`, `merge_same_tag` | §2 to §4. `too_many_tags` and `invalid_cursor` exist |
+| `ErrorReason` | `tag_not_found`, `tag_name_taken`, `tag_merge_required`, `merge_same_tag` | The merge, rename and synonyms operations below. `too_many_tags` and `invalid_cursor` exist |
 | `TagSort` | `enum: [name, countDesc, countAsc, createdDesc, createdAsc]`, default `name` | The screen's `TagSort` |
 
 New request and response schemas are given with their operations. Every array
 in a response is `[]` when empty, never `null`.
 
-## 1. `GET /api/v1/tags`
+## `GET /api/v1/tags`
 
 Lists tags, with the screen's search, filters, sort and pages.
 
@@ -61,7 +61,7 @@ the call omits it ([R-1](../research.md#r-1-get-apiv1tags-takes-the-screens-list
 | `400` | `invalid_request` | `sort` outside the five values, `limit` outside 1 to 200, `q` over 100 characters |
 | `400` | `invalid_request` / `invalid_cursor` | `cursor` unreadable or made under another `sort` |
 
-## 2. `POST /api/v1/tags/merge`
+## `POST /api/v1/tags/merge`
 
 Merges one or more source tags into a target tag in one transaction
 (requirement 2).
@@ -85,7 +85,7 @@ unchanged target.
 | `400` | `invalid_request` / `merge_same_tag` | `sourceIds` contains `targetId`. Nothing changes |
 | `404` | `not_found` / `tag_not_found` | `targetId` does not exist. Nothing changes |
 
-## 3. `POST /api/v1/tags/rename`
+## `POST /api/v1/tags/rename`
 
 Changes a tag's original name (requirement 5). A tentative tag becomes
 confirmed when its name changes; the same name as now changes nothing.
@@ -102,7 +102,7 @@ confirmed when its name changes; the same name as now changes nothing.
 | `404` | `not_found` / `tag_not_found` | `id` does not exist |
 | `409` | `conflict` / `tag_name_taken`, `tagId`, `tagName` | The name is another tag's original name or synonym, or one of `id`'s own synonyms (then `tagId` is `id`). Nothing changes |
 
-## 4. `POST /api/v1/tags/synonyms`
+## `POST /api/v1/tags/synonyms`
 
 Adds a name to a tag's synonyms or removes one (requirement 3).
 
@@ -143,7 +143,7 @@ returns the tag unchanged.
 | `409` | `conflict` / `tag_name_taken`, `tagId`, `tagName` | `add`: the name is `id`'s own original name, or a synonym of another tag |
 | `409` | `conflict` / `tag_merge_required`, `tagId`, `tagName` | `add`: the name is another tag's original name and `mergeTagId` is absent or names a different tag. Nothing changes |
 
-## 5. `POST /api/v1/tags/batch`
+## `POST /api/v1/tags/batch`
 
 Confirms, rejects or deletes several tags in one transaction (requirements 4
 to 6; [R-3](../research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch)).
@@ -168,7 +168,7 @@ a deleted tag's name is not remembered.
 | `400` | `invalid_request` / `too_many_tags`, `limit` | `ids` empty or over 20,000 entries, duplicates included |
 | `500` | `internal` | The transaction failed. Nothing changes |
 
-## 6. `GET /api/v1/tags/rejected-names`
+## `GET /api/v1/tags/rejected-names`
 
 Lists the rejected names in natural name order, in pages (requirement 7).
 
@@ -185,7 +185,7 @@ Lists the rejected names in natural name order, in pages (requirement 7).
 | `400` | `invalid_request` | `limit` outside 1 to 200 |
 | `400` | `invalid_request` / `invalid_cursor` | `cursor` unreadable |
 
-## 7. `DELETE /api/v1/tags/rejected-names?name=…`
+## `DELETE /api/v1/tags/rejected-names?name=…`
 
 Removes one name from the rejected names, so the next tentative attach of that
 name creates a tag again (requirement 7).
@@ -199,17 +199,17 @@ not in the list or cannot be normalized, and nothing changed
 | --- | --- | --- |
 | `400` | `invalid_request` | `name` missing |
 
-## 8. MCP tools
+## MCP tools
 
 Added to the table in
-[specs/026-external-api/contracts/mcp.md §2](../../026-external-api/contracts/mcp.md#2-tools).
+[specs/026-external-api/contracts/mcp.md, Tools](../../026-external-api/contracts/mcp.md#tools).
 Each tool's input is the operation's parameters or body, and its structured
 result the response body; an error is a tool result with `isError: true` and
 the error body. There are 14 tools after this feature.
 
 | Tool | Operation | Hints |
 | --- | --- | --- |
-| `list_tags` (changed) | `GET /api/v1/tags` | `readOnlyHint: true`. Input gains the §1 parameters; `limit` defaults to 100 inside the tool (R-1) |
+| `list_tags` (changed) | `GET /api/v1/tags` | `readOnlyHint: true`. Input gains the parameters of `GET /api/v1/tags` above; `limit` defaults to 100 inside the tool (R-1) |
 | `merge_tags` | `POST /api/v1/tags/merge` | `destructiveHint: true`, `idempotentHint: true` (merged sources are gone) |
 | `rename_tag` | `POST /api/v1/tags/rename` | `destructiveHint: false`, `idempotentHint: true` |
 | `update_tag_synonyms` | `POST /api/v1/tags/synonyms` | `destructiveHint: true`, `idempotentHint: true` (`remove` drops a name; `add` with `mergeTagId` merges) |
@@ -222,7 +222,7 @@ input schema the way `update_video_tags` adds its `action` values. The tool
 descriptions name the operation, its limits, and for `update_tag_synonyms` how
 `tag_merge_required` and `mergeTagId` work.
 
-## 9. `docs/how-to/external-api.md`
+## `docs/how-to/external-api.md`
 
 Gains a section "Tidy up tags" (list pages and filters, merge, synonyms with
 `mergeTagId`, batch confirm, reject and delete, rename, rejected names), an

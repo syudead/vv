@@ -10,7 +10,7 @@ the table this feature adds and the rules that read and write it. No other table
 gets no column either; the video list is read from the existing columns,
 [R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)).
 
-## 1. `api_tokens` (R-1, R-2, R-9, R-10)
+## `api_tokens` (R-1, R-2, R-9, R-10)
 
 ```sql
 create table api_tokens (
@@ -42,7 +42,7 @@ again). It is added to the list in ARCHITECTURE.md.
 | Record use | Writes `now` only when `last_used_at is null or last_used_at <= now - 60`. |
 | Change username or password | Adds `delete from api_tokens` to the existing `changeCredentials`. |
 
-## 2. Values added to `internal/domain`
+## Values added to `internal/domain`
 
 | Value | Contents |
 | --- | --- |

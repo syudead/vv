@@ -17,12 +17,12 @@ R-4 to R-6, R-10). This file records only the decisions this feature adds.
 
 **Decision**: `GET /api/v1/tags` gains `q`, `tentative`, `unused`, `sort`,
 `cursor` and `limit` with the meaning of the screen's `GET /api/tags`
-([036 contracts/screen-api.md §5](../036-tag-admin-scale/contracts/screen-api.md#5-get-apitags-parameters)),
+([036 contracts/screen-api.md, `GET /api/tags` parameters](../036-tag-admin-scale/contracts/screen-api.md#get-apitags-parameters)),
 and `TagList` gains `total`, `totalAll` and `nextCursor`; `Tag` gains
 `createdAt`, the value the `createdDesc` and `createdAsc` sorts order by. A
 request without `limit` still returns every tag. The MCP tool `list_tags` fills
 `limit` with 100 when the caller leaves it out, so its default response holds
-one page ([contracts/external-api.md §1](contracts/external-api.md#1-get-apiv1tags)).
+one page ([contracts/external-api.md, `GET /api/v1/tags`](contracts/external-api.md#get-apiv1tags)).
 
 | Option | v1 compatibility | A tool call without arguments at 2,048 tags | Verdict |
 | --- | --- | --- | --- |
@@ -63,7 +63,7 @@ tidies a library sends them as calls, not as resource edits.
 batch operation takes `action` and `ids` (1 to 20,000) and returns
 `appliedIds`, `notFoundIds` and `notApplicableIds`, as the screen's
 `POST /api/tags/batch` does
-([036 contracts/screen-api.md §1](../036-tag-admin-scale/contracts/screen-api.md#1-post-apitagsbatch)).
+([036 contracts/screen-api.md, `POST /api/tags/batch`](../036-tag-admin-scale/contracts/screen-api.md#post-apitagsbatch)).
 A single tag is `ids: [id]`.
 
 | Option | A confirmed tag sent to `reject` | Verdict |
@@ -83,12 +83,12 @@ tags in one call. Six fewer tools keep the MCP tool list readable.
 when the name is another tag's original name and `mergeTagId` does not name
 that tag. The external `Error` gains `tagId` and `tagName`, present only with
 these two reasons, so the caller can send `mergeTagId` without reading the
-list again ([contracts/external-api.md §3 and §4](contracts/external-api.md#3-post-apiv1tagsrename)).
+list again ([contracts/external-api.md, `POST /api/v1/tags/rename` and `POST /api/v1/tags/synonyms`](contracts/external-api.md#post-apiv1tagsrename)).
 
 | Option | Verdict |
 | --- | --- |
 | **`mergeTagId` names the tag whose merge the caller accepts, and the error carries that tag's id** | Chosen |
-| A boolean `merge: true` | Rejected: between the error and the retry another client can move the name to a different tag, and the boolean would merge a tag the caller never saw ([014 contracts/tags-api.md §3](../014-video-tags/contracts/tags-api.md#3-tag-management)) |
+| A boolean `merge: true` | Rejected: between the error and the retry another client can move the name to a different tag, and the boolean would merge a tag the caller never saw ([014 contracts/tags-api.md, Tag management](../014-video-tags/contracts/tags-api.md#tag-management)) |
 | Merge without asking when the name is another tag's original name | Rejected: requirement 3 asks that the merge happen only when the caller says so |
 | `tagName` only, as the screen's error has | Rejected: the screen rereads its list to find the id; an agent would read a page per conflict |
 

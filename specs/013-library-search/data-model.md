@@ -9,19 +9,19 @@ This document covers only the columns and tables this feature adds and the rules
 that fill them. `videos`, `media_folders`, `playback_progress` and `jobs` do not
 change. Everything added belongs to the rebuildable index side.
 
-## 1. Columns added to `video_locations`
+## Columns added to `video_locations`
 
 | Column | Type | Meaning |
 | --- | --- | --- |
-| `search_key` | `text not null default ''` | The match string for one location. Built in Go by the rules in §3 |
-| `title_key` | `text not null default ''` | The key for sorting titles in natural order. Built in Go by the rules in §4 |
-| `search_version` | `integer not null default 0` | The version of the rules that built `search_key` and `title_key`. See §5 |
+| `search_key` | `text not null default ''` | The match string for one location. Built in Go by the rules in [`search_key` rules](#search_key-rules) |
+| `title_key` | `text not null default ''` | The key for sorting titles in natural order. Built in Go by the rules in [`title_key` rules](#title_key-rules) |
+| `search_version` | `integer not null default 0` | The version of the rules that built `search_key` and `title_key`. See [When keys are built, and `search_version`](#when-keys-are-built-and-search_version) |
 
 The keys are stored per location so that requirement 9 (a video does not match
 when different terms are satisfied by different locations) is decided within one
 location row.
 
-## 2. Replacing the full-text index
+## Replacing the full-text index
 
 `videos_fts` (a trigram index on `title` and `path`) and the triggers that keep it
 in sync, `video_locations_ai`, `video_locations_ad` and `video_locations_au`, are
@@ -40,12 +40,12 @@ The sync triggers copy only `search_key` (on insert and delete, and on updates o
 
 The migration is added as `00007_location_search.sql`. Existing migrations do not
 change (`scripts/migrations-immutable.sh`). SQL alone cannot express the
-normalisation in §3, so the migration only creates the columns, the index and the
-triggers; the key values are filled as described in §5. Down recreates
+normalisation in [`search_key` rules](#search_key-rules), so the migration only creates the columns, the index and the
+triggers; the key values are filled as described in [When keys are built, and `search_version`](#when-keys-are-built-and-search_version). Down recreates
 `videos_fts` and the three triggers as defined in 00003, refills the index with
 `'rebuild'`, and then drops the added columns.
 
-## 3. `search_key` rules
+## `search_key` rules
 
 ```text
 search_key = fold(title) + "\n" + fold(relative_path)
@@ -65,11 +65,11 @@ search_key = fold(title) + "\n" + fold(relative_path)
   (`registeredLocationCondition`).
 - `fold` is the conversion to the match form in `internal/domain`; the same
   conversion is applied to query terms
-  ([contracts/list-api.md §1](contracts/list-api.md#1-query-syntax)). It applies
+  ([contracts/list-api.md, Query syntax](contracts/list-api.md#query-syntax)). It applies
   NFKC normalisation, Unicode lower-casing, and hiragana-to-katakana replacement,
   in that order.
 
-## 4. `title_key` rules
+## `title_key` rules
 
 A function in `internal/domain` builds it from the title: a string whose byte
 order is natural order. After `fold`, each run of ASCII digits is replaced with
@@ -91,9 +91,9 @@ The order of folder cards (`CompareNatural` on the raw names) can differ for
 names that contain kana or full-width digits. This feature does not change the
 order of folder cards.
 
-## 5. When keys are built, and `search_version`
+## When keys are built, and `search_version`
 
-`domain.SearchKeyVersion` (1 initially) is the version of the rules in §3 and §4.
+`domain.SearchKeyVersion` (1 initially) is the version of the rules in [`search_key` rules](#search_key-rules) and [`title_key` rules](#title_key-rules).
 Keys are rebuilt for a location at the following points, and `search_version` is
 set to the current version:
 
@@ -115,7 +115,7 @@ rescanning (acceptance criterion 8). To change the rules, raise the version, and
 the same path rebuilds every key. A deleted location loses its row, so it is not
 a rebuild target.
 
-## 6. Deriving watch state
+## Deriving watch state
 
 Nothing is stored. `playback_progress` is looked up by `content_key` and reduced
 to the following three values. This is the same definition as `watchState` on the

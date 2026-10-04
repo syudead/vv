@@ -58,7 +58,7 @@ existing English catalog (requirement 12).
 | Gate | Verdict |
 | --- | --- |
 | Dependency direction (ARCHITECTURE.md "Intended dependency direction") | Pass. See the package table below. |
-| The rule for which files may be opened (the `internal/mediafs` paragraph in ARCHITECTURE.md) | Pass. `httpapi` runs neither `ReadDir` nor `Open` itself; it passes the location and the media folders to `mediafs`. Only names in the list are opened, and no path is built from the request string ([contracts §2](contracts/subtitles-api.md#2-get-apivideosidsubtitlesfile)). |
+| The rule for which files may be opened (the `internal/mediafs` paragraph in ARCHITECTURE.md) | Pass. `httpapi` runs neither `ReadDir` nor `Open` itself; it passes the location and the media folders to `mediafs`. Only names in the list are opened, and no path is built from the request string ([contracts, `GET /api/videos/{id}/subtitles/{file}`](contracts/subtitles-api.md#get-apivideosidsubtitlesfile)). |
 | The authentication boundary (the authentication paragraph in ARCHITECTURE.md, requirement 11) | Pass. The two routes are added to `accessRoutes` as "guests too", and `security` in `openapi.yaml` and `openapi_routes_test.go` confirm they match. For guests, `lookupServedVideo` returns only public videos. |
 | The API source of truth (ARCHITECTURE.md) | Pass. `api/openapi.yaml` changes, `task generate` runs, and generated files are not hand-edited (AGENTS.md). |
 | Index versus user data (ARCHITECTURE.md "Rebuildable and user data") | Not applicable: nothing is stored. |
@@ -267,7 +267,7 @@ Issue's `UI品質` section and requirements 5–8, 10 and 12.
 
 **Acceptance**: This unit changes a screen, so the look and interaction are
 checked at 360px, 768px and 1280px widths and in full screen
-([quickstart.md §1](quickstart.md#1-full-screen-and-overlap-with-the-control-bar-acceptance-criterion-10)).
+([quickstart.md, Full screen and overlap with the control bar (acceptance criterion 10)](quickstart.md#full-screen-and-overlap-with-the-control-bar-acceptance-criterion-10)).
 The following tests exist, and `task check` and `task test-e2e` pass.
 
 - `web/src/player` unit tests: a video with no subtitles has no subtitle button
@@ -295,7 +295,7 @@ The following tests exist, and `task check` and `task test-e2e` pass.
 
 **Scope**: Reattaching tracks to match the playback timeline's offset
 ([R-6](research.md#r-6-live-transcode-timing-the-server-returns-webvtt-shifted-by-offsetms),
-[contracts §3](contracts/subtitles-api.md#3-client-use)).
+[contracts, Client use](contracts/subtitles-api.md#client-use)).
 
 - `web/src/player/liveOffset.ts`: add `vvOffsetSettled(seconds)` to
   `LiveSource`, which reports that the offset is settled (a 200 report, a 404

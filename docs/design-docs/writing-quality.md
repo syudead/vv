@@ -117,6 +117,13 @@ not a question or a sentence fragment. Headings are link targets: changing one
 changes its anchor, and the change has to update every inbound link
 (`task check-docs` fails on a broken anchor).
 
+A heading carries no section number (`## Rules`, not `## 3. Rules`). The
+number enters the anchor, so adding or removing a section renames every
+section after it and breaks the links and `§3`-style references to them. Refer
+to a section by its heading, linked to its anchor (`data-model.md, Rules`);
+`task check-docs` fails on a numbered heading. Steps the reader runs in order
+are a numbered list (W-7), not numbered headings.
+
 ### W-10: Write what the code cannot say
 
 A document records what a reader cannot get from the code: the rule, the

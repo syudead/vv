@@ -23,7 +23,7 @@ offered, and there is no language choice.
   English text from `code` and the new `reason`, `limit` and `tagName`. Existing
   `code`s and HTTP statuses do not change, and situations within the same
   `code` are distinguished by `reason`
-  ([contracts/error-api.md §1](contracts/error-api.md#1-reason-limit-and-tagname-on-error),
+  ([contracts/error-api.md, `reason`, `limit` and `tagName` on `Error`](contracts/error-api.md#reason-limit-and-tagname-on-error),
   [R-4](research.md#r-4-api-error-specificity-added-through-reason-without-changing-codes),
   [R-5](research.md#r-5-the-screen-shows-known-errors-from-reason-and-code-others-as-a-safe-summary)).
 - Probe and import failures store a reason code in a separate column, and the
@@ -157,7 +157,7 @@ graph TD
 ### Add reasons and display values to API errors and make API messages English
 
 **Scope**: `Error.reason`, `limit`, `tagName` and the `message` description in
-`api/openapi.yaml` ([contracts/error-api.md §0 and §1](contracts/error-api.md));
+`api/openapi.yaml` ([contracts/error-api.md, Every `message` in English](contracts/error-api.md#every-message-in-english) and [`reason`, `limit` and `tagName` on `Error`](contracts/error-api.md#reason-limit-and-tagname-on-error));
 every `message`, log and the plain-text responses of `spa.go` in
 `internal/httpapi` in English; attaching `reason`, `limit` and `tagName` in the
 table's situations; English error text in `internal/domain` and the
@@ -180,7 +180,7 @@ in the table the same HTTP status and `code` as before plus the table's
 `internal/media` (probe) and `internal/scanner`; passing them on and
 translating in `internal/app` and `internal/jobs`; writing and reading in
 `internal/store`; `Video.probeErrorCode`, `Scan.errorCode` and `Scan.errorPath`
-([contracts/error-api.md §2 and §3](contracts/error-api.md)); the data
+([contracts/error-api.md, `Video.probeErrorCode`](contracts/error-api.md#videoprobeerrorcode) and [`Scan.errorCode` and `Scan.errorPath`](contracts/error-api.md#scanerrorcode-and-scanerrorpath)); the data
 description in ARCHITECTURE.md.
 
 **Dependencies**: Add reasons and display values to API errors and make API
@@ -210,7 +210,7 @@ them in the API
 
 **Acceptance**: `gosmopolitan` in `task lint` passes with 0 findings. The logs
 from the operations in
-[quickstart.md §2](quickstart.md#2-server-output-is-in-english) contain no
+[quickstart.md, Server output is in English](quickstart.md#server-output-is-in-english) contain no
 fixed Japanese text. `task check` passes.
 
 ### Build the screen i18n foundation: text catalog, English formatting, API error display

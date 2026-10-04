@@ -7,7 +7,7 @@ The source of truth for the library list (`/`) URL is #195's
 covers only the parameter this feature adds and how it is handled. The folder
 screen URL does not change.
 
-## 1. Parameters
+## Parameters
 
 | Name | Value | When omitted |
 | --- | --- | --- |
@@ -22,7 +22,7 @@ screen URL does not change.
 - Non-numeric values, duplicates, and values beyond the 16th are dropped without
   an error.
 - `id`s listed in the list response's `missingTagIds`
-  ([tags-api.md §5](tags-api.md#5-list-filter-and-select-all)) are removed from
+  ([tags-api.md, List filter and Select all](tags-api.md#list-filter-and-select-all)) are removed from
   the URL by replacing the current history entry, not adding one. The screen
   also reports that the tag no longer exists and refetches the tag list (Edge
   Case `ほかの画面での並行した変更`). The list itself is shown as the server
@@ -35,7 +35,7 @@ screen URL does not change.
   reported and removed from the URL, as when `missingTagIds` arrives. The
   condition changes, so the snapshot is not used and the list is refetched.
 
-## 2. Adding and removing a tag
+## Adding and removing a tag
 
 | Action | URL change |
 | --- | --- |

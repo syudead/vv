@@ -12,7 +12,7 @@ This file records only the decisions this feature adds.
 ## R-1: Find subtitle files by reading the folder on each request, not from SQLite
 
 **Decision**: `GET /api/videos/{id}/subtitles`, which the playback screen calls
-([contracts/subtitles-api.md §1](contracts/subtitles-api.md#1-get-apivideosidsubtitles)),
+([contracts/subtitles-api.md, `GET /api/videos/{id}/subtitles`](contracts/subtitles-api.md#get-apivideosidsubtitles)),
 builds the subtitle list by running `ReadDir` on the video's folder on every
 call. No table or column is added, and neither the scan nor the import job is
 involved.
@@ -167,7 +167,7 @@ in `internal/mediafs`). The `unicode` script tables are in the standard library.
 **Decision**: The subtitle fetch route takes `offsetMs` (default 0) and
 subtracts that value from the time of every cue. A cue whose end time becomes 0
 or less is dropped, and a cue whose start time becomes negative starts at 0
-([contracts/subtitles-api.md §2](contracts/subtitles-api.md#2-get-apivideosidsubtitlesfile)).
+([contracts/subtitles-api.md, `GET /api/videos/{id}/subtitles/{file}`](contracts/subtitles-api.md#get-apivideosidsubtitlesfile)).
 Each time the player learns which time in the original video the playback
 timeline's 0 is (the offset in `liveOffset.ts`), it reattaches the subtitle
 tracks with that value as `offsetMs` in the URL. The value is 0 for direct

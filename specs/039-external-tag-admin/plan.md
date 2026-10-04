@@ -15,13 +15,13 @@ the screen would leave.
 
 | Concern | Approach |
 | --- | --- |
-| List | `GET /api/v1/tags` takes the screen's `q`, `tentative`, `unused`, `sort`, `cursor` and `limit`; without `limit` it still returns every tag. The MCP tool `list_tags` pages by default ([research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default), [contracts/external-api.md §1](contracts/external-api.md#1-get-apiv1tags)) |
-| Operations | Six literal `POST`, `GET` and `DELETE` routes under `/api/v1/tags/…` that name the tag in the body ([R-2](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body), [§2 to §7](contracts/external-api.md#2-post-apiv1tagsmerge)) |
+| List | `GET /api/v1/tags` takes the screen's `q`, `tentative`, `unused`, `sort`, `cursor` and `limit`; without `limit` it still returns every tag. The MCP tool `list_tags` pages by default ([research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default), [contracts/external-api.md, `GET /api/v1/tags`](contracts/external-api.md#get-apiv1tags)) |
+| Operations | Six literal `POST`, `GET` and `DELETE` routes under `/api/v1/tags/…` that name the tag in the body ([R-2](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body), [contracts/external-api.md, from `POST /api/v1/tags/merge` to `DELETE /api/v1/tags/rejected-names?name=…`](contracts/external-api.md#post-apiv1tagsmerge)) |
 | Confirm, reject, delete | One batch operation, no single-tag routes; a tag of the wrong kind is returned as not applicable ([R-3](research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch)) |
 | Name conflicts | `409 conflict` with the conflicting tag's `tagId` and `tagName`; a synonym that is another tag's original name merges only with `mergeTagId` ([R-4](research.md#r-4-name-conflicts-answer-409-conflict-with-the-conflicting-tags-tagid-and-tagname)) |
 | Tool results | Every operation returns a JSON body ([R-5](research.md#r-5-every-operation-returns-a-json-body-so-every-tool-has-a-result)) |
 | Parity with the screen | The handlers call the same `TagStore` operations through the same interface; no new write path ([R-6](research.md#r-6-the-external-handlers-call-the-same-tags-methods-as-the-screen-with-no-new-write-path)) |
-| MCP | Six new tools and a changed `list_tags`, 14 tools in all ([§8](contracts/external-api.md#8-mcp-tools)) |
+| MCP | Six new tools and a changed `list_tags`, 14 tools in all ([contracts/external-api.md, MCP tools](contracts/external-api.md#mcp-tools)) |
 
 Not exposed: `POST /api/tags/impact` (the counts the screen's confirmation
 dialog shows before a bulk action; a tool call has no dialog to show them in,
@@ -38,7 +38,7 @@ undo, and the tag admin screen.
 | --- | --- |
 | Boundaries, dependency direction, the authentication boundary, store roles | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
 | The external API and MCP: contract, compatibility policy, error shape, body limit, tool glue | [api/external-v1.yaml](../../api/external-v1.yaml), [specs/026-external-api/contracts/external-api.md](../026-external-api/contracts/external-api.md), [specs/026-external-api/contracts/mcp.md](../026-external-api/contracts/mcp.md), [specs/026-external-api/research.md](../026-external-api/research.md) (R-3 to R-5, R-7, R-8), [internal/httpapi/external.go](../../internal/httpapi/external.go), [internal/httpapi/external_video_tags.go](../../internal/httpapi/external_video_tags.go), [internal/httpapi/mcp.go](../../internal/httpapi/mcp.go), [docs/how-to/external-api.md](../../docs/how-to/external-api.md) |
-| Tag operations the screen runs: list query, merge, rename, synonyms, batch, rejected names | [specs/014-video-tags/contracts/tags-api.md §3](../014-video-tags/contracts/tags-api.md#3-tag-management), [specs/031-tentative-tags/contracts/screen-api.md](../031-tentative-tags/contracts/screen-api.md), [specs/036-tag-admin-scale/contracts/screen-api.md](../036-tag-admin-scale/contracts/screen-api.md), [internal/httpapi/tags.go](../../internal/httpapi/tags.go), [internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags`), [internal/store/tags.go](../../internal/store/tags.go), [tag_listing.go](../../internal/store/tag_listing.go), [tag_synonyms.go](../../internal/store/tag_synonyms.go), [tag_batch.go](../../internal/store/tag_batch.go), [tentative_tags.go](../../internal/store/tentative_tags.go) |
+| Tag operations the screen runs: list query, merge, rename, synonyms, batch, rejected names | [specs/014-video-tags/contracts/tags-api.md, Tag management](../014-video-tags/contracts/tags-api.md#tag-management), [specs/031-tentative-tags/contracts/screen-api.md](../031-tentative-tags/contracts/screen-api.md), [specs/036-tag-admin-scale/contracts/screen-api.md](../036-tag-admin-scale/contracts/screen-api.md), [internal/httpapi/tags.go](../../internal/httpapi/tags.go), [internal/httpapi/router.go](../../internal/httpapi/router.go) (`Tags`), [internal/store/tags.go](../../internal/store/tags.go), [tag_listing.go](../../internal/store/tag_listing.go), [tag_synonyms.go](../../internal/store/tag_synonyms.go), [tag_batch.go](../../internal/store/tag_batch.go), [tentative_tags.go](../../internal/store/tentative_tags.go) |
 | Domain values the operations use | [internal/domain/tag.go](../../internal/domain/tag.go), [tag_list.go](../../internal/domain/tag_list.go), [tag_batch.go](../../internal/domain/tag_batch.go), [rejected_tag_name.go](../../internal/domain/rejected_tag_name.go) |
 | Concurrent edits from two surfaces | [specs/031-tentative-tags/research.md R-6](../031-tentative-tags/research.md#r-6-rejection-and-a-tentative-attach-of-the-same-name-rely-on-sqlite-write-serialization) |
 | Generation and check entry points | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task generate`) |
@@ -129,10 +129,10 @@ flowchart LR
 **Scope**: `Tag.createdAt`, the `TagList` fields and `TagSort` in
 `api/external-v1.yaml`; the six parameters of `GET /api/v1/tags` and their
 `400` answers; the `list_tags` tool input with `limit` defaulting to 100
-([contracts/external-api.md §0, §1 and §8](contracts/external-api.md#0-schema-changes),
+([contracts/external-api.md, Schema changes, `GET /api/v1/tags` and MCP tools](contracts/external-api.md#schema-changes),
 [research.md R-1](research.md#r-1-get-apiv1tags-takes-the-screens-list-parameters-and-only-the-mcp-tool-pages-by-default));
 the list part of the how-to section and the `list_tags` row in the MCP tables
-([§9](contracts/external-api.md#9-docshow-toexternal-apimd)).
+([contracts/external-api.md, `docs/how-to/external-api.md`](contracts/external-api.md#docshow-toexternal-apimd)).
 
 **Dependencies**: None
 
@@ -153,7 +153,7 @@ last with `invalid_cursor` (acceptance criterion 1).
 `Error.tagId` and `tagName`; the reasons `tag_not_found`, `tag_name_taken`,
 `tag_merge_required` and `merge_same_tag`; `TagStore.RemoveSynonym` returning
 the tag; the tools `merge_tags`, `rename_tag` and `update_tag_synonyms`
-([contracts/external-api.md §2 to §4 and §8](contracts/external-api.md#2-post-apiv1tagsmerge),
+([contracts/external-api.md, `POST /api/v1/tags/merge`, `POST /api/v1/tags/rename`, `POST /api/v1/tags/synonyms` and MCP tools](contracts/external-api.md#post-apiv1tagsmerge),
 [research.md R-2, R-4, R-5](research.md#r-2-tag-operations-are-literal-post-routes-that-name-the-tag-in-the-body));
 their part of the how-to and the MCP tables.
 
@@ -181,11 +181,11 @@ fixture gets an identical `GET /api/tags` body (acceptance criterion 5).
 /api/v1/tags/rejected-names`; `TagStore.ForgetRejectedTagName` reporting
 `removed`; the tools `batch_tags`, `list_rejected_tag_names` and
 `forget_rejected_tag_name`
-([contracts/external-api.md §5 to §8](contracts/external-api.md#5-post-apiv1tagsbatch),
+([contracts/external-api.md, `POST /api/v1/tags/batch`, `GET /api/v1/tags/rejected-names`, `DELETE /api/v1/tags/rejected-names?name=…` and MCP tools](contracts/external-api.md#post-apiv1tagsbatch),
 [research.md R-3, R-5](research.md#r-3-confirm-reject-and-delete-go-only-through-post-apiv1tagsbatch));
 the rest of the how-to section, the agent example, the MCP tables, and the
 removal of the sentence that confirming and rejecting are screen-only
-([§9](contracts/external-api.md#9-docshow-toexternal-apimd)).
+([contracts/external-api.md, `docs/how-to/external-api.md`](contracts/external-api.md#docshow-toexternal-apimd)).
 
 **Dependencies**: Merge, rename and edit synonyms of tags in the external API and MCP
 
@@ -200,5 +200,5 @@ criterion 4); `list_rejected_tag_names` then lists the rejected name, and
 tentative tag puts it in `notApplicableIds`. `forget_rejected_tag_name` returns
 `removed: true` once and `removed: false` the second time, and the next
 tentative attach creates the tag again. The MCP tool list has 14 tools with the
-hints of §8. `task check-docs` passes with the how-to and the 026 tool table
+hints of the contract's MCP tools section. `task check-docs` passes with the how-to and the 026 tool table
 updated.

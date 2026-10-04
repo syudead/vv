@@ -5,7 +5,7 @@ rules for it. The existing tables (`videos`, `video_locations`, `jobs` and the
 rest) do not change. The new table is an index under "Rebuildable and user
 data" in [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
-## 1. Migration
+## Migration
 
 Add `internal/store/migrations/00013_transcode_probes.sql`.
 
@@ -13,12 +13,12 @@ Add `internal/store/migrations/00013_transcode_probes.sql`.
 -- Probe data a live transcode needs. An index: if lost, the next transcode or a re-probe fills it again (requirement 10).
 create table video_transcode_probes (
     video_id   integer primary key references videos (id) on delete cascade,
-    -- domain.TranscodeProbeVersion. A different value reads as "absent" (§3).
+    -- domain.TranscodeProbeVersion. A different value reads as "absent" (see "Rules").
     version    integer not null,
-    -- os.Stat size and modification time (Unix nanoseconds) of the probed file. Compared with the file opened at request time (§4).
+    -- os.Stat size and modification time (Unix nanoseconds) of the probed file. Compared with the file opened at request time (see "When the value is written and read").
     size_bytes integer not null,
     mtime_ns   integer not null,
-    -- JSON of domain.TranscodeProbe (§2).
+    -- JSON of domain.TranscodeProbe (see "Stored value: `domain.TranscodeProbe`").
     probe      text    not null,
     updated_at integer not null
 ) without rowid;
@@ -28,7 +28,7 @@ create table video_transcode_probes (
 deleted. The same happens when a video's content changes and its row is
 recreated; the new row is filled through the path of requirement 10.
 
-## 2. Stored value: `domain.TranscodeProbe`
+## Stored value: `domain.TranscodeProbe`
 
 A value type in `internal/domain`. It travels on `domain.Probe` as
 `Transcode *TranscodeProbe`, and the ingest probe (`app.Ingest.Probe`) passes it
@@ -50,7 +50,7 @@ The fields are the same as today's `transcodeMetadata`
 moves to `internal/domain`. JSON field names are the Go field names. Adding a
 field or changing a field's meaning bumps `domain.TranscodeProbeVersion`.
 
-## 3. Rules
+## Rules
 
 `domain.TranscodeProbeUsable` is a pure function. The stored value is used only
 when all of the following hold:
@@ -67,14 +67,14 @@ when all of the following hold:
 Otherwise the value is treated as absent: ffprobe runs at request time and its
 result replaces the row (requirements 9 and 10).
 
-## 4. When the value is written and read
+## When the value is written and read
 
 | When | Operation | Identity |
 | --- | --- | --- |
 | Ingest probe job (`ApplyProbeForJob`) and `ApplyProbe` | Upsert in the same transaction as the `videos` update | The `os.Stat` that `media.Probe` takes right before ffprobe |
 | Re-probe (`POST /api/videos/{id}/probe`) | Same as above (through a job) | Same as above |
 | A live transcode runs ffprobe on the spot (`SaveTranscodeProbe`) | One upsert statement | `Stat` of the file the transcode opened |
-| A live transcode starts (`LibraryStore.TranscodeProbe`) | Read one row | Compared as in §3 |
+| A live transcode starts (`LibraryStore.TranscodeProbe`) | Read one row | Compared as in [Rules](#rules) |
 
 - The upsert is one statement (`insert … on conflict (video_id) do update`).
   When ingest and a transcode write at the same time, no corrupt value remains

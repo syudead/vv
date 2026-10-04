@@ -7,7 +7,7 @@ Sources: the visual rules, the shell and the list density follow
 and `@theme` in [`web/src/index.css`](../../web/src/index.css). The folder screen
 layout follows [011's ui-design.md](../011-folder-browser/ui-design.md). The URL
 shape and history are fixed in [contracts/list-url.md](contracts/list-url.md) and
-the query syntax in [contracts/list-api.md §1](contracts/list-api.md#1-query-syntax);
+the query syntax in [contracts/list-api.md, Query syntax](contracts/list-api.md#query-syntax);
 this document does not decide them again. It defines only what the toolbar, the
 syntax help, the count, the no-match state and folder-screen search **add to or
 change in** the existing screens. No new colour, radius or shadow token is added.
@@ -111,7 +111,7 @@ The current filter popover (watch state as 2×2 radios, and `再生できるも�
 stays.
 
 - The button at the bottom changes from `絞り込みを解除` to **`条件を解除`**. As in
-  [list-url.md §2](contracts/list-url.md#2-meaning-on-the-folder-screen), it
+  [list-url.md, Meaning on the folder screen](contracts/list-url.md#meaning-on-the-folder-screen), it
   removes the query, watch state and playability. It is shown when any of the
   three is active (today only when a filter is active). Pressing it closes the
   popover and returns focus to the filter button.
@@ -147,7 +147,7 @@ stays.
   3. Below a divider (the same `bg-border` line as `MenuSeparator`), two lines in
      `text-xs text-fg-muted`:
      `全角と半角、大文字と小文字、ひらがなとカタカナは区別しません。` and
-     `語は先頭から 16 個まで使います。` ([list-api.md §1, item 7](contracts/list-api.md#1-query-syntax)).
+     `語は先頭から 16 個まで使います。` ([list-api.md, Query syntax, item 7](contracts/list-api.md#query-syntax)).
 - Pressing an example does not put it into the search field. Doing so was
   rejected because a single press would accidentally replace the current query.
 - Opening keeps focus on the help button (`onOpenAutoFocus` is prevented; the
@@ -260,7 +260,7 @@ filtered.
   filter, sort and direction buttons are then **disabled** (`disabled`, the
   current components' `opacity-50`), and the filter count is not shown, because
   `watch` and `playable` have no effect even if they stay in the URL
-  ([list-url.md §2](contracts/list-url.md#2-meaning-on-the-folder-screen)).
+  ([list-url.md, Meaning on the folder screen](contracts/list-url.md#meaning-on-the-folder-screen)).
   - Hiding them was rejected: if the buttons appeared the moment a query was
     typed, the search field in the centred toolbar would shift sideways while
     typing.

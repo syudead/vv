@@ -45,17 +45,17 @@ skill; follow them even when reading something yourself looks quicker.
 
 1. **GitHub is the state.** At the start of every iteration, re-derive the next
    action from the parent Issue, its sub-issues and the feature branch's PRs
-   ([references/loop.md](references/loop.md) §1). Never rely on remembering
+   ([references/loop.md, Derive the state](references/loop.md#derive-the-state)). Never rely on remembering
    what happened earlier in the conversation, so compaction or a restarted
    session loses nothing. Do not write a state file, ledger, or tracking
    comment.
 2. **Read summaries, not material.** Request only the fields
-   [references/loop.md](references/loop.md) §1 lists (`fields`,
+   [references/loop.md, Derive the state](references/loop.md#derive-the-state) lists (`fields`,
    `minimal_output`, `perPage`). Do not open diffs, CI job logs, review
    comment bodies, child Issue bodies, or artifact files. When a decision
    needs one of those, it is a worker's job. The one exception is a child
    Issue body's first line, `Depends on: …`, which decides what runs in
-   parallel ([references/loop.md](references/loop.md) §2); keep the numbers
+   parallel ([references/loop.md, What autopilot changes in the selection](references/loop.md#what-autopilot-changes-in-the-selection)); keep the numbers
    and nothing else from it.
 3. **Brief with pointers, not content.** A worker brief names the Issue, PR,
    branch, base and feature directory, and the worker reads them itself. Do not
@@ -123,7 +123,7 @@ report to the maintainer when:
   or to an approved artifact
 - a review finding can only be fixed by changing an approved artifact
 - an integration fix or refresh reaches a limit in
-  [references/loop.md](references/loop.md) §4
+  [references/loop.md, Drive a feature PR to merge](references/loop.md#drive-a-feature-pr-to-merge)
 - a required GitHub capability is missing, or the stage selection would stop
   and ask
 

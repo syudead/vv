@@ -248,7 +248,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
    * かもしれないので、`load` で打ち切って取り直す。
    */
   const loadUnlessLoading = useCallback(() => {
-    const loading = inFlight.current !== null || foldersInFlight.current !== null;
+    // 打ち切った取得は応答を捨てるので、途中の取得に数えない（effect の後始末のすぐあとに
+    // もう一度走る StrictMode や、owner の切り替えで取り直しを落とさない）。
+    const pending = (controller: AbortController | null) =>
+      controller !== null && !controller.signal.aborted;
+    const loading = pending(inFlight.current) || pending(foldersInFlight.current);
     if (loading && Date.now() - loadStartedAt.current < dedupeLoadMs) return;
     load();
   }, [load]);

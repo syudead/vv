@@ -6,7 +6,7 @@ Source of truth: [api/openapi.yaml](../../../api/openapi.yaml). This file lists
 only the added fields and values. `task generate` regenerates
 `internal/httpapi/gen/` and `web/src/api/gen/`.
 
-## 0. Fields added to `Video`
+## Fields added to `Video`
 
 ```yaml
 Video:
@@ -17,7 +17,7 @@ Video:
       format: date-time
       description: |
         When the video's information (display name, tags, visibility, thumbnail) was last
-        edited in vv. Equal to addedAt if never edited (specs/033-video-dates/data-model.md §3)
+        edited in vv. Equal to addedAt if never edited (specs/033-video-dates/data-model.md "Edit time rules")
     fileCreatedAt:
       type: string
       format: date-time
@@ -34,7 +34,7 @@ Video:
   The list of omitted fields in `guest-api.md` does not change.
 - `LibraryGroup` (group cards) does not get them (out of scope).
 
-## 1. Values added to `VideoSort`
+## Values added to `VideoSort`
 
 ```yaml
 VideoSort:
@@ -50,7 +50,7 @@ Accepted in `sort` on `GET /api/videos`, `GET /api/folders/{rootId}/videos` and
 values. `modifiedAsc` and `modifiedDesc` keep their names and order
 (requirement 7).
 
-## 2. Unchanged routes
+## Unchanged routes
 
 No route, error shape or event is added. The responses of tag attach/detach
 (`POST /api/video-tags`) and visibility toggling (`PUT /api/video-visibility`)
@@ -58,7 +58,7 @@ stay as they are. The video page reloads with `GET /api/videos/{id}` after eithe
 succeeds
 ([R-8](../research.md#r-8-the-video-page-reloads-the-video-after-tag-and-visibility-changes-and-no-new-domain-event-is-added)).
 
-## 3. `web/src/api` changes
+## `web/src/api` changes
 
 - Add `createdAsc` and `createdDesc` to `videoSorts` (`isVideoSort` then accepts
   them).

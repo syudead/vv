@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/playback-quality.md
-sourceHash: 7b91d40efad64d8aa57df18c3fd2033007e50b735d69479855a003cd59781ac7
+sourceHash: 9b36920a7b94185a69f29cc965e60a0dd90d140f21485e1c69af862c87ce346e
 ---
 
 # 再生画質 {#playback-quality}
@@ -59,7 +59,7 @@ Go のテストは画面全体のノイズを `480p` で変換し、短辺が 48
 
 ## API {#api}
 
-変換ルートは省略可能な `quality` (`1080p`、`720p`、`480p`、`360p`) を受け取り、サーバーは各リクエストだけから画質を決める ([契約 §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-quality-on-get-apivideosidtranscodemp4))。
+変換ルートは省略可能な `quality` (`1080p`、`720p`、`480p`、`360p`) を受け取り、サーバーは各リクエストだけから画質を決める ([契約、`GET /api/videos/{id}/transcode.mp4` の `quality`](../../specs/027-playback-quality/contracts/transcode-quality-api.md#quality-on-get-apivideosidtranscodemp4))。
 
 視聴者は再生中に画質を切り替える。サーバー側の記憶や画質ごとのルートでは、シークや再開のリクエストごとにどの画質が対応するかを追跡しなければならない。
 

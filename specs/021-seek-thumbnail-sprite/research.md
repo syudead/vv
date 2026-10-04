@@ -204,7 +204,7 @@ size, so scaling fractions never reveal the neighbouring frame
 
 **Rationale**: Requirement 5 and acceptance criterion 4 say "no additional
 requests for the same video's sheets", so the browser's HTTP cache cannot be
-relied on. Today's response is `no-cache` (guest-api.md §5), and setting the
+relied on. Today's response is `no-cache` (guest-api.md, [Cache of generated files](../016-single-account-auth/contracts/guest-api.md#cache-of-generated-files)), and setting the
 same URL on `img.src` again triggers a revalidation request each time. With an
 object URL, one request is enough.
 

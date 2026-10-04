@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
@@ -246,6 +246,27 @@ describe("ScanProvider", () => {
     // つなぎ直したときは取り直す。
     await emitServerEvent("open");
     await waitFor(() => expect(currentCalls).toBe(2));
+  });
+
+  it("StrictMode で effect の後始末が取得を打ち切っても、続く実行で取り直す", async () => {
+    // 本物の fetch と同じく、打ち切られた要求は応答を返さずに失敗する。
+    fetchMock.mockImplementation(async (input, init) => {
+      await Promise.resolve();
+      if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+      if (String(input) === "/api/media-folders") return json([{}]);
+      return json(scan(3, "done"));
+    });
+    render(
+      <StrictMode>
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>
+      </StrictMode>,
+    );
+    expect(await screen.findByText("状態: 3")).toBeDefined();
+    expect(screen.getByText("開始可否: 可")).toBeDefined();
   });
 
   it("返らないまま残った取得は、少し経ってからの取り直しで打ち切って取り直す", async () => {

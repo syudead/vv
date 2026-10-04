@@ -5,7 +5,7 @@ types added and the request field that changes. The live transcode itself
 (`transcodeVideo`) and the `transcode-start` response shape do not change. Errors
 follow [specs/023-english-i18n/contracts/error-api.md](../../023-english-i18n/contracts/error-api.md).
 
-## 1. Types
+## Types
 
 ```yaml
 VideoEncoderChoice:        # The value the owner picks (parent Issue requirement 1)
@@ -49,7 +49,7 @@ UpdateTranscodingSettingsRequest:
 When `auto` finds nothing available and uses software, that is not a fallback, so
 `fallbackReason` is absent.
 
-## 2. `GET /api/settings/transcoding`
+## `GET /api/settings/transcoding`
 
 `operationId: getTranscodingSettings`. `security` is the default (owner only; not
 added to `accessRoutes`).
@@ -60,7 +60,7 @@ added to `accessRoutes`).
 | 401 | `unauthenticated` | Boundary handling; a guest sees neither the encoder nor the list (requirement 13) |
 | 403 | | Same |
 
-## 3. `PUT /api/settings/transcoding`
+## `PUT /api/settings/transcoding`
 
 `operationId: updateTranscodingSettings`. Owner only. Requires
 `Content-Type: application/json` (added to `requiresJSONBody`).
@@ -77,7 +77,7 @@ value applies from the next live transcode request that starts (requirement 4).
 | 409 | `conflict`, reason `encoder_unavailable` | A hardware encoder whose `state` is not `available` was chosen (including while checking). `software` and `auto` are always accepted. The stored value does not change |
 | 500 | `internal` | Saving failed. The screen reverts the selection and shows the reason inside the section (parent Issue `UI品質`) |
 
-## 4. Effect on live transcode requests
+## Effect on live transcode requests
 
 `transcodeVideo` puts the encoder that corresponds to
 `TranscodingSettings.effectiveEncoder` into

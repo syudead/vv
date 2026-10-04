@@ -12,7 +12,7 @@
 
 Source of truth: [link to the schema file and the operation ids].
 
-## 1. `[METHOD /path]`
+## `[METHOD /path]`
 
 [What it does, in one sentence.]
 
@@ -34,7 +34,7 @@ Source of truth: [link to the schema file and the operation ids].
 | --- | --- | --- |
 | | | |
 
-## 2. Client use
+## Client use
 
 [How the caller uses the interface, when that is not obvious from the
 endpoint. Delete otherwise.]

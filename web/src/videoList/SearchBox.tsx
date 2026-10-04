@@ -133,7 +133,10 @@ export default function SearchBox({
   }, [query, setInput]);
 
   useEffect(() => {
-    const next = normalizeQuery(input);
+    // `input` ではなく控えを読む。URL 側の変更に追従した描画では、上の effect が控えを
+    // 新しい語にしたあとも `input` はまだ前の語なので、それで確定し直すと消した検索語が
+    // 戻る（`onCommit` が描画ごとに変わると、この effect も同じ描画で走り直す）。
+    const next = normalizeQuery(latest.current);
     if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), debounceMs);
     return () => clearTimeout(timer);
