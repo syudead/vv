@@ -204,7 +204,7 @@ The components share three behaviours, so a screen never restyles them:
 
 | Behaviour | How |
 | --- | --- |
-| Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` is dropped |
+| Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
 | Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
 | Density | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
 
@@ -226,17 +226,63 @@ file name never differs from an old one by case alone. The old components are
 not registry items; new code imports from `web/src/ui/shadcn`.
 
 The showcase (`/design-system`) lays each component out by variant and state:
-normal, hover, keyboard focus, pressed, selected and disabled. Hover and
-pressed are drawn without a pointer by the `data-demo-state` attribute, which
-`web/src/index.css` adds to Tailwind's `hover` and `active` variants; screens
-never set it.
+normal, hover, keyboard focus, pressed, selected and disabled. The states are
+drawn without a pointer by the `data-demo-state` attribute on an element
+around the component: `web/src/index.css` adds it to Tailwind's `hover`,
+`focus`, `focus-visible` and `active` variants, and draws the focus ring on
+the element's first child. Screens never set it.
 
 | Rejected | Why |
 | --- | --- |
 | Keeping vv's file names (`Button.tsx`) for the new components | `shadcn add` writes upstream's names, so every later update would be renamed by hand |
 | Moving the old components aside and switching the library screen to the new ones in this tier | The maintainer keeps every existing screen unchanged until its own migration |
 | Restyling the components to look like the old ones | The components are for new screens; the screen migrations replace the old look |
-| A per-component focus ring, as upstream | Each component would carry its own copy, and the arbitrary `ring-[3px]` fails the checks |
+| A per-component focus ring, as upstream | Each component would carry its own copy that differs from the shared outline, and the arbitrary `ring-[3px]` fails the checks |
+
+### Overlays and feedback, and vv components
+
+These are shadcn/ui components on the Radix base, taken with their upstream
+structure and variants and dressed only through the foundations' tokens; vv's
+own components follow the same shape. Each is a `registry:ui` item whose
+`docs` names its section in
+[components.md](../../web/registry/rules/components.md), which says what it is
+for, what it combines with and when not to use it. They are new components for
+new screens: existing screens keep their current components until the
+maintainer approves this tier on the showcase and each screen migrates.
+
+| Component | Will replace | Notes |
+| --- | --- | --- |
+| `Dialog`, `AlertDialog` | `ModalFrame` | `AlertDialog` confirms what cannot be undone |
+| `Popover`, `DropdownMenu`, `Tooltip`, `Tabs` | `Popover`, `Menu`, `Tooltip`, `Tabs` | Radix positions the layers |
+| `Sonner` | `Toast` | The app switches to it in one change for every screen |
+| `Badge` | `Chip`, tag chips, counts | Adds `soft`, `warning`, `success` to the upstream variants |
+| `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
+| `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
+| `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
+| `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
+| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, `videoList/FavoriteToggle` | vv components |
+
+The shadcn components live in `web/src/ui/shadcn` under upstream's
+kebab-case names (`dropdown-menu.tsx`), beside the action and input
+components. As upstream, `Dialog` and `Sheet` close with a `ghost`, `icon-sm`
+`Button`, `AlertDialogAction` and `AlertDialogCancel` are `Button`s (`sm` by
+default), and `SidebarTrigger` is a `Button` and `SidebarInput` an `Input`.
+The vv components keep PascalCase names in `web/src/ui`; the `page` form of
+`FavoriteToggle` is a `Toggle` with a `Tooltip`.
+
+Three upstream class patterns read values that Radix computes at runtime or
+that no utility names: the floating layers' transform origin and available
+height, and the `Alert` icon column. They are `special` entries in
+`web/design-exceptions.js`.
+
+| Rejected | Why |
+| --- | --- |
+| Restyling the components to look like the ones they replace | The components are for building new screens, not for repeating the old look |
+| Moving the old components aside so the new ones take their names now | Every screen's imports would change before the tier is approved |
+| Separate `sidebar-*` colour tokens, as upstream | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
+
+The decisions behind the components are in
+[038 UI design, Components](../../specs/038-design-system/ui-design.md#components).
 
 ## Page patterns
 

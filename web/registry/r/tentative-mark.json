@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "tentative-mark",
   "title": "TentativeMark",
-  "description": "The vv TentativeMark component in web/src/ui.",
+  "description": "vv component: the dashed circle after a tentative tag's name.",
   "files": [
     {
       "path": "src/ui/TentativeMark.tsx",
@@ -10,6 +10,6 @@
       "type": "registry:ui"
     }
   ],
-  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "docs": "Usage rules: web/registry/rules/components.md#tentativemark (item vv-rules).",
   "type": "registry:ui"
 }

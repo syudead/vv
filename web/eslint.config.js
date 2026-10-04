@@ -72,8 +72,9 @@ const controlRestrictedSyntax = [
 
 // 変種（任意の変種 `data-[state=open]:` を含む）を先読みと後方参照で最後の `:` まで
 // 取り切り、残ったユーティリティに `[` か `(` があれば、任意の値・任意のプロパティ・
-// `(--var)` 省略形とみなす。
-const variants = String.raw`(?=((?:(?:[^:\[\]]|\[[^\]]*\])*:)*))\1`;
+// `(--var)` 省略形とみなす。任意の変種の中の 1 段の入れ子（shadcn/ui の
+// `[&_svg:not([class*='size-'])]:`）も変種として読む。
+const variants = String.raw`(?=((?:(?:[^:\[\]]|\[(?:[^\[\]]|\[[^\]]*\])*\])*:)*))\1`;
 const arbitraryUtility = String.raw`[^\[(]*[\[(]`;
 const arbitraryMessage =
   "Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).";

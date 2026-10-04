@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "brand-home-link",
   "title": "BrandHomeLink",
-  "description": "The vv BrandHomeLink component in web/src/ui.",
+  "description": "vv component: the VVMDM logo in the top bar, linking to the library.",
   "files": [
     {
       "path": "src/ui/BrandHomeLink.tsx",
@@ -10,6 +10,6 @@
       "type": "registry:ui"
     }
   ],
-  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "docs": "Usage rules: web/registry/rules/components.md#brandhomelink (item vv-rules).",
   "type": "registry:ui"
 }

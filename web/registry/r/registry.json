@@ -36,7 +36,7 @@
       "type": "registry:file",
       "title": "vv design-system rules",
       "description": "The usage rules of the vv design system, one file per tier.",
-      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, and components.md before choosing or composing a component.",
+      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, and components.md before choosing, composing or adding a component.",
       "files": [
         {
           "path": "registry/rules/foundations.md",
@@ -51,17 +51,73 @@
       ]
     },
     {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "description": "A message inside a section: error, warning, done or guidance, with an icon, a title and a description.",
+      "docs": "Usage rules: web/registry/rules/components.md#alert (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/alert.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "alert-dialog",
+      "type": "registry:ui",
+      "title": "AlertDialog",
+      "description": "Confirms an action that cannot be undone, with Cancel and an action named by its verb. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#alertdialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/alert-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "A small label: tag chip, count or status.",
+      "docs": "Usage rules: web/registry/rules/components.md#badge (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/badge.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
+    },
+    {
       "name": "brand-home-link",
       "type": "registry:ui",
       "title": "BrandHomeLink",
-      "description": "The vv BrandHomeLink component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "vv component: the VVMDM logo in the top bar, linking to the library.",
+      "docs": "Usage rules: web/registry/rules/components.md#brandhomelink (item vv-rules).",
       "files": [
         {
           "path": "src/ui/BrandHomeLink.tsx",
           "type": "registry:ui"
         }
       ]
+    },
+    {
+      "name": "breadcrumb",
+      "type": "registry:ui",
+      "title": "Breadcrumb",
+      "description": "The path to the current folder.",
+      "docs": "Usage rules: web/registry/rules/components.md#breadcrumb (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/breadcrumb.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
     },
     {
       "name": "button",
@@ -86,19 +142,6 @@
       "files": [
         {
           "path": "src/ui/shadcn/checkbox.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "chip",
-      "type": "registry:ui",
-      "title": "Chip",
-      "description": "The vv Chip component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
-      "files": [
-        {
-          "path": "src/ui/Chip.tsx",
           "type": "registry:ui"
         }
       ]
@@ -131,6 +174,62 @@
       "dependencies": ["cmdk"]
     },
     {
+      "name": "dialog",
+      "type": "registry:ui",
+      "title": "Dialog",
+      "description": "A modal window for a form or a long choice, with a title, a body and a footer. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/dialog.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:ui",
+      "title": "DropdownMenu",
+      "description": "A list of actions or one choice from a few, opened from a button.",
+      "docs": "Usage rules: web/registry/rules/components.md#dropdownmenu (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/dropdown-menu.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "empty",
+      "type": "registry:ui",
+      "title": "Empty",
+      "description": "The empty state of a list or section: icon, reason and the action that fills it.",
+      "docs": "Usage rules: web/registry/rules/components.md#empty (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/empty.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "favorite-toggle",
+      "type": "registry:ui",
+      "title": "FavoriteToggle",
+      "description": "vv component: the favorite heart, mark and toggle in one, for cards, rows and the video page. Uses toggle and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#favoritetoggle (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/FavoriteToggle.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -158,6 +257,19 @@
       ]
     },
     {
+      "name": "kbd",
+      "type": "registry:ui",
+      "title": "Kbd",
+      "description": "A key or search operator in text or a tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#kbd (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/kbd.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "label",
       "type": "registry:ui",
       "title": "Label",
@@ -171,43 +283,32 @@
       ]
     },
     {
-      "name": "menu",
-      "type": "registry:ui",
-      "title": "Menu",
-      "description": "The vv Menu component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
-      "files": [
-        {
-          "path": "src/ui/Menu.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "modal-frame",
-      "type": "registry:ui",
-      "title": "ModalFrame",
-      "description": "The vv ModalFrame component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
-      "files": [
-        {
-          "path": "src/ui/ModalFrame.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
       "name": "popover",
       "type": "registry:ui",
       "title": "Popover",
-      "description": "The vv Popover component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "A non-modal panel anchored to its trigger, for a few options or a short form.",
+      "docs": "Usage rules: web/registry/rules/components.md#popover (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Popover.tsx",
+          "path": "src/ui/shadcn/popover.tsx",
           "type": "registry:ui"
         }
-      ]
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "description": "How far a known amount of work has come; indeterminate without a value.",
+      "docs": "Usage rules: web/registry/rules/components.md#progress (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/progress.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
     },
     {
       "name": "radio-group",
@@ -226,8 +327,8 @@
       "name": "scrub-preview",
       "type": "registry:ui",
       "title": "ScrubPreview",
-      "description": "The vv ScrubPreview component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "vv component: the card scrub band and frame inside a VideoThumbnail.",
+      "docs": "Usage rules: web/registry/rules/components.md#scrubpreview (item vv-rules).",
       "files": [
         {
           "path": "src/ui/ScrubPreview.tsx",
@@ -249,14 +350,60 @@
       ]
     },
     {
+      "name": "separator",
+      "type": "registry:ui",
+      "title": "Separator",
+      "description": "A hairline between groups of controls or sections.",
+      "docs": "Usage rules: web/registry/rules/components.md#separator (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/separator.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "sheet",
+      "type": "registry:ui",
+      "title": "Sheet",
+      "description": "A panel from the screen's edge; in vv only the sidebar's narrow-width drawer. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#sheet (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sheet.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "sidebar",
+      "type": "registry:ui",
+      "title": "Sidebar",
+      "description": "The app's main navigation: expanded, icon rail and narrow-width drawer. Uses button, input, separator, sheet, skeleton and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#sidebar (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sidebar.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/hooks/use-mobile.ts",
+          "type": "registry:hook"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority", "lucide-react"]
+    },
+    {
       "name": "skeleton",
       "type": "registry:ui",
       "title": "Skeleton",
-      "description": "The vv Skeleton component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "The final layout's shapes while content loads.",
+      "docs": "Usage rules: web/registry/rules/components.md#skeleton (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Skeleton.tsx",
+          "path": "src/ui/shadcn/skeleton.tsx",
           "type": "registry:ui"
         }
       ]
@@ -275,6 +422,34 @@
       ]
     },
     {
+      "name": "sonner",
+      "type": "registry:ui",
+      "title": "Sonner",
+      "description": "The Toaster for short, passive notices sent with toast() from sonner.",
+      "docs": "Usage rules: web/registry/rules/components.md#sonner (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sonner.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["sonner", "lucide-react"]
+    },
+    {
+      "name": "spinner",
+      "type": "registry:ui",
+      "title": "Spinner",
+      "description": "A short wait with no measure.",
+      "docs": "Usage rules: web/registry/rules/components.md#spinner (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/spinner.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "switch",
       "type": "registry:ui",
       "title": "Switch",
@@ -291,21 +466,22 @@
       "name": "tabs",
       "type": "registry:ui",
       "title": "Tabs",
-      "description": "The vv Tabs component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "Switches between views of the same content in place.",
+      "docs": "Usage rules: web/registry/rules/components.md#tabs (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Tabs.tsx",
+          "path": "src/ui/shadcn/tabs.tsx",
           "type": "registry:ui"
         }
-      ]
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
     },
     {
       "name": "tentative-mark",
       "type": "registry:ui",
       "title": "TentativeMark",
-      "description": "The vv TentativeMark component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "vv component: the dashed circle after a tentative tag's name.",
+      "docs": "Usage rules: web/registry/rules/components.md#tentativemark (item vv-rules).",
       "files": [
         {
           "path": "src/ui/TentativeMark.tsx",
@@ -330,24 +506,11 @@
       "name": "thumbnail-backdrop",
       "type": "registry:ui",
       "title": "ThumbnailBackdrop",
-      "description": "The vv ThumbnailBackdrop component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "vv component: a blurred copy behind a portrait thumbnail.",
+      "docs": "Usage rules: web/registry/rules/components.md#thumbnailbackdrop (item vv-rules).",
       "files": [
         {
           "path": "src/ui/ThumbnailBackdrop.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "toast",
-      "type": "registry:ui",
-      "title": "Toast",
-      "description": "The vv Toast component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
-      "files": [
-        {
-          "path": "src/ui/Toast.tsx",
           "type": "registry:ui"
         }
       ]
@@ -384,11 +547,25 @@
       "name": "tooltip",
       "type": "registry:ui",
       "title": "Tooltip",
-      "description": "The vv Tooltip component in web/src/ui.",
-      "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+      "description": "Names an icon-only control or adds a short hint on hover and focus.",
+      "docs": "Usage rules: web/registry/rules/components.md#tooltip (item vv-rules).",
       "files": [
         {
-          "path": "src/ui/Tooltip.tsx",
+          "path": "src/ui/shadcn/tooltip.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "video-thumbnail",
+      "type": "registry:ui",
+      "title": "VideoThumbnail",
+      "description": "vv component: the 16:9 thumbnail frame with duration, progress edge, corner marks and a notice. Uses progress.",
+      "docs": "Usage rules: web/registry/rules/components.md#videothumbnail (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/VideoThumbnail.tsx",
           "type": "registry:ui"
         }
       ]
