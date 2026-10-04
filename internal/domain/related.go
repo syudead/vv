@@ -54,6 +54,39 @@ type RelatedVideos struct {
 	Group *VideoGroup
 }
 
+// GroupMemberWindow は、関連動画の応答に載せるグループのメンバーの本数の上限である。
+// 基準の動画を中ほどに置いた窓で、残りは画面がページ（MaxGroupMemberPage）で読む。
+// メンバーが数千本のグループでも応答がメンバーの本数に比例して膨らまないようにする
+// （issue 674）。
+const GroupMemberWindow = 100
+
+// MaxGroupMemberPage は、グループのメンバーを1回に読む本数の上限である
+// （GET /api/videos/{id}/group-members）。
+const MaxGroupMemberPage = 200
+
+// GroupWindow はグループのメンバーのうち詳細を読む範囲である。Limit が 0 なら詳細を
+// 読まない（位置と本数だけが要るとき）。Around が true なら Offset を使わず、基準の動画が
+// 中ほどに来るよう窓を置く。
+type GroupWindow struct {
+	Offset int
+	Limit  int
+	Around bool
+}
+
+// Start は本数 total のグループで、基準の動画の位置 position（1 始まり）に対する
+// 窓の先頭（0 始まり）を返す。
+func (w GroupWindow) Start(total, position int) int {
+	if w.Limit <= 0 {
+		return 0
+	}
+	start := w.Offset
+	if w.Around {
+		start = position - 1 - w.Limit/2
+		start = min(start, total-w.Limit)
+	}
+	return max(0, min(start, total))
+}
+
 // VideoGroup は動画1本が属するグループを、見る人に見せてよいメンバーだけで表したもの
 // である（specs/017-folder-groups/contracts/folder-groups-api.md §3・data-model.md §7）。
 type VideoGroup struct {
@@ -61,14 +94,23 @@ type VideoGroup struct {
 	Folder VideoFolder
 	// Name はフォルダ名。
 	Name string
-	// Members は見せてよいメンバーをグループの中の並びで持つ。基準の動画を含む。
+	// MemberIDs は見せてよいメンバーの id をグループの中の並びで持つ。基準の動画を含む。
+	MemberIDs []int64
+	// Offset は Members の先頭が MemberIDs の何番目（0 始まり）かである。
+	Offset int
+	// Members は読んだ窓（GroupWindow）のメンバーの詳細を、グループの中の並びで持つ。
 	Members []Video
+}
+
+// Total は見せてよいメンバーの本数である。
+func (g VideoGroup) Total() int {
+	return len(g.MemberIDs)
 }
 
 // Position は動画 id のグループの中の位置（1 始まり）を返す。メンバーでなければ 0。
 func (g VideoGroup) Position(id int64) int {
-	for i, member := range g.Members {
-		if member.ID == id {
+	for i, member := range g.MemberIDs {
+		if member == id {
 			return i + 1
 		}
 	}
@@ -83,10 +125,10 @@ func (g VideoGroup) Neighbors(id int64) (prev, next int64) {
 		return 0, 0
 	}
 	if position > 1 {
-		prev = g.Members[position-2].ID
+		prev = g.MemberIDs[position-2]
 	}
-	if position < len(g.Members) {
-		next = g.Members[position].ID
+	if position < len(g.MemberIDs) {
+		next = g.MemberIDs[position]
 	}
 	return prev, next
 }

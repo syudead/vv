@@ -491,9 +491,10 @@ paths:
         id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
         順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
         小さい方を先にする。
-        この動画がグループのメンバーなら、group にグループの全メンバーを載せ、nextId・prevId を
-        グループの中の並びにし、同じグループのメンバーを除いてから並べる
-        （specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+        この動画がグループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本の
+        メンバーの窓を載せ、nextId・prevId をグループの中の並びにし、同じグループのメンバーを
+        除いてから並べる（specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外の
+        メンバーは `listVideoGroupMembers` で読む。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -503,6 +504,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedVideos"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/group-members:
+    get:
+      operationId: listVideoGroupMembers
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 動画が属するグループのメンバーを、並びの範囲で返す
+      description: |
+        この動画が属するグループの見せてよいメンバーを、グループの中の並びで `offset` 本目
+        （0 始まり）から最大 `limit` 本返す。メンバーの選び方と形は関連動画の group と同じで、
+        ゲストには公開のメンバーだけで数える
+        （specs/017-folder-groups/contracts/folder-groups-api.md §3）。グループのメンバーでない、
+        または見る人に見せるグループが無ければ `404`。`offset` が本数以上なら items は空。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: offset
+          in: query
+          description: 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: limit
+          in: query
+          description: 返す本数の上限
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: グループのメンバーの範囲
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupMemberPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3779,7 +3822,7 @@ components:
 
     RelatedGroup:
       type: object
-      required: [folder, name, items]
+      required: [folder, name, items, offset, total]
       additionalProperties: false
       description: |
         基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
@@ -3792,9 +3835,40 @@ components:
           description: フォルダ名
         items:
           type: array
-          description: 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い
+          maxItems: 100
+          description: |
+            基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
+            含む）。グループの端では窓を内側へ寄せる。窓の外は `listVideoGroupMembers` で読む
           items:
             $ref: "#/components/schemas/Video"
+        offset:
+          type: integer
+          minimum: 0
+          description: items の先頭のメンバーの、グループの中の並びの位置（0 始まり）
+        total:
+          type: integer
+          minimum: 1
+          description: 見せてよいメンバーの本数
+
+    GroupMemberPage:
+      type: object
+      required: [items, offset, total]
+      additionalProperties: false
+      description: グループのメンバーの、グループの中の並びで連続する範囲
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/Video"
+        offset:
+          type: integer
+          minimum: 0
+          description: items の先頭のメンバーの、グループの中の並びの位置（0 始まり）
+        total:
+          type: integer
+          minimum: 1
+          description: 見せてよいメンバーの本数
 
     RelatedVideos:
       type: object

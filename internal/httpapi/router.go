@@ -176,8 +176,8 @@ type VideoCatalog interface {
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error)
 	// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す。
-	// 見る人に見せるグループが無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video) (domain.VideoGroup, bool, error)
+	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error

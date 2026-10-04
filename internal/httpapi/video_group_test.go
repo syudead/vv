@@ -269,3 +269,47 @@ func TestVideoGroupLargerThanRelatedLimit(t *testing.T) {
 		t.Errorf("group = %+v", video.Group)
 	}
 }
+
+// GET /api/videos/{id}/group-members は、グループの中の並びの範囲を関連動画の group と
+// 同じ形で返す。offset と total はグループ全体で数え、ゲストには公開のメンバーだけで数える。
+// メンバーでなければ 404、範囲の誤りは 400（issue 674）。
+func TestListVideoGroupMembers(t *testing.T) {
+	f := newVideoGroupFixture(t)
+	members := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
+
+	related, _ := getJSON[gen.RelatedVideos](t, f, relatedPath(f.ids["ep2"]), f.owner)
+	if related.Group == nil || related.Group.Offset != 0 || related.Group.Total != 3 {
+		t.Fatalf("関連動画の group = %+v, want offset 0・total 3", related.Group)
+	}
+
+	page, _ := getJSON[gen.GroupMemberPage](t, f, videoPath(f.ids["ep2"])+"/group-members?offset=1&limit=5", f.owner)
+	if page.Offset != 1 || page.Total != 3 || !slices.Equal(videoIDs(page.Items), members[1:]) {
+		t.Errorf("page = offset %d・total %d・%v, want 1・3・%v", page.Offset, page.Total, videoIDs(page.Items), members[1:])
+	}
+	if page.Items[0].Progress == nil || len(page.Items[0].Tags) == 0 {
+		t.Errorf("items に再生位置かタグが無い: %+v", page.Items[0])
+	}
+	past, _ := getJSON[gen.GroupMemberPage](t, f, videoPath(f.ids["ep2"])+"/group-members?offset=9", f.owner)
+	if past.Offset != 3 || past.Total != 3 || len(past.Items) != 0 {
+		t.Errorf("本数を超える offset = %+v, want 空の items", past)
+	}
+
+	guest, _ := getJSON[gen.GroupMemberPage](t, f, videoPath(f.ids["ep1"])+"/group-members")
+	if guest.Total != 2 || !slices.Equal(videoIDs(guest.Items), members[:2]) {
+		t.Errorf("ゲストの page = total %d・%v, want 2・%v", guest.Total, videoIDs(guest.Items), members[:2])
+	}
+	for _, item := range guest.Items {
+		if item.Progress != nil || len(item.Tags) != 0 || item.Location != nil {
+			t.Errorf("ゲストの items に所有者のデータがある: %+v", item)
+		}
+	}
+
+	if rec := f.env.get(videoPath(f.ids["solo"])+"/group-members", f.owner); rec.Code != http.StatusNotFound {
+		t.Errorf("メンバーでない動画: status = %d, want 404", rec.Code)
+	}
+	for _, query := range []string{"?offset=-1", "?limit=0", "?limit=201"} {
+		if rec := f.env.get(videoPath(f.ids["ep1"])+"/group-members"+query, f.owner); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+}
