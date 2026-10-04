@@ -132,11 +132,12 @@ jobs:
         if: needs.changes.outputs.code == 'false'
         run: task check-docs
 
-  # e2e はコード変更を含む main への push（PR のマージ）でだけ回す。
+  # e2e はコード変更を含む PR と main への push で回す。PR で回さないと、壊れた変更が
+  # マージされてから main で初めて分かる。
   e2e:
     name: Browser E2E
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

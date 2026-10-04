@@ -320,7 +320,9 @@ for (const { width, height } of [
     expect(toastBox).not.toBeNull();
     expect(summaryBox).not.toBeNull();
     expect(indicatorBox).not.toBeNull();
-    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(52);
+    // 通知は上の帯の中（右下の表示と吹き出しより上）に出る。
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(summaryBox!.y);
     // 閉じる × は見出しの帯に 1 つだけあり、見えていることも確かめる。
     const closeButtons = page.getByRole("button", { name: "Close" });
     const closeBoxes = [];
