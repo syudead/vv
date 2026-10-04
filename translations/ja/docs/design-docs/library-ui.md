@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d20bddc66ce7ee8b9c541782299bd2a982f21837c4ce62e7f8bbbb15dbf5c4aa
+sourceHash: 50cf0886b43d2fa0105231202db9b51787924658afcfadb82251269faf1e19ba
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -251,15 +251,18 @@ flowchart LR
 
 動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。形と文言は [012 UI 設計](../../specs/012-video-detail-ia/ui-design.md) にある。
 
-ページはシェルなしで一覧の上に重なり、× か Esc で閉じる。図はその部品を示す。
+ページはシェルなしで一覧の上に重なり、× か Esc で閉じる。`DetailPage` の雛形（[デザインシステム、Page patterns](design-system.md#page-patterns)）の上に組み立て、ヘッダーの帯の下に、視聴のための主領域と情報の脇領域を置く。図はその部品を示す。
 
 ```mermaid
 flowchart LR
-  band[ヘッダーの帯] --> player[プレーヤー]
+  band[ヘッダーの帯] --> main[主領域]
+  band --> aside[情報の脇領域]
+  main --> player[プレーヤー]
   player --> title[タイトルとタグ]
   title --> vis[公開範囲の切り替え]
-  vis --> info[ファイル情報]
-  player --> related[関連動画]
+  aside --> info[ファイルの詳細]
+  info --> next[次の動画]
+  next --> related[関連動画]
 ```
 
 | 部品 | ルール |
@@ -267,23 +270,24 @@ flowchart LR
 | ヘッダーの帯 | ロゴ（ホーム）、フォルダへのパンくず、唯一の × |
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
 | タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
-| 公開範囲の切り替え | `role="switch"`。タイトルのまとまりの下、ファイル情報の上 |
+| 公開範囲の切り替え | `role="switch"`。タイトルのまとまりの下で、主領域の最後の部品 |
 | ゲスト | タグ、公開範囲の切り替え、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
-幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。`lg` 以上では関連動画が右の列になり、それ未満ではすべてが縦に積まれ、`md` 未満ではパンくずが最後の区間だけを表示する。
+幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。`lg` 以上では脇領域が右の列になり、ページはビューポートの高さを保つので、主領域と脇領域はそれぞれ独立してスクロールする。`lg` 未満では脇領域が主領域の下に移り、ページ全体が 1 つとしてスクロールする。`md` 未満ではパンくずが最後の区間だけを表示する。
 
-### 情報の行 {#information-rows}
+### ファイルの詳細 {#file-details}
 
-タイトルの下の 2 行には、線も枠もラベルもない。
+ファイル情報は脇領域の最初の `PageSection` で、題は `File details` だ。その操作は節の見出しの右に置く。
 
-| 行 | 内容 |
+| 部品 | 内容 |
 | --- | --- |
-| 1 行目 | アイコン付きの長さ、サイズ、追加日。右端に操作 |
-| 2 行目 | 解像度、コンテナ、コーデック。最も小さく、最も控えめ |
+| `FactList` | 項目と値の組。長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `Versions`、所有者にはサムネイルの位置が設定されているときに `Thumbnail` |
+| 技術情報の行 | 一覧の下に解像度、コンテナ、コーデック。最も小さく、最も控えめ |
+| 操作 | お気に入り、`Use current frame as thumbnail`、`Open file`、`Copy path`。ツールチップ付きの、アイコンだけのゴーストボタン |
 
-パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+日付は日付だけを表示し、時刻は `title` 属性と、値を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、節の中にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `IconButton` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
+所有者のお気に入りの切り替えは操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
 
 ```mermaid
 flowchart LR
@@ -293,11 +297,11 @@ flowchart LR
   put -->|エラー| line[下に 1 行の失敗表示]
 ```
 
-キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作やキャプチャの失敗と同じく情報の行のすぐ下に置き、トーストは出さない。
+キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作やキャプチャの失敗と同じく節の中の項目一覧のすぐ下に置き、トーストは出さない。
 
 ### プレーヤーの状態 {#player-states}
 
-読み込み中、取り込みの段階、読み取りの失敗、再生の失敗、動画の消失、再生の終了は、プレーヤーの上の 1 つのコンテナから一度に 1 つずつ表示され、その順序はコンテナが決める。「作成中」の行だけはプレーヤーの下に置く。`tokens.test.ts` は半透明の `bg-overlay` の上の文字を確かめられないので、レイヤーの文字は不透明な `bg-navbar` の上に置く。
+読み込み中、取り込みの段階、読み取りの失敗、再生の失敗、動画の消失、再生の終了は、プレーヤーの上の 1 つのコンテナから一度に 1 つずつ表示され、その順序はコンテナが決める。「作成中」の行だけはプレーヤーの下に置く。`tokens.test.ts` は半透明の `bg-overlay` の上の文字を確かめられないので、レイヤーの文字は不透明な浮遊レイヤーの面 `bg-popover` の上に置く。
 
 停滞の警告（[`StallWarning.tsx`](../../web/src/player/StallWarning.tsx)、`role="status"`）は、プレーヤーの左上にある別の小さなバナーだ。再生を止めずコントロールも塞がないので、一度に 1 つのコンテナには入れない。
 

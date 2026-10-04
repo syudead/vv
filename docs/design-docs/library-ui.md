@@ -395,7 +395,7 @@ File information is the first `PageSection` of the aside, titled
 | Technical line | Resolution, container, codec below the list; smallest and most subdued |
 | Actions | Favorite, `Use current frame as thumbnail`, `Open file`, `Copy path`: icon-only ghost buttons with tooltips |
 
-Dates show the date only; the time is in the title and in a popover opened by
+Dates show the date only; the time is in the `title` attribute and in a popover opened by
 pressing the value. No path appears in the section, because the breadcrumb
 already shows the location.
 
