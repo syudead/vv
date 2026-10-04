@@ -3,7 +3,8 @@
 Every visual value on a screen is a utility class generated from
 `web/src/ui/tokens.css` (registry item `vv-theme`). `task check` fails on a
 raw colour, an arbitrary value (`h-[3px]`) and a step outside these scales
-(`p-7`, `text-2xl`, `rounded-xl`, `font-bold`). The reasons are in
+(`p-7`, `text-2xl`, `rounded-xl`, `font-bold`), which the theme does not
+generate. The reasons are in
 [design-system.md, Foundations](../../../docs/design-docs/design-system.md#foundations).
 
 ## Colour roles
@@ -58,6 +59,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `card-0` to `card-3`,
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `chip-label`,
+`combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
 `detail-aside`, `issue-list`, `folder-list`. Fractions
 (`w-1/2`), `full`, `auto` and the container widths (`max-w-md`) are allowed.
 A width the scale lacks becomes a named step in `tokens.css`, not an
@@ -75,16 +77,8 @@ The library (management) is denser than the video page (viewing):
 
 ## Radius, shadow and motion
 
-| Scale  | Steps                                                                                                                                                   |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, cards, thumbnails; `rounded-lg` popovers and dialogs; `rounded-full` pills and the scrub dot |
-| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images          |
-| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer` for loading; each with `motion-reduce:animate-none`                      |
-
-## Legacy names
-
-`bg`, `surface`, `surface-hover`, `elevated`, `field`, `fg`, `fg-muted`,
-`fg-subtle`, `border-strong`, `control-border`, `link`, `danger*`,
-`hover-wash`, `active-wash`, `warning-strong`, `success-strong`, `rounded-xl`
-and `shadow-card` remain only for screens not yet migrated. Do not use them in
-new code.
+| Scale  | Steps                                                                                                                                                                  |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, cards, thumbnails; `rounded-lg` popovers and dialogs; `rounded-full` pills and the scrub dot                |
+| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images                         |
+| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer`, `animate-spin` and `animate-pulse` for loading; each with `motion-reduce:animate-none` |

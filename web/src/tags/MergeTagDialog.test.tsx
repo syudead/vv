@@ -195,7 +195,7 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(listbox.className).not.toContain("absolute");
     // 一覧の箱は高さが決まっていて、その中を縦にスクロールする。
     const box = listbox.parentElement!;
-    expect(box.className).toContain("h-60");
+    expect(box.className).toContain("h-combobox-panel");
     expect(box.className).toContain("overflow-y-auto");
     // 箱は窓の下端（ボタンの行）より前、本文の中にある。
     const footer = within(modal).getByRole("button", {

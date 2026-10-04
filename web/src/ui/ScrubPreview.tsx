@@ -309,7 +309,7 @@ export function ScrubFrame({ frame }: { frame: ScrubFrameData | null }) {
     <div
       aria-hidden="true"
       data-scrub-frame=""
-      className="pointer-events-none absolute inset-0 flex items-center justify-center [container-type:size]"
+      className="pointer-events-none absolute inset-0 flex items-center justify-center @container-size"
     >
       <div data-scrub-frame-image="" style={style} />
     </div>

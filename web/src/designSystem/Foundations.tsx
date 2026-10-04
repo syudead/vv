@@ -81,6 +81,8 @@ const namedSizes = [
   "popover",
   "popover-wide",
   "chip-label",
+  "combobox",
+  "combobox-list",
   "menu",
   "detail-aside",
 ] as const;

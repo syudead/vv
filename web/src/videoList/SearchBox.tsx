@@ -4,7 +4,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { isComposingKeyEvent } from "../ui/Combobox";
+import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Kbd } from "../ui/shadcn/kbd";

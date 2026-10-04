@@ -83,7 +83,7 @@
 }
 
 .vv-video-player .video-js .vjs-button:hover {
-  background: var(--color-hover-wash);
+  background: var(--color-accent);
 }
 
 .vv-video-player .video-js .vjs-button:focus-visible,

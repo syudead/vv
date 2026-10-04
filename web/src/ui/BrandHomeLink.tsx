@@ -18,7 +18,7 @@ export default function BrandHomeLink({ className }: { className?: string }) {
         src="/brand/vvmdm-symbol-cyan.svg"
         alt=""
         aria-hidden="true"
-        className="size-7 sm:hidden"
+        className="size-8 sm:hidden"
       />
       <img
         src="/brand/vvmdm-wordmark-cyan.svg"

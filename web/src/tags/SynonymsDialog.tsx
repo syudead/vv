@@ -4,7 +4,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import { isComposingKeyEvent, isComposingNativeKeyEvent } from "../ui/Combobox";
+import { isComposingKeyEvent, isComposingNativeKeyEvent } from "../lib/ime";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import {

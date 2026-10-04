@@ -18,6 +18,7 @@ flowchart LR
   classes --> screens[Screens in web/src]
   test[tokens.test.ts] -->|contrast| theme
   test -->|raw colour scan| screens
+  lint[ESLint] -->|class outside the theme| screens
   people[People on devices] -->|layout| screens
 ```
 
@@ -27,6 +28,13 @@ Screens set visual values only through the utility classes Tailwind generates
 from `@theme` (`bg-card`, `text-muted-foreground`, `rounded-md`), and
 `tokens.test.ts` checks that every listed text/surface pair reaches a WCAG 2
 contrast of at least 4.5.
+
+`@theme` in `tokens.css` starts by resetting Tailwind's default namespaces for
+colours, type, weights, spacing, radii, shadows and animations
+(`--color-*: initial`, `--spacing: initial` and the rest), then defines only
+the design system's steps. Tailwind therefore generates no class outside the
+scale, and ESLint's `no-unknown-classes` fails one written in a screen
+([design-system.md, Foundations](design-system.md#foundations)).
 
 CSS is the source because it leaves screens no option other than token names.
 With the values in one file, the contrast check reads only that file.
@@ -65,9 +73,10 @@ body text on surfaces, the main borders and focus.
 `prefers-color-scheme` branch and no switch.
 
 A switch doubles the sets under contrast checking, and one set would go stale
-unseen. Token names describe roles (`bg`, `surface`, `elevated`, `fg`,
-`fg-muted`, `accent`, `danger`, `warning`), not colours (`neutral-850`), so a
-later light scheme is a second set of values with no screen changes.
+unseen. Token names describe roles (`background`, `card`, `popover`,
+`foreground`, `muted-foreground`, `primary`, `destructive`, `warning`), not
+colours (`neutral-850`), so a later light scheme is a second set of values with
+no screen changes.
 
 ## No virtual scrolling
 
