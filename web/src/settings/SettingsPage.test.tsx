@@ -9,8 +9,8 @@ import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { OwnerAudience } from "../testing/audience";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import SettingsPage from "./SettingsPage";
 
 function json(body: unknown, status = 200): Response {

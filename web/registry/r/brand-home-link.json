@@ -2,14 +2,14 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "brand-home-link",
   "title": "BrandHomeLink",
-  "description": "The vv BrandHomeLink component in web/src/ui.",
+  "description": "vv component: the VVMDM logo in the top bar, linking to the library.",
   "files": [
     {
       "path": "src/ui/BrandHomeLink.tsx",
-      "content": "import { Link } from \"react-router\";\n\nimport { t } from \"../i18n\";\nimport { cn } from \"../lib/cn\";\n\n/** The link names the destination once; its two responsive images are decorative. */\nexport default function BrandHomeLink({ className }: { className?: string }) {\n  return (\n    <Link\n      to=\"/\"\n      aria-label={t.common.brandHome}\n      className={cn(\n        \"flex h-8 shrink-0 items-center rounded-sm px-1 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none\",\n        className,\n      )}\n    >\n      <img\n        src=\"/brand/vvmdm-symbol-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"size-7 sm:hidden\"\n      />\n      <img\n        src=\"/brand/vvmdm-wordmark-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"hidden h-8 w-auto sm:block\"\n      />\n    </Link>\n  );\n}\n",
+      "content": "import { Link } from \"react-router\";\n\nimport { t } from \"../i18n\";\nimport { cn } from \"../lib/cn\";\n\n/**\n * BrandHomeLink は上部バーのロゴで、ライブラリへ戻るリンクである。リンクが行き先の名前を\n * 1 度だけ持ち、幅に応じた 2 つの画像は飾りとして隠す。使い方は\n * web/registry/rules/components.md「BrandHomeLink」。\n */\nexport default function BrandHomeLink({ className }: { className?: string }) {\n  return (\n    <Link\n      to=\"/\"\n      aria-label={t.common.brandHome}\n      className={cn(\n        \"flex h-8 shrink-0 items-center rounded-sm px-1 hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none\",\n        className,\n      )}\n    >\n      <img\n        src=\"/brand/vvmdm-symbol-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"size-8 sm:hidden\"\n      />\n      <img\n        src=\"/brand/vvmdm-wordmark-cyan.svg\"\n        alt=\"\"\n        aria-hidden=\"true\"\n        className=\"hidden h-8 w-auto sm:block\"\n      />\n    </Link>\n  );\n}\n",
       "type": "registry:ui"
     }
   ],
-  "docs": "Predates the design system; its usage rules arrive with the components tier (docs/design-docs/design-system.md).",
+  "docs": "Usage rules: web/registry/rules/components.md, section \"BrandHomeLink\" (item vv-rules).",
   "type": "registry:ui"
 }

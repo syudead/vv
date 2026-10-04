@@ -5,9 +5,9 @@ import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import Chip from "../ui/Chip";
+import Chip from "../ui/legacy/Chip";
 import { isComposingKeyEvent } from "../ui/Combobox";
-import { ModalFrame } from "../ui/ModalFrame";
+import { ModalFrame } from "../ui/legacy/ModalFrame";
 import { tagFieldError, useTagNameField, type TagFieldError } from "./tagNameField";
 
 function isTagNotFound(error: unknown): boolean {

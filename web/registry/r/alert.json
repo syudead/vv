@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "alert",
+  "title": "Alert",
+  "description": "A message inside a section: error, warning, done or guidance, with an icon, a title and a description.",
+  "dependencies": [
+    "class-variance-authority"
+  ],
+  "files": [
+    {
+      "path": "src/ui/alert.tsx",
+      "content": "import { cva, type VariantProps } from \"class-variance-authority\";\nimport type * as React from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\n// shadcn/ui の alert（radix-nova）を vv のトークンで着せたもの。区画の中の失敗・注意・案内\n// （web/registry/rules/components.md「Alert」）。上流の default と destructive に、vv の状態の\n// 役割（tokens.css の warning・success）を同じ形で足す。\n\nconst alertVariants = cva(\n  \"group/alert relative grid w-full gap-0.5 rounded-lg border px-3 py-2 text-left text-sm has-data-[slot=alert-action]:pr-16 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4\",\n  {\n    variants: {\n      variant: {\n        default: \"border-border bg-card text-card-foreground\",\n        destructive:\n          \"border-transparent bg-destructive-soft text-destructive *:data-[slot=alert-description]:text-foreground\",\n        warning:\n          \"border-transparent bg-warning-soft text-warning *:data-[slot=alert-description]:text-foreground\",\n        success:\n          \"border-transparent bg-success-soft text-success *:data-[slot=alert-description]:text-foreground\",\n      },\n    },\n    defaultVariants: {\n      variant: \"default\",\n    },\n  },\n);\n\nfunction Alert({\n  className,\n  variant,\n  ...props\n}: React.ComponentProps<\"div\"> & VariantProps<typeof alertVariants>) {\n  return (\n    <div\n      data-slot=\"alert\"\n      role=\"alert\"\n      className={cn(alertVariants({ variant }), className)}\n      {...props}\n    />\n  );\n}\n\nfunction AlertTitle({ className, ...props }: React.ComponentProps<\"div\">) {\n  return (\n    <div\n      data-slot=\"alert-title\"\n      className={cn(\n        \"font-medium group-has-[>svg]/alert:col-start-2 [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction AlertDescription({ className, ...props }: React.ComponentProps<\"div\">) {\n  return (\n    <div\n      data-slot=\"alert-description\"\n      className={cn(\n        \"text-sm text-balance text-muted-foreground group-has-[>svg]/alert:col-start-2 md:text-pretty [&_a]:underline [&_a]:underline-offset-3 [&_a]:hover:text-foreground [&_p:not(:last-child)]:mb-4\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nfunction AlertAction({ className, ...props }: React.ComponentProps<\"div\">) {\n  return (\n    <div\n      data-slot=\"alert-action\"\n      className={cn(\"absolute top-1 right-1\", className)}\n      {...props}\n    />\n  );\n}\n\nexport { Alert, AlertAction, AlertDescription, AlertTitle, alertVariants };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md, section \"Alert\" (item vv-rules).",
+  "type": "registry:ui"
+}

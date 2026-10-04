@@ -13,8 +13,8 @@ import { __resetTagsForTest, getTags, subscribeTags } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "./tagPageRows";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import TagsPage from "./TagsPage";
 
 function jsonResponse(body: unknown, status = 200): Response {

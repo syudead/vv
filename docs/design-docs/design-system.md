@@ -175,6 +175,53 @@ The decisions behind the foundations are R-5 and R-8 of
 Written by
 [Rebuild the action and input components on shadcn/ui](https://github.com/syudead/vv/issues/770).
 
+### Overlays and feedback, and vv components
+
+These are shadcn/ui components on the Radix base, taken with their upstream
+structure and variants and dressed only through the foundations' tokens; vv's
+own components follow the same shape. Each is a `registry:ui` item whose
+`docs` names its section in
+[components.md](../../web/registry/rules/components.md), which says what it is
+for, what it combines with and when not to use it.
+
+| Component | Replaces | Notes |
+| --- | --- | --- |
+| `Dialog`, `AlertDialog` | `ModalFrame` | `AlertDialog` confirms what cannot be undone |
+| `Popover`, `DropdownMenu`, `Tooltip`, `Tabs` | `Popover`, `Menu`, `Tooltip`, `Tabs` | Radix positions the layers |
+| `Sonner` | `Toast` | Built and shown; the app still notifies through the old `Toast` |
+| `Badge` | `Chip`, tag chips, counts | Adds `soft`, `warning`, `success` to the upstream variants |
+| `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
+| `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
+| `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
+| `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
+| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows; the vv components of the same names | vv components |
+
+Upstream files keep shadcn's kebab-case names (`dropdown-menu.tsx`), and the
+components they replace moved to `web/src/ui/legacy/`, so that names differing
+only in case never share a folder on case-insensitive file systems. Screens
+not yet migrated import from `legacy/`; each migration PR removes its imports,
+and the last one deletes the folder.
+
+The showcase shows each state through `data-state-preview`: `index.css`
+redefines the `hover`, `focus`, `focus-visible` and `active` variants to also
+match an element carrying `data-state-preview="hover"`, `"focus"` or
+`"active"`, so one page shows every state of a component side by side.
+Screens never set the attribute.
+
+Three upstream class patterns read values that Radix computes at runtime or
+that no utility names: the floating layers' transform origin and available
+height, and the `Alert` icon column. They are `special` entries in
+`web/design-exceptions.js`.
+
+| Rejected | Why |
+| --- | --- |
+| Restyling the components to look like the ones they replace | The maintainer's direction for this tier: components are for building new screens, not for repeating the old look |
+| Moving every screen to `Sonner` here | The video page queues notices one at a time and a notice raised in the shell carries over to it; Sonner has no queue, so the switch is one change for every screen |
+| Separate `sidebar-*` colour tokens, as upstream | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
+
+The decisions behind the components are in
+[038 UI design, Components](../../specs/038-design-system/ui-design.md#components).
+
 ## Page patterns
 
 Written by

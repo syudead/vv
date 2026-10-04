@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
 import { formatDateTime } from "../i18n";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import { formatCodec, technicalSummary } from "./properties";
 import VideoFacts from "./VideoFacts";
 

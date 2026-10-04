@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
 import { t, type UiText } from "../i18n";
-import Skeleton from "../ui/Skeleton";
+import Skeleton from "../ui/legacy/Skeleton";
 import FolderArt from "../videoList/FolderArt";
 import { folderUrl } from "./folderPath";
 

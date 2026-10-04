@@ -5,7 +5,7 @@ import { Link, useLocation } from "react-router";
 import { currentPath, loginPath } from "../auth/pageNavigation";
 import { t, type UiText } from "../i18n";
 import Button, { buttonClassName } from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import Skeleton from "../ui/legacy/Skeleton";
 
 export function EmptyState({
   icon: Icon,

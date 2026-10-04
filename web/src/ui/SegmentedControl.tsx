@@ -2,7 +2,7 @@ import { ToggleGroup } from "radix-ui";
 import type { ReactNode } from "react";
 
 import type { UiText } from "../i18n";
-import Tooltip from "./Tooltip";
+import Tooltip from "./legacy/Tooltip";
 
 export interface SegmentOption<T extends string> {
   value: T;

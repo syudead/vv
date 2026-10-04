@@ -233,19 +233,32 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/BrandHomeLink.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-7"],
-    kind: "migration",
-  },
-  {
     file: "ui/Checkbox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5"],
     kind: "migration",
   },
   {
-    file: "ui/Chip.tsx",
+    file: "ui/alert.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["has-\\[>svg\\]:grid-cols-\\[auto_1fr\\]"],
+    kind: "special",
+    reason:
+      "The upstream Alert lays its icon and text out as an auto-width column and a flexible one; Tailwind has no grid template utility for that pair.",
+  },
+  {
+    file: "ui/dropdown-menu.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: [
+      "max-h-\\(--radix-dropdown-menu-content-available-height\\)",
+      "origin-\\(--radix-dropdown-menu-content-transform-origin\\)",
+    ],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
+  },
+  {
+    file: "ui/legacy/Chip.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["\\[&>svg\\]:size-3\\.5"],
     kind: "migration",
@@ -256,40 +269,45 @@ export default [
     kind: "migration",
   },
   {
-    file: "ui/Menu.tsx",
+    file: "ui/legacy/Menu.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/ModalFrame.tsx",
+    file: "ui/legacy/ModalFrame.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/Popover.tsx",
+    file: "ui/legacy/Popover.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/ScrubPreview.tsx",
+    file: "ui/popover.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["origin-\\(--radix-popover-content-transform-origin\\)"],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
+  },
+  {
+    file: "ui/legacy/Skeleton.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/Skeleton.tsx",
+    file: "ui/legacy/Toast.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
-    file: "ui/TentativeMark.tsx",
+    file: "ui/tooltip.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Toast.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
+    classes: ["origin-\\(--radix-tooltip-content-transform-origin\\)"],
+    kind: "special",
+    reason:
+      "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
   },
   {
     file: "versions/BundleDialog.tsx",
@@ -300,12 +318,6 @@ export default [
   {
     file: "versions/DuplicatesPage.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FavoriteToggle.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-5\\.5", "size-7"],
     kind: "migration",
   },
   {

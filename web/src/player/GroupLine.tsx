@@ -11,8 +11,8 @@ import {
 } from "../api/folderGrouping";
 import { t } from "../i18n";
 import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
-import { useToast } from "../ui/Toast";
+import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/legacy/Menu";
+import { useToast } from "../ui/legacy/Toast";
 
 /**
  * GroupLine は題名の上に置く、グループ名と何本目かの1行である（要件 25、ui-design.md

@@ -13,8 +13,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Tag } from "../api/tags";
 import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { TooltipProvider } from "../ui/tooltip";
 import SelectionBar, { measureBarLayout } from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {

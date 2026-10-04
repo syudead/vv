@@ -4,7 +4,7 @@ import { useRef } from "react";
 import type { Tag } from "../api/tags";
 import { t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import { ModalFrame } from "../ui/ModalFrame";
+import { ModalFrame } from "../ui/legacy/ModalFrame";
 
 /**
  * DeleteTagDialog はタグ削除の確認の窓である（ui-design.md「Merge and

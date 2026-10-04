@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "spinner",
+  "title": "Spinner",
+  "description": "A short wait with no measure.",
+  "dependencies": [
+    "lucide-react"
+  ],
+  "files": [
+    {
+      "path": "src/ui/spinner.tsx",
+      "content": "import { Loader2Icon } from \"lucide-react\";\nimport type * as React from \"react\";\n\nimport { t } from \"@/i18n\";\nimport { cn } from \"@/lib/cn\";\n\n// shadcn/ui の spinner（radix-nova）を vv のトークンで着せたもの。一覧の末尾の追加読み込みや\n// 押した操作の待ちに使う（web/registry/rules/components.md「Spinner」）。\n\nfunction Spinner({ className, ...props }: React.ComponentProps<\"svg\">) {\n  return (\n    <Loader2Icon\n      data-slot=\"spinner\"\n      role=\"status\"\n      aria-label={t.common.loading}\n      className={cn(\"size-4 animate-spin motion-reduce:animate-none\", className)}\n      {...props}\n    />\n  );\n}\n\nexport { Spinner };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md, section \"Spinner\" (item vv-rules).",
+  "type": "registry:ui"
+}

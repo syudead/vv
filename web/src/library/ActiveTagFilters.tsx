@@ -11,7 +11,7 @@ import {
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
 import FilterChip from "../ui/FilterChip";
-import Skeleton from "../ui/Skeleton";
+import { Skeleton } from "../ui/skeleton";
 
 export interface ActiveTagFiltersProps {
   /** 絞り込み中のタグの id（並びは問わない。表示は名前の自然順にそろえる）。 */

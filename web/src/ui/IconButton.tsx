@@ -2,7 +2,7 @@ import { type ButtonHTMLAttributes, forwardRef } from "react";
 
 import type { UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Tooltip from "./Tooltip";
+import Tooltip from "./legacy/Tooltip";
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** 読み上げ名。ツールチップにも使う。 */

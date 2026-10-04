@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
 import type { UiText } from "../i18n";
-import { useToast } from "../ui/Toast";
+import { useToast } from "../ui/legacy/Toast";
 import App from "./App";
 
 vi.mock("../library/LibraryPage", () => ({

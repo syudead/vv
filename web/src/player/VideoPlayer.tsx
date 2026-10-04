@@ -12,7 +12,7 @@ import {
   type PlaybackQuality,
 } from "../preferences/playbackQuality";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
 import { liveSource } from "./liveOffset";
 import {
   createPlaybackAttempt,

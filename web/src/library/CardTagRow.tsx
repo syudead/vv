@@ -5,7 +5,7 @@ import type { VideoTag } from "../api/client";
 import { isFolderOnly } from "../api/tagOrder";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import TentativeMark from "../ui/TentativeMark";
 import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
@@ -213,7 +213,7 @@ export default function CardTagRow({
         {hidden.length > 0 &&
           (pressable ? (
             <li className="shrink-0">
-              <PopoverRoot open={open} onOpenChange={setOpen}>
+              <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                   <button
                     type="button"
@@ -242,7 +242,7 @@ export default function CardTagRow({
                     ))}
                   </ul>
                 </PopoverContent>
-              </PopoverRoot>
+              </Popover>
             </li>
           ) : (
             <li className="shrink-0">

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VideoTag } from "../api/client";
 import type { Tag } from "../api/tags";
 import { __resetTagsForTest, refreshTags } from "../api/tags";
-import { ToastProvider } from "../ui/Toast";
+import { ToastProvider } from "../ui/legacy/Toast";
 import VideoTags from "./VideoTags";
 
 function jsonResponse(body: unknown, status = 200): Response {

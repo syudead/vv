@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import type { VideoFolder } from "../api/client";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import VideoHeader, { folderCrumbs } from "./VideoHeader";
 
 function renderHeader(folder: VideoFolder | undefined, onClose = vi.fn()) {

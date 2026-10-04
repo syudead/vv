@@ -3,7 +3,7 @@ import { type ReactNode, useId, useState } from "react";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/legacy/Popover";
 
 /** maxSearchTerms はサーバーが検索に使う語の数の上限である（手引きの説明に出す）。 */
 const maxSearchTerms = 16;

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { t } from "../i18n";
 import Foundations from "./Foundations";
+import OverlayComponents from "./OverlayComponents";
 
 const sections: { id: string; title: () => string; body?: () => ReactNode }[] = [
   {
@@ -9,7 +10,11 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
     title: () => t.designSystem.foundations,
     body: () => <Foundations />,
   },
-  { id: "components", title: () => t.designSystem.components },
+  {
+    id: "components",
+    title: () => t.designSystem.components,
+    body: () => <OverlayComponents />,
+  },
   { id: "patterns", title: () => t.designSystem.patterns },
 ];
 

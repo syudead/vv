@@ -5,8 +5,13 @@ import { updateFavorites } from "../api/favorites";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t } from "../i18n";
 import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
-import { useToast } from "../ui/Toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { useToast } from "../ui/legacy/Toast";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
@@ -56,8 +61,8 @@ export default function FavoriteMenu({
   }
 
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -71,17 +76,17 @@ export default function FavoriteMenu({
           {t.library.selection.favorite}
           <ChevronDown aria-hidden="true" />
         </Button>
-      </MenuTrigger>
-      <MenuContent side="top" align="start">
-        <MenuItem onSelect={() => apply(true)}>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuItem onSelect={() => apply(true)}>
           <Heart aria-hidden="true" />
           {t.library.selection.addFavorites}
-        </MenuItem>
-        <MenuItem onSelect={() => apply(false)}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => apply(false)}>
           <HeartOff aria-hidden="true" />
           {t.library.selection.removeFavorites}
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

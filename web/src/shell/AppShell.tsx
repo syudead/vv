@@ -1,27 +1,26 @@
 import type { ReactNode } from "react";
 
-import { cn } from "../lib/cn";
+import { SidebarInset, SidebarProvider } from "../ui/sidebar";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
-import { useSidebar } from "./useSidebar";
+import { useSidebarPreference } from "./useSidebarPreference";
 
-/** AppShell は上部バーと左サイドバーを被せ、中身をその右下に置く。 */
+/**
+ * AppShell は上部バーと左サイドバーを被せ、中身をその右下に置く。サイドバーは
+ * ui/sidebar（shadcn/ui の Sidebar）で、上部バーの下から始まる。
+ */
 export default function AppShell({ children }: { children: ReactNode }) {
-  const sidebar = useSidebar();
+  const preference = useSidebarPreference();
 
   return (
-    <div className="min-h-dvh bg-background">
-      <TopBar onMenu={sidebar.toggle} />
-      <Sidebar mode={sidebar.mode} open={sidebar.open} onClose={sidebar.close} />
-      <main
-        className={cn(
-          "min-h-dvh pt-navbar transition-[padding] duration-200 ease-out-quart",
-          sidebar.mode === "expanded" && "pl-sidebar",
-          sidebar.mode === "rail" && "pl-sidebar-rail",
-        )}
-      >
-        {children}
-      </main>
-    </div>
+    <SidebarProvider
+      open={preference.open}
+      onOpenChange={preference.setOpen}
+      className="min-h-dvh bg-background"
+    >
+      <TopBar />
+      <Sidebar />
+      <SidebarInset className="min-h-dvh pt-navbar">{children}</SidebarInset>
+    </SidebarProvider>
   );
 }

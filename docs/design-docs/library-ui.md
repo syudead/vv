@@ -105,7 +105,9 @@ the shell would mean rewriting all three.
 ## Width breakpoints in CSS, and the sidebar exception
 
 Width variations use Tailwind's default breakpoints in CSS; only the sidebar
-reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts)).
+reads width in JavaScript ([`useSidebarPreference.ts`](../../web/src/shell/useSidebarPreference.ts)
+for the rail, and the `Sidebar` component's
+[`use-mobile.ts`](../../web/src/hooks/use-mobile.ts) for the drawer).
 
 Watching width in JavaScript brings a watcher, a one-frame flicker on the first
 render, and a `matchMedia` stub in tests. The sidebar is the exception because
@@ -248,12 +250,12 @@ discarded and reloads on the next visit.
 
 The owner's favorite mark is one heart that is both mark and toggle, at the
 top right of the thumbnail on video and group cards
-([`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx),
+([`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx),
 [035 UI design, Mark, Card](../../specs/035-favorites/ui-design.md)).
 
 | Aspect | Rule |
 | --- | --- |
-| Shape | 22px heart in a 28px hit area, no fill or border behind it |
+| Shape | 20px heart (`size-5`) in a 32px hit area (`size-8`), no fill or border behind it |
 | Readability | Dark `drop-shadow-mark` on cards; none in list view |
 | On | Filled pink `favorite`, everywhere |
 | Off | White outline, shown only on hover or focus (always where hover is impossible) |

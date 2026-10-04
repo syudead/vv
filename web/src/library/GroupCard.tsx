@@ -10,7 +10,8 @@ import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
-import FavoriteToggle from "../videoList/FavoriteToggle";
+import { Progress } from "../ui/progress";
+import FavoriteToggle from "../ui/FavoriteToggle";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -188,19 +189,11 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           </span>
 
           {ratio !== null && (
-            <span
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(ratio * 100)}
+            <Progress
+              value={Math.round(ratio * 100)}
               aria-label={t.library.group.watchedRatio}
-              className="absolute inset-x-0 bottom-0 z-20 h-1 bg-overlay"
-            >
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
+              className="absolute inset-x-0 bottom-0 z-20 rounded-none bg-overlay"
+            />
           )}
         </div>
 

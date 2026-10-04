@@ -12,9 +12,9 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import Button from "../ui/Button";
-import Chip from "../ui/Chip";
+import Chip from "../ui/legacy/Chip";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
-import { ModalFrame } from "../ui/ModalFrame";
+import { ModalFrame } from "../ui/legacy/ModalFrame";
 import TentativeMark from "../ui/TentativeMark";
 
 /**

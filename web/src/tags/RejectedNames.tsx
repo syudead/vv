@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { RejectedTagNameList } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import Skeleton from "../ui/legacy/Skeleton";
 
 /**
  * RejectedNames はタグ管理画面の「Rejected names」のタブの中身である

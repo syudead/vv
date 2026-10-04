@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { APIToken } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { ToastProvider } from "../ui/Toast";
+import { ToastProvider } from "../ui/legacy/Toast";
 import APITokensSection from "./APITokensSection";
 import { EXTERNAL_API_GUIDE_URL } from "./docsLinks";
 

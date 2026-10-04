@@ -5,8 +5,8 @@ import { listDirectories, type DirectoryListing, type MediaFolder } from "../api
 import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
-import { ModalFrame } from "../ui/ModalFrame";
-import Skeleton from "../ui/Skeleton";
+import { ModalFrame } from "../ui/legacy/ModalFrame";
+import Skeleton from "../ui/legacy/Skeleton";
 
 function normalizedForComparison(path: string): string {
   const slash = path.replaceAll("\\", "/");

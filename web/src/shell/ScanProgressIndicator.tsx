@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { useScanNotice } from "./ScanNoticeProvider";
 import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
@@ -127,7 +127,7 @@ export default function ScanProgressIndicator() {
       <span role="status" aria-atomic="true" className="sr-only">
         {statusAnnouncement(presentation)}
       </span>
-      <PopoverRoot open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen}>
         <div className="flex items-center gap-1">
           <PopoverTrigger asChild>
             <button
@@ -206,7 +206,7 @@ export default function ScanProgressIndicator() {
             )}
           </div>
         </PopoverContent>
-      </PopoverRoot>
+      </Popover>
     </div>
   );
 }

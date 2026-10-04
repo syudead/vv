@@ -6,35 +6,55 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
-import { ToastProvider } from "../ui/Toast";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { SidebarProvider, SidebarTrigger } from "../ui/sidebar";
+import { TooltipProvider } from "../ui/tooltip";
 import Sidebar from "./Sidebar";
-import type { SidebarMode } from "./useSidebar";
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../auth/pageNavigation")>()),
   reloadPage: vi.fn(),
 }));
 
-function renderSidebar({
+type SidebarMode = "expanded" | "rail" | "drawer";
+
+/** stubWidth は、ドロワーの幅（639px 以下）かどうかを matchMedia で決める。 */
+function stubWidth(phone: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: phone && query.includes("639px"),
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+
+async function renderSidebar({
   audience = "owner",
   mode = "drawer",
   path = "/",
-  onClose = vi.fn(),
 }: {
   audience?: Audience;
   mode?: SidebarMode;
   path?: string;
-  onClose?: () => void;
 } = {}) {
-  return render(
+  stubWidth(mode === "drawer");
+  const result = render(
     <MemoryRouter initialEntries={[path]}>
       <AudienceProvider audience={audience}>
         <ToastProvider>
-          <Sidebar mode={mode} open onClose={onClose} />
+          <TooltipProvider>
+            <SidebarProvider defaultOpen={mode !== "rail"}>
+              <SidebarTrigger />
+              <Sidebar />
+            </SidebarProvider>
+          </TooltipProvider>
         </ToastProvider>
       </AudienceProvider>
     </MemoryRouter>,
   );
+  if (mode === "drawer") {
+    await userEvent.click(screen.getByRole("button", { name: /Toggle sidebar/ }));
+  }
+  return result;
 }
 
 function accountNav() {
@@ -54,43 +74,51 @@ describe("Sidebar", () => {
     fetchMock.mockReset();
   });
 
-  it("閉じたドロワーをフォーカス順と支援技術から外す", () => {
+  it("閉じたドロワーは描かず、フォーカス順と支援技術に残さない", () => {
+    stubWidth(true);
     render(
       <MemoryRouter>
         <AudienceProvider audience="owner">
           <ToastProvider>
-            <Sidebar mode="drawer" open={false} onClose={vi.fn()} />
+            <SidebarProvider>
+              <Sidebar />
+            </SidebarProvider>
           </ToastProvider>
         </AudienceProvider>
       </MemoryRouter>,
     );
 
-    const sidebar = document.querySelector("aside");
-    expect(sidebar?.hasAttribute("inert")).toBe(true);
-    expect(sidebar?.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
   });
 
   it("設定をサイドバー末尾の実リンクとして表示してdrawerを閉じる", async () => {
     const user = userEvent.setup();
-    const onClose = vi.fn();
-    renderSidebar({ onClose });
+    await renderSidebar();
 
     const sidebar = screen.getByRole("complementary", {
       name: "Main navigation",
     });
     const settings = within(sidebar).getByRole("link", { name: "Settings" });
+    expect(settings.getAttribute("href")).toBe("/settings");
 
     await user.click(settings);
 
-    expect(settings.getAttribute("href")).toBe("/settings");
-    expect(onClose).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull(),
+    );
+  });
+
+  it("今いる画面の項目を選択中にする", async () => {
+    await renderSidebar({ mode: "expanded", path: "/settings" });
+    const settings = screen.getByRole("link", { name: "Settings" });
     expect(settings.getAttribute("aria-current")).toBe("page");
+    expect(settings.getAttribute("data-active")).toBe("true");
   });
 
   it.each<SidebarMode>(["expanded", "rail", "drawer"])(
     "所有者の下段は「設定」→「ログアウト」の順で、ログインを置かない（%s）",
-    (mode) => {
-      renderSidebar({ mode });
+    async (mode) => {
+      await renderSidebar({ mode });
       const nav = accountNav();
       const names = Array.from(nav.querySelectorAll("a, button")).map(
         (element) => element.textContent,
@@ -101,8 +129,8 @@ describe("Sidebar", () => {
 
   it.each<SidebarMode>(["expanded", "rail", "drawer"])(
     "ゲストの下段は今の URL へ戻るログインだけにする（%s）",
-    (mode) => {
-      renderSidebar({ audience: "guest", mode, path: "/folders/3/A%20B?query=x" });
+    async (mode) => {
+      await renderSidebar({ audience: "guest", mode, path: "/folders/3/A%20B?query=x" });
       const nav = accountNav();
       const login = within(nav).getByRole("link", { name: "Sign in" });
       expect(login.getAttribute("href")).toBe(
@@ -117,7 +145,7 @@ describe("Sidebar", () => {
     const user = userEvent.setup();
     let finish: (response: Response) => void = () => undefined;
     fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
-    renderSidebar();
+    await renderSidebar();
 
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     const pending = screen.getByRole("button", { name: "Signing out…" });
@@ -131,7 +159,7 @@ describe("Sidebar", () => {
   it("ログアウトに失敗したらトーストを出して項目を戻す", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
-    renderSidebar();
+    await renderSidebar();
 
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
@@ -140,8 +168,8 @@ describe("Sidebar", () => {
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
   });
-  it("所有者の上段は「タグ」の直後に「Duplicates」を置き、ゲストには出さない", () => {
-    const { unmount } = renderSidebar({ mode: "expanded" });
+  it("所有者の上段は「タグ」の直後に「Duplicates」を置き、ゲストには出さない", async () => {
+    const { unmount } = await renderSidebar({ mode: "expanded" });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = within(main)
       .getAllByRole("link")
@@ -152,16 +180,16 @@ describe("Sidebar", () => {
     ).toBe("/duplicates");
     unmount();
 
-    renderSidebar({ audience: "guest", mode: "expanded" });
+    await renderSidebar({ audience: "guest", mode: "expanded" });
     expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();
   });
 
   it.each<Audience>(["owner", "guest"])(
     "疑似ロケールで %s のサイドバーはカタログの文言だけを描く",
-    (audience) => {
+    async (audience) => {
       enablePseudoLocale();
-      const { container } = renderSidebar({ audience });
-      expectCatalogTextOnly(container);
+      await renderSidebar({ audience });
+      expectCatalogTextOnly(screen.getByRole("complementary"));
     },
   );
 
@@ -170,7 +198,7 @@ describe("Sidebar", () => {
     const user = userEvent.setup();
     let fail: (response: Response) => void = () => undefined;
     fetchMock.mockReturnValue(new Promise((resolve) => (fail = resolve)));
-    renderSidebar();
+    await renderSidebar();
     await user.click(screen.getByRole("button", { name: /Sign out/ }));
     await screen.findByRole("button", { name: /Signing out/ });
     expectCatalogTextOnly(document.body);

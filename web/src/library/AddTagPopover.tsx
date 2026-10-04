@@ -13,8 +13,8 @@ import {
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import Combobox from "../ui/Combobox";
-import { PopoverContent } from "../ui/Popover";
-import { useToast } from "../ui/Toast";
+import { PopoverContent } from "../ui/popover";
+import { useToast } from "../ui/legacy/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildAddOptions } from "./tagChoices";
 

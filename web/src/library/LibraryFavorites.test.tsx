@@ -10,8 +10,8 @@ import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { TooltipProvider } from "../ui/tooltip";
 import LibraryPage from "./LibraryPage";
 
 /**
@@ -278,12 +278,13 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     // オフは hover・フォーカス・hover:none の端末でだけ見える（チェックと同じ条件）。
     expect(toggle.className).toContain("opacity-0");
     expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
-    // 面も枠も無く、size-7 の中に 22px の白い線のハートを影付きで置く（「Mark」「Card」）。
-    expect(toggle.className).toContain("size-7");
+    // 面も枠も無く、size-8 の中に size-5 の白い線のハートを影付きで置く（「Mark」「Card」、
+    // web/registry/rules/components.md「FavoriteToggle」）。
+    expect(toggle.className).toContain("size-8");
     expect(toggle.className).toContain("text-foreground");
     expect(toggle.className).not.toMatch(/\bbg-/);
     const heart = toggle.querySelector("svg") as SVGElement;
-    expect(heart.getAttribute("class")).toContain("size-5.5");
+    expect(heart.getAttribute("class")).toContain("size-5");
     expect(heart.getAttribute("class")).toContain("drop-shadow-mark");
     expect(toggle.parentElement?.className).toContain("top-1.5 right-1.5");
     // リンクの外、同じ article の中（チェック → リンク → 付け外し）。

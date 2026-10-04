@@ -6,55 +6,53 @@ import { logout } from "../api/auth";
 import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
-import { useToast } from "../ui/Toast";
+import { useToast } from "../ui/legacy/Toast";
+import {
+  Sidebar as SidebarRoot,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "../ui/sidebar";
 import { navEntries, type NavEntry } from "./navigation";
-import type { SidebarMode } from "./useSidebar";
+
+/** closeDrawer は狭い幅のドロワーを閉じる。広い幅では何もしない（展開とレールは残す）。 */
+function useCloseDrawer(): () => void {
+  const { isMobile, setOpenMobile } = useSidebar();
+  return () => {
+    if (isMobile) setOpenMobile(false);
+  };
+}
 
 function settingsEntry(): NavEntry {
   return { id: "settings", label: t.shell.nav.settings, icon: Settings, to: "/settings" };
 }
 
-function entryClassName(mode: SidebarMode, active: boolean): string {
-  const rail = mode === "rail";
-  return cn(
-    "flex items-center rounded-md transition-colors duration-150 select-none",
-    rail
-      ? "h-14 w-14 flex-col justify-center gap-1 px-0.5 text-2xs leading-none"
-      : "h-9 gap-3 px-3 text-sm",
-    active
-      ? "bg-secondary font-medium text-foreground"
-      : "text-muted-foreground hover:bg-accent hover:text-foreground",
-    "[&>svg]:size-5 [&>svg]:shrink-0",
-  );
-}
-
-function Entry({
-  entry,
-  mode,
-  onNavigate,
-}: {
-  entry: NavEntry;
-  mode: SidebarMode;
-  onNavigate: () => void;
-}) {
+function Entry({ entry }: { entry: NavEntry }) {
   const Icon = entry.icon;
-  const className = (active: boolean) => entryClassName(mode, active);
+  const closeDrawer = useCloseDrawer();
+  const location = useLocation();
+  const active =
+    entry.matchDescendants === true
+      ? location.pathname === entry.to || location.pathname.startsWith(`${entry.to}/`)
+      : location.pathname === entry.to;
 
   return (
-    <NavLink
-      to={entry.to}
-      end={entry.matchDescendants !== true}
-      onClick={onNavigate}
-      className={({ isActive }) => className(isActive)}
-    >
-      {({ isActive }) => (
-        <>
-          <Icon strokeWidth={isActive ? 2.25 : 1.75} />
-          <span className="max-w-full truncate">{entry.label}</span>
-        </>
-      )}
-    </NavLink>
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={entry.label}>
+        <NavLink
+          to={entry.to}
+          end={entry.matchDescendants !== true}
+          onClick={closeDrawer}
+        >
+          <Icon />
+          <span>{entry.label}</span>
+        </NavLink>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
@@ -63,9 +61,10 @@ function Entry({
  * ページごと読み直す。読み直した画面はゲストとして描かれる
  * （specs/016-single-account-auth/ui-design.md「Sidebar」）。
  */
-function LogoutEntry({ mode }: { mode: SidebarMode }) {
+function LogoutEntry() {
   const toast = useToast();
   const [pending, setPending] = useState(false);
+  const label = pending ? t.shell.nav.loggingOut : t.shell.nav.logout;
 
   const signOut = async () => {
     setPending(true);
@@ -79,28 +78,21 @@ function LogoutEntry({ mode }: { mode: SidebarMode }) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={() => void signOut()}
-      disabled={pending}
-      className={cn(entryClassName(mode, false), "w-full disabled:opacity-50")}
-    >
-      <LogOut strokeWidth={1.75} />
-      <span className="max-w-full truncate">
-        {pending ? t.shell.nav.loggingOut : t.shell.nav.logout}
-      </span>
-    </button>
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        onClick={() => void signOut()}
+        disabled={pending}
+        tooltip={label}
+      >
+        <LogOut />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
 /** AccountEntries はサイドバーの下段の「アカウントと設定」である。 */
-function AccountEntries({
-  mode,
-  onNavigate,
-}: {
-  mode: SidebarMode;
-  onNavigate: () => void;
-}) {
+function AccountEntries() {
   const audience = useAudience();
   const location = useLocation();
 
@@ -111,73 +103,48 @@ function AccountEntries({
       icon: LogIn,
       to: loginPath(currentPath(location)),
     };
-    return <Entry entry={loginEntry} mode={mode} onNavigate={onNavigate} />;
+    return <Entry entry={loginEntry} />;
   }
   return (
     <>
-      <Entry entry={settingsEntry()} mode={mode} onNavigate={onNavigate} />
-      <LogoutEntry mode={mode} />
+      <Entry entry={settingsEntry()} />
+      <LogoutEntry />
     </>
   );
 }
 
-/** Sidebar は左のナビ。展開・レール（アイコンのみ）・ドロワーの 3 態。 */
-export default function Sidebar({
-  mode,
-  open,
-  onClose,
-}: {
-  mode: SidebarMode;
-  open: boolean;
-  onClose: () => void;
-}) {
-  const drawer = mode === "drawer";
+/**
+ * Sidebar は左のナビである。ui/sidebar（shadcn/ui の Sidebar）の 3 つの形を使う:
+ * 広い幅の展開、畳んだレール（collapsible="icon"。名前はツールチップに出す）、
+ * 狭い幅のドロワー（Sheet）。上段はナビ、下段はアカウントと設定。
+ */
+export default function Sidebar() {
   const audience = useAudience();
   const all = navEntries();
   const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
 
   return (
-    <>
-      {drawer && open && (
-        <button
-          type="button"
-          aria-label={t.shell.nav.closeMenu}
-          onClick={onClose}
-          className="fixed inset-0 z-30 bg-overlay animate-fade-in"
-        />
-      )}
-      <aside
-        aria-label={t.shell.nav.main}
-        aria-hidden={drawer && !open ? true : undefined}
-        inert={drawer && !open ? true : undefined}
-        className={cn(
-          "fixed top-navbar bottom-0 left-0 z-40 flex flex-col border-r border-border bg-navbar transition-transform duration-200 ease-out-quart",
-          mode === "expanded" && "w-sidebar",
-          mode === "rail" && "w-sidebar-rail",
-          drawer && "w-sidebar",
-          drawer && !open && "-translate-x-full",
-        )}
-      >
-        <nav
-          className={cn(
-            "flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto",
-            mode === "rail" ? "items-center px-1.5 py-2" : "px-2 py-3",
-          )}
-        >
-          {entries.map((entry) => (
-            <Entry key={entry.id} entry={entry} mode={mode} onNavigate={onClose} />
-          ))}
-        </nav>
-        <nav
-          aria-label={t.shell.nav.account}
-          className={cn(
-            "flex shrink-0 flex-col gap-0.5 border-t border-border",
-            mode === "rail" ? "items-center px-1.5 py-2" : "px-2 py-3",
-          )}
-        >
-          <AccountEntries mode={mode} onNavigate={onClose} />
-        </nav>
+    <SidebarRoot collapsible="icon" className="top-navbar bottom-0 h-auto">
+      <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
+        <SidebarContent>
+          <SidebarGroup>
+            <nav>
+              <SidebarMenu>
+                {entries.map((entry) => (
+                  <Entry key={entry.id} entry={entry} />
+                ))}
+              </SidebarMenu>
+            </nav>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter className="border-t border-border">
+          <nav aria-label={t.shell.nav.account}>
+            <SidebarMenu>
+              <AccountEntries />
+            </SidebarMenu>
+          </nav>
+        </SidebarFooter>
       </aside>
-    </>
+    </SidebarRoot>
   );
 }

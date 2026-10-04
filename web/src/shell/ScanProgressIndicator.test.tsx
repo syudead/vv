@@ -7,7 +7,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { OwnerAudience } from "../testing/audience";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/tooltip";
 import { ScanNoticeProvider } from "./ScanNoticeProvider";
 import ScanProgressIndicator from "./ScanProgressIndicator";
 import { ScanProvider } from "./ScanProvider";

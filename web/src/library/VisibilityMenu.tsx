@@ -4,8 +4,13 @@ import { maxVideoTagsSelection } from "../api/tags";
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t } from "../i18n";
 import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
-import { useToast } from "../ui/Toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { useToast } from "../ui/legacy/Toast";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
@@ -50,8 +55,8 @@ export default function VisibilityMenu({
   }
 
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -65,17 +70,17 @@ export default function VisibilityMenu({
           {t.library.selection.visibility}
           <ChevronDown aria-hidden="true" />
         </Button>
-      </MenuTrigger>
-      <MenuContent side="top" align="start">
-        <MenuItem onSelect={() => apply(true)}>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuItem onSelect={() => apply(true)}>
           <Globe aria-hidden="true" />
           {t.library.selection.makePublic}
-        </MenuItem>
-        <MenuItem onSelect={() => apply(false)}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => apply(false)}>
           <Lock aria-hidden="true" />
           {t.library.selection.makePrivate}
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

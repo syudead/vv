@@ -2,7 +2,7 @@ import { DropdownMenu as Dropdown } from "radix-ui";
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { cn } from "../lib/cn";
+import { cn } from "../../lib/cn";
 
 /** 見た目を統一したドロップダウン。挙動（位置・キーボード・フォーカス）は Radix。 */
 

@@ -7,7 +7,7 @@ import type { Tag, TagList, TagPageQuery } from "../api/tags";
 import { listTagPage, mergeTag, tagImpact } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
 import { errorText, t } from "../i18n";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import MergeTagDialog from "./MergeTagDialog";
 
 vi.mock("../api/tags", async (importOriginal) => ({

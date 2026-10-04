@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { VersionCandidate, Video, VideoVersions } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { ToastProvider } from "../ui/legacy/Toast";
+import { TooltipProvider } from "../ui/legacy/Tooltip";
 import DuplicatesPage from "./DuplicatesPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {

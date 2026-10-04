@@ -29,9 +29,9 @@ import {
   MenuRadioItem,
   MenuRoot,
   MenuTrigger,
-} from "../ui/Menu";
+} from "../ui/legacy/Menu";
 import SegmentedControl from "../ui/SegmentedControl";
-import Tooltip from "../ui/Tooltip";
+import Tooltip from "../ui/legacy/Tooltip";
 import {
   directionLabel,
   directionToggleLabel,
