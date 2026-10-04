@@ -202,7 +202,7 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 // 対応させる。パス・題名・大きさ・更新時刻は chosen の所在のものを使う。
 // パスは後続の単位が Video.folder を組み立てるのに使う。
 var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
-	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.updated_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
+	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public, ` + favoriteColumn + ` as favorite, ` + overrideColumns + `, ` + editedAtColumn

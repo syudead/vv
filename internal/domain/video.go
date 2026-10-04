@@ -169,10 +169,12 @@ type Video struct {
 	SizeBytes int64
 	MTime     time.Time
 	AddedAt   time.Time
-	UpdatedAt time.Time
+	// IndexedAt は索引の行（videos.indexed_at）を最後に書き換えた時刻。取り込み・解析・
+	// サムネイル作成などの裏方の処理でも進む内部用の値で、API には出さない。
+	IndexedAt time.Time
 	// EditedAt は vv 上で動画の情報を最後に編集した日時（更新日時。specs/033-video-dates/
 	// data-model.md §2）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
-	// UpdatedAt（索引の行の更新時刻）とは別の値である。
+	// API の updatedAt はこの値で、IndexedAt（索引の行の更新時刻）とは別の値である。
 	EditedAt time.Time
 	// FileCreatedAt は一覧に出す所在のファイルの作成日時（specs/033-video-dates/data-model.md §2）。
 	// 保存層が coalesce(video_locations.file_created_at, mtime) で埋めるので、作成日時が

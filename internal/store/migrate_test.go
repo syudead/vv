@@ -305,7 +305,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 将来の版が触るはずのない印を置き、書き換えられないことを確かめる。
-	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'sentinel', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, indexed_at) values (1, 'sentinel', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,7 +359,7 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 	want := []string{
 		"content_key", "duration_ms", "width", "height", "container",
 		"video_codec", "audio_codec", "playable", "unplayable_reason",
-		"probe_state", "probe_error", "thumbnail_state", "updated_at",
+		"probe_state", "probe_error", "thumbnail_state", "indexed_at",
 	}
 	got := tableColumns(t, db, "videos")
 
@@ -411,7 +411,7 @@ func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, indexed_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(
@@ -441,7 +441,7 @@ func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, indexed_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -475,7 +475,7 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 func TestDeletingVideoCascadesJobs(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, indexed_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(

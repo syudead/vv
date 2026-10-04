@@ -63,7 +63,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 		previewState = string(domain.PreviewStatePending)
 		res, err := tx.ExecContext(ctx, `
 		insert into videos
-			(added_at, updated_at, content_key, container, playable, probe_state, thumbnail_state)
+			(added_at, indexed_at, content_key, container, playable, probe_state, thumbnail_state)
 		values (?, ?, ?, ?, 0, 'pending', 'pending')`,
 			addedAt.Unix(), now, file.ContentKey, nullableString(file.Container))
 		if err != nil {

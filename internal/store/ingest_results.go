@@ -33,7 +33,7 @@ func (s *IngestStore) ApplyProbe(
 		   set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?,
 		       video_codec = ?, audio_codec = ?,
 		       playable = ?, unplayable_reason = ?,
-		       probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
+		       probe_state = 'done', probe_error = null, probe_error_code = null, indexed_at = ?
 		 where id = ?`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec),
@@ -87,7 +87,7 @@ func (s *IngestStore) ApplyProbeForJob(
 	now := time.Now()
 	res, err := tx.ExecContext(ctx, `
 		update videos set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?, video_codec = ?, audio_codec = ?,
-		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
+		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, probe_error_code = null, indexed_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
@@ -165,7 +165,7 @@ func upsertTranscodeProbe(
 func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error) error {
 	_, err := s.db.sql.ExecContext(ctx, `
 		update videos
-		   set probe_state = 'failed', probe_error = ?, probe_error_code = ?, playable = 0, updated_at = ?
+		   set probe_state = 'failed', probe_error = ?, probe_error_code = ?, playable = 0, indexed_at = ?
 		 where id = ?`,
 		cause.Error(), string(domain.ProbeErrorCodeOf(cause)), time.Now().Unix(), id,
 	)
@@ -178,7 +178,7 @@ func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error
 // SetThumbnailState はサムネイル生成の状態を記録する。
 func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state domain.ThumbnailState) error {
 	_, err := s.db.sql.ExecContext(ctx,
-		`update videos set thumbnail_state = ?, updated_at = ? where id = ?`,
+		`update videos set thumbnail_state = ?, indexed_at = ? where id = ?`,
 		string(state), time.Now().Unix(), id)
 	if err != nil {
 		return fmt.Errorf("cannot record the thumbnail state (id=%d): %w", id, err)
@@ -211,7 +211,7 @@ func (s *IngestStore) setStageStateForJob(
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, indexed_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
@@ -275,7 +275,7 @@ func (s *IngestStore) SetPreviewStateForJob(ctx context.Context, job domain.Job,
 // SetPreviewStateForContent accepts a completed asset after a representative
 // location changed, while still refusing a stale content identity.
 func (s *IngestStore) SetPreviewStateForContent(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ?
+	res, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, indexed_at = ?
 		where id = ? and content_key = ?`, string(state), time.Now().Unix(), job.VideoID, job.ContentKey)
 	if err != nil {
 		return false, err
@@ -293,7 +293,7 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', indexed_at = ?
 		where id = ? and content_key = ?`, now, job.VideoID, job.ContentKey)
 	if err != nil {
 		return false, err
@@ -362,7 +362,7 @@ func (s *IngestStore) ThumbnailSourceCurrent(
 }
 
 func (s *IngestStore) SetPreviewState(ctx context.Context, id int64, state domain.PreviewState) error {
-	_, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ? where id = ?`, string(state), time.Now().Unix(), id)
+	_, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, indexed_at = ? where id = ?`, string(state), time.Now().Unix(), id)
 	return err
 }
 
@@ -381,7 +381,7 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', indexed_at = ?
 		where id = ? and content_key = ? and preview_state = 'done'`, now, id, contentKey)
 	if err != nil {
 		return false, fmt.Errorf("cannot reset the preview state (id=%d): %w", id, err)
@@ -419,7 +419,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', indexed_at = ?
 		where id = ? and content_key = ? and seek_thumbnail_state = 'done'`, now, id, contentKey)
 	if err != nil {
 		return false, fmt.Errorf("cannot reset the seek thumbnail state (id=%d): %w", id, err)
@@ -489,7 +489,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, probe_error_code = null, updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, probe_error_code = null, indexed_at = ?
 		where id = ? and probe_state = 'failed'`, now, id)
 	if err != nil {
 		return fmt.Errorf("cannot reset the probe state (id=%d): %w", id, err)
@@ -509,7 +509,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 		return domain.ErrProbeNotFailed
 	}
 
-	res, err = tx.ExecContext(ctx, `update videos set thumbnail_state = 'pending', updated_at = ?
+	res, err = tx.ExecContext(ctx, `update videos set thumbnail_state = 'pending', indexed_at = ?
 		where id = ? and thumbnail_state <> 'done'`, now, id)
 	if err != nil {
 		return fmt.Errorf("cannot reset the thumbnail state (id=%d): %w", id, err)
@@ -518,11 +518,11 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	if err != nil {
 		return fmt.Errorf("cannot check the thumbnail state update count (id=%d): %w", id, err)
 	}
-	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
+	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', indexed_at = ?
 		where id = ? and preview_state = 'failed'`, now, id); err != nil {
 		return fmt.Errorf("cannot reset the preview state (id=%d): %w", id, err)
 	}
-	res, err = tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
+	res, err = tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', indexed_at = ?
 		where id = ? and seek_thumbnail_state = 'failed'`, now, id)
 	if err != nil {
 		return fmt.Errorf("cannot reset the seek thumbnail state (id=%d): %w", id, err)

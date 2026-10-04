@@ -498,7 +498,7 @@ func TestRequeueRunningJobsSettlesImportLeftOpenByMigration(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	for _, stmt := range []string{
-		`insert into videos(id, content_key, probe_state, added_at, updated_at) values (1, 'key-a', 'pending', 1, 1)`,
+		`insert into videos(id, content_key, probe_state, added_at, indexed_at) values (1, 'key-a', 'pending', 1, 1)`,
 		`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at)
 			values (1, '` + fixturePath("/elsewhere/a.mp4") + `', 'a', 1, 1, 1, 1)`,
 		`insert into jobs(kind, video_id, state, attempts, created_at, updated_at) values ('probe', 1, 'queued', 0, 1, 1)`,

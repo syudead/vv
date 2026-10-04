@@ -367,7 +367,7 @@ func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, no
 		return false, err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`update videos set thumbnail_state = ?, updated_at = ? where content_key = ?`,
+		`update videos set thumbnail_state = ?, indexed_at = ? where content_key = ?`,
 		string(domain.ThumbnailStateDone), now.Unix(), key,
 	); err != nil {
 		return false, fmt.Errorf("cannot record the thumbnail state: %w", err)
