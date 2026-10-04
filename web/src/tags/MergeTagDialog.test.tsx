@@ -34,9 +34,11 @@ let serverTags: Tag[] = [];
 
 /**
  * search はサーバーの `GET /api/tags?q=…&limit=…` を真似る。照合形で名前とシノニムに
- * 部分一致させ、名前の順のまま `limit` 件までを返す。
+ * 部分一致させ、名前の順のまま `limit` 件までを返す。前後の空白を落とした `q` と綴りが
+ * 完全に一致するタグは、ページに入るかに関わらず `exact` に入れる。
  */
 function search(query: TagPageQuery): TagList {
+  const raw = (query.q ?? "").trim();
   const q = foldForMatch(query.q ?? "");
   const items = serverTags.filter(
     (item) =>
@@ -44,10 +46,14 @@ function search(query: TagPageQuery): TagList {
       foldForMatch(item.name).includes(q) ||
       item.synonyms.some((synonym) => foldForMatch(synonym).includes(q)),
   );
+  const exact = serverTags.find(
+    (item) => raw !== "" && (item.name === raw || item.synonyms.includes(raw)),
+  );
   return {
     items: items.slice(0, query.limit ?? 100),
     total: items.length,
     totalAll: serverTags.length,
+    ...(exact === undefined ? {} : { exact }),
   };
 }
 
@@ -305,13 +311,13 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
       .map((option) => option.textContent ?? "");
   }
 
-  it("行から開くと空の q と limit=8 で引き、応答から統合元を除いて並べる", async () => {
+  it("行から開くと空の q と、統合元の 1 件を足した limit=9 で引き、応答から統合元を除いて並べる", async () => {
     const user = userEvent.setup();
     render(dialog());
     const modal = await screen.findByRole("dialog");
     await waitFor(() =>
       expect(vi.mocked(listTagPage)).toHaveBeenCalledWith(
-        { q: "", limit: 8 },
+        { q: "", limit: 9 },
         expect.any(AbortSignal),
       ),
     );
@@ -345,9 +351,49 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
     await user.type(within(modal).getByRole("combobox"), "ａｃｔ");
     expect(await within(modal).findByRole("option", { name: /Action/ })).toBeDefined();
     expect(vi.mocked(listTagPage)).toHaveBeenLastCalledWith(
-      { q: "ａｃｔ", limit: 8 },
+      { q: "ａｃｔ", limit: 9 },
       expect.any(AbortSignal),
     );
+  });
+
+  it("行から開いて応答に統合元が入っても、候補は 8 件ある", async () => {
+    const user = userEvent.setup();
+    serverTags = [
+      source,
+      ...Array.from({ length: 10 }, (_, index) =>
+        tag({ id: 10 + index, name: `Tag ${String(index).padStart(2, "0")}` }),
+      ),
+    ];
+    render(dialog());
+    const modal = await screen.findByRole("dialog");
+    await user.click(within(modal).getByRole("combobox"));
+    await within(modal).findByRole("option", { name: /^Tag 00/ });
+    const names = optionNames(modal);
+    expect(names).toHaveLength(8);
+    expect(names.some((name) => name.includes("旅行"))).toBe(false);
+  });
+
+  it("綴りが完全に一致するタグは、部分一致の上位 8 件に入らなくても先頭に出て Enter で選べる", async () => {
+    const user = userEvent.setup();
+    // 名前の順では「cat」より前に、「cat」を含む名前が 8 件以上並ぶ。
+    const longer = Array.from({ length: 10 }, (_, index) =>
+      tag({ id: 10 + index, name: `a${String(index).padStart(2, "0")}cat` }),
+    );
+    const cat = tag({ id: 30, name: "cat", videoCount: 6 });
+    serverTags = [source, ...longer, cat];
+    render(dialog());
+    const modal = await screen.findByRole("dialog");
+    const combo = within(modal).getByRole("combobox");
+    await user.type(combo, "cat");
+    await waitFor(() => expect(combo.getAttribute("aria-busy")).toBeNull());
+    const names = optionNames(modal);
+    expect(names).toHaveLength(8);
+    expect(names[0]).toContain("cat");
+    expect(names[0]).not.toContain("a00cat");
+    expect(names[1]).toContain("a00cat");
+
+    await user.keyboard("{Enter}");
+    expect(combo).toHaveProperty("value", "cat");
   });
 
   it("シノニムで当たった候補には補足を添え、入力と一致するシノニムは exactOption になる", async () => {

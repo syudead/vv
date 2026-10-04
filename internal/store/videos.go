@@ -17,11 +17,11 @@ import (
 )
 
 // videoColumns は domain.Video を組み立てるのに要る列である。
-// 並びは scanVideo と対応させる。代表の所在は {visible}（見る人に見せてよい所在）の
-// うちパスの最小の1件である。
+// 並びは scanVideo と対応させる。代表の所在 rep（見る人に見せてよい所在のうちパスの
+// 最小の1件）は representativeJoin が結ぶ。
 const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
 	rep.mtime as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
-	videos.added_at, videos.updated_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
+	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	{public} as public, {favorite} as favorite, ` + overrideColumns + `, ` + editedAtColumn
@@ -161,10 +161,10 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 	}
 	if probeState == string(domain.ProbeStateDone) {
 		play := domain.EvaluatePlayability(container, domain.Probe{VideoCodec: videoCodec, AudioCodec: audioCodec})
-		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = ?, unplayable_reason = ?, updated_at = ? where id = ?`,
+		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = ?, unplayable_reason = ?, indexed_at = ? where id = ?`,
 			nullableString(container), boolToInt(play.Playable), nullableString(string(play.Reason)), time.Now().Unix(), videoID)
 	} else {
-		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = 0, unplayable_reason = null, updated_at = ? where id = ?`,
+		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = 0, unplayable_reason = null, indexed_at = ? where id = ?`,
 			nullableString(container), time.Now().Unix(), videoID)
 	}
 	if err != nil {
@@ -245,7 +245,7 @@ type rowScanner interface {
 func scanVideo(row rowScanner) (domain.Video, error) {
 	var (
 		video                                    domain.Video
-		mtime, fileCreatedAt, addedAt, updatedAt int64
+		mtime, fileCreatedAt, addedAt, indexedAt int64
 		durationMs                               sql.NullInt64
 		width, height                            sql.NullInt64
 		displayAspectRatio                       sql.NullFloat64
@@ -262,7 +262,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	)
 
 	err := row.Scan(
-		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &fileCreatedAt, &addedAt, &updatedAt,
+		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &fileCreatedAt, &addedAt, &indexedAt,
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
 		&public, &favorite, &displayName, &thumbnailPositionMs, &thumbnailRevision, &editedAt,
@@ -274,7 +274,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.MTime = time.Unix(mtime, 0)
 	video.FileCreatedAt = time.Unix(fileCreatedAt, 0)
 	video.AddedAt = time.Unix(addedAt, 0)
-	video.UpdatedAt = time.Unix(updatedAt, 0)
+	video.IndexedAt = time.Unix(indexedAt, 0)
 	video.EditedAt = time.Unix(editedAt, 0)
 	if durationMs.Valid {
 		value := durationMs.Int64

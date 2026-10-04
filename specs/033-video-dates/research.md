@@ -155,7 +155,7 @@ direction).
 and mtime). If it differs from the indexed value (`IndexedVideo.FileCreatedAt`,
 zero value when absent), the scan writes only the location column through
 `Index.UpdateLocationCreatedAt(ctx, locationID, createdAt)`. It does not recompute
-the content key, does not enqueue jobs, and moves neither `videos.updated_at` nor
+the content key, does not enqueue jobs, and moves neither `videos.indexed_at` nor
 any event. For a file whose content changed, `UpsertVideo` writes
 `VideoFile.FileCreatedAt` together with the other facts (edge case "the file was
 replaced at the same path and its creation time changed"). The comparison is in
@@ -189,7 +189,8 @@ data). Add `createdAsc` and `createdDesc` to `VideoSort` and allow them for
 guests (unlike `played*`, they do not depend on owner data). `modifiedAsc` and
 `modifiedDesc` keep their names and values (requirement 7). The `domain.Video`
 field is named `EditedAt` so it is not confused with the existing `UpdatedAt`
-(`videos.updated_at`, the update time of the ingested row).
+(`videos.updated_at`, the update time of the ingested row; renamed to `IndexedAt`
+/ `videos.indexed_at` in #650).
 
 **Rationale**: The parent Issue's terms are `更新日時` (update time) and
 `作成日時` (creation time), so `updatedAt` follows directly. API users read

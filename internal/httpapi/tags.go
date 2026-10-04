@@ -45,6 +45,10 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 	if page.NextCursor != "" {
 		body.NextCursor = &page.NextCursor
 	}
+	if page.Exact != nil {
+		exact := toAPITag(*page.Exact)
+		body.Exact = &exact
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
@@ -302,13 +306,10 @@ func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 }
 
 // validTagBatchIDs は本文の項目 field の ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、
-// 違えば 400 を書いて false を返す。多すぎるときは reason too_many_tags と limit を付ける。
+// 違えば 400 を書いて false を返す。0 件と多すぎるときのどちらも reason too_many_tags と
+// limit を付ける（一括操作の videoIds の too_many_videos と同じ扱い）。
 func (s *server) validTagBatchIDs(w http.ResponseWriter, field string, ids []int64) bool {
-	switch {
-	case len(ids) == 0:
-		s.invalidRequest(w, field+" must contain at least one tag id.")
-		return false
-	case len(ids) > domain.MaxTagBatch:
+	if len(ids) == 0 || len(ids) > domain.MaxTagBatch {
 		s.invalidRequestLimit(w, reasonTooManyTags, domain.MaxTagBatch,
 			fmt.Sprintf("%s must contain between 1 and %d items.", field, domain.MaxTagBatch))
 		return false
@@ -330,7 +331,7 @@ const rejectedTagNamePageDefaultLimit = 100
 
 // ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
 // （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
-// limit が 1〜domain.MaxLimit の外、cursor が解釈できないときは 400 invalid_request。
+// limit が 1〜domain.MaxTagPageLimit の外、cursor が解釈できないときは 400 invalid_request。
 func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params gen.ListRejectedTagNamesParams) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -339,8 +340,8 @@ func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, pa
 	limit := rejectedTagNamePageDefaultLimit
 	if params.Limit != nil {
 		limit = *params.Limit
-		if limit < 1 || limit > domain.MaxLimit {
-			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxLimit))
+		if limit < 1 || limit > domain.MaxTagPageLimit {
+			s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
 			return
 		}
 	}

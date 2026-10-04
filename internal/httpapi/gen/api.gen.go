@@ -1725,6 +1725,10 @@ type TagInput struct {
 
 // TagList defines model for TagList.
 type TagList struct {
+	// Exact 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+	// 合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
+	// `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
+	Exact *Tag  `json:"exact,omitempty"`
 	Items []Tag `json:"items"`
 
 	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る

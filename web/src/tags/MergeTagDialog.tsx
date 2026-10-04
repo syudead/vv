@@ -24,7 +24,8 @@ import TentativeMark from "../ui/TentativeMark";
  *
  * 統合先の候補は全部のタグから、入力のたびにサーバーの検索（`GET /api/tags?q=…&limit=8`）
  * で引く（画面が読み込んでいないタグも選べる。research.md R-14、ui-design.md「Target
- * candidates」）。並びはサーバーの名前の自然順のままで、画面では並べ直さない。
+ * candidates」）。並びはサーバーの名前の自然順のままで、入力と綴りが完全に一致するタグ
+ * （応答の `exact`。部分一致の上位に入らなくても届く）だけを先頭に置く。
  *
  * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は応答から
  * 統合元を除いたもので、確認の本数は統合元の `videoCount`。選択から開いたときは、候補に
@@ -75,6 +76,8 @@ export default function MergeTagDialog({
   const [countError, setCountError] = useState<UiText | null>(null);
   // 統合先の候補（最後に届いた検索の応答）。次の応答が届くまで前の候補を残す。
   const [candidates, setCandidates] = useState<readonly Tag[]>([]);
+  // 最後に届いた応答の `exact`（入力と綴りが完全に一致するタグ）。
+  const [exactCandidate, setExactCandidate] = useState<Tag | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<UiText | null>(null);
   // 数え直しのきっかけ。「Retry」と、統合先を選ぶたび（同じタグを選び直したときも。
@@ -92,7 +95,13 @@ export default function MergeTagDialog({
     () => (fromSelection ? new Set<number>() : new Set(sources.map((item) => item.id))),
     [fromSelection, sources],
   );
-  const { options, exactOption } = buildTargetOptions(candidates, excluded, value);
+  const {
+    tags: targetTags,
+    options,
+    exactOption,
+  } = buildTargetOptions(candidates, exactCandidate, excluded, value);
+  // 行から開いたときは応答から統合元を除くので、その分を多く引いて候補を 8 件に保つ。
+  const requestLimit = Math.min(targetCandidateLimit + excluded.size, tagPageMaxLimit);
 
   // 入力が変わるたびに統合先の候補をサーバーで引く（窓を開いた直後の空の入力も同じ経路）。
   // 進行中の要求は次の入力で打ち切り、最後の応答だけを候補にする。
@@ -100,10 +109,11 @@ export default function MergeTagDialog({
     const controller = new AbortController();
     setSearching(true);
     setSearchError(null);
-    listTagPage({ q: value.trim(), limit: targetCandidateLimit }, controller.signal)
+    listTagPage({ q: value.trim(), limit: requestLimit }, controller.signal)
       .then((page) => {
         if (controller.signal.aborted) return;
         setCandidates(page.items);
+        setExactCandidate(page.exact ?? null);
         setSearching(false);
       })
       .catch((failure: unknown) => {
@@ -112,7 +122,7 @@ export default function MergeTagDialog({
         setSearching(false);
       });
     return () => controller.abort();
-  }, [value]);
+  }, [value, requestLimit]);
 
   const targetId = target?.id ?? null;
   /** 統合先を外した統合元。実際に送る `sourceIds` になる。 */
@@ -175,7 +185,7 @@ export default function MergeTagDialog({
   }
 
   function selectTarget(option: ComboboxOption) {
-    const found = candidates.find((item) => String(item.id) === option.id);
+    const found = targetTags.find((item) => String(item.id) === option.id);
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
@@ -403,26 +413,41 @@ export default function MergeTagDialog({
   );
 }
 
-/** targetCandidateLimit は統合先の候補に引く最大の行数（ui-design.md「Target candidates」）。 */
+/** targetCandidateLimit は統合先の候補に出す最大の行数（ui-design.md「Target candidates」）。 */
 const targetCandidateLimit = 8;
 
+/** tagPageMaxLimit は `GET /api/tags` の `limit` の上限（contracts/screen-api.md §5）。 */
+const tagPageMaxLimit = 200;
+
 /**
- * buildTargetOptions はサーバーの検索の応答から統合先の候補を作る。並びは応答のまま
- * （サーバーの名前の自然順）。名前ではなくシノニムで当たった候補には、照合形
- * （`foldForMatch`。サーバーと同じ）で当たったシノニムを補足に添える。
+ * buildTargetOptions はサーバーの検索の応答から統合先の候補を作る。入力と綴りが完全に
+ * 一致するタグ（応答の `exact`、無ければ `items` の中の一致）を先頭に置き、残りは応答の
+ * まま（サーバーの名前の自然順）で、合わせて `targetCandidateLimit` 件まで。`exact` は
+ * 前の入力への応答のこともあるので、今の入力と綴りが一致するときだけ使う。名前ではなく
+ * シノニムで当たった候補には、照合形（`foldForMatch`。サーバーと同じ）で当たったシノニムを
+ * 補足に添える。
  */
 function buildTargetOptions(
-  tags: readonly Tag[],
+  items: readonly Tag[],
+  exact: Tag | null,
   excluded: ReadonlySet<number>,
   input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { tags: Tag[]; options: ComboboxOption[]; exactOption: ComboboxOption | null } {
   const trimmed = input.trim();
   const query = foldForMatch(trimmed);
-  const candidates = tags.filter((tag) => !excluded.has(tag.id));
+  const spelled = (tag: Tag) =>
+    trimmed !== "" && (tag.name === trimmed || tag.synonyms.includes(trimmed));
+  const allowed = items.filter((tag) => !excluded.has(tag.id));
 
-  const exactTag = candidates.find(
-    (tag) => tag.name === trimmed || tag.synonyms.includes(trimmed),
-  );
+  const exactTag =
+    exact !== null && !excluded.has(exact.id) && spelled(exact)
+      ? exact
+      : allowed.find(spelled);
+  const candidates = (
+    exactTag === undefined
+      ? allowed
+      : [exactTag, ...allowed.filter((tag) => tag.id !== exactTag.id)]
+  ).slice(0, targetCandidateLimit);
 
   const options: ComboboxOption[] = candidates.map((tag) => {
     const nameMatch = query === "" || foldForMatch(tag.name).includes(query);
@@ -447,5 +472,5 @@ function buildTargetOptions(
           meta: t.tags.mergeDialog.videoCount(exactTag.videoCount),
         };
 
-  return { options, exactOption };
+  return { tags: candidates, options, exactOption };
 }

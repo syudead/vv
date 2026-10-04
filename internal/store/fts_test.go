@@ -157,7 +157,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	if _, err := db.sql.Exec(`drop trigger location_search_fts_ai`); err != nil {
 		t.Fatalf("トリガを外せない: %v", err)
 	}
-	res, err := db.sql.Exec(`insert into videos(added_at, updated_at, content_key, container) values (1, 1, 'sports-day', 'mp4')`)
+	res, err := db.sql.Exec(`insert into videos(added_at, indexed_at, content_key, container) values (1, 1, 'sports-day', 'mp4')`)
 	if err != nil {
 		t.Fatal(err)
 	}
