@@ -1,6 +1,6 @@
 ---
 source: specs/039-external-tag-admin/contracts/external-api.md
-sourceHash: 230bf8bac80e7d501c3017615c46f8f525dfb38cb59ccd35f700cb79dda8a834
+sourceHash: 07e0c8f5ca6ded08a941051c328ed110ace8c93aa6cd46aa6ee0b9e4753222f0
 ---
 
 # 契約: 外部 API v1 と MCP でのタグ管理 {#contract-tag-administration-in-the-external-api-v1-and-mcp}
@@ -64,13 +64,13 @@ flowchart LR
 | フィールド | 型 | 必須 | 意味 |
 | --- | --- | --- | --- |
 | `targetId` | int64 | はい | 付与、名前、同義語を受け取るタグ。確定したタグになる |
-| `sourceIds` | int64[]、1 から 20,000、重複は 1 つと数える | はい | 統合するタグ。それぞれの元の名前と同義語は統合先の同義語になり、タグ自体は削除される |
+| `sourceIds` | int64[]、送られたとおりの要素数で 1 から 20,000 | はい | 統合するタグ。それぞれの元の名前と同義語は統合先の同義語になり、タグ自体は削除される。重複した id は 20,000 の要素数に数え、1 回だけ統合する |
 
 **応答**: `200 { tag: Tag, notFoundIds: int64[] }`。存在しない統合元は飛ばして `notFoundIds` に挙げる。統合元がすべて存在しないとき、`tag` は変わっていない統合先である。
 
 | ステータス | `code` / `reason` | 条件 |
 | --- | --- | --- |
-| `400` | `invalid_request` / `too_many_tags`、`limit` | `sourceIds` が空、または 20,000 を超える |
+| `400` | `invalid_request` / `too_many_tags`、`limit` | `sourceIds` が空、または重複を含めて 20,000 要素を超える |
 | `400` | `invalid_request` / `merge_same_tag` | `sourceIds` が `targetId` を含む。何も変わらない |
 | `404` | `not_found` / `tag_not_found` | `targetId` が存在しない。何も変わらない |
 
@@ -88,7 +88,7 @@ flowchart LR
 | --- | --- | --- |
 | `400` | `invalid_request` / `tag_name_empty`、`tag_name_control_characters`、`tag_name_too_long` (`limit`) | 名前が名前の規則に反する |
 | `404` | `not_found` / `tag_not_found` | `id` が存在しない |
-| `409` | `conflict` / `tag_name_taken`、`tagId`、`tagName` | 名前が別のタグの元の名前か同義語である。何も変わらない |
+| `409` | `conflict` / `tag_name_taken`、`tagId`、`tagName` | 名前が別のタグの元の名前か同義語、または `id` 自身の同義語の 1 つである (このとき `tagId` は `id`)。何も変わらない |
 
 ## 4. `POST /api/v1/tags/synonyms` {#4-post-apiv1tagssynonyms}
 
@@ -140,14 +140,14 @@ flowchart LR
 | フィールド | 型 | 必須 | 意味 |
 | --- | --- | --- | --- |
 | `action` | `confirm`、`reject`、`delete` のいずれか | はい | `confirm` と `reject` は仮のタグに、`delete` は確定したタグに働く |
-| `ids` | int64[]、1 から 20,000、重複は 1 つと数える | はい | — |
+| `ids` | int64[]、送られたとおりの要素数で 1 から 20,000 | はい | 重複した id は 20,000 の要素数に数え、1 回だけ適用する |
 
 **応答**: `200 { appliedIds, notFoundIds, notApplicableIds }`。重ならない 3 つの `int64[]` で、合わせると重複を除いた `ids` に等しく、現れた順に並ぶ。却下したタグの元の名前は却下した名前に入る。削除したタグの名前は記憶しない。
 
 | ステータス | `code` / `reason` | 条件 |
 | --- | --- | --- |
 | `400` | `invalid_request` | `action` が 3 つの値以外 |
-| `400` | `invalid_request` / `too_many_tags`、`limit` | `ids` が空、または 20,000 を超える |
+| `400` | `invalid_request` / `too_many_tags`、`limit` | `ids` が空、または重複を含めて 20,000 要素を超える |
 | `500` | `internal` | トランザクションが失敗した。何も変わらない |
 
 ## 6. `GET /api/v1/tags/rejected-names` {#6-get-apiv1tagsrejected-names}

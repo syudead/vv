@@ -1,6 +1,6 @@
 ---
 source: specs/039-external-tag-admin/quickstart.md
-sourceHash: c515cf6216d2c9cea1aa45ab3d9e3f70331b6b0dc603864417b5f9f7c1068d64
+sourceHash: 692d67959ea8462e1327b83c1b58ea6c7196a3f178e362d0282f27b5829bb235
 ---
 
 # クイックスタート: エージェントが MCP でタグを整理する {#quickstart-an-agent-tidies-tags-through-mcp}
@@ -9,7 +9,7 @@ sourceHash: c515cf6216d2c9cea1aa45ab3d9e3f70331b6b0dc603864417b5f9f7c1068d64
 
 ## 前提条件 {#prerequisites}
 
-- API トークン ([Create a token](../../docs/how-to/external-api.md#create-a-token)) を持つ起動中のサーバーと、仮のタグが 1,000 個以上あるライブラリ。`scripts/tagsbench` がそのようなライブラリを用意する ([docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md))。
+- API トークン ([Create a token](../../docs/how-to/external-api.md#create-a-token)) を持つ起動中のサーバーと、仮のタグが 1,000 個以上あるライブラリ。`go run ./scripts/tagsbench -scale 2000` がそのようなライブラリを用意する。用意するタグの半分が仮のタグなので、これより小さい規模では足りない ([docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md))。
 - サーバーを登録した Claude Code: `claude mcp add --transport http vv http://localhost:8080/mcp --header "Authorization: Bearer vvt_…"`。
 
 ## 手順 {#steps}

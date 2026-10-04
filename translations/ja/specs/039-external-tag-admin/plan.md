@@ -1,6 +1,6 @@
 ---
 source: specs/039-external-tag-admin/plan.md
-sourceHash: 781bdd83a7e70faa8a6164ce35a8c9114129de6b8788558bc9b5059b9b3faac8
+sourceHash: d41182b00693844dab5394c11e8d6fa188742027f652582608aa88b89d69a676
 ---
 
 # 実装計画: 外部 API と MCP からタグを整理する (統合、同義語、確定、却下、名前の変更、削除) {#implementation-plan-tidy-up-tags-from-the-external-api-and-mcp-merge-synonyms-confirm-reject-rename-delete}
@@ -23,7 +23,7 @@ AI エージェントなど API トークンを持つクライアントは、`/a
 | 画面との一致 | ハンドラは同じインターフェースを通じて同じ `TagStore` の操作を呼ぶ。新しい書き込み経路はない ([R-6](research.md#r-6-the-external-handlers-call-the-same-tags-methods-as-the-screen-with-no-new-write-path)) |
 | MCP | 新しいツール 6 つと変更した `list_tags`。合計 14 ツール ([§8](contracts/external-api.md#8-mcp-tools)) |
 
-公開しないもの: `POST /api/tags/impact` (画面の確認用の件数。エージェントは一覧の `videoCount` を読む) と、画面のタグ 1 つ用の確定、却下、削除のルート (R-3)。親 Issue のとおり範囲外のもの: タグだけの作成、トークンごとの権限、統合候補の提案、取り消し、タグ管理画面。
+公開しないもの: `POST /api/tags/impact` (一括操作の前に画面の確認ダイアログが示す件数。ツール呼び出しにはそれを示すダイアログがなく、一括操作の結果が変えたものを挙げる) と、画面のタグ 1 つ用の確定、却下、削除のルート (R-3)。親 Issue のとおり範囲外のもの: タグだけの作成、トークンごとの権限、統合候補の提案、取り消し、タグ管理画面。
 
 ## 技術的な文脈 {#technical-context}
 
