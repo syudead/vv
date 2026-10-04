@@ -81,7 +81,11 @@ export default function VirtualTableBody({
   const rangeExtractor = useCallback(
     (range: Range) => {
       const indexes = defaultRangeExtractor(range);
-      if (focusedRow === null || focusedRow >= range.count || indexes.includes(focusedRow))
+      if (
+        focusedRow === null ||
+        focusedRow >= range.count ||
+        indexes.includes(focusedRow)
+      )
         return indexes;
       return [...indexes, focusedRow].sort((a, b) => a - b);
     },
@@ -137,7 +141,10 @@ export default function VirtualTableBody({
       }
       const start = virtualizer.getOffsetForIndex(index, "start")?.[0];
       if (start === undefined) return;
-      window.scrollTo({ top: Math.max(start - top - target.offset, 0), behavior: "auto" });
+      window.scrollTo({
+        top: Math.max(start - top - target.offset, 0),
+        behavior: "auto",
+      });
     },
     [virtualizer],
   );

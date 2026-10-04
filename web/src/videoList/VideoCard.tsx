@@ -429,7 +429,9 @@ function VideoCard(props: VideoCardProps) {
 export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
-export const VideoRow = memo(function VideoRow(props: VideoCardProps & Partial<TableRowSlot>) {
+export const VideoRow = memo(function VideoRow(
+  props: VideoCardProps & Partial<TableRowSlot>,
+) {
   const { video, backTo, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);

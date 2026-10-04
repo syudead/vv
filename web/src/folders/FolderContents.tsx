@@ -10,7 +10,10 @@ import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoLis
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
-import VirtualGrid, { type ListAnchor, type VirtualGridHandle } from "../videoList/VirtualGrid";
+import VirtualGrid, {
+  type ListAnchor,
+  type VirtualGridHandle,
+} from "../videoList/VirtualGrid";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import { Section } from "./layout";
 

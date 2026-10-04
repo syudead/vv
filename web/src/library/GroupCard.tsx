@@ -238,7 +238,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
  * グループの値を出す（ui-design.md「List view row」）。
  */
-export const GroupRow = memo(function GroupRow(props: GroupCardProps & Partial<TableRowSlot>) {
+export const GroupRow = memo(function GroupRow(
+  props: GroupCardProps & Partial<TableRowSlot>,
+) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
