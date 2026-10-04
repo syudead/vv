@@ -20,7 +20,10 @@ function walk(dir: string): string[] {
 }
 
 describe("vendored shadcn skill", () => {
-  const files = walk(skill).filter((path) => /\.(md|ya?ml|json)$/.test(path));
+  // VENDORED.md は取り込みの記録で、置き換えた元の書き方を説明するために shadcn@ を書く。
+  const files = walk(skill).filter(
+    (path) => /\.(md|ya?ml|json)$/.test(path) && !path.endsWith("VENDORED.md"),
+  );
 
   it("has files to check", () => {
     expect(files.length).toBeGreaterThan(0);
