@@ -103,6 +103,19 @@ describe("Sidebar", () => {
     expect(screen.getByRole("dialog").textContent).toContain("Library");
   });
 
+  it("ドロワーとその背面の幕はトップバーの下から始める", () => {
+    renderSidebar();
+
+    // ドロワーの置き場は Sheet の data-[side=left]: で決まるため、同じ印で上端を下げる。
+    const drawer = screen.getByRole("dialog");
+    expect(drawer.getAttribute("data-side")).toBe("left");
+    expect(drawer.className).toContain("data-[side=left]:top-navbar");
+    expect(drawer.className).toContain("data-[side=left]:h-auto");
+    expect(drawer.className).not.toContain("data-[side=left]:h-full");
+    const overlay = document.querySelector('[data-slot="sheet-overlay"]');
+    expect(overlay?.className.split(" ")).toContain("top-navbar");
+  });
+
   it("設定をサイドバー末尾の実リンクとして表示してdrawerを閉じる", async () => {
     const user = userEvent.setup();
     renderSidebar();

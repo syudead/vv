@@ -121,8 +121,15 @@ export default function Sidebar() {
   const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
 
   return (
-    // 上端はトップバーの下から始める（トップバーが全幅にあるため）。
-    <SidebarRoot collapsible="icon" className="top-navbar h-auto">
+    // 上端はトップバーの下から始める（トップバーが全幅にあるため）。狭い幅のドロワーと
+    // その背面の幕も同じで、トップバーを覆わない。ドロワー（Sheet）は置き場を
+    // data-[side=left]: で決めるので、同じ印を付けてそれより優先させる（広い幅の入れ物も
+    // data-side を持つため、どちらの幅にも効く）。
+    <SidebarRoot
+      collapsible="icon"
+      className="data-[side=left]:top-navbar data-[side=left]:h-auto"
+      overlayClassName="top-navbar"
+    >
       <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
         <SidebarContent>
           <SidebarGroup>

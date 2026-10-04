@@ -129,12 +129,15 @@ function Sidebar({
   variant = "sidebar",
   collapsible = "offcanvas",
   className,
+  overlayClassName,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
   side?: "left" | "right";
   variant?: "sidebar" | "floating";
   collapsible?: "offcanvas" | "icon" | "none";
+  /** overlayClassName は狭い幅のドロワーの背面の幕に足すクラスである（例: トップバーの下から始める）。 */
+  overlayClassName?: string;
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
 
@@ -161,8 +164,13 @@ function Sidebar({
           data-slot="sidebar"
           data-mobile="true"
           aria-describedby={undefined}
-          className="w-sidebar gap-0 border-border bg-navbar p-0 text-foreground [&>button]:hidden"
+          className={cn(
+            "w-sidebar gap-0 border-border bg-navbar p-0 text-foreground [&>button]:hidden",
+            className,
+          )}
+          overlayClassName={overlayClassName}
           side={side}
+          {...props}
         >
           <SheetHeader className="sr-only">
             <SheetTitle>{t.common.sidebar}</SheetTitle>
