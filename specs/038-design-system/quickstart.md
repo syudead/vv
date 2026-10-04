@@ -11,7 +11,7 @@ five screens keep their operations. Criterion 5 is `task check` and
 
 - A checkout of the feature branch after the last implementation unit, with
   `npm --prefix web ci` run ([docs/how-to/development.md](../../docs/how-to/development.md)).
-- For step 5, a library with at least one folder of videos, tags and a
+- For step 6, a library with at least one folder of videos, tags and a
   duplicate bundle, as for `task dev`.
 
 ## Steps
