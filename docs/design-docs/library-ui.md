@@ -549,7 +549,7 @@ condition, without `matchMedia`, for the reason in
 ## 9. List conditions applied by the server
 
 The server applies every list condition (search, filters, sort, shuffle seed),
-and the page never filters or reads ahead through loaded pages
+and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 

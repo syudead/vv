@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 2eb9cbdd57d862e465d4f563941d860713d9952219dfa61fa609590884e98158
+sourceHash: cdfff46be19b2e36a397eb25edc60fa7f615b1f9720f9bceecc9513a5571d595
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -69,6 +69,14 @@ flowchart LR
 一覧は、仮想スクロールのライブラリを使わず、読み込んだ項目をすべて描画する。目標は入力への即座の応答で、DOM 要素を減らすことではない。
 
 一覧は折り返すグリッドで、1 行のカード数は画面幅とカード幅で変わる。そのため仮想化すると、その数を計算し、スクロール位置の復元を仮想座標で作り直すことになる。ページは 60 項目ずつ読み込む（[`PAGE_SIZE`](../../web/src/api/client.ts)）ので、DOM には利用者が読み込んだものだけがある。**何が遅いかを測った後にだけ見直す。**
+
+タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。ツールバー、タブ、列見出しは、上部バーの下に貼り付く 1 つの帯としてとどまる。ページは帯を測り、その高さを仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が帯の下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
+
+### スクロールはウィンドウが持つ {#the-window-owns-scrolling}
+
+内容をスクロールするのは文書（ウィンドウ）だ。シェルのサイドバーとツールバーは固定か貼り付きで、スクロールコンテナを持たない。
+
+一覧のスクロール位置の復元、ズームの基準位置の保持、無限スクロールは、どれも `window.scrollY` を読むかビューポートを基準に監視するので、シェルの中にスクロールコンテナを置くと 3 つすべてを書き直すことになる。
 
 ## 4. 幅のブレークポイントは CSS に置き、サイドバーは例外とする {#4-width-breakpoints-in-css-and-the-sidebar-exception}
 
@@ -395,3 +403,27 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
 
 中央のタッチ操作は、[4 節](#4-width-breakpoints-in-css-and-the-sidebar-exception)の理由により、`matchMedia` を使わず CSS のメディア条件で `pointer: coarse` の機器に表示する。
+
+## 9. サーバーが適用する一覧の条件 {#9-list-conditions-applied-by-the-server}
+
+一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
+
+どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。
+
+```mermaid
+flowchart LR
+  ev[video イベント] --> rf[動画を取得し直す]
+  rf --> rep{まだ代表?}
+  rep -->|はい| upd[その場で更新]
+  rep -->|いいえ| shown{代表が一覧にある?}
+  shown -->|はい| drop[項目を除く]
+  shown -->|いいえ| reload[最初のページから読み直す]
+```
+
+代表を直接差し込むと、フォルダや絞り込みの外の動画を表示しかねない（[`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)）。
+
+## 10. 既定値を持つ機器ごとの設定 {#10-per-device-preferences-with-defaults}
+
+機器ごとの表示設定は、決して例外を投げない `localStorage` 上の全域関数だ（[`web/src/preferences/`](../../web/src/preferences)）。値がない、壊れている、読めないときは既定値になり、書き込みの失敗は無視する。
+
+設定は便宜のためのものだ。保存された不正な値やブロックされたストレージで画面を空白にしてはならない。
