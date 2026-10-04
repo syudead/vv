@@ -73,7 +73,7 @@ Merges one or more source tags into a target tag in one transaction
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `targetId` | int64 | yes | The tag that receives the assignments, names and synonyms. It becomes a confirmed tag |
-| `sourceIds` | int64[], 1 to 20,000, duplicates count once | yes | The tags to merge. Each one's original name and synonyms become synonyms of the target, and it is deleted |
+| `sourceIds` | int64[], 1 to 20,000 entries as sent | yes | The tags to merge. Each one's original name and synonyms become synonyms of the target, and it is deleted. A duplicate id counts toward the 20,000 entries and is merged once |
 
 **Response**: `200 { tag: Tag, notFoundIds: int64[] }`. Missing sources are
 skipped and listed in `notFoundIds`; when every source is missing, `tag` is the
@@ -81,7 +81,7 @@ unchanged target.
 
 | Status | `code` / `reason` | When |
 | --- | --- | --- |
-| `400` | `invalid_request` / `too_many_tags`, `limit` | `sourceIds` empty or over 20,000 |
+| `400` | `invalid_request` / `too_many_tags`, `limit` | `sourceIds` empty or over 20,000 entries, duplicates included |
 | `400` | `invalid_request` / `merge_same_tag` | `sourceIds` contains `targetId`. Nothing changes |
 | `404` | `not_found` / `tag_not_found` | `targetId` does not exist. Nothing changes |
 
@@ -100,7 +100,7 @@ confirmed when its name changes; the same name as now changes nothing.
 | --- | --- | --- |
 | `400` | `invalid_request` / `tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long` (`limit`) | The name breaks the name rules |
 | `404` | `not_found` / `tag_not_found` | `id` does not exist |
-| `409` | `conflict` / `tag_name_taken`, `tagId`, `tagName` | The name is another tag's original name or synonym. Nothing changes |
+| `409` | `conflict` / `tag_name_taken`, `tagId`, `tagName` | The name is another tag's original name or synonym, or one of `id`'s own synonyms (then `tagId` is `id`). Nothing changes |
 
 ## 4. `POST /api/v1/tags/synonyms`
 
@@ -155,7 +155,7 @@ to 6; [R-3](../research.md#r-3-confirm-reject-and-delete-go-only-through-post-ap
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `action` | `confirm`, `reject` or `delete` | yes | `confirm` and `reject` apply to tentative tags, `delete` to confirmed tags |
-| `ids` | int64[], 1 to 20,000, duplicates count once | yes | — |
+| `ids` | int64[], 1 to 20,000 entries as sent | yes | A duplicate id counts toward the 20,000 entries and is applied once |
 
 **Response**: `200 { appliedIds, notFoundIds, notApplicableIds }`, three
 `int64[]` that do not overlap and together equal the deduplicated `ids`, in the
@@ -165,7 +165,7 @@ a deleted tag's name is not remembered.
 | Status | `code` / `reason` | When |
 | --- | --- | --- |
 | `400` | `invalid_request` | `action` outside the three values |
-| `400` | `invalid_request` / `too_many_tags`, `limit` | `ids` empty or over 20,000 |
+| `400` | `invalid_request` / `too_many_tags`, `limit` | `ids` empty or over 20,000 entries, duplicates included |
 | `500` | `internal` | The transaction failed. Nothing changes |
 
 ## 6. `GET /api/v1/tags/rejected-names`

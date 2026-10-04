@@ -23,8 +23,9 @@ the screen would leave.
 | Parity with the screen | The handlers call the same `TagStore` operations through the same interface; no new write path ([R-6](research.md#r-6-the-external-handlers-call-the-same-tags-methods-as-the-screen-with-no-new-write-path)) |
 | MCP | Six new tools and a changed `list_tags`, 14 tools in all ([§8](contracts/external-api.md#8-mcp-tools)) |
 
-Not exposed: `POST /api/tags/impact` (the screen's confirmation counts; an
-agent reads `videoCount` from the list) and the screen's single-tag confirm,
+Not exposed: `POST /api/tags/impact` (the counts the screen's confirmation
+dialog shows before a bulk action; a tool call has no dialog to show them in,
+and the batch result lists what it changed) and the screen's single-tag confirm,
 reject and delete routes (R-3). Out of scope, as the parent Issue says:
 creating a tag on its own, per-token permissions, suggesting merge candidates,
 undo, and the tag admin screen.

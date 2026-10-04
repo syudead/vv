@@ -9,8 +9,10 @@ handlers; it does not run an MCP client.
 
 - A running server with an API token
   ([Create a token](../../docs/how-to/external-api.md#create-a-token)) and a
-  library with at least 1,000 tentative tags. `scripts/tagsbench` seeds such a
-  library ([docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md)).
+  library with at least 1,000 tentative tags. `go run ./scripts/tagsbench
+  -scale 2000` seeds such a library: half of the tags it seeds are tentative,
+  so a smaller scale falls short
+  ([docs/how-to/tags-admin-benchmark.md](../../docs/how-to/tags-admin-benchmark.md)).
 - Claude Code with the server registered:
   `claude mcp add --transport http vv http://localhost:8080/mcp --header "Authorization: Bearer vvt_…"`.
 
