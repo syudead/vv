@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "load-more-row",
+  "title": "LoadMoreRow",
+  "description": "State: a Spinner row while the next page loads, or an Alert row with Retry when it failed. Uses spinner and alert.",
+  "files": [
+    {
+      "path": "src/ui/patterns/load-more-row.tsx",
+      "content": "import { CircleAlert, RotateCw } from \"lucide-react\";\nimport type { ReactNode } from \"react\";\n\nimport { Alert, AlertAction, AlertDescription, AlertTitle } from \"@/ui/shadcn/alert\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Spinner } from \"@/ui/shadcn/spinner\";\n\n// 追加読み込みの行（状態）。中身の後ろ、本体の末尾に置く。読み込み中は Spinner の行、\n// 続きの読み込みに失敗したら中身を残したまま Retry つきの Alert の行を出し、Retry は\n// 同じページを再要求する。規則は web/registry/rules/patterns.md の States。\n\nexport type LoadMoreRowProps =\n  | {\n      status: \"loading\";\n      /** 読み込んでいるものの名前（「Loading more videos」）。 */\n      label: string;\n    }\n  | {\n      status: \"failed\";\n      /** 何が失敗したか（「Couldn't load more videos」）。 */\n      title: ReactNode;\n      description?: ReactNode;\n      retryLabel: ReactNode;\n      /** 失敗した同じページを再要求する。 */\n      onRetry: () => void;\n    };\n\nexport function LoadMoreRow(props: LoadMoreRowProps) {\n  if (props.status === \"loading\") {\n    return (\n      <div\n        data-slot=\"load-more-row\"\n        data-state=\"loading\"\n        className=\"flex justify-center py-3\"\n      >\n        <Spinner aria-label={props.label} />\n      </div>\n    );\n  }\n  return (\n    <Alert data-slot=\"load-more-row\" data-state=\"failed\" variant=\"destructive\">\n      <CircleAlert aria-hidden=\"true\" />\n      <AlertTitle>{props.title}</AlertTitle>\n      {props.description && <AlertDescription>{props.description}</AlertDescription>}\n      <AlertAction>\n        <Button variant=\"outline\" size=\"sm\" onClick={props.onRetry}>\n          <RotateCw aria-hidden=\"true\" />\n          {props.retryLabel}\n        </Button>\n      </AlertAction>\n    </Alert>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+  "type": "registry:ui"
+}

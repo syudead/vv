@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "settings-page",
+  "title": "SettingsPage",
+  "description": "Page skeleton: one column of fixed maximum width with titled sections.",
+  "files": [
+    {
+      "path": "src/ui/patterns/settings-page.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\n// 設定ページ（骨格）。最大幅を固定した 1 列に、見出しと節（PageSection）を並べる。\n// 節の間隔は骨格が持つ。規則は web/registry/rules/patterns.md の Settings page。\n\nexport interface SettingsPageProps {\n  /** PageHeader（題と説明）。 */\n  header: ReactNode;\n  /** PageSection の並び。 */\n  children: ReactNode;\n}\n\nexport function SettingsPage({ header, children }: SettingsPageProps) {\n  return (\n    <div\n      data-slot=\"settings-page\"\n      className=\"mx-auto flex w-full max-w-3xl flex-col gap-6 p-3 sm:p-4\"\n    >\n      {header}\n      <div data-slot=\"settings-page-body\" className=\"flex flex-col gap-8\">\n        {children}\n      </div>\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
+  "type": "registry:ui"
+}

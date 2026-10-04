@@ -82,6 +82,7 @@ const namedSizes = [
   "popover-wide",
   "chip-label",
   "menu",
+  "detail-aside",
 ] as const;
 
 const radii = [

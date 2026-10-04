@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "data-table",
+  "title": "DataTable",
+  "description": "Section: a table on a card with its border. Uses table.",
+  "files": [
+    {
+      "path": "src/ui/patterns/data-table.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { Table } from \"@/ui/shadcn/table\";\n\n// 表（区画）。Table をカードの面と枠に入れる。中身は TableHeader と TableBody で書き、\n// 行の高さと余白は Table が持つ。規則は web/registry/rules/patterns.md の Data table。\n\nexport interface DataTableProps {\n  /** 表の名前。支援技術に読まれる。 */\n  label: string;\n  /** TableHeader と TableBody。 */\n  children: ReactNode;\n}\n\nexport function DataTable({ label, children }: DataTableProps) {\n  return (\n    <div\n      data-slot=\"data-table\"\n      className=\"overflow-hidden rounded-md border border-border bg-card text-card-foreground\"\n    >\n      <Table aria-label={label}>{children}</Table>\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

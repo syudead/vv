@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "centered-form",
+  "title": "CenteredForm",
+  "description": "Page skeleton: one card in the centre with title, fields and one submit button.",
+  "files": [
+    {
+      "path": "src/ui/patterns/centered-form.tsx",
+      "content": "import { type FormEventHandler, type ReactNode, useId } from \"react\";\n\nimport { FieldGroup } from \"@/ui/shadcn/field\";\n\n// 中央フォーム（骨格）。囲む領域の中央に 1 枚のカードを置き、題・説明・欄・主操作を\n// 縦に並べる。サインインや初期設定のように、その画面の目的が 1 つのフォームだけのときに\n// 使う。規則は web/registry/rules/patterns.md の Centered form。\n\nexport interface CenteredFormProps {\n  /** フォームの題。h1 になる。 */\n  title: ReactNode;\n  /** 題の下の説明。 */\n  description?: ReactNode;\n  onSubmit: FormEventHandler<HTMLFormElement>;\n  /** Field の並び。 */\n  children: ReactNode;\n  /** 送信の Button（default、1 つ）。カードの幅いっぱいに伸びる。 */\n  submit: ReactNode;\n  /** カードの下の補足（別の画面へのリンクなど）。 */\n  footer?: ReactNode;\n}\n\nexport function CenteredForm({\n  title,\n  description,\n  onSubmit,\n  children,\n  submit,\n  footer,\n}: CenteredFormProps) {\n  const titleId = useId();\n  return (\n    <div\n      data-slot=\"centered-form\"\n      className=\"flex min-h-full flex-1 flex-col items-center justify-center gap-4 p-4 sm:p-8\"\n    >\n      <form\n        aria-labelledby={titleId}\n        onSubmit={onSubmit}\n        className=\"flex w-full max-w-sm flex-col gap-6 rounded-lg border border-border bg-card p-6 text-card-foreground\"\n      >\n        <div className=\"flex flex-col gap-1\">\n          <h1 id={titleId} className=\"text-xl font-semibold\">\n            {title}\n          </h1>\n          {description && <p className=\"text-sm text-muted-foreground\">{description}</p>}\n        </div>\n        <FieldGroup>{children}</FieldGroup>\n        <div data-slot=\"centered-form-submit\" className=\"flex flex-col *:w-full\">\n          {submit}\n        </div>\n      </form>\n      {footer && (\n        <div data-slot=\"centered-form-footer\" className=\"text-sm text-muted-foreground\">\n          {footer}\n        </div>\n      )}\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+  "type": "registry:ui"
+}

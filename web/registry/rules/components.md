@@ -149,6 +149,22 @@ Enter takes the selected row. When typing can create a value, put the create
 row first, so Enter creates unless the viewer moved to another row. Do not use
 a Combobox for a handful of options (use `Select` or `RadioGroup`).
 
+### Table
+
+Item `table`. Rows and columns of records, such as the tags in the admin
+screen. A screen never uses it bare: it goes in the `DataTable` section of
+[patterns.md](patterns.md#sections), which adds the card and its border.
+
+- A row that can be selected starts with a `Checkbox` cell, and the head of
+  that column holds the select-all `Checkbox` (`indeterminate` when some rows
+  are selected); set `data-state="selected"` on a selected row.
+- Row actions sit in the last cell, behind a `ghost` `icon-sm` button that
+  opens a `DropdownMenu`.
+- Numbers are right-aligned with `tabular-nums`.
+
+Do not use a Table for layout, for a list of cards, or for term and value
+pairs (use `FactList`).
+
 ## Overlays and feedback
 
 ### Dialog

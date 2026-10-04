@@ -36,7 +36,7 @@
       "type": "registry:file",
       "title": "vv design-system rules",
       "description": "The usage rules of the vv design system, one file per tier.",
-      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, and components.md before choosing, composing or adding a component.",
+      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, components.md before choosing, composing or adding a component, and patterns.md before building a screen.",
       "files": [
         {
           "path": "registry/rules/foundations.md",
@@ -47,6 +47,11 @@
           "path": "registry/rules/components.md",
           "type": "registry:file",
           "target": "registry/rules/components.md"
+        },
+        {
+          "path": "registry/rules/patterns.md",
+          "type": "registry:file",
+          "target": "registry/rules/patterns.md"
         }
       ]
     },
@@ -567,6 +572,387 @@
         {
           "path": "src/ui/VideoThumbnail.tsx",
           "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "type": "registry:ui",
+      "title": "Table",
+      "description": "Rows and columns of records: header, body, rows, heads and cells. Put it in a data-table section on a screen.",
+      "docs": "Usage rules: web/registry/rules/components.md#table (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/table.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "density",
+      "type": "registry:ui",
+      "title": "Density",
+      "description": "The density a skeleton gives its sections: management (library) or viewing (detail page). Used by patterns only.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#shared-rules (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/density.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "list-page",
+      "type": "registry:ui",
+      "title": "ListPage",
+      "description": "Page skeleton: header row, toolbar, body (grid or table), selection bar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/list-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "admin-table-page",
+      "type": "registry:ui",
+      "title": "AdminTablePage",
+      "description": "Page skeleton: header, band (tabs, search, actions), table, selection bar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#admin-table-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/admin-table-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "settings-page",
+      "type": "registry:ui",
+      "title": "SettingsPage",
+      "description": "Page skeleton: one column of fixed maximum width with titled sections.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/settings-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "detail-page",
+      "type": "registry:ui",
+      "title": "DetailPage",
+      "description": "Page skeleton: header band, main area and an information aside; stacked below lg. Viewing density.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#detail-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/detail-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "centered-form",
+      "type": "registry:ui",
+      "title": "CenteredForm",
+      "description": "Page skeleton: one card in the centre with title, fields and one submit button.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/centered-form.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form-dialog",
+      "type": "registry:ui",
+      "title": "FormDialog",
+      "description": "Dialog skeleton at most 32rem wide: title, fields, Cancel and one primary action. Uses dialog.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/form-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "confirm-dialog",
+      "type": "registry:ui",
+      "title": "ConfirmDialog",
+      "description": "AlertDialog skeleton: what happens, Cancel and a destructive action named by its verb.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/confirm-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "page-header",
+      "type": "registry:ui",
+      "title": "PageHeader",
+      "description": "Section: page title, count, description, leading (Back) and the main action.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/page-header.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toolbar",
+      "type": "registry:ui",
+      "title": "Toolbar",
+      "description": "Section: search, filters, then view controls and actions; view controls collapse into a popover below lg. Uses popover.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/toolbar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "page-section",
+      "type": "registry:ui",
+      "title": "PageSection",
+      "description": "Section: a titled card whose direct children are padded, divided rows.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/page-section.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form-row",
+      "type": "registry:ui",
+      "title": "FormRow",
+      "description": "Section: one setting, label and description left, control right; stacked below sm. Uses field.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/form-row.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "fact-list",
+      "type": "registry:ui",
+      "title": "FactList",
+      "description": "Section: term and value pairs in two columns.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/fact-list.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-grid",
+      "type": "registry:ui",
+      "title": "CardGrid",
+      "description": "Section: cards at least card-0 to card-3 wide, stretched so both edges line up with the toolbar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/card-grid.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "data-table",
+      "type": "registry:ui",
+      "title": "DataTable",
+      "description": "Section: a table on a card with its border. Uses table.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/data-table.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "selection-bar",
+      "type": "registry:ui",
+      "title": "SelectionBar",
+      "description": "Section: selected count, Clear selection and bulk actions, stuck to the bottom of the page. Uses tooltip.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/selection-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "loading-state",
+      "type": "registry:ui",
+      "title": "LoadingState",
+      "description": "State: Skeleton shapes of the final grid or table in the body slot. Uses skeleton.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/loading-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:ui",
+      "title": "EmptyState",
+      "description": "State: icon, why it is empty, and the action that fills it. Uses empty.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/empty-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "error-state",
+      "type": "registry:ui",
+      "title": "ErrorState",
+      "description": "State: a destructive Alert saying what failed, with Retry. Uses alert.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/error-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "load-more-row",
+      "type": "registry:ui",
+      "title": "LoadMoreRow",
+      "description": "State: a Spinner row while the next page loads, or an Alert row with Retry when it failed. Uses spinner and alert.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/load-more-row.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "list-page-example",
+      "type": "registry:block",
+      "title": "List page example",
+      "description": "A working list page with sample videos: header, toolbar, card grid, load-more row and selection bar.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "list-states-example",
+      "type": "registry:block",
+      "title": "List page states example",
+      "description": "The list page body in each state: loading, empty, error, loading more, load more failed.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/list-states-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "admin-table-page-example",
+      "type": "registry:block",
+      "title": "Admin table page example",
+      "description": "A working tag admin table: tabs, search, check column, row menu, bulk selection bar.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#admin-table-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/admin-table-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "settings-page-example",
+      "type": "registry:block",
+      "title": "Settings page example",
+      "description": "A working settings page: sections of form rows and a fact list.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/settings-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "detail-page-example",
+      "type": "registry:block",
+      "title": "Detail page example",
+      "description": "A working detail page: header band with Back, media, description and an information aside.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#detail-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/detail-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "centered-form-example",
+      "type": "registry:block",
+      "title": "Centered form example",
+      "description": "A working sign-in form in a centred card.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/centered-form-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "form-dialog-example",
+      "type": "registry:block",
+      "title": "Form dialog example",
+      "description": "A working create-tag dialog with two fields.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/form-dialog-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "confirm-dialog-example",
+      "type": "registry:block",
+      "title": "Confirm dialog example",
+      "description": "A working delete-tag confirmation.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/confirm-dialog-example.tsx",
+          "type": "registry:component"
         }
       ]
     }

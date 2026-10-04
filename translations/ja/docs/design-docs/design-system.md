@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 8d416a7bb6ce26dd64688a04b6cedb425dab008e9d5b3b58e2b972040cd2f231
+sourceHash: 2cf7056cf788ed9eb46e782fadafd5556bd30e0fa5673179354d8485cad1e8a5
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -195,4 +195,45 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 
 ## ページパターン {#page-patterns}
 
-[Define the page patterns and finish the library screen on them](https://github.com/syudead/vv/issues/772) が書く。
+すべての画面は 3 つの層で作り、それらは `web/src/ui/patterns` に置く。余白、最大幅、領域の間の間隔は最初の 2 つの層に属するので、画面がそれらを書くことはない。画面はスロットに内容を渡すだけである。どの雛形を選ぶか、各スロットに何を入れ、何を入れてはならないかは [patterns.md](../../web/registry/rules/patterns.md)（項目 `vv-rules`）にある。
+
+| 層 | 何であるか | レジストリ |
+| --- | --- | --- |
+| ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
+| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
+| 状態 | `LoadingState`、`EmptyState`、`ErrorState`、`LoadMoreRow`。本体がデータの代わりに、またはデータの後に示すもの | `registry:ui`、それぞれ 1 項目 |
+
+各雛形には例のブロック（`list-page-example` など、加えて `list-states-example`）もある。雛形、そのセクションとコンポーネントを組み合わせた動作する構成であり、i18n カタログのサンプルデータで埋めてある。新しい画面を作るエージェントはブロックを複製し、文言とデータを置き換える。ブロックは `web/src/designSystem/blocks` にあり、ショーケースが描画するのはこれである。
+
+図は一覧ページの組み立て方を示す。
+
+```mermaid
+flowchart TD
+  page[ListPage] --> header[PageHeader]
+  page --> toolbar[Toolbar]
+  page --> body[本体のスロット]
+  page --> bar[SelectionBar]
+  body --> grid[CardGrid または DataTable]
+  body --> state[LoadingState、EmptyState または ErrorState]
+  grid --> more[LoadMoreRow]
+```
+
+雛形とセクションは 4 つの振る舞いを共有する。
+
+| 振る舞い | 方法 |
+| --- | --- |
+| 余白 | パターンの中で固定する。パターンは `className` を受け取らないので、画面はそれを上書きできない |
+| 密度 | `DetailPage` は視聴の密度を与え、その下では `PageSection` と `FactList` が `p-4` の行と `text-base` に切り替わる。ほかの雛形はすべてライブラリの密度である |
+| その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
+| 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
+
+`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside` である。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+
+ショーケース（`/design-system`）は、すべての例のブロック、各状態の一覧ページ、ボタンの後ろにあるダイアログを描画するので、メンテナーはパターンを 1440px と 390px で確認する。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| 今の画面から抽出したパターン | メンテナーは新しい画面を作るためのレシピを求めた。その後、画面の移行が各画面をそれらに移す |
+| 雛形とセクションのコンポーネントなしの、ブロックだけ | どの複製も自分の余白と間隔を持つことになり、画面は再びばらばらになる |
+| パターンの `className` という逃げ道 | パターンが固定するために存在する余白を、画面が変えられてしまう |
+| この層でライブラリ画面をパターンの上に作る | メンテナーは既存の画面をそれぞれの移行まで変えずに保つ |

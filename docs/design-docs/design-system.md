@@ -286,5 +286,59 @@ The decisions behind the components are in
 
 ## Page patterns
 
-Written by
-[Define the page patterns and finish the library screen on them](https://github.com/syudead/vv/issues/772).
+Every screen is built in three layers, kept in `web/src/ui/patterns`. Margins,
+maximum widths and the gaps between regions belong to the first two layers, so
+a screen never writes them; it only passes content into slots. Which skeleton
+to pick, what goes in each slot and what must not is in
+[patterns.md](../../web/registry/rules/patterns.md) (item `vv-rules`).
+
+| Layer | What it is | Registry |
+| --- | --- | --- |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
+| States | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data | `registry:ui`, one item each |
+
+Each skeleton also has an example block (`list-page-example` and so on, plus
+`list-states-example`): a working composition of the skeleton, its sections
+and components, filled with sample data from the i18n catalog. An agent
+building a new screen copies the block and replaces the text and data. The
+blocks live in `web/src/designSystem/blocks` and are what the showcase renders.
+
+The diagram shows how a list page is put together.
+
+```mermaid
+flowchart TD
+  page[ListPage] --> header[PageHeader]
+  page --> toolbar[Toolbar]
+  page --> body[Body slot]
+  page --> bar[SelectionBar]
+  body --> grid[CardGrid or DataTable]
+  body --> state[LoadingState, EmptyState or ErrorState]
+  grid --> more[LoadMoreRow]
+```
+
+Skeletons and sections share four behaviours:
+
+| Behaviour | How |
+| --- | --- |
+| Spacing | Fixed in the pattern; patterns take no `className`, so a screen cannot override it |
+| Density | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density |
+| States in place | A state block goes in the same body slot as the data, so the header and toolbar never move ([038 UI design, States](../../specs/038-design-system/ui-design.md#states)) |
+| Edges line up | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges |
+
+`CardGrid` passes its column template through `style`, because a template made
+from a named step is an arbitrary value to the checks; the step still comes
+from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`.
+`DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
+`table` item.
+
+The showcase (`/design-system`) renders every example block, the list page in
+each of its states, and the dialogs behind their buttons, so the maintainer
+confirms the patterns at 1440px and 390px.
+
+| Rejected | Why |
+| --- | --- |
+| Patterns extracted from today's screens | The maintainer asked for recipes to build new screens from; the screen migrations then move each screen onto them |
+| Blocks only, without skeleton and section components | Every copy would carry its own margins and gaps, and screens would drift apart again |
+| A `className` escape hatch on patterns | A screen could change the spacing the pattern exists to fix |
+| Building the library screen on the patterns in this tier | The maintainer keeps every existing screen unchanged until its own migration |

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "detail-page-example",
+  "title": "Detail page example",
+  "description": "A working detail page: header band with Back, media, description and an information aside.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/detail-page-example.tsx",
+      "content": "import { ArrowLeft, Play, Tag } from \"lucide-react\";\n\nimport { t } from \"@/i18n\";\nimport { DetailPage } from \"@/ui/patterns/detail-page\";\nimport { FactList } from \"@/ui/patterns/fact-list\";\nimport { PageHeader } from \"@/ui/patterns/page-header\";\nimport { PageSection } from \"@/ui/patterns/page-section\";\nimport { Badge } from \"@/ui/shadcn/badge\";\nimport { Button } from \"@/ui/shadcn/button\";\n\n// 詳細ページの型の見本（registry:block detail-page-example）。主領域に動画の場所と説明の\n// 節、横の情報欄に事実の一覧を置く。写した画面は動画の場所を自分の中身（プレーヤーなど）に\n// 差し替える（web/registry/rules/patterns.md の Detail page）。\n\nexport function DetailPageExample() {\n  const p = t.designSystem.pattern;\n  return (\n    <DetailPage\n      header={\n        <PageHeader\n          leading={\n            <Button variant=\"ghost\" size=\"sm\">\n              <ArrowLeft aria-hidden=\"true\" />\n              {p.back}\n            </Button>\n          }\n          title={p.videoTitle}\n          description={p.videoSubtitle}\n          actions={\n            <Button variant=\"outline\">\n              <Tag aria-hidden=\"true\" />\n              {p.addTag}\n            </Button>\n          }\n        />\n      }\n      aside={\n        <>\n          <PageSection title={p.information}>\n            <FactList\n              facts={[\n                { id: \"duration\", term: p.duration, value: \"49:10\" },\n                { id: \"resolution\", term: p.resolution, value: \"1920 × 1080\" },\n                { id: \"size\", term: p.fileSize, value: \"2.4 GB\" },\n                { id: \"added\", term: p.added, value: \"2026-10-02\" },\n              ]}\n            />\n          </PageSection>\n          <PageSection title={p.tags}>\n            <div className=\"flex flex-wrap gap-2\">\n              {[p.tagNames.travel, p.tagNames.kyoto, p.tagNames.autumn].map((name) => (\n                <Badge key={name} variant=\"secondary\">\n                  {name}\n                </Badge>\n              ))}\n            </div>\n          </PageSection>\n        </>\n      }\n    >\n      <div className=\"flex aspect-video items-center justify-center rounded-md bg-navbar\">\n        <Button size=\"lg\" aria-label={p.play}>\n          <Play aria-hidden=\"true\" />\n        </Button>\n      </div>\n      <PageSection title={p.description}>\n        <p>{p.descriptionText}</p>\n      </PageSection>\n    </DetailPage>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#detail-page (item vv-rules).",
+  "type": "registry:block"
+}
