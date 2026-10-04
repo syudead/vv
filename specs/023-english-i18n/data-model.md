@@ -14,11 +14,11 @@ parsed to fill in codes
 ([research.md R-6](research.md#r-6-store-a-machine-readable-failure-code-and-show-no-free-text-on-screen)).
 
 Code values are spelled the same in the `internal/domain` constants and the
-`api/openapi.yaml` enums ([contracts/error-api.md §2 and §3](contracts/error-api.md)).
+`api/openapi.yaml` enums ([contracts/error-api.md, `Video.probeErrorCode`](contracts/error-api.md#videoprobeerrorcode) and [`Scan.errorCode` and `Scan.errorPath`](contracts/error-api.md#scanerrorcode-and-scanerrorpath)).
 The type that wraps a failure with a code also lives in `internal/domain` and is
 extracted with `errors.As`. A failure that cannot be classified is `internal`.
 
-## 1. `videos.probe_error_code`
+## `videos.probe_error_code`
 
 Written together with `probe_error` (English free text) when `probe_state`
 becomes `failed`. Where `probe_error` is reset to `null` (a successful probe,
@@ -35,7 +35,7 @@ the start of a re-probe), it is reset to `null` too.
 `jobs.last_error` is not exposed by the API, so it gets no code column. Its text
 becomes English.
 
-## 2. `scans.error_code` and `scans.error_path`
+## `scans.error_code` and `scans.error_path`
 
 Written together with `error` (English free text) when `state` becomes `failed`
 (`FinishScan`, and `FailInterruptedScans` at startup). `error_path` is set only

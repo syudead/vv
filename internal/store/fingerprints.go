@@ -145,7 +145,7 @@ func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, key string, finge
 		  from (select f.content_key,
 		               `+fingerprintDistanceFunction+`(?3, ?4, f.hashes, f.interval_ms) as distance
 		          from video_fingerprints f
-		          join videos v on v.content_key = f.content_key
+		          join videos v on v.content_key = f.content_key and v.content_key <> ''
 		         where f.content_key <> ?1 and f.version = ?5
 		           and v.duration_ms > 0
 		           and abs(v.duration_ms - ?6) <= max(1000, max(v.duration_ms, ?6) * 5 / 1000)
@@ -179,10 +179,12 @@ func pruneVersionCandidates(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// candidatePairsFrom は候補の組 c と、その 2 つの鍵の動画 va・vb を結ぶ。
+// candidatePairsFrom は候補の組 c と、その 2 つの鍵の動画 va・vb を結ぶ。content_key が空でない
+// 条件は結ぶ相手を変えない（候補の鍵は空でない）が、部分インデックス videos_content_key_idx
+// （空でない content_key だけの索引）を使わせるために要る。無いと va・vb を全件走査する総当たりになる。
 const candidatePairsFrom = `from video_version_candidates c
-	join videos va on va.content_key = c.key_a
-	join videos vb on vb.content_key = c.key_b
+	join videos va on va.content_key = c.key_a and va.content_key <> ''
+	join videos vb on vb.content_key = c.key_b and vb.content_key <> ''
 	where `
 
 // candidatePairsCondition は、候補の組 c の両方の鍵に登録の所在を持つ動画があり、却下されて

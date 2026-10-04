@@ -22,7 +22,7 @@ hand on a PR that changes how the screen renders.
 
 ## Steps
 
-### 1. Measure
+### Measure
 
 ```sh
 go run ./scripts/tagsbench -scale 1000
@@ -75,7 +75,7 @@ The seed data follows these rules:
 To recreate the scale data, delete `.local/tagsbench/<data name>/`. Delete it
 also after changing how the data is built (`planTags` in `scripts/tagsbench`).
 
-### 2. Compare before and after
+### Compare before and after
 
 Measure before and after back to back on the same environment. When the commit
 before the change has no `scripts/tagsbench` or `web/bench/`, or an old one,
@@ -120,7 +120,7 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
 git worktree remove --force ../vv-before
 ```
 
-### 3. Record the results in the PR
+### Record the results in the PR
 
 Record the environment (OS, CPU, browser version) and, per scale, the value of
 each scene. Scales are told apart by the column headings (1,000, 3,000,

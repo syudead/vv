@@ -150,7 +150,7 @@ func TestOrderRelatedCapsAtMax(t *testing.T) {
 
 // VideoGroup の位置は 1 始まりで、前後はグループの中の並びで決まる。
 func TestVideoGroupPositionAndNeighbors(t *testing.T) {
-	group := VideoGroup{Members: []Video{{ID: 5}, {ID: 3}, {ID: 9}}}
+	group := VideoGroup{MemberIDs: []int64{5, 3, 9}}
 	for _, tc := range []struct {
 		id, position int64
 		prev, next   int64
@@ -165,6 +165,27 @@ func TestVideoGroupPositionAndNeighbors(t *testing.T) {
 		}
 		if prev, next := group.Neighbors(tc.id); prev != tc.prev || next != tc.next {
 			t.Errorf("Neighbors(%d) = %d・%d, want %d・%d", tc.id, prev, next, tc.prev, tc.next)
+		}
+	}
+}
+
+// 窓は基準の動画を中ほどに置き、グループの端では内側へ寄せる。Offset を使う窓はその位置から。
+func TestGroupWindowStart(t *testing.T) {
+	for _, tc := range []struct {
+		window          GroupWindow
+		total, position int
+		want            int
+	}{
+		{window: GroupWindow{Limit: 100, Around: true}, total: 6000, position: 3000, want: 2949},
+		{window: GroupWindow{Limit: 100, Around: true}, total: 6000, position: 10, want: 0},
+		{window: GroupWindow{Limit: 100, Around: true}, total: 6000, position: 5990, want: 5900},
+		{window: GroupWindow{Limit: 100, Around: true}, total: 30, position: 30, want: 0},
+		{window: GroupWindow{Offset: 200, Limit: 50}, total: 6000, position: 1, want: 200},
+		{window: GroupWindow{Offset: 7000, Limit: 50}, total: 6000, position: 1, want: 6000},
+		{window: GroupWindow{}, total: 6000, position: 3000, want: 0},
+	} {
+		if got := tc.window.Start(tc.total, tc.position); got != tc.want {
+			t.Errorf("%+v.Start(%d, %d) = %d, want %d", tc.window, tc.total, tc.position, got, tc.want)
 		}
 	}
 }

@@ -3,12 +3,12 @@
 Source of truth: `api/external-v1.yaml`. This document covers only the two
 added operations, the changes to `ExternalVideo`, and the two MCP tools. The
 common rules (Bearer, the error shape, `VideoRef`, `index`) stay as in
-[specs/026-external-api/contracts/external-api.md §1](../../026-external-api/contracts/external-api.md).
+[specs/026-external-api/contracts/external-api.md, Common rules](../../026-external-api/contracts/external-api.md#common-rules).
 The decision is
 [research.md R-9](../research.md#r-9-the-external-api-adds-two-bulk-operations-and-mcp-the-same-two-tools).
 Following the compatibility policy, only fields and operations are added.
 
-## 0. `ExternalVideo` changes
+## `ExternalVideo` changes
 
 | Field | Type | Rule |
 | --- | --- | --- |
@@ -19,7 +19,7 @@ Following the compatibility policy, only fields and operations are added.
 
 `VideoTagsItem.video` (`VideoTagsVideo`) does not change.
 
-## 1. `POST /api/v1/video-display-names`
+## `POST /api/v1/video-display-names`
 
 `operationId: updateVideoDisplayNames`.
 
@@ -42,7 +42,7 @@ if any item has an error, nothing is applied.
 
 The body limit is 32 MiB, the same as `POST /api/v1/video-tags`.
 
-## 2. `POST /api/v1/video-thumbnails`
+## `POST /api/v1/video-thumbnails`
 
 `operationId: updateVideoThumbnails`.
 
@@ -56,7 +56,7 @@ automatic position). Every item is resolved and its position validated first;
 if any has an error, nothing is applied. After validation, images are made and
 recorded one item at a time in `items` order (the same processing as the
 screen's `PUT /api/videos/{id}/thumbnail-position`;
-[screen-api.md §2](screen-api.md#2-put-apivideosidthumbnail-position)).
+[screen-api.md, `PUT /api/videos/{id}/thumbnail-position`](screen-api.md#put-apivideosidthumbnail-position)).
 
 | Situation | Response |
 | --- | --- |
@@ -74,10 +74,10 @@ screen's `PUT /api/videos/{id}/thumbnail-position`;
 `duration_unknown`, `thumbnail_position_out_of_range`,
 `thumbnail_frame_unavailable` and `file_unavailable`.
 
-## 3. MCP tools
+## MCP tools
 
 Added to the table in
-[specs/026-external-api/contracts/mcp.md §2](../../026-external-api/contracts/mcp.md).
+[specs/026-external-api/contracts/mcp.md, Tools](../../026-external-api/contracts/mcp.md#tools).
 Input and output have the same shape as the request bodies and responses of
 the operations above.
 
@@ -87,4 +87,4 @@ the operations above.
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` | `destructiveHint: true`, `idempotentHint: true` |
 
 The output of `list_videos` and `get_video` includes the `ExternalVideo`
-changes (§0) as is. There are now 8 tools.
+changes ([`ExternalVideo` changes](#externalvideo-changes)) as is. There are now 8 tools.

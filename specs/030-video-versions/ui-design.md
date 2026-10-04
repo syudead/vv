@@ -9,7 +9,7 @@
 Sources: the visual rules come from these documents and are not decided again here.
 
 - Colours, interaction states, width breakpoints, library and player layout:
-  [Library UI](../../docs/design-docs/library-ui.md) (the selection bar in §6, library layout, and §8, player
+  [Library UI](../../docs/design-docs/library-ui.md) (the selection bar in [List layout](../../docs/design-docs/library-ui.md#list-layout), library layout, and [Video page layout](../../docs/design-docs/library-ui.md#video-page-layout), player
   screen layout)
 - Role tokens: `@theme` in [`web/src/index.css`](../../web/src/index.css). Refer to them by name; do not copy
   values
@@ -123,7 +123,7 @@ library filter:
   dialog. Only the candidate screen uses "duplicates": what it lists are two not-yet-bundled videos that "might
   be duplicates", which is what users call them. Once decided they become "versions" too.
 - The four reasons are added to the `reason` table in `web/src/i18n/errors.ts`
-  ([contracts/screen-api.md §2 to §4](contracts/screen-api.md#2-post-apivideo-bundles)). `video_not_found` keeps
+  ([contracts/screen-api.md, `POST /api/video-bundles`](contracts/screen-api.md#post-apivideo-bundles) to [`POST /api/videos/{id}/unbundle`](contracts/screen-api.md#post-apivideosidunbundle)). `video_not_found` keeps
   its current text.
 
 ## Video page
@@ -156,7 +156,7 @@ bottom:
   `shadow-elevated`).
 - The list is a `ul` (accessible name "Versions") of rows with `divide-y divide-border`. Rows follow the response
   order (representative first, then natural title order;
-  [contracts §1](contracts/screen-api.md#1-get-apivideosidversions)). Rows are `py-2`; beyond 6 rows,
+  [contracts, `GET /api/videos/{id}/versions`](contracts/screen-api.md#get-apivideosidversions)). Rows are `py-2`; beyond 6 rows,
   `max-h-80 overflow-y-auto` scrolls only the inside.
 - Each row is `grid grid-cols-[1fr_auto] gap-x-2`, with two lines of text on the left and owner-only actions on
   the right.
@@ -218,7 +218,7 @@ bottom:
 
   | Removed row | Result |
   | --- | --- |
-  | **Another row** | That row leaves the list and the item's count decreases. Toast "Removed "{title}" from the versions". If one version remains, the bundle has been dissolved (contract §4): the popover closes, the video is refetched, and the item disappears |
+  | **Another row** | That row leaves the list and the item's count decreases. Toast "Removed "{title}" from the versions". If one version remains, the bundle has been dissolved ([contracts/screen-api.md, `POST /api/videos/{id}/unbundle`](contracts/screen-api.md#post-apivideosidunbundle)): the popover closes, the video is refetched, and the item disappears |
   | **The current video** | The popover closes and the video is replaced with the response's `Video` (`versions` gone; `tags`, `progress` and `public` are its own values). The item disappears and the tag list and visibility toggle redraw with its own values. Same toast |
 
 - When the popover has closed, focus moves to the element nearest where the item was (the action before the
@@ -248,8 +248,8 @@ bottom:
 
 A video that is both a group member and a bundle member has both the group-name line above the title and the
 versions item in the facts line. They are separate facts (a grouping by location, and other files of the same
-video) and are not merged. The "play next" sequence shows only representatives (requirement 5, data-model.md
-§4).
+video) and are not merged. The "play next" sequence shows only representatives (requirement 5, [data-model.md,
+Shown videos and listing](data-model.md#shown-videos-and-listing)).
 
 ## Selection bar
 
@@ -264,11 +264,11 @@ video) and are not merged. The "play next" sequence shows only representatives (
   single selection"). Making it `disabled` with a reason was rejected: most selections (one video) would always
   show a greyed action. It appears when the second video is selected.
 - **When the selection exceeds the bundle limit `maxBundleSelection` (20)**, it is `disabled` with the reason
-  "Bundle up to 20 videos at a time", as with the tag actions' limit (library-ui.md §6). The tag actions' limit
+  "Bundle up to 20 videos at a time", as with the tag actions' limit (library-ui.md, [List layout](../../docs/design-docs/library-ui.md#list-layout)). The tag actions' limit
   (`maxVideoTagsSelection`, 20,000) is not used here. The dialog sends `GET /api/videos/{id}` for each selected
   video and lists one representative row per video, so opening it with thousands selected through "Select all"
   would fire that many requests at once and freeze the screen. Reading and choosing a representative from the
-  rows also works only up to a few dozen. The limit is screen-side only; the server limit in contract §2
+  rows also works only up to a few dozen. The limit is screen-side only; the server limit in [contracts/screen-api.md, `POST /api/video-bundles`](contracts/screen-api.md#post-apivideo-bundles)
   (`too_many_videos`) does not change.
 - Pressing it opens the "Bundle dialog" below. It is a dialog rather than a popover for the reason in "Why this
   shape".
@@ -287,7 +287,7 @@ A `ModalFrame` dialog "Bundle as versions". Content from top to bottom:
   - Line 3 (only when present): in `text-xs text-fg-muted`, the names of hand-added tags joined by "·" (`tags`
     minus those that come only from folder names). It shows, before choosing, which tags become the bundle's and
     which are set aside. A video already in a bundle (has `versions`) starts this line with "Already 3 versions —
-    all of them join" (contract §2).
+    all of them join" ([contracts/screen-api.md, `POST /api/video-bundles`](contracts/screen-api.md#post-apivideo-bundles)).
   - Rows are `py-2`. Beyond 6 rows, `max-h-80 overflow-y-auto` scrolls only the inside. The rest of the dialog's
     height follows the `ModalFrame` rules.
   - Row order: from the selection bar, the selection order (`selectedIds`); from the candidate screen, the pair
@@ -388,7 +388,7 @@ toast says it will not come back.
 ### Refresh
 
 - `GET /api/version-candidates` is read on open. It is refetched on the `scan` notification the owner's shell
-  receives (sent on success or failure of a `fingerprint` job; contract §6). During a refetch the list looks
+  receives (sent on success or failure of a `fingerprint` job; [contracts/screen-api.md, `/api/events`](contracts/screen-api.md#apievents)). During a refetch the list looks
   unchanged (no skeleton). When the response arrives it replaces the list and the scroll position is kept. New
   pairs are added at the top and pairs whose side has gone disappear (copes with candidates being added and
   removed during ingest).
@@ -407,7 +407,7 @@ toast says it will not come back.
 
 ## Responsive behaviour
 
-Breakpoints are Tailwind's defaults only, applied in CSS (library-ui.md §4). The widths judged are 360px, 768px
+Breakpoints are Tailwind's defaults only, applied in CSS (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)). The widths judged are 360px, 768px
 and 1280px (the player screen has two columns from `lg`).
 
 | Width | Versions item and list | Selection bar | Dialog | Candidate screen |
@@ -421,7 +421,7 @@ and 1280px (the player screen has two columns from `lg`).
 
 ## Review criteria
 
-Judged by looking at the real screen (library-ui.md §5). "It exists" alone does not satisfy a criterion (Q-4).
+Judged by looking at the real screen (library-ui.md, [Layout verified by people, not machines](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines)). "It exists" alone does not satisfy a criterion (Q-4).
 
 1. **Visual hierarchy (player screen)**: on a bundled video's page, the eye goes player → title → tags, and "3
    versions" has the same weight as length, size and date added and is not read before them. Side by side with

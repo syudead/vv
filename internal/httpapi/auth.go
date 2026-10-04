@@ -129,6 +129,7 @@ var accessRoutes = map[string]access{
 	"GET /api/videos":                             accessGuest,
 	"GET /api/videos/{id}":                        accessGuest,
 	"GET /api/videos/{id}/related":                accessGuest,
+	"GET /api/videos/{id}/group-members":          accessGuest,
 	"GET /api/videos/{id}/versions":               accessGuest,
 	"GET /api/videos/{id}/stream":                 accessGuest,
 	"GET /api/videos/{id}/preview":                accessGuest,

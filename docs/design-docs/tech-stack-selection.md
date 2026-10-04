@@ -19,7 +19,7 @@ flowchart LR
   ffmpeg --> files
 ```
 
-## 1. Premises
+## Premises
 
 | Item | Decision |
 | --- | --- |
@@ -29,7 +29,7 @@ flowchart LR
 | Users | One account; guests can view public videos |
 | Library size | Up to tens of thousands of videos, several TB, on local disk |
 
-## 2. Selection criteria
+## Selection criteria
 
 The system serves one user on their own machine, so **simple operation** and
 **recovery after failure** take priority over throughput.
@@ -44,7 +44,7 @@ The system serves one user on their own machine, so **simple operation** and
 4. **Heavy processing inside a boundary.** Code that runs `ffmpeg` stays in an
    adapter, apart from HTTP and storage.
 
-## 3. Decisions
+## Decisions
 
 | Layer | Choice | Main reason |
 | --- | --- | --- |
@@ -75,7 +75,7 @@ The content key identifies a video across a move or rename: SHA-256 of the
 first and last 1 MiB plus the file size. It needs no full read and only the
 standard library.
 
-## 4. Rejected alternatives
+## Rejected alternatives
 
 | Candidate | Reason rejected |
 | --- | --- |
@@ -92,7 +92,7 @@ standard library.
 | S3 / MinIO | Conflicts with local disk as the source of truth and adds a relay to Range serving |
 | Adopting Jellyfin / Plex | This repository is built from scratch by design; they serve only as feature references |
 
-## 5. Known risks and mitigations
+## Known risks and mitigations
 
 | Risk | Mitigation |
 | --- | --- |

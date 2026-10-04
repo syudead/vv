@@ -22,7 +22,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { groupRef, itemKey } from "../api/libraryItems";
-import { refreshTags } from "../api/tags";
+import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { errorText, t } from "../i18n";
@@ -32,7 +32,7 @@ import {
   writeViewPreferences,
   type Zoom,
 } from "../preferences/viewPreferences";
-import { useScan } from "../shell/ScanProvider";
+import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { useToast } from "../ui/Toast";
 import Skeleton from "../ui/Skeleton";
@@ -460,7 +460,7 @@ export default function LibraryPage() {
   const listUrl = `${location.pathname}${location.search}`;
 
   // --- 取り込み完了で一覧を入れ替える ---
-  const scan = useScan();
+  const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
   useEffect(() => refreshScan(), [refreshScan]);
@@ -534,7 +534,7 @@ export default function LibraryPage() {
   useEffect(() => {
     if (restored === undefined || mountRef.current.tagIds.length === 0) return;
     let alive = true;
-    refreshTags()
+    revalidateTags()
       .then((tags) => {
         if (!alive) return;
         const known = new Set(tags.map((tag) => tag.id));

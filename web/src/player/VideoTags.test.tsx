@@ -927,21 +927,26 @@ describe("VideoTags", () => {
 
   // B4: plan の Structural Decisions 8「画面が開くときに取り直す」。すでに
   // 共有の保持があっても、マウント時に GET /api/tags をもう一度送る。
-  it("画面が開くときは、共有の保持があっても取り直す（B4）", async () => {
+  it("画面が開くときは、直前に届いた保持はそのまま使い、古い保持なら取り直す（B4・issue 674）", async () => {
     const fetchMock = install();
-    await refreshTags();
-    const countBefore = fetchMock.mock.calls.filter(
-      ([input]) => String(input) === "/api/tags",
-    ).length;
-    expect(countBefore).toBe(1);
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const tagCalls = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === "/api/tags").length;
+    try {
+      await refreshTags();
+      expect(tagCalls()).toBe(1);
 
-    renderTags(7, []);
+      // 届いたばかりの一覧は、開いた部品がそれぞれ取り直さない。
+      const first = renderTags(7, []);
+      await act(async () => Promise.resolve());
+      expect(tagCalls()).toBe(1);
+      first.unmount();
 
-    await waitFor(() => {
-      const count = fetchMock.mock.calls.filter(
-        ([input]) => String(input) === "/api/tags",
-      ).length;
-      expect(count).toBeGreaterThan(countBefore);
-    });
+      now.mockReturnValue(1_000_000 + 5_000);
+      renderTags(7, []);
+      await waitFor(() => expect(tagCalls()).toBe(2));
+    } finally {
+      now.mockRestore();
+    }
   });
 });

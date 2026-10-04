@@ -215,7 +215,8 @@ func readExternalVideoKeys(ctx context.Context, tx *sql.Tx, query string, args [
 // readVideosByIDs は id の JSON 配列 encodedIDs のうち、登録フォルダの下に所在を持つ動画を
 // id で引ける形で返す。代表の所在は登録フォルダの下のもの（所有者の見え方）。
 func readVideosByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) (map[int64]domain.Video, error) {
-	rows, err := tx.QueryContext(ctx, `select `+videoColumns(domain.AudienceOwner)+` from videos
+	rows, err := tx.QueryContext(ctx, `select `+videoColumns(domain.AudienceOwner)+` from videos`+
+		representativeJoin(domain.AudienceOwner)+`
 		where videos.id in (select value from json_each(?)) and `+registeredVideoCondition("videos"), encodedIDs)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the videos: %w", err)

@@ -1,11 +1,12 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode, useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { OwnerAudience } from "../testing/audience";
-import { ScanProvider, useScan } from "./ScanProvider";
+import { ScanProvider, useScan, useScanControls } from "./ScanProvider";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -209,6 +210,138 @@ describe("ScanProvider", () => {
     await emitServerEvent("scan", scan(3, "done"));
     expect(screen.getByText("完了: 3")).toBeDefined();
     expect(currentCalls).toBe(callsAfterLoad);
+  });
+
+  it("開いた画面の取り直しと最初の接続で、同じ取得を続けて送らない", async () => {
+    let currentCalls = 0;
+    let folderCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") {
+        folderCalls += 1;
+        return Promise.resolve(json([{}]));
+      }
+      currentCalls += 1;
+      return Promise.resolve(json(scan(3, "done")));
+    });
+    // 一覧の画面は開いたときに取り直しを求める（子の effect は ScanProvider より先に走る）。
+    function Page() {
+      const { refresh } = useScanControls();
+      useEffect(() => refresh(), [refresh]);
+      return null;
+    }
+    render(
+      <OwnerAudience>
+        <ScanProvider>
+          <Page />
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
+    );
+    expect(await screen.findByText("状態: 3")).toBeDefined();
+    await emitServerEvent("open");
+    await emitServerEvent("scan", scan(3, "done"));
+    expect(currentCalls).toBe(1);
+    expect(folderCalls).toBe(1);
+
+    // つなぎ直したときは取り直す。
+    await emitServerEvent("open");
+    await waitFor(() => expect(currentCalls).toBe(2));
+  });
+
+  it("StrictMode で effect の後始末が取得を打ち切っても、続く実行で取り直す", async () => {
+    // 本物の fetch と同じく、打ち切られた要求は応答を返さずに失敗する。
+    fetchMock.mockImplementation(async (input, init) => {
+      await Promise.resolve();
+      if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
+      if (String(input) === "/api/media-folders") return json([{}]);
+      return json(scan(3, "done"));
+    });
+    render(
+      <StrictMode>
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>
+      </StrictMode>,
+    );
+    expect(await screen.findByText("状態: 3")).toBeDefined();
+    expect(screen.getByText("開始可否: 可")).toBeDefined();
+  });
+
+  it("返らないまま残った取得は、少し経ってからの取り直しで打ち切って取り直す", async () => {
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      currentCalls += 1;
+      // 最初の取得は返らない（打ち切られるまで待つ）。
+      if (currentCalls === 1) {
+        return new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        });
+      }
+      return Promise.resolve(json(scan(5, "done")));
+    });
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      render(
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>,
+      );
+      await act(async () => Promise.resolve());
+      // 始めたばかりの取得の途中なら、取り直しはまとめる。
+      await userEvent.click(screen.getByRole("button", { name: "更新" }));
+      expect(currentCalls).toBe(1);
+
+      now.mockReturnValue(1_000_000 + 5_000);
+      await userEvent.click(screen.getByRole("button", { name: "更新" }));
+      expect(await screen.findByText("状態: 5")).toBeDefined();
+      expect(currentCalls).toBe(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("取り込みの進みの知らせでは、useScanControls を読む部品を描き直さない", async () => {
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      return Promise.resolve(json(scan(4, "running")));
+    });
+    let renders = 0;
+    function Controls() {
+      const { running } = useScanControls();
+      renders += 1;
+      return <p>操作の実行中: {running ? "はい" : "いいえ"}</p>;
+    }
+    render(
+      <OwnerAudience>
+        <ScanProvider>
+          <Controls />
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
+    );
+    expect(await screen.findByText("操作の実行中: はい")).toBeDefined();
+    const before = renders;
+    for (let settled = 1; settled <= 5; settled++) {
+      await emitServerEvent(
+        "scan",
+        scan(4, "running", {
+          videos: { total: 10, settled },
+          activity: { kind: "probe", fileName: `v${String(settled)}.mp4` },
+        }),
+      );
+    }
+    expect(screen.getByText("今の処理: v5.mp4")).toBeDefined();
+    expect(renders).toBe(before);
+
+    await emitServerEvent("scan", scan(4, "done"));
+    expect(await screen.findByText("操作の実行中: いいえ")).toBeDefined();
   });
 
   it("取り込み中に今の処理が一瞬無くなっても、直前の値を残す", async () => {

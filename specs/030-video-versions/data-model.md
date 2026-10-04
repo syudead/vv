@@ -13,7 +13,7 @@ This file holds only the tables and values this feature adds and the rules that 
 listed here do not change (no column is added to `videos`, `video_locations`, `playback_progress`,
 `video_tags`, `public_videos` or `video_overrides`).
 
-## 1. Migration
+## Migration
 
 The last migration on `main` is `00021_video_overrides.sql`. `scripts/migrations-immutable.sh` forbids editing a
 migration that exists at the PR's base, so each unit that adds tables adds one migration with a new number, and a
@@ -118,13 +118,13 @@ rebuilt (added to the list in ARCHITECTURE.md). `video_successions`, `video_fing
 that deletes the video row deletes that key's rows in these tables (`releaseContentIndex`). Cleaning up generated
 files (`RemoveContent`) does not touch the tables.
 
-`domain.FolderIndexVersion` becomes 2 (§4).
+`domain.FolderIndexVersion` becomes 2 ([Shown videos and listing](#shown-videos-and-listing)).
 
-## 2. Values added to `domain`
+## Values added to `domain`
 
 | Value | Content |
 | --- | --- |
-| `Video.UserKey` | The user key (§3). The bundle's `user_key` for a bundle member, otherwise equal to `ContentKey`. Filled by the store; empty for a video with an empty `ContentKey` |
+| `Video.UserKey` | The user key ([User key](#user-key)). The bundle's `user_key` for a bundle member, otherwise equal to `ContentKey`. Filled by the store; empty for a video with an empty `ContentKey` |
 | `Video.Versions` | `*VideoVersionsRef{Count int, RepresentativeID int64}`. Filled only by the detail read, only for bundle members. `Count` is the number of members with a location the viewer may see |
 | `VideoVersions{RepresentativeID int64, Items []Video}` | Every version of the bundle. Representative first, then by natural title order (ties by id) |
 | `DurationsMatch(a, b int64) bool` | `abs(a-b) <= max(1000, max(a,b)*0.005)`. A duration of 0 or less never matches |
@@ -146,7 +146,7 @@ paired. The result is the median Hamming distance over pairs where neither frame
 the interval; frames are therefore aligned by time, not by index. When fewer than
 `FingerprintMinComparableFrames` (3) pairs are compared, `ok = false`.
 
-## 3. User key
+## User key
 
 A video `v`'s user key is decided by this expression (`userKeyExpr(alias)` in `internal/store/user_keys.go`).
 
@@ -171,7 +171,7 @@ Reads and writes that go through this expression (R-2):
 | `OverrideStore` (display name, thumbnail position) | `content_key` | No change (per content) |
 | Generated files, fingerprints, live-transcode probe data | `content_key` | No change |
 
-## 4. Shown videos and listing
+## Shown videos and listing
 
 `shownVideosCTE(audience)` returns the videos shown to the viewer as `shown(video_id, bundle_id)`
 (`internal/store/user_keys.go`):
@@ -192,10 +192,10 @@ Reads that go through it (R-3, R-4):
 | `folderIndexLocations` | Only the locations of `shown` videos as the owner sees them. `FolderIndexVersion = 2` |
 | `GetVideo`, `VideoLocations`, streaming, subtitles, `versions` | No change. Non-representative versions are returned too |
 
-For guests, visibility is decided by the bundle's key (§3), so every version of a public bundle has a location
+For guests, visibility is decided by the bundle's key ([User key](#user-key)), so every version of a public bundle has a location
 guests may see.
 
-## 5. Carry-over of content at the same path
+## Carry-over of content at the same path
 
 In `UpsertVideo` (`internal/store/scan_index.go`), when `locationExists && oldKey != file.ContentKey`, `newVideo`
 holds, and the previous video row loses its last location and is deleted:
@@ -233,12 +233,12 @@ the outcome of the Edge Case "files swapped" would depend on order. So two place
 5. Publish `VideoBundleChanged` after commit. `VideoIDs` is the video that received the carry-over and, if
    `old_key` was a bundle member, the video ids of every member of that bundle (looked up after re-keying). The
    remaining members' `versions` (representative and count) change too, so every member's video page refetches
-   ([contracts/screen-api.md §6](contracts/screen-api.md)).
+   ([contracts/screen-api.md, `/api/events`](contracts/screen-api.md#apievents)).
 
 If the probe fails up to the limit, the row stays and is decided when a retry (`RetryProbe`) succeeds. The row is
-deleted when nothing references the `new_key` content any more (§1).
+deleted when nothing references the `new_key` content any more ([Migration](#migration)).
 
-## 6. Fingerprints
+## Fingerprints
 
 The `fingerprint` job (R-6):
 
@@ -251,7 +251,7 @@ The `fingerprint` job (R-6):
    average luma below 16), shrinks the frame to 32×32 luma, and returns `Fingerprint{Version, IntervalMs,
    Frames}` built from `domain.HashFrame` results.
 4. `IngestStore.ApplyFingerprintForJob(job, fingerprint)` replaces the `video_fingerprints` row and rebuilds the
-   candidates of §7 in the same transaction.
+   candidates of [Candidates](#candidates) in the same transaction.
 
 Finishing a seek thumbnail (`done` in `SetSeekThumbnailStateForJob`) and finishing a rebuild in
 `RequeueMissingSeekThumbnails` queue a `fingerprint` job with `requeueJob`. Fingerprints have no state column in
@@ -262,10 +262,10 @@ queued again from those two places. The scan therefore restores consistency: `do
 `fingerprint`, `EnsureJob` uses this condition instead of `pending` in a state column, discards a `failed` row and
 queues again (it does not queue when a queued or running row exists). A failed fingerprint is thus rebuilt on the
 next scan, and a version bump catches up without waiting for a migration. Fingerprints built from old six-sheet
-sprites align frames by time too (§2 `CompareFingerprints`), so they can be compared with fingerprints of the
+sprites align frames by time too (`CompareFingerprints` in [Values added to `domain`](#values-added-to-domain)), so they can be compared with fingerprints of the
 current layout.
 
-## 7. Candidates
+## Candidates
 
 `ApplyFingerprintForJob` deletes the candidates for that `content_key` (`K`) and rebuilds them with the statement
 below. `vv_fingerprint_distance(a, b)` is a deterministic function that runs `DecodeFingerprint`, calls
@@ -289,13 +289,13 @@ select min(?, f.content_key), max(?, f.content_key), vv_fingerprint_distance(?, 
 | --- | --- |
 | Bundling | Deletes the candidates of pairs that ended up in the same bundle |
 | Dismissal (`Dismiss`) | Writes `video_version_dismissals` and deletes that pair's candidate |
-| Nothing references a content any more | Deletes that key's candidates (§1) |
+| Nothing references a content any more | Deletes that key's candidates ([Migration](#migration)) |
 
 `Candidates(audience = owner)` returns pairs where both keys have a video with a registered location, newest
 `created_at` first (at most 200; `total` counts all). The response's `Video`s are each key's video
-([contracts/screen-api.md §5](contracts/screen-api.md)).
+([contracts/screen-api.md, Candidates](contracts/screen-api.md#candidates)).
 
-## 8. Store operations (`VersionStore`)
+## Store operations (`VersionStore`)
 
 A role that holds `*DB` (to publish after commit and to rebuild the folder index). Each operation runs in one
 transaction and leaves nothing behind if it fails part-way.
@@ -304,9 +304,9 @@ transaction and leaves nothing behind if it fails part-way.
 | --- | --- |
 | `Bundle(videoIDs, representativeID) (VideoVersions, error)` | See below |
 | `MakeRepresentative(videoID) (VideoVersions, error)` | `ErrNotBundled` if not a member. Changes `representative_key`; values are not touched. `rebuildFolderIndex`, `VideoBundleChanged{every member}` |
-| `Unbundle(videoID) (Video, error)` | `ErrNotBundled` if not a member. Deletes the member row (the video returns to the values under its own `content_key`). If it was the representative, one of the rest chosen by the effective-representative rule (§4) becomes the representative. If one member remains, the bundle is dissolved: the rows of the three tables under the bundle's key are copied to the remaining video's `content_key` (replacing existing rows) and the bundle row is deleted (members cascade). `rebuildFolderIndex`, `VideoBundleChanged{every former member}` |
+| `Unbundle(videoID) (Video, error)` | `ErrNotBundled` if not a member. Deletes the member row (the video returns to the values under its own `content_key`). If it was the representative, one of the rest chosen by the effective-representative rule ([Shown videos and listing](#shown-videos-and-listing)) becomes the representative. If one member remains, the bundle is dissolved: the rows of the three tables under the bundle's key are copied to the remaining video's `content_key` (replacing existing rows) and the bundle row is deleted (members cascade). `rebuildFolderIndex`, `VideoBundleChanged{every former member}` |
 | `Versions(audience, videoID) (VideoVersions, error)` | `ErrNotFound` if the video cannot be shown. A video in no bundle returns itself alone. Returns the members with a location the viewer may see, representative first |
-| `Candidates() (CandidatePage, error)`, `Dismiss(videoIDs [2]int64) error` | §7 |
+| `Candidates() (CandidatePage, error)`, `Dismiss(videoIDs [2]int64) error` | [Candidates](#candidates) |
 
 `Bundle`:
 
@@ -318,7 +318,7 @@ transaction and leaves nothing behind if it fails part-way.
 3. Copy the `playback_progress`, `video_tags` and `public_videos` rows under the representative's `UserKey` (the
    key of the representative's bundle, if it is in one) to the new `user_key`.
 4. Once its members have moved, delete each absorbed bundle's `video_bundles` row (no bundle is left without
-   members; the invariant in §1). The values under an absorbed bundle's key in the three tables are not deleted
+   members; the invariant in [Migration](#migration)). The values under an absorbed bundle's key in the three tables are not deleted
    (Edge Case "bundling bundles together": the values stay under that key).
 5. Delete the candidates of pairs now in the same bundle, call `rebuildFolderIndex`, and publish
    `VideoBundleChanged{every member}`.

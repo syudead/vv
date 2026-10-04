@@ -51,8 +51,8 @@ flowchart LR
 | Step | On failure |
 | --- | --- |
 | Settings, `ffmpeg`/`ffprobe` on `PATH`, SQLite, migrations | Startup stops |
-| Search keys of locations and tag names | Startup stops, so search never runs on keys built by an older rule ([013 data-model §5](../../specs/013-library-search/data-model.md)) |
-| Folder index | Logged; the previous index stays until the next rebuild ([017 data-model §3](../../specs/017-folder-groups/data-model.md)) |
+| Search keys of locations and tag names | Startup stops, so search never runs on keys built by an older rule ([013 data-model, When keys are built, and `search_version`](../../specs/013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
+| Folder index | Logged; the previous index stays until the next rebuild ([017 data-model, When the index is rebuilt](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
 | Unfinished artifacts under `.tmp` | Logged |
 | Resuming the interrupted scan | Logged; the user can start a scan |
 | Encoder checks | Run in the background and never delay the listener ([hardware-encoding.md](hardware-encoding.md)) |

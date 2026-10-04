@@ -7,6 +7,7 @@ import {
   currentTags,
   maxVideoTagsSelection,
   refreshTags,
+  revalidateTags,
   subscribeTags,
   type Tag,
 } from "../api/tags";
@@ -49,12 +50,12 @@ export default function AddTagPopover({
     return unsubscribe;
   }, []);
 
-  // 開くたびに共有の一覧を取り直す。
+  // 開くたびに共有の一覧を確かめ直す（直前に届いた一覧があればそれを使う）。
   useEffect(() => {
     if (!open) return;
     setValue("");
     setErrorMessage(null);
-    refreshTags().catch(() => undefined);
+    revalidateTags().catch(() => undefined);
   }, [open]);
 
   // 開いている間に選択が増えて上限を超えたら、候補も送信も止める（親の

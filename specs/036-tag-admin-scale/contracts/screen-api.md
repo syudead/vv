@@ -11,10 +11,10 @@ external API (`api/external-v1.yaml`) does not change.
 
 | Part | Status |
 | --- | --- |
-| §1 to §3, and `Tag.createdAt` and the bulk action schemas in §0 | Merged into the feature branch; unchanged by the revision of the parent Issue |
-| The list schemas in §0, §5, §6 and their functions in §4 | Added by the revision |
+| From [`POST /api/tags/batch`](#post-apitagsbatch) to [`POST /api/tags/impact`](#post-apitagsimpact), and `Tag.createdAt` and the bulk action schemas in [Schema changes](#schema-changes) | Merged into the feature branch; unchanged by the revision of the parent Issue |
+| The list schemas in [Schema changes](#schema-changes), [`GET /api/tags` parameters](#get-apitags-parameters), [`GET /api/tags/rejected-names` parameters](#get-apitagsrejected-names-parameters) and their functions in [`web/src/api` functions](#websrcapi-functions) | Added by the revision |
 
-## 0. Schema changes
+## Schema changes
 
 | Schema | Added field | Rule |
 | --- | --- | --- |
@@ -83,13 +83,13 @@ TagSort:
   enum: [name, countDesc, countAsc, createdDesc, createdAsc]
   default: name
   # name is the natural name order (no direction). Tags with the same value sort by
-  # natural name order, then by id (specs/036-tag-admin-scale/data-model.md §0, §2)
+  # natural name order, then by id (specs/036-tag-admin-scale/data-model.md "Migration" and "Store operations")
 ```
 
 `ErrorReason` gains `too_many_tags` (with `limit`, the same shape as
 `too_many_videos`; merged).
 
-## 1. `POST /api/tags/batch`
+## `POST /api/tags/batch`
 
 Confirms, rejects or deletes several tags in one transaction.
 
@@ -100,14 +100,14 @@ Confirms, rejects or deletes several tags in one transaction.
 | Case | Rule |
 | --- | --- |
 | Duplicate `ids` | Treated as one. The three response arrays do not overlap and together equal the deduplicated `ids`, in the order they appear in `ids`. An empty array is `[]`, never `null` |
-| Kinds the action applies to | `TagBatchApplies` in [data-model.md §1](../data-model.md#1-values-added-to-domain): `confirm` and `reject` apply to tentative tags, `delete` to confirmed tags. Other ids change nothing and go to `notApplicableIds` |
+| Kinds the action applies to | `TagBatchApplies` in [data-model.md, Values added to `domain`](../data-model.md#values-added-to-domain): `confirm` and `reject` apply to tentative tags, `delete` to confirmed tags. Other ids change nothing and go to `notApplicableIds` |
 | Missing ids | `notFoundIds` |
-| The rest | Processed in one transaction ([data-model.md §2](../data-model.md#2-store-operations)). If the transaction fails, `500` and nothing changes |
+| The rest | Processed in one transaction ([data-model.md, Store operations](../data-model.md#store-operations)). If the transaction fails, `500` and nothing changes |
 | Routing | `/api/tags/batch` and `/api/tags/impact` are told apart from `/api/tags/{id}` by the `ServeMux` rule that literal segments win. `openapi_routes_test.go` checks that `{id}` takes neither (as for `/api/tags/rejected-names`) |
-| Screen after `reject` | Reads the first page of rejected names again (§6), as after a single reject |
+| Screen after `reject` | Reads the first page of rejected names again ([`GET /api/tags/rejected-names` parameters](#get-apitagsrejected-names-parameters)), as after a single reject |
 | Single-tag routes | `POST /api/tags/{id}/confirm` and `/reject` and `DELETE /api/tags/{id}` do not change; row actions keep using them |
 
-## 2. `POST /api/tags/{id}/merge` changes
+## `POST /api/tags/{id}/merge` changes
 
 Merges one or more source tags into the tag `{id}`.
 
@@ -138,7 +138,7 @@ When the target is among the selected tags, the screen removes it from the
 sources before sending (Edge Case). When the target is the only source left,
 the screen does not send (the action cannot run).
 
-## 3. `POST /api/tags/impact`
+## `POST /api/tags/impact`
 
 Counts the tags and videos a bulk reject, delete or merge would affect, without
 changing anything.
@@ -150,18 +150,18 @@ changing anything.
 | Rule | Detail |
 | --- | --- |
 | Why a body | Thousands of ids do not fit in a URL; the same shape as `POST /api/video-tags/summary` |
-| What is counted | Only `ids` that exist now and that `action` applies to (`TagImpactApplies` in [data-model.md §1](../data-model.md#1-values-added-to-domain)): `reject` counts tentative tags, `delete` confirmed tags, `merge` both. Tags that `POST /api/tags/batch` would skip, and their videos, are not counted. For a merge, the screen sends the sources without the target |
-| `videoCount` | Counted as `TagImpact` in [data-model.md §2](../data-model.md#2-store-operations) |
+| What is counted | Only `ids` that exist now and that `action` applies to (`TagImpactApplies` in [data-model.md, Values added to `domain`](../data-model.md#values-added-to-domain)): `reject` counts tentative tags, `delete` confirmed tags, `merge` both. Tags that `POST /api/tags/batch` would skip, and their videos, are not counted. For a merge, the screen sends the sources without the target |
+| `videoCount` | Counted as `TagImpact` in [data-model.md, Store operations](../data-model.md#store-operations) |
 | Screen | Called when the bulk reject, delete or merge confirmation opens; the counts show as loading until the response. On failure the confirmation shows the reason and the action cannot run, so no action runs from a confirmation without counts. Bulk confirm asks for no confirmation and does not call it (requirement 11) |
 
-## 4. `web/src/api` functions
+## `web/src/api` functions
 
 Added to or changed in `tags.ts`.
 
 | Function | Behaviour |
 | --- | --- |
-| `listTagPage(query, signal)` | Added by the revision. Calls `GET /api/tags` with the §5 parameters and returns `TagList` (`items`, `total`, `totalAll`, `nextCursor`). Does not touch the shared cache. Takes the caller's `AbortSignal`, to abort when the conditions change |
-| `listRejectedTagNamePage(cursor, limit, signal)` | Added by the revision. Calls `GET /api/tags/rejected-names` with the §6 parameters and returns `RejectedTagNameList`. Replaces the current `listRejectedTagNames` |
+| `listTagPage(query, signal)` | Added by the revision. Calls `GET /api/tags` with the [`GET /api/tags` parameters](#get-apitags-parameters) and returns `TagList` (`items`, `total`, `totalAll`, `nextCursor`). Does not touch the shared cache. Takes the caller's `AbortSignal`, to abort when the conditions change |
+| `listRejectedTagNamePage(cursor, limit, signal)` | Added by the revision. Calls `GET /api/tags/rejected-names` with the [`GET /api/tags/rejected-names` parameters](#get-apitagsrejected-names-parameters) and returns `RejectedTagNameList`. Replaces the current `listRejectedTagNames` |
 | `getTags`, `refreshTags`, `subscribeTags`, `currentTags` | Unchanged (`GET /api/tags` without `limit`, every tag, used by suggestions and filter validation). `listTags` keeps using only `items` |
 | `afterTagChanged` | Changed by the revision. With subscribers (`subscribeTags`) it reloads as before; without, it drops `held` so the next `getTags` reads again ([research.md R-12](../research.md#r-12-actions-update-the-loaded-rows-in-place-positioned-with-a-port-of-naturalsortkey)). `clearListSnapshot` does not change |
 | `batchTags(action, ids)` | `POST /api/tags/batch`. Calls `afterTagChanged` once on success (merged) |
@@ -175,11 +175,11 @@ Added to or changed in `tags.ts`.
 | `maxTagBatch = 20000` | Sits next to `maxVideoTagsSelection`. The limit applies to the number of ids sent, so the screen disables only "select all loaded" (the header checkbox) when the loaded rows exceed it, and disables bulk actions only when the selection exceeds it ([research.md R-4](../research.md#r-4-bulk-confirm-reject-and-delete-use-one-post-apitagsbatch-transaction-that-skips-and-counts-misses)) |
 | `tagPageLimit = 100` | Added; the number of tags per page on the screen |
 
-## 5. `GET /api/tags` parameters
+## `GET /api/tags` parameters
 
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `q` | string, `maxLength: 100` | empty | Search term. Folded with `FoldForMatch` and trimmed; when not empty, only tags whose original name or synonym matching form contains it are returned (the matching form of [014 data-model.md §7](../../014-video-tags/data-model.md#7-matching-tag-names-in-the-search-box); the term is not split into words) |
+| `q` | string, `maxLength: 100` | empty | Search term. Folded with `FoldForMatch` and trimmed; when not empty, only tags whose original name or synonym matching form contains it are returned (the matching form of [014 data-model.md, Matching tag names in the search box](../../014-video-tags/data-model.md#matching-tag-names-in-the-search-box); the term is not split into words) |
 | `tentative` | boolean | false | When true, tentative tags only |
 | `unused` | boolean | false | When true, only tags on no videos. ANDed with `tentative` and `q` |
 | `sort` | `TagSort` | `name` | Sort order. Tags with the same value sort by natural name order, then by `id` |
@@ -207,13 +207,13 @@ sequenceDiagram
 | --- | --- |
 | `total`, `totalAll` | `total` applies all of `q`, `tentative` and `unused`; `totalAll` applies none. Both are returned regardless of paging (as `LibraryPage.total`) |
 | Cursor reuse | Use a `cursor` with the same `q`, `tentative`, `unused` and `sort`. When the conditions change, the screen drops the cursor and reads from the start. A cursor from another `sort` returns `400`; the result of reusing a cursor with other conditions (`q` and so on) is not guaranteed (as in the library) |
-| Changes during paging | When another tab adds, removes or renames tags mid-paging, the guarantee matches the library keyset ([013 list-api.md §5](../../013-library-search/contracts/list-api.md#5-cursor-and-errors)). The screen drops duplicate `id`s and reports a `totalAll` mismatch ([data-model.md §4](../data-model.md#4-screen-state)) |
+| Changes during paging | When another tab adds, removes or renames tags mid-paging, the guarantee matches the library keyset ([013 list-api.md, Cursor and errors](../../013-library-search/contracts/list-api.md#cursor-and-errors)). The screen drops duplicate `id`s and reports a `totalAll` mismatch ([data-model.md, Screen state](../data-model.md#screen-state)) |
 | Row content | Video count (`videoCount`), synonyms, `tentative` and `createdAt` are returned as before |
 | `exact` | On a request with `limit` and no `cursor`, the tag whose original name or synonym is spelled exactly as the trimmed `q` (byte for byte, not the matching form), when it also passes `tentative` and `unused`. Absent otherwise. It may be missing from `items`, because `items` is one page of substring matches in `sort` order; the merge dialog uses it to offer the exact target ([ui-design.md "Target candidates"](../ui-design.md#target-candidates)) |
 | External API | `GET /api/v1/tags` does not change (it returns the same result as the request without `limit`, in its current form) |
 | Caching | `Cache-Control: no-store`, as now |
 
-## 6. `GET /api/tags/rejected-names` parameters
+## `GET /api/tags/rejected-names` parameters
 
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
@@ -226,6 +226,6 @@ sequenceDiagram
 
 | Rule | Detail |
 | --- | --- |
-| Order | Natural name order (`sort_key`, then `name` byte order; [data-model.md §0](../data-model.md#0-migration)) |
-| Removal | `DELETE /api/tags/rejected-names?name=…` does not change ([031 contracts/screen-api.md §3](../../031-tentative-tags/contracts/screen-api.md#3-rejected-names)) |
+| Order | Natural name order (`sort_key`, then `name` byte order; [data-model.md, Migration](../data-model.md#migration)) |
+| Removal | `DELETE /api/tags/rejected-names?name=…` does not change ([031 contracts/screen-api.md, Rejected names](../../031-tentative-tags/contracts/screen-api.md#rejected-names)) |
 | Screen | On open, receives the first page and shows `total` at the entry point; when scrolled to the end, appends the next page with `nextCursor` ([research.md R-13](../research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll)) |

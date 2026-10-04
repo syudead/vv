@@ -1,14 +1,14 @@
 # Autopilot loop
 
 Read [../SKILL.md](../SKILL.md) first. Each iteration: select the next stage
-(§1, §2), run it (§3–§6), and start the next iteration from §1 again.
+([Derive the state](#derive-the-state), [What autopilot changes in the selection](#what-autopilot-changes-in-the-selection)), run it (from [Run a stage](#run-a-stage) to [Integration refresh and the finish line](#integration-refresh-and-the-finish-line)), and start the next iteration from [Derive the state](#derive-the-state) again.
 
 Everything the loop needs to decide is re-derived from GitHub and the
 repository. Anything you remember from earlier in the session is only a
 shortcut: losing it may repeat an idempotent step (a worker that finds its work
 already done), never pick a wrong one.
 
-## 1. Derive the state
+## Derive the state
 
 The stage selection is the one-stage workflow's:
 [Selecting the stage](../../issue-handoff/references/README.md#selecting-the-stage).
@@ -29,23 +29,23 @@ the orchestrator's reads small:
   bodies. What a rule needs from a body — whether an open PR belongs to this
   feature, whether a merged PR already `Refs` a child, the prerequisites of a
   child without a `Depends on:` line — is answered by the worker that handles
-  it (§3, §4).
+  it ([Run a stage](#run-a-stage), [Drive a feature PR to merge](#drive-a-feature-pr-to-merge)).
 
-## 2. What autopilot changes in the selection
+## What autopilot changes in the selection
 
 | Rule in the selection | Autopilot does instead |
 | --- | --- |
-| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
-| 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers (§3) |
-| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once (§3), and drive each resulting PR with §4 on its own; when one merges, go to §1, which may make more children ready. If no child is ready and no implementation PR is open, stop |
-| 6 `integrate` | Integration refresh, which opens the integration PR, its review pass, the pre-merge sweep, and the finish line (§6) |
+| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge ([Drive a feature PR to merge](#drive-a-feature-pr-to-merge)), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session. Open implementation PRs do not stop new children from starting (next row) |
+| 2 `plan`, 3 `design`, 4 `plan-to-issues` | Run that stage through workers ([Run a stage](#run-a-stage)) |
+| 5 `implement` | Implement ready children in parallel, keeping at most three implementation PRs open. A child is ready when it is not closed, has no open PR, was not already returned `BLOCKED` for a prerequisite in this session, and every child its `Depends on:` line names is **done** in the selection's sense: closed as `completed`, or `Refs`'d by a PR merged into the feature branch (a PR search for `"Refs #<n>"`, `is:merged` and the feature branch as base, read as a count). A child without that line is ready only when no other implementation PR is open (it runs alone, as before). Take the first `3 − <open implementation PRs>` ready children in sub-issue order, start one stage worker for each at once ([Run a stage](#run-a-stage)), and drive each resulting PR with [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) on its own; when one merges, go to [Derive the state](#derive-the-state), which may make more children ready. If no child is ready and no implementation PR is open, stop |
+| 6 `integrate` | Integration refresh, which opens the integration PR, its review pass, the pre-merge sweep, and the finish line ([Integration refresh and the finish line](#integration-refresh-and-the-finish-line)) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
 If a stage stops before its PR exists, selection picks the stage again. Anything
-the selection does not cover is a stop: report the facts from §1 and what you
+the selection does not cover is a stop: report the facts from [Derive the state](#derive-the-state) and what you
 expected.
 
-## 3. Run a stage
+## Run a stage
 
 Stages `plan`, `design` and implementation each produce one PR to the feature
 branch. `plan-to-issues` produces no PR.
@@ -59,13 +59,13 @@ branch. `plan-to-issues` produces no PR.
    either, run implementation workers one at a time. Each worker creates its
    own sub-branch, does the stage's work and checks, commits, pushes, opens
    the PR, and returns `DONE` with the PR number.
-   - `plan-to-issues` returns `DONE`. Go to §1.
+   - `plan-to-issues` returns `DONE`. Go to [Derive the state](#derive-the-state).
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
-     Close the child (§5) and go to §1.
-2. Go to §4 with the new PR.
+     Close the child ([Bookkeeping after a merge](#bookkeeping-after-a-merge)) and go to [Derive the state](#derive-the-state).
+2. Go to [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) with the new PR.
 
-## 4. Drive a feature PR to merge
+## Drive a feature PR to merge
 
 Handle each PR with one review-fix pass:
 
@@ -91,9 +91,9 @@ Handle each PR with one review-fix pass:
    It first checks that the PR belongs to this feature: its `Refs` names the
    parent or one of the parent's native children (for the integration PR, it
    is the feature branch's PR to `main` that `Closes` the parent). Otherwise
-   it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
+   it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which [Bookkeeping after a merge](#bookkeeping-after-a-merge) uses.
 4. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
-   conflict-free and mergeable, then merge with a merge commit and go to §5.
+   conflict-free and mergeable, then merge with a merge commit and go to [Bookkeeping after a merge](#bookkeeping-after-a-merge).
    After `FIXED`, do not request another review, wait for checks or reviews on
    the new head, or run another fixer. The one exception: when a parallel
    PR merged into the same base after this PR's checks ran, the combined tree
@@ -103,15 +103,15 @@ Handle each PR with one review-fix pass:
    its new head to pass, then merge. Do not request another review for it. If
    GitHub branch protection prevents the merge, stop and report it; do not bypass the protection. `BLOCKED`:
    stop. `FOREIGN`: leave the PR alone, never merge it, and name it in the
-   final report; go to §1.
+   final report; go to [Derive the state](#derive-the-state).
 
 After a restart, if GitHub state does not establish whether the one fixer pass
 already happened, stop and report that ambiguity instead of repeating it.
 
-**Limits.** The sweep PR (§6 step 4) counts as an integration-fix PR. Stop
+**Limits.** The sweep PR ([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 4) counts as an integration-fix PR. Stop
 when three integration-fix PRs have merged since the
 integration PR was opened, when its head has been refreshed from `main` twice
-(§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one
+([Integration refresh and the finish line](#integration-refresh-and-the-finish-line) step 2), or when a fixer returns `BLOCKED` because a finding repeats one
 it can see was already fixed and resolved on the same PR. All of them are read
 from GitHub, not remembered: the integration-fix count is the number of PRs
 merged into the feature branch that `Refs #<parent>` after the integration
@@ -122,7 +122,7 @@ on the feature branch after that time. Neither count is reset by a refresh.
 Hitting a limit means the fixes are not converging. Report the integration PR
 as it stands and stop; the maintainer decides what is left.
 
-## 5. Bookkeeping after a merge
+## Bookkeeping after a merge
 
 The parent Issue body is never edited: progress is read from GitHub and the
 feature branch, not recorded
@@ -134,7 +134,7 @@ counts as done for the selection, because a merged PR `Refs` it; the
 implementation worker reports it
 as `DONE` if it is picked again, and you close it then.
 
-## 6. Integration refresh and the finish line
+## Integration refresh and the finish line
 
 1. Start a fresh stage worker with the integrate brief (on `fable` when
    `git merge-tree --write-tree origin/<feature> origin/main` reports a
@@ -148,24 +148,24 @@ as `DONE` if it is picked again, and you close it then.
    step 1. `main` having moved on without either is not a reason: every
    refresh moves the head and gets the whole feature reviewed again. Conflicts
    with `main` are never a review fixer's job here.
-3. Drive the integration PR like §4, with two differences. The review fixer
+3. Drive the integration PR like [Drive a feature PR to merge](#drive-a-feature-pr-to-merge), with two differences. The review fixer
    uses the integration brief, and only blocking findings
    ([integrate.md](../../issue-handoff/references/integrate.md#review-of-the-integration-pr))
    are fixed: it answers and resolves the rest, and lists the real defects
    among them in the integration PR body. Its fixes go to a new sub-branch and
    a PR to the feature branch, never directly onto the feature branch. It
-   returns that PR as `FIXED`; drive that PR with §4 until merged, then go
+   returns that PR as `FIXED`; drive that PR with [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) until merged, then go
    to step 4. Do not repeat checks, review, or fixer work on the updated
    integration PR head.
 4. The **pre-merge sweep**, once per integration PR: when it has no
-   sweep comment (§1), start a fresh stage worker with the sweep
+   sweep comment ([Derive the state](#derive-the-state)), start a fresh stage worker with the sweep
    brief from [briefs.md](briefs.md). It runs the
    [pre-merge sweep](../../issue-handoff/references/integrate.md#pre-merge-sweep):
    every check on the feature head, the acceptance-criterion walk, and the
    pick of deferred defects worth fixing now, all fixed in at most one PR to
    the feature branch. It returns `DONE` with that PR, or with `PR: -` when
    nothing needed fixing, after posting the sweep comment. Drive the sweep PR
-   with §4 until merged, then go to step 5. Do not review, sweep or fix the updated
+   with [Drive a feature PR to merge](#drive-a-feature-pr-to-merge) until merged, then go to step 5. Do not review, sweep or fix the updated
    integration PR head again.
 5. The **finish line**: after the review pass, the sweep, and the merge of any
    PR either opened, confirm only that GitHub reports the integration PR
@@ -173,9 +173,9 @@ as `DONE` if it is picked again, and you close it then.
    report the blocker without rerunning checks or review. Do not merge it.
    Report the integration PR link to the maintainer, and stop.
 
-## 7. Waiting
+## Waiting
 
 Waiting runs no worker. Subscribe to the PR's activity and schedule a check-in
 roughly 15 minutes out when the host offers both, and end the turn; otherwise
-poll at an interval of a few minutes. On every wake, start again from §1 — an
+poll at an interval of a few minutes. On every wake, start again from [Derive the state](#derive-the-state) — an
 event tells you something changed, not what to do.

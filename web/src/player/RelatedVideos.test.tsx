@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   fetchSeekThumbnailSheet,
   fetchSeekThumbnailSprite,
+  listVideoGroupMembers,
   type SeekThumbnailSprite,
   type Video,
 } from "../api/client";
@@ -15,6 +16,7 @@ vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
   fetchSeekThumbnailSprite: vi.fn(),
   fetchSeekThumbnailSheet: vi.fn(),
+  listVideoGroupMembers: vi.fn(),
 }));
 
 function item(id: number, overrides: Partial<Video> = {}): Video {
@@ -232,7 +234,13 @@ describe("RelatedVideos", () => {
         id: current,
         related: {
           items,
-          group: { folder, name: "series", items: members },
+          group: {
+            folder,
+            name: "series",
+            items: members,
+            offset: 0,
+            total: members.length,
+          },
         },
       });
     }
@@ -311,7 +319,10 @@ describe("RelatedVideos", () => {
         renderList({
           kind: "ready",
           id: 299,
-          related: { items: [], group: { folder, name: "big", items: many } },
+          related: {
+            items: [],
+            group: { folder, name: "big", items: many, offset: 0, total: many.length },
+          },
         });
         expect(screen.getAllByRole("listitem")).toHaveLength(300);
         expect(screen.getByText("200 / 300")).toBeDefined();
@@ -609,6 +620,8 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
           folder: { rootId: 1, path: "series" },
           name: "series",
           items: [scrubItem(11), scrubItem(12), scrubItem(13)],
+          offset: 0,
+          total: 3,
         },
       },
     });
@@ -616,5 +629,211 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
     expect(current?.querySelector("[data-scrub-band]")).toBeNull();
     expect(bands()).toHaveLength(3);
     for (const band of bands()) expect(band.closest("a")).not.toBeNull();
+  });
+
+  describe("大きなグループの窓（issue 674）", () => {
+    const folder = { rootId: 1, path: "big" };
+    const member = (position: number) =>
+      item(position, { title: `ep ${String(position)}` });
+    // 6,000 本のうち、今の動画 3000 を中ほどに置いた 2950〜3049 本目の窓。
+    const window = Array.from({ length: 100 }, (_, index) => member(2950 + index));
+    let intersect: Map<Element, IntersectionObserverCallback>;
+
+    beforeEach(() => {
+      intersect = new Map();
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          private readonly callback: IntersectionObserverCallback;
+          constructor(callback: IntersectionObserverCallback) {
+            this.callback = callback;
+          }
+          observe(element: Element) {
+            intersect.set(element, this.callback);
+          }
+          disconnect() {}
+        },
+      );
+      vi.mocked(listVideoGroupMembers).mockReset();
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function wide(matches: boolean) {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: matches && query === "(min-width: 64rem)",
+      }));
+    }
+
+    function renderWindow() {
+      return renderList({
+        kind: "ready",
+        id: 3000,
+        related: {
+          items: [],
+          group: { folder, name: "big", items: window, offset: 2949, total: 6000 },
+        },
+      });
+    }
+
+    function memberRows() {
+      return within(screen.getAllByRole("list")[0]!).getAllByRole("listitem");
+    }
+
+    // 端の目印（読み足しの目印）だけ。行のサムネイルも IntersectionObserver を使う。
+    function edges() {
+      return [...intersect.entries()].filter(
+        ([element]) => element.isConnected && element.classList.contains("h-px"),
+      );
+    }
+
+    async function reachEdge(index: number) {
+      const [element, callback] = edges()[index]!;
+      await act(async () => {
+        callback(
+          [
+            {
+              isIntersecting: true,
+              target: element,
+            } as unknown as IntersectionObserverEntry,
+          ],
+          {} as IntersectionObserver,
+        );
+        await Promise.resolve();
+      });
+    }
+
+    it("窓の番号と本数はグループ全体で数え、後ろの端に来たら続きを読み足す", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: [member(3050), member(3051)],
+        offset: 3049,
+        total: 6000,
+      });
+      renderWindow();
+      expect(screen.getByText("3,000 / 6,000")).toBeDefined();
+      expect(memberRows()).toHaveLength(100);
+      expect(memberRows()[0]?.textContent).toContain("2950");
+
+      // 狭い画面では、後ろだけを目印で読む。
+      expect(edges()).toHaveLength(1);
+      await reachEdge(0);
+      expect(listVideoGroupMembers).toHaveBeenCalledWith(
+        3000,
+        3049,
+        100,
+        expect.anything(),
+      );
+      expect(memberRows()).toHaveLength(102);
+      expect(memberRows()[101]?.textContent).toContain("ep 3051");
+    });
+
+    it("狭い画面では、前のメンバーをボタンで読む", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: Array.from({ length: 100 }, (_, index) => member(2850 + index)),
+        offset: 2849,
+        total: 6000,
+      });
+      renderWindow();
+      fireEvent.click(screen.getByRole("button", { name: "Show 2,949 earlier videos" }));
+      await act(async () => Promise.resolve());
+      expect(listVideoGroupMembers).toHaveBeenCalledWith(
+        3000,
+        2849,
+        100,
+        expect.anything(),
+      );
+      expect(memberRows()).toHaveLength(200);
+      expect(memberRows()[0]?.textContent).toContain("2850");
+      expect(screen.getByText("3,000 / 6,000")).toBeDefined();
+    });
+
+    it("広い画面では、上の端に来たら前を読み足し、見ていた行が動かないよう位置を補う", async () => {
+      wide(true);
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn();
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: [member(2948), member(2949)],
+        offset: 2947,
+        total: 6000,
+      });
+      try {
+        renderWindow();
+        const scroller = document.querySelector("[data-related-scroller]") as HTMLElement;
+        // 行1本を 10px と見なした高さ。
+        Object.defineProperty(scroller, "scrollHeight", {
+          get: () => scroller.querySelectorAll("li").length * 10,
+        });
+        scroller.scrollTop = 40;
+        expect(edges()).toHaveLength(2);
+        await reachEdge(0);
+        expect(listVideoGroupMembers).toHaveBeenCalledWith(
+          3000,
+          2849,
+          100,
+          expect.anything(),
+        );
+        // 2 本増えた分（20px）だけ下へずらす。
+        expect(scroller.scrollTop).toBe(60);
+        expect(memberRows()[0]?.textContent).toContain("ep 2948");
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("幅が lg をまたいだら、前の読み方をボタンとスクロールで切り替える", async () => {
+      let matches = false;
+      const listeners = new Set<() => void>();
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        get matches() {
+          return matches && query === "(min-width: 64rem)";
+        },
+        addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+        removeEventListener: (_: string, listener: () => void) =>
+          listeners.delete(listener),
+      }));
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = vi.fn();
+      try {
+        renderWindow();
+        expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+        expect(edges()).toHaveLength(1);
+
+        matches = true;
+        act(() => {
+          for (const listener of listeners) listener();
+        });
+        expect(screen.queryByRole("button", { name: /earlier videos/ })).toBeNull();
+        expect(edges()).toHaveLength(2);
+
+        matches = false;
+        act(() => {
+          for (const listener of listeners) listener();
+        });
+        expect(screen.getByRole("button", { name: /earlier videos/ })).toBeDefined();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("読み足しに失敗したら、出ている行を残してやり直しのボタンを出す", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockRejectedValueOnce(new Error("offline"));
+      renderWindow();
+      await reachEdge(0);
+      expect(memberRows()).toHaveLength(100);
+      expect(screen.getByText("Couldn't load more of the group")).toBeDefined();
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: [member(3050)],
+        offset: 3049,
+        total: 6000,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      await act(async () => Promise.resolve());
+      expect(memberRows()).toHaveLength(101);
+    });
   });
 });

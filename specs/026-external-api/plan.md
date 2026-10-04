@@ -81,7 +81,7 @@ server at `/mcp`.
   every external API operation is `bearerAuth` and that the boundary classifies it as Bearer. The
   screen API's classification and behaviour do not change (requirement 5).
 - **Index versus user data** (ARCHITECTURE.md "Rebuildable and user data"): pass. `api_tokens` is
-  added to the list as settings data (data-model.md §1). No index table changes.
+  added to the list as settings data (data-model.md, [`api_tokens` (R-1, R-2, R-9, R-10)](data-model.md#api_tokens-r-1-r-2-r-9-r-10)). No index table changes.
 - **Domain events**: not applicable. Token and tag operations emit no events (as with today's
   `AuthStore` and `TagStore`).
 - **Server output is English** (gosmopolitan in `.golangci.yml`, 023): pass. `message`, logs and
@@ -141,7 +141,7 @@ response conversion are shared (see also the rejected alternatives in R-8).
 ### Issue, list and revoke API tokens (screen API and storage)
 
 **Scope**: the `api_tokens` migration and the `AuthStore` and `app.Auth` operations
-([data-model.md §1](data-model.md#1-api_tokens-r-1-r-2-r-9-r-10)), the name rules (R-10), the three
+([data-model.md, `api_tokens` (R-1, R-2, R-9, R-10)](data-model.md#api_tokens-r-1-r-2-r-9-r-10)), the name rules (R-10), the three
 screen API operations and the `mdm account` output ([contracts/token-api.md](contracts/token-api.md)),
 `api/openapi.yaml` and the generated code, and the data-class and `AuthStore` paragraphs of
 ARCHITECTURE.md. Bearer verification is provided as an `app.Auth` operation but not yet connected to
@@ -173,7 +173,7 @@ dates remain (acceptance criterion 1). After confirmation, a revoked token disap
 `scripts/generate` and the list of generated files in AGENTS.md (R-5). The boundary's Bearer class,
 exemption from the same-origin check, last-used time and cut-off through the ledger (R-3, R-4, R-9).
 Operations: `GET /api/v1/tags` and the two scan operations
-([contracts/external-api.md §3 and §5](contracts/external-api.md#3-tags)). `app.Scans.StartScan`
+([contracts/external-api.md, Tags](contracts/external-api.md#tags) and [Scans](contracts/external-api.md#scans)). `app.Scans.StartScan`
 returns `started` (the `Scans` interface in `internal/httpapi` and the screen's `POST /api/scans`
 change to match; the screen's response does not change). Create `docs/how-to/external-api.md` and
 describe how to use tokens and the compatibility policy. The authentication paragraph of
@@ -199,7 +199,7 @@ ARCHITECTURE.md.
 ### Read the video list and look up one video through the external API
 
 **Scope**: `GET /api/v1/videos` and `GET /api/v1/videos/lookup`
-([contracts/external-api.md §2](contracts/external-api.md#2-videos),
+([contracts/external-api.md, Videos](contracts/external-api.md#videos),
 [R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)). The list is a read
 that returns videos with a location under a registered folder in `(added_at, id)` ascending order with
 a keyset cursor (`internal/store/external_videos.go`; no table or column is added). The part of
@@ -226,7 +226,7 @@ again to find new videos; learn that a held video is gone from a `404` on `looku
 ### Attach, detach and replace tags by name through the external API
 
 **Scope**: `TagStore.ApplyVideoTags` (R-7) and `POST /api/v1/video-tags`
-([contracts/external-api.md §4](contracts/external-api.md#4-video-tags)), and the integration example
+([contracts/external-api.md, Video tags](contracts/external-api.md#video-tags)), and the integration example
 from a scraper in `docs/how-to/external-api.md` (read new videos → look them up → tag them).
 
 **Dependencies**: Read the video list and look up one video through the external API

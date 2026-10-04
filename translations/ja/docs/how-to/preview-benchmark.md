@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/preview-benchmark.md
-sourceHash: b477872d63a0ba4516a1eeb9b652b1cbe9ca288aceebc241e6549f3aa26669f2
+sourceHash: bcfa1135703bd44c076022aa4604e2e0eb33d1282d609f1d94da53fbfc10e467
 ---
 
 # モーションプレビューとシーク用サムネイルの生成を測る {#measure-motion-preview-and-seek-thumbnail-generation}
@@ -27,7 +27,7 @@ flowchart LR
 
 ## 手順 {#steps}
 
-### 1. 入力を作る {#1-create-the-inputs}
+### 入力を作る {#create-the-inputs}
 
 `ffmpeg` の `testsrc2` から入力を `.local/bench/` に生成する（git は `.local/` を無視する。リポジトリ外の任意のフォルダでもよい）。
 
@@ -52,7 +52,7 @@ ffmpeg -nostdin -v error -display_rotation 90 -i .local/bench/landscape.mp4 \
 
 回転メタデータがあれば、`ffprobe .local/bench/portrait-rotated.mp4` は `rotation of 90.00 degrees`（displaymatrix）を出力する。
 
-### 2. 測る {#2-measure}
+### 測る {#measure}
 
 ```sh
 go run ./scripts/previewbench [-kind preview|seek] [-runs N] <video>
@@ -88,7 +88,7 @@ git worktree remove --force ../vv-before
 
 時間はディスクキャッシュで変わるので、1 回目と 2 回目を分けて報告する。
 
-### 3. 結果を PR に記録する {#3-record-the-results-in-the-pr}
+### 結果を PR に記録する {#record-the-results-in-the-pr}
 
 環境（OS、CPU、ffmpeg のバージョン）と、入力ごとに各回の経過時間とピークメモリを記録する。PR 本文が日本語なので、テンプレートも日本語だ。
 
@@ -126,7 +126,7 @@ go run ./scripts/previewbench -kind seek .local/bench/short-2m-720p.mp4
 
 ピークメモリを取得できない環境（Windows など）では、ピークメモリの列に `取得不可`（取得できない）と書く。
 
-### 4. 長い HD 動画の入力側シークを測る {#4-measure-long-hd-input-side-seeking}
+### 長い HD 動画の入力側シークを測る {#measure-long-hd-input-side-seeking}
 
 長い HD 動画向けの方式を比較するときは、360p の入力に次の 1080p の入力を加える。30 秒のソースをストリームコピーで繰り返すので、2 時間分を再エンコードせずに済む。内容は実際の動画や NAS の I/O 性能を再現しない。
 

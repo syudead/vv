@@ -180,7 +180,7 @@ the HTTP layer.
 
 ### Record the import's target videos and count settled videos and completion on the server
 
-**Scope**: Add [data-model.md](data-model.md) §1 and §2 with a migration.
+**Scope**: Add [data-model.md, `scans.settled_at` and `scans.issues_revision` (added columns)](data-model.md#scanssettled_at-and-scansissues_revision-added-columns) and [`scan_videos` (new table)](data-model.md#scan_videos-new-table) with a migration.
 
 - Adding to the set: add to `scan_videos` at every site that enqueues a job, and
   when adding or relinking a media folder makes jobs claimable. `StartScan`
@@ -193,16 +193,16 @@ the HTTP layer.
   the number of remaining jobs
   ([R-4](research.md#r-4-done-only-when-the-scan-is-closed-and-the-set-has-no-remaining-jobs)).
   The migration carries over the latest scan's unfinished jobs
-  ([data-model.md](data-model.md) §1).
+  ([data-model.md, `scans.settled_at` and `scans.issues_revision` (added columns)](data-model.md#scanssettled_at-and-scansissues_revision-added-columns)).
 - Status rules: put `status`, the denominator and settled counting in
   `internal/domain`
   ([R-5](research.md#r-5-the-denominator-during-a-scan-adds-files-not-yet-registered)).
   This unit passes 0 as the failure issue count.
 - Assembly: `Scans` in `internal/app` assembles the import state.
 - API: add `status`, `videos` and `settledAt` from
-  [contracts/scan-api.md](contracts/scan-api.md) §2 to `Scan`. Keep the old fields
+  [contracts/scan-api.md, `Scan`](contracts/scan-api.md#scan) to `Scan`. Keep the old fields
   and `/api/processing`. `/api/events` also sends `scan` on `ProcessingChanged`
-  (§4).
+  ([contracts/scan-api.md, `/api/events`](contracts/scan-api.md#apievents)).
 - Documentation: update the scan, rebuildable-data and SSE descriptions in
   ARCHITECTURE.md.
 
@@ -235,7 +235,7 @@ the HTTP layer.
 
 ### Record import failures as issues and return the list
 
-**Scope**: Add [data-model.md](data-model.md) §3 with a migration.
+**Scope**: Add [data-model.md, `scan_issues` (new table)](data-model.md#scan_issues-new-table) with a migration.
 
 - Scan failures: `internal/app` records the per-file failures from
   `internal/scanner` (`unreadable`, `changed_during_import`, `register_failed`)
@@ -245,13 +245,13 @@ the HTTP layer.
   ([R-6](research.md#r-6-issues-stored-as-one-row-per-event-and-grouped-per-video-on-read)).
 - Previous scan's issues: cleared in `StartScan`.
 - Migration: videos whose preparation is currently `failed` become issues of the
-  latest scan ([data-model.md](data-model.md) §1, step 2).
+  latest scan ([data-model.md, `scans.settled_at` and `scans.issues_revision` (added columns)](data-model.md#scanssettled_at-and-scansissues_revision-added-columns), step 2).
 - Counting: reflect the issue counts and the files that failed to register in the
   denominator, the settled count, and `status = partial`.
 - Revision: increment `scans.issues_revision` on every change to the issue rows.
 - API: add `Scan.issues` (including `revision`) and
-  `GET /api/scans/current/issues` ([contracts/scan-api.md](contracts/scan-api.md)
-  §2 and §3).
+  `GET /api/scans/current/issues` ([contracts/scan-api.md, `Scan`](contracts/scan-api.md#scan)
+  and [`GET /api/scans/current/issues`](contracts/scan-api.md#get-apiscanscurrentissues)).
 - Documentation: add `scan_issues` to the rebuildable-data list in ARCHITECTURE.md.
 
 **Dependencies**: `Record the import's target videos and count settled videos and completion on the server`.
@@ -293,7 +293,7 @@ the HTTP layer.
 - `internal/store`: record `thumbnail_first_frame` and
   `seek_thumbnail_full_decode` in the transaction that writes the success; clear
   them when the output is rebuilt without substitution
-  ([data-model.md](data-model.md) §3).
+  ([data-model.md, `scan_issues` (new table)](data-model.md#scan_issues-new-table)).
 - Documentation: add to the generation paragraph of ARCHITECTURE.md that
   substitutions are reported.
 
@@ -321,8 +321,8 @@ the HTTP layer.
 - `internal/jobs`: add the `Started` hook.
 - Events: add `domain.ScanActivityChanged` and subscribe `/api/events` to it in
   `cmd/mdm/events.go`.
-- API: add `Scan.activity` ([contracts/scan-api.md](contracts/scan-api.md) §2 and
-  §4).
+- API: add `Scan.activity` ([contracts/scan-api.md, `Scan`](contracts/scan-api.md#scan) and
+  [`/api/events`](contracts/scan-api.md#apievents)).
 - Documentation: update the events and SSE paragraphs of ARCHITECTURE.md.
 
 **Dependencies**: `Record the import's target videos and count settled videos and completion on the server`.
@@ -396,7 +396,7 @@ at 360px, 768px and 1280px. The following checks exist, and `task check`,
   The impact and reason wording is built from `kinds`
   ([R-10](research.md#r-10-the-spa-builds-screen-text-from-kinds-the-server-returns)).
 - Fetching: add a fetch function to `web/src/api`. Reload when `Scan.id` or
-  `issues.revision` changes ([contracts/scan-api.md](contracts/scan-api.md) §4).
+  `issues.revision` changes ([contracts/scan-api.md, `/api/events`](contracts/scan-api.md#apievents)).
 - Navigation: a registered video's row leads to `/videos/{id}`.
 - Long lists: the user can load the rest.
 

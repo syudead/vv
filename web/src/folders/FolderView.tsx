@@ -19,7 +19,7 @@ import { useFolderListing, useRootFolderName } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import { useScan } from "../shell/ScanProvider";
+import { useScanControls } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
 import { hasConditions } from "../videoList/listCriteria";
@@ -53,7 +53,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     clearAll,
     changeZoom: saveZoom,
   } = useConditions();
-  const scan = useScan();
+  const scan = useScanControls();
   const owner = useAudience() === "owner";
   const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";

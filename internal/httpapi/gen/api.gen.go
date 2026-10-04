@@ -1225,6 +1225,17 @@ type FolderSummary struct {
 	VideoCount int `json:"videoCount"`
 }
 
+// GroupMemberPage グループのメンバーの、グループの中の並びで連続する範囲
+type GroupMemberPage struct {
+	Items []Video `json:"items"`
+
+	// Offset items の先頭のメンバーの、グループの中の並びの位置（0 始まり）
+	Offset int `json:"offset"`
+
+	// Total 見せてよいメンバーの本数
+	Total int `json:"total"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	// BuiltAt ビルド時刻。取得できない場合は省略される
@@ -1425,11 +1436,18 @@ type RelatedGroup struct {
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
-	// Items 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い
+	// Items 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
+	// 含む）。グループの端では窓を内側へ寄せる。窓の外は `listVideoGroupMembers` で読む
 	Items []Video `json:"items"`
 
 	// Name フォルダ名
 	Name string `json:"name"`
+
+	// Offset items の先頭のメンバーの、グループの中の並びの位置（0 始まり）
+	Offset int `json:"offset"`
+
+	// Total 見せてよいメンバーの本数
+	Total int `json:"total"`
 }
 
 // RelatedVideos defines model for RelatedVideos.
@@ -2434,6 +2452,15 @@ type ListVideosParams struct {
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
+// ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
+type ListVideoGroupMembersParams struct {
+	// Offset 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit 返す本数の上限
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetVideoPreviewParams defines parameters for GetVideoPreview.
 type GetVideoPreviewParams struct {
 	// V 一覧・詳細が返した current content key
@@ -2719,6 +2746,9 @@ type ServerInterface interface {
 	// SetVideoDisplayName 動画の表示名を設定・解除する
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ListVideoGroupMembers 動画が属するグループのメンバーを、並びの範囲で返す
+	// (GET /api/videos/{id}/group-members)
+	ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id VideoId, params ListVideoGroupMembersParams)
 	// MakeRepresentativeVersion 動画をその集まりの代表にする
 	// (POST /api/videos/{id}/make-representative)
 	MakeRepresentativeVersion(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -4464,6 +4494,61 @@ func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// ListVideoGroupMembers operation middleware
+func (siw *ServerInterfaceWrapper) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVideoGroupMembersParams
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideoGroupMembers(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MakeRepresentativeVersion operation middleware
 func (siw *ServerInterfaceWrapper) MakeRepresentativeVersion(w http.ResponseWriter, r *http.Request) {
 
@@ -5192,6 +5277,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library/ids", wrapper.ListLibraryIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/open", wrapper.OpenVideoFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)

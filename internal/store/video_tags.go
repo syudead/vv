@@ -186,7 +186,7 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 			union all
 			select b.user_key, v.id from video_bundles b
 			  join video_bundle_members m on m.bundle_id = b.id
-			  join videos v on v.content_key = m.content_key
+			  join videos v on v.content_key = m.content_key and v.content_key <> ''
 			 where b.user_key in (select content_key from selected)
 		),
 		tagged(content_key, tag_id, manual, from_folder) as (

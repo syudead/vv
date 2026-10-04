@@ -8,7 +8,7 @@ lists only the added fields. `task generate` regenerates
 only added) is in
 [specs/026-external-api/contracts/external-api.md](../../026-external-api/contracts/external-api.md).
 
-## 0. Fields added to `ExternalVideo`
+## Fields added to `ExternalVideo`
 
 ```yaml
 ExternalVideo:
@@ -34,13 +34,13 @@ other response that returns `ExternalVideo`. The conversion in
 `internal/httpapi/external_videos.go` is `item.Video.EditedAt.UTC()` and
 `item.Video.FileCreatedAt.UTC()` (handled like `addedAt`).
 
-## 1. What does not change
+## What does not change
 
 - The list order (`addedAt`, then `id`, ascending) and its cursor, `limit`, and
   how `lookup` resolves a video.
 - The request and response shapes of `POST /api/v1/video-tags` and
   `display-names`. The edit time advances by the rules in
-  [data-model.md §3](../data-model.md#3-edit-time-rules).
+  [data-model.md, Edit time rules](../data-model.md#edit-time-rules).
 - MCP tools (`list_videos`, `lookup_video` and others) return the same handlers'
   responses as is, so their structured output gains the two fields and the tool
   definitions do not change.

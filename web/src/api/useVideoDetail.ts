@@ -262,7 +262,13 @@ export function useVideoDetail(id: number): {
           video: (changed) => {
             if (changed === id) void load();
           },
-          open: () => void load(),
+          // つなぎ直したときは、切れていた間の知らせを受け取っていないので取り直す。
+          // 最初の接続では、開いたときの取得と同じ内容を2回続けて取らないよう、まだ準備中
+          // （取得とつながるまでの間に準備が済んだかもしれない）のときだけ取り直す（issue 674）。
+          open: (reconnected) => {
+            if (reconnected || (current !== undefined && isProcessing(current)))
+              void load();
+          },
         })
       : () => undefined;
     void load();

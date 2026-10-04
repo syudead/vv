@@ -9,17 +9,17 @@ contract `specs/009-seek-thumbnail-preview/contracts/seek-thumbnail.md` (removed
 from `main` as the document of a finished feature; it remains only in git
 history).
 
-## 1. Meaning of `Video.seekThumbnailUrl`
+## Meaning of `Video.seekThumbnailUrl`
 
 `Video.seekThumbnailUrl`
 (`/api/videos/{id}/seek-thumbnail?v=<content-derived version>`) becomes the
 versioned URL of the path that returns the layout information. The condition
 for it to appear (`probeState = done` and a positive `durationMs`) and the
 meaning of `seekThumbnailState`
-([specs/020 contracts/processing-api.md §2](../../020-seek-thumbnail-stage/contracts/processing-api.md#2-meaning-of-seekthumbnailstate))
+([specs/020 contracts/processing-api.md, Meaning of `seekThumbnailState`](../../020-seek-thumbnail-stage/contracts/processing-api.md#meaning-of-seekthumbnailstate))
 do not change.
 
-## 2. `GET /api/videos/{id}/seek-thumbnail` (`getVideoSeekThumbnail`)
+## `GET /api/videos/{id}/seek-thumbnail` (`getVideoSeekThumbnail`)
 
 Returns the layout information of the finished sprite. `positionMs` is removed.
 
@@ -33,7 +33,7 @@ Returns the layout information of the finished sprite. `positionMs` is removed.
 
 - Status: `200 OK`, `Content-Type: application/json`
 - `Cache-Control: private, no-cache` and `ETag` (made from the body content).
-  When `If-None-Match` matches, `304` (guest-api.md §5)
+  When `If-None-Match` matches, `304` (guest-api.md, [Cache of generated files](../../016-single-account-auth/contracts/guest-api.md#cache-of-generated-files))
 - Body: `SeekThumbnailSprite`
 
 ```yaml
@@ -72,7 +72,7 @@ are chosen: [research.md R-1](../research.md#r-1-limits-and-interval-rule).
 | Probe unfinished or no duration, or `seekThumbnailState` is not `done` (waiting, generating, failed) | `409` | `conflict` |
 | `sprite.json` cannot be read or has the wrong shape | `500` | `internal` |
 
-## 3. `GET /api/videos/{id}/seek-thumbnail/{sheet}` (`getVideoSeekThumbnailSheet`)
+## `GET /api/videos/{id}/seek-thumbnail/{sheet}` (`getVideoSeekThumbnailSheet`)
 
 Returns the JPEG that `sheets[sheet]` of the layout information points to.
 `sheet` is an integer starting at 0.
@@ -99,14 +99,14 @@ Returns the JPEG that `sheets[sheet]` of the layout information points to.
 | Probe unfinished or no duration, or `seekThumbnailState` is not `done` | `409` | `conflict` |
 | The image cannot be read | `500` | `internal` |
 
-## 4. Authentication class
+## Authentication class
 
 Both paths are also returned to guests (add
 `GET /api/videos/{id}/seek-thumbnail/{sheet}` to the table in
 [internal/httpapi/auth.go](../../../internal/httpapi/auth.go)). A video not
 shown to guests returns `404`, as on the other generated-file paths.
 
-## 5. Direct delivery and live transcoding
+## Direct delivery and live transcoding
 
 On both playback paths, the position that picks the frame is the source video's
 logical time (seek bar position × `durationMs`); the actual start position of a

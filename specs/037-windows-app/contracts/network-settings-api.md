@@ -8,7 +8,7 @@ the same-origin check and the shape of `Error` follow the existing contracts
 The reasons for the decisions are in
 [research.md R-14](../research.md#r-14-lan-access-is-stored-in-the-settings-table-switching-it-reopens-the-listener-and-the-default-is-loopback-only).
 
-## 1. Schemas
+## Schemas
 
 ```yaml
 NetworkSettings:
@@ -36,7 +36,7 @@ UpdateNetworkSettingsRequest:
 The `Error.code` enumeration gets no `not_desktop` (`404` is `not_found`).
 `Error.reason` gets `listen_failed`.
 
-## 2. `GET /api/settings/network`
+## `GET /api/settings/network`
 
 | Situation | Response |
 | --- | --- |
@@ -47,7 +47,7 @@ The `Error.code` enumeration gets no `not_desktop` (`404` is `not_found`).
 The rows are checked from the top. The SPA (owner) reads `404` as "do not show
 this section".
 
-## 3. `PUT /api/settings/network`
+## `PUT /api/settings/network`
 
 | Situation | Response |
 | --- | --- |

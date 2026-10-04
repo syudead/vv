@@ -6,14 +6,14 @@ tables and name rules follow their sources of truth
 ([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
 [ARCHITECTURE.md](../../ARCHITECTURE.md),
 [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md),
-[specs/017-folder-groups/data-model.md §4](../017-folder-groups/data-model.md#4-folder-derived-tags),
+[specs/017-folder-groups/data-model.md, Folder-derived tags](../017-folder-groups/data-model.md#folder-derived-tags),
 [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md)).
 This file records only the decisions this feature adds.
 
 ## R-1: Tentative state is one column on `tags`
 
 **Decision**: Add `tentative integer not null default 0 check (tentative in (0, 1))`
-to `tags` ([data-model.md §1](data-model.md#1-migration)). Existing rows take the
+to `tags` ([data-model.md, Migration](data-model.md#migration)). Existing rows take the
 default and become confirmed tags (requirement 16, edge case "migrating existing
 data"). Confirming rewrites the column to `tentative = 0` and touches neither
 `tag_names` nor `video_tags` (requirement 8.1: "the videos the tag is on do not
@@ -37,7 +37,7 @@ requirement 5 names. Attaching, detaching, filtering, search and counts read
 
 **Decision**: Rejecting is one transaction: delete the tag and insert its canonical
 name into `rejected_tag_names (name primary key, created_at)`
-([data-model.md §2](data-model.md#2-rejected_tag_names)). Matching uses the default
+([data-model.md, `rejected_tag_names`](data-model.md#rejected_tag_names)). Matching uses the default
 BINARY collation, the same as `tag_names.name`, so a name matches only when the
 spelling is identical (requirement 13). A create with `tentative` true makes a
 tentative tag only when the name does not exist and is not in this table
@@ -64,7 +64,7 @@ synonym registration, create during attach-by-name, group-to-tag conversion) or
 rewrites a name by rename removes that name from `rejected_tag_names` in the same
 transaction. A tentative create has already skipped rejected names, so passing it
 through this rule removes nothing
-([data-model.md §3](data-model.md#3-write-rules)).
+([data-model.md, Write rules](data-model.md#write-rules)).
 
 **Rationale**: Requirement 15 requires that a manual decision wins and removes the
 name from the rejected list, for the screen's create, rename and synonym actions
@@ -107,7 +107,7 @@ sequence.
 Otherwise it returns `domain.ErrTagNotTentative` (`409 tag_not_tentative` in the
 API) and changes nothing. `ConfirmTag` on an already confirmed tag returns `200`
 with the current state
-([contracts/screen-api.md §2](contracts/screen-api.md#2-tentative-tag-operations)).
+([contracts/screen-api.md, Tentative tag operations](contracts/screen-api.md#tentative-tag-operations)).
 
 **Rationale**: Rejecting deletes the tag. A tag already confirmed from another tab
 or through the API (edge case "conflicting operations") must not be deleted by

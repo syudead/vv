@@ -9,7 +9,7 @@ between a rebuildable index and user data that cannot be recreated is in
 tables this feature adds and the rules for reading and writing them. Existing
 tables do not change.
 
-## 1. Migration
+## Migration
 
 Two migrations are added. The last migration on `main` is
 `00009_display_aspect_ratio.sql`.
@@ -25,7 +25,7 @@ create table account (
     username      text    not null,
     -- Argon2id PHC string ($argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>). No plain text is kept (requirement 5).
     password_hash text    not null,
-    -- Incremented on every username or password change (§4).
+    -- Incremented on every username or password change (see "Session validity conditions").
     version       integer not null default 1 check (version >= 1),
     updated_at    integer not null
 );
@@ -34,7 +34,7 @@ create table account (
 create table sessions (
     -- SHA-256 (hex) of the session ID. The ID itself exists only in the cookie, not in the DB.
     token_hash      text    primary key,
-    -- account.version at issue time. A row that does not match is invalid (§4).
+    -- account.version at issue time. A row that does not match is invalid (see "Session validity conditions").
     account_version integer not null,
     created_at      integer not null,
     -- created_at + 90 days. Not extended (requirement 7).
@@ -59,7 +59,7 @@ create table public_videos (
 
 Down drops each table.
 
-## 2. Data classification
+## Data classification
 
 | Table | Class | When lost |
 | --- | --- | --- |
@@ -69,7 +69,7 @@ Down drops each table.
 
 The classification paragraph in ARCHITECTURE.md gains these three tables.
 
-## 3. Audience and the public video condition
+## Audience and the public video condition
 
 For each request the audience is either the owner (has a valid session) or a
 guest (does not). It lives in `internal/domain` as `Audience`, whose zero value
@@ -107,7 +107,7 @@ only public videos.
 When reading the public flag fails, the request returns an error and the video
 is not treated as public (Edge Case `公開フラグの DB の失敗`).
 
-## 4. Session validity conditions
+## Session validity conditions
 
 A session is valid only when all of these hold, checked in one query:
 
@@ -124,9 +124,9 @@ unchanged.
 
 When the query fails, the result is an error, not "invalid". The HTTP side
 turns it into 500
-([contracts/auth-api.md §5](contracts/auth-api.md#5-unauthenticated-and-other-responses)).
+([contracts/auth-api.md, Unauthenticated and other responses](contracts/auth-api.md#unauthenticated-and-other-responses)).
 
-## 5. Write rules
+## Write rules
 
 | Operation | What one transaction does |
 | --- | --- |
@@ -135,14 +135,14 @@ turns it into 500
 | Change the password (host command) | Fail when there is no row. Write `password_hash`, increment `version`, delete every row in `sessions` (requirement 9) |
 | Log in successfully | Delete rows with `expires_at <= now` and insert a new row. When the request carries a cookie for a valid session, delete that row too (so logging in again leaves no old row; the screen prevents a double submit of a first login without a cookie, and any row that slips through expires) |
 | Log out | Delete the row matching the cookie value; do nothing when there is none |
-| Check validity (§4) | The decision is made by reading only. On hitting an expired row, try to delete it; a failed delete does not change the decision |
+| Check validity ([Session validity conditions](#session-validity-conditions)) | The decision is made by reading only. On hitting an expired row, try to delete it; a failed delete does not change the decision |
 | Start up | Delete rows with `expires_at <= now` |
-| Make public or private | Resolve the given video ids to the `content_key`s of videos currently in the library; for public, insert into `public_videos` (nothing when present); for private, delete. Applies to all or none (as adding and removing tags, [014 tags-api.md §4](../014-video-tags/contracts/tags-api.md#4-adding-and-removing-tags-on-videos)) |
+| Make public or private | Resolve the given video ids to the `content_key`s of videos currently in the library; for public, insert into `public_videos` (nothing when present); for private, delete. Applies to all or none (as adding and removing tags, [014 tags-api.md, Adding and removing tags on videos](../014-video-tags/contracts/tags-api.md#adding-and-removing-tags-on-videos)) |
 
 Deleting every row in `sessions` is cleanup; invalidation itself is done by
-condition 3 of §4.
+condition 3 of [Session validity conditions](#session-validity-conditions).
 
-## 6. Username and password values
+## Username and password values
 
 | Value | Rule |
 | --- | --- |
@@ -151,5 +151,5 @@ condition 3 of §4.
 
 An empty or over-limit value in a login request is not a format error; it is
 the same authentication failure as any other
-([contracts/auth-api.md §3](contracts/auth-api.md#3-post-apiauthlogin)). In
+([contracts/auth-api.md, `POST /api/auth/login`](contracts/auth-api.md#post-apiauthlogin)). In
 first-time setup it is a format error and nothing is configured.
