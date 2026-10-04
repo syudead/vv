@@ -382,6 +382,53 @@ test.describe("live MP4 playback", () => {
     }
   });
 
+  test("タッチ端末は映像をタップして再生・一時停止する", async ({ browser }) => {
+    const context = await browser.newContext({
+      hasTouch: true,
+      viewport: { width: 390, height: 800 },
+    });
+    const page = await context.newPage();
+    try {
+      await page.goto(`/videos/${String(video("direct").id)}`);
+      expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(
+        true,
+      );
+      await page.waitForFunction(
+        () =>
+          (document.querySelector<HTMLVideoElement>("video.vjs-tech")?.readyState ?? 0) >=
+          1,
+      );
+      await expect(page.locator(".vjs-big-play-button")).toBeHidden();
+      await page.locator("div.vjs-poster").tap();
+      await expect
+        .poll(() =>
+          page
+            .locator("video.vjs-tech")
+            .evaluate((el) => !(el as HTMLVideoElement).paused),
+        )
+        .toBe(true);
+
+      await page.locator("video.vjs-tech").tap();
+      await expect
+        .poll(() =>
+          page
+            .locator("video.vjs-tech")
+            .evaluate((el) => (el as HTMLVideoElement).paused),
+        )
+        .toBe(true);
+      await page.locator("video.vjs-tech").tap();
+      await expect
+        .poll(() =>
+          page
+            .locator("video.vjs-tech")
+            .evaluate((el) => !(el as HTMLVideoElement).paused),
+        )
+        .toBe(true);
+    } finally {
+      await context.close();
+    }
+  });
+
   test("形式matrixをdirectまたはtranscodeの正しい経路で3秒以内に再生する", async ({
     browser,
   }) => {

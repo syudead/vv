@@ -28,6 +28,7 @@ const mock = vi.hoisted(() => {
       mode: string;
     }[] = [];
     trackListeners: Callback[] = [];
+    techHandlers = new Map<string, Callback[]>();
     element: HTMLElement;
     options: Record<string, unknown>;
 
@@ -112,8 +113,19 @@ const mock = vi.hoisted(() => {
     /** 技術層の要素。設けたときだけ、要素が読み込んでいる source（currentSrc）を確かめる。 */
     techElement: HTMLVideoElement | undefined;
     tech() {
-      const element = this.techElement;
-      return element === undefined ? undefined : { el: () => element };
+      return {
+        el: () => this.techElement,
+        on: (event: string, callback: Callback) => {
+          this.techHandlers.set(event, [
+            ...(this.techHandlers.get(event) ?? []),
+            callback,
+          ]);
+        },
+      };
+    }
+    triggerTech(event: string) {
+      for (const callback of this.techHandlers.get(event) ?? [])
+        callback({ type: event });
     }
     /** 要素が読み込んでいる source を src に替える。 */
     loadInTech(src: string) {
@@ -256,6 +268,24 @@ describe("VideoPlayer", () => {
     vi.clearAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("タッチ端末では映像のタップで再生と一時停止を切り替える", async () => {
+    let coarse = true;
+    vi.stubGlobal("matchMedia", () => ({ matches: coarse }));
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+
+    act(() => player.triggerTech("tap"));
+    expect(player.pausedValue).toBe(false);
+    act(() => player.triggerTech("tap"));
+    expect(player.pausedValue).toBe(true);
+
+    coarse = false;
+    act(() => player.triggerTech("tap"));
+    expect(player.pausedValue).toBe(true);
   });
 
   it("保存した音量を復元し、音量の変更を次のプレイヤーへ引き継ぐ", async () => {

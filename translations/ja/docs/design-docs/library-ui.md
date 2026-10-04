@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 6813d4d95ba9d8c5a320bd64738c55f7486f2b2af59d5ded1e1780e44d8a638f
+sourceHash: 09476641418b9bbfe2a4dbec223f2e06964090ce10bc1ab0caadc642a29b03f6
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -402,7 +402,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
 
-中央のタッチ操作は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)の理由により、`matchMedia` を使わず CSS のメディア条件で `pointer: coarse` の機器に表示する。
+`pointer: coarse` の機器では、動画のタップで再生と一時停止を切り替える。再生前のポスターへのタップは video.js が処理し、動画の tech へのタップはコントロールバーと同じプレーヤーの制御を通じて切り替える。中央の再生ボタンは CSS のメディア条件で隠し、タッチ操作で再生している間も動画の領域を遮らない。
 
 ## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 

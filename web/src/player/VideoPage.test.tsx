@@ -344,7 +344,7 @@ describe("VideoPage", () => {
       playerMock.controls = controls;
       renderPage("7", "/?q=abc");
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       fireEvent.keyDown(document.body, { key: "Escape" });
       expect(screen.queryByTestId("screen")).toBeNull();
       expect(controls.isFullscreen).toHaveBeenCalled();
@@ -501,16 +501,6 @@ describe("VideoPage", () => {
   });
 
   describe("プレイヤーの操作", () => {
-    it("タッチ用の中央は再生/一時停止だけで、秒数送りのボタンを出さない", async () => {
-      const controls = fakeControls();
-      playerMock.controls = controls;
-      renderPage();
-      await ready();
-      fireEvent.click(await screen.findByRole("button", { name: "Play" }));
-      expect(controls.togglePlay).toHaveBeenCalledTimes(1);
-      expect(screen.queryByRole("button", { name: /秒戻る|秒進む/ })).toBeNull();
-    });
-
     it("左右の端の矢印で、戻り先付きで同じフォルダの前後へ移る", async () => {
       server.videos.set(3, [{ ...related(3, "前の動画"), location: video.location }]);
       renderPage("7", "/folders/1/movies");
@@ -574,30 +564,6 @@ describe("VideoPage", () => {
       expect(previous.className).toContain("pointer-events-none");
     });
 
-    it("中央の再生/一時停止はタップで残るフォーカスがあっても再生中の無操作で隠す", async () => {
-      renderPage();
-      await ready();
-      const toggle = await screen.findByRole("button", { name: "Play" });
-      // タップした後のようにフォーカスが残った状態にする。
-      act(() => toggle.focus());
-      act(() =>
-        player().onStatus({
-          loading: false,
-          reconnecting: false,
-          playing: true,
-          userActive: false,
-          ended: false,
-          stalled: false,
-          positioned: true,
-        }),
-      );
-      const layer = document.querySelector<HTMLElement>("[data-touch-controls]");
-      expect(layer?.className).toContain("opacity-0");
-      // キーボードの輪郭のときだけ見せ、ただのフォーカスでは見せない。
-      expect(layer?.className).not.toContain("focus-within:opacity-100");
-      expect(layer?.className).toContain("has-[button:focus-visible]:opacity-100");
-    });
-
     it("全画面の間は、前後の矢印の題名の吹き出しを全画面の入れ物の中に描く", async () => {
       renderPage();
       await ready();
@@ -634,7 +600,7 @@ describe("VideoPage", () => {
       playerMock.controls = controls;
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、0 が効く
       // ようになるのを待ってから Space を確かめる。
       await waitFor(() => {
@@ -991,8 +957,8 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Related videos" });
-      // 操作はプレイヤーが onControls を返してから出るので、出るまで待つ。
-      (await screen.findByRole("button", { name: "Play" })).focus();
+      // プレイヤー内の前後ボタンへフォーカスを置く。
+      (await screen.findByRole("button", { name: /^Next video/ })).focus();
       end();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "Play next" }),
@@ -1369,7 +1335,7 @@ describe("VideoPage", () => {
     it("再生が終わると予告を一度だけ読み上げ、5 秒後に確かめてから次のメンバーを再生する（受け入れ条件 16・19）", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
-      (await screen.findByRole("button", { name: "Play" })).focus();
+      (await screen.findByRole("button", { name: /^Next video/ })).focus();
       end();
       const statuses = screen
         .getAllByRole("status")
@@ -1386,10 +1352,6 @@ describe("VideoPage", () => {
       // 残り秒数は読み上げさせない。
       const seconds = screen.getByText("in 5 seconds");
       expect(seconds.getAttribute("aria-hidden")).toBe("true");
-      // タッチ用の中央操作は出さない。
-      expect(screen.queryByRole("button", { name: "Play" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
-
       await advance(2000);
       expect(screen.getByText("in 3 seconds")).toBeDefined();
       // 秒数が減っても読み上げの文は増えない。
@@ -1410,7 +1372,7 @@ describe("VideoPage", () => {
     it("隠れたタブでタイマーが間引かれても、期限を過ぎていれば見えたときに次のメンバーを再生する", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       expect(screen.getByText("in 5 seconds")).toBeDefined();
       // タイマーが一度も呼ばれないまま 30 秒経ったことにする。
@@ -1431,7 +1393,7 @@ describe("VideoPage", () => {
     it("「取り消す」で今の再生終了の層に戻り、フォーカスを「次を再生」へ移す", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
-      (await screen.findByRole("button", { name: "Play" })).focus();
+      (await screen.findByRole("button", { name: /^Next video/ })).focus();
       end();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(screen.queryByText(announcement)).toBeNull();
@@ -1445,7 +1407,7 @@ describe("VideoPage", () => {
 
     it("予告中の Esc は取り消しで画面を閉じず、取り消した後の Esc は閉じる", async () => {
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       fireEvent.keyDown(screen.getByRole("button", { name: "Cancel" }), {
         key: "Escape",
@@ -1459,7 +1421,7 @@ describe("VideoPage", () => {
 
     it("「今すぐ再生」で戻り先付きで次のメンバーへ移る", async () => {
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       fireEvent.click(screen.getByRole("button", { name: "Play now" }));
       await waitFor(() => expect(player().video.id).toBe(13));
@@ -1469,7 +1431,7 @@ describe("VideoPage", () => {
     it("最後のメンバーでは予告を出さず、「もう一度見る」だけの層を出す（受け入れ条件 16）", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember("13");
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
       expect(screen.getByRole("button", { name: "Watch again" })).toBeDefined();
@@ -1493,7 +1455,7 @@ describe("VideoPage", () => {
     it("予告の終わりに次のメンバーが無ければ、先へ進まず「もう一度見る」だけの層にする", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       server.videos.delete(13);
       await advance(5000);
@@ -1507,7 +1469,7 @@ describe("VideoPage", () => {
 
     it("予告中に次のメンバーが消えた知らせが届いたら、確かめて予告をやめる", async () => {
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       server.videos.delete(13);
       // ほかの動画の知らせでは確かめない。
@@ -1525,7 +1487,7 @@ describe("VideoPage", () => {
     it("自動で開いたメンバーが再生に失敗したら、再生失敗の層で止まり先へ進まない", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       await advance(5000);
       await waitFor(() => expect(player().video.id).toBe(13));
@@ -1556,7 +1518,7 @@ describe("VideoPage", () => {
       renderPage("12", "/", "guest");
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Up next" });
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       end();
       expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
     });
@@ -1585,7 +1547,7 @@ describe("VideoPage", () => {
     it("stalled で左上に知らせるだけの警告を出し、画質を変える操作を置かない", async () => {
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       expect(warning()).toBeNull();
       report();
       const status = warning()?.closest("[role=status]");
@@ -1604,18 +1566,6 @@ describe("VideoPage", () => {
       expect(within(status).getByRole("button", { name: "Dismiss" }).className).toContain(
         "pointer-events-auto",
       );
-    });
-
-    it("警告が出ていても、中央の操作と操作バーの操作の入口がそのまま使える", async () => {
-      const controls = fakeControls();
-      playerMock.controls = controls;
-      renderPage();
-      await ready();
-      report();
-      expect(warning()).not.toBeNull();
-      fireEvent.click(screen.getByRole("button", { name: "Pause" }));
-      expect(controls.togglePlay).toHaveBeenCalledTimes(1);
-      expect(screen.getByTestId("video-player")).toBeDefined();
     });
 
     it("閉じると消え、同じ動画では再び出さず、別の動画へ移ると閉じた記録を忘れる", async () => {
@@ -2275,7 +2225,7 @@ describe("VideoPage", () => {
       );
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       expect(captureButton().getAttribute("aria-disabled")).toBe("true");
       fireEvent.click(captureButton());
       expect(server.thumbnailPosition).not.toHaveBeenCalled();
@@ -2315,7 +2265,7 @@ describe("VideoPage", () => {
       );
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       report({ playing: true });
 
       fireEvent.click(captureButton());
@@ -2351,7 +2301,7 @@ describe("VideoPage", () => {
     it("再生終了の層・状態の層が映像を覆っている間は押せない", async () => {
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       report({ ended: true });
       expect(captureButton().getAttribute("aria-disabled")).toBe("true");
       report();
@@ -2512,7 +2462,7 @@ describe("VideoPage", () => {
         );
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "Play" });
+      await screen.findByTestId("video-player");
       act(() =>
         player().onStatus({
           loading: false,
@@ -3147,7 +3097,7 @@ describe("VideoPage", () => {
       renderPage("7", "/?q=abc");
       await ready();
       await screen.findByRole("heading", { level: 2, name: /Related videos/ });
-      await screen.findByRole("button", { name: /Play/ });
+      await screen.findByTestId("video-player");
       expect(screen.getByRole("switch").getAttribute("aria-label")).toBe(
         "⟦Show to people who aren't signed in⟧",
       );
