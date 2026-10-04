@@ -471,6 +471,116 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /tags/batch:
+    post:
+      operationId: batchTags
+      summary: 複数のタグをまとめて確定・却下・削除する
+      description: |
+        1 つのトランザクションで `ids` のタグに `action` を行う。`confirm`・`reject` は仮のタグに、`delete` は
+        確定したタグに効き、種類の合わないタグは何も変えずに `notApplicableIds`、無い id は `notFoundIds`
+        に返す。却下したタグの元の名前は却下した名前に入り、削除したタグの名前は覚えない。1 つのタグなら
+        `ids: [id]` を送る。画面の `POST /api/tags/batch` と同じ保存先の操作を呼ぶ
+        （specs/039-external-tag-admin/contracts/external-api.md §5）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagBatchRequest"
+      responses:
+        "200":
+          description: 処理したタグ・無かったタグ・種類が合わず変えなかったタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagBatchResponse"
+        "400":
+          description: >-
+            本文の形が違う・`action` が 3 値の外（`invalid_request`）、`ids` が空か 20,000 件を超える
+            （`too_many_tags`、`limit`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tags/rejected-names:
+    get:
+      operationId: listRejectedTagNames
+      summary: 却下した名前を一覧する
+      description: |
+        却下した名前を名前の自然順でページに分けて返す。`total` は却下した名前の全部の数で、続きが
+        あれば `nextCursor` を入れる。画面の `GET /api/tags/rejected-names` と同じ保存先の操作を呼ぶ
+        （specs/039-external-tag-admin/contracts/external-api.md §6）。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1 ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: 却下した名前の 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RejectedTagNameList"
+        "400":
+          description: >-
+            `limit` が 1〜200 の外（`invalid_request`）、カーソルを解釈できない（`invalid_request` /
+            `invalid_cursor`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: forgetRejectedTagName
+      summary: 却下した名前を 1 つ外す
+      description: |
+        名前を却下した名前から外し、次に同じ名前を仮のタグとして付けるとタグがまた作られるようにする。
+        名前はタグ名と同じ規則で整えてから照合する。一覧に無い名前や整えられない名前は何も変えずに
+        `removed: false` を返す。画面の `DELETE /api/tags/rejected-names` と同じ保存先の操作を呼ぶ
+        （specs/039-external-tag-admin/contracts/external-api.md §7）。
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: 外す名前
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 照合した名前と、外したかどうか
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RejectedTagNameForgetResult"
+        "400":
+          description: "`name` が無い（`invalid_request`）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /scans:
     post:
       operationId: startScan
@@ -736,6 +846,80 @@ components:
           description: >-
             `add` だけ: 統合を受け入れるタグの id。`tag_merge_required` の `tagId` を渡す。名前が別のタグの
             元の名前でなければ無視する
+
+    TagBatchRequest:
+      type: object
+      required: [action, ids]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          description: >-
+            confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、
+            delete は確定したタグを消す
+          enum: [confirm, reject, delete]
+        ids:
+          type: array
+          description: >-
+            対象のタグ。送った数で 1〜20,000 件（重複も数に入り、処理は 1 回）。範囲外は `too_many_tags`
+          items:
+            type: integer
+            format: int64
+
+    TagBatchResponse:
+      type: object
+      required: [appliedIds, notFoundIds, notApplicableIds]
+      additionalProperties: false
+      description: >-
+        3 つは重ならず、合わせて重複を除いた `ids` に等しい。どれも `ids` に現れた順で、無ければ空
+      properties:
+        appliedIds:
+          type: array
+          description: 処理したタグ
+          items:
+            type: integer
+            format: int64
+        notFoundIds:
+          type: array
+          description: 無かったタグ
+          items:
+            type: integer
+            format: int64
+        notApplicableIds:
+          type: array
+          description: 種類が `action` に合わず、何も変えなかったタグ
+          items:
+            type: integer
+            format: int64
+
+    RejectedTagNameList:
+      type: object
+      required: [items, total]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: 却下した名前（名前の自然順）。無ければ空
+          items:
+            type: string
+        total:
+          type: integer
+          description: 却下した名前の全部の数
+        nextCursor:
+          type: string
+          description: 続きを読むカーソル。続きがあるときだけ入る
+
+    RejectedTagNameForgetResult:
+      type: object
+      required: [name, removed]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: 照合した名前（整えた後の綴り。整えられなければ送った名前）
+        removed:
+          type: boolean
+          description: 却下した名前から外したら true。一覧に無かったら false で、何も変えていない
 
     ExternalVideo:
       type: object

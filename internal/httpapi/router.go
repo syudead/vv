@@ -106,7 +106,9 @@ type Tags interface {
 	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	RejectTag(ctx context.Context, id int64) (string, error)
 	ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error)
-	ForgetRejectedTagName(ctx context.Context, name string) error
+	// ForgetRejectedTagName は名前を外したかどうかを返す。画面の経路は捨て、外部連携 API が応答の
+	// removed に載せる。
+	ForgetRejectedTagName(ctx context.Context, name string) (bool, error)
 
 	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。
 	BatchTags(ctx context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error)
@@ -519,7 +521,7 @@ func requiresJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {

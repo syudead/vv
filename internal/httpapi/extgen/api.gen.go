@@ -137,6 +137,27 @@ func (e ExternalScanStatus) Valid() bool {
 	}
 }
 
+// Defines values for TagBatchRequestAction.
+const (
+	Confirm TagBatchRequestAction = "confirm"
+	Delete  TagBatchRequestAction = "delete"
+	Reject  TagBatchRequestAction = "reject"
+)
+
+// Valid indicates whether the value is a known member of the TagBatchRequestAction enum.
+func (e TagBatchRequestAction) Valid() bool {
+	switch e {
+	case Confirm:
+		return true
+	case Delete:
+		return true
+	case Reject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TagSort.
 const (
 	CountAsc    TagSort = "countAsc"
@@ -323,6 +344,27 @@ type ExternalVideoTag struct {
 	Tentative bool `json:"tentative"`
 }
 
+// RejectedTagNameForgetResult defines model for RejectedTagNameForgetResult.
+type RejectedTagNameForgetResult struct {
+	// Name 照合した名前（整えた後の綴り。整えられなければ送った名前）
+	Name string `json:"name"`
+
+	// Removed 却下した名前から外したら true。一覧に無かったら false で、何も変えていない
+	Removed bool `json:"removed"`
+}
+
+// RejectedTagNameList defines model for RejectedTagNameList.
+type RejectedTagNameList struct {
+	// Items 却下した名前（名前の自然順）。無ければ空
+	Items []string `json:"items"`
+
+	// NextCursor 続きを読むカーソル。続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 却下した名前の全部の数
+	Total int `json:"total"`
+}
+
 // Tag defines model for Tag.
 type Tag struct {
 	// CreatedAt タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
@@ -338,6 +380,30 @@ type Tag struct {
 
 	// VideoCount いまライブラリにある動画の本数
 	VideoCount int `json:"videoCount"`
+}
+
+// TagBatchRequest defines model for TagBatchRequest.
+type TagBatchRequest struct {
+	// Action confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す
+	Action TagBatchRequestAction `json:"action"`
+
+	// Ids 対象のタグ。送った数で 1〜20,000 件（重複も数に入り、処理は 1 回）。範囲外は `too_many_tags`
+	Ids []int64 `json:"ids"`
+}
+
+// TagBatchRequestAction confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す
+type TagBatchRequestAction string
+
+// TagBatchResponse 3 つは重ならず、合わせて重複を除いた `ids` に等しい。どれも `ids` に現れた順で、無ければ空
+type TagBatchResponse struct {
+	// AppliedIds 処理したタグ
+	AppliedIds []int64 `json:"appliedIds"`
+
+	// NotApplicableIds 種類が `action` に合わず、何も変えなかったタグ
+	NotApplicableIds []int64 `json:"notApplicableIds"`
+
+	// NotFoundIds 無かったタグ
+	NotFoundIds []int64 `json:"notFoundIds"`
 }
 
 // TagList defines model for TagList.
@@ -540,6 +606,21 @@ type ListTagsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ForgetRejectedTagNameParams defines parameters for ForgetRejectedTagName.
+type ForgetRejectedTagNameParams struct {
+	// Name 外す名前
+	Name string `form:"name" json:"name"`
+}
+
+// ListRejectedTagNamesParams defines parameters for ListRejectedTagNames.
+type ListRejectedTagNamesParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
@@ -557,6 +638,9 @@ type LookupVideoParams struct {
 	// Path 所在の絶対パス
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
+
+// BatchTagsJSONRequestBody defines body for BatchTags for application/json ContentType.
+type BatchTagsJSONRequestBody = TagBatchRequest
 
 // MergeTagsJSONRequestBody defines body for MergeTags for application/json ContentType.
 type MergeTagsJSONRequestBody = TagMergeRequest
@@ -587,9 +671,18 @@ type ServerInterface interface {
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
+	// BatchTags 複数のタグをまとめて確定・却下・削除する
+	// (POST /tags/batch)
+	BatchTags(w http.ResponseWriter, r *http.Request)
 	// MergeTags 複数のタグを 1 つのタグへ統合する
 	// (POST /tags/merge)
 	MergeTags(w http.ResponseWriter, r *http.Request)
+	// ForgetRejectedTagName 却下した名前を 1 つ外す
+	// (DELETE /tags/rejected-names)
+	ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params ForgetRejectedTagNameParams)
+	// ListRejectedTagNames 却下した名前を一覧する
+	// (GET /tags/rejected-names)
+	ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params ListRejectedTagNamesParams)
 	// RenameTag タグの元の名前を変える
 	// (POST /tags/rename)
 	RenameTag(w http.ResponseWriter, r *http.Request)
@@ -748,11 +841,104 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// BatchTags operation middleware
+func (siw *ServerInterfaceWrapper) BatchTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // MergeTags operation middleware
 func (siw *ServerInterfaceWrapper) MergeTags(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ForgetRejectedTagName operation middleware
+func (siw *ServerInterfaceWrapper) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ForgetRejectedTagNameParams
+
+	// ------------- Required query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ForgetRejectedTagName(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRejectedTagNames operation middleware
+func (siw *ServerInterfaceWrapper) ListRejectedTagNames(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRejectedTagNamesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRejectedTagNames(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1066,6 +1252,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/merge", wrapper.MergeTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/rename", wrapper.RenameTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/synonyms", wrapper.UpdateTagSynonyms)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/batch", wrapper.BatchTags)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tags/rejected-names", wrapper.ForgetRejectedTagName)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags/rejected-names", wrapper.ListRejectedTagNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)
 

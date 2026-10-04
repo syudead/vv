@@ -414,7 +414,7 @@ func (s *server) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, p
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	if err := s.tags.ForgetRejectedTagName(r.Context(), params.Name); err != nil {
+	if _, err := s.tags.ForgetRejectedTagName(r.Context(), params.Name); err != nil {
 		s.internalError(w, "Could not update rejected tag names.", err)
 		return
 	}

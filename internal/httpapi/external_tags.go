@@ -11,8 +11,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API のタグの統合・改名・シノニム（specs/039-external-tag-admin/contracts/external-api.md
-// §2〜§4）。どの操作も画面の経路と同じ TagStore の操作を Tags 越しに呼び、新しい書き込みの経路は
+// 外部連携 API のタグの統合・改名・シノニム・まとめての確定・却下・削除・却下した名前
+// （specs/039-external-tag-admin/contracts/external-api.md §2〜§7）。どの操作も画面の経路と同じ TagStore の操作を Tags 越しに呼び、新しい書き込みの経路は
 // 持たない（research.md R-6）。タグは経路ではなく本文の id で指す（R-2）。ここが持つのは本文の
 // 検査と、外部連携 API の誤りの形（tagId・tagName を添えた 409 など、R-4）への写し方だけである。
 
@@ -105,6 +105,103 @@ func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toExternalTag(tag), e.s.logger)
+}
+
+// BatchTags は複数のタグをまとめて確定・却下・削除する（POST /api/v1/tags/batch、
+// contracts/external-api.md §5）。1 つのタグ用の経路は持たない（research.md R-3）。種類の合わない
+// タグと無いタグは何も変えずに返し、残りを 1 つのトランザクションで処理する。
+func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
+	var body extgen.TagBatchRequest
+	if !e.readJSONBody(w, r, &body) {
+		return
+	}
+	if !body.Action.Valid() {
+		e.invalidRequest(w, nil, "action must be one of confirm, reject or delete.")
+		return
+	}
+	if len(body.Ids) == 0 || len(body.Ids) > domain.MaxTagBatch {
+		e.invalidRequestLimit(w, extgen.TooManyTags, domain.MaxTagBatch,
+			fmt.Sprintf("ids must contain between 1 and %d items.", domain.MaxTagBatch))
+		return
+	}
+	if e.s.tags == nil {
+		e.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	outcome, err := e.s.tags.BatchTags(r.Context(), domain.TagBatchAction(body.Action), body.Ids)
+	if err != nil {
+		e.internalError(w, "Could not update the tags. Nothing was changed.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, extgen.TagBatchResponse{
+		AppliedIds:       nonNilIDs(outcome.AppliedIDs),
+		NotFoundIds:      nonNilIDs(outcome.NotFoundIDs),
+		NotApplicableIds: nonNilIDs(outcome.NotApplicableIDs),
+	}, e.s.logger)
+}
+
+// ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
+// （GET /api/v1/tags/rejected-names、contracts/external-api.md §6）。limit の既定と上限は画面と同じ。
+func (e *externalServer) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params extgen.ListRejectedTagNamesParams) {
+	limit := rejectedTagNamePageDefaultLimit
+	if params.Limit != nil {
+		limit = *params.Limit
+		if limit < 1 || limit > domain.MaxTagPageLimit {
+			e.invalidRequest(w, nil, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+			return
+		}
+	}
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
+	if e.s.tags == nil {
+		e.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	page, err := e.s.tags.ListRejectedTagNames(r.Context(), cursor, limit)
+	if errors.Is(err, domain.ErrInvalidCursor) {
+		reason := extgen.InvalidCursor
+		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the rejected names again from the start.")
+		return
+	}
+	if err != nil {
+		e.internalError(w, "Could not load rejected tag names.", err)
+		return
+	}
+	names := page.Items
+	if names == nil {
+		names = []string{}
+	}
+	body := extgen.RejectedTagNameList{Items: names, Total: page.Total}
+	if page.NextCursor != "" {
+		body.NextCursor = &page.NextCursor
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, body, e.s.logger)
+}
+
+// ForgetRejectedTagName は名前を却下した名前から外す（DELETE /api/v1/tags/rejected-names?name=…、
+// contracts/external-api.md §7）。応答の name は照合した綴りで、保存先と同じく
+// domain.NormalizeTagName で整えた名前、整えられなければ送られた名前である。一覧に無い名前は
+// 何も変えずに removed: false を返す（research.md R-5）。
+func (e *externalServer) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params extgen.ForgetRejectedTagNameParams) {
+	if e.s.tags == nil {
+		e.internalError(w, "Tag storage is not configured.", nil)
+		return
+	}
+	name := params.Name
+	if normalized, err := domain.NormalizeTagName(name); err == nil {
+		name = normalized
+	}
+	removed, err := e.s.tags.ForgetRejectedTagName(r.Context(), name)
+	if err != nil {
+		e.internalError(w, "Could not update rejected tag names.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, extgen.RejectedTagNameForgetResult{Name: name, Removed: removed}, e.s.logger)
 }
 
 // writeTagError はタグの操作の保存先の誤りを外部連携 API の誤りへ写す（contracts/external-api.md
