@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 16d72861dc0c06af5a698a865d34ac1cb80d17fef4f25bdf16c771e865063666
+sourceHash: 8d416a7bb6ce26dd64688a04b6cedb425dab008e9d5b3b58e2b972040cd2f231
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -148,7 +148,7 @@ flowchart LR
 
 | 振る舞い | 方法 |
 | --- | --- |
-| キーボードフォーカス | すべてのコンポーネントに共通の 1 つのリング、`web/src/index.css` の `:focus-visible` のアウトライン。上流のコンポーネントごとの `ring-[3px]` は外す |
+| キーボードフォーカス | すべてのコンポーネントに共通の 1 つのリング、`web/src/index.css` の `:focus-visible` のアウトライン。上流のコンポーネントごとの `ring-[3px]` と `ring-3` は外す。メニュー、セレクト、コマンドリストの行は、代わりに `accent` の塗りでフォーカスを示す |
 | 選択中と押下中 | `primary-soft` の塗りに `primary` の文字（`Toggle`、`ToggleGroup`）、または `primary` の塗り（`Checkbox`、`Switch`、`RadioGroup`） |
 | 密度 | ライブラリの密度の画面は `sm` と `icon-sm`（`h-8`）を使い、動画ページは `default` と `lg` を使う |
 
@@ -156,14 +156,42 @@ flowchart LR
 
 この層は既存の画面を変えない。画面が今使っているコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパス（`Button.tsx`、`Checkbox.tsx`、`Combobox.tsx` と、表が挙げるほかのもの）に残る。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
 
-ショーケース（`/design-system`）は、各コンポーネントをバリアントと状態ごとに並べる。状態は通常、ホバー、キーボードフォーカス、押下中、選択中、無効である。ホバーと押下中はポインターなしで `data-demo-state` 属性によって描かれ、`web/src/index.css` がこの属性を Tailwind の `hover` と `active` のバリアントに加える。画面はこの属性を設定しない。
+ショーケース（`/design-system`）は、各コンポーネントをバリアントと状態ごとに並べる。状態は通常、ホバー、キーボードフォーカス、押下中、選択中、無効である。状態はポインターなしで、コンポーネントを囲む要素の `data-demo-state` 属性によって描かれる。`web/src/index.css` はこの属性を Tailwind の `hover`、`focus`、`focus-visible`、`active` のバリアントに加え、フォーカスリングをその要素の最初の子に描く。画面はこの属性を設定しない。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
 | 新しいコンポーネントに vv のファイル名（`Button.tsx`）を保つ | `shadcn add` は上流の名前で書くので、以後の更新のたびに手で名前を変えることになる |
 | この層で古いコンポーネントを脇へ移し、ライブラリ画面を新しいものに切り替える | メンテナーは既存の画面をそれぞれの移行まで変えずに保つ |
 | コンポーネントのスタイルを変えて古いものと同じ見た目にする | コンポーネントは新しい画面のためのものであり、古い見た目は画面の移行が置き換える |
-| 上流のような、コンポーネントごとのフォーカスリング | 各コンポーネントが自分の複製を持つことになり、任意値の `ring-[3px]` はチェックで失敗する |
+| 上流のような、コンポーネントごとのフォーカスリング | 各コンポーネントが共通のアウトラインと異なる自分の複製を持つことになり、任意値の `ring-[3px]` はチェックで失敗する |
+
+### オーバーレイとフィードバック、vv のコンポーネント {#overlays-and-feedback-and-vv-components}
+
+これらは Radix ベースの shadcn/ui のコンポーネントであり、上流の構造とバリアントのまま取り込み、基盤のトークンを通してだけ装いを変える。vv 独自のコンポーネントも同じ形に従う。それぞれは `registry:ui` の項目であり、その `docs` は [components.md](../../web/registry/rules/components.md) の節を指す。その節は、何のためのものか、何と組み合わせるか、いつ使わないかを述べる。これらは新しい画面のための新しいコンポーネントである。メンテナーがショーケースでこの層を承認し、各画面が移行するまで、既存の画面は今のコンポーネントを使い続ける。
+
+| コンポーネント | 置き換える予定のもの | 備考 |
+| --- | --- | --- |
+| `Dialog`、`AlertDialog` | `ModalFrame` | `AlertDialog` は取り消せない操作を確認する |
+| `Popover`、`DropdownMenu`、`Tooltip`、`Tabs` | `Popover`、`Menu`、`Tooltip`、`Tabs` | 層の位置は Radix が決める |
+| `Sonner` | `Toast` | アプリはすべての画面について 1 つの変更でこれに切り替える |
+| `Badge` | `Chip`、タグのチップ、件数 | 上流のバリアントに `soft`、`warning`、`success` を加える |
+| `Skeleton`、`Progress`、`Spinner` | `Skeleton`、スキャンと視聴のバー | `Skeleton` はきらめき、`Progress` は `max` を受け取る |
+| `Alert`、`Empty` | 停滞の警告、自動再生の通知、インラインのエラー、空の状態のブロック | `Alert` は `warning` と `success` を加える |
+| `Separator`、`Kbd`、`Breadcrumb` | 区切り線、検索のキー、フォルダのパス | |
+| `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 展開、アイコンのレール、640px 未満ではドロワー |
+| `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、`videoList/FavoriteToggle` | vv のコンポーネント |
+
+shadcn のコンポーネントは、上流のケバブケースの名前（`dropdown-menu.tsx`）で `web/src/ui/shadcn` に、操作と入力のコンポーネントと並べて置く。上流と同じく、`Dialog` と `Sheet` は `ghost`、`icon-sm` の `Button` で閉じ、`AlertDialogAction` と `AlertDialogCancel` は `Button`（既定は `sm`）であり、`SidebarTrigger` は `Button`、`SidebarInput` は `Input` である。vv のコンポーネントは PascalCase の名前のまま `web/src/ui` に置く。`FavoriteToggle` の `page` 形式は `Tooltip` 付きの `Toggle` である。
+
+上流の 3 つのクラスのパターンは、Radix が実行時に計算する値か、どのユーティリティも名前を持たない値を読む。浮かぶ層の変形の原点と利用できる高さ、そして `Alert` のアイコンの列である。これらは `web/design-exceptions.js` の `special` の項目である。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| コンポーネントのスタイルを変えて、置き換える対象と同じ見た目にする | コンポーネントは新しい画面を作るためのものであり、古い見た目を繰り返すためのものではない |
+| 古いコンポーネントを脇へ移し、新しいものが今その名前を引き継ぐ | この層が承認される前に、すべての画面の import が変わってしまう |
+| 上流のような、別の `sidebar-*` の色トークン | サイドバーは、すでに持っていた役割である `navbar`、`accent`、`secondary` を使う |
+
+コンポーネントの背後にある判断は [038 UI design, Components](../../specs/038-design-system/ui-design.md#components) にある。
 
 ## ページパターン {#page-patterns}
 
