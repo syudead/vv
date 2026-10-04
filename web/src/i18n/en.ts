@@ -1254,6 +1254,8 @@ export const en = {
       pathCopied: "Copied the path",
       copyFailed: "Couldn't copy the path",
       openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
+      /** ファイルの情報（FactList）の代表サムネイルの項目名。 */
+      thumbnail: "Thumbnail",
       thumbnailAt: (time: string) => `Thumbnail at ${time}`,
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",

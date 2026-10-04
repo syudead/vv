@@ -4,12 +4,14 @@ import { useEffectEvent, useLayoutEffect, useRef } from "react";
 let hasMounted = false;
 
 /**
- * useArrival は別のフォルダへ移ったとき、見出しへフォーカスを移して先頭へ
+ * useArrival は別のフォルダへ移ったとき、見出し（の題）へフォーカスを移して先頭へ
  * スクロールする。読み上げソフトの利用者が移動と現在地を知れるようにする。
  * 控えから戻ってきたとき（restoring）は、元の位置へ戻すのでどちらもしない。
  */
-export function useArrival(restoring = false) {
-  const heading = useRef<HTMLHeadingElement | null>(null);
+export function useArrival<T extends HTMLElement = HTMLHeadingElement>(
+  restoring = false,
+) {
+  const heading = useRef<T | null>(null);
   const arrive = useEffectEvent(() => {
     if (!restoring) {
       window.scrollTo({ top: 0, behavior: "auto" });

@@ -2,13 +2,15 @@ import { Pause, Play } from "lucide-react";
 
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { Button } from "../ui/shadcn/button";
 
 /**
  * TouchControls はタッチの端末だけに出す、プレイヤー中央の大きな再生/一時停止である
  * （要件 8）。秒数送りのボタンは置かない。
  *
  * 出し分けは CSS の `pointer: coarse` だけで行う。見せる時期は操作バーと同じで、
- * `visible` が偽の間は見えなくし、押せなくする。
+ * `visible` が偽の間は見えなくし、押せなくする。指で押す的なので、`Button` の `icon` を
+ * 丸く大きく（`size-16`）し、アイコンも大きくする（`size-6`）。
  */
 export default function TouchControls({
   playing,
@@ -31,18 +33,15 @@ export default function TouchControls({
             "pointer-events-none opacity-0 has-[button:focus-visible]:opacity-100 [&_button]:pointer-events-none",
       )}
     >
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="icon"
         aria-label={playing ? t.player.controls.pause : t.player.controls.play}
         onClick={onToggle}
-        className="pointer-events-auto flex size-15 items-center justify-center rounded-full border border-control-border bg-overlay text-fg shadow-elevated transition-colors hover:bg-navbar motion-reduce:transition-none"
+        className="pointer-events-auto size-16 rounded-full shadow-elevated [&_svg]:size-6"
       >
-        {playing ? (
-          <Pause className="size-7" aria-hidden="true" />
-        ) : (
-          <Play className="size-7" aria-hidden="true" />
-        )}
-      </button>
+        {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+      </Button>
     </div>
   );
 }

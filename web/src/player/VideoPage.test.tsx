@@ -198,6 +198,15 @@ function player(): PlayerProps {
   return props;
 }
 
+/** factList は情報欄の「File details」の節の、項目名と値の組（FactList の dl）を返す。 */
+function factList(): HTMLElement {
+  const list = screen
+    .getByRole("region", { name: "File details" })
+    .querySelector<HTMLElement>("dl");
+  if (list === null) throw new Error("fact list not found");
+  return list;
+}
+
 describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
@@ -290,7 +299,7 @@ describe("VideoPage", () => {
       expect((await ready()).textContent).toBe("テスト動画");
       // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
       await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
-      expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
+      expect(factList()).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
       expect(screen.getByRole("button", { name: "Open file" })).toBeDefined();
       expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
@@ -387,9 +396,11 @@ describe("VideoPage", () => {
         header: document.querySelector("header")?.outerHTML,
         frame: document.querySelector("[data-player-frame]")?.outerHTML,
         title: document.querySelector("h1")?.outerHTML,
-        facts: screen.getByRole("list", { name: "File details" }).outerHTML,
+        facts: factList().outerHTML,
         technical: screen.getByRole("list", { name: "Technical details" }).outerHTML,
-        related: document.querySelector("aside")?.outerHTML,
+        related: screen
+          .getByRole("heading", { level: 2, name: "Related videos" })
+          .closest("section")?.outerHTML,
       });
       const before = snapshot();
       fireEvent.click(screen.getByRole("button", { name: "Open file" }));
@@ -400,8 +411,7 @@ describe("VideoPage", () => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
       // 情報の行のすぐ下（技術情報の上）に出る。
-      const row = screen.getByRole("list", { name: "File details" }).parentElement;
-      expect(row?.nextElementSibling).toBe(alert);
+      expect(factList().nextElementSibling).toBe(alert);
       // 足されるのはその 1 行だけで、帯・プレイヤー・題名・情報・関連動画は変わらない。
       expect(snapshot()).toEqual(before);
     });
@@ -423,12 +433,12 @@ describe("VideoPage", () => {
       expect(scrollTo).toHaveBeenCalledWith(0, 0);
     });
 
-    it("プレイヤーの入れ物は列を 1 本（minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
+    it("プレイヤーの入れ物は列を 1 本（grid-cols-1、minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
       renderPage();
       await ready();
       // 列の指定が無いと、層の列が内容の幅まで広がり、狭い幅で右が切れる。
       const frame = document.querySelector("[data-player-frame]");
-      expect(frame?.className.split(" ")).toContain("grid-cols-[minmax(0,1fr)]");
+      expect(frame?.className.split(" ")).toContain("grid-cols-1");
     });
   });
 
@@ -1132,7 +1142,8 @@ describe("VideoPage", () => {
         json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
       );
       await openMember();
-      const members = () => document.getElementById("group-heading")!.closest("section")!;
+      const members = () =>
+        screen.getByRole("heading", { level: 2, name: "Up next" }).closest("section")!;
       expect(within(members()).getByText("ep02")).toBeDefined();
 
       await user.click(screen.getByRole("button", { name: "Edit name" }));
@@ -1341,10 +1352,13 @@ describe("VideoPage", () => {
       const heading = screen.getByRole("heading", { level: 2, name: "Up next" });
       const section = heading.closest("section");
       if (section === null) throw new Error("列がありません");
-      const [members, others] = within(section).getAllByRole("list") as [
-        HTMLElement,
-        HTMLElement,
-      ];
+      // 関連動画は「続けて再生」の節の後ろの、別の節にある。
+      const relatedSection = screen
+        .getByRole("heading", { level: 2, name: "Related videos" })
+        .closest("section");
+      if (relatedSection === null) throw new Error("関連動画の節がありません");
+      const members = within(section).getByRole("list");
+      const others = within(relatedSection).getByRole("list");
       expect(
         within(members)
           .getAllByRole("listitem")
@@ -1599,7 +1613,7 @@ describe("VideoPage", () => {
       // 入れ物は下の操作へ通し、× だけが押せる。状態表示の入れ物とは別の層にある。
       const layer = status.closest("[data-stall-warning]");
       expect(layer?.className).toContain("pointer-events-none");
-      expect(layer?.className).toContain("left-2");
+      expect(layer?.className).toContain("inset-x-2");
       expect(layer?.closest("[data-overlay-layer]")).toBeNull();
       expect(within(status).getByRole("button", { name: "Dismiss" }).className).toContain(
         "pointer-events-auto",
@@ -1777,12 +1791,18 @@ describe("VideoPage", () => {
       return screen.getByRole("switch", { name: "Show to people who aren't signed in" });
     }
 
+    /** visibilityLabel は切り替えに添えた今の状態（公開中・非公開）の文字を返す。 */
+    function visibilityLabel() {
+      const id = toggle().id;
+      return document.querySelector(`label[for="${id}"]`)?.textContent;
+    }
+
     it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
       expect(toggle().getAttribute("aria-checked")).toBe("false");
-      expect(toggle().textContent).toBe("Private");
+      expect(visibilityLabel()).toBe("Private");
 
       fireEvent.click(toggle());
       // 送信中は押せない印（aria-disabled）で、フォーカスは外さず、応答が来るまで
@@ -1794,7 +1814,7 @@ describe("VideoPage", () => {
 
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
-      expect(toggle().textContent).toBe("Public");
+      expect(visibilityLabel()).toBe("Public");
       expect(toggle().getAttribute("aria-disabled")).toBeNull();
       // トーストは出さない。
       expect(screen.queryByRole("status")).toBeNull();
@@ -1805,7 +1825,7 @@ describe("VideoPage", () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
-      expect(toggle().textContent).toBe("Public");
+      expect(visibilityLabel()).toBe("Public");
       fireEvent.click(toggle());
       expect(bodies).toEqual([{ videoIds: [7], public: false }]);
       await act(async () => answers[0]!(json({ applied: 1 })));
@@ -1921,9 +1941,8 @@ describe("VideoPage", () => {
         button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      // オフは一群の他の操作と同じ色の Toggle（ui/FavoriteToggle の page）。
-      expect(button.getAttribute("data-state")).toBe("off");
       expect(button.className).toContain("text-muted-foreground");
+      expect(button.getAttribute("data-state")).toBe("off");
     });
 
     it("所在が無くプレイヤーの出ていない動画でも、付け外しだけで右端の一群を出す", async () => {
@@ -1957,7 +1976,7 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
       expect(favoriteButton().getAttribute("data-state")).toBe("on");
-      // active の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
+      // 押した状態の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
       expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
       expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
@@ -2021,7 +2040,7 @@ describe("VideoPage", () => {
         expect(favoriteButton().getAttribute("aria-disabled")).toBeNull(),
       );
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
-      expect(favoriteButton().getAttribute("data-state")).toBe("off");
+      expect(favoriteButton().getAttribute("data-active")).toBeNull();
     });
 
     it("付け外しに失敗した行は、続けて「パスをコピー」を押すと消える", async () => {
@@ -2294,7 +2313,7 @@ describe("VideoPage", () => {
       expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: 83_456 });
       // 再生は止めない。
       expect(controls.togglePlay).not.toHaveBeenCalled();
-      const facts = screen.getByRole("list", { name: "File details" });
+      const facts = factList();
       expect(within(facts).getByTitle(label)).toBeDefined();
       expect(within(facts).getByRole("button", { name: clearName })).toBeDefined();
       // 時刻を数値で入力させる入口は無い。
@@ -2418,20 +2437,19 @@ describe("VideoPage", () => {
     });
 
     function edited(): HTMLElement {
-      return within(screen.getByRole("list", { name: "File details" })).getByRole(
-        "button",
-        { name: /^Edited / },
-      );
+      return within(factList()).getByRole("button", { name: /^Edited / });
     }
 
     async function expectEditedAfter() {
-      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 28, 2026"));
+      await waitFor(() =>
+        expect(edited().getAttribute("aria-label")).toBe("Edited Sep 28, 2026"),
+      );
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
       await ready();
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
       expect(edited().title).toBe(
         screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
       );
@@ -2443,7 +2461,7 @@ describe("VideoPage", () => {
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
       await ready();
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
       expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
     });
 
@@ -2531,7 +2549,9 @@ describe("VideoPage", () => {
       await expectEditedAfter();
 
       fireEvent.click(screen.getByRole("button", { name: "Use automatic thumbnail" }));
-      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 1, 2026"));
+      await waitFor(() =>
+        expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026"),
+      );
     });
 
     it("取り直しが失敗しても失敗の行を出さず、前の値のまま置く", async () => {
@@ -2556,7 +2576,7 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited().textContent).toBe("Edited Sep 1, 2026");
+      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });
@@ -2633,9 +2653,9 @@ describe("VideoPage", () => {
       answerVersions([versionA, versionB, versionC]);
       renderPage("7", "/?q=abc");
       await ready();
-      const facts = within(screen.getByRole("list", { name: "File details" }))
-        .getAllByRole("listitem")
-        .map((item) => item.textContent);
+      const facts = [...factList().querySelectorAll("dd")].map(
+        (item) => item.textContent,
+      );
       expect(facts.at(-1)).toBe("3 versions");
       await openVersions();
       expect(versionsCalls("/versions")).toHaveLength(1);
@@ -2970,7 +2990,7 @@ describe("VideoPage", () => {
       server.videos.set(7, [guestVideo()]);
       const { unmount } = renderPage("7", undefined, "guest");
       await ready();
-      expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
+      expect(factList()).toBeDefined();
       expect(screen.getByRole("list", { name: "Technical details" })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Tags" })).toBeNull();
       expect(screen.queryByPlaceholderText("Add tag")).toBeNull();

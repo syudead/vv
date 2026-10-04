@@ -1,62 +1,37 @@
-import { FolderX } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link } from "react-router";
 
-import { formatNumber, t, type UiText } from "../i18n";
-import { buttonClassName } from "../ui/Button";
-import { EmptyState } from "../videoList/states";
-import { FOLDERS_ROOT } from "./folderPath";
+import { formatNumber, type UiText } from "../i18n";
 
-/** Section は見出し付きの一群である。見出しの件数も読み上げる。 */
+/**
+ * Section はフォルダの中身の一群（「フォルダ N」「動画 N」）で、見出しの行と
+ * カードの格子を縦に並べる。見出しの件数も読み上げる。フォルダ画面の本体は子フォルダと
+ * 動画の2つの一群を持つので、一覧ページの本体の中にこの見出しを置く。
+ */
 export function Section({
   title,
   count,
   action,
-  className,
   children,
 }: {
   title: UiText;
   count?: number;
   /** 見出しの行の右端に置く操作（フォルダ画面の「Folder grouping menu」）。 */
   action?: ReactNode;
-  className?: string;
   children: ReactNode;
 }) {
-  const heading = (
-    <h2 className="px-0.5 text-xs font-semibold text-fg-muted">
-      {title}
-      {count !== undefined && (
-        // 読み上げで名前と件数が続けて読まれないよう、余白ではなく空白で区切る。
-        <span className="tabular-nums"> {formatNumber(count)}</span>
-      )}
-    </h2>
-  );
   return (
-    <section className={"flex flex-col gap-2 " + (className ?? "")}>
-      {action === undefined ? (
-        heading
-      ) : (
-        <div className="flex items-center justify-between gap-2">
-          {heading}
-          {action}
-        </div>
-      )}
+    <section className="flex flex-col gap-2">
+      <div className="flex min-h-8 items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold text-muted-foreground">
+          {title}
+          {count !== undefined && (
+            // 読み上げで名前と件数が続けて読まれないよう、余白ではなく空白で区切る。
+            <span className="tabular-nums"> {formatNumber(count)}</span>
+          )}
+        </h2>
+        {action}
+      </div>
       {children}
     </section>
-  );
-}
-
-export function FolderNotFound() {
-  return (
-    <EmptyState
-      icon={FolderX}
-      title={t.folders.notFound.title}
-      description={t.folders.notFound.description}
-      action={
-        <Link to={FOLDERS_ROOT} className={buttonClassName()}>
-          {t.folders.notFound.back}
-        </Link>
-      }
-    />
   );
 }

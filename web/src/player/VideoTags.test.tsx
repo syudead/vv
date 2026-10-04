@@ -301,9 +301,9 @@ describe("VideoTags", () => {
       const tentativeChip = screen.getByTitle("高画質");
       const confirmedChip = screen.getByTitle("旅行");
       for (const chip of [tentativeChip, confirmedChip]) {
-        expect(chip.className).toContain("bg-elevated");
+        expect(chip.className).toContain("bg-secondary");
         expect(chip.className).toContain("h-6");
-        expect(chip.className).toContain("text-fg");
+        expect(chip.className).toContain("text-secondary-foreground");
       }
       expect(
         screen.getByRole("button", { name: "Remove 高画質 from this video" }),
@@ -377,7 +377,7 @@ describe("VideoTags", () => {
       });
       expect(link.getAttribute("href")).toBe("/?tag=4");
       expect(link.className).toContain("border-dashed");
-      expect(link.className).not.toContain("bg-elevated");
+      expect(link.className).not.toContain("bg-secondary");
       expect(link.querySelector("svg[aria-hidden='true']")).not.toBeNull();
       expect(
         screen.queryByRole("button", { name: "Remove 京都 from this video" }),
@@ -385,14 +385,13 @@ describe("VideoTags", () => {
 
       // 手で付けたタグは今の形（面あり・×あり）。大きさは同じ h-6・text-xs。
       const manualChip = screen.getByTitle("旅行");
-      expect(manualChip.className).toContain("bg-elevated");
+      expect(manualChip.className).toContain("bg-secondary");
       expect(
         screen.getByRole("button", { name: "Remove 旅行 from this video" }),
       ).toBeDefined();
       for (const chip of [link, manualChip]) {
         expect(chip.className).toContain("h-6");
         expect(chip.className).toContain("text-xs");
-        expect(chip.className).toContain("text-fg");
       }
     });
 
@@ -480,7 +479,7 @@ describe("VideoTags", () => {
       expect(
         await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
       ).toBeDefined();
-      expect(screen.getByTitle("旅行").className).toContain("bg-elevated");
+      expect(screen.getByTitle("旅行").className).toContain("bg-secondary");
       expect(screen.queryByRole("link", { name: /from the folder name/ })).toBeNull();
     });
   });
