@@ -22,7 +22,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { groupRef, itemKey } from "../api/libraryItems";
-import { refreshTags } from "../api/tags";
+import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { errorText, t } from "../i18n";
@@ -534,7 +534,7 @@ export default function LibraryPage() {
   useEffect(() => {
     if (restored === undefined || mountRef.current.tagIds.length === 0) return;
     let alive = true;
-    refreshTags()
+    revalidateTags()
       .then((tags) => {
         if (!alive) return;
         const known = new Set(tags.map((tag) => tag.id));

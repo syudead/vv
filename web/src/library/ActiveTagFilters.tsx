@@ -1,7 +1,7 @@
 import { Tag as TagIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { currentTags, refreshTags, subscribeTags, type Tag } from "../api/tags";
+import { currentTags, revalidateTags, subscribeTags, type Tag } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
 import FilterChip from "../ui/FilterChip";
@@ -29,7 +29,7 @@ export default function ActiveTagFilters({
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
   useEffect(() => {
     let alive = true;
-    refreshTags()
+    revalidateTags()
       .then((loaded) => {
         if (alive) setAllTags(loaded);
       })

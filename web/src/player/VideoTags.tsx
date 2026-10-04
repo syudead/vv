@@ -8,7 +8,7 @@ import {
   attachVideoTagByName,
   currentTags,
   detachVideoTag,
-  refreshTags,
+  revalidateTags,
   subscribeTags,
   type Tag,
 } from "../api/tags";
@@ -68,9 +68,10 @@ export default function VideoTags({
   const prevVideoIdRef = useRef(videoId);
   const [tags, setTags] = useState<readonly VideoTag[]>(initialTags);
 
-  // 画面が開くときは、共有の保持がすでにあっても必ず取り直す（plan の
-  // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。
-  // 取り直す間は、あれば直近の保持を初期値として先に出す。
+  // 画面が開くときは共有の保持を確かめ直す（plan の Structural Decisions 8「画面が開くとき
+  // …に取り直す」）。直前に届いた一覧があればそれを使い、取得の途中ならその結果を待つ
+  // （revalidateTags。開くたびに全部のタグを読み直さない。issue 674）。取り直す間は、
+  // あれば直近の保持を初期値として先に出す。
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
   // tagsFetchSeqRef は、実際に届いた（=取得が生きたまま tags.ts の held を
   // 更新した）タグの一覧の回数を数える。マウント時点の allTags の初期値
@@ -79,7 +80,7 @@ export default function VideoTags({
   const tagsFetchSeqRef = useRef(0);
   useEffect(() => {
     let alive = true;
-    refreshTags()
+    revalidateTags()
       .then((loaded) => {
         if (!alive) return;
         tagsFetchSeqRef.current += 1;
