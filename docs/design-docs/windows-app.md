@@ -229,8 +229,10 @@ exe の manifest が要る。
   SHA-256 を確かめ、合わなければ消してビルドを失敗させる（期待値と実際の値を示す）。zip から取り出すのは
   `bin\ffmpeg.exe`・`bin\ffprobe.exe`・`LICENSE` だけである。Windows のハードウェアエンコーダは
   [hardware-encoding.md](hardware-encoding.md) の NVENC と QSV のままで、AMF は足さない。
-- **workflow** `.github/workflows/windows-app.yml`: `v*` のタグの push と手動実行で動く。
+- **workflow** `.github/workflows/windows-app.yml`: `v*` のタグの push、`main` への push、手動実行で動く。
+  `main` では新しい push が来ると前の実行を打ち切る。
   - Linux のジョブが `task build-windows-app` で zip を組み、workflow の成果物 `windows-app` に残す。
+    取得した FFmpeg の zip は Actions のキャッシュに置き、取得元の都合で `main` が赤くなるのを避ける。
   - Windows のジョブが zip を展開し、中身の並びと、同梱の `ffmpeg -hide_banner -encoders` に `h264_nvenc` と
     `h264_qsv` があることを確かめる。無ければ失敗する。ランナーに GPU は無いので、確かめるのは
     エンコーダが組み込まれていることまでで、実際の GPU での変換は実機で確かめる
@@ -242,7 +244,8 @@ exe の manifest が要る。
 
 ### Alternatives considered
 
-- `main` への push ごとに zip を作る。利用者向けの版の区切りが無い。却下（R-13）。
+- `main` への push ごとに Release を作る。利用者向けの版の区切りが無い。却下（R-13）。`main` への push では
+  zip を組んで確かめるところまでにし、Release はタグのときだけ作る。
 - `windows/arm64` も作る。固定できる `ffmpeg` の arm64 版が無く、x64 の exe はエミュレーションで動く。
   却下（R-13）。
 - BtbN/FFmpeg-Builds の `ffmpeg` を同梱する。版ごとの固定の Release が残らず、固定した版を後から取れない。

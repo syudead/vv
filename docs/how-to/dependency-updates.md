@@ -47,7 +47,7 @@ essentials（`ffmpeg-<版>-essentials_build.zip`）を版と SHA-256 で固定�
 2. `scripts/build/windows_app.go` の `ffmpegVersion` と `ffmpegSHA256` を変える。
    SHA-256 が合わなければ `task build-windows-app` は期待値と実際の値を示して失敗する。
 3. `task build-windows-app` で zip を組み、中身の `ffmpeg/README.txt` の版を確かめる。
-4. マージ後に `Windows app` workflow を手動実行し、同梱の `ffmpeg` に `h264_nvenc` と
+4. マージ後に `main` で動く `Windows app` workflow が通り、同梱の `ffmpeg` に `h264_nvenc` と
    `h264_qsv` があることを確かめる。
 
 `ffmpeg` の中のエンコーダの名前や引数が変わったときは、
