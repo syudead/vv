@@ -87,6 +87,40 @@ describe("ActiveTagFilters", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("古い保持に無いタグで開いたときは、確かめ直しの取得だけで名前を出す", async () => {
+    const travel = { id: 1, name: "旅行", synonyms: [], videoCount: 1 };
+    const created = { id: 2, name: "新しいタグ", synonyms: [], videoCount: 1 };
+    fetchMock
+      .mockResolvedValueOnce(json({ items: [travel] }))
+      .mockResolvedValue(json({ items: [travel, created] }));
+    const first = render(
+      <ActiveTagFilters
+        tagIds={[1]}
+        onRemove={vi.fn()}
+        searchFieldRef={{ current: null }}
+      />,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Remove the filter for 旅行" }),
+    ).toBeDefined();
+    first.unmount();
+
+    // 保持は使い回す間（2 秒）より古い。開いたときの確かめ直しが取り直す。
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 10_000);
+    render(
+      <ActiveTagFilters
+        tagIds={[2]}
+        onRemove={vi.fn()}
+        searchFieldRef={{ current: null }}
+      />,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Remove the filter for 新しいタグ" }),
+    ).toBeDefined();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("チップの名前に title を持つ（N3）", async () => {
     fetchMock.mockResolvedValue(
       json({ items: [{ id: 1, name: "旅行", synonyms: [], videoCount: 1 }] }),
