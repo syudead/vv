@@ -247,11 +247,18 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
 - Scrolling at `lg` and up: as in 012, the column's first heading line (here
   `続けて再生`) stays at the top, and everything below it (member list →
   divider → `関連動画` → related videos) scrolls inside one container. When the
-  page opens (including moving to another member),
-  `scrollIntoView({ block: "nearest" })` scrolls only the container so the
-  current member's row is visible in it (Edge Case `大きなグループ`, acceptance
-  criterion `数百本`). The page and the left column do not move. Under `lg` the
-  page does not move (the player would leave the top of the screen).
+  page opens (including moving to another member), the container alone
+  scrolls so the current member's row is visible in it (Edge Case
+  `大きなグループ`, acceptance criterion `数百本`). The page and the left column
+  do not move. Under `lg` the page does not move (the player would leave the
+  top of the screen).
+- Drawn rows: only the loaded members near the view are drawn, with four rows
+  more above and below, measured against the container at `lg` and up and
+  against the page under `lg` (#675). The current member's row and a focused
+  row stay drawn.
+- The `3 / 12` position is a button: pressing it scrolls the current member's
+  row into view at any width (the container at `lg` and up, the page under
+  `lg`), so a viewer who scrolled far away gets back to it.
 - **Reading beyond the window**: the order numbers and `3 / 12` count in the
   whole group (`offset` and `total`), not in the window.
 

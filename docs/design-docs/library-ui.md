@@ -566,9 +566,12 @@ is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-desig
 | After a menu action | Video and related videos refetched; page returns to the plain form |
 | Previous/next handles | Move within the group |
 
-`matchMedia` reads the `lg` width only to scroll the current member's row into
-view on wide screens; on narrow widths scrolling would move the whole page and
-hide the player.
+`matchMedia` reads the `lg` width to choose the member list's scroll owner
+(the column's container at `lg` and up, the page below it) and to scroll the
+current member's row into view on opening only on wide screens; on narrow
+widths that scroll would move the whole page and hide the player. The `3 / 12`
+position is a button that scrolls the current member's row into view at any
+width.
 
 Central touch controls appear on `pointer: coarse` devices through a CSS media
 condition, without `matchMedia`, for the reason in

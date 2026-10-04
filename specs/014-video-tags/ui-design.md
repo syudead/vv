@@ -227,6 +227,12 @@ component (`web/src/ui/Combobox.tsx`): an ARIA 1.2 combobox (input + listbox,
   with the same surface as `ui/Popover` (`bg-elevated`, `shadow-elevated`,
   `rounded-md`). Width `w-64`; it scrolls beyond eight rows. It opens on focus
   and shows every suggestion when the input is empty.
+- Only the rows in view are drawn, so opening the list with thousands of tags
+  draws about a screenful (#675). The active row stays drawn, so
+  `aria-activedescendant` always points at an element, and each option carries
+  `aria-setsize` and `aria-posinset` for its place in the whole list. The
+  folded names and the natural order are prepared once per tag list; each
+  keystroke only filters them.
 - Only the rows in view, plus a few on each side, are drawn, so a list of
   thousands of tags opens and narrows without a pause. The active row stays
   drawn after it scrolls out of view, so `aria-activedescendant` always points
