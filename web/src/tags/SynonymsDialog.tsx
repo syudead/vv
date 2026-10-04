@@ -351,7 +351,10 @@ export default function SynonymsDialog({
         {confirm === null ? (
           <div className="flex min-w-0 flex-col gap-3">
             {tag.synonyms.length > 0 && (
-              <ul aria-label={t.tags.synonymsDialog.list} className="flex flex-wrap gap-1">
+              <ul
+                aria-label={t.tags.synonymsDialog.list}
+                className="flex flex-wrap gap-1"
+              >
                 {tag.synonyms.map((name) => (
                   <li key={name} className="max-w-full min-w-0">
                     {/* 外せるチップは Badge の中に × のボタンを置く（components.md「Badge」）。 */}
@@ -423,17 +426,25 @@ export default function SynonymsDialog({
                   {t.tags.synonymsDialog.submit}
                 </Button>
               </div>
-              {field.reason !== null && <FieldError id={reasonId} role={undefined}>{field.reason}</FieldError>}
-              {field.reason === null && addError !== null && addError.kind === "taken" && (
-                <FieldError id={errorId} role={undefined}>
-                  {addError.message}
+              {field.reason !== null && (
+                <FieldError id={reasonId} role={undefined}>
+                  {field.reason}
                 </FieldError>
               )}
-              {field.reason === null && addError !== null && addError.kind === "other" && (
-                <FieldError id={errorId} className="text-sm">
-                  {addError.message}
-                </FieldError>
-              )}
+              {field.reason === null &&
+                addError !== null &&
+                addError.kind === "taken" && (
+                  <FieldError id={errorId} role={undefined}>
+                    {addError.message}
+                  </FieldError>
+                )}
+              {field.reason === null &&
+                addError !== null &&
+                addError.kind === "other" && (
+                  <FieldError id={errorId} className="text-sm">
+                    {addError.message}
+                  </FieldError>
+                )}
             </Field>
           </div>
         ) : (

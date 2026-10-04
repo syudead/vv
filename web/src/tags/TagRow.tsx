@@ -446,7 +446,11 @@ function CompactActions({
               }
             }}
           >
-            {confirming ? <Spinner aria-hidden="true" /> : <Ellipsis aria-hidden="true" />}
+            {confirming ? (
+              <Spinner aria-hidden="true" />
+            ) : (
+              <Ellipsis aria-hidden="true" />
+            )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">

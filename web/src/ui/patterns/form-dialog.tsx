@@ -1,4 +1,10 @@
-import type { FormEventHandler, ReactNode, Ref, RefObject } from "react";
+import {
+  type FormEventHandler,
+  type ReactNode,
+  type Ref,
+  type RefObject,
+  useRef,
+} from "react";
 
 import { Button } from "@/ui/shadcn/button";
 import {
@@ -59,6 +65,9 @@ export function FormDialog({
   cancelRef,
   initialFocus,
 }: FormDialogProps) {
+  // 開く前にフォーカスを持っていた要素。開くボタン（trigger）を渡さずに開閉するときは、
+  // 閉じたらここへ戻す（Radix は DialogTrigger にしか戻さない）。
+  const previousFocus = useRef<HTMLElement | null>(null);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
@@ -69,14 +78,21 @@ export function FormDialog({
           // IME の変換を取り消す Esc では閉じない。
           if (event.isComposing || event.keyCode === 229) event.preventDefault();
         }}
+        onCloseAutoFocus={(event) => {
+          if (trigger) return;
+          event.preventDefault();
+          if (previousFocus.current?.isConnected === true) previousFocus.current.focus();
+        }}
         onOpenAutoFocus={(event) => {
+          previousFocus.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
           const target = initialFocus?.current;
           if (target === null || target === undefined) return;
           event.preventDefault();
           target.focus();
         }}
       >
-        <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex min-w-0 flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}

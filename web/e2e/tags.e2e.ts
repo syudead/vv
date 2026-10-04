@@ -624,7 +624,7 @@ test.describe.serial("video tags", () => {
       // `anime`、要件4）の行を取り違える。
       return page
         .getByRole("link", { name: `Open the library filtered by ${name}`, exact: true })
-        .locator("xpath=ancestor::div[@data-tag-id][1]");
+        .locator("xpath=ancestor::*[@data-tag-id][1]");
     }
 
     /**
@@ -751,7 +751,7 @@ test.describe.serial("video tags", () => {
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
 
-      const dialog = page.getByRole("dialog", { name: 'Delete "e2e管理削除対象"' });
+      const dialog = page.getByRole("alertdialog", { name: 'Delete "e2e管理削除対象"' });
       await expect(
         dialog.getByText("This tag will be removed from 1 video. This can't be undone."),
       ).toBeVisible();
@@ -977,7 +977,7 @@ test.describe.serial("video tags", () => {
         // タブは押せ、本文に却下した名前が出る。
         await tab.click();
         await expect(
-          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("list"),
+          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("table"),
         ).toBeVisible();
       }
       await page.setViewportSize({ width: 1280, height: 800 });
@@ -1121,12 +1121,12 @@ test.describe.serial("video tags", () => {
       const row = tagRowByName(page, "e2e管理Esc確認");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
-      const dialog = page.getByRole("dialog", { name: 'Delete "e2e管理Esc確認"' });
+      const dialog = page.getByRole("alertdialog", { name: 'Delete "e2e管理Esc確認"' });
       await expect(dialog).toBeVisible();
 
       await page.keyboard.press("Escape");
 
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
       await expect(tagRowByName(page, "e2e管理Esc確認")).toBeVisible();
     });
 

@@ -1,4 +1,4 @@
-import type { ReactNode, Ref } from "react";
+import { type ReactNode, type Ref, useRef } from "react";
 
 import {
   AlertDialog,
@@ -61,11 +61,23 @@ export function ConfirmDialog({
   actionRef,
 }: ConfirmDialogProps) {
   const awaitsResult = pending !== undefined;
+  // 開く前にフォーカスを持っていた要素。開くボタン（trigger）を渡さずに開閉するときは、
+  // 閉じたらここへ戻す（Radix は AlertDialogTrigger にしか戻さない）。
+  const previousFocus = useRef<HTMLElement | null>(null);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       {trigger && <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>}
       <AlertDialogContent
         data-slot="confirm-dialog"
+        onOpenAutoFocus={() => {
+          previousFocus.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (trigger) return;
+          event.preventDefault();
+          if (previousFocus.current?.isConnected === true) previousFocus.current.focus();
+        }}
         onEscapeKeyDown={(event) => {
           // IME の変換を取り消す Esc では閉じない。
           if (event.isComposing || event.keyCode === 229) event.preventDefault();

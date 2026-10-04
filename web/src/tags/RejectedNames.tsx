@@ -165,9 +165,7 @@ export default function RejectedNames({
               ))}
             </TableBody>
           </DataTable>
-          {morePending && (
-            <LoadMoreRow status="loading" label={t.common.loading} />
-          )}
+          {morePending && <LoadMoreRow status="loading" label={t.common.loading} />}
           {moreError !== null && (
             <LoadMoreRow
               status="failed"

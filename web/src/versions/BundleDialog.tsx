@@ -195,7 +195,7 @@ export default function BundleDialog({
           }}
           disabled={pending}
           className={cn(
-            "gap-0 divide-y divide-border",
+            "grid-cols-1 gap-0 divide-y divide-border",
             rows.videos.length > scrollAfterRows && "max-h-popover-wide overflow-y-auto",
           )}
         >

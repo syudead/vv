@@ -47,12 +47,7 @@ import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
-import {
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../ui/shadcn/table";
+import { TableBody, TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
 import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
 import { Toggle } from "../ui/shadcn/toggle";
 import { useToast } from "../ui/Toast";

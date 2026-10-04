@@ -129,6 +129,15 @@ Keep it to a few fields that belong to one action. Show a field's error with
 `FieldError` under it and keep the dialog open; close it only when the action
 has succeeded.
 
+- Pass `pending` while the request runs: the submit button and `Cancel` are
+  disabled, and the caller ignores closing until the request settles.
+- Pass `submitDisabled` while a required value is missing or still being
+  counted, and `submitRef` or `cancelRef` to move the focus back to a button
+  after a failure. `initialFocus` names the element focused on open; without
+  it the first focusable element is.
+- Opened without a `trigger`, the dialog returns the focus to the element that
+  had it before; an Esc that cancels an IME composition does not close it.
+
 ## Confirm dialog
 
 Item `confirm-dialog`. `ConfirmDialog` is an `AlertDialog` that says what will
@@ -137,18 +146,25 @@ happen ("Delete "Travel"?"), what it affects, and offers `Cancel` and a
 "Yes". Use it only before an action that cannot be undone; an action that can
 be undone runs at once and offers its undo in a toast.
 
+When the action is a request, pass `pending`: the action no longer closes the
+dialog, both buttons are disabled while the request runs, and the caller
+closes the dialog when the request succeeds. Show a failure as a
+`destructive` `Alert` in `children` and keep the dialog open.
+`actionDisabled` holds the action back until the dialog has what it needs,
+such as the count of affected videos.
+
 ## Sections
 
-| Section        | Item            | What it is                                                                                                                               |
-| -------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions                                 |
-| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions at the end; below `lg` the view controls collapse into a `View and sort` popover |
-| `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                               |
-| `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                               |
-| `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                      |
-| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                              |
-| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                             |
-| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                     |
+| Section        | Item            | What it is                                                                                                                                                                              |
+| -------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus |
+| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions at the end; below `lg` the view controls collapse into a `View and sort` popover                                                |
+| `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                              |
+| `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                              |
+| `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                     |
+| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                             |
+| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                            |
+| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                                                                    |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
   controls (view mode, card size, sort) in `view`, and actions that work
