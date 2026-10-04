@@ -79,7 +79,7 @@ instead of `scrollY`.
 | --- | --- |
 | **Item anchor, restored through the virtualizer** | Chosen |
 | Restore `scrollY` as now | Rejected: undrawn rows have estimated heights, so the same `scrollY` lands on other cards |
-| Store the virtualizer's measurement cache in the snapshot | Rejected: invalid when the width or the sidebar changed while on the video page, which changes the column count |
+| Store the virtualizer's measurement cache in the snapshot | Rejected: a width or sidebar change while the video page is open changes the column count, and the cached row heights no longer match the rows |
 
 **Rationale**: Back navigation (requirement 2), a zoom change and a window
 resize that changes the column count (Edge Case "width or zoom") all have the
@@ -194,6 +194,6 @@ new `scripts/listsbench` uses it with a seed of its own and
 **Rationale**: The seed places 6,000 videos in one leaf folder (a group), 3,000
 in a folder that has a child folder (not a group, for the folder screen), and
 the rest directly under the media folder, with 3,000 tags from `tagsbench`'s
-plan; startup builds the folder index, so the seed writes only rows through
-store roles as `tagsbench` does. It runs at 10,000 and 30,000 videos and is not
+plan; startup builds the folder index, so the seed writes only video, location and
+tag rows, through the `internal/store` role types as `tagsbench` does. It runs at 10,000 and 30,000 videos and is not
 part of `task check` or CI.
