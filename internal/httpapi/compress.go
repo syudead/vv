@@ -36,7 +36,7 @@ var gzipWriters = sync.Pool{New: func() any {
 
 // compressResponses は、gzip を受け付けるクライアント（Accept-Encoding）への応答のうち、
 // compressibleTypes の型で compressMinBytes 以上（長さが分からなければ大きさを問わない）の
-// ものを gzip で圧縮する（#674）。受け付けないクライアントには、今までどおり圧縮せずに返す。
+// ものを gzip で圧縮する（issue 674）。受け付けないクライアントには、今までどおり圧縮せずに返す。
 // 部分の応答（206）・本文の無い応答・すでに符号化された応答は手を付けない。
 func compressResponses(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

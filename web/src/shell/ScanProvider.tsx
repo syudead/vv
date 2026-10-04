@@ -46,12 +46,33 @@ export interface ScanContextValue {
   finished: Scan | null;
 }
 
+/**
+ * ScanControlsValue は、取り込みの進み（済みの本数・今の処理）を読まない画面が使う部分である。
+ * 値は取り込みの始まりと終わり、フォルダの件数の変化でだけ変わる。取り込み中は1ファイルごとに
+ * `scan` の知らせが届くので、`useScan` を読む一覧の画面は、そのたびに丸ごと描き直される
+ * （issue 674）。一覧の画面はこちらを読む。
+ */
+export type ScanControlsValue = Pick<
+  ScanContextValue,
+  "running" | "canStart" | "start" | "refresh" | "setFolderCount" | "finished"
+>;
+
 const ScanContext = createContext<ScanContextValue | null>(null);
+const ScanControlsContext = createContext<ScanControlsValue | null>(null);
 
 export function useScan(): ScanContextValue {
   const value = useContext(ScanContext);
   if (value === null) {
     throw new Error("useScan must be used inside ScanProvider");
+  }
+  return value;
+}
+
+/** useScanControls は取り込みの開始・取り直し・「終わったのを見た」だけを読む。 */
+export function useScanControls(): ScanControlsValue {
+  const value = useContext(ScanControlsContext);
+  if (value === null) {
+    throw new Error("useScanControls must be used inside ScanProvider");
   }
   return value;
 }
@@ -159,6 +180,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (completedRequestedScan) requestedScanId.current = null;
   }, []);
 
+  // 直近の取得が失敗したか。最初の接続で取り直すかを決める。
+  const loadFailed = useRef(false);
+
   const loadFolders = useCallback(async (signal: AbortSignal) => {
     const revision = folderCountRevision.current;
     try {
@@ -166,6 +190,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       if (revision === folderCountRevision.current) setFolderCount(folders.length);
     } catch (failure) {
       if (isAborted(failure) || revision !== folderCountRevision.current) return;
+      loadFailed.current = true;
       setFolderCount(null);
     }
   }, []);
@@ -186,7 +211,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       } catch (failure) {
         if (scanAt !== scanRevision.current || isAborted(failure)) return;
         // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
+        loadFailed.current = true;
         setLoadError(errorText(failure));
+      } finally {
+        if (inFlight.current === controller) inFlight.current = null;
       }
     })();
   }, [apply]);
@@ -197,9 +225,21 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     foldersInFlight.current?.abort();
     const controller = new AbortController();
     foldersInFlight.current = controller;
-    void loadFolders(controller.signal);
+    loadFailed.current = false;
+    void loadFolders(controller.signal).finally(() => {
+      if (foldersInFlight.current === controller) foldersInFlight.current = null;
+    });
     loadScan();
   }, [loadFolders, loadScan]);
+
+  /**
+   * loadUnlessLoading は、取得の途中でなければ取り直す。取得の途中なら、その応答が
+   * 今の状態を運ぶ。画面を開いたときの取り直しと、この部品の最初の取得が重なって、同じ
+   * 取得を2回続けて送らないようにする（子の画面の effect は親より先に走る。issue 674）。
+   */
+  const loadUnlessLoading = useCallback(() => {
+    if (inFlight.current === null && foldersInFlight.current === null) load();
+  }, [load]);
 
   useEffect(() => {
     if (!owner) return;
@@ -209,21 +249,26 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         scanRevision.current += 1;
         apply(next);
       },
-      open: load,
+      // つないだ直後にサーバーは今の状態を `scan` で送るので、最初の接続では、直前の取得が
+      // 失敗していなければ取り直さない。つなぎ直しでは、切れていた間のフォルダの件数の
+      // 変化も取り直す。
+      open: (reconnected) => {
+        if (reconnected || loadFailed.current) load();
+      },
     });
-    load();
-    window.addEventListener("focus", load);
+    loadUnlessLoading();
+    window.addEventListener("focus", loadUnlessLoading);
     return () => {
       unsubscribe();
-      window.removeEventListener("focus", load);
+      window.removeEventListener("focus", loadUnlessLoading);
       inFlight.current?.abort();
       foldersInFlight.current?.abort();
     };
-  }, [apply, load, owner]);
+  }, [apply, load, loadUnlessLoading, owner]);
 
   const refresh = useCallback(() => {
-    if (owner) load();
-  }, [load, owner]);
+    if (owner) loadUnlessLoading();
+  }, [loadUnlessLoading, owner]);
 
   const start = useCallback(() => {
     if (!owner || folderCount === null || folderCount === 0) return;
@@ -294,5 +339,23 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;
+  const running = starting || scan?.state === "running";
+  const canStart = folderCount !== null && folderCount > 0;
+  const controls = useMemo<ScanControlsValue>(
+    () => ({
+      running,
+      canStart,
+      start,
+      refresh,
+      setFolderCount: updateFolderCount,
+      finished,
+    }),
+    [canStart, finished, refresh, running, start, updateFolderCount],
+  );
+
+  return (
+    <ScanControlsContext.Provider value={controls}>
+      <ScanContext.Provider value={value}>{children}</ScanContext.Provider>
+    </ScanControlsContext.Provider>
+  );
 }

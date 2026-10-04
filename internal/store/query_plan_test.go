@@ -33,7 +33,7 @@ func queryPlan(t *testing.T, db *DB, query string, args ...any) []string {
 }
 
 // TestVersionCandidatesUseTheContentKeyIndex は、候補の組の動画を内容の識別子の索引で引き、
-// videos を全件走査しないことを確かめる（#674: 走査すると動画の本数の2乗で時間が増える）。
+// videos を全件走査しないことを確かめる（issue 674: 走査すると動画の本数の2乗で時間が増える）。
 func TestVersionCandidatesUseTheContentKeyIndex(t *testing.T) {
 	db := migratedDB(t)
 	plan := queryPlan(t, db, `select count(*) `+candidatePairsFrom+candidatePairsCondition())
@@ -45,7 +45,7 @@ func TestVersionCandidatesUseTheContentKeyIndex(t *testing.T) {
 }
 
 // TestFolderLocationsSearchThePathRange は、フォルダの配下の所在をパスの範囲で引き、
-// video_locations を全件走査しないことを確かめる（#674）。
+// video_locations を全件走査しないことを確かめる（issue 674）。
 func TestFolderLocationsSearchThePathRange(t *testing.T) {
 	db := migratedDB(t)
 	inFolder, args := folderPrefixCondition("l", folderPrefix(fixturePath("/media/show")))
