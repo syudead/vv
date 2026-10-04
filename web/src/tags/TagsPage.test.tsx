@@ -768,7 +768,7 @@ describe("TagsPage", () => {
     expect(screen.getByText("Synonyms: アニメ")).toBeDefined();
     expect(screen.getByText("3 tags")).toBeDefined();
     // 本数 0 のタグも出る。
-    const dramaRow = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     expect(dramaRow.textContent).toContain("0 videos");
   });
 
@@ -892,7 +892,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
 
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
@@ -920,7 +920,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     const renameButton = within(row).getByRole("button", { name: "Rename" });
     await user.click(renameButton);
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
@@ -955,7 +955,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -979,7 +979,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
 
@@ -997,7 +997,7 @@ describe("TagsPage", () => {
     // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(screen.getByTitle("Drama").closest("div")!.parentElement!).getByRole(
+        within(screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!).getByRole(
           "button",
           { name: "Rename" },
         ),
@@ -1011,7 +1011,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
 
@@ -1025,7 +1025,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
@@ -1047,7 +1047,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
@@ -1065,7 +1065,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
     const dialog = await screen.findByRole("dialog", { name: 'Delete "Anime"' });
@@ -1082,7 +1082,7 @@ describe("TagsPage", () => {
     // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(screen.getByTitle("Drama").closest("div")!.parentElement!).getByRole(
+        within(screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!).getByRole(
           "button",
           { name: "Rename" },
         ),
@@ -1143,7 +1143,7 @@ describe("TagsPage", () => {
     expect(await screen.findByTitle("IME作成中")).toBeDefined();
 
     // 改名の入力。
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const renameInput = await screen.findByRole("textbox", {
       name: 'New name for "旅行"',
@@ -1197,7 +1197,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1226,7 +1226,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
 
     const input = await screen.findByRole("textbox", { name: 'New name for "Anime"' });
@@ -1242,7 +1242,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -1284,7 +1284,7 @@ describe("TagsPage", () => {
     expect(createInput.getAttribute("aria-invalid")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const renameInput = screen.getByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(renameInput);
@@ -1297,7 +1297,7 @@ describe("TagsPage", () => {
     expect(renameInput.getAttribute("aria-invalid")).toBeNull();
     await user.keyboard("{Escape}");
 
-    const dramaRow = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(dramaRow).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const synonymInput = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1353,7 +1353,7 @@ describe("TagsPage", () => {
       await screen.findByTitle("旅行");
       expect(server.fullGetCalls).toBe(0);
 
-      const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+      const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
       await user.click(within(row).getByRole("button", { name: "More actions" }));
       await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
       await user.click(
@@ -1375,7 +1375,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
     await user.click(
@@ -1396,7 +1396,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -1421,7 +1421,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1445,7 +1445,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1493,7 +1493,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1503,7 +1503,7 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
 
-    const animeRow = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const animeRow = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     const animeRenameButton = within(animeRow).getByRole("button", { name: "Rename" });
     expect(animeRenameButton.hasAttribute("disabled")).toBe(true);
     await user.click(animeRenameButton);
@@ -1546,7 +1546,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1571,7 +1571,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     const menu = await screen.findByRole("menu");
     const items = within(menu).getAllByRole("menuitem");
@@ -1591,7 +1591,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1639,7 +1639,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1659,7 +1659,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(
@@ -1681,7 +1681,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1708,7 +1708,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1736,7 +1736,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1759,7 +1759,7 @@ describe("TagsPage 統合", () => {
     await screen.findByTitle("旅行");
 
     const user = userEvent.setup();
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1782,7 +1782,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1817,7 +1817,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1843,7 +1843,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
 
@@ -1862,7 +1862,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1879,7 +1879,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1903,7 +1903,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1935,7 +1935,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1959,7 +1959,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1991,7 +1991,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2015,7 +2015,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     const synonymsButton = within(row).getByRole("button", { name: "Synonyms" });
     await user.click(synonymsButton);
     await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
@@ -2032,7 +2032,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2054,7 +2054,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2099,7 +2099,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2126,7 +2126,7 @@ describe("TagsPage シノニム", () => {
     await screen.findByTitle("Anime");
     await screen.findByTitle("anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2152,7 +2152,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2174,7 +2174,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", {
@@ -2196,7 +2196,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", {
@@ -2226,7 +2226,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
 
@@ -2261,7 +2261,7 @@ describe("TagsPage の英語の文言", () => {
   const userData = ["旅行", "Anime", "アニメ", "Drama", "存在しない語", "新規"];
 
   function rowOf(name: string): HTMLElement {
-    return screen.getByTitle(name).closest("div")!.parentElement!;
+    return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
   }
 
   it("疑似ロケールで、一覧・検索・作成・改名・メニューの文言がカタログから出る", async () => {
@@ -2532,7 +2532,7 @@ describe("TagsPage の英語の文言", () => {
 
 describe("TagsPage 仮のタグ", () => {
   function rowOf(name: string): HTMLElement {
-    return screen.getByTitle(name).closest("div")!.parentElement!;
+    return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
   }
 
   beforeEach(() => {
@@ -3464,7 +3464,7 @@ describe("TagsPage 見えている行だけ描く", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
-          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+          screen.getByTitle(name(index + 1)).closest<HTMLElement>("[data-tag-id]")!,
         ).getByRole("button", { name: "Rename" }),
       ),
     );
@@ -3485,7 +3485,7 @@ describe("TagsPage 見えている行だけ描く", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
-          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+          screen.getByTitle(name(index + 1)).closest<HTMLElement>("[data-tag-id]")!,
         ).getByRole("button", { name: "Rename" }),
       ),
     );

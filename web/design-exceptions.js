@@ -107,39 +107,6 @@ export default [
     kind: "migration",
   },
   {
-    file: "tags/CreateTagRow.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "tags/MergeTagDialog.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["max-h-32"],
-    kind: "migration",
-  },
-  {
-    file: "tags/SynonymsDialog.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "tags/TagRow.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["sm:w-20"],
-    kind: "migration",
-  },
-  {
-    file: "tags/TagToolbar.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["min-w-20", "sm:min-w-40", "px-2\\.5", "w-72"],
-    kind: "migration",
-  },
-  {
-    file: "tags/TagsPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
     file: "ui/BrandHomeLink.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: ["size-7"],
@@ -219,17 +186,6 @@ export default [
   },
   {
     file: "ui/Toast.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "versions/BundleDialog.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["max-h-80"],
-    kind: "migration",
-  },
-  {
-    file: "versions/DuplicatesPage.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },

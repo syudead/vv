@@ -1,14 +1,21 @@
+import { Ban, CircleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import type { RejectedTagNameList } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import { DataTable } from "../ui/patterns/data-table";
+import { EmptyState } from "../ui/patterns/empty-state";
+import { ErrorState } from "../ui/patterns/error-state";
+import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import { LoadingState } from "../ui/patterns/loading-state";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
+import { Button } from "../ui/shadcn/button";
+import { TableBody, TableCell, TableRow } from "../ui/shadcn/table";
 
 /**
  * RejectedNames はタグ管理画面の「Rejected names」のタブの中身である
  * （specs/036-tag-admin-scale/ui-design.md「Rejected names tab」）。却下した名前を
- * 1 行ずつ並べ、行の「Allow again」でその名前を外す（規則は 031 のまま。
+ * 表（`DataTable`）に 1 行ずつ並べ、行の「Allow again」でその名前を外す（規則は 031 のまま。
  * specs/031-tentative-tags/ui-design.md「Rejected names」）。一覧の取得・続き・
  * 取り直しは呼び出し元（TagsPage）が持ち、ここは行・取り外しと、並びの末尾が
  * 表示域に入ったことを伝える番兵を持つ。
@@ -106,88 +113,78 @@ export default function RejectedNames({
   }
 
   return (
-    <div className="flex flex-col gap-3">
+    <>
       {names === undefined && error === null && (
-        <div className="space-y-2" aria-hidden="true">
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-10" />
-          ))}
-        </div>
+        <LoadingState label={t.tags.loading} layout="table" count={4} />
       )}
       {names === undefined && error !== null && (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-danger">{t.tags.rejectedNames.loadFailed}</p>
-          <Button variant="ghost" size="sm" onClick={onRetry}>
-            {t.common.retry}
-          </Button>
-        </div>
+        <ErrorState
+          title={t.tags.rejectedNames.loadFailed}
+          retryLabel={t.common.retry}
+          onRetry={onRetry}
+        />
       )}
       {/*
         読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく
         続きの番兵（失敗の間は Retry）を置く。空の文言は続きも無いときだけ。
       */}
       {names !== undefined && names.length === 0 && !hasMore && (
-        <p className="py-6 text-center text-sm text-fg-muted">
-          {t.tags.rejectedNames.empty}
-        </p>
+        <EmptyState
+          icon={<Ban aria-hidden="true" />}
+          title={t.tags.rejectedNames.empty}
+        />
       )}
       {names !== undefined && (names.length > 0 || hasMore) && (
         <>
-          <p className="text-sm text-fg-muted">{t.tags.rejectedNames.description}</p>
-          <ul
-            aria-label={t.tags.rejectedNames.heading}
-            aria-busy={morePending || undefined}
-            className="divide-y divide-border"
-          >
-            {names.map((name) => (
-              <li
-                key={name}
-                title={name}
-                className="flex min-h-12 items-center gap-3 px-2 py-1.5"
-              >
-                <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">
-                  {name}
-                </span>
-                <Button
-                  ref={(node) => {
-                    if (node) removeButtons.current.set(name, node);
-                    else removeButtons.current.delete(name);
-                  }}
-                  size="sm"
-                  aria-label={t.tags.rejectedNames.allow(name)}
-                  disabled={removing.has(name)}
-                  onClick={() => void forget(name)}
-                >
-                  {t.tags.rejectedNames.allowShort}
-                </Button>
-              </li>
-            ))}
-          </ul>
-          {morePending && (
-            <div className="space-y-2" aria-hidden="true">
-              {Array.from({ length: 3 }, (_, index) => (
-                <Skeleton key={index} className="h-10" />
+          <p className="text-sm text-muted-foreground">
+            {t.tags.rejectedNames.description}
+          </p>
+          <DataTable label={t.tags.rejectedNames.heading}>
+            <TableBody aria-busy={morePending || undefined}>
+              {names.map((name) => (
+                <TableRow key={name} title={name}>
+                  <TableCell className="w-full max-w-0">
+                    <span className="block truncate font-medium">{name}</span>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      ref={(node) => {
+                        if (node) removeButtons.current.set(name, node);
+                        else removeButtons.current.delete(name);
+                      }}
+                      variant="outline"
+                      size="sm"
+                      aria-label={t.tags.rejectedNames.allow(name)}
+                      disabled={removing.has(name)}
+                      onClick={() => void forget(name)}
+                    >
+                      {t.tags.rejectedNames.allowShort}
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </div>
+            </TableBody>
+          </DataTable>
+          {morePending && (
+            <LoadMoreRow status="loading" label={t.common.loading} />
           )}
           {moreError !== null && (
-            <div className="flex flex-wrap items-center gap-2">
-              <p role="alert" className="text-sm text-danger">
-                {t.tags.rejectedNames.loadMoreFailed}
-              </p>
-              <Button variant="ghost" size="sm" onClick={onLoadMore}>
-                {t.common.retry}
-              </Button>
-            </div>
+            <LoadMoreRow
+              status="failed"
+              title={t.tags.rejectedNames.loadMoreFailed}
+              retryLabel={t.common.retry}
+              onRetry={onLoadMore}
+            />
           )}
           {hasMore && <div ref={sentinelRef} aria-hidden="true" className="h-px" />}
         </>
       )}
       {removeError !== null && (
-        <p role="alert" className="text-sm text-danger">
-          {removeError}
-        </p>
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{removeError}</AlertTitle>
+        </Alert>
       )}
-    </div>
+    </>
   );
 }

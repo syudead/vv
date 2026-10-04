@@ -163,7 +163,9 @@ describe("BundleDialog（specs/030-video-versions/ui-design.md「Bundle dialog�
       expect.stringContaining("既に束ねた"),
     ]);
     // 既定で先頭を選ばない。
-    expect(radios.every((radio) => !(radio as HTMLInputElement).checked)).toBe(true);
+    expect(radios.every((radio) => radio.getAttribute("aria-checked") === "false")).toBe(
+      true,
+    );
   });
 
   it("行に違いと手で付けたタグを出し、既に束ねた動画には全部が入ることを添える", async () => {
@@ -235,8 +237,8 @@ describe("BundleDialog（specs/030-video-versions/ui-design.md「Bundle dialog�
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Couldn't bundle: Select at least two videos.");
     expect(
-      (screen.getByRole("radio", { name: /劇場版/ }) as HTMLInputElement).checked,
-    ).toBe(true);
+      screen.getByRole("radio", { name: /劇場版/ }).getAttribute("aria-checked"),
+    ).toBe("true");
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Bundle" }));
     expect(onBundled).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -265,7 +267,8 @@ describe("BundleDialog（specs/030-video-versions/ui-design.md「Bundle dialog�
     server.failing.add(2);
     renderDialog();
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Couldn't load the selected videos");
+    // 失敗の Alert は Retry を添える。
+    expect(alert.textContent).toBe("Couldn't load the selected videosRetry");
     expect(
       (screen.getByRole("button", { name: "Bundle" }) as HTMLButtonElement).disabled,
     ).toBe(true);

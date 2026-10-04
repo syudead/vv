@@ -1,22 +1,30 @@
 import { useEffect, useRef } from "react";
 
 import { t } from "../i18n";
-import Button from "../ui/Button";
 import { isComposingKeyEvent } from "../ui/Combobox";
+import { Button } from "../ui/shadcn/button";
+import { Field, FieldError } from "../ui/shadcn/field";
+import { Input } from "../ui/shadcn/input";
+import { Spinner } from "../ui/shadcn/spinner";
+import { TableCell, TableRow } from "../ui/shadcn/table";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 /**
- * CreateTagRow は「新しいタグ」で一覧の先頭に差し込む作成の行である
+ * CreateTagRow は「新しいタグ」で表の先頭に差し込む作成の行である
  * （ui-design.md「Create and rename」）。候補の一覧は持たない、名前1つだけの
- * 入力で、検証と理由の出し方は `ui/Combobox` と同じにする。
+ * 入力で、検証と理由の出し方は `ui/Combobox` と同じにする。表の行（`TableRow`）で、
+ * 1 つの欄が列をすべてまたぐ。
  */
 export default function CreateTagRow({
+  columnCount,
   pending,
   error,
   onCancel,
   onSubmit,
   onDraftChange,
 }: {
+  /** 表の列の数。作成の欄はすべての列をまたぐ。 */
+  columnCount: number;
   pending: boolean;
   error: TagFieldError | null;
   onCancel: () => void;
@@ -46,59 +54,66 @@ export default function CreateTagRow({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border border-control-border bg-elevated px-3 py-2">
-      <input
-        ref={inputRef}
-        value={field.value}
-        onChange={(event) => field.setValue(event.target.value)}
-        onPaste={field.onPaste}
-        onBeforeInput={field.onBeforeInput}
-        onKeyDown={(event) => {
-          if (isComposingKeyEvent(event)) return;
-          if (event.key === "Enter") {
-            event.preventDefault();
-            submit();
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            cancel();
-          }
-        }}
-        placeholder={t.tags.create.placeholder}
-        aria-label={t.tags.create.label}
-        aria-describedby={
-          field.reason !== null
-            ? "tag-create-reason"
-            : error !== null
-              ? "tag-create-error"
-              : undefined
-        }
-        aria-busy={pending || undefined}
-        aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
-        className="h-9 min-w-0 basis-full rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-primary focus:outline-none focus:ring-2 focus:ring-link sm:flex-1 sm:basis-auto"
-      />
-      <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-        <Button variant="primary" size="sm" onClick={submit} disabled={pending}>
-          {pending ? t.tags.create.submitting : t.tags.create.submit}
-        </Button>
-        <Button variant="ghost" size="sm" onClick={cancel} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-      </div>
-      {field.reason !== null && (
-        <p id="tag-create-reason" className="w-full text-xs text-danger">
-          {field.reason}
-        </p>
-      )}
-      {field.reason === null && error !== null && error.kind === "taken" && (
-        <p id="tag-create-error" className="w-full text-xs text-danger">
-          {error.message}
-        </p>
-      )}
-      {field.reason === null && error !== null && error.kind === "other" && (
-        <p id="tag-create-error" role="alert" className="w-full text-sm text-danger">
-          {error.message}
-        </p>
-      )}
-    </div>
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={columnCount} className="whitespace-normal">
+        <Field data-invalid={field.reason !== null || error !== null || undefined}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              ref={inputRef}
+              value={field.value}
+              onChange={(event) => field.setValue(event.target.value)}
+              onPaste={field.onPaste}
+              onBeforeInput={field.onBeforeInput}
+              onKeyDown={(event) => {
+                if (isComposingKeyEvent(event)) return;
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  submit();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancel();
+                }
+              }}
+              placeholder={t.tags.create.placeholder}
+              aria-label={t.tags.create.label}
+              aria-describedby={
+                field.reason !== null
+                  ? "tag-create-reason"
+                  : error !== null
+                    ? "tag-create-error"
+                    : undefined
+              }
+              aria-busy={pending || undefined}
+              aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
+              className="h-8 basis-full sm:flex-1 sm:basis-auto"
+            />
+            <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+              <Button size="sm" onClick={submit} disabled={pending}>
+                {pending && <Spinner aria-hidden="true" />}
+                {pending ? t.tags.create.submitting : t.tags.create.submit}
+              </Button>
+              <Button variant="outline" size="sm" onClick={cancel} disabled={pending}>
+                {t.common.cancel}
+              </Button>
+            </div>
+          </div>
+          {field.reason !== null && (
+            <FieldError id="tag-create-reason" role={undefined}>
+              {field.reason}
+            </FieldError>
+          )}
+          {field.reason === null && error !== null && error.kind === "taken" && (
+            <FieldError id="tag-create-error" role={undefined}>
+              {error.message}
+            </FieldError>
+          )}
+          {field.reason === null && error !== null && error.kind === "other" && (
+            <FieldError id="tag-create-error" className="text-sm">
+              {error.message}
+            </FieldError>
+          )}
+        </Field>
+      </TableCell>
+    </TableRow>
   );
 }

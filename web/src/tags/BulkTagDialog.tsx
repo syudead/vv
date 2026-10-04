@@ -1,10 +1,12 @@
-import { LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { RotateCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import { tagImpact, type TagImpactResponse } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import { ModalFrame } from "../ui/ModalFrame";
+import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
+import { Button } from "../ui/shadcn/button";
+import { Spinner } from "../ui/shadcn/spinner";
+import { DialogError } from "./DialogError";
 
 export type BulkTagAction = "reject" | "delete";
 
@@ -30,7 +32,6 @@ export default function BulkTagDialog({
   onClose: () => void;
   onSubmit: () => void;
 }) {
-  const cancel = useRef<HTMLButtonElement>(null);
   const [impact, setImpact] = useState<TagImpactResponse | null>(null);
   const [countError, setCountError] = useState<UiText | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -77,52 +78,45 @@ export default function BulkTagDialog({
       ? t.tags.deleteDialog.submitting
       : t.tags.deleteDialog.submit;
 
+  const description =
+    message ??
+    (countError !== null ? (
+      <span role="alert" className="text-destructive">
+        {dialog.countFailed(countError)}
+      </span>
+    ) : (
+      <span aria-busy="true" className="flex items-center gap-2">
+        <Spinner aria-hidden="true" />
+        {dialog.counting}
+      </span>
+    ));
+
   return (
-    <ModalFrame
+    <ConfirmDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
       title={reject ? dialog.rejectTitle : dialog.deleteTitle}
-      onClose={onClose}
-      initialFocus={cancel}
-    >
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-        {impact === null && countError === null && (
-          <p aria-busy="true" className="flex items-center gap-2 text-sm text-fg-muted">
-            <LoaderCircle
-              aria-hidden="true"
-              className="size-4 animate-spin motion-reduce:animate-none"
-            />
-            {dialog.counting}
-          </p>
-        )}
-        {countError !== null && (
-          <div className="flex flex-wrap items-center gap-2">
-            <p role="alert" className="text-sm text-danger">
-              {dialog.countFailed(countError)}
-            </p>
-            <Button variant="ghost" size="sm" onClick={retry}>
-              {t.common.retry}
-            </Button>
-          </div>
-        )}
-        {message !== null && (
-          <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-            {message}
-          </p>
-        )}
-        {error !== null && (
-          <p role="alert" className="text-sm text-danger">
-            {error}
-          </p>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
-        <Button ref={cancel} onClick={onClose} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-        <Button variant="danger" onClick={onSubmit} disabled={!canSubmit}>
-          {pending && <LoaderCircle className="animate-spin" />}
+      description={description}
+      cancelLabel={t.common.cancel}
+      actionLabel={
+        <>
+          {pending && <Spinner aria-hidden="true" />}
           {submitText}
+        </>
+      }
+      onConfirm={onSubmit}
+      pending={pending}
+      actionDisabled={!canSubmit}
+    >
+      {countError !== null && (
+        <Button variant="outline" size="sm" className="self-start" onClick={retry}>
+          <RotateCw aria-hidden="true" />
+          {t.common.retry}
         </Button>
-      </div>
-    </ModalFrame>
+      )}
+      {error !== null && <DialogError message={error} />}
+    </ConfirmDialog>
   );
 }
