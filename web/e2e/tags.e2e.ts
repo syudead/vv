@@ -380,7 +380,9 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
         "",
       );
-      await expect(page.locator("p[role='status']")).toHaveText("2 items");
+      await expect(page.getByRole("status", { name: "Search results" })).toHaveText(
+        "2 items",
+      );
 
       // タグの絞り込みは、題名にその文字列を含むだけのタグの無い動画を出さない
       // （受け入れ条件7、親 Issue「タグの無い動画」の要求を満たさない例）。ここでは

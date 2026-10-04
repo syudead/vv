@@ -188,9 +188,9 @@ test.describe.serial("library search", () => {
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "List" })
       .click();
-    const videoCells = page.locator("tr[data-video-id]").first().locator("td:visible");
-    await expect(videoCells.first()).toHaveCSS("border-bottom-width", "1px");
-    await expect(videoCells.last()).toHaveCSS("border-bottom-width", "1px");
+    // 行の区切りは行（shadcn/ui の TableRow）の下の線で引く。
+    const videoRow = page.locator("tr[data-video-id]").first();
+    await expect(videoRow).toHaveCSS("border-bottom-width", "1px");
     await page
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "Grid" })
@@ -203,7 +203,7 @@ test.describe.serial("library search", () => {
     });
 
     await page.getByRole("button", { name: "Filter", exact: true }).click();
-    await page.locator("label", { hasText: "Unwatched" }).click();
+    await page.getByRole("radio", { name: "Unwatched" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
     await expect(summary(page)).toHaveText(resultCount(unwatched.total));
@@ -480,6 +480,11 @@ test.describe.serial("library search", () => {
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Filter", exact: true })).toBeFocused();
     await expect(page.getByRole("dialog")).toBeHidden();
+    // 表示の切り替えは画面の型の Toolbar の並び（表示形式 → 大きさ → 並べ替え）。
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("radio", { name: "Grid" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("slider", { name: "Card size" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Sort by: Title" })).toBeFocused();
     await page.keyboard.press("Tab");

@@ -5,6 +5,9 @@ import { MAX_QUERY_LENGTH } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
+import { Button } from "../ui/shadcn/button";
+import { Input } from "../ui/shadcn/input";
+import { Kbd } from "../ui/shadcn/kbd";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
@@ -163,9 +166,12 @@ export default function SearchBox({
   };
 
   return (
-    <div className={cn("group relative flex h-9 w-full items-center", className)}>
-      <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground transition-colors group-focus-within:text-muted-foreground" />
-      <input
+    <div className={cn("relative flex w-full items-center", className)}>
+      <Search
+        aria-hidden="true"
+        className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
+      />
+      <Input
         ref={field}
         type="search"
         value={input}
@@ -202,33 +208,26 @@ export default function SearchBox({
         className={cn(
           // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
           // 手引きを置かない検索欄は、クリアか `/` の1つ分だけ空ける。
-          !syntaxHelp ? "pr-9" : input === "" ? "pr-9 sm:pr-15" : "pr-15",
-          "h-full w-full rounded-md border border-input bg-muted pl-9 text-sm text-foreground shadow-[inset_0_1px_2px_var(--color-border)]",
-          "placeholder:text-muted-foreground transition-[border-color,box-shadow] duration-150",
-          "focus:border-primary focus:outline-none focus:ring-2 focus:ring-ring",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          "[&::-webkit-search-cancel-button]:hidden",
+          "h-8 pl-8 [&::-webkit-search-cancel-button]:hidden",
+          !syntaxHelp ? "pr-8" : input === "" ? "pr-8 sm:pr-16" : "pr-16",
         )}
       />
-      <div className="absolute right-1.5 flex items-center gap-0.5">
+      <div className="absolute right-1 flex items-center gap-0.5">
         {input !== "" && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             // 押した瞬間に入力欄のフォーカスを外さない。外すと blur が入力途中の語を
             // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
             onMouseDown={(event) => event.preventDefault()}
             onClick={clear}
             aria-label={t.list.search.clear}
-            className="flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="size-6"
           >
-            <X className="size-4" />
-          </button>
+            <X aria-hidden="true" />
+          </Button>
         )}
-        {input === "" && (
-          <kbd className="pointer-events-none mr-1 hidden rounded-sm border border-input px-1.5 font-sans text-2xs text-muted-foreground sm:block">
-            /
-          </kbd>
-        )}
+        {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
         {syntaxHelp && <SearchSyntaxHelp />}
       </div>
     </div>

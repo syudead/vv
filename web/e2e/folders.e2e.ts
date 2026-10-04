@@ -444,14 +444,14 @@ test.describe.serial("folder search", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(folderUrl(root!.id, "A"));
     await page.getByRole("button", { name: "Filter", exact: true }).click();
-    await page.locator("label", { hasText: "Unwatched" }).click();
+    await page.getByRole("radio", { name: "Unwatched" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
     await expect(page.getByRole("link", { name: "B, 1 video, 0 folders" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Videos 2", level: 2 })).toBeVisible();
 
     await page.getByRole("button", { name: "Filter (1 applied)" }).click();
-    await page.locator("label", { hasText: /^Watched$/ }).click();
+    await page.getByRole("radio", { name: "Watched", exact: true }).click();
     await page.keyboard.press("Escape");
     await expect(
       page.getByRole("heading", { name: "No videos match these conditions" }),

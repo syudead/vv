@@ -5,13 +5,13 @@ import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import { Grid } from "../videoList/Grid";
-import { resultCountText } from "../videoList/listSummary";
-import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
+import { CardGrid } from "../ui/patterns/card-grid";
+import { resultCountText } from "../videoList/listSummary";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
+import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 
 /**
  * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である
@@ -47,46 +47,41 @@ export default function FolderSearchResults({
       ) : (
         <>
           {initialLoadError === null && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="text-center text-xs text-fg-muted tabular-nums"
-            >
+            <ResultCount>
               {videos.loading ? t.list.loading : resultCountText(videos.total)}
-            </p>
+            </ResultCount>
           )}
           {initialLoadError !== null ? (
             <LoadFailed reason={initialLoadError} onRetry={videos.reload} />
+          ) : videos.loading ? (
+            <CardsLoading zoom={zoom} count={12} />
           ) : (
             <TagRowMeasureProvider>
-              <Grid zoom={zoom}>
-                {videos.loading ? (
-                  <CardSkeleton count={12} />
-                ) : (
-                  itemVideos(videos.items).map((video) => (
-                    <VideoCard
-                      key={video.id}
-                      video={video}
-                      backTo={backTo}
-                      selected={false}
-                      selectionMode={false}
-                      {...preview}
-                      tagsRow={tagsRow}
-                      location={
-                        video.folder === undefined
-                          ? undefined
-                          : folderLocationLabel(folder, video.folder)
-                      }
-                    />
-                  ))
-                )}
-                {videos.loadingMore && <CardSkeleton count={6} />}
-              </Grid>
+              <CardGrid size={zoom}>
+                {itemVideos(videos.items).map((video) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    backTo={backTo}
+                    selected={false}
+                    selectionMode={false}
+                    {...preview}
+                    tagsRow={tagsRow}
+                    location={
+                      video.folder === undefined
+                        ? undefined
+                        : folderLocationLabel(folder, video.folder)
+                    }
+                  />
+                ))}
+              </CardGrid>
             </TagRowMeasureProvider>
           )}
-          {videos.error !== null && videos.items.length > 0 && (
-            <LoadMoreFailed reason={videos.error} onRetry={videos.retryLoadMore} />
-          )}
+          <MoreRow
+            loadingMore={videos.loadingMore}
+            error={videos.items.length > 0 ? videos.error : null}
+            onRetry={videos.retryLoadMore}
+          />
         </>
       )}
     </>

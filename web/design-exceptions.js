@@ -16,40 +16,6 @@
 /** @type {import("./design-exceptions").DesignException[]} */
 export default [
   {
-    file: "folders/Breadcrumbs.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5", "h-3\\.5", "w-20", "max-w-40"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderCard.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderGroupingMenu.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["max-w-80", "px-2\\.5", "size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["pb-24"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderToolbar.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["min-w-20", "sm:min-w-40", "w-24", "px-2\\.5", "w-80"],
-    kind: "migration",
-  },
-  {
-    file: "library/CardTagRow.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
     file: "player/VideoPlayer.tsx",
     rules: [
       "no-restricted-syntax",
@@ -74,31 +40,6 @@ export default [
     kind: "special",
     reason:
       "The seek preview over the video.js progress bar (.vv-seek-preview in index.css) is placed from the pointer and the frame size at run time and sized from the seek-preview tokens; it is not a card scrub (ScrubPreview) and has no design-system component.",
-  },
-  {
-    file: "shell/AppShell.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/ScanProgressBar.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/ScanProgressIndicator.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/Sidebar.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/TopBar.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
   },
   {
     file: "tags/CreateTagRow.tsx",
@@ -224,47 +165,6 @@ export default [
   },
   {
     file: "versions/DuplicatesPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FavoriteToggle.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-5\\.5", "size-7"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FilterMenu.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FolderArt.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/Grid.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SearchBox.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SearchSyntaxHelp.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SortControls.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/cardPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
