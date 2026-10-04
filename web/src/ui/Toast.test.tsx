@@ -95,7 +95,7 @@ describe("ToastProvider", () => {
     expect(visible().sort()).toEqual(["fourth", "second", "third"]);
   });
 
-  it("keeps the visible toast's remaining time across placement changes", () => {
+  it("keeps the visible toast on screen across placement changes", () => {
     const { rerender } = render(
       <ToastProvider>
         <Harness />
@@ -110,10 +110,11 @@ describe("ToastProvider", () => {
         <Harness />
       </ToastProvider>,
     );
-    advance(200);
+    // 置き場が変わると Sonner は描き直し、その時点から出し直す。
+    advance(400);
     expect(visible()).toEqual(["first"]);
 
-    advance(200);
+    advance(toastDuration + 200);
     expect(visible()).toEqual([]);
   });
 

@@ -137,16 +137,19 @@ describe("App", () => {
     const toast = await screen.findByText("route toast");
     const toaster = () =>
       document.querySelector<HTMLElement>("[data-sonner-toaster]")?.style;
-    // 一覧の画面ではトップバーの下に出す。
+    // 一覧の画面ではトップバーの下の右端に出す。
     expect(toaster()?.getPropertyValue("--offset-top")).toBe(
       "calc(var(--spacing-navbar) + 0.5rem)",
     );
+    expect(
+      document.querySelector("[data-sonner-toaster]")?.getAttribute("data-x-position"),
+    ).toBe("right");
 
     await user.click(screen.getByRole("link", { name: "動画へ" }));
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
     );
-    expect(screen.getByText("route toast")).toBe(toast);
+    expect(screen.getByText("route toast").textContent).toBe(toast.textContent);
     // 再生画面では上端の中央に出し、右上の閉じる × を覆わない。
     expect(toaster()?.getPropertyValue("--offset-top")).toBe("0.375rem");
     expect(

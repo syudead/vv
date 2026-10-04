@@ -43,9 +43,27 @@ function nextToastId(): string {
   return `vv-toast-${String(sequence)}`;
 }
 
-/** topOffset は通知の上端の位置である。一覧の画面ではトップバーの下、再生画面では上端。 */
-function topOffset(placement: Placement): string {
-  return placement === "playback" ? "0.375rem" : "calc(var(--spacing-navbar) + 0.5rem)";
+/**
+ * toasterPlacement は Sonner の置き場である。一覧の画面ではトップバーの下の右端に出し、
+ * サイドバーにもページの道具にも重ねない。再生画面では上端の中央に出す（右上には
+ * 見出しの帯の閉じる × がある）。配置が変わると Sonner は通知を描き直すので、出ている
+ * 通知はその時点から出し直しになる。
+ */
+function toasterPlacement(placement: Placement) {
+  if (placement === "playback") {
+    return {
+      position: "top-center",
+      offset: { top: "0.375rem" },
+      // 狭い幅でも右上の閉じる × に重ならないよう、左右を 4rem ずつ空ける。
+      mobileOffset: { top: "0.375rem", left: "4rem", right: "4rem" },
+    } as const;
+  }
+  const top = "calc(var(--spacing-navbar) + 0.5rem)";
+  return {
+    position: "top-right",
+    offset: { top, right: "0.75rem" },
+    mobileOffset: { top, left: "0.75rem", right: "0.75rem" },
+  } as const;
 }
 
 export function ToastProvider({
@@ -101,7 +119,7 @@ export function ToastProvider({
   );
 
   // 配置が変わったら数を合わせる。再生画面へ移ったときは先頭の 1 件だけを残して
-  // 残りを待ちの先頭へ戻し、先頭の 1 件は残りの時間のまま出し続ける。一覧へ戻ったら
+  // 残りを待ちの先頭へ戻し、先頭の 1 件は出し続ける。一覧へ戻ったら
   // 待っているものを 3 件まで出す。
   useEffect(() => {
     limit.current = visibleLimit[placement];
@@ -132,14 +150,10 @@ export function ToastProvider({
     <ToastContext.Provider value={show}>
       {children}
       <Toaster
-        // 位置（position）を変えると Sonner が通知を描き直して残りの時間が戻るので、
-        // 配置では上端の余白だけを変える。
-        position="top-center"
+        {...toasterPlacement(placement)}
         expand
         visibleToasts={visibleLimit.default}
         customAriaLabel={t.common.notifications}
-        offset={{ top: topOffset(placement) }}
-        mobileOffset={{ top: topOffset(placement) }}
       />
     </ToastContext.Provider>
   );
