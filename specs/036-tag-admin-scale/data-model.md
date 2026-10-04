@@ -71,7 +71,7 @@ Added by the revision (paging,
 | --- | --- |
 | `TagSort` | `TagSortName` (default), `TagSortCountDesc`, `TagSortCountAsc`, `TagSortCreatedDesc`, `TagSortCreatedAsc`; the same strings as the API's `TagSort` (`name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc`), with `Valid()` |
 | `TagListQuery{Search string; TentativeOnly, UnusedOnly bool; Sort TagSort; Cursor string; Limit int}` | List conditions. `Search` is the raw string from the caller; the store folds it with `FoldForMatch` and trims it (empty means no search). `Limit` 0 means every tag (the cursor is ignored and `NextCursor` is empty). An empty `Sort` means `TagSortName` |
-| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string; Exact *Tag}` | One page. `Total` counts tags matching the conditions (search and filters); `TotalAll` counts all tags; `NextCursor` is empty when there is no next page. `Exact` is the tag spelled exactly as the trimmed search term, read only on the first page of a request with `Limit` (nil otherwise; [screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)) |
+| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string; Exact *Tag}` | One page. `Total` counts tags matching the conditions (search and filters); `TotalAll` counts all tags; `NextCursor` is empty when there is no next page. `Exact` is the tag spelled exactly as the trimmed search term, read only on the first page of a request with `Limit` (nil otherwise; [screen-api.md §5](contracts/screen-api.md#get-apitags-parameters)) |
 | `RejectedTagNamePage{Items []string; Total int; NextCursor string}` | One page of rejected names |
 | `MaxTagPageLimit = 200` | Upper limit of `limit`, as in `GET /api/library` |
 

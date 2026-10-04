@@ -1,17 +1,17 @@
 ---
 source: specs/036-tag-admin-scale/ui-design.md
-sourceHash: f3c406bca122024c168ad258fdd1049ec4bad84a2a3d2d4ae8683a77c545439b
+sourceHash: 6d6d252e19f5bc97742164ba26a0aaad31689815ce860735ad81ccff547921ed
 ---
 
 # UI 設計: 数千から数万のタグでも管理できるタグ管理画面 {#ui-design-tag-admin-screen-that-stays-manageable-with-thousands-to-tens-of-thousands-of-tags}
 
-**機能**: [親 Issue #651](https://github.com/syudead/vv/issues/651) · [plan.md](plan.md) · [research.md](research.md) (R-1 から R-7、R-11 から R-14) · [data-model.md §4](data-model.md#4-screen-state) · [contracts/screen-api.md](contracts/screen-api.md) (§5、§6)
+**機能**: [親 Issue #651](https://github.com/syudead/vv/issues/651) · [plan.md](plan.md) · [research.md](research.md) (R-1 から R-7、R-11 から R-14) · [data-model.md、画面の状態](data-model.md#screen-state) · [contracts/screen-api.md](contracts/screen-api.md) ([`GET /api/tags` のパラメータ](contracts/screen-api.md#get-apitags-parameters)、[`GET /api/tags/rejected-names` のパラメータ](contracts/screen-api.md#get-apitagsrejected-names-parameters))
 
 見た目の規則は次の出典から来るもので、ここでは決め直さない。
 
 | 項目 | 出典 |
 | --- | --- |
-| 色、操作の状態、幅のブレークポイント、一覧のレイアウト、選択バーの形 | [Library UI](../../docs/design-docs/library-ui.md) (§1、§3、§4、§6) |
+| 色、操作の状態、幅のブレークポイント、一覧のレイアウト、選択バーの形 | [Library UI](../../docs/design-docs/library-ui.md) ([視覚値は CSS の 1 か所に置き、コントラストはテストで保証する](../../docs/design-docs/library-ui.md#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests)、[仮想スクロールは使わない](../../docs/design-docs/library-ui.md#no-virtual-scrolling)、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)、[一覧のレイアウト](../../docs/design-docs/library-ui.md#list-layout)) |
 | 役割のトークン | [`web/src/index.css`](../../web/src/index.css) の `@theme`。名前で参照し、値をコピーしない |
 | テスト対象のコントラストの組 | [`web/src/theme/tokens.test.ts`](../../web/src/theme/tokens.test.ts) |
 | タグ管理画面の骨格 (本文の幅、行の列と書式、作成と名前の変更、同義語のダイアログ、削除のダイアログ、状態の表) | [specs/014-video-tags/ui-design.md "Tag management page"](../014-video-tags/ui-design.md#tag-management-page) と現在の [`web/src/tags/`](../../web/src/tags/) |
@@ -154,7 +154,7 @@ flowchart TB
 
 検索、絞り込み、並び順は、ライブラリと同じく共有のトップバー (`TopBarPortal`) の中央に置く ([`web/src/tags/TagToolbar.tsx`](../../web/src/tags/TagToolbar.tsx))。順序と見た目は [`LibraryToolbar`](../../web/src/library/LibraryToolbar.tsx) に合わせ、Tab の順序も同じ: 検索 → "Filter" → 並び順 → 向き。本文に操作の行はない。"Rejected names" タブを開いている間、トップバーは何も持たない。タグの検索、絞り込み、並び順は却下した名前に適用されない (031 と同じ)。
 
-検索、"Tentative only"、"Unused only"、並び順を変えると、新しい条件で**サーバーから最初のページを読み直す** ([data-model.md §4](data-model.md#4-screen-state)、"Conditions")。
+検索、"Tentative only"、"Unused only"、並び順を変えると、新しい条件で**サーバーから最初のページを読み直す** ([data-model.md、画面の状態](data-model.md#screen-state)、"Conditions")。
 
 ```mermaid
 flowchart LR
@@ -172,7 +172,7 @@ flowchart LR
 
 | 操作 | 形と振る舞い |
 | --- | --- |
-| 検索 | `syntaxHelp={false}` (動画の検索構文のヘルプなし) のライブラリの `SearchBox`。アクセシブルな名前とプレースホルダーは "Search tags"。`/` でフォーカスする。Esc は内容を消して欄を離れる (IME の変換中の Esc は無視する)。キー入力のたびに要求する (`debounceMs={0}`、前の要求は中止する。014 からの振る舞い)。サーバーはすべてのタグの名前と同義語を照合し、全角と半角の形とかなの違いを等しく扱う。ライブラリのタグ検索と同じ規則である (要件 7、[contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters) の `q`)。入力は `q` の上限である 100 文字 (コードポイント) で止まり、ライブラリの検索欄と同じ方法で数える。タグがないときは `disabled` |
+| 検索 | `syntaxHelp={false}` (動画の検索構文のヘルプなし) のライブラリの `SearchBox`。アクセシブルな名前とプレースホルダーは "Search tags"。`/` でフォーカスする。Esc は内容を消して欄を離れる (IME の変換中の Esc は無視する)。キー入力のたびに要求する (`debounceMs={0}`、前の要求は中止する。014 からの振る舞い)。サーバーはすべてのタグの名前と同義語を照合し、全角と半角の形とかなの違いを等しく扱う。ライブラリのタグ検索と同じ規則である (要件 7、[contracts/screen-api.md、`GET /api/tags` のパラメータ](contracts/screen-api.md#get-apitags-parameters) の `q`)。入力は `q` の上限である 100 文字 (コードポイント) で止まり、ライブラリの検索欄と同じ方法で数える。タグがないときは `disabled` |
 | "Filter" | ライブラリの `FilterMenu` のボタンとポップオーバー (`FilterPopover`。副次の `Button`、`ListFilter`、`xl` 以上で文字 "Filter")。2 つの `FilterCheckbox`: "Tentative only" (ヒント "Show only tags created by automatic tagging") と "Unused only" (ヒント "Show only tags that aren't on any videos")。どちらかが適用されている間、ボタンはライブラリの `bg-accent-soft text-link` と有効な数 (1 または 2) を持ち、アクセシブルな名前は "Filter (N applied)" になり、ポップオーバーの最後に "Clear filters" が付く (両方を外す。検索と並び順は残る)。チェックボックスは `tentative=true` または `unused=true` で読み直し、ポップオーバーを開いたままにする (ライブラリと同じ)。両方を合わせると、すべてのタグのうち両方に合うタグに一致する (要件 6) |
 | "Filter" が無効 | 最初のページが一度も届いていないとき、一覧のない失敗の後、何も適用されていないのに `totalAll` が 0 のとき。**絞り込みの適用中に `total` が 0 になっても無効にしない**: それはユーザーが絞り込みを外す手段であり、フォーカスの行き先である |
 | 並び順、`md` 以上 | ライブラリの `SortMenu` の形 (`SortMenuView`): 現在の種類 ("Name"、"Video count"、"Date created") と `ChevronDown` を持つ副次の `Button` で、アクセシブルな名前は "Sort by: {kind}"。メニューは見出し "Sort by" と 3 つのラジオ項目を持つ。アイコン: Name は `ArrowDownAZ` (ライブラリの "Title" のアイコンで、名前順を意味する)。Video count は `Hash` (数)。Date created は `CalendarPlus` (タグが作られた日。ライブラリの "Date created" はファイルの作成日に `FileClock` を使うが、それは別のものなので絵を変える) |
@@ -191,7 +191,7 @@ flowchart LR
 | `q` | `normalizeQuery` の形の検索の文字 | |
 | `tentative` | `1` | false のときは書かない |
 | `unused` | `1` | false のときは書かない |
-| `sort` | `name`、`countDesc`、`countAsc`、`createdDesc`、`createdAsc` | 常に書く。省くと「この端末に保存した並び順」を意味することになり、戻るで前の並び順に戻れない (list-url.md §1 と同じ) |
+| `sort` | `name`、`countDesc`、`countAsc`、`createdDesc`、`createdAsc` | 常に書く。省くと「この端末に保存した並び順」を意味することになり、戻るで前の並び順に戻れない ([013 list-url.md、パラメータ](../013-library-search/contracts/list-url.md#parameters) と同じ) |
 | `tab` | `rejected` | "Tags" タブのときは書かない |
 
 - 解析できない値は既定値として扱う。
@@ -210,7 +210,7 @@ flowchart LR
 
 見出しの行は `flex min-h-10 items-center gap-3` である: 左にライブラリの見出しの書式 (`text-xl font-semibold tracking-tight sm:text-2xl`) の `h1` "Tags"、その右にライブラリの "N items" の書式 (`text-xs text-fg-muted tabular-nums sm:text-sm`、`role="status"`、`aria-live="polite"`) の件数、次に主要な "New tag" (`Plus`)。
 
-- **件数**: 応答の `total` と `totalAll` から作る ([contracts/screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters))。"1,000 tags"、または絞り込みか検索が適用されている間は "90 of 1,000 tags" (受け入れ条件 8。読み込んでいないタグも数える)。**読み込んだ数とページの境界は決して現れない。** 進行中の名前の変更のために残した行は数えない。操作の後の変化は手元で数える ([data-model.md §4](data-model.md#4-screen-state)、"Applying an action's result")。最初のページが届く前は、件数は "Loading…" と読める。
+- **件数**: 応答の `total` と `totalAll` から作る ([contracts/screen-api.md、`GET /api/tags` のパラメータ](contracts/screen-api.md#get-apitags-parameters))。"1,000 tags"、または絞り込みか検索が適用されている間は "90 of 1,000 tags" (受け入れ条件 8。読み込んでいないタグも数える)。**読み込んだ数とページの境界は決して現れない。** 進行中の名前の変更のために残した行は数えない。操作の後の変化は手元で数える ([data-model.md、画面の状態](data-model.md#screen-state)、"Applying an action's result")。最初のページが届く前は、件数は "Loading…" と読める。
 - "Rejected names" タブでは、行は件数と "New tag" なしで `h1` だけを表示する。
 - 1 行を選択すると、この行は同じ高さの選択バーに置き換わる ([Selection bar](#selection-bar))。
 
@@ -243,7 +243,7 @@ flowchart LR
 
 ### 古い一覧 {#stale-list}
 
-一覧を表示している間に**最初のページ**が失敗したときの形である: 条件の変更、"Reload"、`notFoundIds` の後の読み直しの後 ([data-model.md §4](data-model.md#4-screen-state)、"Load failure")。
+一覧を表示している間に**最初のページ**が失敗したときの形である: 条件の変更、"Reload"、`notFoundIds` の後の読み直しの後 ([data-model.md、画面の状態](data-model.md#screen-state)、"Load failure")。
 
 ```mermaid
 stateDiagram-v2
@@ -289,7 +289,7 @@ stateDiagram-v2
 | 一覧が変わった (続きの読み込みの `totalAll` が画面の値と異なる) | 同じ大きさの中立の箱 (`rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg`、lucide `RefreshCw`、`role="status"`) に "Tags were added or removed elsewhere, so the rest of this list may be out of date." と副次の `sm` の `Button` "Reload" を置く。続きの読み込みは止まり、読み込んだ行と選択は残る。"Reload" は先頭から読み直し (選択は空、スクロールは先頭)、箱は消える (Edge Case: 続きの読み込み中に別のタブがタグを変える。R-11)。失敗ではなく通知なので、危険の色にしない |
 | 完了 (`nextCursor` がない) | 何もない。"Everything is loaded" の行はない: 続きの読み込みの `Skeleton` がないことが合図で、読み込んだ数は表示しない |
 
-きっかけは、仮想化の最後に描画した行が、読み込んだ行の末尾から数行以内に来ることである ([data-model.md §4](data-model.md#4-screen-state)、"When to load more")。そのため、ユーザーが末尾に着く前に読み込みが始まる。操作によって**読み込んだ行がなくなり** (`rows` が空)、`nextCursor` があるときは、行を描画しないのでそのきっかけは起きない。そのとき画面は操作の適用と一緒に次のページを 1 回要求し、`total` が 0 でなければ空の状態ではなく読み込み中の `Skeleton` を表示する。例: "Tentative only" で読み込んだ仮のタグをすべて確定する、"Unused only" で読み込んだ行をすべて削除する。
+きっかけは、仮想化の最後に描画した行が、読み込んだ行の末尾から数行以内に来ることである ([data-model.md、画面の状態](data-model.md#screen-state)、"When to load more")。そのため、ユーザーが末尾に着く前に読み込みが始まる。操作によって**読み込んだ行がなくなり** (`rows` が空)、`nextCursor` があるときは、行を描画しないのでそのきっかけは起きない。そのとき画面は操作の適用と一緒に次のページを 1 回要求し、`total` が 0 でなければ空の状態ではなく読み込み中の `Skeleton` を表示する。例: "Tentative only" で読み込んだ仮のタグをすべて確定する、"Unused only" で読み込んだ行をすべて削除する。
 
 ### 行のチェックボックス {#row-checkbox}
 
@@ -297,7 +297,7 @@ stateDiagram-v2
 - 見え方はライブラリのリスト表示に従う: 何も選択していない間は `opacity-40`、その行のホバーまたはフォーカスで `opacity-100`、何かを選択している間はすべての行で `opacity-100`。ホバーのないデバイスは `opacity-40` のまま押す (薄いが見える)。
 - 選択した行は `bg-accent/10` の面 (アクセントの 10%) を持つ。最初の版の `bg-accent-soft` はべた塗りの濃い青緑で、選択した行が続くと一覧が重く見えた (レビュー)。名前 (`text-fg`) と件数と同義語 (`text-fg-muted`) は色を保つ。
 - 名前を変更中の行は名前の変更の面 (`ring-control-border` 付きの `bg-elevated`) を表示し、それが優先し、そのチェックボックスは `disabled` である。名前の変更を確定すると行が別の並び順の位置に移ることがあるので、名前の変更中は選択できない。選択した行で名前の変更を始めると、その行は選択から外れる (選択バーの件数が減り、0 になると見出しの行が戻る)。一括操作は名前を変更中のタグに決して働かない。
-- 選択は**読み込んだ行**の部分集合で、検索、絞り込み、**並び順**が変わると空になる (Edge Case、[data-model.md §4](data-model.md#4-screen-state)、"Selection")。操作または読み直しの後に `rows` から外れた id は選択から落ちる。読み込んだ行が上限を超えても、行のチェックボックスは押せるままである ([Why this shape](#why-this-shape))。
+- 選択は**読み込んだ行**の部分集合で、検索、絞り込み、**並び順**が変わると空になる (Edge Case、[data-model.md、画面の状態](data-model.md#screen-state)、"Selection")。操作または読み直しの後に `rows` から外れた id は選択から落ちる。読み込んだ行が上限を超えても、行のチェックボックスは押せるままである ([Why this shape](#why-this-shape))。
 - 名前を変更中の行は、新しい条件での先頭からの読み直しを越えて残る: 新しい `rows` にそれがなければ並び順の位置に挿入するので、入力した名前は失われない (名前を変更中の行の Edge Case。現在の検索と同じ)。名前の変更を確定または取り消したとき、現在の条件に合わなければ行は消える。
 - Shift による範囲選択はない: 親 Issue は求めておらず、見出しのチェックボックスが読み込んだ行をすべて選択する。
 
@@ -308,7 +308,7 @@ stateDiagram-v2
 | `sm` 以上のマウス (`pointer: fine`) | 変わらない: "Confirm"、"Rename"、"Synonyms" の `IconButton` と "More actions" メニュー (031 "Row") |
 | タッチ (`pointer: coarse`) または `sm` 未満 | 右端の 1 つの `IconButton` (`Ellipsis`、アクセシブルな名前 "Actions"、ツールチップなし) が、ラベル付きの項目のメニューを開く: "Confirm" (`Check`、仮の行だけ) → "Rename" (`Pencil`) → "Synonyms" (`Tags`) → "Merge into another tag…" (`Merge`) → 区切り → "Reject…" (`Ban`、危険、仮の行) または "Delete…" (`Trash2`、危険、確定した行) |
 
-- 項目のラベルは、現在の `IconButton` のアクセシブルな名前とメニューの項目を再利用する。どちらの形にするかは `matchMedia` を読まずに CSS で選ぶ (`[@media(pointer:coarse)]` と `max-sm:`。library-ui.md §4、`TouchControls` と同じ)。
+- 項目のラベルは、現在の `IconButton` のアクセシブルな名前とメニューの項目を再利用する。どちらの形にするかは `matchMedia` を読まずに CSS で選ぶ (`[@media(pointer:coarse)]` と `max-sm:`。library-ui.md、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)、`TouchControls` と同じ)。
 - メニューの "Confirm" は行の "Confirm" と同じく振る舞う: 確認なし。送信中は入口の `IconButton` が `aria-busy` になり、それ以上の押下を無視する。名前の変更、同義語、統合、却下、削除は、それぞれの `IconButton` と項目と同じく振る舞う。"Rename" または "More actions" を対象とする 014 と 031 のフォーカスの規則は、まとめている間は入口の `IconButton` を対象とする。
 - 360px での幅: 本文の `px-4` と行の `px-2` で 312px が残る。そこからチェックボックスの包み `size-8` (32px)、3 つの `gap-2` (24px)、件数の列 `w-16` (64px)、入口の `IconButton` (32px) を引くと、名前の列は約 160px になる (031 の 92px より広い)。横スクロールはない。
 - このまとめはマージ済みである (#683)。
@@ -395,7 +395,7 @@ stateDiagram-v2
 
 | 状態 | ダイアログが表示するもの |
 | --- | --- |
-| 数えている | 開くと `POST /api/tags/impact` (`reject` または `delete`、選択したすべての id) を送る。本文は `LoaderCircle` 付きの 1 行 "Counting the affected videos…" (`text-sm text-fg-muted`)。数がないまま何も実行しないよう、**危険のボタンは `disabled` のまま** ([contracts/screen-api.md §3](contracts/screen-api.md#3-post-apitagsimpact)) |
+| 数えている | 開くと `POST /api/tags/impact` (`reject` または `delete`、選択したすべての id) を送る。本文は `LoaderCircle` 付きの 1 行 "Counting the affected videos…" (`text-sm text-fg-muted`)。数がないまま何も実行しないよう、**危険のボタンは `disabled` のまま** ([contracts/screen-api.md、`POST /api/tags/impact`](contracts/screen-api.md#post-apitagsimpact)) |
 | 準備完了 | `tagCount` が選択した件数と等しいときは "すべてに適用" の文、小さいときは "一部に適用" の文 ([Words](#words)。選択した数、適用する数、飛ばす数と `videoCount` を埋める)。`videoCount` 0 は "aren't on any videos" の形を使い、"removed from 0 videos" には決してしない。段落は 014 の `border-l-2 border-danger-strong pl-3` を持つ |
 | 数えるのに失敗した | `text-sm text-danger` (`role="alert"`) の "Couldn't count the affected videos: {reason}" と ghost の `sm` の `Button` "Retry"。危険のボタンは `disabled` のまま |
 | 送信中 | 両方のボタンが `disabled`。危険のボタンに `LoaderCircle` (削除のダイアログと同じ) |
@@ -455,7 +455,7 @@ flowchart LR
 
 ### 統合先の候補 {#target-candidates}
 
-候補は**すべてのタグ**から来る: 選択したもの、選択していないもの、読み込んでいないもの (要件 9)。入力のたびに `GET /api/tags?q={input}&limit=8` を要求する ([research.md R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit)、[data-model.md §4](data-model.md#4-screen-state)、"Merge dialog candidates")。
+候補は**すべてのタグ**から来る: 選択したもの、選択していないもの、読み込んでいないもの (要件 9)。入力のたびに `GET /api/tags?q={input}&limit=8` を要求する ([research.md R-14](research.md#r-14-merge-target-candidates-come-from-get-apitagsqlimit)、[data-model.md、画面の状態](data-model.md#screen-state)、"Merge dialog candidates")。
 
 ```mermaid
 sequenceDiagram
@@ -471,7 +471,7 @@ sequenceDiagram
   D->>D: 候補を置き換え、スピナーを消す
 ```
 
-- **候補の行は現在の `Combobox` の内容を保つ**: 名前、同義語が一致したときの "Synonym: …"、右端の件数、入力と等しい名前または同義語の `exactOption`、最大 8 行。入力と正確に同じ綴りのタグは、最初の部分一致の中になくても応答の `exact` から取り、先頭に来る ([screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters))。残りはサーバーの自然な名前順を保つ。行から開いたときは、8 に統合元の数を足した数を要求し、画面が統合元を落とすので 8 行が残る。選択から開いたときは、選択したタグも候補に残る (マージ済みの形)。
+- **候補の行は現在の `Combobox` の内容を保つ**: 名前、同義語が一致したときの "Synonym: …"、右端の件数、入力と等しい名前または同義語の `exactOption`、最大 8 行。入力と正確に同じ綴りのタグは、最初の部分一致の中になくても応答の `exact` から取り、先頭に来る ([screen-api.md §5](contracts/screen-api.md#get-apitags-parameters))。残りはサーバーの自然な名前順を保つ。行から開いたときは、8 に統合元の数を足した数を要求し、画面が統合元を落とすので 8 行が残る。選択から開いたときは、選択したタグも候補に残る (マージ済みの形)。
 - **開いた直後** (空の入力) は、同じ要求で最初の 8 件を取得し、届いたら並べる。空の入力の候補は今のままである。
 - **読み込み中**: `Combobox` の `busy` (枠の右端の `LoaderCircle`、`size-3`、`text-fg-muted`、`aria-busy`)。置き換わるまで**前の候補が残る**。キー入力のたびに消えて戻る一覧は追えないので、一覧は空にも閉じもしない。"Searching…" の行はない: スピナーで足り、読み込みは 1 往復で、たいてい入力と一緒に現れる。次の入力は送信中の要求を中止し、最後の応答だけが候補になる。
 - **候補なし** (`items` が空で `exactOption` もない): 箱に "No matching tags"。
@@ -500,7 +500,7 @@ sequenceDiagram
 
 ## 却下した名前のタブ {#rejected-names-tab}
 
-見出しの下の "Rejected names" タブ ([Tabs](#tabs)) を選ぶと、却下した名前を本文に並べる (`role="tabpanel"`。[`web/src/tags/RejectedNames.tsx`](../../web/src/tags/RejectedNames.tsx))。ダイアログは開かない。内容は `GET /api/tags/rejected-names` の**ページ**で届き、本文のスクロールに合わせて続きを読み込む ([research.md R-13](research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll)、[contracts/screen-api.md §6](contracts/screen-api.md#6-get-apitagsrejected-names-parameters))。
+見出しの下の "Rejected names" タブ ([Tabs](#tabs)) を選ぶと、却下した名前を本文に並べる (`role="tabpanel"`。[`web/src/tags/RejectedNames.tsx`](../../web/src/tags/RejectedNames.tsx))。ダイアログは開かない。内容は `GET /api/tags/rejected-names` の**ページ**で届き、本文のスクロールに合わせて続きを読み込む ([research.md R-13](research.md#r-13-rejected-names-load-in-pages-from-get-apitagsrejected-names-with-more-loaded-on-scroll)、[contracts/screen-api.md、`GET /api/tags/rejected-names` のパラメータ](contracts/screen-api.md#get-apitagsrejected-names-parameters))。
 
 ```mermaid
 stateDiagram-v2
@@ -552,11 +552,11 @@ stateDiagram-v2
 | 却下した名前のタブで続きの読み込みが失敗した | 一覧の下に "Retry" 付きの "Couldn't load more rejected names"。読み込んだ名前は残る |
 | 一覧を表示中の読み込みの失敗 | 現在の一覧と件数は残る。"Retry" 付きの危険の箱 "Couldn't load tags: {reason}…" が帯の中の列見出しの上にあり、ページが届くまで残り、何も続きを読み込まない ([Stale list](#stale-list)、Edge Case)。まだ一覧がないときは、"Retry" 付きの現在の危険の `EmptyState` |
 
-最初の読み込みの `Skeleton`、"No tags yet"、"Tentative only" の空の状態、名前の変更、作成、1 行の操作の状態は 014 と 031 のままである。1 行の操作も、読み直さずに読み込んだ行の中で適用する (確定、却下、削除、名前の変更、作成、統合。[data-model.md §4](data-model.md#4-screen-state)、"Applying an action's result")。見える違いは、操作によって `Skeleton` も行のちらつきも起きず、スクロール位置が動かないことである。並び順、"Filter"、見出しのチェックボックスは、最初のページが届く前と、一覧のない失敗の後は `disabled` である。タブは常に表示し、その件数はわかった時点で現れる。
+最初の読み込みの `Skeleton`、"No tags yet"、"Tentative only" の空の状態、名前の変更、作成、1 行の操作の状態は 014 と 031 のままである。1 行の操作も、読み直さずに読み込んだ行の中で適用する (確定、却下、削除、名前の変更、作成、統合。[data-model.md、画面の状態](data-model.md#screen-state)、"Applying an action's result")。見える違いは、操作によって `Skeleton` も行のちらつきも起きず、スクロール位置が動かないことである。並び順、"Filter"、見出しのチェックボックスは、最初のページが届く前と、一覧のない失敗の後は `disabled` である。タブは常に表示し、その件数はわかった時点で現れる。
 
 ## レスポンシブな振る舞い {#responsive-behaviour}
 
-幅による違いは、Tailwind の既定のブレークポイントだけを CSS で使う (library-ui.md §4)。判定する幅は 360px (390px のデバイスを含む)、768px、1280px である。トップバーはライブラリの `LibraryToolbar` と同じように変わる。
+幅による違いは、Tailwind の既定のブレークポイントだけを CSS で使う (library-ui.md、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception))。判定する幅は 360px (390px のデバイスを含む)、768px、1280px である。トップバーはライブラリの `LibraryToolbar` と同じように変わる。
 
 | 幅 | トップバー | 帯 | 行 |
 | --- | --- | --- | --- |
@@ -571,7 +571,7 @@ stateDiagram-v2
 
 ## レビューの基準 {#review-criteria}
 
-実際の画面で判定する (library-ui.md §5)。存在するだけでは合格しない (Q-4)。主に 1280×800 で確認し、次に 768px と 360px で確認する (タッチデバイスで、または devtools のタッチのエミュレーションで)。規模: 1,000、3,000、30,000 のタグの `tagsbench` ([quickstart.md](quickstart.md))。見た目の判断は 30,000 でも同じである。
+実際の画面で判定する (library-ui.md、[レイアウトは機械ではなく人が確かめる](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines))。存在するだけでは合格しない (Q-4)。主に 1280×800 で確認し、次に 768px と 360px で確認する (タッチデバイスで、または devtools のタッチのエミュレーションで)。規模: 1,000、3,000、30,000 のタグの `tagsbench` ([quickstart.md](quickstart.md))。見た目の判断は 30,000 でも同じである。
 
 1. **ライブラリとの一致**: トップバーの検索欄、"Filter"、並び順のボタンが、ライブラリの画面と同じ場所に、同じ高さで、同じ見た目で並ぶ。見出し "Tags" とその右の件数は、"Library" と "N items" の書式を使う。本文は独自の操作の行を持たない。
 2. **視覚的階層**: 1280×800 で画面を開くと、目は行の名前 → 見出しと "New tag" → 件数、同義語、仮のマークの順に向かい、チェックボックス (`opacity-40`) はその後に気づく。1 行を選択すると見出しの行が選択バーに入れ替わり、薄い選択の面 (`accent/10`) とすべてのチェックボックスが前に出るが、名前の色と大きさは変わらない。× で画面が戻る。選択バーでは "Confirm" だけが主要で、統合、却下、削除は副次である (却下と削除は危険の文字)。適用されない操作はない。絞り込みが適用されている間、"Filter" ボタンは `accent-soft` の面と数を持ち、チップが見出しの下に並ぶ。一覧の末尾の状態 (`Skeleton`、失敗、一覧の変更) が行より目立つことはなく、危険の色を持つのは失敗の箱だけである (`UI品質`: `視覚的階層`、`操作の優先順位`)。
