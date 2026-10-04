@@ -5,14 +5,14 @@ import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import { Grid } from "../videoList/Grid";
-import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
-import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
+import { CardGrid } from "../ui/patterns/card-grid";
+import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
-import FolderCard, { FolderCardSkeleton } from "./FolderCard";
+import FolderCard from "./FolderCard";
 import { Section } from "./layout";
+import { CardsLoading, LoadFailed, MoreRow, NoMatches } from "./states";
 
 /**
  * FolderContents はフォルダ1件の直下（子フォルダと動画）を並べる通常表示である。
@@ -64,68 +64,66 @@ export default function FolderContents({
           title={t.folders.subfolders}
           count={listingLoading ? undefined : childFolders.length}
         >
-          <Grid zoom={zoom}>
-            {listingLoading ? (
-              <FolderCardSkeleton count={3} />
-            ) : (
-              childFolders.map((child) => (
+          {listingLoading ? (
+            <CardsLoading zoom={zoom} count={3} />
+          ) : (
+            <CardGrid size={zoom}>
+              {childFolders.map((child) => (
                 <FolderCard key={child.path} folder={child} showPath={false} />
-              ))
-            )}
-          </Grid>
+              ))}
+            </CardGrid>
+          )}
         </Section>
       )}
+      {/*
+        件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
+        上に「動画 N」の見出しは出しても、見出しの文字の変化だけでは読み上げ
+        ソフトに伝わらないため）。分岐で作り直さず1つの要素の文字だけを
+        変えることで、更新が確実に読み上げに乗る（絞り込みが無いときと
+        読み込み中は空にする）。
+      */}
       {showVideos && (
-        <div className={showFolders ? "mt-3" : undefined}>
-          {/*
-            件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
-            上に「動画 N」の見出しは出しても、見出しの文字の変化だけでは読み上げ
-            ソフトに伝わらないため）。分岐で作り直さず1つの要素の文字だけを
-            変えることで、更新が確実に読み上げに乗る（絞り込みが無いときと
-            読み込み中は空にする）。
-          */}
-          <p role="status" aria-live="polite" className="sr-only">
-            {filterOnly && !videos.loading ? t.folders.directVideos(videos.total) : ""}
-          </p>
-          {filterOnlyNoMatch ? (
-            <NoMatches />
-          ) : (
-            <Section
-              title={t.folders.videos}
-              count={videos.loading ? undefined : videos.total}
-              action={groupingMenu}
-            >
-              {videos.error !== null && videos.items.length === 0 ? (
-                <LoadFailed reason={videos.error} onRetry={videos.reload} />
-              ) : (
-                <TagRowMeasureProvider>
-                  <Grid zoom={zoom}>
-                    {videos.loading ? (
-                      <CardSkeleton count={6} />
-                    ) : (
-                      itemVideos(videos.items).map((video) => (
-                        <VideoCard
-                          key={video.id}
-                          video={video}
-                          backTo={backTo}
-                          selected={false}
-                          selectionMode={false}
-                          {...preview}
-                          tagsRow={tagsRow}
-                        />
-                      ))
-                    )}
-                    {videos.loadingMore && <CardSkeleton count={6} />}
-                  </Grid>
-                </TagRowMeasureProvider>
-              )}
-              {videos.error !== null && videos.items.length > 0 && (
-                <LoadMoreFailed reason={videos.error} onRetry={videos.retryLoadMore} />
-              )}
-            </Section>
-          )}
-        </div>
+        <p role="status" aria-live="polite" className="sr-only">
+          {filterOnly && !videos.loading ? t.folders.directVideos(videos.total) : ""}
+        </p>
       )}
+      {showVideos &&
+        (filterOnlyNoMatch ? (
+          <NoMatches />
+        ) : (
+          <Section
+            title={t.folders.videos}
+            count={videos.loading ? undefined : videos.total}
+            action={groupingMenu}
+          >
+            {videos.error !== null && videos.items.length === 0 ? (
+              <LoadFailed reason={videos.error} onRetry={videos.reload} />
+            ) : videos.loading ? (
+              <CardsLoading zoom={zoom} count={6} />
+            ) : (
+              <TagRowMeasureProvider>
+                <CardGrid size={zoom}>
+                  {itemVideos(videos.items).map((video) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      backTo={backTo}
+                      selected={false}
+                      selectionMode={false}
+                      {...preview}
+                      tagsRow={tagsRow}
+                    />
+                  ))}
+                </CardGrid>
+              </TagRowMeasureProvider>
+            )}
+            <MoreRow
+              loadingMore={videos.loadingMore}
+              error={videos.items.length > 0 ? videos.error : null}
+              onRetry={videos.retryLoadMore}
+            />
+          </Section>
+        ))}
     </>
   );
 }

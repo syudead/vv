@@ -148,8 +148,10 @@ unresolved, and faking them gives passing tests on a broken screen.
 ## List layout
 
 Lists use a dense management-screen layout: a top bar, a filter band and boxed
-cards, shared by the library and folder pages through one grid
-([`Grid.tsx`](../../web/src/videoList/Grid.tsx)).
+cards. The library page lays its cards out with
+[`Grid.tsx`](../../web/src/videoList/Grid.tsx), and the folder pages with the
+registry's card grid
+([`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)).
 
 The diagram shows the parts of a list screen.
 
@@ -165,7 +167,10 @@ flowchart LR
 ### Shell and toolbar
 
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
-logo and `Refresh library`, and each screen inserts its toolbar between them.
+logo and `Refresh library`, and the library inserts its toolbar between them.
+Folder pages are a design-system `ListPage`: the breadcrumb and the folder name
+head the page, and the toolbar sits under them
+([design-system.md, Page patterns](design-system.md#page-patterns)).
 The sidebar has three states (expanded, rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
 it widens the grid, while card width follows the zoom level. Guest rules are in
@@ -184,8 +189,8 @@ The toolbar holds search, filters, view (library only), zoom and sort.
 | Width | Toolbar |
 | --- | --- |
 | Wide | All controls inline |
-| Narrow | View, zoom and sort move into `View and sort` |
-| Below `md` | Sort orders fill two radio columns row-first: 5 rows owner, 4 guest |
+| Narrow | View, zoom and sort move into `View and sort` (folder pages: below `lg`) |
+| Below `md` | Library: sort orders fill two radio columns row-first, 5 rows owner, 4 guest; folder pages keep the sort menu |
 | Below `sm` | One full-width column at any zoom; zoom hidden |
 
 The count sits in the row above the grid for the library and search results,

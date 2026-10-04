@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 50cf0886b43d2fa0105231202db9b51787924658afcfadb82251269faf1e19ba
+sourceHash: d9d8b3bfaeec2fb8789422c76a2bcdd3a059b6e7a14c309f29d9caed584625df
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -106,7 +106,7 @@ jsdom は CSS を適用しないので、`position: fixed`、メディアクエ�
 
 ## 一覧のレイアウト {#list-layout}
 
-一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードで、ライブラリとフォルダのページが 1 つのグリッド（[`Grid.tsx`](../../web/src/videoList/Grid.tsx)）を通して共有する。
+一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードだ。ライブラリのページは [`Grid.tsx`](../../web/src/videoList/Grid.tsx) でカードを並べ、フォルダのページはレジストリのカードグリッド（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)）で並べる。
 
 図は一覧画面の部品を示す。
 
@@ -121,7 +121,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、各画面はその間に自分のツールバーを差し込む。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、ライブラリはその間に自分のツールバーを差し込む。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストとフォルダ名がページの先頭に来て、ツールバーはその下に置く（[design-system.md、Page patterns](design-system.md#page-patterns)）。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -136,8 +136,8 @@ flowchart LR
 | 幅 | ツールバー |
 | --- | --- |
 | 広い | すべてのコントロールを横に並べる |
-| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る |
-| `md` 未満 | 並び順は 2 列のラジオに行優先で並ぶ。所有者は 5 行、ゲストは 4 行 |
+| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る（フォルダのページでは `lg` 未満） |
+| `md` 未満 | ライブラリでは並び順が 2 列のラジオに行優先で並び、所有者は 5 行、ゲストは 4 行。フォルダのページは並べ替えのメニューを保つ |
 | `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示 |
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。

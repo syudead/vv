@@ -1,16 +1,13 @@
-import { SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
-import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import Tooltip from "../ui/Tooltip";
+import { Toolbar } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { CompactSortControls, SortMenu } from "../videoList/SortControls";
+import { SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 export interface FolderToolbarProps {
@@ -44,11 +41,11 @@ export interface FolderToolbarProps {
 }
 
 /**
- * FolderToolbar はフォルダ画面（各フォルダ・最上位）のトップバー内の操作である。
- * ライブラリのツールバーから表示形式の切り替えを除いたもので、部品と幅の境界は
- * 同じにする（ui-design.md「Toolbar」「Screen boundary」）。検索欄・絞り込み・
+ * FolderToolbar はフォルダ画面（各フォルダ・最上位）の一覧ページのツールバーである。
+ * ライブラリのツールバーから表示形式の切り替えを除いたもので、デザインシステムの
+ * `Toolbar` に載せる（web/registry/rules/patterns.md の Sections）。検索欄・絞り込み・
  * 並べ替え・向き・大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを
- * 使う。
+ * 使う。並べ替えと大きさは `lg` から並べ、それより狭いと「表示と並び順」にまとめる。
  */
 export default function FolderToolbar({
   query,
@@ -72,16 +69,40 @@ export default function FolderToolbar({
   onZoomChange,
 }: FolderToolbarProps) {
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-      <SearchBox
-        query={query}
-        onCommit={onQueryCommit}
-        inputRef={searchRef}
-        label={searchLabel}
-        placeholder={searchPlaceholder}
-        className="min-w-20 flex-1 sm:min-w-40 sm:max-w-md"
-      />
-
+    <Toolbar
+      search={
+        <SearchBox
+          query={query}
+          onCommit={onQueryCommit}
+          inputRef={searchRef}
+          label={searchLabel}
+          placeholder={searchPlaceholder}
+          className="w-full"
+        />
+      }
+      view={[
+        {
+          id: "sort",
+          label: t.list.sort.heading,
+          control: (
+            <SortMenu
+              sort={sort}
+              onSortChange={onSortChange}
+              onShuffle={onShuffle}
+              disabled={disabled}
+            />
+          ),
+        },
+        {
+          id: "size",
+          label: t.list.cardSize,
+          control: (
+            <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" />
+          ),
+        },
+      ]}
+      viewLabel={t.list.viewAndSort}
+    >
       <FilterMenu
         watch={watch}
         onWatchChange={onWatchChange}
@@ -93,55 +114,6 @@ export default function FolderToolbar({
         onClear={onClear}
         disabled={disabled}
       />
-
-      <div className="hidden md:block">
-        <SortMenu
-          sort={sort}
-          onSortChange={onSortChange}
-          onShuffle={onShuffle}
-          disabled={disabled}
-        />
-      </div>
-
-      <Tooltip content={t.list.cardSize}>
-        <ZoomSlider
-          zoom={zoom}
-          onZoomChange={onZoomChange}
-          className="hidden w-24 xl:flex"
-        />
-      </Tooltip>
-
-      <PopoverRoot>
-        <PopoverTrigger asChild>
-          <Button
-            variant="secondary"
-            aria-label={t.list.viewAndSort}
-            className="px-2.5 xl:hidden"
-          >
-            <SlidersHorizontal />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80">
-          <div className="space-y-4">
-            <div className="md:hidden">
-              <CompactSortControls
-                name="folder-compact-sort"
-                sort={sort}
-                onSortChange={onSortChange}
-                onShuffle={onShuffle}
-                disabled={disabled}
-              />
-            </div>
-
-            <fieldset className="hidden sm:block xl:hidden">
-              <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
-                {t.list.cardSize}
-              </legend>
-              <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
-            </fieldset>
-          </div>
-        </PopoverContent>
-      </PopoverRoot>
-    </div>
+    </Toolbar>
   );
 }
