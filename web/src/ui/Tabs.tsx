@@ -79,15 +79,15 @@ export default function Tabs<T extends string>({
             onClick={() => onValueChange(item.value)}
             className={cn(
               "-mb-px flex h-10 items-center gap-1.5 border-b-2 px-0.5 text-sm font-medium whitespace-nowrap transition-colors",
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link",
+              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
               selected
-                ? "border-accent text-fg"
-                : "border-transparent text-fg-muted hover:text-fg",
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {item.label}
             {item.count !== undefined && (
-              <span className="font-normal text-fg-subtle tabular-nums">
+              <span className="font-normal text-muted-foreground tabular-nums">
                 {item.count}
               </span>
             )}

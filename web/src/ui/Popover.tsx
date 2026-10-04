@@ -57,7 +57,7 @@ export function PopoverContent({
         onPointerLeave={onPointerLeave}
         aria-labelledby={labelledBy}
         className={cn(
-          "z-50 w-72 rounded-md bg-elevated p-4 shadow-elevated animate-pop-in origin-(--radix-popover-content-transform-origin) outline-none",
+          "z-50 w-72 rounded-md bg-popover p-4 shadow-elevated animate-pop-in origin-(--radix-popover-content-transform-origin) outline-none",
           className,
         )}
       >

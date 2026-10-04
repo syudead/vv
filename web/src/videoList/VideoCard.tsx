@@ -101,7 +101,10 @@ function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "ro
 function PublicMark({ className }: { className?: string }) {
   return (
     <>
-      <Globe aria-hidden="true" className={cn("size-3 shrink-0 text-fg", className)} />
+      <Globe
+        aria-hidden="true"
+        className={cn("size-3 shrink-0 text-foreground", className)}
+      />
       <span className="sr-only">{t.list.card.public}</span>
     </>
   );
@@ -270,14 +273,13 @@ function VideoCard(props: VideoCardProps) {
       onPointerEnter={startPreview}
       onPointerLeave={release}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart",
+        "group relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition duration-200 ease-out-quart",
         // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-link",
-        "hover:-translate-y-0.5",
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring",
         // 装飾的な動きは動きを減らす設定で止める（library-ui.md 4）。影の最終状態は残す。
-        "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-        "hover:shadow-card-hover",
-        selected && "border-accent ring-2 ring-accent",
+        "motion-reduce:transition-none",
+        "hover:border-input hover:shadow-card-hover",
+        selected && "border-primary ring-2 ring-primary",
         selectionMode && "select-none",
       )}
     >
@@ -315,7 +317,7 @@ function VideoCard(props: VideoCardProps) {
           <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
           {(publicMark || duration !== "") && (
-            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-navbar/90 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
+            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs font-medium text-foreground tabular-nums">
               {publicMark && <PublicMark />}
               {duration !== "" && (
                 <span>
@@ -339,12 +341,12 @@ function VideoCard(props: VideoCardProps) {
               aria-label={t.list.card.watchedRatio}
               // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
               className={cn(
-                "absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90",
+                "absolute inset-x-0 bottom-0 h-1 bg-overlay",
                 scrubPosition !== null && "opacity-0",
               )}
             >
               <span
-                className="block h-full bg-accent"
+                className="block h-full bg-primary"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}
               />
             </span>
@@ -354,10 +356,10 @@ function VideoCard(props: VideoCardProps) {
             <span
               aria-hidden="true"
               data-scrub-bar=""
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-overlay"
             >
               <span
-                className="block h-full bg-fg"
+                className="block h-full bg-foreground"
                 style={{ width: `${String(scrubPosition.ratio * 100)}%` }}
               />
             </span>
@@ -382,15 +384,18 @@ function VideoCard(props: VideoCardProps) {
           <h3
             title={video.title}
             className={cn(
-              "line-clamp-2 text-sm leading-5 font-semibold break-all sm:text-base sm:leading-6",
-              state === "watched" ? "text-fg-muted" : "text-fg",
+              "line-clamp-2 text-sm font-medium break-all",
+              state === "watched" ? "text-muted-foreground" : "text-foreground",
             )}
           >
             {video.title}
           </h3>
           {location !== undefined && (
-            <p className="flex min-w-0 items-center gap-1 text-xs text-fg-muted">
-              <Folder aria-hidden="true" className="size-3 shrink-0 text-fg-subtle" />
+            <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              <Folder
+                aria-hidden="true"
+                className="size-3 shrink-0 text-muted-foreground"
+              />
               {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。
                   title 属性は省略しない全体（最上位では登録フォルダの絶対パスから）。 */}
               <span
@@ -438,8 +443,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
     <tr
       data-video-id={video.id}
       className={cn(
-        "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
-        selected && "bg-accent-soft",
+        "group relative transition-colors hover:bg-accent [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-ring",
+        selected && "bg-primary-soft",
       )}
     >
       {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
@@ -458,8 +463,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           />
         </td>
       )}
-      <td className="w-32 py-1.5 pr-2">
-        <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
+      <td className="w-list-thumb-cell py-1.5 pr-2">
+        <div className="relative aspect-video w-list-thumb overflow-hidden rounded-sm bg-navbar">
           {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
             <ThumbnailBackdrop src={video.thumbnailUrl} />
           )}
@@ -473,9 +478,9 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             />
           )}
           {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-navbar/90">
+            <span className="absolute inset-x-0 bottom-0 h-1 bg-overlay">
               <span
-                className="block h-full bg-accent"
+                className="block h-full bg-primary"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}
               />
             </span>
@@ -493,8 +498,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             }
           }}
           className={cn(
-            "line-clamp-2 text-sm font-medium break-all hover:text-link",
-            state === "watched" ? "text-fg-muted" : "text-fg",
+            "line-clamp-2 text-sm font-medium break-all hover:text-primary",
+            state === "watched" ? "text-muted-foreground" : "text-foreground",
           )}
         >
           {video.title}
@@ -512,7 +517,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           <VideoFavorite video={video} variant="row" />
         </td>
       )}
-      <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
+      <td className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check
             className="ml-auto size-4 text-success"
@@ -520,20 +525,20 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           />
         )}
       </td>
-      <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">
+      <td className="w-list-number pr-4 text-right text-sm text-foreground tabular-nums">
         {/* 公開の印は時間の直前に置く（ui-design.md「Card」）。 */}
         <span className="inline-flex items-center justify-end gap-1.5">
           {publicMark && <PublicMark />}
           {duration}
         </span>
       </td>
-      <td className="hidden w-20 pr-4 text-right text-sm font-bold text-fg uppercase md:table-cell">
+      <td className="hidden w-list-number pr-4 text-right text-sm font-semibold text-foreground uppercase md:table-cell">
         {quality}
       </td>
-      <td className="hidden w-24 pr-4 text-right text-sm text-fg-muted tabular-nums md:table-cell">
+      <td className="hidden w-list-number-wide pr-4 text-right text-sm text-muted-foreground tabular-nums md:table-cell">
         {formatBytes(video.sizeBytes)}
       </td>
-      <td className="hidden w-28 pr-3 text-right text-sm text-fg-muted tabular-nums lg:table-cell">
+      <td className="hidden w-list-date pr-3 text-right text-sm text-muted-foreground tabular-nums lg:table-cell">
         {formatRelative(video.addedAt)}
       </td>
     </tr>

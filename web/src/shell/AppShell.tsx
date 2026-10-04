@@ -10,7 +10,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const sidebar = useSidebar();
 
   return (
-    <div className="min-h-dvh bg-bg">
+    <div className="min-h-dvh bg-background">
       <TopBar onMenu={sidebar.toggle} />
       <Sidebar mode={sidebar.mode} open={sidebar.open} onClose={sidebar.close} />
       <main

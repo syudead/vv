@@ -61,7 +61,7 @@ export default function VisibilitySwitch({
         className={cn(
           "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-150 select-none aria-disabled:cursor-default aria-disabled:opacity-50",
           isPublic
-            ? "bg-accent-soft text-link hover:text-fg"
+            ? "bg-primary-soft text-link hover:text-fg"
             : "bg-elevated text-fg hover:bg-hover-wash hover:bg-blend-lighten active:bg-active-wash",
         )}
       >

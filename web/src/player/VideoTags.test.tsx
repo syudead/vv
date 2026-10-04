@@ -293,7 +293,7 @@ describe("VideoTags", () => {
       expect(icon).not.toBeNull();
       expect(icon?.getAttribute("aria-hidden")).toBe("true");
       expect(icon?.getAttribute("class")).toContain("size-3");
-      expect(icon?.getAttribute("class")).toContain("text-fg-subtle");
+      expect(icon?.getAttribute("class")).toContain("text-muted-foreground");
       expect(link.firstElementChild?.textContent).toBe("高画質");
       expect(link.firstElementChild?.className).toContain("truncate");
       expect(link.lastElementChild).toBe(icon);

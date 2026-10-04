@@ -66,7 +66,7 @@ export default function AddTagPopover({
   const createLabel =
     exactOption === null && trimmed !== "" ? (
       <span className="flex min-w-0 items-center gap-2">
-        <Plus className="size-3.5 shrink-0 text-fg-muted" aria-hidden="true" />
+        <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="truncate">{t.library.selection.create(trimmed)}</span>
       </span>
     ) : null;
@@ -108,7 +108,7 @@ export default function AddTagPopover({
       side="top"
       align="start"
       aria-labelledby={headingId}
-      className="w-72 p-3"
+      className="w-popover p-3"
       onOpenAutoFocus={(event) => {
         event.preventDefault();
         if (!overLimit) inputRef.current?.focus();
@@ -121,7 +121,7 @@ export default function AddTagPopover({
         {t.library.selection.addTag}
       </h2>
       {overLimit ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-xs text-destructive">
           {overLimitMessage()}
         </p>
       ) : (
@@ -135,7 +135,12 @@ export default function AddTagPopover({
             createLabel={createLabel}
             onCreate={(spelling) => submit({ name: spelling })}
             placeholder={t.library.selection.addTag}
-            icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
+            icon={
+              <Plus
+                className="size-3 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            }
             busy={submitting}
             side="top"
             aria-label={t.library.selection.addTag}
@@ -149,7 +154,7 @@ export default function AddTagPopover({
             frameClassName="w-full"
           />
           {errorMessage !== null && (
-            <p role="alert" className="mt-1 text-xs text-danger">
+            <p role="alert" className="mt-1 text-xs text-destructive">
               {errorMessage}
             </p>
           )}

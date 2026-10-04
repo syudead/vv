@@ -13,17 +13,17 @@ import { useToast } from "../ui/Toast";
  *
  * - `card` は格子のカードのサムネイルの右上に重ねる形で、面も枠も付けず、押せる範囲
  *   `size-7` の中に 22px のハートだけを置き、暗い影（`drop-shadow-mark`）で明るい絵柄の上でも
- *   読めるようにする。オフは白の線（`text-fg`）である。`row` はリスト表示の行の列に置く
- *   面も影も無い形（`size-6`、ハート 16px）で、オフは `text-fg-muted`。オンはどちらも
+ *   読めるようにする。オフは白の線（`text-foreground`）である。`row` はリスト表示の行の列に置く
+ *   面も影も無い形（`size-6`、ハート 16px）で、オフは `text-muted-foreground`。オンはどちらも
  *   `text-favorite` の塗りである。オフはカード・行の hover、中へのフォーカス、`hover:none` の
  *   端末でだけ見える（選択のチェックと同じ条件）。
  * - 押すと `onToggle` を 1 回呼ぶ。`click` の伝播を止め、カードのリンクも選択も動かさない。
  *   決着するまでは `aria-disabled` で回る印に替え、重ねて送らない。印は応答の通知で
  *   一覧が差し替える（api/favorites.ts）。失敗はトーストで伝え、印は変えない。
  * - `page` は再生画面の情報の行の右端の一群に置く形で、`IconButton`（`sm`、ghost）である
- *   （ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-fg-muted`、オンは
- *   `active` の面（`bg-accent-soft`）のまま、ハートの色だけを `text-favorite!` で上書きする
- *   （`data-active:text-link` より詳細度が高いため `!` が要る）。常に見える。失敗は `onFailed` へ渡し、
+ *   （ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-muted-foreground`、オンは
+ *   `active` の面（`bg-primary-soft`）のまま、ハートの色だけを `text-favorite!` で上書きする
+ *   （`data-active:text-primary` より詳細度が高いため `!` が要る）。常に見える。失敗は `onFailed` へ渡し、
  *   呼び出し側が情報の行の直下の 1 行に出す（トーストは出さない）。
  */
 export default function FavoriteToggle({
@@ -89,7 +89,7 @@ export default function FavoriteToggle({
         aria-disabled={pending || undefined}
         onClick={press}
         className={cn(
-          favorite ? "text-favorite!" : "text-fg-muted! hover:text-fg!",
+          favorite ? "text-favorite!" : "text-muted-foreground! hover:text-foreground!",
           pending && "cursor-progress",
         )}
       >
@@ -105,13 +105,13 @@ export default function FavoriteToggle({
       aria-disabled={pending || undefined}
       onClick={press}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:outline-2 focus-visible:outline-link",
+        "inline-flex shrink-0 items-center justify-center rounded-sm transition-opacity duration-150 outline-none focus-visible:outline-2 focus-visible:outline-ring",
         variant === "card" ? "size-7" : "size-6",
         favorite
           ? "text-favorite"
           : variant === "card"
-            ? "text-fg"
-            : "text-fg-muted hover:text-fg",
+            ? "text-foreground"
+            : "text-muted-foreground hover:text-foreground",
         favorite || pending
           ? "opacity-100"
           : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",

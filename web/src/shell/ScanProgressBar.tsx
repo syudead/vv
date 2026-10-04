@@ -25,10 +25,10 @@ export default function ScanProgressBar({
         aria-valuemax={videos.total}
         aria-valuenow={videos.settled}
         aria-valuetext={t.shell.scan.videosDone(videos.settled, videos.total)}
-        className={cn("overflow-hidden rounded-full bg-bg", className)}
+        className={cn("overflow-hidden rounded-full bg-background", className)}
       >
         <div
-          className="h-full bg-accent transition-[width] duration-300"
+          className="h-full bg-primary transition-[width] duration-300"
           style={{ width: `${String(percent)}%` }}
         />
       </div>
@@ -40,9 +40,9 @@ export default function ScanProgressBar({
     <div
       role="progressbar"
       aria-label={t.shell.scan.progress}
-      className={cn("overflow-hidden rounded-full bg-bg", className)}
+      className={cn("overflow-hidden rounded-full bg-background", className)}
     >
-      <div className="h-full w-1/3 animate-pulse bg-accent motion-reduce:animate-none" />
+      <div className="h-full w-1/3 animate-pulse bg-primary motion-reduce:animate-none" />
     </div>
   );
 }

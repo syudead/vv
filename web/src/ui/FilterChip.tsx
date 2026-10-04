@@ -31,8 +31,8 @@ export default function FilterChip({
       aria-label={label}
       onClick={onRemove}
       className={cn(
-        "flex h-6 items-center gap-1 rounded-sm bg-accent-soft px-1.5 text-xs text-link",
-        "hover:ring-1 hover:ring-inset hover:ring-border-strong",
+        "flex h-6 items-center gap-1 rounded-sm bg-primary-soft px-1.5 text-xs text-primary",
+        "hover:ring-1 hover:ring-inset hover:ring-input",
         "[&>svg]:size-3 [&>svg]:shrink-0",
       )}
     >

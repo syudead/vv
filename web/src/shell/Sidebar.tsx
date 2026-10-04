@@ -20,12 +20,12 @@ function entryClassName(mode: SidebarMode, active: boolean): string {
   return cn(
     "flex items-center rounded-md transition-colors duration-150 select-none",
     rail
-      ? "h-14 w-14 flex-col justify-center gap-1 px-0.5 text-[10px] leading-none"
+      ? "h-14 w-14 flex-col justify-center gap-1 px-0.5 text-2xs leading-none"
       : "h-9 gap-3 px-3 text-sm",
     active
-      ? "bg-active-wash font-medium text-fg"
-      : "text-fg-muted hover:bg-hover-wash hover:text-fg",
-    "[&>svg]:size-[18px] [&>svg]:shrink-0",
+      ? "bg-secondary font-medium text-foreground"
+      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+    "[&>svg]:size-5 [&>svg]:shrink-0",
   );
 }
 
@@ -151,7 +151,7 @@ export default function Sidebar({
         aria-hidden={drawer && !open ? true : undefined}
         inert={drawer && !open ? true : undefined}
         className={cn(
-          "fixed top-navbar bottom-0 left-0 z-40 flex flex-col border-r border-border bg-bg transition-transform duration-200 ease-out-quart",
+          "fixed top-navbar bottom-0 left-0 z-40 flex flex-col border-r border-border bg-navbar transition-transform duration-200 ease-out-quart",
           mode === "expanded" && "w-sidebar",
           mode === "rail" && "w-sidebar-rail",
           drawer && "w-sidebar",
@@ -161,7 +161,7 @@ export default function Sidebar({
         <nav
           className={cn(
             "flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto",
-            mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
+            mode === "rail" ? "items-center px-1.5 py-2" : "px-2 py-3",
           )}
         >
           {entries.map((entry) => (
@@ -172,7 +172,7 @@ export default function Sidebar({
           aria-label={t.shell.nav.account}
           className={cn(
             "flex shrink-0 flex-col gap-0.5 border-t border-border",
-            mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
+            mode === "rail" ? "items-center px-1.5 py-2" : "px-2 py-3",
           )}
         >
           <AccountEntries mode={mode} onNavigate={onClose} />

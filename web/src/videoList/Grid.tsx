@@ -17,7 +17,7 @@ export const cardWidth: Record<Zoom, string> = {
 export function Grid({ zoom, children }: { zoom: Zoom; children: ReactNode }) {
   return (
     <div
-      className="flex flex-wrap justify-center gap-2.5 [&>*]:w-full sm:[&>*]:w-[min(var(--card),100%)]"
+      className="flex flex-wrap justify-center gap-3 [&>*]:w-full sm:[&>*]:w-[min(var(--card),100%)]"
       style={{ "--card": cardWidth[zoom] } as CSSProperties}
     >
       {children}

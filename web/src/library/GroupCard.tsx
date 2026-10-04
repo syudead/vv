@@ -132,12 +132,11 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart",
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-link",
-        "hover:-translate-y-0.5",
-        "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-        "hover:shadow-card-hover",
-        selected && "border-accent ring-2 ring-accent",
+        "group relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition duration-200 ease-out-quart",
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring",
+        "motion-reduce:transition-none",
+        "hover:border-input hover:shadow-card-hover",
+        selected && "border-primary ring-2 ring-primary",
         selectionMode && "select-none",
       )}
     >
@@ -183,7 +182,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
           {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
               前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}
-          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-navbar/90 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
+          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs font-medium text-foreground tabular-nums">
             <span>{countText}</span>
             {duration !== "" && <span>{duration}</span>}
           </span>
@@ -195,10 +194,10 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label={t.library.group.watchedRatio}
-              className="absolute inset-x-0 bottom-0 z-20 h-[5px] bg-navbar/90"
+              className="absolute inset-x-0 bottom-0 z-20 h-1 bg-overlay"
             >
               <span
-                className="block h-full bg-accent"
+                className="block h-full bg-primary"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}
               />
             </span>
@@ -211,8 +210,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           <h3
             title={group.name}
             className={cn(
-              "line-clamp-2 text-sm leading-5 font-semibold break-all sm:text-base sm:leading-6",
-              state === "watched" ? "text-fg-muted" : "text-fg",
+              "line-clamp-2 text-sm font-medium break-all",
+              state === "watched" ? "text-muted-foreground" : "text-foreground",
             )}
           >
             {group.name}
@@ -249,8 +248,8 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
       className={cn(
-        "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
-        selected && "bg-accent-soft",
+        "group relative transition-colors hover:bg-accent [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-ring",
+        selected && "bg-primary-soft",
       )}
     >
       {onSelect !== undefined && (
@@ -268,8 +267,8 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           />
         </td>
       )}
-      <td className="w-32 py-1.5 pr-2">
-        <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
+      <td className="w-list-thumb-cell py-1.5 pr-2">
+        <div className="relative aspect-video w-list-thumb overflow-hidden rounded-sm bg-navbar">
           {cover !== undefined && (
             <img
               src={cover.thumbnailUrl}
@@ -280,9 +279,9 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
             />
           )}
           {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-navbar/90">
+            <span className="absolute inset-x-0 bottom-0 h-1 bg-overlay">
               <span
-                className="block h-full bg-accent"
+                className="block h-full bg-primary"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}
               />
             </span>
@@ -301,13 +300,13 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
             }
           }}
           className={cn(
-            "line-clamp-2 text-sm font-medium break-all hover:text-link",
-            state === "watched" ? "text-fg-muted" : "text-fg",
+            "line-clamp-2 text-sm font-medium break-all hover:text-primary",
+            state === "watched" ? "text-muted-foreground" : "text-foreground",
           )}
         >
           {group.name}
         </Link>
-        <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted tabular-nums">
+        <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
           <Folder aria-hidden="true" className="size-3 shrink-0" />
           {groupCountText(group.videoCount)}
         </span>
@@ -317,7 +316,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <GroupFavorite group={group} variant="row" />
         </td>
       )}
-      <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
+      <td className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check
             className="ml-auto size-4 text-success"
@@ -327,12 +326,14 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         {state === "inProgress" &&
           t.library.group.progress(watchedCount, group.videoCount)}
       </td>
-      <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">{duration}</td>
-      <td className="hidden w-20 pr-4 md:table-cell" />
-      <td className="hidden w-24 pr-4 text-right text-sm text-fg-muted tabular-nums md:table-cell">
+      <td className="w-list-number pr-4 text-right text-sm text-foreground tabular-nums">
+        {duration}
+      </td>
+      <td className="hidden w-list-number pr-4 md:table-cell" />
+      <td className="hidden w-list-number-wide pr-4 text-right text-sm text-muted-foreground tabular-nums md:table-cell">
         {formatBytes(group.sizeBytes)}
       </td>
-      <td className="hidden w-28 pr-3 text-right text-sm text-fg-muted tabular-nums lg:table-cell">
+      <td className="hidden w-list-date pr-3 text-right text-sm text-muted-foreground tabular-nums lg:table-cell">
         {formatRelative(group.addedAt)}
       </td>
     </tr>

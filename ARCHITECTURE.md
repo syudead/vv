@@ -214,7 +214,7 @@ memory.
 The playback screen (`/videos/:id`) has no shell: it is a two-pane screen
 under its own header band, and keeping that to one routing decision lets the
 shell stay ignorant of which screen it frames. The visual tokens live only in
-`web/src/index.css`; the components, tokens and usage rules screens are built
+`web/src/ui/tokens.css`; the components, tokens and usage rules screens are built
 from are the [design system](docs/design-docs/design-system.md); list
 behaviour, scrolling and preferences are in
 [library-ui.md](docs/design-docs/library-ui.md).

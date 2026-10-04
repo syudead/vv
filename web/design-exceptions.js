@@ -17,7 +17,14 @@
 export default [
   {
     file: "auth/CredentialScreen.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["sm:pt-24"],
+    kind: "migration",
+  },
+  {
+    file: "folders/Breadcrumbs.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5", "h-3\\.5", "w-20", "max-w-40"],
     kind: "migration",
   },
   {
@@ -26,13 +33,26 @@ export default [
     kind: "migration",
   },
   {
-    file: "library/CardTagRow.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    file: "folders/FolderGroupingMenu.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["max-w-80", "px-2\\.5"],
     kind: "migration",
   },
   {
-    file: "library/GroupCard.tsx",
+    file: "folders/FolderPage.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["pb-24"],
+    kind: "migration",
+  },
+  {
+    file: "folders/FolderToolbar.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["min-w-20", "sm:min-w-40", "w-24", "px-2\\.5", "w-80"],
+    kind: "migration",
+  },
+  {
+    file: "library/CardTagRow.tsx",
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
@@ -61,8 +81,15 @@ export default [
     kind: "migration",
   },
   {
+    file: "player/StatusOverlays.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["pb-14", "gap-2\\.5", "size-3\\.5"],
+    kind: "migration",
+  },
+  {
     file: "player/TouchControls.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-15", "size-7"],
     kind: "migration",
   },
   {
@@ -73,6 +100,12 @@ export default [
   {
     file: "player/VideoFacts.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
+    file: "player/VideoHeader.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5", "max-w-40"],
     kind: "migration",
   },
   {
@@ -91,7 +124,8 @@ export default [
   },
   {
     file: "player/VideoTags.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5", "h-3\\.5"],
     kind: "migration",
   },
   {
@@ -101,22 +135,26 @@ export default [
   },
   {
     file: "player/VisibilitySwitch.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["px-2\\.5"],
     kind: "migration",
   },
   {
     file: "settings/APITokensSection.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5"],
     kind: "migration",
   },
   {
     file: "settings/FolderPicker.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["sm:min-h-72", "min-h-48", "min-h-11"],
     kind: "migration",
   },
   {
     file: "settings/NetworkSection.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["w-11", "size-3\\.5"],
     kind: "migration",
   },
   {
@@ -126,7 +164,8 @@ export default [
   },
   {
     file: "settings/TranscodingSection.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5", "w-48"],
     kind: "migration",
   },
   {
@@ -160,18 +199,49 @@ export default [
     kind: "migration",
   },
   {
+    file: "tags/MergeTagDialog.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["max-h-32"],
+    kind: "migration",
+  },
+  {
     file: "tags/SynonymsDialog.tsx",
     rules: ["no-restricted-syntax"],
     kind: "migration",
   },
   {
     file: "tags/TagRow.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["sm:w-20"],
+    kind: "migration",
+  },
+  {
+    file: "tags/TagToolbar.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["min-w-20", "sm:min-w-40", "px-2\\.5", "w-72"],
     kind: "migration",
   },
   {
     file: "tags/TagsPage.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
+    kind: "migration",
+  },
+  {
+    file: "ui/BrandHomeLink.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-7"],
+    kind: "migration",
+  },
+  {
+    file: "ui/Checkbox.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5"],
+    kind: "migration",
+  },
+  {
+    file: "ui/Chip.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["\\[&>svg\\]:size-3\\.5"],
     kind: "migration",
   },
   {
@@ -205,13 +275,20 @@ export default [
     kind: "migration",
   },
   {
+    file: "ui/TentativeMark.tsx",
+    rules: ["better-tailwindcss/no-restricted-classes"],
+    classes: ["size-3\\.5"],
+    kind: "migration",
+  },
+  {
     file: "ui/Toast.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {
     file: "versions/BundleDialog.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["max-h-80"],
     kind: "migration",
   },
   {
@@ -221,7 +298,8 @@ export default [
   },
   {
     file: "videoList/FavoriteToggle.tsx",
-    rules: ["no-restricted-syntax"],
+    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
+    classes: ["size-5\\.5", "size-7"],
     kind: "migration",
   },
   {
@@ -252,11 +330,6 @@ export default [
   {
     file: "videoList/SortControls.tsx",
     rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/VideoCard.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },
   {

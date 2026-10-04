@@ -78,6 +78,36 @@ const arbitraryUtility = String.raw`[^\[(]*[\[(]`;
 const arbitraryMessage =
   "Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).";
 
+// 段階の外の数値の段（`p-7`、`gap-2.5`、`text-2xl`、`rounded-xl`、`font-bold` など）を落とす
+// （contracts/registry.md の Check rules、ui-design.md の Foundations）。段階は
+// src/ui/tokens.css と web/registry/rules/foundations.md にあり、この規則は最後の単位が
+// テーマの名前空間を空にして no-unknown-classes に任せるまでの間だけ使う（research.md R-8）。
+const spacingSteps = [
+  "0",
+  "0\\.5",
+  "1",
+  "1\\.5",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "8",
+  "9",
+  "10",
+  "12",
+  "16",
+];
+const spacingUtility = String.raw`-?(?:p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?|space-[xy]|w|h|size|min-[wh]|max-[wh]|inset(?:-[xy])?|top|right|bottom|left|start|end|translate-[xy]|basis|scroll-[mp][xytrblse]?|indent)`;
+const offScaleUtility = [
+  String.raw`${spacingUtility}-(?!(?:${spacingSteps.join("|")})$)\d+(?:\.\d+)?`,
+  String.raw`text-(?:[2-9]xl)`,
+  String.raw`rounded(?:-[trblse]{1,2})?-(?:xl|[2-9]xl)`,
+  String.raw`font-(?:thin|extralight|light|bold|extrabold|black)`,
+].join("|");
+const offScaleMessage =
+  "Step outside the design-system scale (web/registry/rules/foundations.md).";
+
 function restrictedClasses(allowed = []) {
   const allow = allowed.length > 0 ? `(?!(?:${allowed.join("|")})$)` : "";
   return [
@@ -85,6 +115,10 @@ function restrictedClasses(allowed = []) {
     {
       restrict: [
         { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
+        {
+          pattern: `^${allow}${variants}(?:${offScaleUtility})$`,
+          message: offScaleMessage,
+        },
       ],
     },
   ];

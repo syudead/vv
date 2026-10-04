@@ -24,12 +24,12 @@ function ScanButton() {
         disabled={scan.running || !scan.canStart}
         aria-label={buttonDescription}
         className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
+          "inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm transition-colors select-none",
           scan.error !== null
-            ? "bg-danger-soft text-danger"
+            ? "bg-destructive-soft text-destructive"
             : scan.running
-              ? "bg-accent-soft text-link"
-              : "text-fg hover:bg-hover-wash active:bg-active-wash",
+              ? "bg-primary-soft text-primary"
+              : "text-foreground hover:bg-accent active:bg-secondary",
         )}
       >
         <RefreshCw
@@ -55,7 +55,7 @@ function ScanButton() {
 export default function TopBar({ onMenu }: { onMenu: () => void }) {
   const owner = useAudience() === "owner";
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
+    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-navbar px-2 sm:px-3">
       <IconButton label={t.shell.nav.menu} onClick={onMenu} tooltip={false}>
         <Menu />
       </IconButton>

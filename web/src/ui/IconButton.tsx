@@ -39,8 +39,8 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
         "inline-flex shrink-0 items-center justify-center rounded-md transition-colors duration-150 select-none [&>svg]:size-4",
         "aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-50",
         variant === "ghost"
-          ? "text-fg enabled:hover:bg-hover-wash enabled:active:bg-active-wash data-active:bg-accent-soft data-active:text-link"
-          : "border border-control-border bg-elevated text-fg enabled:hover:bg-surface-hover enabled:active:bg-surface data-active:border-accent-active data-active:bg-accent-soft data-active:text-link",
+          ? "text-foreground enabled:hover:bg-accent enabled:active:bg-secondary data-active:bg-primary-soft data-active:text-primary"
+          : "border border-input bg-popover text-foreground enabled:hover:bg-secondary enabled:active:bg-card data-active:border-primary-active data-active:bg-primary-soft data-active:text-primary",
         sizes[size],
         className,
       )}

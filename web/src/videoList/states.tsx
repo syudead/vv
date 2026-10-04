@@ -21,18 +21,22 @@ export function EmptyState({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center rounded-lg border border-border bg-surface px-6 py-14 text-center animate-fade-in motion-reduce:animate-none">
+    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center rounded-lg border border-border bg-card px-6 py-16 text-center animate-fade-in motion-reduce:animate-none">
       <Icon
-        className={"mb-4 size-10 " + (tone === "danger" ? "text-danger" : "text-accent")}
+        className={
+          "mb-4 size-10 " + (tone === "danger" ? "text-destructive" : "text-primary")
+        }
         strokeWidth={1.5}
         aria-hidden="true"
       />
-      <h2 className="text-lg font-semibold text-fg">{title}</h2>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
       {description !== undefined &&
         (typeof description === "string" ? (
-          <p className="mt-1.5 text-sm text-fg-muted text-balance">{description}</p>
+          <p className="mt-1.5 text-sm text-muted-foreground text-balance">
+            {description}
+          </p>
         ) : (
-          <div className="mt-1.5 w-full text-sm text-fg-muted text-balance">
+          <div className="mt-1.5 w-full text-sm text-muted-foreground text-balance">
             {description}
           </div>
         ))}
@@ -107,7 +111,7 @@ export function LoadMoreFailed({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger">
+    <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-destructive bg-destructive-soft px-3 py-2 text-sm text-destructive">
       <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
       <p>{t.list.loadMoreFailed(reason)}</p>
       <Button size="sm" onClick={onRetry}>
@@ -123,7 +127,7 @@ export function CardSkeleton({ count }: { count: number }) {
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className="flex flex-col overflow-hidden rounded-lg bg-surface shadow-card"
+          className="flex flex-col overflow-hidden rounded-lg bg-card shadow-card"
           aria-hidden="true"
         >
           <Skeleton className="aspect-video w-full rounded-none" />

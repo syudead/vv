@@ -221,14 +221,14 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
       name: t.tags.mergeDialog.submit,
     });
     expect(mergeButton).toHaveProperty("disabled", true);
-    expect(mergeButton.className).toContain("bg-accent");
+    expect(mergeButton.className).toContain("bg-primary");
     expect(mergeButton.className).not.toContain("bg-danger");
     expect(within(modal).queryByText("→")).toBeNull();
 
     await user.click(await within(modal).findByRole("option", { name: /Anime/ }));
     const chosen = await within(modal).findByRole("option", { name: /Anime/ });
     expect(chosen.getAttribute("data-chosen")).toBe("true");
-    expect(chosen.className).toContain("bg-accent-soft");
+    expect(chosen.className).toContain("bg-primary-soft");
     const footer = mergeButton.parentElement!;
     expect(footer.textContent).toContain("旅行 → Anime");
     await waitFor(() => expect(mergeButton).toHaveProperty("disabled", false));

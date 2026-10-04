@@ -3,15 +3,15 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 
 const tones = {
-  neutral: "bg-elevated text-fg",
-  // bg-elevated の面（ModalFrame など）の中で使うと neutral と色が重なって面が
+  neutral: "bg-popover text-foreground",
+  // bg-popover の面（ModalFrame など）の中で使うと neutral と色が重なって面が
   // 消えるための代わり（ui-design.md「Synonyms」、tokens.test.ts の pairs
   // ["fg", "bg"] で検査済み）。
-  onElevated: "bg-bg text-fg",
-  accent: "bg-accent-soft text-link",
+  onElevated: "bg-background text-foreground",
+  accent: "bg-primary-soft text-primary",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
-  danger: "bg-danger-soft text-danger",
+  danger: "bg-destructive-soft text-destructive",
 };
 
 export default function Chip({

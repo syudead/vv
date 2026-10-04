@@ -61,7 +61,7 @@ export default function SearchSyntaxHelp({ className }: { className?: string }) 
           aria-label={t.list.searchHelp.title}
           aria-describedby={open ? bodyId : undefined}
           className={cn(
-            "flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg active:bg-active-wash data-[state=open]:bg-active-wash data-[state=open]:text-fg",
+            "flex size-6 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:bg-secondary data-[state=open]:bg-secondary data-[state=open]:text-foreground",
             className,
           )}
         >
@@ -70,11 +70,11 @@ export default function SearchSyntaxHelp({ className }: { className?: string }) 
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80"
+        className="w-popover-wide"
         aria-labelledby={headingId}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <h2 id={headingId} className="text-sm font-medium text-fg">
+        <h2 id={headingId} className="text-sm font-medium text-foreground">
           {t.list.searchHelp.title}
         </h2>
         {/* ボタンの説明は見出しを除いた中身にする（名前と同じ語を二度読ませない）。 */}
@@ -82,20 +82,22 @@ export default function SearchSyntaxHelp({ className }: { className?: string }) 
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
             {syntaxRows().map((row) => (
               <div key={row.examples.join()} className="contents">
-                <dt className="flex flex-col gap-0.5 font-mono text-xs text-fg">
+                <dt className="flex flex-col gap-0.5 font-mono text-xs text-foreground">
                   {row.examples.map((example) => (
                     <span key={example} className="whitespace-pre">
                       {example}
                     </span>
                   ))}
                 </dt>
-                <dd className="text-xs text-fg-muted">{row.meaning}</dd>
+                <dd className="text-xs text-muted-foreground">{row.meaning}</dd>
               </div>
             ))}
           </dl>
           <div role="none" className="my-3 h-px bg-border" />
-          <p className="text-xs text-fg-muted">{t.list.searchHelp.normalization}</p>
-          <p className="mt-1 text-xs text-fg-muted">
+          <p className="text-xs text-muted-foreground">
+            {t.list.searchHelp.normalization}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
             {t.list.searchHelp.termLimit(maxSearchTerms)}
           </p>
         </div>

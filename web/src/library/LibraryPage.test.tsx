@@ -456,7 +456,7 @@ describe("LibraryPage", () => {
       expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
       expect(
         screen.getByRole("button", { name: "Filter (1 applied)" }).className,
-      ).toContain("bg-accent-soft");
+      ).toContain("bg-primary-soft");
 
       await user.click(screen.getByRole("button", { name: "Clear filters" }));
       expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
@@ -2168,7 +2168,7 @@ describe("LibraryPage", () => {
       // 選択バーの本数はメンバーを数える。
       expect(screen.getByText("12 videos selected")).toBeDefined();
       const card = screen.getByRole("link", { name: ownerLabel }).closest("article");
-      expect(card?.className).toContain("ring-accent");
+      expect(card?.className).toContain("ring-primary");
       // 選んだ本数（12）が項目の数（3）を超えても、「すべて選択」は押せる。
       expect(
         (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)

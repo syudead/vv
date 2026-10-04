@@ -6,7 +6,7 @@
   "files": [
     {
       "path": "src/ui/TentativeMark.tsx",
-      "content": "import { CircleDashed } from \"lucide-react\";\n\n/**\n * TentativeMark は仮のタグ（`tentative: true`）の目印である\n * （specs/031-tentative-tags/ui-design.md「Tentative mark」）。タグの名前の\n * 後ろに `gap-1` で置き、名前が省略されても残るよう `shrink-0` にする。\n * 読み上げは置く側が持つ（押せる要素は読み上げ名に「(tentative)」を添え、\n * 押せない要素は視覚的に隠した「Tentative」を置く）ので、ここは隠す。\n *\n * 大きさはチップでは既定の `size-3`（Folder の目印と同じ）、管理画面の行では\n * `size=\"row\"` の `size-3.5`。\n */\nexport default function TentativeMark({ size = \"chip\" }: { size?: \"chip\" | \"row\" }) {\n  return (\n    <CircleDashed\n      className={`${size === \"chip\" ? \"size-3\" : \"size-3.5\"} shrink-0 text-fg-subtle`}\n      aria-hidden=\"true\"\n    />\n  );\n}\n",
+      "content": "import { CircleDashed } from \"lucide-react\";\n\n/**\n * TentativeMark は仮のタグ（`tentative: true`）の目印である\n * （specs/031-tentative-tags/ui-design.md「Tentative mark」）。タグの名前の\n * 後ろに `gap-1` で置き、名前が省略されても残るよう `shrink-0` にする。\n * 読み上げは置く側が持つ（押せる要素は読み上げ名に「(tentative)」を添え、\n * 押せない要素は視覚的に隠した「Tentative」を置く）ので、ここは隠す。\n *\n * 大きさはチップでは既定の `size-3`（Folder の目印と同じ）、管理画面の行では\n * `size=\"row\"` の `size-3.5`。\n */\nexport default function TentativeMark({ size = \"chip\" }: { size?: \"chip\" | \"row\" }) {\n  return (\n    <CircleDashed\n      className={`${size === \"chip\" ? \"size-3\" : \"size-3.5\"} shrink-0 text-muted-foreground`}\n      aria-hidden=\"true\"\n    />\n  );\n}\n",
       "type": "registry:ui"
     }
   ],

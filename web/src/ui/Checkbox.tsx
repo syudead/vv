@@ -41,13 +41,13 @@ export default function Checkbox({
       disabled={disabled}
       className={cn(
         "inline-flex size-5 shrink-0 items-center justify-center rounded-sm border transition-colors",
-        "border-control-border bg-navbar enabled:hover:border-accent disabled:cursor-not-allowed",
-        "data-[state=checked]:border-accent-active data-[state=checked]:bg-accent-active",
-        "data-[state=indeterminate]:border-accent-active data-[state=indeterminate]:bg-accent-active",
+        "border-input bg-navbar enabled:hover:border-primary disabled:cursor-not-allowed",
+        "data-[state=checked]:border-primary-active data-[state=checked]:bg-primary-active",
+        "data-[state=indeterminate]:border-primary-active data-[state=indeterminate]:bg-primary-active",
         className,
       )}
     >
-      <RadixCheckbox.Indicator className="text-accent-fg">
+      <RadixCheckbox.Indicator className="text-primary-foreground">
         {checked === "indeterminate" ? (
           <Minus className="size-3.5" strokeWidth={3} />
         ) : (

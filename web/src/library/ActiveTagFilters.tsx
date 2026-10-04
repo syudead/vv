@@ -80,7 +80,7 @@ export default function ActiveTagFilters({
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
-      <span className="text-xs text-fg-muted">{t.library.activeTags.label}</span>
+      <span className="text-xs text-muted-foreground">{t.library.activeTags.label}</span>
       <ul
         aria-label={t.library.activeTags.list}
         className="flex flex-wrap items-center gap-1.5"
@@ -107,7 +107,7 @@ export default function ActiveTagFilters({
                 {tag === undefined ? (
                   <Skeleton className="h-3 w-12" />
                 ) : (
-                  <span title={tag.name} className="min-w-0 max-w-48 truncate">
+                  <span title={tag.name} className="max-w-chip-label min-w-0 truncate">
                     {tag.name}
                   </span>
                 )}

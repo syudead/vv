@@ -28,7 +28,7 @@ export default function Tooltip({
         <RadixTooltip.Content
           side={side}
           sideOffset={6}
-          className="z-50 rounded-sm bg-navbar px-2 py-1 text-xs text-fg shadow-elevated animate-fade-in select-none"
+          className="z-50 rounded-sm bg-navbar px-2 py-1 text-xs text-foreground shadow-elevated animate-fade-in select-none"
         >
           {content}
         </RadixTooltip.Content>

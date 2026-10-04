@@ -8,6 +8,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | Item                 | Tier               | When to use                                                               |
 | -------------------- | ------------------ | ------------------------------------------------------------------------- |
 | `vv`                 | Index              | This list                                                                 |
+| `vv-theme`           | Foundations        | `web/src/ui/tokens.css`: every token; read before styling anything        |
+| `vv-rules`           | Rules              | `web/registry/rules/`: which token and step to use where                  |
 | `brand-home-link`    | Existing component | `web/src/ui/BrandHomeLink.tsx`; rules arrive with the components tier     |
 | `button`             | Existing component | `web/src/ui/Button.tsx`; rules arrive with the components tier            |
 | `checkbox`           | Existing component | `web/src/ui/Checkbox.tsx`; rules arrive with the components tier          |

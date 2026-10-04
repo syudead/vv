@@ -1,10 +1,17 @@
-import { t } from "../i18n";
+import type { ReactNode } from "react";
 
-const sections = [
-  { id: "foundations", title: () => t.designSystem.foundations },
+import { t } from "../i18n";
+import Foundations from "./Foundations";
+
+const sections: { id: string; title: () => string; body?: () => ReactNode }[] = [
+  {
+    id: "foundations",
+    title: () => t.designSystem.foundations,
+    body: () => <Foundations />,
+  },
   { id: "components", title: () => t.designSystem.components },
   { id: "patterns", title: () => t.designSystem.patterns },
-] as const;
+];
 
 /**
  * DesignSystemPage は開発時だけの見本で、デザインシステムの段階ごとの確認に使う
@@ -17,6 +24,7 @@ export default function DesignSystemPage() {
       {sections.map((section) => (
         <section key={section.id} id={section.id} className="grid gap-4">
           <h2 className="text-lg font-semibold">{section.title()}</h2>
+          {section.body?.()}
         </section>
       ))}
     </main>

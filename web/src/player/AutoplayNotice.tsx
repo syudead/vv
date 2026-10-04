@@ -180,7 +180,7 @@ export default function AutoplayNotice({
       </span>
       <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs font-semibold text-accent">
+          <span className="text-xs font-semibold text-primary">
             {t.player.autoplay.heading}
           </span>
           <span aria-hidden="true" className="text-xs text-fg-muted tabular-nums">
@@ -204,7 +204,7 @@ export default function AutoplayNotice({
           className="flex h-1 w-full overflow-hidden rounded-full bg-fg-subtle/50"
           style={bar}
         >
-          <div className="h-full w-(--vv-countdown-smooth) rounded-full bg-accent transition-[width] duration-1000 ease-linear motion-reduce:w-(--vv-countdown-step) motion-reduce:transition-none" />
+          <div className="h-full w-(--vv-countdown-smooth) rounded-full bg-primary transition-[width] duration-1000 ease-linear motion-reduce:w-(--vv-countdown-step) motion-reduce:transition-none" />
         </div>
         <div className="flex flex-wrap gap-2">
           <Button ref={cancel} variant="secondary" onClick={onCancel}>

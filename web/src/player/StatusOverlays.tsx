@@ -111,7 +111,7 @@ export function LoadingOverlay({
         role="status"
         className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-fg shadow-elevated"
       >
-        <LoaderCircle className={cn("size-5 text-accent", spin)} aria-hidden="true" />
+        <LoaderCircle className={cn("size-5 text-primary", spin)} aria-hidden="true" />
         {label}
       </span>
     </div>
@@ -152,7 +152,7 @@ const stageIcons: Record<StageState, ReactNode> = {
   done: <CircleCheck className="size-4 shrink-0 text-success" aria-hidden="true" />,
   active: (
     <LoaderCircle
-      className={cn("size-4 shrink-0 text-accent", spin)}
+      className={cn("size-4 shrink-0 text-primary", spin)}
       aria-hidden="true"
     />
   ),
@@ -188,7 +188,7 @@ export function ProcessingStages({ video }: { video: Video }) {
                 <span
                   className={cn(
                     "shrink-0 text-xs",
-                    stage.state === "active" ? "text-accent" : "text-fg-muted",
+                    stage.state === "active" ? "text-primary" : "text-fg-muted",
                   )}
                 >
                   {t.player.stages.states[stage.state]}
@@ -355,7 +355,7 @@ export function CreatingLine({ video }: { video: Video }) {
   return (
     <p role="status" className="flex items-center gap-2 text-xs text-fg-muted">
       <LoaderCircle
-        className={cn("size-3.5 shrink-0 text-accent", spin)}
+        className={cn("size-3.5 shrink-0 text-primary", spin)}
         aria-hidden="true"
       />
       {line}

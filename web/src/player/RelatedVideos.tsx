@@ -132,7 +132,7 @@ export function VideoThumbnail({
           )}
         >
           <span
-            className="block h-full bg-accent"
+            className="block h-full bg-primary"
             style={{ width: `${String(Math.round(ratio * 100))}%` }}
           />
         </span>
@@ -471,7 +471,7 @@ function CurrentMember({
     // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。
     <li ref={ref} aria-current="true" className="scroll-my-6">
       {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
-      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-accent bg-active-wash p-1.5 pl-1">
+      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-primary bg-active-wash p-1.5 pl-1">
         <MemberNumber position={position} />
         <VideoThumbnail video={video} className="w-40" />
         <span className="sr-only">{t.player.related.nowPlaying}</span>

@@ -3752,7 +3752,7 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     await screen.findByTitle("Alpha");
 
     const compact = screen.getByRole("button", { name: "Sort" });
-    expect(compact.className).not.toContain("bg-accent-soft");
+    expect(compact.className).not.toContain("bg-primary-soft");
     await user.click(compact);
     // Name のときは向きを出さない。
     expect(screen.queryByRole("group", { name: "Sort direction" })).toBeNull();
@@ -4046,9 +4046,9 @@ describe("TagsPage まとめての操作", () => {
     await screen.findByTitle("Alpha");
 
     await user.click(within(rowOf("Cat")).getByRole("checkbox"));
-    expect(rowOf("Cat").className).toContain("bg-accent/10");
-    expect(rowOf("Cat").className).not.toContain("bg-accent-soft");
-    expect(rowOf("Gamma").className).not.toContain("bg-accent/10");
+    expect(rowOf("Cat").className).toContain("bg-primary/10");
+    expect(rowOf("Cat").className).not.toContain("bg-primary-soft");
+    expect(rowOf("Gamma").className).not.toContain("bg-primary/10");
   });
 
   it("タッチ・狭い幅の「Actions」は文字を持つ項目を並べ、「Confirm」は行の「確定する」と同じ結果になる", async () => {
@@ -5377,7 +5377,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     await user.click(tentative);
     await user.click(unused);
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (2 applied)");
-    expect(filterButton().className).toContain("bg-accent-soft");
+    expect(filterButton().className).toContain("bg-primary-soft");
     expect(filterButton().textContent).toContain("2");
     expect(await screen.findByText("1 of 4 tags")).toBeDefined();
     await user.keyboard("{Escape}");

@@ -348,14 +348,14 @@ export default function Combobox({
             onMouseEnter={() => setActiveIndex(index)}
             data-chosen={option.id === chosenId || undefined}
             className={cn(
-              "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-fg select-none",
+              "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-foreground select-none",
               inline && "min-h-9 rounded-md",
               option.id === chosenId
-                ? "bg-accent-soft text-link"
-                : index === activeIndex && "bg-hover-wash",
+                ? "bg-primary-soft text-primary"
+                : index === activeIndex && "bg-accent",
               option.id === chosenId &&
                 index === activeIndex &&
-                "ring-1 ring-inset ring-link",
+                "ring-1 ring-inset ring-ring",
               blocked && "pointer-events-none opacity-50",
             )}
           >
@@ -364,14 +364,16 @@ export default function Combobox({
                 {option.label}
               </span>
               {option.hint !== undefined && (
-                <span className="truncate text-xs text-fg-muted">{option.hint}</span>
+                <span className="truncate text-xs text-muted-foreground">
+                  {option.hint}
+                </span>
               )}
             </span>
             {option.meta !== undefined && (
               <span
                 className={cn(
                   "shrink-0 text-xs tabular-nums",
-                  option.id === chosenId ? "text-link" : "text-fg-muted",
+                  option.id === chosenId ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 {option.meta}
@@ -401,8 +403,8 @@ export default function Combobox({
             }}
             onMouseEnter={() => setActiveIndex(index)}
             className={cn(
-              "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-fg select-none",
-              index === activeIndex && "bg-hover-wash",
+              "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-foreground select-none",
+              index === activeIndex && "bg-accent",
               blocked && "pointer-events-none opacity-50",
             )}
           >
@@ -431,10 +433,10 @@ export default function Combobox({
       <div
         className={cn(
           inline
-            ? "flex h-9 items-center gap-2 rounded-md border bg-field px-3 text-sm [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-fg-subtle"
-            : "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
-          "focus-within:border-accent focus-within:ring-2 focus-within:ring-link",
-          disabled ? "border-border opacity-50" : "border-control-border",
+            ? "flex h-9 items-center gap-2 rounded-md border bg-muted px-3 text-sm [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground"
+            : "flex h-6 items-center gap-1 rounded-sm border bg-muted px-1.5 text-xs",
+          "focus-within:border-primary focus-within:ring-2 focus-within:ring-ring",
+          disabled ? "border-border opacity-50" : "border-input",
           frameClassName ?? "w-40",
         )}
       >
@@ -470,13 +472,13 @@ export default function Combobox({
           onPaste={handlePaste}
           onBeforeInput={handleBeforeInput}
           className={cn(
-            "w-full min-w-0 bg-transparent text-fg outline-none placeholder:text-fg-muted",
+            "w-full min-w-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground",
             inputClassName,
           )}
         />
         {busy && (
           <LoaderCircle
-            className="size-3 shrink-0 animate-spin text-fg-muted"
+            className="size-3 shrink-0 animate-spin text-muted-foreground"
             aria-hidden="true"
           />
         )}
@@ -494,7 +496,7 @@ export default function Combobox({
             {rows.map((row) => row.node)}
           </ul>
           {rows.length === 0 && emptyText !== undefined && (
-            <p className="px-2.5 py-2 text-sm text-fg-muted">{emptyText}</p>
+            <p className="px-2.5 py-2 text-sm text-muted-foreground">{emptyText}</p>
           )}
         </div>
       ) : (
@@ -505,7 +507,7 @@ export default function Combobox({
             id={listboxId}
             role="listbox"
             className={cn(
-              "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-elevated py-1 shadow-elevated",
+              "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-popover py-1 shadow-elevated",
               listClassName ?? "w-64",
               side === "top" ? "bottom-full mb-1" : "top-full mt-1",
             )}
@@ -515,7 +517,7 @@ export default function Combobox({
         )
       )}
       {reason !== null && (
-        <p id={reasonId} className="mt-1 text-xs text-danger">
+        <p id={reasonId} className="mt-1 text-xs text-destructive">
           {reason}
         </p>
       )}
