@@ -113,3 +113,20 @@ When a video is made private, streaming, live transcoding and preview responses
 for it that are in progress as a guest are cut off (Edge Case
 `公開の動画を見ている間に非公開にした`). Lists exclude the video from the next
 fetch on. Responses in progress as the owner are not cut off.
+
+The cut-off runs only after the switch to private commits, and switches run one
+at a time from commit to cut-off, so an earlier switch to private cannot cut
+off a guest response started after a later re-publish
+([`visibility.go`](../../../internal/httpapi/visibility.go)).
+
+```mermaid
+sequenceDiagram
+  participant P as Switch to private
+  participant R as Later re-publish
+  participant G as Guest responses
+  P->>P: Commit private
+  R-->>P: Waits for the switch
+  P->>G: Cut off responses
+  R->>R: Commit public
+  Note over G: New guest responses continue
+```

@@ -4,7 +4,7 @@ Parent Issue: #572.
 
 The rest of the model is unchanged. The existing tables are defined by
 [internal/store/migrations/](../../internal/store/migrations/); the data categories are in
-[ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user data"; precedents for tying user data to the
+[running-vv.md, Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery); precedents for tying user data to the
 content key are [specs/014-video-tags/data-model.md](../014-video-tags/data-model.md) and
 [specs/016-single-account-auth/data-model.md](../016-single-account-auth/data-model.md); the folder index is in
 [specs/017-folder-groups/data-model.md](../017-folder-groups/data-model.md); library items are in

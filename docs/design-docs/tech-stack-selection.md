@@ -38,7 +38,7 @@ The system serves one user on their own machine, so **simple operation** and
    message broker, a separate DB server).
 2. **Rebuildable index apart from user data.** A scan restores the index from
    the video files; it cannot restore playback positions or credentials
-   ([data classification](../../ARCHITECTURE.md#rebuildable-and-user-data)).
+   ([data classification](../how-to/running-vv.md#data-and-recovery)).
 3. **Boundaries enforced by tools.** Lint stops the domain layer from depending
    on HTTP, the DB or `ffmpeg`.
 4. **Heavy processing inside a boundary.** Code that runs `ffmpeg` stays in an
@@ -68,7 +68,7 @@ The system serves one user on their own machine, so **simple operation** and
 Package responsibilities and dependency direction are in
 [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction). SQLite
 holds both the index and user data; the
-[data classification](../../ARCHITECTURE.md#rebuildable-and-user-data) tells
+[data classification](../how-to/running-vv.md#data-and-recovery) tells
 them apart during recovery.
 
 The content key identifies a video across a move or rename: SHA-256 of the

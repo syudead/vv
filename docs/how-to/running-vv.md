@@ -328,9 +328,19 @@ the end of FFmpeg's error output.
 The Docker setup stores application data in the `vv_data` volume: the SQLite
 database `MDM_DATA_DIR/mdm.db` and thumbnails under
 `MDM_DATA_DIR/thumbnails/`. The database holds user and configuration data
-that scanning cannot restore; the
-[data classification](../../ARCHITECTURE.md#rebuildable-and-user-data) names
-every table and separates it from the rebuildable index.
+that scanning cannot restore, next to an index that a scan rebuilds:
+
+| Category | Tables and files | Recovered by |
+| --- | --- | --- |
+| Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
+| User data | `playback_progress`, `tags`, `tag_names`, `video_tags`, `rejected_tag_names`, `public_videos`, `video_overrides`, `video_edits`, `video_favorites`, `folder_favorites`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `folder_group_overrides` | A backup only |
+| Configuration | `account`, `media_folders`, `settings`, `api_tokens` | A backup, or setting it up again |
+| Session | `sessions` | Logging in again |
+
+User data is keyed by values a rescan reproduces (the content key, a version
+bundle's key, a folder's absolute path), never by a video row's id, so it
+survives a rebuild of the index. A scan cannot start until a media folder is
+registered, and a lost API token has to be issued again.
 
 Back up the **whole** `vv_data` volume, including `mdm.db`, before resetting
 or updating VVMDM:

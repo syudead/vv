@@ -4,7 +4,7 @@ This feature adds only three columns, holding the failure reason codes for
 probing and importing. Existing columns, in particular the free-text
 `videos.probe_error`, `scans.error` and `jobs.last_error`, keep their shape and
 existing values (requirement 8). Both tables are rebuildable data
-([ARCHITECTURE.md, "Rebuildable and user data"](../../ARCHITECTURE.md#rebuildable-and-user-data)),
+([Running VVMDM, "Data and recovery"](../../docs/how-to/running-vv.md#data-and-recovery)),
 and that classification does not change.
 
 The migration is a single file, `internal/store/migrations/00016_failure_codes.sql`,

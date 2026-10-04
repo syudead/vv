@@ -27,6 +27,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Live transcoding seek and probe reuse](live-transcode-seek.md)
 - [Hardware encoding for live transcoding](hardware-encoding.md)
 - [Windows desktop app (VVMDM.exe)](windows-app.md)
+- [Process lifecycle: startup and shutdown order](process-lifecycle.md)
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)

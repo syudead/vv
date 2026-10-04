@@ -5,7 +5,7 @@ Parent Issue: #574. The rest of the model is unchanged. Sources of truth:
 | Topic | Source |
 | --- | --- |
 | Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
-| Data classes | [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user data" |
+| Data classes | [running-vv.md, Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery) |
 | User key | [specs/030-video-versions/data-model.md §3](../030-video-versions/data-model.md#3-user-key) |
 | Folder key | [specs/017-folder-groups/data-model.md §1](../017-folder-groups/data-model.md#1-migration) |
 

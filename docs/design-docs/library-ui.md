@@ -101,6 +101,15 @@ and passes its height to the virtualizer and to `scroll-padding-top`, so a
 focused row never hides under it
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
+### The window owns scrolling
+
+The document (the window) scrolls the content; the shell's sidebar and toolbar
+are fixed or sticky and own no scroll container.
+
+The list's scroll restoration, zoom anchoring and infinite scroll all read
+`window.scrollY` or observe against the viewport, so a scroll container inside
+the shell would mean rewriting all three.
+
 ## 4. Width breakpoints in CSS, and the sidebar exception
 
 Width variations use Tailwind's default breakpoints in CSS; only the sidebar
@@ -536,3 +545,36 @@ hide the player.
 Central touch controls appear on `pointer: coarse` devices through a CSS media
 condition, without `matchMedia`, for the reason in
 [section 4](#4-width-breakpoints-in-css-and-the-sidebar-exception).
+
+## 9. List conditions applied by the server
+
+The server applies every list condition (search, filters, sort, shuffle seed),
+and the page never filters or reads ahead through loaded pages
+([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
+URL).
+
+Only the server knows which videos and groups belong to a folder and match the
+filters, so a page that filtered locally would show a different set from
+`total`. For the same reason a re-fetched list item never guesses its place:
+
+```mermaid
+flowchart LR
+  ev[video event] --> rf[Re-fetch the video]
+  rf --> rep{Still representative?}
+  rep -->|yes| upd[Update in place]
+  rep -->|no| shown{Representative listed?}
+  shown -->|yes| drop[Drop the item]
+  shown -->|no| reload[Reload from first page]
+```
+
+Inserting the representative directly could show a video outside the folder
+or filters ([`useItemRefresh.ts`](../../web/src/api/useItemRefresh.ts)).
+
+## 10. Per-device preferences with defaults
+
+Per-device display settings are total functions over `localStorage` that
+never throw ([`web/src/preferences/`](../../web/src/preferences)): a missing,
+corrupt or unreadable value yields the defaults, and a failed write is ignored.
+
+A preference is a convenience; a bad stored value or blocked storage must not
+blank the screen.
