@@ -1,7 +1,13 @@
 import { Tag as TagIcon } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
-import { currentTags, revalidateTags, subscribeTags, type Tag } from "../api/tags";
+import {
+  currentTags,
+  refreshTags,
+  revalidateTags,
+  subscribeTags,
+  type Tag,
+} from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
 import FilterChip from "../ui/FilterChip";
@@ -42,6 +48,21 @@ export default function ActiveTagFilters({
       unsubscribe();
     };
   }, []);
+
+  // 共有の一覧に無いタグで絞り込んだら（使い回した一覧より後に別のタブや画面で作られた
+  // タグのカードを押したときなど）、一覧を取り直して名前を引く。消えたタグで取り直しを
+  // 繰り返さないよう、取り直しを求めた id は覚えておく。
+  const refreshedFor = useRef(new Set<number>());
+  useEffect(() => {
+    if (allTags === undefined) return;
+    const known = new Set(allTags.map((tag) => tag.id));
+    const missing = tagIds.filter(
+      (id) => !known.has(id) && !refreshedFor.current.has(id),
+    );
+    if (missing.length === 0) return;
+    for (const id of missing) refreshedFor.current.add(id);
+    void refreshTags().catch(() => undefined);
+  }, [allTags, tagIds]);
 
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
   const pendingFocus = useRef<number | "search" | null>(null);

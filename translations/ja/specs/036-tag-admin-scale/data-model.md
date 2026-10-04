@@ -1,6 +1,6 @@
 ---
 source: specs/036-tag-admin-scale/data-model.md
-sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
+sourceHash: ffdaa002224e823ef0106e06b0ba3f0247fa0a9377677353f89f7ab0ec8f1d3f
 ---
 
 # データモデル: ページ単位のタグ一覧、タグの一括操作、画面の状態 {#data-model-paged-tag-list-bulk-tag-actions-and-screen-state}
@@ -15,9 +15,9 @@ sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
 
 このファイルは、`domain` に追加する値、追加または変更するストアの操作、画面の状態の規則だけを扱う。ここで挙げない操作 (1 件の作成、名前の変更、削除、確定、却下、同義語、動画へのタグの追加と削除、動画の数) は変わらない。
 
-§1 から §3 の一括操作 (`BatchTags`、`MergeTags`、`TagImpact`) は feature ブランチにマージ済みで、親 Issue の改訂で変わらない。§0 のマイグレーション、§1 のページの値、§2 の `ListTags`、`ListRejectedTagNames`、キーの書き込み、§4 は改訂で追加または書き直した。
+[`domain` に追加する値](#values-added-to-domain) から [書き込みの規則](#write-rules) の一括操作 (`BatchTags`、`MergeTags`、`TagImpact`) は feature ブランチにマージ済みで、親 Issue の改訂で変わらない。[マイグレーション](#migration)、[`domain` に追加する値](#values-added-to-domain) のページの値、[ストアの操作](#store-operations) の `ListTags`、`ListRejectedTagNames`、キーの書き込み、[画面の状態](#screen-state) は改訂で追加または書き直した。
 
-## 0. マイグレーション {#0-migration}
+## マイグレーション {#migration}
 
 マイグレーションは `00030_tag_sort_keys.sql` の 1 つ ([research.md R-10](research.md#r-10-a-natural-order-name-key-sort_key-on-tag_names-and-rejected_tag_names-filled-by-the-startup-key-refresh))。テーブルの意味と既存の列は変わらない。
 
@@ -26,11 +26,11 @@ sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
 | `tag_names` | `sort_key text not null default ''` | `domain.NaturalSortKey(name)`。名前の行を書くすべての操作 (作成、同義語、割り当て時の作成、名前の変更) が、同じトランザクションで `search_key` と一緒に書く。`tag_id` を移す統合は変えない |
 | `rejected_tag_names` | `sort_key text not null default ''`、`search_version integer not null default 0` | `sort_key` は `domain.NaturalSortKey(name)` で、却下が書く。`search_version` の意味は `tag_names.search_version` と同じ (`domain.SearchKeyVersion`) |
 
-マイグレーションは `update tag_names set search_version = 0` を実行し、起動時の `TagStore.RefreshSearchKeys` が既存の行の `sort_key` を `search_key` と一緒に埋める (§2)。既存の `rejected_tag_names` の行は `search_version` が既定値の 0 なので、同じ更新が拾う。キーは作り直せる派生値で、`SearchKeyVersion` を上げたときは同じ仕組みで作り直す。
+マイグレーションは `update tag_names set search_version = 0` を実行し、起動時の `TagStore.RefreshSearchKeys` が既存の行の `sort_key` を `search_key` と一緒に埋める ([ストアの操作](#store-operations))。既存の `rejected_tag_names` の行は `search_version` が既定値の 0 なので、同じ更新が拾う。キーは作り直せる派生値で、`SearchKeyVersion` を上げたときは同じ仕組みで作り直す。
 
 **自然な名前順**: `sort_key` のバイト順、次に `tags.id` (却下した名前では `name` のバイト順)。`NaturalSortKey` は照合形 (`FoldForMatch`) に対して働くので、全角、半角、かなを畳み込んで等しくなる名前は同順になり、`id` で並ぶ (R-10、"Change in the name order")。
 
-## 1. `domain` に追加する値 {#1-values-added-to-domain}
+## `domain` に追加する値 {#values-added-to-domain}
 
 マージ済み (一括操作):
 
@@ -59,13 +59,13 @@ sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
 | --- | --- |
 | `TagSort` | `TagSortName` (既定)、`TagSortCountDesc`、`TagSortCountAsc`、`TagSortCreatedDesc`、`TagSortCreatedAsc`。API の `TagSort` と同じ文字列 (`name`、`countDesc`、`countAsc`、`createdDesc`、`createdAsc`) と `Valid()` |
 | `TagListQuery{Search string; TentativeOnly, UnusedOnly bool; Sort TagSort; Cursor string; Limit int}` | 一覧の条件。`Search` は呼び出し元からの生の文字列で、ストアが `FoldForMatch` で畳み込んで前後の空白を除く (空は検索なし)。`Limit` 0 はすべてのタグを意味する (カーソルは無視し、`NextCursor` は空)。空の `Sort` は `TagSortName` を意味する |
-| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string; Exact *Tag}` | 1 ページ。`Total` は条件 (検索と絞り込み) に合うタグの数、`TotalAll` はすべてのタグの数。次のページがないとき `NextCursor` は空。`Exact` は前後の空白を除いた検索語と正確に同じ綴りのタグで、`Limit` 付きの要求の最初のページでだけ読む (それ以外は nil。[screen-api.md §5](contracts/screen-api.md#5-get-apitags-parameters)) |
+| `TagPage{Items []Tag; Total, TotalAll int; NextCursor string; Exact *Tag}` | 1 ページ。`Total` は条件 (検索と絞り込み) に合うタグの数、`TotalAll` はすべてのタグの数。次のページがないとき `NextCursor` は空。`Exact` は前後の空白を除いた検索語と正確に同じ綴りのタグで、`Limit` 付きの要求の最初のページでだけ読む (それ以外は nil。[screen-api.md §5](contracts/screen-api.md#get-apitags-parameters)) |
 | `RejectedTagNamePage{Items []string; Total int; NextCursor string}` | 却下した名前の 1 ページ |
 | `MaxTagPageLimit = 200` | `limit` の上限。`GET /api/library` と同じ |
 
 `ErrInvalidCursor` は 013 のもの (別の並び順で作ったカーソル、または解析できないカーソル)。
 
-## 2. ストアの操作 {#2-store-operations}
+## ストアの操作 {#store-operations}
 
 `TagStore` に追加または変更する。どの操作も共有の SQLite 接続だけを使い、ドメインイベントを発行しない (タグの変更に副作用はない。ARCHITECTURE.md の `TagStore` の段落は変わらない)。`ids` は 1 つの引数として `json_each` に渡す (`external_video_tags.go` と同じ)。
 
@@ -104,7 +104,7 @@ sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
 
 カーソルは、並び順の名前、値、`sort_key`、`id` を包む不透明な文字列である。別の並び順のカーソル、または解析できないカーソルは `ErrInvalidCursor` を返す (`listing.go` の `encodeCursor` と `decodeCursor` と同じ形で、共有できるものは共有する)。
 
-[031 data-model.md §1](../031-tentative-tags/data-model.md#1-migration) の 2 つの不変条件に、`invariants_test.go` で確認する 3 つ目を加える:
+[031 data-model.md、マイグレーション](../031-tentative-tags/data-model.md#migration) の 2 つの不変条件に、`invariants_test.go` で確認する 3 つ目を加える:
 
 | 規則 | 強制する場所 |
 | --- | --- |
@@ -112,20 +112,20 @@ sourceHash: b56a1d680c207556d0ff5caad6ad84dd242165507d5767cfca3876b1e81441a8
 
 `internal/httpapi` が宣言する `Tags` インターフェース (`router.go`) の `ListTags` と `ListRejectedTagNames` のシグネチャが変わる。`cmd/mdm` の配線は変わらない。
 
-## 3. 書き込みの規則 {#3-write-rules}
+## 書き込みの規則 {#write-rules}
 
-014 §4 と 031 §3 の表に、新しい種類の書き込みは加わらない。一括操作は、1 件の操作を 1 つのトランザクションで何度か実行したのと同じ結果になる (マージ済み)。
+[014 data-model.md、書き込みの規則](../014-video-tags/data-model.md#write-rules) と [031 data-model.md、書き込みの規則](../031-tentative-tags/data-model.md#write-rules) の表に、新しい種類の書き込みは加わらない。一括操作は、1 件の操作を 1 つのトランザクションで何度か実行したのと同じ結果になる (マージ済み)。
 
 | 一括操作 | 1 件の操作との関係 |
 | --- | --- |
 | 確定 | 各 id への `ConfirmTag` と同じ。確定済みのタグは飛ばして数える (1 件のルートは何も変えずに 200 を返す) |
 | 却下 | 各 id への `RejectTag` と同じ。確定したタグは飛ばして数える (1 件のルートは `409 tag_not_tentative` を返す) |
-| 削除 | 各 id への `DeleteTag` と同じ。仮のタグは飛ばして数える (1 件のルートは仮のタグも削除するが、画面は仮の行に削除を表示しない。031 §3) |
+| 削除 | 各 id への `DeleteTag` と同じ。仮のタグは飛ばして数える (1 件のルートは仮のタグも削除するが、画面は仮の行に削除を表示しない。[031 data-model.md、書き込みの規則](../031-tentative-tags/data-model.md#write-rules)) |
 | 統合 | `mergeTagsInto` は、統合元の数によらない文の数で、各統合元を順に統合した結果を作る。統合先は 1 回確定する |
 
 `sort_key` は名前の行と一緒に書かれ、一緒に消えるので、書き込みの規則に影響しない。
 
-## 4. 画面の状態 {#4-screen-state}
+## 画面の状態 {#screen-state}
 
 タグ管理画面 (`web/src/tags/TagsPage.tsx`) が持つ状態とその規則。条件 (検索語、絞り込み、並び順) とタブは URL のクエリに入る (`web/src/tags/tagListUrl.ts`、[ui-design.md "URL state"](ui-design.md#url-state))。`localStorage` は並び順だけを保存する ([R-7](research.md#r-7-the-sort-order-is-a-per-device-preference-in-localstorage-filters-stay-in-screen-state) の追記)。画面は共有キャッシュ (`web/src/api/tags.ts` の `getTags` と `subscribeTags`、[R-1](research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag)) を使わない。
 
