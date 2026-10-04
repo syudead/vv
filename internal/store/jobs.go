@@ -398,7 +398,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		// pending のときだけ書く。解析の結果を保存して done にしたあとの失敗
 		// （仕事の完了の記録など）で、保存済みの結果を失敗で上書きしないためである。
 		res, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
-			playable = 0, updated_at = ?
+			playable = 0, indexed_at = ?
 			where probe_state = 'pending' and `+identity,
 			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...)
 		if err != nil {
@@ -408,7 +408,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	case domain.JobThumbnail:
 		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
 		// seek_thumbnail_state はシーク用の仕事が自分で記録するので、ここでは変えない。
-		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', indexed_at = ?
 			where thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...)
 		if err != nil {
@@ -417,7 +417,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		updated = res
 	case domain.JobSeekThumbnail:
 		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
-		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', indexed_at = ?
 			where seek_thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...)
 		if err != nil {
@@ -437,7 +437,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		}
 		return recordFailedIssue(ctx, tx, job, now)
 	case domain.JobPreview:
-		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', indexed_at = ?
 			where `+identity, append([]any{now}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final preview failure (job=%d): %w", job.ID, err)

@@ -359,7 +359,7 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	for i := range videos {
 		// 30 × 100 = 3000 フォルダに、1フォルダあたり約3本を置く。
 		path := fmt.Sprintf(fixturePath("/media/series-%02d/season-%03d/episode-%d.mp4"), i%30, (i/30)%100, i)
-		res, err := tx.Exec(`insert into videos (added_at, updated_at, content_key, playable, probe_state, thumbnail_state)
+		res, err := tx.Exec(`insert into videos (added_at, indexed_at, content_key, playable, probe_state, thumbnail_state)
 			values (1, 1, ?, 0, 'pending', 'pending')`, fmt.Sprintf("key-%d", i))
 		if err != nil {
 			b.Fatal(err)

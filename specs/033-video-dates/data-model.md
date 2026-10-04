@@ -50,7 +50,7 @@ generated files (`RemoveContent`) and `releaseContentIndex` do not touch
 
 | Value | Content |
 | --- | --- |
-| `Video.EditedAt` | `time.Time`. The edit time in vv. The store fills it with `coalesce(video_edits.edited_at, videos.added_at)` ([R-7](research.md#r-7-the-response-fields-are-updatedat-edit-time-in-vv-and-filecreatedat-location-creation-time-with-the-same-names-in-the-screen-and-external-apis)). `Video.UpdatedAt` (`videos.updated_at`) stays as is and is not in responses |
+| `Video.EditedAt` | `time.Time`. The edit time in vv. The store fills it with `coalesce(video_edits.edited_at, videos.added_at)` ([R-7](research.md#r-7-the-response-fields-are-updatedat-edit-time-in-vv-and-filecreatedat-location-creation-time-with-the-same-names-in-the-screen-and-external-apis)). `Video.IndexedAt` (`videos.indexed_at`, named `UpdatedAt` / `updated_at` until #650) stays as is and is not in responses |
 | `Video.FileCreatedAt` | `time.Time`. `coalesce(file_created_at, mtime)` of the listed location |
 | `VideoFile.FileCreatedAt` | `time.Time`. The creation time the scan read. The zero value means unavailable |
 | `IndexedVideo.FileCreatedAt` | `time.Time`. The value in the index. The zero value means null |
