@@ -41,7 +41,8 @@ export default function Breadcrumbs({
 
   return (
     <Breadcrumb aria-label={t.folders.breadcrumbs}>
-      <BreadcrumbList>
+      {/* 上流の一覧は折り返す。フォルダの道筋は一行に保ち、溢れた段を省略記号で切る。 */}
+      <BreadcrumbList className="flex-nowrap whitespace-nowrap wrap-normal">
         {crumbs.map((crumb, index) => {
           const hiddenWhenNarrow = collapsible && index < lastIndex - 1;
           const current = index === lastIndex;

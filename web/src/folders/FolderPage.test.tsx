@@ -422,6 +422,13 @@ describe("FolderPage", () => {
     ]);
     const current = within(nav).getByText("A");
     expect(current.getAttribute("aria-current")).toBe("page");
+    // 道筋は折り返さず一行に保つ（上流の一覧の flex-wrap を上書きする）。
+    const list = within(nav).getByRole("list");
+    expect(list.className.split(" ")).toEqual(
+      expect.arrayContaining(["flex-nowrap", "whitespace-nowrap"]),
+    );
+    expect(list.className.split(" ")).not.toContain("flex-wrap");
+    expect(list.className.split(" ")).not.toContain("wrap-break-word");
   });
 
   it("プレビューは4件までで、サムネイルが無いフォルダは外形だけを描く", async () => {

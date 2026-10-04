@@ -148,8 +148,10 @@ unresolved, and faking them gives passing tests on a broken screen.
 ## List layout
 
 Lists use a dense management-screen layout: a top bar, a filter band and boxed
-cards, shared by the library and folder pages through one grid
-([`Grid.tsx`](../../web/src/videoList/Grid.tsx)).
+cards. The library page lays its cards out with
+[`Grid.tsx`](../../web/src/videoList/Grid.tsx), and the folder pages with the
+registry's card grid
+([`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)).
 
 The diagram shows the parts of a list screen.
 
