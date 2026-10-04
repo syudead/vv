@@ -11,17 +11,17 @@ import {
   tagFolderGroup,
 } from "../api/folderGrouping";
 import { t } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import {
-  MenuContent,
-  MenuItem,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuRoot,
-  MenuSeparator,
-  MenuTrigger,
-} from "../ui/Menu";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
 
 /** modes はまとめ方の選択肢の並びである。表示名は描画のたびにカタログから引く。 */
@@ -93,8 +93,8 @@ export default function FolderGroupingMenu({
 
   const Icon = busy ? LoaderCircle : grouping.grouped ? Group : Ungroup;
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
@@ -105,8 +105,6 @@ export default function FolderGroupingMenu({
               ? t.folders.grouping.changing
               : t.folders.grouping.trigger(grouping.grouped)
           }
-          // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
-          className="-my-2 -mr-2 gap-1.5! text-fg-muted!"
         >
           <Icon
             aria-hidden="true"
@@ -117,31 +115,34 @@ export default function FolderGroupingMenu({
             : grouping.grouped
               ? t.folders.grouping.grouped
               : t.folders.grouping.ungrouped}
-          <ChevronDown aria-hidden="true" className="size-3.5!" />
+          <ChevronDown aria-hidden="true" />
         </Button>
-      </MenuTrigger>
-      <MenuContent align="end" className="max-w-80">
-        <MenuLabel>{t.folders.grouping.heading}</MenuLabel>
-        <MenuRadioGroup value={grouping.mode} onValueChange={(mode) => void choose(mode)}>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-w-popover-wide">
+        <DropdownMenuLabel>{t.folders.grouping.heading}</DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={grouping.mode}
+          onValueChange={(mode) => void choose(mode as FolderGroupingMode)}
+        >
           {modes.map((mode) => (
-            <MenuRadioItem key={mode} value={mode}>
+            <DropdownMenuRadioItem key={mode} value={mode}>
               {t.folders.grouping.modes[mode]}
-            </MenuRadioItem>
+            </DropdownMenuRadioItem>
           ))}
-        </MenuRadioGroup>
-        <p className="px-2.5 pt-1 pb-1.5 text-xs text-fg-muted">
+        </DropdownMenuRadioGroup>
+        <p className="px-2 pt-1 pb-1.5 text-xs text-muted-foreground">
           {t.folders.grouping.autoHint}
         </p>
         {grouping.taggable && (
           <>
-            <MenuSeparator />
-            <MenuItem onSelect={() => void toTag()}>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void toTag()}>
               <Tag aria-hidden="true" />
               {t.folders.grouping.toTag}
-            </MenuItem>
+            </DropdownMenuItem>
           </>
         )}
-      </MenuContent>
-    </MenuRoot>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

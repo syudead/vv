@@ -22,35 +22,6 @@ export default [
     kind: "migration",
   },
   {
-    file: "folders/Breadcrumbs.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5", "h-3\\.5", "w-20", "max-w-40"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderCard.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderGroupingMenu.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["max-w-80", "px-2\\.5", "size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["pb-24"],
-    kind: "migration",
-  },
-  {
-    file: "folders/FolderToolbar.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["min-w-20", "sm:min-w-40", "w-24", "px-2\\.5", "w-80"],
-    kind: "migration",
-  },
-  {
     file: "library/CardTagRow.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
     kind: "migration",
