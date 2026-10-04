@@ -352,16 +352,21 @@ The video page (`/videos/:id`) is for watching, so it is less dense than the
 lists; shapes and text are in
 [012 UI design](../../specs/012-video-detail-ia/ui-design.md).
 
-The page is layered over the list with no shell and closes with × or Esc. The
-diagram shows its parts.
+The page is layered over the list with no shell and closes with × or Esc. It
+is built on the `DetailPage` skeleton
+([Design system, Page patterns](design-system.md#page-patterns)): the header band, then a main area for
+watching and an information aside. The diagram shows its parts.
 
 ```mermaid
 flowchart LR
-  band[Header band] --> player[Player]
+  band[Header band] --> main[Main area]
+  band --> aside[Information aside]
+  main --> player[Player]
   player --> title[Title and tags]
   title --> vis[Visibility toggle]
-  vis --> info[File information]
-  player --> related[Related videos]
+  aside --> info[File details]
+  info --> next[Up next]
+  next --> related[Related videos]
 ```
 
 | Part | Rule |
@@ -369,30 +374,35 @@ flowchart LR
 | Header band | Logo (home), breadcrumb to the folder, the only × |
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
-| Visibility toggle | `role="switch"`, below the title unit, above file information |
+| Visibility toggle | `role="switch"`, below the title unit, the last part of the main area |
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
-above related videos form a right column, below that everything stacks, and
-below `md` the breadcrumb shows only its last segment.
+above the aside is a right column and the page keeps the viewport's height, so
+the main area and the aside each scroll on their own; below `lg` the aside goes
+under the main area and the page scrolls as one; below `md` the breadcrumb
+shows only its last segment.
 
-### Information rows
+### File details
 
-Two rows under the title carry no lines, frames or labels.
+File information is the first `PageSection` of the aside, titled
+`File details`, with its actions at the right of the section heading.
 
-| Row | Content |
+| Part | Content |
 | --- | --- |
-| First | Duration, size, date added with icons; actions at the right end |
-| Second | Resolution, container, codec; smallest and most subdued |
+| `FactList` | Term and value pairs: length, size, added, edited, created; then `Versions` when the group has two or more visible versions, and `Thumbnail` for the owner when a thumbnail position is set |
+| Technical line | Resolution, container, codec below the list; smallest and most subdued |
+| Actions | Favorite, `Use current frame as thumbnail`, `Open file`, `Copy path`: icon-only ghost buttons with tooltips |
 
-No path appears under the title, because the breadcrumb already shows the
-location.
+Dates show the date only; the time is in the title and in a popover opened by
+pressing the value. No path appears in the section, because the breadcrumb
+already shows the location.
 
-The owner's favorite toggle opens the right-hand action group, left of
-`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
-`sm`, `aria-pressed`). It is the group's only control with state, so the eye
-lands on it first; even so, it is no more prominent than the title: on is a small
+The owner's favorite toggle opens the action group, left of
+`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `Toggle` `sm`,
+`aria-pressed`). It is the group's only control with state, so the eye lands on
+it first; even so, it is no more prominent than the title: on is a small
 `bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
@@ -405,16 +415,16 @@ flowchart LR
 ```
 
 Updating the cached list means the library card has changed on return. The
-failure line sits directly below the information row, like open and capture
-failures, with no toast.
+failure line sits directly below the fact list in the section, like open and
+capture failures, with no toast.
 
 ### Player states
 
 Loading, import stages, read failure, playback failure, video gone and playback
 ended show one at a time from a single container over the player, which decides
 the order. Only the "being created" line sits below the player. Layer text
-sits on opaque `bg-navbar`, because `tokens.test.ts` cannot check text on the
-translucent `bg-overlay`.
+sits on the opaque floating-layer surface `bg-popover`, because
+`tokens.test.ts` cannot check text on the translucent `bg-overlay`.
 
 The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx),
 `role="status"`) is a separate small banner at the player's top left: it
