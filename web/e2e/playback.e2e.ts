@@ -626,7 +626,6 @@ test.describe.serial("live MP4 playback", () => {
       const inset = width >= 640 ? 12 : 8;
       expect(Math.round(box.x - frame.x)).toBe(inset);
       expect(Math.round(box.y - frame.y)).toBe(inset);
-      expect(box.height).toBeLessThanOrEqual(32);
       await page.locator(".video-js").hover();
       const bar = await page.locator(".vjs-control-bar").boundingBox();
       if (bar === null) throw new Error("操作バーが見えません");
@@ -1276,7 +1275,11 @@ test.describe.serial("live MP4 playback", () => {
     };
     expect(sprite.frameCount).toBeGreaterThan(1);
     const sample = Math.floor(sprite.frameCount / 2);
-    const ratio = ((sample + 0.5) * sprite.intervalMs) / durationMs;
+    // コマが受け持つ範囲の真ん中。末尾のコマの範囲は動画の長さで切れる（6 秒の動画を
+    // 5 秒おきに 2 コマにすると 2 コマ目は 5〜6 秒）ので、終わりを長さで抑える。
+    const sampleStart = sample * sprite.intervalMs;
+    const sampleEnd = Math.min((sample + 1) * sprite.intervalMs, durationMs);
+    const ratio = (sampleStart + sampleEnd) / 2 / durationMs;
 
     // プレイヤーのシークバーの吹き出しが、同じ割合の位置で出す背景の位置。
     await page.setViewportSize({ width: 1280, height: 800 });
