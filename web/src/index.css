@@ -6,6 +6,32 @@
 @import "@fontsource-variable/noto-sans-jp";
 @import "./ui/tokens.css";
 
+/*
+ * 見本（/design-system）は部品の hover と押下の状態を、触らずに横に並べて見せる
+ * （specs/038-design-system/ui-design.md「Review criteria」4）。data-demo-state を付けた
+ * 要素の中では、その状態のクラスを当てたまま描く。画面では data-demo-state を使わない。
+ * hover の既定（hover できる端末だけ）はそのまま残す。
+ */
+@custom-variant hover {
+  @media (hover: hover) {
+    &:hover {
+      @slot;
+    }
+  }
+  [data-demo-state~="hover"] & {
+    @slot;
+  }
+}
+
+@custom-variant active {
+  &:active {
+    @slot;
+  }
+  [data-demo-state~="active"] & {
+    @slot;
+  }
+}
+
 .vv-video-player .video-js {
   width: 100%;
   height: 100%;
@@ -328,7 +354,10 @@
     cursor: pointer;
   }
 
-  :focus-visible {
+  /* フォーカスの輪は全部品でこの 1 つ（web/registry/rules/components.md）。見本は
+     data-demo-state="focus" の最初の子に同じ輪を描く。 */
+  :focus-visible,
+  [data-demo-state~="focus"] > :first-child {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
