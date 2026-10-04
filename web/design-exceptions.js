@@ -7,7 +7,8 @@
 // - rules: 外す規則。no-restricted-syntax は生の部品の選択子だけを外し、訳し漏れの
 //   検査は残す。
 // - classes: 任意。許すクラスだけを正規表現で並べる。無ければ rules をファイル全体で外す。
-// - kind: "migration"（そのファイルを移す PR が消す）か "special"（残る）。
+// - kind: "special"（残る）。移行中に使った "migration" は、全画面の移行とテーマの
+//   リセットの後は src/theme/designExceptions.test.ts が落とす。
 // - reason: "special" では必須。デザインシステムでその見た目を表せない理由。
 //
 // 型は design-exceptions.d.ts、一覧の検査は src/theme/designExceptions.test.ts にある。
@@ -42,24 +43,6 @@ export default [
       "The seek preview over the video.js progress bar (.vv-seek-preview in index.css) is placed from the pointer and the frame size at run time and sized from the seek-preview tokens; it is not a card scrub (ScrubPreview) and has no design-system component.",
   },
   {
-    file: "ui/BrandHomeLink.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-7"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Checkbox.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Chip.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["\\[&>svg\\]:size-3\\.5"],
-    kind: "migration",
-  },
-  {
     file: "ui/shadcn/combobox.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     classes: [
@@ -69,31 +52,6 @@ export default [
     kind: "special",
     reason:
       "Radix sets the list's width and transform origin at run time through its CSS variables; they are positions, not design values.",
-  },
-  {
-    file: "ui/Combobox.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Menu.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "ui/ModalFrame.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Popover.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "ui/ScrubPreview.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
   },
   {
     file: "ui/shadcn/select.tsx",
@@ -107,22 +65,6 @@ export default [
     kind: "special",
     reason:
       "Radix sets the list's height, width and transform origin at run time through its CSS variables; they are positions, not design values.",
-  },
-  {
-    file: "ui/Skeleton.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "ui/TentativeMark.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["size-3\\.5"],
-    kind: "migration",
-  },
-  {
-    file: "ui/Toast.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
   },
   {
     file: "ui/shadcn/alert.tsx",

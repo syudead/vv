@@ -102,7 +102,7 @@ function OwnerLoginRedirect({
 
 function GateFailure({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
-    <div className="flex min-h-dvh items-center bg-bg">
+    <div className="flex min-h-dvh items-center bg-background">
       <EmptyState
         icon={AlertCircle}
         tone="danger"

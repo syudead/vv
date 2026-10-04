@@ -201,7 +201,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `videoList/` | List pieces the library and folder screens share |
 | `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |
 | `hooks/` | Hooks the registry components share, such as `use-mobile` |
-| `lib/` | Locale-independent formatting |
+| `lib/` | Helpers several flows share: locale-independent formatting, the tag-name rule, IME key handling |
 | `i18n/` | Screen text and locale-dependent formatting ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | Per-device display settings |
 | `theme/` | Token tests only, no runtime code |

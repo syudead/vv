@@ -11,10 +11,10 @@ variants are upstream's. A screen composes them; it does not restyle them with
 its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
-The other PascalCase files in `web/src/ui` (`Button.tsx`, `Popover.tsx`,
-`Menu.tsx`, `ModalFrame.tsx`, `Chip.tsx` and the rest) are the components
-these replace. They stay
-only for screens that have not moved yet; new code never imports them.
+The other PascalCase files in `web/src/ui` that this file does not list
+(`Button.tsx`, `IconButton.tsx`, `Combobox.tsx` and the rest) are older
+components; new code never imports them. `Combobox.tsx` stays only for typing
+a tag name on the video page and picking the merge target in the tag admin.
 
 ## Shared rules
 

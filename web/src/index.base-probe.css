@@ -5,7 +5,7 @@
 
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/noto-sans-jp";
-@import "./ui/tokens.css";
+@import "./ui/tokens.base-probe.css";
 
 /*
  * 見本（/design-system）は部品の hover・キーボードのフォーカス・押下の状態を、触らずに
@@ -83,7 +83,7 @@
 }
 
 .vv-video-player .video-js .vjs-button:hover {
-  background: var(--color-accent);
+  background: var(--color-hover-wash);
 }
 
 .vv-video-player .video-js .vjs-button:focus-visible,

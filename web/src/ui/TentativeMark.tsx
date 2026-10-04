@@ -8,12 +8,12 @@ import { CircleDashed } from "lucide-react";
  * 押せない要素は視覚的に隠した「Tentative」を置く）ので、ここは隠す。
  *
  * 大きさはチップでは既定の `size-3`（Folder の目印と同じ）、管理画面の行では
- * `size="row"` の `size-3.5`。
+ * `size="row"` の `size-4`。
  */
 export default function TentativeMark({ size = "chip" }: { size?: "chip" | "row" }) {
   return (
     <CircleDashed
-      className={`${size === "chip" ? "size-3" : "size-3.5"} shrink-0 text-muted-foreground`}
+      className={`${size === "chip" ? "size-3" : "size-4"} shrink-0 text-muted-foreground`}
       aria-hidden="true"
     />
   );

@@ -19,7 +19,7 @@ import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
-import { isComposingKeyEvent } from "../ui/Combobox";
+import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
 import {

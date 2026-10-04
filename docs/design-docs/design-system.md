@@ -71,7 +71,7 @@ and `cva()`.
 | --- | --- | --- |
 | `<button>`, `<input>`, `<select>`, `<textarea>` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
 | A class with an arbitrary value or property, or the `(--var)` shorthand | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
-| A class the theme does not generate | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
+| A class the theme does not generate, including a step outside the scale (`p-7`, `text-2xl`, `rounded-xl`, `font-bold`) | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
 | A raw colour outside the tokens, a default palette class, a contrast pair below its minimum | `web/src/theme/tokens.test.ts` | The test's own |
 
 Arbitrary variants (`data-[state=open]:`, `has-[...]:`, `max-[49.5rem]:`)
@@ -87,7 +87,7 @@ entry in `web/design-exceptions.js`:
 | `file` | Path under `web/src`, such as `player/VideoPage.tsx` |
 | `rules` | The rule names from the table above that the entry exempts |
 | `classes` | Optional: regular expressions for the only classes allowed, each matched against the whole class; without it the file is exempt from `rules` |
-| `kind` | `migration`, removed by the PR that migrates the file, or `special`, which stays |
+| `kind` | `special`, which stays; `migration` marked a file waiting for its screen migration and is no longer accepted |
 | `reason` | Required for `special`: why the design system cannot express the look |
 
 An exemption from `no-restricted-syntax` lifts only the raw-control check; the
@@ -98,9 +98,11 @@ The list started with every file that broke the checks when they landed, as
 `migration` entries. A new file that breaks a check fails from then on, and
 each migration PR deletes its files' entries
 ([research.md R-9](../../specs/038-design-system/research.md#r-9-screens-migrate-one-area-per-pr-behind-a-shrinking-exception-list)).
+Once every screen had migrated, the last unit removed the remaining
+`migration` entries, so the list holds only `special` entries.
 `web/src/theme/designExceptions.test.ts` (`task test-web`) fails when an entry
-names a missing file, names an unknown rule, has an unknown `kind`, repeats a
-file, or is `special` without a `reason`.
+names a missing file, names an unknown rule, is a `migration` entry or has
+another unknown `kind`, repeats a file, or is `special` without a `reason`.
 
 | Rejected | Why |
 | --- | --- |
@@ -143,22 +145,30 @@ The scales are closed:
 | Scale | Steps |
 | --- | --- |
 | Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold` |
-| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, popover widths) |
+| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, popover and combobox widths) |
 | Radius | `sm`, `md`, `lg`, `full` |
 | Shadow | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces |
-| Motion | `fade-in`, `pop-in`, `slide-up`, `shimmer`; off under reduced motion |
+| Motion | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion |
 
 The library is denser than the video page: `h-8` controls, `gap-2` between
 controls, `gap-3` between cards, `text-sm` body, against `h-9`, `gap-3`,
 `gap-4` and `text-base`.
 
-Until every screen is migrated, a `no-restricted-classes` pattern fails a
-numeric step outside the scale (`p-7`, `gap-2.5`, `text-2xl`, `rounded-xl`,
-`font-bold`) with `Step outside the design-system scale
-(web/registry/rules/foundations.md).`, and the previous token names (`surface`,
-`fg-muted`, `link`, ...) stay defined as `var()` aliases of the new ones, so
-unmigrated screens keep working. The cyan `accent` was renamed to `primary`
-everywhere at once, because shadcn uses `accent` for the hover fill.
+The scales are closed by the theme itself. `tokens.css` first resets
+Tailwind's default namespaces for every scale (`--color-*`, `--text-*`,
+`--font-weight-*`, `--spacing` and `--spacing-*`, `--radius-*`, `--shadow-*`,
+`--drop-shadow-*`, `--animate-*`) and then defines only the scale's steps, so a
+step outside them (`p-7`, `gap-2.5`, `text-2xl`, `rounded-xl`, `font-bold`,
+`bg-red-500`) is never generated and fails as an unknown class. Fractions,
+`full`, `auto`, `px` and the container widths (`max-w-md`) are not part of a
+reset namespace and stay available. The reset also drops `tw-animate-css`'s
+enter and exit animations, so floating layers open with `animate-pop-in`.
+
+During the migration the previous token names (`surface`, `fg-muted`, `link`,
+...) were `var()` aliases of the new ones and a `no-restricted-classes`
+pattern failed off-scale steps; both went with the reset. The cyan `accent` was
+renamed to `primary` everywhere at once, because shadcn uses `accent` for the
+hover fill.
 
 | Rejected | Why |
 | --- | --- |
@@ -218,12 +228,14 @@ and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.
 
-This tier changes no existing screen. The components the screens use today
-stay at their paths in `web/src/ui` (`Button.tsx`, `Checkbox.tsx`,
-`Combobox.tsx` and the others the table names) until the screen migrations
-replace their last use. The new components live in their own folder, so a
-file name never differs from an old one by case alone. The old components are
-not registry items; new code imports from `web/src/ui/shadcn`.
+This tier changed no existing screen: the old components stayed at their
+paths in `web/src/ui` until the screen migrations replaced their last use, and
+the last unit deleted the ones nothing imported. `ui/Combobox` stays as the
+tag-name input on the video page and the merge target list in the tag admin,
+whose keyboard and validation behaviour the shadcn `Combobox` does not
+reproduce; it uses only the scale. The new components live in their own
+folder, so a file name never differs from an old one by case alone. The old
+components are not registry items; new code imports from `web/src/ui/shadcn`.
 
 The showcase (`/design-system`) lays each component out by variant and state:
 normal, hover, keyboard focus, pressed, selected and disabled. The states are

@@ -220,7 +220,7 @@ export default function FolderArt({
               data-folder-front={isFront ? "" : undefined}
               className={cn(
                 "absolute aspect-video overflow-hidden rounded-sm border border-input bg-navbar transition-all duration-200 ease-out-quart motion-reduce:transition-none",
-                isFront ? "z-10 shadow-card-hover" : "shadow-card",
+                isFront && "z-10 shadow-card-hover",
               )}
               // 1 枚の幅は背板の 68%。位置と同じく背板に対する割合なので style で渡す。
               style={{

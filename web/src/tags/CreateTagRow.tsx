@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { t } from "../i18n";
-import { isComposingKeyEvent } from "../ui/Combobox";
+import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Field, FieldError } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";

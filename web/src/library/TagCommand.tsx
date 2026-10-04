@@ -12,7 +12,7 @@ import {
 } from "react";
 
 import { t, type UiText } from "../i18n";
-import { newlinePattern, nameReason } from "../ui/Combobox";
+import { nameReason, newlinePattern } from "../lib/tagName";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/shadcn/command";
 
 /** TagChoice は選択バーのタグの候補の 1 行である。 */

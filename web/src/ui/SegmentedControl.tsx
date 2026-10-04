@@ -30,7 +30,7 @@ export default function SegmentedControl<T extends string>({
         if (next !== "") onValueChange(next as T);
       }}
       aria-label={label}
-      className="inline-flex h-9 items-center rounded-md bg-card shadow-card"
+      className="inline-flex h-9 items-center rounded-md bg-card"
     >
       {options.map((option) => (
         <Tooltip key={option.value} content={option.label}>

@@ -18,6 +18,8 @@ import {
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { isComposingKeyEvent } from "../lib/ime";
+import { nameReason, newlinePattern } from "../lib/tagName";
 
 /** 候補の1行。id は React のキーと aria-activedescendant に使う文字列である。 */
 export interface ComboboxOption {
@@ -35,60 +37,6 @@ export interface ComboboxOption {
    * （ui-design.md「Accessibility」の読み上げ名）。
    */
   ariaLabel?: UiText;
-}
-
-export const newlinePattern = /[\r\n]/;
-// タグ名では C0/C1 制御文字（U+0000–U+001F・U+007F–U+009F、一般カテゴリ Cc）をすべて拒む。
-const controlCharPattern = /\p{Cc}/u;
-
-/** tagNameMaxLength はタグ名に許す長さ（符号位置の数）である。 */
-const tagNameMaxLength = 100;
-
-/** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
-function codePointLength(value: string): number {
-  return Array.from(value.trim()).length;
-}
-
-/**
- * isComposingKey は、IME の変換中に打った特別なキー（Enter・Esc・矢印）かを、
- * `isComposing`・`keyCode` の組から判定する（keyCode 229 は isComposing を
- * 実装しない古いブラウザ向けの後方互換）。React の合成イベントとブラウザの
- * 生のイベントの両方から使えるよう、値だけを受け取る形にしている。
- */
-function isComposingKey(isComposing: boolean, keyCode: number): boolean {
-  return isComposing || keyCode === 229;
-}
-
-/**
- * isComposingKeyEvent は、React の合成イベント（`onKeyDown` など）が、IME の
- * 変換中に打った特別なキーかを返す。変換の確定・移動のためのキーで、
- * combobox やタグの名前を打つほかの入力（管理画面の作成・改名の入力、検索の
- * 入力）の操作にしてはいけない（`web/src/player/keyboard.ts` と同じ判定）。
- */
-export function isComposingKeyEvent(event: KeyboardEvent<HTMLInputElement>): boolean {
-  return isComposingKey(event.nativeEvent.isComposing, event.nativeEvent.keyCode);
-}
-
-/**
- * isComposingNativeKeyEvent は、`document.addEventListener` などで受け取る
- * 生の `KeyboardEvent` に対する同じ判定である。`ui/ModalFrame` の Esc の
- * 扱いが使う（IME の変換中の Esc で窓ごと閉じてしまわないため）。
- */
-export function isComposingNativeKeyEvent(event: globalThis.KeyboardEvent): boolean {
-  return isComposingKey(event.isComposing, event.keyCode);
-}
-
-/**
- * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
- * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。タグの
- * 名前を打つすべての入力（この Combobox、管理画面の作成・改名・シノニムの
- * 追加）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
- */
-export function nameReason(raw: string): UiText | null {
-  if (controlCharPattern.test(raw)) return t.tagName.controlCharacters;
-  const length = codePointLength(raw);
-  if (length > tagNameMaxLength) return t.tagName.tooLong(tagNameMaxLength, length);
-  return null;
 }
 
 /**
@@ -159,10 +107,10 @@ export default function Combobox({
   "aria-label"?: UiText;
   className?: string;
   inputClassName?: string;
-  /** 入力を囲む枠の幅などを差し替える。既定は再生画面と同じ `w-40`。 */
+  /** 入力を囲む枠の幅などを差し替える。既定は再生画面と同じ `w-combobox`。 */
   frameClassName?: string;
   /**
-   * 候補の一覧の幅を差し替える。既定は枠と別の `w-64`。`w-full` を渡すと、包みの
+   * 候補の一覧の幅を差し替える。既定は枠と別の `w-combobox-list`。`w-full` を渡すと、包みの
    * `relative`（`className` で幅を決めたもの）の幅に一覧を合わせる（統合の窓。
    * specs/036-tag-admin-scale/ui-design.md「Width」）。
    */
@@ -348,7 +296,7 @@ export default function Combobox({
             onMouseEnter={() => setActiveIndex(index)}
             data-chosen={option.id === chosenId || undefined}
             className={cn(
-              "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-foreground select-none",
+              "flex min-h-8 cursor-default items-center justify-between gap-2 px-2 py-1 text-sm text-foreground select-none",
               inline && "min-h-9 rounded-md",
               option.id === chosenId
                 ? "bg-primary-soft text-primary"
@@ -403,7 +351,7 @@ export default function Combobox({
             }}
             onMouseEnter={() => setActiveIndex(index)}
             className={cn(
-              "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-foreground select-none",
+              "flex h-8 cursor-default items-center gap-2 px-2 text-sm text-foreground select-none",
               index === activeIndex && "bg-accent",
               blocked && "pointer-events-none opacity-50",
             )}
@@ -437,7 +385,7 @@ export default function Combobox({
             : "flex h-6 items-center gap-1 rounded-sm border bg-muted px-1.5 text-xs",
           "focus-within:border-primary focus-within:ring-2 focus-within:ring-ring",
           disabled ? "border-border opacity-50" : "border-input",
-          frameClassName ?? "w-40",
+          frameClassName ?? "w-combobox",
         )}
       >
         {icon}
@@ -485,7 +433,7 @@ export default function Combobox({
       </div>
       {inline ? (
         // 一覧の箱は候補の数によらず同じ高さで、窓のボタンへ重ならない。
-        <div className="mt-2 h-60 max-h-[40vh] overflow-y-auto rounded-md border border-border p-1">
+        <div className="mt-2 h-combobox-panel max-h-combobox-panel-max overflow-y-auto rounded-md border border-border p-1">
           <ul
             ref={listRef}
             id={listboxId}
@@ -496,7 +444,7 @@ export default function Combobox({
             {rows.map((row) => row.node)}
           </ul>
           {rows.length === 0 && emptyText !== undefined && (
-            <p className="px-2.5 py-2 text-sm text-muted-foreground">{emptyText}</p>
+            <p className="px-2 py-2 text-sm text-muted-foreground">{emptyText}</p>
           )}
         </div>
       ) : (
@@ -507,8 +455,8 @@ export default function Combobox({
             id={listboxId}
             role="listbox"
             className={cn(
-              "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-popover py-1 shadow-elevated",
-              listClassName ?? "w-64",
+              "absolute z-50 max-h-combobox-list overflow-y-auto rounded-md bg-popover py-1 shadow-elevated",
+              listClassName ?? "w-combobox-list",
               side === "top" ? "bottom-full mb-1" : "top-full mt-1",
             )}
           >
