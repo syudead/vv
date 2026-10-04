@@ -345,7 +345,10 @@ async function settleResources(page: Page) {
   });
 }
 
-test.describe.serial("live MP4 playback", () => {
+// serial にしない。1 つの失敗で残りが走らないと、1 回の実行で 1 件ずつしか失敗が
+// 分からない。準備（フォルダの登録と取り込み）は beforeAll にあり、失敗のあとに作業者が
+// 入れ替わっても入れ直す。
+test.describe("live MP4 playback", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(120_000);
     const mediaDir = process.env.MDM_E2E_MEDIA_DIR;
