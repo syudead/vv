@@ -1,5 +1,5 @@
 import { Folder, Plus, X } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { RequestFailed, type TagRef, type VideoTag } from "../api/client";
@@ -12,16 +12,12 @@ import {
   subscribeTags,
   type Tag,
 } from "../api/tags";
-import {
-  applyTagToTags,
-  compareNatural,
-  isFolderOnly,
-  tagsReflectChange,
-} from "../api/tagOrder";
+import { applyTagToTags, isFolderOnly, tagsReflectChange } from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
+import { buildTagChoices } from "../library/tagChoices";
+import Combobox from "../ui/Combobox";
 import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
@@ -189,8 +185,13 @@ export default function VideoTags({
   // 候補から除くのは手で付けたタグだけ。フォルダ名からだけ付いているタグは
   // 候補に出し、確定すると手でも付いて面のある形に変わる（017 の ui-design.md
   // 「Folder-derived tag chip」）。
-  const attachedIds = new Set(tags.filter((tag) => tag.manual).map((tag) => tag.id));
-  const { options, exactOption } = buildOptions(allTags ?? [], attachedIds, inputValue);
+  const { options, exactOption } = useMemo(() => {
+    const attachedIds = new Set(tags.filter((tag) => tag.manual).map((tag) => tag.id));
+    return buildTagChoices(allTags ?? [], inputValue, {
+      text: "player",
+      excludedIds: attachedIds,
+    });
+  }, [tags, allTags, inputValue]);
 
   function isTagNotFound(error: unknown): boolean {
     return error instanceof RequestFailed && error.code === "tag_not_found";
@@ -372,65 +373,4 @@ export default function VideoTags({
       )}
     </div>
   );
-}
-
-function buildOptions(
-  allTags: readonly Tag[],
-  attachedIds: ReadonlySet<number>,
-  input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
-  const trimmed = input.trim();
-  const query = trimmed.toLowerCase();
-
-  let exactTag: Tag | undefined;
-  for (const tag of allTags) {
-    if (tag.name === trimmed || tag.synonyms.includes(trimmed)) {
-      exactTag = tag;
-      break;
-    }
-  }
-
-  const matched = allTags
-    .filter((tag) => !attachedIds.has(tag.id))
-    .map((tag) => {
-      const nameMatch = query === "" || tag.name.toLowerCase().includes(query);
-      const synonymHit = tag.synonyms.find((synonym) =>
-        synonym.toLowerCase().includes(query),
-      );
-      if (!nameMatch && synonymHit === undefined) return null;
-      const namePrefix = query === "" || tag.name.toLowerCase().startsWith(query);
-      const synonymPrefix =
-        synonymHit !== undefined && synonymHit.toLowerCase().startsWith(query);
-      return {
-        tag,
-        prefix: namePrefix || synonymPrefix,
-        hint:
-          !nameMatch && synonymHit !== undefined
-            ? t.player.tags.synonym(synonymHit)
-            : undefined,
-      };
-    })
-    .filter((value): value is NonNullable<typeof value> => value !== null)
-    .sort((a, b) => {
-      if (a.prefix !== b.prefix) return a.prefix ? -1 : 1;
-      return compareNatural(a.tag.name, b.tag.name);
-    });
-
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
-    id: String(tag.id),
-    label: tag.name,
-    hint,
-    meta: t.player.tags.videoCount(tag.videoCount),
-  }));
-
-  const exactOption: ComboboxOption | null =
-    exactTag === undefined
-      ? null
-      : {
-          id: String(exactTag.id),
-          label: exactTag.name,
-          meta: t.player.tags.videoCount(exactTag.videoCount),
-        };
-
-  return { options, exactOption };
 }

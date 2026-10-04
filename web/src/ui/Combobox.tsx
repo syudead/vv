@@ -1,10 +1,16 @@
+import {
+  defaultRangeExtractor,
+  observeElementRect,
+  useVirtualizer,
+  type Range,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import { LoaderCircle } from "lucide-react";
 import {
   useCallback,
   useEffect,
   useEffectEvent,
   useId,
-  useMemo,
   useRef,
   useState,
   type ClipboardEvent,
@@ -40,6 +46,18 @@ export interface ComboboxOption {
 export const newlinePattern = /[\r\n]/;
 // タグ名では C0/C1 制御文字（U+0000–U+001F・U+007F–U+009F、一般カテゴリ Cc）をすべて拒む。
 const controlCharPattern = /\p{Cc}/u;
+
+// 候補の一覧の寸法（px）。Tailwind の class と合わせる。行の高さは見積もりで、
+// 描いたあとに実際の高さを測り直す（シノニムの行は2行になる）。
+const ROW_HEIGHT = 32; // min-h-8・h-8
+const INLINE_ROW_HEIGHT = 36; // min-h-9
+const HINT_ROW_HEIGHT = 44; // py-1 + text-sm の行 + text-xs の行
+const INLINE_ROW_GAP = 2; // gap-0.5
+const LIST_PADDING = 4; // popup の py-1・inline の箱の p-1
+const POPUP_LIST_MAX_HEIGHT = 256; // max-h-64
+const INLINE_LIST_HEIGHT = 240; // h-60
+const LIST_OVERSCAN = 6;
+const CREATE_ROW_KEY = "__create__";
 
 /** tagNameMaxLength はタグ名に許す長さ（符号位置の数）である。 */
 const tagNameMaxLength = 100;
@@ -199,8 +217,6 @@ export default function Combobox({
   const [activeIndex, setActiveIndex] = useState(-1);
   const [reason, setReason] = useState<UiText | null>(null);
 
-  const listRef = useRef<HTMLUListElement | null>(null);
-
   // open の変化を外側へ伝える（呼び出し元は effect の commit 後、次の
   // キー操作より前に確実に最新の値を読める。B2）。
   // 呼び出し元は毎回新しい関数を渡しうるので、きっかけは open だけにする。
@@ -218,13 +234,6 @@ export default function Combobox({
     setReason(nameReason(value));
     setActiveIndex(-1);
   }, [value]);
-
-  useEffect(() => {
-    if (activeIndex < 0 || !open) return;
-    const row = listRef.current?.querySelector(`[data-index="${String(activeIndex)}"]`);
-    // jsdom には scrollIntoView が無い。
-    row?.scrollIntoView?.({ block: "nearest" });
-  }, [activeIndex, open]);
 
   const commit = useCallback((option: ComboboxOption) => onSelect(option), [onSelect]);
 
@@ -326,105 +335,155 @@ export default function Combobox({
   // （Enter だけを塞いでもクリックはすり抜けてしまう）。
   const blocked = busy || reason !== null;
 
-  const rows = useMemo(() => {
-    const items: { key: string; index: number; node: ReactNode }[] = options.map(
-      (option, index) => ({
-        key: option.id,
-        index,
-        node: (
-          <li
-            key={option.id}
-            id={`${listboxId}-option-${String(index)}`}
-            role="option"
-            aria-selected={index === activeIndex}
-            aria-disabled={blocked || undefined}
-            aria-label={option.ariaLabel}
-            data-index={index}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (blocked) return;
-              commit(option);
-            }}
-            onMouseEnter={() => setActiveIndex(index)}
-            data-chosen={option.id === chosenId || undefined}
-            className={cn(
-              "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-fg select-none",
-              inline && "min-h-9 rounded-md",
-              option.id === chosenId
-                ? "bg-accent-soft text-link"
-                : index === activeIndex && "bg-hover-wash",
-              option.id === chosenId &&
-                index === activeIndex &&
-                "ring-1 ring-inset ring-link",
-              blocked && "pointer-events-none opacity-50",
-            )}
-          >
-            <span className="flex min-w-0 flex-col">
-              <span className={cn("truncate", option.id === chosenId && "font-medium")}>
-                {option.label}
-              </span>
-              {option.hint !== undefined && (
-                <span className="truncate text-xs text-fg-muted">{option.hint}</span>
-              )}
-            </span>
-            {option.meta !== undefined && (
-              <span
-                className={cn(
-                  "shrink-0 text-xs tabular-nums",
-                  option.id === chosenId ? "text-link" : "text-fg-muted",
-                )}
-              >
-                {option.meta}
-              </span>
-            )}
-          </li>
-        ),
-      }),
-    );
-    if (showCreateRow) {
-      const index = options.length;
-      items.push({
-        key: "__create__",
-        index,
-        node: (
-          <li
-            key="__create__"
-            id={`${listboxId}-option-${String(index)}`}
-            role="option"
-            aria-selected={index === activeIndex}
-            aria-disabled={blocked || undefined}
-            data-index={index}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (blocked) return;
-              onCreate?.(value.trim());
-            }}
-            onMouseEnter={() => setActiveIndex(index)}
-            className={cn(
-              "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-fg select-none",
-              index === activeIndex && "bg-hover-wash",
-              blocked && "pointer-events-none opacity-50",
-            )}
-          >
-            {createLabel}
-          </li>
-        ),
-      });
+  // 一覧は見えている行（と前後の数行）だけを描く。タグが数千あっても開く・打つ
+  // たびに全部の行を作らない（ui-design.md「Combobox」、issue 675）。
+  const scrollRef = useRef<HTMLElement | null>(null);
+  const fallbackHeight = inline ? INLINE_LIST_HEIGHT : POPUP_LIST_MAX_HEIGHT;
+  const getItemKey = useCallback(
+    (index: number) => (index < options.length ? options[index]!.id : CREATE_ROW_KEY),
+    [options],
+  );
+  const estimateSize = useCallback(
+    (index: number) => {
+      if (index >= options.length) return ROW_HEIGHT;
+      const base = inline ? INLINE_ROW_HEIGHT : ROW_HEIGHT;
+      return options[index]!.hint !== undefined ? Math.max(base, HINT_ROW_HEIGHT) : base;
+    },
+    [options, inline],
+  );
+  // 選んでいる行は、見える範囲の外でも描いたままにする。aria-activedescendant が
+  // 指す要素が DOM に無くならないようにするため。
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const indexes = defaultRangeExtractor(range);
+      if (
+        activeIndex < 0 ||
+        activeIndex >= range.count ||
+        indexes.includes(activeIndex)
+      ) {
+        return indexes;
+      }
+      return [...indexes, activeIndex].sort((a, b) => a - b);
+    },
+    [activeIndex],
+  );
+  const virtualizer = useVirtualizer<HTMLElement, HTMLLIElement>({
+    count: rowCount,
+    getScrollElement: () => scrollRef.current,
+    estimateSize,
+    getItemKey,
+    rangeExtractor,
+    overscan: LIST_OVERSCAN,
+    // 一覧の上の余白（popup の py-1・inline の箱の p-1）。行の位置はこの分だけ下がる。
+    scrollMargin: LIST_PADDING,
+    gap: inline ? INLINE_ROW_GAP : 0,
+    initialRect: { width: 0, height: fallbackHeight },
+    // 大きさを測れない間（jsdom など、高さが 0 と出る環境）は、一覧の箱の高さで
+    // 描く範囲を決める。0 のままだと1行も描かれない。
+    observeElementRect: (instance, cb) =>
+      observeElementRect(instance, (rect) =>
+        cb(rect.height > 0 ? rect : { width: rect.width, height: fallbackHeight }),
+      ),
+  });
+
+  useEffect(() => {
+    if (activeIndex < 0 || !open) return;
+    virtualizer.scrollToIndex(activeIndex, { align: "auto" });
+  }, [activeIndex, open, virtualizer]);
+
+  const virtualItems = virtualizer.getVirtualItems();
+
+  // 描く行のぶんだけ要素を作る（全候補ぶんの ReactNode は作らない）。
+  function renderRow(item: VirtualItem): ReactNode {
+    const index = item.index;
+    const style = {
+      transform: `translateY(${String(inline ? item.start - LIST_PADDING : item.start)}px)`,
+    };
+    if (index >= options.length) {
+      return (
+        <li
+          key={CREATE_ROW_KEY}
+          ref={virtualizer.measureElement}
+          id={`${listboxId}-option-${String(index)}`}
+          role="option"
+          aria-selected={index === activeIndex}
+          aria-disabled={blocked || undefined}
+          aria-setsize={rowCount}
+          aria-posinset={index + 1}
+          data-index={index}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => {
+            if (blocked) return;
+            onCreate?.(value.trim());
+          }}
+          onMouseEnter={() => setActiveIndex(index)}
+          style={style}
+          className={cn(
+            "absolute inset-x-0 top-0",
+            "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-fg select-none",
+            index === activeIndex && "bg-hover-wash",
+            blocked && "pointer-events-none opacity-50",
+          )}
+        >
+          {createLabel}
+        </li>
+      );
     }
-    return items;
-  }, [
-    options,
-    showCreateRow,
-    createLabel,
-    activeIndex,
-    listboxId,
-    value,
-    blocked,
-    commit,
-    onCreate,
-    inline,
-    chosenId,
-  ]);
+    const option = options[index]!;
+    return (
+      <li
+        key={option.id}
+        ref={virtualizer.measureElement}
+        id={`${listboxId}-option-${String(index)}`}
+        role="option"
+        aria-selected={index === activeIndex}
+        aria-disabled={blocked || undefined}
+        aria-label={option.ariaLabel}
+        aria-setsize={rowCount}
+        aria-posinset={index + 1}
+        data-index={index}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => {
+          if (blocked) return;
+          commit(option);
+        }}
+        onMouseEnter={() => setActiveIndex(index)}
+        data-chosen={option.id === chosenId || undefined}
+        style={style}
+        className={cn(
+          "absolute inset-x-0 top-0",
+          "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-fg select-none",
+          inline && "min-h-9 rounded-md",
+          option.id === chosenId
+            ? "bg-accent-soft text-link"
+            : index === activeIndex && "bg-hover-wash",
+          option.id === chosenId &&
+            index === activeIndex &&
+            "ring-1 ring-inset ring-link",
+          blocked && "pointer-events-none opacity-50",
+        )}
+      >
+        <span className="flex min-w-0 flex-col">
+          <span className={cn("truncate", option.id === chosenId && "font-medium")}>
+            {option.label}
+          </span>
+          {option.hint !== undefined && (
+            <span className="truncate text-xs text-fg-muted">{option.hint}</span>
+          )}
+        </span>
+        {option.meta !== undefined && (
+          <span
+            className={cn(
+              "shrink-0 text-xs tabular-nums",
+              option.id === chosenId ? "text-link" : "text-fg-muted",
+            )}
+          >
+            {option.meta}
+          </span>
+        )}
+      </li>
+    );
+  }
 
   return (
     <div className={cn("relative", className)}>
@@ -483,25 +542,32 @@ export default function Combobox({
       </div>
       {inline ? (
         // 一覧の箱は候補の数によらず同じ高さで、窓のボタンへ重ならない。
-        <div className="mt-2 h-60 max-h-[40vh] overflow-y-auto rounded-md border border-border p-1">
+        <div
+          ref={(node) => {
+            scrollRef.current = node;
+          }}
+          className="mt-2 h-60 max-h-[40vh] overflow-y-auto rounded-md border border-border p-1"
+        >
           <ul
-            ref={listRef}
             id={listboxId}
             role="listbox"
             aria-label={ariaLabel}
-            className="flex flex-col gap-0.5"
+            className="relative"
+            style={{ height: virtualizer.getTotalSize() }}
           >
-            {rows.map((row) => row.node)}
+            {virtualItems.map(renderRow)}
           </ul>
-          {rows.length === 0 && emptyText !== undefined && (
+          {rowCount === 0 && emptyText !== undefined && (
             <p className="px-2.5 py-2 text-sm text-fg-muted">{emptyText}</p>
           )}
         </div>
       ) : (
         open &&
-        rows.length > 0 && (
+        rowCount > 0 && (
           <ul
-            ref={listRef}
+            ref={(node) => {
+              scrollRef.current = node;
+            }}
             id={listboxId}
             role="listbox"
             className={cn(
@@ -510,7 +576,14 @@ export default function Combobox({
               side === "top" ? "bottom-full mb-1" : "top-full mt-1",
             )}
           >
-            {rows.map((row) => row.node)}
+            {/* 全行ぶんの高さを流れの中に置き、スクロールの長さと下の余白（py-1）を保つ。
+                行はこの上へ位置で重ねる。 */}
+            <li
+              role="presentation"
+              aria-hidden="true"
+              style={{ height: virtualizer.getTotalSize() }}
+            />
+            {virtualItems.map(renderRow)}
           </ul>
         )
       )}

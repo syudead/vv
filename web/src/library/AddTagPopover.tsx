@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import {
   attachVideoTagByID,
@@ -62,7 +62,10 @@ export default function AddTagPopover({
   // SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
   const overLimit = selectedIds.length > maxVideoTagsSelection;
 
-  const { options, exactOption } = buildAddOptions(allTags ?? [], value);
+  const { options, exactOption } = useMemo(
+    () => buildAddOptions(allTags ?? [], value),
+    [allTags, value],
+  );
   const trimmed = value.trim();
   const createLabel =
     exactOption === null && trimmed !== "" ? (
