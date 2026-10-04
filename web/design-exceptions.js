@@ -51,11 +51,6 @@ export default [
     kind: "migration",
   },
   {
-    file: "library/CardTagRow.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
     file: "player/AutoplayNotice.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
@@ -172,31 +167,6 @@ export default [
     file: "settings/TranscodingSection.tsx",
     rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
     classes: ["size-3\\.5", "w-48"],
-    kind: "migration",
-  },
-  {
-    file: "shell/AppShell.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/ScanProgressBar.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/ScanProgressIndicator.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/Sidebar.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "shell/TopBar.tsx",
-    rules: ["no-restricted-syntax"],
     kind: "migration",
   },
   {
@@ -323,47 +293,6 @@ export default [
   },
   {
     file: "versions/DuplicatesPage.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FavoriteToggle.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    classes: ["size-5\\.5", "size-7"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FilterMenu.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/FolderArt.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/Grid.tsx",
-    rules: ["better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SearchBox.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SearchSyntaxHelp.tsx",
-    rules: ["no-restricted-syntax", "better-tailwindcss/no-restricted-classes"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/SortControls.tsx",
-    rules: ["no-restricted-syntax"],
-    kind: "migration",
-  },
-  {
-    file: "videoList/cardPreview.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
     kind: "migration",
   },

@@ -8,12 +8,13 @@ import {
   type VideoTagsSummary,
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
-import { PopoverContent } from "../ui/Popover";
+import { Button } from "../ui/shadcn/button";
+import { PopoverContent } from "../ui/shadcn/popover";
+import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
+import TagCommand, { type TagChoice } from "./TagCommand";
 
 /**
  * RemoveTagPopover は選択バーの「タグを外す」の中身である
@@ -34,8 +35,6 @@ export default function RemoveTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // AddTagPopover と同じく、候補の一覧が開いているかを見張る（B2）。
-  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<UiText | null>(null);
@@ -103,7 +102,7 @@ export default function RemoveTagPopover({
     fetchSummary();
   }, [open, fetchSummary]);
 
-  // 「読み込み中…」から Combobox に切り替わった瞬間（要約が届いたとき）は、
+  // 「読み込み中…」から候補に切り替わった瞬間（要約が届いたとき）は、
   // ui-design.md「Add」「Remove」と同じくフォーカスを入力へ移す。
   // `onOpenAutoFocus` は最初のマウント時にしか働かないため、ここで補う。
   const ready =
@@ -117,7 +116,7 @@ export default function RemoveTagPopover({
       ? { options: [], exactOption: null }
       : buildRemoveOptions(summary, value);
 
-  function submit(option: ComboboxOption) {
+  function submit(option: TagChoice) {
     setErrorMessage(null);
     // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と
     // 同じ理由。contracts/tags-api.md §4）。
@@ -151,7 +150,6 @@ export default function RemoveTagPopover({
       side="top"
       align="start"
       aria-labelledby={headingId}
-      className="w-popover p-3"
       onOpenAutoFocus={(event) => {
         if (overLimit || loading || fetchFailed || summary?.items.length === 0) {
           event.preventDefault();
@@ -159,8 +157,10 @@ export default function RemoveTagPopover({
           inputRef.current?.focus();
         }
       }}
+      // Esc はポップオーバーだけを閉じ、選択は残す（AddTagPopover と同じ）。
       onEscapeKeyDown={(event) => {
-        if (listOpenRef.current) event.preventDefault();
+        event.preventDefault();
+        onOpenChange(false);
       }}
     >
       <h2 id={headingId} className="sr-only">
@@ -172,7 +172,11 @@ export default function RemoveTagPopover({
         </p>
       )}
       {!overLimit && loading && (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <Spinner aria-hidden="true" />
           {t.library.selection.loading}
         </p>
       )}
@@ -201,34 +205,19 @@ export default function RemoveTagPopover({
         summary !== null &&
         summary.items.length > 0 && (
           <>
-            <Combobox
+            <TagCommand
+              label={t.library.selection.removeTag}
               value={value}
               onValueChange={setValue}
-              options={options}
-              exactOption={exactOption}
+              choices={options}
+              exactChoice={exactOption}
               onSelect={submit}
-              createLabel={null}
-              placeholder={t.library.selection.removeTag}
-              icon={
-                <Minus
-                  className="size-3 shrink-0 text-muted-foreground"
-                  aria-hidden="true"
-                />
-              }
+              icon={<Minus aria-hidden="true" />}
               busy={submitting}
-              side="top"
-              aria-label={t.library.selection.removeTag}
               inputRef={inputRef}
-              onEscapeWhenClosed={() => onOpenChange(false)}
-              onOpenChange={(listOpen) => {
-                listOpenRef.current = listOpen;
-              }}
-              className="w-full"
-              inputClassName="w-full"
-              frameClassName="w-full"
             />
             {errorMessage !== null && (
-              <p role="alert" className="mt-1 text-xs text-destructive">
+              <p role="alert" className="text-xs text-destructive">
                 {errorMessage}
               </p>
             )}

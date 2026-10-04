@@ -24,11 +24,20 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
-import Checkbox from "../ui/Checkbox";
+import FavoriteToggle from "../ui/FavoriteToggle";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
+import { Checkbox } from "../ui/shadcn/checkbox";
+import { TableCell, TableRow } from "../ui/shadcn/table";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
+import {
+  VideoThumbnail,
+  VideoThumbnailDuration,
+  VideoThumbnailImage,
+  VideoThumbnailMark,
+  VideoThumbnailNotice,
+  VideoThumbnailProgress,
+} from "../ui/VideoThumbnail";
 import { CardMedia, useCardPreview } from "./cardPreview";
-import FavoriteToggle from "./FavoriteToggle";
 
 export interface VideoCardProps {
   video: Video;
@@ -98,36 +107,37 @@ function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "ro
 }
 
 /** PublicMark は公開の印（地球のアイコンと、読み上げ用の「公開」）である。 */
-function PublicMark({ className }: { className?: string }) {
+function PublicMark() {
   return (
     <>
-      <Globe
-        aria-hidden="true"
-        className={cn("size-3 shrink-0 text-foreground", className)}
-      />
+      <Globe aria-hidden="true" className="size-3 shrink-0" />
       <span className="sr-only">{t.list.card.public}</span>
     </>
   );
 }
 
+/**
+ * SelectCheck はカードの左上の選択のチェックである。リンクの外に置き、ポインタが入ったら
+ * ホバープレビューを止める。選択中か選択モードの間は常に、それ以外はカードの hover と
+ * フォーカス、`hover:none` の端末で見せる。
+ */
 function SelectCheck({
   video,
   selected,
   selectionMode,
   onSelect,
-  previewing,
   onPreviewCancel,
 }: Pick<VideoCardProps, "video" | "selected" | "selectionMode"> & {
   onSelect: (id: number, selected: boolean) => void;
-  previewing: boolean;
   onPreviewCancel: () => void;
 }) {
   return (
-    <div
+    <VideoThumbnailMark
+      corner="top-start"
       data-preview-checkbox="true"
       onPointerEnter={onPreviewCancel}
       className={cn(
-        "absolute top-2 left-2 z-20 transition-opacity duration-150",
+        "p-1 transition-opacity duration-150",
         selectionMode || selected
           ? "opacity-100"
           : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
@@ -135,12 +145,11 @@ function SelectCheck({
     >
       <Checkbox
         checked={selected}
-        onCheckedChange={(next) => onSelect(video.id, next)}
-        label={t.list.card.select(video.title)}
-        className={previewing ? "!bg-navbar" : undefined}
+        onCheckedChange={(next) => onSelect(video.id, next === true)}
+        aria-label={t.list.card.select(video.title)}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       />
-    </div>
+    </VideoThumbnailMark>
   );
 }
 
@@ -254,7 +263,7 @@ function VideoCard(props: VideoCardProps) {
     previewResetEpoch,
     onPreviewStart,
   });
-  const { showingPreview, startPreview } = preview;
+  const { startPreview } = preview;
   const { scrub, release, setArticle } = useCardScrub({
     video,
     selectionMode,
@@ -273,13 +282,7 @@ function VideoCard(props: VideoCardProps) {
       onPointerEnter={startPreview}
       onPointerLeave={release}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-md border border-border bg-card transition duration-200 ease-out-quart",
-        // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-ring",
-        // 装飾的な動きは動きを減らす設定で止める（library-ui.md 4）。影の最終状態は残す。
-        "motion-reduce:transition-none",
-        "hover:border-input hover:shadow-card-hover",
-        selected && "border-primary ring-2 ring-primary",
+        "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
       )}
     >
@@ -289,11 +292,9 @@ function VideoCard(props: VideoCardProps) {
           selected={selected}
           selectionMode={selectionMode}
           onSelect={onSelect}
-          previewing={showingPreview}
           onPreviewCancel={release}
         />
       )}
-
       {/* リンクは flex-1 で伸ばし、同じ格子の行で高いカードとの差を引き受ける。タグの行を
           カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
       <Link
@@ -311,13 +312,13 @@ function VideoCard(props: VideoCardProps) {
             onSelect(video.id, !selected);
           }
         }}
-        className="flex min-w-0 flex-1 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
       >
-        <div className="relative aspect-video w-full overflow-hidden bg-navbar">
+        <VideoThumbnail selected={selected}>
           <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
           {(publicMark || duration !== "") && (
-            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs font-medium text-foreground tabular-nums">
+            <VideoThumbnailDuration>
               {publicMark && <PublicMark />}
               {duration !== "" && (
                 <span>
@@ -329,27 +330,16 @@ function VideoCard(props: VideoCardProps) {
                       )}
                 </span>
               )}
-            </span>
+            </VideoThumbnailDuration>
           )}
 
           {ratio !== null && (
-            <span
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(ratio * 100)}
+            <VideoThumbnailProgress
+              value={Math.round(ratio * 100)}
               aria-label={t.list.card.watchedRatio}
               // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
-              className={cn(
-                "absolute inset-x-0 bottom-0 h-1 bg-overlay",
-                scrubPosition !== null && "opacity-0",
-              )}
-            >
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
+              className={cn(scrubPosition !== null && "opacity-0")}
+            />
           )}
 
           {scrubPosition !== null && (
@@ -369,18 +359,14 @@ function VideoCard(props: VideoCardProps) {
           <ScrubBand scrub={scrub} />
 
           {rawUnplayable !== null && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-overlay text-warning">
-              <AlertTriangle className="size-5" />
-              <span className="px-3 text-center text-xs font-medium">
-                {rawUnplayable}
-              </span>
-            </div>
+            <VideoThumbnailNotice>
+              <AlertTriangle aria-hidden="true" />
+              <span>{rawUnplayable}</span>
+            </VideoThumbnailNotice>
           )}
-        </div>
+        </VideoThumbnail>
 
-        <div
-          className={cn("flex min-w-0 flex-col gap-1 px-3 pt-2", !showTagsRow && "pb-3")}
-        >
+        <div className="flex min-w-0 flex-col gap-1">
           <h3
             title={video.title}
             className={cn(
@@ -392,10 +378,7 @@ function VideoCard(props: VideoCardProps) {
           </h3>
           {location !== undefined && (
             <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-              <Folder
-                aria-hidden="true"
-                className="size-3 shrink-0 text-muted-foreground"
-              />
+              <Folder aria-hidden="true" className="size-3 shrink-0" />
               {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。
                   title 属性は省略しない全体（最上位では登録フォルダの絶対パスから）。 */}
               <span
@@ -409,23 +392,15 @@ function VideoCard(props: VideoCardProps) {
           )}
         </div>
       </Link>
+      {/* 付け外しはサムネイルの右上、リンクの外に置く（チェックと同じ。DOM の順は
+          チェック → リンク → 付け外し → タグの行。ui-design.md「Placement」）。 */}
       {owner && (
-        // お気に入りはサムネイルの右上、リンクの外に置く（チェックと同じ。DOM の順は
-        // チェック → リンク → 付け外し → タグの行。ui-design.md「Placement」）。ポインタが
-        // 入ったらホバープレビューを止め、ここからはプレビューを始めない。
-        <div
-          data-preview-checkbox="true"
-          onPointerEnter={release}
-          className="absolute top-1.5 right-1.5 z-20 flex"
-        >
+        // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
+        <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
           <VideoFavorite video={video} variant="card" />
-        </div>
+        </VideoThumbnailMark>
       )}
-      {showTagsRow && (
-        // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
-        // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
-      )}
+      {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );
 }
@@ -440,54 +415,44 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const owner = useAudience() === "owner";
 
   return (
-    <tr
+    <TableRow
       data-video-id={video.id}
-      className={cn(
-        "group relative transition-colors hover:bg-accent [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-ring has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-ring",
-        selected && "bg-primary-soft",
-      )}
+      data-state={selected ? "selected" : undefined}
+      className="group"
     >
       {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
       {onSelect !== undefined && (
-        <td className="w-10 pl-3">
+        <TableCell className="w-10 pl-3">
           <Checkbox
             checked={selected}
-            onCheckedChange={(next) => onSelect(video.id, next)}
-            label={t.list.card.select(video.title)}
+            onCheckedChange={(next) => onSelect(video.id, next === true)}
+            aria-label={t.list.card.select(video.title)}
             className={cn(
               "transition-opacity",
               selectionMode || selected
                 ? "opacity-100"
-                : "opacity-40 group-hover:opacity-100",
+                : "opacity-50 group-focus-within:opacity-100 group-hover:opacity-100",
             )}
           />
-        </td>
+        </TableCell>
       )}
-      <td className="w-list-thumb-cell py-1.5 pr-2">
-        <div className="relative aspect-video w-list-thumb overflow-hidden rounded-sm bg-navbar">
+      <TableCell className="w-list-thumb-cell">
+        <VideoThumbnail className="w-list-thumb rounded-sm">
           {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
             <ThumbnailBackdrop src={video.thumbnailUrl} />
           )}
           {video.thumbnailUrl !== undefined && (
-            <img
-              src={video.thumbnailUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="relative h-full w-full object-contain"
-            />
+            <VideoThumbnailImage src={video.thumbnailUrl} />
           )}
           {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-1 bg-overlay">
-              <span
-                className="block h-full bg-primary"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
+            <VideoThumbnailProgress
+              value={Math.round(ratio * 100)}
+              aria-label={t.list.card.watchedRatio}
+            />
           )}
-        </div>
-      </td>
-      <td className="min-w-0 py-1.5 pr-4">
+        </VideoThumbnail>
+      </TableCell>
+      <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
           to={`/videos/${String(video.id)}`}
           state={{ from: backTo }}
@@ -498,7 +463,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             }
           }}
           className={cn(
-            "line-clamp-2 text-sm font-medium break-all hover:text-primary",
+            "line-clamp-2 rounded-sm text-sm font-medium break-all hover:text-primary",
             state === "watched" ? "text-muted-foreground" : "text-foreground",
           )}
         >
@@ -506,41 +471,41 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         </Link>
         {unplayable !== null && (
           <span className="mt-0.5 flex items-center gap-1 text-xs text-warning">
-            <AlertTriangle className="size-3" />
+            <AlertTriangle aria-hidden="true" className="size-3" />
             {unplayable}
           </span>
         )}
-      </td>
+      </TableCell>
       {/* お気に入りは題名の列の直後の列（ui-design.md「List view row」）。ゲストには列ごと描かない。 */}
       {owner && (
-        <td className="w-8">
+        <TableCell className="w-8 px-0">
           <VideoFavorite video={video} variant="row" />
-        </td>
+        </TableCell>
       )}
-      <td className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
+      <TableCell className="hidden w-16 pr-4 text-right sm:table-cell">
         {state === "watched" && (
           <Check
             className="ml-auto size-4 text-success"
             aria-label={t.list.card.watched}
           />
         )}
-      </td>
-      <td className="w-list-number pr-4 text-right text-sm text-foreground tabular-nums">
+      </TableCell>
+      <TableCell className="w-list-number pr-4 text-right tabular-nums">
         {/* 公開の印は時間の直前に置く（ui-design.md「Card」）。 */}
         <span className="inline-flex items-center justify-end gap-1.5">
           {publicMark && <PublicMark />}
           {duration}
         </span>
-      </td>
-      <td className="hidden w-list-number pr-4 text-right text-sm font-semibold text-foreground uppercase md:table-cell">
+      </TableCell>
+      <TableCell className="hidden w-list-number pr-4 text-right font-semibold uppercase md:table-cell">
         {quality}
-      </td>
-      <td className="hidden w-list-number-wide pr-4 text-right text-sm text-muted-foreground tabular-nums md:table-cell">
+      </TableCell>
+      <TableCell className="hidden w-list-number-wide pr-4 text-right text-muted-foreground tabular-nums md:table-cell">
         {formatBytes(video.sizeBytes)}
-      </td>
-      <td className="hidden w-list-date pr-3 text-right text-sm text-muted-foreground tabular-nums lg:table-cell">
+      </TableCell>
+      <TableCell className="hidden w-list-date pr-3 text-right text-muted-foreground tabular-nums lg:table-cell">
         {formatRelative(video.addedAt)}
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });

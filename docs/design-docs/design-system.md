@@ -254,13 +254,13 @@ maintainer approves this tier on the showcase and each screen migrates.
 | --- | --- | --- |
 | `Dialog`, `AlertDialog` | `ModalFrame` | `AlertDialog` confirms what cannot be undone |
 | `Popover`, `DropdownMenu`, `Tooltip`, `Tabs` | `Popover`, `Menu`, `Tooltip`, `Tabs` | Radix positions the layers |
-| `Sonner` | `Toast` | The app switches to it in one change for every screen |
+| `Sonner` | `Toast` | Every screen uses it; `ui/Toast` keeps only the queue that limits how many show at once |
 | `Badge` | `Chip`, tag chips, counts | Adds `soft`, `warning`, `success` to the upstream variants |
 | `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
 | `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
 | `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
 | `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
-| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, `videoList/FavoriteToggle` | vv components |
+| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input

@@ -3,7 +3,7 @@ import { CircleDashed } from "lucide-react";
 import type { Tag, VideoTagsSummary } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import type { ComboboxOption } from "../ui/Combobox";
+import type { TagChoice } from "./TagCommand";
 
 type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
 
@@ -11,7 +11,7 @@ type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
 export function buildAddOptions(
   allTags: readonly Tag[],
   input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = trimmed.toLowerCase();
 
@@ -48,14 +48,14 @@ export function buildAddOptions(
       return compareNatural(a.tag.name, b.tag.name);
     });
 
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
+  const options: TagChoice[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
     hint,
     meta: t.library.selection.videoCount(tag.videoCount),
   }));
 
-  const exactOption: ComboboxOption | null =
+  const exactOption: TagChoice | null =
     exactTag === undefined
       ? null
       : {
@@ -85,11 +85,11 @@ export function removableSummary(summary: VideoTagsSummary): VideoTagsSummary {
 export function buildRemoveOptions(
   summary: VideoTagsSummary,
   input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = trimmed.toLowerCase();
 
-  function toOption(item: VideoTagsSummaryItem): ComboboxOption {
+  function toOption(item: VideoTagsSummaryItem): TagChoice {
     const partial = item.manualCount < summary.total;
     return {
       id: String(item.tag.id),

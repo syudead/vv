@@ -248,12 +248,12 @@ discarded and reloads on the next visit.
 
 The owner's favorite mark is one heart that is both mark and toggle, at the
 top right of the thumbnail on video and group cards
-([`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx),
+([`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx),
 [035 UI design, Mark, Card](../../specs/035-favorites/ui-design.md)).
 
 | Aspect | Rule |
 | --- | --- |
-| Shape | 22px heart in a 28px hit area, no fill or border behind it |
+| Shape | 20px heart in a 32px hit area, no fill or border behind it |
 | Readability | Dark `drop-shadow-mark` on cards; none in list view |
 | On | Filled pink `favorite`, everywhere |
 | Off | White outline, shown only on hover or focus (always where hover is impossible) |

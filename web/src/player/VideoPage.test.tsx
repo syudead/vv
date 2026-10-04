@@ -1921,8 +1921,9 @@ describe("VideoPage", () => {
         button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      expect(button.className).toContain("text-muted-foreground!");
-      expect(button.className).not.toContain("text-favorite");
+      // オフは一群の他の操作と同じ色の Toggle（ui/FavoriteToggle の page）。
+      expect(button.getAttribute("data-state")).toBe("off");
+      expect(button.className).toContain("text-muted-foreground");
     });
 
     it("所在が無くプレイヤーの出ていない動画でも、付け外しだけで右端の一群を出す", async () => {
@@ -1955,10 +1956,10 @@ describe("VideoPage", () => {
         expect(favoriteButton().getAttribute("aria-pressed")).toBe("true"),
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
-      expect(favoriteButton().getAttribute("data-active")).toBe("true");
+      expect(favoriteButton().getAttribute("data-state")).toBe("on");
       // active の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
-      expect(favoriteButton().className).toContain("data-active:bg-primary-soft");
-      expect(favoriteButton().className).toContain("text-favorite!");
+      expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
+      expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
       );
@@ -2020,7 +2021,7 @@ describe("VideoPage", () => {
         expect(favoriteButton().getAttribute("aria-disabled")).toBeNull(),
       );
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
-      expect(favoriteButton().getAttribute("data-active")).toBeNull();
+      expect(favoriteButton().getAttribute("data-state")).toBe("off");
     });
 
     it("付け外しに失敗した行は、続けて「パスをコピー」を押すと消える", async () => {

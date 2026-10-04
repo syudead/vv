@@ -1,8 +1,8 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UiText } from "../i18n";
-import { ToastProvider, useToast } from "./Toast";
+import { ToastProvider, toastDuration, useToast } from "./Toast";
 
 function Harness() {
   const toast = useToast();
@@ -17,124 +17,126 @@ function Harness() {
   );
 }
 
+// Sonner は通知を次の tick で描き、消すときは 200ms の退場の後に外す。
+const settle = 250;
+
+function press(message: string) {
+  fireEvent.click(screen.getByRole("button", { name: message }));
+}
+
+/** visible は今出ている（退場中でない）通知の文言である。 */
+function visible(): string[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      "[data-sonner-toast]:not([data-removed=true])",
+    ),
+  ).map((toast) => toast.querySelector("[data-title]")?.textContent ?? "");
+}
+
+function advance(ms: number) {
+  act(() => vi.advanceTimersByTime(ms));
+}
+
 describe("ToastProvider", () => {
-  afterEach(() => vi.useRealTimers());
-
-  it("shows queued toasts one at a time on playback without dropping them", () => {
-    vi.useFakeTimers();
-    const { rerender } = render(
-      <ToastProvider>
-        <Harness />
-      </ToastProvider>,
-    );
-    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
-    expect(liveRegion).not.toBeNull();
-    const toasts = within(liveRegion!);
-    for (const message of ["first", "second", "third"]) {
-      fireEvent.click(screen.getByRole("button", { name: message }));
-      expect(toasts.getByText(message)).toBeDefined();
-    }
-
-    rerender(
-      <ToastProvider placement="playback">
-        <Harness />
-      </ToastProvider>,
-    );
-    expect(toasts.getByText("first")).toBeDefined();
-    expect(toasts.queryByText("second")).toBeNull();
-    expect(toasts.queryByText("third")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "fourth" }));
-    expect(toasts.getByText("first")).toBeDefined();
-
-    act(() => vi.advanceTimersByTime(2800));
-    expect(toasts.queryByText("first")).toBeNull();
-    expect(toasts.getByText("second")).toBeDefined();
-
-    act(() => vi.advanceTimersByTime(2800));
-    expect(toasts.queryByText("second")).toBeNull();
-    expect(toasts.getByText("third")).toBeDefined();
-
-    act(() => vi.advanceTimersByTime(2800));
-    expect(toasts.queryByText("third")).toBeNull();
-    expect(toasts.getByText("fourth")).toBeDefined();
-
-    act(() => vi.advanceTimersByTime(2800));
-    expect(toasts.queryByText("fourth")).toBeNull();
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
   });
 
-  it("shows a new default toast immediately among the latest three", () => {
-    vi.useFakeTimers();
+  it("names the notification region from the catalog", () => {
     render(
       <ToastProvider>
         <Harness />
       </ToastProvider>,
     );
-    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
-    expect(liveRegion).not.toBeNull();
-    const toasts = within(liveRegion!);
-    for (const message of ["first", "second", "third", "fourth"]) {
-      fireEvent.click(screen.getByRole("button", { name: message }));
-    }
-
-    expect(toasts.queryByText("first")).toBeNull();
-    expect(toasts.getByText("second")).toBeDefined();
-    expect(toasts.getByText("third")).toBeDefined();
-    expect(toasts.getByText("fourth")).toBeDefined();
+    expect(screen.getByRole("region", { name: "Notifications" })).toBeDefined();
   });
 
-  it("preserves the visible toast's remaining time across placement changes", () => {
-    vi.useFakeTimers();
+  it("shows queued toasts one at a time on playback without dropping them", () => {
     const { rerender } = render(
       <ToastProvider>
         <Harness />
       </ToastProvider>,
     );
-    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
-    expect(liveRegion).not.toBeNull();
-    const toasts = within(liveRegion!);
-    fireEvent.click(screen.getByRole("button", { name: "first" }));
-    act(() => vi.advanceTimersByTime(2700));
+    for (const message of ["first", "second", "third"]) press(message);
+    advance(10);
+    expect(visible().sort()).toEqual(["first", "second", "third"]);
 
     rerender(
       <ToastProvider placement="playback">
         <Harness />
       </ToastProvider>,
     );
-    act(() => vi.advanceTimersByTime(99));
-    expect(toasts.getByText("first")).toBeDefined();
+    advance(settle);
+    expect(visible()).toEqual(["first"]);
+    press("fourth");
+    advance(10);
+    expect(visible()).toEqual(["first"]);
 
-    act(() => vi.advanceTimersByTime(1));
-    expect(toasts.queryByText("first")).toBeNull();
+    for (const message of ["second", "third", "fourth"]) {
+      advance(toastDuration);
+      advance(10);
+      expect(visible()).toEqual([message]);
+    }
+    advance(toastDuration + settle);
+    expect(visible()).toEqual([]);
+  });
+
+  it("shows a new default toast immediately among the latest three", () => {
+    render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    );
+    for (const message of ["first", "second", "third", "fourth"]) press(message);
+    advance(settle);
+
+    expect(visible().sort()).toEqual(["fourth", "second", "third"]);
+  });
+
+  it("keeps the visible toast's remaining time across placement changes", () => {
+    const { rerender } = render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    );
+    press("first");
+    advance(10);
+    advance(toastDuration - 300);
+
+    rerender(
+      <ToastProvider placement="playback">
+        <Harness />
+      </ToastProvider>,
+    );
+    advance(200);
+    expect(visible()).toEqual(["first"]);
+
+    advance(200);
+    expect(visible()).toEqual([]);
   });
 
   it("shows at most three queued toasts after leaving playback", () => {
-    vi.useFakeTimers();
     const { rerender } = render(
       <ToastProvider placement="playback">
         <Harness />
       </ToastProvider>,
     );
-    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
-    expect(liveRegion).not.toBeNull();
-    const toasts = within(liveRegion!);
-    for (const message of ["first", "second", "third", "fourth"]) {
-      fireEvent.click(screen.getByRole("button", { name: message }));
-    }
+    for (const message of ["first", "second", "third", "fourth"]) press(message);
+    advance(10);
+    expect(visible()).toEqual(["first"]);
 
     rerender(
       <ToastProvider>
         <Harness />
       </ToastProvider>,
     );
-    expect(toasts.getByText("first")).toBeDefined();
-    expect(toasts.getByText("second")).toBeDefined();
-    expect(toasts.getByText("third")).toBeDefined();
-    expect(toasts.queryByText("fourth")).toBeNull();
+    advance(10);
+    expect(visible().sort()).toEqual(["first", "second", "third"]);
 
-    act(() => vi.advanceTimersByTime(2800));
-    expect(toasts.queryByText("first")).toBeNull();
-    expect(toasts.queryByText("second")).toBeNull();
-    expect(toasts.queryByText("third")).toBeNull();
-    expect(toasts.getByText("fourth")).toBeDefined();
+    advance(toastDuration);
+    advance(10);
+    expect(visible()).toContain("fourth");
   });
 });

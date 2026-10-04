@@ -4,19 +4,25 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useState,
+  useRef,
 } from "react";
+import { toast as sonner } from "sonner";
 
-import type { UiText } from "../i18n";
-import { cn } from "../lib/cn";
+import { t, type UiText } from "../i18n";
+import { Toaster } from "./shadcn/sonner";
 
-interface ToastItem {
-  id: number;
-  message: UiText;
-  expiresAt: number | null;
-}
+// アプリの通知の出し口。表示は shadcn/ui の Sonner（web/registry/rules/components.md
+// 「Sonner」）に任せ、ここは同時に出す数だけを決める。一覧の画面では新しい通知を
+// すぐ出して最大 3 件、再生画面では 1 件ずつ出し、残りは前のものが消えてから出す。
+// シェルで出た通知を持ったまま再生画面へ移っても、待っているものは順に出る。
 
-const toastDuration = 2800;
+/** visibleLimit は配置ごとの同時に出す数である。 */
+const visibleLimit = { default: 3, playback: 1 } as const;
+
+/** toastDuration は通知を出しておく時間（ms）である。 */
+export const toastDuration = 2800;
+
+type Placement = keyof typeof visibleLimit;
 
 const ToastContext = createContext<(message: UiText) => void>(() => undefined);
 
@@ -25,124 +31,116 @@ export function useToast(): (message: UiText) => void {
   return useContext(ToastContext);
 }
 
+interface ToastItem {
+  id: string;
+  message: UiText;
+}
+
+let sequence = 0;
+
+function nextToastId(): string {
+  sequence += 1;
+  return `vv-toast-${String(sequence)}`;
+}
+
+/** topOffset は通知の上端の位置である。一覧の画面ではトップバーの下、再生画面では上端。 */
+function topOffset(placement: Placement): string {
+  return placement === "playback" ? "0.375rem" : "calc(var(--spacing-navbar) + 0.5rem)";
+}
+
 export function ToastProvider({
   children,
   placement = "default",
 }: {
   children: ReactNode;
-  placement?: "default" | "playback";
+  placement?: Placement;
 }) {
-  const [items, setItems] = useState<ToastItem[]>([]);
+  // 出している通知（古い順）と、出すのを待っている通知。
+  const shown = useRef<ToastItem[]>([]);
+  const waiting = useRef<ToastItem[]>([]);
+  const limit = useRef<number>(visibleLimit[placement]);
+
+  // display は Sonner に 1 件を渡す。消えたら（時間切れでも閉じても）待ちから次を出す。
+  const display = useCallback((item: ToastItem) => {
+    shown.current.push(item);
+    const closed = () => {
+      const index = shown.current.findIndex((entry) => entry.id === item.id);
+      if (index === -1) return;
+      shown.current.splice(index, 1);
+      while (shown.current.length < limit.current) {
+        const next = waiting.current.shift();
+        if (next === undefined) return;
+        display(next);
+      }
+    };
+    sonner(item.message, {
+      id: item.id,
+      duration: toastDuration,
+      onAutoClose: closed,
+      onDismiss: closed,
+    });
+  }, []);
 
   const show = useCallback(
     (message: UiText) => {
-      const id = Date.now() + Math.random();
-      setItems((current) => {
-        const visibleCount = current.filter((item) => item.expiresAt !== null).length;
-        if (placement === "default") {
-          let removedOldestVisible = false;
-          const next =
-            visibleCount < 3
-              ? current
-              : current.filter((item) => {
-                  if (item.expiresAt === null || removedOldestVisible) return true;
-                  removedOldestVisible = true;
-                  return false;
-                });
-          return [...next, { id, message, expiresAt: Date.now() + toastDuration }];
-        }
-        const expiresAt = current.length === 0 ? Date.now() + toastDuration : null;
-        return [...current, { id, message, expiresAt }];
-      });
+      const item = { id: nextToastId(), message };
+      if (shown.current.length < limit.current) {
+        display(item);
+        return;
+      }
+      if (limit.current === visibleLimit.default) {
+        // 一覧の画面では新しい通知を待たせず、いちばん古いものと入れ替える。
+        const oldest = shown.current.shift();
+        if (oldest !== undefined) sonner.dismiss(oldest.id);
+        display(item);
+        return;
+      }
+      waiting.current.push(item);
     },
-    [placement],
+    [display],
   );
 
+  // 配置が変わったら数を合わせる。再生画面へ移ったときは先頭の 1 件だけを残して
+  // 残りを待ちの先頭へ戻し、先頭の 1 件は残りの時間のまま出し続ける。一覧へ戻ったら
+  // 待っているものを 3 件まで出す。
   useEffect(() => {
-    setItems((current) => {
-      if (current.length === 0) return current;
-      const now = Date.now();
-      if (placement === "playback") {
-        return current.map((item, index) => ({
-          ...item,
-          expiresAt: index === 0 ? (item.expiresAt ?? now + toastDuration) : null,
-        }));
-      }
-      let availableSlots = 3;
-      return current.map((item) => {
-        if (availableSlots === 0) return { ...item, expiresAt: null };
-        availableSlots -= 1;
-        return { ...item, expiresAt: item.expiresAt ?? now + toastDuration };
-      });
-    });
-  }, [placement]);
+    limit.current = visibleLimit[placement];
+    const extra = shown.current.splice(limit.current);
+    for (const item of extra) sonner.dismiss(item.id);
+    // 戻した通知は新しい id で出し直す。同じ id のまま出すと、Sonner は消す途中の
+    // 通知の更新として扱い、消さずに残す。
+    waiting.current.unshift(...extra.map((item) => ({ ...item, id: nextToastId() })));
+    while (shown.current.length < limit.current) {
+      const next = waiting.current.shift();
+      if (next === undefined) break;
+      display(next);
+    }
+  }, [display, placement]);
 
-  const nextExpiry =
-    placement === "playback"
-      ? (items[0]?.expiresAt ?? null)
-      : items.reduce<number | null>((next, item) => {
-          if (item.expiresAt === null) return next;
-          return next === null ? item.expiresAt : Math.min(next, item.expiresAt);
-        }, null);
-  useEffect(() => {
-    if (nextExpiry === null) return;
-    const timeout = window.setTimeout(
-      () => {
-        const now = Date.now();
-        setItems((current) => {
-          if (placement === "default") {
-            const remaining = current.filter(
-              (item) => item.expiresAt === null || item.expiresAt > now,
-            );
-            let availableSlots =
-              3 - remaining.filter((item) => item.expiresAt !== null).length;
-            return remaining.map((item) => {
-              if (item.expiresAt !== null || availableSlots === 0) return item;
-              availableSlots -= 1;
-              return { ...item, expiresAt: now + toastDuration };
-            });
-          }
-          const remaining = current.slice(1);
-          if (remaining.length === 0) return remaining;
-          return remaining.map((item, index) =>
-            index === 0 ? { ...item, expiresAt: now + toastDuration } : item,
-          );
-        });
-      },
-      Math.max(0, nextExpiry - Date.now()),
-    );
-    return () => window.clearTimeout(timeout);
-  }, [nextExpiry, placement]);
+  // 外れるときは通知をすべて片付ける。Sonner の通知は画面の外に残り、次に置いた
+  // Toaster が出し直すため。アプリに ToastProvider は 1 つだけである。
+  useEffect(
+    () => () => {
+      shown.current = [];
+      waiting.current = [];
+      sonner.dismiss();
+    },
+    [],
+  );
 
   return (
     <ToastContext.Provider value={show}>
       {children}
-      <div
-        aria-live="polite"
-        className={cn(
-          "pointer-events-none fixed inset-x-0 z-50 flex flex-col gap-2",
-          placement === "playback"
-            ? // 再生画面は、どの幅でも上端の中央に出す。右上には見出しの帯の閉じる × がある。
-              "top-1.5 items-center"
-            : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
-        )}
-      >
-        {(placement === "playback"
-          ? items.slice(0, 1)
-          : items.filter((item) => item.expiresAt !== null)
-        ).map((item) => (
-          <div
-            key={item.id}
-            className={cn(
-              "rounded-md bg-popover px-4 py-2.5 text-sm text-foreground shadow-elevated animate-slide-up",
-              placement === "playback" &&
-                "max-w-[calc(100vw-8rem)] break-words sm:max-w-72",
-            )}
-          >
-            {item.message}
-          </div>
-        ))}
-      </div>
+      <Toaster
+        // 位置（position）を変えると Sonner が通知を描き直して残りの時間が戻るので、
+        // 配置では上端の余白だけを変える。
+        position="top-center"
+        expand
+        visibleToasts={visibleLimit.default}
+        customAriaLabel={t.common.notifications}
+        offset={{ top: topOffset(placement) }}
+        mobileOffset={{ top: topOffset(placement) }}
+      />
     </ToastContext.Provider>
   );
 }

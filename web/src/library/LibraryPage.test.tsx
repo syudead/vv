@@ -210,10 +210,11 @@ describe("LibraryPage", () => {
     await user.click(screen.getByRole("button", { name: "View and sort" }));
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("radio", { name: "Title" })).toBeDefined();
+    // 畳んだ操作は、名前を上に添えて同じ部品で並ぶ（画面の型の Toolbar）。
     expect(
-      within(dialog).getByRole("radiogroup", { name: "View (compact)" }),
+      within(dialog).getByRole("button", { name: "Sort by: Date added" }),
     ).toBeDefined();
+    expect(within(dialog).getByRole("radiogroup", { name: "View" })).toBeDefined();
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
@@ -260,7 +261,9 @@ describe("LibraryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "Loading…",
+    );
     expect(screen.queryByText("Something went wrong on the server.")).toBeNull();
 
     await act(async () => {
@@ -445,7 +448,7 @@ describe("LibraryPage", () => {
       // 視聴状態の直下、「Playable only」の上に置く。
       const checks = within(filter)
         .getAllByRole("checkbox")
-        .map((check) => check.closest("label")?.textContent);
+        .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
       expect(checks).toEqual(["Favorites only", "Playable only"]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
 
@@ -455,7 +458,9 @@ describe("LibraryPage", () => {
       );
       expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
       expect(
-        screen.getByRole("button", { name: "Filter (1 applied)" }).className,
+        screen
+          .getByRole("button", { name: "Filter (1 applied)" })
+          .querySelector('[data-slot="badge"]')?.className,
       ).toContain("bg-primary-soft");
 
       await user.click(screen.getByRole("button", { name: "Clear filters" }));
@@ -703,7 +708,7 @@ describe("LibraryPage", () => {
     );
   });
 
-  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
+  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 表示形式 → 大きさ → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
     const user = userEvent.setup();
     renderLibrary("/?q=abc&sort=addedDesc");
     await screen.findByRole("link", { name: "動画 1" });
@@ -729,6 +734,13 @@ describe("LibraryPage", () => {
     expect((box as HTMLInputElement).value).toBe("abc");
     expect(screen.getByTestId("location").textContent).toBe("?q=abc&sort=addedDesc");
 
+    // 表示の切り替えは画面の型の Toolbar の並び（表示形式 → 大きさ → 並べ替え）。
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Grid" }));
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("slider", { name: "Card size" }),
+    );
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Sort by: Date added" }),
@@ -930,7 +942,8 @@ describe("LibraryPage", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: "Grid" }));
     startFirst();
     dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("radio", { name: "Title" }));
+    // 並べ替えの向きを変える。
+    fireEvent.click(within(dialog).getByRole("button", { name: /Press for ascending/ }));
     expect(document.querySelector("video")).toBeNull();
   });
 
@@ -2168,7 +2181,11 @@ describe("LibraryPage", () => {
       // 選択バーの本数はメンバーを数える。
       expect(screen.getByText("12 videos selected")).toBeDefined();
       const card = screen.getByRole("link", { name: ownerLabel }).closest("article");
-      expect(card?.className).toContain("ring-primary");
+      expect(
+        card
+          ?.querySelector('[data-slot="video-thumbnail"]')
+          ?.hasAttribute("data-selected"),
+      ).toBe(true);
       // 選んだ本数（12）が項目の数（3）を超えても、「すべて選択」は押せる。
       expect(
         (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)

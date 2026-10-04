@@ -1,12 +1,24 @@
-import { AlertCircle, FolderOpen, type LucideIcon, SearchX } from "lucide-react";
+import { FolderOpen, type LucideIcon, SearchX } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import { currentPath, loginPath } from "../auth/pageNavigation";
 import { t, type UiText } from "../i18n";
-import Button, { buttonClassName } from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import { cn } from "../lib/cn";
+import { EmptyState as EmptyStateBlock } from "../ui/patterns/empty-state";
+import { ErrorState } from "../ui/patterns/error-state";
+import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import { Button } from "../ui/shadcn/button";
+import { Skeleton } from "../ui/shadcn/skeleton";
 
+// 一覧の状態（空・失敗・読み込み中）。画面の型の状態のブロック（web/src/ui/patterns）を、
+// 一覧の文言で埋めて使う（web/registry/rules/patterns.md の States）。題は見出し（h2）に
+// して、画面の見出しの並びに入れる。
+
+/**
+ * EmptyState は本体の位置に出す空の状態である。`tone="danger"` は印を destructive の色に
+ * する（画面ごと出せないとき）。
+ */
 export function EmptyState({
   icon: Icon,
   title,
@@ -21,27 +33,17 @@ export function EmptyState({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center rounded-lg border border-border bg-card px-6 py-16 text-center animate-fade-in motion-reduce:animate-none">
-      <Icon
-        className={
-          "mb-4 size-10 " + (tone === "danger" ? "text-destructive" : "text-primary")
-        }
-        strokeWidth={1.5}
-        aria-hidden="true"
-      />
-      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-      {description !== undefined &&
-        (typeof description === "string" ? (
-          <p className="mt-1.5 text-sm text-muted-foreground text-balance">
-            {description}
-          </p>
-        ) : (
-          <div className="mt-1.5 w-full text-sm text-muted-foreground text-balance">
-            {description}
-          </div>
-        ))}
-      {action !== undefined && <div className="mt-5 flex gap-2">{action}</div>}
-    </div>
+    <EmptyStateBlock
+      icon={
+        <Icon
+          aria-hidden="true"
+          className={cn(tone === "danger" && "text-destructive")}
+        />
+      }
+      title={<h2>{title}</h2>}
+      description={description}
+      action={action}
+    />
   );
 }
 
@@ -58,12 +60,9 @@ export function GuestEmpty() {
       title={t.list.guestEmpty.title}
       description={t.list.guestEmpty.description}
       action={
-        <Link
-          to={loginPath(currentPath(location))}
-          className={buttonClassName("secondary")}
-        >
-          {t.list.guestEmpty.signIn}
-        </Link>
+        <Button asChild size="sm">
+          <Link to={loginPath(currentPath(location))}>{t.list.guestEmpty.signIn}</Link>
+        </Button>
       }
     />
   );
@@ -78,7 +77,7 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
       description={t.list.noMatchesHint}
       action={
         onSearch && (
-          <Button variant="secondary" onClick={onSearch}>
+          <Button size="sm" onClick={onSearch}>
             {t.list.changeSearch}
           </Button>
         )
@@ -87,14 +86,14 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
   );
 }
 
+/** LoadFailed は最初のページを取得できなかったときに本体の位置に出す失敗である。 */
 export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
-    <EmptyState
-      icon={AlertCircle}
-      tone="danger"
-      title={t.list.loadFailed}
+    <ErrorState
+      title={<h2>{t.list.loadFailed}</h2>}
       description={reason}
-      action={<Button onClick={onRetry}>{t.common.retry}</Button>}
+      retryLabel={t.common.retry}
+      onRetry={onRetry}
     />
   );
 }
@@ -111,30 +110,24 @@ export function LoadMoreFailed({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-destructive bg-destructive-soft px-3 py-2 text-sm text-destructive">
-      <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-      <p>{t.list.loadMoreFailed(reason)}</p>
-      <Button size="sm" onClick={onRetry}>
-        {t.common.retry}
-      </Button>
-    </div>
+    <LoadMoreRow
+      status="failed"
+      title={t.list.loadMoreFailed(reason)}
+      retryLabel={t.common.retry}
+      onRetry={onRetry}
+    />
   );
 }
 
+/** CardSkeleton はカードの格子（Grid）の中に並べる、読み込み中のカードの形である。 */
 export function CardSkeleton({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, index) => (
-        <div
-          key={index}
-          className="flex flex-col overflow-hidden rounded-lg bg-card shadow-card"
-          aria-hidden="true"
-        >
-          <Skeleton className="aspect-video w-full rounded-none" />
-          <div className="flex flex-col gap-1.5 px-3 pt-2 pb-3">
-            <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
+        <div key={index} className="flex flex-col gap-2" aria-hidden="true">
+          <Skeleton className="aspect-video w-full" />
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
         </div>
       ))}
     </>
