@@ -51,10 +51,14 @@ const (
 	DurationUnknown              ErrorReason = "duration_unknown"
 	FileUnavailable              ErrorReason = "file_unavailable"
 	InvalidCursor                ErrorReason = "invalid_cursor"
+	MergeSameTag                 ErrorReason = "merge_same_tag"
 	NoScan                       ErrorReason = "no_scan"
+	TagMergeRequired             ErrorReason = "tag_merge_required"
 	TagNameControlCharacters     ErrorReason = "tag_name_control_characters"
 	TagNameEmpty                 ErrorReason = "tag_name_empty"
+	TagNameTaken                 ErrorReason = "tag_name_taken"
 	TagNameTooLong               ErrorReason = "tag_name_too_long"
+	TagNotFound                  ErrorReason = "tag_not_found"
 	ThumbnailFrameUnavailable    ErrorReason = "thumbnail_frame_unavailable"
 	ThumbnailPositionOutOfRange  ErrorReason = "thumbnail_position_out_of_range"
 	TooManyTags                  ErrorReason = "too_many_tags"
@@ -75,13 +79,21 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case InvalidCursor:
 		return true
+	case MergeSameTag:
+		return true
 	case NoScan:
+		return true
+	case TagMergeRequired:
 		return true
 	case TagNameControlCharacters:
 		return true
 	case TagNameEmpty:
 		return true
+	case TagNameTaken:
+		return true
 	case TagNameTooLong:
+		return true
+	case TagNotFound:
 		return true
 	case ThumbnailFrameUnavailable:
 		return true
@@ -152,21 +164,39 @@ func (e TagSort) Valid() bool {
 	}
 }
 
+// Defines values for TagSynonymsRequestAction.
+const (
+	TagSynonymsRequestActionAdd    TagSynonymsRequestAction = "add"
+	TagSynonymsRequestActionRemove TagSynonymsRequestAction = "remove"
+)
+
+// Valid indicates whether the value is a known member of the TagSynonymsRequestAction enum.
+func (e TagSynonymsRequestAction) Valid() bool {
+	switch e {
+	case TagSynonymsRequestActionAdd:
+		return true
+	case TagSynonymsRequestActionRemove:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoTagsRequestAction.
 const (
-	Add     VideoTagsRequestAction = "add"
-	Remove  VideoTagsRequestAction = "remove"
-	Replace VideoTagsRequestAction = "replace"
+	VideoTagsRequestActionAdd     VideoTagsRequestAction = "add"
+	VideoTagsRequestActionRemove  VideoTagsRequestAction = "remove"
+	VideoTagsRequestActionReplace VideoTagsRequestAction = "replace"
 )
 
 // Valid indicates whether the value is a known member of the VideoTagsRequestAction enum.
 func (e VideoTagsRequestAction) Valid() bool {
 	switch e {
-	case Add:
+	case VideoTagsRequestActionAdd:
 		return true
-	case Remove:
+	case VideoTagsRequestActionRemove:
 		return true
-	case Replace:
+	case VideoTagsRequestActionReplace:
 		return true
 	default:
 		return false
@@ -189,6 +219,12 @@ type Error struct {
 
 	// Reason 同じ code の中で状況を区別する下位の理由。
 	Reason *ErrorReason `json:"reason,omitempty"`
+
+	// TagId 名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る （specs/039-external-tag-admin/contracts/external-api.md §0）
+	TagId *int64 `json:"tagId,omitempty"`
+
+	// TagName 名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の ときだけ入る
+	TagName *string `json:"tagName,omitempty"`
 }
 
 // ErrorCode 機械可読なエラー種別。
@@ -318,10 +354,52 @@ type TagList struct {
 	TotalAll int `json:"totalAll"`
 }
 
+// TagMergeRequest defines model for TagMergeRequest.
+type TagMergeRequest struct {
+	// SourceIds 統合するタグ。送った数で 1〜20,000 件（重複も数に入り、統合は 1 回）。範囲外は `too_many_tags`
+	SourceIds []int64 `json:"sourceIds"`
+
+	// TargetId 付与・名前・シノニムを受け取るタグ。確定したタグになる
+	TargetId int64 `json:"targetId"`
+}
+
+// TagMergeResponse defines model for TagMergeResponse.
+type TagMergeResponse struct {
+	// NotFoundIds 無かったので飛ばした統合元。無ければ空
+	NotFoundIds []int64 `json:"notFoundIds"`
+	Tag         Tag     `json:"tag"`
+}
+
+// TagRenameRequest defines model for TagRenameRequest.
+type TagRenameRequest struct {
+	Id int64 `json:"id"`
+
+	// Name 新しい元の名前。タグ名と同じ規則で整える
+	Name string `json:"name"`
+}
+
 // TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
 // createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
 // （specs/036-tag-admin-scale/data-model.md §0・§2）
 type TagSort string
+
+// TagSynonymsRequest defines model for TagSynonymsRequest.
+type TagSynonymsRequest struct {
+	// Action add は足す、remove は外す
+	Action TagSynonymsRequestAction `json:"action"`
+
+	// Id シノニムを変えるタグ
+	Id int64 `json:"id"`
+
+	// MergeTagId `add` だけ: 統合を受け入れるタグの id。`tag_merge_required` の `tagId` を渡す。名前が別のタグの 元の名前でなければ無視する
+	MergeTagId *int64 `json:"mergeTagId,omitempty"`
+
+	// Name シノニム。タグ名と同じ規則で整える
+	Name string `json:"name"`
+}
+
+// TagSynonymsRequestAction add は足す、remove は外す
+type TagSynonymsRequestAction string
 
 // VideoDisplayNameChange defines model for VideoDisplayNameChange.
 type VideoDisplayNameChange struct {
@@ -480,6 +558,15 @@ type LookupVideoParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// MergeTagsJSONRequestBody defines body for MergeTags for application/json ContentType.
+type MergeTagsJSONRequestBody = TagMergeRequest
+
+// RenameTagJSONRequestBody defines body for RenameTag for application/json ContentType.
+type RenameTagJSONRequestBody = TagRenameRequest
+
+// UpdateTagSynonymsJSONRequestBody defines body for UpdateTagSynonyms for application/json ContentType.
+type UpdateTagSynonymsJSONRequestBody = TagSynonymsRequest
+
 // UpdateVideoDisplayNamesJSONRequestBody defines body for UpdateVideoDisplayNames for application/json ContentType.
 type UpdateVideoDisplayNamesJSONRequestBody = VideoDisplayNamesRequest
 
@@ -500,6 +587,15 @@ type ServerInterface interface {
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
+	// MergeTags 複数のタグを 1 つのタグへ統合する
+	// (POST /tags/merge)
+	MergeTags(w http.ResponseWriter, r *http.Request)
+	// RenameTag タグの元の名前を変える
+	// (POST /tags/rename)
+	RenameTag(w http.ResponseWriter, r *http.Request)
+	// UpdateTagSynonyms タグのシノニムを足す・外す
+	// (POST /tags/synonyms)
+	UpdateTagSynonyms(w http.ResponseWriter, r *http.Request)
 	// UpdateVideoDisplayNames 複数の動画の表示名を設定・解除する
 	// (POST /video-display-names)
 	UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request)
@@ -643,6 +739,48 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListTags(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeTags operation middleware
+func (siw *ServerInterfaceWrapper) MergeTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTag operation middleware
+func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTagSynonyms operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTagSynonyms(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTagSynonyms(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -925,6 +1063,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-display-names", wrapper.UpdateVideoDisplayNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-thumbnails", wrapper.UpdateVideoThumbnails)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags", wrapper.ListTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/merge", wrapper.MergeTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/rename", wrapper.RenameTag)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/synonyms", wrapper.UpdateTagSynonyms)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)
 

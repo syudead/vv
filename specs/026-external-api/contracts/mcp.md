@@ -23,7 +23,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 Input and output (structured content) have the same shape as the parameters and body, and the
 response body, of the same operation in [external-api.md](external-api.md). Errors are returned as a
 tool result with `isError: true` and, in the body, the same `{ code, message, reason?, limit?,
-index? }` as external API errors.
+index?, tagId?, tagName? }` as external API errors.
 
 | Tool | Operation |
 | --- | --- |
@@ -35,10 +35,14 @@ index? }` as external API errors.
 | `get_current_scan` | `GET /api/v1/scans/current` |
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+| `merge_tags` | `POST /api/v1/tags/merge` |
+| `rename_tag` | `POST /api/v1/tags/rename` |
+| `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
 
-The last two were added in 029
+`update_video_display_names` and `update_video_thumbnails` were added in 029
 ([specs/029-video-overrides/contracts/external-api.md §3](../../029-video-overrides/contracts/external-api.md#3-mcp-tools)).
-039 added the list parameters of `list_tags` and its default `limit`
+039 added the list parameters of `list_tags` and its default `limit`, and the
+tools `merge_tags`, `rename_tag` and `update_tag_synonyms`
 ([specs/039-external-tag-admin/contracts/external-api.md §8](../../039-external-tag-admin/contracts/external-api.md#8-mcp-tools)).
 
 | Tool | Hints | Reason |
@@ -47,3 +51,6 @@ The last two were added in 029
 | `update_video_tags` | `destructiveHint: true`, `idempotentHint: true` | `remove` and `replace` detach existing tags. |
 | `start_scan` | `destructiveHint: false`, `idempotentHint: false` | — |
 | `update_video_display_names`, `update_video_thumbnails` | `destructiveHint: true`, `idempotentHint: true` | `null` clears an override. |
+| `merge_tags` | `destructiveHint: true`, `idempotentHint: true` | Merged sources are deleted. |
+| `rename_tag` | `destructiveHint: false`, `idempotentHint: true` | — |
+| `update_tag_synonyms` | `destructiveHint: true`, `idempotentHint: true` | `remove` drops a name; `add` with `mergeTagId` merges a tag. |

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: 45a1f5bf9adcb70788f44af5ce539179c6e72132e3b690df935192ce2196481a
+sourceHash: 54103b1f917926407a0de758294b34edcc75a949c938ee519629e5e260647bb8
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -59,7 +59,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | 操作が本文を取る | `Content-Type: application/json` が必要 |
 | リクエスト中にトークンが失効する | リクエストは打ち切られる |
 
-- エラー本文は `{ code, message, reason?, limit?, index? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。
+- エラー本文は `{ code, message, reason?, limit?, index?, tagId?, tagName? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。`tagId` と `tagName` はタグ名の衝突のときだけ付く（[タグを整理する](#tidy-up-tags)）。
 - Settings ページのトークン一覧は最終使用時刻を表示する。この時刻の更新は最大で 1 分に 1 回である。
 
 ## スキャン {#scans}
@@ -222,6 +222,46 @@ curl -H "Authorization: Bearer $TOKEN" \
 - 各タグは `id`、`name`、`synonyms`、`videoCount`、`tentative`、`createdAt` を持つ。
 - 5 つの値以外の `sort`、1 から 200 の範囲外の `limit`、または 100 文字を超える `q` は `400` `invalid_request` を返す。読めないカーソル、または別の `sort` で作られたカーソルは、`reason: invalid_cursor` 付きの `400` `invalid_request` を返す。そのときは最初のページから読み直す。
 
+### タグを統合する {#merge-tags}
+
+`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する（[§2](../../specs/039-external-tag-admin/contracts/external-api.md#2-post-apiv1tagsmerge)）。
+
+```json
+{ "targetId": 12, "sourceIds": [31, 45] }
+```
+
+- 各統合元の名前と同義語は統合先の同義語になり、その動画は統合先へ移り、統合元は削除される。統合先は確定タグになる。
+- 応答は `{ tag, notFoundIds }` である。統合後の統合先と、存在せず飛ばした統合元を持つ。
+- `sourceIds` は重複も数えて 1 から 20000 個の id を持つ。範囲外は `limit` 付きの `400` `too_many_tags` を返す。`targetId` を含む `sourceIds` は `400` `merge_same_tag` を、存在しない統合先は `404` `tag_not_found` を返す。どちらも何も変えない。
+
+### タグの名前を変える {#rename-a-tag}
+
+`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す（[§3](../../specs/039-external-tag-admin/contracts/external-api.md#3-post-apiv1tagsrename)）。
+
+- 仮のタグは名前が変わると確定タグになる。今と同じ名前は何も変えない。
+- 名前の規則に反する名前は `400` `tag_name_empty`、`tag_name_control_characters` または `tag_name_too_long` を返す。存在しない `id` は `404` `tag_not_found` を返す。
+- 別のタグの名前か同義語である名前、またはこのタグの同義語の 1 つである名前は、`reason: tag_name_taken` 付きの `409` `conflict` を返し、`tagId` と `tagName` はその名前を持つタグを示す。何も変わらない。
+
+### 同義語を編集する {#edit-synonyms}
+
+`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す（[§4](../../specs/039-external-tag-admin/contracts/external-api.md#4-post-apiv1tagssynonyms)）。
+
+```json
+{ "id": 12, "action": "add", "name": "自己撮影" }
+```
+
+| 場合 | 結果 |
+| --- | --- |
+| 新しい名前の `add` | `200`。名前は同義語になり、仮のタグは確定タグになる |
+| すでに `id` の同義語である名前の `add` | `200`。変更なし |
+| `id` 自身の名前、または別のタグの同義語の `add` | `tagId` と `tagName` 付きの `409` `tag_name_taken` |
+| 別のタグの元の名前の `add` | そのタグの `tagId` と `tagName` 付きの `409` `tag_merge_required`。何も変わらない |
+| 同じ `add` に `"mergeTagId": <tagId>` を付ける | `200`。そのタグは `id` へ統合される |
+| `remove` | `200`。名前は同義語でなくなる。同義語でなかったときはタグは変わらない |
+
+- `add` と `remove` 以外の `action` は `400` `invalid_request` を、存在しない `id` は `404` `tag_not_found` を返す。
+- `mergeTagId` は統合を受け入れるタグを示す。再試行の前に別のクライアントがその名前を別のタグに与えた場合、見ていないタグを統合せず、呼び出しは再び `tag_merge_required` で失敗する。
+
 ## 表示名を設定する {#set-display-names}
 
 `POST /api/v1/video-display-names` は、複数の動画の表示名を設定または消去する。表示名は画面とこの API の `title` に表示され、並べ替えと検索に使われる。ファイル名は変わらない。
@@ -340,6 +380,9 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `get_current_scan` | `GET /api/v1/scans/current` |
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+| `merge_tags` | `POST /api/v1/tags/merge` |
+| `rename_tag` | `POST /api/v1/tags/rename` |
+| `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
 
 - ツールの引数は操作のクエリと本文の形を持ち、構造化された結果は応答本文の形を持つ。操作のエラーは、`isError: true` と [エラー本文](#call-the-api) を持つツール結果になる。
 - 受け付けるのは `POST /mcp` だけで、応答は `application/json` である。サーバーはセッションを保持しないため、`GET` と `DELETE` は `405` を返す。

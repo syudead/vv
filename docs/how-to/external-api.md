@@ -65,8 +65,10 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | Operation takes a body | Requires `Content-Type: application/json` |
 | Token revoked during a request | The request is cut off |
 
-- The error body is `{ code, message, reason?, limit?, index? }`. `message` is
-  English text; branch on `code` and `reason`.
+- The error body is `{ code, message, reason?, limit?, index?, tagId?, tagName? }`.
+  `message` is English text; branch on `code` and `reason`. `tagId` and
+  `tagName` come only with a tag name conflict
+  ([Tidy up tags](#tidy-up-tags)).
 - The token list on the Settings page shows the last-used time, updated at most
   once a minute.
 
@@ -264,6 +266,66 @@ curl -H "Authorization: Bearer $TOKEN" \
   that was made under another `sort`, returns `400` `invalid_request` with
   `reason: invalid_cursor`; read again from the first page.
 
+### Merge tags
+
+`POST /api/v1/tags/merge` merges source tags into a target tag in one
+transaction
+([§2](../../specs/039-external-tag-admin/contracts/external-api.md#2-post-apiv1tagsmerge)).
+
+```json
+{ "targetId": 12, "sourceIds": [31, 45] }
+```
+
+- Each source's name and synonyms become synonyms of the target, its videos
+  move to the target, and the source is deleted. The target becomes a confirmed
+  tag.
+- The response is `{ tag, notFoundIds }`: the target after the merge, and the
+  sources that did not exist and were skipped.
+- `sourceIds` holds 1 to 20,000 ids, duplicates counted, else `400`
+  `too_many_tags` with `limit`. `sourceIds` containing `targetId` returns `400`
+  `merge_same_tag`, and a missing target `404` `tag_not_found`; neither
+  changes anything.
+
+### Rename a tag
+
+`POST /api/v1/tags/rename` with `{ "id": 12, "name": "自撮り" }` changes the
+tag's original name and returns the tag
+([§3](../../specs/039-external-tag-admin/contracts/external-api.md#3-post-apiv1tagsrename)).
+
+- A tentative tag becomes confirmed when its name changes. The same name as now
+  changes nothing.
+- A name that breaks the name rules returns `400` `tag_name_empty`,
+  `tag_name_control_characters` or `tag_name_too_long`; a missing `id` returns
+  `404` `tag_not_found`.
+- A name that is another tag's name or synonym, or one of this tag's synonyms,
+  returns `409` `conflict` with `reason: tag_name_taken`, and `tagId` and
+  `tagName` name the tag that holds it. Nothing changes.
+
+### Edit synonyms
+
+`POST /api/v1/tags/synonyms` adds a name to a tag's synonyms or removes one,
+and returns the tag after the change
+([§4](../../specs/039-external-tag-admin/contracts/external-api.md#4-post-apiv1tagssynonyms)).
+
+```json
+{ "id": 12, "action": "add", "name": "自己撮影" }
+```
+
+| Case | Result |
+| --- | --- |
+| `add` of a new name | `200`; the name is a synonym and a tentative tag becomes confirmed |
+| `add` of a name already a synonym of `id` | `200`, unchanged |
+| `add` of `id`'s own name or another tag's synonym | `409` `tag_name_taken` with `tagId` and `tagName` |
+| `add` of another tag's original name | `409` `tag_merge_required` with that tag's `tagId` and `tagName`; nothing changes |
+| The same `add` with `"mergeTagId": <tagId>` | `200`; that tag is merged into `id` |
+| `remove` | `200`; the name is no longer a synonym, or the tag is unchanged when it was not one |
+
+- `action` other than `add` or `remove` returns `400` `invalid_request`, and a
+  missing `id` `404` `tag_not_found`.
+- `mergeTagId` names the tag whose merge you accept. If another client gives
+  the name to a different tag before you retry, the call fails with
+  `tag_merge_required` again instead of merging a tag you did not see.
+
 ## Set display names
 
 `POST /api/v1/video-display-names` sets or clears the display names of several
@@ -413,6 +475,9 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `get_current_scan` | `GET /api/v1/scans/current` |
 | `update_video_display_names` | `POST /api/v1/video-display-names` |
 | `update_video_thumbnails` | `POST /api/v1/video-thumbnails` |
+| `merge_tags` | `POST /api/v1/tags/merge` |
+| `rename_tag` | `POST /api/v1/tags/rename` |
+| `update_tag_synonyms` | `POST /api/v1/tags/synonyms` |
 
 - Tool arguments have the shape of the operation's query and body, and the
   structured result the shape of its response body. An operation error is a
