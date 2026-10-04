@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/tags-admin-benchmark.md
-sourceHash: 55871690023f8994c72ffd7089dbbfb814691af4173d3ce7b33bfa0be3991341
+sourceHash: 145402d5e8a8acf68f60a7d2369a58a709d8e59b85fb94f8e98efa651c1b5c0a
 ---
 
 # 大規模データでタグ管理画面を測る {#measure-the-tag-admin-screen-with-scale-data}
@@ -140,4 +140,4 @@ git worktree remove --force ../vv-before
 - `GET /api/tags` の応答: 応答が長ければサーバー側が時間を使っており、短ければ描画が時間を使っている（[quickstart.md](../../specs/036-tag-admin-scale/quickstart.md#breakdown)）。
 - 最長のタスク: ブラウザは 50 ms を超えるタスクだけを記録するので、1 つもなければ値は `なし（50 ms 以下）` になる。備考の `〜まで` の値は Playwright の往復を含み、参考にすぎない。
 - スクロール: ベンチマークはまず `/tags` を開き直す。50 ms を超えるフレームが続いた回数と最長のフレームを報告し、備考には読み込んだ行の数、続きの読み込みの要求の数とそれらの応答時間が加わる。末尾には、最後のページが描画された後の下端で届く。`nextCursor` が尽き、列見出しの "Select all N loaded tags" の N がページ見出しのタグ数に達する（036 の最初の形では、件数の隣の " · N loaded" が消える）。60 秒の間、位置も読み込んだ行も変わらなければスクロールを止め、備考に `末尾に届かず` を示す。
-- まとめての確定: ベンチマークは `/tags` を開き直し、"Tentative only"（上部バーの "Filter" の中。036 の最初の形ではトグルボタン）と "Select all N loaded tags"（変更前の画面では "Select all shown tags"）で読み込み済みの仮のタグをすべて選び、選択バーの "Confirm" から、結果の通知（"Confirmed N tags"）または "No tentative tags" が現れるまでを測る。まとめて選ぶ手段が画面にないコミットでは、値は `測れない` になる。
+- まとめての確定: ベンチマークは `/tags` を開き直し、"Tentative only"（ツールバーの "Filter" の中。038 より前は上部バーの中。036 の最初の形ではトグルボタン）と "Select all N loaded tags"（変更前の画面では "Select all shown tags"）で読み込み済みの仮のタグをすべて選び、選択バーの "Confirm" から、結果の通知（"Confirmed N tags"）または "No tentative tags" が現れるまでを測る。まとめて選ぶ手段が画面にないコミットでは、値は `測れない` になる。
