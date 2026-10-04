@@ -124,6 +124,9 @@ export default function Combobox({
   inputClassName,
   frameClassName,
   listClassName,
+  inline = false,
+  chosenId,
+  emptyText,
   ...rest
 }: {
   value: string;
@@ -164,6 +167,17 @@ export default function Combobox({
    * specs/036-tag-admin-scale/ui-design.md「Width」）。
    */
   listClassName?: string;
+  /**
+   * true のとき、候補の一覧を入力の下に重ねず、本文の流れの中に常に開いたまま置く
+   * （高さは固定でその中を縦にスクロールする。統合の窓。
+   * specs/036-tag-admin-scale/ui-design.md「Merge dialog」）。入力の枠も本文の
+   * 検索欄と同じ高さ（`h-9`・`text-sm`）にする。
+   */
+  inline?: boolean;
+  /** 選び終えた候補の id。`inline` の一覧でその行を目立たせる。 */
+  chosenId?: string;
+  /** `inline` の一覧に候補が無いときに一覧の中に出す文言。 */
+  emptyText?: ReactNode;
 } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
   | "value"
@@ -179,7 +193,9 @@ export default function Combobox({
   const listboxId = `${baseId}-listbox`;
   const reasonId = `${baseId}-reason`;
 
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  // inline の一覧は常に開いている（閉じる操作は無い）。
+  const open = inline || openState;
   const [activeIndex, setActiveIndex] = useState(-1);
   const [reason, setReason] = useState<UiText | null>(null);
 
@@ -276,7 +292,8 @@ export default function Combobox({
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      if (open) {
+      // inline の一覧は閉じないので、Esc はいつも「一覧が閉じているとき」の扱い。
+      if (open && !inline) {
         setOpen(false);
         return;
       }
@@ -329,20 +346,34 @@ export default function Combobox({
               commit(option);
             }}
             onMouseEnter={() => setActiveIndex(index)}
+            data-chosen={option.id === chosenId || undefined}
             className={cn(
               "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-fg select-none",
-              index === activeIndex && "bg-hover-wash",
+              inline && "min-h-9 rounded-md",
+              option.id === chosenId
+                ? "bg-accent-soft text-link"
+                : index === activeIndex && "bg-hover-wash",
+              option.id === chosenId &&
+                index === activeIndex &&
+                "ring-1 ring-inset ring-link",
               blocked && "pointer-events-none opacity-50",
             )}
           >
             <span className="flex min-w-0 flex-col">
-              <span className="truncate">{option.label}</span>
+              <span className={cn("truncate", option.id === chosenId && "font-medium")}>
+                {option.label}
+              </span>
               {option.hint !== undefined && (
                 <span className="truncate text-xs text-fg-muted">{option.hint}</span>
               )}
             </span>
             {option.meta !== undefined && (
-              <span className="shrink-0 text-xs text-fg-muted tabular-nums">
+              <span
+                className={cn(
+                  "shrink-0 text-xs tabular-nums",
+                  option.id === chosenId ? "text-link" : "text-fg-muted",
+                )}
+              >
                 {option.meta}
               </span>
             )}
@@ -391,13 +422,17 @@ export default function Combobox({
     blocked,
     commit,
     onCreate,
+    inline,
+    chosenId,
   ]);
 
   return (
     <div className={cn("relative", className)}>
       <div
         className={cn(
-          "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
+          inline
+            ? "flex h-9 items-center gap-2 rounded-md border bg-field px-3 text-sm [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-fg-subtle"
+            : "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
           "focus-within:border-accent focus-within:ring-2 focus-within:ring-link",
           disabled ? "border-border opacity-50" : "border-control-border",
           frameClassName ?? "w-40",
@@ -446,19 +481,38 @@ export default function Combobox({
           />
         )}
       </div>
-      {open && rows.length > 0 && (
-        <ul
-          ref={listRef}
-          id={listboxId}
-          role="listbox"
-          className={cn(
-            "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-elevated py-1 shadow-elevated",
-            listClassName ?? "w-64",
-            side === "top" ? "bottom-full mb-1" : "top-full mt-1",
+      {inline ? (
+        // 一覧の箱は候補の数によらず同じ高さで、窓のボタンへ重ならない。
+        <div className="mt-2 h-60 max-h-[40vh] overflow-y-auto rounded-md border border-border p-1">
+          <ul
+            ref={listRef}
+            id={listboxId}
+            role="listbox"
+            aria-label={ariaLabel}
+            className="flex flex-col gap-0.5"
+          >
+            {rows.map((row) => row.node)}
+          </ul>
+          {rows.length === 0 && emptyText !== undefined && (
+            <p className="px-2.5 py-2 text-sm text-fg-muted">{emptyText}</p>
           )}
-        >
-          {rows.map((row) => row.node)}
-        </ul>
+        </div>
+      ) : (
+        open &&
+        rows.length > 0 && (
+          <ul
+            ref={listRef}
+            id={listboxId}
+            role="listbox"
+            className={cn(
+              "absolute z-50 max-h-64 overflow-y-auto rounded-md bg-elevated py-1 shadow-elevated",
+              listClassName ?? "w-64",
+              side === "top" ? "bottom-full mb-1" : "top-full mt-1",
+            )}
+          >
+            {rows.map((row) => row.node)}
+          </ul>
+        )
       )}
       {reason !== null && (
         <p id={reasonId} className="mt-1 text-xs text-danger">

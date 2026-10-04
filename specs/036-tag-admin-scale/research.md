@@ -176,6 +176,12 @@ feature branch に merge 済みの実装のとおりで変わらない。
   が「Tentative only」を画面の状態に留めた判断を変える理由が無く、0 本の絞り込みも同じ性質だからである。
   端末の設定の値と API の値を同じにするのは、並び替えがサーバーへ移った（R-1）ことで、画面に並び順の
   写しの表を持つ理由が無くなったためである。
+- 追記（見た目のレビューのあとの直し）: 検索・絞り込み・並び順をライブラリと同じ共通トップバーへ
+  移したのに合わせ、検索語・「Tentative only」・「Unused only」・並び順と、見出しの下のタブを、
+  ライブラリの一覧の条件と同じく URL のクエリ（`q`・`tentative=1`・`unused=1`・`sort`・`tab=rejected`）に
+  載せる（[ui-design.md「URL state」](ui-design.md#url-state)、`web/src/tags/tagListUrl.ts`）。再読み込みと
+  戻る・進むで条件が残るのがライブラリと同じ振る舞いだからで、上の「URL にも載せない」はこれで置き
+  換わる。`localStorage` には今までどおり並び順だけを残し、URL に `sort` が無いときに使う。
 - Alternatives considered: URL のクエリ（ライブラリと同じ形だが、戻る・進むで並び順が変わる体験に
   なり、ブラウザを開き直すと消える）。サーバーの `settings` 表（端末ごとの見え方の好みで、
   サーバーの設定にする理由が無い）。
@@ -320,6 +326,9 @@ feature branch に merge 済みの実装のとおりで変わらない。
   しない。既定を 100 件にするのは R-11 と同じ。
 - Alternatives considered: 全件のまま（要件 12 と相反する）。入口の件数のために `total` だけ返す経路を
   足す（1 ページの応答に `total` を載せれば足りる）。
+- 追記（見た目のレビューのあとの直し）: 窓と入口は、見出しの下のタブ「Rejected names 〈`total`〉」と
+  その本文に置き換えた（[ui-design.md「Rejected names tab」](ui-design.md#rejected-names-tab)）。続きは
+  本文のスクロール（表示域を根にした番兵）で受ける。ページの受け方・件数・取り直しの規則は上のまま。
 
 ## R-14: 統合の窓の統合先の候補は `GET /api/tags?q=…&limit=…` で引く
 

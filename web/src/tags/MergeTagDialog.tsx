@@ -1,4 +1,4 @@
-import { LoaderCircle } from "lucide-react";
+import { ArrowRight, LoaderCircle, Search } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
@@ -66,6 +66,7 @@ export default function MergeTagDialog({
   const mergeButton = useRef<HTMLButtonElement>(null);
   const sourcesHeadingId = useId();
   const searchErrorId = useId();
+  const targetFieldId = useId();
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
@@ -225,18 +226,23 @@ export default function MergeTagDialog({
   }
 
   return (
-    <ModalFrame title={title} onClose={handleClose} initialFocus={cancel}>
+    <ModalFrame
+      title={title}
+      onClose={handleClose}
+      initialFocus={cancel}
+      width="sm:max-w-lg"
+    >
       {/*
-        候補の一覧（Combobox）は overflow-y-auto の外に置く。中に置くと、
-        窓の中身がまだ短い（確認の文言が出る前）うちは、この div 自身の
-        高さも短く、候補の一覧（最大8行）が overflow-y-auto によって
-        そこで切り取られてしまう（B3）。確認の文言・失敗の行だけを別の
-        小さな overflow-y-auto に包み、長い文言でもそちらだけが縦に
-        スクロールする。統合元の並びは自分の max-h-32 で縦にスクロールする。
+        本文（統合元の並び・統合先の入力と候補の箱・確認の文言）はまとめて 1 つの
+        overflow-y-auto に入れ、下端のボタンの行は外の shrink-0 に置く。統合元の並び
+        （max-h-32）と候補の箱（h-60 max-h-[40vh]）は縮まないので、低い画面
+        （390×400 など）では本文が窓の高さを超える。本文だけが縦にスクロールし、
+        「Merge」「Cancel」はいつも窓の下端に見える。候補は入力の下の箱に並び、
+        入力の上に重ねて開く一覧ではないので、本文のスクロールで切り取られない。
       */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4 sm:p-5">
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
         {sources.length > 1 && (
-          <div>
+          <div className="shrink-0">
             <p
               id={sourcesHeadingId}
               className="mb-1 text-xs font-semibold text-fg-muted uppercase"
@@ -268,8 +274,23 @@ export default function MergeTagDialog({
             </ul>
           </div>
         )}
-        <div>
+        <div className="shrink-0">
+          <label
+            htmlFor={targetFieldId}
+            className="mb-1.5 block text-sm font-medium text-fg"
+          >
+            {t.tags.mergeDialog.target}
+          </label>
           <Combobox
+            id={targetFieldId}
+            inline
+            icon={<Search aria-hidden="true" />}
+            chosenId={target === null ? undefined : String(target.id)}
+            emptyText={
+              searching || searchError !== null
+                ? undefined
+                : t.tags.mergeDialog.noCandidates
+            }
             value={value}
             onValueChange={(next) => {
               setValue(next);
@@ -279,7 +300,6 @@ export default function MergeTagDialog({
             options={options}
             exactOption={exactOption}
             onSelect={selectTarget}
-            placeholder={t.tags.mergeDialog.target}
             aria-label={t.tags.mergeDialog.target}
             // 候補の一覧が閉じているときの Esc は、この窓を閉じる
             // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
@@ -287,8 +307,9 @@ export default function MergeTagDialog({
             onEscapeWhenClosed={handleClose}
             className="w-full"
             // 統合先の入力と候補の一覧は窓の内側の幅いっぱい（要件 13、ui-design.md「Width」）。
+            // 候補の一覧は入力の下の本文の中に高さを固定して置き、窓のボタンへ重ねない
+            // （ui-design.md「Merge dialog」）。
             frameClassName="w-full"
-            listClassName="w-full"
             busy={searching}
             describedBy={searchError !== null ? searchErrorId : undefined}
           />
@@ -298,7 +319,7 @@ export default function MergeTagDialog({
             </p>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+        <div className="flex flex-col gap-3">
           {target !== null && effective.length === 0 && (
             <p className="text-sm text-fg-muted">
               {t.tags.mergeDialog.onlyTarget(target.name)}
@@ -351,13 +372,26 @@ export default function MergeTagDialog({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border p-4">
+        {target !== null && effective.length > 0 && (
+          // 統合元 → 統合先（ui-design.md「Merge dialog」）。
+          <p className="mr-auto flex min-w-0 items-center gap-1.5 text-sm text-fg-muted">
+            <span className="min-w-0 truncate">
+              {effective.length === 1
+                ? effective[0]!.name
+                : t.tags.mergeDialog.summarySources(effective.length)}
+            </span>
+            <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
+            <span className="sr-only"> → </span>
+            <span className="min-w-0 truncate font-medium text-fg">{target.name}</span>
+          </p>
+        )}
         <Button ref={cancel} onClick={handleClose} disabled={pending}>
           {t.common.cancel}
         </Button>
         <Button
           ref={mergeButton}
-          variant="danger"
+          variant="primary"
           onClick={() => void submit()}
           disabled={!canSubmit}
         >

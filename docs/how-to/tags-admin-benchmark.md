@@ -67,11 +67,13 @@ go run ./scripts/tagsbench -scale 30000 -videos 30000
   見えるまでの最長のタスク（Long Task）。Long Task は 50 ms を超えるタスクだけが記録されるので、
   無ければ「なし（50 ms 以下）」。補足の「〜まで」は Playwright の往復を含む参考の値。
 - スクロール: `/tags` を開き直し、一覧の先頭から、続きを読み込みながら末尾（`nextCursor` が尽き、
-  件数の行から「 · N loaded」が消えて最後のページが描かれた後に、下端に届く）までマウスホイールで
+  列の見出しの「Select all N loaded tags」の N が見出しの件数に届いて最後のページが描かれた後に、
+  下端に届く。件数に「 · N loaded」を添える 036 の初めの形ではそれが消えた後）までマウスホイールで
   送る間の `requestAnimationFrame` の間隔。50 ms を超えるフレームが続いた回数と、最長のフレーム。補足に、読み込んだ行の数、続きの要求の回数とその応答時間を添える。
   位置も読み込んだ行も 60 秒変わらなければ送るのをやめ、「末尾に届かず」と出る。
-- まとめての確定: `/tags` を開き直し、「Tentative only」で読み込んである仮のタグをすべて選び
-  （「Select all N loaded tags」。変更前の画面では「Select all shown tags」）、選択バーの「Confirm」から
+- まとめての確定: `/tags` を開き直し、「Tentative only」（トップバーの「Filter」の中。036 の初めの形では
+  押しボタン）で読み込んである仮のタグをすべて選び
+  （「Select all N loaded tags」。変更前の画面では「Select all shown tags」）、選択の行の「Confirm」から
   結果の通知（「Confirmed N tags」）か「No tentative tags」が出るまで。画面にまとめて選ぶ操作が無い
   コミットでは「測れない」と出る。
 

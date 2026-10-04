@@ -159,9 +159,8 @@ describe("MergeTagDialog の失敗後のフォーカス", () => {
   });
 });
 
-describe("MergeTagDialog の幅", () => {
-  it("行から開いた 1 件の統合でも、統合先の入力と候補の一覧は窓の幅いっぱい（要件 13）", async () => {
-    const user = userEvent.setup();
+describe("MergeTagDialog の幅と候補の一覧", () => {
+  it("行から開いた 1 件の統合でも、統合先の入力は窓の幅いっぱい（要件 13）", async () => {
     render(dialog());
     const modal = await screen.findByRole("dialog", {
       name: t.tags.mergeDialog.title("旅行"),
@@ -170,10 +169,72 @@ describe("MergeTagDialog の幅", () => {
       name: t.tags.mergeDialog.target,
     });
     expect(combo.parentElement!.className).toContain("w-full");
-    await user.type(combo, "A");
-    const listbox = await within(modal).findByRole("listbox");
-    expect(listbox.className).toContain("w-full");
-    expect(listbox.className).not.toContain("w-64");
+  });
+
+  it("入力には見える名札と検索のアイコンがあり、候補は窓の本文の中の高さの決まった箱に並ぶ", async () => {
+    render(dialog());
+    const modal = await screen.findByRole("dialog");
+    const combo = within(modal).getByRole("combobox");
+    // 見える名札（label 要素）が入力を指す。
+    const label = within(modal).getByText(t.tags.mergeDialog.target, {
+      selector: "label",
+    });
+    expect(label.getAttribute("for")).toBe(combo.id);
+    expect(combo.parentElement!.querySelector("svg.lucide-search")).not.toBeNull();
+
+    // 入力に触れる前から一覧は開いていて、入力の上に重ねない（absolute ではない）。
+    await within(modal).findByRole("option", { name: /Anime/ });
+    const listbox = within(modal).getByRole("listbox");
+    expect(combo.getAttribute("aria-expanded")).toBe("true");
+    expect(listbox.className).not.toContain("absolute");
+    // 一覧の箱は高さが決まっていて、その中を縦にスクロールする。
+    const box = listbox.parentElement!;
+    expect(box.className).toContain("h-60");
+    expect(box.className).toContain("overflow-y-auto");
+    // 箱は窓の下端（ボタンの行）より前、本文の中にある。
+    const footer = within(modal).getByRole("button", {
+      name: t.common.cancel,
+    }).parentElement!;
+    expect(
+      box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 低い画面でもボタンの行が窓の下端に残るよう、箱を含む本文がまとめて縦に
+    // スクロールし、ボタンの行はその外で縮まない。
+    const body = box.parentElement!.closest(".overflow-y-auto")!;
+    expect(body).not.toBeNull();
+    expect(body.className).toContain("min-h-0");
+    expect(body.contains(footer)).toBe(false);
+    expect(footer.className).toContain("shrink-0");
+  });
+
+  it("選んだ統合先は一覧で目立たせ、下端に「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {
+    const user = userEvent.setup();
+    render(dialog());
+    const modal = await screen.findByRole("dialog");
+    const mergeButton = within(modal).getByRole("button", {
+      name: t.tags.mergeDialog.submit,
+    });
+    expect(mergeButton).toHaveProperty("disabled", true);
+    expect(mergeButton.className).toContain("bg-accent");
+    expect(mergeButton.className).not.toContain("bg-danger");
+    expect(within(modal).queryByText("→")).toBeNull();
+
+    await user.click(await within(modal).findByRole("option", { name: /Anime/ }));
+    const chosen = await within(modal).findByRole("option", { name: /Anime/ });
+    expect(chosen.getAttribute("data-chosen")).toBe("true");
+    expect(chosen.className).toContain("bg-accent-soft");
+    const footer = mergeButton.parentElement!;
+    expect(footer.textContent).toContain("旅行 → Anime");
+    await waitFor(() => expect(mergeButton).toHaveProperty("disabled", false));
+  });
+
+  it("候補が無いときは一覧の中に「No matching tags」を出す", async () => {
+    const user = userEvent.setup();
+    render(dialog());
+    const modal = await screen.findByRole("dialog");
+    await user.type(within(modal).getByRole("combobox"), "zzz");
+    expect(await within(modal).findByText(t.tags.mergeDialog.noCandidates)).toBeDefined();
+    expect(within(modal).queryByRole("option")).toBeNull();
   });
 });
 

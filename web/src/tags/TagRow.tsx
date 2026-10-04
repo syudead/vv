@@ -141,7 +141,8 @@ function TagRow({
         "group flex items-center gap-2 rounded-md px-2 py-2 sm:gap-3",
         renaming
           ? "bg-elevated ring-1 ring-control-border"
-          : selected && "bg-accent-soft",
+          : // 選んだ行はアクセントの薄い色（10%）で塗る。
+            selected && "bg-accent/10",
       )}
     >
       {/*
@@ -274,6 +275,12 @@ function TagRow({
         onReject={onReject}
       />
       <div className="flex shrink-0 items-center gap-1 max-sm:hidden [@media(pointer:coarse)]:hidden">
+        {/*
+          確定したタグの行も「確定する」の分の幅を空けておき、本数の列を列の見出しの
+          「Videos」と全部の行でそろえる（specs/036-tag-admin-scale/ui-design.md
+          「Column header」）。
+        */}
+        {!tag.tentative && <span aria-hidden="true" className="size-8 shrink-0" />}
         {tag.tentative && (
           <IconButton
             label={t.tags.row.confirm}
