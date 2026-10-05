@@ -52,7 +52,7 @@ export default function GroupLine({
   );
   if (!owner) {
     return (
-      <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground [&_svg]:size-4">
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm [&_svg]:size-4">
         {content}
       </p>
     );
@@ -107,7 +107,7 @@ function GroupLineMenu({
           aria-label={t.player.group.menu(group.name, group.position, group.count)}
           // 文字の左端を題名にそろえ（ghost の sm の左の余白 px-2 の分だけ左へ出す）、
           // 行は題名より小さく従の色のままにする。
-          className="-ml-2 max-w-full min-w-0 self-start font-normal text-muted-foreground"
+          className="-ml-2 max-w-full min-w-0 gap-1.5 self-start text-xs font-normal text-muted-foreground sm:text-sm"
         >
           {content}
           <ChevronDown className="shrink-0" aria-hidden="true" />

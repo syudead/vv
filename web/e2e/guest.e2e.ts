@@ -475,7 +475,7 @@ test.describe.serial("guest", () => {
     // 再生しても止めても再生位置を送らない。
     await page.goto(`/videos/${String(video("ゲスト公開B").id)}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開B");
-    await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy path" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Tags" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Open file/ })).toHaveCount(0);
@@ -595,7 +595,7 @@ test.describe.serial("guest", () => {
       name: "Show to people who aren't signed in",
     });
     await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await expect(toggle.locator("xpath=following-sibling::label")).toHaveText("Private");
+    await expect(toggle).toHaveText("Private");
     await toggle.focus();
     const sent = ownerPage.waitForRequest(
       (req) => req.method() === "PUT" && req.url().endsWith("/api/video-visibility"),
@@ -606,7 +606,7 @@ test.describe.serial("guest", () => {
       public: true,
     });
     await expect(toggle).toHaveAttribute("aria-checked", "true");
-    await expect(toggle.locator("xpath=following-sibling::label")).toHaveText("Public");
+    await expect(toggle).toHaveText("Public");
     // 送信の間もフォーカスは切り替えに残る。
     await expect(toggle).toBeFocused();
     // ゲストのグループのカードの本数が、公開になった C の分だけ増える。
@@ -714,7 +714,7 @@ test.describe.serial("guest", () => {
 
       await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開A");
-      await expect(page.getByRole("region", { name: "File details" })).toBeVisible();
+      await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
       await page.screenshot({
         path: path.join(screenshotDir, `20260925-guest-video-${String(width)}.png`),
         fullPage: true,
@@ -779,12 +779,10 @@ test.describe.serial("guest", () => {
       const toggle = page.getByRole("switch", {
         name: "Show to people who aren't signed in",
       });
-      await expect(toggle.locator("xpath=following-sibling::label")).toHaveText(
-        "Private",
-      );
+      await expect(toggle).toHaveText("Private");
       await ownerShot("video-private", true);
       await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
-      await expect(toggle.locator("xpath=following-sibling::label")).toHaveText("Public");
+      await expect(toggle).toHaveText("Public");
       await ownerShot("video-public", true);
       let release: (() => void) | undefined;
       await page.route("**/api/video-visibility", async (route) => {
@@ -801,7 +799,7 @@ test.describe.serial("guest", () => {
       await expect(page.getByRole("alert").filter({ hasText: /visibility/ })).toHaveText(
         "Couldn't change the visibility: Something went wrong on the server.",
       );
-      await expect(toggle.locator("xpath=following-sibling::label")).toHaveText("Public");
+      await expect(toggle).toHaveText("Public");
       await ownerShot("video-failed", true);
       await owner.close();
     }

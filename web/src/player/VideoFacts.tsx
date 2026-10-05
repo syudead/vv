@@ -1,4 +1,18 @@
-import { AlertCircle, Camera, Copy, ExternalLink, LoaderCircle, X } from "lucide-react";
+import {
+  AlertCircle,
+  CalendarPlus,
+  Camera,
+  Clock,
+  Copy,
+  ExternalLink,
+  FileClock,
+  HardDrive,
+  Image,
+  LoaderCircle,
+  type LucideIcon,
+  PencilLine,
+  X,
+} from "lucide-react";
 import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -14,8 +28,6 @@ import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import FavoriteToggle from "../ui/FavoriteToggle";
-import { type Fact, FactList } from "../ui/patterns/fact-list";
-import { PageSection } from "../ui/patterns/page-section";
 import { Button } from "../ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
@@ -135,64 +147,94 @@ export interface ThumbnailCapture {
   positionMs: () => number | null;
 }
 
-/**
- * DateFact はファイルの情報の日付の値（追加日・更新日時・作成日時）である
- * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、時刻は `title` と、
- * 押して開く吹き出しで読む（ポイントできない端末でも届くように）。
- */
-function DateFact({ label, value }: { label: UiText; value: string }) {
-  const date = formatDate(value);
-  const dateTime = formatDateTime(value);
+function Fact({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: UiText;
+  value: string;
+}) {
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="link"
-          // 読み上げ名は項目名 + 値（ui-design「Accessibility」）。
-          aria-label={`${label} ${date}`}
-          title={t.player.facts.dateDetail(label, dateTime)}
-          className={factTrigger}
-        >
-          {date}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="start"
-        className="block w-auto whitespace-nowrap"
-        // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
-        onOpenAutoFocus={(event) => event.preventDefault()}
-      >
-        <span>{label}</span>{" "}
-        <span className="text-muted-foreground tabular-nums">{dateTime}</span>
-      </PopoverContent>
-    </Popover>
+    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span className="sr-only">{label} </span>
+      {value}
+    </li>
   );
 }
 
 /**
- * VideoFacts は動画ページの情報欄の「File details」の節である（ui-design「Video facts」、
- * specs/038-design-system/ui-design.md「Page patterns」の Detail page）。
+ * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である
+ * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、名前と時刻は
+ * `title` と、押して開く吹き出しで読む（ポイントできない端末でも届くように）。
+ * 見た目は `Fact` と同じで、引き金であることは hover の地だけで示す。
+ */
+function DateFact({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: UiText;
+  value: string;
+}) {
+  const date = formatDate(value);
+  const dateTime = formatDateTime(value);
+  return (
+    <li className="flex items-center whitespace-nowrap">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            // 読み上げ名は隠した名前 + 値（ui-design「Accessibility」）。中の文字の空白の扱いに
+            // 依らないよう、明示する。
+            aria-label={`${label} ${date}`}
+            title={t.player.facts.dateDetail(label, dateTime)}
+            className={factTrigger}
+          >
+            <Icon aria-hidden="true" />
+            <span className="sr-only">{label} </span>
+            {date}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="start"
+          className="block w-auto px-3 py-2 text-sm whitespace-nowrap"
+          // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
+          <span>{label}</span>{" "}
+          <span className="text-muted-foreground tabular-nums">{dateTime}</span>
+        </PopoverContent>
+      </Popover>
+    </li>
+  );
+}
+
+/**
+ * VideoFacts は題名とタグの下の 2 行である（ui-design「Video facts」）。
  *
- * 節（PageSection）の中に、ファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）を
- * 項目名と値の組（FactList）で並べ、その下に技術情報（解像度・コンテナ・コーデック）を
- * いちばん小さく薄い文字の行で置く。節の見出しの右には、操作（お気に入り・今の場面を代表
- * サムネイルにする・ファイルを開く・パスをコピー）を置く。ファイルを開くは開ける環境のときだけ。
+ * 1 行目はファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）をアイコンを添えて並べ、右端に
+ * 「ファイルを開く」（開ける環境のときだけ）と「パスをコピー」を置く。2 行目は技術情報
+ * （解像度・コンテナ・コーデック）で、いちばん小さく薄い文字にする。
  *
- * 所有者には、代表サムネイルの位置が指定されていればその画像・位置・解除の × を
- * 「Thumbnail」の値に置き、`capture` があれば操作の先頭近くに「今の場面を代表サムネイルにする」
+ * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の項目の後ろにその画像・位置・
+ * 解除の × を置き、`capture` があれば右端の操作の先頭近くに「今の場面を代表サムネイルにする」
  * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。
  *
- * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、作成日時の
- * あと（サムネイルの項目の前）に「Versions」の項目を置く。所有者にもゲストにも出す
+ * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
+ * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
  * （specs/030-video-versions/ui-design.md「Versions fact」）。
  *
- * 所有者には、操作の先頭にお気に入りの付け外しを置く
+ * 所有者には、右端の操作の先頭にお気に入りの付け外しを置く
  * （specs/035-favorites/ui-design.md「Video page」）。ゲストの応答には `favorite` が無く、出ない。
  * 付け外しは `onFavorite` に任せ、それが取り直しまで終えたら送信中を解く。
  *
  * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
- * ファイルの情報のすぐ下に 1 行だけ出す。
+ * 1 行目のすぐ下に 1 行だけ出す。
  * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
  */
 export default function VideoFacts({
@@ -242,70 +284,46 @@ export default function VideoFacts({
     });
   };
 
-  const facts: Fact[] = [];
-  if (duration !== "") facts.push({ id: "duration", term: f.duration, value: duration });
-  facts.push(
-    { id: "size", term: f.size, value: formatBytes(video.sizeBytes) },
-    {
-      id: "added",
-      term: f.added,
-      value: <DateFact label={f.added} value={video.addedAt} />,
-    },
-    {
-      id: "edited",
-      term: f.edited,
-      value: <DateFact label={f.edited} value={video.updatedAt} />,
-    },
-    {
-      id: "created",
-      term: f.created,
-      value: <DateFact label={f.created} value={video.fileCreatedAt} />,
-    },
-  );
-  if (versions !== undefined && versionCount >= 2) {
-    facts.push({
-      id: "versions",
-      term: t.player.versions.label,
-      value: (
-        <VersionsFact
-          video={video}
-          count={versionCount}
-          owner={owner}
-          navigation={versions.navigation}
-          onReplace={versions.onReplace}
-          onRefresh={versions.onRefresh}
-          // 項目が消えるので、フォーカスを節の操作の先頭へ移す。
-          onDissolved={() =>
-            actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
-          }
-        />
-      ),
-    });
-  }
-  if (owner && video.thumbnailPositionMs !== undefined) {
-    facts.push({
-      id: "thumbnail",
-      term: f.thumbnail,
-      value: (
-        <ThumbnailFact
-          url={video.thumbnailUrl}
-          positionMs={video.thumbnailPositionMs}
-          clearing={thumbnail.sending === "clear"}
-          onClear={() => thumbnail.send(null)}
-        />
-      ),
-    });
-  }
-
   const hasActions =
     location !== undefined || (owner && capture !== undefined) || favorite !== undefined;
 
   return (
-    <PageSection
-      title={f.label}
-      actions={
-        hasActions ? (
-          <div ref={actionsRef} className="flex items-center gap-1">
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <ul
+          aria-label={f.label}
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground tabular-nums sm:gap-x-5"
+        >
+          {duration !== "" && <Fact icon={Clock} label={f.duration} value={duration} />}
+          <Fact icon={HardDrive} label={f.size} value={formatBytes(video.sizeBytes)} />
+          <DateFact icon={CalendarPlus} label={f.added} value={video.addedAt} />
+          <DateFact icon={PencilLine} label={f.edited} value={video.updatedAt} />
+          <DateFact icon={FileClock} label={f.created} value={video.fileCreatedAt} />
+          {versions !== undefined && versionCount >= 2 && (
+            <VersionsFact
+              video={video}
+              count={versionCount}
+              owner={owner}
+              navigation={versions.navigation}
+              onReplace={versions.onReplace}
+              onRefresh={versions.onRefresh}
+              // 項目が消えるので、フォーカスを右端の操作の先頭へ移す。
+              onDissolved={() =>
+                actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
+              }
+            />
+          )}
+          {owner && video.thumbnailPositionMs !== undefined && (
+            <ThumbnailFact
+              url={video.thumbnailUrl}
+              positionMs={video.thumbnailPositionMs}
+              clearing={thumbnail.sending === "clear"}
+              onClear={() => thumbnail.send(null)}
+            />
+          )}
+        </ul>
+        {hasActions && (
+          <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
             {favorite !== undefined && (
               <FavoriteToggle
                 variant="page"
@@ -338,23 +356,24 @@ export default function VideoFacts({
               </ActionButton>
             )}
           </div>
-        ) : undefined
-      }
-    >
-      <FactList facts={facts} />
+        )}
+      </div>
       {failure !== null && (
-        <p role="alert" className="flex items-center gap-2 text-destructive">
+        <p
+          role="alert"
+          className="-mt-1 flex items-center gap-2 text-sm text-destructive"
+        >
           <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
           {failure}
         </p>
       )}
       <TechnicalLine summary={technical} />
-    </PageSection>
+    </div>
   );
 }
 
 /**
- * ActionButton は節の見出しの右の、アイコンだけの操作である。お気に入り（Toggle の `sm`）と
+ * ActionButton は情報の行の右端の、アイコンだけの操作である。お気に入り（Toggle の `sm`）と
  * 同じ大きさ（`icon-sm`）にそろえ、名前をツールチップでも出す。
  */
 function ActionButton({
@@ -382,7 +401,7 @@ function ActionButton({
 }
 
 /**
- * ThumbnailFact は「Thumbnail」の値で、指定した代表サムネイルの小さな画像・位置・解除の × を
+ * ThumbnailFact は情報の行の項目で、指定した代表サムネイルの小さな画像・位置・解除の × を
  * 並べる（ui-design「Item」）。画像を読み込めない間・失敗したときは空の箱にする。
  */
 function ThumbnailFact({
@@ -399,8 +418,9 @@ function ThumbnailFact({
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   const label = t.player.facts.thumbnailAt(formatDuration(positionMs));
   return (
-    <span title={label} className="flex items-center gap-2 whitespace-nowrap">
-      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-muted">
+    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
+      <Image className="size-4 shrink-0" aria-hidden="true" />
+      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
         {url !== undefined && url !== brokenUrl && (
           <img
             src={url}
@@ -411,14 +431,14 @@ function ThumbnailFact({
         )}
       </span>
       <span className="sr-only">{label} </span>
-      <span className="tabular-nums">{formatDuration(positionMs)}</span>
+      {formatDuration(positionMs)}
       <ActionButton
         label={t.player.facts.useAutomaticThumbnail}
         aria-disabled={clearing || undefined}
         onClick={() => {
           if (!clearing) onClear();
         }}
-        className="aria-disabled:cursor-default"
+        className="size-6 rounded-sm aria-disabled:cursor-default [&_svg]:size-3"
       >
         {clearing ? (
           <LoaderCircle
@@ -429,7 +449,7 @@ function ThumbnailFact({
           <X aria-hidden="true" />
         )}
       </ActionButton>
-    </span>
+    </li>
   );
 }
 
@@ -485,18 +505,26 @@ function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummar
     return <p className={cn(base, "text-warning")}>{t.player.facts.technicalFailed}</p>;
   }
   if (summary.values.length === 0) return null;
+  // どの項目も左に縦線と余白を持ち、並び全体をその幅（px-technical-x と線の 1px）だけ左へずらして
+  // 外側で切る。折り返した行の先頭の項目も、線と余白が切り落とされて行頭に残らない。
   return (
-    <ul
-      aria-label={t.player.facts.technical}
-      lang="en"
-      className={cn(
-        base,
-        "flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground uppercase",
-      )}
-    >
-      {summary.values.map((value) => (
-        <li key={value}>{value}</li>
-      ))}
-    </ul>
+    <div className="overflow-hidden">
+      <div className="-ml-technical-x">
+        <ul
+          aria-label={t.player.facts.technical}
+          lang="en"
+          className={cn(
+            base,
+            "-ml-px flex flex-wrap items-center gap-y-1 text-muted-foreground uppercase",
+          )}
+        >
+          {summary.values.map((value) => (
+            <li key={value} className="border-l border-input px-technical-x leading-none">
+              {value}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

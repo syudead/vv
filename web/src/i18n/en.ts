@@ -503,6 +503,7 @@ export const en = {
       descriptionText:
         "A slow walk from the bamboo grove to the river in the first light, with the sound of the forest and the morning trains.",
       information: "Information",
+      related: "Related videos",
       duration: "Duration",
       resolution: "Resolution",
       fileSize: "File size",
@@ -1254,8 +1255,6 @@ export const en = {
       pathCopied: "Copied the path",
       copyFailed: "Couldn't copy the path",
       openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
-      /** ファイルの情報（FactList）の代表サムネイルの項目名。 */
-      thumbnail: "Thumbnail",
       thumbnailAt: (time: string) => `Thumbnail at ${time}`,
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",

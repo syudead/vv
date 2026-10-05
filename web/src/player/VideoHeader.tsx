@@ -43,9 +43,9 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
 }
 
 /**
- * VideoHeader は再生画面の見出しの帯で、詳細ページの型（DetailPage）の header に置く
- * （ui-design「Video header」、specs/038-design-system/ui-design.md「Page patterns」の
- * Detail page）。
+ * VideoHeader は再生画面の上端の帯の中身で、詳細ページの型（DetailPage）の header に置く
+ * （ui-design「Video header」、web/registry/rules/patterns.md の Detail page）。帯の高さ・下の
+ * 線・上に留まる動きは型が持つ。
  *
  * 左から ロゴ（ホームへ）・動画の置かれたフォルダまでのパンくず（Breadcrumb）、右端に ×
  * （遷移元の一覧へ戻る）を置く。画面を閉じる × はここ 1 か所だけにする。パンくずの段は
@@ -63,11 +63,14 @@ export default function VideoHeader({
   const lastIndex = crumbs.length - 1;
 
   return (
-    <header className="flex min-w-0 items-center gap-3">
+    <header className="flex min-w-0 flex-1 items-center gap-1">
       <BrandHomeLink />
 
       {crumbs.length > 0 && (
-        <Breadcrumb aria-label={t.player.header.folder} className="flex-1">
+        <Breadcrumb
+          aria-label={t.player.header.folder}
+          className="flex min-w-0 flex-1 items-center overflow-hidden"
+        >
           <BreadcrumbList className="flex-nowrap whitespace-nowrap">
             {crumbs.map((crumb, index) => {
               const last = index === lastIndex;
@@ -107,7 +110,7 @@ export default function VideoHeader({
             size="icon"
             aria-label={t.common.close}
             onClick={onClose}
-            className="ml-auto"
+            className="ml-auto [&_svg]:size-5"
           >
             <X aria-hidden="true" />
           </Button>

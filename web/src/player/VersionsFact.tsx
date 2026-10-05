@@ -2,6 +2,7 @@ import {
   AlertCircle,
   ChevronDown,
   Ellipsis,
+  Layers,
   LoaderCircle,
   Star,
   Unlink,
@@ -59,9 +60,8 @@ function failureIsStale(error: unknown): boolean {
 }
 
 /**
- * VersionsFact は、集まり（同じ動画の別バージョン）に属する動画のファイルの情報（FactList）の
- * 「Versions」の値に置く「3 versions」の引き金と、押すと開くバージョンの一覧である
- * （specs/030-video-versions/ui-design.md「Video page」）。
+ * VersionsFact は、集まり（同じ動画の別バージョン）に属する動画の情報の行に置く「3 versions」の
+ * 項目と、押すと開くバージョンの一覧である（specs/030-video-versions/ui-design.md「Video page」）。
  *
  * 一覧は開くたびに取り直す。行を押すとそのバージョンのページへ移る。所有者は行のメニューで
  * 代表を替え、集まりから外せる。失敗は一覧の下の 1 行で伝え、浮き出しは閉じない。
@@ -249,85 +249,88 @@ export default function VersionsFact({
   const shown = list.kind === "ready" ? list.versions.items.length : count;
 
   return (
-    <Popover open={open} onOpenChange={changeOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="link"
-          aria-label={t.player.versions.show(shown)}
-          title={t.player.versions.show(shown)}
-          className={factTrigger}
+    <li className="flex items-center whitespace-nowrap">
+      <Popover open={open} onOpenChange={changeOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            aria-label={t.player.versions.show(shown)}
+            title={t.player.versions.show(shown)}
+            className={factTrigger}
+          >
+            <Layers aria-hidden="true" />
+            <span className="tabular-nums">{t.player.versions.count(shown)}</span>
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          side="bottom"
+          align="start"
+          aria-labelledby={headingId}
+          className="w-versions-popover gap-0 overflow-hidden p-0"
+          onOpenAutoFocus={(event) => {
+            // 一覧が届いてから最初の別のバージョンの行へ移す。
+            event.preventDefault();
+          }}
+          onCloseAutoFocus={(event) => {
+            if (!dissolving.current) return;
+            dissolving.current = false;
+            event.preventDefault();
+          }}
         >
-          <span className="tabular-nums">{t.player.versions.count(shown)}</span>
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="bottom"
-        align="start"
-        aria-labelledby={headingId}
-        className="w-popover-wide gap-0 overflow-hidden p-0"
-        onOpenAutoFocus={(event) => {
-          // 一覧が届いてから最初の別のバージョンの行へ移す。
-          event.preventDefault();
-        }}
-        onCloseAutoFocus={(event) => {
-          if (!dissolving.current) return;
-          dissolving.current = false;
-          event.preventDefault();
-        }}
-      >
-        <h2 id={headingId} className="sr-only">
-          {t.player.versions.label}
-        </h2>
-        {list.kind === "loading" && (
-          <div className="flex flex-col gap-1 p-2" aria-busy="true">
-            {Array.from({ length: Math.max(count, 1) }, (_, index) => (
-              <Skeleton key={index} className="h-10" />
-            ))}
-          </div>
-        )}
-        {list.kind === "failed" && (
-          <div className="flex items-center gap-2 px-3 py-2">
-            <p role="alert" className="text-sm text-destructive">
-              {t.player.versions.loadFailed}
+          <h2 id={headingId} className="sr-only">
+            {t.player.versions.label}
+          </h2>
+          {list.kind === "loading" && (
+            <div className="flex flex-col gap-1 p-2" aria-busy="true">
+              {Array.from({ length: Math.max(count, 1) }, (_, index) => (
+                <Skeleton key={index} className="h-10" />
+              ))}
+            </div>
+          )}
+          {list.kind === "failed" && (
+            <div className="flex items-center gap-2 px-3 py-2">
+              <p role="alert" className="text-sm text-destructive">
+                {t.player.versions.loadFailed}
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => load(true)}>
+                {t.player.versions.retry}
+              </Button>
+            </div>
+          )}
+          {list.kind === "ready" && (
+            <ul
+              ref={listRef}
+              aria-label={t.player.versions.label}
+              className="max-h-popover-wide divide-y divide-border overflow-y-auto"
+            >
+              {list.versions.items.map((item) => (
+                <VersionRow
+                  key={item.id}
+                  item={item}
+                  current={item.id === video.id}
+                  representative={item.id === list.versions.representativeId}
+                  owner={owner}
+                  pending={pending.has(item.id)}
+                  navigation={navigation}
+                  onMakeRepresentative={() => run(item, "representative")}
+                  onRemove={() => run(item, "remove")}
+                />
+              ))}
+            </ul>
+          )}
+          {failure !== null && (
+            <p
+              role="alert"
+              className="flex items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive"
+            >
+              <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+              {failure}
             </p>
-            <Button variant="ghost" size="sm" onClick={() => load(true)}>
-              {t.player.versions.retry}
-            </Button>
-          </div>
-        )}
-        {list.kind === "ready" && (
-          <ul
-            ref={listRef}
-            aria-label={t.player.versions.label}
-            className="max-h-popover divide-y divide-border overflow-y-auto"
-          >
-            {list.versions.items.map((item) => (
-              <VersionRow
-                key={item.id}
-                item={item}
-                current={item.id === video.id}
-                representative={item.id === list.versions.representativeId}
-                owner={owner}
-                pending={pending.has(item.id)}
-                navigation={navigation}
-                onMakeRepresentative={() => run(item, "representative")}
-                onRemove={() => run(item, "remove")}
-              />
-            ))}
-          </ul>
-        )}
-        {failure !== null && (
-          <p
-            role="alert"
-            className="flex items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive"
-          >
-            <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
-            {failure}
-          </p>
-        )}
-      </PopoverContent>
-    </Popover>
+          )}
+        </PopoverContent>
+      </Popover>
+    </li>
   );
 }
 

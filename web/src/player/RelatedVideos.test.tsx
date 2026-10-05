@@ -40,13 +40,9 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
 }
 
 function renderList(state: RelatedState) {
-  // 動画ページでは詳細ページの情報欄（DetailPage の aside）に置かれ、広い画面ではそれが
-  // スクロールの入れ物になる。
   return render(
     <MemoryRouter>
-      <aside data-slot="detail-page-aside">
-        <RelatedVideos state={state} backTo="/folders/1/a" onRetry={vi.fn()} />
-      </aside>
+      <RelatedVideos state={state} backTo="/folders/1/a" onRetry={vi.fn()} />
     </MemoryRouter>,
   );
 }
@@ -263,10 +259,11 @@ describe("RelatedVideos", () => {
         "31:05Now playingep03",
         "41:05ep04",
       ]);
-      // 「関連動画」は別の節で、メンバーの並びの後ろにある。
+      // 境目は「関連動画」の見出しの前にある。
+      const separator = screen.getByRole("separator");
       const related = screen.getByRole("heading", { level: 2, name: "Related videos" });
       expect(
-        memberList.compareDocumentPosition(related) & Node.DOCUMENT_POSITION_FOLLOWING,
+        separator.compareDocumentPosition(related) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(
         within(relatedList).getByRole("link", { name: "関連 2 1:05" }),
@@ -281,7 +278,7 @@ describe("RelatedVideos", () => {
       expect(current?.textContent).toContain("ep03");
       expect(current && within(current).queryByRole("link")).toBeNull();
       const surface = current?.firstElementChild;
-      expect(surface?.className).toContain("bg-primary-soft");
+      expect(surface?.className).toContain("bg-accent");
       expect(surface?.className).toContain("border-l-2");
       expect(surface?.className).toContain("border-primary");
       expect(screen.queryByRole("link", { name: /ep03/ })).toBeNull();
@@ -765,9 +762,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       });
       try {
         renderWindow();
-        const scroller = document.querySelector(
-          '[data-slot="detail-page-aside"]',
-        ) as HTMLElement;
+        const scroller = document.querySelector("[data-related-scroller]") as HTMLElement;
         // 行1本を 10px と見なした高さ。
         Object.defineProperty(scroller, "scrollHeight", {
           get: () => scroller.querySelectorAll("li").length * 10,

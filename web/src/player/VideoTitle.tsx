@@ -9,8 +9,11 @@ import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-/** 題名の文字。ページの題の段（`text-xl`、web/registry/rules/foundations.md の Type）。 */
-const titleType = "text-xl font-semibold";
+/**
+ * 題名の文字。狭い幅はページの題の段（`text-xl`）、sm からは動画の題名の段（`text-video-title`、
+ * web/registry/rules/foundations.md の Type）。
+ */
+const titleType = "text-xl leading-snug font-semibold sm:text-video-title";
 
 /**
  * VideoTitle は再生画面の題名（`h1`）である。所有者には、その場で表示名を編集する入口と、
@@ -129,7 +132,7 @@ export default function VideoTitle({
     <div className="flex flex-col gap-1">
       {editing ? (
         <form onSubmit={save} className="flex flex-col gap-1">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Input
               ref={input}
               type="text"
@@ -139,12 +142,14 @@ export default function VideoTitle({
               readOnly={sending}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onInputKeyDown}
-              // 文字の左端を題名の左端にそろえる（Input の左の余白 px-3 の分だけ左へ出す）。
-              className={cn(titleType, "-ml-3 sm:flex-1")}
+              // 文字の左端を題名の左端にそろえる（左の余白 px-2 の分だけ左へ出す）。高さは
+              // 題名の文字に合わせて伸ばす。
+              className={cn(titleType, "-mx-2 h-auto px-2 py-1 sm:mr-0 sm:flex-1")}
             />
-            <div className="flex shrink-0 items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2">
               <Button
                 type="submit"
+                size="sm"
                 aria-disabled={sending || undefined}
                 className="aria-disabled:cursor-default aria-disabled:opacity-50"
               >
@@ -156,7 +161,7 @@ export default function VideoTitle({
                 )}
                 {t.player.title.save}
               </Button>
-              <Button variant="ghost" onClick={finish}>
+              <Button variant="ghost" size="sm" onClick={finish}>
                 {t.player.title.cancel}
               </Button>
             </div>
@@ -164,7 +169,7 @@ export default function VideoTitle({
           {failure !== null && (
             <p
               role="alert"
-              className="flex items-center gap-1.5 text-base text-destructive"
+              className="flex items-center gap-1.5 text-sm text-destructive"
             >
               <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
               {failure}
@@ -182,8 +187,8 @@ export default function VideoTitle({
                 size="icon-sm"
                 aria-label={t.player.title.edit}
                 onClick={start}
-                // 縦の中心を題名の 1 行目（行の高さ 1.75rem）にそろえる。
-                className="-mt-0.5 shrink-0 text-muted-foreground"
+                // 縦の中心を題名の 1 行目にそろえる。
+                className="-mt-0.5 shrink-0 text-muted-foreground sm:mt-0.5"
               >
                 <Pencil aria-hidden="true" />
               </Button>
@@ -195,7 +200,7 @@ export default function VideoTitle({
       {!editing && video.displayName !== undefined && video.fileTitle !== undefined && (
         <p
           title={t.player.title.fileNameTitle(video.fileTitle)}
-          className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
+          className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm"
         >
           <FileVideo className="size-4 shrink-0" aria-hidden="true" />
           <span className="sr-only">{t.player.title.fileName} </span>

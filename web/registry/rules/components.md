@@ -98,8 +98,12 @@ Items `checkbox`, `switch`. Turn one thing on or off.
   takes effect with the rest of it. It has an `indeterminate` state for a
   group partly selected. A card's selection mark is a `Checkbox` with an
   `aria-label` that names the item.
-- `Switch` is a setting that takes effect at once, such as a video's
-  visibility.
+- `Switch` is a setting that takes effect at once, such as a settings row.
+- The video page's visibility control is the one exception: a `secondary`
+  `sm` `Button` with `role="switch"` and `aria-checked` whose text is the
+  current state (`Private`, `Public`) beside a lock or globe icon, with the
+  `primary-soft` fill when public. It keeps the look the video page had before
+  the design system.
 
 Pair either with a `Label` (`Field orientation="horizontal"`). Do not use a
 `Switch` inside a form that is saved with a button, or a `Checkbox` to run an

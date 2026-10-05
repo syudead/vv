@@ -92,6 +92,9 @@
   --text-page-title--line-height: 2rem;
   --text-rail: 0.625rem;
   --text-rail--line-height: 1;
+  /* 動画ページの題名の sm 以上の大きさ（player/VideoTitle.tsx） */
+  --text-video-title: 1.5rem;
+  --text-video-title--line-height: 1.375;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -156,8 +159,20 @@
   --spacing-combobox-panel-max: 40vh;
   /* メニュー（DropdownMenu）の最小幅 */
   --spacing-menu: 11rem;
-  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx） */
+  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方 */
   --spacing-detail-aside: 20rem;
+  --spacing-detail-aside-wide: 24rem;
+  /* 動画ページ: 関連動画の行のサムネイルの幅、前後の動画へのつまみの幅と最小の高さ（狭い幅と
+     sm 以上）、状態の層の下に操作バーの分だけ空ける余白、バージョンの一覧の幅 */
+  --spacing-related-thumb: 10rem;
+  --spacing-neighbor-arrow: 1.75rem;
+  --spacing-neighbor-arrow-min: 4.5rem;
+  --spacing-neighbor-arrow-min-sm: 6rem;
+  --spacing-control-bar-clearance: 3.5rem;
+  --spacing-versions-popover: min(28rem, calc(100vw - 2rem));
+  /* 動画ページ: 公開の切り替えの左右の余白と、技術情報の項目の左右の余白 */
+  --spacing-visibility-x: 0.625rem;
+  --spacing-technical-x: 0.625rem;
   /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;
@@ -241,6 +256,23 @@
       background-position: 200% 0;
     }
   }
+}
+
+/*
+ * 動画ページのプレイヤーの枠（player/VideoPage.tsx）。高さの上限は、見出しの帯と題名・タグ・
+ * 情報の行が画面に収まる高さ（狭い幅は 12.25rem、lg からは 17rem を引き、15rem を下回らない）。
+ * 幅の上限はその高さに動画の比率（16:9 より細いときは 16:9）を掛けた値で、比率は実行時に枠が
+ * `--vv-video-aspect` として持つ。値が要素の変数を読むので、:root の変数にせず実用クラスへ
+ * 直に書き込む（inline）。
+ */
+@theme inline {
+  --spacing-player-height: calc(100dvh - 12.25rem);
+  --spacing-player-height-lg: max(100dvh - 17rem, 15rem);
+  --spacing-player-width: calc((100dvh - 12.25rem) * max(var(--vv-video-aspect), 16 / 9));
+  --spacing-player-width-lg: calc(
+    max(100dvh - 17rem, 15rem) * max(var(--vv-video-aspect), 16 / 9)
+  );
+  --aspect-player: var(--vv-video-aspect);
 }
 
 /*

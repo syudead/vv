@@ -17,8 +17,6 @@ import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
-import { ErrorState } from "../ui/patterns/error-state";
-import { PageSection } from "../ui/patterns/page-section";
 import {
   ScrubBand,
   ScrubFrame,
@@ -26,6 +24,7 @@ import {
   useScrubPreview,
 } from "../ui/ScrubPreview";
 import { Button } from "../ui/shadcn/button";
+import { Separator } from "../ui/shadcn/separator";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import {
@@ -111,7 +110,8 @@ export function VideoThumbnail({
       )}
       <ScrubFrame frame={scrub?.frame ?? null} />
       {duration !== "" && (
-        <VideoThumbnailDuration>
+        // 関連動画の列と次の動画の小さなサムネイルでは、長さを角に寄せて読みやすい大きさにする。
+        <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
           {scrubPosition === null
             ? duration
             : t.list.card.scrubTime(formatDuration(scrubPosition.positionMs), duration)}
@@ -168,17 +168,14 @@ function useWideScreen(): boolean {
   return wide;
 }
 
-/**
- * scrollContainer は、広い画面で関連動画の列ごとスクロールする入れ物（詳細ページの情報欄、
- * web/src/ui/patterns/detail-page.tsx）を返す。前のメンバーを読み足したときに、見ている行が
- * 動かないようスクロールの位置を補うのに使う。
- */
-function scrollContainer(element: HTMLElement | null): HTMLElement | null {
-  return element?.closest<HTMLElement>('[data-slot="detail-page-aside"]') ?? null;
-}
+/** 関連動画の並びの入れ物。広い画面では並びだけを中でスクロールさせる。 */
+const scrollerClass =
+  // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、はみ出す分だけ
+  // 内側に余白を取る。
+  "lg:-mx-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:pt-1.5 lg:pb-6";
 
-/** 関連動画の行のサムネイルの幅。行の幅の半分で、card-0 を超えない。 */
-const thumbnailWidth = "w-1/2 max-w-card-0";
+/** 関連動画の行のサムネイルの幅。 */
+const thumbnailWidth = "w-related-thumb";
 
 /**
  * RelatedVideos は関連動画の列である（要件 15）。
@@ -214,10 +211,18 @@ export default function RelatedVideos({
       />
     );
   }
-  // 関連動画が 0 件のときは節ごと出さない。
-  if (state.kind === "ready" && state.related.items.length === 0) return null;
+  const empty = state.kind === "ready" && state.related.items.length === 0;
   return (
-    <PageSection title={t.player.related.heading}>
+    <section
+      aria-labelledby={empty ? undefined : "related-heading"}
+      className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
+    >
+      {!empty && (
+        <h2 id="related-heading" className="text-sm font-semibold">
+          {t.player.related.heading}
+        </h2>
+      )}
+
       {state.kind === "loading" && (
         <ul aria-hidden="true" className="flex flex-col gap-3">
           {Array.from({ length: 6 }, (_, index) => (
@@ -233,21 +238,22 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "failed" && (
-        <ErrorState
-          title={t.player.related.loadFailed}
-          retryLabel={t.common.retry}
-          onRetry={onRetry}
-        />
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-sm text-muted-foreground">{t.player.related.loadFailed}</p>
+          <Button variant="ghost" size="sm" onClick={onRetry}>
+            {t.common.retry}
+          </Button>
+        </div>
       )}
 
-      {state.kind === "ready" && (
-        <ul className="flex flex-col gap-3">
+      {state.kind === "ready" && !empty && (
+        <ul className={cn("flex flex-col gap-3", scrollerClass)}>
           {state.related.items.map((video) => (
             <RelatedItem key={video.id} video={video} backTo={backTo} />
           ))}
         </ul>
       )}
-    </PageSection>
+    </section>
   );
 }
 
@@ -297,7 +303,7 @@ function GroupedRelated({
   const end = offset + members.length + after.length;
   const index = shown.findIndex((member) => member.id === currentId);
   const currentRef = useRef<HTMLLIElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
   const abort = useRef<AbortController | null>(null);
   // 前を読み足す直前の入れ物の高さ。読み足した後、見ている行が動かないよう補う。
@@ -323,7 +329,7 @@ function GroupedRelated({
           setLoading(null);
           if (side === "before") {
             heightBeforePrepend.current = isWideScreen()
-              ? (scrollContainer(listRef.current)?.scrollHeight ?? null)
+              ? (scrollerRef.current?.scrollHeight ?? null)
               : null;
             setBefore((previous) => [...page.items, ...previous]);
           } else {
@@ -344,7 +350,7 @@ function GroupedRelated({
   // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
   useLayoutEffect(() => {
     const height = heightBeforePrepend.current;
-    const scroller = scrollContainer(listRef.current);
+    const scroller = scrollerRef.current;
     heightBeforePrepend.current = null;
     if (height === null || scroller === null) return;
     scroller.scrollTop += scroller.scrollHeight - height;
@@ -353,8 +359,8 @@ function GroupedRelated({
   // 端の目印が見えそうになったら続きを読む。前の目印は広い画面だけに置く。
   const observe = useInfiniteEdge(load);
 
-  // 広い画面では、開いたとき（別のメンバーへ移ったときを含む）に今のメンバーの行を情報欄の
-  // 中で見える位置へ動かす。ページと主領域は動かさない。狭い画面ではページごと動いて
+  // 広い画面では、開いたとき（別のメンバーへ移ったときを含む）に今のメンバーの行を入れ物の
+  // 中で見える位置へ動かす。ページと左の列は動かさない。狭い画面ではページごと動いて
   // プレイヤーが画面の上から消えるので、動かさない（Edge Case「大きなグループ」）。
   useLayoutEffect(() => {
     if (!isWideScreen()) return;
@@ -362,73 +368,87 @@ function GroupedRelated({
   }, [currentId]);
 
   return (
-    <>
-      <PageSection
-        title={t.player.related.group}
-        description={
-          index >= 0 ? (
-            <span className="tabular-nums">
-              {t.player.related.position(first + index + 1, total)}
-            </span>
-          ) : undefined
-        }
+    <section
+      aria-labelledby="group-heading"
+      className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 id="group-heading" className="text-sm font-semibold">
+          {t.player.related.group}
+        </h2>
+        {index >= 0 && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {t.player.related.position(first + index + 1, total)}
+          </span>
+        )}
+      </div>
+      <div
+        ref={scrollerRef}
+        data-related-scroller=""
+        className={cn("flex flex-col", scrollerClass)}
       >
-        <div ref={listRef} className="flex flex-col">
-          {first > 0 &&
-            (wide && failed !== "before" ? (
-              <div ref={observe("before")} aria-hidden="true" className="h-px" />
-            ) : (
-              <GroupEdge
-                label={
-                  failed === "before" ? t.common.retry : t.player.related.earlier(first)
-                }
-                failed={failed === "before"}
-                disabled={loading === "before"}
-                onClick={() => load("before")}
-              />
-            ))}
-          <ul className="flex flex-col gap-3">
-            {shown.map((member, position) =>
-              member.id === currentId ? (
-                <CurrentMember
-                  key={member.id}
-                  ref={currentRef}
-                  video={member}
-                  position={first + position + 1}
-                />
-              ) : (
-                <MemberItem
-                  key={member.id}
-                  video={member}
-                  position={first + position + 1}
-                  backTo={backTo}
-                />
-              ),
-            )}
-          </ul>
-          {end < total &&
-            (failed === "after" ? (
-              <GroupEdge
-                label={t.common.retry}
-                failed
-                disabled={loading === "after"}
-                onClick={() => load("after")}
+        {first > 0 &&
+          (wide && failed !== "before" ? (
+            <div ref={observe("before")} aria-hidden="true" className="h-px" />
+          ) : (
+            <GroupEdge
+              label={
+                failed === "before" ? t.common.retry : t.player.related.earlier(first)
+              }
+              failed={failed === "before"}
+              disabled={loading === "before"}
+              onClick={() => load("before")}
+            />
+          ))}
+        <ul className="flex flex-col gap-3">
+          {shown.map((member, position) =>
+            member.id === currentId ? (
+              <CurrentMember
+                key={member.id}
+                ref={currentRef}
+                video={member}
+                position={first + position + 1}
               />
             ) : (
-              <div ref={observe("after")} aria-hidden="true" className="h-px" />
-            ))}
-        </div>
-      </PageSection>
-      {items.length > 0 && (
-        <PageSection title={t.player.related.heading}>
-          <ul className="flex flex-col gap-3">
-            {items.map((video) => (
-              <RelatedItem key={video.id} video={video} backTo={backTo} />
-            ))}
-          </ul>
-        </PageSection>
-      )}
-    </>
+              <MemberItem
+                key={member.id}
+                video={member}
+                position={first + position + 1}
+                backTo={backTo}
+              />
+            ),
+          )}
+        </ul>
+        {end < total &&
+          (failed === "after" ? (
+            <GroupEdge
+              label={t.common.retry}
+              failed
+              disabled={loading === "after"}
+              onClick={() => load("after")}
+            />
+          ) : (
+            <div ref={observe("after")} aria-hidden="true" className="h-px" />
+          ))}
+        {items.length > 0 && (
+          <>
+            <div className="pt-5 pb-2">
+              <Separator decorative={false} />
+            </div>
+            <section aria-labelledby="related-heading" className="flex flex-col gap-3">
+              <h2 id="related-heading" className="text-sm font-semibold">
+                {t.player.related.heading}
+              </h2>
+              <ul className="flex flex-col gap-3">
+                {items.map((video) => (
+                  <RelatedItem key={video.id} video={video} backTo={backTo} />
+                ))}
+              </ul>
+            </section>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -611,7 +631,7 @@ function MemberItem({
         aria-label={memberLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-md p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
         <MemberNumber position={position} />
         <VideoThumbnail
@@ -641,7 +661,7 @@ function CurrentMember({
     // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。
     <li ref={ref} aria-current="true" className="scroll-my-6">
       {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
-      <div className="-m-1.5 flex gap-3 rounded-md border-l-2 border-primary bg-primary-soft p-1.5 pl-1">
+      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-primary bg-accent p-1.5 pl-1">
         <MemberNumber position={position} />
         <VideoThumbnail video={video} className={thumbnailWidth} />
         <span className="sr-only">{t.player.related.nowPlaying}</span>
@@ -664,7 +684,7 @@ function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
         aria-label={videoLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-md p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
         <VideoThumbnail
           video={video}

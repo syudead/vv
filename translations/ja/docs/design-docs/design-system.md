@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 9048cb76d24a16ee053b40850154993d4e7073e3c87e92923916d7f13f9b3237
+sourceHash: 7f995e7d29aaad78b3bfc74f2ad6be28f9b1297886b9532eb6feda8b6994b84d
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -131,7 +131,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | `Button`（`default`、`secondary`、`outline`、`ghost`、`destructive`、`link`。サイズは `sm`、`default`、`lg`、`icon-sm`、`icon`） | `button` | `ui/Button`、`ui/IconButton` |
 | `Input`、`Textarea`、`Label`、`Field` | `input`、`textarea`、`label`、`field` | 生の `<input>` と `<textarea>` |
 | `Select`、`RadioGroup` | `select`、`radio-group` | 生の `<select>`、並び替えのラジオの列 |
-| `Checkbox`、`Switch` | `checkbox`、`switch` | `ui/Checkbox`、公開範囲のスイッチ |
+| `Checkbox`、`Switch` | `checkbox`、`switch` | `ui/Checkbox` |
 | `Toggle`、`ToggleGroup` | `toggle`、`toggle-group` | `ui/FilterChip`、`ui/SegmentedControl` |
 | `Slider` | `slider` | ズームのスライダー |
 | `Combobox`（ポップオーバー内の `Command`）、`Command` | `combobox`、`command` | `ui/Combobox` |
@@ -229,7 +229,7 @@ flowchart TD
 | その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
 | 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
 
-`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside` である。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
 
 ショーケース（`/design-system`）は、すべての例のブロック、各状態の一覧ページ、ボタンの後ろにあるダイアログを描画するので、メンテナーはパターンを 1440px と 390px で確認する。
 

@@ -111,21 +111,26 @@ changes. A group of values saved together belongs in a `FormDialog`.
 
 ## Detail page
 
-Item `detail-page`. `DetailPage` puts the header band above a main area and an
-information aside `detail-aside` wide; below `lg` the aside goes under the main
-area. It is at most `max-w-7xl` wide, with `p-4` (`p-6` from `lg`) and `gap-6`.
+Item `detail-page`. `DetailPage` fills the window edge to edge: a sticky header
+band `navbar` high with a bottom border, then a main column and an aside
+divided by a vertical border. The aside is `detail-aside` wide
+(`detail-aside-wide` from `xl`); the columns sit `gap-6` apart inside `px-6`.
+Below `lg` everything stacks: the media runs edge to edge under the band, and
+the content below it and the aside keep `px-4` (`px-6` from `sm`) side
+padding, with a border above the aside.
 
 From `lg`, a screen that keeps the page at the viewport's height (it puts
-`DetailPage` in a `lg:h-dvh` flex column) gets a main area and an aside that
-each scroll on their own, so the header and the media at the top of the main
-area stay in view while the viewer browses the aside. Otherwise the page
-scrolls as one.
+`DetailPage` in a `lg:h-dvh` flex column) gets a main column that scrolls on its
+own and an aside that is a flex column, so a list in it can scroll under its
+heading while the header band and the media stay in view. Otherwise the page
+scrolls as one under the sticky band.
 
-| Slot     | Put in it                                                                | Never                       |
-| -------- | ------------------------------------------------------------------------ | --------------------------- |
-| `header` | `PageHeader` with a ghost `Back` button in `leading`, the title, actions | The media itself            |
-| children | The media (player, image), then `PageSection`s about it                  | Facts that fit a `FactList` |
-| `aside`  | `PageSection`s holding `FactList`s, tags and related items               | Main actions; long text     |
+| Slot     | Put in it                                                                       | Never                   |
+| -------- | ------------------------------------------------------------------------------- | ----------------------- |
+| `header` | The band's content: the brand or a ghost `Back` button, the location, a close × | A page title block      |
+| `media`  | The player or image                                                             | Text or controls        |
+| children | The title, tags and controls about the item, then its facts as one icon row     | A card around the facts |
+| `aside`  | A small heading and a plain list of related items                               | Main actions; long text |
 
 ## Centered form
 
