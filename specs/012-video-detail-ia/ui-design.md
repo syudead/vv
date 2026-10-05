@@ -290,14 +290,10 @@ The control bar keeps the look of the existing `.vv-video-player` rules
 
 ### Touch controls
 
-- Only on devices with a coarse pointer (`pointer: coarse`), one round
-  play/pause button (`size-15`) sits at the centre of the player
-  (requirement 8). No seek-by-seconds buttons.
-  - The surface is `bg-overlay` and the icon `text-fg`.
-- It is visible at the same times as the control bar. On these devices video.js's
-  big play button is not shown.
-- Not shown on mouse devices. The switching uses only the CSS `pointer` media
-  condition.
+- On devices with a coarse pointer (`pointer: coarse`), tapping the video toggles
+  play and pause. The control bar also provides these actions. The central
+  video.js big play button is hidden by CSS, leaving the video area clear.
+- The control bar has no seek-by-seconds buttons.
 
 ### Overlay layer
 
@@ -305,10 +301,8 @@ Layers over the player are stacked inside one container. From the top:
 
 1. State display
 2. Playback ended
-3. Centre touch control
 
-Only one shows at a time. While the state display or the ended layer is shown,
-the centre control is not.
+Only one shows at a time.
 
 Every state display stays inside the player area (requirement 10).
 
@@ -421,7 +415,7 @@ When playback reaches the end, this layer appears (requirement 14).
   - Esc while the speed menu is open only closes the menu.
   - Esc in fullscreen only leaves fullscreen.
 - **Tab order**: DOM order, at every width: heading band (logo → breadcrumb → ×)
-  → player (centre control → actions in the state or ended layer → control bar)
+  → player (actions in the state or ended layer → control bar)
   → tags → information row actions → each related video.
 - **Reduced motion** (`prefers-reduced-motion: reduce`): spinning
   (`LoaderCircle`) and the `animate-fade-in` of layers appearing and disappearing
@@ -431,7 +425,6 @@ When playback reaches the end, this layer appears (requirement 14).
 
 - Accessible names:
   - × `閉じる`
-  - the centre control `再生` / `一時停止`
   - the control bar's `最初に戻る`
   - the edge handles `前の動画: {題名}` and `次の動画: {題名}`
   - the logo `ホーム`, and the breadcrumb `nav` `フォルダ`

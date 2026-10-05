@@ -1,5 +1,5 @@
 /**
- * PlayerControls は、video.js の外（キーボード・タッチ用の中央操作・再生終了の層）から
+ * PlayerControls は、video.js の外（キーボード・映像のタップ・再生終了の層）から
  * プレイヤーを動かす入口である。
  *
  * 位置と速度はどれも video.js の `currentTime`・`playbackRate` を通す。変換して再生する

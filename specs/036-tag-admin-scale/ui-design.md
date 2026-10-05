@@ -482,7 +482,7 @@ every loaded tentative tag under "Tentative only", or deleting every loaded row 
 | Touch (`pointer: coarse`) or below `sm` | One `IconButton` at the right end (`Ellipsis`, accessible name "Actions", no tooltip) opening a menu of labelled items: "Confirm" (`Check`, tentative rows only) → "Rename" (`Pencil`) → "Synonyms" (`Tags`) → "Merge into another tag…" (`Merge`) → separator → "Reject…" (`Ban`, danger, tentative rows) or "Delete…" (`Trash2`, danger, confirmed rows) |
 
 - Item labels reuse the current `IconButton` accessible names and menu items. CSS chooses the variant
-  (`[@media(pointer:coarse)]` and `max-sm:`), without reading `matchMedia` (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), as `TouchControls`).
+  (`[@media(pointer:coarse)]` and `max-sm:`), without reading `matchMedia` (library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)).
 - "Confirm" in the menu behaves like the row's "Confirm": no confirmation; while sending, the entry `IconButton` is
   `aria-busy` and ignores further presses. Rename, synonyms, merge, reject and delete behave as their `IconButton`s
   and items. Focus rules from 014 and 031 that target "Rename" or "More actions" target the entry `IconButton`

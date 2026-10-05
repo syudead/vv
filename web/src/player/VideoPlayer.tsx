@@ -342,7 +342,7 @@ export default function VideoPlayer(props: Props) {
     let stall: StallState = initialStallState;
     let stallTimer: number | undefined;
 
-    // 回復を待つ間の見る人の操作（操作バー・中央の操作・キー）は、video.js の部品も
+    // 回復を待つ間の見る人の操作（操作バー・映像のタップ・キー）は、video.js の部品も
     // playerControls もこのプレイヤーの play・pause・paused・currentTime を通るので、ここで
     // 受ける。止まっているかは壊れた要素ではなく見る人の意図を返し、再生・一時停止の
     // ボタンの向きもそれに合わせる（止まった要素は止まっていないと答え続けることがあり、
@@ -485,14 +485,18 @@ export default function VideoPlayer(props: Props) {
     }
 
     const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
-    latest.current.onControls(
-      createPlayerControls(
-        player as unknown as ControllablePlayer,
-        menuOpen,
-        () => subtitles.toggle(),
-        () => reportPosition(),
-      ),
+    const controls = createPlayerControls(
+      player as unknown as ControllablePlayer,
+      menuOpen,
+      () => subtitles.toggle(),
+      () => reportPosition(),
     );
+    latest.current.onControls(controls);
+    // video.js は映像のタップで操作バーだけを切り替える。タッチ端末では再生を
+    // 切り替える。ポスター画像のタップは video.js 自身が再生を扱う。
+    player.tech(true).on("tap", () => {
+      if (window.matchMedia?.("(pointer: coarse)").matches) controls.togglePlay();
+    });
 
     // 画質メニューへ選択肢と今の画質を渡す（qualityMenu.ts）。
     const renderQualityMenu = () => {

@@ -43,7 +43,6 @@ import {
   ReadFailure,
   Unplayable,
 } from "./StatusOverlays";
-import TouchControls from "./TouchControls";
 import VideoFacts, { type ThumbnailCapture } from "./VideoFacts";
 import VideoHeader from "./VideoHeader";
 import VideoPlayer, {
@@ -78,8 +77,7 @@ interface Attempt {
  * 構成要素は見出しの帯（ロゴ・置き場所のパンくず・×）・プレイヤー・題名・タグ・
  * ファイルの情報・関連動画とする（親 Issue 要件 1・3、issue 268、ui-design「Video header」
  * 「Video facts」）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
- * （plan の Structural Decisions 12）。入れ物の中は、上から 状態表示・再生終了・タッチ用の
- * 中央操作 の順で、同時に出すのは 1 つだけである。
+ * （plan の Structural Decisions 12）。状態表示と再生終了は同じ入れ物に出す。
  */
 export default function VideoPage() {
   const params = useParams();
@@ -135,7 +133,7 @@ export default function VideoPage() {
   const [stallDismissedId, setStallDismissedId] = useState<number | null>(null);
   // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
-  // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
+  // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了も全画面で出す）。
   const fullscreenTarget = useCallback(() => frameRef.current, []);
   // 全画面にしている入れ物。前後の矢印の吹き出しは、その間だけ入れ物の中に描く。
   const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
@@ -384,17 +382,6 @@ export default function VideoPage() {
     layer = <LoadingOverlay backdrop={false} label={t.player.reconnecting} />;
   } else if (layer === null && status.loading) {
     layer = <LoadingOverlay backdrop={false} />;
-  } else if (layer === null && controls !== null) {
-    layer = (
-      <TouchControls
-        playing={status.playing}
-        visible={chromeVisible}
-        onToggle={() => {
-          controls.togglePlay();
-          controls.wake();
-        }}
-      />
-    );
   }
 
   // 途切れの警告は入れ物とは別の層で、失敗・再生終了・次の予告・再接続中・取り込み中の
