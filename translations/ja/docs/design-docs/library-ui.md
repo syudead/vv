@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 472aada0c065aca20189dc24a87121067865a6063f8765bcd3d45e9fc2dacd3c
+sourceHash: 500f9d908ca2e8a0726fa548312fa4ae93c95b7126f083bb87f89717049b5853
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -76,7 +76,7 @@ flowchart LR
 
 幅による変化には CSS で Tailwind の既定のブレークポイントを使う。JavaScript で幅を読むのはサイドバーだけだ（[`useSidebar.ts`](../../web/src/shell/useSidebar.ts)）。
 
-JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、利用者の開閉の選択を幅ごとに解釈し、ドロワーの開いた状態を保つからで、これは CSS では表せない。そのブレークポイントは `lg` と `sm` に等しい。
+JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、利用者の開閉の選択を幅ごとに解釈し、ドロワーの開いた状態を保つからで、これは CSS では表せない。通知（[`Toast.tsx`](../../web/src/ui/Toast.tsx)）がもう 1 つの例外だ。Sonner は位置を prop として受け取るので、一覧画面は `lg` を読んで、通知を上部バーの下から下端の中央、選択バーの上へ移す。サイドバーのブレークポイントは `lg` と `sm` に等しい。
 
 ```mermaid
 flowchart LR
@@ -124,7 +124,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、ライブラリはその間に自分のツールバーを差し込む。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストとフォルダ名がページの先頭に来て、ツールバーはその下に置く（[design-system.md、Page patterns](design-system.md#page-patterns)）。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開け、フォルダ名がページの先頭に来る（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付く。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -134,14 +134,16 @@ flowchart LR
 | 並び順 | 9 | 7 |
 | 視聴状態と `Favorites only` の絞り込み | 表示 | 非表示 |
 
-ツールバーは検索、絞り込み、表示（ライブラリだけ）、ズーム、並べ替えを持つ。
+ツールバーは検索、絞り込み、並べ替え、表示（ライブラリだけ）、ズームを、この Tab の順で持つ。折り返すことはない。検索欄が残りの幅を取り、表示のコントロールはそれぞれ、行に加わる幅より狭いと、アイコンだけの `View and sort` のポップオーバーに移る。
 
 | 幅 | ツールバー |
 | --- | --- |
-| 広い | すべてのコントロールを横に並べる |
-| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る（フォルダのページでは `lg` 未満） |
-| `md` 未満 | ライブラリでは並び順が 2 列のラジオに行優先で並び、所有者は 5 行、ゲストは 4 行。フォルダのページは並べ替えのメニューを保つ |
+| `xl` 以上 | すべてのコントロールを横に並べる |
+| `md` から `xl` | 並べ替えは `md` から、表示（ライブラリ）は `lg` から、ズームは `xl` から横に並ぶ。残りは `View and sort` に入る |
+| `md` 未満 | 並び順は `View and sort` の中で 2 列のラジオに行優先で並び（所有者は 5 行、ゲストは 4 行）、その下に向きか `Shuffle` を置く |
 | `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示 |
+
+タグのページは同じ行に検索、絞り込み、並べ替えを置く。`md` 未満では、並べ替えはアイコンだけの `Sort` のポップオーバーに移る。
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。
 
@@ -210,22 +212,9 @@ flowchart LR
 
 ### 選択バー {#selection-bar}
 
-選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。
+選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。デザインシステムのバー（`SelectionBar`、最大 `max-w-4xl`）は、操作名が収まらないときは 2 行目へ折り返す。
 
-項目は順に、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all`、解除だ。行の割り当ては実際の幅を測って決める。
-
-```mermaid
-flowchart LR
-  w{幅は sm 以上?} -->|はい| one{1 行に収まる?}
-  one -->|はい| line[1 行]
-  one -->|いいえ| sep[区切り以降を 2 行目へ]
-  sep --> still{1 行目は収まる?}
-  still -->|いいえ| fav[Favorite 以降を 2 行目へ]
-  w -->|いいえ| narrow[件数、Select all、解除を上に]
-  narrow --> wrap[あふれた Favorite 以降を下へ]
-```
-
-`sm` 以上では、バーは `nowrap` ではみ出す代わりに全幅に広がり、移った項目は 2 行目の右端に置かれ、`Favorite` 以降が区切りより前に来る。`sm` 未満では、最下行に 2 つのタグ操作、`Favorite`、`Visibility` を置き、収まらないものは次の行の右端へ、さらにその次の行へ移る。
+項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
 
 詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar) にある。
 

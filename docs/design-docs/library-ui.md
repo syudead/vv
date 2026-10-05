@@ -124,7 +124,7 @@ it interprets the user's open/close choice per width and keeps the drawer's
 open state, which CSS cannot express. The notices
 ([`Toast.tsx`](../../web/src/ui/Toast.tsx)) are the other: Sonner takes its
 position as a prop, so list screens read `lg` to move notices from under the
-top bar to the bottom centre, above the selection bar. Its breakpoints equal `lg` and `sm`:
+top bar to the bottom centre, above the selection bar. The sidebar's breakpoints equal `lg` and `sm`:
 
 ```mermaid
 flowchart LR
