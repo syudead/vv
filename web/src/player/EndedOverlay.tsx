@@ -44,17 +44,17 @@ export default function EndedOverlay({
         {t.player.ended.announcement}
       </span>
       {next === undefined ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg bg-popover p-6 text-popover-foreground text-center shadow-elevated">
+        <div className="flex flex-col items-center gap-3 rounded-lg bg-navbar p-5 text-center shadow-elevated">
           <h2 className="text-lg font-semibold">{t.player.ended.announcement}</h2>
-          <Button ref={primary} onClick={onReplay}>
+          <Button ref={primary} variant="secondary" onClick={onReplay}>
             <RotateCcw aria-hidden="true" />
             {t.player.ended.replay}
           </Button>
         </div>
       ) : (
-        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-popover p-6 text-popover-foreground shadow-elevated">
+        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
           <h2 className="text-lg font-semibold">{t.player.ended.announcement}</h2>
-          <span className="text-sm font-semibold text-primary">
+          <span className="text-xs font-semibold text-primary">
             {t.player.ended.next}
           </span>
           <Link
@@ -73,7 +73,7 @@ export default function EndedOverlay({
               <Play aria-hidden="true" />
               {t.player.ended.playNext}
             </Button>
-            <Button variant="outline" onClick={onReplay}>
+            <Button variant="secondary" onClick={onReplay}>
               <RotateCcw aria-hidden="true" />
               {t.player.ended.replay}
             </Button>

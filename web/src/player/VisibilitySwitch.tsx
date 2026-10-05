@@ -1,18 +1,17 @@
 import { AlertCircle, Globe, LoaderCircle, Lock } from "lucide-react";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { Field } from "../ui/shadcn/field";
-import { Label } from "../ui/shadcn/label";
-import { Switch } from "../ui/shadcn/switch";
+import { Button } from "../ui/shadcn/button";
 
 /**
  * VisibilitySwitch は再生画面の公開の切り替えである
  * （specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Video page」）。
- * すぐ効く設定なので `Switch` にし、今の状態（公開中・非公開）を印と一緒に `Label` で添える
- * （web/registry/rules/components.md「Checkbox and Switch」）。
+ * 今の状態（Private・Public）を印と一緒に名前にした `Button`（`sm`）で、読み上げには
+ * `switch` の役割と `aria-checked` で切り替えであることを伝える。非公開は `secondary` の面、
+ * 公開は選択と同じ `primary-soft` の面に `primary` の文字にする。
  *
  * 押すと `PUT /api/video-visibility` を1回送り、応答を受けてから状態を変える。
  * 状態は親（useVideoDetail）の `public` が持ち、応答の通知（api/visibility.ts）で
@@ -53,32 +52,31 @@ export default function VisibilitySwitch({
   }
 
   const Icon = sending ? LoaderCircle : isPublic ? Globe : Lock;
-  const id = useId();
 
   return (
     <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
-      <Field orientation="horizontal" className="w-auto">
-        <Switch
-          id={id}
-          checked={isPublic}
-          aria-label={t.player.visibility.label}
-          aria-disabled={sending || undefined}
-          onCheckedChange={toggle}
-          className="aria-disabled:cursor-default aria-disabled:opacity-50"
+      <Button
+        variant="secondary"
+        size="sm"
+        role="switch"
+        aria-checked={isPublic}
+        aria-label={t.player.visibility.label}
+        aria-disabled={sending || undefined}
+        onClick={toggle}
+        className={cn(
+          "px-visibility-x text-xs has-[>svg]:px-visibility-x aria-disabled:cursor-default aria-disabled:opacity-50",
+          isPublic &&
+            "bg-primary-soft text-primary hover:bg-primary-soft hover:text-foreground",
+        )}
+      >
+        <Icon
+          aria-hidden="true"
+          className={cn(sending && "animate-spin motion-reduce:animate-none")}
         />
-        <Label
-          htmlFor={id}
-          className={cn("text-base font-normal", isPublic && "text-primary")}
-        >
-          <Icon
-            aria-hidden="true"
-            className={cn("size-4", sending && "animate-spin motion-reduce:animate-none")}
-          />
-          {isPublic ? t.player.visibility.public : t.player.visibility.private}
-        </Label>
-      </Field>
+        {isPublic ? t.player.visibility.public : t.player.visibility.private}
+      </Button>
       {failure !== null && (
-        <p role="alert" className="flex items-center gap-1.5 text-base text-destructive">
+        <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
           <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
           {failure}
         </p>

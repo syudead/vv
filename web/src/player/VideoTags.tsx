@@ -273,7 +273,7 @@ export default function VideoTags({
   return (
     <div className="flex flex-col gap-1">
       <h2 className="sr-only">{t.player.tags.heading}</h2>
-      <ul className="flex flex-wrap items-center gap-2">
+      <ul className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag, index) => (
           <li key={tag.id} className="min-w-0 max-w-full">
             {isFolderOnly(tag) ? (
@@ -366,7 +366,7 @@ export default function VideoTags({
             placeholder={t.player.tags.add}
             icon={
               <Plus
-                className="size-4 shrink-0 text-muted-foreground"
+                className="size-3 shrink-0 text-muted-foreground"
                 aria-hidden="true"
               />
             }
@@ -380,7 +380,7 @@ export default function VideoTags({
         </li>
       </ul>
       {opError !== null && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-xs text-destructive">
           {opError}
         </p>
       )}

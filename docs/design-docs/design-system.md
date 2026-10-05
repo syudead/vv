@@ -195,7 +195,7 @@ with and when not to use it is in
 | `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
 | `Input`, `Textarea`, `Label`, `Field` | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>` |
 | `Select`, `RadioGroup` | `select`, `radio-group` | Raw `<select>`, the sort radio columns |
-| `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox`, the visibility switch |
+| `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox` |
 | `Toggle`, `ToggleGroup` | `toggle`, `toggle-group` | `ui/FilterChip`, `ui/SegmentedControl` |
 | `Slider` | `slider` | The zoom slider |
 | `Combobox` (`Command` in a popover), `Command` | `combobox`, `command` | `ui/Combobox` |
@@ -340,7 +340,12 @@ Skeletons and sections share four behaviours:
 
 `CardGrid` passes its column template through `style`, because a template made
 from a named step is an arbitrary value to the checks; the step still comes
-from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`.
+from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`
+(`detail-aside-wide` from `xl`). The video page's player frame sizes itself
+from named steps declared in an `@theme inline` block (`player-width`,
+`player-height`, `aspect-player`), because their values read the video's
+aspect ratio from the frame at run time and must be resolved on the element,
+not on `:root`.
 `DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
 `table` item.
 

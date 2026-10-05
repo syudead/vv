@@ -39,17 +39,19 @@ in `web/src/theme/tokens.test.ts` in the same change.
 
 ## Type
 
-| Step        | Use                                                         |
-| ----------- | ----------------------------------------------------------- |
-| `text-2xs`  | Text on thumbnails: duration, seek time, badges over images |
-| `text-xs`   | Metadata, counts, chip labels, help text                    |
-| `text-sm`   | Library body, controls, menus, card titles                  |
-| `text-base` | Video page body, dialog body                                |
-| `text-lg`   | Section headings, dialog titles                             |
-| `text-xl`   | Page titles, the video title                                |
+| Step               | Use                                                         |
+| ------------------ | ----------------------------------------------------------- |
+| `text-2xs`         | Text on thumbnails: duration, seek time, badges over images |
+| `text-xs`          | Metadata, counts, chip labels, help text                    |
+| `text-sm`          | Library body, controls, menus, card titles                  |
+| `text-base`        | Video page body, dialog body                                |
+| `text-lg`          | Section headings, dialog titles                             |
+| `text-xl`          | Page titles, the video title below `sm`                     |
+| `text-video-title` | The video title from `sm`, with `leading-snug`              |
 
 Weights: `font-normal`, `font-medium` (controls, labels, card titles),
-`font-semibold` (headings). Nothing larger than `text-xl`, and no `font-bold`.
+`font-semibold` (headings). Nothing larger than `text-xl` except the video
+title, and no `font-bold`.
 
 ## Spacing and sizes
 
@@ -60,7 +62,12 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `card-0` to `card-3`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `chip-label`,
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
-`detail-aside`, `issue-list`, `folder-list`. Fractions
+`detail-aside`, `detail-aside-wide`, `related-thumb`, `neighbor-arrow`,
+`neighbor-arrow-min`, `neighbor-arrow-min-sm`, `control-bar-clearance`,
+`versions-popover`, `visibility-x`, `technical-x`, `issue-list`,
+`folder-list`. The video page's player frame uses `player-width`,
+`player-height` and their `-lg` forms with `aspect-player`; they read the
+video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 (`w-1/2`), `full`, `auto` and the container widths (`max-w-md`) are allowed.
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value.

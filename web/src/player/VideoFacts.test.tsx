@@ -51,23 +51,6 @@ function listText(name: string): string[] {
     .map((item) => item.textContent ?? "");
 }
 
-/** factList は「File details」の節の、項目名と値の組（FactList の dl）を返す。 */
-function factList(): HTMLElement {
-  const list = screen
-    .getByRole("region", { name: "File details" })
-    .querySelector<HTMLElement>("dl");
-  if (list === null) throw new Error("fact list not found");
-  return list;
-}
-
-/** factText はファイルの情報の各項目を「項目名 値」の文字で返す。 */
-function factText(): string[] {
-  return [...factList().querySelectorAll(":scope > div")].map(
-    (row) =>
-      `${row.querySelector("dt")?.textContent ?? ""} ${row.querySelector("dd")?.textContent ?? ""}`,
-  );
-}
-
 describe("VideoFacts", () => {
   const fetchMock = vi.fn<typeof fetch>();
   beforeEach(() => vi.stubGlobal("fetch", fetchMock));
@@ -78,7 +61,7 @@ describe("VideoFacts", () => {
 
   it("ファイルの情報は長さ・サイズ・追加日・更新日時・作成日時の順で、最後に見た日時は出さない", () => {
     renderFacts(video);
-    expect(factText()).toEqual([
+    expect(listText("File details")).toEqual([
       "Length 4:02",
       "Size 80.4 MB",
       "Added Sep 20, 2026",
@@ -109,7 +92,7 @@ describe("VideoFacts", () => {
       audioCodec: undefined,
     };
     const view = renderFacts(pending);
-    expect(factText()).toEqual([
+    expect(listText("File details")).toEqual([
       "Size 80.4 MB",
       "Added Sep 20, 2026",
       "Edited Sep 20, 2026",
@@ -225,12 +208,15 @@ describe("VideoFacts", () => {
     };
 
     function dateButton(name: string | RegExp): HTMLElement {
-      return within(factList()).getByRole("button", { name });
+      return within(screen.getByRole("list", { name: "File details" })).getByRole(
+        "button",
+        { name },
+      );
     }
 
     it("3 つの日付は同じ日付だけの書式で、読み上げ名で区別でき、title に名前と時刻を持つ（要件 4、UI品質）", () => {
       renderFacts(dated);
-      expect(factText()).toEqual([
+      expect(listText("File details")).toEqual([
         "Length 4:02",
         "Size 80.4 MB",
         "Added Sep 20, 2026",
@@ -247,7 +233,22 @@ describe("VideoFacts", () => {
         `Created ${formatDateTime(created)}`,
       );
       // 長さとサイズは引き金にしない。
-      expect(within(factList()).getAllByRole("button")).toHaveLength(3);
+      expect(
+        within(screen.getByRole("list", { name: "File details" })).getAllByRole("button"),
+      ).toHaveLength(3);
+    });
+
+    it("3 つの日付のアイコンはそれぞれ違う", () => {
+      renderFacts(dated);
+      const icons = ["Added", "Edited", "Created"].map(
+        (name) =>
+          dateButton(new RegExp(`^${name} `))
+            .querySelector("svg")
+            ?.getAttribute("class") ?? "",
+      );
+      expect(icons[0]).toContain("lucide-calendar-plus");
+      expect(icons[1]).toContain("lucide-pencil-line");
+      expect(icons[2]).toContain("lucide-file-clock");
     });
 
     it("押すと名前と日時の吹き出しを開き、Esc で閉じてフォーカスを引き金に戻す", async () => {
@@ -266,8 +267,8 @@ describe("VideoFacts", () => {
 
     it("ゲストの動画（所在が無い）でも更新日時と作成日時を出す", () => {
       renderFacts({ ...dated, location: undefined });
-      expect(factText()).toContain("Edited Sep 27, 2026");
-      expect(factText()).toContain("Created Jul 3, 2026");
+      expect(listText("File details")).toContain("Edited Sep 27, 2026");
+      expect(listText("File details")).toContain("Created Jul 3, 2026");
     });
   });
 });

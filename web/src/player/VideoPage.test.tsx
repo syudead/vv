@@ -198,13 +198,9 @@ function player(): PlayerProps {
   return props;
 }
 
-/** factList は情報欄の「File details」の節の、項目名と値の組（FactList の dl）を返す。 */
+/** factList は題名とタグの下の、ファイルの情報の行（「File details」の並び）を返す。 */
 function factList(): HTMLElement {
-  const list = screen
-    .getByRole("region", { name: "File details" })
-    .querySelector<HTMLElement>("dl");
-  if (list === null) throw new Error("fact list not found");
-  return list;
+  return screen.getByRole("list", { name: "File details" });
 }
 
 describe("VideoPage", () => {
@@ -398,9 +394,7 @@ describe("VideoPage", () => {
         title: document.querySelector("h1")?.outerHTML,
         facts: factList().outerHTML,
         technical: screen.getByRole("list", { name: "Technical details" }).outerHTML,
-        related: screen
-          .getByRole("heading", { level: 2, name: "Related videos" })
-          .closest("section")?.outerHTML,
+        related: document.querySelector("aside")?.outerHTML,
       });
       const before = snapshot();
       fireEvent.click(screen.getByRole("button", { name: "Open file" }));
@@ -411,7 +405,8 @@ describe("VideoPage", () => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
       // 情報の行のすぐ下（技術情報の上）に出る。
-      expect(factList().nextElementSibling).toBe(alert);
+      const row = factList().parentElement;
+      expect(row?.nextElementSibling).toBe(alert);
       // 足されるのはその 1 行だけで、帯・プレイヤー・題名・情報・関連動画は変わらない。
       expect(snapshot()).toEqual(before);
     });
@@ -1108,8 +1103,7 @@ describe("VideoPage", () => {
         json({ ...ep02, title: "第二話", fileTitle: "ep02", displayName: "第二話" }),
       );
       await openMember();
-      const members = () =>
-        screen.getByRole("heading", { level: 2, name: "Up next" }).closest("section")!;
+      const members = () => document.getElementById("group-heading")!.closest("section")!;
       expect(within(members()).getByText("ep02")).toBeDefined();
 
       await user.click(screen.getByRole("button", { name: "Edit name" }));
@@ -1318,13 +1312,10 @@ describe("VideoPage", () => {
       const heading = screen.getByRole("heading", { level: 2, name: "Up next" });
       const section = heading.closest("section");
       if (section === null) throw new Error("列がありません");
-      // 関連動画は「続けて再生」の節の後ろの、別の節にある。
-      const relatedSection = screen
-        .getByRole("heading", { level: 2, name: "Related videos" })
-        .closest("section");
-      if (relatedSection === null) throw new Error("関連動画の節がありません");
-      const members = within(section).getByRole("list");
-      const others = within(relatedSection).getByRole("list");
+      const [members, others] = within(section).getAllByRole("list") as [
+        HTMLElement,
+        HTMLElement,
+      ];
       expect(
         within(members)
           .getAllByRole("listitem")
@@ -1741,18 +1732,12 @@ describe("VideoPage", () => {
       return screen.getByRole("switch", { name: "Show to people who aren't signed in" });
     }
 
-    /** visibilityLabel は切り替えに添えた今の状態（公開中・非公開）の文字を返す。 */
-    function visibilityLabel() {
-      const id = toggle().id;
-      return document.querySelector(`label[for="${id}"]`)?.textContent;
-    }
-
     it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
       expect(toggle().getAttribute("aria-checked")).toBe("false");
-      expect(visibilityLabel()).toBe("Private");
+      expect(toggle().textContent).toBe("Private");
 
       fireEvent.click(toggle());
       // 送信中は押せない印（aria-disabled）で、フォーカスは外さず、応答が来るまで
@@ -1764,7 +1749,7 @@ describe("VideoPage", () => {
 
       await act(async () => answers[0]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
-      expect(visibilityLabel()).toBe("Public");
+      expect(toggle().textContent).toBe("Public");
       expect(toggle().getAttribute("aria-disabled")).toBeNull();
       // トーストは出さない。
       expect(screen.queryByRole("status")).toBeNull();
@@ -1775,7 +1760,7 @@ describe("VideoPage", () => {
       const { answers, bodies } = holdVisibility();
       renderPage();
       await ready();
-      expect(visibilityLabel()).toBe("Public");
+      expect(toggle().textContent).toBe("Public");
       fireEvent.click(toggle());
       expect(bodies).toEqual([{ videoIds: [7], public: false }]);
       await act(async () => answers[0]!(json({ applied: 1 })));
@@ -2391,15 +2376,13 @@ describe("VideoPage", () => {
     }
 
     async function expectEditedAfter() {
-      await waitFor(() =>
-        expect(edited().getAttribute("aria-label")).toBe("Edited Sep 28, 2026"),
-      );
+      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 28, 2026"));
     }
 
     it("一度も編集していない動画は追加日と同じ日付で、所有者にもゲストにも更新日時と作成日時を出す（受け入れ条件 3）", async () => {
       renderPage();
       await ready();
-      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
       expect(edited().title).toBe(
         screen.getByRole("button", { name: /^Added / }).title.replace("Added", "Edited"),
       );
@@ -2411,7 +2394,7 @@ describe("VideoPage", () => {
       current = { ...current, location: undefined, public: true };
       renderPage("7", undefined, "guest");
       await ready();
-      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
       expect(screen.getByRole("button", { name: /^Created / })).toBeDefined();
     });
 
@@ -2499,9 +2482,7 @@ describe("VideoPage", () => {
       await expectEditedAfter();
 
       fireEvent.click(screen.getByRole("button", { name: "Use automatic thumbnail" }));
-      await waitFor(() =>
-        expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026"),
-      );
+      await waitFor(() => expect(edited().textContent).toBe("Edited Sep 1, 2026"));
     });
 
     it("取り直しが失敗しても失敗の行を出さず、前の値のまま置く", async () => {
@@ -2526,7 +2507,7 @@ describe("VideoPage", () => {
       await act(async () => {
         await Promise.resolve();
       });
-      expect(edited().getAttribute("aria-label")).toBe("Edited Sep 1, 2026");
+      expect(edited().textContent).toBe("Edited Sep 1, 2026");
       expect(screen.queryByRole("alert")).toBeNull();
     });
   });
@@ -2603,9 +2584,9 @@ describe("VideoPage", () => {
       answerVersions([versionA, versionB, versionC]);
       renderPage("7", "/?q=abc");
       await ready();
-      const facts = [...factList().querySelectorAll("dd")].map(
-        (item) => item.textContent,
-      );
+      const facts = within(factList())
+        .getAllByRole("listitem")
+        .map((item) => item.textContent);
       expect(facts.at(-1)).toBe("3 versions");
       await openVersions();
       expect(versionsCalls("/versions")).toHaveLength(1);
