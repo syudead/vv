@@ -57,7 +57,7 @@ export default function VisibilityMenu({
             icon={<Globe aria-hidden="true" />}
             label={t.library.selection.visibility}
             after={<ChevronDown aria-hidden="true" />}
-            iconOnly
+            labelFromLg
             disabled={overLimit}
             title={overLimit ? overLimitMessage() : undefined}
             aria-describedby={overLimit ? overLimitId : undefined}

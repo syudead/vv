@@ -204,7 +204,7 @@ export default function SelectionBar({
             <SelectionAction
               icon={<Layers aria-hidden="true" />}
               label={t.library.selection.bundle}
-              iconOnly
+              labelFromLg
               disabled={bundleOverLimit}
               title={
                 bundleOverLimit
@@ -241,7 +241,7 @@ export default function SelectionBar({
           <SelectionAction
             icon={<CheckCheck aria-hidden="true" />}
             label={selectAllLabel}
-            iconOnly
+            labelFromLg
             onClick={onSelectAll}
             disabled={selectingAll || allSelected}
           />

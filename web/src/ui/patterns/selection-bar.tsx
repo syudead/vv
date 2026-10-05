@@ -39,7 +39,7 @@ export function SelectionBar({
       className={cn(
         "flex items-center gap-2",
         placement === "bottom"
-          ? "sticky bottom-3 z-10 mx-auto h-selection-bar w-full max-w-2xl animate-slide-up rounded-lg border border-border bg-popover px-2 text-popover-foreground shadow-elevated motion-reduce:animate-none"
+          ? "sticky bottom-3 z-10 mx-auto h-selection-bar w-full max-w-4xl animate-slide-up rounded-lg border border-border bg-popover px-2 text-popover-foreground shadow-elevated motion-reduce:animate-none"
           : "min-h-8",
       )}
     >
