@@ -39,8 +39,10 @@ export function SelectionBar({
       data-placement={placement}
       className={cn(
         "flex items-center gap-2",
+        // bottom はカードの選択のチェック（z-30）より前に出す。同じ z-30 で DOM の後ろにある
+        // ので、下を流れるカードのチェックが帯の上に透けない。
         placement === "bottom"
-          ? "sticky bottom-3 z-10 mx-auto min-h-selection-bar w-full max-w-4xl animate-slide-up flex-wrap rounded-lg border border-border bg-popover px-2 py-1 text-popover-foreground shadow-elevated motion-reduce:animate-none"
+          ? "sticky bottom-3 z-30 mx-auto min-h-selection-bar w-full max-w-4xl animate-slide-up flex-wrap rounded-lg border border-border bg-popover px-2 py-1 text-popover-foreground shadow-elevated motion-reduce:animate-none"
           : "min-h-8",
       )}
     >
