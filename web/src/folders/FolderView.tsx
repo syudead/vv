@@ -21,7 +21,6 @@ import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
@@ -69,7 +68,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     const held = takeListSnapshot({ ...criteria, folder: key });
     return held?.folderListing === undefined ? undefined : held;
   });
-  const heading = useArrival<HTMLSpanElement>(restored !== undefined);
+  const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const listing = useFolderListing(folder, restored?.folderListing);
   const videos = useVideos(
     {
@@ -343,13 +342,10 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             }
             suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
           />
-          <PageHeader
-            title={
-              <span ref={heading} tabIndex={-1}>
-                {name ?? t.folders.title}
-              </span>
-            }
-          />
+          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          <h1 ref={heading} tabIndex={-1} className="sr-only">
+            {name ?? t.folders.title}
+          </h1>
         </>
       }
       toolbar={

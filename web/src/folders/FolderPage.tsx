@@ -2,7 +2,6 @@ import { useLocation } from "react-router";
 
 import { t } from "../i18n";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
 import Breadcrumbs from "./Breadcrumbs";
 import { FOLDERS_ROOT, folderKey, parseFolderPathname } from "./folderPath";
 import FolderView from "./FolderView";
@@ -17,7 +16,7 @@ import { FolderNotFound } from "./states";
  * `RootSearchResults`、フォルダ1件の表示は `FolderView`（検索結果は
  * `FolderSearchResults`、直下の表示は `FolderContents`）、一覧の条件の管理は
  * `useConditions` が持ち、このファイルは URL から選んで組み立てるだけである。
- * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しの行にパンくずと題、
+ * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しの行にパンくず（題は読み上げだけ）、
  * ツールバー、本体の順に並べる（web/registry/rules/patterns.md の List page）。
  */
 export default function FolderPage() {
@@ -31,14 +30,12 @@ export default function FolderPage() {
   ) : (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
-            />
-          }
-          title={t.folders.title}
-        />
+        <>
+          <Breadcrumbs
+            crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
+          />
+          <h1 className="sr-only">{t.folders.title}</h1>
+        </>
       }
     >
       <FolderNotFound />

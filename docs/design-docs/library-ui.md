@@ -188,7 +188,8 @@ insert their toolbar between them: the design-system `Toolbar` with
 starts with the heading and the count, so the toolbar stays reachable at any
 scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
 is a band stuck under the top bar, so the parent folders stay one click away at
-any scroll position, and the folder name heads the page
+any scroll position. The breadcrumb's last segment names the folder, so the
+page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
