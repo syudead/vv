@@ -178,13 +178,19 @@ flowchart LR
 ### Shell and toolbar
 
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
-logo and `Refresh library`, and the library inserts its toolbar between them.
-Folder pages are a design-system `ListPage`: the breadcrumb and the folder name
-head the page, and the toolbar sits under them
+logo and `Refresh library`. The library, the folder pages and the tags page
+insert their toolbar between them: the design-system `Toolbar` with
+`placement="topBar"`, rendered through
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
+starts with the heading and the count, so the toolbar stays reachable at any
+scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+and the folder name head the page
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The sidebar has three states (expanded, rail, drawer; see
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
-it widens the grid, while card width follows the zoom level. Guest rules are in
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
+The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
+small label in a 56px (`rail-item`) square, so every entry stays named.
+Collapsing it widens the grid, while card width follows the zoom level. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
 | Part | Owner | Guest |
@@ -195,14 +201,20 @@ it widens the grid, while card width follows the zoom level. Guest rules are in
 | Sort orders | 9 | 7 |
 | Watch status and `Favorites only` filters | Shown | Hidden |
 
-The toolbar holds search, filters, view (library only), zoom and sort.
+The toolbar holds search, filters, sort, view (library only) and zoom, in
+that Tab order. It never wraps: the search field takes the remaining width,
+and each view control moves into the icon-only `View and sort` popover below
+the width where it joins the row.
 
 | Width | Toolbar |
 | --- | --- |
-| Wide | All controls inline |
-| Narrow | View, zoom and sort move into `View and sort` (folder pages: below `lg`) |
-| Below `md` | Library: sort orders fill two radio columns row-first, 5 rows owner, 4 guest; folder pages keep the sort menu |
+| `xl` and up | All controls inline |
+| `md` to `xl` | Sort inline from `md`, view (library) from `lg`, zoom from `xl`; the rest in `View and sort` |
+| Below `md` | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
 | Below `sm` | One full-width column at any zoom; zoom hidden |
+
+The tags page uses the same row with search, filter and sort; below `md` its
+sort moves into the icon-only `Sort` popover.
 
 The count sits in the row above the grid for the library and search results,
 and in the section heading for a folder's direct contents.

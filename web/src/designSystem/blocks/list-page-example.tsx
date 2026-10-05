@@ -36,7 +36,8 @@ import {
   VideoThumbnailMark,
 } from "@/ui/VideoThumbnail";
 
-// 一覧ページの型の見本（registry:block list-page-example）。見出し行・ツールバー・カードの
+// 一覧ページの型の見本（registry:block list-page-example）。トップバーの中のツールバーは、
+// 見本には shell が無いので代わりの帯（ExampleTopBar）に置く。見出し行・ツールバー・カードの
 // グリッド・末尾の追加読み込み・選択バーを、見本の動画で埋めて動かす。写した画面は見本の
 // データと文言を自分のものに、カードを自分のカードに差し替える
 // （web/registry/rules/patterns.md の List page）。
@@ -94,7 +95,22 @@ export function SampleVideoCard({
   );
 }
 
-/** ExampleToolbar は見本のツールバーである。状態の見本でも同じものを使う。 */
+/**
+ * ExampleTopBar は見本の中で shell のトップバーの代わりをする帯である。画面では使わず、
+ * ツールバーを shell の TopBarPortal で包んで ListPage の toolbar に渡す。
+ */
+export function ExampleTopBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex h-navbar items-center border-b border-border bg-navbar px-2 sm:px-3">
+      {children}
+    </div>
+  );
+}
+
+/**
+ * ExampleToolbar は見本のツールバー（トップバーの置き場）である。状態の見本でも同じものを
+ * 使う。
+ */
 export function ExampleToolbar({
   size = 1,
   onSizeChange,
@@ -107,6 +123,7 @@ export function ExampleToolbar({
   const [sort, setSort] = useState("added");
   return (
     <Toolbar
+      placement="topBar"
       search={
         <div className="relative">
           <Search
@@ -123,8 +140,26 @@ export function ExampleToolbar({
       }
       view={[
         {
+          id: "sort",
+          label: p.sort,
+          inlineFrom: "md",
+          control: (
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger size="sm" aria-label={p.sort}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="added">{p.sortAdded}</SelectItem>
+                <SelectItem value="title">{p.sortTitle}</SelectItem>
+                <SelectItem value="duration">{p.sortDuration}</SelectItem>
+              </SelectContent>
+            </Select>
+          ),
+        },
+        {
           id: "view",
           label: p.view,
+          inlineFrom: "lg",
           control: (
             <ToggleGroup
               type="single"
@@ -152,6 +187,8 @@ export function ExampleToolbar({
         {
           id: "size",
           label: p.cardSize,
+          inlineFrom: "xl",
+          hideBelowSm: true,
           control: (
             <Slider
               aria-label={p.cardSize}
@@ -164,22 +201,6 @@ export function ExampleToolbar({
               }}
               className="w-zoom"
             />
-          ),
-        },
-        {
-          id: "sort",
-          label: p.sort,
-          control: (
-            <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger size="sm" aria-label={p.sort}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="added">{p.sortAdded}</SelectItem>
-                <SelectItem value="title">{p.sortTitle}</SelectItem>
-                <SelectItem value="duration">{p.sortDuration}</SelectItem>
-              </SelectContent>
-            </Select>
           ),
         },
       ]}
@@ -247,45 +268,49 @@ export function ListPageExample() {
     });
   };
   return (
-    <ListPage
-      header={<ExampleHeader />}
-      toolbar={<ExampleToolbar size={size} onSizeChange={setSize} />}
-      selectionBar={
-        selected.size > 0 && (
-          <SelectionBar
-            count={p.selected(selected.size)}
-            clearLabel={p.clearSelection}
-            onClear={() => {
-              setSelected(new Set());
-            }}
-          >
-            <Button variant="ghost" size="sm">
-              <Tag aria-hidden="true" />
-              {p.addTag}
-            </Button>
-            <Button variant="ghost" size="sm">
-              <EyeOff aria-hidden="true" />
-              {p.hide}
-            </Button>
-          </SelectionBar>
-        )
-      }
-    >
-      <CardGrid size={size}>
-        {videos.map((video) => (
-          <SampleVideoCard
-            key={video.id}
-            title={video.title}
-            meta={video.meta}
-            duration={video.duration}
-            selected={selected.has(video.id)}
-            onSelectedChange={(on) => {
-              toggle(video.id, on);
-            }}
-          />
-        ))}
-      </CardGrid>
-      <LoadMoreRow status="loading" label={p.loadingMore} />
-    </ListPage>
+    <div className="flex flex-col">
+      <ExampleTopBar>
+        <ExampleToolbar size={size} onSizeChange={setSize} />
+      </ExampleTopBar>
+      <ListPage
+        header={<ExampleHeader />}
+        selectionBar={
+          selected.size > 0 && (
+            <SelectionBar
+              count={p.selected(selected.size)}
+              clearLabel={p.clearSelection}
+              onClear={() => {
+                setSelected(new Set());
+              }}
+            >
+              <Button variant="ghost" size="sm">
+                <Tag aria-hidden="true" />
+                {p.addTag}
+              </Button>
+              <Button variant="ghost" size="sm">
+                <EyeOff aria-hidden="true" />
+                {p.hide}
+              </Button>
+            </SelectionBar>
+          )
+        }
+      >
+        <CardGrid size={size}>
+          {videos.map((video) => (
+            <SampleVideoCard
+              key={video.id}
+              title={video.title}
+              meta={video.meta}
+              duration={video.duration}
+              selected={selected.has(video.id)}
+              onSelectedChange={(on) => {
+                toggle(video.id, on);
+              }}
+            />
+          ))}
+        </CardGrid>
+        <LoadMoreRow status="loading" label={p.loadingMore} />
+      </ListPage>
+    </div>
   );
 }
