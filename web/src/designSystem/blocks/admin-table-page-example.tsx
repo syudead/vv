@@ -30,9 +30,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/ui/shadcn/tabs";
 import { ExampleTopBar } from "./list-page-example";
 
 // 管理表ページの型の見本（registry:block admin-table-page-example）。トップバー（見本では
-// 代わりの帯 ExampleTopBar）に検索、帯にタブ、表に
-// チェックの列と行ごとの操作、選択中は一括の操作の選択バーを置く。写した画面は見本の
-// タグを自分の行に差し替える（web/registry/rules/patterns.md の Admin table page）。
+// 代わりの帯 ExampleTopBar）に検索、帯にタブ、表にチェックの列と行ごとの操作を置き、
+// 選択中は見出しの行の代わりに一括の操作の選択バーを出す。写した画面は見本のタグを
+// 自分の行に差し替える（web/registry/rules/patterns.md の Admin table page）。
 
 const videoCounts = [42, 18, 9, 27, 6, 13];
 
@@ -80,28 +80,9 @@ export function AdminTablePageExample() {
       </ExampleTopBar>
       <AdminTablePage
         header={
-          <PageHeader
-            title={p.tags}
-            count={p.tagCount(tags.length)}
-            actions={
-              <Button size="sm">
-                <Plus aria-hidden="true" />
-                {p.newTag}
-              </Button>
-            }
-          />
-        }
-        band={
-          <Tabs value={tab} onValueChange={setTab}>
-            <TabsList>
-              <TabsTrigger value="all">{p.allTags}</TabsTrigger>
-              <TabsTrigger value="tentative">{p.tentativeTags}</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        }
-        selectionBar={
-          selected.size > 0 && (
+          selected.size > 0 ? (
             <SelectionBar
+              placement="header"
               count={p.selected(selected.size)}
               clearLabel={p.clearSelection}
               onClear={() => {
@@ -117,7 +98,26 @@ export function AdminTablePageExample() {
                 {p.delete}
               </Button>
             </SelectionBar>
+          ) : (
+            <PageHeader
+              title={p.tags}
+              count={p.tagCount(tags.length)}
+              actions={
+                <Button size="sm">
+                  <Plus aria-hidden="true" />
+                  {p.newTag}
+                </Button>
+              }
+            />
           )
+        }
+        band={
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="all">{p.allTags}</TabsTrigger>
+              <TabsTrigger value="tentative">{p.tentativeTags}</TabsTrigger>
+            </TabsList>
+          </Tabs>
         }
       >
         <DataTable label={p.tagTable}>
