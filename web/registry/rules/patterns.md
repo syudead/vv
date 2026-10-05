@@ -68,16 +68,18 @@ shows loading, empty or an error.
 
 ## Admin table page
 
-Item `admin-table-page`. `AdminTablePage` puts a band between the header and
-the table:
+Item `admin-table-page`. `AdminTablePage` is one column, at most `max-w-4xl`,
+centered. The header and the band stick under the top bar, so the create
+action, the tabs and the selection stay in reach while the rows scroll; pass
+`bandRef` to measure the stuck band so a focused row never hides under it:
 
-| Slot           | Put in it                                                           | Never                          |
-| -------------- | ------------------------------------------------------------------- | ------------------------------ |
-| `toolbar`      | A `Toolbar` with `placement="topBar"` in the shell's `TopBarPortal` | The create action              |
-| `header`       | `PageHeader` with the title, the count and the create action        | Bulk actions                   |
-| `band`         | A `TabsList` that narrows the rows, then the active filter chips    | Controls that act on one row   |
-| children       | `DataTable` with a check column, or one state block                 | Cards; a second table          |
-| `selectionBar` | `SelectionBar` with the bulk actions, while rows are selected       | Actions that need no selection |
+| Slot           | Put in it                                                                                                                                      | Never                           |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `toolbar`      | A `Toolbar` with `placement="topBar"` in the shell's `TopBarPortal`                                                                            | The create action               |
+| `header`       | `PageHeader` with the title, the count and the create action; while rows are selected, a `SelectionBar` with `placement="header"` in its place | Bulk actions in the page header |
+| `band`         | A `TabsList` that narrows the rows, then the active filter chips                                                                               | Controls that act on one row    |
+| children       | `DataTable` with a check column, or one state block                                                                                            | Cards; a second table           |
+| `selectionBar` | Only a bottom `SelectionBar` when the header cannot hold it                                                                                    | Actions that need no selection  |
 
 Each row ends with a `DropdownMenu` of its own actions behind an `icon-sm`
 ghost button. The destructive item opens a `ConfirmDialog`.
@@ -175,7 +177,7 @@ such as the count of affected videos.
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                     |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                             |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                            |
-| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                                                                    |
+| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
   controls (sort, view mode, card size) in `view`, and actions that work
@@ -194,8 +196,9 @@ control }`: inline, the controls stand without a visible name, so each needs
     when it means nothing in one column (card size).
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
-- `SelectionBar`: icon-only actions get an `aria-label` and a `Tooltip`; use
-  `ghost` `sm` buttons, and a `destructive` action only through a
+- `SelectionBar`: use `ghost` `sm` buttons with a visible name at every width,
+  so the actions read on devices without hover; the bar wraps to a second line
+  when they do not fit. A `destructive` action goes only through a
   `ConfirmDialog`.
   While a bulk action is in flight, disable the actions and pass
   `clearDisabled` so `Clear selection` is disabled too.

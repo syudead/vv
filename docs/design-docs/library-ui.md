@@ -184,8 +184,12 @@ insert their toolbar between them: the design-system `Toolbar` with
 [`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
 starts with the heading and the count, so the toolbar stays reachable at any
 scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
-and the folder name head the page
+is a band stuck under the top bar, so the parent folders stay one click away at
+any scroll position, and the folder name heads the page
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
+The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
+header (or, while rows are selected, the selection bar) and tabs stick under
+the top bar.
 The sidebar has three states (expanded, rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
@@ -318,28 +322,14 @@ every item during selection. What a group's check selects is in
 
 The selection bar is fixed to the bottom of the screen from the first selected
 item, without moving or resizing the toolbar. Action names are never shortened,
-so they read on devices without hover.
+so they read on devices without hover; the design-system bar
+(`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
+fit.
 
-Its items, in order, are `N selected`, `Add tag`, `Remove tag`, `Favorite`,
-`Visibility`, `Bundle as versions` (2 or more videos), a separator, `Select
-all` and clear. Lines are decided by measuring the actual widths:
-
-```mermaid
-flowchart LR
-  w{Width sm or more?} -->|yes| one{One line fits?}
-  one -->|yes| line[One line]
-  one -->|no| sep[Separator onward to line 2]
-  sep --> still{Line 1 fits?}
-  still -->|no| fav[Favorite onward to line 2]
-  w -->|no| narrow[Count, Select all, clear on top]
-  narrow --> wrap[Overflow moves Favorite onward down]
-```
-
-At `sm` and above the bar spans the full width instead of overflowing with
-`nowrap`, and moved items sit at the right end of line 2, `Favorite` and the
-rest before the separator. Below `sm`, the bottom line holds the two tag
-actions, `Favorite` and `Visibility`; what does not fit moves to the right end
-of the next line, then the line after.
+Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
+`Favorite`, `Visibility`, `Bundle as versions` (2 or more videos), a separator
+and `Select all`. The actions sit at the right end; those that do not fit move
+to the right end of the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
