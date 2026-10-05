@@ -139,10 +139,15 @@ test("an idle page recovers from a transient current-scan failure on the next re
   // 一時的な失敗のあとは、一定間隔では取り直さない。次にウィンドウへ戻ったとき
   // （または変化の知らせの接続をつなぎ直したとき）に取り直して回復する。
   await expect.poll(() => failedOnce).toBe(true);
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-
+  // failedOnce は 500 を返す前に立つ。その取得（とフォルダの取得）がまだ途中のうちに
+  // 戻ると、ScanProvider の loadUnlessLoading は途中の取得に任せて取り直さない。そこで、
+  // 表示が出るまで「ウィンドウへ戻る」を繰り返す（一定間隔での取り直しはしないので、
+  // 回復は戻ったことによる）。
   const indicator = page.getByRole("button", { name: /^Scanning\./ });
-  await expect(indicator).toBeVisible({ timeout: 5000 });
+  await expect(async () => {
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(indicator).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await indicator.hover();
   const progress = page.getByRole("progressbar", {
     name: "Progress of the videos in this scan",
