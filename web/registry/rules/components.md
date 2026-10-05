@@ -242,7 +242,10 @@ favorites"). A notice is one line and needs no action.
 The app's one `Toaster` sits in `ToastProvider` (`ui/Toast`), and screens send
 a notice with its `useToast`, which calls `toast()`. It shows at most three
 notices at once on list screens and one at a time on the video page, so a
-notice raised in the shell waits its turn after the viewer opens a video.
+notice raised in the shell waits its turn after the viewer opens a video. On
+list screens it sits under the top bar at the right below `lg`, and at the
+bottom centre, above the selection bar, from `lg`; on the video page it sits at
+the top centre.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.

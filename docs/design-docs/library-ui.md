@@ -121,7 +121,10 @@ reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts))
 Watching width in JavaScript brings a watcher, a one-frame flicker on the first
 render, and a `matchMedia` stub in tests. The sidebar is the exception because
 it interprets the user's open/close choice per width and keeps the drawer's
-open state, which CSS cannot express. Its breakpoints equal `lg` and `sm`:
+open state, which CSS cannot express. The notices
+([`Toast.tsx`](../../web/src/ui/Toast.tsx)) are the other: Sonner takes its
+position as a prop, so list screens read `lg` to move notices from under the
+top bar to the bottom centre, above the selection bar. Its breakpoints equal `lg` and `sm`:
 
 ```mermaid
 flowchart LR
