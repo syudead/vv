@@ -44,7 +44,7 @@ export default function Breadcrumbs({
   return (
     <div
       data-slot="folder-breadcrumbs"
-      className="sticky top-navbar z-20 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-background px-3 sm:-mx-4 sm:-mt-4 sm:px-4"
+      className="sticky top-navbar z-35 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-background px-3 sm:-mx-4 sm:-mt-4 sm:px-4"
     >
       <Breadcrumb aria-label={t.folders.breadcrumbs} className="min-w-0 flex-1">
         {/* 上流の一覧は折り返す。フォルダの道筋は一行に保ち、溢れた段を省略記号で切る。 */}

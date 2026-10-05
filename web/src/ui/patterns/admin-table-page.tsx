@@ -39,7 +39,7 @@ export function AdminTablePage({
       <div
         ref={bandRef}
         data-slot="admin-table-page-band"
-        className="sticky top-navbar z-20 -mx-3 -mt-3 flex flex-col gap-3 bg-background px-3 pt-3 pb-1 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4"
+        className="sticky top-navbar z-35 -mx-3 -mt-3 flex flex-col gap-3 bg-background px-3 pt-3 pb-1 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4"
       >
         {header}
         {band}
