@@ -21,6 +21,7 @@ import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
@@ -343,9 +344,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
           />
           {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
-          <h1 ref={heading} tabIndex={-1} className="sr-only">
-            {name ?? t.folders.title}
-          </h1>
+          <PageHeader titleHidden titleRef={heading} title={name ?? t.folders.title} />
         </>
       }
       toolbar={

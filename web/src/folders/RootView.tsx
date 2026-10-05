@@ -9,6 +9,7 @@ import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
@@ -96,9 +97,7 @@ export default function RootView() {
             }
           />
           {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
-          <h1 ref={heading} tabIndex={-1} className="sr-only">
-            {t.folders.title}
-          </h1>
+          <PageHeader titleHidden titleRef={heading} title={t.folders.title} />
         </>
       }
       toolbar={

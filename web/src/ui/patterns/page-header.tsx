@@ -20,6 +20,11 @@ export interface PageHeaderProps {
    * 片付けた後など、ほかにフォーカスを置く先が無いときに使う。
    */
   titleRef?: Ref<HTMLHeadingElement>;
+  /**
+   * 題を読み上げだけにする（sr-only）。パンくずの最後の段が同じ名前を見せる画面で、
+   * 同じ名前を 2 度見せないために使う。
+   */
+  titleHidden?: boolean;
 }
 
 export function PageHeader({
@@ -29,6 +34,7 @@ export function PageHeader({
   leading,
   actions,
   titleRef,
+  titleHidden = false,
 }: PageHeaderProps) {
   return (
     <header data-slot="page-header" className="flex flex-col gap-2">
@@ -43,7 +49,9 @@ export function PageHeader({
             <h1
               ref={titleRef}
               tabIndex={titleRef === undefined ? undefined : -1}
-              className="min-w-0 truncate text-xl font-semibold"
+              className={
+                titleHidden ? "sr-only" : "min-w-0 truncate text-xl font-semibold"
+              }
             >
               {title}
             </h1>

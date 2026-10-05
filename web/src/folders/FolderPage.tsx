@@ -2,6 +2,7 @@ import { useLocation } from "react-router";
 
 import { t } from "../i18n";
 import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
 import Breadcrumbs from "./Breadcrumbs";
 import { FOLDERS_ROOT, folderKey, parseFolderPathname } from "./folderPath";
 import FolderView from "./FolderView";
@@ -34,7 +35,7 @@ export default function FolderPage() {
           <Breadcrumbs
             crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
           />
-          <h1 className="sr-only">{t.folders.title}</h1>
+          <PageHeader titleHidden title={t.folders.title} />
         </>
       }
     >
