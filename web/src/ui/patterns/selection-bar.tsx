@@ -5,7 +5,8 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
-// 選択バー（区画）。選んだ数、選択の解除と、選んだものへの一括の操作を出す。何かを
+// 選択バー（区画）。選んだ数、選択の解除と、選んだものへの一括の操作を出す。操作の名前は
+// 縮めず（ホバーの無い機器でも読めるように）、収まらなければ次の行へ折り返す。何かを
 // 選んでいる間だけ置く。置き場は 2 つ: bottom（既定）はページの下端に浮かせて貼り付け、
 // header は管理表ページの見出しの行の代わりに、貼り付いた帯の中に置く。規則は
 // web/registry/rules/patterns.md の Sections。
@@ -39,7 +40,7 @@ export function SelectionBar({
       className={cn(
         "flex items-center gap-2",
         placement === "bottom"
-          ? "sticky bottom-3 z-10 mx-auto h-selection-bar w-full max-w-4xl animate-slide-up rounded-lg border border-border bg-popover px-2 text-popover-foreground shadow-elevated motion-reduce:animate-none"
+          ? "sticky bottom-3 z-10 mx-auto min-h-selection-bar w-full max-w-4xl animate-slide-up flex-wrap rounded-lg border border-border bg-popover px-2 py-1 text-popover-foreground shadow-elevated motion-reduce:animate-none"
           : "min-h-8",
       )}
     >
@@ -66,7 +67,7 @@ export function SelectionBar({
       </span>
       <div
         data-slot="selection-bar-actions"
-        className="ml-auto flex min-w-0 items-center gap-1 overflow-x-auto"
+        className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1"
       >
         {children}
       </div>

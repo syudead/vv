@@ -63,7 +63,6 @@ export default function FavoriteMenu({
             icon={<Heart aria-hidden="true" />}
             label={t.library.selection.favorite}
             after={<ChevronDown aria-hidden="true" />}
-            labelFromLg
             disabled={overLimit}
             title={overLimit ? overLimitMessage() : undefined}
             aria-describedby={overLimit ? overLimitId : undefined}

@@ -6,31 +6,26 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 /**
  * SelectionAction は選択バーの一括の操作のボタンである（ghost・sm。
- * web/registry/rules/patterns.md「Sections」の SelectionBar）。名前はタグの 2 つは sm から、
- * ほかの操作（`labelFromLg`）は帯の幅に名前が全部収まる lg から出し、それより狭い幅では
- * アイコンだけにする。名前は aria-label にも持ち、ツールチップで見せる。
+ * web/registry/rules/patterns.md「Sections」の SelectionBar）。名前はどの幅でも出し、
+ * ホバーの無い機器でも読めるようにする（docs/design-docs/library-ui.md「Selection bar」）。
+ * 帯に収まらなければ帯が折り返す。
  * Popover や DropdownMenu の引き金に asChild で渡せるよう、残りの props はボタンへ渡す。
  */
 export function SelectionAction({
   icon,
   label,
   after,
-  labelFromLg = false,
   ...props
 }: Omit<ComponentProps<typeof Button>, "children"> & {
   icon: ReactNode;
   label: UiText;
-  /** 名前を lg から出す（sm から出すのはタグの 2 つ）。 */
-  labelFromLg?: boolean;
   /** アイコンの後ろの印（メニューを開く ⌄ など）。 */
   after?: ReactNode;
 }) {
   return (
     <Button variant="ghost" size="sm" aria-label={label} {...props}>
       {icon}
-      <span className={labelFromLg ? "hidden lg:inline" : "hidden sm:inline"}>
-        {label}
-      </span>
+      <span>{label}</span>
       {after}
     </Button>
   );

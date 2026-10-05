@@ -14,8 +14,8 @@ import { Spinner } from "../ui/shadcn/spinner";
  * Sections）に、選んだ数・解除とまとめての操作を入れる
  * （specs/036-tag-admin-scale/ui-design.md「Selection bar」）。選んだタグに働かない操作
  * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
- * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。sm より狭い
- * 幅では操作の名前を見えなくし（読み上げには残す）、アイコンだけを並べる。
+ * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。操作の
+ * 名前はどの幅でも出し、収まらなければ折り返す。
  */
 export default function TagSelectionBar({
   count,
@@ -81,7 +81,7 @@ export default function TagSelectionBar({
             onClick={onConfirm}
           >
             {confirming ? <Spinner aria-hidden="true" /> : <Check aria-hidden="true" />}
-            <span className="max-sm:sr-only">{t.tags.selection.confirm}</span>
+            <span>{t.tags.selection.confirm}</span>
           </Button>
         )}
         <Button
@@ -94,7 +94,7 @@ export default function TagSelectionBar({
           onClick={onMerge}
         >
           <Merge aria-hidden="true" />
-          <span className="max-sm:sr-only">{t.tags.selection.mergeInto}</span>
+          <span>{t.tags.selection.mergeInto}</span>
         </Button>
         {hasTentative && (
           <Button
@@ -108,7 +108,7 @@ export default function TagSelectionBar({
             className="text-destructive"
           >
             <Ban aria-hidden="true" />
-            <span className="max-sm:sr-only">{t.tags.selection.reject}</span>
+            <span>{t.tags.selection.reject}</span>
           </Button>
         )}
         {hasConfirmed && (
@@ -123,7 +123,7 @@ export default function TagSelectionBar({
             className="text-destructive"
           >
             <Trash2 aria-hidden="true" />
-            <span className="max-sm:sr-only">{t.tags.selection.delete}</span>
+            <span>{t.tags.selection.delete}</span>
           </Button>
         )}
         {reason !== undefined && (
