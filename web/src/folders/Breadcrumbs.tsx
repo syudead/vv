@@ -51,7 +51,7 @@ export default function Breadcrumbs({
         className="flex min-w-0 flex-1 items-center"
       >
         {/* 上流の一覧は折り返す。フォルダの道筋は一行に保ち、溢れた段を省略記号で切る。 */}
-        <BreadcrumbList className="flex-nowrap gap-0.5 text-xs whitespace-nowrap wrap-normal">
+        <BreadcrumbList className="min-w-0 flex-nowrap gap-0.5 text-xs whitespace-nowrap wrap-normal">
           {crumbs.map((crumb, index) => {
             const hiddenWhenNarrow = collapsible && index < lastIndex - 1;
             const current = index === lastIndex;
