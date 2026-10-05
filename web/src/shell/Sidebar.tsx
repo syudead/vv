@@ -10,7 +10,6 @@ import {
   Sidebar as SidebarRoot,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -42,9 +41,9 @@ function Entry({ entry }: { entry: NavEntry }) {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={entry.label}>
+      <SidebarMenuButton asChild isActive={active}>
         <NavLink to={entry.to} end={end} onClick={closeDrawer}>
-          <Icon aria-hidden="true" />
+          <Icon aria-hidden="true" strokeWidth={active ? 2.25 : 1.75} />
           <span>{entry.label}</span>
         </NavLink>
       </SidebarMenuButton>
@@ -75,12 +74,8 @@ function LogoutEntry() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        onClick={() => void signOut()}
-        disabled={pending}
-        tooltip={label}
-      >
-        <LogOut aria-hidden="true" />
+      <SidebarMenuButton onClick={() => void signOut()} disabled={pending}>
+        <LogOut aria-hidden="true" strokeWidth={1.75} />
         <span>{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -109,11 +104,16 @@ function AccountEntries() {
   );
 }
 
+/** navPadding は上段と下段の nav の余白である。レールでは項目を中央に寄せる。 */
+const navPadding =
+  "px-sidebar-inset py-3 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:py-2";
+
 /**
  * Sidebar は左のナビである。shadcn/ui の Sidebar の 3 態を使う: 1024px 以上は展開
- * （閉じるとアイコンのレール）、640–1023px は既定がレール、639px 以下は Sheet のドロワー
- * （web/registry/rules/components.md「Sidebar」）。開閉は AppShell の SidebarProvider が持つ。
- * 上段は画面の移動、下段は「アカウントと設定」で、それぞれ別の nav にする。
+ * （閉じるとアイコンの下に名前を出す 68px のレール）、640–1023px は既定がレール、
+ * 639px 以下は Sheet のドロワー（web/registry/rules/components.md「Sidebar」）。開閉は
+ * AppShell の SidebarProvider が持つ。上段は画面の移動、下段は「アカウントと設定」で、
+ * それぞれ別の nav にする。
  */
 export default function Sidebar() {
   const audience = useAudience();
@@ -132,19 +132,17 @@ export default function Sidebar() {
     >
       <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
         <SidebarContent>
-          <SidebarGroup>
-            <nav>
-              <SidebarMenu>
-                {entries.map((entry) => (
-                  <Entry key={entry.id} entry={entry} />
-                ))}
-              </SidebarMenu>
-            </nav>
-          </SidebarGroup>
+          <nav className={navPadding}>
+            <SidebarMenu className="group-data-[collapsible=icon]:items-center">
+              {entries.map((entry) => (
+                <Entry key={entry.id} entry={entry} />
+              ))}
+            </SidebarMenu>
+          </nav>
         </SidebarContent>
-        <SidebarFooter className="border-t border-border">
-          <nav aria-label={t.shell.nav.account}>
-            <SidebarMenu>
+        <SidebarFooter className="gap-0 border-t border-border p-0">
+          <nav aria-label={t.shell.nav.account} className={navPadding}>
+            <SidebarMenu className="group-data-[collapsible=icon]:items-center">
               <AccountEntries />
             </SidebarMenu>
           </nav>

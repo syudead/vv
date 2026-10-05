@@ -323,11 +323,14 @@ Do not use it for a flat set of filters or for steps of a task.
 ### Sidebar
 
 Item `sidebar`. The app's main navigation, from `SidebarProvider` down. vv
-uses three states: expanded at wide widths, `collapsible="icon"` (the rail,
-labels in tooltips) when collapsed, and a `Sheet` drawer below 640px
-(`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
-link, `isActive` on the current screen and `tooltip` set to the label; account
-entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the
+uses three states: expanded at wide widths (`sidebar` wide, `h-9` entries with
+`nav-icon` icons), `collapsible="icon"` when collapsed (the `sidebar-rail`
+rail, each entry a `rail-item` square with the icon above a `text-rail`
+label), and a `Sheet` drawer below 640px (`use-mobile`), as wide as the
+expanded sidebar. The sidebar sits on `background`. Entries are
+`SidebarMenuButton` with `asChild` around a router link and `isActive` on the
+current screen; the rail shows the labels, so entries need no `tooltip`.
+Account entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the
 viewer's choice.
 
 Do not add a second sidebar or put page controls in it; they belong in the

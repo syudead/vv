@@ -37,6 +37,11 @@ import {
   VideoThumbnailNotice,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import {
+  cardFrameClass,
+  cardLinkClass,
+  cardThumbnailClass,
+} from "../ui/patterns/card-grid";
 import { CardMedia, useCardPreview } from "./cardPreview";
 
 export interface VideoCardProps {
@@ -281,10 +286,7 @@ function VideoCard(props: VideoCardProps) {
       data-video-id={video.id}
       onPointerEnter={startPreview}
       onPointerLeave={release}
-      className={cn(
-        "group relative flex min-w-0 flex-col gap-2",
-        selectionMode && "select-none",
-      )}
+      className={cn(cardFrameClass(selected), selectionMode && "select-none")}
     >
       {onSelect !== undefined && (
         <SelectCheck
@@ -312,9 +314,9 @@ function VideoCard(props: VideoCardProps) {
             onSelect(video.id, !selected);
           }
         }}
-        className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
+        className={cardLinkClass}
       >
-        <VideoThumbnail selected={selected}>
+        <VideoThumbnail className={cardThumbnailClass}>
           <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
           {(publicMark || duration !== "") && (
@@ -366,11 +368,13 @@ function VideoCard(props: VideoCardProps) {
           )}
         </VideoThumbnail>
 
-        <div className="flex min-w-0 flex-col gap-1">
+        <div
+          className={cn("flex min-w-0 flex-col gap-1 px-3 pt-2", !showTagsRow && "pb-3")}
+        >
           <h3
             title={video.title}
             className={cn(
-              "line-clamp-2 text-sm font-medium break-all",
+              "line-clamp-2 text-sm font-semibold break-all sm:text-base",
               state === "watched" ? "text-muted-foreground" : "text-foreground",
             )}
           >
@@ -400,7 +404,11 @@ function VideoCard(props: VideoCardProps) {
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
       )}
-      {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
+      {showTagsRow && (
+        // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
+        // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
+        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
+      )}
     </article>
   );
 }

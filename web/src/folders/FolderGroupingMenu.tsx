@@ -105,6 +105,8 @@ export default function FolderGroupingMenu({
               ? t.folders.grouping.changing
               : t.folders.grouping.trigger(grouping.grouped)
           }
+          // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
+          className="-my-2 -mr-2 gap-1.5 text-muted-foreground"
         >
           <Icon
             aria-hidden="true"

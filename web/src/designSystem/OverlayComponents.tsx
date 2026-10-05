@@ -446,7 +446,7 @@ function Feedback() {
       <Item name="Sidebar">
         <SidebarProvider className="min-h-0">
           <div className="flex w-full gap-6">
-            <div className="w-sidebar rounded-md bg-navbar p-2">
+            <div className="w-sidebar rounded-md border border-border bg-background p-2">
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton isActive>
@@ -474,7 +474,10 @@ function Feedback() {
                 </SidebarMenuItem>
               </SidebarMenu>
             </div>
-            <div className="group w-12 rounded-md bg-navbar p-2" data-collapsible="icon">
+            <div
+              className="group w-sidebar-rail rounded-md border border-border bg-background px-1 py-2"
+              data-collapsible="icon"
+            >
               <SidebarMenu>
                 <SidebarMenuItem>
                   <SidebarMenuButton isActive>

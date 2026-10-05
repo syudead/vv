@@ -14,8 +14,8 @@ highlighted-row fill, as in shadcn/ui; the cyan brand colour is `primary`.
 
 | Token                                           | Use it for                                                             |
 | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `navbar`                                        | Top bar and sidebar                                                    |
-| `background` / `foreground`                     | The page and its body text                                             |
+| `navbar`                                        | Behind thumbnails and the player                                       |
+| `background` / `foreground`                     | The page, the top bar, the sidebar and their body text                 |
 | `muted` / `muted-foreground`                    | Field fills; secondary text, metadata, help text                       |
 | `card` / `card-foreground`                      | Cards, list rows, sections                                             |
 | `popover` / `popover-foreground`                | Menus, popovers, dialogs, toasts, the selection bar                    |
@@ -48,14 +48,21 @@ in `web/src/theme/tokens.test.ts` in the same change.
 | `text-lg`   | Section headings, dialog titles                             |
 | `text-xl`   | Page titles, the video title                                |
 
-Weights: `font-normal`, `font-medium` (controls, labels, card titles),
-`font-semibold` (headings). Nothing larger than `text-xl`, and no `font-bold`.
+Two named steps sit outside the six: `text-page-title` (24px) is the list
+page title from `sm` (`PageHeader` with `variant="list"`), and `text-rail`
+(10px) is the label under an icon in the sidebar rail.
+
+Weights: `font-normal`, `font-medium` (controls, labels), `font-semibold`
+(headings, and card titles, which grow to `text-base` from `sm`). Nothing
+larger than `text-page-title`, and no `font-bold`.
 
 ## Spacing and sizes
 
 Spacing and sizes share one 4px scale: `0`, `px`, `0.5`, `1`, `1.5`, `2`, `3`,
 `4`, `5`, `6`, `8`, `9`, `10`, `12`, `16`. A layout constant uses its named
-step: `navbar`, `sidebar`, `sidebar-rail`, `card-0` to `card-3`,
+step: `navbar`, `sidebar`, `sidebar-rail`, `sidebar-inset`, `nav-icon`,
+`rail-item`, `brand-mark`, `card-0` to `card-3`, `card-gap`, `crumb`,
+`crumb-separator`,
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `chip-label`,
@@ -67,18 +74,18 @@ arbitrary value.
 
 The library (management) is denser than the video page (viewing):
 
-| Role                 | Library  | Video page                        |
-| -------------------- | -------- | --------------------------------- |
-| Control height       | `h-8`    | `h-9`, `h-10` for the main action |
-| Gap between controls | `gap-2`  | `gap-3`                           |
-| Gap between cards    | `gap-3`  | `gap-4`                           |
-| Section padding      | `p-3`    | `p-4` to `p-6`                    |
-| Icons                | `size-4` | `size-4`, `size-5` in the player  |
+| Role                 | Library                                  | Video page                        |
+| -------------------- | ---------------------------------------- | --------------------------------- |
+| Control height       | `h-8`; `h-9` in the top bar              | `h-9`, `h-10` for the main action |
+| Gap between controls | `gap-2`; `gap-1.5` in the top bar        | `gap-3`                           |
+| Gap between cards    | `card-gap` in a `CardGrid`, else `gap-3` | `gap-4`                           |
+| Section padding      | `p-3`                                    | `p-4` to `p-6`                    |
+| Icons                | `size-4`                                 | `size-4`, `size-5` in the player  |
 
 ## Radius, shadow and motion
 
-| Scale  | Steps                                                                                                                                                                  |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, cards, thumbnails; `rounded-lg` popovers and dialogs; `rounded-full` pills and the scrub dot                |
-| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images                         |
-| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer`, `animate-spin` and `animate-pulse` for loading; each with `motion-reduce:animate-none` |
+| Scale  | Steps                                                                                                                                                                       |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, thumbnails; `rounded-lg` the cards in a `CardGrid`, popovers and dialogs; `rounded-full` pills and the scrub dot |
+| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images                              |
+| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer`, `animate-spin` and `animate-pulse` for loading; each with `motion-reduce:animate-none`      |

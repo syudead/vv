@@ -4,6 +4,8 @@ import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
 import { t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
+import { cardFrameClass, cardLinkClass } from "../ui/patterns/card-grid";
 import FolderArt from "../videoList/FolderArt";
 import { folderUrl } from "./folderPath";
 
@@ -19,18 +21,21 @@ export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
 }
 
 /**
- * FolderCard はフォルダ1件のカードである。動画カードと同じ格子の枡と境界を使い、
+ * FolderCard はフォルダ1件のカードである。動画カードと同じ幅と箱（cardFrameClass）を使い、
  * フォルダの絵柄と名前の目印で動画から区別する。カード全体が1つのリンクで、
- * キーボードのフォーカスは共通の輪郭でカードの縁に出る。
+ * キーボードのフォーカスはカードの箱の外側に出る。
  * showPath は最上位（登録フォルダ）でパスを添えるとき。
  */
 function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boolean }) {
   return (
-    <article data-folder-path={folder.path} className="flex min-w-0 flex-col">
+    <article
+      data-folder-path={folder.path}
+      className={cn(cardFrameClass(), "hover:border-input")}
+    >
       <Link
         to={folderUrl({ rootId: folder.rootId, path: folder.path })}
         aria-label={folderLabel(folder, showPath)}
-        className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card text-card-foreground transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
+        className={cardLinkClass}
       >
         <div className="relative aspect-video w-full">
           <FolderArt previews={folder.previews} />
@@ -38,7 +43,7 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
         <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
           <h3
             title={folder.name}
-            className="flex min-w-0 items-start gap-1.5 text-sm font-medium"
+            className="flex min-w-0 items-start gap-1.5 text-sm font-semibold sm:text-base"
           >
             <Folder
               aria-hidden="true"

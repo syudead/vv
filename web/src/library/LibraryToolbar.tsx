@@ -1,5 +1,5 @@
 import { LayoutGrid, List } from "lucide-react";
-import type { ReactNode, RefObject } from "react";
+import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t } from "../i18n";
@@ -9,7 +9,7 @@ import FilterMenu from "../videoList/FilterMenu";
 import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { SortMenu } from "../videoList/SortControls";
+import { CompactSortControls, SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 /** viewOptions は表示形式の選択肢である。文言は描画のたびにカタログから引く。 */
@@ -43,15 +43,14 @@ export interface LibraryToolbarProps {
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
-  /** 絞り込み中のタグ（ActiveTagFilters）。絞り込みの操作の後ろに並べる。 */
-  activeFilters?: ReactNode;
 }
 
 /**
- * LibraryToolbar はライブラリの一覧の操作を画面の型の Toolbar に並べる。並びは Tab の
- * 順で、検索欄 → 絞り込み → 絞り込み中のタグ → 表示形式・大きさ・並べ替え
- * （ui-design.md「Toolbar」、web/registry/rules/patterns.md「Sections」）。lg より狭い幅では
- * 表示形式・大きさ・並べ替えを「View and sort」のポップオーバーに畳む。
+ * LibraryToolbar はライブラリの操作をトップバーの中の 1 行に集める（画面の型の Toolbar の
+ * topBar の置き場。LibraryPage が TopBarPortal で入れる）。並びは Tab の順で、
+ * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ
+ * （ui-design.md「Toolbar」）。並べ替えは md、表示形式は lg、大きさは xl から行に並び、
+ * それより狭い幅ではアイコンだけの「View and sort」のポップオーバーに入る。
  */
 export default function LibraryToolbar({
   query,
@@ -72,15 +71,46 @@ export default function LibraryToolbar({
   onViewChange,
   zoom,
   onZoomChange,
-  activeFilters,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
+      id: "sort",
+      label: t.list.sort.heading,
+      inlineFrom: "md",
+      control: (
+        <SortMenu
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+          inTopBar
+        />
+      ),
+      compact: (
+        <CompactSortControls
+          name="compact-sort"
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+        />
+      ),
+      compactLabelled: true,
+    },
+    {
       id: "view",
       label: t.library.view.label,
+      inlineFrom: "lg",
       control: (
         <IconToggleGroup
           label={t.library.view.label}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+          inTopBar
+        />
+      ),
+      compact: (
+        <IconToggleGroup
+          label={t.library.view.compact}
           value={view}
           onValueChange={onViewChange}
           options={viewOptions()}
@@ -93,18 +123,21 @@ export default function LibraryToolbar({
     controls.push({
       id: "size",
       label: t.list.cardSize,
-      control: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" />,
+      inlineFrom: "xl",
+      hideBelowSm: true,
+      control: (
+        <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" tooltip />
+      ),
+      compact: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />,
     });
   }
-  controls.push({
-    id: "sort",
-    label: t.list.sort.heading,
-    control: <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />,
-  });
 
   return (
     <Toolbar
-      search={<SearchBox query={query} onCommit={onQueryCommit} inputRef={searchRef} />}
+      placement="topBar"
+      search={
+        <SearchBox query={query} onCommit={onQueryCommit} inputRef={searchRef} inTopBar />
+      }
       view={controls}
       viewLabel={t.list.viewAndSort}
     >
@@ -117,8 +150,8 @@ export default function LibraryToolbar({
         onFavoriteChange={onFavoriteChange}
         canClear={canClear}
         onClear={onClear}
+        inTopBar
       />
-      {activeFilters}
     </Toolbar>
   );
 }

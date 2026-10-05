@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
@@ -15,23 +16,29 @@ export interface IconToggleOption<T extends string> {
  * shadcn/ui の ToggleGroup（type="single"、outline、sm）で、各項目に名前と同じ
  * ツールチップを添える（web/registry/rules/components.md「Toggle and ToggleGroup」）。
  * 項目は支援技術に radio として読まれる。
+ *
+ * inTopBar はトップバーの中に置く形（一覧ページ）で、card の地の上に h-9 の正方形の
+ * 項目を縁なしで並べ、選んだ項目だけを primary の縁と primary-soft の地にする。
  */
 export default function IconToggleGroup<T extends string>({
   value,
   onValueChange,
   options,
   label,
+  inTopBar = false,
 }: {
   value: T;
   onValueChange: (value: T) => void;
   options: readonly IconToggleOption<T>[];
   label: UiText;
+  inTopBar?: boolean;
 }) {
   return (
     <ToggleGroup
       type="single"
-      variant="outline"
-      size="sm"
+      variant={inTopBar ? "default" : "outline"}
+      size={inTopBar ? "default" : "sm"}
+      className={cn(inTopBar && "bg-card")}
       value={value}
       onValueChange={(next) => {
         if (next !== "") onValueChange(next as T);
@@ -46,7 +53,10 @@ export default function IconToggleGroup<T extends string>({
           <ToggleGroupItem
             value={option.value}
             asChild
-            className="aria-checked:border-primary-active aria-checked:bg-primary-soft aria-checked:text-primary"
+            className={cn(
+              inTopBar && "w-9 border border-transparent text-muted-foreground",
+              "aria-checked:border-primary-active aria-checked:bg-primary-soft aria-checked:text-primary",
+            )}
           >
             <TooltipTrigger aria-label={option.label}>{option.icon}</TooltipTrigger>
           </ToggleGroupItem>

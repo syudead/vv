@@ -144,15 +144,16 @@ The scales are closed:
 
 | Scale | Steps |
 | --- | --- |
-| Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold` |
-| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, popover and combobox widths) |
+| Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps, and two named steps: `text-page-title` (the list page title from `sm`) and `text-rail` (sidebar rail labels); `font-normal`, `font-medium`, `font-semibold` |
+| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `nav-icon`, `card-0` to `card-3`, `card-gap`, list columns, popover and combobox widths) |
 | Radius | `sm`, `md`, `lg`, `full` |
 | Shadow | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces |
 | Motion | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion |
 
 The library is denser than the video page: `h-8` controls, `gap-2` between
 controls, `gap-3` between cards, `text-sm` body, against `h-9`, `gap-3`,
-`gap-4` and `text-base`.
+`gap-4` and `text-base`. The list pages' toolbar in the top bar uses `h-9`
+controls `gap-1.5` apart, and their card grid uses `card-gap`.
 
 The scales are closed by the theme itself. `tokens.css` first resets
 Tailwind's default namespaces for every scale (`--color-*`, `--text-*`,
@@ -271,7 +272,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
 | `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
 | `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
-| `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
+| `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, a 68px rail with each icon above a small label, and a drawer below 640px |
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
@@ -291,7 +292,7 @@ height, and the `Alert` icon column. They are `special` entries in
 | --- | --- |
 | Restyling the components to look like the ones they replace | The components are for building new screens, not for repeating the old look |
 | Moving the old components aside so the new ones take their names now | Every screen's imports would change before the tier is approved |
-| Separate `sidebar-*` colour tokens, as upstream | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
+| Separate `sidebar-*` colour tokens, as upstream | The sidebar uses `background`, `accent` and `secondary`, the roles it already had |
 
 The decisions behind the components are in
 [038 UI design, Components](../../specs/038-design-system/ui-design.md#components).
@@ -321,7 +322,7 @@ The diagram shows how a list page is put together.
 ```mermaid
 flowchart TD
   page[ListPage] --> header[PageHeader]
-  page --> toolbar[Toolbar]
+  page -.->|TopBarPortal| toolbar[Toolbar in the top bar]
   page --> body[Body slot]
   page --> bar[SelectionBar]
   body --> grid[CardGrid or DataTable]
@@ -336,11 +337,16 @@ Skeletons and sections share four behaviours:
 | Spacing | Fixed in the pattern; patterns take no `className`, so a screen cannot override it |
 | Density | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density |
 | States in place | A state block goes in the same body slot as the data, so the header and toolbar never move ([038 UI design, States](../../specs/038-design-system/ui-design.md#states)) |
-| Edges line up | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges |
+| Cards keep their width | `CardGrid` gives each card the zoom level's `card-*` width and centres the rows, `card-gap` apart; below `sm` it is one full-width column |
 
-`CardGrid` passes its column template through `style`, because a template made
-from a named step is an arbitrary value to the checks; the step still comes
-from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`.
+The library and folder pages are `ListPage`s with `toolbarPlacement="topBar"`:
+their toolbar is a `Toolbar` with `placement="topBar"` that the screen wraps in
+the shell's `TopBarPortal`, so it sits in the middle of the top bar and
+collapses into an icon-only `View and sort` popover control by control (sort
+below `md`, view below `lg`, zoom below `xl`). The library's header is
+`PageHeader` with `variant="list"`: a large title with the count at the right
+end of the row. Its cards are boxes on the `card` surface (`cardFrameClass`).
+`DetailPage`'s aside is the named step `detail-aside`.
 `DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
 `table` item.
 

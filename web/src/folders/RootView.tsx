@@ -7,13 +7,13 @@ import { useRootFolders } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
+import TopBarPortal from "../shell/TopBarPortal";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
-import Breadcrumbs from "./Breadcrumbs";
+import { FolderHeader } from "./Breadcrumbs";
 import FolderCard from "./FolderCard";
 import FolderToolbar from "./FolderToolbar";
 import { type RootDisplay, rootFolderName } from "./folderPath";
@@ -54,7 +54,7 @@ export default function RootView() {
       ? undefined
       : takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
   );
-  const heading = useArrival<HTMLSpanElement>(restored !== undefined);
+  const heading = useArrival(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
   // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
@@ -86,46 +86,40 @@ export default function RootView() {
 
   return (
     <ListPage
+      toolbarPlacement="topBar"
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                searching
-                  ? [{ label: t.folders.searchingAll }]
-                  : [{ label: t.folders.title }]
-              }
-            />
-          }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {t.folders.title}
-            </span>
+        <FolderHeader
+          title={t.folders.title}
+          headingRef={heading}
+          crumbs={
+            searching ? [{ label: t.folders.searchingAll }] : [{ label: t.folders.title }]
           }
         />
       }
       toolbar={
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchAll}
-          searchPlaceholder={t.folders.searchAllPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          disabled={!searching}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchAll}
+            searchPlaceholder={t.folders.searchAllPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            disabled={!searching}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
       }
     >
       {/* 倍率を変える前の位置の目印を探す入れ物。間隔は骨格が持つので箱を作らない。 */}

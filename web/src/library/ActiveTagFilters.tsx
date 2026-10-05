@@ -105,11 +105,11 @@ export default function ActiveTagFilters({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center justify-center gap-1.5">
       <span className="text-xs text-muted-foreground">{t.library.activeTags.label}</span>
       <ul
         aria-label={t.library.activeTags.list}
-        className="flex flex-wrap items-center gap-2"
+        className="flex flex-wrap items-center gap-1.5"
       >
         {ordered.map((id) => {
           const tag = byId.get(id);

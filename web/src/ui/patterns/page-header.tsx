@@ -2,7 +2,8 @@ import type { ReactNode, Ref } from "react";
 
 // ページ見出し（区画）。題・件数・説明と、ページの主操作を 1 行に置く。前に戻る操作や
 // パンくずは leading に入れる。外の余白は骨格が持つので、この区画は持たない。
-// 規則は web/registry/rules/patterns.md の Page header。
+// variant="list" は一覧ページ（ListPage）の見出しで、大きな題を左に、件数を同じ行の
+// 右端に置く。規則は web/registry/rules/patterns.md の Sections。
 
 export interface PageHeaderProps {
   /** ページの題。h1 になる。 */
@@ -20,6 +21,11 @@ export interface PageHeaderProps {
    * 片付けた後など、ほかにフォーカスを置く先が無いときに使う。
    */
   titleRef?: Ref<HTMLHeadingElement>;
+  /**
+   * 形。default は題の後ろに小さく件数を置く。list は一覧ページの形で、題を sm から
+   * text-page-title に大きくし、件数を行の右端に置く（description と actions は持たない）。
+   */
+  variant?: "default" | "list";
 }
 
 export function PageHeader({
@@ -29,7 +35,33 @@ export function PageHeader({
   leading,
   actions,
   titleRef,
+  variant = "default",
 }: PageHeaderProps) {
+  if (variant === "list") {
+    return (
+      <header
+        data-slot="page-header"
+        data-variant="list"
+        className="flex min-w-0 items-baseline justify-between gap-3"
+      >
+        <h1
+          ref={titleRef}
+          tabIndex={titleRef === undefined ? undefined : -1}
+          className="min-w-0 truncate text-xl font-semibold tracking-tight sm:text-page-title"
+        >
+          {title}
+        </h1>
+        {count !== undefined && (
+          <span
+            data-slot="page-header-count"
+            className="shrink-0 text-xs text-muted-foreground tabular-nums sm:text-sm"
+          >
+            {count}
+          </span>
+        )}
+      </header>
+    );
+  }
   return (
     <header data-slot="page-header" className="flex flex-col gap-2">
       {leading && (

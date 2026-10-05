@@ -159,10 +159,10 @@ unresolved, and faking them gives passing tests on a broken screen.
 ## List layout
 
 Lists use a dense management-screen layout: a top bar, a filter band and boxed
-cards. The library page lays its cards out with
-[`Grid.tsx`](../../web/src/videoList/Grid.tsx), and the folder pages with the
-registry's card grid
-([`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)).
+cards, shared by the library and folder pages through the registry's card grid
+([`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)): cards keep the
+zoom level's width and are centred in rows `card-gap` apart, one full-width
+column below `sm`.
 
 The diagram shows the parts of a list screen.
 
@@ -178,13 +178,17 @@ flowchart LR
 ### Shell and toolbar
 
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
-logo and `Refresh library`, and the library inserts its toolbar between them.
-Folder pages are a design-system `ListPage`: the breadcrumb and the folder name
-head the page, and the toolbar sits under them
-([design-system.md, Page patterns](design-system.md#page-patterns)).
+logo and `Refresh library`, and the library and folder pages insert their
+toolbar between them through `TopBarPortal`
+([design-system.md, Page patterns](design-system.md#page-patterns)). Below the
+top bar, the library shows its title with the item count at the right end of
+the same row; a folder page shows a breadcrumb band fixed under the top bar
+and keeps its title for screen readers only.
 The sidebar has three states (expanded, rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
-it widens the grid, while card width follows the zoom level. Guest rules are in
+it widens the grid, while card width follows the zoom level. The rail is
+`sidebar-rail` (68px) wide and shows each entry's icon above a small label;
+the expanded sidebar and the drawer are `sidebar` (232px) wide. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
 | Part | Owner | Guest |
@@ -199,10 +203,11 @@ The toolbar holds search, filters, view (library only), zoom and sort.
 
 | Width | Toolbar |
 | --- | --- |
-| Wide | All controls inline |
-| Narrow | View, zoom and sort move into `View and sort` (folder pages: below `lg`) |
-| Below `md` | Library: sort orders fill two radio columns row-first, 5 rows owner, 4 guest; folder pages keep the sort menu |
-| Below `sm` | One full-width column at any zoom; zoom hidden |
+| `xl` and wider | All controls inline; `Filter` shows its label |
+| Below `xl` | Zoom moves into the icon-only `View and sort` popover |
+| Below `lg` | View (library only) moves into `View and sort` |
+| Below `md` | Sort moves into `View and sort`: sort orders fill two radio columns row-first, 5 rows owner, 4 guest |
+| Below `sm` | One full-width column at any zoom; zoom hidden; the top bar keeps the logo mark, search, `Filter`, `View and sort` and `Refresh` |
 
 The count sits in the row above the grid for the library and search results,
 and in the section heading for a folder's direct contents.
@@ -221,9 +226,12 @@ is reset to the defaults before the request and the URL is corrected.
 
 ### Cards
 
-A video card ([`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)) shows
-the thumbnail, the duration at its bottom right, playback progress along the
-bottom edge and the title.
+A video card ([`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)) is a
+bordered box on the `card` surface (`cardFrameClass` in
+[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)): the thumbnail
+fills its top, with the duration at its bottom right and playback progress
+along the bottom edge, and the title sits inside the box below it. A hovered
+card lifts slightly; a selected card has a `primary` border and ring.
 
 | Card | Rules |
 | --- | --- |

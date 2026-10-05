@@ -20,13 +20,13 @@ import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
+import TopBarPortal from "../shell/TopBarPortal";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
-import Breadcrumbs from "./Breadcrumbs";
+import { FolderHeader } from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
@@ -68,7 +68,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     const held = takeListSnapshot({ ...criteria, folder: key });
     return held?.folderListing === undefined ? undefined : held;
   });
-  const heading = useArrival<HTMLSpanElement>(restored !== undefined);
+  const heading = useArrival(restored !== undefined);
   const listing = useFolderListing(folder, restored?.folderListing);
   const videos = useVideos(
     {
@@ -328,54 +328,46 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   return (
     <ListPage
+      toolbarPlacement="topBar"
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-                listing.notFound ||
-                videos.notFound ||
-                listing.error !== null ||
-                rootNameFailed
-                  ? breadcrumbsFor(folder, undefined).filter(
-                      (crumb) => crumb !== undefined,
-                    )
-                  : breadcrumbsFor(folder, rootName)
-              }
-              suffix={
-                searching && !videos.notFound ? t.folders.searchingInside : undefined
-              }
-            />
+        <FolderHeader
+          title={name ?? t.folders.title}
+          headingRef={heading}
+          crumbs={
+            // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
+            listing.notFound ||
+            videos.notFound ||
+            listing.error !== null ||
+            rootNameFailed
+              ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
+              : breadcrumbsFor(folder, rootName)
           }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {name ?? t.folders.title}
-            </span>
-          }
+          suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
         />
       }
       toolbar={
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchIn(name ?? t.folders.title)}
-          searchPlaceholder={t.folders.searchInPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchIn(name ?? t.folders.title)}
+            searchPlaceholder={t.folders.searchInPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
       }
     >
       {/*

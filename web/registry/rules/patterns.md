@@ -55,8 +55,27 @@ Item `list-page`. `ListPage` stacks, top to bottom, with `gap-3` and `p-3`
 | -------------- | ----------------------------------------------------------------- | ---------------------------------------- |
 | `header`       | `PageHeader` with the title, the count and the one main action    | Filters or view controls                 |
 | `toolbar`      | `Toolbar` with search, filter triggers and the view controls      | The main action; a second row of filters |
+| `band`         | The active filters (tag chips), centred under the header          | Controls that are not active filters     |
 | children       | `CardGrid` or `DataTable`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins       |
 | `selectionBar` | `SelectionBar`, only while something is selected                  | Actions that do not use the selection    |
+
+A screen for browsing videos (the library, the folder pages) passes
+`toolbarPlacement="topBar"`. Its toolbar then lives in the shell's top bar,
+not in the page:
+
+- `toolbar` is a `Toolbar` with `placement="topBar"` wrapped in the shell's
+  `TopBarPortal`. It renders nothing in the page.
+- `header` is `PageHeader` with `variant="list"`: the title on the left, from
+  `sm` in `text-page-title`, and the count at the right end of the same row.
+  A folder page instead shows a breadcrumb band fixed under the top bar, with
+  the title in an `sr-only` `h1`.
+- The page has `gap-4`, `px-3` (`px-4` from `sm`), `pt-4`, and
+  `selection-bar-clearance` at the bottom so the last row never hides under
+  the selection bar.
+- Cards in the `CardGrid` are boxes made with `cardFrameClass`: the `card`
+  surface, a `border` edge, `rounded-lg`, the thumbnail across the top
+  (`cardThumbnailClass`) and the title inside the box below it, in
+  `font-semibold` `text-sm` (`text-base` from `sm`).
 
 The body is the only part that changes between states: the header and the
 toolbar stay where they are while the body shows loading, empty or an error.
@@ -155,16 +174,16 @@ such as the count of affected videos.
 
 ## Sections
 
-| Section        | Item            | What it is                                                                                                                                                                              |
-| -------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus |
-| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions at the end; below `lg` the view controls collapse into a `View and sort` popover                                                |
-| `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                              |
-| `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                              |
-| `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                     |
-| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                             |
-| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                            |
-| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                                                                    |
+| Section        | Item            | What it is                                                                                                                                                                                                                                                 |
+| -------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `variant="list"` puts the count at the right end of the title row |
+| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions at the end; below `lg` the view controls collapse into a `View and sort` popover; `placement="topBar"` lays them out in the top bar                                                                |
+| `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                 |
+| `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                 |
+| `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                        |
+| `CardGrid`     | `card-grid`     | Cards `card-0` to `card-3` wide, centred in rows `card-gap` apart; one full-width column below `sm`; `cardFrameClass` makes the card box                                                                                                                   |
+| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                                                                                               |
+| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                                                                                                                                       |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
   controls (view mode, card size, sort) in `view`, and actions that work
@@ -172,6 +191,12 @@ such as the count of affected videos.
 control }`: from `lg` the controls stand inline without a visible name, so
   each needs an `aria-label`; below `lg` the popover shows `label` above each
   control. A control renders in both places, so give it no `id`.
+- `Toolbar` with `placement="topBar"`: the search takes the free width (at
+  most `max-w-md`) and the controls are centred, `gap-1.5` apart, in `h-9`
+  (`inTopBar` on the shared search, filter, sort and view controls). Each
+  `view` entry sets `inlineFrom` (`md`, `lg` or `xl`), below which it moves
+  into the icon-only `View and sort` popover; `compact` replaces the control
+  there, and `hideBelowSm` drops it from the popover below `sm`.
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
 - `SelectionBar`: icon-only actions get an `aria-label` and a `Tooltip`; use

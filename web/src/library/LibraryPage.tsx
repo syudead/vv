@@ -33,6 +33,7 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
@@ -420,7 +421,8 @@ export default function LibraryPage() {
     if (top === undefined || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
-    // 画像や行の高さが決まる前の 1 フレームで位置がずれることがあるので、次の描画の前に
+    // 初回の描画では TopBarPortal がツールバーを本文の流れに置き、直後にトップバーへ
+    // 移す。その分だけ本文が縮み、スクロールの追従で位置がずれるので、描画の前に
     // もう一度合わせる（フォルダ画面と同じ）。
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [items.length]);
@@ -696,8 +698,10 @@ export default function LibraryPage() {
 
   return (
     <ListPage
+      toolbarPlacement="topBar"
       header={
         <PageHeader
+          variant="list"
           title={t.library.title}
           count={
             initialLoadFailed ? undefined : (
@@ -709,38 +713,40 @@ export default function LibraryPage() {
         />
       }
       toolbar={
-        <LibraryToolbar
-          query={query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          sort={sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={watch}
-          onWatchChange={changeWatch}
-          playable={playable}
-          onPlayableChange={changePlayable}
-          favorite={favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={conditioned}
-          onClear={clearAll}
-          view={view}
-          onViewChange={(next) => {
-            resetPreview();
-            savePreferences({ ...preferences, view: next });
-          }}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-          activeFilters={
-            tagIds.length > 0 && (
-              <ActiveTagFilters
-                tagIds={tagIds}
-                onRemove={removeActiveTag}
-                searchFieldRef={searchField}
-              />
-            )
-          }
-        />
+        <TopBarPortal>
+          <LibraryToolbar
+            query={query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            sort={sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={watch}
+            onWatchChange={changeWatch}
+            playable={playable}
+            onPlayableChange={changePlayable}
+            favorite={favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={conditioned}
+            onClear={clearAll}
+            view={view}
+            onViewChange={(next) => {
+              resetPreview();
+              savePreferences({ ...preferences, view: next });
+            }}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
+      }
+      band={
+        tagIds.length > 0 && (
+          <ActiveTagFilters
+            tagIds={tagIds}
+            onRemove={removeActiveTag}
+            searchFieldRef={searchField}
+          />
+        )
       }
       selectionBar={
         owner && (

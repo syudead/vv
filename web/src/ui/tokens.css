@@ -87,6 +87,11 @@
   --text-lg--line-height: 1.75rem;
   --text-xl: 1.25rem;
   --text-xl--line-height: 1.75rem;
+  /* 一覧ページ（ライブラリ）の題を sm 以上で大きくする段と、レールの項目の名前の段 */
+  --text-page-title: 1.5rem;
+  --text-page-title--line-height: 2rem;
+  --text-rail: 0.625rem;
+  --text-rail--line-height: 1;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -112,6 +117,16 @@
   --spacing-navbar: 3.25rem;
   --spacing-sidebar: 14.5rem;
   --spacing-sidebar-rail: 4.25rem;
+  /* サイドバーの nav の横の余白・項目のアイコン、レールの項目の大きさ、狭い幅のロゴの印 */
+  --spacing-sidebar-inset: 0.625rem;
+  --spacing-nav-icon: 1.125rem;
+  --spacing-rail-item: 3.5rem;
+  --spacing-brand-mark: 1.75rem;
+  /* カードの格子の間隔 */
+  --spacing-card-gap: 0.625rem;
+  /* フォルダ画面のパンくずの段の最大幅と区切りの印 */
+  --spacing-crumb: 10rem;
+  --spacing-crumb-separator: 0.875rem;
   --spacing-card-0: 13.75rem;
   --spacing-card-1: 17.5rem;
   --spacing-card-2: 22.5rem;

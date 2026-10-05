@@ -4,6 +4,7 @@ import { type ReactNode, type Ref, useId, useState } from "react";
 import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
@@ -35,6 +36,8 @@ export interface FilterMenuProps {
   /** 検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えは残す。 */
   onClear: () => void;
   disabled?: boolean;
+  /** トップバーの中に置く（一覧ページ）。FilterPopover の inTopBar。 */
+  inTopBar?: boolean;
 }
 
 /**
@@ -57,6 +60,7 @@ export default function FilterMenu({
   canClear,
   onClear,
   disabled,
+  inTopBar,
 }: FilterMenuProps) {
   const owner = useAudience() === "owner";
   const watchCount = owner && watch !== "all" ? 1 : 0;
@@ -69,6 +73,7 @@ export default function FilterMenu({
       disabled={disabled}
       canClear={canClear}
       onClear={onClear}
+      inTopBar={inTopBar}
     >
       {owner && (
         <FieldSet>
@@ -122,6 +127,11 @@ export interface FilterPopoverProps {
   onClear: () => void;
   /** ボタン（絞り込みを外したあとのフォーカスの行き先に使う）。 */
   triggerRef?: Ref<HTMLButtonElement>;
+  /**
+   * トップバーの中に置く（一覧ページ）。ボタンはトップバーの操作と同じ h-9 の
+   * secondary に input の縁を付け、効いている間は primary-soft の地に数を添える。
+   */
+  inTopBar?: boolean;
   children: ReactNode;
 }
 
@@ -136,6 +146,7 @@ export function FilterPopover({
   canClear,
   onClear,
   triggerRef,
+  inTopBar = false,
   children,
 }: FilterPopoverProps) {
   const [open, setOpen] = useState(false);
@@ -146,14 +157,23 @@ export function FilterPopover({
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
-          variant="outline"
-          size="sm"
+          variant={inTopBar ? "secondary" : "outline"}
+          size={inTopBar ? "default" : "sm"}
           disabled={disabled}
           aria-label={shown > 0 ? t.list.filter.applied(shown) : t.list.filter.label}
+          className={cn(
+            inTopBar && "border border-input",
+            inTopBar && shown > 0 && "bg-primary-soft text-primary",
+          )}
         >
           <ListFilter aria-hidden="true" />
           <span className="hidden xl:inline">{t.list.filter.label}</span>
-          {shown > 0 && <Badge variant="soft">{formatNumber(shown)}</Badge>}
+          {shown > 0 &&
+            (inTopBar ? (
+              <span className="tabular-nums">{formatNumber(shown)}</span>
+            ) : (
+              <Badge variant="soft">{formatNumber(shown)}</Badge>
+            ))}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="gap-4">

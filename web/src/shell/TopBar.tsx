@@ -25,6 +25,7 @@ function ScanButton() {
           <Button
             variant="ghost"
             size="sm"
+            className="font-normal"
             onClick={scan.start}
             disabled={scan.running || !scan.canStart}
             aria-label={buttonDescription}
@@ -56,7 +57,7 @@ function MenuButton() {
       <TooltipTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon"
           aria-label={t.shell.nav.menu}
           onClick={toggleSidebar}
         >
@@ -78,9 +79,9 @@ function MenuButton() {
 export default function TopBar() {
   const owner = useAudience() === "owner";
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-2 border-b border-border bg-navbar px-2 sm:px-3">
+    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-background/90 px-2 backdrop-blur-md sm:px-3">
       <MenuButton />
-      <BrandHomeLink />
+      <BrandHomeLink className="mr-1" />
 
       <div id="topbar-library-tools" className="flex min-w-0 flex-1 items-center" />
 

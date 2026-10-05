@@ -91,13 +91,21 @@ export interface SortControlProps {
   /** ランダムの並びを作り直す（「並べ直す」）。 */
   onShuffle: () => void;
   disabled?: boolean;
+  /** トップバーの中に置く（一覧ページ）。SortMenuView の inTopBar。 */
+  inTopBar?: boolean;
 }
 
 /**
  * SortMenu はツールバーの並べ替えのメニューボタンと、そのすぐ右に接する
  * 向きの切り替え（ランダムのときは「並べ直す」）である。`md` 以上で出す。
  */
-export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortControlProps) {
+export function SortMenu({
+  sort,
+  onSortChange,
+  onShuffle,
+  disabled,
+  inTopBar,
+}: SortControlProps) {
   const options = useSortOptions();
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
@@ -135,6 +143,7 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
         },
       }}
       disabled={disabled}
+      inTopBar={inTopBar}
     />
   );
 }
@@ -217,6 +226,7 @@ export function SortMenuView<T extends string>({
   onValueChange,
   toggle,
   disabled,
+  inTopBar = false,
 }: {
   /** ボタンに出す今の種類の名前。 */
   label: UiText;
@@ -230,17 +240,25 @@ export function SortMenuView<T extends string>({
   onValueChange: (value: T) => void;
   toggle?: { label: UiText; icon: ReactNode; onClick: () => void };
   disabled?: boolean;
+  /**
+   * トップバーの中に置く（一覧ページ）。ボタンはトップバーの操作と同じ h-9 の
+   * secondary に input の縁を付ける。
+   */
+  inTopBar?: boolean;
 }) {
   return (
     <div className="flex">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
-            size="sm"
+            variant={inTopBar ? "secondary" : "outline"}
+            size={inTopBar ? "default" : "sm"}
             aria-label={currentLabel}
             disabled={disabled}
-            className={cn(toggle !== undefined && "rounded-r-none")}
+            className={cn(
+              inTopBar && "border border-input pr-3",
+              toggle !== undefined && "rounded-r-none",
+            )}
           >
             {label}
             <ChevronDown aria-hidden="true" className="text-muted-foreground" />
@@ -265,12 +283,15 @@ export function SortMenuView<T extends string>({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
-              variant="outline"
-              size="icon-sm"
+              variant={inTopBar ? "secondary" : "outline"}
+              size={inTopBar ? "icon" : "icon-sm"}
               aria-label={toggle.label}
               disabled={disabled}
               // メニューのボタンに接して 1 つの組に見せる（間の縁は 1 本にする）。
-              className="rounded-l-none border-l-0"
+              className={cn(
+                inTopBar && "border border-input",
+                "rounded-l-none border-l-0",
+              )}
               onClick={toggle.onClick}
             >
               {toggle.icon}

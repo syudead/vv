@@ -39,6 +39,8 @@ export interface SearchBoxProps {
    */
   debounceMs?: number;
   disabled?: boolean;
+  /** トップバーの中に置く（一覧ページ）。トップバーの操作と同じ h-9 にする。 */
+  inTopBar?: boolean;
   className?: string;
 }
 
@@ -101,6 +103,7 @@ export default function SearchBox({
   syntaxHelp = true,
   debounceMs = searchDebounceMs,
   disabled = false,
+  inTopBar = false,
   className,
 }: SearchBoxProps) {
   const [input, setInputState] = useState(query);
@@ -169,7 +172,10 @@ export default function SearchBox({
     <div className={cn("relative flex w-full items-center", className)}>
       <Search
         aria-hidden="true"
-        className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
+        className={cn(
+          "pointer-events-none absolute size-4 text-muted-foreground",
+          inTopBar ? "left-3" : "left-2",
+        )}
       />
       <Input
         ref={field}
@@ -208,7 +214,8 @@ export default function SearchBox({
         className={cn(
           // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
           // 手引きを置かない検索欄は、クリアか `/` の1つ分だけ空ける。
-          "h-8 pl-8 [&::-webkit-search-cancel-button]:hidden",
+          "[&::-webkit-search-cancel-button]:hidden",
+          inTopBar ? "h-9 pl-9" : "h-8 pl-8",
           !syntaxHelp ? "pr-8" : input === "" ? "pr-8 sm:pr-16" : "pr-16",
         )}
       />
@@ -227,7 +234,16 @@ export default function SearchBox({
             <X aria-hidden="true" />
           </Button>
         )}
-        {input === "" && <Kbd className="mr-1 hidden sm:inline-flex">/</Kbd>}
+        {input === "" && (
+          <Kbd
+            className={cn(
+              "mr-1 hidden sm:inline-flex",
+              inTopBar && "border border-input bg-transparent",
+            )}
+          >
+            /
+          </Kbd>
+        )}
         {syntaxHelp && <SearchSyntaxHelp />}
       </div>
     </div>

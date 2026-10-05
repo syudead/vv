@@ -1,7 +1,6 @@
 import {
   EyeOff,
   Film,
-  FolderPlus,
   LayoutGrid,
   List,
   Search,
@@ -11,7 +10,12 @@ import {
 import { type ReactNode, useState } from "react";
 
 import { t } from "@/i18n";
-import { CardGrid, type CardSize } from "@/ui/patterns/card-grid";
+import {
+  CardGrid,
+  type CardSize,
+  cardFrameClass,
+  cardThumbnailClass,
+} from "@/ui/patterns/card-grid";
 import { ListPage } from "@/ui/patterns/list-page";
 import { LoadMoreRow } from "@/ui/patterns/load-more-row";
 import { PageHeader } from "@/ui/patterns/page-header";
@@ -36,10 +40,11 @@ import {
   VideoThumbnailMark,
 } from "@/ui/VideoThumbnail";
 
-// 一覧ページの型の見本（registry:block list-page-example）。見出し行・ツールバー・カードの
-// グリッド・末尾の追加読み込み・選択バーを、見本の動画で埋めて動かす。写した画面は見本の
-// データと文言を自分のものに、カードを自分のカードに差し替える
-// （web/registry/rules/patterns.md の List page）。
+// 一覧ページの型の見本（registry:block list-page-example）。トップバーの中のツールバー・
+// 見出し行・カードのグリッド・末尾の追加読み込み・選択バーを、見本の動画で埋めて動かす。
+// 見本には shell が無いので、トップバーの代わりの帯（ExampleTopBar）にツールバーを置く。
+// 写した画面は帯の代わりに shell の TopBarPortal でツールバーを包み、見本のデータと文言を
+// 自分のものに、カードを自分のカードに差し替える（web/registry/rules/patterns.md の List page）。
 
 const durations = ["49:10", "3:12", "12:48", "27:05", "1:02:33", "8:40", "15:20", "4:55"];
 
@@ -70,8 +75,8 @@ export function SampleVideoCard({
 }) {
   const p = t.designSystem.pattern;
   return (
-    <article className="flex min-w-0 flex-col gap-2">
-      <VideoThumbnail selected={selected}>
+    <article className={cardFrameClass(selected)}>
+      <VideoThumbnail className={cardThumbnailClass}>
         <div className="flex size-full items-center justify-center text-muted-foreground">
           <Film aria-hidden="true" className="size-6" />
         </div>
@@ -86,15 +91,27 @@ export function SampleVideoCard({
           />
         </VideoThumbnailMark>
       </VideoThumbnail>
-      <div className="flex min-w-0 flex-col gap-0.5">
-        <h2 className="truncate text-sm font-medium">{title}</h2>
+      <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
+        <h2 className="truncate text-sm font-semibold sm:text-base">{title}</h2>
         <p className="truncate text-xs text-muted-foreground">{meta}</p>
       </div>
     </article>
   );
 }
 
-/** ExampleToolbar は見本のツールバーである。状態の見本でも同じものを使う。 */
+/**
+ * ExampleTopBar は見本の中でトップバーの代わりをする帯である。画面では使わず、ツールバーを
+ * shell の TopBarPortal で包む。
+ */
+export function ExampleTopBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="-mx-3 -mt-4 flex h-navbar items-center border-b border-border bg-background px-2 sm:-mx-4 sm:px-3">
+      {children}
+    </div>
+  );
+}
+
+/** ExampleToolbar は見本のツールバー（トップバーの置き場）である。状態の見本でも同じものを使う。 */
 export function ExampleToolbar({
   size = 1,
   onSizeChange,
@@ -107,29 +124,47 @@ export function ExampleToolbar({
   const [sort, setSort] = useState("added");
   return (
     <Toolbar
+      placement="topBar"
       search={
         <div className="relative">
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute top-2 left-2 size-4 text-muted-foreground"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             type="search"
             aria-label={p.search}
             placeholder={p.search}
-            className="h-8 pl-8"
+            className="pl-9"
           />
         </div>
       }
       view={[
         {
+          id: "sort",
+          label: p.sort,
+          inlineFrom: "md",
+          control: (
+            <Select value={sort} onValueChange={setSort}>
+              <SelectTrigger aria-label={p.sort}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="added">{p.sortAdded}</SelectItem>
+                <SelectItem value="title">{p.sortTitle}</SelectItem>
+                <SelectItem value="duration">{p.sortDuration}</SelectItem>
+              </SelectContent>
+            </Select>
+          ),
+        },
+        {
           id: "view",
           label: p.view,
+          inlineFrom: "lg",
           control: (
             <ToggleGroup
               type="single"
               variant="outline"
-              size="sm"
               value={view}
               onValueChange={(value) => {
                 if (value) setView(value);
@@ -152,6 +187,8 @@ export function ExampleToolbar({
         {
           id: "size",
           label: p.cardSize,
+          inlineFrom: "xl",
+          hideBelowSm: true,
           control: (
             <Slider
               aria-label={p.cardSize}
@@ -166,26 +203,10 @@ export function ExampleToolbar({
             />
           ),
         },
-        {
-          id: "sort",
-          label: p.sort,
-          control: (
-            <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger size="sm" aria-label={p.sort}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="added">{p.sortAdded}</SelectItem>
-                <SelectItem value="title">{p.sortTitle}</SelectItem>
-                <SelectItem value="duration">{p.sortDuration}</SelectItem>
-              </SelectContent>
-            </Select>
-          ),
-        },
       ]}
       viewLabel={p.viewAndSort}
     >
-      <Button variant="outline" size="sm">
+      <Button variant="secondary" className="border border-input">
         <SlidersHorizontal aria-hidden="true" />
         {p.filters}
       </Button>
@@ -217,18 +238,7 @@ function IconToggle({
 /** ExampleHeader は見本の見出し行である。 */
 export function ExampleHeader() {
   const p = t.designSystem.pattern;
-  return (
-    <PageHeader
-      title={p.library}
-      count={p.videos(128)}
-      actions={
-        <Button size="sm">
-          <FolderPlus aria-hidden="true" />
-          {p.addFolder}
-        </Button>
-      }
-    />
-  );
+  return <PageHeader variant="list" title={p.library} count={p.videos(128)} />;
 }
 
 export function ListPageExample() {
@@ -248,8 +258,13 @@ export function ListPageExample() {
   };
   return (
     <ListPage
+      toolbarPlacement="topBar"
       header={<ExampleHeader />}
-      toolbar={<ExampleToolbar size={size} onSizeChange={setSize} />}
+      toolbar={
+        <ExampleTopBar>
+          <ExampleToolbar size={size} onSizeChange={setSize} />
+        </ExampleTopBar>
+      }
       selectionBar={
         selected.size > 0 && (
           <SelectionBar

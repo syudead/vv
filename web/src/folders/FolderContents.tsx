@@ -95,6 +95,7 @@ export default function FolderContents({
             title={t.folders.videos}
             count={videos.loading ? undefined : videos.total}
             action={groupingMenu}
+            spaced={showFolders}
           >
             {videos.error !== null && videos.items.length === 0 ? (
               <LoadFailed reason={videos.error} onRetry={videos.reload} />

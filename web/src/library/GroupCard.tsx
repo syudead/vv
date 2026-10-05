@@ -19,6 +19,11 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import {
+  cardFrameClass,
+  cardLinkClass,
+  cardThumbnailClass,
+} from "../ui/patterns/card-grid";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -139,10 +144,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     <article
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
-      className={cn(
-        "group relative flex min-w-0 flex-col gap-2",
-        selectionMode && "select-none",
-      )}
+      className={cn(cardFrameClass(selected), selectionMode && "select-none")}
     >
       {onSelect !== undefined && (
         // 前に出たサムネイルより上に置く（z-30）。
@@ -175,9 +177,10 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             onSelect(group, !selected);
           }
         }}
-        className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
+        className={cardLinkClass}
       >
-        <VideoThumbnail selected={selected}>
+        {/* フォルダの絵柄は背板ごとカードの地に描くので、枠の地は塗らない。 */}
+        <VideoThumbnail className={cn(cardThumbnailClass, "bg-transparent")}>
           <FolderArt
             previews={group.previews}
             selectionMode={selectionMode}
@@ -186,9 +189,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             onPreviewStart={onPreviewStart}
           />
 
-          {/* 本数と長さは、動画のカードの長さと同じ面で右下に重ねる。前に出たサムネイルより
-              上に置き、絵柄の下見の操作を妨げない。 */}
-          <VideoThumbnailDuration className="pointer-events-none z-20">
+          {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
+              前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}
+          <VideoThumbnailDuration className="pointer-events-none right-5 bottom-4 z-20">
             <span>{countText}</span>
             {duration !== "" && <span>{duration}</span>}
           </VideoThumbnailDuration>
@@ -202,15 +205,19 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           )}
         </VideoThumbnail>
 
-        <h3
-          title={group.name}
-          className={cn(
-            "line-clamp-2 text-sm font-medium break-all",
-            state === "watched" ? "text-muted-foreground" : "text-foreground",
-          )}
+        <div
+          className={cn("flex min-w-0 flex-col gap-1 px-3 pt-2", !showTagsRow && "pb-3")}
         >
-          {group.name}
-        </h3>
+          <h3
+            title={group.name}
+            className={cn(
+              "line-clamp-2 text-sm font-semibold break-all sm:text-base",
+              state === "watched" ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {group.name}
+          </h3>
+        </div>
       </Link>
       {owner && (
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
@@ -219,7 +226,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}
-      {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
+      {showTagsRow && (
+        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
+      )}
     </article>
   );
 });

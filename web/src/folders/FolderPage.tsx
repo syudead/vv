@@ -2,8 +2,7 @@ import { useLocation } from "react-router";
 
 import { t } from "../i18n";
 import { ListPage } from "../ui/patterns/list-page";
-import { PageHeader } from "../ui/patterns/page-header";
-import Breadcrumbs from "./Breadcrumbs";
+import { FolderHeader } from "./Breadcrumbs";
 import { FOLDERS_ROOT, folderKey, parseFolderPathname } from "./folderPath";
 import FolderView from "./FolderView";
 import RootView from "./RootView";
@@ -17,8 +16,9 @@ import { FolderNotFound } from "./states";
  * `RootSearchResults`、フォルダ1件の表示は `FolderView`（検索結果は
  * `FolderSearchResults`、直下の表示は `FolderContents`）、一覧の条件の管理は
  * `useConditions` が持ち、このファイルは URL から選んで組み立てるだけである。
- * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しの行にパンくずと題、
- * ツールバー、本体の順に並べる（web/registry/rules/patterns.md の List page）。
+ * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しは見た目に出さない題と
+ * パンくずの帯、ツールバーはトップバーの中、その下に本体を並べる
+ * （web/registry/rules/patterns.md の List page）。
  */
 export default function FolderPage() {
   const location = useLocation();
@@ -30,14 +30,11 @@ export default function FolderPage() {
     <FolderView key={folderKey(target.folder)} folder={target.folder} />
   ) : (
     <ListPage
+      toolbarPlacement="topBar"
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
-            />
-          }
+        <FolderHeader
           title={t.folders.title}
+          crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
         />
       }
     >
