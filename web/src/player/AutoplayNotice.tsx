@@ -178,12 +178,12 @@ export default function AutoplayNotice({
       <span role="status" className="sr-only">
         {autoplayAnnouncement(next.title)}
       </span>
-      <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-popover p-6 text-popover-foreground shadow-elevated">
+      <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-sm font-semibold text-primary">
+          <span className="text-xs font-semibold text-primary">
             {t.player.autoplay.heading}
           </span>
-          <span aria-hidden="true" className="text-sm text-muted-foreground tabular-nums">
+          <span aria-hidden="true" className="text-xs text-muted-foreground tabular-nums">
             {t.player.autoplay.countdown(remaining)}
           </span>
         </div>
@@ -206,7 +206,7 @@ export default function AutoplayNotice({
           className="*:duration-1000 *:ease-linear motion-reduce:*:transition-none"
         />
         <div className="flex flex-wrap gap-2">
-          <Button ref={cancel} variant="outline" onClick={onCancel}>
+          <Button ref={cancel} variant="secondary" onClick={onCancel}>
             <X aria-hidden="true" />
             {t.player.autoplay.cancel}
           </Button>

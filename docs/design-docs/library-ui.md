@@ -370,19 +370,18 @@ lists; shapes and text are in
 
 The page is layered over the list with no shell and closes with × or Esc. It
 is built on the `DetailPage` skeleton
-([Design system, Page patterns](design-system.md#page-patterns)): the header band, then a main area for
-watching and an information aside. The diagram shows its parts.
+([Design system, Page patterns](design-system.md#page-patterns)), which fills
+the window edge to edge: the header band with a bottom border, then a left
+column for watching and a right column for related videos, divided by a border.
+The diagram shows its parts.
 
 ```mermaid
 flowchart LR
-  band[Header band] --> main[Main area]
-  band --> aside[Information aside]
-  main --> player[Player]
+  band[Header band] --> player[Player]
   player --> title[Title and tags]
   title --> vis[Visibility toggle]
-  aside --> info[File details]
-  info --> next[Up next]
-  next --> related[Related videos]
+  vis --> info[Information rows]
+  band --> related[Up next and related videos]
 ```
 
 | Part | Rule |
@@ -390,32 +389,40 @@ flowchart LR
 | Header band | Logo (home), breadcrumb to the folder, the only × |
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
-| Visibility toggle | `role="switch"`, below the title unit, the last part of the main area |
+| Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
+| Related videos | Plain rows under a small heading, without a card around them |
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
-above the aside is a right column and the page keeps the viewport's height, so
-the main area and the aside each scroll on their own; below `lg` the aside goes
-under the main area and the page scrolls as one; below `md` the breadcrumb
-shows only its last segment.
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
 
-### File details
-
-File information is the first `PageSection` of the aside, titled
-`File details`, with its actions at the right of the section heading.
-
-| Part | Content |
+| Width | Layout |
 | --- | --- |
-| `FactList` | Term and value pairs: length, size, added, edited, created; then `Versions` when the group has two or more visible versions, and `Thumbnail` for the owner when a thumbnail position is set |
-| Technical line | Resolution, container, codec below the list; smallest and most subdued |
-| Actions | Favorite, `Use current frame as thumbnail`, `Open file`, `Copy path`: icon-only ghost buttons with tooltips |
+| `lg` and above | The page keeps the viewport's height; the left column scrolls on its own and the related list scrolls under its fixed heading. The right column is `detail-aside` wide, `detail-aside-wide` from `xl`. The player's height leaves room for the title, tags and both information rows |
+| Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the related list keep side padding |
+| Below `md` | The breadcrumb shows only its last segment |
 
-Dates show the date only; the time is in the `title` attribute and in a popover opened by
-pressing the value. No path appears in the section, because the breadcrumb
-already shows the location.
+The player frame takes its size from the named steps `player-width`,
+`player-height` and their `-lg` forms in `tokens.css`, which read the video's
+aspect ratio from the frame at run time.
 
-The owner's favorite toggle opens the action group, left of
+### Information rows
+
+Two rows under the title, above which a divider runs, carry no frames or
+labels.
+
+| Row | Content |
+| --- | --- |
+| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set; actions at the right end |
+| Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
+
+The actions are favorite, `Use current frame as thumbnail`, `Open file` and
+`Copy path`: icon-only ghost buttons with tooltips. Dates show the date only;
+the time is in the `title` attribute and in a popover opened by pressing the
+date. No path appears under the title, because the breadcrumb already shows
+the location.
+
+The owner's favorite toggle opens the right-hand action group, left of
 `Use current frame as thumbnail` (`FavoriteToggle` `page` form: `Toggle` `sm`,
 `aria-pressed`). It is the group's only control with state, so the eye lands on
 it first; even so, it is no more prominent than the title: on is a small
@@ -431,7 +438,7 @@ flowchart LR
 ```
 
 Updating the cached list means the library card has changed on return. The
-failure line sits directly below the fact list in the section, like open and
+failure line sits directly below the first information row, like open and
 capture failures, with no toast.
 
 ### Player states
@@ -439,8 +446,8 @@ capture failures, with no toast.
 Loading, import stages, read failure, playback failure, video gone and playback
 ended show one at a time from a single container over the player, which decides
 the order. Only the "being created" line sits below the player. Layer text
-sits on the opaque floating-layer surface `bg-popover`, because
-`tokens.test.ts` cannot check text on the translucent `bg-overlay`.
+sits on opaque `bg-navbar`, because `tokens.test.ts` cannot check text on the
+translucent `bg-overlay`.
 
 The stall warning ([`StallWarning.tsx`](../../web/src/player/StallWarning.tsx),
 `role="status"`) is a separate small banner at the player's top left: it
