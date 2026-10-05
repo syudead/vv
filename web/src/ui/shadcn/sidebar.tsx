@@ -412,7 +412,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-rail-item! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:px-0.5! group-data-[collapsible=icon]:text-2xs [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:max-w-full [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-rail-item! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:px-0.5! group-data-[collapsible=icon]:text-rail [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:max-w-full [&>span:last-child]:truncate",
   {
     variants: {
       variant: {

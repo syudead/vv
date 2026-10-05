@@ -323,7 +323,8 @@ export function CompactSortView<T extends string>({
               <RadioGroupItem id={id} value={option.value} />
               <Label htmlFor={id} className="min-w-0 font-normal">
                 <option.icon aria-hidden="true" className="size-4 shrink-0" />
-                <span className="truncate">{option.label}</span>
+                {/* 狭い幅でも名前を切らず、2 行に折り返す。 */}
+                <span>{option.label}</span>
               </Label>
             </div>
           );

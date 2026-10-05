@@ -329,7 +329,7 @@ Do not use it for a flat set of filters or for steps of a task.
 Item `sidebar`. The app's main navigation, from `SidebarProvider` down. vv
 uses three states: expanded at wide widths, `collapsible="icon"` (the 68px
 `sidebar-rail`, each entry a `rail-item` square with its icon above a
-`text-2xs` label) when collapsed, and a `Sheet` drawer below 640px
+`text-rail` label) when collapsed, and a `Sheet` drawer below 640px
 (`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
 link and `isActive` on the current screen; the rail shows the label, so set no
 `tooltip`. Account entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the

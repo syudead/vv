@@ -41,6 +41,7 @@ in `web/src/theme/tokens.test.ts` in the same change.
 
 | Step               | Use                                                         |
 | ------------------ | ----------------------------------------------------------- |
+| `text-rail`        | The labels under the icons in the collapsed sidebar (rail)  |
 | `text-2xs`         | Text on thumbnails: duration, seek time, badges over images |
 | `text-xs`          | Metadata, counts, chip labels, help text                    |
 | `text-sm`          | Library body, controls, menus, card titles                  |
