@@ -5531,7 +5531,8 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     rejectedTab().focus();
     await user.keyboard("{ArrowLeft}");
     expect(document.activeElement).toBe(tagsTab());
-    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    // 選ぶのはフォーカスの後の描画なので、重い環境でも待って確かめる。
+    await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
     expect(await screen.findByTitle("Alpha")).toBeDefined();
     expect(latestSearch).not.toContain("tab=");
   });
