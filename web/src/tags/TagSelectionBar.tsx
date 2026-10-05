@@ -8,8 +8,9 @@ import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
 
 /**
- * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、ページの下端に貼り付く
- * 選択バーである。デザインシステムの `SelectionBar`（web/registry/rules/patterns.md の
+ * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、見出しの行の代わりに出す
+ * 選択バーである（見出しとタブの帯はトップバーの直下に貼り付くので、送っても届く）。
+ * デザインシステムの `SelectionBar` の placement="header"（web/registry/rules/patterns.md の
  * Sections）に、選んだ数・解除とまとめての操作を入れる
  * （specs/036-tag-admin-scale/ui-design.md「Selection bar」）。選んだタグに働かない操作
  * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
@@ -67,6 +68,7 @@ export default function TagSelectionBar({
         clearLabel={t.tags.selection.clear}
         clearDisabled={busy}
         onClear={onClear}
+        placement="header"
       >
         {hasTentative && (
           <Button

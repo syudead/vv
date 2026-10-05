@@ -240,7 +240,9 @@ export default function CardTagRow({
       {/* 測るためだけの、見えない全タグの並び（Overflow の算出。ui-design.md「Overflow」）。 */}
       <div
         aria-hidden="true"
-        className="pointer-events-none invisible absolute flex flex-nowrap items-center gap-1"
+        // 幅 0 で切り、測る並びがカードの外（ページの右端の外）へはみ出して横スクロールを
+        // 作らないようにする。中の並びは内容の幅のまま測れる。
+        className="pointer-events-none invisible absolute flex w-0 flex-nowrap items-center gap-1 overflow-hidden"
       >
         <div ref={measureRowRef} className="flex flex-nowrap items-center gap-1">
           {tags.map((tag) => (

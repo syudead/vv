@@ -3228,19 +3228,14 @@ describe("TagsPage 見えている行だけ描く", () => {
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
       configurable: true,
       get(this: HTMLElement) {
-        return this.hasAttribute("data-index") ? rowHeight : 0;
+        if (this.hasAttribute("data-index")) return rowHeight;
+        // 上部バーの下に留める帯（ui-design.md「Band」）。
+        return this.classList.contains("sticky") ? bandHeight : 0;
       },
     });
-    // 表示域の上に重なる上部バーの高さ（tokens.css の --spacing-navbar）。行へ
-    // スクロールするときにこの分を差し引く（ui-design.md「Band」）。
-    document.documentElement.style.setProperty(
-      "--spacing-navbar",
-      `${String(bandHeight)}px`,
-    );
   });
 
   afterEach(() => {
-    document.documentElement.style.removeProperty("--spacing-navbar");
     window.innerHeight = originalInnerHeight;
     if (originalOffsetHeight !== undefined) {
       Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
@@ -4519,8 +4514,12 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     );
 
     await screen.findByTitle("zz action");
+    // 打鍵ごとに引き直すので、途中の語（「ＡＣＴＩＯ」）の応答でも同じ行が並ぶ。最後の語の
+    // 要求が出るまで待つ。
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ"),
+    );
     await waitFor(() => expect(loadedNames()).toEqual(["zz action"]));
-    expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ");
     expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
     expect(count()).toBe("1 of 151 tags");
     // 入力は q の上限の 100 文字で止まる。

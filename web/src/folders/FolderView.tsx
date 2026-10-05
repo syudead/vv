@@ -330,31 +330,27 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   return (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-                listing.notFound ||
-                videos.notFound ||
-                listing.error !== null ||
-                rootNameFailed
-                  ? breadcrumbsFor(folder, undefined).filter(
-                      (crumb) => crumb !== undefined,
-                    )
-                  : breadcrumbsFor(folder, rootName)
-              }
-              suffix={
-                searching && !videos.notFound ? t.folders.searchingInside : undefined
-              }
-            />
-          }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {name ?? t.folders.title}
-            </span>
-          }
-        />
+        <>
+          <Breadcrumbs
+            crumbs={
+              // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
+              listing.notFound ||
+              videos.notFound ||
+              listing.error !== null ||
+              rootNameFailed
+                ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
+                : breadcrumbsFor(folder, rootName)
+            }
+            suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
+          />
+          <PageHeader
+            title={
+              <span ref={heading} tabIndex={-1}>
+                {name ?? t.folders.title}
+              </span>
+            }
+          />
+        </>
       }
       toolbar={
         <TopBarPortal>

@@ -88,22 +88,22 @@ export default function RootView() {
   return (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                searching
-                  ? [{ label: t.folders.searchingAll }]
-                  : [{ label: t.folders.title }]
-              }
-            />
-          }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {t.folders.title}
-            </span>
-          }
-        />
+        <>
+          <Breadcrumbs
+            crumbs={
+              searching
+                ? [{ label: t.folders.searchingAll }]
+                : [{ label: t.folders.title }]
+            }
+          />
+          <PageHeader
+            title={
+              <span ref={heading} tabIndex={-1}>
+                {t.folders.title}
+              </span>
+            }
+          />
+        </>
       }
       toolbar={
         <TopBarPortal>
