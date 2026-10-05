@@ -210,11 +210,10 @@ describe("LibraryPage", () => {
     await user.click(screen.getByRole("button", { name: "View and sort" }));
 
     const dialog = await screen.findByRole("dialog");
-    // 畳んだ操作は、名前を上に添えて同じ部品で並ぶ（画面の型の Toolbar）。
+    expect(within(dialog).getByRole("radio", { name: "Title" })).toBeDefined();
     expect(
-      within(dialog).getByRole("button", { name: "Sort by: Date added" }),
+      within(dialog).getByRole("radiogroup", { name: "View (compact)" }),
     ).toBeDefined();
-    expect(within(dialog).getByRole("radiogroup", { name: "View" })).toBeDefined();
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
@@ -708,7 +707,7 @@ describe("LibraryPage", () => {
     );
   });
 
-  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 表示形式 → 大きさ → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
+  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
     const user = userEvent.setup();
     renderLibrary("/?q=abc&sort=addedDesc");
     await screen.findByRole("link", { name: "動画 1" });
@@ -734,13 +733,6 @@ describe("LibraryPage", () => {
     expect((box as HTMLInputElement).value).toBe("abc");
     expect(screen.getByTestId("location").textContent).toBe("?q=abc&sort=addedDesc");
 
-    // 表示の切り替えは画面の型の Toolbar の並び（表示形式 → 大きさ → 並べ替え）。
-    await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Grid" }));
-    await user.tab();
-    expect(document.activeElement).toBe(
-      screen.getByRole("slider", { name: "Card size" }),
-    );
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Sort by: Date added" }),
@@ -942,8 +934,7 @@ describe("LibraryPage", () => {
     fireEvent.click(within(dialog).getByRole("radio", { name: "Grid" }));
     startFirst();
     dialog = screen.getByRole("dialog");
-    // 並べ替えの向きを変える。
-    fireEvent.click(within(dialog).getByRole("button", { name: /Press for ascending/ }));
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Title" }));
     expect(document.querySelector("video")).toBeNull();
   });
 
