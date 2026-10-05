@@ -6,20 +6,26 @@ import {
   Hash,
   type LucideIcon,
 } from "lucide-react";
-import type { ReactNode, Ref, RefObject } from "react";
+import type { Ref, RefObject } from "react";
 
 import { t } from "../i18n";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { SortMenuView, type SortOption } from "../videoList/SortControls";
+import IconToggleGroup from "../videoList/IconToggleGroup";
+import {
+  CompactSortView,
+  SortMenuView,
+  type SortOption,
+} from "../videoList/SortControls";
 import {
   tagSortDirection,
   tagSortKind,
   tagSortKinds,
   withTagSortDirection,
   type TagListSort,
+  type TagSortDirection,
   type TagSortKind,
 } from "./tagListOrder";
 
@@ -65,16 +71,15 @@ export interface TagToolbarProps {
   sort: TagListSort;
   onSortChange: (sort: TagListSort) => void;
   sortDisabled: boolean;
-  /** 効いている絞り込みのチップ（押すと外れる Toggle）。絞り込みのボタンの後ろに並べる。 */
-  activeFilters?: ReactNode;
 }
 
 /**
- * TagToolbar はタグ管理画面のツールバーで、デザインシステムの `Toolbar` に載せる
- * （web/registry/rules/patterns.md の Sections）。管理表の帯の中、タブの下に置き、
- * 検索欄 → 絞り込み（と効いている絞り込みのチップ）→ 並び順（と向き）の順に並べる。
- * 検索欄・絞り込み・並び順の部品はライブラリと共有する `web/src/videoList/` のもので、
- * 並び順は `lg` から並べ、それより狭いと「Sort」のポップオーバーにまとめる
+ * TagToolbar はタグ管理画面の操作を共通トップバーの中央に置く（デザインシステムの
+ * `Toolbar` の placement="topBar"。TagsPage が `TopBarPortal` で入れる。
+ * web/registry/rules/patterns.md の Sections）。並びはライブラリの `LibraryToolbar` と同じで、
+ * 検索欄 → 絞り込み → 並び順（と向き）。検索欄・絞り込み・並び順の部品はライブラリと共有する
+ * `web/src/videoList/` のもので、並び順は `md` から並べ、それより狭いとアイコンだけの
+ * 「Sort」のまとめ（ライブラリの `CompactSortControls` と同じ形）に入れる
  * （specs/036-tag-admin-scale/ui-design.md「Top bar」）。
  */
 export default function TagToolbar({
@@ -92,7 +97,6 @@ export default function TagToolbar({
   sort,
   onSortChange,
   sortDisabled,
-  activeFilters,
 }: TagToolbarProps) {
   const kind = tagSortKind(sort);
   const direction = tagSortDirection(sort);
@@ -101,6 +105,7 @@ export default function TagToolbar({
 
   return (
     <Toolbar
+      placement="topBar"
       search={
         <SearchBox
           query={query}
@@ -112,13 +117,52 @@ export default function TagToolbar({
           // 打鍵ごとに引き直す（前の要求は打ち切る。specs/036-tag-admin-scale/research.md R-1）。
           debounceMs={0}
           disabled={searchDisabled}
-          className="w-full"
         />
       }
       view={[
         {
           id: "sort",
           label: t.tags.sort.heading,
+          inlineFrom: "md",
+          compactLabelled: true,
+          compact: (
+            <CompactSortView
+              name="tag-compact-sort"
+              heading={t.tags.sort.heading}
+              value={activeOption(sort)}
+              options={options}
+              onValueChange={(next) => {
+                if (tagSortKind(next) !== kind) onSortChange(next);
+              }}
+              disabled={sortDisabled}
+            >
+              {direction !== undefined && (
+                <IconToggleGroup<TagSortDirection>
+                  label={t.tags.sort.direction}
+                  value={direction}
+                  onValueChange={(next) => onSortChange(withTagSortDirection(sort, next))}
+                  options={[
+                    {
+                      value: "desc",
+                      label:
+                        kind === "count"
+                          ? t.tags.sort.segments.countDesc
+                          : t.tags.sort.segments.createdDesc,
+                      icon: <ArrowDownWideNarrow aria-hidden="true" />,
+                    },
+                    {
+                      value: "asc",
+                      label:
+                        kind === "count"
+                          ? t.tags.sort.segments.countAsc
+                          : t.tags.sort.segments.createdAsc,
+                      icon: <ArrowUpNarrowWide aria-hidden="true" />,
+                    },
+                  ]}
+                />
+              )}
+            </CompactSortView>
+          ),
           control: (
             <SortMenuView
               label={t.tags.sort.kinds[kind]}
@@ -179,7 +223,6 @@ export default function TagToolbar({
           />
         </div>
       </FilterPopover>
-      {activeFilters}
     </Toolbar>
   );
 }

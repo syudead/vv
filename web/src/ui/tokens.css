@@ -115,6 +115,8 @@
   --spacing-navbar: 3.25rem;
   --spacing-sidebar: 14.5rem;
   --spacing-sidebar-rail: 4.25rem;
+  /* レールの項目（アイコンの下に名前を出す正方形） */
+  --spacing-rail-item: 3.5rem;
   --spacing-card-0: 13.75rem;
   --spacing-card-1: 17.5rem;
   --spacing-card-2: 22.5rem;

@@ -30,6 +30,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
+import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
 import { FolderEmpty, FolderNotFound, LoadFailed } from "./states";
@@ -356,26 +357,28 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         />
       }
       toolbar={
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchIn(name ?? t.folders.title)}
-          searchPlaceholder={t.folders.searchInPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchIn(name ?? t.folders.title)}
+            searchPlaceholder={t.folders.searchInPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
       }
     >
       {/*

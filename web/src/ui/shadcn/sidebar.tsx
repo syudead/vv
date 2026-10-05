@@ -16,7 +16,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 // shadcn/ui の sidebar（radix-nova）を vv のトークンで着せたもの
 // （web/registry/rules/components.md「Sidebar」）。上流の 3 つの形を vv のサイドバーの 3 態に
 // 当てる: expanded は展開、collapsible="icon" で畳んだ形はレール、狭い幅（use-mobile）は
-// Sheet のドロワー。幅は tokens.css の sidebar と、上流の 3rem（w-12）のレール。
+// Sheet のドロワー。幅は tokens.css の sidebar と sidebar-rail（68px）で、レールの項目は
+// rail-item の正方形にアイコンと小さな名前を縦に積む（docs/design-docs/library-ui.md「Sidebar」）。
 //
 // 上流との違い:
 // - 色は sidebar-* の別トークンを作らず、foundations の役割（navbar・accent・secondary・
@@ -197,7 +198,7 @@ function Sidebar({
           "relative w-sidebar bg-transparent transition-all duration-200 ease-out-quart motion-reduce:transition-none",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
-          "group-data-[collapsible=icon]:w-12",
+          "group-data-[collapsible=icon]:w-sidebar-rail",
         )}
       />
       <div
@@ -207,7 +208,7 @@ function Sidebar({
           "fixed inset-y-0 z-10 hidden h-svh w-sidebar transition-all duration-200 ease-out-quart motion-reduce:transition-none data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:-left-sidebar data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:-right-sidebar sm:flex",
           variant === "floating"
             ? "p-2"
-            : "border-border group-data-[collapsible=icon]:w-12 group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            : "border-border group-data-[collapsible=icon]:w-sidebar-rail group-data-[side=left]:border-r group-data-[side=right]:border-l",
           className,
         )}
         {...props}
@@ -411,7 +412,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0! [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-3 overflow-hidden rounded-md px-2 text-left text-sm text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:bg-secondary disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-active:bg-secondary data-active:font-medium data-active:text-foreground group-data-[collapsible=icon]:size-rail-item! group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:px-0.5! group-data-[collapsible=icon]:text-2xs [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:max-w-full [&>span:last-child]:truncate",
   {
     variants: {
       variant: {

@@ -82,6 +82,7 @@ import {
   TagStaleList,
 } from "./TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
+import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 
 function isTagNotFound(error: unknown): boolean {
@@ -1955,6 +1956,31 @@ export default function TagsPage() {
 
   return (
     <AdminTablePage
+      toolbar={
+        onTagsTab && (
+          <TopBarPortal>
+            <TagToolbar
+              query={search}
+              onQueryCommit={commitQuery}
+              searchRef={searchInputRef}
+              searchDisabled={page !== undefined && page.totalAll === 0}
+              tentativeOnly={tentativeOnly}
+              onTentativeOnlyChange={changeTentativeOnly}
+              unusedOnly={unusedOnly}
+              onUnusedOnlyChange={changeUnusedOnly}
+              onClearFilters={clearFilters}
+              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
+              filterDisabled={
+                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
+              }
+              filterRef={filterButtonRef}
+              sort={sort}
+              onSortChange={changeSort}
+              sortDisabled={sortDisabled}
+            />
+          </TopBarPortal>
+        )
+      }
       header={
         // 見出しの行（ui-design.md「Header」）。件数はライブラリの「N items」と同じ形で、
         // 読み込んだ行の数やページの区切りは出さない。
@@ -2021,71 +2047,48 @@ export default function TagsPage() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          {onTagsTab && (
-            <TagToolbar
-              query={search}
-              onQueryCommit={commitQuery}
-              searchRef={searchInputRef}
-              searchDisabled={page !== undefined && page.totalAll === 0}
-              tentativeOnly={tentativeOnly}
-              onTentativeOnlyChange={changeTentativeOnly}
-              unusedOnly={unusedOnly}
-              onUnusedOnlyChange={changeUnusedOnly}
-              onClearFilters={clearFilters}
-              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
-              filterDisabled={
-                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
-              }
-              filterRef={filterButtonRef}
-              sort={sort}
-              onSortChange={changeSort}
-              sortDisabled={sortDisabled}
-              activeFilters={
-                (tentativeOnly || unusedOnly) && (
-                  // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
-                  // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
-                  <ul
-                    aria-label={t.tags.activeFilters.label}
-                    className="flex flex-wrap items-center gap-2"
+          {onTagsTab && (tentativeOnly || unusedOnly) && (
+            // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
+            // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
+            <ul
+              aria-label={t.tags.activeFilters.label}
+              className="flex flex-wrap items-center gap-2"
+            >
+              {tentativeOnly && (
+                <li>
+                  <Toggle
+                    ref={tentativeChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("tentative")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
                   >
-                    {tentativeOnly && (
-                      <li>
-                        <Toggle
-                          ref={tentativeChipRef}
-                          variant="outline"
-                          size="sm"
-                          pressed
-                          onPressedChange={() => removeFilterChip("tentative")}
-                          aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                          title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                        >
-                          <CircleDashed aria-hidden="true" />
-                          {t.tags.tentativeOnly}
-                          <X aria-hidden="true" />
-                        </Toggle>
-                      </li>
-                    )}
-                    {unusedOnly && (
-                      <li>
-                        <Toggle
-                          ref={unusedChipRef}
-                          variant="outline"
-                          size="sm"
-                          pressed
-                          onPressedChange={() => removeFilterChip("unused")}
-                          aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                          title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                        >
-                          <VideoOff aria-hidden="true" />
-                          {t.tags.unusedOnly}
-                          <X aria-hidden="true" />
-                        </Toggle>
-                      </li>
-                    )}
-                  </ul>
-                )
-              }
-            />
+                    <CircleDashed aria-hidden="true" />
+                    {t.tags.tentativeOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
+              )}
+              {unusedOnly && (
+                <li>
+                  <Toggle
+                    ref={unusedChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("unused")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                  >
+                    <VideoOff aria-hidden="true" />
+                    {t.tags.unusedOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
+              )}
+            </ul>
           )}
         </>
       }
