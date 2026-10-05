@@ -41,6 +41,7 @@ in `web/src/theme/tokens.test.ts` in the same change.
 
 | Step               | Use                                                         |
 | ------------------ | ----------------------------------------------------------- |
+| `text-rail`        | The labels under the icons in the collapsed sidebar (rail)  |
 | `text-2xs`         | Text on thumbnails: duration, seek time, badges over images |
 | `text-xs`          | Metadata, counts, chip labels, help text                    |
 | `text-sm`          | Library body, controls, menus, card titles                  |
@@ -57,7 +58,7 @@ title, and no `font-bold`.
 
 Spacing and sizes share one 4px scale: `0`, `px`, `0.5`, `1`, `1.5`, `2`, `3`,
 `4`, `5`, `6`, `8`, `9`, `10`, `12`, `16`. A layout constant uses its named
-step: `navbar`, `sidebar`, `sidebar-rail`, `card-0` to `card-3`,
+step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`,
 `list-thumb-cell`, `list-thumb`, `list-number`, `list-number-wide`,
 `list-date`, `search-min`, `search-min-sm`, `zoom`, `selection-bar`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `chip-label`,

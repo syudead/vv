@@ -242,7 +242,10 @@ favorites"). A notice is one line and needs no action.
 The app's one `Toaster` sits in `ToastProvider` (`ui/Toast`), and screens send
 a notice with its `useToast`, which calls `toast()`. It shows at most three
 notices at once on list screens and one at a time on the video page, so a
-notice raised in the shell waits its turn after the viewer opens a video.
+notice raised in the shell waits its turn after the viewer opens a video. On
+list screens it sits under the top bar at the right below `lg`, and at the
+bottom centre, above the selection bar, from `lg`; on the video page it sits at
+the top centre.
 
 Do not use it for errors the viewer has to fix (use `Alert` near the cause) or
 for anything that must stay on screen.
@@ -327,11 +330,12 @@ Do not use it for a flat set of filters or for steps of a task.
 ### Sidebar
 
 Item `sidebar`. The app's main navigation, from `SidebarProvider` down. vv
-uses three states: expanded at wide widths, `collapsible="icon"` (the rail,
-labels in tooltips) when collapsed, and a `Sheet` drawer below 640px
+uses three states: expanded at wide widths, `collapsible="icon"` (the 68px
+`sidebar-rail`, each entry a `rail-item` square with its icon above a
+`text-rail` label) when collapsed, and a `Sheet` drawer below 640px
 (`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
-link, `isActive` on the current screen and `tooltip` set to the label; account
-entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the
+link and `isActive` on the current screen; the rail shows the label, so set no
+`tooltip`. Account entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the
 viewer's choice.
 
 Do not add a second sidebar or put page controls in it; they belong in the

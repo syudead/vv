@@ -33,6 +33,7 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
@@ -709,38 +710,40 @@ export default function LibraryPage() {
         />
       }
       toolbar={
-        <LibraryToolbar
-          query={query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          sort={sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={watch}
-          onWatchChange={changeWatch}
-          playable={playable}
-          onPlayableChange={changePlayable}
-          favorite={favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={conditioned}
-          onClear={clearAll}
-          view={view}
-          onViewChange={(next) => {
-            resetPreview();
-            savePreferences({ ...preferences, view: next });
-          }}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-          activeFilters={
-            tagIds.length > 0 && (
-              <ActiveTagFilters
-                tagIds={tagIds}
-                onRemove={removeActiveTag}
-                searchFieldRef={searchField}
-              />
-            )
-          }
-        />
+        <TopBarPortal>
+          <LibraryToolbar
+            query={query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            sort={sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={watch}
+            onWatchChange={changeWatch}
+            playable={playable}
+            onPlayableChange={changePlayable}
+            favorite={favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={conditioned}
+            onClear={clearAll}
+            view={view}
+            onViewChange={(next) => {
+              resetPreview();
+              savePreferences({ ...preferences, view: next });
+            }}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
+      }
+      band={
+        tagIds.length > 0 && (
+          <ActiveTagFilters
+            tagIds={tagIds}
+            onRemove={removeActiveTag}
+            searchFieldRef={searchField}
+          />
+        )
       }
       selectionBar={
         owner && (

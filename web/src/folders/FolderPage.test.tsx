@@ -1243,15 +1243,18 @@ describe("FolderPage", () => {
     await screen.findAllByRole("link", { name: /^movies, / });
 
     await user.click(screen.getByRole("button", { name: "View and sort" }));
-    // まとめの中にも並べ替えのメニューボタンと向きが入る（幅の広い画面の並びと同じ
-    // 部品。jsdom は幅で隠す CSS を当てないので、両方が見える）。
-    await screen.findByRole("dialog");
-    const sortButtons = screen.getAllByRole("button", { name: "Sort by: Date added" });
-    expect(sortButtons).toHaveLength(2);
-    for (const button of sortButtons)
-      expect((button as HTMLButtonElement).disabled).toBe(true);
+    // jsdom は <fieldset disabled> から子孫の入力への継承を実装しないので、
+    // fieldset 自身が disabled を持つことを確かめる（実ブラウザでは子の
+    // input・button にも及ぶ）。絞り込み・並べ替えのメニューボタンは disabled
+    // 属性を自分で持つので、そちらは直接確かめられる。
+    const group = await screen.findByRole("group", { name: "Sort by" });
+    expect((group as HTMLFieldSetElement).disabled).toBe(true);
     expect(
       (screen.getByRole("button", { name: "Filter" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "Sort by: Date added" }) as HTMLButtonElement)
+        .disabled,
     ).toBe(true);
   });
   describe("ゲスト（specs/016-single-account-auth/ui-design.md「Guest degradation」）", () => {

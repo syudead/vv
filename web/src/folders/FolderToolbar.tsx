@@ -7,7 +7,7 @@ import { Toolbar } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { SortMenu } from "../videoList/SortControls";
+import { CompactSortControls, SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 export interface FolderToolbarProps {
@@ -43,9 +43,10 @@ export interface FolderToolbarProps {
 /**
  * FolderToolbar はフォルダ画面（各フォルダ・最上位）の一覧ページのツールバーである。
  * ライブラリのツールバーから表示形式の切り替えを除いたもので、デザインシステムの
- * `Toolbar` に載せる（web/registry/rules/patterns.md の Sections）。検索欄・絞り込み・
- * 並べ替え・向き・大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを
- * 使う。並べ替えと大きさは `lg` から並べ、それより狭いと「表示と並び順」にまとめる。
+ * `Toolbar` の placement="topBar" に載せ、画面が TopBarPortal で共通のトップバーへ入れる
+ * （web/registry/rules/patterns.md の Sections）。検索欄・絞り込み・並べ替え・向き・
+ * 大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを使う。並べ替えは
+ * `md`、大きさは `xl` から並べ、それより狭いとアイコンだけの「表示と並び順」にまとめる。
  */
 export default function FolderToolbar({
   query,
@@ -70,6 +71,7 @@ export default function FolderToolbar({
 }: FolderToolbarProps) {
   return (
     <Toolbar
+      placement="topBar"
       search={
         <SearchBox
           query={query}
@@ -84,6 +86,7 @@ export default function FolderToolbar({
         {
           id: "sort",
           label: t.list.sort.heading,
+          inlineFrom: "md",
           control: (
             <SortMenu
               sort={sort}
@@ -92,12 +95,32 @@ export default function FolderToolbar({
               disabled={disabled}
             />
           ),
+          compact: (
+            <CompactSortControls
+              name="folder-compact-sort"
+              sort={sort}
+              onSortChange={onSortChange}
+              onShuffle={onShuffle}
+              disabled={disabled}
+            />
+          ),
+          compactLabelled: true,
         },
         {
           id: "size",
           label: t.list.cardSize,
+          inlineFrom: "xl",
+          hideBelowSm: true,
           control: (
-            <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" />
+            <ZoomSlider
+              zoom={zoom}
+              onZoomChange={onZoomChange}
+              className="w-zoom"
+              tooltip
+            />
+          ),
+          compact: (
+            <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
           ),
         },
       ]}

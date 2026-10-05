@@ -87,6 +87,9 @@
   --text-lg--line-height: 1.75rem;
   --text-xl: 1.25rem;
   --text-xl--line-height: 1.75rem;
+  /* 畳んだサイドバー（レール）の項目の名前。56px の枡に「Duplicates」が収まる大きさ */
+  --text-rail: 0.625rem;
+  --text-rail--line-height: 1;
   /* 動画ページの題名の sm 以上の大きさ（player/VideoTitle.tsx） */
   --text-video-title: 1.5rem;
   --text-video-title--line-height: 1.375;
@@ -115,6 +118,8 @@
   --spacing-navbar: 3.25rem;
   --spacing-sidebar: 14.5rem;
   --spacing-sidebar-rail: 4.25rem;
+  /* レールの項目（アイコンの下に名前を出す正方形） */
+  --spacing-rail-item: 3.5rem;
   --spacing-card-0: 13.75rem;
   --spacing-card-1: 17.5rem;
   --spacing-card-2: 22.5rem;

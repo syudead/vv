@@ -480,11 +480,6 @@ test.describe.serial("library search", () => {
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Filter", exact: true })).toBeFocused();
     await expect(page.getByRole("dialog")).toBeHidden();
-    // 表示の切り替えは画面の型の Toolbar の並び（表示形式 → 大きさ → 並べ替え）。
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("radio", { name: "Grid" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("slider", { name: "Card size" })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Sort by: Title" })).toBeFocused();
     await page.keyboard.press("Tab");

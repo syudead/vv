@@ -121,7 +121,10 @@ reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts))
 Watching width in JavaScript brings a watcher, a one-frame flicker on the first
 render, and a `matchMedia` stub in tests. The sidebar is the exception because
 it interprets the user's open/close choice per width and keeps the drawer's
-open state, which CSS cannot express. Its breakpoints equal `lg` and `sm`:
+open state, which CSS cannot express. The notices
+([`Toast.tsx`](../../web/src/ui/Toast.tsx)) are the other: Sonner takes its
+position as a prop, so list screens read `lg` to move notices from under the
+top bar to the bottom centre, above the selection bar. The sidebar's breakpoints equal `lg` and `sm`:
 
 ```mermaid
 flowchart LR
@@ -178,13 +181,23 @@ flowchart LR
 ### Shell and toolbar
 
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
-logo and `Refresh library`, and the library inserts its toolbar between them.
-Folder pages are a design-system `ListPage`: the breadcrumb and the folder name
-head the page, and the toolbar sits under them
+logo and `Refresh library`. The library, the folder pages and the tags page
+insert their toolbar between them: the design-system `Toolbar` with
+`placement="topBar"`, rendered through
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
+starts with the heading and the count, so the toolbar stays reachable at any
+scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+is a band stuck under the top bar, so the parent folders stay one click away at
+any scroll position, and the folder name heads the page
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
+The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
+header (or, while rows are selected, the selection bar) and tabs stick under
+the top bar.
 The sidebar has three states (expanded, rail, drawer; see
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
-it widens the grid, while card width follows the zoom level. Guest rules are in
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
+The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
+small label in a 56px (`rail-item`) square, so every entry stays named.
+Collapsing it widens the grid, while card width follows the zoom level. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
 | Part | Owner | Guest |
@@ -195,14 +208,20 @@ it widens the grid, while card width follows the zoom level. Guest rules are in
 | Sort orders | 9 | 7 |
 | Watch status and `Favorites only` filters | Shown | Hidden |
 
-The toolbar holds search, filters, view (library only), zoom and sort.
+The toolbar holds search, filters, sort, view (library only) and zoom, in
+that Tab order. It never wraps: the search field takes the remaining width,
+and each view control moves into the icon-only `View and sort` popover below
+the width where it joins the row.
 
 | Width | Toolbar |
 | --- | --- |
-| Wide | All controls inline |
-| Narrow | View, zoom and sort move into `View and sort` (folder pages: below `lg`) |
-| Below `md` | Library: sort orders fill two radio columns row-first, 5 rows owner, 4 guest; folder pages keep the sort menu |
+| `xl` and up | All controls inline |
+| `md` to `xl` | Sort inline from `md`, view (library) from `lg`, zoom from `xl`; the rest in `View and sort` |
+| Below `md` | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
 | Below `sm` | One full-width column at any zoom; zoom hidden |
+
+The tags page uses the same row with search, filter and sort; below `md` its
+sort moves into the icon-only `Sort` popover.
 
 The count sits in the row above the grid for the library and search results,
 and in the section heading for a folder's direct contents.
@@ -306,28 +325,14 @@ every item during selection. What a group's check selects is in
 
 The selection bar is fixed to the bottom of the screen from the first selected
 item, without moving or resizing the toolbar. Action names are never shortened,
-so they read on devices without hover.
+so they read on devices without hover; the design-system bar
+(`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
+fit.
 
-Its items, in order, are `N selected`, `Add tag`, `Remove tag`, `Favorite`,
-`Visibility`, `Bundle as versions` (2 or more videos), a separator, `Select
-all` and clear. Lines are decided by measuring the actual widths:
-
-```mermaid
-flowchart LR
-  w{Width sm or more?} -->|yes| one{One line fits?}
-  one -->|yes| line[One line]
-  one -->|no| sep[Separator onward to line 2]
-  sep --> still{Line 1 fits?}
-  still -->|no| fav[Favorite onward to line 2]
-  w -->|no| narrow[Count, Select all, clear on top]
-  narrow --> wrap[Overflow moves Favorite onward down]
-```
-
-At `sm` and above the bar spans the full width instead of overflowing with
-`nowrap`, and moved items sit at the right end of line 2, `Favorite` and the
-rest before the separator. Below `sm`, the bottom line holds the two tag
-actions, `Favorite` and `Visibility`; what does not fit moves to the right end
-of the next line, then the line after.
+Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
+`Favorite`, `Visibility`, `Bundle as versions` (2 or more videos), a separator
+and `Select all`. The actions sit at the right end; those that do not fit move
+to the right end of the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),

@@ -51,8 +51,8 @@ export interface SelectionBarProps {
 /**
  * SelectionBar は 1 件以上選ぶとページの下端に貼り付く選択バーである。画面の型の
  * SelectionBar（web/registry/rules/patterns.md「Sections」）に、選んだ数・解除・一括の操作
- * （タグを付ける・外す・お気に入り・公開・版をまとめる・すべて選択）を入れる。sm より
- * 狭い幅では操作の名前を隠してアイコンとツールチップにする。
+ * （タグを付ける・外す・お気に入り・公開・版をまとめる・すべて選択）を入れる。操作の名前は
+ * どの幅でも出し、収まらなければ帯が折り返す。
  */
 export default function SelectionBar({
   count,
@@ -204,7 +204,6 @@ export default function SelectionBar({
             <SelectionAction
               icon={<Layers aria-hidden="true" />}
               label={t.library.selection.bundle}
-              iconOnly
               disabled={bundleOverLimit}
               title={
                 bundleOverLimit
@@ -241,7 +240,6 @@ export default function SelectionBar({
           <SelectionAction
             icon={<CheckCheck aria-hidden="true" />}
             label={selectAllLabel}
-            iconOnly
             onClick={onSelectAll}
             disabled={selectingAll || allSelected}
           />

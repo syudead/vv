@@ -30,6 +30,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
+import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
 import { FolderEmpty, FolderNotFound, LoadFailed } from "./states";
@@ -329,53 +330,51 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   return (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-                listing.notFound ||
-                videos.notFound ||
-                listing.error !== null ||
-                rootNameFailed
-                  ? breadcrumbsFor(folder, undefined).filter(
-                      (crumb) => crumb !== undefined,
-                    )
-                  : breadcrumbsFor(folder, rootName)
-              }
-              suffix={
-                searching && !videos.notFound ? t.folders.searchingInside : undefined
-              }
-            />
-          }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {name ?? t.folders.title}
-            </span>
-          }
-        />
+        <>
+          <Breadcrumbs
+            crumbs={
+              // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
+              listing.notFound ||
+              videos.notFound ||
+              listing.error !== null ||
+              rootNameFailed
+                ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
+                : breadcrumbsFor(folder, rootName)
+            }
+            suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
+          />
+          <PageHeader
+            title={
+              <span ref={heading} tabIndex={-1}>
+                {name ?? t.folders.title}
+              </span>
+            }
+          />
+        </>
       }
       toolbar={
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchIn(name ?? t.folders.title)}
-          searchPlaceholder={t.folders.searchInPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchIn(name ?? t.folders.title)}
+            searchPlaceholder={t.folders.searchInPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
       }
     >
       {/*

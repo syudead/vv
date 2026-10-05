@@ -12,6 +12,7 @@ import { Button } from "@/ui/shadcn/button";
 import {
   ExampleHeader,
   ExampleToolbar,
+  ExampleTopBar,
   SampleVideoCard,
   sampleVideos,
 } from "./list-page-example";
@@ -24,9 +25,14 @@ export type ListState = "loading" | "empty" | "error" | "loadingMore" | "loadMor
 
 export function ListStatesExample({ state }: { state: ListState }) {
   return (
-    <ListPage header={<ExampleHeader />} toolbar={<ExampleToolbar />}>
-      <Body state={state} />
-    </ListPage>
+    <div className="flex flex-col">
+      <ExampleTopBar>
+        <ExampleToolbar />
+      </ExampleTopBar>
+      <ListPage header={<ExampleHeader />}>
+        <Body state={state} />
+      </ListPage>
+    </div>
   );
 }
 

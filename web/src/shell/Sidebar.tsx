@@ -6,6 +6,7 @@ import { logout } from "../api/auth";
 import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
 import { t } from "../i18n";
+import { cn } from "../lib/cn";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -42,7 +43,7 @@ function Entry({ entry }: { entry: NavEntry }) {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={entry.label}>
+      <SidebarMenuButton asChild isActive={active}>
         <NavLink to={entry.to} end={end} onClick={closeDrawer}>
           <Icon aria-hidden="true" />
           <span>{entry.label}</span>
@@ -75,11 +76,7 @@ function LogoutEntry() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton
-        onClick={() => void signOut()}
-        disabled={pending}
-        tooltip={label}
-      >
+      <SidebarMenuButton onClick={() => void signOut()} disabled={pending}>
         <LogOut aria-hidden="true" />
         <span>{label}</span>
       </SidebarMenuButton>
@@ -109,9 +106,13 @@ function AccountEntries() {
   );
 }
 
+// レールでは 68px の幅に 56px の項目（アイコンの下に名前）を中央に置く。
+const railPadding = "group-data-[collapsible=icon]:px-1.5";
+const railItems = "group-data-[collapsible=icon]:items-center";
+
 /**
  * Sidebar は左のナビである。shadcn/ui の Sidebar の 3 態を使う: 1024px 以上は展開
- * （閉じるとアイコンのレール）、640–1023px は既定がレール、639px 以下は Sheet のドロワー
+ * （閉じるとアイコンの下に名前を出す 68px のレール）、640–1023px は既定がレール、639px 以下は Sheet のドロワー
  * （web/registry/rules/components.md「Sidebar」）。開閉は AppShell の SidebarProvider が持つ。
  * 上段は画面の移動、下段は「アカウントと設定」で、それぞれ別の nav にする。
  */
@@ -132,9 +133,9 @@ export default function Sidebar() {
     >
       <aside aria-label={t.shell.nav.main} className="flex min-h-0 flex-1 flex-col">
         <SidebarContent>
-          <SidebarGroup>
+          <SidebarGroup className={railPadding}>
             <nav>
-              <SidebarMenu>
+              <SidebarMenu className={railItems}>
                 {entries.map((entry) => (
                   <Entry key={entry.id} entry={entry} />
                 ))}
@@ -142,9 +143,9 @@ export default function Sidebar() {
             </nav>
           </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter className="border-t border-border">
+        <SidebarFooter className={cn("border-t border-border", railPadding)}>
           <nav aria-label={t.shell.nav.account}>
-            <SidebarMenu>
+            <SidebarMenu className={railItems}>
               <AccountEntries />
             </SidebarMenu>
           </nav>

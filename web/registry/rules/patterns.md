@@ -55,23 +55,31 @@ Item `list-page`. `ListPage` stacks, top to bottom, with `gap-3` and `p-3`
 | -------------- | ----------------------------------------------------------------- | ---------------------------------------- |
 | `header`       | `PageHeader` with the title, the count and the one main action    | Filters or view controls                 |
 | `toolbar`      | `Toolbar` with search, filter triggers and the view controls      | The main action; a second row of filters |
+| `band`         | The active filters (removable tag chips), when any apply          | Controls that change the view            |
 | children       | `CardGrid` or `DataTable`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins       |
 | `selectionBar` | `SelectionBar`, only while something is selected                  | Actions that do not use the selection    |
 
-The body is the only part that changes between states: the header and the
-toolbar stay where they are while the body shows loading, empty or an error.
+A list people browse (the library, folder pages) puts its toolbar in the
+shell's top bar: pass a `Toolbar` with `placement="topBar"` wrapped in the
+shell's `TopBarPortal` as `toolbar`. The portal draws nothing in the page, so
+the page starts with the header. The body is the only part that changes
+between states: the header and the toolbar stay where they are while the body
+shows loading, empty or an error.
 
 ## Admin table page
 
-Item `admin-table-page`. `AdminTablePage` puts a band between the header and
-the table:
+Item `admin-table-page`. `AdminTablePage` is one column, at most `max-w-4xl`,
+centered. The header and the band stick under the top bar, so the create
+action, the tabs and the selection stay in reach while the rows scroll; pass
+`bandRef` to measure the stuck band so a focused row never hides under it:
 
-| Slot           | Put in it                                                            | Never                          |
-| -------------- | -------------------------------------------------------------------- | ------------------------------ |
-| `header`       | `PageHeader` with the title, the count and the create action         | Bulk actions                   |
-| `band`         | A `TabsList` that narrows the rows, then a `Toolbar` with the search | Controls that act on one row   |
-| children       | `DataTable` with a check column, or one state block                  | Cards; a second table          |
-| `selectionBar` | `SelectionBar` with the bulk actions, while rows are selected        | Actions that need no selection |
+| Slot           | Put in it                                                                                                                                      | Never                           |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
+| `toolbar`      | A `Toolbar` with `placement="topBar"` in the shell's `TopBarPortal`                                                                            | The create action               |
+| `header`       | `PageHeader` with the title, the count and the create action; while rows are selected, a `SelectionBar` with `placement="header"` in its place | Bulk actions in the page header |
+| `band`         | A `TabsList` that narrows the rows, then the active filter chips                                                                               | Controls that act on one row    |
+| children       | `DataTable` with a check column, or one state block                                                                                            | Cards; a second table           |
+| `selectionBar` | Only a bottom `SelectionBar` when the header cannot hold it                                                                                    | Actions that need no selection  |
 
 Each row ends with a `DropdownMenu` of its own actions behind an `icon-sm`
 ghost button. The destructive item opens a `ConfirmDialog`.
@@ -163,24 +171,34 @@ such as the count of affected videos.
 | Section        | Item            | What it is                                                                                                                                                                              |
 | -------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus |
-| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions at the end; below `lg` the view controls collapse into a `View and sort` popover                                                |
+| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control    |
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                              |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                              |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                     |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                             |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                            |
-| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions, stuck to the bottom of the page                                                                                    |
+| `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
-  controls (view mode, card size, sort) in `view`, and actions that work
+  controls (sort, view mode, card size) in `view`, and actions that work
   without a selection in `actions`. Each `view` entry is `{ id, label,
-control }`: from `lg` the controls stand inline without a visible name, so
-  each needs an `aria-label`; below `lg` the popover shows `label` above each
-  control. A control renders in both places, so give it no `id`.
+control }`: inline, the controls stand without a visible name, so each needs
+  an `aria-label`; collapsed, the popover shows `label` above each control. A
+  control renders in both places, so give it no `id`.
+  - `placement="page"` (default) sits in the page, wraps, and collapses all
+    view controls into a labelled `View and sort` button below `lg`.
+  - `placement="topBar"` sits in the top bar through `TopBarPortal` and never
+    wraps: the search takes the remaining width, and each entry joins the row
+    from its `inlineFrom` (`md`, `lg` or `xl`, default `lg`). Below that width
+    it moves into an icon-only `View and sort` button. An entry can pass
+    `compact` for its popover form (the sort's two radio columns, with
+    `compactLabelled` when that form has its own legend) and `hideBelowSm`
+    when it means nothing in one column (card size).
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
-- `SelectionBar`: icon-only actions get an `aria-label` and a `Tooltip`; use
-  `ghost` `sm` buttons, and a `destructive` action only through a
+- `SelectionBar`: use `ghost` `sm` buttons with a visible name at every width,
+  so the actions read on devices without hover; the bar wraps to a second line
+  when they do not fit. A `destructive` action goes only through a
   `ConfirmDialog`.
   While a bulk action is in flight, disable the actions and pass
   `clearDisabled` so `Clear selection` is disabled too.

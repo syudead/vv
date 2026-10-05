@@ -82,6 +82,7 @@ import {
   TagStaleList,
 } from "./TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
+import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 
 function isTagNotFound(error: unknown): boolean {
@@ -336,10 +337,12 @@ export default function TagsPage() {
   /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
   const [scrollMargin, setScrollMargin] = useState(0);
   /**
-   * stuckBottom は表示域の上に重なる上部バー（fixed、`h-navbar`）の高さ（px）である。
-   * 行へスクロールするときに、行が上部バーの下に隠れないようこれを差し引く
-   * （ui-design.md「Band」。帯は管理表の型に置き、ページと一緒に流れる）。
+   * bandRef は上部バーの下に留める帯（見出しか選択バー・タブ・絞り込みのチップ）で、
+   * stuckBottom は留まったときの帯の下端の表示域の中での位置（`top` の上部バーの高さ＋
+   * 帯の高さ、px）である。行へスクロールするときに、行が帯の下に隠れないよう
+   * これを差し引く（ui-design.md「Band」）。帯の高さは幅で変わるので測り直す。
    */
+  const bandRef = useRef<HTMLDivElement | null>(null);
   const [stuckBottom, setStuckBottom] = useState(0);
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
@@ -1079,14 +1082,18 @@ export default function TagsPage() {
     return () => observer.disconnect();
   }, [hasList]);
 
-  // 上部バーの高さを読む（tokens.css の --spacing-navbar）。
+  // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅や選択で高さが変わる。
   useLayoutEffect(() => {
-    const root = document.documentElement;
-    const style = getComputedStyle(root);
-    const value = style.getPropertyValue("--spacing-navbar").trim();
-    const size = Number.parseFloat(value);
-    const px = value.endsWith("rem") ? size * Number.parseFloat(style.fontSize) : size;
-    setStuckBottom(Number.isFinite(px) ? px : 0);
+    const band = bandRef.current;
+    if (band === null) return;
+    const measure = () => {
+      const top = Number.parseFloat(getComputedStyle(band).top);
+      setStuckBottom((Number.isFinite(top) ? top : 0) + band.offsetHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(band);
+    return () => observer.disconnect();
   }, []);
 
   // ブラウザがフォーカスした要素を表示域へ寄せるときも、帯の下に隠さない。
@@ -1955,34 +1962,81 @@ export default function TagsPage() {
 
   return (
     <AdminTablePage
+      bandRef={bandRef}
+      toolbar={
+        onTagsTab && (
+          <TopBarPortal>
+            <TagToolbar
+              query={search}
+              onQueryCommit={commitQuery}
+              searchRef={searchInputRef}
+              searchDisabled={page !== undefined && page.totalAll === 0}
+              tentativeOnly={tentativeOnly}
+              onTentativeOnlyChange={changeTentativeOnly}
+              unusedOnly={unusedOnly}
+              onUnusedOnlyChange={changeUnusedOnly}
+              onClearFilters={clearFilters}
+              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
+              filterDisabled={
+                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
+              }
+              filterRef={filterButtonRef}
+              sort={sort}
+              onSortChange={changeSort}
+              sortDisabled={sortDisabled}
+            />
+          </TopBarPortal>
+        )
+      }
       header={
-        // 見出しの行（ui-design.md「Header」）。件数はライブラリの「N items」と同じ形で、
-        // 読み込んだ行の数やページの区切りは出さない。
-        <PageHeader
-          title={t.tags.title}
-          count={
-            onTagsTab ? (
-              <span role="status" aria-live="polite" className="whitespace-nowrap">
-                {countText}
-              </span>
-            ) : undefined
-          }
-          actions={
-            onTagsTab ? (
-              <Button
-                ref={createButtonRef}
-                size="sm"
-                onClick={openCreate}
-                disabled={
-                  page === undefined || creating || createPending || renamePending
-                }
-              >
-                <Plus aria-hidden="true" />
-                {t.tags.newTag}
-              </Button>
-            ) : undefined
-          }
-        />
+        // 選んでいる間は、見出しの行の代わりに選択バーを出す（ui-design.md「Selection bar」）。
+        selecting ? (
+          <TagSelectionBar
+            count={selected.size}
+            hasTentative={selection.tentative}
+            hasConfirmed={selection.confirmed}
+            overLimit={selectionOverLimit}
+            busy={bulkPending !== null}
+            confirming={bulkPending === "confirm"}
+            onConfirm={() => void submitBulkConfirm()}
+            onReject={() => openBulkDialog("reject")}
+            onDelete={() => openBulkDialog("delete")}
+            onMerge={openMergeSelected}
+            onClear={clearSelection}
+            confirmRef={barConfirmRef}
+            mergeRef={barMergeRef}
+            rejectRef={barRejectRef}
+            deleteRef={barDeleteRef}
+          />
+        ) : (
+          // 見出しの行（ui-design.md「Header」）。件数はライブラリの「N items」と同じ形で、
+          // 読み込んだ行の数やページの区切りは出さない。
+          <PageHeader
+            title={t.tags.title}
+            count={
+              onTagsTab ? (
+                <span role="status" aria-live="polite" className="whitespace-nowrap">
+                  {countText}
+                </span>
+              ) : undefined
+            }
+            actions={
+              onTagsTab ? (
+                <Button
+                  ref={createButtonRef}
+                  size="sm"
+                  onClick={openCreate}
+                  disabled={
+                    page === undefined || creating || createPending || renamePending
+                  }
+                >
+                  <Plus aria-hidden="true" />
+                  {t.tags.newTag}
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       }
       band={
         <>
@@ -2021,94 +2075,50 @@ export default function TagsPage() {
               </TabsTrigger>
             </TabsList>
           </Tabs>
-          {onTagsTab && (
-            <TagToolbar
-              query={search}
-              onQueryCommit={commitQuery}
-              searchRef={searchInputRef}
-              searchDisabled={page !== undefined && page.totalAll === 0}
-              tentativeOnly={tentativeOnly}
-              onTentativeOnlyChange={changeTentativeOnly}
-              unusedOnly={unusedOnly}
-              onUnusedOnlyChange={changeUnusedOnly}
-              onClearFilters={clearFilters}
-              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
-              filterDisabled={
-                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
-              }
-              filterRef={filterButtonRef}
-              sort={sort}
-              onSortChange={changeSort}
-              sortDisabled={sortDisabled}
-              activeFilters={
-                (tentativeOnly || unusedOnly) && (
-                  // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
-                  // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
-                  <ul
-                    aria-label={t.tags.activeFilters.label}
-                    className="flex flex-wrap items-center gap-2"
+          {onTagsTab && (tentativeOnly || unusedOnly) && (
+            // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
+            // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
+            <ul
+              aria-label={t.tags.activeFilters.label}
+              className="flex flex-wrap items-center gap-2"
+            >
+              {tentativeOnly && (
+                <li>
+                  <Toggle
+                    ref={tentativeChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("tentative")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
                   >
-                    {tentativeOnly && (
-                      <li>
-                        <Toggle
-                          ref={tentativeChipRef}
-                          variant="outline"
-                          size="sm"
-                          pressed
-                          onPressedChange={() => removeFilterChip("tentative")}
-                          aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                          title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                        >
-                          <CircleDashed aria-hidden="true" />
-                          {t.tags.tentativeOnly}
-                          <X aria-hidden="true" />
-                        </Toggle>
-                      </li>
-                    )}
-                    {unusedOnly && (
-                      <li>
-                        <Toggle
-                          ref={unusedChipRef}
-                          variant="outline"
-                          size="sm"
-                          pressed
-                          onPressedChange={() => removeFilterChip("unused")}
-                          aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                          title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                        >
-                          <VideoOff aria-hidden="true" />
-                          {t.tags.unusedOnly}
-                          <X aria-hidden="true" />
-                        </Toggle>
-                      </li>
-                    )}
-                  </ul>
-                )
-              }
-            />
+                    <CircleDashed aria-hidden="true" />
+                    {t.tags.tentativeOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
+              )}
+              {unusedOnly && (
+                <li>
+                  <Toggle
+                    ref={unusedChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("unused")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                  >
+                    <VideoOff aria-hidden="true" />
+                    {t.tags.unusedOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
+              )}
+            </ul>
           )}
         </>
-      }
-      selectionBar={
-        selecting && (
-          <TagSelectionBar
-            count={selected.size}
-            hasTentative={selection.tentative}
-            hasConfirmed={selection.confirmed}
-            overLimit={selectionOverLimit}
-            busy={bulkPending !== null}
-            confirming={bulkPending === "confirm"}
-            onConfirm={() => void submitBulkConfirm()}
-            onReject={() => openBulkDialog("reject")}
-            onDelete={() => openBulkDialog("delete")}
-            onMerge={openMergeSelected}
-            onClear={clearSelection}
-            confirmRef={barConfirmRef}
-            mergeRef={barMergeRef}
-            rejectRef={barRejectRef}
-            deleteRef={barDeleteRef}
-          />
-        )
       }
     >
       {onTagsTab ? (

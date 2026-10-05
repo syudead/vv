@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useRef,
+  useSyncExternalStore,
 } from "react";
 import { toast as sonner } from "sonner";
 
@@ -43,19 +44,49 @@ function nextToastId(): string {
   return `vv-toast-${String(sequence)}`;
 }
 
+/** wideQuery は一覧の画面の通知を下端の中央へ移す幅（Tailwind の lg）である。 */
+const wideQuery = "(min-width: 64rem)";
+
+function subscribeWide(onChange: () => void): () => void {
+  if (typeof window.matchMedia !== "function") return () => undefined;
+  const query = window.matchMedia(wideQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function readWide(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia(wideQuery).matches;
+}
+
 /**
- * toasterPlacement は Sonner の置き場である。一覧の画面ではトップバーの下の右端に出し、
- * サイドバーにもページの道具にも重ねない。再生画面では上端の中央に出す（右上には
- * 見出しの帯の閉じる × がある）。配置が変わると Sonner は通知を描き直すので、出ている
- * 通知はその時点から出し直しになる。
+ * useWide は lg 以上かを返す。Sonner の置き場は CSS の幅の分岐では変えられないので、
+ * 通知の置き場だけは幅を読む（docs/design-docs/library-ui.md「Width breakpoints in CSS」）。
  */
-function toasterPlacement(placement: Placement) {
+function useWide(): boolean {
+  return useSyncExternalStore(subscribeWide, readWide, () => false);
+}
+
+/**
+ * toasterPlacement は Sonner の置き場である。一覧の画面は、lg より狭い幅ではトップバーの
+ * 下の右端に出してページの道具に重ねず、lg 以上では下端の中央（選択バーの上）に出し、
+ * 一括の操作の結果を操作した場所の近くで読ませる。再生画面では上端の中央に出す
+ * （右上には見出しの帯の閉じる × がある）。配置が変わると Sonner は通知を描き直すので、
+ * 出ている通知はその時点から出し直しになる。
+ */
+function toasterPlacement(placement: Placement, wide: boolean) {
   if (placement === "playback") {
     return {
       position: "top-center",
       offset: { top: "0.375rem" },
       // 狭い幅でも右上の閉じる × に重ならないよう、左右を 4rem ずつ空ける。
       mobileOffset: { top: "0.375rem", left: "4rem", right: "4rem" },
+    } as const;
+  }
+  if (wide) {
+    return {
+      position: "bottom-center",
+      // 下端に貼り付く選択バー（bottom-3 と h-selection-bar）の上に出す。
+      offset: { bottom: "calc(var(--spacing-selection-bar) + 2rem)" },
     } as const;
   }
   const top = "calc(var(--spacing-navbar) + 0.5rem)";
@@ -77,6 +108,7 @@ export function ToastProvider({
   const shown = useRef<ToastItem[]>([]);
   const waiting = useRef<ToastItem[]>([]);
   const limit = useRef<number>(visibleLimit[placement]);
+  const wide = useWide();
 
   // display は Sonner に 1 件を渡す。消えたら（時間切れでも閉じても）待ちから次を出す。
   const display = useCallback((item: ToastItem) => {
@@ -150,7 +182,7 @@ export function ToastProvider({
     <ToastContext.Provider value={show}>
       {children}
       <Toaster
-        {...toasterPlacement(placement)}
+        {...toasterPlacement(placement, wide)}
         expand
         visibleToasts={visibleLimit.default}
         customAriaLabel={t.common.notifications}

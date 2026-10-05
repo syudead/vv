@@ -1,12 +1,15 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
-// 選択バー（区画）。選んだ数、選択の解除と、選んだものへの一括の操作を、ページの下端に
-// 貼り付けて出す。何かを選んでいる間だけ置く。規則は web/registry/rules/patterns.md の
-// Sections。
+// 選択バー（区画）。選んだ数、選択の解除と、選んだものへの一括の操作を出す。操作の名前は
+// 縮めず（ホバーの無い機器でも読めるように）、収まらなければ次の行へ折り返す。何かを
+// 選んでいる間だけ置く。置き場は 2 つ: bottom（既定）はページの下端に浮かせて貼り付け、
+// header は管理表ページの見出しの行の代わりに、貼り付いた帯の中に置く。規則は
+// web/registry/rules/patterns.md の Sections。
 
 export interface SelectionBarProps {
   /** 選んだ数（「2 selected」）。 */
@@ -18,6 +21,8 @@ export interface SelectionBarProps {
   clearDisabled?: boolean;
   /** 一括の操作（ghost の sm のボタン）。 */
   children: ReactNode;
+  /** 置き場。既定は bottom。header は管理表ページの見出しの行の代わり。 */
+  placement?: "bottom" | "header";
 }
 
 export function SelectionBar({
@@ -26,11 +31,20 @@ export function SelectionBar({
   onClear,
   clearDisabled = false,
   children,
+  placement = "bottom",
 }: SelectionBarProps) {
   return (
     <div
       data-slot="selection-bar"
-      className="sticky bottom-3 z-10 mx-auto flex h-selection-bar w-full max-w-2xl animate-slide-up items-center gap-2 rounded-lg border border-border bg-popover px-2 text-popover-foreground shadow-elevated motion-reduce:animate-none"
+      data-placement={placement}
+      className={cn(
+        "flex items-center gap-2",
+        // bottom はカードの選択のチェック（z-30）より前に出す。同じ z-30 で DOM の後ろにある
+        // ので、下を流れるカードのチェックが帯の上に透けない。
+        placement === "bottom"
+          ? "sticky bottom-3 z-30 mx-auto min-h-selection-bar w-full max-w-4xl animate-slide-up flex-wrap rounded-lg border border-border bg-popover px-2 py-1 text-popover-foreground shadow-elevated motion-reduce:animate-none"
+          : "min-h-8",
+      )}
     >
       <Tooltip>
         <TooltipTrigger asChild>
@@ -55,7 +69,7 @@ export function SelectionBar({
       </span>
       <div
         data-slot="selection-bar-actions"
-        className="ml-auto flex min-w-0 items-center gap-1 overflow-x-auto"
+        className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1"
       >
         {children}
       </div>

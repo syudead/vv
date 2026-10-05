@@ -15,6 +15,7 @@ import { hasConditions } from "../videoList/listCriteria";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderCard from "./FolderCard";
+import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { type RootDisplay, rootFolderName } from "./folderPath";
 import { Section } from "./layout";
@@ -87,45 +88,47 @@ export default function RootView() {
   return (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={
-                searching
-                  ? [{ label: t.folders.searchingAll }]
-                  : [{ label: t.folders.title }]
-              }
-            />
-          }
-          title={
-            <span ref={heading} tabIndex={-1}>
-              {t.folders.title}
-            </span>
-          }
-        />
+        <>
+          <Breadcrumbs
+            crumbs={
+              searching
+                ? [{ label: t.folders.searchingAll }]
+                : [{ label: t.folders.title }]
+            }
+          />
+          <PageHeader
+            title={
+              <span ref={heading} tabIndex={-1}>
+                {t.folders.title}
+              </span>
+            }
+          />
+        </>
       }
       toolbar={
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchAll}
-          searchPlaceholder={t.folders.searchAllPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          disabled={!searching}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchAll}
+            searchPlaceholder={t.folders.searchAllPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            disabled={!searching}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
       }
     >
       {/* 倍率を変える前の位置の目印を探す入れ物。間隔は骨格が持つので箱を作らない。 */}

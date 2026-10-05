@@ -1088,16 +1088,12 @@ describe("TagsPage", () => {
     );
   });
 
-  it("キーボードだけで検索の入力に届く（見出しの「New tag」とタブの次のTab）", async () => {
+  it("キーボードだけで検索の入力に届く（本文で最初のTab）", async () => {
     const user = userEvent.setup();
     install();
     renderPage();
     await screen.findByTitle("旅行");
 
-    await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "New tag" }));
-    await user.tab();
-    expect(document.activeElement).toBe(screen.getByRole("tab", { name: /^Tags/ }));
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("searchbox", { name: "Search tags" }),
@@ -3232,19 +3228,14 @@ describe("TagsPage 見えている行だけ描く", () => {
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
       configurable: true,
       get(this: HTMLElement) {
-        return this.hasAttribute("data-index") ? rowHeight : 0;
+        if (this.hasAttribute("data-index")) return rowHeight;
+        // 上部バーの下に留める帯（ui-design.md「Band」）。
+        return this.classList.contains("sticky") ? bandHeight : 0;
       },
     });
-    // 表示域の上に重なる上部バーの高さ（tokens.css の --spacing-navbar）。行へ
-    // スクロールするときにこの分を差し引く（ui-design.md「Band」）。
-    document.documentElement.style.setProperty(
-      "--spacing-navbar",
-      `${String(bandHeight)}px`,
-    );
   });
 
   afterEach(() => {
-    document.documentElement.style.removeProperty("--spacing-navbar");
     window.innerHeight = originalInnerHeight;
     if (originalOffsetHeight !== undefined) {
       Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
@@ -3753,16 +3744,11 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
       (screen.getByRole("button", { name: "Sort by: Name" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    // 狭い幅のまとめ（「Sort」）の中の並び順も押せない。
+    // 狭い幅のまとめ（「Sort」）の中の並び順も押せない。jsdom は <fieldset disabled> から
+    // 子孫への継承を実装しないので、fieldset 自身が disabled を持つことを確かめる。
     await user.click(screen.getByRole("button", { name: "Sort" }));
-    const compact = await screen.findByRole("dialog");
-    expect(
-      (
-        within(compact).getByRole("button", {
-          name: "Sort by: Name",
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+    const group = await screen.findByRole("group", { name: "Sort by" });
+    expect((group as HTMLFieldSetElement).disabled).toBe(true);
     for (const done of heldGetReleases) done();
   });
 
@@ -3772,21 +3758,16 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    // lg より狭い幅では、並び順はツールバーの「Sort」のポップオーバーにまとまる。
+    // md より狭い幅では、並び順はトップバーの「Sort」のポップオーバーにまとまる。
     await user.click(screen.getByRole("button", { name: "Sort" }));
     const compact = await screen.findByRole("dialog");
     // Name のときは向きを出さない。
     expect(
-      within(compact).queryByRole("button", { name: /Press for (ascending|descending)/ }),
+      within(compact).queryByRole("radiogroup", { name: "Sort direction" }),
     ).toBeNull();
-    await user.click(within(compact).getByRole("button", { name: "Sort by: Name" }));
-    await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
+    await user.click(within(compact).getByRole("radio", { name: "Video count" }));
     await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
-    await user.click(
-      within(compact).getByRole("button", {
-        name: "Descending (most videos first). Press for ascending",
-      }),
-    );
+    await user.click(within(compact).getByRole("radio", { name: "Fewest videos first" }));
     await waitFor(() => expect(rowNames()[0]).toBe("Beta"));
   });
 
@@ -4533,8 +4514,12 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     );
 
     await screen.findByTitle("zz action");
+    // 打鍵ごとに引き直すので、途中の語（「ＡＣＴＩＯ」）の応答でも同じ行が並ぶ。最後の語の
+    // 要求が出るまで待つ。
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ"),
+    );
     await waitFor(() => expect(loadedNames()).toEqual(["zz action"]));
-    expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ");
     expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
     expect(count()).toBe("1 of 151 tags");
     // 入力は q の上限の 100 文字で止まる。
@@ -5378,19 +5363,12 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     latestSearch = "";
   });
 
-  it("検索・Filter・並び順は見出しとタブの下のツールバーに、ライブラリと同じ並び（検索 → Filter → 並び順）で入る", async () => {
+  it("検索・Filter・並び順は共通トップバーに、ライブラリと同じ並び（検索 → Filter → 並び順）で入る", async () => {
     install();
     renderPage({ topBar: true });
     await screen.findByTitle("Alpha");
 
-    // 共通トップバーには置かない（一覧ページのツールバーは本文の見出しの下）。
-    expect(within(screen.getByTestId("topbar")).queryByRole("searchbox")).toBeNull();
-    const toolbar = document.querySelector<HTMLElement>('[data-slot="toolbar"]')!;
-    const tabs = screen.getByRole("tablist", { name: "Tag lists" });
-    expect(
-      tabs.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    const topBar = toolbar;
+    const topBar = screen.getByTestId("topbar");
     const search = within(topBar).getByRole("searchbox", { name: "Search tags" });
     expect(search.getAttribute("placeholder")).toBe("Search tags");
     const filter = within(topBar).getByRole("button", { name: "Filter" });
@@ -5403,6 +5381,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     ).toBeTruthy();
     // 「Name」に向きは無いので、向きのボタンは出さない。
     expect(within(topBar).queryByRole("button", { name: /Press for/ })).toBeNull();
+    // 本文の中に操作の行は無い。
     expect(screen.getAllByRole("searchbox")).toHaveLength(1);
 
     // 「/」で検索欄へ移る。
@@ -5552,7 +5531,8 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     rejectedTab().focus();
     await user.keyboard("{ArrowLeft}");
     expect(document.activeElement).toBe(tagsTab());
-    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    // 選ぶのはフォーカスの後の描画なので、重い環境でも待って確かめる。
+    await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
     expect(await screen.findByTitle("Alpha")).toBeDefined();
     expect(latestSearch).not.toContain("tab=");
   });
