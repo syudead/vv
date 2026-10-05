@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 7f995e7d29aaad78b3bfc74f2ad6be28f9b1297886b9532eb6feda8b6994b84d
+sourceHash: e56be75884f01b541ef2bbb62849aaf4e41645da58555cb60e7bb05899ca1180
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -102,13 +102,13 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 | 尺度 | 段階 |
 | --- | --- |
-| 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階。`font-normal`、`font-medium`、`font-semibold` |
-| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、ポップオーバーとコンボボックスの幅） |
+| 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階と、2 つの名前付きの段階 `text-page-title`（`sm` からの一覧ページのタイトル）と `text-rail`（サイドバーのレールのラベル）。`font-normal`、`font-medium`、`font-semibold` |
+| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`sidebar-rail`、`rail-item`、`nav-icon`、`card-0` から `card-3`、`card-gap`、一覧の列、ポップオーバーとコンボボックスの幅） |
 | 角丸 | `sm`、`md`、`lg`、`full` |
 | 影 | `shadow-card-hover`、`shadow-elevated`、`drop-shadow-mark`。静止した面には付けない |
 | 動き | `fade-in`、`pop-in`、`slide-up`、および読み込み用の `shimmer`、`spin`、`pulse`。動きを減らす設定では無効 |
 
-ライブラリは動画ページより密だ。コントロールは `h-8`、コントロールの間は `gap-2`、カードの間は `gap-3`、本文は `text-sm` で、動画ページではそれぞれ `h-9`、`gap-3`、`gap-4`、`text-base` だ。
+ライブラリは動画ページより密だ。コントロールは `h-8`、コントロールの間は `gap-2`、カードの間は `gap-3`、本文は `text-sm` で、動画ページではそれぞれ `h-9`、`gap-3`、`gap-4`、`text-base` だ。上部バーにある一覧ページのツールバーは `h-9` のコントロールを `gap-1.5` の間隔で並べ、カードグリッドは `card-gap` を使う。
 
 尺度はテーマ自体が閉じている。`tokens.css` はまず各尺度について Tailwind の既定の名前空間（`--color-*`、`--text-*`、`--font-weight-*`、`--spacing` と `--spacing-*`、`--radius-*`、`--shadow-*`、`--drop-shadow-*`、`--animate-*`）をリセットし、その後尺度の段階だけを定義する。そのため段階の外のもの（`p-7`、`gap-2.5`、`text-2xl`、`rounded-xl`、`font-bold`、`bg-red-500`）は生成されず、未知のクラスとして失敗する。分数、`full`、`auto`、`px`、コンテナの幅（`max-w-md`）はリセットする名前空間に含まれないので、引き続き使える。リセットは `tw-animate-css` の出現と退出のアニメーションも取り除くので、浮遊レイヤーは `animate-pop-in` で開く。
 
@@ -180,7 +180,7 @@ flowchart LR
 | `Skeleton`、`Progress`、`Spinner` | `Skeleton`、スキャンと視聴のバー | `Skeleton` はきらめき、`Progress` は `max` を受け取る |
 | `Alert`、`Empty` | 停滞の警告、自動再生の通知、インラインのエラー、空の状態のブロック | `Alert` は `warning` と `success` を加える |
 | `Separator`、`Kbd`、`Breadcrumb` | 区切り線、検索のキー、フォルダのパス | |
-| `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 展開、アイコンのレール、640px 未満ではドロワー |
+| `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 展開、各アイコンを小さなラベルの上に置く 68px のレール、640px 未満ではドロワー |
 | `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、以前の `videoList/FavoriteToggle` | vv のコンポーネント |
 
 shadcn のコンポーネントは、上流のケバブケースの名前（`dropdown-menu.tsx`）で `web/src/ui/shadcn` に、操作と入力のコンポーネントと並べて置く。上流と同じく、`Dialog` と `Sheet` は `ghost`、`icon-sm` の `Button` で閉じ、`AlertDialogAction` と `AlertDialogCancel` は `Button`（既定は `sm`）であり、`SidebarTrigger` は `Button`、`SidebarInput` は `Input` である。vv のコンポーネントは PascalCase の名前のまま `web/src/ui` に置く。`FavoriteToggle` の `page` 形式は `Tooltip` 付きの `Toggle` である。
@@ -191,7 +191,7 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 | --- | --- |
 | コンポーネントのスタイルを変えて、置き換える対象と同じ見た目にする | コンポーネントは新しい画面を作るためのものであり、古い見た目を繰り返すためのものではない |
 | 古いコンポーネントを脇へ移し、新しいものが今その名前を引き継ぐ | この層が承認される前に、すべての画面の import が変わってしまう |
-| 上流のような、別の `sidebar-*` の色トークン | サイドバーは、すでに持っていた役割である `navbar`、`accent`、`secondary` を使う |
+| 上流のような、別の `sidebar-*` の色トークン | サイドバーは、すでに持っていた役割である `background`、`accent`、`secondary` を使う |
 
 コンポーネントの背後にある判断は [038 UI design, Components](../../specs/038-design-system/ui-design.md#components) にある。
 
@@ -212,7 +212,7 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 ```mermaid
 flowchart TD
   page[ListPage] --> header[PageHeader]
-  page --> toolbar[Toolbar]
+  page -.->|TopBarPortal| toolbar[上部バーの Toolbar]
   page --> body[本体のスロット]
   page --> bar[SelectionBar]
   body --> grid[CardGrid または DataTable]
@@ -227,9 +227,9 @@ flowchart TD
 | 余白 | パターンの中で固定する。パターンは `className` を受け取らないので、画面はそれを上書きできない |
 | 密度 | `DetailPage` は視聴の密度を与え、その下では `PageSection` と `FactList` が `p-4` の行と `text-base` に切り替わる。ほかの雛形はすべてライブラリの密度である |
 | その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
-| 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
+| カードは幅を保つ | `CardGrid` は各カードにズームの段階の `card-*` の幅を与え、行を `card-gap` の間隔で中央にそろえる。`sm` 未満では全幅の 1 列になる |
 
-`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+ライブラリとフォルダのページは `toolbarPlacement="topBar"` の `ListPage` だ。ツールバーは `placement="topBar"` の `Toolbar` で、画面がシェルの `TopBarPortal` で包む。そのため上部バーの中央に置かれ、コントロールごとにアイコンだけの `View and sort` ポップオーバーに畳まれる（並べ替えは `md` 未満、表示は `lg` 未満、ズームは `xl` 未満）。ライブラリの見出しは `variant="list"` の `PageHeader` で、大きなタイトルと、行の右端の件数からなる。カードは `card` の面の上の箱だ（`cardFrameClass`）。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
 
 ショーケース（`/design-system`）は、すべての例のブロック、各状態の一覧ページ、ボタンの後ろにあるダイアログを描画するので、メンテナーはパターンを 1440px と 390px で確認する。
 

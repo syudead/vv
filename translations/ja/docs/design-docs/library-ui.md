@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 472aada0c065aca20189dc24a87121067865a6063f8765bcd3d45e9fc2dacd3c
+sourceHash: cffc94a753d169cb625ef398d82f2b7c247ed5aee6f44b3dc5864879f96579c1
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -109,7 +109,7 @@ jsdom は CSS を適用しないので、`position: fixed`、メディアクエ�
 
 ## 一覧のレイアウト {#list-layout}
 
-一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードだ。ライブラリのページは [`Grid.tsx`](../../web/src/videoList/Grid.tsx) でカードを並べ、フォルダのページはレジストリのカードグリッド（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)）で並べる。
+一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードで、ライブラリとフォルダのページがレジストリのカードグリッド（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)）を通して共有する。カードはズームの段階の幅を保ち、`card-gap` の間隔で行の中央に並ぶ。`sm` 未満では全幅の 1 列になる。
 
 図は一覧画面の部品を示す。
 
@@ -124,7 +124,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、ライブラリはその間に自分のツールバーを差し込む。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストとフォルダ名がページの先頭に来て、ツールバーはその下に置く（[design-system.md、Page patterns](design-system.md#page-patterns)）。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、ライブラリとフォルダのページは `TopBarPortal` を通してその間に自分のツールバーを差し込む（[design-system.md、Page patterns](design-system.md#page-patterns)）。上部バーの下では、ライブラリはタイトルを表示し、同じ行の右端に項目数を置く。フォルダのページは上部バーの下に固定したパンくずリストの帯を表示し、タイトルはスクリーンリーダー向けにだけ保つ。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。レールの幅は `sidebar-rail`（68px）で、各項目のアイコンの下に小さなラベルを表示する。展開したサイドバーとドロワーの幅は `sidebar`（232px）だ。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -138,10 +138,11 @@ flowchart LR
 
 | 幅 | ツールバー |
 | --- | --- |
-| 広い | すべてのコントロールを横に並べる |
-| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る（フォルダのページでは `lg` 未満） |
-| `md` 未満 | ライブラリでは並び順が 2 列のラジオに行優先で並び、所有者は 5 行、ゲストは 4 行。フォルダのページは並べ替えのメニューを保つ |
-| `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示 |
+| `xl` 以上 | すべてのコントロールを横に並べる。`Filter` はラベルを表示する |
+| `xl` 未満 | ズームはアイコンだけの `View and sort` ポップオーバーに移る |
+| `lg` 未満 | 表示（ライブラリだけ）は `View and sort` に移る |
+| `md` 未満 | 並べ替えは `View and sort` に移る。並び順は 2 列のラジオに行優先で並び、所有者は 5 行、ゲストは 4 行 |
+| `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示。上部バーはロゴマーク、検索、`Filter`、`View and sort`、`Refresh` を保つ |
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。
 
@@ -151,7 +152,7 @@ flowchart LR
 
 ### カード {#cards}
 
-動画カード（[`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)）は、サムネイル、その右下の長さ、下端に沿った再生の進捗、タイトルを表示する。
+動画カード（[`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx)）は、`card` の面の上にある枠付きの箱だ（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx) の `cardFrameClass`）。サムネイルが上部を埋め、その右下に長さ、下端に沿って再生の進捗があり、タイトルはその下の箱の中に置く。ホバーしたカードはわずかに浮き上がる。選択したカードは `primary` の枠線とリングを持つ。
 
 | カード | ルール |
 | --- | --- |
