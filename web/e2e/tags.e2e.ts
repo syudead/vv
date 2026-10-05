@@ -650,16 +650,20 @@ test.describe.serial("video tags", () => {
         page.getByRole("link", { name: /^Open the library filtered by / }).first(),
       ).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
+      // 行が描かれたあとでも、一覧が測り直して描く範囲を動かすと行は DOM から外れる。
+      // 表示域へ送るところまでを 1 回の試みに含め、外れたら送り直す。
       await expect(async () => {
-        if ((await row.count()) > 0) return;
-        await page.evaluate(() => {
-          const before = window.scrollY;
-          window.scrollBy(0, 400);
-          if (window.scrollY === before) window.scrollTo(0, 0);
-        });
-        await expect(row).toBeAttached({ timeout: 300 });
+        if ((await row.count()) === 0) {
+          await page.evaluate(() => {
+            const before = window.scrollY;
+            window.scrollBy(0, 400);
+            if (window.scrollY === before) window.scrollTo(0, 0);
+          });
+          await expect(row).toBeAttached({ timeout: 300 });
+        }
+        await row.scrollIntoViewIfNeeded({ timeout: 1_000 });
+        await expect(row).toBeVisible({ timeout: 300 });
       }).toPass({ timeout: 15_000, intervals: [0] });
-      await row.scrollIntoViewIfNeeded();
       return row;
     }
 
