@@ -204,7 +204,7 @@
   }
 }
 
-/* タッチの端末では、大きな再生ボタンの代わりにプレイヤー中央の操作を出す。 */
+/* タッチの端末では再生・一時停止を下部の操作バーから行う。 */
 @media (pointer: coarse) {
   .vv-video-player .video-js .vjs-big-play-button {
     display: none !important;

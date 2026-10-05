@@ -542,9 +542,10 @@ is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-desig
 view on wide screens; on narrow widths scrolling would move the whole page and
 hide the player.
 
-Central touch controls appear on `pointer: coarse` devices through a CSS media
-condition, without `matchMedia`, for the reason in
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception).
+On `pointer: coarse` devices, tapping the video toggles play and pause. video.js
+handles taps on the poster before playback; taps on the video tech toggle through
+the same player controls as the control bar. The central play button is hidden
+with a CSS media condition, keeping the video area clear during touch playback.
 
 ## List conditions applied by the server
 
