@@ -1,4 +1,4 @@
-import { XCircle } from "lucide-react";
+import { X } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
@@ -37,6 +37,14 @@ function indicatorName(presentation: ScanPresentation): UiText {
  * ScanProgressIndicator は右下の本体と概要である（specs/024-import-progress/ui-design.md
  * 「Floating Indicator」「Summary Popover」）。置き場所・開き方・押したときの移動先は
  * 012 の形のまま。
+ *
+ * 概要はホバーかフォーカスで開き、ポインタが離れる・Esc・外を押す・設定へ移る・フォーカスが
+ * 外れる、のいずれでも閉じる。開いているかは、開く操作と閉じる操作の出来事だけで決める。
+ * 「ホバーかフォーカスの間は開く」と状態から決めると、閉じたときにフォーカスが本体へ戻って
+ * すぐ開き直る（issue 830）。閉じたあとに本体へ残ったフォーカスでは開き直らない。
+ *
+ * 本体はどの状態でも閉じる button で閉じられ、閉じた取り込みは終わるまでも、結果の通知と
+ * しても出さない。次の取り込みでは、また出す。
  */
 export default function ScanProgressIndicator() {
   const scan = useScan();
@@ -45,21 +53,31 @@ export default function ScanProgressIndicator() {
   const navigate = useNavigate();
   const presentation = presentScan(scan);
   const [open, setOpen] = useState(false);
-  const [pointerActive, setPointerActive] = useState(false);
-  const [focused, setFocused] = useState(false);
   const pointerCloseTimer = useRef<number | null>(null);
-  const navigatingToDetails = useRef(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const pointerInside = useRef(false);
+  // 本体にフォーカスがあるまま閉じたら、フォーカスが外れるまではフォーカスで開き直らない。
+  const focusOpenSuppressed = useRef(false);
 
   const terminalVisible =
     presentation.scan !== null &&
     notice.completionNotice?.scanId === presentation.scan.id;
-  const visible = inProgressState(presentation.state) || terminalVisible;
-  // 一部失敗と失敗は、閉じる button で閉じるか設定へ移るまで残す。
+  // 開始の途中は、まだ前の取り込みを指している。閉じたのが前の取り込みでも出す。
+  const dismissed =
+    notice.dismissPending ||
+    (presentation.state !== "starting" &&
+      presentation.scan !== null &&
+      presentation.scan.id === notice.dismissedScanId);
+  const visible = !dismissed && (inProgressState(presentation.state) || terminalVisible);
+  // 一部失敗と失敗は、閉じるか設定へ移るまで残す。
   const persistent = presentation.state === "partial" || presentation.state === "failed";
 
-  useEffect(() => {
-    setOpen(pointerActive || focused);
-  }, [focused, pointerActive]);
+  const clearPointerCloseTimer = () => {
+    if (pointerCloseTimer.current !== null) {
+      window.clearTimeout(pointerCloseTimer.current);
+      pointerCloseTimer.current = null;
+    }
+  };
 
   useEffect(() => {
     if (visible) return;
@@ -67,8 +85,8 @@ export default function ScanProgressIndicator() {
       window.clearTimeout(pointerCloseTimer.current);
       pointerCloseTimer.current = null;
     }
-    setPointerActive(false);
-    setFocused(false);
+    pointerInside.current = false;
+    focusOpenSuppressed.current = false;
     setOpen(false);
     if (scan.loaded) setCompletionNoticePaused(false);
   }, [scan.loaded, setCompletionNoticePaused, visible]);
@@ -82,36 +100,48 @@ export default function ScanProgressIndicator() {
     [],
   );
 
+  // 完了の通知は、概要が開いている間だけ止める。閉じれば通常どおり時間がたてば消える。
   useEffect(() => {
     if (!scan.loaded) return;
-    const paused = terminalVisible && (pointerActive || focused);
-    setCompletionNoticePaused(paused);
-  }, [focused, setCompletionNoticePaused, pointerActive, scan.loaded, terminalVisible]);
+    setCompletionNoticePaused(terminalVisible && open);
+  }, [open, scan.loaded, setCompletionNoticePaused, terminalVisible]);
 
   if (!visible) return null;
 
+  const close = () => {
+    clearPointerCloseTimer();
+    focusOpenSuppressed.current = document.activeElement === trigger.current;
+    setOpen(false);
+  };
   const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    navigatingToDetails.current = true;
-    setOpen(false);
+    close();
     if (persistent) notice.acknowledgeTerminalScan();
     navigate("/settings#scan-status");
   };
   const enterPointerArea = () => {
-    if (pointerCloseTimer.current !== null) {
-      window.clearTimeout(pointerCloseTimer.current);
-      pointerCloseTimer.current = null;
-    }
-    setPointerActive(true);
+    clearPointerCloseTimer();
+    pointerInside.current = true;
+    setOpen(true);
   };
   const leavePointerArea = () => {
-    if (pointerCloseTimer.current !== null) {
-      window.clearTimeout(pointerCloseTimer.current);
-    }
+    clearPointerCloseTimer();
     pointerCloseTimer.current = window.setTimeout(() => {
-      pointerCloseTimer.current = null;
-      setPointerActive(false);
+      pointerInside.current = false;
+      close();
     }, POINTER_CLOSE_DELAY_MS);
+  };
+  const focusTrigger = () => {
+    if (!focusOpenSuppressed.current) setOpen(true);
+  };
+  const blurTrigger = () => {
+    focusOpenSuppressed.current = false;
+    // ポインタが本体か概要の上にある間は、ポインタの方で閉じる。
+    if (!pointerInside.current) setOpen(false);
+  };
+  const dismissIndicator = () => {
+    close();
+    notice.dismissIndicator();
   };
 
   return (
@@ -125,14 +155,15 @@ export default function ScanProgressIndicator() {
       <span role="status" aria-atomic="true" className="sr-only">
         {statusAnnouncement(presentation)}
       </span>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
         <div className="flex items-center gap-1">
           <PopoverTrigger asChild>
             <Button
+              ref={trigger}
               variant="outline"
               onClick={goToDetails}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
+              onFocus={focusTrigger}
+              onBlur={blurTrigger}
               aria-label={t.shell.scan.openStatus(indicatorName(presentation))}
               className="max-w-full bg-popover font-normal shadow-elevated"
             >
@@ -154,33 +185,27 @@ export default function ScanProgressIndicator() {
               />
             </Button>
           </PopoverTrigger>
-          {persistent && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  aria-label={t.shell.scan.dismissResult}
-                  className="bg-popover shadow-elevated"
-                  onClick={() => notice.acknowledgeTerminalScan()}
-                >
-                  <XCircle aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t.shell.scan.dismissResult}</TooltipContent>
-            </Tooltip>
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                aria-label={t.shell.scan.dismiss}
+                className="bg-popover shadow-elevated"
+                onClick={dismissIndicator}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t.shell.scan.dismiss}</TooltipContent>
+          </Tooltip>
         </div>
         <PopoverContent
           align="end"
           onOpenAutoFocus={(event) => event.preventDefault()}
-          onCloseAutoFocus={(event) => {
-            if (!navigatingToDetails.current) return;
-            event.preventDefault();
-            window.requestAnimationFrame(() => {
-              navigatingToDetails.current = false;
-            });
-          }}
+          // 閉じたときにフォーカスを本体へ戻さない。戻すと、ホバーで開いていただけの概要が
+          // 本体のフォーカスを残し、閉じたことが分かりにくい（issue 830）。
+          onCloseAutoFocus={(event) => event.preventDefault()}
           onPointerEnter={enterPointerArea}
           onPointerLeave={leavePointerArea}
         >

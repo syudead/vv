@@ -3,12 +3,13 @@ import { useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import { scanErrorText, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
 import { ScanDetail, ScanIssueCounts, ScanStatusIcon } from "../shell/ScanSummaryParts";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
 import { PageSection } from "../ui/patterns/page-section";
-import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import ScanIssueList from "./ScanIssueList";
@@ -32,8 +33,9 @@ function failureText(presentation: ScanPresentation): UiText {
 
 /**
  * ScanStatusSection は設定の「Scan status」の概要である（specs/024-import-progress/ui-design.md
- * 「Settings Scan Status」）。概要（右下の popover）と同じ要素に、分母の意味・取り込み
- * 自体の失敗の理由と再試行・問題の一覧だけを足す。
+ * 「Settings Scan Status」）。概要（右下の popover）と同じ要素に、取り込みの開始・分母の
+ * 意味・取り込み自体の失敗の理由・問題の一覧だけを足す。取り込みを始める場所はここだけで
+ * ある（issue 830）。
  */
 export default function ScanStatusSection() {
   const location = useLocation();
@@ -41,9 +43,15 @@ export default function ScanStatusSection() {
   const scan = useScan();
   const presentation = presentScan(scan);
   const text = t.settings.scanStatus;
-  const retry = () => scan.start();
   const issues = useScanIssues(scan.scan, scan.refresh);
   const issueCount = presentation.issues.failed + presentation.issues.substituted;
+  // 所有者はいつでもここから取り込みを始める。取り込み中とメディアフォルダが無いときは
+  // 押せず、理由を出す（issue 830）。
+  const startBlockedReason = scan.running
+    ? text.runningReason
+    : scan.noMediaFolders
+      ? text.needsMediaFolder
+      : null;
 
   useLayoutEffect(() => {
     if (location.hash !== "#scan-status") return;
@@ -71,6 +79,24 @@ export default function ScanStatusSection() {
     <div ref={anchor} id="scan-status">
       <PageSection
         title={text.heading}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={scan.start}
+            disabled={scan.running || !scan.canStart}
+            aria-busy={scan.running || undefined}
+            aria-describedby={
+              startBlockedReason !== null ? "scan-start-blocked" : undefined
+            }
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn(scan.running && "animate-spin motion-reduce:animate-none")}
+            />
+            {scan.running ? text.starting : text.start}
+          </Button>
+        }
         description={
           <span className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">
@@ -107,6 +133,20 @@ export default function ScanStatusSection() {
             <ScanDetail presentation={presentation} />
           )}
         </div>
+        {startBlockedReason !== null && (
+          <p id="scan-start-blocked" className="text-xs text-muted-foreground">
+            {startBlockedReason}
+          </p>
+        )}
+        {scan.startError !== null && (
+          <div>
+            {/* 押した操作への応えなので、すぐ読み上げる。 */}
+            <Alert variant="destructive" role="alert">
+              <CircleX aria-hidden="true" />
+              <AlertTitle className="break-words">{scan.startError}</AlertTitle>
+            </Alert>
+          </div>
+        )}
         {presentation.refreshing && (
           <p role="status" className="text-warning">
             {text.rechecking}
@@ -118,17 +158,6 @@ export default function ScanStatusSection() {
             <Alert variant="destructive" role="note">
               <CircleX aria-hidden="true" />
               <AlertTitle className="break-words">{failureText(presentation)}</AlertTitle>
-              <AlertDescription className="flex flex-col items-start gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={retry}
-                  disabled={!scan.canStart || scan.running}
-                >
-                  <RefreshCw />
-                  {t.common.retry}
-                </Button>
-              </AlertDescription>
             </Alert>
           </div>
         )}

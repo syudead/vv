@@ -431,9 +431,7 @@ test.describe.serial("guest", () => {
     await page.goto("/");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     expect(await sidebarNames(page)).toEqual(["Library", "Folders", "Sign in"]);
-    await expect(page.getByRole("button", { name: /Refresh library|Scan/ })).toHaveCount(
-      0,
-    );
+    await expect(page.getByRole("button", { name: /Scan/ })).toHaveCount(0);
     await expect(page.getByRole("checkbox")).toHaveCount(0);
     await page.locator("article[data-group-root]").first().hover();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
@@ -461,7 +459,7 @@ test.describe.serial("guest", () => {
       "Recently played",
       "Select",
       "Add tag",
-      "Refresh library",
+      "Scan library",
       "Favorite",
     ]) {
       expect(tree).not.toContain(name);

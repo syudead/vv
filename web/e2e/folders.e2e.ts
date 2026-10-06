@@ -206,7 +206,11 @@ test.describe.serial("folder browser", () => {
         await expect(
           page.getByRole("heading", { name: "The media folders are empty" }),
         ).toBeVisible();
-        await expect(page.getByRole("button", { name: "Scan" })).toBeVisible();
+        // 押すと設定の「Scan status」へ移る（取り込みは始めない）。
+        await expect(page.getByRole("link", { name: "Scan" })).toHaveAttribute(
+          "href",
+          "/settings#scan-status",
+        );
         expect(
           await page.evaluate(
             () =>
@@ -564,13 +568,17 @@ test.describe.serial("folder search", () => {
     // 表示している間に B が丸ごと無くなる想定で、配下を消してから取り込み直す。
     // これでこの describe の他のフィクスチャ（x・y・z・大阪）のうち y が無くなるので、
     // 以後のテストはこれに依存しない（この describe の最後のテストである）。
-    // アプリ自身の「更新」ボタンから取り込みを始める（scan.start が
+    // アプリ自身の設定の「Scan library」から取り込みを始める（scan.start が
     // requestedScanId を覚えるので、取り込みがどれだけ速く終わっても
     // ScanProvider の finished 判定を取りこぼさない。API を直接叩いて外側から
     // 取り込むと、ページの ScanProvider が「実行中」を観測する前に終わってしまい
     // 検知できないことがある）。
     await rm(`${dir}/movies/A/B`, { recursive: true, force: true });
-    await page.getByRole("button", { name: "Refresh library" }).click();
+    // 取り込みを始められるのは設定の「Scan status」だけなので、ページを読み込み直さずに
+    // （ScanProvider を保ったまま）設定へ移って始め、履歴で戻る。
+    await page.getByRole("link", { name: "Settings", exact: true }).click();
+    await page.getByRole("button", { name: "Scan library" }).click();
+    await page.goBack();
 
     await expect(page.getByText("This folder wasn't found")).toBeVisible({
       timeout: 60_000,

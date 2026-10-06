@@ -632,7 +632,7 @@ export default function LibraryPage() {
     conditioned ? (
       <NoMatches onSearch={() => searchField.current?.focus()} />
     ) : owner ? (
-      <EmptyLibrary onScan={scan.start} scanning={scan.running} />
+      <EmptyLibrary />
     ) : (
       <GuestEmpty />
     )

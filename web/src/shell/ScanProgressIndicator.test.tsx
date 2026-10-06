@@ -10,7 +10,7 @@ import { OwnerAudience } from "../testing/audience";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ScanNoticeProvider } from "./ScanNoticeProvider";
 import ScanProgressIndicator from "./ScanProgressIndicator";
-import { ScanProvider } from "./ScanProvider";
+import { ScanProvider, useScan } from "./ScanProvider";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -48,6 +48,15 @@ function LocationProbe() {
   );
 }
 
+function StartButton() {
+  const scan = useScan();
+  return (
+    <button type="button" onClick={scan.start} disabled={!scan.canStart}>
+      start for test
+    </button>
+  );
+}
+
 function renderIndicator() {
   return render(
     <MemoryRouter initialEntries={["/"]}>
@@ -57,6 +66,7 @@ function renderIndicator() {
             <ScanNoticeProvider>
               <ScanProgressIndicator />
               <LocationProbe />
+              <StartButton />
             </ScanNoticeProvider>
           </ScanProvider>
         </OwnerAudience>
@@ -70,6 +80,7 @@ describe("ScanProgressIndicator", () => {
 
   beforeEach(() => {
     window.sessionStorage.clear();
+    window.localStorage.clear();
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
     installFakeEventSource();
@@ -169,6 +180,237 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("dialog")).toBeDefined();
   });
 
+  it("closes the hovered summary when the pointer leaves and does not reopen it", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
+
+    await user.hover(trigger);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    await user.unhover(trigger);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).not.toBe(trigger);
+
+    await user.hover(screen.getByTestId("location"));
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the hovered summary with Escape and keeps it closed", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const trigger = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
+
+    fireEvent.pointerEnter(trigger);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    await act(async () => fireEvent.keyDown(document.body, { key: "Escape" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await act(async () => fireEvent.pointerMove(trigger));
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes the summary on a press outside it", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const trigger = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
+
+    const user = userEvent.setup();
+    await act(async () => fireEvent.focus(trigger));
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    // 外を押したことの受け取りは、開いた次の tick から始まる。
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    await user.click(screen.getByTestId("location"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("closes the summary when the trigger moves to settings", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
+
+    await user.hover(trigger);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    await user.click(trigger);
+    expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(document.activeElement).toBe(trigger);
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps a keyboard-opened summary closed after Escape until focus leaves and returns", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const user = userEvent.setup();
+    const trigger = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
+
+    await user.tab();
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // 閉じたことで本体へフォーカスが戻っても（focus が届いても）開き直らない。
+    await act(async () => fireEvent.focus(trigger));
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    // フォーカスが本体から外れると閉じ、戻れば開く。
+    await user.tab();
+    expect(document.activeElement).not.toBe(trigger);
+    await user.tab({ shift: true });
+    expect(document.activeElement).toBe(trigger);
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    await user.tab();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("closes the indicator during a scan and keeps it hidden through the result", async () => {
+    let current = scan();
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(current),
+      ),
+    );
+    const first = renderIndicator();
+    await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide the scan progress" }));
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+    expect(window.localStorage.getItem("vv.scan-indicator-dismissed")).toContain(
+      '"scanId":1',
+    );
+
+    // 読み込み直しと別のタブ（sessionStorage が空）でも、同じ取り込みは出さない。
+    first.unmount();
+    window.sessionStorage.clear();
+    renderIndicator();
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+
+    for (const result of [
+      scan({ state: "done" }),
+      scan({
+        state: "done",
+        status: "partial",
+        issues: { failed: 1, substituted: 0, revision: 1 },
+      }),
+      scan({ state: "failed", error: "disk" }),
+    ]) {
+      current = result;
+      await emitServerEvent("scan", result);
+      expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+      // 結果の通知も読み上げもしない。
+      expect(screen.queryByRole("status")).toBeNull();
+    }
+
+    // 次の取り込みは、また出す。
+    current = scan({ id: 2 });
+    await emitServerEvent("scan", current);
+    expect(
+      await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ }),
+    ).toBeDefined();
+  });
+
+  it("closes a scan that is still starting and shows the next one again", async () => {
+    let current: Scan | null = null;
+    let resolveStart: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/scans" && init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      return Promise.resolve(current === null ? json({}, 404) : json(current));
+    });
+    renderIndicator();
+    const user = userEvent.setup();
+    const start = screen.getByRole("button", { name: "start for test" });
+    await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+
+    await user.click(start);
+    await user.click(
+      await screen.findByRole("button", { name: "Hide the scan progress" }),
+    );
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+
+    current = scan({ id: 5 });
+    await act(async () => resolveStart?.(json(current, 202)));
+    await act(async () => Promise.resolve());
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+    expect(window.localStorage.getItem("vv.scan-indicator-dismissed")).toContain(
+      '"scanId":5',
+    );
+
+    current = scan({ id: 6 });
+    await emitServerEvent("scan", current);
+    expect(
+      await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ }),
+    ).toBeDefined();
+  });
+
+  it("hides the indicator when another tab closes it", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
+
+    const newValue = JSON.stringify({ version: 1, scanId: 1 });
+    window.localStorage.setItem("vv.scan-indicator-dismissed", newValue);
+    await act(async () =>
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "vv.scan-indicator-dismissed", newValue }),
+      ),
+    );
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+  });
+
+  it("lets a completed notice expire after the summary was opened and closed", async () => {
+    let state: Scan["state"] = "running";
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan({ state })),
+      ),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
+    state = "done";
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const trigger = await screen.findByRole("button", { name: /^Done / });
+    vi.useFakeTimers();
+
+    await act(async () => fireEvent.pointerEnter(trigger));
+    expect(screen.getByRole("dialog")).toBeDefined();
+    await act(async () => fireEvent.keyDown(document.body, { key: "Escape" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // ポインタは本体の上に残っていても、閉じた概要は通知を止めない。
+    await act(async () => vi.advanceTimersByTimeAsync(8100));
+    expect(screen.queryByRole("button", { name: /^Done / })).toBeNull();
+  });
+
   it("finding のあいだは割合も数字も出さず、不確定のバーにする", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -254,7 +496,7 @@ describe("ScanProgressIndicator", () => {
     current = scan({ state: "failed", error: "disk" });
     await act(async () => window.dispatchEvent(new Event("focus")));
     const close = await screen.findByRole("button", {
-      name: "Dismiss the scan result notice",
+      name: "Hide the scan progress",
     });
 
     fireEvent.pointerEnter(close);
@@ -482,9 +724,7 @@ describe("ScanProgressIndicator", () => {
     expect(dialog.textContent).toContain("See Settings for the list.");
     await act(async () => fireEvent.blur(trigger));
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Dismiss the scan result notice" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Hide the scan progress" }));
     expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
   });
 
@@ -511,6 +751,7 @@ describe("ScanProgressIndicator", () => {
         "/settings#scan-status",
         "/",
         "夏の旅行.mp4",
+        "start for test",
       ]);
       await act(async () => fireEvent.blur(trigger));
     };

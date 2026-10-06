@@ -93,3 +93,39 @@ export function clearScanNoticeSession(): void {
     // Storage may be unavailable in privacy-restricted browsing contexts.
   }
 }
+
+/**
+ * 右下の表示を閉じた取り込みの id である。同じ取り込みの間は、読み込み直しや別のタブでも
+ * 右下に出さない（issue 830）ので、sessionStorage ではなく localStorage に置く。
+ */
+export const dismissedStorageKey = "vv.scan-indicator-dismissed";
+
+/** parseDismissedScanId は保存した値を読む。形が違えば null を返す。 */
+export function parseDismissedScanId(raw: string | null): number | null {
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== "object" || value === null) return null;
+    const record = value as Record<string, unknown>;
+    if (record.version !== version || !validId(record.scanId)) return null;
+    return record.scanId;
+  } catch {
+    return null;
+  }
+}
+
+export function readDismissedScanId(): number | null {
+  try {
+    return parseDismissedScanId(window.localStorage.getItem(dismissedStorageKey));
+  } catch {
+    return null;
+  }
+}
+
+export function writeDismissedScanId(scanId: number): void {
+  try {
+    window.localStorage.setItem(dismissedStorageKey, JSON.stringify({ version, scanId }));
+  } catch {
+    // Best effort, like the notice session: the indicator only reappears.
+  }
+}

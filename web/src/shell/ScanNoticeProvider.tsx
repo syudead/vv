@@ -12,8 +12,12 @@ import {
 import type { Scan } from "../api/client";
 import { inProgress, useScan } from "./ScanProvider";
 import {
+  dismissedStorageKey,
   emptyScanNoticeSession,
+  parseDismissedScanId,
+  readDismissedScanId,
   readScanNoticeSession,
+  writeDismissedScanId,
   writeScanNoticeSession,
   type CompletionNotice,
   type ScanNoticeSession,
@@ -31,7 +35,16 @@ function persistent(scan: Scan | null | undefined): boolean {
 }
 
 export interface ScanNoticeContextValue extends ScanNoticeSession {
+  /** 右下の表示を閉じた取り込みの id。 */
+  dismissedScanId: number | null;
+  /** 開始の途中で閉じ、新しい取り込みの id を待っている。 */
+  dismissPending: boolean;
   acknowledgeTerminalScan: () => void;
+  /**
+   * dismissIndicator は今の取り込みの右下の表示を閉じる。その取り込みが終わるまでも、
+   * 終わったあとの結果の通知としても出さない。次の取り込みでは、また出す（issue 830）。
+   */
+  dismissIndicator: () => void;
   setCompletionNoticePaused: (paused: boolean) => void;
 }
 
@@ -52,6 +65,12 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   );
   const sessionRef = useRef(session);
   const scanRef = useRef(scan.scan);
+  const [dismissedScanId, setDismissedScanId] = useState(readDismissedScanId);
+  const dismissedRef = useRef(dismissedScanId);
+  // 開始の途中で閉じたときは、まだ新しい取り込みの id が無い。開始前の id を覚えて待つ。
+  const [pendingDismiss, setPendingDismiss] = useState<{
+    baseline: number | null;
+  } | null>(null);
 
   const updateSession = useCallback((next: ScanNoticeSession) => {
     sessionRef.current = next;
@@ -62,6 +81,49 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     scanRef.current = scan.scan;
   }, [scan.scan]);
+
+  const dismiss = useCallback(
+    (scanId: number) => {
+      dismissedRef.current = scanId;
+      setDismissedScanId(scanId);
+      writeDismissedScanId(scanId);
+      setCompletionNoticePausedState(false);
+      const currentSession = sessionRef.current;
+      updateSession({
+        ...currentSession,
+        completionNotice:
+          currentSession.completionNotice?.scanId === scanId
+            ? null
+            : currentSession.completionNotice,
+        acknowledgedTerminalScanId: scanId,
+      });
+    },
+    [updateSession],
+  );
+
+  // 別のタブで閉じたときも、同じ取り込みは出さない。
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== dismissedStorageKey) return;
+      const scanId = parseDismissedScanId(event.newValue);
+      dismissedRef.current = scanId;
+      setDismissedScanId(scanId);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    if (pendingDismiss === null) return;
+    const current = scan.scan;
+    if (current !== null && current.id !== pendingDismiss.baseline) {
+      setPendingDismiss(null);
+      dismiss(current.id);
+      return;
+    }
+    // 開始が失敗した。閉じる相手が無いので待つのをやめる。
+    if (!scan.starting) setPendingDismiss(null);
+  }, [dismiss, pendingDismiss, scan.scan, scan.starting]);
 
   useEffect(() => {
     const current = scan.scan;
@@ -81,6 +143,8 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     }
     if (session.trackingScanId !== current.id) return;
     if (session.acknowledgedTerminalScanId === current.id) return;
+    // 閉じた取り込みは、終わったあとの結果も通知しない。
+    if (dismissedRef.current === current.id) return;
     if (
       session.completionNotice?.scanId === current.id &&
       (persistent(current) || session.completionNotice.pausedRemainingMs !== null)
@@ -144,6 +208,16 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     });
   }, [updateSession]);
 
+  const starting = scan.starting;
+  const dismissIndicator = useCallback(() => {
+    const current = scanRef.current;
+    if (starting) {
+      setPendingDismiss({ baseline: current?.id ?? null });
+      return;
+    }
+    if (current !== null) dismiss(current.id);
+  }, [dismiss, starting]);
+
   const setCompletionNoticePaused = useCallback(
     (paused: boolean) => {
       const currentSession = sessionRef.current;
@@ -182,8 +256,22 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ ...session, acknowledgeTerminalScan, setCompletionNoticePaused }),
-    [acknowledgeTerminalScan, session, setCompletionNoticePaused],
+    () => ({
+      ...session,
+      dismissedScanId,
+      dismissPending: pendingDismiss !== null,
+      acknowledgeTerminalScan,
+      dismissIndicator,
+      setCompletionNoticePaused,
+    }),
+    [
+      acknowledgeTerminalScan,
+      dismissIndicator,
+      dismissedScanId,
+      pendingDismiss,
+      session,
+      setCompletionNoticePaused,
+    ],
   );
   return (
     <ScanNoticeContext.Provider value={value}>{children}</ScanNoticeContext.Provider>
