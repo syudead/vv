@@ -14,7 +14,7 @@ import type { Tag } from "../api/tags";
 import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SelectionBar from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {

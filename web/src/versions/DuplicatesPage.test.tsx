@@ -7,7 +7,7 @@ import type { VersionCandidate, Video, VideoVersions } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import DuplicatesPage from "./DuplicatesPage";
 
 /** groupList は組の一覧である。通知（Sonner）の並び（ol）は数えない。 */

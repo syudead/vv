@@ -10,7 +10,7 @@ import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { OwnerAudience } from "../testing/audience";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SettingsPage from "./SettingsPage";
 
 function json(body: unknown, status = 200): Response {

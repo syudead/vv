@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import TagRow from "./TagRow";
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
