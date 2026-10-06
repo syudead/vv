@@ -40,14 +40,9 @@ export default function IconToggleGroup<T extends string>({
     >
       {options.map((option) => (
         <Tooltip key={option.value}>
-          {/* 項目を外に置き、ツールチップの引き金を asChild で重ねる。ツールチップが開いている
-              間は引き金の data-state（delayed-open）が選んだ状態の data-state="on" と
-              ぶつかるので、選んだ見た目は aria-checked でも付ける。 */}
-          <ToggleGroupItem
-            value={option.value}
-            asChild
-            className="aria-checked:border-primary-active aria-checked:bg-primary-soft aria-checked:text-primary"
-          >
+          {/* 項目を外に置き、ツールチップの引き金を asChild で重ねる。選んだ見た目は
+              ツールチップが開いている間も aria-checked で付く（ui/shadcn/toggle.tsx）。 */}
+          <ToggleGroupItem value={option.value} asChild>
             <TooltipTrigger aria-label={option.label}>{option.icon}</TooltipTrigger>
           </ToggleGroupItem>
           <TooltipContent>{option.label}</TooltipContent>

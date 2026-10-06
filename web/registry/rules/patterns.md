@@ -138,7 +138,8 @@ screen is a `FormDialog` or `FormRow`s in a `PageSection`.
 Item `form-dialog`. `FormDialog` is a `Dialog`, at most `max-w-lg` (32rem)
 wide, with a title, an optional description, the fields and a footer with
 `Cancel` and one `default` submit button named by what it does ("Create",
-"Merge"). Below `sm` it spans the screen with a 16px margin.
+"Merge"). Below `sm` it spans the screen with a 16px margin. On a short
+screen only the fields scroll; the title and the footer stay in the dialog.
 
 Keep it to a few fields that belong to one action. Show a field's error with
 `FieldError` under it and keep the dialog open; close it only when the action

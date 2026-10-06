@@ -204,10 +204,13 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(
       box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 低い画面では、フォームダイアログ（FormDialog）の窓全体が縦にスクロールし、
-    // ボタンの行まで届く。
-    expect(modal.className).toContain("overflow-y-auto");
+    // 低い画面では、フォームダイアログ（FormDialog）の本文だけが縦にスクロールし、
+    // ボタンの行は窓の下端に残る（変更前と同じ）。
     expect(modal.className).toContain("max-h-full");
+    expect(modal.className).toContain("overflow-hidden");
+    const body = box.closest('[data-slot="form-dialog-body"]')!;
+    expect(body.className).toContain("overflow-y-auto");
+    expect(body.contains(footer)).toBe(false);
     expect(modal.contains(footer)).toBe(true);
   });
 

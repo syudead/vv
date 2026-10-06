@@ -74,6 +74,8 @@ export function FormDialog({
       <DialogContent
         data-slot="form-dialog"
         showCloseButton={false}
+        // 低い画面では本文だけをスクロールし、題とボタンの行は窓の上下に残す。
+        className="flex flex-col overflow-hidden"
         onEscapeKeyDown={(event) => {
           // IME の変換を取り消す Esc では閉じない。
           if (event.isComposing || event.keyCode === 229) event.preventDefault();
@@ -92,12 +94,17 @@ export function FormDialog({
           target.focus();
         }}
       >
-        <form onSubmit={onSubmit} className="flex min-w-0 flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             {description && <DialogDescription>{description}</DialogDescription>}
           </DialogHeader>
-          <FieldGroup>{children}</FieldGroup>
+          <div
+            data-slot="form-dialog-body"
+            className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1"
+          >
+            <FieldGroup>{children}</FieldGroup>
+          </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button ref={cancelRef} variant="outline" size="sm" disabled={pending}>
