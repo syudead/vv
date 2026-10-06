@@ -35,7 +35,7 @@ function PopoverContent({
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
         className={cn(
-          "z-50 flex w-popover origin-(--radix-popover-content-transform-origin) flex-col gap-3 rounded-lg bg-popover p-3 text-sm text-popover-foreground shadow-elevated outline-hidden data-open:animate-pop-in motion-reduce:animate-none",
+          "z-50 flex max-h-(--radix-popover-content-available-height) w-popover origin-(--radix-popover-content-transform-origin) flex-col gap-3 rounded-lg bg-popover p-3 text-sm text-popover-foreground shadow-elevated outline-hidden data-open:animate-pop-in motion-reduce:animate-none",
           className,
         )}
         {...props}

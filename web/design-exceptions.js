@@ -88,7 +88,10 @@ export default [
   {
     file: "ui/shadcn/popover.tsx",
     rules: ["better-tailwindcss/no-restricted-classes"],
-    classes: ["origin-\\(--radix-popover-content-transform-origin\\)"],
+    classes: [
+      "max-h-\\(--radix-popover-content-available-height\\)",
+      "origin-\\(--radix-popover-content-transform-origin\\)",
+    ],
     kind: "special",
     reason:
       "Radix sets the floating layer's transform origin and available height as CSS variables at runtime; the class has to read them, and no token can name a value Radix computes.",
