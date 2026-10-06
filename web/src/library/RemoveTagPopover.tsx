@@ -14,7 +14,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
-import TagCommand, { type TagChoice } from "./TagCommand";
+import TagCommand, { type TagChoice } from "../ui/TagCommand";
 
 /**
  * RemoveTagPopover は選択バーの「タグを外す」の中身である
@@ -84,7 +84,7 @@ export default function RemoveTagPopover({
 
   // 開いている間に選択が変わったら（別の動画を選び直す・「すべて選択」の
   // 結果が届くなど）要約を取り直す。取り直している間は loading が立ち、
-  // 候補（Combobox）ごと隠れるので、古い候補を選べない（Devin の指摘2）。
+  // 候補（TagCommand）ごと隠れるので、古い候補を選べない（Devin の指摘2）。
   // 開いた瞬間（justOpened）だけ、前回の入力と失敗の文言を消す。
   const wasOpenRef = useRef(false);
   useEffect(() => {

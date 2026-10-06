@@ -16,7 +16,7 @@ import { PopoverContent } from "../ui/shadcn/popover";
 import { useToast } from "../ui/Toast";
 import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildAddOptions } from "./tagChoices";
-import TagCommand from "./TagCommand";
+import TagCommand from "../ui/TagCommand";
 
 /**
  * AddTagPopover は選択バーの「タグを付ける」の中身である

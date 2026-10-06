@@ -482,6 +482,20 @@
       "dependencies": ["radix-ui", "class-variance-authority"]
     },
     {
+      "name": "tag-command",
+      "type": "registry:ui",
+      "title": "TagCommand",
+      "description": "vv component: typing a tag name to pick a tag or create one, with the tag-name checks, in a popover, a list below the input or a fixed-height list in a dialog. Uses command.",
+      "docs": "Usage rules: web/registry/rules/components.md#tagcommand (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/TagCommand.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "tentative-mark",
       "type": "registry:ui",
       "title": "TentativeMark",

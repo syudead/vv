@@ -1,6 +1,6 @@
 import { t, type UiText } from "../i18n";
 
-// タグの名前の規則。名前を打つすべての入力が共有する（もとは ui/Combobox にあった）。
+// タグの名前の規則。名前を打つすべての入力が共有する。
 
 export const newlinePattern = /[\r\n]/;
 // タグ名では C0/C1 制御文字（U+0000–U+001F・U+007F–U+009F、一般カテゴリ Cc）をすべて拒む。
@@ -17,7 +17,7 @@ function codePointLength(value: string): number {
 /**
  * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
  * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。タグの
- * 名前を打つすべての入力（ui/Combobox、管理画面の作成・改名・シノニムの
+ * 名前を打つすべての入力（ui/TagCommand、管理画面の作成・改名・シノニムの
  * 追加、選択バーのタグの検索）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
  */
 export function nameReason(raw: string): UiText | null {

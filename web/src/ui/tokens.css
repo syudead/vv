@@ -141,7 +141,7 @@
   --spacing-popover: 18rem;
   --spacing-popover-wide: 20rem;
   --spacing-chip-label: 12rem;
-  /* タグの名前を打つ Combobox（ui/Combobox.tsx）の入力の幅と候補の一覧の幅・最大の高さ、
+  /* タグの名前を打つ TagCommand（ui/TagCommand.tsx）の dropdown・inline の入力の幅と候補の一覧の幅・最大の高さ、
      窓の中に置いた一覧の高さとその最大 */
   --spacing-combobox: 10rem;
   --spacing-combobox-list: 16rem;
