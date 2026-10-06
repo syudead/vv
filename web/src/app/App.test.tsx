@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -195,7 +195,7 @@ describe("App", () => {
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
-  it("ゲストには更新・取り込みの進捗・所有者だけのナビを出さず、所有者だけの API と /api/events を開かない", async () => {
+  it("ゲストには取り込みの button・進捗・所有者だけのナビを出さず、所有者だけの API と /api/events を開かない", async () => {
     installFakeEventSource();
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -205,11 +205,7 @@ describe("App", () => {
     render(<App />);
     await screen.findByRole("link", { name: "フォルダへ" });
 
-    expect(
-      screen.queryByRole("button", {
-        name: /Refresh library|Scanning|Add a media folder/,
-      }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /Scan library|Scanning/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /scan/i })).toBeNull();
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
@@ -224,7 +220,7 @@ describe("App", () => {
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 
-  it("所有者にはサイドバーの全項目と更新を出す", async () => {
+  it("所有者にはサイドバーの全項目を出し、トップバーに取り込みの button を出さない", async () => {
     render(<App />);
     await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
@@ -239,6 +235,7 @@ describe("App", () => {
       "Settings",
       "Sign out",
     ]);
-    expect(screen.getByRole("button", { name: "Scanning" })).toBeDefined();
+    const topBar = screen.getByRole("banner");
+    expect(within(topBar).queryByRole("button", { name: /scan|refresh/i })).toBeNull();
   });
 });

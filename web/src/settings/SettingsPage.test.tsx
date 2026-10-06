@@ -109,11 +109,12 @@ describe("SettingsPage", () => {
       ),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
-    expect(
-      screen
-        .getByRole("button", { name: "Add a media folder in Settings first" })
-        .hasAttribute("disabled"),
-    ).toBe(true);
+    const start = screen.getByRole("button", { name: "Scan library" });
+    expect(start.hasAttribute("disabled")).toBe(true);
+    expect(start.getAttribute("aria-describedby")).toBe("scan-start-blocked");
+    expect(document.getElementById("scan-start-blocked")?.textContent).toBe(
+      "Add a media folder below to scan.",
+    );
   });
 
   it("pickerを親子移動して1件追加し、自動取り込みを始めない", async () => {
@@ -361,7 +362,7 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("/media/concurrent")).toBeDefined();
     expect(screen.queryByText("/media/original")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Refresh library" }).hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Scan library" }).hasAttribute("disabled"),
     ).toBe(false);
   });
 

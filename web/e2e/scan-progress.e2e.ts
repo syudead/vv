@@ -501,7 +501,7 @@ test.describe.serial("import progress with the real server", () => {
     folder = (await created.json()) as MediaFolder;
 
     await page.goto("/settings#scan-status");
-    await expect(page.getByRole("button", { name: "Refresh library" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Scan library" })).toBeEnabled();
     // 右下の本体の文言を、変わるたびに時刻とともに記録する（SSE の知らせは速いので、
     // 取りこぼさないようページの中で見る）。
     await page.evaluate(() => {
@@ -522,7 +522,7 @@ test.describe.serial("import progress with the real server", () => {
         attributes: true,
       });
     });
-    await page.getByRole("button", { name: "Refresh library" }).click();
+    await page.getByRole("button", { name: "Scan library" }).click();
 
     // 分母には、ほかの登録フォルダで毎回読めないファイル（登録できなかった件）も入る
     // ことがあるので、単位は 10 本以上の一定の値として確かめる。

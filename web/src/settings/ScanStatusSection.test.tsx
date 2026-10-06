@@ -154,7 +154,7 @@ describe("ScanStatusSection", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
-  it("shows a failed reason and retries through the existing scan action", async () => {
+  it("shows a failed reason and scans again from the start button", async () => {
     let startCalls = 0;
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
@@ -191,8 +191,83 @@ describe("ScanStatusSection", () => {
     expect(screen.getByText("The scan couldn't finish.")).toBeDefined();
     expect(screen.queryByText(/permission denied/)).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Scan library" }));
     await waitFor(() => expect(startCalls).toBe(1));
+  });
+
+  it.each([
+    ["not run", json({}, 404)],
+    ["done", json(scan({ state: "done", videos: { total: 3, settled: 3 } }))],
+    [
+      "partial",
+      json(
+        scan({
+          state: "done",
+          status: "partial",
+          issues: { failed: 1, substituted: 0, revision: 1 },
+        }),
+      ),
+    ],
+  ])(
+    "starts a scan from the %s state and blocks the button while it runs",
+    async (_, current) => {
+      let started = false;
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url === "/api/scans" && init?.method === "POST") {
+          started = true;
+          return Promise.resolve(json(scan({ id: 9, state: "running" }), 202));
+        }
+        if (started) return Promise.resolve(json(scan({ id: 9, state: "running" })));
+        return Promise.resolve(current.clone());
+      });
+      renderSection();
+      const user = userEvent.setup();
+      const start = await screen.findByRole("button", { name: "Scan library" });
+      await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+      expect(start.getAttribute("aria-describedby")).toBeNull();
+
+      await user.click(start);
+
+      const running = await screen.findByRole("button", { name: "Scanning…" });
+      expect(running.hasAttribute("disabled")).toBe(true);
+      expect(running.getAttribute("aria-describedby")).toBe("scan-start-blocked");
+      expect(document.getElementById("scan-start-blocked")?.textContent).toBe(
+        "A scan is running. You can start another when it finishes.",
+      );
+    },
+  );
+
+  it("shows a failed start request and lets the owner try again", async () => {
+    let attempts = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/scans" && init?.method === "POST") {
+        attempts += 1;
+        return Promise.resolve(json({ code: "internal", message: "boom" }, 500));
+      }
+      return Promise.resolve(
+        json(scan({ state: "done", videos: { total: 3, settled: 3 } })),
+      );
+    });
+    renderSection();
+    const user = userEvent.setup();
+    const start = await screen.findByRole("button", { name: "Scan library" });
+    await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+
+    await user.click(start);
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /^Couldn't start the scan: /,
+    );
+    expect(screen.queryByText("Rechecking the latest status")).toBeNull();
+    const again = screen.getByRole("button", { name: "Scan library" });
+    await waitFor(() => expect(again.hasAttribute("disabled")).toBe(false));
+    await user.click(again);
+    await waitFor(() => expect(attempts).toBe(2));
   });
 
   it("shows a general English reason for an old failure without a code", async () => {

@@ -33,9 +33,13 @@ export interface ScanContextValue {
   activity: ScanActivity | null;
   /** 状態取得や開始の失敗。 */
   error: UiText | null;
+  /** 開始の失敗。設定の「Scan status」が button のそばに出す。 */
+  startError: UiText | null;
   starting: boolean;
   running: boolean;
   canStart: boolean;
+  /** メディアフォルダが1つも無いと分かっている（件数が未取得のときは false）。 */
+  noMediaFolders: boolean;
   start: () => void;
   refresh: () => void;
   setFolderCount: (count: number) => void;
@@ -108,8 +112,8 @@ export function nextActivity(
  *
  * 状態は最初に1度取得し、その後はサーバーからの変化の知らせ（`/api/events`）で
  * 更新する。一定間隔では問い合わせない。つなぎ直したとき、ウィンドウへ戻った
- * とき、利用者が更新を求めたときは取り直す。トップバーのボタンとライブラリの
- * 再読込が同じ状態を見る。
+ * とき、利用者が更新を求めたときは取り直す。設定の「Scan status」の開始ボタン・
+ * 右下の表示・ライブラリの再読込が同じ状態を見る。
  *
  * 取り込みは所有者だけのものなので、ゲストとして描くときは状態を取りに行かず
  * （`GET /api/scans/current` を呼ばない）、`/api/events` も購読しない。取り込みの
@@ -333,9 +337,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       loaded,
       activity: activity?.activity ?? null,
       error,
+      startError,
       starting,
       running: starting || scan?.state === "running",
       canStart: folderCount !== null && folderCount > 0,
+      noMediaFolders: folderCount === 0,
       start,
       refresh,
       setFolderCount: updateFolderCount,
@@ -350,6 +356,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       refresh,
       scan,
       start,
+      startError,
       starting,
       updateFolderCount,
     ],

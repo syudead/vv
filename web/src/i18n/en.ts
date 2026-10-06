@@ -560,7 +560,6 @@ export const en = {
       signIn: "Sign in",
     },
     scan: "Scan",
-    scanning: "Scanning…",
     cardSize: "Card size",
     viewAndSort: "View and sort",
     search: {
@@ -1432,13 +1431,6 @@ export const en = {
       menu: "Menu",
       closeMenu: "Close menu",
     },
-    topBar: {
-      scanning: "Scanning",
-      refreshLibrary: "Refresh library",
-      needsMediaFolder: "Add a media folder in Settings first",
-      refreshing: "Refreshing",
-      refresh: "Refresh",
-    },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
       notRun: "No scan has run yet",
@@ -1497,7 +1489,7 @@ export const en = {
         `${progress === null ? status : `${status} ${progress}`}${issues === null ? "" : `, ${issues}`}`,
       issueCounts: (counts: readonly string[]) => formatList(counts),
       openStatus: (label: string) => `${label}. Open the scan status`,
-      dismissResult: "Dismiss the scan result notice",
+      dismiss: "Hide the scan progress",
       progress: "Progress of the videos in this scan",
     },
   },
@@ -1511,6 +1503,11 @@ export const en = {
         fetchFailed: "Rechecking",
       },
       rechecking: "Rechecking the latest status",
+      // 取り込みを始める button と、押せない理由（issue 830）。
+      start: "Scan library",
+      starting: "Scanning…",
+      runningReason: "A scan is running. You can start another when it finishes.",
+      needsMediaFolder: "Add a media folder below to scan.",
       // 問題の一覧（specs/024-import-progress/ui-design.md「Issue List」）。
       issues: {
         heading: "Videos with problems",
@@ -1573,7 +1570,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After a change, run a scan with “Refresh library” at the top. Scans don't start automatically.",
+        "Folders on the server where VVMDM looks for videos. After a change, start a scan with “Scan library” under Scan status. Scans don't start automatically.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       list: "Added media folders",
       loading: "Loading the media folders",

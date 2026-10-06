@@ -113,7 +113,7 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 
-  it("keeps a failed scan notice until acknowledgement", async () => {
+  it("expires a failed scan notice like a completed one", async () => {
     let currentCalls = 0;
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -130,10 +130,10 @@ describe("ScanNoticeProvider", () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(9000));
 
-    expect(screen.getByTestId("notice").textContent).toBe("11");
+    expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 
-  it("does not expire a restored failed notice before the current scan loads", async () => {
+  it("expires a restored failed notice only after the current scan loads", async () => {
     vi.useFakeTimers();
     window.sessionStorage.setItem(
       "vv.scan-notice",
@@ -158,7 +158,7 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("14");
 
     await act(async () => resolveScan?.(json(scan(14, "failed"))));
-    expect(screen.getByTestId("notice").textContent).toBe("14");
+    expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 
   it("does not let an expired old notice overwrite a newly running scan", async () => {
@@ -301,7 +301,7 @@ describe("ScanNoticeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("21"));
   });
 
-  it("一部失敗の通知は、失敗と同じく閉じるまで残す", async () => {
+  it("一部失敗の通知も、完了と同じく時間がたてば消え、止めた間は消えない", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
         String(input) === "/api/media-folders" ? json([{}]) : json(scan(22, "running")),
@@ -320,11 +320,11 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("22");
 
     await act(async () => screen.getByRole("button", { name: "pause" }).click());
-    await act(async () => screen.getByRole("button", { name: "resume" }).click());
     await act(async () => vi.advanceTimersByTimeAsync(9000));
     expect(screen.getByTestId("notice").textContent).toBe("22");
 
-    await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
+    await act(async () => screen.getByRole("button", { name: "resume" }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(9000));
     expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 });
