@@ -191,7 +191,7 @@ export default function ScanProgressIndicator() {
                 variant="ghost"
                 size="icon-sm"
                 aria-label={t.shell.scan.dismiss}
-                className="mr-0.5 size-7 text-muted-foreground"
+                className="mr-0.5 text-muted-foreground"
                 onClick={dismissIndicator}
               >
                 <X aria-hidden="true" />
