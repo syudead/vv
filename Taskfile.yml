@@ -113,6 +113,8 @@ tasks:
 
   check:
     desc: Run every check that does not require a browser.
+    # CI は同じ部分タスクを組に分けて並べて流す（.github/workflows/ci.yml の
+    # check-group）。ここに検査を足したら、どれかの組にも足す。
     cmds:
       - task: fmt-check
       - task: lint
@@ -178,7 +180,7 @@ tasks:
   test-web:
     desc: Run the Web build check and unit tests.
     cmds:
-      - npm --prefix web run test
+      - npm --prefix web run test -- {{.CLI_ARGS}}
 
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
