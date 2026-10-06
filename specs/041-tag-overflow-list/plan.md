@@ -101,6 +101,7 @@ No `data-model.md` and no `contracts/` (see Technical Context).
 | `web/src/library` | `CardTagRow.tsx`: the list's layout, the chip's non-truncating form in the list, the hover wiring; a new hover-intent hook and its test; `CardTagRow.test.tsx` |
 | `web/src/ui/shadcn/popover.tsx`, `web/design-exceptions.js`, `web/registry/r/` (generated) | The available-height cap and its exception entry; the rebuilt `popover` item |
 | `web/e2e/tags.e2e.ts` | The browser tests of acceptance criteria 1 to 5 at 1280×800 and 390×844 |
+| `web/e2e/media-fixtures.mjs` | `generateTagsFixtures` makes enough videos that the grid at 1280×800 has a last row at the viewport's bottom edge; `tags.e2e.ts` expects the new count instead of 4 |
 | `specs/014-video-tags/ui-design.md`, `docs/design-docs/library-ui.md` | The Overflow section points to this feature for the list; the Cards table names the hover-opened list |
 
 **New paths**: `web/src/library/useHoverOpen.ts` and `useHoverOpen.test.ts`
@@ -132,8 +133,10 @@ list, and the list derived from the row's current tags
 [R-3](research.md#r-3-chips-in-the-list-never-truncate-a-long-name-wraps-inside-its-chip),
 [R-4](research.md#r-4-the-list-is-derived-from-the-current-tags-never-copied-when-it-opens));
 the look follows `ui-design.md`. The browser tests of acceptance criteria 1
-and 5 and of the edge cases for a card near the bottom and right edges, and
-the updates to 014's Overflow section and library-ui.md's Cards table.
+and 5 and of the edge cases for a card near the bottom and right edges, with
+the extra videos in `generateTagsFixtures` that those edge cases need (the
+fixture makes 4 today, too few to put a card at the bottom edge), and the
+updates to 014's Overflow section and library-ui.md's Cards table.
 
 **Dependencies**: None
 
