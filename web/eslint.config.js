@@ -82,6 +82,12 @@ const controlRestrictedSyntax = [
   },
   {
     selector:
+      'JSXAttribute[name.name="style"] Property[value.type="UnaryExpression"][value.argument.type="Literal"]',
+    message:
+      "A fixed value in style bypasses the design-system scale. Use the tokens and classes (web/registry/rules/foundations.md); style is only for values known at run time.",
+  },
+  {
+    selector:
       'JSXAttribute[name.name="style"] Property[value.type="TemplateLiteral"][value.expressions.length=0]',
     message:
       "A fixed value in style bypasses the design-system scale. Use the tokens and classes (web/registry/rules/foundations.md); style is only for values known at run time.",
