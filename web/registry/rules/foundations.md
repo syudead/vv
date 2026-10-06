@@ -85,8 +85,8 @@ The library (management) is denser than the video page (viewing):
 
 ## Radius, shadow and motion
 
-| Scale  | Steps                                                                                                                                                                  |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, cards, thumbnails; `rounded-lg` popovers and dialogs; `rounded-full` pills and the scrub dot                |
-| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images                         |
-| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer`, `animate-spin` and `animate-pulse` for loading; each with `motion-reduce:animate-none` |
+| Scale  | Steps                                                                                                                                                                                               |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Radius | `rounded-sm` checkboxes and badges; `rounded-md` controls, cards, thumbnails; `rounded-lg` popovers and dialogs; `rounded-full` pills and the scrub dot                                             |
+| Shadow | None on resting surfaces; `shadow-card-hover` on a hovered card; `shadow-elevated` on floating layers; `drop-shadow-mark` on marks over images; `shadow-table-head` underlines a stuck table header |
+| Motion | `animate-fade-in`, `animate-pop-in`, `animate-slide-up`, and `animate-shimmer`, `animate-spin` and `animate-pulse` for loading; each with `motion-reduce:animate-none`                              |

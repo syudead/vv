@@ -175,6 +175,8 @@
   /* --- 影: 置いた面には付けず、hover のカードと浮く層と画像の上の印にだけ付ける --- */
   --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.1), 0 8px 24px rgb(0 0 0 / 0.45);
   --shadow-elevated: 0 0 0 1px rgb(255 255 255 / 0.06), 0 12px 32px rgb(0 0 0 / 0.55);
+  /* 貼り付いた表の列の見出しの下線。行の境界線は貼り付きと一緒に動かないので、影で描く。 */
+  --shadow-table-head: inset 0 -1px 0 var(--color-border);
   --drop-shadow-mark: 0 1px 2px rgb(0 0 0 / 0.75);
 
   /*
@@ -276,4 +278,12 @@
     transparent 100%
   );
   background-size: 200% 100%;
+}
+
+/*
+ * DataTable の貼り付く列の見出しの位置。画面が測った帯の下端を、DataTable が
+ * --data-table-head-top で渡す（web/registry/rules/patterns.md の Data table）。
+ */
+@utility top-data-table-head {
+  top: var(--data-table-head-top, 0px);
 }

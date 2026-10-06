@@ -48,6 +48,7 @@ import {
   newSeed,
 } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
@@ -387,6 +388,7 @@ export default function LibraryPage() {
     knownConditionsSignature.current = conditionsSignature;
     clearSelection();
   }, [clearSelection, conditionsSignature]);
+  useScrollTopOnChange(conditionsSignature);
 
   useEffect(() => {
     if (selectedIds.size === 0) return;

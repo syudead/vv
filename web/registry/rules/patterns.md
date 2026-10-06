@@ -71,7 +71,9 @@ shows loading, empty or an error.
 Item `admin-table-page`. `AdminTablePage` is one column, at most `max-w-4xl`,
 centered. The header and the band stick under the top bar, so the create
 action, the tabs and the selection stay in reach while the rows scroll; pass
-`bandRef` to measure the stuck band so a focused row never hides under it:
+`bandRef` to measure the stuck band, pass its bottom to the `DataTable`'s
+`stickyHeaderTop` so the column header sticks right under it, and keep a
+focused row clear of both:
 
 | Slot           | Put in it                                                                                                                                      | Never                           |
 | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
@@ -176,7 +178,7 @@ such as the count of affected videos.
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                    |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                           |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                                                                                                                                   |
-| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`                                                                                                                                                                                                                  |
+| `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`; `stickyHeaderTop` sticks the column header that many px from the top, under an admin table page's stuck band                                                                                                    |
 | `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                                                                                                                      |
 
 - `Toolbar`: put the search in `search`, filter triggers as children, view
