@@ -21,9 +21,9 @@ import {
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
+import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
@@ -353,17 +353,18 @@ export default function VideoTags({
           </li>
         ))}
         <li>
-          <Combobox
+          <TagCommand
+            layout="dropdown"
+            label={t.player.tags.add}
             value={inputValue}
             onValueChange={setInputValue}
-            options={options}
-            exactOption={exactOption}
+            choices={options}
+            exactChoice={exactOption}
             onSelect={(option) =>
               submitAdd({ id: Number(option.id), name: option.label })
             }
             createLabel={createLabel}
             onCreate={(spelling) => submitAdd({ name: spelling })}
-            placeholder={t.player.tags.add}
             icon={
               <Plus
                 className="size-3 shrink-0 text-muted-foreground"
@@ -371,11 +372,10 @@ export default function VideoTags({
               />
             }
             busy={submitting}
-            aria-label={t.player.tags.add}
             inputRef={inputRef}
             // 一覧が閉じているときの Esc は、入力を空にする
             // （ui-design.md「Add input」）。
-            onEscapeWhenClosed={() => setInputValue("")}
+            onEscape={() => setInputValue("")}
           />
         </li>
       </ul>
@@ -392,7 +392,7 @@ function buildOptions(
   allTags: readonly Tag[],
   attachedIds: ReadonlySet<number>,
   input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = trimmed.toLowerCase();
 
@@ -430,14 +430,14 @@ function buildOptions(
       return compareNatural(a.tag.name, b.tag.name);
     });
 
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
+  const options: TagChoice[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
     hint,
     meta: t.player.tags.videoCount(tag.videoCount),
   }));
 
-  const exactOption: ComboboxOption | null =
+  const exactOption: TagChoice | null =
     exactTag === undefined
       ? null
       : {

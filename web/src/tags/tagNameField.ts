@@ -61,7 +61,7 @@ export function tagFieldError(
 /**
  * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・
  * 落とし込みの遮断を持つ（ui-design.md「Combobox」名前の検証・改行の扱い）。
- * 管理画面の作成・改名の入力は `ui/Combobox` の候補の一覧を持たないが、
+ * 管理画面の作成・改名の入力は `ui/TagCommand` の候補の一覧を持たないが、
  * 検証と理由の出し方は同じにする（Issue 271「作成と改名」）。
  *
  * 理由は、貼り付け・落とし込みで直接 `setReason` した分も含め、次に値が

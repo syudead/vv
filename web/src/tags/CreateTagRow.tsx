@@ -12,7 +12,7 @@ import { useTagNameField, type TagFieldError } from "./tagNameField";
 /**
  * CreateTagRow は「新しいタグ」で表の先頭に差し込む作成の行である
  * （ui-design.md「Create and rename」）。候補の一覧は持たない、名前1つだけの
- * 入力で、検証と理由の出し方は `ui/Combobox` と同じにする。表の行（`TableRow`）で、
+ * 入力で、検証と理由の出し方は `ui/TagCommand` と同じにする。表の行（`TableRow`）で、
  * 1 つの欄が列をすべてまたぐ。
  */
 export default function CreateTagRow({

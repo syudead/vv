@@ -1,5 +1,13 @@
 import { ArrowRight, Search } from "lucide-react";
-import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -11,11 +19,11 @@ import {
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Badge } from "../ui/shadcn/badge";
 import { Field, FieldError, FieldLabel, FieldTitle } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
+import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
 import { DialogError } from "./DialogError";
 
@@ -69,7 +77,12 @@ export default function MergeTagDialog({
   const mergeButton = useRef<HTMLButtonElement>(null);
   const sourcesHeadingId = useId();
   const searchErrorId = useId();
-  const targetFieldId = useId();
+  // 見える名札が指す入力の id。cmdk が入力に自分の id を付けるので、描いた入力から読む。
+  const targetLabelId = useId();
+  const [targetInputId, setTargetInputId] = useState<string | undefined>(undefined);
+  const targetInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node !== null) setTargetInputId(node.id);
+  }, []);
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
@@ -186,7 +199,7 @@ export default function MergeTagDialog({
     onClose();
   }
 
-  function selectTarget(option: ComboboxOption) {
+  function selectTarget(option: TagChoice) {
     const found = targetTags.find((item) => String(item.id) === option.id);
     if (found === undefined) return;
     justSelectedRef.current = true;
@@ -294,15 +307,20 @@ export default function MergeTagDialog({
         </Field>
       )}
       <Field data-invalid={searchError !== null || undefined}>
-        <FieldLabel htmlFor={targetFieldId}>{t.tags.mergeDialog.target}</FieldLabel>
+        <FieldLabel id={targetLabelId} htmlFor={targetInputId}>
+          {t.tags.mergeDialog.target}
+        </FieldLabel>
         {/*
           統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
           （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
-          ui/Combobox のまま使う。Esc は窓が閉じる。
+          ui/TagCommand（inline）が持つ。Esc は窓が閉じる。
         */}
-        <Combobox
-          id={targetFieldId}
-          inline
+        <TagCommand
+          layout="inline"
+          label={t.tags.mergeDialog.target}
+          labelledBy={targetLabelId}
+          placeholder={null}
+          inputRef={targetInputRef}
           icon={<Search aria-hidden="true" />}
           chosenId={target === null ? undefined : String(target.id)}
           emptyText={
@@ -316,11 +334,9 @@ export default function MergeTagDialog({
             setTarget(null);
             setError(null);
           }}
-          options={options}
-          exactOption={exactOption}
+          choices={options}
+          exactChoice={exactOption}
           onSelect={selectTarget}
-          aria-label={t.tags.mergeDialog.target}
-          className="w-full"
           frameClassName="w-full"
           busy={searching}
           describedBy={searchError !== null ? searchErrorId : undefined}
@@ -400,7 +416,7 @@ function buildTargetOptions(
   exact: Tag | null,
   excluded: ReadonlySet<number>,
   input: string,
-): { tags: Tag[]; options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { tags: Tag[]; options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = foldForMatch(trimmed);
   const spelled = (tag: Tag) =>
@@ -417,7 +433,7 @@ function buildTargetOptions(
       : [exactTag, ...allowed.filter((tag) => tag.id !== exactTag.id)]
   ).slice(0, targetCandidateLimit);
 
-  const options: ComboboxOption[] = candidates.map((tag) => {
+  const options: TagChoice[] = candidates.map((tag) => {
     const nameMatch = query === "" || foldForMatch(tag.name).includes(query);
     const synonymHit = nameMatch
       ? undefined
@@ -431,7 +447,7 @@ function buildTargetOptions(
     };
   });
 
-  const exactOption: ComboboxOption | null =
+  const exactOption: TagChoice | null =
     exactTag === undefined
       ? null
       : {

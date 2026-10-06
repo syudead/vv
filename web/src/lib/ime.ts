@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from "react";
 
 // IME の変換中に打った特別なキーの判定。タグの名前・検索・窓の Esc など、文字を打つ
-// 入力の操作が共有する（もとは ui/Combobox にあった）。
+// 入力の操作が共有する。
 
 /**
  * isComposingKey は、IME の変換中に打った特別なキー（Enter・Esc・矢印）かを、

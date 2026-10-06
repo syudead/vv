@@ -218,22 +218,26 @@ The components share three behaviours, so a screen never restyles them:
 | Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
 | Density | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
 
-Four changes to upstream keep the checks and the catalog rules: `Checkbox`
+Five changes to upstream keep the checks and the catalog rules: `Checkbox`
 draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
 that takes the focus, `CommandGroup` styles its heading by wrapping it,
-because the attribute selector upstream uses is an arbitrary value, and
+because the attribute selector upstream uses is an arbitrary value,
 `CommandInput` drops upstream's `outline-hidden` and is lower than its row, so
-the shared focus ring shows in full inside the `Command`. `Select`
+the shared focus ring shows in full inside the `Command`, and `CommandInput`
+takes a class for the frame around the input and an element after the input,
+so the vv `TagCommand` can draw its compact field with a busy spinner inside
+it. `Select`
 and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.
 
 This tier changed no existing screen: the old components stayed at their
 paths in `web/src/ui` until the screen migrations replaced their last use, and
-the last unit deleted the ones nothing imported. `ui/Combobox` stays as the
-tag-name input on the video page and the merge target list in the tag admin,
-whose keyboard and validation behaviour the shadcn `Combobox` does not
-reproduce; it uses only the scale. The new components live in their own
+the last unit deleted the ones nothing imported. The tag-name input on the
+video page and the merge target list in the tag admin moved from the old
+`ui/Combobox` to the vv component `TagCommand`, a `Command` with the tag-name
+rules that the selection bar's tag popovers also use, and `ui/Combobox` was
+deleted. The new components live in their own
 folder, so a file name never differs from an old one by case alone. The old
 components are not registry items; new code imports from `web/src/ui/shadcn`.
 
@@ -273,6 +277,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
 | `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components |
+| `TagCommand` | `ui/Combobox`, the selection bar's former `library/TagCommand` | vv component; a `Command` with the tag-name rules |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input

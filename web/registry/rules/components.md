@@ -11,10 +11,8 @@ variants are upstream's. A screen composes them; it does not restyle them with
 its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
-The other PascalCase files in `web/src/ui` that this file does not list
-(`Combobox.tsx` and the rest) are older
-components; new code never imports them. `Combobox.tsx` stays only for typing
-a tag name on the video page and picking the merge target in the tag admin.
+Every PascalCase file in `web/src/ui` is a vv component listed in this file;
+no older component is left.
 
 ## Shared rules
 
@@ -151,7 +149,9 @@ Items `combobox`, `command`. Pick one value from many by typing.
 
 Enter takes the selected row. When typing can create a value, put the create
 row first, so Enter creates unless the viewer moved to another row. Do not use
-a Combobox for a handful of options (use `Select` or `RadioGroup`).
+a Combobox for a handful of options (use `Select` or `RadioGroup`). To type a
+tag name, use [TagCommand](#tagcommand), which is a `Command` with the tag-name
+rules.
 
 ### Table
 
@@ -405,3 +405,23 @@ Item `brand-home-link`. The VVMDM logo in the top bar, linking to the library:
 the symbol below the `sm` width and the wordmark above it. One per screen.
 
 Do not use the logo images anywhere else.
+
+### TagCommand
+
+Item `tag-command`. A `Command` for typing a tag name, then picking a
+matching tag or creating one. The caller filters and orders the options and
+passes the tag whose name or synonym matches the spelling exactly. Without
+arrow keys, Enter acts on the spelling: an empty name shows the reason, the
+exact match is picked, otherwise the create row creates. The name is checked as
+it is typed; while it is invalid or a request is in flight, neither Enter nor a
+click acts. A paste or drop with a line break is refused with its reason, and
+keys pressed during IME composition are ignored. `layout` places the list:
+
+| `layout`   | Use it for                                                                            | List                                                                                                                                                     |
+| ---------- | ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `popover`  | Inside a `Popover` that is the picker: the selection bar's "Add tag" and "Remove tag" | Always shown; the create row first and the first row selected                                                                                            |
+| `dropdown` | A small add field in a row of chips: the video page's "Add tag"                       | Opens below the input on focus or typing; Esc, Tab and leaving close it; Esc when closed calls `onEscape`; the create row last                           |
+| `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last |
+
+In `dropdown` and `inline`, no row is selected until the arrow keys or the
+pointer select one. Do not use it for values other than tag names.

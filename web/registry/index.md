@@ -69,6 +69,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `switch`                   | Component     | A setting that takes effect at once                                          |
 | `table`                    | Component     | Rows of records; only inside a `data-table`                                  |
 | `tabs`                     | Component     | Switch views of the same content in place                                    |
+| `tag-command`              | vv component  | Type a tag name to pick or create a tag                                      |
 | `tentative-mark`           | vv component  | The mark after a tentative tag                                               |
 | `textarea`                 | Component     | Several lines of text                                                        |
 | `thumbnail-backdrop`       | vv component  | Blurred fill behind a portrait thumbnail                                     |

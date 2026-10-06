@@ -24,18 +24,30 @@ function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive
 // 入力は共通のフォーカスの輪（index.css の :focus-visible）を出す。上流の outline-hidden は
 // その輪を消すので外し、輪が Command の overflow-hidden で切れないよう入力を行より低い
 // h-6 にしている。
+// 入力を囲む枠は wrapperClassName で、入力の後ろに置く印（送信中の回転など）は trailing で
+// 足せる（ui/TagCommand の dropdown・inline。web/registry/rules/components.md の
+// TagCommand）。
 function CommandInput({
   className,
   icon,
+  wrapperClassName,
+  trailing,
   ...props
 }: ComponentProps<typeof CommandPrimitive.Input> & {
   /** 入力の先頭の印。既定は虫眼鏡。 */
   icon?: ReactNode;
+  /** 入力を囲む枠のクラス。既定の枠に重ねる。 */
+  wrapperClassName?: string;
+  /** 入力の後ろ、枠の中に置くもの。 */
+  trailing?: ReactNode;
 }) {
   return (
     <div
       data-slot="command-input-wrapper"
-      className="flex h-9 items-center gap-2 border-b border-border px-3 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground"
+      className={cn(
+        "flex h-9 items-center gap-2 border-b border-border px-3 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+        wrapperClassName,
+      )}
     >
       {icon ?? <SearchIcon aria-hidden="true" />}
       <CommandPrimitive.Input
@@ -46,6 +58,7 @@ function CommandInput({
         )}
         {...props}
       />
+      {trailing}
     </div>
   );
 }
