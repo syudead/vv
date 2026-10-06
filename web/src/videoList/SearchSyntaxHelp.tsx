@@ -79,11 +79,8 @@ export default function SearchSyntaxHelp() {
         </h2>
         {/* ボタンの説明は見出しを除いた中身にする（名前と同じ語を二度読ませない）。 */}
         <div id={bodyId} className="flex flex-col gap-3">
-          {/* 例の列は中身の幅、説明の列は残り。列の定義は段に無いので style で渡す。 */}
-          <dl
-            className="grid gap-x-3 gap-y-2"
-            style={{ gridTemplateColumns: "auto 1fr" }}
-          >
+          {/* 例の列は中身の幅、説明の列は残り（grid-cols-term）。 */}
+          <dl className="grid grid-cols-term gap-x-3 gap-y-2">
             {syntaxRows().map((row) => (
               <div key={row.examples.join()} className="contents">
                 <dt className="flex flex-col gap-0.5 font-mono text-xs text-foreground">

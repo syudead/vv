@@ -61,7 +61,11 @@ Each rule fails `task check` (`lint-web` or `test-web`) with the message shown
 
 | Fails on | Rule | Message |
 | --- | --- | --- |
-| `<button>`, `<input>`, `<select>`, `<textarea>` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
+| `<button>`, `<input>`, `<select>`, `<textarea>`, `<table>`, `<dialog>` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
+| `role="button"` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system Button (web/registry/rules/components.md).` |
+| A fixed value (a literal) in `style` outside `web/src/ui`; `style` is only for values known at run time | `no-restricted-syntax` | `A fixed value in style bypasses the design-system scale. …` |
+| An import from `radix-ui` or `@radix-ui/*` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system components in web/src/ui/shadcn instead of Radix directly.` |
+| `outline-none`, `outline-hidden`, or a `ring` or `outline` class under a `focus`, `focus-visible` or `focus-within` variant, outside `web/src/ui/shadcn` | `better-tailwindcss/no-restricted-classes` | `Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).` |
 | A class with an arbitrary value or property, or the `(--var)` shorthand | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
 | A class the theme does not generate | `better-tailwindcss/no-unknown-classes` | The plugin's own message |
 | A numeric step outside the scale, until the theme reset | `better-tailwindcss/no-restricted-classes` | `Step outside the design-system scale (web/registry/rules/foundations.md).` |

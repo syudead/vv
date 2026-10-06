@@ -10,7 +10,7 @@ export default function BrandHomeLink({ className }: { className?: string }) {
       to="/"
       aria-label={t.common.brandHome}
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-sm px-1 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        "flex h-8 shrink-0 items-center rounded-sm px-1 hover:bg-accent",
         className,
       )}
     >

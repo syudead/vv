@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: e00e2502a07233179d4b9c14c777fb4088e22f02c495282586071d672f20b5f5
+sourceHash: 9079eeb5e813c1e041353fab383856bfa53a6cd2699ccd5680bf7c493e5fe461
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -52,7 +52,11 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 | 失敗する対象 | ルール | メッセージ |
 | --- | --- | --- |
-| `web/src/ui` の外の `<button>`、`<input>`、`<select>`、`<textarea>` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
+| `web/src/ui` の外の `<button>`、`<input>`、`<select>`、`<textarea>`、`<table>`、`<dialog>` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
+| `web/src/ui` の外の `role="button"` | `no-restricted-syntax` | `Use the design-system Button (web/registry/rules/components.md).` |
+| `web/src/ui` の外で `style` に書いた固定値（リテラル）。`style` は実行時にわかる値にだけ使う | `no-restricted-syntax` | `A fixed value in style bypasses the design-system scale. …` |
+| `web/src/ui` の外での `radix-ui` または `@radix-ui/*` からのインポート | `no-restricted-syntax` | `Use the design-system components in web/src/ui/shadcn instead of Radix directly.` |
+| `web/src/ui/shadcn` の外の `outline-none`、`outline-hidden`、または `focus`、`focus-visible`、`focus-within` のいずれかのバリアントの下にある `ring` か `outline` のクラス | `better-tailwindcss/no-restricted-classes` | `Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).` |
 | 任意の値か任意のプロパティを持つクラス、または `(--var)` の短縮記法 | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
 | テーマが生成しないクラス。尺度の外の段階（`p-7`、`text-2xl`、`rounded-xl`、`font-bold`）を含む | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
 | トークン外の生の色、既定パレットのクラス、最小値を下回るコントラストの組 | `web/src/theme/tokens.test.ts` | テスト自身のメッセージ |
