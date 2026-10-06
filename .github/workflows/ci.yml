@@ -211,15 +211,14 @@ jobs:
         if: needs.changes.outputs.code == 'false'
         run: task check-docs
 
-  # e2e はコード変更を含む PR と main への push で回す。PR で回さないと、壊れた変更が
-  # マージされてから main で初めて分かる。
+  # e2e はコード変更を含む main への push（PR のマージ）でだけ回す。PR では回さない。
   # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
   # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
   # e2e のファイルを足したら、どれかの組に入れる。
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -329,7 +328,7 @@ jobs:
           retention-days: 7
 
   # ブランチ保護が求める「Browser E2E」は、組に分けた e2e のまとめとしてここで出す。
-  # 文書だけの変更で e2e を飛ばしたときも通す。
+  # PR と文書だけの変更で e2e を飛ばしたときも通す。
   e2e-result:
     name: Browser E2E
     needs: [changes, e2e]

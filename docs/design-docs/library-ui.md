@@ -116,25 +116,26 @@ the shell would mean rewriting all three.
 ## Width breakpoints in CSS, and the sidebar exception
 
 Width variations use Tailwind's default breakpoints in CSS; only the sidebar
-reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts)).
+reads width in JavaScript ([`use-mobile.ts`](../../web/src/hooks/use-mobile.ts)).
 
 Watching width in JavaScript brings a watcher, a one-frame flicker on the first
 render, and a `matchMedia` stub in tests. The sidebar is the exception because
-it interprets the user's open/close choice per width and keeps the drawer's
-open state, which CSS cannot express. The notices
+it renders a different component per width (a fixed rail or a `Sheet` drawer)
+and keeps the drawer's open state, which CSS cannot express. The notices
 ([`Toast.tsx`](../../web/src/ui/Toast.tsx)) are the other: Sonner takes its
 position as a prop, so list screens read `lg` to move notices from under the
-top bar to the bottom centre, above the selection bar. The sidebar's breakpoints equal `lg` and `sm`:
+top bar to the bottom centre, above the selection bar. The sidebar's breakpoint equals `sm`:
 
 ```mermaid
 flowchart LR
-  w{Screen width} -->|1024px or more| user[User choice, default open]
-  w -->|640 to 1023px| rail[Rail by default]
-  w -->|639px or less| drawer[Drawer]
-  user -->|closed| railc[Rail]
-  rail -->|opened| exp[Expanded]
-  drawer -->|opened| over[Overlay]
+  w{Screen width} -->|640px or more| rail[Rail, always]
+  w -->|639px or less| drawer[Drawer, closed]
+  drawer -->|opened with ☰| over[Overlay]
 ```
+
+The sidebar does not expand at 640px and wider. The rail already names every
+entry, so the expanded state added no destination and only took width from
+the grid; with no open/close choice left, ☰ appears below 640px only.
 
 Reduced motion (`prefers-reduced-motion`) is also handled in CSS: the
 `motion-reduce:` variant stops decorative transitions, while the final colour
@@ -180,10 +181,11 @@ flowchart LR
 
 ### Shell and toolbar
 
-The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ and the
-logo, and no scan control (see [Scan entry and progress](#scan-entry-and-progress)).
-The library, the folder pages and the tags page insert their toolbar after
-them: the design-system `Toolbar` with
+The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
+640px only) and the logo, and no scan control (see
+[Scan entry and progress](#scan-entry-and-progress)). The library, the folder
+pages and the tags page insert their toolbar after them: the design-system
+`Toolbar` with
 `placement="topBar"`, rendered through
 [`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
 starts with the heading and the count, so the toolbar stays reachable at any
@@ -198,11 +200,11 @@ the top bar, and the table's column header sticks right under them.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
-The sidebar has three states (expanded, rail, drawer; see
+The sidebar has two states (rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
 small label in a 56px (`rail-item`) square, so every entry stays named.
-Collapsing it widens the grid, while card width follows the zoom level. Guest rules are in
+Card width follows the zoom level. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
 | Part | Owner | Guest |

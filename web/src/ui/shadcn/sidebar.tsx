@@ -14,8 +14,8 @@ import { Skeleton } from "@/ui/shadcn/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
 // shadcn/ui の sidebar（radix-nova）を vv のトークンで着せたもの
-// （web/registry/rules/components.md「Sidebar」）。上流の 3 つの形を vv のサイドバーの 3 態に
-// 当てる: expanded は展開、collapsible="icon" で畳んだ形はレール、狭い幅（use-mobile）は
+// （web/registry/rules/components.md「Sidebar」）。vv のサイドバーは上流の形のうち 2 つを使う:
+// 640px 以上は collapsible="icon" で畳んだ形のレールに固定し（展開しない）、狭い幅（use-mobile）は
 // Sheet のドロワー。幅は tokens.css の sidebar と sidebar-rail（68px）で、レールの項目は
 // rail-item の正方形にアイコンと小さな名前を縦に積む（docs/design-docs/library-ui.md「Sidebar」）。
 //
@@ -24,6 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 //   border・ring）を使う。
 // - 幅は CSS 変数でなく名前つきの段（w-sidebar）で持ち、任意の値を書かない。
 // - フォーカスは上流の ring-3 でなく、全部品で同じ index.css の :focus-visible の輪を出す。
+// - Ctrl/⌘+B の切り替えは keyboardShortcut={false} で外せる。開閉しない呼び手が、
+//   キーを奪ってブラウザの機能を塞がないため。
 
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -50,12 +52,14 @@ function useSidebar() {
 
 /**
  * SidebarProvider はサイドバーの開閉を持つ。`open` と `onOpenChange` を渡すと外から制御でき、
- * 保存の仕方（vv は localStorage）は呼び手が決める。上流の cookie への保存は持たない。
+ * 保存するかどうかは呼び手が決める（vv は 640px 以上を `open={false}` に固定し、保存しない）。
+ * 上流の cookie への保存は持たない。
  */
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
   onOpenChange: setOpenProp,
+  keyboardShortcut = true,
   className,
   children,
   ...props
@@ -63,6 +67,8 @@ function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** keyboardShortcut が false のときは Ctrl/⌘+B を聞かず、キーをブラウザに残す。 */
+  keyboardShortcut?: boolean;
 }) {
   const isMobile = useIsMobile();
   const [openMobile, setOpenMobile] = React.useState(false);
@@ -86,6 +92,7 @@ function SidebarProvider({
   }, [isMobile, setOpen, setOpenMobile]);
 
   React.useEffect(() => {
+    if (!keyboardShortcut) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -95,7 +102,7 @@ function SidebarProvider({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [toggleSidebar]);
+  }, [keyboardShortcut, toggleSidebar]);
 
   const state = open ? "expanded" : "collapsed";
 

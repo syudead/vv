@@ -696,7 +696,7 @@ test.describe.serial("guest", () => {
         await page.keyboard.press("Escape");
       }
 
-      // サイドバー（1280 は展開、768 はレール、360 はドロワーを開いた状態）。
+      // サイドバー（1280 と 768 はレール、360 はドロワーを開いた状態）。
       if (width === 360) {
         await page.getByRole("button", { name: "Menu" }).click();
         await expect(
