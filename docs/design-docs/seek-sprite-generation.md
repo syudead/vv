@@ -155,6 +155,13 @@ A sheet is about 3.5 times larger. The browser holds a 2880×1620 sheet (about
 leave the viewport. Existing 160px sprites stay as they are until their video
 is processed again.
 
+Video fingerprints are built from the sprite, and old and new sprites of the
+same video still match. A fingerprint shrinks each frame to 32×32 luma by area
+averaging and hashes its low frequencies, so frame size and JPEG quality barely
+reach it: in `TestSpriteFingerprintMatchesAcrossSpriteSizes` a 160px `-q:v 4`
+sprite and a 320px `-q:v 2` sprite of the same video differ by a median of 2
+bits, against a match limit of 12.
+
 ## Speed and limits
 
 Measured on a 21-minute 1080p H.264 video on local disk, 81 frames of 160px,
