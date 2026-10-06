@@ -78,9 +78,11 @@ with truncation) and are told apart by color and marks.
   row; only the chips that fit are shown (`UI品質` "information density"). `+N`
   has the video tag form, with `tabular-nums` text. A fade-out is rejected: it
   does not show whether a name was cut or more tags exist.
-- `+N` is a button. It opens a `ui/Popover` listing the hidden tags vertically as
-  the same chips. Pressing a chip filters by that tag, as in the card row, and
-  closes the popover. Its accessible name is `ほかのタグ N 個を表示`.
+- `+N` is a button. It opens a `ui/Popover` listing the hidden tags as the same
+  chips. Pressing a chip filters by that tag, as in the card row, and closes the
+  popover. Its accessible name is `ほかのタグ N 個を表示`. How the list opens,
+  lays out its chips, stays inside the viewport and shows long names is
+  [041 UI design, The list](../041-tag-overflow-list/ui-design.md#the-list).
 - How many chips fit is decided after rendering by measuring the row and chip
   widths; CSS alone cannot produce the count. library-ui.md, [Width breakpoints in CSS, and the sidebar exception](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) avoids branching
   on screen width in JavaScript, which is different from measuring whether

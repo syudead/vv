@@ -247,4 +247,99 @@ describe("CardTagRow", () => {
       expect(measure?.querySelectorAll("svg.lucide-circle-dashed")).toHaveLength(2);
     });
   });
+
+  // specs/041-tag-overflow-list/research.md R-4: 一覧は開いたときに写さず、行と
+  // 同じ tags と測った数から毎回導く。jsdom は幅を測れないので、行の幅を 100、
+  // どのチップの幅も 40 と答えさせる。先頭の1つと「+N」だけが行に収まる。
+  describe("「+N」の一覧", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    function stubWidths() {
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+      vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+        DOMRect.fromRect({ x: 0, y: 0, width: 40, height: 24 }),
+      );
+    }
+
+    function rowProps(list: VideoTag[]) {
+      return {
+        tags: list,
+        selectionMode: false,
+        onPress: vi.fn(),
+        onToggleSelection: vi.fn(),
+      };
+    }
+
+    function listChipNames(): (string | null)[] {
+      return within(screen.getByRole("dialog"))
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("title"));
+    }
+
+    it("隠れたタグを折り返すチップで並べ、名前を省略しない", () => {
+      stubWidths();
+      renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
+      fireEvent.click(screen.getByRole("button", { name: "Show 3 more tags" }));
+
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.querySelector("ul")?.className).toContain("flex-wrap");
+      expect(listChipNames()).toEqual(["2024", "Anime", "夏"]);
+      const chip = within(dialog).getByRole("button", { name: "Filter by Anime" });
+      expect(chip.className).toContain("whitespace-normal");
+      const name = chip.firstElementChild;
+      expect(name?.className).toContain("break-all");
+      expect(name?.className).not.toContain("truncate");
+    });
+
+    it("開いたままタグを減らすと、無くなったタグが一覧から消える", () => {
+      stubWidths();
+      const all = tags("旅行", "2024", "Anime", "夏");
+      const { rerender } = render(<CardTagRow {...rowProps(all)} />);
+      fireEvent.click(screen.getByRole("button", { name: "Show 3 more tags" }));
+      expect(listChipNames()).toEqual(["2024", "Anime", "夏"]);
+
+      rerender(<CardTagRow {...rowProps(all.filter((tag) => tag.name !== "Anime"))} />);
+      expect(listChipNames()).toEqual(["2024", "夏"]);
+      expect(screen.getByRole("button", { name: "Show 2 more tags" })).toBeDefined();
+    });
+
+    it("すべてのタグが収まる形で描き直すと「+N」と一覧が消え、隠れるタグが戻っても勝手に開かない", () => {
+      stubWidths();
+      const all = tags("旅行", "2024", "Anime", "夏");
+      const { rerender } = render(<CardTagRow {...rowProps(all)} />);
+      fireEvent.click(screen.getByRole("button", { name: "Show 3 more tags" }));
+      expect(screen.getByRole("dialog")).toBeDefined();
+
+      rerender(<CardTagRow {...rowProps(all.slice(0, 1))} />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Show \d+ more tags?$/ })).toBeNull();
+
+      rerender(<CardTagRow {...rowProps(all)} />);
+      expect(screen.getByRole("button", { name: "Show 3 more tags" })).toBeDefined();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("選択が始まると「+N」は押せないチップになり、一覧が消える", () => {
+      stubWidths();
+      const all = tags("旅行", "2024", "Anime", "夏");
+      const { rerender } = render(<CardTagRow {...rowProps(all)} />);
+      fireEvent.click(screen.getByRole("button", { name: "Show 3 more tags" }));
+      expect(screen.getByRole("dialog")).toBeDefined();
+
+      rerender(<CardTagRow {...rowProps(all)} selectionMode />);
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByText("+3")).toBeDefined();
+    });
+
+    it("一覧のタグを押すと、そのタグで絞り込み一覧を閉じる", () => {
+      stubWidths();
+      const { onPress } = renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
+      fireEvent.click(screen.getByRole("button", { name: "Show 3 more tags" }));
+      fireEvent.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: "Filter by 夏" }),
+      );
+      expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ name: "夏" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
 });

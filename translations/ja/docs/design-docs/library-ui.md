@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 69695b567cbaa9740604728a0e0ad6f5559601a097b6d9a1cf1713f9b9ed03dd
+sourceHash: ebaa8d3eeba9e1e9f01552d269e2bda13d3bed9346fdcef01e57c661da3c61ab
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -168,6 +168,7 @@ flowchart LR
 | --- | --- |
 | ライブラリでタグを押す | そのタグで絞り込む |
 | フォルダのページでタグを押す | `/?tag=<id>` を開く |
+| 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す（[041 UI 設計](../../specs/041-tag-overflow-list/ui-design.md#the-list)） |
 | フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない（[017 UI 設計](../../specs/017-folder-groups/ui-design.md)） |
 | ホバーのプレビュー | どの画面でも一度に 1 つ |
 | ズームの変更 | 上端にあったカードに戻る |
