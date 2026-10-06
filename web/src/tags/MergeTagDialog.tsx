@@ -313,7 +313,7 @@ export default function MergeTagDialog({
         {/*
           統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
           （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
-          ui/TagCommand のまま使う。Esc は窓が閉じる。
+          ui/TagCommand（inline）が持つ。Esc は窓が閉じる。
         */}
         <TagCommand
           layout="inline"

@@ -569,10 +569,12 @@ function ListTagCommand({
           inline
             ? "rounded-md border bg-muted text-sm"
             : "h-6 gap-1 rounded-sm border bg-muted px-1.5 text-xs [&>svg]:size-3",
-          "border-input focus-within:border-primary focus-within:ring-2 focus-within:ring-ring",
+          // フォーカスは入力そのものが共通の輪（index.css の :focus-visible）を出す。枠に
+          // 独自の輪は付けない（web/registry/rules/components.md の Focus）。
+          "border-input",
           frameClassName ?? "w-combobox",
         )}
-        className={cn("h-auto rounded-none px-0 outline-none", !inline && "text-xs")}
+        className={cn("h-auto rounded-none px-0", !inline && "text-xs")}
         trailing={
           busy && (
             <LoaderCircle
