@@ -3,14 +3,7 @@ import {
   useWindowVirtualizer,
   type Range,
 } from "@tanstack/react-virtual";
-import {
-  AlertCircle,
-  CircleDashed,
-  Plus,
-  SearchX,
-  Tags as TagsIcon,
-  VideoOff,
-} from "lucide-react";
+import { CircleDashed, Plus, SearchX, Tags as TagsIcon, VideoOff, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -21,6 +14,7 @@ import {
   useState,
   type FocusEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { flushSync } from "react-dom";
 
@@ -41,21 +35,23 @@ import {
   type Tag,
 } from "../api/tags";
 import { errorText, formatNumber, t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
 import { foldForMatch } from "../lib/foldForMatch";
 import {
   readTagListPreferences,
   writeTagListPreferences,
 } from "../preferences/tagListPreferences";
-import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/Button";
-import Checkbox from "../ui/Checkbox";
-import FilterChip from "../ui/FilterChip";
-import Skeleton from "../ui/Skeleton";
-import Tabs, { tabId } from "../ui/Tabs";
+import { AdminTablePage } from "../ui/patterns/admin-table-page";
+import { DataTable } from "../ui/patterns/data-table";
+import { EmptyState } from "../ui/patterns/empty-state";
+import { LoadingState } from "../ui/patterns/loading-state";
+import { PageHeader } from "../ui/patterns/page-header";
+import { Button } from "../ui/shadcn/button";
+import { Checkbox } from "../ui/shadcn/checkbox";
+import { TableBody, TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
+import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
+import { Toggle } from "../ui/shadcn/toggle";
 import { useToast } from "../ui/Toast";
 import type { HistoryMode } from "../videoList/listCriteria";
-import { EmptyState } from "../videoList/states";
 import BulkTagDialog, { type BulkTagAction } from "./BulkTagDialog";
 import CreateTagRow from "./CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
@@ -80,11 +76,13 @@ import { type TagListTab, useTagListCriteria } from "./tagListUrl";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import {
   TagListChanged,
+  TagLoadFailed,
   TagLoadingMore,
   TagLoadMoreFailed,
   TagStaleList,
 } from "./TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
+import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 
 function isTagNotFound(error: unknown): boolean {
@@ -310,7 +308,7 @@ export default function TagsPage() {
   const tentativeChipRef = useRef<HTMLButtonElement | null>(null);
   const unusedChipRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
-  const listRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLTableSectionElement | null>(null);
   /** listBoxRef は帯の下の一覧の箱（作成の行・行・空の状態を入れる）である。 */
   const listBoxRef = useRef<HTMLDivElement | null>(null);
   /**
@@ -339,13 +337,31 @@ export default function TagsPage() {
   /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
   const [scrollMargin, setScrollMargin] = useState(0);
   /**
-   * bandRef は上部バーの下に留める帯（操作の行と件数の行）で、stuckBottom は
-   * 留まったときの帯の下端の表示域の中での位置（`top` の上部バーの高さ＋帯の
-   * 高さ、px）である。行へスクロールするときに、行が帯の下に隠れないよう
+   * bandRef は上部バーの下に留める帯（見出しか選択バー・タブ・絞り込みのチップ）で、
+   * stuckBottom は留まったときの帯の下端の表示域の中での位置（`top` の上部バーの高さ＋
+   * 帯の高さ、px）である。行へスクロールするときに、行が帯の下に隠れないよう
    * これを差し引く（ui-design.md「Band」）。帯の高さは幅で変わるので測り直す。
    */
   const bandRef = useRef<HTMLDivElement | null>(null);
   const [stuckBottom, setStuckBottom] = useState(0);
+  /**
+   * 表の列の見出しは帯の直下（stuckBottom）に貼り付く。行へスクロールするときは、
+   * 帯に加えて見出しの高さ（headHeight）も差し引く。
+   */
+  const [headHeight, setHeadHeight] = useState(0);
+  // 列の見出しの高さを測る。表が無い間（読み込み中・空）は 0。
+  const headRef = useCallback((head: HTMLTableSectionElement | null) => {
+    if (head === null) return;
+    const measure = () => setHeadHeight(head.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(head);
+    return () => {
+      observer.disconnect();
+      setHeadHeight(0);
+    };
+  }, []);
+  const rowsTop = stuckBottom + headHeight;
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
     const current = rowRefs.current.get(id) ?? {
@@ -510,7 +526,7 @@ export default function TagsPage() {
 
   /**
    * rowActionTarget は、行の操作へフォーカスを移すときの実際の行き先である。
-   * タッチの端末と `sm` 未満では行の `IconButton` が隠れて「Actions」1 つに
+   * タッチの端末と `sm` 未満では行のアイコンのボタン（`RowIconButton`）が隠れて「Actions」1 つに
    * まとまるので、隠れている操作の代わりに「Actions」を指す（ui-design.md
    * 「Actions on touch and narrow widths」）。名前のリンクは隠れない。
    */
@@ -1042,7 +1058,7 @@ export default function TagsPage() {
     estimateSize: () => ROW_ESTIMATE,
     overscan: ROW_OVERSCAN,
     scrollMargin,
-    scrollPaddingStart: stuckBottom,
+    scrollPaddingStart: rowsTop,
     rangeExtractor,
     getItemKey,
   });
@@ -1084,7 +1100,7 @@ export default function TagsPage() {
     return () => observer.disconnect();
   }, [hasList]);
 
-  // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅で 1 行・2 行に折り返す。
+  // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅や選択で高さが変わる。
   useLayoutEffect(() => {
     const band = bandRef.current;
     if (band === null) return;
@@ -1103,17 +1119,17 @@ export default function TagsPage() {
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.style.scrollPaddingTop;
-    root.style.scrollPaddingTop = `${String(stuckBottom)}px`;
+    root.style.scrollPaddingTop = `${String(rowsTop)}px`;
     return () => {
       root.style.scrollPaddingTop = previous;
     };
-  }, [stuckBottom]);
+  }, [rowsTop]);
 
   /**
    * handleListFocus は、フォーカスを持った行を描き続ける行にする。スクロール
    * で画面の外へ出ても、その行は外れず、フォーカスが `body` へ落ちない。
    */
-  function handleListFocus(event: FocusEvent<HTMLDivElement>) {
+  function handleListFocus(event: FocusEvent<HTMLTableSectionElement>) {
     focusInListRef.current = true;
     const row = (event.target as Element).closest<HTMLElement>("[data-tag-id]");
     if (row === null || !event.currentTarget.contains(row)) return;
@@ -1140,7 +1156,7 @@ export default function TagsPage() {
    * 飛んでしまう。全件の最後の行の Tab、最初の行の Shift+Tab は既定のまま
    * 一覧の外へ進める（ui-design.md「Keyboard across virtualized rows」）。
    */
-  function handleListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+  function handleListKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
     if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.defaultPrevented) return;
     const list = event.currentTarget;
@@ -1923,43 +1939,76 @@ export default function TagsPage() {
   const tagsPanelId = `${tabsId}-panel-tags`;
   const rejectedPanelId = `${tabsId}-panel-rejected`;
   const selecting = onTagsTab && selected.size > 0;
+  // 作成・改名の送信中はタブを切り替えない（押せなくし、矢印でも移らない）。
+  const tabsLocked = createPending || renamePending;
+
+  /**
+   * 仮想化した行を表の中に描く。描かない行の高さは、行の間と前後に置く空の行で保つ
+   * （行を absolute で重ねると、表の列の幅がそろわないため）。
+   */
+  const scrollStart = virtualizer.options.scrollMargin;
+  const bodyRows: ReactNode[] = [];
+  let cursor = scrollStart;
+  for (const item of virtualItems) {
+    const gap = item.start - cursor;
+    if (gap > 0) {
+      bodyRows.push(<SpacerRow key={`gap-${String(item.index)}`} height={gap} />);
+    }
+    const tag = visibleRows[item.index]!;
+    bodyRows.push(
+      <TagRow
+        key={item.key}
+        index={item.index}
+        measureRef={virtualizer.measureElement}
+        tag={tag}
+        renaming={renamingId === tag.id}
+        pending={renamingId === tag.id && renamePending}
+        blockStart={createPending || (renamePending && renamingId !== tag.id)}
+        error={renamingId === tag.id ? renameError : null}
+        registerRefs={registerRefs}
+        confirming={confirming.has(tag.id)}
+        selected={selected.has(tag.id)}
+        {...rowHandlers}
+      />,
+    );
+    cursor = item.end;
+  }
+  const listEnd = scrollStart + virtualizer.getTotalSize();
+  if (virtualItems.length > 0 && listEnd > cursor) {
+    bodyRows.push(<SpacerRow key="gap-end" height={listEnd - cursor} />);
+  }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 pt-4 pb-8 sm:px-6">
-      {onTagsTab && (
-        <TopBarPortal>
-          <TagToolbar
-            query={search}
-            onQueryCommit={commitQuery}
-            searchRef={searchInputRef}
-            searchDisabled={page !== undefined && page.totalAll === 0}
-            tentativeOnly={tentativeOnly}
-            onTentativeOnlyChange={changeTentativeOnly}
-            unusedOnly={unusedOnly}
-            onUnusedOnlyChange={changeUnusedOnly}
-            onClearFilters={clearFilters}
-            // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
-            filterDisabled={
-              page === undefined || (noTags && !tentativeOnly && !unusedOnly)
-            }
-            filterRef={filterButtonRef}
-            sort={sort}
-            onSortChange={changeSort}
-            sortDisabled={sortDisabled}
-          />
-        </TopBarPortal>
-      )}
-      {/*
-        帯（specs/036-tag-admin-scale/ui-design.md「Band」）。見出し（選んでいる間は
-        選択の行）・タブ・絞り込みのチップ・列の見出しを上部バーの下に留め、行は本文と
-        一緒に流れる。面は不透明の bg-bg で、下を流れる行が透けない。z-20 は上部バー
-        （z-40）の下。上の pt-3 は、留まったときに見出しが上部バーに接しないためである。
-      */}
-      <div
-        ref={bandRef}
-        className="sticky top-navbar z-20 flex flex-col gap-3 bg-bg pt-3"
-      >
-        {selecting ? (
+    <AdminTablePage
+      bandRef={bandRef}
+      toolbar={
+        onTagsTab && (
+          <TopBarPortal>
+            <TagToolbar
+              query={search}
+              onQueryCommit={commitQuery}
+              searchRef={searchInputRef}
+              searchDisabled={page !== undefined && page.totalAll === 0}
+              tentativeOnly={tentativeOnly}
+              onTentativeOnlyChange={changeTentativeOnly}
+              unusedOnly={unusedOnly}
+              onUnusedOnlyChange={changeUnusedOnly}
+              onClearFilters={clearFilters}
+              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
+              filterDisabled={
+                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
+              }
+              filterRef={filterButtonRef}
+              sort={sort}
+              onSortChange={changeSort}
+              sortDisabled={sortDisabled}
+            />
+          </TopBarPortal>
+        )
+      }
+      header={
+        // 選んでいる間は、見出しの行の代わりに選択バーを出す（ui-design.md「Selection bar」）。
+        selecting ? (
           <TagSelectionBar
             count={selected.size}
             hasTentative={selection.tentative}
@@ -1980,193 +2029,148 @@ export default function TagsPage() {
         ) : (
           // 見出しの行（ui-design.md「Header」）。件数はライブラリの「N items」と同じ形で、
           // 読み込んだ行の数やページの区切りは出さない。
-          <div className="flex min-h-10 min-w-0 items-center gap-3">
-            <h1 className="text-xl font-semibold tracking-tight text-fg sm:text-2xl">
-              {t.tags.title}
-            </h1>
-            {onTagsTab && (
-              <>
-                <p
-                  role="status"
-                  aria-live="polite"
-                  className="ml-auto min-w-0 truncate text-xs text-fg-muted tabular-nums sm:text-sm"
-                >
+          <PageHeader
+            title={t.tags.title}
+            count={
+              onTagsTab ? (
+                <span role="status" aria-live="polite" className="whitespace-nowrap">
                   {countText}
-                </p>
+                </span>
+              ) : undefined
+            }
+            actions={
+              onTagsTab ? (
                 <Button
                   ref={createButtonRef}
-                  variant="primary"
-                  className="shrink-0"
+                  size="sm"
                   onClick={openCreate}
                   disabled={
                     page === undefined || creating || createPending || renamePending
                   }
                 >
-                  <Plus />
+                  <Plus aria-hidden="true" />
                   {t.tags.newTag}
                 </Button>
-              </>
-            )}
-          </div>
-        )}
-
-        <Tabs
-          label={t.tags.tabs.label}
-          value={tab}
-          onValueChange={changeTab}
-          idPrefix={tabsId}
-          items={[
-            {
-              value: "tags",
-              label: t.tags.tabs.tags,
-              count: page === undefined ? undefined : formatNumber(page.totalAll),
-              panelId: tagsPanelId,
-            },
-            {
-              value: "rejected",
-              label: t.tags.rejectedNames.heading,
-              count:
-                rejectedPage === undefined ? undefined : formatNumber(rejectedPage.total),
-              panelId: rejectedPanelId,
-            },
-          ]}
-        />
-
-        {onTagsTab && (tentativeOnly || unusedOnly) && (
-          // 効いている絞り込みのチップ（ui-design.md「Active filters」）。
-          <ul
-            aria-label={t.tags.activeFilters.label}
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {tentativeOnly && (
-              <li>
-                <FilterChip
-                  ref={tentativeChipRef}
-                  label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                  onRemove={() => removeFilterChip("tentative")}
-                  icon={<CircleDashed aria-hidden="true" />}
-                >
-                  {t.tags.tentativeOnly}
-                </FilterChip>
-              </li>
-            )}
-            {unusedOnly && (
-              <li>
-                <FilterChip
-                  ref={unusedChipRef}
-                  label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                  onRemove={() => removeFilterChip("unused")}
-                  icon={<VideoOff aria-hidden="true" />}
-                >
-                  {t.tags.unusedOnly}
-                </FilterChip>
-              </li>
-            )}
-          </ul>
-        )}
-
-        {onTagsTab && staleList && (
-          <TagStaleList
-            reason={loadError}
-            pending={firstPending}
-            onRetry={() => void reload()}
+              ) : undefined
+            }
           />
-        )}
-
-        {onTagsTab && showRows && (
-          /*
-            列の見出し（ui-design.md「Column header」）。先頭のチェックは行のチェックと
-            同じ列（行の px-2 と size-8 の包み）に置き、「Videos」は行の本数の列の右端に
-            そろえる。右端の空きは行の操作の列の幅（狭い幅とタッチでは「Actions」1 つ）。
-          */
-          <div className="group flex h-9 items-center gap-2 border-b border-border px-2 text-xs text-fg-muted sm:gap-3">
-            {/*
-              先頭のチェックは「読み込んだものをすべて選ぶ」。読み込んだ行が上限を超えると
-              押せず、理由を包みの title と sr-only で添える（ui-design.md「Column header」）。
-            */}
-            <div
-              className="flex size-8 shrink-0 items-center justify-center"
-              title={
-                selectAllOverLimit ? t.tags.selectAllOverLimit(maxTagBatch) : undefined
-              }
-            >
-              <Checkbox
-                ref={selectAllRef}
-                checked={selectAllState}
-                onCheckedChange={toggleSelectAll}
-                label={
-                  selectAllState === true
-                    ? t.tags.clearSelection
-                    : t.tags.selectAllLoaded(selectableCount)
-                }
-                describedBy={selectAllOverLimit ? selectAllLimitId : undefined}
-                disabled={selectableCount === 0 || selectAllOverLimit}
-                className={cn(
-                  "transition-opacity",
-                  selected.size > 0
-                    ? "opacity-100"
-                    : "opacity-40 group-focus-within:opacity-100 group-hover:opacity-100",
+        )
+      }
+      band={
+        <>
+          <Tabs
+            value={tab}
+            onValueChange={(next) => {
+              changeTab(next as TagListTab);
+            }}
+          >
+            <TabsList aria-label={t.tags.tabs.label}>
+              <TabsTrigger
+                value="tags"
+                id={tabId(tabsId, "tags")}
+                aria-controls={tagsPanelId}
+                disabled={tabsLocked && tab !== "tags"}
+              >
+                {t.tags.tabs.tags}
+                {page !== undefined && (
+                  <span className="font-normal text-muted-foreground tabular-nums">
+                    {formatNumber(page.totalAll)}
+                  </span>
                 )}
-              />
-              {selectAllOverLimit && (
-                <span id={selectAllLimitId} className="sr-only">
-                  {t.tags.selectAllOverLimit(maxTagBatch)}
-                </span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="rejected"
+                id={tabId(tabsId, "rejected")}
+                aria-controls={rejectedPanelId}
+                disabled={tabsLocked && tab !== "rejected"}
+              >
+                {t.tags.rejectedNames.heading}
+                {rejectedPage !== undefined && (
+                  <span className="font-normal text-muted-foreground tabular-nums">
+                    {formatNumber(rejectedPage.total)}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {onTagsTab && (tentativeOnly || unusedOnly) && (
+            // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
+            // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
+            <ul
+              aria-label={t.tags.activeFilters.label}
+              className="flex flex-wrap items-center gap-2"
+            >
+              {tentativeOnly && (
+                <li>
+                  <Toggle
+                    ref={tentativeChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("tentative")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
+                  >
+                    <CircleDashed aria-hidden="true" />
+                    {t.tags.tentativeOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
               )}
-            </div>
-            <span className="min-w-0 flex-1 font-medium">{t.tags.columns.name}</span>
-            <span className="w-16 shrink-0 text-right font-medium sm:w-20">
-              {t.tags.columns.videos}
-            </span>
-            <span
-              aria-hidden="true"
-              className="hidden w-8 shrink-0 max-sm:block [@media(pointer:coarse)]:block"
-            />
-            <span
-              aria-hidden="true"
-              className="w-[8.75rem] shrink-0 max-sm:hidden [@media(pointer:coarse)]:hidden"
-            />
-          </div>
-        )}
-      </div>
-
+              {unusedOnly && (
+                <li>
+                  <Toggle
+                    ref={unusedChipRef}
+                    variant="outline"
+                    size="sm"
+                    pressed
+                    onPressedChange={() => removeFilterChip("unused")}
+                    aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                    title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
+                  >
+                    <VideoOff aria-hidden="true" />
+                    {t.tags.unusedOnly}
+                    <X aria-hidden="true" />
+                  </Toggle>
+                </li>
+              )}
+            </ul>
+          )}
+        </>
+      }
+    >
       {onTagsTab ? (
         <div
           ref={listBoxRef}
           id={tagsPanelId}
           role="tabpanel"
           aria-labelledby={tabId(tabsId, "tags")}
-          className={cn(!showRows && "mt-3")}
+          className="flex flex-col gap-3"
         >
-          {page === undefined && loadError === null && (
-            <div className="space-y-2" aria-hidden="true">
-              {Array.from({ length: 6 }, (_, index) => (
-                <Skeleton key={index} className="h-10" />
-              ))}
-            </div>
-          )}
-
-          {page === undefined && loadError !== null && (
-            <EmptyState
-              icon={AlertCircle}
-              tone="danger"
-              title={t.tags.loadFailed}
-              action={
-                <Button onClick={() => void reload()} disabled={firstPending}>
-                  {t.common.retry}
-                </Button>
-              }
+          {staleList && (
+            <TagStaleList
+              reason={loadError}
+              pending={firstPending}
+              onRetry={() => void reload()}
             />
           )}
 
+          {page === undefined && loadError === null && (
+            <LoadingState label={t.tags.loading} layout="table" count={6} />
+          )}
+
+          {page === undefined && loadError !== null && (
+            <TagLoadFailed pending={firstPending} onRetry={() => void reload()} />
+          )}
+
           {showEmptyTags && (
-            <EmptyState
-              icon={TagsIcon}
+            <TagsEmpty
+              icon={<TagsIcon aria-hidden="true" />}
               title={t.tags.empty.title}
               description={t.tags.empty.description}
               action={
-                <Button variant="primary" onClick={openCreate}>
-                  <Plus />
+                <Button size="sm" onClick={openCreate}>
+                  <Plus aria-hidden="true" />
                   {t.tags.newTag}
                 </Button>
               }
@@ -2174,133 +2178,160 @@ export default function TagsPage() {
           )}
 
           {showNoUnused && (
-            <EmptyState
-              icon={VideoOff}
+            <TagsEmpty
+              icon={<VideoOff aria-hidden="true" />}
               title={appliedTentative ? t.tags.noUnusedTentative : t.tags.noUnused.title}
               description={appliedTentative ? undefined : t.tags.noUnused.description}
-              action={<Button onClick={showAllFromFilter}>{t.tags.clearSearch}</Button>}
+              action={
+                <Button variant="outline" size="sm" onClick={showAllFromFilter}>
+                  {t.tags.clearSearch}
+                </Button>
+              }
             />
           )}
 
           {showNoUnusedMatch && (
-            <EmptyState
-              icon={SearchX}
+            <TagsEmpty
+              icon={<SearchX aria-hidden="true" />}
               title={
                 appliedTentative
                   ? t.tags.noUnusedTentativeMatches(appliedSearch)
                   : t.tags.noUnusedMatches(appliedSearch)
               }
               action={
-                <Button onClick={showAllFromFilterSearch}>{t.tags.clearSearch}</Button>
+                <Button variant="outline" size="sm" onClick={showAllFromFilterSearch}>
+                  {t.tags.clearSearch}
+                </Button>
               }
             />
           )}
 
           {showNoTentative && (
-            <EmptyState
-              icon={CircleDashed}
+            <TagsEmpty
+              icon={<CircleDashed aria-hidden="true" />}
               title={t.tags.noTentative.title}
               description={t.tags.noTentative.description}
-              action={<Button onClick={showAllFromFilter}>{t.tags.clearSearch}</Button>}
+              action={
+                <Button variant="outline" size="sm" onClick={showAllFromFilter}>
+                  {t.tags.clearSearch}
+                </Button>
+              }
             />
           )}
 
           {showNoTentativeMatch && (
-            <EmptyState
-              icon={SearchX}
+            <TagsEmpty
+              icon={<SearchX aria-hidden="true" />}
               title={t.tags.noTentativeMatches(appliedSearch)}
               action={
-                <Button onClick={showAllFromFilterSearch}>{t.tags.clearSearch}</Button>
+                <Button variant="outline" size="sm" onClick={showAllFromFilterSearch}>
+                  {t.tags.clearSearch}
+                </Button>
               }
             />
           )}
 
           {showNoMatch && (
-            <EmptyState
-              icon={SearchX}
+            <TagsEmpty
+              icon={<SearchX aria-hidden="true" />}
               title={t.tags.noMatches(appliedSearch)}
-              action={<Button onClick={clearSearch}>{t.tags.clearSearch}</Button>}
+              action={
+                <Button variant="outline" size="sm" onClick={clearSearch}>
+                  {t.tags.clearSearch}
+                </Button>
+              }
             />
           )}
 
           {showRows && (
-            <div
-              className="divide-y divide-border"
-              aria-busy={tail.kind === "loading" ? true : undefined}
-            >
+            <DataTable label={t.tags.title} stickyHeaderTop={stuckBottom}>
+              {/*
+                列の見出し（ui-design.md「Column header」）。先頭のチェックは「読み込んだ
+                ものをすべて選ぶ」。読み込んだ行が上限を超えると押せず、理由を包みの title と
+                sr-only で添える。
+              */}
+              <TableHeader ref={headRef}>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>
+                    <div
+                      className="flex size-8 items-center justify-center"
+                      title={
+                        selectAllOverLimit
+                          ? t.tags.selectAllOverLimit(maxTagBatch)
+                          : undefined
+                      }
+                    >
+                      <Checkbox
+                        ref={selectAllRef}
+                        checked={selectAllState}
+                        onCheckedChange={toggleSelectAll}
+                        aria-label={
+                          selectAllState === true
+                            ? t.tags.clearSelection
+                            : t.tags.selectAllLoaded(selectableCount)
+                        }
+                        aria-describedby={
+                          selectAllOverLimit ? selectAllLimitId : undefined
+                        }
+                        disabled={selectableCount === 0 || selectAllOverLimit}
+                      />
+                      {selectAllOverLimit && (
+                        <span id={selectAllLimitId} className="sr-only">
+                          {t.tags.selectAllOverLimit(maxTagBatch)}
+                        </span>
+                      )}
+                    </div>
+                  </TableHead>
+                  <TableHead className="w-full">{t.tags.columns.name}</TableHead>
+                  <TableHead className="text-right">{t.tags.columns.videos}</TableHead>
+                  <TableHead aria-hidden="true" />
+                </TableRow>
+              </TableHeader>
               {creating && (
-                <CreateTagRow
-                  pending={createPending}
-                  error={createError}
-                  onCancel={() => {
-                    // 送信中は、その応答が届くまで閉じない（B2 と同じ規則。
-                    // CreateTagRow 自身の Esc・「キャンセル」も pending を見るが、
-                    // ここでも二重に守る）。
-                    if (createPending) return;
-                    setCreating(false);
-                    setCreateError(null);
-                    // 作成を始めた「新しいタグ」へ戻す（「Tentative only」を
-                    // 押していても。そちらは行が外れたときの行き先である）。
-                    // creating が false になって押せるようになってから移す。
-                    setTimeout(() => createButtonRef.current?.focus(), 0);
-                  }}
-                  onSubmit={(name) => void submitCreate(name)}
-                  onDraftChange={() => setCreateError(null)}
-                />
+                <TableBody>
+                  <CreateTagRow
+                    columnCount={tagColumnCount}
+                    pending={createPending}
+                    error={createError}
+                    onCancel={() => {
+                      // 送信中は、その応答が届くまで閉じない（B2 と同じ規則。
+                      // CreateTagRow 自身の Esc・「キャンセル」も pending を見るが、
+                      // ここでも二重に守る）。
+                      if (createPending) return;
+                      setCreating(false);
+                      setCreateError(null);
+                      // 作成を始めた「新しいタグ」へ戻す（「Tentative only」を
+                      // 押していても。そちらは行が外れたときの行き先である）。
+                      // creating が false になって押せるようになってから移す。
+                      setTimeout(() => createButtonRef.current?.focus(), 0);
+                    }}
+                    onSubmit={(name) => void submitCreate(name)}
+                    onDraftChange={() => setCreateError(null)}
+                  />
+                </TableBody>
               )}
-              {visibleRows.length > 0 && (
-                // 行は文書の中の位置へ置き（`translateY`）、高さを持つ包みが全件の
-                // 高さを保つ。行の間の線は `divide-y` と同じ色・太さを各行に付ける
-                // （全件の最後の行には付けない）。
-                <div
-                  ref={listRef}
-                  className="relative"
-                  style={{ height: virtualizer.getTotalSize() }}
-                  onFocus={handleListFocus}
-                  onBlur={handleListBlur}
-                  onKeyDown={handleListKeyDown}
-                >
-                  {virtualItems.map((item) => {
-                    const tag = visibleRows[item.index]!;
-                    return (
-                      <div
-                        key={item.key}
-                        data-index={item.index}
-                        ref={virtualizer.measureElement}
-                        className={cn(
-                          "absolute inset-x-0 top-0",
-                          item.index < visibleRows.length - 1 &&
-                            "*:border-b *:border-border",
-                        )}
-                        style={{
-                          transform: `translateY(${String(item.start - virtualizer.options.scrollMargin)}px)`,
-                        }}
-                      >
-                        <TagRow
-                          tag={tag}
-                          renaming={renamingId === tag.id}
-                          pending={renamingId === tag.id && renamePending}
-                          blockStart={
-                            createPending || (renamePending && renamingId !== tag.id)
-                          }
-                          error={renamingId === tag.id ? renameError : null}
-                          registerRefs={registerRefs}
-                          confirming={confirming.has(tag.id)}
-                          selected={selected.has(tag.id)}
-                          selectionActive={selected.size > 0}
-                          {...rowHandlers}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {tail.kind === "loading" && <TagLoadingMore />}
-              {tail.kind === "failed" && (
-                <TagLoadMoreFailed reason={tail.error} onRetry={retryMore} />
-              )}
-              {tail.kind === "inconsistent" && <TagListChanged onReload={reloadList} />}
-            </div>
+              {/*
+                行は文書の中の位置に並べ、描かない行の分は空の行で高さを保つ。フォーカスと
+                Tab の受け渡しはこの tbody が持つ（ui-design.md「Keyboard across virtualized
+                rows」）。
+              */}
+              <TableBody
+                ref={listRef}
+                aria-busy={tail.kind === "loading" ? true : undefined}
+                onFocus={handleListFocus}
+                onBlur={handleListBlur}
+                onKeyDown={handleListKeyDown}
+              >
+                {bodyRows}
+              </TableBody>
+            </DataTable>
+          )}
+          {showRows && tail.kind === "loading" && <TagLoadingMore />}
+          {showRows && tail.kind === "failed" && (
+            <TagLoadMoreFailed reason={tail.error} onRetry={retryMore} />
+          )}
+          {showRows && tail.kind === "inconsistent" && (
+            <TagListChanged onReload={reloadList} />
           )}
         </div>
       ) : (
@@ -2308,7 +2339,7 @@ export default function TagsPage() {
           id={rejectedPanelId}
           role="tabpanel"
           aria-labelledby={tabId(tabsId, "rejected")}
-          className="mt-3"
+          className="flex flex-col gap-3"
         >
           <RejectedNames
             page={rejectedPage}
@@ -2376,6 +2407,48 @@ export default function TagsPage() {
           onStale={staleSynonyms}
         />
       )}
-    </div>
+    </AdminTablePage>
+  );
+}
+
+/** tagColumnCount は表の列の数（チェック・名前・本数・操作）。 */
+const tagColumnCount = 4;
+
+/** tabId はタブの id である。パネルの `aria-labelledby` とフォーカスの行き先に使う。 */
+function tabId(prefix: string, value: string): string {
+  return `${prefix}-tab-${value}`;
+}
+
+/** SpacerRow は描かない行の高さを保つ空の行である。読み上げない。 */
+function SpacerRow({ height }: { height: number }) {
+  return (
+    <tr aria-hidden="true" style={{ height }}>
+      <td colSpan={tagColumnCount} className="p-0" />
+    </tr>
+  );
+}
+
+/**
+ * TagsEmpty は見出しつきの空の状態である。題は見出し（h2）にし、読み上げソフトで
+ * 見出しから状態へ飛べるようにする（状態の部品の題は見出しの要素を持たないため）。
+ */
+function TagsEmpty({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon: ReactNode;
+  title: UiText;
+  description?: UiText;
+  action: ReactNode;
+}) {
+  return (
+    <EmptyState
+      icon={icon}
+      title={<h2>{title}</h2>}
+      description={description}
+      action={action}
+    />
   );
 }

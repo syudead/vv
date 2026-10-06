@@ -12,13 +12,13 @@ import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
-import { Grid } from "../videoList/Grid";
+import { CardGrid } from "../ui/patterns/card-grid";
 import { resultCountText } from "../videoList/listSummary";
-import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
+import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 import { useFolderTagsRow } from "./useFolderTagsRow";
 
 /**
@@ -145,57 +145,49 @@ export default function RootSearchResults({
     !waiting && failure !== null && (items.length === 0 || roots.error !== null);
   const summaryText = waiting ? t.list.loading : resultCountText(total);
 
+  // 本体の間隔は一覧ページの骨格が持つので、控えを取るための入れ物は箱を作らない（contents）。
   return (
-    <div onClick={saveSnapshot} className="flex flex-col gap-3">
+    <div onClick={saveSnapshot} className="contents">
       <h2 className="sr-only">{t.folders.searchResults}</h2>
       {noMatch ? (
         <NoMatches />
       ) : (
         <>
-          {!initialLoadFailed && (
-            <p
-              role="status"
-              aria-live="polite"
-              className="text-center text-xs text-fg-muted tabular-nums"
-            >
-              {summaryText}
-            </p>
-          )}
+          {!initialLoadFailed && <ResultCount>{summaryText}</ResultCount>}
           {initialLoadFailed ? (
             <LoadFailed reason={failure} onRetry={retry} />
+          ) : waiting ? (
+            <CardsLoading zoom={zoom} count={12} />
           ) : (
             <TagRowMeasureProvider>
-              <Grid zoom={zoom}>
-                {waiting ? (
-                  <CardSkeleton count={12} />
-                ) : (
-                  itemVideos(items).map((video) => (
-                    <VideoCard
-                      key={video.id}
-                      video={video}
-                      backTo={backTo}
-                      selected={false}
-                      selectionMode={false}
-                      {...preview}
-                      tagsRow={tagsRow}
-                      location={
-                        video.folder === undefined
-                          ? undefined
-                          : topLevelLocationLabel(
-                              video.folder,
-                              rootNames.get(video.folder.rootId),
-                            )
-                      }
-                    />
-                  ))
-                )}
-                {loadingMore && <CardSkeleton count={6} />}
-              </Grid>
+              <CardGrid size={zoom}>
+                {itemVideos(items).map((video) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    backTo={backTo}
+                    selected={false}
+                    selectionMode={false}
+                    {...preview}
+                    tagsRow={tagsRow}
+                    location={
+                      video.folder === undefined
+                        ? undefined
+                        : topLevelLocationLabel(
+                            video.folder,
+                            rootNames.get(video.folder.rootId),
+                          )
+                    }
+                  />
+                ))}
+              </CardGrid>
             </TagRowMeasureProvider>
           )}
-          {error !== null && items.length > 0 && (
-            <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-          )}
+          <MoreRow
+            loadingMore={loadingMore}
+            error={items.length > 0 ? error : null}
+            onRetry={retryLoadMore}
+          />
         </>
       )}
       <div ref={sentinel} aria-hidden="true" className="h-px" />

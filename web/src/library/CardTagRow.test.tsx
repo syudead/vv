@@ -109,25 +109,25 @@ describe("CardTagRow", () => {
         name: "Filter by 京都 (from the folder name)",
       });
       expect(folderOnly.className).toContain("border-dashed");
-      expect(folderOnly.className).not.toContain("bg-elevated");
+      expect(folderOnly.className).not.toContain("bg-secondary");
       expect(folderOnly.querySelector("svg[aria-hidden='true']")).not.toBeNull();
 
       for (const name of ["旅行", "夏"]) {
         const chip = screen.getByRole("button", { name: `Filter by ${name}` });
-        expect(chip.className).toContain("bg-elevated");
+        expect(chip.className).toContain("bg-secondary");
         expect(chip.className).not.toContain("border-dashed");
         expect(chip.querySelector("svg")).toBeNull();
       }
     });
 
-    it("区別は文字の大きさではなく形で行う（同じ h-5・text-xs）", () => {
+    it("区別は文字の大きさではなく形で行う（同じ h-6・text-xs）", () => {
       renderRow({ tags: mixed });
       const folderOnly = screen.getByRole("button", { name: /京都/ });
       const manual = screen.getByRole("button", { name: "Filter by 夏" });
       for (const chip of [folderOnly, manual]) {
-        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("h-6");
         expect(chip.className).toContain("text-xs");
-        expect(chip.className).toContain("text-fg-muted");
+        expect(chip.className).toContain("text-muted-foreground");
       }
     });
 
@@ -184,7 +184,7 @@ describe("CardTagRow", () => {
       expect(icon?.getAttribute("aria-hidden")).toBe("true");
       expect(icon?.getAttribute("class")).toContain("size-3");
       expect(icon?.getAttribute("class")).toContain("shrink-0");
-      expect(icon?.getAttribute("class")).toContain("text-fg-subtle");
+      expect(icon?.getAttribute("class")).toContain("text-muted-foreground");
       // 名前が先（主）で、目印はその後ろ。名前だけが省略される。
       const name = tentative.firstElementChild;
       expect(name?.textContent).toBe("高画質");
@@ -193,10 +193,10 @@ describe("CardTagRow", () => {
       expect(tentative.getAttribute("title")).toBe("高画質");
 
       for (const chip of [tentative, confirmed]) {
-        expect(chip.className).toContain("bg-elevated");
-        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("bg-secondary");
+        expect(chip.className).toContain("h-6");
         expect(chip.className).toContain("text-xs");
-        expect(chip.className).toContain("text-fg-muted");
+        expect(chip.className).toContain("text-muted-foreground");
       }
       // 確定したタグには何も足さない。
       expect(confirmed.querySelector("svg")).toBeNull();

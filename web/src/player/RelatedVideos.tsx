@@ -17,15 +17,22 @@ import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
-import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
-import Button from "../ui/Button";
 import {
   ScrubBand,
   ScrubFrame,
   type ScrubPreview,
   useScrubPreview,
 } from "../ui/ScrubPreview";
-import Skeleton from "../ui/Skeleton";
+import { Button } from "../ui/shadcn/button";
+import { Separator } from "../ui/shadcn/separator";
+import { Skeleton } from "../ui/shadcn/skeleton";
+import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
+import {
+  VideoThumbnail as Thumbnail,
+  VideoThumbnailDuration,
+  VideoThumbnailImage,
+  VideoThumbnailProgress,
+} from "../ui/VideoThumbnail";
 
 /**
  * videoLinkLabel は関連動画と「次の動画」のリンクの読み上げ名である。題名と長さだけにし、
@@ -63,30 +70,19 @@ export function VideoThumbnail({
   // 帯にいる間のポインタの位置（ui-design.md「Time and bar」）。
   const scrubPosition = scrub?.position ?? null;
   return (
-    <div
-      className={cn(
-        "relative aspect-video shrink-0 overflow-hidden rounded-md bg-surface",
-        className,
-      )}
-    >
+    <Thumbnail className={cn("shrink-0", className)}>
       {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
         <ThumbnailBackdrop src={video.thumbnailUrl} />
       )}
       {video.thumbnailUrl !== undefined ? (
-        <img
+        <VideoThumbnailImage
           src={video.thumbnailUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className={cn(
-            "relative h-full w-full object-contain",
-            preview?.playing === true && "opacity-0",
-          )}
+          className={cn(preview?.playing === true && "opacity-0")}
         />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-fg-subtle">
+        <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
           <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
-          <span className="text-xs">
+          <span className="text-2xs">
             {video.thumbnailState === "failed"
               ? t.list.card.noImage
               : t.list.card.preparing}
@@ -107,53 +103,43 @@ export function VideoThumbnail({
           onPlaying={preview.onPlaying}
           onError={preview.onError}
           className={cn(
-            "absolute inset-0 h-full w-full object-contain",
+            "absolute inset-0 size-full object-contain",
             preview.playing ? "opacity-100" : "opacity-0",
           )}
         />
       )}
       <ScrubFrame frame={scrub?.frame ?? null} />
       {duration !== "" && (
-        <span className="absolute right-1 bottom-1 rounded-sm bg-overlay px-1 text-xs text-fg tabular-nums">
+        // 関連動画の列と次の動画の小さなサムネイルでは、長さを角に寄せて読みやすい大きさにする。
+        <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
           {scrubPosition === null
             ? duration
             : t.list.card.scrubTime(formatDuration(scrubPosition.positionMs), duration)}
-        </span>
+        </VideoThumbnailDuration>
       )}
       {ratio !== null && (
-        <span
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(ratio * 100)}
+        <VideoThumbnailProgress
+          value={Math.round(ratio * 100)}
           aria-label={t.list.card.watchedRatio}
           // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
-          className={cn(
-            "absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50",
-            scrubPosition !== null && "opacity-0",
-          )}
-        >
-          <span
-            className="block h-full bg-accent"
-            style={{ width: `${String(Math.round(ratio * 100))}%` }}
-          />
-        </span>
+          className={cn(scrubPosition !== null && "opacity-0")}
+        />
       )}
       {scrubPosition !== null && (
         <span
           aria-hidden="true"
           data-scrub-bar=""
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-overlay"
         >
           <span
-            className="block h-full bg-fg"
+            className="block h-full bg-foreground"
             style={{ width: `${String(scrubPosition.ratio * 100)}%` }}
           />
         </span>
       )}
       {/* 帯は長さの表示とバーより前に置く（R-5）。 */}
       {scrub !== undefined && <ScrubBand scrub={scrub} />}
-    </div>
+    </Thumbnail>
   );
 }
 
@@ -187,6 +173,9 @@ const scrollerClass =
   // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、はみ出す分だけ
   // 内側に余白を取る。
   "lg:-mx-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:pt-1.5 lg:pb-6";
+
+/** 関連動画の行のサムネイルの幅。 */
+const thumbnailWidth = "w-related-thumb";
 
 /**
  * RelatedVideos は関連動画の列である（要件 15）。
@@ -229,7 +218,7 @@ export default function RelatedVideos({
       className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
     >
       {!empty && (
-        <h2 id="related-heading" className="text-sm font-semibold text-fg">
+        <h2 id="related-heading" className="text-sm font-semibold">
           {t.player.related.heading}
         </h2>
       )}
@@ -238,7 +227,7 @@ export default function RelatedVideos({
         <ul aria-hidden="true" className="flex flex-col gap-3">
           {Array.from({ length: 6 }, (_, index) => (
             <li key={index} className="flex gap-3">
-              <Skeleton className="aspect-video w-40 shrink-0" />
+              <Skeleton className={cn("aspect-video shrink-0", thumbnailWidth)} />
               <div className="flex flex-1 flex-col gap-2 pt-1">
                 <Skeleton className="h-4 w-full" />
                 <Skeleton className="h-4 w-2/3" />
@@ -250,7 +239,7 @@ export default function RelatedVideos({
 
       {state.kind === "failed" && (
         <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-fg-muted">{t.player.related.loadFailed}</p>
+          <p className="text-sm text-muted-foreground">{t.player.related.loadFailed}</p>
           <Button variant="ghost" size="sm" onClick={onRetry}>
             {t.common.retry}
           </Button>
@@ -384,11 +373,11 @@ function GroupedRelated({
       className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="group-heading" className="text-sm font-semibold text-fg">
+        <h2 id="group-heading" className="text-sm font-semibold">
           {t.player.related.group}
         </h2>
         {index >= 0 && (
-          <span className="text-xs text-fg-muted tabular-nums">
+          <span className="text-xs text-muted-foreground tabular-nums">
             {t.player.related.position(first + index + 1, total)}
           </span>
         )}
@@ -444,10 +433,10 @@ function GroupedRelated({
         {items.length > 0 && (
           <>
             <div className="pt-5 pb-2">
-              <hr className="border-t border-border" />
+              <Separator decorative={false} />
             </div>
             <section aria-labelledby="related-heading" className="flex flex-col gap-3">
-              <h2 id="related-heading" className="text-sm font-semibold text-fg">
+              <h2 id="related-heading" className="text-sm font-semibold">
                 {t.player.related.heading}
               </h2>
               <ul className="flex flex-col gap-3">
@@ -513,7 +502,9 @@ function GroupEdge({
 }) {
   return (
     <div className="flex flex-col items-start gap-1 py-2">
-      {failed && <p className="text-sm text-fg-muted">{t.player.related.moreFailed}</p>}
+      {failed && (
+        <p className="text-sm text-muted-foreground">{t.player.related.moreFailed}</p>
+      )}
       <Button variant="ghost" size="sm" onClick={onClick} disabled={disabled}>
         {label}
       </Button>
@@ -526,7 +517,7 @@ function MemberNumber({ position }: { position: number }) {
   return (
     <span
       aria-hidden="true"
-      className="w-5 shrink-0 pt-0.5 text-right text-xs text-fg-muted tabular-nums"
+      className="w-5 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums"
     >
       {formatNumber(position)}
     </span>
@@ -539,15 +530,15 @@ function MemberTitle({ video }: { video: Video }) {
     <span className="flex min-w-0 items-start gap-1">
       <span
         className={cn(
-          "line-clamp-2 min-w-0 text-sm font-medium [overflow-wrap:anywhere]",
-          watched ? "text-fg-muted" : "text-fg",
+          "line-clamp-2 min-w-0 text-sm font-medium wrap-anywhere",
+          watched ? "text-muted-foreground" : "text-foreground",
         )}
       >
         {video.title}
       </span>
       {watched && (
         <Check
-          className="mt-0.5 size-3.5 shrink-0 text-success"
+          className="mt-0.5 size-4 shrink-0 text-success"
           strokeWidth={2.5}
           aria-hidden="true"
         />
@@ -640,10 +631,15 @@ function MemberItem({
         aria-label={memberLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
+        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
         <MemberNumber position={position} />
-        <VideoThumbnail video={video} className="w-40" preview={preview} scrub={scrub} />
+        <VideoThumbnail
+          video={video}
+          className={thumbnailWidth}
+          preview={preview}
+          scrub={scrub}
+        />
         <MemberTitle video={video} />
       </Link>
     </li>
@@ -665,9 +661,9 @@ function CurrentMember({
     // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。
     <li ref={ref} aria-current="true" className="scroll-my-6">
       {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
-      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-accent bg-active-wash p-1.5 pl-1">
+      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-primary bg-accent p-1.5 pl-1">
         <MemberNumber position={position} />
-        <VideoThumbnail video={video} className="w-40" />
+        <VideoThumbnail video={video} className={thumbnailWidth} />
         <span className="sr-only">{t.player.related.nowPlaying}</span>
         <MemberTitle video={video} />
         {watched && <span className="sr-only">{t.player.related.watched}</span>}
@@ -688,10 +684,15 @@ function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
         aria-label={videoLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
+        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
-        <VideoThumbnail video={video} className="w-40" preview={preview} scrub={scrub} />
-        <span className="line-clamp-2 min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
+        <VideoThumbnail
+          video={video}
+          className={thumbnailWidth}
+          preview={preview}
+          scrub={scrub}
+        />
+        <span className="line-clamp-2 min-w-0 text-sm font-medium wrap-anywhere">
           {video.title}
         </span>
       </Link>

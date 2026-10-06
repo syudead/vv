@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import type { VideoFolder } from "../api/client";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import VideoHeader, { folderCrumbs } from "./VideoHeader";
 
 function renderHeader(folder: VideoFolder | undefined, onClose = vi.fn()) {
@@ -40,10 +40,10 @@ describe("VideoHeader", () => {
     ]);
     // 狭い幅では最後の段だけを残し、途中は「…」に畳む（出し分けは CSS）。
     expect(links[0]?.closest("li")?.className.split(" ")).toEqual(
-      expect.arrayContaining(["hidden", "md:flex"]),
+      expect.arrayContaining(["hidden", "md:inline-flex"]),
     );
     expect(links[2]?.closest("li")?.className).not.toContain("hidden");
-    expect(within(nav).getByText("…")).toBeDefined();
+    expect(nav.querySelector('[data-slot="breadcrumb-ellipsis"]')).not.toBeNull();
   });
 
   it("登録フォルダの直下なら段は 1 つで、「…」は出さない", () => {
@@ -54,7 +54,7 @@ describe("VideoHeader", () => {
         .getAllByRole("link")
         .map((link) => link.textContent),
     ).toEqual(["movies"]);
-    expect(within(nav).queryByText("…")).toBeNull();
+    expect(nav.querySelector('[data-slot="breadcrumb-ellipsis"]')).toBeNull();
   });
 
   it("置き場所や登録フォルダの名前が分からなければパンくずを出さない", () => {

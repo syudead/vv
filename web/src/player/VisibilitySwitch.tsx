@@ -4,10 +4,14 @@ import { useState } from "react";
 import { updateVideoVisibility } from "../api/visibility";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { Button } from "../ui/shadcn/button";
 
 /**
  * VisibilitySwitch は再生画面の公開の切り替えである
  * （specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Video page」）。
+ * 今の状態（Private・Public）を印と一緒に名前にした `Button`（`sm`）で、読み上げには
+ * `switch` の役割と `aria-checked` で切り替えであることを伝える。非公開は `secondary` の面、
+ * 公開は選択と同じ `primary-soft` の面に `primary` の文字にする。
  *
  * 押すと `PUT /api/video-visibility` を1回送り、応答を受けてから状態を変える。
  * 状態は親（useVideoDetail）の `public` が持ち、応答の通知（api/visibility.ts）で
@@ -51,28 +55,28 @@ export default function VisibilitySwitch({
 
   return (
     <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
         role="switch"
         aria-checked={isPublic}
         aria-label={t.player.visibility.label}
         aria-disabled={sending || undefined}
         onClick={toggle}
         className={cn(
-          "inline-flex h-8 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors duration-150 select-none aria-disabled:cursor-default aria-disabled:opacity-50",
-          isPublic
-            ? "bg-accent-soft text-link hover:text-fg"
-            : "bg-elevated text-fg hover:bg-hover-wash hover:bg-blend-lighten active:bg-active-wash",
+          "px-visibility-x text-xs has-[>svg]:px-visibility-x aria-disabled:cursor-default aria-disabled:opacity-50",
+          isPublic &&
+            "bg-primary-soft text-primary hover:bg-primary-soft hover:text-foreground",
         )}
       >
         <Icon
           aria-hidden="true"
-          className={cn("size-4", sending && "animate-spin motion-reduce:animate-none")}
+          className={cn(sending && "animate-spin motion-reduce:animate-none")}
         />
         {isPublic ? t.player.visibility.public : t.player.visibility.private}
-      </button>
+      </Button>
       {failure !== null && (
-        <p role="alert" className="flex items-center gap-1.5 text-sm text-danger">
+        <p role="alert" className="flex items-center gap-1.5 text-sm text-destructive">
           <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
           {failure}
         </p>

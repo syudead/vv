@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "skeleton",
+  "title": "Skeleton",
+  "description": "The final layout's shapes while content loads.",
+  "files": [
+    {
+      "path": "src/ui/shadcn/skeleton.tsx",
+      "content": "import type * as React from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\n// shadcn/ui の skeleton（radix-nova）を vv のトークンで着せたもの。読み込み中に、出来上がりの\n// 形を先に見せる（web/registry/rules/components.md「Skeleton」）。動きは上流の pulse でなく\n// vv の shimmer（tokens.css の bg-shimmer と animate-shimmer）。\n\nfunction Skeleton({ className, ...props }: React.ComponentProps<\"div\">) {\n  return (\n    <div\n      data-slot=\"skeleton\"\n      aria-hidden=\"true\"\n      className={cn(\n        \"rounded-md bg-card bg-shimmer animate-shimmer motion-reduce:animate-none\",\n        className,\n      )}\n      {...props}\n    />\n  );\n}\n\nexport { Skeleton };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/components.md#skeleton (item vv-rules).",
+  "type": "registry:ui"
+}

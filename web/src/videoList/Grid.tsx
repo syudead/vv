@@ -1,26 +1,13 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { Zoom } from "../preferences/viewPreferences";
-
-/** cardWidth は表示倍率ごとのカードの幅である。 */
-export const cardWidth: Record<Zoom, string> = {
-  0: "var(--spacing-card-0)",
-  1: "var(--spacing-card-1)",
-  2: "var(--spacing-card-2)",
-  3: "var(--spacing-card-3)",
-};
+import { CardGrid } from "../ui/patterns/card-grid";
 
 /**
  * Grid はカードの格子である。ライブラリとフォルダ画面が同じ幅・同じ間隔で使う。
- * sm 未満の狭い幅では表示倍率によらず 1 列の全幅にする（どの倍率でも 2 枚は並ばないため）。
+ * 画面の型の CardGrid に表示倍率（card-0〜card-3）を渡す: カードは列の幅いっぱいに伸び、
+ * 左右の端がツールバーと揃う。狭い幅では 1 列になる。
  */
 export function Grid({ zoom, children }: { zoom: Zoom; children: ReactNode }) {
-  return (
-    <div
-      className="flex flex-wrap justify-center gap-2.5 [&>*]:w-full sm:[&>*]:w-[min(var(--card),100%)]"
-      style={{ "--card": cardWidth[zoom] } as CSSProperties}
-    >
-      {children}
-    </div>
-  );
+  return <CardGrid size={zoom}>{children}</CardGrid>;
 }

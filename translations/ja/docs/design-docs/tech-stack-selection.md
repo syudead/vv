@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/tech-stack-selection.md
-sourceHash: ea0a48e68947c5356e8bd9e00a745950c54708b2254313aa4ee5e1d062753a5a
+sourceHash: 522c12474ecc620fc2bed071d0adbf7b4937f6c49c2f60dd449f548d37c3e007
 ---
 
 # 技術選定: MDM (Media Data Management) {#technology-selection-mdm-media-data-management}
@@ -47,7 +47,7 @@ flowchart LR
 | バックエンドの言語 | Go (バージョンは `go.mod`) | 単一バイナリになる。標準ライブラリが常駐プロセスと子プロセスを扱える。NAS 上でのメモリ使用量が小さい |
 | HTTP サーバー | 標準の `net/http` (Go 1.22+ の `ServeMux`) | メソッドによるルーティングとパスのワイルドカードが組み込まれており、`http.ServeContent` が Range 配信を実装している |
 | 動画の配信 | 対応形式は `http.ServeContent`、それ以外はリクエストごとの fragmented MP4 | 変換結果は保存しない ([ライブ変換のシーク](live-transcode-seek.md)) |
-| フロントエンド | React + Vite + React Router + Tailwind CSS | 静的ビルドを `embed` でバイナリに埋め込む SPA |
+| フロントエンド | React + Vite + React Router + Tailwind CSS、コンポーネントは Radix 上の shadcn/ui | 静的ビルドを `embed` でバイナリに埋め込む SPA。コンポーネントとトークンが[デザインシステム](design-system.md)を構成する |
 | API 契約 | OpenAPI 3.1 を元にし、Go は `oapi-codegen`、TypeScript は `openapi-typescript` で生成する | 2 言語間の型のずれがコンパイルエラーになる |
 | DB | SQLite (`modernc.org/sqlite`、CGO なし、WAL モード) | 小さな alpine イメージ向けに静的バイナリとしてクロスコンパイルできる |
 | クエリ | `database/sql` を通した手書き SQL | FTS5 を含め、SQL が一次情報のままになる |

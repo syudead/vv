@@ -231,7 +231,7 @@ export function CardMedia({
   return (
     <div
       data-preview-media="true"
-      className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+      className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
     >
       {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
         <ThumbnailBackdrop src={video.thumbnailUrl} />
@@ -248,7 +248,7 @@ export function CardMedia({
           )}
         />
       ) : (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-muted-foreground">
           <ImageOff className="size-6" strokeWidth={1.5} />
           <span className="text-xs">
             {video.thumbnailState === "failed"

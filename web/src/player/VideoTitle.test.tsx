@@ -4,7 +4,7 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import VideoTitle from "./VideoTitle";
 
 function json(body: unknown, status = 200): Response {
@@ -113,7 +113,7 @@ describe("VideoTitle", () => {
     renderTitle({ initial: named });
     const line = screen.getByTitle("File name: clip_0042");
     expect(line.textContent).toBe("File name clip_0042");
-    expect(line.className).toContain("text-fg-muted");
+    expect(line.className).toContain("text-muted-foreground");
     expect(line.querySelector("a, button")).toBeNull();
   });
 

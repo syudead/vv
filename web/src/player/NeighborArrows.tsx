@@ -2,7 +2,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Tooltip from "../ui/Tooltip";
+import { Button } from "../ui/shadcn/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 interface Neighbor {
   /** 移り先の題名。関連動画の並びに無いときは分からない。 */
@@ -71,28 +72,31 @@ function Arrow({
       ? label
       : t.player.neighbors.withTitle(label, neighbor.title);
   return (
-    <Tooltip
-      content={tip}
-      side={side === "left" ? "right" : "left"}
-      container={container}
-    >
-      <button
-        type="button"
-        aria-label={tip}
-        data-neighbor-arrow={side}
-        onClick={neighbor.go}
-        className={cn(
-          // 操作バー（約 3rem）を除いた映像の上下中央に置く。
-          "absolute top-[calc(50%-1.5rem)] z-30 flex h-[55%] min-h-18 w-7 -translate-y-1/2 items-center justify-center bg-overlay text-fg transition-[opacity,background-color] duration-150 hover:bg-bg motion-reduce:transition-none sm:h-1/2 sm:min-h-24 sm:w-8",
-          side === "left" ? "left-0 rounded-r-lg" : "right-0 rounded-l-lg",
-          visible
-            ? "opacity-100"
-            : // 見えない間は押せなくする。キーボードでフォーカスが来たときだけ見せる。
-              "pointer-events-none opacity-0 focus-visible:opacity-100",
-        )}
-      >
-        <Icon className="size-5 sm:size-5.5" aria-hidden="true" />
-      </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          aria-label={tip}
+          data-neighbor-arrow={side}
+          onClick={neighbor.go}
+          className={cn(
+            // 操作バー（約 3rem）を除いた映像の上下中央に置く（中央から 1.5rem 上）。
+            "absolute top-1/2 z-30 -mt-6 h-11/20 min-h-neighbor-arrow-min w-neighbor-arrow -translate-y-1/2 bg-overlay px-0 text-foreground transition duration-150 hover:bg-background motion-reduce:transition-none sm:h-1/2 sm:min-h-neighbor-arrow-min-sm sm:w-8 [&_svg]:size-5",
+            side === "left"
+              ? "left-0 rounded-l-none rounded-r-lg"
+              : "right-0 rounded-l-lg rounded-r-none",
+            visible
+              ? "opacity-100"
+              : // 見えない間は押せなくする。キーボードでフォーカスが来たときだけ見せる。
+                "pointer-events-none opacity-0 focus-visible:opacity-100",
+          )}
+        >
+          <Icon aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side={side === "left" ? "right" : "left"} container={container}>
+        {tip}
+      </TooltipContent>
     </Tooltip>
   );
 }

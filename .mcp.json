@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "shadcn": {
+      "command": "npm",
+      "args": ["--prefix", "web", "exec", "--", "shadcn", "mcp"]
+    }
+  }
+}

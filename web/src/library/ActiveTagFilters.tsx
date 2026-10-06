@@ -1,4 +1,4 @@
-import { Tag as TagIcon } from "lucide-react";
+import { Tag as TagIcon, X } from "lucide-react";
 import { type RefObject, useEffect, useRef, useState } from "react";
 
 import {
@@ -10,8 +10,8 @@ import {
 } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { t } from "../i18n";
-import FilterChip from "../ui/FilterChip";
-import Skeleton from "../ui/Skeleton";
+import { Skeleton } from "../ui/shadcn/skeleton";
+import { Toggle } from "../ui/shadcn/toggle";
 
 export interface ActiveTagFiltersProps {
   /** 絞り込み中のタグの id（並びは問わない。表示は名前の自然順にそろえる）。 */
@@ -105,39 +105,46 @@ export default function ActiveTagFilters({
   }
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-1.5">
-      <span className="text-xs text-fg-muted">{t.library.activeTags.label}</span>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs text-muted-foreground">{t.library.activeTags.label}</span>
       <ul
         aria-label={t.library.activeTags.list}
-        className="flex flex-wrap items-center gap-1.5"
+        className="flex flex-wrap items-center gap-2"
       >
         {ordered.map((id) => {
           const tag = byId.get(id);
+          // タグの一覧をまだ取得していない間も、読み上げる名前が無くならない
+          // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
+          const label =
+            tag === undefined
+              ? t.library.activeTags.remove
+              : t.library.activeTags.removeNamed(tag.name);
           return (
             <li key={id}>
-              <FilterChip
+              {/* 効いている絞り込みは押された Toggle で、押し戻すと外れる
+                  （web/registry/rules/components.md「Toggle and ToggleGroup」）。 */}
+              <Toggle
                 ref={(node) => {
                   if (node) buttonRefs.current.set(id, node);
                   else buttonRefs.current.delete(id);
                 }}
-                // タグの一覧をまだ取得していない間も、読み上げる名前が無くならない
-                // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
-                label={
-                  tag === undefined
-                    ? t.library.activeTags.remove
-                    : t.library.activeTags.removeNamed(tag.name)
-                }
-                onRemove={() => remove(id)}
-                icon={<TagIcon aria-hidden="true" />}
+                variant="outline"
+                size="sm"
+                pressed
+                onPressedChange={() => remove(id)}
+                aria-label={label}
+                title={label}
               >
+                <TagIcon aria-hidden="true" />
                 {tag === undefined ? (
                   <Skeleton className="h-3 w-12" />
                 ) : (
-                  <span title={tag.name} className="min-w-0 max-w-48 truncate">
+                  <span title={tag.name} className="max-w-chip-label min-w-0 truncate">
                     {tag.name}
                   </span>
                 )}
-              </FilterChip>
+                <X aria-hidden="true" />
+              </Toggle>
             </li>
           );
         })}

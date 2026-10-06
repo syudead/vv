@@ -7,7 +7,7 @@ import type { Tag, TagList, TagPageQuery } from "../api/tags";
 import { listTagPage, mergeTag, tagImpact } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
 import { errorText, t } from "../i18n";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import MergeTagDialog from "./MergeTagDialog";
 
 vi.mock("../api/tags", async (importOriginal) => ({
@@ -195,7 +195,7 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(listbox.className).not.toContain("absolute");
     // 一覧の箱は高さが決まっていて、その中を縦にスクロールする。
     const box = listbox.parentElement!;
-    expect(box.className).toContain("h-60");
+    expect(box.className).toContain("h-combobox-panel");
     expect(box.className).toContain("overflow-y-auto");
     // 箱は窓の下端（ボタンの行）より前、本文の中にある。
     const footer = within(modal).getByRole("button", {
@@ -204,16 +204,17 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     expect(
       box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 低い画面でもボタンの行が窓の下端に残るよう、箱を含む本文がまとめて縦に
-    // スクロールし、ボタンの行はその外で縮まない。
-    const body = box.parentElement!.closest(".overflow-y-auto")!;
-    expect(body).not.toBeNull();
-    expect(body.className).toContain("min-h-0");
+    // 低い画面では、フォームダイアログ（FormDialog）の本文だけが縦にスクロールし、
+    // ボタンの行は窓の下端に残る（変更前と同じ）。
+    expect(modal.className).toContain("max-h-full");
+    expect(modal.className).toContain("overflow-hidden");
+    const body = box.closest('[data-slot="form-dialog-body"]')!;
+    expect(body.className).toContain("overflow-y-auto");
     expect(body.contains(footer)).toBe(false);
-    expect(footer.className).toContain("shrink-0");
+    expect(modal.contains(footer)).toBe(true);
   });
 
-  it("選んだ統合先は一覧で目立たせ、下端に「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {
+  it("選んだ統合先は一覧で目立たせ、「統合元 → 統合先」を出す。「Merge」は primary で、選ぶまで押せない", async () => {
     const user = userEvent.setup();
     render(dialog());
     const modal = await screen.findByRole("dialog");
@@ -221,16 +222,16 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
       name: t.tags.mergeDialog.submit,
     });
     expect(mergeButton).toHaveProperty("disabled", true);
-    expect(mergeButton.className).toContain("bg-accent");
+    expect(mergeButton.className).toContain("bg-primary");
     expect(mergeButton.className).not.toContain("bg-danger");
     expect(within(modal).queryByText("→")).toBeNull();
 
     await user.click(await within(modal).findByRole("option", { name: /Anime/ }));
     const chosen = await within(modal).findByRole("option", { name: /Anime/ });
     expect(chosen.getAttribute("data-chosen")).toBe("true");
-    expect(chosen.className).toContain("bg-accent-soft");
-    const footer = mergeButton.parentElement!;
-    expect(footer.textContent).toContain("旅行 → Anime");
+    expect(chosen.className).toContain("bg-primary-soft");
+    // 「統合元 → 統合先」は確認の文言の後、ボタンの行の前に出す。
+    expect(modal.textContent).toContain("旅行 → Anime");
     await waitFor(() => expect(mergeButton).toHaveProperty("disabled", false));
   });
 
@@ -472,7 +473,7 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
     vi.mocked(listTagPage).mockRejectedValueOnce(offline);
     await user.type(combo, "D");
     const failure = await within(modal).findByText(failureText);
-    expect(failure.className).toContain("text-danger");
+    expect(failure.className).toContain("text-destructive");
     expect(combo.getAttribute("aria-describedby")).toBe(failure.id);
     expect(within(modal).getByRole("option", { name: /Anime/ })).toBeDefined();
     expect(within(modal).queryByRole("button", { name: t.common.retry })).toBeNull();

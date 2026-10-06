@@ -380,7 +380,9 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
         "",
       );
-      await expect(page.locator("p[role='status']")).toHaveText("2 items");
+      await expect(page.getByRole("status", { name: "Search results" })).toHaveText(
+        "2 items",
+      );
 
       // タグの絞り込みは、題名にその文字列を含むだけのタグの無い動画を出さない
       // （受け入れ条件7、親 Issue「タグの無い動画」の要求を満たさない例）。ここでは
@@ -622,7 +624,7 @@ test.describe.serial("video tags", () => {
       // `anime`、要件4）の行を取り違える。
       return page
         .getByRole("link", { name: `Open the library filtered by ${name}`, exact: true })
-        .locator("xpath=ancestor::div[@data-tag-id][1]");
+        .locator("xpath=ancestor::*[@data-tag-id][1]");
     }
 
     /**
@@ -648,16 +650,20 @@ test.describe.serial("video tags", () => {
         page.getByRole("link", { name: /^Open the library filtered by / }).first(),
       ).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
+      // 行が描かれたあとでも、一覧が測り直して描く範囲を動かすと行は DOM から外れる。
+      // 表示域へ送るところまでを 1 回の試みに含め、外れたら送り直す。
       await expect(async () => {
-        if ((await row.count()) > 0) return;
-        await page.evaluate(() => {
-          const before = window.scrollY;
-          window.scrollBy(0, 400);
-          if (window.scrollY === before) window.scrollTo(0, 0);
-        });
-        await expect(row).toBeAttached({ timeout: 300 });
+        if ((await row.count()) === 0) {
+          await page.evaluate(() => {
+            const before = window.scrollY;
+            window.scrollBy(0, 400);
+            if (window.scrollY === before) window.scrollTo(0, 0);
+          });
+          await expect(row).toBeAttached({ timeout: 300 });
+        }
+        await row.scrollIntoViewIfNeeded({ timeout: 1_000 });
+        await expect(row).toBeVisible({ timeout: 300 });
       }).toPass({ timeout: 15_000, intervals: [0] });
-      await row.scrollIntoViewIfNeeded();
       return row;
     }
 
@@ -749,7 +755,7 @@ test.describe.serial("video tags", () => {
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
 
-      const dialog = page.getByRole("dialog", { name: 'Delete "e2e管理削除対象"' });
+      const dialog = page.getByRole("alertdialog", { name: 'Delete "e2e管理削除対象"' });
       await expect(
         dialog.getByText("This tag will be removed from 1 video. This can't be undone."),
       ).toBeVisible();
@@ -975,7 +981,7 @@ test.describe.serial("video tags", () => {
         // タブは押せ、本文に却下した名前が出る。
         await tab.click();
         await expect(
-          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("list"),
+          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("table"),
         ).toBeVisible();
       }
       await page.setViewportSize({ width: 1280, height: 800 });
@@ -1119,12 +1125,12 @@ test.describe.serial("video tags", () => {
       const row = tagRowByName(page, "e2e管理Esc確認");
       await row.getByRole("button", { name: "More actions" }).click();
       await page.getByRole("menuitem", { name: "Delete…" }).click();
-      const dialog = page.getByRole("dialog", { name: 'Delete "e2e管理Esc確認"' });
+      const dialog = page.getByRole("alertdialog", { name: 'Delete "e2e管理Esc確認"' });
       await expect(dialog).toBeVisible();
 
       await page.keyboard.press("Escape");
 
-      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
       await expect(tagRowByName(page, "e2e管理Esc確認")).toBeVisible();
     });
 

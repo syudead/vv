@@ -1,0 +1,974 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "vv",
+  "homepage": "https://github.com/syudead/vv",
+  "items": [
+    {
+      "name": "vv",
+      "type": "registry:file",
+      "title": "vv design system index",
+      "description": "Every item in the vv registry, its tier and when to use it.",
+      "docs": "Start here. Read the items this index names with `npx shadcn view ./registry/r/<item>.json` from web/.",
+      "files": [
+        {
+          "path": "registry/index.md",
+          "type": "registry:file",
+          "target": "registry/index.md"
+        }
+      ]
+    },
+    {
+      "name": "vv-theme",
+      "type": "registry:file",
+      "title": "vv theme tokens",
+      "description": "Every design-system token (colour roles, type, spacing and sizes, radius, shadow, motion) in web/src/ui/tokens.css.",
+      "docs": "Use only the utility classes these tokens generate. Which role each colour plays and which step to use where: web/registry/rules/foundations.md (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/tokens.css",
+          "type": "registry:file",
+          "target": "src/ui/tokens.css"
+        }
+      ]
+    },
+    {
+      "name": "vv-rules",
+      "type": "registry:file",
+      "title": "vv design-system rules",
+      "description": "The usage rules of the vv design system, one file per tier.",
+      "docs": "Read foundations.md before choosing a colour, a type step, a spacing step, a radius or a shadow, components.md before choosing, composing or adding a component, and patterns.md before building a screen.",
+      "files": [
+        {
+          "path": "registry/rules/foundations.md",
+          "type": "registry:file",
+          "target": "registry/rules/foundations.md"
+        },
+        {
+          "path": "registry/rules/components.md",
+          "type": "registry:file",
+          "target": "registry/rules/components.md"
+        },
+        {
+          "path": "registry/rules/patterns.md",
+          "type": "registry:file",
+          "target": "registry/rules/patterns.md"
+        }
+      ]
+    },
+    {
+      "name": "alert",
+      "type": "registry:ui",
+      "title": "Alert",
+      "description": "A message inside a section: error, warning, done or guidance, with an icon, a title and a description.",
+      "docs": "Usage rules: web/registry/rules/components.md#alert (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/alert.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "alert-dialog",
+      "type": "registry:ui",
+      "title": "AlertDialog",
+      "description": "Confirms an action that cannot be undone, with Cancel and an action named by its verb. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#alertdialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/alert-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
+    },
+    {
+      "name": "badge",
+      "type": "registry:ui",
+      "title": "Badge",
+      "description": "A small label: tag chip, count or status.",
+      "docs": "Usage rules: web/registry/rules/components.md#badge (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/badge.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
+    },
+    {
+      "name": "brand-home-link",
+      "type": "registry:ui",
+      "title": "BrandHomeLink",
+      "description": "vv component: the VVMDM logo in the top bar, linking to the library.",
+      "docs": "Usage rules: web/registry/rules/components.md#brandhomelink (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/BrandHomeLink.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "breadcrumb",
+      "type": "registry:ui",
+      "title": "Breadcrumb",
+      "description": "The path to the current folder.",
+      "docs": "Usage rules: web/registry/rules/components.md#breadcrumb (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/breadcrumb.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "button",
+      "type": "registry:ui",
+      "title": "Button",
+      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive and link, in sizes sm, default, lg, icon-sm and icon.",
+      "docs": "Usage rules: web/registry/rules/components.md#button (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/button.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "checkbox",
+      "type": "registry:ui",
+      "title": "Checkbox",
+      "description": "Turns one option on or off in a form or a selection; has an indeterminate state.",
+      "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/checkbox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "combobox",
+      "type": "registry:ui",
+      "title": "Combobox",
+      "description": "Picks one value from many by typing to narrow them: a Command in a popover. Uses button and command.",
+      "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/combobox.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "command",
+      "type": "registry:ui",
+      "title": "Command",
+      "description": "A list narrowed by what is typed, chosen with the keyboard; the inside of a combobox.",
+      "docs": "Usage rules: web/registry/rules/components.md#combobox-and-command (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/command.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["cmdk"]
+    },
+    {
+      "name": "dialog",
+      "type": "registry:ui",
+      "title": "Dialog",
+      "description": "A modal window for a form or a long choice, with a title, a body and a footer. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/dialog.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "dropdown-menu",
+      "type": "registry:ui",
+      "title": "DropdownMenu",
+      "description": "A list of actions or one choice from a few, opened from a button.",
+      "docs": "Usage rules: web/registry/rules/components.md#dropdownmenu (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/dropdown-menu.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "empty",
+      "type": "registry:ui",
+      "title": "Empty",
+      "description": "The empty state of a list or section: icon, reason and the action that fills it.",
+      "docs": "Usage rules: web/registry/rules/components.md#empty (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/empty.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "favorite-toggle",
+      "type": "registry:ui",
+      "title": "FavoriteToggle",
+      "description": "vv component: the favorite heart, mark and toggle in one, for cards, rows and the video page. Uses toggle and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#favoritetoggle (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/FavoriteToggle.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "field",
+      "type": "registry:ui",
+      "title": "Field",
+      "description": "One form field: label, control, description and error. Uses label.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/field.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "input",
+      "type": "registry:ui",
+      "title": "Input",
+      "description": "A one-line text field.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/input.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "kbd",
+      "type": "registry:ui",
+      "title": "Kbd",
+      "description": "A key or search operator in text or a tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#kbd (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/kbd.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "label",
+      "type": "registry:ui",
+      "title": "Label",
+      "description": "The visible name of a control; pressing it focuses the control.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/label.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "popover",
+      "type": "registry:ui",
+      "title": "Popover",
+      "description": "A non-modal panel anchored to its trigger, for a few options or a short form.",
+      "docs": "Usage rules: web/registry/rules/components.md#popover (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/popover.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "progress",
+      "type": "registry:ui",
+      "title": "Progress",
+      "description": "How far a known amount of work has come; indeterminate without a value.",
+      "docs": "Usage rules: web/registry/rules/components.md#progress (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/progress.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "radio-group",
+      "type": "registry:ui",
+      "title": "RadioGroup",
+      "description": "Picks one value from a few options that stay visible.",
+      "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/radio-group.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "scrub-preview",
+      "type": "registry:ui",
+      "title": "ScrubPreview",
+      "description": "vv component: the card scrub band and frame inside a VideoThumbnail.",
+      "docs": "Usage rules: web/registry/rules/components.md#scrubpreview (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/ScrubPreview.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "select",
+      "type": "registry:ui",
+      "title": "Select",
+      "description": "Picks one value from a fixed list in a dropdown.",
+      "docs": "Usage rules: web/registry/rules/components.md#select-and-radiogroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/select.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "separator",
+      "type": "registry:ui",
+      "title": "Separator",
+      "description": "A hairline between groups of controls or sections.",
+      "docs": "Usage rules: web/registry/rules/components.md#separator (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/separator.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "sheet",
+      "type": "registry:ui",
+      "title": "Sheet",
+      "description": "A panel from the screen's edge; in vv only the sidebar's narrow-width drawer. Uses button.",
+      "docs": "Usage rules: web/registry/rules/components.md#sheet (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sheet.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "lucide-react"]
+    },
+    {
+      "name": "sidebar",
+      "type": "registry:ui",
+      "title": "Sidebar",
+      "description": "The app's main navigation: expanded, icon rail and narrow-width drawer. Uses button, input, separator, sheet, skeleton and tooltip.",
+      "docs": "Usage rules: web/registry/rules/components.md#sidebar (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sidebar.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/hooks/use-mobile.ts",
+          "type": "registry:hook"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority", "lucide-react"]
+    },
+    {
+      "name": "skeleton",
+      "type": "registry:ui",
+      "title": "Skeleton",
+      "description": "The final layout's shapes while content loads.",
+      "docs": "Usage rules: web/registry/rules/components.md#skeleton (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/skeleton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "slider",
+      "type": "registry:ui",
+      "title": "Slider",
+      "description": "Picks a value on a stepped or continuous range, such as the card size.",
+      "docs": "Usage rules: web/registry/rules/components.md#slider (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/slider.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "sonner",
+      "type": "registry:ui",
+      "title": "Sonner",
+      "description": "The Toaster for short, passive notices sent with toast() from sonner.",
+      "docs": "Usage rules: web/registry/rules/components.md#sonner (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/sonner.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["sonner", "lucide-react"]
+    },
+    {
+      "name": "spinner",
+      "type": "registry:ui",
+      "title": "Spinner",
+      "description": "A short wait with no measure.",
+      "docs": "Usage rules: web/registry/rules/components.md#spinner (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/spinner.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "switch",
+      "type": "registry:ui",
+      "title": "Switch",
+      "description": "Turns a setting on or off with immediate effect.",
+      "docs": "Usage rules: web/registry/rules/components.md#checkbox-and-switch (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/switch.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "tabs",
+      "type": "registry:ui",
+      "title": "Tabs",
+      "description": "Switches between views of the same content in place.",
+      "docs": "Usage rules: web/registry/rules/components.md#tabs (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/tabs.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui", "class-variance-authority"]
+    },
+    {
+      "name": "tag-command",
+      "type": "registry:ui",
+      "title": "TagCommand",
+      "description": "vv component: typing a tag name to pick a tag or create one, with the tag-name checks, in a popover, a list below the input or a fixed-height list in a dialog. Uses command.",
+      "docs": "Usage rules: web/registry/rules/components.md#tagcommand (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/TagCommand.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "tentative-mark",
+      "type": "registry:ui",
+      "title": "TentativeMark",
+      "description": "vv component: the dashed circle after a tentative tag's name.",
+      "docs": "Usage rules: web/registry/rules/components.md#tentativemark (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/TentativeMark.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "textarea",
+      "type": "registry:ui",
+      "title": "Textarea",
+      "description": "A multi-line text field that grows with its content.",
+      "docs": "Usage rules: web/registry/rules/components.md#input-textarea-label-and-field (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/textarea.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "thumbnail-backdrop",
+      "type": "registry:ui",
+      "title": "ThumbnailBackdrop",
+      "description": "vv component: a blurred copy behind a portrait thumbnail.",
+      "docs": "Usage rules: web/registry/rules/components.md#thumbnailbackdrop (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/ThumbnailBackdrop.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toggle",
+      "type": "registry:ui",
+      "title": "Toggle",
+      "description": "A button that stays pressed, such as an applied filter.",
+      "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/toggle.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "toggle-group",
+      "type": "registry:ui",
+      "title": "ToggleGroup",
+      "description": "A row of toggles, exclusive (view mode, sort direction) or independent. Uses toggle.",
+      "docs": "Usage rules: web/registry/rules/components.md#toggle-and-togglegroup (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/toggle-group.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["class-variance-authority"]
+    },
+    {
+      "name": "tooltip",
+      "type": "registry:ui",
+      "title": "Tooltip",
+      "description": "Names an icon-only control or adds a short hint on hover and focus.",
+      "docs": "Usage rules: web/registry/rules/components.md#tooltip (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/tooltip.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "video-thumbnail",
+      "type": "registry:ui",
+      "title": "VideoThumbnail",
+      "description": "vv component: the 16:9 thumbnail frame with duration, progress edge, corner marks and a notice. Uses progress.",
+      "docs": "Usage rules: web/registry/rules/components.md#videothumbnail (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/VideoThumbnail.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "table",
+      "type": "registry:ui",
+      "title": "Table",
+      "description": "Rows and columns of records: header, body, rows, heads and cells. Put it in a data-table section on a screen.",
+      "docs": "Usage rules: web/registry/rules/components.md#table (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/table.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "density",
+      "type": "registry:ui",
+      "title": "Density",
+      "description": "The density a skeleton gives its sections: management (library) or viewing (detail page). Used by patterns only.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#shared-rules (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/density.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "list-page",
+      "type": "registry:ui",
+      "title": "ListPage",
+      "description": "Page skeleton: header row, toolbar, body (grid or table), selection bar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/list-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "admin-table-page",
+      "type": "registry:ui",
+      "title": "AdminTablePage",
+      "description": "Page skeleton: header, band (tabs, search, actions), table, selection bar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#admin-table-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/admin-table-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "settings-page",
+      "type": "registry:ui",
+      "title": "SettingsPage",
+      "description": "Page skeleton: one column of fixed maximum width with titled sections.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/settings-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "detail-page",
+      "type": "registry:ui",
+      "title": "DetailPage",
+      "description": "Page skeleton: header band, main area and an information aside; stacked below lg. Viewing density.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#detail-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/detail-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "centered-form",
+      "type": "registry:ui",
+      "title": "CenteredForm",
+      "description": "Page skeleton: one card in the centre with title, fields and one submit button.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/centered-form.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form-dialog",
+      "type": "registry:ui",
+      "title": "FormDialog",
+      "description": "Dialog skeleton at most 32rem wide: title, fields, Cancel and one primary action. Uses dialog.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/form-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "confirm-dialog",
+      "type": "registry:ui",
+      "title": "ConfirmDialog",
+      "description": "AlertDialog skeleton: what happens, Cancel and a destructive action named by its verb.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/confirm-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "page-header",
+      "type": "registry:ui",
+      "title": "PageHeader",
+      "description": "Section: page title, count, description, leading (Back) and the main action.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/page-header.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "toolbar",
+      "type": "registry:ui",
+      "title": "Toolbar",
+      "description": "Section: search, filters, then view controls and actions; view controls collapse into a popover below lg. Uses popover.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/toolbar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "page-section",
+      "type": "registry:ui",
+      "title": "PageSection",
+      "description": "Section: a titled card whose direct children are padded, divided rows.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/page-section.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form-row",
+      "type": "registry:ui",
+      "title": "FormRow",
+      "description": "Section: one setting, label and description left, control right; stacked below sm. Uses field.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/form-row.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "fact-list",
+      "type": "registry:ui",
+      "title": "FactList",
+      "description": "Section: term and value pairs in two columns.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/fact-list.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "card-grid",
+      "type": "registry:ui",
+      "title": "CardGrid",
+      "description": "Section: cards at least card-0 to card-3 wide, stretched so both edges line up with the toolbar.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/card-grid.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "data-table",
+      "type": "registry:ui",
+      "title": "DataTable",
+      "description": "Section: a table on a card with its border. Uses table.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/data-table.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "selection-bar",
+      "type": "registry:ui",
+      "title": "SelectionBar",
+      "description": "Section: selected count, Clear selection and bulk actions, stuck to the bottom of the page. Uses tooltip.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/selection-bar.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "loading-state",
+      "type": "registry:ui",
+      "title": "LoadingState",
+      "description": "State: Skeleton shapes of the final grid or table in the body slot. Uses skeleton.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/loading-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "empty-state",
+      "type": "registry:ui",
+      "title": "EmptyState",
+      "description": "State: icon, why it is empty, and the action that fills it. Uses empty.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/empty-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "error-state",
+      "type": "registry:ui",
+      "title": "ErrorState",
+      "description": "State: a destructive Alert saying what failed, with Retry. Uses alert.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/error-state.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "load-more-row",
+      "type": "registry:ui",
+      "title": "LoadMoreRow",
+      "description": "State: a Spinner row while the next page loads, or an Alert row with Retry when it failed. Uses spinner and alert.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/load-more-row.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "list-page-example",
+      "type": "registry:block",
+      "title": "List page example",
+      "description": "A working list page with sample videos: header, toolbar, card grid, load-more row and selection bar.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "list-states-example",
+      "type": "registry:block",
+      "title": "List page states example",
+      "description": "The list page body in each state: loading, empty, error, loading more, load more failed.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#states (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/list-states-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "admin-table-page-example",
+      "type": "registry:block",
+      "title": "Admin table page example",
+      "description": "A working tag admin table: tabs, search, check column, row menu, bulk selection bar.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#admin-table-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/admin-table-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "settings-page-example",
+      "type": "registry:block",
+      "title": "Settings page example",
+      "description": "A working settings page: sections of form rows and a fact list.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/settings-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "detail-page-example",
+      "type": "registry:block",
+      "title": "Detail page example",
+      "description": "A working detail page: header band with Back, media, description and an information aside.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#detail-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/detail-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "centered-form-example",
+      "type": "registry:block",
+      "title": "Centered form example",
+      "description": "A working sign-in form in a centred card.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/centered-form-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "form-dialog-example",
+      "type": "registry:block",
+      "title": "Form dialog example",
+      "description": "A working create-tag dialog with two fields.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/form-dialog-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "confirm-dialog-example",
+      "type": "registry:block",
+      "title": "Confirm dialog example",
+      "description": "A working delete-tag confirmation.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/confirm-dialog-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    }
+  ]
+}

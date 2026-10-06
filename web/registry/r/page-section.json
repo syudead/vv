@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "page-section",
+  "title": "PageSection",
+  "description": "Section: a titled card whose direct children are padded, divided rows.",
+  "files": [
+    {
+      "path": "src/ui/patterns/page-section.tsx",
+      "content": "import { type ReactNode, useId } from \"react\";\n\nimport { cn } from \"@/lib/cn\";\n\nimport { useDensity } from \"./density\";\n\n// 節（区画）。題・説明・操作の見出しと、カードの面に並ぶ中身を持つ。中身の直下の子は\n// 1 行ずつ区切り線で分け、行の上下の余白を節が付ける（管理の画面は p-3、見る画面は p-4）。\n// 規則は web/registry/rules/patterns.md の Page section。\n\nexport interface PageSectionProps {\n  /** 節の題。h2 になる。 */\n  title: ReactNode;\n  /** 題の下の説明。 */\n  description?: ReactNode;\n  /** 節の見出しの右に置く操作（outline か ghost の sm）。 */\n  actions?: ReactNode;\n  /** 行（FormRow、FactList、文）。直下の子ごとに区切る。 */\n  children: ReactNode;\n}\n\nexport function PageSection({ title, description, actions, children }: PageSectionProps) {\n  const titleId = useId();\n  const viewing = useDensity() === \"viewing\";\n  return (\n    <section\n      data-slot=\"page-section\"\n      aria-labelledby={titleId}\n      className=\"flex flex-col gap-3\"\n    >\n      <div className=\"flex items-start gap-3\">\n        <div className=\"flex min-w-0 flex-1 flex-col gap-1\">\n          <h2 id={titleId} className=\"text-lg font-semibold\">\n            {title}\n          </h2>\n          {description && <p className=\"text-sm text-muted-foreground\">{description}</p>}\n        </div>\n        {actions && <div className=\"flex shrink-0 items-center gap-2\">{actions}</div>}\n      </div>\n      <div\n        data-slot=\"page-section-body\"\n        className={cn(\n          \"flex flex-col divide-y divide-border rounded-md border border-border bg-card text-card-foreground\",\n          viewing ? \"text-base *:p-4\" : \"text-sm *:p-3\",\n        )}\n      >\n        {children}\n      </div>\n    </section>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

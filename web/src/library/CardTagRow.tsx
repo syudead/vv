@@ -5,7 +5,9 @@ import type { VideoTag } from "../api/client";
 import { isFolderOnly } from "../api/tagOrder";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { badgeVariants } from "../ui/shadcn/badge";
+import { Button } from "../ui/shadcn/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 import TentativeMark from "../ui/TentativeMark";
 import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
@@ -28,41 +30,27 @@ export interface CardTagRowProps {
 }
 
 /**
- * chipClassName の shrink は、行に収まらないときに幅を縮めて省略してよいかを
- * 決める。「+N」と、選ぶ余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、
- * 計測した幅のまま出す。
+ * chipClassName はタグのチップの見た目で、Badge の secondary（web/registry/rules/
+ * components.md「Badge」）である。押せるチップは Badge の形の Button にする。
  *
- * surface は面の色。既定はカードの `bg-elevated`。ポップオーバーの中
- * （`PopoverContent` も `bg-elevated`）では `bg-field` にし、チップの面が
- * 窓の面へ溶けて見えなくならないようにする（N5、Synonym の窓の `bg-bg` と
- * 同じ理由）。
+ * shrink は、行に収まらないときに幅を縮めて省略してよいかを決める。「+N」と、選ぶ
+ * 余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、計測した幅のまま出す。
  *
- * folderOnly のチップは面を持たず、破線の枠と Folder の目印で区別する。
- * 大きさ（`h-5`・`text-xs`）と文字の色は面のあるチップと同じにし、hover では
- * `ring` を重ねず枠を実線にする（017 の ui-design.md「Folder-derived tag chip」
+ * folderOnly のチップは面を持たず（Badge の outline）、破線の枠と Folder の目印で区別する。
+ * hover では枠を実線にする（017 の ui-design.md「Folder-derived tag chip」
  * 「Interaction states」）。
  */
-function chipClassName(
-  pressable: boolean,
-  shrink = false,
-  surface: "elevated" | "field" = "elevated",
-  folderOnly = false,
-): string {
+function chipClassName(pressable: boolean, shrink = false, folderOnly = false): string {
   return cn(
-    "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-fg-muted",
-    "gap-1",
-    folderOnly
-      ? "border border-dashed border-border-strong"
-      : surface === "elevated"
-        ? "bg-elevated"
-        : "bg-field",
+    badgeVariants({ variant: folderOnly ? "outline" : "secondary" }),
+    // Button の高さと余白を Badge の段に揃える（押せるチップも同じ大きさにする）。
+    "max-w-full min-w-0 py-0 font-normal text-muted-foreground has-[>svg]:px-2 [&_svg]:size-3",
+    folderOnly && "border-dashed border-input",
     shrink ? "shrink" : "shrink-0",
     pressable &&
       (folderOnly
-        ? "hover:border-solid hover:text-fg"
-        : "hover:text-fg hover:ring-1 hover:ring-inset hover:ring-border-strong"),
-    pressable &&
-      "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
+        ? "hover:border-solid hover:bg-transparent hover:text-foreground"
+        : "hover:bg-accent hover:text-foreground"),
   );
 }
 
@@ -82,20 +70,18 @@ function chipLabel(tag: VideoTag, folderOnly: boolean): string {
 
 /** FolderMark は破線のチップの名前の前に置く目印である。 */
 function FolderMark() {
-  return <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />;
+  return <Folder className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
 
 function TagChip({
   tag,
   pressable,
   shrink,
-  surface,
   onPress,
 }: {
   tag: VideoTag;
   pressable: boolean;
   shrink?: boolean;
-  surface?: "elevated" | "field";
   onPress: () => void;
 }) {
   const folderOnly = isFolderOnly(tag);
@@ -108,10 +94,7 @@ function TagChip({
   );
   if (!pressable) {
     return (
-      <span
-        title={tag.name}
-        className={chipClassName(false, shrink, surface, folderOnly)}
-      >
+      <span title={tag.name} className={chipClassName(false, shrink, folderOnly)}>
         {content}
         {folderOnly && <span className="sr-only"> {t.library.tagRow.fromFolder}</span>}
         {tag.tentative && <span className="sr-only"> {t.library.tagRow.tentative}</span>}
@@ -119,15 +102,15 @@ function TagChip({
     );
   }
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
       title={tag.name}
       aria-label={chipLabel(tag, folderOnly)}
       onClick={onPress}
-      className={chipClassName(true, shrink, surface, folderOnly)}
+      className={chipClassName(true, shrink, folderOnly)}
     >
       {content}
-    </button>
+    </Button>
   );
 }
 
@@ -213,26 +196,25 @@ export default function CardTagRow({
         {hidden.length > 0 &&
           (pressable ? (
             <li className="shrink-0">
-              <PopoverRoot open={open} onOpenChange={setOpen}>
+              <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     aria-label={t.library.tagRow.showMore(hidden.length)}
                     className={chipClassName(true)}
                   >
                     <span className="tabular-nums">
                       {t.library.tagRow.more(hidden.length)}
                     </span>
-                  </button>
+                  </Button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-auto max-w-64 p-1.5">
-                  <ul className="flex flex-col gap-1">
+                <PopoverContent align="start" className="w-auto max-w-popover p-2">
+                  <ul className="flex flex-col items-start gap-1">
                     {hidden.map((tag) => (
-                      <li key={tag.id}>
+                      <li key={tag.id} className="max-w-full">
                         <TagChip
                           tag={tag}
                           pressable
-                          surface="field"
                           onPress={() => {
                             setOpen(false);
                             onPress(tag);
@@ -242,7 +224,7 @@ export default function CardTagRow({
                     ))}
                   </ul>
                 </PopoverContent>
-              </PopoverRoot>
+              </Popover>
             </li>
           ) : (
             <li className="shrink-0">
@@ -258,14 +240,13 @@ export default function CardTagRow({
       {/* 測るためだけの、見えない全タグの並び（Overflow の算出。ui-design.md「Overflow」）。 */}
       <div
         aria-hidden="true"
-        className="pointer-events-none invisible absolute flex flex-nowrap items-center gap-1"
+        // 幅 0 で切り、測る並びがカードの外（ページの右端の外）へはみ出して横スクロールを
+        // 作らないようにする。中の並びは内容の幅のまま測れる。
+        className="pointer-events-none invisible absolute flex w-0 flex-nowrap items-center gap-1 overflow-hidden"
       >
         <div ref={measureRowRef} className="flex flex-nowrap items-center gap-1">
           {tags.map((tag) => (
-            <span
-              key={tag.id}
-              className={chipClassName(true, false, "elevated", isFolderOnly(tag))}
-            >
+            <span key={tag.id} className={chipClassName(true, false, isFolderOnly(tag))}>
               {isFolderOnly(tag) && <FolderMark />}
               <span>{tag.name}</span>
               {tag.tentative && <TentativeMark />}

@@ -4,9 +4,14 @@ import type { FolderRef } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t } from "../i18n";
-import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
+import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
@@ -22,17 +27,12 @@ export default function FavoriteMenu({
   folders,
   overLimit,
   overLimitId,
-  className,
-  ...rest
 }: {
   videoIds: readonly number[];
   folders: readonly FolderRef[];
   /** 送る数（`videoIds` と `folders` の合計）が上限を超えるとき true。 */
   overLimit: boolean;
   overLimitId: string;
-  className?: string;
-  /** 選択バーが 1 行に収まるかを測る目印（SelectionBar の measureBarLayout）。 */
-  "data-bar-item"?: string;
 }) {
   const toast = useToast();
 
@@ -56,32 +56,29 @@ export default function FavoriteMenu({
   }
 
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={className}
-          disabled={overLimit}
-          title={overLimit ? overLimitMessage() : undefined}
-          aria-describedby={overLimit ? overLimitId : undefined}
-          {...rest}
-        >
-          <Heart aria-hidden="true" />
-          {t.library.selection.favorite}
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </MenuTrigger>
-      <MenuContent side="top" align="start">
-        <MenuItem onSelect={() => apply(true)}>
+    <DropdownMenu>
+      <WithTooltip label={t.library.selection.favorite}>
+        <DropdownMenuTrigger asChild>
+          <SelectionAction
+            icon={<Heart aria-hidden="true" />}
+            label={t.library.selection.favorite}
+            after={<ChevronDown aria-hidden="true" />}
+            disabled={overLimit}
+            title={overLimit ? overLimitMessage() : undefined}
+            aria-describedby={overLimit ? overLimitId : undefined}
+          />
+        </DropdownMenuTrigger>
+      </WithTooltip>
+      <DropdownMenuContent side="top" align="start">
+        <DropdownMenuItem onSelect={() => apply(true)}>
           <Heart aria-hidden="true" />
           {t.library.selection.addFavorites}
-        </MenuItem>
-        <MenuItem onSelect={() => apply(false)}>
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => apply(false)}>
           <HeartOff aria-hidden="true" />
           {t.library.selection.removeFavorites}
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

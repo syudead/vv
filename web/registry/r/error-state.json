@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "error-state",
+  "title": "ErrorState",
+  "description": "State: a destructive Alert saying what failed, with Retry. Uses alert.",
+  "files": [
+    {
+      "path": "src/ui/patterns/error-state.tsx",
+      "content": "import { CircleAlert, RotateCw } from \"lucide-react\";\nimport type { ReactNode } from \"react\";\n\nimport { Alert, AlertDescription, AlertTitle } from \"@/ui/shadcn/alert\";\nimport { Button } from \"@/ui/shadcn/button\";\n\n// エラー（状態）。骨格の本体の位置に、destructive の Alert で何が失敗したかと、やり直しが\n// 効くときの Retry を出す。規則は web/registry/rules/patterns.md の States。\n\nexport interface ErrorStateProps {\n  /** 何が失敗したか（「Couldn't load videos」）。 */\n  title: ReactNode;\n  /** 理由と、見る人にできること。 */\n  description?: ReactNode;\n  /** Retry の文言。onRetry と一緒に渡す。 */\n  retryLabel?: ReactNode;\n  /** 同じ要求をもう一度送る。やり直しが効かない失敗では渡さない。 */\n  onRetry?: () => void;\n}\n\nexport function ErrorState({ title, description, retryLabel, onRetry }: ErrorStateProps) {\n  return (\n    <Alert data-state=\"error\" variant=\"destructive\">\n      <CircleAlert aria-hidden=\"true\" />\n      <AlertTitle>{title}</AlertTitle>\n      {(description || onRetry) && (\n        <AlertDescription className=\"flex flex-col items-start gap-2\">\n          {description && <p>{description}</p>}\n          {onRetry && (\n            <Button variant=\"outline\" size=\"sm\" onClick={onRetry}>\n              <RotateCw aria-hidden=\"true\" />\n              {retryLabel}\n            </Button>\n          )}\n        </AlertDescription>\n      )}\n    </Alert>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+  "type": "registry:ui"
+}

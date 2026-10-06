@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import TagRow from "./TagRow";
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
@@ -27,21 +27,27 @@ function row(current: Tag, renaming: boolean): ReactElement {
   return (
     <MemoryRouter>
       <TooltipProvider>
-        <TagRow
-          tag={current}
-          renaming={renaming}
-          pending={false}
-          blockStart={false}
-          error={null}
-          registerRefs={() => {}}
-          onStartRename={() => {}}
-          onCancelRename={() => {}}
-          onSubmitRename={() => {}}
-          onOpenSynonyms={() => {}}
-          onOpenMerge={() => {}}
-          onDelete={() => {}}
-          onDraftChange={() => {}}
-        />
+        <table>
+          <tbody>
+            <TagRow
+              index={0}
+              measureRef={() => {}}
+              tag={current}
+              renaming={renaming}
+              pending={false}
+              blockStart={false}
+              error={null}
+              registerRefs={() => {}}
+              onStartRename={() => {}}
+              onCancelRename={() => {}}
+              onSubmitRename={() => {}}
+              onOpenSynonyms={() => {}}
+              onOpenMerge={() => {}}
+              onDelete={() => {}}
+              onDraftChange={() => {}}
+            />
+          </tbody>
+        </table>
       </TooltipProvider>
     </MemoryRouter>
   );

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "empty-state",
+  "title": "EmptyState",
+  "description": "State: icon, why it is empty, and the action that fills it. Uses empty.",
+  "files": [
+    {
+      "path": "src/ui/patterns/empty-state.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport {\n  Empty,\n  EmptyContent,\n  EmptyDescription,\n  EmptyHeader,\n  EmptyMedia,\n  EmptyTitle,\n} from \"@/ui/shadcn/empty\";\n\n// 空（状態）。骨格の本体の位置に、印・なぜ空かの 1 行・説明と、見る人が取れるなら空を\n// 埋める操作を出す。規則は web/registry/rules/patterns.md の States。\n\nexport interface EmptyStateProps {\n  /** lucide の印。 */\n  icon: ReactNode;\n  /** なぜ空か（「No videos yet」）。 */\n  title: ReactNode;\n  description?: ReactNode;\n  /** 空を埋める操作（default の Button 1 つ）。見る人が取れないときは渡さない。 */\n  action?: ReactNode;\n}\n\nexport function EmptyState({ icon, title, description, action }: EmptyStateProps) {\n  return (\n    <Empty data-state=\"empty\" className=\"border border-border py-12\">\n      <EmptyHeader>\n        <EmptyMedia variant=\"icon\">{icon}</EmptyMedia>\n        <EmptyTitle>{title}</EmptyTitle>\n        {description && <EmptyDescription>{description}</EmptyDescription>}\n      </EmptyHeader>\n      {action && <EmptyContent>{action}</EmptyContent>}\n    </Empty>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
+  "type": "registry:ui"
+}

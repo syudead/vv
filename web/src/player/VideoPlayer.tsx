@@ -12,7 +12,7 @@ import {
   type PlaybackQuality,
 } from "../preferences/playbackQuality";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 import { liveSource } from "./liveOffset";
 import {
   createPlaybackAttempt,
@@ -1114,17 +1114,18 @@ function TranscodeIndicator({
   const detail =
     quality === "original" ? c.transcodingDetail : c.transcodingToDetail(quality);
   return (
-    <PopoverRoot onOpenChange={onOpenChange}>
-      {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。 */}
-      <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-fg-muted! transition-colors! hover:text-fg!">
-        <Info className="size-3.5 shrink-0" aria-hidden="true" />
+    <Popover onOpenChange={onOpenChange}>
+      {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。
+          操作バーの見た目（special の例外、web/design-exceptions.js）の一部である。 */}
+      <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-muted-foreground! transition-colors! hover:text-foreground!">
+        <Info className="size-4 shrink-0" aria-hidden="true" />
         {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
         <span className="@max-[22.5rem]:sr-only">{label}</span>
       </PopoverTrigger>
-      <PopoverContent container={container} className="w-64 text-sm text-fg">
+      <PopoverContent container={container} align="end">
         {detail}
       </PopoverContent>
-    </PopoverRoot>
+    </Popover>
   );
 }
 

@@ -10,7 +10,7 @@ import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { OwnerAudience } from "../testing/audience";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SettingsPage from "./SettingsPage";
 
 function json(body: unknown, status = 200): Response {
@@ -248,20 +248,22 @@ describe("SettingsPage", () => {
       await screen.findByRole("dialog", { name: "Change media folder" }),
     ).toBeDefined();
     expect(
-      Array.from(document.body.children).some((element) => element.hasAttribute("inert")),
+      Array.from(document.body.children).some(
+        (element) => element.getAttribute("aria-hidden") === "true",
+      ),
     ).toBe(true);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await user.click(screen.getAllByRole("button", { name: "Remove folder" })[1]!);
-    dialog = await screen.findByRole("dialog", { name: "Remove this folder?" });
+    dialog = await screen.findByRole("alertdialog", { name: "Remove this folder?" });
     expect(
       within(dialog).getByText(/Videos that are also in another media folder stay/),
     ).toBeDefined();
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
     await waitFor(() => expect(document.activeElement).toBe(cancel));
     await user.click(cancel);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByText("/very/long/日本語/動画保管場所")).toBeDefined();
   });
 
@@ -313,7 +315,7 @@ describe("SettingsPage", () => {
     await screen.findByText("/media/two");
     await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
 
     await waitFor(() => expect(screen.queryByText("/media/one")).toBeNull());
@@ -353,7 +355,7 @@ describe("SettingsPage", () => {
     await screen.findByText("/media/original");
     await user.click(screen.getByRole("button", { name: "Remove folder" }));
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
 
     expect(await screen.findByText("/media/concurrent")).toBeDefined();
@@ -390,13 +392,13 @@ describe("SettingsPage", () => {
     await screen.findByText("/media/original");
     await user.click(screen.getByRole("button", { name: "Remove folder" }));
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Something went wrong on the server.",
     );
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.queryByText("/media/original")).toBeNull();
     expect(deleteRequests).toBe(1);
   });
@@ -430,11 +432,11 @@ describe("SettingsPage", () => {
     await screen.findByText("/media/remaining");
     await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Remove" }),
     );
 
     await waitFor(() => expect(screen.queryByText("/media/stale")).toBeNull());
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(screen.getByText("/media/remaining")).toBeDefined();
     expect(listRequests).toBeGreaterThan(1);
     await waitFor(() =>
@@ -466,9 +468,10 @@ describe("SettingsPage", () => {
 
     await user.click(await screen.findByRole("button", { name: "Add folder" }));
     const dialog = await screen.findByRole("dialog", { name: "Add media folder" });
-    expect((await within(dialog).findByRole("alert")).textContent).toBe(
-      "That folder wasn't found.",
-    );
+    expect(
+      (await within(dialog).findByRole("alert")).querySelector("[data-slot=alert-title]")
+        ?.textContent,
+    ).toBe("That folder wasn't found.");
     expect(within(dialog).getByRole("button", { name: "Go to the top" })).toBeDefined();
   });
 
@@ -619,7 +622,7 @@ describe("SettingsPage", () => {
       await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
       await user.click(screen.getAllByRole("button", { name: /Remove folder/ })[0]!);
-      await screen.findByRole("dialog");
+      await screen.findByRole("alertdialog");
       expectCatalogTextOnly(document.body, paths);
     });
   });

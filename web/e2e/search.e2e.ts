@@ -188,9 +188,9 @@ test.describe.serial("library search", () => {
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "List" })
       .click();
-    const videoCells = page.locator("tr[data-video-id]").first().locator("td:visible");
-    await expect(videoCells.first()).toHaveCSS("border-bottom-width", "1px");
-    await expect(videoCells.last()).toHaveCSS("border-bottom-width", "1px");
+    // 行の区切りは行（shadcn/ui の TableRow）の下の線で引く。
+    const videoRow = page.locator("tr[data-video-id]").first();
+    await expect(videoRow).toHaveCSS("border-bottom-width", "1px");
     await page
       .getByRole("radiogroup", { name: "View" })
       .getByRole("radio", { name: "Grid" })
@@ -203,7 +203,7 @@ test.describe.serial("library search", () => {
     });
 
     await page.getByRole("button", { name: "Filter", exact: true }).click();
-    await page.locator("label", { hasText: "Unwatched" }).click();
+    await page.getByRole("radio", { name: "Unwatched" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
     await expect(summary(page)).toHaveText(resultCount(unwatched.total));

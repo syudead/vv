@@ -1,11 +1,12 @@
 import { Play, X } from "lucide-react";
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { getVideo, isAborted, RequestFailed, type Video } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
+import { Progress } from "../ui/shadcn/progress";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
@@ -165,13 +166,12 @@ export default function AutoplayNotice({
     });
   }, [nextId, watchEvents]);
 
-  const fraction = (value: number) => `${String((value / autoplayNoticeSeconds) * 100)}%`;
   // なめらかに縮める帯は、1 秒先の長さへ 1 秒かけて動かす。動きを減らす設定では、
   // 秒数が減るたびに今の長さへ段階で縮める。
-  const bar = {
-    "--vv-countdown-smooth": fraction(started ? Math.max(remaining - 1, 0) : remaining),
-    "--vv-countdown-step": fraction(remaining),
-  } as CSSProperties;
+  const reduceMotion =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const barValue = reduceMotion || !started ? remaining : Math.max(remaining - 1, 0);
 
   return (
     <Dimmed>
@@ -180,10 +180,10 @@ export default function AutoplayNotice({
       </span>
       <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs font-semibold text-accent">
+          <span className="text-xs font-semibold text-primary">
             {t.player.autoplay.heading}
           </span>
-          <span aria-hidden="true" className="text-xs text-fg-muted tabular-nums">
+          <span aria-hidden="true" className="text-xs text-muted-foreground tabular-nums">
             {t.player.autoplay.countdown(remaining)}
           </span>
         </div>
@@ -193,25 +193,24 @@ export default function AutoplayNotice({
           aria-label={videoLinkLabel(next)}
           className="flex items-start gap-3 rounded-md"
         >
-          <VideoThumbnail video={next} className="hidden w-56 sm:block" />
-          <span className="line-clamp-2 min-w-0 text-base font-semibold text-fg [overflow-wrap:anywhere]">
+          <VideoThumbnail video={next} className="hidden w-card-0 shrink-0 sm:block" />
+          <span className="line-clamp-2 min-w-0 text-base font-semibold wrap-anywhere">
             {next.title}
           </span>
         </Link>
-        <div
+        <Progress
           aria-hidden="true"
           data-countdown=""
-          className="flex h-1 w-full overflow-hidden rounded-full bg-fg-subtle/50"
-          style={bar}
-        >
-          <div className="h-full w-(--vv-countdown-smooth) rounded-full bg-accent transition-[width] duration-1000 ease-linear motion-reduce:w-(--vv-countdown-step) motion-reduce:transition-none" />
-        </div>
+          value={barValue}
+          max={autoplayNoticeSeconds}
+          className="*:duration-1000 *:ease-linear motion-reduce:*:transition-none"
+        />
         <div className="flex flex-wrap gap-2">
           <Button ref={cancel} variant="secondary" onClick={onCancel}>
             <X aria-hidden="true" />
             {t.player.autoplay.cancel}
           </Button>
-          <Button variant="primary" onClick={onPlayNow}>
+          <Button onClick={onPlayNow}>
             <Play aria-hidden="true" />
             {t.player.autoplay.playNow}
           </Button>

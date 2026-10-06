@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "centered-form-example",
+  "title": "Centered form example",
+  "description": "A working sign-in form in a centred card.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/centered-form-example.tsx",
+      "content": "import type { FormEvent } from \"react\";\n\nimport { t } from \"@/i18n\";\nimport { CenteredForm } from \"@/ui/patterns/centered-form\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Field, FieldLabel } from \"@/ui/shadcn/field\";\nimport { Input } from \"@/ui/shadcn/input\";\n\n// 中央フォームの型の見本（registry:block centered-form-example）。サインインの形で、\n// 写した画面は欄と送信の処理を差し替える\n// （web/registry/rules/patterns.md の Centered form）。\n\nexport function CenteredFormExample() {\n  const p = t.designSystem.pattern;\n  const submit = (event: FormEvent<HTMLFormElement>) => {\n    event.preventDefault();\n  };\n  return (\n    <CenteredForm\n      title={p.signIn}\n      description={p.signInDescription}\n      onSubmit={submit}\n      submit={<Button type=\"submit\">{p.signIn}</Button>}\n      footer={p.signInFooter}\n    >\n      <Field>\n        <FieldLabel htmlFor=\"centered-form-example-user\">{p.userName}</FieldLabel>\n        <Input id=\"centered-form-example-user\" autoComplete=\"username\" />\n      </Field>\n      <Field>\n        <FieldLabel htmlFor=\"centered-form-example-password\">{p.password}</FieldLabel>\n        <Input\n          id=\"centered-form-example-password\"\n          type=\"password\"\n          autoComplete=\"current-password\"\n        />\n      </Field>\n    </CenteredForm>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#centered-form (item vv-rules).",
+  "type": "registry:block"
+}

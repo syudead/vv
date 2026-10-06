@@ -180,7 +180,7 @@ Details per scene:
   the loaded rows change for 60 seconds, scrolling stops and the note shows
   `末尾に届かず` (did not reach the end).
 - Bulk confirm: the benchmark reopens `/tags`, selects every loaded tentative
-  tag with "Tentative only" (inside the top bar's "Filter"; a toggle button in
+  tag with "Tentative only" (inside the toolbar's "Filter", in the top bar before 038; a toggle button in
   the first form of 036) and "Select all N loaded tags" ("Select all shown
   tags" on the screen before the change), and measures from the selection
   bar's "Confirm" until the result notice ("Confirmed N tags") or "No

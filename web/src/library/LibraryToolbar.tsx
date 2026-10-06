@@ -1,15 +1,12 @@
-import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
+import { LayoutGrid, List } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
-import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import SegmentedControl from "../ui/SegmentedControl";
-import Tooltip from "../ui/Tooltip";
+import { Toolbar, type ToolbarViewControl } from "../ui/patterns/toolbar";
 import FilterMenu from "../videoList/FilterMenu";
+import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
 import { CompactSortControls, SortMenu } from "../videoList/SortControls";
@@ -18,8 +15,12 @@ import ZoomSlider from "../videoList/ZoomSlider";
 /** viewOptions は表示形式の選択肢である。文言は描画のたびにカタログから引く。 */
 function viewOptions() {
   return [
-    { value: "grid", label: t.library.view.grid, icon: <LayoutGrid /> },
-    { value: "list", label: t.library.view.list, icon: <List /> },
+    {
+      value: "grid",
+      label: t.library.view.grid,
+      icon: <LayoutGrid aria-hidden="true" />,
+    },
+    { value: "list", label: t.library.view.list, icon: <List aria-hidden="true" /> },
   ] as const;
 }
 
@@ -45,9 +46,11 @@ export interface LibraryToolbarProps {
 }
 
 /**
- * LibraryToolbar はライブラリ操作をトップバー内の 1 行に集める。並びは Tab の順で、
- * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ・まとめ
- * （ui-design.md「Toolbar」）。
+ * LibraryToolbar はライブラリの操作をトップバーの中の 1 行に集める（画面の型の Toolbar の
+ * placement="topBar"。LibraryPage が TopBarPortal で入れる）。並びは Tab の順で、
+ * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ
+ * （ui-design.md「Toolbar」）。並べ替えは md、表示形式は lg、大きさは xl から行に並び、
+ * それより狭い幅ではアイコンだけの「View and sort」のポップオーバーに入る。
  */
 export default function LibraryToolbar({
   query,
@@ -69,15 +72,65 @@ export default function LibraryToolbar({
   zoom,
   onZoomChange,
 }: LibraryToolbarProps) {
-  return (
-    <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-      <SearchBox
-        query={query}
-        onCommit={onQueryCommit}
-        inputRef={searchRef}
-        className="min-w-20 flex-1 sm:min-w-40 sm:max-w-md"
-      />
+  const controls: ToolbarViewControl[] = [
+    {
+      id: "sort",
+      label: t.list.sort.heading,
+      inlineFrom: "md",
+      control: <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />,
+      compact: (
+        <CompactSortControls
+          name="compact-sort"
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+        />
+      ),
+      compactLabelled: true,
+    },
+    {
+      id: "view",
+      label: t.library.view.label,
+      inlineFrom: "lg",
+      control: (
+        <IconToggleGroup
+          label={t.library.view.label}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
+      ),
+      compact: (
+        <IconToggleGroup
+          label={t.library.view.compact}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
+      ),
+    },
+  ];
+  // 大きさは格子表示のときだけ意味を持つ。
+  if (view === "grid") {
+    controls.push({
+      id: "size",
+      label: t.list.cardSize,
+      inlineFrom: "xl",
+      hideBelowSm: true,
+      control: (
+        <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" tooltip />
+      ),
+      compact: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />,
+    });
+  }
 
+  return (
+    <Toolbar
+      placement="topBar"
+      search={<SearchBox query={query} onCommit={onQueryCommit} inputRef={searchRef} />}
+      view={controls}
+      viewLabel={t.list.viewAndSort}
+    >
       <FilterMenu
         watch={watch}
         onWatchChange={onWatchChange}
@@ -88,74 +141,6 @@ export default function LibraryToolbar({
         canClear={canClear}
         onClear={onClear}
       />
-
-      <div className="hidden md:block">
-        <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />
-      </div>
-
-      <div className="hidden lg:block">
-        <SegmentedControl
-          label={t.library.view.label}
-          value={view}
-          onValueChange={onViewChange}
-          options={viewOptions()}
-        />
-      </div>
-
-      {view === "grid" && (
-        <Tooltip content={t.list.cardSize}>
-          <ZoomSlider
-            zoom={zoom}
-            onZoomChange={onZoomChange}
-            className="hidden w-24 xl:flex"
-          />
-        </Tooltip>
-      )}
-
-      <PopoverRoot>
-        <PopoverTrigger asChild>
-          <Button
-            variant="secondary"
-            aria-label={t.list.viewAndSort}
-            className={cn("px-2.5", view === "grid" ? "xl:hidden" : "lg:hidden")}
-          >
-            <SlidersHorizontal />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-80">
-          <div className="space-y-4">
-            <div className="md:hidden">
-              <CompactSortControls
-                name="compact-sort"
-                sort={sort}
-                onSortChange={onSortChange}
-                onShuffle={onShuffle}
-              />
-            </div>
-
-            <fieldset className="lg:hidden">
-              <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-                {t.library.view.label}
-              </legend>
-              <SegmentedControl
-                label={t.library.view.compact}
-                value={view}
-                onValueChange={onViewChange}
-                options={viewOptions()}
-              />
-            </fieldset>
-
-            {view === "grid" && (
-              <fieldset className="hidden sm:block xl:hidden">
-                <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
-                  {t.list.cardSize}
-                </legend>
-                <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
-              </fieldset>
-            )}
-          </div>
-        </PopoverContent>
-      </PopoverRoot>
-    </div>
+    </Toolbar>
   );
 }

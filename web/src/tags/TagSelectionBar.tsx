@@ -1,17 +1,21 @@
-import { Ban, Check, LoaderCircle, Merge, Trash2, X } from "lucide-react";
+import { Ban, Check, Merge, Trash2 } from "lucide-react";
 import { useId, type Ref } from "react";
 
 import { maxTagBatch } from "../api/tags";
 import { t } from "../i18n";
-import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
+import { SelectionBar } from "../ui/patterns/selection-bar";
+import { Button } from "../ui/shadcn/button";
+import { Spinner } from "../ui/shadcn/spinner";
 
 /**
- * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、本文の先頭の見出しの行と
- * 入れ替わる選択の行である（specs/036-tag-admin-scale/ui-design.md「Selection bar」）。
- * 左に選択を解く × と「N tags selected」、右にまとめての操作を本物のボタンで並べる。
- * 選んだタグに働かない操作（仮のタグが無いときの「Confirm」「Reject…」、確定した
- * タグが無いときの「Delete…」）は薄くせずに出さない。
+ * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、見出しの行の代わりに出す
+ * 選択バーである（見出しとタブの帯はトップバーの直下に貼り付くので、送っても届く）。
+ * デザインシステムの `SelectionBar` の placement="header"（web/registry/rules/patterns.md の
+ * Sections）に、選んだ数・解除とまとめての操作を入れる
+ * （specs/036-tag-admin-scale/ui-design.md「Selection bar」）。選んだタグに働かない操作
+ * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
+ * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。操作の
+ * 名前はどの幅でも出し、収まらなければ折り返す。
  */
 export default function TagSelectionBar({
   count,
@@ -58,89 +62,76 @@ export default function TagSelectionBar({
   const describedBy = reason === undefined ? undefined : overLimitId;
 
   return (
-    <div
-      role="region"
-      aria-label={t.tags.selection.region}
-      className="flex min-h-10 flex-wrap items-center gap-x-2 gap-y-2"
-    >
-      <IconButton
-        label={t.tags.selection.clear}
-        onClick={onClear}
-        disabled={busy}
-        className="-ml-2"
+    <div role="region" aria-label={t.tags.selection.region} className="contents">
+      <SelectionBar
+        count={t.tags.selection.count(count)}
+        clearLabel={t.tags.selection.clear}
+        clearDisabled={busy}
+        onClear={onClear}
+        placement="header"
       >
-        <X />
-      </IconButton>
-      <span
-        role="status"
-        aria-live="polite"
-        className="mr-auto text-lg font-semibold text-fg tabular-nums"
-      >
-        {t.tags.selection.count(count)}
-      </span>
-
-      <div className="flex flex-wrap items-center gap-2">
         {hasTentative && (
           <Button
             ref={confirmRef}
-            variant="primary"
+            variant="ghost"
+            size="sm"
             disabled={disabled}
             title={reason}
             aria-describedby={describedBy}
             onClick={onConfirm}
           >
-            {confirming ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
-              />
-            ) : (
-              <Check aria-hidden="true" />
-            )}
-            {t.tags.selection.confirm}
+            {confirming ? <Spinner aria-hidden="true" /> : <Check aria-hidden="true" />}
+            <span>{t.tags.selection.confirm}</span>
           </Button>
         )}
         <Button
           ref={mergeRef}
+          variant="ghost"
+          size="sm"
           disabled={disabled}
           title={reason}
           aria-describedby={describedBy}
           onClick={onMerge}
         >
           <Merge aria-hidden="true" />
-          {t.tags.selection.mergeInto}
+          <span>{t.tags.selection.mergeInto}</span>
         </Button>
         {hasTentative && (
           <Button
             ref={rejectRef}
+            variant="ghost"
+            size="sm"
             disabled={disabled}
             title={reason}
             aria-describedby={describedBy}
             onClick={onReject}
+            className="text-destructive"
           >
-            <Ban aria-hidden="true" className="text-danger" />
-            <span className="text-danger">{t.tags.selection.reject}</span>
+            <Ban aria-hidden="true" />
+            <span>{t.tags.selection.reject}</span>
           </Button>
         )}
         {hasConfirmed && (
           <Button
             ref={deleteRef}
+            variant="ghost"
+            size="sm"
             disabled={disabled}
             title={reason}
             aria-describedby={describedBy}
             onClick={onDelete}
+            className="text-destructive"
           >
-            <Trash2 aria-hidden="true" className="text-danger" />
-            <span className="text-danger">{t.tags.selection.delete}</span>
+            <Trash2 aria-hidden="true" />
+            <span>{t.tags.selection.delete}</span>
           </Button>
         )}
-      </div>
-
-      {reason !== undefined && (
-        <p id={overLimitId} className="w-full text-xs text-danger">
-          {reason}
-        </p>
-      )}
+        {reason !== undefined && (
+          <span id={overLimitId} className="sr-only">
+            {reason}
+          </span>
+        )}
+      </SelectionBar>
     </div>
   );
 }

@@ -22,12 +22,18 @@ import {
 import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
-import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import Skeleton from "../ui/Skeleton";
+import { Button } from "../ui/shadcn/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
+import { factTrigger } from "./factTrigger";
 import {
   VersionDetailsLine,
   versionDetails,
@@ -244,24 +250,24 @@ export default function VersionsFact({
 
   return (
     <li className="flex items-center whitespace-nowrap">
-      <PopoverRoot open={open} onOpenChange={changeOpen}>
+      <Popover open={open} onOpenChange={changeOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             aria-label={t.player.versions.show(shown)}
             title={t.player.versions.show(shown)}
-            className="-mx-1 flex items-center gap-1.5 rounded-sm px-1 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+            className={factTrigger}
           >
-            <Layers className="size-4 shrink-0 text-fg-subtle" aria-hidden="true" />
+            <Layers aria-hidden="true" />
             <span className="tabular-nums">{t.player.versions.count(shown)}</span>
-            <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
-          </button>
+            <ChevronDown aria-hidden="true" />
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           side="bottom"
           align="start"
           aria-labelledby={headingId}
-          className="w-[min(28rem,calc(100vw-2rem))] overflow-hidden p-0"
+          className="w-versions-popover gap-0 overflow-hidden p-0"
           onOpenAutoFocus={(event) => {
             // 一覧が届いてから最初の別のバージョンの行へ移す。
             event.preventDefault();
@@ -284,7 +290,7 @@ export default function VersionsFact({
           )}
           {list.kind === "failed" && (
             <div className="flex items-center gap-2 px-3 py-2">
-              <p role="alert" className="text-xs text-danger">
+              <p role="alert" className="text-sm text-destructive">
                 {t.player.versions.loadFailed}
               </p>
               <Button variant="ghost" size="sm" onClick={() => load(true)}>
@@ -296,7 +302,7 @@ export default function VersionsFact({
             <ul
               ref={listRef}
               aria-label={t.player.versions.label}
-              className="max-h-80 divide-y divide-border overflow-y-auto"
+              className="max-h-popover-wide divide-y divide-border overflow-y-auto"
             >
               {list.versions.items.map((item) => (
                 <VersionRow
@@ -316,14 +322,14 @@ export default function VersionsFact({
           {failure !== null && (
             <p
               role="alert"
-              className="flex items-center gap-2 border-t border-border px-3 py-2 text-xs text-danger"
+              className="flex items-center gap-2 border-t border-border px-3 py-2 text-sm text-destructive"
             >
               <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
               {failure}
             </p>
           )}
         </PopoverContent>
-      </PopoverRoot>
+      </Popover>
     </li>
   );
 }
@@ -358,11 +364,11 @@ function VersionRow({
     <>
       <span className="flex min-w-0 items-baseline gap-2">
         {current && <span className="sr-only">{t.player.versions.nowPlaying} </span>}
-        <span className="min-w-0 truncate text-sm text-fg" title={item.title}>
+        <span className="min-w-0 truncate text-sm" title={item.title}>
           {item.title}
         </span>
         {representative && (
-          <span className="shrink-0 text-xs text-fg-muted">
+          <span className="shrink-0 text-xs text-muted-foreground">
             {t.player.versions.representative}
           </span>
         )}
@@ -375,18 +381,19 @@ function VersionRow({
     <li
       aria-current={current ? "true" : undefined}
       className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 pr-2",
-        current && "border-l-2 border-accent bg-active-wash",
+        "flex items-center gap-x-2 pr-2",
+        current && "border-l-2 border-primary bg-primary-soft",
       )}
     >
       {current ? (
-        <div className="flex min-w-0 flex-col gap-0.5 py-2 pl-2.5">{text}</div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-2 pl-3">{text}</div>
       ) : (
         <Link
           to={`/videos/${String(item.id)}`}
           state={{ from: navigation.backTo, autoplay: navigation.autoplay }}
           aria-label={t.player.versions.play(item.title, spoken)}
-          className="flex min-w-0 flex-col gap-0.5 py-2 pl-3 transition-colors hover:bg-hover-wash focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-link"
+          // 浮き出しの端で輪が切れないよう、輪は内側に描く。
+          className="flex min-w-0 flex-1 flex-col gap-0.5 py-2 pl-3 transition-colors hover:bg-accent focus-visible:-outline-offset-2"
         >
           {text}
         </Link>
@@ -421,17 +428,17 @@ function RowActions({
   const [menuOpen, setMenuOpen] = useState(false);
   // 送っている間も同じボタンを残し、フォーカスを失わせない。メニューは開かない。
   return (
-    <MenuRoot
+    <DropdownMenu
       open={menuOpen && !pending}
       onOpenChange={(next) => setMenuOpen(next && !pending)}
     >
-      <MenuTrigger asChild>
-        <IconButton
-          label={label}
-          size="sm"
-          tooltip={false}
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={label}
           aria-disabled={pending || undefined}
-          className="text-fg-muted! hover:text-fg! aria-disabled:cursor-default"
+          className="shrink-0 text-muted-foreground aria-disabled:cursor-default"
         >
           {pending ? (
             <LoaderCircle
@@ -441,12 +448,12 @@ function RowActions({
           ) : (
             <Ellipsis aria-hidden="true" />
           )}
-        </IconButton>
-      </MenuTrigger>
-      <MenuContent>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
         {!representative && (
           <>
-            <MenuItem
+            <DropdownMenuItem
               onSelect={() => {
                 setMenuOpen(false);
                 onMakeRepresentative();
@@ -454,11 +461,11 @@ function RowActions({
             >
               <Star aria-hidden="true" />
               {t.player.versions.makeRepresentative}
-            </MenuItem>
-            <MenuSeparator />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
           </>
         )}
-        <MenuItem
+        <DropdownMenuItem
           onSelect={() => {
             setMenuOpen(false);
             onRemove();
@@ -466,8 +473,8 @@ function RowActions({
         >
           <Unlink aria-hidden="true" />
           {t.player.versions.remove}
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

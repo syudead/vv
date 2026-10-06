@@ -1,26 +1,27 @@
-import { ChevronRight } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Skeleton from "../ui/Skeleton";
+import {
+  Breadcrumb,
+  BreadcrumbEllipsis,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "../ui/shadcn/breadcrumb";
+import { Skeleton } from "../ui/shadcn/skeleton";
 import type { Crumb } from "./folderPath";
 
 /** collapseFrom は狭い幅で途中の段を畳み始める段数である（ui-design.md）。 */
 const collapseFrom = 4;
 
-function Separator({ className }: { className?: string }) {
-  return (
-    <ChevronRight
-      aria-hidden="true"
-      className={cn("size-3.5 shrink-0 text-fg-subtle", className)}
-    />
-  );
-}
-
 /**
- * Breadcrumbs はトップバーの直下に固定するパンくず帯である。
+ * Breadcrumbs はフォルダ画面の見出しの上に置くパンくずである。トップバーの直下に貼り付く
+ * 帯で、下へ送っても上の段へ戻れる。ListPage の header の先頭（ページの直下の子）に置き、
+ * ページの余白を打ち消して全幅にする。
  *
  * 段が多いとき、`md` より狭い幅では先頭の側を省略して「… › 親 › 現在地」だけを
  * 見せる（最上位へはサイドバーの「フォルダ」から戻れる）。
@@ -41,59 +42,61 @@ export default function Breadcrumbs({
   const lastIndex = crumbs.length - 1;
 
   return (
-    <div className="sticky top-navbar z-20 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-bg/90 px-3 backdrop-blur-md sm:-mx-4 sm:px-4">
-      <nav
-        aria-label={t.folders.breadcrumbs}
-        className="flex min-w-0 flex-1 items-center"
-      >
-        <ol className="flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap">
+    <div
+      data-slot="folder-breadcrumbs"
+      className="sticky top-navbar z-35 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-background px-3 sm:-mx-4 sm:-mt-4 sm:px-4"
+    >
+      <Breadcrumb aria-label={t.folders.breadcrumbs} className="min-w-0 flex-1">
+        {/* 上流の一覧は折り返す。フォルダの道筋は一行に保ち、溢れた段を省略記号で切る。 */}
+        <BreadcrumbList className="min-w-0 flex-nowrap whitespace-nowrap wrap-normal">
           {crumbs.map((crumb, index) => {
             const hiddenWhenNarrow = collapsible && index < lastIndex - 1;
             const current = index === lastIndex;
             return (
               <Fragment key={index}>
                 {collapsible && index === lastIndex - 1 && (
-                  <li aria-hidden="true" className="flex items-center gap-0.5 md:hidden">
-                    <span className="px-1 text-fg-muted">…</span>
-                    <Separator />
-                  </li>
+                  <>
+                    <BreadcrumbItem aria-hidden="true" className="md:hidden">
+                      <BreadcrumbEllipsis />
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator className="md:hidden" />
+                  </>
                 )}
-                <li
-                  className={cn(
-                    "flex items-center gap-0.5",
-                    current ? "min-w-0" : "min-w-0 shrink",
-                    hiddenWhenNarrow && "hidden md:flex",
-                  )}
+                <BreadcrumbItem
+                  className={cn("min-w-0", hiddenWhenNarrow && "hidden md:inline-flex")}
                 >
                   {crumb === undefined ? (
-                    <Skeleton className="h-3.5 w-20" />
+                    <Skeleton className="h-4 w-16" />
                   ) : crumb.to === undefined ? (
-                    <span
-                      aria-current="page"
+                    // 現在地はリンクにしない（押せないリンクとして読ませない）ので、
+                    // 上流の role="link" を外す。
+                    <BreadcrumbPage
+                      role={undefined}
+                      aria-disabled={undefined}
                       title={crumb.label}
-                      className="min-w-0 truncate px-1 font-medium text-fg"
+                      className="truncate"
                     >
                       {crumb.label}
-                    </span>
+                    </BreadcrumbPage>
                   ) : (
-                    <Link
-                      to={crumb.to}
-                      title={crumb.label}
-                      className="max-w-40 min-w-0 truncate rounded-sm px-1 py-0.5 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link"
-                    >
-                      {crumb.label}
-                    </Link>
+                    <BreadcrumbLink asChild>
+                      <Link to={crumb.to} title={crumb.label} className="truncate">
+                        {crumb.label}
+                      </Link>
+                    </BreadcrumbLink>
                   )}
-                  {!current && <Separator />}
-                </li>
+                </BreadcrumbItem>
+                {!current && (
+                  <BreadcrumbSeparator
+                    className={cn(hiddenWhenNarrow && "hidden md:block")}
+                  />
+                )}
               </Fragment>
             );
           })}
-        </ol>
-        {suffix !== undefined && (
-          <span className="shrink-0 pl-1 text-fg-muted">{suffix}</span>
-        )}
-      </nav>
+          {suffix !== undefined && <BreadcrumbItem>{suffix}</BreadcrumbItem>}
+        </BreadcrumbList>
+      </Breadcrumb>
     </div>
   );
 }

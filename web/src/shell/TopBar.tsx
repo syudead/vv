@@ -3,9 +3,10 @@ import { Menu, RefreshCw } from "lucide-react";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
-import IconButton from "../ui/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
-import Tooltip from "../ui/Tooltip";
+import { Button } from "../ui/shadcn/button";
+import { useSidebar } from "../ui/shadcn/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useScan } from "./ScanProvider";
 
 function ScanButton() {
@@ -17,54 +18,74 @@ function ScanButton() {
     : t.shell.topBar.needsMediaFolder;
 
   return (
-    <Tooltip content={buttonDescription}>
-      <button
-        type="button"
-        onClick={scan.start}
-        disabled={scan.running || !scan.canStart}
-        aria-label={buttonDescription}
-        className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
-          scan.error !== null
-            ? "bg-danger-soft text-danger"
-            : scan.running
-              ? "bg-accent-soft text-link"
-              : "text-fg hover:bg-hover-wash active:bg-active-wash",
-        )}
-      >
-        <RefreshCw
-          className={cn(
-            "size-4",
-            scan.running && "animate-spin motion-reduce:animate-none",
-          )}
-        />
-        <span className="hidden md:inline">
-          {scan.running ? t.shell.topBar.refreshing : t.shell.topBar.refresh}
+    <Tooltip>
+      {/* 押せない間も理由のツールチップを出せるよう、ボタンを包みに入れる。 */}
+      <TooltipTrigger asChild>
+        <span className="inline-flex">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={scan.start}
+            disabled={scan.running || !scan.canStart}
+            aria-label={buttonDescription}
+            aria-busy={scan.running || undefined}
+          >
+            <RefreshCw
+              aria-hidden="true"
+              className={cn(
+                scan.error !== null && "text-destructive",
+                scan.running && "animate-spin text-primary motion-reduce:animate-none",
+              )}
+            />
+            <span className="hidden md:inline">
+              {scan.running ? t.shell.topBar.refreshing : t.shell.topBar.refresh}
+            </span>
+          </Button>
         </span>
-      </button>
+      </TooltipTrigger>
+      <TooltipContent>{buttonDescription}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** MenuButton はサイドバーを開閉する。狭い幅ではドロワーを開く。 */
+function MenuButton() {
+  const { toggleSidebar } = useSidebar();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t.shell.nav.menu}
+          onClick={toggleSidebar}
+        >
+          <Menu aria-hidden="true" />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t.shell.nav.menu}</TooltipContent>
     </Tooltip>
   );
 }
 
 /**
- * TopBar は ☰・ロゴ・更新だけを持つ。ナビと設定は Sidebar にある。
+ * TopBar は ☰・ロゴ・ページの道具・更新を持つ。ナビと設定は Sidebar にある。
+ * ページの道具（一覧のツールバー）は TopBarPortal が中央の入れ物へ描く。
  *
  * ゲストには更新を出さない。右端の入れ物ごと省き、道具の入れ物（flex-1）が右へ
  * 広がる。空の場所埋めは置かない（specs/016-single-account-auth/ui-design.md「Top bar」）。
  */
-export default function TopBar({ onMenu }: { onMenu: () => void }) {
+export default function TopBar() {
   const owner = useAudience() === "owner";
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
-      <IconButton label={t.shell.nav.menu} onClick={onMenu} tooltip={false}>
-        <Menu />
-      </IconButton>
-      <BrandHomeLink className="mr-1" />
+    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-2 border-b border-border bg-navbar px-2 sm:px-3">
+      <MenuButton />
+      <BrandHomeLink />
 
       <div id="topbar-library-tools" className="flex min-w-0 flex-1 items-center" />
 
       {owner && (
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className="ml-auto flex shrink-0 items-center">
           <ScanButton />
         </div>
       )}

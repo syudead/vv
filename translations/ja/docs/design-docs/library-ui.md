@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 09476641418b9bbfe2a4dbec223f2e06964090ce10bc1ab0caadc642a29b03f6
+sourceHash: 69695b567cbaa9740604728a0e0ad6f5559601a097b6d9a1cf1713f9b9ed03dd
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -8,22 +8,25 @@ sourceHash: 09476641418b9bbfe2a4dbec223f2e06964090ce10bc1ab0caadc642a29b03f6
 - 状態: 採用
 - 範囲: `web/` の画面（シェル、一覧、動画ページ）が従う視覚ルールと、そのルールへの準拠を確かめる方法
 
-画面は CSS にある 1 組の視覚値を共有し、機械が確かめられることはテストが確かめる。値（色、角丸、カード幅）は [`web/src/index.css`](../../web/src/index.css) の `@theme` にだけあり、確かめる組は [`tokens.test.ts`](../../web/src/theme/tokens.test.ts) にだけある。ここには写さない。
+画面は CSS にある 1 組の視覚値を共有し、機械が確かめられることはテストが確かめる。値（色、角丸、カード幅）は [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css) の `@theme` にだけあり、確かめる組は [`tokens.test.ts`](../../web/src/theme/tokens.test.ts) にだけある。ここには写さない。
 
 図は、値がどこにあり、各部分を誰が確かめるかを示す。
 
 ```mermaid
 flowchart LR
-  theme["index.css の @theme"] --> classes[Tailwind のユーティリティクラス]
+  theme["tokens.css の @theme"] --> classes[Tailwind のユーティリティクラス]
   classes --> screens[web/src の画面]
   test[tokens.test.ts] -->|コントラスト| theme
   test -->|生の色の走査| screens
+  lint[ESLint] -->|テーマにないクラス| screens
   people[実機で見る人] -->|レイアウト| screens
 ```
 
 ## 視覚値は CSS の 1 か所に置き、コントラストはテストで保証する {#visual-values-in-one-css-location-with-contrast-guaranteed-by-tests}
 
-画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-surface`、`text-fg-muted`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
+画面は、Tailwind が `@theme` から生成するユーティリティクラス（`bg-card`、`text-muted-foreground`、`rounded-md`）を通してだけ視覚値を設定し、`tokens.test.ts` は、列挙した文字と面の組がどれも WCAG 2 のコントラスト 4.5 以上に達することを確かめる。
+
+`tokens.css` の `@theme` は、まず色、文字、太さ、余白、角丸、影、アニメーションの Tailwind の既定の名前空間をリセットし（`--color-*: initial`、`--spacing: initial` など）、その後デザインシステムの段階だけを定義する。そのため Tailwind は尺度の外のクラスを生成せず、画面に書かれたそのようなクラスは ESLint の `no-unknown-classes` が失敗させる（[design-system.md、Foundations](design-system.md#foundations)）。
 
 CSS を元にするのは、画面にトークン名以外の選択肢を残さないからだ。値が 1 つのファイルにあるので、コントラストの確認はそのファイルだけを読む。
 
@@ -42,16 +45,7 @@ flowchart LR
 
 既定パレットの名前は `neutral-*`、`sky-*` などだ。組にない色は確かめられないので、**新しい文字や面の色は組に追加しなければならない**。テストが捕まえるのは CSS にない列挙済みの組で、その逆ではない。
 
-| 役割 | トークン |
-| --- | --- |
-| シェルと面 | 提供された暗色の `navbar`、`bg`、`surface` |
-| 主な操作 | シアンの `accent`。ホバーで `accent-hover`、押下中と選択中は `accent-active` |
-| 共通コントロールの枠線 | `control-border` |
-| キーボードフォーカス | `link` |
-| 危険、警告、成功 | それぞれの意味の色。必ず文字とアイコンを伴う |
-| お気に入りの印 | ピンクの `favorite`。ほかの何にも使わない（[035 UI 設計、Mark](../../specs/035-favorites/ui-design.md)） |
-
-意味の色とピンクは、操作の状態と読まれないよう、シアンから離しておく。テストは面の上の本文、主な枠線、フォーカスを対象にする。
+どのトークンがどの役割（面、シアンの `primary`、コントロールの枠線、フォーカス、意味の色、お気に入りのピンク）を担うかは [design-system.md、Foundations](design-system.md#foundations) で定めている。テストは面の上の本文、主な枠線、フォーカスを対象にする。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
@@ -62,7 +56,7 @@ flowchart LR
 
 `html` は `color-scheme: dark` を宣言し、暗色の値が 1 組だけある。`prefers-color-scheme` の分岐も切り替えもない。
 
-切り替えを置くとコントラストを確かめる組が倍になり、片方の組は気づかれないまま古くなる。トークン名は色（`neutral-850`）ではなく役割（`bg`、`surface`、`elevated`、`fg`、`fg-muted`、`accent`、`danger`、`warning`）を表すので、後で明色の配色を加えるときは 2 組目の値を足すだけで、画面は変わらない。
+切り替えを置くとコントラストを確かめる組が倍になり、片方の組は気づかれないまま古くなる。トークン名は色（`neutral-850`）ではなく役割（`background`、`card`、`popover`、`foreground`、`muted-foreground`、`primary`、`destructive`、`warning`）を表すので、後で明色の配色を加えるときは 2 組目の値を足すだけで、画面は変わらない。
 
 ## 仮想スクロールは使わない {#no-virtual-scrolling}
 
@@ -70,7 +64,7 @@ flowchart LR
 
 一覧は折り返すグリッドで、1 行のカード数は画面幅とカード幅で変わる。そのため仮想化すると、その数を計算し、スクロール位置の復元を仮想座標で作り直すことになる。ページは 60 項目ずつ読み込む（[`PAGE_SIZE`](../../web/src/api/client.ts)）ので、DOM には利用者が読み込んだものだけがある。**何が遅いかを測った後にだけ見直す。**
 
-タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。ツールバー、タブ、列見出しは、上部バーの下に貼り付く 1 つの帯としてとどまる。ページは帯を測り、その高さを仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が帯の下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
+タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。画面は管理用の表ページのパターンだ。ヘッダー、タブ、ツールバーはページと一緒にスクロールし、行は `DataTable` の本体であり、描画範囲の外の行は空のスペーサー行として保つので、列はそろったままになる。ページは固定された上部バーの高さ（`--spacing-navbar`）を仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が上部バーの下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
 
 ### スクロールはウィンドウが持つ {#the-window-owns-scrolling}
 
@@ -82,7 +76,7 @@ flowchart LR
 
 幅による変化には CSS で Tailwind の既定のブレークポイントを使う。JavaScript で幅を読むのはサイドバーだけだ（[`useSidebar.ts`](../../web/src/shell/useSidebar.ts)）。
 
-JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、利用者の開閉の選択を幅ごとに解釈し、ドロワーの開いた状態を保つからで、これは CSS では表せない。そのブレークポイントは `lg` と `sm` に等しい。
+JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、利用者の開閉の選択を幅ごとに解釈し、ドロワーの開いた状態を保つからで、これは CSS では表せない。通知（[`Toast.tsx`](../../web/src/ui/Toast.tsx)）がもう 1 つの例外だ。Sonner は位置を prop として受け取るので、一覧画面は `lg` を読んで、通知を上部バーの下から下端の中央、選択バーの上へ移す。サイドバーのブレークポイントは `lg` と `sm` に等しい。
 
 ```mermaid
 flowchart LR
@@ -115,7 +109,7 @@ jsdom は CSS を適用しないので、`position: fixed`、メディアクエ�
 
 ## 一覧のレイアウト {#list-layout}
 
-一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードで、ライブラリとフォルダのページが 1 つのグリッド（[`Grid.tsx`](../../web/src/videoList/Grid.tsx)）を通して共有する。
+一覧は密度の高い管理画面のレイアウトを使う。上部バー、絞り込みの帯、枠で囲んだカードだ。ライブラリのページは [`Grid.tsx`](../../web/src/videoList/Grid.tsx) でカードを並べ、フォルダのページはレジストリのカードグリッド（[`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)）で並べる。
 
 図は一覧画面の部品を示す。
 
@@ -130,7 +124,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持ち、各画面はその間に自分のツールバーを差し込む。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）があり、畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -140,14 +134,16 @@ flowchart LR
 | 並び順 | 9 | 7 |
 | 視聴状態と `Favorites only` の絞り込み | 表示 | 非表示 |
 
-ツールバーは検索、絞り込み、表示（ライブラリだけ）、ズーム、並べ替えを持つ。
+ツールバーは検索、絞り込み、並べ替え、表示（ライブラリだけ）、ズームを、この Tab の順で持つ。折り返すことはない。検索欄が残りの幅を取り、表示のコントロールはそれぞれ、行に加わる幅より狭いと、アイコンだけの `View and sort` のポップオーバーに移る。
 
 | 幅 | ツールバー |
 | --- | --- |
-| 広い | すべてのコントロールを横に並べる |
-| 狭い | 表示、ズーム、並べ替えは `View and sort` に移る |
-| `md` 未満 | 並び順は 2 列のラジオに行優先で並ぶ。所有者は 5 行、ゲストは 4 行 |
+| `xl` 以上 | すべてのコントロールを横に並べる |
+| `md` から `xl` | 並べ替えは `md` から、表示（ライブラリ）は `lg` から、ズームは `xl` から横に並ぶ。残りは `View and sort` に入る |
+| `md` 未満 | 並び順は `View and sort` の中で 2 列のラジオに行優先で並び（所有者は 5 行、ゲストは 4 行）、その下に向きか `Shuffle` を置く |
 | `sm` 未満 | ズームによらず全幅の 1 列。ズームは非表示 |
+
+タグのページは同じ行に検索、絞り込み、並べ替えを置く。`md` 未満では、並べ替えはアイコンだけの `Sort` のポップオーバーに移る。
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。
 
@@ -184,11 +180,11 @@ flowchart LR
 
 ### お気に入りの印 {#favorite-mark}
 
-所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある（[`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx)、[035 UI 設計、Mark、Card](../../specs/035-favorites/ui-design.md)）。
+所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある（[`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx)、[035 UI 設計、Mark、Card](../../specs/035-favorites/ui-design.md)）。
 
 | 観点 | ルール |
 | --- | --- |
-| 形 | 28px の当たり領域に 22px のハート。背後に塗りも枠線もない |
+| 形 | 32px の当たり領域に 20px のハート。背後に塗りも枠線もない |
 | 読みやすさ | カードでは暗い `drop-shadow-mark`。リスト表示ではなし |
 | オン | どこでもピンクの `favorite` で塗る |
 | オフ | 白の輪郭。ホバーかフォーカスのときだけ表示する（ホバーできない環境では常に表示） |
@@ -216,22 +212,9 @@ flowchart LR
 
 ### 選択バー {#selection-bar}
 
-選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。
+選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。デザインシステムのバー（`SelectionBar`、最大 `max-w-4xl`）は、操作名が収まらないときは 2 行目へ折り返す。
 
-項目は順に、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all`、解除だ。行の割り当ては実際の幅を測って決める。
-
-```mermaid
-flowchart LR
-  w{幅は sm 以上?} -->|はい| one{1 行に収まる?}
-  one -->|はい| line[1 行]
-  one -->|いいえ| sep[区切り以降を 2 行目へ]
-  sep --> still{1 行目は収まる?}
-  still -->|いいえ| fav[Favorite 以降を 2 行目へ]
-  w -->|いいえ| narrow[件数、Select all、解除を上に]
-  narrow --> wrap[あふれた Favorite 以降を下へ]
-```
-
-`sm` 以上では、バーは `nowrap` ではみ出す代わりに全幅に広がり、移った項目は 2 行目の右端に置かれ、`Favorite` 以降が区切りより前に来る。`sm` 未満では、最下行に 2 つのタグ操作、`Favorite`、`Visibility` を置き、収まらないものは次の行の右端へ、さらにその次の行へ移る。
+項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
 
 詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar) にある。
 
@@ -260,15 +243,15 @@ flowchart LR
 
 動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。形と文言は [012 UI 設計](../../specs/012-video-detail-ia/ui-design.md) にある。
 
-ページはシェルなしで一覧の上に重なり、× か Esc で閉じる。図はその部品を示す。
+ページはシェルなしで一覧の上に重なり、× か Esc で閉じる。`DetailPage` の雛形（[デザインシステム、Page patterns](design-system.md#page-patterns)）の上に組み立て、ウィンドウの端から端までを埋める。下に境界線のあるヘッダーの帯の下に、視聴のための左の列と関連動画のための右の列を置き、境界線で区切る。図はその部品を示す。
 
 ```mermaid
 flowchart LR
   band[ヘッダーの帯] --> player[プレーヤー]
   player --> title[タイトルとタグ]
   title --> vis[公開範囲の切り替え]
-  vis --> info[ファイル情報]
-  player --> related[関連動画]
+  vis --> info[情報の行]
+  band --> related[次の動画と関連動画]
 ```
 
 | 部品 | ルール |
@@ -276,23 +259,32 @@ flowchart LR
 | ヘッダーの帯 | ロゴ（ホーム）、フォルダへのパンくず、唯一の × |
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
 | タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
-| 公開範囲の切り替え | `role="switch"`。タイトルのまとまりの下、ファイル情報の上 |
+| 公開範囲の切り替え | 錠か地球のアイコン付きの `Private` か `Public`。`role="switch"` を持つ `Button` で、タイトルのまとまりの下、情報の行の上に置く |
+| 関連動画 | 小さな見出しの下の素の行。周りにカードを置かない |
 | ゲスト | タグ、公開範囲の切り替え、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
-幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。`lg` 以上では関連動画が右の列になり、それ未満ではすべてが縦に積まれ、`md` 未満ではパンくずが最後の区間だけを表示する。
+幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。
+
+| 幅 | レイアウト |
+| --- | --- |
+| `lg` 以上 | ページはビューポートの高さを保つ。左の列は独立してスクロールし、関連動画の一覧は固定した見出しの下でスクロールする。右の列の幅は `detail-aside`、`xl` からは `detail-aside-wide` だ。プレーヤーの高さは、タイトル、タグ、2 つの情報の行が入る余地を残す |
+| `lg` 未満 | すべてが縦に積まれ、ページは固定された帯の下で全体が 1 つとしてスクロールする。プレーヤーは帯のすぐ下で端から端まで広がる。その下の文字と関連動画の一覧は左右の余白を保つ |
+| `md` 未満 | パンくずが最後の区間だけを表示する |
+
+プレーヤーの枠は、`tokens.css` の名前付きの段階 `player-width`、`player-height` とその `-lg` 形から大きさを取る。これらの段階は、実行時に枠から動画の縦横比を読む。
 
 ### 情報の行 {#information-rows}
 
-タイトルの下の 2 行には、線も枠もラベルもない。
+タイトルの下の 2 行には、上に区切り線が引かれ、枠もラベルもない。
 
 | 行 | 内容 |
 | --- | --- |
-| 1 行目 | アイコン付きの長さ、サイズ、追加日。右端に操作 |
-| 2 行目 | 解像度、コンテナ、コーデック。最も小さく、最も控えめ |
+| 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているときにサムネイルの項目。右端に操作 |
+| 2 行目 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
 
-パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Use current frame as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `IconButton` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-accent-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
+所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
 
 ```mermaid
 flowchart LR
@@ -302,7 +294,7 @@ flowchart LR
   put -->|エラー| line[下に 1 行の失敗表示]
 ```
 
-キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作やキャプチャの失敗と同じく情報の行のすぐ下に置き、トーストは出さない。
+キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作やキャプチャの失敗と同じく 1 行目の情報の行のすぐ下に置き、トーストは出さない。
 
 ### プレーヤーの状態 {#player-states}
 

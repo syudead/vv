@@ -1,27 +1,24 @@
 import type { ReactNode } from "react";
 
-import { cn } from "../lib/cn";
+import { SidebarInset, SidebarProvider } from "../ui/shadcn/sidebar";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
-import { useSidebar } from "./useSidebar";
+import { useSidebarOpen } from "./useSidebar";
 
-/** AppShell は上部バーと左サイドバーを被せ、中身をその右下に置く。 */
+/**
+ * AppShell は上部バーと左サイドバーを被せ、中身をその右下に置く。サイドバーは
+ * shadcn/ui の Sidebar で、開閉の選択は useSidebarOpen が保存する。
+ */
 export default function AppShell({ children }: { children: ReactNode }) {
-  const sidebar = useSidebar();
+  const { open, setOpen } = useSidebarOpen();
 
   return (
-    <div className="min-h-dvh bg-bg">
-      <TopBar onMenu={sidebar.toggle} />
-      <Sidebar mode={sidebar.mode} open={sidebar.open} onClose={sidebar.close} />
-      <main
-        className={cn(
-          "min-h-dvh pt-navbar transition-[padding] duration-200 ease-out-quart",
-          sidebar.mode === "expanded" && "pl-sidebar",
-          sidebar.mode === "rail" && "pl-sidebar-rail",
-        )}
-      >
-        {children}
-      </main>
-    </div>
+    <SidebarProvider open={open} onOpenChange={setOpen} className="flex-col">
+      <TopBar />
+      <div className="flex flex-1 pt-navbar">
+        <Sidebar />
+        <SidebarInset>{children}</SidebarInset>
+      </div>
+    </SidebarProvider>
   );
 }

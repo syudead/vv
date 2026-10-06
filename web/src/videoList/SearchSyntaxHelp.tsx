@@ -2,8 +2,10 @@ import { CircleHelp } from "lucide-react";
 import { type ReactNode, useId, useState } from "react";
 
 import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Button } from "../ui/shadcn/button";
+import { Kbd } from "../ui/shadcn/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import { Separator } from "../ui/shadcn/separator";
 
 /** maxSearchTerms はサーバーが検索に使う語の数の上限である（手引きの説明に出す）。 */
 const maxSearchTerms = 16;
@@ -21,7 +23,7 @@ function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {
       meaning: (
         <>
           {help.phrase.before}
-          <code className="font-mono">"</code>
+          <Kbd>"</Kbd>
           {help.phrase.after}
         </>
       ),
@@ -31,7 +33,7 @@ function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {
       meaning: (
         <>
           {help.exclude.before}
-          <code className="font-mono">-</code>
+          <Kbd>-</Kbd>
           {help.exclude.after}
         </>
       ),
@@ -48,58 +50,57 @@ function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {
  * 読むだけの従の情報なので、開いてもフォーカスはボタンに残し、モーダルにしない。
  * Tab で外へ出るか Esc で閉じる。例は押しても検索欄に入らない。
  */
-export default function SearchSyntaxHelp({ className }: { className?: string }) {
+export default function SearchSyntaxHelp() {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
   const headingId = useId();
 
   return (
-    <PopoverRoot open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={t.list.searchHelp.title}
           aria-describedby={open ? bodyId : undefined}
-          className={cn(
-            "flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg active:bg-active-wash data-[state=open]:bg-active-wash data-[state=open]:text-fg",
-            className,
-          )}
+          className="size-6 text-muted-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
         >
-          <CircleHelp className="size-4" />
-        </button>
+          <CircleHelp aria-hidden="true" />
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80"
+        className="w-popover-wide"
         aria-labelledby={headingId}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
-        <h2 id={headingId} className="text-sm font-medium text-fg">
+        <h2 id={headingId} className="text-sm font-medium text-foreground">
           {t.list.searchHelp.title}
         </h2>
         {/* ボタンの説明は見出しを除いた中身にする（名前と同じ語を二度読ませない）。 */}
-        <div id={bodyId}>
-          <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
+        <div id={bodyId} className="flex flex-col gap-3">
+          {/* 例の列は中身の幅、説明の列は残り（grid-cols-term）。 */}
+          <dl className="grid grid-cols-term gap-x-3 gap-y-2">
             {syntaxRows().map((row) => (
               <div key={row.examples.join()} className="contents">
-                <dt className="flex flex-col gap-0.5 font-mono text-xs text-fg">
+                <dt className="flex flex-col gap-0.5 font-mono text-xs text-foreground">
                   {row.examples.map((example) => (
                     <span key={example} className="whitespace-pre">
                       {example}
                     </span>
                   ))}
                 </dt>
-                <dd className="text-xs text-fg-muted">{row.meaning}</dd>
+                <dd className="text-xs text-muted-foreground">{row.meaning}</dd>
               </div>
             ))}
           </dl>
-          <div role="none" className="my-3 h-px bg-border" />
-          <p className="text-xs text-fg-muted">{t.list.searchHelp.normalization}</p>
-          <p className="mt-1 text-xs text-fg-muted">
-            {t.list.searchHelp.termLimit(maxSearchTerms)}
-          </p>
+          <Separator />
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            <p>{t.list.searchHelp.normalization}</p>
+            <p>{t.list.searchHelp.termLimit(maxSearchTerms)}</p>
+          </div>
         </div>
       </PopoverContent>
-    </PopoverRoot>
+    </Popover>
   );
 }

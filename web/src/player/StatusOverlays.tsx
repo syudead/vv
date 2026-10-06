@@ -15,7 +15,7 @@ import type { Video } from "../api/client";
 import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./VideoFacts";
 import { creatingLine, processingStages, type StageState } from "./processing";
@@ -24,7 +24,7 @@ import { creatingLine, processingStages, type StageState } from "./processing";
  * プレイヤーの中に出す状態表示（要件 10〜13、ui-design「Overlay layer」）。
  *
  * どれもプレイヤーの領域の中に収める。層の中の文字は、半透明の `bg-overlay` の上に直接
- * 置かず、不透明な `bg-navbar` の面に載せる。
+ * 置かず、不透明な `bg-navbar` の面（`rounded-lg`、`shadow-elevated`）に載せる。
  */
 
 const spin = "animate-spin motion-reduce:animate-none";
@@ -56,7 +56,7 @@ function Panel({
 /**
  * Surface は、プレイヤーが無いときの状態表示の入れ物である。内容が 16:9 に収まらない幅では
  * 領域の高さを内容に合わせて伸ばす（16:9 は下限として入れ物の外で保つ）。
- * `lg` 未満では右上に × が重なるので、上に × の分の余白を取る。
+ * `lg` 未満では上に余白を多めに取る。
  */
 function Surface({ children }: { children: ReactNode }) {
   return (
@@ -79,7 +79,7 @@ export function Dimmed({ children }: { children: ReactNode }) {
   return (
     <div
       className={cn(
-        "pointer-events-auto flex w-full items-center justify-center bg-overlay px-4 pt-16 pb-14 sm:px-6 lg:pt-6",
+        "pointer-events-auto flex w-full items-center justify-center bg-overlay px-4 pt-16 pb-control-bar-clearance sm:px-6 lg:pt-6",
         fadeIn,
       )}
     >
@@ -109,9 +109,9 @@ export function LoadingOverlay({
     >
       <span
         role="status"
-        className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-fg shadow-elevated"
+        className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-foreground shadow-elevated"
       >
-        <LoaderCircle className={cn("size-5 text-accent", spin)} aria-hidden="true" />
+        <LoaderCircle className={cn("size-5 text-primary", spin)} aria-hidden="true" />
         {label}
       </span>
     </div>
@@ -136,9 +136,9 @@ export function PlaybackFailure({
   return (
     <Dimmed>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
-        <Icon className="size-8 text-danger" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{text.title}</h2>
-        <p className="text-sm text-fg-muted text-balance">{text.description}</p>
+        <Icon className="size-8 text-destructive" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-foreground">{text.title}</h2>
+        <p className="text-sm text-balance text-muted-foreground">{text.description}</p>
         <Button variant="secondary" onClick={onRetry} className="mt-1">
           <RotateCcw aria-hidden="true" />
           {t.player.playbackFailed.retryFrom(formatDuration(positionMs))}
@@ -152,11 +152,13 @@ const stageIcons: Record<StageState, ReactNode> = {
   done: <CircleCheck className="size-4 shrink-0 text-success" aria-hidden="true" />,
   active: (
     <LoaderCircle
-      className={cn("size-4 shrink-0 text-accent", spin)}
+      className={cn("size-4 shrink-0 text-primary", spin)}
       aria-hidden="true"
     />
   ),
-  waiting: <Circle className="size-4 shrink-0 text-fg-muted" aria-hidden="true" />,
+  waiting: (
+    <Circle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+  ),
   failed: <AlertCircle className="size-4 shrink-0 text-warning" aria-hidden="true" />,
 };
 
@@ -165,22 +167,22 @@ export function ProcessingStages({ video }: { video: Video }) {
   return (
     <Surface>
       <div className="flex w-full max-w-sm flex-col gap-3 text-left">
-        <h2 className="text-lg font-semibold text-fg">{t.player.stages.title}</h2>
-        <p className="hidden text-sm text-fg-muted sm:block">
+        <h2 className="text-lg font-semibold text-foreground">{t.player.stages.title}</h2>
+        <p className="hidden text-sm text-muted-foreground sm:block">
           {t.player.stages.description}
         </p>
         <div role="status" aria-live="polite">
           <ol className="flex flex-col gap-1.5 sm:gap-3">
             {processingStages(video).map((stage) => (
-              <li key={stage.id} className="flex items-center gap-2.5">
+              <li key={stage.id} className="flex items-center gap-2">
                 {stageIcons[stage.state]}
                 <span
                   className={cn(
                     "min-w-0 flex-1 text-sm",
-                    stage.state === "active" && "font-medium text-fg",
-                    stage.state === "done" && "text-fg",
+                    stage.state === "active" && "font-medium text-foreground",
+                    stage.state === "done" && "text-foreground",
                     (stage.state === "waiting" || stage.state === "failed") &&
-                      "text-fg-muted",
+                      "text-muted-foreground",
                   )}
                 >
                   {stage.name}
@@ -188,7 +190,7 @@ export function ProcessingStages({ video }: { video: Video }) {
                 <span
                   className={cn(
                     "shrink-0 text-xs",
-                    stage.state === "active" ? "text-accent" : "text-fg-muted",
+                    stage.state === "active" ? "text-primary" : "text-muted-foreground",
                   )}
                 >
                   {t.player.stages.states[stage.state]}
@@ -197,7 +199,9 @@ export function ProcessingStages({ video }: { video: Video }) {
             ))}
           </ol>
         </div>
-        <p className="hidden text-xs text-fg-muted sm:block">{t.player.stages.note}</p>
+        <p className="hidden text-xs text-muted-foreground sm:block">
+          {t.player.stages.note}
+        </p>
       </div>
     </Surface>
   );
@@ -224,10 +228,14 @@ export function ReadFailure({
     <Surface>
       <Panel role="alert" className="max-w-lg gap-3">
         <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{t.player.readFailure.title}</h2>
+        <h2 className="text-lg font-semibold text-foreground">
+          {t.player.readFailure.title}
+        </h2>
         {/* 自由文の probeError（ffprobe の出力や過去の日本語）は出さず、コードから説明を作る
             （specs/023-english-i18n/research.md R-6）。コードの無い行は一般的な概要になる。 */}
-        <p className="text-sm text-fg-muted">{probeErrorText(video.probeErrorCode)}</p>
+        <p className="text-sm text-muted-foreground">
+          {probeErrorText(video.probeErrorCode)}
+        </p>
         {onReprobe !== undefined && (
           <ReadFailureActions video={video} onReprobe={onReprobe} />
         )}
@@ -276,9 +284,9 @@ function ReadFailureActions({
         )}
       </div>
       {failed && (
-        <p className="text-sm text-danger">{t.player.readFailure.reprobeFailed}</p>
+        <p className="text-sm text-destructive">{t.player.readFailure.reprobeFailed}</p>
       )}
-      {openFailure !== null && <p className="text-sm text-danger">{openFailure}</p>}
+      {openFailure !== null && <p className="text-sm text-destructive">{openFailure}</p>}
     </>
   );
 }
@@ -288,9 +296,11 @@ export function MissingVideo() {
   return (
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
-        <AlertCircle className="size-8 text-fg-muted" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{t.player.missing.title}</h2>
-        <p className="text-sm text-fg-muted text-balance">
+        <AlertCircle className="size-8 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-foreground">
+          {t.player.missing.title}
+        </h2>
+        <p className="text-sm text-balance text-muted-foreground">
           {t.player.missing.description}
         </p>
       </Panel>
@@ -317,9 +327,9 @@ export function LoadFailure({
   return (
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
-        <AlertCircle className="size-8 text-danger" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{t.player.loadFailed}</h2>
-        <p className="text-sm text-fg-muted text-balance">{reason}</p>
+        <AlertCircle className="size-8 text-destructive" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-foreground">{t.player.loadFailed}</h2>
+        <p className="text-sm text-balance text-muted-foreground">{reason}</p>
         <Button variant="secondary" onClick={retry} disabled={busy} className="mt-1">
           {busy ? (
             <LoaderCircle className={spin} aria-hidden="true" />
@@ -339,8 +349,10 @@ export function Unplayable() {
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{t.player.unplayable.title}</h2>
-        <p className="text-sm text-fg-muted text-balance">
+        <h2 className="text-lg font-semibold text-foreground">
+          {t.player.unplayable.title}
+        </h2>
+        <p className="text-sm text-balance text-muted-foreground">
           {t.player.unplayable.description}
         </p>
       </Panel>
@@ -353,9 +365,9 @@ export function CreatingLine({ video }: { video: Video }) {
   const line = creatingLine(video);
   if (line === null) return null;
   return (
-    <p role="status" className="flex items-center gap-2 text-xs text-fg-muted">
+    <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
       <LoaderCircle
-        className={cn("size-3.5 shrink-0 text-accent", spin)}
+        className={cn("size-4 shrink-0 text-primary", spin)}
         aria-hidden="true"
       />
       {line}

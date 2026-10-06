@@ -1,5 +1,13 @@
-import { ArrowRight, LoaderCircle, Search } from "lucide-react";
-import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
+import { ArrowRight, Search } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -11,11 +19,13 @@ import {
 } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
-import Button from "../ui/Button";
-import Chip from "../ui/Chip";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
-import { ModalFrame } from "../ui/ModalFrame";
+import { FormDialog } from "../ui/patterns/form-dialog";
+import { Badge } from "../ui/shadcn/badge";
+import { Field, FieldError, FieldLabel, FieldTitle } from "../ui/shadcn/field";
+import { Spinner } from "../ui/shadcn/spinner";
+import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
+import { DialogError } from "./DialogError";
 
 /**
  * MergeTagDialog は統合の確認の窓である。統合元（`sources`）を 1 件以上持ち、行の
@@ -67,7 +77,12 @@ export default function MergeTagDialog({
   const mergeButton = useRef<HTMLButtonElement>(null);
   const sourcesHeadingId = useId();
   const searchErrorId = useId();
-  const targetFieldId = useId();
+  // 見える名札が指す入力の id。cmdk が入力に自分の id を付けるので、描いた入力から読む。
+  const targetLabelId = useId();
+  const [targetInputId, setTargetInputId] = useState<string | undefined>(undefined);
+  const targetInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node !== null) setTargetInputId(node.id);
+  }, []);
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
@@ -184,7 +199,7 @@ export default function MergeTagDialog({
     onClose();
   }
 
-  function selectTarget(option: ComboboxOption) {
+  function selectTarget(option: TagChoice) {
     const found = targetTags.find((item) => String(item.id) === option.id);
     if (found === undefined) return;
     justSelectedRef.current = true;
@@ -236,180 +251,149 @@ export default function MergeTagDialog({
   }
 
   return (
-    <ModalFrame
+    <FormDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
       title={title}
-      onClose={handleClose}
+      onSubmit={(event) => {
+        event.preventDefault();
+        void submit();
+      }}
+      cancelLabel={t.common.cancel}
+      submitLabel={
+        <>
+          {pending && <Spinner aria-hidden="true" />}
+          {pending ? t.tags.mergeDialog.submitting : t.tags.mergeDialog.submit}
+        </>
+      }
+      pending={pending}
+      submitDisabled={!canSubmit}
+      submitRef={mergeButton}
+      cancelRef={cancel}
       initialFocus={cancel}
-      width="sm:max-w-lg"
     >
-      {/*
-        本文（統合元の並び・統合先の入力と候補の箱・確認の文言）はまとめて 1 つの
-        overflow-y-auto に入れ、下端のボタンの行は外の shrink-0 に置く。統合元の並び
-        （max-h-32）と候補の箱（h-60 max-h-[40vh]）は縮まないので、低い画面
-        （390×400 など）では本文が窓の高さを超える。本文だけが縦にスクロールし、
-        「Merge」「Cancel」はいつも窓の下端に見える。候補は入力の下の箱に並び、
-        入力の上に重ねて開く一覧ではないので、本文のスクロールで切り取られない。
-      */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
-        {sources.length > 1 && (
-          <div className="shrink-0">
-            <p
-              id={sourcesHeadingId}
-              className="mb-1 text-xs font-semibold text-fg-muted uppercase"
-            >
-              {t.tags.mergeDialog.sources}
-            </p>
-            <ul
-              aria-labelledby={sourcesHeadingId}
-              className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto"
-            >
-              {sources.map((item) => (
-                <li key={item.id} className="min-w-0 max-w-full">
-                  <Chip tone="onElevated" title={item.name} className="max-w-full">
-                    <span className="min-w-0 truncate">{item.name}</span>
-                    {item.tentative && (
-                      <>
-                        <TentativeMark />
-                        <span className="sr-only">{t.tags.tentative}</span>
-                      </>
-                    )}
-                    {item.id === targetId && (
-                      <span className="font-normal text-fg-muted">
-                        {t.tags.mergeDialog.kept}
-                      </span>
-                    )}
-                  </Chip>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        <div className="shrink-0">
-          <label
-            htmlFor={targetFieldId}
-            className="mb-1.5 block text-sm font-medium text-fg"
+      {sources.length > 1 && (
+        <Field>
+          <FieldTitle id={sourcesHeadingId}>{t.tags.mergeDialog.sources}</FieldTitle>
+          {/*
+            統合元が多いときは並びの中だけを縦にスクロールさせ、統合先の欄と確認の文言を
+            窓の中に残す（ui-design.md「Merge dialog」）。
+          */}
+          <ul
+            aria-labelledby={sourcesHeadingId}
+            className="flex max-h-16 flex-wrap gap-1 overflow-y-auto"
           >
-            {t.tags.mergeDialog.target}
-          </label>
-          <Combobox
-            id={targetFieldId}
-            inline
-            icon={<Search aria-hidden="true" />}
-            chosenId={target === null ? undefined : String(target.id)}
-            emptyText={
-              searching || searchError !== null
-                ? undefined
-                : t.tags.mergeDialog.noCandidates
-            }
-            value={value}
-            onValueChange={(next) => {
-              setValue(next);
-              setTarget(null);
-              setError(null);
-            }}
-            options={options}
-            exactOption={exactOption}
-            onSelect={selectTarget}
-            aria-label={t.tags.mergeDialog.target}
-            // 候補の一覧が閉じているときの Esc は、この窓を閉じる
-            // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
-            // preventDefault するので ModalFrame の Esc には届かない）。
-            onEscapeWhenClosed={handleClose}
-            className="w-full"
-            // 統合先の入力と候補の一覧は窓の内側の幅いっぱい（要件 13、ui-design.md「Width」）。
-            // 候補の一覧は入力の下の本文の中に高さを固定して置き、窓のボタンへ重ねない
-            // （ui-design.md「Merge dialog」）。
-            frameClassName="w-full"
-            busy={searching}
-            describedBy={searchError !== null ? searchErrorId : undefined}
-          />
-          {searchError !== null && (
-            <p id={searchErrorId} aria-live="polite" className="mt-1 text-xs text-danger">
-              {t.tags.mergeDialog.searchFailed(searchError)}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-3">
-          {target !== null && effective.length === 0 && (
-            <p className="text-sm text-fg-muted">
-              {t.tags.mergeDialog.onlyTarget(target.name)}
-            </p>
-          )}
-          {target !== null && kept && effective.length > 0 && (
-            <p className="text-sm text-fg-muted">
-              {t.tags.mergeDialog.keptNote(target.name, effective.length)}
-            </p>
-          )}
-          {fromSelection &&
-            target !== null &&
-            effective.length > 0 &&
-            impact === null &&
-            countError === null && (
-              <p
-                aria-busy="true"
-                className="flex items-center gap-2 text-sm text-fg-muted"
-              >
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="size-4 animate-spin motion-reduce:animate-none"
-                />
-                {t.tags.bulkDialog.counting}
-              </p>
-            )}
-          {countError !== null && (
-            <div className="flex flex-wrap items-center gap-2">
-              <p role="alert" className="text-sm text-danger">
-                {t.tags.bulkDialog.countFailed(countError)}
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setAttempt((current) => current + 1)}
-              >
-                {t.common.retry}
-              </Button>
-            </div>
-          )}
-          {message !== null && (
-            <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-              {message}
-            </p>
-          )}
-          {error !== null && (
-            <p role="alert" className="text-sm text-danger">
-              {error}
-            </p>
-          )}
-        </div>
-      </div>
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-border p-4">
-        {target !== null && effective.length > 0 && (
-          // 統合元 → 統合先（ui-design.md「Merge dialog」）。
-          <p className="mr-auto flex min-w-0 items-center gap-1.5 text-sm text-fg-muted">
-            <span className="min-w-0 truncate">
-              {effective.length === 1
-                ? effective[0]!.name
-                : t.tags.mergeDialog.summarySources(effective.length)}
-            </span>
-            <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
-            <span className="sr-only"> → </span>
-            <span className="min-w-0 truncate font-medium text-fg">{target.name}</span>
+            {sources.map((item) => (
+              <li key={item.id} className="max-w-full min-w-0">
+                <Badge variant="secondary" title={item.name} className="max-w-full">
+                  <span className="min-w-0 truncate">{item.name}</span>
+                  {item.tentative && (
+                    <>
+                      <TentativeMark />
+                      <span className="sr-only">{t.tags.tentative}</span>
+                    </>
+                  )}
+                  {item.id === targetId && (
+                    <span className="font-normal text-muted-foreground">
+                      {t.tags.mergeDialog.kept}
+                    </span>
+                  )}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </Field>
+      )}
+      <Field data-invalid={searchError !== null || undefined}>
+        <FieldLabel id={targetLabelId} htmlFor={targetInputId}>
+          {t.tags.mergeDialog.target}
+        </FieldLabel>
+        {/*
+          統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
+          （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
+          ui/TagCommand（inline）が持つ。Esc は窓が閉じる。
+        */}
+        <TagCommand
+          layout="inline"
+          label={t.tags.mergeDialog.target}
+          labelledBy={targetLabelId}
+          placeholder={null}
+          inputRef={targetInputRef}
+          icon={<Search aria-hidden="true" />}
+          chosenId={target === null ? undefined : String(target.id)}
+          emptyText={
+            searching || searchError !== null
+              ? undefined
+              : t.tags.mergeDialog.noCandidates
+          }
+          value={value}
+          onValueChange={(next) => {
+            setValue(next);
+            setTarget(null);
+            setError(null);
+          }}
+          choices={options}
+          exactChoice={exactOption}
+          onSelect={selectTarget}
+          frameClassName="w-full"
+          busy={searching}
+          describedBy={searchError !== null ? searchErrorId : undefined}
+        />
+        {searchError !== null && (
+          <FieldError id={searchErrorId} role="status" aria-live="polite">
+            {t.tags.mergeDialog.searchFailed(searchError)}
+          </FieldError>
+        )}
+      </Field>
+      {target !== null && effective.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t.tags.mergeDialog.onlyTarget(target.name)}
+        </p>
+      )}
+      {target !== null && kept && effective.length > 0 && (
+        <p className="text-sm text-muted-foreground">
+          {t.tags.mergeDialog.keptNote(target.name, effective.length)}
+        </p>
+      )}
+      {fromSelection &&
+        target !== null &&
+        effective.length > 0 &&
+        impact === null &&
+        countError === null && (
+          <p
+            aria-busy="true"
+            className="flex items-center gap-2 text-sm text-muted-foreground"
+          >
+            <Spinner aria-hidden="true" />
+            {t.tags.bulkDialog.counting}
           </p>
         )}
-        <Button ref={cancel} onClick={handleClose} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-        <Button
-          ref={mergeButton}
-          variant="primary"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-        >
-          {pending && <LoaderCircle className="animate-spin" />}
-          {pending ? t.tags.mergeDialog.submitting : t.tags.mergeDialog.submit}
-        </Button>
-      </div>
-    </ModalFrame>
+      {countError !== null && (
+        <DialogError
+          message={t.tags.bulkDialog.countFailed(countError)}
+          onRetry={() => setAttempt((current) => current + 1)}
+        />
+      )}
+      {message !== null && <p className="text-sm text-muted-foreground">{message}</p>}
+      {target !== null && effective.length > 0 && (
+        // 統合元 → 統合先（ui-design.md「Merge dialog」）。
+        <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+          <span className="min-w-0 truncate">
+            {effective.length === 1
+              ? effective[0]!.name
+              : t.tags.mergeDialog.summarySources(effective.length)}
+          </span>
+          <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
+          <span className="sr-only"> → </span>
+          <span className="min-w-0 truncate font-medium text-foreground">
+            {target.name}
+          </span>
+        </p>
+      )}
+      {error !== null && <DialogError message={error} />}
+    </FormDialog>
   );
 }
 
@@ -432,7 +416,7 @@ function buildTargetOptions(
   exact: Tag | null,
   excluded: ReadonlySet<number>,
   input: string,
-): { tags: Tag[]; options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { tags: Tag[]; options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = foldForMatch(trimmed);
   const spelled = (tag: Tag) =>
@@ -449,7 +433,7 @@ function buildTargetOptions(
       : [exactTag, ...allowed.filter((tag) => tag.id !== exactTag.id)]
   ).slice(0, targetCandidateLimit);
 
-  const options: ComboboxOption[] = candidates.map((tag) => {
+  const options: TagChoice[] = candidates.map((tag) => {
     const nameMatch = query === "" || foldForMatch(tag.name).includes(query);
     const synonymHit = nameMatch
       ? undefined
@@ -463,7 +447,7 @@ function buildTargetOptions(
     };
   });
 
-  const exactOption: ComboboxOption | null =
+  const exactOption: TagChoice | null =
     exactTag === undefined
       ? null
       : {

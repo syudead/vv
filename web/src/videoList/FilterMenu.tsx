@@ -1,12 +1,22 @@
 import { ListFilter } from "lucide-react";
-import { type ReactNode, type Ref, useState } from "react";
+import { type ReactNode, type Ref, useId, useState } from "react";
 
 import type { WatchFilter } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { formatNumber, t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
-import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Badge } from "../ui/shadcn/badge";
+import { Button } from "../ui/shadcn/button";
+import { Checkbox } from "../ui/shadcn/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "../ui/shadcn/field";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 import { watchLabel, watchValues } from "./listSummary";
 
 export interface FilterMenuProps {
@@ -61,37 +71,29 @@ export default function FilterMenu({
       onClear={onClear}
     >
       {owner && (
-        <fieldset className="mb-4">
-          <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-            {t.list.filter.watch}
-          </legend>
-          <div className="grid grid-cols-2 gap-1">
+        <FieldSet>
+          <FieldLegend variant="label">{t.list.filter.watch}</FieldLegend>
+          {/* 選ぶとすぐ効く排他の選択なので ToggleGroup にする（項目は radio として読まれる）。 */}
+          <ToggleGroup
+            type="single"
+            size="sm"
+            value={watch}
+            onValueChange={(value) => {
+              if (value !== "") onWatchChange(value as WatchFilter);
+            }}
+            aria-label={t.list.filter.watch}
+            className="grid w-full grid-cols-2 gap-1"
+          >
             {watchValues.map((value) => (
-              <label
-                key={value}
-                className={cn(
-                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
-                  watch === value
-                    ? "bg-accent text-accent-fg"
-                    : "text-fg hover:bg-hover-wash",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="watch"
-                  value={value}
-                  checked={watch === value}
-                  onChange={() => onWatchChange(value)}
-                  className="sr-only"
-                />
+              // 2 列の格子に並べるので、項目はどれも角を丸める。
+              <ToggleGroupItem key={value} value={value} className="rounded-md">
                 {watchLabel(value)}
-              </label>
+              </ToggleGroupItem>
             ))}
-          </div>
-        </fieldset>
+          </ToggleGroup>
+        </FieldSet>
       )}
 
-      {/* 2 つのチェックは同じ性質の行なので、視聴状態の下の mb-4 より詰めた gap-2 で並べる。 */}
       <div className="flex flex-col gap-2">
         {owner && (
           <FilterCheckbox
@@ -140,28 +142,28 @@ export function FilterPopover({
   const shown = disabled ? 0 : count;
 
   return (
-    <PopoverRoot open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}
-          variant="secondary"
+          variant="outline"
+          size="sm"
           disabled={disabled}
           aria-label={shown > 0 ? t.list.filter.applied(shown) : t.list.filter.label}
-          className={cn("px-2.5", shown > 0 && "bg-accent-soft text-link")}
         >
-          <ListFilter />
+          <ListFilter aria-hidden="true" />
           <span className="hidden xl:inline">{t.list.filter.label}</span>
-          {shown > 0 && <span className="tabular-nums">{formatNumber(shown)}</span>}
+          {shown > 0 && <Badge variant="soft">{formatNumber(shown)}</Badge>}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start">
+      <PopoverContent align="start" className="gap-4">
         {children}
 
         {canClear && (
           <Button
             variant="ghost"
             size="sm"
-            className="mt-4 w-full"
+            className="w-full"
             onClick={() => {
               onClear();
               // 閉じるとフォーカスは絞り込みのボタンへ戻る（Radix の既定）。
@@ -172,7 +174,7 @@ export function FilterPopover({
           </Button>
         )}
       </PopoverContent>
-    </PopoverRoot>
+    </Popover>
   );
 }
 
@@ -189,18 +191,20 @@ export function FilterCheckbox({
   /** 行の下に添える説明。 */
   hint?: UiText;
 }) {
+  const id = useId();
   return (
-    <label className="flex cursor-pointer items-start gap-2.5 text-sm text-fg">
-      <input
-        type="checkbox"
+    <Field orientation="horizontal">
+      <Checkbox
+        id={id}
         checked={checked}
-        onChange={(event) => onCheckedChange(event.target.checked)}
-        className="mt-0.5 size-4 shrink-0 accent-accent"
+        onCheckedChange={(next) => onCheckedChange(next === true)}
       />
-      <span className="flex min-w-0 flex-col">
-        {label}
-        {hint !== undefined && <span className="text-xs text-fg-muted">{hint}</span>}
-      </span>
-    </label>
+      <FieldContent>
+        <FieldLabel htmlFor={id} className="font-normal">
+          {label}
+        </FieldLabel>
+        {hint !== undefined && <FieldDescription>{hint}</FieldDescription>}
+      </FieldContent>
+    </Field>
   );
 }

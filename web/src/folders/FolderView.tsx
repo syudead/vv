@@ -20,19 +20,20 @@ import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
-import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/Button";
+import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
+import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
-import { EmptyState, LoadFailed } from "../videoList/states";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
+import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
-import { FolderNotFound } from "./layout";
+import { FolderEmpty, FolderNotFound, LoadFailed } from "./states";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
 import { useFolderTagsRow } from "./useFolderTagsRow";
@@ -68,7 +69,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     const held = takeListSnapshot({ ...criteria, folder: key });
     return held?.folderListing === undefined ? undefined : held;
   });
-  const heading = useArrival(restored !== undefined);
+  const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const listing = useFolderListing(folder, restored?.folderListing);
   const videos = useVideos(
     {
@@ -293,8 +294,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     );
   } else if (noVideosAtAll) {
     body = (
-      <EmptyState
-        icon={FolderOpen}
+      <FolderEmpty
+        icon={<FolderOpen aria-hidden="true" />}
         title={
           owner && folder.path === "" ? t.folders.empty.rootTitle : t.folders.empty.title
         }
@@ -302,7 +303,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         action={
           // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
           owner ? (
-            <Button variant="primary" onClick={scan.start} disabled={scan.running}>
+            <Button size="sm" onClick={scan.start} disabled={scan.running}>
               {scan.running ? t.list.scanning : t.list.scan}
             </Button>
           ) : undefined
@@ -327,46 +328,58 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   }
 
   return (
-    <>
-      <h1 ref={heading} tabIndex={-1} className="sr-only">
-        {name ?? t.folders.title}
-      </h1>
-      <TopBarPortal>
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchIn(name ?? t.folders.title)}
-          searchPlaceholder={t.folders.searchInPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
-      </TopBarPortal>
-      <Breadcrumbs
-        crumbs={
-          // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-          listing.notFound || videos.notFound || listing.error !== null || rootNameFailed
-            ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
-            : breadcrumbsFor(folder, rootName)
-        }
-        suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
-      />
-      {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
-      <div ref={listRef} onClick={saveSnapshot} className="flex flex-col gap-3">
+    <ListPage
+      header={
+        <>
+          <Breadcrumbs
+            crumbs={
+              // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
+              listing.notFound ||
+              videos.notFound ||
+              listing.error !== null ||
+              rootNameFailed
+                ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
+                : breadcrumbsFor(folder, rootName)
+            }
+            suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
+          />
+          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          <PageHeader titleHidden titleRef={heading} title={name ?? t.folders.title} />
+        </>
+      }
+      toolbar={
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchIn(name ?? t.folders.title)}
+            searchPlaceholder={t.folders.searchInPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
+      }
+    >
+      {/*
+        中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。間隔は骨格が
+        持つので、この入れ物は箱を作らない（contents）。
+      */}
+      <div ref={listRef} onClick={saveSnapshot} className="contents">
         {body}
       </div>
       <div ref={sentinel} aria-hidden="true" className="h-px" />
-    </>
+    </ListPage>
   );
 }

@@ -19,7 +19,7 @@ import { reloadPage } from "../auth/pageNavigation";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import type { PlayerControls } from "./playerControls";
 import { technicalSummary } from "./properties";
@@ -198,6 +198,11 @@ function player(): PlayerProps {
   return props;
 }
 
+/** factList は題名とタグの下の、ファイルの情報の行（「File details」の並び）を返す。 */
+function factList(): HTMLElement {
+  return screen.getByRole("list", { name: "File details" });
+}
+
 describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
@@ -290,7 +295,7 @@ describe("VideoPage", () => {
       expect((await ready()).textContent).toBe("テスト動画");
       // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
       await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
-      expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
+      expect(factList()).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
       expect(screen.getByRole("button", { name: "Open file" })).toBeDefined();
       expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
@@ -387,7 +392,7 @@ describe("VideoPage", () => {
         header: document.querySelector("header")?.outerHTML,
         frame: document.querySelector("[data-player-frame]")?.outerHTML,
         title: document.querySelector("h1")?.outerHTML,
-        facts: screen.getByRole("list", { name: "File details" }).outerHTML,
+        facts: factList().outerHTML,
         technical: screen.getByRole("list", { name: "Technical details" }).outerHTML,
         related: document.querySelector("aside")?.outerHTML,
       });
@@ -400,7 +405,7 @@ describe("VideoPage", () => {
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
       // 情報の行のすぐ下（技術情報の上）に出る。
-      const row = screen.getByRole("list", { name: "File details" }).parentElement;
+      const row = factList().parentElement;
       expect(row?.nextElementSibling).toBe(alert);
       // 足されるのはその 1 行だけで、帯・プレイヤー・題名・情報・関連動画は変わらない。
       expect(snapshot()).toEqual(before);
@@ -423,12 +428,12 @@ describe("VideoPage", () => {
       expect(scrollTo).toHaveBeenCalledWith(0, 0);
     });
 
-    it("プレイヤーの入れ物は列を 1 本（minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
+    it("プレイヤーの入れ物は列を 1 本（grid-cols-1、minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
       renderPage();
       await ready();
       // 列の指定が無いと、層の列が内容の幅まで広がり、狭い幅で右が切れる。
       const frame = document.querySelector("[data-player-frame]");
-      expect(frame?.className.split(" ")).toContain("grid-cols-[minmax(0,1fr)]");
+      expect(frame?.className.split(" ")).toContain("grid-cols-1");
     });
   });
 
@@ -1561,7 +1566,7 @@ describe("VideoPage", () => {
       // 入れ物は下の操作へ通し、× だけが押せる。状態表示の入れ物とは別の層にある。
       const layer = status.closest("[data-stall-warning]");
       expect(layer?.className).toContain("pointer-events-none");
-      expect(layer?.className).toContain("left-2");
+      expect(layer?.className).toContain("inset-x-2");
       expect(layer?.closest("[data-overlay-layer]")).toBeNull();
       expect(within(status).getByRole("button", { name: "Dismiss" }).className).toContain(
         "pointer-events-auto",
@@ -1871,8 +1876,8 @@ describe("VideoPage", () => {
         button.compareDocumentPosition(capture) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
       expect(button.getAttribute("aria-pressed")).toBe("false");
-      expect(button.className).toContain("text-fg-muted!");
-      expect(button.className).not.toContain("text-favorite");
+      expect(button.className).toContain("text-muted-foreground");
+      expect(button.getAttribute("data-state")).toBe("off");
     });
 
     it("所在が無くプレイヤーの出ていない動画でも、付け外しだけで右端の一群を出す", async () => {
@@ -1905,10 +1910,10 @@ describe("VideoPage", () => {
         expect(favoriteButton().getAttribute("aria-pressed")).toBe("true"),
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
-      expect(favoriteButton().getAttribute("data-active")).toBe("true");
-      // active の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
-      expect(favoriteButton().className).toContain("data-active:bg-accent-soft");
-      expect(favoriteButton().className).toContain("text-favorite!");
+      expect(favoriteButton().getAttribute("data-state")).toBe("on");
+      // 押した状態の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
+      expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
+      expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
       );
@@ -2243,7 +2248,7 @@ describe("VideoPage", () => {
       expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: 83_456 });
       // 再生は止めない。
       expect(controls.togglePlay).not.toHaveBeenCalled();
-      const facts = screen.getByRole("list", { name: "File details" });
+      const facts = factList();
       expect(within(facts).getByTitle(label)).toBeDefined();
       expect(within(facts).getByRole("button", { name: clearName })).toBeDefined();
       // 時刻を数値で入力させる入口は無い。
@@ -2367,10 +2372,7 @@ describe("VideoPage", () => {
     });
 
     function edited(): HTMLElement {
-      return within(screen.getByRole("list", { name: "File details" })).getByRole(
-        "button",
-        { name: /^Edited / },
-      );
+      return within(factList()).getByRole("button", { name: /^Edited / });
     }
 
     async function expectEditedAfter() {
@@ -2582,7 +2584,7 @@ describe("VideoPage", () => {
       answerVersions([versionA, versionB, versionC]);
       renderPage("7", "/?q=abc");
       await ready();
-      const facts = within(screen.getByRole("list", { name: "File details" }))
+      const facts = within(factList())
         .getAllByRole("listitem")
         .map((item) => item.textContent);
       expect(facts.at(-1)).toBe("3 versions");
@@ -2919,7 +2921,7 @@ describe("VideoPage", () => {
       server.videos.set(7, [guestVideo()]);
       const { unmount } = renderPage("7", undefined, "guest");
       await ready();
-      expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
+      expect(factList()).toBeDefined();
       expect(screen.getByRole("list", { name: "Technical details" })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "Tags" })).toBeNull();
       expect(screen.queryByPlaceholderText("Add tag")).toBeNull();

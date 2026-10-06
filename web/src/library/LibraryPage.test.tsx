@@ -22,7 +22,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { resultCountText } from "../videoList/listSummary";
 import LibraryPage from "./LibraryPage";
 
@@ -260,7 +260,9 @@ describe("LibraryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "Loading…",
+    );
     expect(screen.queryByText("Something went wrong on the server.")).toBeNull();
 
     await act(async () => {
@@ -445,7 +447,7 @@ describe("LibraryPage", () => {
       // 視聴状態の直下、「Playable only」の上に置く。
       const checks = within(filter)
         .getAllByRole("checkbox")
-        .map((check) => check.closest("label")?.textContent);
+        .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
       expect(checks).toEqual(["Favorites only", "Playable only"]);
       await user.click(within(filter).getByRole("checkbox", { name: "Favorites only" }));
 
@@ -455,8 +457,10 @@ describe("LibraryPage", () => {
       );
       expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
       expect(
-        screen.getByRole("button", { name: "Filter (1 applied)" }).className,
-      ).toContain("bg-accent-soft");
+        screen
+          .getByRole("button", { name: "Filter (1 applied)" })
+          .querySelector('[data-slot="badge"]')?.className,
+      ).toContain("bg-primary-soft");
 
       await user.click(screen.getByRole("button", { name: "Clear filters" }));
       expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
@@ -2168,7 +2172,11 @@ describe("LibraryPage", () => {
       // 選択バーの本数はメンバーを数える。
       expect(screen.getByText("12 videos selected")).toBeDefined();
       const card = screen.getByRole("link", { name: ownerLabel }).closest("article");
-      expect(card?.className).toContain("ring-accent");
+      expect(
+        card
+          ?.querySelector('[data-slot="video-thumbnail"]')
+          ?.hasAttribute("data-selected"),
+      ).toBe(true);
       // 選んだ本数（12）が項目の数（3）を超えても、「すべて選択」は押せる。
       expect(
         (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)

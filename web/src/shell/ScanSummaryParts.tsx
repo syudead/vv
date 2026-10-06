@@ -74,7 +74,12 @@ export function ScanIssueCounts({
       className={cn("inline-flex flex-wrap items-center gap-x-2 tabular-nums", className)}
     >
       {failed > 0 &&
-        count(failed, t.shell.scan.failedCount(failed), AlertTriangle, "text-danger")}
+        count(
+          failed,
+          t.shell.scan.failedCount(failed),
+          AlertTriangle,
+          "text-destructive",
+        )}
       {showSubstituted &&
         count(substituted, t.shell.scan.toCheckCount(substituted), Info, "text-warning")}
     </span>
@@ -98,7 +103,7 @@ export function ScanDetail({
     <p
       data-testid="scan-detail"
       title={detail?.title}
-      className={cn("h-5 truncate text-sm leading-5 text-fg-muted", className)}
+      className={cn("h-5 truncate text-sm leading-5 text-muted-foreground", className)}
     >
       {detail?.text}
     </p>

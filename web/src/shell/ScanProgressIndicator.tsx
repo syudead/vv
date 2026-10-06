@@ -3,9 +3,9 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { t, type UiText } from "../i18n";
-import { cn } from "../lib/cn";
-import IconButton from "../ui/IconButton";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { Button } from "../ui/shadcn/button";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useScanNotice } from "./ScanNoticeProvider";
 import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
@@ -115,28 +115,26 @@ export default function ScanProgressIndicator() {
   };
 
   return (
+    // 再生画面でも右下に置く。右上には見出しの帯の閉じる × があり、そこを覆ってしまう。
+    // 狭い幅でも左右に 0.75rem を残す（max-w-viewport-inset）。
     <div
-      className={cn(
-        "fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5",
-        // 再生画面でも右下に置く。右上には見出しの帯の閉じる × があり、そこを覆ってしまう。
-        "bottom-4 sm:bottom-5",
-      )}
+      className="fixed right-3 bottom-4 z-30 max-w-viewport-inset sm:right-5 sm:bottom-5"
       onPointerEnter={enterPointerArea}
       onPointerLeave={leavePointerArea}
     >
       <span role="status" aria-atomic="true" className="sr-only">
         {statusAnnouncement(presentation)}
       </span>
-      <PopoverRoot open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen}>
         <div className="flex items-center gap-1">
           <PopoverTrigger asChild>
-            <button
-              type="button"
+            <Button
+              variant="outline"
               onClick={goToDetails}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               aria-label={t.shell.scan.openStatus(indicatorName(presentation))}
-              className="inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
+              className="max-w-full bg-popover font-normal shadow-elevated"
             >
               <ScanStatusIcon state={presentation.state} />
               <span className="font-medium">{presentation.statusText}</span>
@@ -154,22 +152,27 @@ export default function ScanProgressIndicator() {
                 mostSevereOnly
                 compact
               />
-            </button>
+            </Button>
           </PopoverTrigger>
           {persistent && (
-            <IconButton
-              label={t.shell.scan.dismissResult}
-              size="sm"
-              className="-ml-1 rounded-md border border-border-strong bg-elevated shadow-elevated"
-              onClick={() => notice.acknowledgeTerminalScan()}
-            >
-              <XCircle />
-            </IconButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label={t.shell.scan.dismissResult}
+                  className="bg-popover shadow-elevated"
+                  onClick={() => notice.acknowledgeTerminalScan()}
+                >
+                  <XCircle aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t.shell.scan.dismissResult}</TooltipContent>
+            </Tooltip>
           )}
         </div>
         <PopoverContent
           align="end"
-          className="w-[min(18rem,calc(100vw-1rem))]"
           onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => {
             if (!navigatingToDetails.current) return;
@@ -193,18 +196,20 @@ export default function ScanProgressIndicator() {
                 className="text-sm"
               />
             </div>
-            <ScanProgressBar presentation={presentation} className="h-1.5" />
+            <ScanProgressBar presentation={presentation} />
             {presentation.progressText !== null && (
               <p className="text-sm tabular-nums">{presentation.progressText}</p>
             )}
             <ScanDetail presentation={presentation} />
             {(presentation.state === "partial" ||
               (presentation.state === "done" && presentation.issues.substituted > 0)) && (
-              <p className="text-xs text-fg-muted">{t.shell.scan.seeSettingsForList}</p>
+              <p className="text-xs text-muted-foreground">
+                {t.shell.scan.seeSettingsForList}
+              </p>
             )}
           </div>
         </PopoverContent>
-      </PopoverRoot>
+      </Popover>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronRight, Info } from "lucide-react";
+import { ChevronRight, Info, TriangleAlert } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
@@ -6,7 +6,8 @@ import type { ScanIssue } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { ScanIssueCounts } from "../shell/ScanSummaryParts";
-import Button from "../ui/Button";
+import { Badge } from "../ui/shadcn/badge";
+import { Button } from "../ui/shadcn/button";
 import type { ScanIssueList as ScanIssueListState } from "./useScanIssues";
 
 /** issueLocation は「登録フォルダの表示名 / 相対パス」である。 */
@@ -40,49 +41,38 @@ function IssueRow({ issue }: { issue: ScanIssue }) {
   const text = t.settings.scanStatus.issues;
   const failed = issue.severity === "failed";
   const marker = failed ? text.failed : text.check;
-  const Icon = failed ? AlertTriangle : Info;
+  const Icon = failed ? TriangleAlert : Info;
   const location = issueLocation(issue);
   const words = issueWords(issue);
   const content = (
-    <>
-      <span
-        className={cn(
-          "col-start-1 row-start-1 inline-flex items-center gap-1 text-xs font-medium leading-5 whitespace-nowrap md:row-span-4",
-          failed ? "text-danger" : "text-warning",
-        )}
-      >
-        <Icon aria-hidden className="size-4 shrink-0" />
-        {marker}
-      </span>
-      <span
-        title={issue.fileName}
-        className="col-start-2 row-start-1 min-w-0 truncate text-sm font-medium leading-5 text-fg"
-      >
-        {issue.fileName}
-      </span>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <Badge variant={failed ? "destructive" : "warning"}>
+          <Icon aria-hidden />
+          {marker}
+        </Badge>
+        <span title={issue.fileName} className="min-w-0 truncate font-medium">
+          {issue.fileName}
+        </span>
+      </div>
       <span
         title={location}
         dir="rtl"
-        className="col-span-2 col-start-1 truncate text-left text-xs text-fg-muted md:col-span-1 md:col-start-2"
+        className="truncate text-left text-xs text-muted-foreground"
       >
         <bdi dir="ltr">{location}</bdi>
       </span>
-      <span className="col-span-2 col-start-1 text-sm break-words text-fg md:col-span-1 md:col-start-2">
-        {words.impactAndReason}
-      </span>
+      <span className="break-words">{words.impactAndReason}</span>
       {words.also !== null && (
-        <span className="col-span-2 col-start-1 text-xs break-words text-fg-muted md:col-span-1 md:col-start-2">
-          {words.also}
-        </span>
+        <span className="text-xs break-words text-muted-foreground">{words.also}</span>
       )}
-    </>
+    </div>
   );
-  const grid =
-    "grid grid-cols-[auto_minmax(0,1fr)_auto] content-start gap-x-2 gap-y-0.5 px-3 py-2.5 md:grid-cols-[5.5rem_minmax(0,1fr)_auto]";
+  const row = "flex min-w-0 items-center gap-2 px-3 py-2";
 
   if (issue.videoId === undefined) {
     return (
-      <li data-testid="scan-issue" className={grid}>
+      <li data-testid="scan-issue" className={row}>
         {content}
       </li>
     );
@@ -93,15 +83,12 @@ function IssueRow({ issue }: { issue: ScanIssue }) {
         to={`/videos/${String(issue.videoId)}`}
         aria-label={text.openVideo(issue.fileName, marker, words.impact)}
         className={cn(
-          grid,
-          "transition-colors hover:bg-hover-wash focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-link",
+          row,
+          "transition-colors hover:bg-accent focus-visible:-outline-offset-2",
         )}
       >
         {content}
-        <ChevronRight
-          aria-hidden
-          className="col-start-3 row-span-4 row-start-1 size-4 self-center text-fg-muted"
-        />
+        <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
       </Link>
     </li>
   );
@@ -130,20 +117,20 @@ export default function ScanIssueList({
   }, [list.scanId]);
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
+    <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 id="scan-issues-heading" className="text-sm font-semibold">
+        <h3 id="scan-issues-heading" className="font-semibold">
           {text.heading}
         </h3>
         <ScanIssueCounts
           failed={failed}
           substituted={substituted}
-          className="text-xs text-fg-muted"
+          className="text-xs text-muted-foreground"
         />
       </div>
       {/* 読み上げる節目は完了・一部失敗・失敗の3つだけにする（ui-design.md「Accessibility」）。 */}
       {list.error !== null && (
-        <p className="mt-2 text-sm text-warning">{text.loadFailed(list.error)}</p>
+        <p className="text-warning">{text.loadFailed(list.error)}</p>
       )}
       <div
         ref={region}
@@ -151,7 +138,7 @@ export default function ScanIssueList({
         aria-labelledby="scan-issues-heading"
         tabIndex={0}
         data-testid="scan-issue-region"
-        className="mt-2 max-h-[50vh] overflow-y-auto rounded-md border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link"
+        className="max-h-issue-list overflow-y-auto rounded-md border border-border"
       >
         <ul className="divide-y divide-border">
           {list.items.map((issue) => (

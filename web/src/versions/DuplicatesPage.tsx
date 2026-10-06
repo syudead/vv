@@ -1,4 +1,4 @@
-import { AlertCircle, Layers, LoaderCircle } from "lucide-react";
+import { Layers } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -14,10 +14,14 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t } from "../i18n";
 import { inProgress } from "../shell/ScanProvider";
 import { VideoThumbnail, videoLinkLabel } from "../player/RelatedVideos";
-import Button from "../ui/Button";
-import Skeleton from "../ui/Skeleton";
+import { EmptyState } from "../ui/patterns/empty-state";
+import { ErrorState } from "../ui/patterns/error-state";
+import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
+import { Button } from "../ui/shadcn/button";
+import { Skeleton } from "../ui/shadcn/skeleton";
+import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
-import { EmptyState } from "../videoList/states";
 import BundleDialog from "./BundleDialog";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
@@ -162,7 +166,7 @@ export default function DuplicatesPage() {
   /**
    * removePair は決めた組を一覧から消し、件数を減らし、フォーカスを次の組の「Different
    * videos」へ移す。無ければ前の組、1 組も無ければ見出しへ。窓を閉じたときの戻りのフォーカス
-   * （ModalFrame が次のマイクロタスクで戻す）より後に移すため、タイマーで待つ。
+   * （Dialog が閉じたときに戻す）より後に移すため、タイマーで待つ。
    *
    * 見せていた組が尽きても `total` が残っていれば（候補が上限 200 件を超えていた）、一覧を
    * 取り直して残りの組を出す。取り直しの間は読み込み中と同じ見え方にする。
@@ -226,66 +230,64 @@ export default function DuplicatesPage() {
   const empty = page.kind === "ready" && page.items.length === 0 && page.total === 0;
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 ref={heading} tabIndex={-1} className="text-xl font-semibold outline-none">
-        {t.versions.duplicates.title}
-      </h1>
-      {/* 0 組のときは件数の行を残さず、空の状態の見出しが件数の代わりになる。 */}
-      <p
-        role="status"
-        aria-live="polite"
-        className="mt-2 text-xs text-fg-muted tabular-nums"
-      >
-        {empty ? "" : count}
-      </p>
+    <ListPage
+      header={
+        <PageHeader
+          titleRef={heading}
+          title={t.versions.duplicates.title}
+          // 0 組のときは件数を空にし、空の状態の題が件数の代わりになる。
+          count={
+            <span role="status" aria-live="polite">
+              {empty ? "" : count}
+            </span>
+          }
+        />
+      }
+    >
+      {loading && (
+        <div className="flex flex-col gap-3" aria-hidden="true">
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-16 w-full" />
+          ))}
+        </div>
+      )}
 
-      <div className="mt-2">
-        {loading && (
-          <div className="space-y-4 py-4" aria-hidden="true">
-            {Array.from({ length: 3 }, (_, index) => (
-              <Skeleton key={index} className="h-24" />
-            ))}
-          </div>
-        )}
+      {page.kind === "failed" && (
+        <ErrorState
+          title={<h2>{t.versions.duplicates.loadFailed}</h2>}
+          retryLabel={t.common.retry}
+          onRetry={retry}
+        />
+      )}
 
-        {page.kind === "failed" && (
-          <EmptyState
-            icon={AlertCircle}
-            tone="danger"
-            title={t.versions.duplicates.loadFailed}
-            action={<Button onClick={retry}>{t.common.retry}</Button>}
-          />
-        )}
+      {empty && (
+        <EmptyState
+          icon={<Layers aria-hidden="true" />}
+          title={<h2>{t.versions.duplicates.empty.title}</h2>}
+          description={t.versions.duplicates.empty.description}
+        />
+      )}
 
-        {empty && (
-          <EmptyState
-            icon={Layers}
-            title={t.versions.duplicates.empty.title}
-            description={t.versions.duplicates.empty.description}
-          />
-        )}
-
-        {page.kind === "ready" && page.items.length > 0 && (
-          <ul className="divide-y divide-border">
-            {page.items.map((pair) => {
-              const key = pair.key;
-              return (
-                <PairRow
-                  key={key}
-                  pair={pair}
-                  pending={dismissing.has(key)}
-                  differentRef={(element) => {
-                    if (element === null) differentButtons.current.delete(key);
-                    else differentButtons.current.set(key, element);
-                  }}
-                  onDifferent={() => dismiss(pair)}
-                  onSame={() => setBundling(pair)}
-                />
-              );
-            })}
-          </ul>
-        )}
-      </div>
+      {page.kind === "ready" && page.items.length > 0 && (
+        <ul className="flex flex-col divide-y divide-border rounded-md border border-border bg-card text-card-foreground">
+          {page.items.map((pair) => {
+            const key = pair.key;
+            return (
+              <PairRow
+                key={key}
+                pair={pair}
+                pending={dismissing.has(key)}
+                differentRef={(element) => {
+                  if (element === null) differentButtons.current.delete(key);
+                  else differentButtons.current.set(key, element);
+                }}
+                onDifferent={() => dismiss(pair)}
+                onSame={() => setBundling(pair)}
+              />
+            );
+          })}
+        </ul>
+      )}
 
       {/* 開いている窓の組が取り直しで消えても窓は閉じない。「Bundle」の 404 で伝える。 */}
       {bundling !== null && (
@@ -300,7 +302,7 @@ export default function DuplicatesPage() {
           }}
         />
       )}
-    </div>
+    </ListPage>
   );
 }
 
@@ -319,29 +321,24 @@ function PairRow({
 }) {
   const [first, second] = pair.videos;
   return (
-    <li className="py-4">
+    <li className="flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-fg-muted">{t.versions.duplicates.reason}</p>
+        <p className="text-xs text-muted-foreground">{t.versions.duplicates.reason}</p>
         {/* 判断が先、動画の中身は後。DOM の順もこの順にする。 */}
         <div className="ml-auto flex gap-2">
           <Button
             ref={differentRef}
+            variant="outline"
             size="sm"
             disabled={pending}
             aria-label={t.versions.duplicates.differentFor(first.title, second.title)}
             onClick={onDifferent}
           >
-            {pending && (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
-              />
-            )}
+            {pending && <Spinner aria-hidden="true" />}
             {t.versions.duplicates.different}
           </Button>
           <Button
             size="sm"
-            variant="primary"
             disabled={pending}
             aria-label={t.versions.duplicates.sameFor(first.title, second.title)}
             onClick={onSame}
@@ -351,7 +348,7 @@ function PairRow({
           </Button>
         </div>
       </div>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2">
         {pair.videos.map((video) => (
           <CandidateVideo key={video.id} video={video} />
         ))}
@@ -374,12 +371,12 @@ function CandidateVideo({ video }: { video: Video }) {
       to={`/videos/${String(video.id)}`}
       state={{ from: backTo }}
       aria-label={videoLinkLabel(video)}
-      className="-m-1.5 flex min-w-0 gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
+      className="-m-1.5 flex min-w-0 gap-3 rounded-md p-1.5 transition-colors hover:bg-accent"
     >
-      <VideoThumbnail video={video} className="w-40" />
+      <VideoThumbnail video={video} className="w-list-thumb-cell" />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span
-          className="line-clamp-2 text-sm font-medium text-fg [overflow-wrap:anywhere]"
+          className="line-clamp-2 text-sm font-medium wrap-anywhere text-foreground"
           title={video.title}
         >
           {video.title}
@@ -389,7 +386,7 @@ function CandidateVideo({ video }: { video: Video }) {
           // 末尾（ファイルに近い側）を優先して残す。
           <span
             dir="rtl"
-            className="truncate text-left text-xs text-fg-muted"
+            className="truncate text-left text-xs text-muted-foreground"
             title={absolute}
           >
             <bdi dir="ltr">{details.place}</bdi>

@@ -14,7 +14,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "./tagPageRows";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import TagsPage from "./TagsPage";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -682,7 +682,7 @@ async function filterChecked(
 ): Promise<boolean> {
   await user.click(filterButton());
   const box = await screen.findByRole("checkbox", { name: new RegExp(`^${name}`) });
-  const checked = (box as HTMLInputElement).checked;
+  const checked = box.getAttribute("aria-checked") === "true";
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   return checked;
@@ -702,7 +702,7 @@ function tagsTab(): HTMLElement {
 async function openRejectedTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(rejectedTab());
   const panel = await screen.findByRole("tabpanel", { name: /Rejected names/ });
-  return within(panel).findByRole("list", { name: "Rejected names" });
+  return within(panel).findByRole("table", { name: "Rejected names" });
 }
 
 beforeEach(() => {
@@ -768,7 +768,7 @@ describe("TagsPage", () => {
     expect(screen.getByText("Synonyms: アニメ")).toBeDefined();
     expect(screen.getByText("3 tags")).toBeDefined();
     // 本数 0 のタグも出る。
-    const dramaRow = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     expect(dramaRow.textContent).toContain("0 videos");
   });
 
@@ -892,7 +892,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
 
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
@@ -920,7 +920,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     const renameButton = within(row).getByRole("button", { name: "Rename" });
     await user.click(renameButton);
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
@@ -955,7 +955,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -979,11 +979,11 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
 
-    const dialog = await screen.findByRole("dialog", { name: 'Delete "Anime"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Anime"' });
     expect(
       within(dialog).getByText(
         "This tag will be removed from 3 videos. This can't be undone.",
@@ -997,10 +997,9 @@ describe("TagsPage", () => {
     // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(screen.getByTitle("Drama").closest("div")!.parentElement!).getByRole(
-          "button",
-          { name: "Rename" },
-        ),
+        within(
+          screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!,
+        ).getByRole("button", { name: "Rename" }),
       ),
     );
   });
@@ -1011,11 +1010,11 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
 
-    const dialog = await screen.findByRole("dialog", { name: 'Delete "Drama"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
     expect(within(dialog).getByText("This tag isn't on any videos.")).toBeDefined();
   });
 
@@ -1025,11 +1024,11 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    await screen.findByRole("dialog", { name: 'Delete "Drama"' });
+    await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
 
     await user.keyboard("{Escape}");
 
@@ -1047,11 +1046,11 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Delete "Drama"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Drama"' });
 
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
@@ -1065,10 +1064,10 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Delete "Anime"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Anime"' });
 
     // 確認を開いたあと、別のタブで先に削除されたことにする。
     server.tags = server.tags.filter((t) => t.name !== "Anime");
@@ -1082,10 +1081,9 @@ describe("TagsPage", () => {
     // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
-        within(screen.getByTitle("Drama").closest("div")!.parentElement!).getByRole(
-          "button",
-          { name: "Rename" },
-        ),
+        within(
+          screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!,
+        ).getByRole("button", { name: "Rename" }),
       ),
     );
   });
@@ -1143,7 +1141,7 @@ describe("TagsPage", () => {
     expect(await screen.findByTitle("IME作成中")).toBeDefined();
 
     // 改名の入力。
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const renameInput = await screen.findByRole("textbox", {
       name: 'New name for "旅行"',
@@ -1197,7 +1195,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1226,7 +1224,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
 
     const input = await screen.findByRole("textbox", { name: 'New name for "Anime"' });
@@ -1242,7 +1240,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -1284,7 +1282,7 @@ describe("TagsPage", () => {
     expect(createInput.getAttribute("aria-invalid")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const renameInput = screen.getByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(renameInput);
@@ -1297,7 +1295,7 @@ describe("TagsPage", () => {
     expect(renameInput.getAttribute("aria-invalid")).toBeNull();
     await user.keyboard("{Escape}");
 
-    const dramaRow = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(dramaRow).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const synonymInput = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1353,11 +1351,13 @@ describe("TagsPage", () => {
       await screen.findByTitle("旅行");
       expect(server.fullGetCalls).toBe(0);
 
-      const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+      const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
       await user.click(within(row).getByRole("button", { name: "More actions" }));
       await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
       await user.click(
-        within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+        within(await screen.findByRole("alertdialog")).getByRole("button", {
+          name: "Delete",
+        }),
       );
       await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
       await waitFor(() => expect(server.fullGetCalls).toBe(1));
@@ -1375,11 +1375,13 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
     await user.click(
-      within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }),
+      within(await screen.findByRole("alertdialog")).getByRole("button", {
+        name: "Delete",
+      }),
     );
     await waitFor(() => expect(screen.queryByTitle("Drama")).toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1396,7 +1398,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
@@ -1421,7 +1423,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1445,7 +1447,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1493,7 +1495,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1503,7 +1505,7 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
 
-    const animeRow = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const animeRow = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     const animeRenameButton = within(animeRow).getByRole("button", { name: "Rename" });
     expect(animeRenameButton.hasAttribute("disabled")).toBe(true);
     await user.click(animeRenameButton);
@@ -1546,7 +1548,7 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     await user.clear(input);
@@ -1571,7 +1573,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     const menu = await screen.findByRole("menu");
     const items = within(menu).getAllByRole("menuitem");
@@ -1591,7 +1593,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1639,7 +1641,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1659,7 +1661,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     const menuButton = within(row).getByRole("button", { name: "More actions" });
     await user.click(menuButton);
     await user.click(
@@ -1681,7 +1683,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1708,7 +1710,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1736,7 +1738,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1759,7 +1761,7 @@ describe("TagsPage 統合", () => {
     await screen.findByTitle("旅行");
 
     const user = userEvent.setup();
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1782,7 +1784,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1803,7 +1805,10 @@ describe("TagsPage 統合", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: 'Merge "旅行"' })).toBeDefined();
 
-    await user.click(within(dialog).getByRole("button", { name: "Close" }));
+    // 送っている間は「Cancel」も押せない。
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
+    ).toBe(true);
     expect(screen.getByRole("dialog", { name: 'Merge "旅行"' })).toBeDefined();
 
     release?.();
@@ -1817,7 +1822,7 @@ describe("TagsPage 統合", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "More actions" }));
     await user.click(
       await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
@@ -1843,7 +1848,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
 
@@ -1862,7 +1867,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1879,7 +1884,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1903,7 +1908,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1935,7 +1940,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1959,7 +1964,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -1991,7 +1996,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2015,7 +2020,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     const synonymsButton = within(row).getByRole("button", { name: "Synonyms" });
     await user.click(synonymsButton);
     await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
@@ -2032,7 +2037,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2054,7 +2059,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2099,7 +2104,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2126,7 +2131,7 @@ describe("TagsPage シノニム", () => {
     await screen.findByTitle("Anime");
     await screen.findByTitle("anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2152,7 +2157,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
@@ -2174,7 +2179,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", {
@@ -2196,7 +2201,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Drama");
 
-    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Drama"' });
     const input = within(dialog).getByRole("textbox", {
@@ -2226,7 +2231,7 @@ describe("TagsPage シノニム", () => {
     renderPage();
     await screen.findByTitle("Anime");
 
-    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const row = screen.getByTitle("Anime").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
 
@@ -2261,7 +2266,7 @@ describe("TagsPage の英語の文言", () => {
   const userData = ["旅行", "Anime", "アニメ", "Drama", "存在しない語", "新規"];
 
   function rowOf(name: string): HTMLElement {
-    return screen.getByTitle(name).closest("div")!.parentElement!;
+    return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
   }
 
   it("疑似ロケールで、一覧・検索・作成・改名・メニューの文言がカタログから出る", async () => {
@@ -2320,7 +2325,7 @@ describe("TagsPage の英語の文言", () => {
       within(rowOf("Anime")).getByRole("button", { name: /More actions/ }),
     );
     await user.click(await screen.findByRole("menuitem", { name: /Delete/ }));
-    await screen.findByRole("dialog");
+    await screen.findByRole("alertdialog");
     expectCatalogTextOnly(document.body, userData);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -2363,7 +2368,7 @@ describe("TagsPage の英語の文言", () => {
     install();
     holdGetsFrom = 1;
     const loading = renderPage();
-    await screen.findByRole("status");
+    await screen.findAllByRole("status");
     expectCatalogTextOnly(document.body, userData);
     loading.unmount();
     holdGetsFrom = null;
@@ -2396,7 +2401,7 @@ describe("TagsPage の英語の文言", () => {
 
     await user.click(within(rowOf("旅行")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Delete "旅行"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "旅行"' });
     expect(
       within(dialog).getByText(
         "This tag will be removed from 1 video. This can't be undone.",
@@ -2532,7 +2537,7 @@ describe("TagsPage の英語の文言", () => {
 
 describe("TagsPage 仮のタグ", () => {
   function rowOf(name: string): HTMLElement {
-    return screen.getByTitle(name).closest("div")!.parentElement!;
+    return screen.getByTitle(name).closest<HTMLElement>("[data-tag-id]")!;
   }
 
   beforeEach(() => {
@@ -2712,7 +2717,7 @@ describe("TagsPage 仮のタグ", () => {
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Alpha"' });
     expect(
       within(dialog).getByText(
         'This tag will be removed from 2 videos, and automatic tagging won\'t create "Alpha" again. You can allow the name again from Rejected names.',
@@ -2741,7 +2746,7 @@ describe("TagsPage 仮のタグ", () => {
 
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Reject "Beta"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Beta"' });
     expect(
       within(dialog).getByText(
         "This tag isn't on any videos. Automatic tagging won't create \"Beta\" again. You can allow the name again from Rejected names.",
@@ -2767,7 +2772,7 @@ describe("TagsPage 仮のタグ", () => {
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Alpha"' });
 
     // 窓を開いたあと、別のタブで先に確定されたことにする。
     server.tags = server.tags.map((item) =>
@@ -2799,12 +2804,12 @@ describe("TagsPage 仮のタグ", () => {
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Alpha"' });
     server.nextError = { status: 500, body: { code: "internal", message: "x" } };
     await user.click(within(dialog).getByRole("button", { name: "Reject" }));
 
     expect(await within(dialog).findByRole("alert")).toBeDefined();
-    expect(screen.getByRole("dialog", { name: 'Reject "Alpha"' })).toBeDefined();
+    expect(screen.getByRole("alertdialog", { name: 'Reject "Alpha"' })).toBeDefined();
   });
 
   it("却下した名前を「Allow again」で一覧から外せる。最後の1つならタブへフォーカスが移る（受け入れ条件13）", async () => {
@@ -3092,7 +3097,7 @@ describe("TagsPage 仮のタグ", () => {
       within(rowOf("Alpha")).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: 'Reject "Alpha"' });
+    const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Alpha"' });
     await user.click(within(dialog).getByRole("button", { name: "Reject" }));
 
     expect(await screen.findByText("No tentative tags")).toBeDefined();
@@ -3164,7 +3169,7 @@ describe("TagsPage 仮のタグ", () => {
     expectCatalogTextOnly(document.body, userData);
 
     await user.click(screen.getByRole("tab", { name: /Rejected names/ }));
-    await screen.findByRole("list", { name: /Rejected names/ });
+    await screen.findByRole("table", { name: /Rejected names/ });
     expectCatalogTextOnly(document.body, userData);
     await user.click(screen.getByRole("tab", { name: /Tags/ }));
     await screen.findByTitle("Alpha");
@@ -3182,7 +3187,7 @@ describe("TagsPage 仮のタグ", () => {
     await screen.findByRole("menu");
     expectCatalogTextOnly(document.body, userData);
     await user.click(screen.getByRole("menuitem", { name: /Reject/ }));
-    await screen.findByRole("dialog");
+    await screen.findByRole("alertdialog");
     expectCatalogTextOnly(document.body, userData);
   });
 });
@@ -3391,11 +3396,10 @@ describe("TagsPage 見えている行だけ描く", () => {
       expect(document.activeElement).toBe(
         within(wrapperOf(first - 1)).getByRole("button", { name: "More actions" }),
       );
-      // 行の上端（jsdom では一覧の上端が文書の 0）から帯の高さだけ上へ。行が帯の
-      // 下に隠れない（ui-design.md「Keyboard across virtualized rows」）。
-      const start = Number(
-        /translateY\((-?[\d.]+)px\)/.exec(wrapperOf(first - 1).style.transform)![1],
-      );
+      // 行の上端（jsdom では一覧の上端が文書の 0、行の高さは rowHeight）から上部バーの
+      // 高さだけ上へ。行が上部バーの下に隠れない（ui-design.md「Keyboard across
+      // virtualized rows」）。
+      const start = (first - 1) * rowHeight;
       expect(start).toBeGreaterThan(bandHeight);
       expect(scrollTo).toHaveBeenCalledWith(
         expect.objectContaining({ top: start - bandHeight }),
@@ -3457,14 +3461,14 @@ describe("TagsPage 見えている行だけ描く", () => {
       within(wrapperOf(index)).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(screen.queryByTitle(name(index))).toBeNull());
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
-          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+          screen.getByTitle(name(index + 1)).closest<HTMLElement>("[data-tag-id]")!,
         ).getByRole("button", { name: "Rename" }),
       ),
     );
@@ -3485,7 +3489,7 @@ describe("TagsPage 見えている行だけ描く", () => {
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
-          screen.getByTitle(name(index + 1)).closest("div")!.parentElement!,
+          screen.getByTitle(name(index + 1)).closest<HTMLElement>("[data-tag-id]")!,
         ).getByRole("button", { name: "Rename" }),
       ),
     );
@@ -3734,14 +3738,17 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     holdGetsFrom = 1;
     renderPage();
 
+    const user = userEvent.setup();
     expect((filterButton() as HTMLButtonElement).disabled).toBe(true);
     expect(
       (screen.getByRole("button", { name: "Sort by: Name" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    expect(
-      (screen.getByRole("button", { name: "Sort" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    // 狭い幅のまとめ（「Sort」）の中の並び順も押せない。jsdom は <fieldset disabled> から
+    // 子孫への継承を実装しないので、fieldset 自身が disabled を持つことを確かめる。
+    await user.click(screen.getByRole("button", { name: "Sort" }));
+    const group = await screen.findByRole("group", { name: "Sort by" });
+    expect((group as HTMLFieldSetElement).disabled).toBe(true);
     for (const done of heldGetReleases) done();
   });
 
@@ -3751,14 +3758,16 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    const compact = screen.getByRole("button", { name: "Sort" });
-    expect(compact.className).not.toContain("bg-accent-soft");
-    await user.click(compact);
+    // md より狭い幅では、並び順はトップバーの「Sort」のポップオーバーにまとまる。
+    await user.click(screen.getByRole("button", { name: "Sort" }));
+    const compact = await screen.findByRole("dialog");
     // Name のときは向きを出さない。
-    expect(screen.queryByRole("group", { name: "Sort direction" })).toBeNull();
-    await user.click(await screen.findByRole("radio", { name: "Video count" }));
+    expect(
+      within(compact).queryByRole("radiogroup", { name: "Sort direction" }),
+    ).toBeNull();
+    await user.click(within(compact).getByRole("radio", { name: "Video count" }));
     await waitFor(() => expect(rowNames()[0]).toBe("Alpha"));
-    await user.click(screen.getByRole("radio", { name: "Fewest videos first" }));
+    await user.click(within(compact).getByRole("radio", { name: "Fewest videos first" }));
     await waitFor(() => expect(rowNames()[0]).toBe("Beta"));
   });
 
@@ -3867,7 +3876,9 @@ describe("TagsPage まとめての操作", () => {
     await user.click(selectAll());
     await user.click(within(bar()).getByRole("button", { name: "Delete…" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Delete selected tags" });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Delete selected tags",
+    });
     expect(server.impactCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
     expect(
       await within(dialog).findByText(
@@ -3896,7 +3907,9 @@ describe("TagsPage まとめての操作", () => {
 
     await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
     await user.click(within(bar()).getByRole("button", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Reject selected tags",
+    });
     const reject = within(dialog).getByRole("button", { name: "Reject" });
     expect((reject as HTMLButtonElement).disabled).toBe(true);
 
@@ -3998,7 +4011,7 @@ describe("TagsPage まとめての操作", () => {
     expect((check as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("選んでいる間は見出しの行が選択の行に替わり、働かない操作は出さない。×で解くと見出しに戻り、先頭のチェックへフォーカスが移る", async () => {
+  it("選んでいる間はページの下端に選択バーを出し、働かない操作は出さない。×で解くとバーが消え、先頭のチェックへフォーカスが移る", async () => {
     const user = userEvent.setup();
     install();
     renderPage();
@@ -4007,8 +4020,6 @@ describe("TagsPage まとめての操作", () => {
 
     // 確定したタグだけを選ぶと「Confirm」「Reject…」は出さない（薄くもしない）。
     await user.click(within(rowOf("Cat")).getByRole("checkbox"));
-    expect(screen.queryByRole("heading", { name: "Tags" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "New tag" })).toBeNull();
     expect(within(bar()).getByText("1 tag selected")).toBeDefined();
     expect(
       within(bar())
@@ -4029,9 +4040,8 @@ describe("TagsPage まとめての操作", () => {
       "Reject…",
       "Delete…",
     ]);
-    // 浮かぶバーは無く、選択の行は帯（sticky）の中にある。
-    expect(bar().closest(".sticky")).not.toBeNull();
-    expect(bar().closest(".fixed")).toBeNull();
+    // 選択バーはデザインシステムの SelectionBar で、ページの下端に貼り付く。
+    expect(bar().querySelector('[data-slot="selection-bar"]')).not.toBeNull();
 
     await user.click(within(bar()).getByRole("button", { name: "Clear selection" }));
     expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
@@ -4039,16 +4049,17 @@ describe("TagsPage まとめての操作", () => {
     await waitFor(() => expect(document.activeElement).toBe(selectAll()));
   });
 
-  it("選んだ行はアクセントの薄い色で塗る（塗りつぶしの色にしない）", async () => {
+  it("選んだ行は表の選択の面（primary-soft）で塗る", async () => {
     const user = userEvent.setup();
     install();
     renderPage();
     await screen.findByTitle("Alpha");
 
     await user.click(within(rowOf("Cat")).getByRole("checkbox"));
-    expect(rowOf("Cat").className).toContain("bg-accent/10");
-    expect(rowOf("Cat").className).not.toContain("bg-accent-soft");
-    expect(rowOf("Gamma").className).not.toContain("bg-accent/10");
+    // 表の選択した行（data-state="selected"）は primary-soft の面になる。
+    expect(rowOf("Cat").getAttribute("data-state")).toBe("selected");
+    expect(rowOf("Cat").className).toContain("data-[state=selected]:bg-primary-soft");
+    expect(rowOf("Gamma").getAttribute("data-state")).toBeNull();
   });
 
   it("タッチ・狭い幅の「Actions」は文字を持つ項目を並べ、「Confirm」は行の「確定する」と同じ結果になる", async () => {
@@ -4094,8 +4105,15 @@ describe("TagsPage まとめての操作", () => {
       container.querySelector<HTMLElement>('[data-tag-id] [role="checkbox"]')!,
     );
     expectCatalogTextOnly(document.body, ["Alpha", "Beta", "Cat", "Gamma", "ガンマ"]);
-    await user.click(within(screen.getByRole("region")).getAllByRole("button")[3]!);
-    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(
+        screen
+          .getAllByRole("region")
+          // 通知（Sonner）の section も region なので外す。
+          .find((region) => region.tagName !== "SECTION")!,
+      ).getAllByRole("button")[3]!,
+    );
+    const dialog = await screen.findByRole("alertdialog");
     await waitFor(() => expect(server.impactCalls).toHaveLength(1));
     await within(dialog).findByText(/videos|video/i);
     expectCatalogTextOnly(document.body, ["Alpha", "Beta", "Cat", "Gamma", "ガンマ"]);
@@ -4405,7 +4423,9 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
   }
 
   function count(): string {
-    return screen.getAllByRole("status").find((node) => node.tagName === "P")!
+    return screen
+      .getAllByRole("status")
+      .find((node) => node.closest('[data-slot="page-header-count"]') !== null)!
       .textContent!;
   }
 
@@ -4494,8 +4514,12 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     );
 
     await screen.findByTitle("zz action");
+    // 打鍵ごとに引き直すので、途中の語（「ＡＣＴＩＯ」）の応答でも同じ行が並ぶ。最後の語の
+    // 要求が出るまで待つ。
+    await waitFor(() =>
+      expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ"),
+    );
     await waitFor(() => expect(loadedNames()).toEqual(["zz action"]));
-    expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ");
     expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
     expect(count()).toBe("1 of 151 tags");
     // 入力は q の上限の 100 文字で止まる。
@@ -4619,7 +4643,7 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     holdGetsFrom = 2;
     await scrollToEnd(100);
     await waitFor(() => expect(heldGetReleases).toHaveLength(1));
-    expect(screen.getByText("Loading more tags…")).toBeDefined();
+    expect(screen.getByRole("status", { name: "Loading more tags…" })).toBeDefined();
 
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 14");
     await waitFor(() => expect(heldGetReleases.length).toBeGreaterThan(1));
@@ -4798,7 +4822,9 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
       within(rowOf(name(1))).getByRole("button", { name: "More actions" }),
     );
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
-    const dialog = await screen.findByRole("dialog", { name: `Delete "${name(1)}"` });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: `Delete "${name(1)}"`,
+    });
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByTitle(name(1))).toBeNull());
 
@@ -5085,7 +5111,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     expect(server.rejectedGetRequests[0]?.has("cursor")).toBe(false);
 
     const list = await openRejected(user);
-    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    expect(within(list).getAllByRole("row")).toHaveLength(100);
     expect(server.rejectedGetRequests).toHaveLength(1);
   });
 
@@ -5097,7 +5123,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     const list = await openRejected(user);
 
     scrollRejectedToEnd();
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
     expect(server.rejectedGetRequests[1]?.get("cursor")).toBe("Name099");
     expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
     expect(list.getAttribute("aria-busy")).toBeNull();
@@ -5106,7 +5132,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     // 見張り直すまで送り直す（読み込み中は画面が重ねて送らない）。
     await waitFor(() => {
       scrollRejectedToEnd();
-      expect(within(list).getAllByRole("listitem")).toHaveLength(250);
+      expect(within(list).getAllByRole("row")).toHaveLength(250);
     });
     expect(within(list).getByTitle("Name249")).toBeDefined();
     // 末尾まで読んだら、もう番兵は見張らない。
@@ -5115,7 +5141,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
 
     await backToTags(user);
     const reopened = await openRejected(user);
-    expect(within(reopened).getAllByRole("listitem")).toHaveLength(250);
+    expect(within(reopened).getAllByRole("row")).toHaveLength(250);
     expect(server.rejectedGetRequests).toHaveLength(requests);
   });
 
@@ -5138,7 +5164,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       ),
     ).toBe(true);
     expect(entry.textContent).toContain("249");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(99);
+    expect(within(list).getAllByRole("row")).toHaveLength(99);
     expect(server.rejectedGetRequests).toHaveLength(1);
   });
 
@@ -5149,13 +5175,15 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     await screen.findByTitle("Alpha");
     const list = await openRejected(user);
     scrollRejectedToEnd();
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
     await backToTags(user);
 
     const before = server.rejectedGetRequests.length;
     await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
     await user.click(within(bar()).getByRole("button", { name: "Reject…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Reject selected tags" });
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Reject selected tags",
+    });
     const reject = within(dialog).getByRole("button", { name: "Reject" });
     await waitFor(() => expect((reject as HTMLButtonElement).disabled).toBe(false));
     await user.click(reject);
@@ -5169,7 +5197,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     expect(reloads[0]?.get("limit")).toBe("100");
 
     const reopened = await openRejected(user);
-    expect(within(reopened).getAllByRole("listitem")).toHaveLength(100);
+    expect(within(reopened).getAllByRole("row")).toHaveLength(100);
     expect(within(reopened).getByTitle("Alpha")).toBeDefined();
   });
 
@@ -5183,14 +5211,14 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     server.failRejectedMoreGets = true;
     scrollRejectedToEnd();
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("Couldn't load more rejected names");
-    expect(within(list).getAllByRole("listitem")).toHaveLength(100);
+    expect(alert.textContent).toBe("Couldn't load more rejected namesRetry");
+    expect(within(list).getAllByRole("row")).toHaveLength(100);
     // 失敗の間は番兵で読み直さない。
     expect(observers.size).toBe(0);
 
     server.failRejectedMoreGets = false;
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
     const more = server.rejectedGetRequests.filter((params) => params.has("cursor"));
     expect(more.map((params) => params.get("cursor"))).toEqual(["Name099", "Name099"]);
     expect(screen.queryByText("Couldn't load more rejected names")).toBeNull();
@@ -5206,12 +5234,12 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     server.failRejectedMoreGets = true;
     scrollRejectedToEnd();
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "Couldn't load more rejected names",
+      "Couldn't load more rejected namesRetry",
     );
     for (const name of names.slice(0, 100)) {
       fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
     }
-    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    await waitFor(() => expect(within(list).queryAllByRole("row")).toHaveLength(0));
     expect(screen.queryByText("No rejected names")).toBeNull();
 
     server.failRejectedMoreGets = false;
@@ -5230,7 +5258,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     for (const name of names.slice(0, 100)) {
       fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
     }
-    await waitFor(() => expect(within(list).queryAllByRole("listitem")).toHaveLength(0));
+    await waitFor(() => expect(within(list).queryAllByRole("row")).toHaveLength(0));
     expect(screen.queryByText("No rejected names")).toBeNull();
 
     scrollRejectedToEnd();
@@ -5271,9 +5299,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       expect([...observers].some((observer) => !watching.has(observer))).toBe(true),
     );
     scrollRejectedToEnd(watching);
-    await waitFor(() =>
-      expect(within(reopened).getAllByRole("listitem")).toHaveLength(200),
-    );
+    await waitFor(() => expect(within(reopened).getAllByRole("row")).toHaveLength(200));
   });
 
   it("取り直しと重なった続きの名前の取り外しのあと、取り直して入口の件数を合わせる", async () => {
@@ -5284,7 +5310,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     const entry = rejectedTab();
     const list = await openRejected(user);
     scrollRejectedToEnd();
-    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(200));
+    await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
     await backToTags(user);
 
     // 却下で先頭のページの取り直しが始まり、その応答（取り外しの前の 251 件）は止まる。
@@ -5373,15 +5399,18 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     await user.click(filterButton());
     const tentative = await screen.findByRole("checkbox", { name: /^Tentative only/ });
     const unused = screen.getByRole("checkbox", { name: /^Unused only/ });
-    expect((tentative as HTMLInputElement).checked).toBe(false);
-    expect((unused as HTMLInputElement).checked).toBe(false);
+    expect(tentative.getAttribute("aria-checked")).toBe("false");
+    expect(unused.getAttribute("aria-checked")).toBe("false");
     // 何も効いていない間は「Clear filters」を出さない。
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 
     await user.click(tentative);
     await user.click(unused);
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (2 applied)");
-    expect(filterButton().className).toContain("bg-accent-soft");
+    // 効いている数は soft の Badge で添える。
+    expect(filterButton().querySelector('[data-slot="badge"]')?.className).toContain(
+      "bg-primary-soft",
+    );
     expect(filterButton().textContent).toContain("2");
     expect(await screen.findByText("1 of 4 tags")).toBeDefined();
     await user.keyboard("{Escape}");
@@ -5438,7 +5467,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     await screen.findByText("150 tags");
 
     const heading = screen.getByRole("heading", { level: 1, name: "Tags" });
-    const header = heading.parentElement!;
+    const header = heading.closest("header")!;
     const status = within(header).getByRole("status");
     // 150 件のうち 100 件だけを読んだ状態でも、全部の数だけを出す。
     expect(server.pageRequests.at(-1)?.get("limit")).toBe("100");
@@ -5448,18 +5477,23 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
 
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 01");
     await waitFor(() => expect(status.textContent).toBe("10 of 150 tags"));
-  });
+    // 150 件を描き、打鍵ごとに引き直すので、負荷の高い `task check` の中では既定の 5 秒を
+    // 超えることがある。表明は弱めず、時間だけを仕事の量に合わせる。
+  }, 20_000);
 
-  it("列の見出しは先頭のチェック・「Name」・右寄せの「Videos」で、帯の中にある", async () => {
+  it("列の見出しは先頭のチェック・「Name」・右寄せの「Videos」で、表の見出しの行にある", async () => {
     install();
     renderPage();
     await screen.findByTitle("Alpha");
 
     const selectAll = screen.getByRole("checkbox", { name: "Select all 4 loaded tags" });
-    const columns = selectAll.closest(".group")! as HTMLElement;
-    expect(columns.closest(".sticky")).not.toBeNull();
-    expect(within(columns).getByText("Name")).toBeDefined();
-    const videos = within(columns).getByText("Videos");
+    const columns = selectAll.closest("thead")!;
+    expect(
+      within(columns)
+        .getAllByRole("columnheader")
+        .map((cell) => cell.textContent),
+    ).toEqual(["", "Name", "Videos"]);
+    const videos = within(columns).getByRole("columnheader", { name: "Videos" });
     expect(videos.className).toContain("text-right");
     // 列の見出しは最初の行より前にある。
     expect(
@@ -5467,7 +5501,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     ).toBeTruthy();
   });
 
-  it("タブで「Rejected names」へ移ると、トップバーの操作と見出しの件数・「New tag」を外し、本文に却下した名前を出す。URL に tab が載る", async () => {
+  it("タブで「Rejected names」へ移ると、ツールバーと見出しの件数・「New tag」を外し、本文に却下した名前を出す。URL に tab が載る", async () => {
     const user = userEvent.setup();
     server.rejectedNames = ["Old", "Stale"];
     install();
@@ -5485,9 +5519,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     expect(
       within(panel).getAllByRole("button", { name: /^Allow ".*" again$/ }),
     ).toHaveLength(2);
-    expect(within(panel).getAllByRole("listitem")[0]!.textContent).toContain(
-      "Allow again",
-    );
+    expect(within(panel).getAllByRole("row")[0]!.textContent).toContain("Allow again");
     expect(screen.queryByRole("searchbox")).toBeNull();
     expect(within(screen.getByTestId("topbar")).queryByRole("button")).toBeNull();
     expect(screen.queryByRole("button", { name: "New tag" })).toBeNull();
@@ -5499,7 +5531,8 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     rejectedTab().focus();
     await user.keyboard("{ArrowLeft}");
     expect(document.activeElement).toBe(tagsTab());
-    expect(tagsTab().getAttribute("aria-selected")).toBe("true");
+    // 選ぶのはフォーカスの後の描画なので、重い環境でも待って確かめる。
+    await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
     expect(await screen.findByTitle("Alpha")).toBeDefined();
     expect(latestSearch).not.toContain("tab=");
   });
@@ -5594,7 +5627,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     tagsTab().focus();
     await user.keyboard("{ArrowRight}");
     expect(document.activeElement).toBe(rejectedTab());
-    expect(rejectedTab().getAttribute("aria-selected")).toBe("true");
+    await waitFor(() => expect(rejectedTab().getAttribute("aria-selected")).toBe("true"));
   });
 
   it("タブを移ると選択を解く", async () => {

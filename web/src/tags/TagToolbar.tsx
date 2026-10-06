@@ -5,18 +5,15 @@ import {
   CalendarPlus,
   Hash,
   type LucideIcon,
-  SlidersHorizontal,
 } from "lucide-react";
 import type { Ref, RefObject } from "react";
 
 import { t } from "../i18n";
-import { cn } from "../lib/cn";
-import Button from "../ui/Button";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import SegmentedControl from "../ui/SegmentedControl";
+import { Toolbar } from "../ui/patterns/toolbar";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
+import IconToggleGroup from "../videoList/IconToggleGroup";
 import {
   CompactSortView,
   SortMenuView,
@@ -77,11 +74,13 @@ export interface TagToolbarProps {
 }
 
 /**
- * TagToolbar はタグ管理画面の操作を共通トップバーの中央に置く（`TopBarPortal`）。
- * 並びと見た目はライブラリの `LibraryToolbar` と同じで、検索欄 → 絞り込み → 並び順
- * （と向き）。`md` 未満では並び順を「Sort」のまとめ（ライブラリの
- * `CompactSortControls` と同じ形）に入れる（specs/036-tag-admin-scale/ui-design.md
- * 「Top bar」）。
+ * TagToolbar はタグ管理画面の操作を共通トップバーの中央に置く（デザインシステムの
+ * `Toolbar` の placement="topBar"。TagsPage が `TopBarPortal` で入れる。
+ * web/registry/rules/patterns.md の Sections）。並びはライブラリの `LibraryToolbar` と同じで、
+ * 検索欄 → 絞り込み → 並び順（と向き）。検索欄・絞り込み・並び順の部品はライブラリと共有する
+ * `web/src/videoList/` のもので、並び順は `md` から並べ、それより狭いとアイコンだけの
+ * 「Sort」のまとめ（ライブラリの `CompactSortControls` と同じ形）に入れる
+ * （specs/036-tag-admin-scale/ui-design.md「Top bar」）。
  */
 export default function TagToolbar({
   query,
@@ -105,20 +104,103 @@ export default function TagToolbar({
   const filterCount = (tentativeOnly ? 1 : 0) + (unusedOnly ? 1 : 0);
 
   return (
-    <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
-      <SearchBox
-        query={query}
-        onCommit={onQueryCommit}
-        inputRef={searchRef}
-        label={t.tags.search.label}
-        placeholder={t.tags.search.placeholder}
-        syntaxHelp={false}
-        // 打鍵ごとに引き直す（前の要求は打ち切る。specs/036-tag-admin-scale/research.md R-1）。
-        debounceMs={0}
-        disabled={searchDisabled}
-        className="min-w-20 flex-1 sm:min-w-40 sm:max-w-md"
-      />
-
+    <Toolbar
+      placement="topBar"
+      search={
+        <SearchBox
+          query={query}
+          onCommit={onQueryCommit}
+          inputRef={searchRef}
+          label={t.tags.search.label}
+          placeholder={t.tags.search.placeholder}
+          syntaxHelp={false}
+          // 打鍵ごとに引き直す（前の要求は打ち切る。specs/036-tag-admin-scale/research.md R-1）。
+          debounceMs={0}
+          disabled={searchDisabled}
+        />
+      }
+      view={[
+        {
+          id: "sort",
+          label: t.tags.sort.heading,
+          inlineFrom: "md",
+          compactLabelled: true,
+          compact: (
+            <CompactSortView
+              name="tag-compact-sort"
+              heading={t.tags.sort.heading}
+              value={activeOption(sort)}
+              options={options}
+              onValueChange={(next) => {
+                if (tagSortKind(next) !== kind) onSortChange(next);
+              }}
+              disabled={sortDisabled}
+            >
+              {direction !== undefined && (
+                <IconToggleGroup<TagSortDirection>
+                  label={t.tags.sort.direction}
+                  value={direction}
+                  onValueChange={(next) => onSortChange(withTagSortDirection(sort, next))}
+                  options={[
+                    {
+                      value: "desc",
+                      label:
+                        kind === "count"
+                          ? t.tags.sort.segments.countDesc
+                          : t.tags.sort.segments.createdDesc,
+                      icon: <ArrowDownWideNarrow aria-hidden="true" />,
+                    },
+                    {
+                      value: "asc",
+                      label:
+                        kind === "count"
+                          ? t.tags.sort.segments.countAsc
+                          : t.tags.sort.segments.createdAsc,
+                      icon: <ArrowUpNarrowWide aria-hidden="true" />,
+                    },
+                  ]}
+                />
+              )}
+            </CompactSortView>
+          ),
+          control: (
+            <SortMenuView
+              label={t.tags.sort.kinds[kind]}
+              currentLabel={t.tags.sort.current(t.tags.sort.kinds[kind])}
+              heading={t.tags.sort.heading}
+              value={activeOption(sort)}
+              options={options}
+              onValueChange={(next) => {
+                if (tagSortKind(next) !== kind) onSortChange(next);
+              }}
+              // 「Name」に向きは無いので、そのときは向きのボタンを出さない。
+              toggle={
+                direction === undefined || sort === "name"
+                  ? undefined
+                  : {
+                      label: t.tags.sort.toggle[sort],
+                      icon:
+                        direction === "desc" ? (
+                          <ArrowDownWideNarrow aria-hidden="true" />
+                        ) : (
+                          <ArrowUpNarrowWide aria-hidden="true" />
+                        ),
+                      onClick: () =>
+                        onSortChange(
+                          withTagSortDirection(
+                            sort,
+                            direction === "asc" ? "desc" : "asc",
+                          ),
+                        ),
+                    }
+              }
+              disabled={sortDisabled}
+            />
+          ),
+        },
+      ]}
+      viewLabel={t.tags.sort.compact}
+    >
       <FilterPopover
         count={filterCount}
         disabled={filterDisabled}
@@ -141,89 +223,6 @@ export default function TagToolbar({
           />
         </div>
       </FilterPopover>
-
-      <div className="hidden md:block">
-        <SortMenuView
-          label={t.tags.sort.kinds[kind]}
-          currentLabel={t.tags.sort.current(t.tags.sort.kinds[kind])}
-          heading={t.tags.sort.heading}
-          value={activeOption(sort)}
-          options={options}
-          onValueChange={(next) => {
-            if (tagSortKind(next) !== kind) onSortChange(next);
-          }}
-          // 「Name」に向きは無いので、そのときは向きのボタンを出さない。
-          toggle={
-            direction === undefined || sort === "name"
-              ? undefined
-              : {
-                  label: t.tags.sort.toggle[sort],
-                  icon:
-                    direction === "desc" ? (
-                      <ArrowDownWideNarrow />
-                    ) : (
-                      <ArrowUpNarrowWide />
-                    ),
-                  onClick: () =>
-                    onSortChange(
-                      withTagSortDirection(sort, direction === "asc" ? "desc" : "asc"),
-                    ),
-                }
-          }
-          disabled={sortDisabled}
-        />
-      </div>
-
-      <PopoverRoot>
-        <PopoverTrigger asChild>
-          <Button
-            variant="secondary"
-            aria-label={t.tags.sort.compact}
-            disabled={sortDisabled}
-            className={cn("px-2.5 md:hidden")}
-          >
-            <SlidersHorizontal />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-72">
-          <CompactSortView
-            name="tag-compact-sort"
-            heading={t.tags.sort.heading}
-            value={activeOption(sort)}
-            options={options}
-            onValueChange={(next) => {
-              if (tagSortKind(next) !== kind) onSortChange(next);
-            }}
-            disabled={sortDisabled}
-          >
-            {direction !== undefined && (
-              <SegmentedControl<TagSortDirection>
-                label={t.tags.sort.direction}
-                value={direction}
-                onValueChange={(next) => onSortChange(withTagSortDirection(sort, next))}
-                options={[
-                  {
-                    value: "desc",
-                    label:
-                      kind === "count"
-                        ? t.tags.sort.segments.countDesc
-                        : t.tags.sort.segments.createdDesc,
-                    icon: <ArrowDownWideNarrow />,
-                  },
-                  {
-                    value: "asc",
-                    label:
-                      kind === "count"
-                        ? t.tags.sort.segments.countAsc
-                        : t.tags.sort.segments.createdAsc,
-                    icon: <ArrowUpNarrowWide />,
-                  },
-                ]}
-              />
-            )}
-          </CompactSortView>
-        </PopoverContent>
-      </PopoverRoot>
-    </div>
+    </Toolbar>
   );
 }

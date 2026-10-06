@@ -10,8 +10,13 @@ import {
   ungroupedMessage,
 } from "../api/folderGrouping";
 import { t } from "../i18n";
-import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
+import { Button } from "../ui/shadcn/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
 
 /**
@@ -33,11 +38,11 @@ export default function GroupLine({
 }) {
   const content = (
     <>
-      <Folder className="size-3.5! shrink-0 text-fg-subtle" aria-hidden="true" />
+      <Folder className="shrink-0" aria-hidden="true" />
       <span className="truncate" title={group.name}>
         {group.name}
       </span>
-      <span className="shrink-0 text-fg-subtle" aria-hidden="true">
+      <span className="shrink-0" aria-hidden="true">
         ·
       </span>
       <span className="shrink-0 tabular-nums">
@@ -47,7 +52,7 @@ export default function GroupLine({
   );
   if (!owner) {
     return (
-      <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted sm:text-sm">
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm [&_svg]:size-4">
         {content}
       </p>
     );
@@ -93,33 +98,34 @@ function GroupLineMenu({
   };
 
   return (
-    <MenuRoot>
-      <MenuTrigger asChild>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="sm"
           disabled={busy}
           aria-label={t.player.group.menu(group.name, group.position, group.count)}
-          // 文字の左端を題名にそろえ、行は題名より小さく従の色のままにする。
-          className="-ml-2 max-w-full min-w-0 self-start gap-1.5! font-normal! text-fg-muted! sm:text-sm!"
+          // 文字の左端を題名にそろえ（ghost の sm の左の余白 px-2 の分だけ左へ出す）、
+          // 行は題名より小さく従の色のままにする。
+          className="-ml-2 max-w-full min-w-0 gap-1.5 self-start text-xs font-normal text-muted-foreground sm:text-sm"
         >
           {content}
-          <ChevronDown className="size-3.5! shrink-0" aria-hidden="true" />
+          <ChevronDown className="shrink-0" aria-hidden="true" />
         </Button>
-      </MenuTrigger>
-      <MenuContent align="start">
-        <MenuItem onSelect={() => void run(false)}>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuItem onSelect={() => void run(false)}>
           <Ungroup aria-hidden="true" />
           {t.player.group.ungroup}
-        </MenuItem>
+        </DropdownMenuItem>
         {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
         {group.folder.path !== "" && (
-          <MenuItem onSelect={() => void run(true)}>
+          <DropdownMenuItem onSelect={() => void run(true)}>
             <Tag aria-hidden="true" />
             {t.player.group.toTag}
-          </MenuItem>
+          </DropdownMenuItem>
         )}
-      </MenuContent>
-    </MenuRoot>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

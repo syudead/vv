@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "form-dialog-example",
+  "title": "Form dialog example",
+  "description": "A working create-tag dialog with two fields.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/form-dialog-example.tsx",
+      "content": "import { Plus } from \"lucide-react\";\nimport { type FormEvent, useState } from \"react\";\n\nimport { t } from \"@/i18n\";\nimport { FormDialog } from \"@/ui/patterns/form-dialog\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { Field, FieldDescription, FieldLabel } from \"@/ui/shadcn/field\";\nimport { Input } from \"@/ui/shadcn/input\";\nimport { Textarea } from \"@/ui/shadcn/textarea\";\n\n// フォームダイアログの型の見本（registry:block form-dialog-example）。タグを作る形で、\n// 写した画面は欄と送信の処理を差し替える（web/registry/rules/patterns.md の Form dialog）。\n\nexport function FormDialogExample({ defaultOpen = false }: { defaultOpen?: boolean }) {\n  const p = t.designSystem.pattern;\n  const [open, setOpen] = useState(defaultOpen);\n  const submit = (event: FormEvent<HTMLFormElement>) => {\n    event.preventDefault();\n    setOpen(false);\n  };\n  return (\n    <FormDialog\n      open={open}\n      onOpenChange={setOpen}\n      trigger={\n        <Button size=\"sm\">\n          <Plus aria-hidden=\"true\" />\n          {p.newTag}\n        </Button>\n      }\n      title={p.newTag}\n      description={p.newTagDescription}\n      onSubmit={submit}\n      submitLabel={p.createTag}\n      cancelLabel={p.cancel}\n    >\n      <Field>\n        <FieldLabel htmlFor=\"form-dialog-example-name\">{p.tagName}</FieldLabel>\n        <Input id=\"form-dialog-example-name\" defaultValue={p.tagNames.travel} />\n        <FieldDescription>{p.tagNameDescription}</FieldDescription>\n      </Field>\n      <Field>\n        <FieldLabel htmlFor=\"form-dialog-example-notes\">{p.tagNotes}</FieldLabel>\n        <Textarea id=\"form-dialog-example-notes\" />\n      </Field>\n    </FormDialog>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
+  "type": "registry:block"
+}

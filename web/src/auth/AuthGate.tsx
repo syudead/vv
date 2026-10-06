@@ -5,7 +5,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import { type AuthSession, getAuthSession } from "../api/auth";
 import { RequestFailed, setRenderedAudience } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
 import { currentPath, loginPath, reloadPage } from "./pageNavigation";
@@ -102,13 +102,17 @@ function OwnerLoginRedirect({
 
 function GateFailure({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
-    <div className="flex min-h-dvh items-center bg-bg">
+    <div className="flex min-h-dvh items-center bg-background">
       <EmptyState
         icon={AlertCircle}
         tone="danger"
         title={t.auth.gate.unreachable}
         description={reason}
-        action={<Button onClick={onRetry}>{t.common.retry}</Button>}
+        action={
+          <Button size="sm" onClick={onRetry}>
+            {t.common.retry}
+          </Button>
+        }
       />
     </div>
   );

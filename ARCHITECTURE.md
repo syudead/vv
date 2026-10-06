@@ -199,8 +199,9 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
 | `videoList/` | List pieces the library and folder screens share |
-| `ui/` | Reusable primitives |
-| `lib/` | Locale-independent formatting |
+| `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |
+| `hooks/` | Hooks the registry components share, such as `use-mobile` |
+| `lib/` | Helpers several flows share: locale-independent formatting, the tag-name rule, IME key handling |
 | `i18n/` | Screen text and locale-dependent formatting ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | Per-device display settings |
 | `theme/` | Token tests only, no runtime code |
@@ -214,7 +215,9 @@ memory.
 The playback screen (`/videos/:id`) has no shell: it is a two-pane screen
 under its own header band, and keeping that to one routing decision lets the
 shell stay ignorant of which screen it frames. The visual tokens live only in
-`web/src/index.css`; list behaviour, scrolling and preferences are in
+`web/src/ui/tokens.css`; the components, tokens and usage rules screens are built
+from are the [design system](docs/design-docs/design-system.md); list
+behaviour, scrolling and preferences are in
 [library-ui.md](docs/design-docs/library-ui.md).
 
 ## Principles

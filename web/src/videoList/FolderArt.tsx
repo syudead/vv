@@ -207,8 +207,8 @@ export default function FolderArt({
       onPointerLeave={putBack}
       className="absolute inset-x-3 top-3 bottom-2"
     >
-      <div className="absolute top-0 left-0 h-3 w-2/5 rounded-t-md bg-elevated" />
-      <div className="absolute inset-x-0 top-2 bottom-0 overflow-hidden rounded-md rounded-tl-none bg-elevated">
+      <div className="absolute top-0 left-0 h-3 w-2/5 rounded-t-md bg-popover" />
+      <div className="absolute inset-x-0 top-2 bottom-0 overflow-hidden rounded-md rounded-tl-none bg-popover">
         {shown.map((preview, index) => {
           const place = layout[index];
           if (place === undefined) return null;
@@ -219,9 +219,11 @@ export default function FolderArt({
               data-folder-preview=""
               data-folder-front={isFront ? "" : undefined}
               className={cn(
-                "absolute aspect-video w-[68%] overflow-hidden rounded-sm border border-border-strong bg-navbar transition-[left,top,transform,box-shadow] duration-200 ease-out-quart motion-reduce:transition-none",
-                isFront ? "z-10 shadow-card-hover" : "shadow-card",
+                "absolute aspect-video overflow-hidden rounded-sm border border-input bg-navbar transition-all duration-200 ease-out-quart motion-reduce:transition-none",
+                "w-folder-preview",
+                isFront && "z-10 shadow-card-hover",
               )}
+              // 位置と傾きは 1 枚ごとに決まるので style で渡す（幅は w-folder-preview）。
               style={{
                 left: `${String(isFront ? frontPlace.left : place.left)}%`,
                 top: `${String(isFront ? frontPlace.top : place.top)}%`,

@@ -364,7 +364,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
     expect(screen.queryByText("タグの行")).toBeNull();
   });
 
-  it("題名とタグの行の間隔は今の gap-1 と同じ（B3）", () => {
+  it("タグの行はリンクの外、題名の後ろに置く（B3）", () => {
     renderCard(
       video({
         tags: [
@@ -376,7 +376,9 @@ describe("VideoCard tagsRow（issue 269）", () => {
       },
     );
     const row = screen.getByText("タグの行").parentElement;
-    expect(row?.className).toContain("pt-1");
+    // 題名との間隔はカードの gap-2 が持つ。
+    expect(row?.closest("a")).toBeNull();
+    expect(row?.parentElement?.className).toContain("gap-2");
   });
 
   it("同じ参照の props で親が再描画しても memo で再描画せず、tagsRow を呼び直さない（N4）", () => {

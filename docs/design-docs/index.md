@@ -31,6 +31,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)
+- [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Screen text and formatting (i18n)](i18n.md)
 - [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md)
@@ -52,3 +53,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Modified and created dates on the video page, and the "Date created" sort: UI](../../specs/033-video-dates/ui-design.md)
 - [Favorite mark, toggling, filtering and sorting for videos and groups: UI](../../specs/035-favorites/ui-design.md)
 - [Tag admin screen at scale (top bar, band, tabs, sort, selection and bulk actions): UI](../../specs/036-tag-admin-scale/ui-design.md)
+- [vv design system on shadcn/ui (foundations, components, page patterns): UI](../../specs/038-design-system/ui-design.md)

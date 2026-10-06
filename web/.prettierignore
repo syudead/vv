@@ -5,3 +5,5 @@ playwright-report/
 test-results/
 # 生成物は手編集しないので整形の対象にもしない（AGENTS.md）。
 src/api/gen/
+# shadcn build が書く registry の項目（specs/038-design-system/research.md R-3）。
+registry/r/

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "confirm-dialog-example",
+  "title": "Confirm dialog example",
+  "description": "A working delete-tag confirmation.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/confirm-dialog-example.tsx",
+      "content": "import { Trash2 } from \"lucide-react\";\nimport { useState } from \"react\";\n\nimport { t } from \"@/i18n\";\nimport { ConfirmDialog } from \"@/ui/patterns/confirm-dialog\";\nimport { Button } from \"@/ui/shadcn/button\";\n\n// 確認ダイアログの型の見本（registry:block confirm-dialog-example）。タグを消す前の確認で、\n// 写した画面は題・説明・動詞と、確かめた後の処理を差し替える\n// （web/registry/rules/patterns.md の Confirm dialog）。\n\nexport function ConfirmDialogExample({ defaultOpen = false }: { defaultOpen?: boolean }) {\n  const p = t.designSystem.pattern;\n  const [open, setOpen] = useState(defaultOpen);\n  return (\n    <ConfirmDialog\n      open={open}\n      onOpenChange={setOpen}\n      trigger={\n        <Button variant=\"outline\" size=\"sm\">\n          <Trash2 aria-hidden=\"true\" />\n          {p.deleteTag}\n        </Button>\n      }\n      title={p.deleteTagTitle(p.tagNames.travel)}\n      description={p.deleteTagDescription}\n      actionLabel={p.delete}\n      cancelLabel={p.cancel}\n      onConfirm={() => {\n        setOpen(false);\n      }}\n    />\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#confirm-dialog (item vv-rules).",
+  "type": "registry:block"
+}

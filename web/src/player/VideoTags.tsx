@@ -21,7 +21,9 @@ import {
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
+import { Badge } from "../ui/shadcn/badge";
+import { Button } from "../ui/shadcn/button";
+import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
@@ -263,7 +265,7 @@ export default function VideoTags({
   const createLabel =
     exactOption === null && trimmed !== "" ? (
       <span className="flex min-w-0 items-center gap-2">
-        <Plus className="size-3.5 shrink-0 text-fg-muted" aria-hidden="true" />
+        <Plus className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
         <span className="truncate">{t.player.tags.create(trimmed)}</span>
       </span>
     ) : null;
@@ -276,27 +278,35 @@ export default function VideoTags({
           <li key={tag.id} className="min-w-0 max-w-full">
             {isFolderOnly(tag) ? (
               // フォルダ名からだけ付いているタグは動画ごとには外せないので、×
-              // を出さず、破線の枠と Folder の目印で出す。大きさ（h-6・text-xs）と
+              // を出さず、破線の枠の Badge（outline）と Folder の目印で出す。大きさと
               // 文字の色は面のあるチップと同じ（017 の ui-design.md
               // 「Folder-derived tag chip」「Interaction states」）。
-              <Link
-                to={`/?tag=${String(tag.id)}`}
-                title={tag.name}
-                aria-label={
-                  tag.tentative
-                    ? t.player.tags.filterByFromFolderTentative(tag.name)
-                    : t.player.tags.filterByFromFolder(tag.name)
-                }
-                className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-dashed border-border-strong px-2 text-xs text-fg hover:border-solid hover:text-fg"
+              <Badge
+                asChild
+                variant="outline"
+                className="max-w-full justify-start border-dashed border-input font-normal hover:border-solid"
               >
-                <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />
-                <span className="min-w-0 truncate">{tag.name}</span>
-                {tag.tentative && <TentativeMark />}
-              </Link>
+                <Link
+                  to={`/?tag=${String(tag.id)}`}
+                  title={tag.name}
+                  aria-label={
+                    tag.tentative
+                      ? t.player.tags.filterByFromFolderTentative(tag.name)
+                      : t.player.tags.filterByFromFolder(tag.name)
+                  }
+                >
+                  <Folder className="text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 truncate">{tag.name}</span>
+                  {tag.tentative && <TentativeMark />}
+                </Link>
+              </Badge>
             ) : (
-              <span
+              // 手で付けたタグは secondary の Badge で、名前（絞り込みのリンク）と外す × を
+              // 中に並べる（web/registry/rules/components.md「Badge」）。
+              <Badge
+                variant="secondary"
                 title={tag.name}
-                className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
+                className="max-w-full justify-start gap-0 pr-0 font-normal"
               >
                 {/* 仮のタグは名前の後ろに目印を置く。名前が省略されても目印は
                     残るよう、名前だけを truncate にする（031 の ui-design.md
@@ -309,7 +319,7 @@ export default function VideoTags({
                       : t.player.tags.filterBy(tag.name)
                   }
                   className={cn(
-                    "min-w-0 hover:text-link",
+                    "min-w-0 hover:text-primary",
                     tag.tentative ? "inline-flex items-center gap-1" : "truncate",
                   )}
                 >
@@ -322,51 +332,55 @@ export default function VideoTags({
                     tag.name
                   )}
                 </Link>
-                <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
-                <button
+                <span aria-hidden="true" className="ml-1.5 h-4 w-px shrink-0 bg-input" />
+                <Button
                   ref={(node) => {
                     if (node) buttonRefs.current.set(tag.id, node);
                     else buttonRefs.current.delete(tag.id);
                   }}
-                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   aria-label={t.player.tags.remove(tag.name)}
                   disabled={removingIds.has(tag.id)}
                   onClick={() => removeTag(tag, index)}
-                  className={cn(
-                    "flex size-6 items-center justify-center rounded-r-sm hover:bg-hover-wash",
-                    "disabled:pointer-events-none disabled:opacity-50",
-                  )}
+                  // チップの高さ（h-6）に合わせた × の的。
+                  className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
                 >
-                  <X className="size-3" aria-hidden="true" />
-                </button>
-              </span>
+                  <X aria-hidden="true" />
+                </Button>
+              </Badge>
             )}
           </li>
         ))}
         <li>
-          <Combobox
+          <TagCommand
+            layout="dropdown"
+            label={t.player.tags.add}
             value={inputValue}
             onValueChange={setInputValue}
-            options={options}
-            exactOption={exactOption}
+            choices={options}
+            exactChoice={exactOption}
             onSelect={(option) =>
               submitAdd({ id: Number(option.id), name: option.label })
             }
             createLabel={createLabel}
             onCreate={(spelling) => submitAdd({ name: spelling })}
-            placeholder={t.player.tags.add}
-            icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
+            icon={
+              <Plus
+                className="size-3 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+            }
             busy={submitting}
-            aria-label={t.player.tags.add}
             inputRef={inputRef}
             // 一覧が閉じているときの Esc は、入力を空にする
             // （ui-design.md「Add input」）。
-            onEscapeWhenClosed={() => setInputValue("")}
+            onEscape={() => setInputValue("")}
           />
         </li>
       </ul>
       {opError !== null && (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-xs text-destructive">
           {opError}
         </p>
       )}
@@ -378,7 +392,7 @@ function buildOptions(
   allTags: readonly Tag[],
   attachedIds: ReadonlySet<number>,
   input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
+): { options: TagChoice[]; exactOption: TagChoice | null } {
   const trimmed = input.trim();
   const query = trimmed.toLowerCase();
 
@@ -416,14 +430,14 @@ function buildOptions(
       return compareNatural(a.tag.name, b.tag.name);
     });
 
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
+  const options: TagChoice[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
     hint,
     meta: t.player.tags.videoCount(tag.videoCount),
   }));
 
-  const exactOption: ComboboxOption | null =
+  const exactOption: TagChoice | null =
     exactTag === undefined
       ? null
       : {

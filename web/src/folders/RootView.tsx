@@ -7,18 +7,20 @@ import { useRootFolders } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
-import TopBarPortal from "../shell/TopBarPortal";
-import { buttonClassName } from "../ui/Button";
-import { Grid } from "../videoList/Grid";
+import { CardGrid } from "../ui/patterns/card-grid";
+import { ListPage } from "../ui/patterns/list-page";
+import { PageHeader } from "../ui/patterns/page-header";
+import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
-import { EmptyState, GuestEmpty, LoadFailed } from "../videoList/states";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
-import FolderCard, { FolderCardSkeleton } from "./FolderCard";
+import FolderCard from "./FolderCard";
+import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { type RootDisplay, rootFolderName } from "./folderPath";
 import { Section } from "./layout";
 import RootSearchResults, { ROOT_SEARCH_KEY } from "./RootSearchResults";
+import { CardsLoading, FolderEmpty, GuestEmpty, LoadFailed } from "./states";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
 
@@ -53,7 +55,7 @@ export default function RootView() {
       ? undefined
       : takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
   );
-  const heading = useArrival(restored !== undefined);
+  const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
   // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
@@ -84,40 +86,48 @@ export default function RootView() {
   }, [reload, scan.finished]);
 
   return (
-    <>
-      <h1 ref={heading} tabIndex={-1} className="sr-only">
-        {t.folders.title}
-      </h1>
-      <TopBarPortal>
-        <FolderToolbar
-          query={criteria.query}
-          onQueryCommit={commitQuery}
-          searchRef={searchField}
-          searchLabel={t.folders.searchAll}
-          searchPlaceholder={t.folders.searchAllPlaceholder}
-          sort={criteria.sort}
-          onSortChange={changeSort}
-          onShuffle={shuffle}
-          watch={criteria.watch}
-          onWatchChange={changeWatch}
-          playable={criteria.playable}
-          onPlayableChange={changePlayable}
-          favorite={criteria.favorite}
-          onFavoriteChange={changeFavorite}
-          canClear={hasConditions(criteria)}
-          onClear={clearAll}
-          disabled={!searching}
-          zoom={zoom}
-          onZoomChange={changeZoom}
-        />
-      </TopBarPortal>
-      <Breadcrumbs
-        crumbs={
-          searching ? [{ label: t.folders.searchingAll }] : [{ label: t.folders.title }]
-        }
-      />
-
-      <div ref={listRef} className="flex flex-col gap-3">
+    <ListPage
+      header={
+        <>
+          <Breadcrumbs
+            crumbs={
+              searching
+                ? [{ label: t.folders.searchingAll }]
+                : [{ label: t.folders.title }]
+            }
+          />
+          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          <PageHeader titleHidden titleRef={heading} title={t.folders.title} />
+        </>
+      }
+      toolbar={
+        <TopBarPortal>
+          <FolderToolbar
+            query={criteria.query}
+            onQueryCommit={commitQuery}
+            searchRef={searchField}
+            searchLabel={t.folders.searchAll}
+            searchPlaceholder={t.folders.searchAllPlaceholder}
+            sort={criteria.sort}
+            onSortChange={changeSort}
+            onShuffle={shuffle}
+            watch={criteria.watch}
+            onWatchChange={changeWatch}
+            playable={criteria.playable}
+            onPlayableChange={changePlayable}
+            favorite={criteria.favorite}
+            onFavoriteChange={changeFavorite}
+            canClear={hasConditions(criteria)}
+            onClear={clearAll}
+            disabled={!searching}
+            zoom={zoom}
+            onZoomChange={changeZoom}
+          />
+        </TopBarPortal>
+      }
+    >
+      {/* 倍率を変える前の位置の目印を探す入れ物。間隔は骨格が持つので箱を作らない。 */}
+      <div ref={listRef} className="contents">
         {searching ? (
           <RootSearchResults
             criteria={criteria}
@@ -130,14 +140,14 @@ export default function RootView() {
           <LoadFailed reason={roots.error} onRetry={roots.reload} />
         ) : !roots.loading && folders.length === 0 ? (
           owner ? (
-            <EmptyState
-              icon={FolderOpen}
+            <FolderEmpty
+              icon={<FolderOpen aria-hidden="true" />}
               title={t.folders.noMediaFolders.title}
               description={t.folders.noMediaFolders.description}
               action={
-                <Link to="/settings" className={buttonClassName("primary")}>
-                  {t.folders.noMediaFolders.openSettings}
-                </Link>
+                <Button asChild size="sm">
+                  <Link to="/settings">{t.folders.noMediaFolders.openSettings}</Link>
+                </Button>
               }
             />
           ) : (
@@ -148,18 +158,18 @@ export default function RootView() {
             title={t.folders.mediaFolders}
             count={roots.loading ? undefined : folders.length}
           >
-            <Grid zoom={zoom}>
-              {roots.loading ? (
-                <FolderCardSkeleton count={6} />
-              ) : (
-                folders.map((folder) => (
+            {roots.loading ? (
+              <CardsLoading zoom={zoom} count={6} />
+            ) : (
+              <CardGrid size={zoom}>
+                {folders.map((folder) => (
                   <FolderCard key={folder.rootId} folder={folder} showPath={owner} />
-                ))
-              )}
-            </Grid>
+                ))}
+              </CardGrid>
+            )}
           </Section>
         )}
       </div>
-    </>
+    </ListPage>
   );
 }

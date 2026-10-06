@@ -278,9 +278,9 @@ describe("RelatedVideos", () => {
       expect(current?.textContent).toContain("ep03");
       expect(current && within(current).queryByRole("link")).toBeNull();
       const surface = current?.firstElementChild;
-      expect(surface?.className).toContain("bg-active-wash");
+      expect(surface?.className).toContain("bg-accent");
       expect(surface?.className).toContain("border-l-2");
-      expect(surface?.className).toContain("border-accent");
+      expect(surface?.className).toContain("border-primary");
       expect(screen.queryByRole("link", { name: /ep03/ })).toBeNull();
     });
 

@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import IconButton from "../ui/IconButton";
+import { Button } from "../ui/shadcn/button";
 import { formatNumber } from "./format";
 import { t } from "./messages";
 import {
@@ -18,9 +18,9 @@ function CatalogCard({ title, count }: { title: string; count: number }) {
       <p>
         {t.count.videos(count)} · {formatNumber(count)}
       </p>
-      <IconButton label={t.common.close} tooltip={false}>
+      <Button variant="ghost" size="icon" aria-label={t.common.close}>
         ×
-      </IconButton>
+      </Button>
     </article>
   );
 }

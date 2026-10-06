@@ -15,23 +15,26 @@ import {
   Timer,
 } from "lucide-react";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 
 import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import {
-  MenuContent,
-  MenuLabel,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuRoot,
-  MenuTrigger,
-} from "../ui/Menu";
-import SegmentedControl from "../ui/SegmentedControl";
-import Tooltip from "../ui/Tooltip";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "../ui/shadcn/dropdown-menu";
+import { FieldLegend, FieldSet } from "../ui/shadcn/field";
+import { Label } from "../ui/shadcn/label";
+import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+import IconToggleGroup from "./IconToggleGroup";
 import {
   directionLabel,
   directionToggleLabel,
@@ -165,12 +168,12 @@ export function CompactSortControls({
       disabled={disabled}
     >
       {direction === undefined ? (
-        <Button variant="ghost" size="sm" onClick={onShuffle} disabled={disabled}>
-          <Dices />
+        <Button variant="outline" size="sm" onClick={onShuffle} disabled={disabled}>
+          <Dices aria-hidden="true" />
           {t.list.sort.shuffle}
         </Button>
       ) : (
-        <SegmentedControl<SortDirection>
+        <IconToggleGroup<SortDirection>
           label={t.list.sort.direction}
           value={direction}
           onValueChange={(next) => onSortChange(withDirection(sort, next))}
@@ -178,12 +181,12 @@ export function CompactSortControls({
             {
               value: "desc",
               label: directionLabel(sort, "desc"),
-              icon: <ArrowDownWideNarrow />,
+              icon: <ArrowDownWideNarrow aria-hidden="true" />,
             },
             {
               value: "asc",
               label: directionLabel(sort, "asc"),
-              icon: <ArrowUpNarrowWide />,
+              icon: <ArrowUpNarrowWide aria-hidden="true" />,
             },
           ]}
         />
@@ -230,44 +233,50 @@ export function SortMenuView<T extends string>({
 }) {
   return (
     <div className="flex">
-      <MenuRoot>
-        <MenuTrigger asChild>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
           <Button
-            variant="secondary"
+            variant="outline"
+            size="sm"
             aria-label={currentLabel}
             disabled={disabled}
             className={cn(toggle !== undefined && "rounded-r-none")}
           >
             {label}
-            <ChevronDown className="-mr-1 text-fg-muted" />
+            <ChevronDown aria-hidden="true" className="text-muted-foreground" />
           </Button>
-        </MenuTrigger>
-        <MenuContent align="start">
-          <MenuLabel>{heading}</MenuLabel>
-          <MenuRadioGroup
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuLabel>{heading}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
             value={value}
             onValueChange={(next) => onValueChange(next as T)}
           >
             {options.map((option) => (
-              <MenuRadioItem key={option.value} value={option.value}>
-                <option.icon />
+              <DropdownMenuRadioItem key={option.value} value={option.value}>
+                <option.icon aria-hidden="true" />
                 {option.label}
-              </MenuRadioItem>
+              </DropdownMenuRadioItem>
             ))}
-          </MenuRadioGroup>
-        </MenuContent>
-      </MenuRoot>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {toggle !== undefined && (
-        <Tooltip content={toggle.label}>
-          <Button
-            variant="secondary"
-            aria-label={toggle.label}
-            disabled={disabled}
-            className="rounded-l-none px-2.5"
-            onClick={toggle.onClick}
-          >
-            {toggle.icon}
-          </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              aria-label={toggle.label}
+              disabled={disabled}
+              // メニューのボタンに接して 1 つの組に見せる（間の縁は 1 本にする）。
+              className="rounded-l-none border-l-0"
+              onClick={toggle.onClick}
+            >
+              {toggle.icon}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{toggle.label}</TooltipContent>
         </Tooltip>
       )}
     </div>
@@ -296,37 +305,32 @@ export function CompactSortView<T extends string>({
   disabled?: boolean;
   children?: ReactNode;
 }) {
+  const idPrefix = useId();
   return (
-    <fieldset className="space-y-2" disabled={disabled}>
-      <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-        {heading}
-      </legend>
-      <div className="grid grid-cols-2 gap-1">
-        {options.map((option) => (
-          <label
-            key={option.value}
-            className={cn(
-              "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-1 text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
-              value === option.value
-                ? "bg-accent text-accent-fg"
-                : "text-fg hover:bg-hover-wash",
-              disabled && "pointer-events-none opacity-50",
-            )}
-          >
-            <input
-              type="radio"
-              name={name}
-              value={option.value}
-              checked={value === option.value}
-              onChange={() => onValueChange(option.value)}
-              className="sr-only"
-            />
-            <option.icon className="size-4 shrink-0" />
-            <span className="truncate">{option.label}</span>
-          </label>
-        ))}
-      </div>
+    <FieldSet disabled={disabled} className="gap-3">
+      <FieldLegend variant="label">{heading}</FieldLegend>
+      <RadioGroup
+        name={name}
+        value={value}
+        onValueChange={(next) => onValueChange(next as T)}
+        disabled={disabled}
+        className="grid-cols-2 gap-2"
+      >
+        {options.map((option) => {
+          const id = `${idPrefix}-${option.value}`;
+          return (
+            <div key={option.value} className="flex min-w-0 items-center gap-2">
+              <RadioGroupItem id={id} value={option.value} />
+              <Label htmlFor={id} className="min-w-0 font-normal">
+                <option.icon aria-hidden="true" className="size-4 shrink-0" />
+                {/* 狭い幅でも名前を切らず、2 行に折り返す。 */}
+                <span>{option.label}</span>
+              </Label>
+            </div>
+          );
+        })}
+      </RadioGroup>
       {children}
-    </fieldset>
+    </FieldSet>
   );
 }

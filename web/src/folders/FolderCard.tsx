@@ -4,7 +4,6 @@ import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
 import { t, type UiText } from "../i18n";
-import Skeleton from "../ui/Skeleton";
 import FolderArt from "../videoList/FolderArt";
 import { folderUrl } from "./folderPath";
 
@@ -20,20 +19,18 @@ export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
 }
 
 /**
- * FolderCard はフォルダ1件のカードである。動画カードと同じ幅と境界を使い、
- * フォルダの絵柄と名前の目印で動画から区別する。
+ * FolderCard はフォルダ1件のカードである。動画カードと同じ格子の枡と境界を使い、
+ * フォルダの絵柄と名前の目印で動画から区別する。カード全体が1つのリンクで、
+ * キーボードのフォーカスは共通の輪郭でカードの縁に出る。
  * showPath は最上位（登録フォルダ）でパスを添えるとき。
  */
 function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boolean }) {
   return (
-    <article
-      data-folder-path={folder.path}
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-border-strong hover:shadow-card-hover has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-    >
+    <article data-folder-path={folder.path} className="flex min-w-0 flex-col">
       <Link
         to={folderUrl({ rootId: folder.rootId, path: folder.path })}
         aria-label={folderLabel(folder, showPath)}
-        className="flex min-w-0 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card text-card-foreground transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
       >
         <div className="relative aspect-video w-full">
           <FolderArt previews={folder.previews} />
@@ -41,14 +38,17 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
         <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
           <h3
             title={folder.name}
-            className="flex min-w-0 items-start gap-1.5 text-sm leading-5 font-semibold text-fg sm:text-base sm:leading-6"
+            className="flex min-w-0 items-start gap-1.5 text-sm font-medium"
           >
-            <Folder aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-muted" />
+            <Folder
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+            />
             <span className="line-clamp-2 min-w-0 break-all">{folder.name}</span>
           </h3>
-          <p className="text-xs text-fg-muted tabular-nums">
+          <p className="text-xs text-muted-foreground tabular-nums">
             {t.folders.card.videos(folder.videoCount)}
-            <span className="text-fg-subtle"> · </span>
+            {" · "}
             {t.folders.card.folders(folder.folderCount)}
           </p>
           {showPath && folder.rootPath !== undefined && (
@@ -56,7 +56,7 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
             <p
               title={folder.rootPath}
               dir="rtl"
-              className="truncate text-left text-xs text-fg-muted"
+              className="truncate text-left text-xs text-muted-foreground"
             >
               <bdi dir="ltr">{folder.rootPath}</bdi>
             </p>
@@ -68,29 +68,3 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
 }
 
 export default memo(FolderCard);
-
-/** FolderCardSkeleton は読み込み中のフォルダカードである。 */
-export function FolderCardSkeleton({ count }: { count: number }) {
-  return (
-    <>
-      {Array.from({ length: count }, (_, index) => (
-        <div
-          key={index}
-          aria-hidden="true"
-          className="flex flex-col overflow-hidden rounded-lg bg-surface"
-        >
-          <div className="relative aspect-video w-full">
-            <div className="absolute inset-x-3 top-3 bottom-2">
-              <Skeleton className="absolute top-0 left-0 h-3 w-2/5 rounded-b-none" />
-              <Skeleton className="absolute inset-x-0 top-2 bottom-0 rounded-tl-none" />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1.5 px-3 pt-2 pb-3">
-            <Skeleton className="h-4 w-3/5" />
-            <Skeleton className="h-3 w-2/5" />
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}

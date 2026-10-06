@@ -51,7 +51,7 @@ The system serves one user on their own machine, so **simple operation** and
 | Backend language | Go (version in `go.mod`) | A single binary; the standard library covers a resident process and child processes; small memory use on a NAS |
 | HTTP server | Standard `net/http` (Go 1.22+ `ServeMux`) | Method routing and path wildcards are built in, and `http.ServeContent` implements Range serving |
 | Video delivery | `http.ServeContent` for supported formats; per-request fragmented MP4 for others | Transcoded output is not stored ([live transcoding seek](live-transcode-seek.md)) |
-| Frontend | React + Vite + React Router + Tailwind CSS | An SPA whose static build is embedded in the binary with `embed` |
+| Frontend | React + Vite + React Router + Tailwind CSS, components from shadcn/ui on Radix | An SPA whose static build is embedded in the binary with `embed`; the components and tokens form the [design system](design-system.md) |
 | API contract | OpenAPI 3.1 as source; Go from `oapi-codegen`, TypeScript from `openapi-typescript` | Type drift between the two languages becomes a compile error |
 | DB | SQLite (`modernc.org/sqlite`, no CGO, WAL mode) | Cross-compiles as a static binary for a small alpine image |
 | Queries | Hand-written SQL through `database/sql` | SQL, including FTS5, stays the primary source |

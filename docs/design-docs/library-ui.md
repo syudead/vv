@@ -6,7 +6,7 @@
 
 The screens share one set of visual values in CSS, and tests check what a
 machine can check. The values (colours, radii, card widths) live only in
-`@theme` in [`web/src/index.css`](../../web/src/index.css) and the checked
+`@theme` in [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css) and the checked
 pairs only in [`tokens.test.ts`](../../web/src/theme/tokens.test.ts); they are
 not copied here.
 
@@ -14,19 +14,27 @@ The diagram shows where the values live and who checks each part.
 
 ```mermaid
 flowchart LR
-  theme["@theme in index.css"] --> classes[Tailwind utility classes]
+  theme["@theme in tokens.css"] --> classes[Tailwind utility classes]
   classes --> screens[Screens in web/src]
   test[tokens.test.ts] -->|contrast| theme
   test -->|raw colour scan| screens
+  lint[ESLint] -->|class outside the theme| screens
   people[People on devices] -->|layout| screens
 ```
 
 ## Visual values in one CSS location, with contrast guaranteed by tests
 
 Screens set visual values only through the utility classes Tailwind generates
-from `@theme` (`bg-surface`, `text-fg-muted`, `rounded-md`), and
+from `@theme` (`bg-card`, `text-muted-foreground`, `rounded-md`), and
 `tokens.test.ts` checks that every listed text/surface pair reaches a WCAG 2
 contrast of at least 4.5.
+
+`@theme` in `tokens.css` starts by resetting Tailwind's default namespaces for
+colours, type, weights, spacing, radii, shadows and animations
+(`--color-*: initial`, `--spacing: initial` and the rest), then defines only
+the design system's steps. Tailwind therefore generates no class outside the
+scale, and ESLint's `no-unknown-classes` fails one written in a screen
+([design-system.md, Foundations](design-system.md#foundations)).
 
 CSS is the source because it leaves screens no option other than token names.
 With the values in one file, the contrast check reads only that file.
@@ -49,18 +57,10 @@ from the pairs is not checked, so **a new text or surface colour must be added
 to the pairs**; the test catches a listed pair missing from CSS, not the
 reverse.
 
-| Role | Token |
-| --- | --- |
-| Shell and surfaces | Supplied dark `navbar`, `bg`, `surface` |
-| Primary action | Cyan `accent`; `accent-hover` on hover; `accent-active` pressed and selected |
-| Borders of shared controls | `control-border` |
-| Keyboard focus | `link` |
-| Danger, warning, success | Own semantic colour, always with text and an icon |
-| Favorite mark | Pink `favorite`, used by nothing else ([035 UI design, Mark](../../specs/035-favorites/ui-design.md)) |
-
-The semantic colours and the pink stay apart from cyan so they are not read as
-interaction states. The test covers body text on surfaces, the main borders and
-focus.
+Which token plays which role (surfaces, the cyan `primary`, control borders,
+focus, the semantic colours and the favorite pink) is set in
+[design-system.md, Foundations](design-system.md#foundations). The test covers
+body text on surfaces, the main borders and focus.
 
 | Rejected | Why |
 | --- | --- |
@@ -73,9 +73,10 @@ focus.
 `prefers-color-scheme` branch and no switch.
 
 A switch doubles the sets under contrast checking, and one set would go stale
-unseen. Token names describe roles (`bg`, `surface`, `elevated`, `fg`,
-`fg-muted`, `accent`, `danger`, `warning`), not colours (`neutral-850`), so a
-later light scheme is a second set of values with no screen changes.
+unseen. Token names describe roles (`background`, `card`, `popover`,
+`foreground`, `muted-foreground`, `primary`, `destructive`, `warning`), not
+colours (`neutral-850`), so a later light scheme is a second set of values with
+no screen changes.
 
 ## No virtual scrolling
 
@@ -95,10 +96,12 @@ viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
 reason above applies there: it is one column, and rows arrive 100 at a time
 from the server for the current conditions. The document stays the scroll
 owner, the list keeps the focused row drawn, and Tab crosses the edge of the
-drawn range, so keyboard order reaches every row. Its toolbar, tab and column
-headings stay as one sticky band under the top bar; the page measures the band
-and passes its height to the virtualizer and to `scroll-padding-top`, so a
-focused row never hides under it
+drawn range, so keyboard order reaches every row. The screen is the admin
+table page pattern: the header, tabs and toolbar scroll with the page, the
+rows are the body of a `DataTable`, and rows outside the drawn range are kept
+as empty spacer rows so the columns stay aligned. The page passes the fixed top
+bar's height (`--spacing-navbar`) to the virtualizer and to
+`scroll-padding-top`, so a focused row never hides under the top bar
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
 
 ### The window owns scrolling
@@ -118,7 +121,10 @@ reads width in JavaScript ([`useSidebar.ts`](../../web/src/shell/useSidebar.ts))
 Watching width in JavaScript brings a watcher, a one-frame flicker on the first
 render, and a `matchMedia` stub in tests. The sidebar is the exception because
 it interprets the user's open/close choice per width and keeps the drawer's
-open state, which CSS cannot express. Its breakpoints equal `lg` and `sm`:
+open state, which CSS cannot express. The notices
+([`Toast.tsx`](../../web/src/ui/Toast.tsx)) are the other: Sonner takes its
+position as a prop, so list screens read `lg` to move notices from under the
+top bar to the bottom centre, above the selection bar. The sidebar's breakpoints equal `lg` and `sm`:
 
 ```mermaid
 flowchart LR
@@ -156,8 +162,10 @@ unresolved, and faking them gives passing tests on a broken screen.
 ## List layout
 
 Lists use a dense management-screen layout: a top bar, a filter band and boxed
-cards, shared by the library and folder pages through one grid
-([`Grid.tsx`](../../web/src/videoList/Grid.tsx)).
+cards. The library page lays its cards out with
+[`Grid.tsx`](../../web/src/videoList/Grid.tsx), and the folder pages with the
+registry's card grid
+([`card-grid.tsx`](../../web/src/ui/patterns/card-grid.tsx)).
 
 The diagram shows the parts of a list screen.
 
@@ -173,10 +181,27 @@ flowchart LR
 ### Shell and toolbar
 
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰, the
-logo and `Refresh library`, and each screen inserts its toolbar between them.
+logo and `Refresh library`. The library, the folder pages and the tags page
+insert their toolbar between them: the design-system `Toolbar` with
+`placement="topBar"`, rendered through
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
+starts with the heading and the count, so the toolbar stays reachable at any
+scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+is a band stuck under the top bar, so the parent folders stay one click away at
+any scroll position. The breadcrumb's last segment names the folder, so the
+page's `h1` is for screen readers only and no visible title repeats it
+([design-system.md, Page patterns](design-system.md#page-patterns)).
+The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
+header (or, while rows are selected, the selection bar) and tabs stick under
+the top bar, and the table's column header sticks right under them.
+On the library and folder pages, changing the search, a filter, a tag or the
+sort order scrolls the page back to the top, so the new list starts from its
+first card. Returning from the player still restores the saved position.
 The sidebar has three states (expanded, rail, drawer; see
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)); collapsing
-it widens the grid, while card width follows the zoom level. Guest rules are in
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
+The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
+small label in a 56px (`rail-item`) square, so every entry stays named.
+Collapsing it widens the grid, while card width follows the zoom level. Guest rules are in
 [016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
 
 | Part | Owner | Guest |
@@ -187,14 +212,20 @@ it widens the grid, while card width follows the zoom level. Guest rules are in
 | Sort orders | 9 | 7 |
 | Watch status and `Favorites only` filters | Shown | Hidden |
 
-The toolbar holds search, filters, view (library only), zoom and sort.
+The toolbar holds search, filters, sort, view (library only) and zoom, in
+that Tab order. It never wraps: the search field takes the remaining width,
+and each view control moves into the icon-only `View and sort` popover below
+the width where it joins the row.
 
 | Width | Toolbar |
 | --- | --- |
-| Wide | All controls inline |
-| Narrow | View, zoom and sort move into `View and sort` |
-| Below `md` | Sort orders fill two radio columns row-first: 5 rows owner, 4 guest |
+| `xl` and up | All controls inline |
+| `md` to `xl` | Sort inline from `md`, view (library) from `lg`, zoom from `xl`; the rest in `View and sort` |
+| Below `md` | Sort orders in `View and sort` as two radio columns row-first (5 rows owner, 4 guest), direction or `Shuffle` under them |
 | Below `sm` | One full-width column at any zoom; zoom hidden |
+
+The tags page uses the same row with search, filter and sort; below `md` its
+sort moves into the icon-only `Sort` popover.
 
 The count sits in the row above the grid for the library and search results,
 and in the section heading for a folder's direct contents.
@@ -256,12 +287,12 @@ discarded and reloads on the next visit.
 
 The owner's favorite mark is one heart that is both mark and toggle, at the
 top right of the thumbnail on video and group cards
-([`FavoriteToggle.tsx`](../../web/src/videoList/FavoriteToggle.tsx),
+([`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx),
 [035 UI design, Mark, Card](../../specs/035-favorites/ui-design.md)).
 
 | Aspect | Rule |
 | --- | --- |
-| Shape | 22px heart in a 28px hit area, no fill or border behind it |
+| Shape | 20px heart in a 32px hit area, no fill or border behind it |
 | Readability | Dark `drop-shadow-mark` on cards; none in list view |
 | On | Filled pink `favorite`, everywhere |
 | Off | White outline, shown only on hover or focus (always where hover is impossible) |
@@ -298,28 +329,14 @@ every item during selection. What a group's check selects is in
 
 The selection bar is fixed to the bottom of the screen from the first selected
 item, without moving or resizing the toolbar. Action names are never shortened,
-so they read on devices without hover.
+so they read on devices without hover; the design-system bar
+(`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
+fit.
 
-Its items, in order, are `N selected`, `Add tag`, `Remove tag`, `Favorite`,
-`Visibility`, `Bundle as versions` (2 or more videos), a separator, `Select
-all` and clear. Lines are decided by measuring the actual widths:
-
-```mermaid
-flowchart LR
-  w{Width sm or more?} -->|yes| one{One line fits?}
-  one -->|yes| line[One line]
-  one -->|no| sep[Separator onward to line 2]
-  sep --> still{Line 1 fits?}
-  still -->|no| fav[Favorite onward to line 2]
-  w -->|no| narrow[Count, Select all, clear on top]
-  narrow --> wrap[Overflow moves Favorite onward down]
-```
-
-At `sm` and above the bar spans the full width instead of overflowing with
-`nowrap`, and moved items sit at the right end of line 2, `Favorite` and the
-rest before the separator. Below `sm`, the bottom line holds the two tag
-actions, `Favorite` and `Visibility`; what does not fit moves to the right end
-of the next line, then the line after.
+Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
+`Favorite`, `Visibility`, `Bundle as versions` (2 or more videos), a separator
+and `Select all`. The actions sit at the right end; those that do not fit move
+to the right end of the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
@@ -360,16 +377,20 @@ The video page (`/videos/:id`) is for watching, so it is less dense than the
 lists; shapes and text are in
 [012 UI design](../../specs/012-video-detail-ia/ui-design.md).
 
-The page is layered over the list with no shell and closes with × or Esc. The
-diagram shows its parts.
+The page is layered over the list with no shell and closes with × or Esc. It
+is built on the `DetailPage` skeleton
+([Design system, Page patterns](design-system.md#page-patterns)), which fills
+the window edge to edge: the header band with a bottom border, then a left
+column for watching and a right column for related videos, divided by a border.
+The diagram shows its parts.
 
 ```mermaid
 flowchart LR
   band[Header band] --> player[Player]
   player --> title[Title and tags]
   title --> vis[Visibility toggle]
-  vis --> info[File information]
-  player --> related[Related videos]
+  vis --> info[Information rows]
+  band --> related[Up next and related videos]
 ```
 
 | Part | Rule |
@@ -377,31 +398,44 @@ flowchart LR
 | Header band | Logo (home), breadcrumb to the folder, the only × |
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
-| Visibility toggle | `role="switch"`, below the title unit, above file information |
+| Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
+| Related videos | Plain rows under a small heading, without a card around them |
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
-[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception): at `lg` and
-above related videos form a right column, below that everything stacks, and
-below `md` the breadcrumb shows only its last segment.
+[Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
+
+| Width | Layout |
+| --- | --- |
+| `lg` and above | The page keeps the viewport's height; the left column scrolls on its own and the related list scrolls under its fixed heading. The right column is `detail-aside` wide, `detail-aside-wide` from `xl`. The player's height leaves room for the title, tags and both information rows |
+| Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the related list keep side padding |
+| Below `md` | The breadcrumb shows only its last segment |
+
+The player frame takes its size from the named steps `player-width`,
+`player-height` and their `-lg` forms in `tokens.css`, which read the video's
+aspect ratio from the frame at run time.
 
 ### Information rows
 
-Two rows under the title carry no lines, frames or labels.
+Two rows under the title, above which a divider runs, carry no frames or
+labels.
 
 | Row | Content |
 | --- | --- |
-| First | Duration, size, date added with icons; actions at the right end |
-| Second | Resolution, container, codec; smallest and most subdued |
+| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set; actions at the right end |
+| Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
-No path appears under the title, because the breadcrumb already shows the
-location.
+The actions are favorite, `Use current frame as thumbnail`, `Open file` and
+`Copy path`: icon-only ghost buttons with tooltips. Dates show the date only;
+the time is in the `title` attribute and in a popover opened by pressing the
+date. No path appears under the title, because the breadcrumb already shows
+the location.
 
 The owner's favorite toggle opens the right-hand action group, left of
-`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `IconButton`
-`sm`, `aria-pressed`). It is the group's only control with state, so the eye
-lands on it first; even so, it is no more prominent than the title: on is a small
-`bg-accent-soft` fill with the pink heart. It is absent on group rows and for
+`Use current frame as thumbnail` (`FavoriteToggle` `page` form: `Toggle` `sm`,
+`aria-pressed`). It is the group's only control with state, so the eye lands on
+it first; even so, it is no more prominent than the title: on is a small
+`bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
 
 ```mermaid
@@ -413,8 +447,8 @@ flowchart LR
 ```
 
 Updating the cached list means the library card has changed on return. The
-failure line sits directly below the information row, like open and capture
-failures, with no toast.
+failure line sits directly below the first information row, like open and
+capture failures, with no toast.
 
 ### Player states
 

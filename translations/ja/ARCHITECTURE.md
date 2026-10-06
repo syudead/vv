@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: caf177ebe0050ae5d085bc3ace955baa2af34ce9271c7a34333ccbf8400c1d06
+sourceHash: e91fbee04787d2015fe5e5128409a71e8795513c9e5ef413da88088ac3c77eba
 ---
 
 # アーキテクチャ {#architecture}
@@ -143,15 +143,16 @@ flowchart LR
 | `shell/` | トップバー、サイドバー、スキャンの状態、画面を囲む枠 |
 | `library/`、`folders/`、`settings/`、`tags/`、`player/`、`versions/` | それぞれの製品フロー |
 | `videoList/` | ライブラリ画面とフォルダ画面が共有する一覧の部品 |
-| `ui/` | 再利用できるプリミティブ |
-| `lib/` | ロケールに依存しない書式整形 |
+| `ui/` | 再利用できるプリミティブ。`web/registry.json` の shadcn レジストリとして公開する ([design-system.md](docs/design-docs/design-system.md)) |
+| `hooks/` | レジストリのコンポーネントが共有するフック（`use-mobile` など） |
+| `lib/` | 複数のフローが共有する補助: ロケールに依存しない書式整形、タグ名のルール、IME のキー処理 |
 | `i18n/` | 画面の文言と、ロケールに依存する書式整形 ([i18n.md](docs/design-docs/i18n.md)) |
 | `preferences/` | 端末ごとの表示設定 |
 | `theme/` | トークンのテストのみで、実行時のコードはない |
 
 ページとコンポーネントが自分で `fetch` を呼ぶことは決してないので、サーバーへの到達方法は 1 か所で変わる。認証ゲートはセッションから誰が閲覧しているかを判断し、ゲストを所有者専用の画面から遠ざけ、閲覧者が変わるたびにページを再読み込みする。そのため、前の閲覧者のために読んだものはメモリに残らない。
 
-再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/index.css` にだけ置かれる。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
+再生画面 (`/videos/:id`) にはシェルがない。独自のヘッダー帯の下にある 2 ペインの画面であり、これを 1 つのルーティング判断に留めることで、シェルはどの画面を囲んでいるかを知らずに済む。視覚トークンは `web/src/ui/tokens.css` にだけ置かれる。画面を組み立てるコンポーネント、トークン、使い方のルールは[デザインシステム](docs/design-docs/design-system.md)である。一覧の振る舞い、スクロール、表示設定は [library-ui.md](docs/design-docs/library-ui.md) にある。
 
 ## 原則 {#principles}
 

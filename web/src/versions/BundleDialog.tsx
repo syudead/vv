@@ -1,5 +1,5 @@
-import { LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useEffectEvent, useId, useRef, useState } from "react";
+import { CircleAlert, RotateCw } from "lucide-react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import {
   bundleVideos,
@@ -11,9 +11,12 @@ import {
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import Button from "../ui/Button";
-import { ModalFrame } from "../ui/ModalFrame";
-import Skeleton from "../ui/Skeleton";
+import { FormDialog } from "../ui/patterns/form-dialog";
+import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
+import { Button } from "../ui/shadcn/button";
+import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
+import { Skeleton } from "../ui/shadcn/skeleton";
+import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
@@ -47,7 +50,6 @@ export default function BundleDialog({
   onBundled: (versions: VideoVersions) => void;
 }) {
   const toast = useToast();
-  const name = useId();
   const cancel = useRef<HTMLButtonElement>(null);
   const submitButton = useRef<HTMLButtonElement>(null);
   const [rows, setRows] = useState<Rows>(() =>
@@ -140,97 +142,79 @@ export default function BundleDialog({
   const count = videoIds.length;
 
   return (
-    <ModalFrame
+    <FormDialog
+      open
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
       title={t.versions.bundle.title}
-      onClose={handleClose}
+      description={t.versions.bundle.description(count)}
+      onSubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+      cancelLabel={t.common.cancel}
+      submitLabel={
+        <>
+          {pending && <Spinner aria-hidden="true" />}
+          {t.versions.bundle.submit}
+        </>
+      }
+      pending={pending}
+      submitDisabled={chosen === null || rows.kind !== "ready"}
+      submitRef={submitButton}
+      cancelRef={cancel}
       initialFocus={cancel}
-      width="sm:max-w-lg"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-5">
-        <p className="text-sm text-fg-muted">{t.versions.bundle.description(count)}</p>
-        {rows.kind === "loading" && (
-          <div className="flex flex-col gap-1" aria-busy="true">
-            {Array.from({ length: Math.min(count, scrollAfterRows) }, (_, index) => (
-              <Skeleton key={index} className="h-12" />
-            ))}
-          </div>
-        )}
-        {rows.kind === "failed" && (
-          <div className="flex items-center gap-2">
-            <p role="alert" className="text-sm text-danger">
-              {t.versions.bundle.loadFailed}
-            </p>
-            <Button variant="ghost" size="sm" onClick={load}>
+      {rows.kind === "loading" && (
+        <div className="flex flex-col gap-1" aria-busy="true">
+          {Array.from({ length: Math.min(count, scrollAfterRows) }, (_, index) => (
+            <Skeleton key={index} className="h-12" />
+          ))}
+        </div>
+      )}
+      {rows.kind === "failed" && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{t.versions.bundle.loadFailed}</AlertTitle>
+          <AlertAction>
+            <Button variant="outline" size="sm" onClick={load}>
+              <RotateCw aria-hidden="true" />
               {t.common.retry}
             </Button>
-          </div>
-        )}
-        {rows.kind === "ready" && (
-          <div
-            role="radiogroup"
-            aria-label={t.versions.bundle.representative}
-            className={cn(
-              "divide-y divide-border",
-              rows.videos.length > scrollAfterRows && "max-h-80 overflow-y-auto",
-            )}
-          >
-            {rows.videos.map((video) => (
-              <RepresentativeRow
-                key={video.id}
-                video={video}
-                name={name}
-                checked={chosen === video.id}
-                disabled={pending}
-                onChoose={() => {
-                  setRepresentative(video.id);
-                  setFailure(null);
-                }}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-      {failure !== null && (
-        <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-danger sm:px-5">
-          {failure}
-        </p>
+          </AlertAction>
+        </Alert>
       )}
-      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
-        <Button ref={cancel} onClick={handleClose} disabled={pending}>
-          {t.common.cancel}
-        </Button>
-        <Button
-          ref={submitButton}
-          variant="primary"
-          onClick={submit}
-          disabled={pending || chosen === null || rows.kind !== "ready"}
-        >
-          {pending && (
-            <LoaderCircle
-              aria-hidden="true"
-              className="animate-spin motion-reduce:animate-none"
-            />
+      {rows.kind === "ready" && (
+        <RadioGroup
+          aria-label={t.versions.bundle.representative}
+          value={chosen === null ? "" : String(chosen)}
+          onValueChange={(next) => {
+            setRepresentative(Number(next));
+            setFailure(null);
+          }}
+          disabled={pending}
+          className={cn(
+            "grid-cols-1 gap-0 divide-y divide-border",
+            rows.videos.length > scrollAfterRows && "max-h-popover-wide overflow-y-auto",
           )}
-          {t.versions.bundle.submit}
-        </Button>
-      </div>
-    </ModalFrame>
+        >
+          {rows.videos.map((video) => (
+            <RepresentativeRow key={video.id} video={video} disabled={pending} />
+          ))}
+        </RadioGroup>
+      )}
+      {failure !== null && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{failure}</AlertTitle>
+        </Alert>
+      )}
+    </FormDialog>
   );
 }
 
-function RepresentativeRow({
-  video,
-  name,
-  checked,
-  disabled,
-  onChoose,
-}: {
-  video: Video;
-  name: string;
-  checked: boolean;
-  disabled: boolean;
-  onChoose: () => void;
-}) {
+function RepresentativeRow({ video, disabled }: { video: Video; disabled: boolean }) {
   const details = versionDetails(video);
   // 所有者だけの窓なので、行の title で絶対パスを読める（「Versions list」と同じ）。
   const detailsTitle = versionDetailsText(
@@ -254,23 +238,18 @@ function RepresentativeRow({
         disabled ? "cursor-default" : "cursor-pointer",
       )}
     >
-      <input
-        type="radio"
-        name={name}
-        value={video.id}
-        checked={checked}
-        disabled={disabled}
-        onChange={onChoose}
+      <RadioGroupItem
+        value={String(video.id)}
         aria-label={t.versions.bundle.row(video.title, versionDetailsText(details, " "))}
-        className="mt-0.5 size-4 shrink-0 accent-accent"
+        className="mt-0.5"
       />
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="truncate text-sm text-fg" title={video.title}>
+        <span className="truncate text-sm text-foreground" title={video.title}>
           {video.title}
         </span>
         <VersionDetailsLine details={details} title={detailsTitle} />
         {note !== "" && (
-          <span className="truncate text-xs text-fg-muted" title={note}>
+          <span className="truncate text-xs text-muted-foreground" title={note}>
             {note}
           </span>
         )}

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { setupAccount } from "../api/auth";
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import {
   connectionWarningId,
   CredentialField,
@@ -143,74 +143,68 @@ export default function SetupPage() {
       title={t.auth.setup.title}
       description={t.auth.setup.description}
       onSubmit={() => void submit()}
-    >
-      <div className="flex flex-col gap-4">
-        <UsernameField
-          ref={refs.username}
-          id="setup-username"
-          value={username}
-          onChange={(event) => setUsername(event.target.value)}
-          {...fieldProps("username")}
-          error={invalidField === "username" ? failure : null}
-          aria-describedby={describedBy(
-            invalidField === "username" && FAILURE_ID,
-            warning,
-          )}
-        />
-        <CredentialField
-          ref={refs.password}
-          id="setup-password"
-          label={t.auth.fields.password}
-          name="new-password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          {...fieldProps("password")}
-          error={invalidField === "password" ? failure : null}
-        />
-        <CredentialField
-          ref={refs.confirm}
-          id="setup-confirm"
-          label={t.auth.fields.confirmPassword}
-          name="confirm-password"
-          type="password"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={(event) => setConfirm(event.target.value)}
-          {...fieldProps("confirm")}
-          error={invalidField === "confirm" ? failure : null}
-        />
-      </div>
-      {invalidField === null && <FailureLine message={failure} />}
-      <Button
-        type="submit"
-        variant="primary"
-        size="lg"
-        className="w-full"
-        disabled={submitting || configured}
-        aria-busy={submitting}
-        aria-describedby={warning}
-      >
-        {submitting && (
-          <LoaderCircle
-            className="animate-spin motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-        )}
-        {submitting ? t.auth.setup.submitting : t.auth.setup.submit}
-      </Button>
-      {configured && (
-        // SPA の遷移にしない。ゲートが setupRequired を覚えたままなので、
-        // ページごと読み直して状態を確かめ直させる（ui-design.md「Setup behaviour」）。
-        <a
-          ref={loginLink}
-          href="/login"
-          className="self-start text-sm text-link underline underline-offset-4"
+      submit={
+        <Button
+          type="submit"
+          disabled={submitting || configured}
+          aria-busy={submitting}
+          aria-describedby={warning}
         >
-          {t.auth.setup.goToLogin}
-        </a>
-      )}
+          {submitting && (
+            <LoaderCircle
+              className="animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+          )}
+          {submitting ? t.auth.setup.submitting : t.auth.setup.submit}
+        </Button>
+      }
+      footer={
+        configured && (
+          // SPA の遷移にしない。ゲートが setupRequired を覚えたままなので、
+          // ページごと読み直して状態を確かめ直させる（ui-design.md「Setup behaviour」）。
+          <Button variant="link" size="sm" asChild>
+            <a ref={loginLink} href="/login">
+              {t.auth.setup.goToLogin}
+            </a>
+          </Button>
+        )
+      }
+    >
+      <UsernameField
+        ref={refs.username}
+        id="setup-username"
+        value={username}
+        onChange={(event) => setUsername(event.target.value)}
+        {...fieldProps("username")}
+        error={invalidField === "username" ? failure : null}
+        aria-describedby={describedBy(invalidField === "username" && FAILURE_ID, warning)}
+      />
+      <CredentialField
+        ref={refs.password}
+        id="setup-password"
+        label={t.auth.fields.password}
+        name="new-password"
+        type="password"
+        autoComplete="new-password"
+        value={password}
+        onChange={(event) => setPassword(event.target.value)}
+        {...fieldProps("password")}
+        error={invalidField === "password" ? failure : null}
+      />
+      <CredentialField
+        ref={refs.confirm}
+        id="setup-confirm"
+        label={t.auth.fields.confirmPassword}
+        name="confirm-password"
+        type="password"
+        autoComplete="new-password"
+        value={confirm}
+        onChange={(event) => setConfirm(event.target.value)}
+        {...fieldProps("confirm")}
+        error={invalidField === "confirm" ? failure : null}
+      />
+      {invalidField === null && <FailureLine message={failure} />}
     </CredentialScreen>
   );
 }
