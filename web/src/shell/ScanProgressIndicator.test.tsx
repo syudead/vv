@@ -519,7 +519,7 @@ describe("ScanProgressIndicator", () => {
     expect(dialog.textContent).not.toMatch(/\d/);
   });
 
-  it("acknowledges a failed notice before navigating to its details", async () => {
+  it("ends a failed notice when moving to its details", async () => {
     let state: Scan["state"] = "running";
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -771,7 +771,7 @@ describe("ScanProgressIndicator", () => {
     expect(status.textContent).toBe("");
   });
 
-  it("一部失敗は閉じるまで残り、失敗の本数と読み上げを示す", async () => {
+  it("一部失敗は失敗の本数と読み上げを示し、時間がたてば自動で閉じる", async () => {
     let current = scan();
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
@@ -798,9 +798,6 @@ describe("ScanProgressIndicator", () => {
       "The scan finished with some failures. 2 videos may not be usable.",
     );
 
-    await act(async () => vi.advanceTimersByTimeAsync(9000));
-    expect(screen.getByRole("button", { name: /^Some failed/ })).toBeDefined();
-
     await act(async () => fireEvent.focus(trigger));
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toContain("2 failed");
@@ -809,7 +806,7 @@ describe("ScanProgressIndicator", () => {
     expect(dialog.textContent).toContain("See Settings for the list.");
     await act(async () => fireEvent.blur(trigger));
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide the scan progress" }));
+    await act(async () => vi.advanceTimersByTimeAsync(8100));
     expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
   });
 

@@ -266,14 +266,17 @@ replace its opening, closing and dismissal.
 | --- | --- | --- |
 | Pointer enters the indicator or the summary | Opens | — |
 | Focus moves onto the indicator | Opens, unless the summary closed while the indicator kept focus | — |
-| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator | Pressing goes to `/settings#scan-status` |
+| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator | Pressing goes to `/settings#scan-status` and ends a result notice |
 | The hide button (`×`) is pressed, in any state | Closes | Hidden for the rest of that scan and for its result |
+| The scan ends (done, partial or failed) | — | Shows the result for 8 seconds, then hides itself |
 | The next scan starts | — | Shown again |
 
 The summary's open state changes only on these events. Deriving it from
 "hovered or focused" reopened it at once, because Radix returns focus to the
-trigger when a popover closes. A completed notice pauses its 8-second timer
-only while the summary is open.
+trigger when a popover closes. Every result, partial and failed included,
+hides itself after 8 seconds, because `Scan status` keeps it; the timer pauses
+only while the summary is open. The `×` is a muted ghost button inside the
+indicator's frame, not a second framed button.
 
 The hidden scan's id is kept in `localStorage` (`vv.scan-indicator-dismissed`),
 so a reload or another tab keeps it hidden, and a `storage` event hides it in

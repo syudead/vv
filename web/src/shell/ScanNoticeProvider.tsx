@@ -9,7 +9,6 @@ import {
   useState,
 } from "react";
 
-import type { Scan } from "../api/client";
 import { inProgress, useScan } from "./ScanProvider";
 import {
   dismissedStorageKey,
@@ -24,15 +23,6 @@ import {
 } from "./scanNoticeSession";
 
 const completionNoticeDuration = 8000;
-
-/**
- * persistent は、閉じる button で閉じるか設定へ移るまで残す結果かを返す。一部失敗は、
- * 使えない動画があることを離席していた所有者にも見せるため、失敗と同じく残す
- * （specs/024-import-progress/ui-design.md「Floating Indicator」）。
- */
-function persistent(scan: Scan | null | undefined): boolean {
-  return scan?.status === "failed" || scan?.status === "partial";
-}
 
 export interface ScanNoticeContextValue extends ScanNoticeSession {
   /** 右下の表示を閉じた取り込みの id。 */
@@ -154,7 +144,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     if (dismissedRef.current === current.id) return;
     if (
       session.completionNotice?.scanId === current.id &&
-      (persistent(current) || session.completionNotice.pausedRemainingMs !== null)
+      session.completionNotice.pausedRemainingMs !== null
     ) {
       return;
     }
@@ -184,7 +174,6 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     const notice = session.completionNotice;
     if (notice === null) return;
     if (!scan.loaded) return;
-    if (scan.scan?.id === notice.scanId && persistent(scan.scan)) return;
     if (completionNoticePaused || notice.pausedRemainingMs !== null) return;
     const remaining = notice.expiresAt - Date.now();
     const expire = () => {
@@ -229,10 +218,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     (paused: boolean) => {
       const currentSession = sessionRef.current;
       const notice = currentSession.completionNotice;
-      if (
-        notice === null ||
-        (scanRef.current?.id === notice.scanId && persistent(scanRef.current))
-      ) {
+      if (notice === null) {
         setCompletionNoticePausedState(false);
         return;
       }

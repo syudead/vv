@@ -69,8 +69,6 @@ export default function ScanProgressIndicator() {
       presentation.scan !== null &&
       presentation.scan.id === notice.dismissedScanId);
   const visible = !dismissed && (inProgressState(presentation.state) || terminalVisible);
-  // 一部失敗と失敗は、閉じるか設定へ移るまで残す。
-  const persistent = presentation.state === "partial" || presentation.state === "failed";
 
   const clearPointerCloseTimer = () => {
     if (pointerCloseTimer.current !== null) {
@@ -116,7 +114,8 @@ export default function ScanProgressIndicator() {
   const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     close();
-    if (persistent) notice.acknowledgeTerminalScan();
+    // 結果は設定で見るので、結果の通知はここで終える。
+    if (terminalVisible) notice.acknowledgeTerminalScan();
     navigate("/settings#scan-status");
   };
   const enterPointerArea = () => {
@@ -156,16 +155,17 @@ export default function ScanProgressIndicator() {
         {statusAnnouncement(presentation)}
       </span>
       <Popover open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
-        <div className="flex items-center gap-1">
+        {/* 本体と閉じる × を 1 つの枠にまとめる。× は控えめな ghost にする。 */}
+        <div className="flex max-w-full items-center rounded-md border border-input bg-popover shadow-elevated">
           <PopoverTrigger asChild>
             <Button
               ref={trigger}
-              variant="outline"
+              variant="ghost"
               onClick={goToDetails}
               onFocus={focusTrigger}
               onBlur={blurTrigger}
               aria-label={t.shell.scan.openStatus(indicatorName(presentation))}
-              className="max-w-full bg-popover font-normal shadow-elevated"
+              className="min-w-0 shrink font-normal"
             >
               <ScanStatusIcon state={presentation.state} />
               <span className="font-medium">{presentation.statusText}</span>
@@ -188,10 +188,10 @@ export default function ScanProgressIndicator() {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                variant="outline"
+                variant="ghost"
                 size="icon-sm"
                 aria-label={t.shell.scan.dismiss}
-                className="bg-popover shadow-elevated"
+                className="mr-0.5 size-7 text-muted-foreground"
                 onClick={dismissIndicator}
               >
                 <X aria-hidden="true" />
