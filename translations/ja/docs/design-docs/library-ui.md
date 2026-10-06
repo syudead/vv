@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: baa2536e635742e16dfb9753da9396c47f71d0f3704908acd980504c251ab95f
+sourceHash: 69695b567cbaa9740604728a0e0ad6f5559601a097b6d9a1cf1713f9b9ed03dd
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -124,7 +124,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付く。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |

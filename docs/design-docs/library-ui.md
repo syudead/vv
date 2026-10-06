@@ -193,7 +193,10 @@ page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar.
+the top bar, and the table's column header sticks right under them.
+On the library and folder pages, changing the search, a filter, a tag or the
+sort order scrolls the page back to the top, so the new list starts from its
+first card. Returning from the player still restores the saved position.
 The sidebar has three states (expanded, rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a

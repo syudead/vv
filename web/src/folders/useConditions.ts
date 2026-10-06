@@ -9,11 +9,13 @@ import {
 } from "../preferences/viewPreferences";
 import {
   clearConditions,
+  criteriaKey,
   type HistoryMode,
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
 import { useListCriteria } from "../videoList/useListCriteria";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 
 /**
  * useConditions は一覧の条件（検索語・視聴状態・再生可否・お気に入りのみ・並べ替え・seed）を
@@ -25,6 +27,7 @@ export function useConditions() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   const { criteria, apply } = useListCriteria(preferences.sort);
   const searchField = useRef<HTMLInputElement | null>(null);
+  useScrollTopOnChange(criteriaKey(criteria));
 
   const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);

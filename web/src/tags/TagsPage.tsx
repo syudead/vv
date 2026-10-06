@@ -344,6 +344,24 @@ export default function TagsPage() {
    */
   const bandRef = useRef<HTMLDivElement | null>(null);
   const [stuckBottom, setStuckBottom] = useState(0);
+  /**
+   * 表の列の見出しは帯の直下（stuckBottom）に貼り付く。行へスクロールするときは、
+   * 帯に加えて見出しの高さ（headHeight）も差し引く。
+   */
+  const [headHeight, setHeadHeight] = useState(0);
+  // 列の見出しの高さを測る。表が無い間（読み込み中・空）は 0。
+  const headRef = useCallback((head: HTMLTableSectionElement | null) => {
+    if (head === null) return;
+    const measure = () => setHeadHeight(head.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(head);
+    return () => {
+      observer.disconnect();
+      setHeadHeight(0);
+    };
+  }, []);
+  const rowsTop = stuckBottom + headHeight;
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
     const current = rowRefs.current.get(id) ?? {
@@ -1040,7 +1058,7 @@ export default function TagsPage() {
     estimateSize: () => ROW_ESTIMATE,
     overscan: ROW_OVERSCAN,
     scrollMargin,
-    scrollPaddingStart: stuckBottom,
+    scrollPaddingStart: rowsTop,
     rangeExtractor,
     getItemKey,
   });
@@ -1101,11 +1119,11 @@ export default function TagsPage() {
   useEffect(() => {
     const root = document.documentElement;
     const previous = root.style.scrollPaddingTop;
-    root.style.scrollPaddingTop = `${String(stuckBottom)}px`;
+    root.style.scrollPaddingTop = `${String(rowsTop)}px`;
     return () => {
       root.style.scrollPaddingTop = previous;
     };
-  }, [stuckBottom]);
+  }, [rowsTop]);
 
   /**
    * handleListFocus は、フォーカスを持った行を描き続ける行にする。スクロール
@@ -2226,13 +2244,13 @@ export default function TagsPage() {
           )}
 
           {showRows && (
-            <DataTable label={t.tags.title}>
+            <DataTable label={t.tags.title} stickyHeaderTop={stuckBottom}>
               {/*
                 列の見出し（ui-design.md「Column header」）。先頭のチェックは「読み込んだ
                 ものをすべて選ぶ」。読み込んだ行が上限を超えると押せず、理由を包みの title と
                 sr-only で添える。
               */}
-              <TableHeader>
+              <TableHeader ref={headRef}>
                 <TableRow className="hover:bg-transparent">
                   <TableHead>
                     <div
