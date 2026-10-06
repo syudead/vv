@@ -371,6 +371,91 @@ describe("ScanProgressIndicator", () => {
     ).toBeDefined();
   });
 
+  it("keeps a scan hidden while starting when only the start response is lost", async () => {
+    let current: Scan | null = null;
+    let rejectStart: ((reason: unknown) => void) | undefined;
+    let starts = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/scans" && init?.method === "POST") {
+        starts += 1;
+        if (starts === 1) {
+          return new Promise<Response>((_, reject) => {
+            rejectStart = reject;
+          });
+        }
+        return Promise.resolve(json(scan({ id: 8 }), 202));
+      }
+      return Promise.resolve(current === null ? json({}, 404) : json(current));
+    });
+    renderIndicator();
+    const user = userEvent.setup();
+    const start = screen.getByRole("button", { name: "start for test" });
+    await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+
+    await user.click(start);
+    await user.click(
+      await screen.findByRole("button", { name: "Hide the scan progress" }),
+    );
+    await act(async () => rejectStart?.(new TypeError("network")));
+
+    // サーバーは取り込みを始めていた。あとの知らせで見つかっても出さない。
+    current = scan({ id: 7 });
+    await emitServerEvent("scan", current);
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+    expect(window.localStorage.getItem("vv.scan-indicator-dismissed")).toContain(
+      '"scanId":7',
+    );
+
+    // 次の開始の取り込みは出す。
+    current = scan({ id: 7, state: "done" });
+    await emitServerEvent("scan", current);
+    await user.click(start);
+    current = scan({ id: 8 });
+    await emitServerEvent("scan", current);
+    expect(
+      await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ }),
+    ).toBeDefined();
+  });
+
+  it("shows the next scan when a hidden start really failed", async () => {
+    let current: Scan | null = null;
+    let rejectStart: ((reason: unknown) => void) | undefined;
+    let starts = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/scans" && init?.method === "POST") {
+        starts += 1;
+        if (starts === 1) {
+          return new Promise<Response>((_, reject) => {
+            rejectStart = reject;
+          });
+        }
+        return Promise.resolve(json(scan({ id: 3 }), 202));
+      }
+      return Promise.resolve(current === null ? json({}, 404) : json(current));
+    });
+    renderIndicator();
+    const user = userEvent.setup();
+    const start = screen.getByRole("button", { name: "start for test" });
+    await waitFor(() => expect(start.hasAttribute("disabled")).toBe(false));
+
+    await user.click(start);
+    await user.click(
+      await screen.findByRole("button", { name: "Hide the scan progress" }),
+    );
+    await act(async () => rejectStart?.(new TypeError("network")));
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+
+    current = scan({ id: 3 });
+    await user.click(start);
+    expect(
+      await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ }),
+    ).toBeDefined();
+  });
+
   it("hides the indicator when another tab closes it", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),

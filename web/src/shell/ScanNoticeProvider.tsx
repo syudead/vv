@@ -68,8 +68,11 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const [dismissedScanId, setDismissedScanId] = useState(readDismissedScanId);
   const dismissedRef = useRef(dismissedScanId);
   // 開始の途中で閉じたときは、まだ新しい取り込みの id が無い。開始前の id を覚えて待つ。
+  // 開始の応答だけを失っても、取り込みは始まっていて、あとの取得や知らせで見つかることが
+  // ある。そのため開始が終わっても待ち続け、次の開始を始めたときにやめる（settled）。
   const [pendingDismiss, setPendingDismiss] = useState<{
     baseline: number | null;
+    settled: boolean;
   } | null>(null);
 
   const updateSession = useCallback((next: ScanNoticeSession) => {
@@ -121,8 +124,12 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       dismiss(current.id);
       return;
     }
-    // 開始が失敗した。閉じる相手が無いので待つのをやめる。
-    if (!scan.starting) setPendingDismiss(null);
+    if (!scan.starting && !pendingDismiss.settled) {
+      setPendingDismiss({ ...pendingDismiss, settled: true });
+    } else if (scan.starting && pendingDismiss.settled) {
+      // 閉じたあとの開始は失敗し、今は別の開始を始めた。その取り込みは出す。
+      setPendingDismiss(null);
+    }
   }, [dismiss, pendingDismiss, scan.scan, scan.starting]);
 
   useEffect(() => {
@@ -212,7 +219,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const dismissIndicator = useCallback(() => {
     const current = scanRef.current;
     if (starting) {
-      setPendingDismiss({ baseline: current?.id ?? null });
+      setPendingDismiss({ baseline: current?.id ?? null, settled: false });
       return;
     }
     if (current !== null) dismiss(current.id);
