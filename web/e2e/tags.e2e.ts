@@ -1471,9 +1471,13 @@ test.describe.serial("video tags", () => {
       tagIds.set(longName, long.id);
       await attachTag(request, targetId, long.id);
 
-      for (const viewport of [
-        { width: 1280, height: 800 },
-        { width: 390, height: 844 },
+      // 1280×800 と 390×844 では30個の一覧が画面に収まり、並びはスクロールしない。
+      // 低い 390×300 では収まらず、並びの中のスクロールで最後のタグへ届くことを
+      // 確かめる（要件3）。
+      for (const { scrolls, ...viewport } of [
+        { width: 1280, height: 800, scrolls: false },
+        { width: 390, height: 844, scrolls: false },
+        { width: 390, height: 300, scrolls: true },
       ]) {
         await page.setViewportSize(viewport);
         await page.goto("/");
@@ -1537,7 +1541,7 @@ test.describe.serial("video tags", () => {
         expect(rendered.clipped).toBe(false);
         expect(rendered.lines).toBeGreaterThanOrEqual(2);
 
-        if (screenshotDir !== undefined) {
+        if (screenshotDir !== undefined && !scrolls) {
           await mkdir(screenshotDir, { recursive: true });
           await dialog.evaluate((element) => element.querySelector("ul")?.scrollTo(0, 0));
           await page.screenshot({
@@ -1553,7 +1557,24 @@ test.describe.serial("video tags", () => {
         const chips = dialog.getByRole("button");
         await expect(chips).toHaveCount(30 - (await visibleChipCount(card)));
         const lastChip = chips.last();
+        const list = dialog.getByRole("list");
+        if (scrolls) {
+          // 並びは板の高さを超え、最後のタグは並びをスクロールするまで見えない。
+          await list.evaluate((element) => element.scrollTo(0, 0));
+          const overflow = await list.evaluate((element) => ({
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+          }));
+          expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight);
+          const listTop = await list.boundingBox();
+          const hiddenBox = await lastChip.boundingBox();
+          if (listTop === null || hiddenBox === null) throw new Error("no layout");
+          expect(hiddenBox.y).toBeGreaterThanOrEqual(listTop.y + listTop.height);
+        }
         await lastChip.scrollIntoViewIfNeeded();
+        if (scrolls) {
+          expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        }
         const lastBox = await lastChip.boundingBox();
         const listBox = await dialog.boundingBox();
         if (lastBox === null || listBox === null) throw new Error("no layout");
