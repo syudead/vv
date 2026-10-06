@@ -66,12 +66,10 @@ flowchart LR
   change[Changed paths] --> code{Code or config?}
   code -->|no| docs[task check-docs]
   code -->|yes| groups[task check in parallel groups]
-  code -->|yes| e2e[E2E in four groups]
   docs --> checks[Checks job]
   groups --> checks
-  e2e --> browser[Browser E2E job]
   code -->|yes| push{Push to main?}
-  push -->|yes| image[Docker image build]
+  push -->|yes| more[E2E in four groups and Docker image build]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
@@ -81,8 +79,9 @@ lint, and the Vitest suite split into three shards (`task test-web --
 --shard=1/3`). A check added to `task check` also goes into one of these groups
 in `.github/workflows/ci.yml`. Vitest shards by file, so a test file that grows
 to dominate a shard is split by topic, as `web/src/tags/TagsPage*.test.tsx`
-are around the shared `web/src/testing/tagsPage.tsx`. The Docker image is
-built only for a push to `main`.
+are around the shared `web/src/testing/tagsPage.tsx`. A push to `main` is a
+merged pull request, so browser E2E and the Docker image build never run on a
+pull request; `Browser E2E` passes there without running.
 
 When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit
