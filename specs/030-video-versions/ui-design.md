@@ -326,7 +326,7 @@ before bundling (`UI品質` "a list item looks the same as a video's item today"
 ### Entry
 
 - "Duplicates" (lucide `Layers`, `/duplicates`, owner only; `ownerOnly` in `navEntries`) is added right after
-  "Tags" in the sidebar's upper section. Expanded, rail and drawer views behave as for the other entries. No count
+  "Tags" in the sidebar's upper section. Rail and drawer views behave as for the other entries. No count
   badge ("Why this shape").
 - The route has the same shape as `/tags` (inside `AppShell`, loaded only when used). A guest opening this URL is
   handled as for `/tags` (the gate handles the 401 from owner-only responses; 016 "Gate").

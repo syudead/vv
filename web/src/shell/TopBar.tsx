@@ -48,7 +48,10 @@ function ScanButton() {
   );
 }
 
-/** MenuButton はサイドバーを開閉する。狭い幅ではドロワーを開く。 */
+/**
+ * MenuButton は 639px 以下でサイドバーのドロワーを開閉する。640px 以上のサイドバーは
+ * いつもレールで開閉しないので、ボタンを出さない。
+ */
 function MenuButton() {
   const { toggleSidebar } = useSidebar();
   return (
@@ -57,6 +60,7 @@ function MenuButton() {
         <Button
           variant="ghost"
           size="icon-sm"
+          className="sm:hidden"
           aria-label={t.shell.nav.menu}
           onClick={toggleSidebar}
         >
@@ -69,7 +73,7 @@ function MenuButton() {
 }
 
 /**
- * TopBar は ☰・ロゴ・ページの道具・更新を持つ。ナビと設定は Sidebar にある。
+ * TopBar は ☰（639px 以下）・ロゴ・ページの道具・更新を持つ。ナビと設定は Sidebar にある。
  * ページの道具（一覧のツールバー）は TopBarPortal が中央の入れ物へ描く。
  *
  * ゲストには更新を出さない。右端の入れ物ごと省き、道具の入れ物（flex-1）が右へ

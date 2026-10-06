@@ -203,7 +203,7 @@ same saved values as the library (requirement 13).
 
   | Sidebar state | Tab order |
   | --- | --- |
-  | Expanded or rail (640px and up) | ☰ → logo (`sm` and up) → folder toolbar (sort → zoom, or the single `表示と並び順` button at narrow widths) → refresh → sidebar entries → body |
+  | Rail (640px and up) | Logo → folder toolbar (sort → zoom, or the single `表示と並び順` button at narrow widths) → refresh → sidebar entries → body |
   | Closed drawer (initial state below 640px) | The sidebar is `inert` and not in the Tab order. ☰ → folder toolbar → refresh → body |
   | Open drawer (opened with ☰) | Refresh → `メニューを閉じる` → sidebar entries → body |
 

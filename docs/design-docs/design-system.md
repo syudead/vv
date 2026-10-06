@@ -279,7 +279,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
 | `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
 | `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
-| `Sidebar`, with `Sheet` | `shell/Sidebar` | Expanded, icon rail, and a drawer below 640px |
+| `Sidebar`, with `Sheet` | `shell/Sidebar` | Icon rail from 640px, a drawer below 640px |
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components |
 | `TagCommand` | `ui/Combobox`, the selection bar's former `library/TagCommand` | vv component; a `Command` with the tag-name rules |
 

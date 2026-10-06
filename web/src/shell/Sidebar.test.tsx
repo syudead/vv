@@ -16,7 +16,7 @@ vi.mock("../auth/pageNavigation", async (importOriginal) => ({
   reloadPage: vi.fn(),
 }));
 
-type SidebarMode = "expanded" | "rail" | "drawer";
+type SidebarMode = "rail" | "drawer";
 
 /** stubWidth は狭い幅（639px 以下）かどうかを matchMedia で決める。 */
 function stubWidth(phone: boolean) {
@@ -47,7 +47,7 @@ function renderSidebar({
       <AudienceProvider audience={audience}>
         <ToastProvider>
           <TooltipProvider>
-            <SidebarProvider open={mode === "expanded"} onOpenChange={() => undefined}>
+            <SidebarProvider open={false} onOpenChange={() => undefined}>
               <SidebarTrigger />
               <Sidebar />
             </SidebarProvider>
@@ -132,7 +132,7 @@ describe("Sidebar", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it.each<SidebarMode>(["expanded", "rail", "drawer"])(
+  it.each<SidebarMode>(["rail", "drawer"])(
     "所有者の下段は「設定」→「ログアウト」の順で、ログインを置かない（%s）",
     (mode) => {
       renderSidebar({ mode });
@@ -145,7 +145,7 @@ describe("Sidebar", () => {
     },
   );
 
-  it.each<SidebarMode>(["expanded", "rail", "drawer"])(
+  it.each<SidebarMode>(["rail", "drawer"])(
     "ゲストの下段は今の URL へ戻るログインだけにする（%s）",
     (mode) => {
       renderSidebar({ audience: "guest", mode, path: "/folders/3/A%20B?query=x" });
@@ -187,7 +187,7 @@ describe("Sidebar", () => {
     expect(reloadPage).not.toHaveBeenCalled();
   });
   it("所有者の上段は「タグ」の直後に「Duplicates」を置き、ゲストには出さない", () => {
-    const { unmount } = renderSidebar({ mode: "expanded" });
+    const { unmount } = renderSidebar({ mode: "rail" });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = within(main)
       .getAllByRole("link")
@@ -198,7 +198,7 @@ describe("Sidebar", () => {
     ).toBe("/duplicates");
     unmount();
 
-    renderSidebar({ audience: "guest", mode: "expanded" });
+    renderSidebar({ audience: "guest", mode: "rail" });
     expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();
   });
 

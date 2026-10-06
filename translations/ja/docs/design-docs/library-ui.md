@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: ebaa8d3eeba9e1e9f01552d269e2bda13d3bed9346fdcef01e57c661da3c61ab
+sourceHash: 11d69dfce35445a50e9d94136d0e667ea861da03ce6f513594c451b07104d312
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -74,19 +74,18 @@ flowchart LR
 
 ## 幅のブレークポイントは CSS に置き、サイドバーは例外とする {#width-breakpoints-in-css-and-the-sidebar-exception}
 
-幅による変化には CSS で Tailwind の既定のブレークポイントを使う。JavaScript で幅を読むのはサイドバーだけだ（[`useSidebar.ts`](../../web/src/shell/useSidebar.ts)）。
+幅による変化には CSS で Tailwind の既定のブレークポイントを使う。JavaScript で幅を読むのはサイドバーだけだ（[`use-mobile.ts`](../../web/src/hooks/use-mobile.ts)）。
 
-JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、利用者の開閉の選択を幅ごとに解釈し、ドロワーの開いた状態を保つからで、これは CSS では表せない。通知（[`Toast.tsx`](../../web/src/ui/Toast.tsx)）がもう 1 つの例外だ。Sonner は位置を prop として受け取るので、一覧画面は `lg` を読んで、通知を上部バーの下から下端の中央、選択バーの上へ移す。サイドバーのブレークポイントは `lg` と `sm` に等しい。
+JavaScript で幅を監視すると、監視の仕組み、最初の描画での 1 フレームのちらつき、テストでの `matchMedia` のスタブが持ち込まれる。サイドバーが例外なのは、幅ごとに別のコンポーネント（固定のレールか `Sheet` のドロワー）を描画し、ドロワーの開いた状態を保つからで、これは CSS では表せない。通知（[`Toast.tsx`](../../web/src/ui/Toast.tsx)）がもう 1 つの例外だ。Sonner は位置を prop として受け取るので、一覧画面は `lg` を読んで、通知を上部バーの下から下端の中央、選択バーの上へ移す。サイドバーのブレークポイントは `sm` に等しい。
 
 ```mermaid
 flowchart LR
-  w{画面幅} -->|1024px 以上| user[利用者の選択、既定は開]
-  w -->|640〜1023px| rail[既定はレール]
-  w -->|639px 以下| drawer[ドロワー]
-  user -->|閉じる| railc[レール]
-  rail -->|開く| exp[展開]
-  drawer -->|開く| over[オーバーレイ]
+  w{画面幅} -->|640px 以上| rail[常にレール]
+  w -->|639px 以下| drawer[ドロワー、閉]
+  drawer -->|☰ で開く| over[オーバーレイ]
 ```
+
+640px 以上ではサイドバーは展開しない。レールがすでにどの項目にも名前を示すので、展開した状態は行き先を何も加えず、グリッドから幅を奪うだけだった。開閉の選択が残らないので、☰ は 640px 未満でだけ現れる。
 
 動きの抑制（`prefers-reduced-motion`）も CSS で扱う。`motion-reduce:` バリアントは装飾的な遷移を止めるが、最終的な色と対象の印は適用されるので、操作の結果は見えたままになる。
 
@@ -124,7 +123,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 3 つの状態（展開、レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。畳むとグリッドが広がる。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰（640px 未満のみ）、ロゴ、`Refresh library` を持つ。ライブラリ、フォルダのページ、タグのページは、その間に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 2 つの状態（レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |

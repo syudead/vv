@@ -220,20 +220,19 @@ for (const width of [360, 640, 768]) {
       name: /^Scanning 4 of 10 videos done\./,
     });
     await expect(indicator).toBeVisible();
-    await page.getByRole("button", { name: "Menu" }).click();
+    // 狭い幅のサイドバーは ☰ で開く Sheet のドロワーで、640px 以上はいつもレール。
+    if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     if (width < 640) {
-      // 狭い幅のサイドバーは Sheet のドロワーで、Esc で閉じる。
+      // ドロワーは Esc で閉じる。
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
     const sidebar = page.getByRole("complementary", { name: "Main navigation" });
-    const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
     if (width >= 640) {
-      await page.getByRole("button", { name: "Menu" }).click();
-      // 畳むとアイコンのレールになる（shadcn/ui の Sidebar の collapsed）。
+      // アイコンのレール（shadcn/ui の Sidebar の collapsed）。
       await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute(
         "data-state",
         "collapsed",
@@ -258,10 +257,8 @@ for (const width of [360, 640, 768]) {
       summaryBox!.y + summaryBox!.height <= toastBox!.y;
     expect(toastAndSummaryAreSeparate).toBe(true);
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
-    for (const sidebarBox of [expandedSidebarBox, railSidebarBox]) {
-      if (sidebarBox !== null) {
-        expect(toastBox!.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width);
-      }
+    if (railSidebarBox !== null) {
+      expect(toastBox!.x).toBeGreaterThanOrEqual(railSidebarBox.x + railSidebarBox.width);
     }
   });
 }
@@ -291,7 +288,7 @@ for (const { width, height } of [
     await failLogout(page);
 
     await page.goto("/");
-    await page.getByRole("button", { name: "Menu" }).click();
+    if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
     // ログアウトは失敗するまで押せないので、トーストが出るのを待ってから次を押す。
     const logoutButton = page.getByRole("button", { name: "Sign out" });
     for (let count = 1; count <= 3; count += 1) {
