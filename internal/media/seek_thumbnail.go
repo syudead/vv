@@ -21,8 +21,11 @@ import (
 const (
 	seekThumbnailCommand = "ffmpeg"
 	seekThumbnailTimeout = 30 * time.Minute
-	seekSpriteFastScale  = "scale=min(160\\,iw):min(160\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
-	seekSpriteParallel   = 4
+	seekSpriteFastScale  = "scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
+	// seekSpriteQuality はシートの JPEG の量子化の値（-q:v）である。小さいほど高画質で、
+	// 一覧のカードで数倍に引き伸ばしてもブロックが目立たないよう 2 にする。
+	seekSpriteQuality  = "2"
+	seekSpriteParallel = 4
 	// seekSpriteReadParallel は索引から求めたキーフレームを同時に読む数である。
 	seekSpriteReadParallel = 8
 )
@@ -337,7 +340,7 @@ func tileSeekSprite(ctx context.Context, frameDir, outputDir string, layout doma
 	_, err := runSeekFFmpeg(ctx, []string{
 		"-nostdin", "-v", "error", "-framerate", "1", "-i", filepath.Join(frameDir, "%03d.bmp"),
 		"-vf", fmt.Sprintf("tile=%dx%d,format=yuvj420p", layout.Columns, layout.Rows),
-		"-frames:v", "1", "-q:v", "4", "-y", filepath.Join(outputDir, "000.jpg"),
+		"-frames:v", "1", "-q:v", seekSpriteQuality, "-y", filepath.Join(outputDir, "000.jpg"),
 	})
 	return err
 }
@@ -389,7 +392,7 @@ func seekSpriteArgs(videoPath, outputPattern string, layout domain.SeekSpriteLay
 		"-map", "0:V:0?",
 		"-vf", strings.Join(filters, ","),
 		"-fps_mode", "passthrough",
-		"-q:v", "4",
+		"-q:v", seekSpriteQuality,
 		"-start_number", "0",
 		"-y",
 		outputPattern,

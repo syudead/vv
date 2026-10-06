@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/seek-sprite-generation.md
-sourceHash: 710e1dd529ee0a676f6fb7f15e877fa6b13d45e021b7b15a3d2d6a93e1db7f97
+sourceHash: 0c9493b9f595e8b6a971663973634bec6cc3310bf8f26ee262d5f4b2db446448
 ---
 
 # シーク用スプライトの生成 {#seek-sprite-generation}
 
-シーク用プレビューは最大 81 フレームからなる 9×9 のスプライト 1 枚で、各フレームは長辺 160px 以内に収まる（[`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)）。間隔は `max(5 s, ceil(durationMs / 81))` なので、短い動画は 5 秒のままで、長い動画は 81 フレームを均等に配置する。長さが不明な動画は 1 フレームになる。フレーム k は `[k × intervalMs, (k + 1) × intervalMs)` を受け持ち、プレーヤーはレイアウト（[`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)）の `intervalMs`、`frameCount`、`columns`、`rows` からフレームを選ぶ。
+シーク用プレビューは最大 81 フレームからなる 9×9 のスプライト 1 枚で、各フレームは長辺 320px 以内に収まり、JPEG として `-q:v 2` でエンコードする（[`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)）。間隔は `max(5 s, ceil(durationMs / 81))` なので、短い動画は 5 秒のままで、長い動画は 81 フレームを均等に配置する。長さが不明な動画は 1 フレームになる。フレーム k は `[k × intervalMs, (k + 1) × intervalMs)` を受け持ち、プレーヤーはレイアウト（[`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)）の `intervalMs`、`frameCount`、`columns`、`rows` からフレームを選ぶ。
 
 生成は最も安価な方法から試し、失敗すると次の方法にフォールバックする。
 
@@ -107,9 +107,23 @@ flowchart LR
 
 6 枚のシートに最大 600 フレームを持つ古いスプライトも引き続き読める。一括では再生成せず、新しい方式は新たに処理するジョブに適用するので、キューは増えない。
 
+## フレームサイズと画質 {#frame-size-and-quality}
+
+Library のカードは 1 フレームをカードの幅（220–480px）まで引き伸ばすので、フレームサイズがカードのスクラブプレビューの鮮明さを決める。160px のフレームは 2–3 倍に、高密度の画面では 4–6 倍に引き伸ばされていた。そのためフレームは長辺 320px とし、引き伸ばしてもブロックの境界が見えないよう JPEG の量子化値を 2 にする。
+
+デコードにかかる時間は出力サイズによらず同じだ。増えるのは縮小、タイル配置、エンコードだけで、動画 1 本あたり約 0.04–0.07 s 増える。`scripts/previewbench` で `testsrc2` の H.264 入力を使い、4 コアの Xeon 2.1 GHz で計測した。
+
+| 入力 | 160px、`-q:v 4` | 320px、`-q:v 2` |
+| --- | --- | --- |
+| 2 時間、640×360 | 0.23–0.25 s、207 KiB | 0.29 s、758 KiB |
+| 2 分、1280×720 | 0.17 s、67 KiB | 0.24 s、236 KiB |
+| 21 分、1920×1080 | 0.40–0.41 s、160 KiB | 0.45–0.48 s、615 KiB |
+
+シートは約 3.5 倍大きくなる。ブラウザが 2880×1620 のシート（デコード後で約 19 MB）を保持するのは、カードのシートを読み込んでいる間だけで、カードはビューポートから外れるとシートを解放する。既存の 160px のスプライトは、その動画が再び処理されるまでそのまま残る。
+
 ## 速度と制約 {#speed-and-limits}
 
-ローカルディスク上の 21 分の 1080p H.264 動画、81 フレーム、全キーフレームが IDR の条件で計測した。各計測では時間だけでなく内容も確認している。
+ローカルディスク上の 21 分の 1080p H.264 動画、160px の 81 フレーム、全キーフレームが IDR の条件で計測した。各計測では時間だけでなく内容も確認している。
 
 | 方式 | 時間 | 読み込んだデータ量 |
 | --- | --- | --- |
