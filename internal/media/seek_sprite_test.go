@@ -22,8 +22,9 @@ func TestSeekSpriteArgsFollowLayout(t *testing.T) {
 		"-i /media/a.mp4",
 		"-map 0:V:0?",
 		"tpad=stop_mode=clone:stop=-1,fps=1000/88889:round=up:eof_action=pass,trim=end_frame=81,",
-		"scale=min(160\\,iw):min(160\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
+		"scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
 		"-fps_mode passthrough",
+		"-q:v 2",
 		"-start_number 0",
 		"/cache/%03d.jpg",
 	} {
@@ -248,9 +249,9 @@ func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	}
 	for i, sheet := range sheets {
 		b := sheet.Bounds()
-		// 360x640 を 160x160 の枠に収めると 90x160 になる。
-		if b.Dx() != 90*layout.Columns || b.Dy() != 160*layout.Rows {
-			t.Errorf("シート %d の大きさ %v（コマ 90x160 のはず）", i, b)
+		// 360x640 を 320x320 の枠に収めると 180x320 になる。
+		if b.Dx() != 180*layout.Columns || b.Dy() != 320*layout.Rows {
+			t.Errorf("シート %d の大きさ %v（コマ 180x320 のはず）", i, b)
 		}
 	}
 	if luma := frameLuma(t, sheets, layout, layout.FrameCount-1); luma < 60 {

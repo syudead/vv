@@ -137,6 +137,63 @@ func TestSpriteFingerprintMatchesLongReencodesWithDifferentIntervals(t *testing.
 	}
 }
 
+// spriteFingerprintWith は全編復号の経路で、コマの大きさと JPEG の画質だけを差し替えた
+// スプライトを作り、指紋を返す。生成の設定が変わる前後のスプライトを再現して比べるのに使う。
+func spriteFingerprintWith(t *testing.T, videoPath string, durationMs int64, longSide, quality string) domain.Fingerprint {
+	t.Helper()
+	layout := domain.NewSeekSpriteLayout(durationMs)
+	scale := strings.ReplaceAll(seekSpriteFastScale, "320", longSide)
+	args := seekSpriteArgs(videoPath, filepath.Join(t.TempDir(), "%03d.jpg"), layout)
+	for i, arg := range args {
+		switch {
+		case strings.Contains(arg, seekSpriteFastScale):
+			args[i] = strings.Replace(arg, seekSpriteFastScale, scale, 1)
+		case i > 0 && args[i-1] == "-q:v":
+			args[i] = quality
+		}
+	}
+	// runFFmpeg が先頭に付ける -nostdin -v error を除く。
+	runFFmpeg(t, args[3:]...)
+	data, err := os.ReadFile(strings.Replace(args[len(args)-1], "%03d", "000", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sheet, err := jpeg.Decode(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sprite := domain.SeekSprite{
+		SeekSpriteLayout: layout,
+		FrameWidth:       sheet.Bounds().Dx() / layout.Columns,
+		FrameHeight:      sheet.Bounds().Dy() / layout.Rows,
+	}
+	fingerprint, err := SpriteFingerprint(sprite, [][]byte{data})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fingerprint
+}
+
+// 既存の 160px・-q:v 4 のスプライトから作った指紋と、今の 320px・-q:v 2 のスプライトから
+// 作った指紋は、同じ動画なら一致し、尺だけ同じ別の動画とは一致しない。指紋は 32×32 に
+// 面積平均で縮めた輝度の低周波から作るので、コマの大きさと画質の違いはほぼ残らない。
+func TestSpriteFingerprintMatchesAcrossSpriteSizes(t *testing.T) {
+	requireLibx264(t)
+	video := encodeScene(t, 0, "60", "scale=640:360", 20, 10)
+	old := spriteFingerprintWith(t, video, 60_000, "160", "4")
+	current := spriteFingerprintWith(t, video, 60_000, "320", seekSpriteQuality)
+	other := spriteFingerprintWith(t, encodeScene(t, 1, "60", "scale=640:360", 20, 10), 60_000, "320", seekSpriteQuality)
+
+	logDistance(t, "160px と 320px", old, current)
+	logDistance(t, "160px と別の動画の 320px", old, other)
+	if distance, ok := domain.CompareFingerprints(old, current); !ok || distance > domain.FingerprintMatchMaxDistance/2 {
+		t.Errorf("160px と 320px: distance=%d ok=%v（閾値の半分 %d 以下のはず）", distance, ok, domain.FingerprintMatchMaxDistance/2)
+	}
+	if domain.FingerprintsMatch(old, other) {
+		t.Error("尺だけ同じ別の動画が一致する")
+	}
+}
+
 // シートの枚数や大きさが配置情報と合わなければ誤りを返す。
 func TestSpriteFingerprintRejectsMismatchedSheets(t *testing.T) {
 	layout := domain.NewSeekSpriteLayout(60_000)
