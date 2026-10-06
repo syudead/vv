@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 9079eeb5e813c1e041353fab383856bfa53a6cd2699ccd5680bf7c493e5fe461
+sourceHash: f4f01069774ce1cdee262743c5a944915a135110c3d01420cc002d4e13db8505
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -184,7 +184,7 @@ flowchart LR
 | `Skeleton`、`Progress`、`Spinner` | `Skeleton`、スキャンと視聴のバー | `Skeleton` はきらめき、`Progress` は `max` を受け取る |
 | `Alert`、`Empty` | 停滞の警告、自動再生の通知、インラインのエラー、空の状態のブロック | `Alert` は `warning` と `success` を加える |
 | `Separator`、`Kbd`、`Breadcrumb` | 区切り線、検索のキー、フォルダのパス | |
-| `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 展開、アイコンのレール、640px 未満ではドロワー |
+| `Sidebar`（`Sheet` と組み合わせる） | `shell/Sidebar` | 640px 以上ではアイコンのレール、640px 未満ではドロワー |
 | `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、以前の `videoList/FavoriteToggle` | vv のコンポーネント |
 | `TagCommand` | `ui/Combobox`、選択バーの以前の `library/TagCommand` | vv のコンポーネント。タグ名の規則を持つ `Command` |
 

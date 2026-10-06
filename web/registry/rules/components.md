@@ -331,13 +331,13 @@ Do not use it for a flat set of filters or for steps of a task.
 ### Sidebar
 
 Item `sidebar`. The app's main navigation, from `SidebarProvider` down. vv
-uses three states: expanded at wide widths, `collapsible="icon"` (the 68px
+uses two states: from 640px always `collapsible="icon"` collapsed (the 68px
 `sidebar-rail`, each entry a `rail-item` square with its icon above a
-`text-rail` label) when collapsed, and a `Sheet` drawer below 640px
-(`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
+`text-rail` label), and a `Sheet` drawer below 640px (`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
 link and `isActive` on the current screen; the rail shows the label, so set no
-`tooltip`. Account entries go in `SidebarFooter`. Pass `open` and `onOpenChange` to keep the
-viewer's choice.
+`tooltip`. Account entries go in `SidebarFooter`. Pass `open={false}` so the
+sidebar never expands and `keyboardShortcut={false}` so Ctrl/⌘+B stays the
+browser's, and show the toggle only below 640px.
 
 Do not add a second sidebar or put page controls in it; they belong in the
 toolbar.

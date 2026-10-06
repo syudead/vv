@@ -111,8 +111,8 @@ const railPadding = "group-data-[collapsible=icon]:px-1.5";
 const railItems = "group-data-[collapsible=icon]:items-center";
 
 /**
- * Sidebar は左のナビである。shadcn/ui の Sidebar の 3 態を使う: 1024px 以上は展開
- * （閉じるとアイコンの下に名前を出す 68px のレール）、640–1023px は既定がレール、639px 以下は Sheet のドロワー
+ * Sidebar は左のナビである。shadcn/ui の Sidebar の 2 態を使う: 640px 以上はアイコンの下に
+ * 名前を出す 68px のレール（展開しない）、639px 以下は Sheet のドロワー
  * （web/registry/rules/components.md「Sidebar」）。開閉は AppShell の SidebarProvider が持つ。
  * 上段は画面の移動、下段は「アカウントと設定」で、それぞれ別の nav にする。
  */
