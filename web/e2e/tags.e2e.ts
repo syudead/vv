@@ -6,9 +6,14 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）、
 // ライブラリのカードのタグ・タグでの絞り込み（issue 269、受け入れ条件 5・7・8・19・20）、
 // 選択バーの一括操作・すべて選択（issue 270、受け入れ条件 3・4）を実ブラウザに通す。
-// 動画は run-e2e.mjs が generateTagsFixtures で作る 4 本
-// （タグ動画A・タグ動画B・タグ動画C・タグ動画D）。タグ動画Cはタグを持たない対照区
-// （issue 269 受け入れ条件7）で、issue 270 のテストでは触らない。
+// 動画は run-e2e.mjs が generateTagsFixtures で作る videoCount 本
+// （タグ動画A・タグ動画B・タグ動画C・タグ動画D と、本数を足すだけのタグ埋めの動画）。
+// タグ動画Cはタグを持たない対照区（issue 269 受け入れ条件7）で、issue 270 の
+// テストでは触らない。タグ埋めの動画は、1280×800 で格子の最後の行を画面の下端に
+// 置くためにある（041-tag-overflow-list）。
+
+/** generateTagsFixtures（media-fixtures.mjs）が作る動画の本数。 */
+const videoCount = 16;
 
 const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
 
@@ -131,7 +136,7 @@ test.describe.serial("video tags", () => {
 
     const list = await request.get("/api/videos?limit=200");
     const page = (await list.json()) as { items: Video[] };
-    expect(page.items).toHaveLength(4);
+    expect(page.items).toHaveLength(videoCount);
     for (const item of page.items) videos.set(item.title, item);
   });
 
@@ -369,8 +374,8 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, tag.id);
 
       await page.goto("/");
-      // 絞り込み前は、タグの無いタグ動画C・Dも含めて4件出る。
-      await expect(page.getByRole("article")).toHaveCount(4);
+      // 絞り込み前は、タグの無いタグ動画C・Dも含めて全件出る。
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
 
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page).toHaveURL(new RegExp(`tag=${String(tag.id)}(&|$)`));
@@ -401,10 +406,10 @@ test.describe.serial("video tags", () => {
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page.getByRole("article")).toHaveCount(2);
 
-      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画C・Dを含む4件）に戻る。
+      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画C・Dを含む全件）に戻る。
       await activeTagChip(page, "e2e旅行").click();
       await expect(page).not.toHaveURL(/tag=/);
-      await expect(page.getByRole("article")).toHaveCount(4);
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
 
       // 再生画面でタグを押すと、そのタグ1つで絞り込んだライブラリ一覧が開く。
       await page.goto(`/videos/${String(a.id)}`);
@@ -550,7 +555,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, solo.id);
 
       await page.goto("/");
-      await expect(page.getByRole("article")).toHaveCount(4);
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
 
       await checkbox(page, "タグ動画A").click();
       await checkbox(page, "タグ動画B").click();
@@ -594,25 +599,27 @@ test.describe.serial("video tags", () => {
       request,
     }) => {
       await page.goto("/");
-      await expect(page.getByRole("article")).toHaveCount(4);
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
 
       await checkbox(page, "タグ動画A").click();
       await expect(page.getByText("1 video selected")).toBeVisible();
 
       await page.getByRole("button", { name: "Select all" }).click();
-      await expect(page.getByText("4 videos selected")).toBeVisible();
+      await expect(page.getByText(`${String(videoCount)} videos selected`)).toBeVisible();
 
       await page.getByRole("button", { name: "Add tag" }).click();
       await page.getByRole("combobox", { name: "Add tag" }).fill("e2eすべて選択タグ");
       await page.getByRole("option", { name: /^Create/ }).click();
-      await expect(page.getByText('Added "e2eすべて選択タグ" to 4 videos')).toBeVisible();
+      await expect(
+        page.getByText(`Added "e2eすべて選択タグ" to ${String(videoCount)} videos`),
+      ).toBeVisible();
 
-      // 選択バーに出ていた件数（4件、ライブラリの全件）と同じ本数に付いたことを、
+      // 選択バーに出ていた件数（videoCount 件、ライブラリの全件）と同じ本数に付いたことを、
       // タグの本数（GET /api/tags の videoCount）で確かめる（受け入れ条件4）。
       const tagsResponse = await request.get("/api/tags");
       const tags = ((await tagsResponse.json()) as { items: Tag[] }).items;
       const created = tags.find((t) => t.name === "e2eすべて選択タグ");
-      expect(created?.videoCount).toBe(4);
+      expect(created?.videoCount).toBe(videoCount);
     });
   });
 
@@ -1416,5 +1423,181 @@ test.describe.serial("video tags", () => {
 
       await expect(tagRowByName(page, "e2e管理解除Anime")).not.toContainText("Synonyms:");
     });
+  });
+
+  // specs/041-tag-overflow-list: カードの「+N」の一覧は、隠れたタグを折り返す
+  // チップで並べ、画面の中に収まり、収まらない分は一覧の中でスクロールし、長い
+  // 名前を省略しない（親 Issue #813 の受け入れ条件 1・5 と、画面の下端に近い
+  // カードの Edge Case）。
+  test.describe("カードの「+N」の一覧（041-tag-overflow-list）", () => {
+    /** 60文字の、空白を持たない名前。一覧の内幅より広いので、チップの中で折り返す。 */
+    const longName = (
+      "e2e一覧の長い名前_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+    ).slice(0, 60);
+
+    /** box が画面の中に、Radix の collisionPadding（8px）を空けて収まるかを確かめる。 */
+    function expectInsideViewport(
+      box: { x: number; y: number; width: number; height: number },
+      viewport: { width: number; height: number },
+    ) {
+      const padding = 8 - 0.5;
+      expect(box.x).toBeGreaterThanOrEqual(padding);
+      expect(box.y).toBeGreaterThanOrEqual(padding);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - padding);
+      expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - padding);
+    }
+
+    test("1・5: タグ30個の格子の最後のカードで、一覧が画面内に開き、最後のタグまで届き、長い名前を全文で出す", async ({
+      page,
+      request,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.goto("/");
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
+      // 格子の最後のカード（どの幅でも DOM の順は同じ）に30個のタグを付ける。
+      const lastId = await page.getByRole("article").last().getAttribute("data-video-id");
+      if (lastId === null) throw new Error("no data-video-id on the last card");
+      const targetId = Number(lastId);
+      await clearVideoTags(request, targetId);
+      const tagIds = new Map<string, number>();
+      for (let index = 1; index < 30; index += 1) {
+        const name = `e2e一覧${String(index).padStart(2, "0")}`;
+        const tag = await createTag(request, name);
+        tagIds.set(name, tag.id);
+        await attachTag(request, targetId, tag.id);
+      }
+      const long = await createTag(request, longName);
+      tagIds.set(longName, long.id);
+      await attachTag(request, targetId, long.id);
+
+      // 1280×800 と 390×844 では30個の一覧が画面に収まり、並びはスクロールしない。
+      // 低い 390×300 では収まらず、並びの中のスクロールで最後のタグへ届くことを
+      // 確かめる（要件3）。
+      for (const { scrolls, ...viewport } of [
+        { width: 1280, height: 800, scrolls: false },
+        { width: 390, height: 844, scrolls: false },
+        { width: 390, height: 300, scrolls: true },
+      ]) {
+        await page.setViewportSize(viewport);
+        await page.goto("/");
+        await expect(page.getByRole("article")).toHaveCount(videoCount);
+        const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
+        // 格子の最後の行を画面の下端まで送る（最後のカードを見せたうえで、
+        // その先へも回し切る）。
+        await card.scrollIntoViewIfNeeded();
+        await page.mouse.move(viewport.width / 2, viewport.height / 2);
+        await page.mouse.wheel(0, 10_000);
+        const overflow = card.getByRole("button", { name: /^Show \d+ more tags?$/ });
+        await expect(overflow).toBeVisible();
+        const moreBox = await overflow.boundingBox();
+        if (moreBox === null) throw new Error("no layout for +N");
+        if (viewport.width === 1280) {
+          // 「+N」は画面の下半分にあり、下には30個の一覧を置く余地が無い。
+          expect(moreBox.y).toBeGreaterThan(viewport.height / 2);
+        }
+
+        await overflow.click();
+        const dialog = page.getByRole("dialog");
+        await expect(dialog).toBeVisible();
+        // 開くときの拡大の動きが済んでから箱を測る。
+        await dialog.evaluate((element) =>
+          Promise.all(element.getAnimations().map((animation) => animation.finished)),
+        );
+        // 一覧の高さは、Radix が知らせる残りの高さで抑えられている（R-2）。
+        expect(
+          await dialog.evaluate((element) => getComputedStyle(element).maxHeight),
+        ).toMatch(/px$/);
+        const dialogBox = await dialog.boundingBox();
+        if (dialogBox === null) throw new Error("no layout for the list");
+        expectInsideViewport(dialogBox, viewport);
+        if (viewport.width === 1280) {
+          // 下端の近くのカードでは、一覧は「+N」の上か横に開く（Edge Case）。
+          const above = dialogBox.y + dialogBox.height <= moreBox.y;
+          const beside =
+            dialogBox.x >= moreBox.x + moreBox.width ||
+            dialogBox.x + dialogBox.width <= moreBox.x;
+          expect(above || beside).toBe(true);
+        }
+
+        // 60文字の名前は … なしで全文、複数行で描かれる（受け入れ条件5）。
+        const longChip = dialog.getByRole("button", {
+          name: `Filter by ${longName}`,
+          exact: true,
+        });
+        await longChip.scrollIntoViewIfNeeded();
+        const rendered = await longChip.evaluate((element) => {
+          const name = element.firstElementChild as HTMLElement;
+          const style = getComputedStyle(name);
+          return {
+            text: name.textContent,
+            textOverflow: style.textOverflow,
+            clipped: name.scrollWidth > name.clientWidth,
+            lines: name.getBoundingClientRect().height / parseFloat(style.lineHeight),
+          };
+        });
+        expect(rendered.text).toBe(longName);
+        expect(rendered.textOverflow).not.toBe("ellipsis");
+        expect(rendered.clipped).toBe(false);
+        expect(rendered.lines).toBeGreaterThanOrEqual(2);
+
+        if (screenshotDir !== undefined && !scrolls) {
+          await mkdir(screenshotDir, { recursive: true });
+          await dialog.evaluate((element) => element.querySelector("ul")?.scrollTo(0, 0));
+          await page.screenshot({
+            path: path.join(
+              screenshotDir,
+              `tag-overflow-list-${String(viewport.width)}.png`,
+            ),
+          });
+        }
+
+        // 一覧をスクロールすると最後のタグが見え、押すと絞り込まれて一覧が閉じる
+        // （受け入れ条件1）。
+        const chips = dialog.getByRole("button");
+        await expect(chips).toHaveCount(30 - (await visibleChipCount(card)));
+        const lastChip = chips.last();
+        const list = dialog.getByRole("list");
+        if (scrolls) {
+          // 並びは板の高さを超え、最後のタグは並びをスクロールするまで見えない。
+          await list.evaluate((element) => element.scrollTo(0, 0));
+          const overflow = await list.evaluate((element) => ({
+            scrollHeight: element.scrollHeight,
+            clientHeight: element.clientHeight,
+          }));
+          expect(overflow.scrollHeight).toBeGreaterThan(overflow.clientHeight);
+          const listTop = await list.boundingBox();
+          const hiddenBox = await lastChip.boundingBox();
+          if (listTop === null || hiddenBox === null) throw new Error("no layout");
+          expect(hiddenBox.y).toBeGreaterThanOrEqual(listTop.y + listTop.height);
+        }
+        await lastChip.scrollIntoViewIfNeeded();
+        if (scrolls) {
+          expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        }
+        const lastBox = await lastChip.boundingBox();
+        const listBox = await dialog.boundingBox();
+        if (lastBox === null || listBox === null) throw new Error("no layout");
+        expect(lastBox.y).toBeGreaterThanOrEqual(listBox.y);
+        expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(
+          listBox.y + listBox.height,
+        );
+        const lastName = await lastChip.getAttribute("title");
+        const lastTagId = lastName === null ? undefined : tagIds.get(lastName);
+        if (lastTagId === undefined) throw new Error(`unknown tag: ${String(lastName)}`);
+        await lastChip.click();
+        await expect(page).toHaveURL(new RegExp(`tag=${String(lastTagId)}(&|$)`));
+        await expect(page.getByRole("dialog")).toHaveCount(0);
+        await expect(page.getByRole("article")).toHaveCount(1);
+      }
+    });
+
+    /** visibleChipCount は、カードの行に直に出ているタグのチップの数（「+N」を除く）。 */
+    async function visibleChipCount(card: ReturnType<Page["locator"]>) {
+      return card
+        .getByRole("list", { name: "Tags", exact: true })
+        .getByRole("button", { name: /^Filter by / })
+        .count();
+    }
   });
 });

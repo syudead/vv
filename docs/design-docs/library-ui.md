@@ -261,6 +261,7 @@ Video card behaviour:
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
 | Tag pressed on a folder page | Opens `/?tag=<id>` |
+| Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
