@@ -19,7 +19,7 @@ import { reloadPage } from "../auth/pageNavigation";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import type { PlayerControls } from "./playerControls";
 import { technicalSummary } from "./properties";

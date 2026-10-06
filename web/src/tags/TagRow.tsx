@@ -392,11 +392,11 @@ function RowIconButton({
 
 /**
  * CompactActions は、タッチの端末と `sm` 未満の幅で行の右端に出す「Actions」の
- * メニューである。項目は文字を持ち、行の `IconButton` と「その他の操作」の項目と
+ * メニューである。項目は文字を持ち、行のアイコンのボタン（`RowIconButton`）と「その他の操作」の項目と
  * 同じ振る舞いをする（ui-design.md「Actions on touch and narrow widths」）。
  * マウスの端末で `sm` 以上では CSS で隠す（`matchMedia` は読まない）。
  *
- * DOM では行の `IconButton` の一群より前に置く。どちらか一方だけが描かれるので
+ * DOM では行のアイコンのボタンの一群より前に置く。どちらか一方だけが描かれるので
  * 見た目の順は変わらず、隠れている一群は Tab の順に入らない。
  */
 function CompactActions({
