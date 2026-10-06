@@ -103,6 +103,27 @@ describe("Sidebar", () => {
     expect(screen.getByRole("dialog").textContent).toContain("Library");
   });
 
+  it.each([true, false])(
+    "keyboardShortcut=%s のときだけ Ctrl+B を奪う",
+    (keyboardShortcut) => {
+      stubWidth(false);
+      render(
+        <SidebarProvider open={false} keyboardShortcut={keyboardShortcut}>
+          <div />
+        </SidebarProvider>,
+      );
+      const event = new KeyboardEvent("keydown", {
+        key: "b",
+        ctrlKey: true,
+        cancelable: true,
+      });
+      act(() => {
+        window.dispatchEvent(event);
+      });
+      expect(event.defaultPrevented).toBe(keyboardShortcut);
+    },
+  );
+
   it("ドロワーとその背面の幕はトップバーの下から始める", () => {
     renderSidebar();
 

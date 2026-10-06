@@ -336,7 +336,8 @@ uses two states: from 640px always `collapsible="icon"` collapsed (the 68px
 `text-rail` label), and a `Sheet` drawer below 640px (`use-mobile`). Entries are `SidebarMenuButton` with `asChild` around a router
 link and `isActive` on the current screen; the rail shows the label, so set no
 `tooltip`. Account entries go in `SidebarFooter`. Pass `open={false}` so the
-sidebar never expands, and show the toggle only below 640px.
+sidebar never expands and `keyboardShortcut={false}` so Ctrl/⌘+B stays the
+browser's, and show the toggle only below 640px.
 
 Do not add a second sidebar or put page controls in it; they belong in the
 toolbar.

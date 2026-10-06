@@ -4,7 +4,8 @@ import { SidebarInset, SidebarProvider } from "../ui/shadcn/sidebar";
 import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 
-// 640px 以上のサイドバーはいつもレールで、展開しない。開閉の選択は持たない。
+// 640px 以上のサイドバーはいつもレールで、展開しない。開閉の選択は持たず、Ctrl/⌘+B も
+// 聞かない（何も変わらないキーを奪って、ブラウザのブックマークバーの切り替えを塞がないため）。
 const railOnly = () => undefined;
 
 /**
@@ -14,7 +15,12 @@ const railOnly = () => undefined;
  */
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
-    <SidebarProvider open={false} onOpenChange={railOnly} className="flex-col">
+    <SidebarProvider
+      open={false}
+      onOpenChange={railOnly}
+      keyboardShortcut={false}
+      className="flex-col"
+    >
       <TopBar />
       <div className="flex flex-1 pt-navbar">
         <Sidebar />
