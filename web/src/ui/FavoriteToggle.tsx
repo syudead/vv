@@ -91,7 +91,9 @@ export default function FavoriteToggle({
           size="sm"
           pressed={favorite}
           className={cn(
-            "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite",
+            // ツールチップが開いている間は data-state が置き換わるので、押した状態の色は
+            // aria-pressed でも付ける（Toggle の既定の text-primary を上書きする）。
+            "text-muted-foreground hover:text-foreground data-[state=on]:text-favorite aria-pressed:text-favorite",
             pending && "cursor-progress",
           )}
         >

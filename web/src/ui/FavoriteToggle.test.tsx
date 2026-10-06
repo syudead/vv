@@ -28,6 +28,10 @@ describe("FavoriteToggle page", () => {
     // ツールチップの起点の data-state（closed）が、Toggle の押した状態の "on" を上書きしない。
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("data-state")).toBe("on");
+    // ツールチップが開いて data-state が置き換わっても、ハートは aria-pressed で
+    // text-favorite のまま（Toggle の既定の aria-pressed:text-primary は残らない）。
+    expect(button.className).toContain("aria-pressed:text-favorite");
+    expect(button.className).not.toContain("aria-pressed:text-primary");
 
     fireEvent.click(button);
     expect(onToggle).toHaveBeenCalledTimes(1);
