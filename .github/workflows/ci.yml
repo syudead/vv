@@ -68,23 +68,42 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
-  check:
-    name: Checks
+  # task check を 1 台で順に流すと 4 分かかるので、互いに依らない組に分けて並べて
+  # 流す。各組は task check の部分タスクを呼ぶので、手元の task check と同じ検査に
+  # なる。task check に検査を足したら、どれかの組にも足す。
+  # vitest は最も長いので、ファイルを 3 組に分けて流す（--shard）。分けるのは
+  # ファイル単位なので、1 つのファイルが長くなりすぎたら話題ごとに分ける
+  # （src/tags/TagsPage*.test.tsx）。
+  check-group:
+    name: Checks (${{ matrix.group }})
     needs: changes
-    # 必須チェックなので変更判定が失敗しても起動し、自身も失敗として返す。
-    if: always()
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # generate-check は shadcn（web）と openapi-typescript（tools）を使う。
+          - group: go lint
+            tasks: fmt-check-go lint-go generate-check migrations-check build-windows-check
+            web: true
+            tools: true
+            golangci: true
+          - group: go test
+            tasks: test-go
+          - group: web lint
+            tasks: fmt-check-web lint-web
+            web: true
+          - group: web test 1
+            tasks: test-web -- --shard=1/3
+            web: true
+          - group: web test 2
+            tasks: test-web -- --shard=2/3
+            web: true
+          - group: web test 3
+            tasks: test-web -- --shard=3/3
+            web: true
     steps:
-      - name: 変更パスの判定結果を確認する
-        env:
-          CODE: ${{ needs.changes.outputs.code }}
-          RESULT: ${{ needs.changes.result }}
-        run: |
-          if [ "$RESULT" != "success" ] || { [ "$CODE" != "true" ] && [ "$CODE" != "false" ]; }; then
-            echo "変更パスを判定できませんでした"
-            exit 1
-          fi
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -97,7 +116,7 @@ jobs:
             tools/go.sum
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: needs.changes.outputs.code == 'true'
+        if: matrix.web || matrix.tools
         with:
           node-version: 24
           cache: npm
@@ -108,25 +127,85 @@ jobs:
           install_args: "task"
 
       - name: Web依存を取得する
-        if: needs.changes.outputs.code == 'true'
+        if: matrix.web
         run: npm --prefix web ci
 
       - name: Node開発ツールを取得する
-        if: needs.changes.outputs.code == 'true'
+        if: matrix.tools
         working-directory: tools
         run: npm ci
+
+      # golangci-lint の解析結果のキャッシュ。無いと lint-go が毎回 1 分以上かかる
+      # （温まっていれば数秒）。中身は入力の hash で引くので古い内容を戻しても
+      # 結果は変わらない。main への push でだけ保存し、PR は main の分を読む。
+      - name: golangci-lintのキャッシュを復元する
+        if: matrix.golangci
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ github.sha }}
+          restore-keys: golangci-lint-${{ runner.os }}-
 
       # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
       # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
       - name: base branch を取得する
-        if: needs.changes.outputs.code == 'true' && github.event_name == 'pull_request'
+        if: matrix.golangci && github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
         env:
           BASE: ${{ github.base_ref }}
 
-      - name: 追加runtimeの要らない検査
-        if: needs.changes.outputs.code == 'true'
-        run: task check
+      - name: 検査する
+        env:
+          TASKS: ${{ matrix.tasks }}
+        run: task $TASKS
+
+      - name: golangci-lintのキャッシュを保存する
+        if: matrix.golangci && github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ runner.os }}-${{ github.sha }}
+
+  # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
+  # 文書だけの変更では文書検査をここで流す。
+  check:
+    name: Checks
+    needs: [changes, check-group]
+    # 必須チェックなので変更判定が失敗しても起動し、自身も失敗として返す。
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 変更パスの判定結果と組ごとの結果を確かめる
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULT: ${{ needs.changes.result }}
+          GROUPS: ${{ needs.check-group.result }}
+        run: |
+          if [ "$RESULT" != "success" ] || { [ "$CODE" != "true" ] && [ "$CODE" != "false" ]; }; then
+            echo "変更パスを判定できませんでした"
+            exit 1
+          fi
+          echo "checks: $GROUPS"
+          if [ "$CODE" = "true" ]; then
+            test "$GROUPS" = success
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.changes.outputs.code == 'false'
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: needs.changes.outputs.code == 'false'
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        if: needs.changes.outputs.code == 'false'
+        with:
+          install_args: "task"
 
       - name: 文書を検査する
         if: needs.changes.outputs.code == 'false'
