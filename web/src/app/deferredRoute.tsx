@@ -2,7 +2,7 @@ import { AlertCircle } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 
 import { t } from "../i18n";
-import Button from "../ui/Button";
+import { Button } from "../ui/shadcn/button";
 import { EmptyState } from "../videoList/states";
 
 type PageModule = { default: ComponentType };
@@ -25,7 +25,11 @@ export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
       tone="danger"
       title={t.app.routeLoadFailed.title}
       description={t.app.routeLoadFailed.description}
-      action={<Button onClick={onReload}>{t.common.reload}</Button>}
+      action={
+        <Button size="sm" onClick={onReload}>
+          {t.common.reload}
+        </Button>
+      }
     />
   );
 }

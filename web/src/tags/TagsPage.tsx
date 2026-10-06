@@ -526,7 +526,7 @@ export default function TagsPage() {
 
   /**
    * rowActionTarget は、行の操作へフォーカスを移すときの実際の行き先である。
-   * タッチの端末と `sm` 未満では行の `IconButton` が隠れて「Actions」1 つに
+   * タッチの端末と `sm` 未満では行のアイコンのボタン（`RowIconButton`）が隠れて「Actions」1 つに
    * まとまるので、隠れている操作の代わりに「Actions」を指す（ui-design.md
    * 「Actions on touch and narrow widths」）。名前のリンクは隠れない。
    */

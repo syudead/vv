@@ -1,16 +1,17 @@
-import { FolderOpen, FolderX, SearchX } from "lucide-react";
+import { FolderX } from "lucide-react";
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 
-import { currentPath, loginPath } from "../auth/pageNavigation";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { EmptyState } from "../ui/patterns/empty-state";
-import { ErrorState } from "../ui/patterns/error-state";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { Button } from "../ui/shadcn/button";
 import { FOLDERS_ROOT } from "./folderPath";
+
+// 空・一致なし・ゲストの空・最初の読み込みの失敗はライブラリと同じ部品を使う。
+export { GuestEmpty, LoadFailed, NoMatches } from "../videoList/states";
 
 // フォルダ画面の一覧の状態（web/registry/rules/patterns.md の States）。どれも一覧ページの
 // 骨格の本体の位置に置く。題は見出し（h2）にし、読み上げソフトで見出しから状態へ飛べる
@@ -50,50 +51,6 @@ export function FolderNotFound() {
           <Link to={FOLDERS_ROOT}>{t.folders.notFound.back}</Link>
         </Button>
       }
-    />
-  );
-}
-
-/** NoMatches は条件に一致する動画が無いときの状態である。 */
-export function NoMatches() {
-  return (
-    <FolderEmpty
-      icon={<SearchX aria-hidden="true" />}
-      title={t.list.noMatches}
-      description={t.list.noMatchesHint}
-    />
-  );
-}
-
-/**
- * GuestEmpty はゲストに公開の動画が1本も無いときの状態である。取り込みや設定の
- * 代わりに、ログインへの入口を置く（specs/016-single-account-auth/ui-design.md
- * 「Guest degradation」）。
- */
-export function GuestEmpty() {
-  const location = useLocation();
-  return (
-    <FolderEmpty
-      icon={<FolderOpen aria-hidden="true" />}
-      title={t.list.guestEmpty.title}
-      description={t.list.guestEmpty.description}
-      action={
-        <Button asChild size="sm">
-          <Link to={loginPath(currentPath(location))}>{t.list.guestEmpty.signIn}</Link>
-        </Button>
-      }
-    />
-  );
-}
-
-/** LoadFailed は最初の読み込みに失敗したときの状態で、同じ要求をやり直させる。 */
-export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
-  return (
-    <ErrorState
-      title={<h2>{t.list.loadFailed}</h2>}
-      description={reason}
-      retryLabel={t.common.retry}
-      onRetry={onRetry}
     />
   );
 }

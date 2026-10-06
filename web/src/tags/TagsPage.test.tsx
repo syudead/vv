@@ -14,7 +14,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "./tagPageRows";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import TagsPage from "./TagsPage";
 
 function jsonResponse(body: unknown, status = 200): Response {

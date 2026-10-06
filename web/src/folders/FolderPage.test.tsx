@@ -33,7 +33,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/Tooltip";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderCard from "./FolderCard";
 import FolderPage from "./FolderPage";
 import { folderKey } from "./folderPath";

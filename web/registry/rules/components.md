@@ -12,7 +12,7 @@ its own colours, radii or heights. The reasons are in
 [design-system.md, Components](../../../docs/design-docs/design-system.md#components).
 
 The other PascalCase files in `web/src/ui` that this file does not list
-(`Button.tsx`, `IconButton.tsx`, `Combobox.tsx` and the rest) are older
+(`Combobox.tsx` and the rest) are older
 components; new code never imports them. `Combobox.tsx` stays only for typing
 a tag name on the video page and picking the merge target in the tag admin.
 
