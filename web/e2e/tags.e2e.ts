@@ -1647,14 +1647,39 @@ test.describe.serial("video tags", () => {
         (element) => getComputedStyle(element).color,
       );
 
-      // 横切って 100ms 以内に離れると開かない（受け入れ条件3）。
+      // 横切って 400ms 未満で離れると開かない（受け入れ条件3）。留まった時間は
+      // テストの実行側の往復ではなく、ブラウザが受けた pointerenter から
+      // pointerleave までで測り、一覧が一瞬でも現れたかを MutationObserver で見る。
+      await overflow.evaluate((element) => {
+        const probe = { enteredAt: -1, leftAt: -1, dialogSeen: false };
+        (window as unknown as { __crossProbe: typeof probe }).__crossProbe = probe;
+        element.addEventListener("pointerenter", () => {
+          probe.enteredAt = performance.now();
+        });
+        element.addEventListener("pointerleave", () => {
+          probe.leftAt = performance.now();
+        });
+        new MutationObserver(() => {
+          if (document.querySelector('[role="dialog"]') !== null) probe.dialogSeen = true;
+        }).observe(document.body, { childList: true, subtree: true });
+      });
       const target = await center(overflow);
-      const crossedAt = Date.now();
       await page.mouse.move(target.x, target.y);
       await page.mouse.move(5, 795);
-      expect(Date.now() - crossedAt).toBeLessThan(100);
       await page.waitForTimeout(800);
       await expect(dialog).toHaveCount(0);
+      const crossing = await page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __crossProbe: { enteredAt: number; leftAt: number; dialogSeen: boolean };
+            }
+          ).__crossProbe,
+      );
+      expect(crossing.enteredAt).toBeGreaterThanOrEqual(0);
+      expect(crossing.leftAt).toBeGreaterThanOrEqual(crossing.enteredAt);
+      expect(crossing.leftAt - crossing.enteredAt).toBeLessThan(400);
+      expect(crossing.dialogSeen).toBe(false);
 
       // 留めるとクリックなしで開き、フォーカスは動かない（受け入れ条件2、R-1）。
       const focusedBefore = await page.evaluateHandle(() => document.activeElement);
