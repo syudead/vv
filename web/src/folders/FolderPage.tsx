@@ -17,7 +17,7 @@ import { FolderNotFound } from "./states";
  * `RootSearchResults`、フォルダ1件の表示は `FolderView`（検索結果は
  * `FolderSearchResults`、直下の表示は `FolderContents`）、一覧の条件の管理は
  * `useConditions` が持ち、このファイルは URL から選んで組み立てるだけである。
- * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しの行にパンくずと題、
+ * どれもデザインシステムの一覧ページ（`ListPage`）で、見出しの行にパンくず（題は読み上げだけ）、
  * ツールバー、本体の順に並べる（web/registry/rules/patterns.md の List page）。
  */
 export default function FolderPage() {
@@ -31,14 +31,12 @@ export default function FolderPage() {
   ) : (
     <ListPage
       header={
-        <PageHeader
-          leading={
-            <Breadcrumbs
-              crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
-            />
-          }
-          title={t.folders.title}
-        />
+        <>
+          <Breadcrumbs
+            crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
+          />
+          <PageHeader titleHidden title={t.folders.title} />
+        </>
       }
     >
       <FolderNotFound />

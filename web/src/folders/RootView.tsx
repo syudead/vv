@@ -55,7 +55,7 @@ export default function RootView() {
       ? undefined
       : takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
   );
-  const heading = useArrival<HTMLSpanElement>(restored !== undefined);
+  const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
   // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
@@ -96,13 +96,8 @@ export default function RootView() {
                 : [{ label: t.folders.title }]
             }
           />
-          <PageHeader
-            title={
-              <span ref={heading} tabIndex={-1}>
-                {t.folders.title}
-              </span>
-            }
-          />
+          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          <PageHeader titleHidden titleRef={heading} title={t.folders.title} />
         </>
       }
       toolbar={
