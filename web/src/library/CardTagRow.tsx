@@ -1,5 +1,5 @@
 import { Folder } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { VideoTag } from "../api/client";
 import { isFolderOnly } from "../api/tagOrder";
@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 import TentativeMark from "../ui/TentativeMark";
 import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
+import { useHoverOpen } from "./useHoverOpen";
 
 /** gap-1（0.25rem、16px 基準）と同じ値。 */
 const GAP_PX = 4;
@@ -130,8 +131,8 @@ function TagChip({
 /**
  * CardTagRow はライブラリの格子カードの題名の下に出すタグの行である
  * （specs/014-video-tags/ui-design.md「Tag row」「Overflow」）。1行に収まらない
- * 分は末尾の「+N」にまとめ、押すと Popover で残りを折り返すチップの並びで見せる
- * （specs/041-tag-overflow-list/ui-design.md「The list」）。
+ * 分は末尾の「+N」にまとめ、マウスを留めるか押すと Popover で残りを折り返すチップの
+ * 並びで見せる（specs/041-tag-overflow-list/ui-design.md「The list」「Interaction」）。
  */
 export default function CardTagRow({
   tags,
@@ -143,7 +144,6 @@ export default function CardTagRow({
   const measureRowRef = useRef<HTMLDivElement | null>(null);
   const overflowMeasureRef = useRef<HTMLSpanElement | null>(null);
   const [visibleCount, setVisibleCount] = useState(tags.length);
-  const [open, setOpen] = useState(false);
 
   const recompute = useCallback(() => {
     const row = rowRef.current;
@@ -185,9 +185,9 @@ export default function CardTagRow({
   // 「+N」と一覧が一緒に消える。開いた状態も落とし、あとで隠れるタグが戻っても
   // 勝手に開かないようにする。
   const hasList = pressable && hidden.length > 0;
-  useEffect(() => {
-    if (!hasList) setOpen(false);
-  }, [hasList]);
+  // 一覧はマウスを「+N」に留めても、押しても開く（041 の research.md R-1）。
+  const { open, setOpen, triggerHandlers, contentHandlers, lastOpenedByHover } =
+    useHoverOpen(hasList);
   // 先頭の1つすら自然な幅では収まらないのに1つは出しているとき（B4）は、
   // その1つだけ縮めて省略してよいことにする。
   const forcedShrink = visible.length === 1 && hidden.length > 0;
@@ -220,10 +220,16 @@ export default function CardTagRow({
             <li className="shrink-0">
               <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
+                  {/* 一覧が開いている間（留めても押しても）は hover の見た目を保つ
+                      （041 の ui-design.md「The `+N` chip」）。 */}
                   <Button
                     variant="ghost"
                     aria-label={t.library.tagRow.showMore(hidden.length)}
-                    className={chipClassName(true)}
+                    className={cn(
+                      chipClassName(true),
+                      "data-open:bg-accent data-open:text-foreground",
+                    )}
+                    {...triggerHandlers}
                   >
                     <span className="tabular-nums">
                       {t.library.tagRow.more(hidden.length)}
@@ -233,7 +239,20 @@ export default function CardTagRow({
                 {/* 幅はチップに合わせて max-w-popover まで、高さは PopoverContent が
                     画面に残る高さで抑える。余白 p-2 はスクロールする並びの外に置く
                     （041 の ui-design.md「The list」）。 */}
-                <PopoverContent align="start" className="w-auto max-w-popover p-2">
+                {/* 留めたマウスで開いた一覧はフォーカスを動かさず、閉じても返さない。
+                    押して開いた一覧は最初のチップへフォーカスし、閉じると「+N」へ返す
+                    （041 の ui-design.md「Interaction」）。 */}
+                <PopoverContent
+                  align="start"
+                  className="w-auto max-w-popover p-2"
+                  onOpenAutoFocus={(event) => {
+                    if (lastOpenedByHover()) event.preventDefault();
+                  }}
+                  onCloseAutoFocus={(event) => {
+                    if (lastOpenedByHover()) event.preventDefault();
+                  }}
+                  {...contentHandlers}
+                >
                   <ul className="flex min-h-0 flex-wrap gap-1 overflow-y-auto">
                     {hidden.map((tag) => (
                       <li key={tag.id} className="max-w-full min-w-0">
