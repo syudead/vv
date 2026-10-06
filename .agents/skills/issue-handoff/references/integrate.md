@@ -10,8 +10,10 @@ done yet and stops.
 1. Check out the feature branch and merge the latest `main` into it directly.
    Do not rebase or force-push the long-lived feature branch. Resolve conflicts
    by keeping both sides' behaviour; ask when that is not possible.
-2. Run `task check`. For a `ui` feature, also run `task test-e2e` and review
-   the screens against `ui-design.md`.
+2. Run `task check`. For a `ui` feature, also review the screens against
+   `ui-design.md`. This step needs no local `task test-e2e`: the integration
+   PR's CI runs it, and the [pre-merge sweep](#pre-merge-sweep) runs the full suite on
+   the finished feature ([checks before a push](README.md#checks-before-a-push)).
 3. Push the feature branch. If the integration PR does not exist yet, open it
    now: feature branch → `main`, the parent's title, `Closes #<parent>`, and
    the repository PR template. Otherwise the push updates it; do not open a

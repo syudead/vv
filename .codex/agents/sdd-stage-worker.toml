@@ -12,8 +12,9 @@ and code yourself. Treat the brief and the stage reference it names under
 
 Follow the repository's applicable AGENTS.md instructions. You play the stage's
 parent-agent role: create the sub-branch, do the stage's work (implement it
-yourself; do not start other workers), run the checks the stage requires, and
-commit in the repository's commit-message style, push, and open the PR.
+yourself; do not start other workers), run the checks the stage requires
+(browser e2e as "Checks before a push" in
+.agents/skills/issue-handoff/references/README.md says), and commit in the repository's commit-message style, push, and open the PR.
 plan-to-issues creates Issues and no branch. Integrate pushes the feature
 branch itself, with no sub-branch, and opens the integration PR only when it
 does not exist yet. The pre-merge sweep fixes on a sub-branch with one PR to

@@ -19,7 +19,9 @@ Read [README.md](README.md) first. Input is one native child Issue.
    perform this step locally.
 5. Run focused checks and the repository checks required by the change,
    including the pre-push check from `AGENTS.md`. For UI work, check the result
-   against the review criteria in `ui-design.md`.
+   against the review criteria in `ui-design.md`. Leave browser e2e to the
+   PR's CI unless a local run tells you something sooner
+   ([checks before a push](README.md#checks-before-a-push)).
 6. Push and open a feature-branch PR with `Refs #<child>`. Fill every section
    of [the repository PR template](../../../../.github/pull_request_template.md):
    the behaviour before and after as a table, a diagram when a flow or state

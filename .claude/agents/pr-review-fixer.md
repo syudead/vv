@@ -19,8 +19,13 @@ the root cause; never skip, disable or loosen a test, and never re-run a check
 to get past it.
 
 Push only after the checks the change needs pass, including the pre-push check
-from `AGENTS.md` and any browser checks the change or plan requires. Push where
-the brief says:
+from `AGENTS.md`. A browser check the change or plan requires is satisfied by
+the PR's CI, which runs the whole e2e suite. Run e2e locally only when it
+tells you something sooner than CI would (one spec you wrote or changed, or
+proof that a new test fails without the fix), never the full suite as a
+pre-push step and never alongside `task check` (see "Checks before a push" in
+`.agents/skills/issue-handoff/references/README.md`). Push where the brief
+says:
 the PR's own head branch for a feature PR, and a new sub-branch with its own PR
 for the integration PR. Then reply once on each thread you handled. On a
 feature PR, resolve it. On the integration PR, fix only blocking findings, as
