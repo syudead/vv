@@ -173,3 +173,22 @@ PR merge needs no follow-up edit to the parent Issue. After an implementation
 PR merge, the maintainer may close that child Issue as completed. After every
 child is done, the next run [integrates](integrate.md) and a human merges the
 integration PR.
+
+## Checks before a push
+
+A check named in a child Issue's acceptance or a Plan's verification is
+satisfied by the PR's CI when CI runs it. CI's `Browser E2E` job runs the whole
+e2e suite, split into parallel groups, on every PR that changes a path outside
+`*.md`, `docs/` and `specs/`, including PRs into a feature branch, and it is a
+required check. A full local `task test-e2e` before a push repeats that run
+and adds nothing to it.
+
+CI runs only automated checks. A visual review or a manual step that a Plan,
+`ui-design.md` or `quickstart.md` asks for is still done by the agent whose
+change touches that screen.
+
+Run e2e locally only when it tells you something sooner than CI would: one
+spec you wrote or changed (`task test-e2e -- e2e/<file>.e2e.ts`), or proof
+that a new test fails without the fix. Do not run the full suite as a routine
+pre-push step, and never run e2e and `task check` at the same time: they
+compete for the host and both time out.
