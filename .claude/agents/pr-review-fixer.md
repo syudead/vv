@@ -19,8 +19,10 @@ the root cause; never skip, disable or loosen a test, and never re-run a check
 to get past it.
 
 Push only after the checks the change needs pass, including the pre-push check
-from `AGENTS.md`. A browser check the change or plan requires is satisfied by
-the PR's CI, which runs the whole e2e suite. Run e2e locally only when it
+from `AGENTS.md`. A browser e2e check (`task test-e2e`) the change or plan
+requires is satisfied by the PR's CI, which runs the whole e2e suite; a visual
+or manual check the plan or `ui-design.md` asks for (screenshots, a quickstart
+walk) is not, so redo it when your fix changes that screen. Run e2e locally only when it
 tells you something sooner than CI would (one spec you wrote or changed, or
 proof that a new test fails without the fix), never the full suite as a
 pre-push step and never alongside `task check` (see "Checks before a push" in

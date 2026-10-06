@@ -183,6 +183,10 @@ e2e suite, split into parallel groups, on every PR that changes a path outside
 required check. A full local `task test-e2e` before a push repeats that run
 and adds nothing to it.
 
+CI runs only automated checks. A visual review or a manual step that a Plan,
+`ui-design.md` or `quickstart.md` asks for is still done by the agent whose
+change touches that screen.
+
 Run e2e locally only when it tells you something sooner than CI would: one
 spec you wrote or changed (`task test-e2e -- e2e/<file>.e2e.ts`), or proof
 that a new test fails without the fix. Do not run the full suite as a routine
