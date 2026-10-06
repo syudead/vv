@@ -1428,7 +1428,8 @@ test.describe.serial("video tags", () => {
   // specs/041-tag-overflow-list: カードの「+N」の一覧は、隠れたタグを折り返す
   // チップで並べ、画面の中に収まり、収まらない分は一覧の中でスクロールし、長い
   // 名前を省略しない（親 Issue #813 の受け入れ条件 1・5 と、画面の下端に近い
-  // カードの Edge Case）。
+  // カードの Edge Case）。マウスを「+N」に留めると開き、押しても開く（受け入れ
+  // 条件 2・3・4）。
   test.describe("カードの「+N」の一覧（041-tag-overflow-list）", () => {
     /** 60文字の、空白を持たない名前。一覧の内幅より広いので、チップの中で折り返す。 */
     const longName = (
@@ -1590,6 +1591,217 @@ test.describe.serial("video tags", () => {
         await expect(page.getByRole("dialog")).toHaveCount(0);
         await expect(page.getByRole("article")).toHaveCount(1);
       }
+    });
+
+    /**
+     * cardWithHiddenTags は、格子の最初のカードのタグを付け直し、短い名前のタグを
+     * 12個付ける。行に収まらない分が「+N」に入る。名前は prefix で他のテストと分ける。
+     */
+    async function cardWithHiddenTags(
+      page: Page,
+      request: APIRequestContext,
+      prefix: string,
+    ) {
+      await page.goto("/");
+      await expect(page.getByRole("article")).toHaveCount(videoCount);
+      const firstId = await page
+        .getByRole("article")
+        .first()
+        .getAttribute("data-video-id");
+      if (firstId === null) throw new Error("no data-video-id on the first card");
+      const targetId = Number(firstId);
+      await clearVideoTags(request, targetId);
+      const tagIds = new Map<string, number>();
+      for (let index = 1; index <= 12; index += 1) {
+        const name = `${prefix}${String(index).padStart(2, "0")}`;
+        const tag = await createTag(request, name);
+        tagIds.set(name, tag.id);
+        await attachTag(request, targetId, tag.id);
+      }
+      await page.reload();
+      const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
+      const overflow = card.getByRole("button", { name: /^Show \d+ more tags?$/ });
+      await expect(overflow).toBeVisible();
+      return { card, overflow, tagIds };
+    }
+
+    /** center は要素の箱の中央の座標を返す。 */
+    async function center(locator: ReturnType<Page["locator"]>) {
+      const box = await locator.boundingBox();
+      if (box === null) throw new Error("no layout");
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+
+    test("2・3: 1280×800 でマウスを「+N」に留めるとクリックなしで開き、一覧へ移っても開いたまま、横切っただけでは開かない", async ({
+      page,
+      request,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const { overflow, tagIds } = await cardWithHiddenTags(page, request, "e2e留め");
+      const dialog = page.getByRole("dialog");
+      await page.mouse.move(5, 795);
+      // hover の見た目は、文字色が text-muted-foreground から text-foreground に
+      // 変わる（面の bg-accent は secondary と同じ値）。
+      const restColor = await overflow.evaluate(
+        (element) => getComputedStyle(element).color,
+      );
+
+      // 横切って 400ms 未満で離れると開かない（受け入れ条件3）。留まった時間は
+      // テストの実行側の往復ではなく、ブラウザが受けた pointerenter から
+      // pointerleave までで測り、一覧が一瞬でも現れたかを MutationObserver で見る。
+      await overflow.evaluate((element) => {
+        const probe = { enteredAt: -1, leftAt: -1, dialogSeen: false };
+        (window as unknown as { __crossProbe: typeof probe }).__crossProbe = probe;
+        element.addEventListener("pointerenter", () => {
+          probe.enteredAt = performance.now();
+        });
+        element.addEventListener("pointerleave", () => {
+          probe.leftAt = performance.now();
+        });
+        new MutationObserver(() => {
+          if (document.querySelector('[role="dialog"]') !== null) probe.dialogSeen = true;
+        }).observe(document.body, { childList: true, subtree: true });
+      });
+      const target = await center(overflow);
+      await page.mouse.move(target.x, target.y);
+      await page.mouse.move(5, 795);
+      await page.waitForTimeout(800);
+      await expect(dialog).toHaveCount(0);
+      const crossing = await page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              __crossProbe: { enteredAt: number; leftAt: number; dialogSeen: boolean };
+            }
+          ).__crossProbe,
+      );
+      expect(crossing.enteredAt).toBeGreaterThanOrEqual(0);
+      expect(crossing.leftAt).toBeGreaterThanOrEqual(crossing.enteredAt);
+      expect(crossing.leftAt - crossing.enteredAt).toBeLessThan(400);
+      expect(crossing.dialogSeen).toBe(false);
+
+      // 留めるとクリックなしで開き、フォーカスは動かない（受け入れ条件2、R-1）。
+      const focusedBefore = await page.evaluateHandle(() => document.activeElement);
+      await page.mouse.move(target.x, target.y);
+      await expect(dialog).toBeVisible();
+      expect(
+        await page.evaluate((before) => document.activeElement === before, focusedBefore),
+      ).toBe(true);
+
+      // 一覧へ移る間も、一覧の上でも開いたまま。開いている間「+N」は hover の見た目を保つ。
+      const firstChip = dialog.getByRole("button").first();
+      const chipCenter = await center(firstChip);
+      await page.mouse.move(chipCenter.x, chipCenter.y, { steps: 10 });
+      await page.waitForTimeout(500);
+      await expect(dialog).toBeVisible();
+      await expect(overflow).toHaveAttribute("data-state", "open");
+      expect(
+        await overflow.evaluate((element) => getComputedStyle(element).color),
+      ).not.toBe(restColor);
+      if (screenshotDir !== undefined) {
+        await mkdir(screenshotDir, { recursive: true });
+        await page.screenshot({
+          path: path.join(screenshotDir, "tag-overflow-hover-1280.png"),
+        });
+      }
+
+      // 一覧のチップを押すと、そのタグで絞り込まれて一覧が閉じる（受け入れ条件2）。
+      const name = await firstChip.getAttribute("title");
+      const tagId = name === null ? undefined : tagIds.get(name);
+      if (tagId === undefined) throw new Error(`unknown tag: ${String(name)}`);
+      await firstChip.click();
+      await expect(page).toHaveURL(new RegExp(`tag=${String(tagId)}(&|$)`));
+      await expect(dialog).toHaveCount(0);
+    });
+
+    test("留めて開いた一覧は、Esc でも外を押しても閉じ、フォーカスを返さない", async ({
+      page,
+      request,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const { overflow } = await cardWithHiddenTags(page, request, "e2e閉じ");
+      const dialog = page.getByRole("dialog");
+      const target = await center(overflow);
+      const focusedBefore = await page.evaluateHandle(() => document.activeElement);
+
+      // Esc で閉じる。
+      await page.mouse.move(target.x, target.y);
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      expect(
+        await page.evaluate((before) => document.activeElement === before, focusedBefore),
+      ).toBe(true);
+
+      // 外を押すと閉じる。ポインタは一覧の上に置いたまま（離れて閉じるのと分ける）、
+      // 一覧の外（body）で押す。Radix は左ボタンの外の押下を click まで待って閉じる。
+      await page.mouse.move(5, 795);
+      await page.mouse.move(target.x, target.y);
+      await expect(dialog).toBeVisible();
+      const chipCenter = await center(dialog.getByRole("button").first());
+      await page.mouse.move(chipCenter.x, chipCenter.y, { steps: 10 });
+      await page.waitForTimeout(500);
+      await expect(dialog).toBeVisible();
+      const body = page.locator("body");
+      await body.dispatchEvent("pointerdown", { pointerType: "mouse", button: 0 });
+      await body.dispatchEvent("click", { button: 0 });
+      await expect(dialog).toHaveCount(0);
+      expect(
+        await page.evaluate((before) => document.activeElement === before, focusedBefore),
+      ).toBe(true);
+    });
+
+    test("4: 390×844 のタッチで「+N」をタップすると開く", async ({
+      browser,
+      request,
+    }) => {
+      test.setTimeout(120_000);
+      const context = await browser.newContext({
+        hasTouch: true,
+        viewport: { width: 390, height: 844 },
+      });
+      const page = await context.newPage();
+      try {
+        const { overflow } = await cardWithHiddenTags(page, request, "e2eタップ");
+        await overflow.tap();
+        await expect(page.getByRole("dialog")).toBeVisible();
+      } finally {
+        await context.close();
+      }
+    });
+
+    test("4: キーボードだけで「+N」へ Tab で行き Enter で開き、最初のチップを Enter で押す", async ({
+      page,
+      request,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const { card, overflow, tagIds } = await cardWithHiddenTags(page, request, "e2e鍵");
+      const dialog = page.getByRole("dialog");
+      // 行の最後のチップから Tab で「+N」へ。フォーカスが来ただけでは開かない。
+      await card
+        .getByRole("list", { name: "Tags", exact: true })
+        .getByRole("button", { name: /^Filter by / })
+        .last()
+        .focus();
+      await page.keyboard.press("Tab");
+      await expect(overflow).toBeFocused();
+      await page.waitForTimeout(600);
+      await expect(dialog).toHaveCount(0);
+
+      // Enter で開き、フォーカスは一覧の最初のチップへ移る（押して開いたとき）。
+      await page.keyboard.press("Enter");
+      await expect(dialog).toBeVisible();
+      const firstChip = dialog.getByRole("button").first();
+      await expect(firstChip).toBeFocused();
+      const name = await firstChip.getAttribute("title");
+      const tagId = name === null ? undefined : tagIds.get(name);
+      if (tagId === undefined) throw new Error(`unknown tag: ${String(name)}`);
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(new RegExp(`tag=${String(tagId)}(&|$)`));
+      await expect(dialog).toHaveCount(0);
     });
 
     /** visibleChipCount は、カードの行に直に出ているタグのチップの数（「+N」を除く）。 */
