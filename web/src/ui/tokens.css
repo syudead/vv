@@ -140,6 +140,8 @@
   /* ポップオーバーの幅とチップの名前の最大幅 */
   --spacing-popover: 18rem;
   --spacing-popover-wide: 20rem;
+  /* 画面の端に固定して浮かべる知らせ（取り込みの表示）の幅の上限。左右に 0.75rem を残す。 */
+  --spacing-viewport-inset: calc(100vw - 1.5rem);
   --spacing-chip-label: 12rem;
   /* タグの名前を打つ TagCommand（ui/TagCommand.tsx）の dropdown・inline の入力の幅と候補の一覧の幅・最大の高さ、
      窓の中に置いた一覧の高さとその最大 */
@@ -286,4 +288,20 @@
  */
 @utility top-data-table-head {
   top: var(--data-table-head-top, 0px);
+}
+
+/*
+ * 中身の幅の列と残りの列の 2 列（検索の書き方の例と説明）。列の定義は段で表せないので
+ * 名前つきのユーティリティにする。
+ */
+@utility grid-cols-term {
+  grid-template-columns: auto 1fr;
+}
+
+/*
+ * フォルダの絵に重ねる 1 枚のサムネイルの幅（背板の幅に対する割合）。位置と傾きは 1 枚ごとに
+ * 決まるので画面が style で渡す（videoList/FolderArt.tsx）。
+ */
+@utility w-folder-preview {
+  width: 68%;
 }

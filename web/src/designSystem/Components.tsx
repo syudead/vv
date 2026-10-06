@@ -23,6 +23,14 @@ import {
   SelectValue,
 } from "../ui/shadcn/select";
 import { Slider } from "../ui/shadcn/slider";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/shadcn/table";
 import { Switch } from "../ui/shadcn/switch";
 import { Textarea } from "../ui/shadcn/textarea";
 import { Toggle } from "../ui/shadcn/toggle";
@@ -362,32 +370,39 @@ function StateGrid({ demo }: { demo: Demo }) {
         <Code>{demo.item}</Code>
       </h3>
       <div className="overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-border text-xs text-muted-foreground">
-              <th scope="col" className="p-3 font-medium">
+        <Table className="text-left">
+          <TableHeader>
+            <TableRow className="border-b border-border text-xs text-muted-foreground">
+              <TableHead scope="col" className="p-3 font-medium">
                 {c.variant}
-              </th>
+              </TableHead>
               {states.map((state) => (
-                <th key={state} scope="col" className="p-3 font-medium whitespace-nowrap">
+                <TableHead
+                  key={state}
+                  scope="col"
+                  className="p-3 font-medium whitespace-nowrap"
+                >
                   {c.states[state]}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {demo.rows.map((row) => (
-              <tr key={row.variant} className="border-b border-border last:border-b-0">
-                <th
+              <TableRow
+                key={row.variant}
+                className="border-b border-border last:border-b-0"
+              >
+                <TableHead
                   scope="row"
                   className="p-3 align-middle font-normal whitespace-nowrap"
                 >
                   <Code>{row.variant}</Code>
-                </th>
+                </TableHead>
                 {states.map((state) => {
                   const content = row.render(state);
                   return (
-                    <td key={state} className="p-3 align-middle">
+                    <TableCell key={state} className="p-3 align-middle">
                       {content === null ? (
                         <span className="text-xs text-muted-foreground">{c.none}</span>
                       ) : (
@@ -398,13 +413,13 @@ function StateGrid({ demo }: { demo: Demo }) {
                           {content}
                         </div>
                       )}
-                    </td>
+                    </TableCell>
                   );
                 })}
-              </tr>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       </div>
     </section>
   );

@@ -116,10 +116,9 @@ export default function ScanProgressIndicator() {
 
   return (
     // 再生画面でも右下に置く。右上には見出しの帯の閉じる × があり、そこを覆ってしまう。
-    // 狭い幅でも左右に 0.75rem を残す（幅の上限は段に無いので style で渡す）。
+    // 狭い幅でも左右に 0.75rem を残す（max-w-viewport-inset）。
     <div
-      className="fixed right-3 bottom-4 z-30 sm:right-5 sm:bottom-5"
-      style={{ maxWidth: "calc(100vw - 1.5rem)" }}
+      className="fixed right-3 bottom-4 z-30 max-w-viewport-inset sm:right-5 sm:bottom-5"
       onPointerEnter={enterPointerArea}
       onPointerLeave={leavePointerArea}
     >

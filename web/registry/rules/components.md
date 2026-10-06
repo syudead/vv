@@ -4,7 +4,8 @@ Every control, overlay and mark on a new or migrated screen is a component
 from `web/src/ui/shadcn`, or one of the vv components in `web/src/ui` listed
 below, read through its registry item (`npx shadcn view
 ./registry/r/<item>.json` from `web/`). `task check` fails on a raw
-`<button>`, `<input>`, `<select>` or `<textarea>` outside `web/src/ui`. Each
+`<button>`, `<input>`, `<select>`, `<textarea>`, `<table>` or `<dialog>`, a
+`role="button"`, or a Radix import outside `web/src/ui`. Each
 shadcn component is the shadcn/ui component on the radix base, dressed only
 through the tokens of [foundations.md](foundations.md); its structure and
 variants are upstream's. A screen composes them; it does not restyle them with
@@ -18,7 +19,7 @@ no older component is left.
 
 - **Focus**: every component shows the same ring, the `:focus-visible`
   outline in `web/src/index.css`. Never add `outline-none` or a focus ring of
-  your own. Rows inside a menu, a select or a command list show the row that
+  your own; `task check` fails on both outside `web/src/ui/shadcn`. Rows inside a menu, a select or a command list show the row that
   has the focus with the `accent` fill instead.
 - **States**: hover, pressed, selected and disabled come from the component.
   Do not restyle them per screen; disabled is `opacity-50` everywhere.

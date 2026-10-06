@@ -65,8 +65,31 @@ const unknownClassesRule = "better-tailwindcss/no-unknown-classes";
 
 const controlRestrictedSyntax = [
   {
-    selector: "JSXOpeningElement[name.name=/^(button|input|select|textarea)$/]",
+    selector:
+      "JSXOpeningElement[name.name=/^(button|input|select|textarea|table|dialog)$/]",
     message: "Use the design-system component (web/registry/rules/components.md).",
+  },
+  {
+    selector: 'JSXAttribute[name.name="role"][value.value="button"]',
+    message: "Use the design-system Button (web/registry/rules/components.md).",
+  },
+  // style は実行時にしか決まらない値（位置・割合・測った高さ）だけに使う。固定の値は段の外の
+  // 値になるので、トークンとクラスで書く。
+  {
+    selector: 'JSXAttribute[name.name="style"] Property[value.type="Literal"]',
+    message:
+      "A fixed value in style bypasses the design-system scale. Use the tokens and classes (web/registry/rules/foundations.md); style is only for values known at run time.",
+  },
+  {
+    selector:
+      'JSXAttribute[name.name="style"] Property[value.type="TemplateLiteral"][value.expressions.length=0]',
+    message:
+      "A fixed value in style bypasses the design-system scale. Use the tokens and classes (web/registry/rules/foundations.md); style is only for values known at run time.",
+  },
+  {
+    selector: "ImportDeclaration[source.value=/^(radix-ui|@radix-ui\\/)/]",
+    message:
+      "Use the design-system components in web/src/ui/shadcn instead of Radix directly.",
   },
 ];
 
@@ -81,17 +104,21 @@ const arbitraryMessage =
 
 // 段階の外の数値の段（`p-7`、`text-2xl`、`rounded-xl`、`font-bold` など）は、src/ui/tokens.css
 // がテーマの名前空間を空にしているので生成されず、no-unknown-classes が落とす（research.md R-8）。
-function restrictedClasses(allowed = []) {
+// 共通のフォーカスの輪（index.css の :focus-visible）を消すか、独自の輪を足すクラス。
+// web/registry/rules/components.md の Focus。shadcn の部品（ui/shadcn）は上流のまま持つので外す。
+const focusRing = String.raw`(?:^|:)!?outline-(?:none|hidden)!?$|(?:^|:)(?:focus|focus-visible|focus-within):(?:[^:]*:)*!?(?:ring|outline)(?:-[^:]*)?!?$`;
+const focusMessage =
+  "Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).";
+
+function restrictedClasses(allowed = [], { focus = true } = {}) {
   // 末尾（v4）と先頭（v3）の重要度の印 `!` は許す一覧の判定から外す。
   const allow = allowed.length > 0 ? `(?!!?(?:${allowed.join("|")})!?$)` : "";
-  return [
-    "error",
-    {
-      restrict: [
-        { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
-      ],
-    },
+  const restrict = [
+    { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
   ];
+  if (focus)
+    restrict.push({ pattern: `^${allow}.*?(?:${focusRing})`, message: focusMessage });
+  return ["error", { restrict }];
 }
 
 function unknownClasses(allowed = []) {
@@ -110,7 +137,9 @@ function exceptionRules(entry) {
     } else if (entry.classes === undefined) {
       rules[rule] = "off";
     } else if (rule === restrictedClassesRule) {
-      rules[rule] = restrictedClasses(entry.classes);
+      rules[rule] = restrictedClasses(entry.classes, {
+        focus: !entry.file.startsWith("ui/shadcn/"),
+      });
     } else if (rule === unknownClassesRule) {
       rules[rule] = unknownClasses(entry.classes);
     }
@@ -132,6 +161,13 @@ function designSystemConfig() {
       rules: {
         [restrictedClassesRule]: restrictedClasses(),
         [unknownClassesRule]: unknownClasses(),
+      },
+    },
+    {
+      files: ["src/ui/shadcn/**"],
+      ignores: testFiles,
+      rules: {
+        [restrictedClassesRule]: restrictedClasses([], { focus: false }),
       },
     },
     {
