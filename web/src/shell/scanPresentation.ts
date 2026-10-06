@@ -92,6 +92,9 @@ const noIssues = { failed: 0, substituted: 0 };
 export function presentScan(value: ScanContextValue): ScanPresentation {
   const { scan } = value;
   const text = t.shell.scan;
+  // 開始の失敗は設定の「Scan status」が button のそばに出す。状態の取り直し（fetch-failed・
+  // refreshing）は、状態取得の失敗だけで決める。
+  const loadError = value.startError === null ? value.error : null;
   if (value.starting) {
     return {
       state: "starting",
@@ -109,7 +112,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
 
   if (scan === null) {
     return {
-      state: value.error === null ? "not-run" : "fetch-failed",
+      state: loadError === null ? "not-run" : "fetch-failed",
       scan: null,
       statusText: null,
       videos: null,
@@ -118,7 +121,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       detail: null,
       issues: noIssues,
       error: value.error,
-      refreshing: value.error !== null,
+      refreshing: loadError !== null,
     };
   }
 
@@ -154,7 +157,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     detail: detailFor(state, scan, value.activity),
     issues: { failed: scan.issues.failed, substituted: scan.issues.substituted },
     error: value.error,
-    refreshing: value.error !== null,
+    refreshing: loadError !== null,
   };
 }
 

@@ -28,9 +28,11 @@ function context(
     loaded: true,
     activity: scan?.activity ?? null,
     error: null,
+    startError: null,
     starting: false,
     running: scan?.state === "running",
     canStart: true,
+    noMediaFolders: false,
     start: () => undefined,
     refresh: () => undefined,
     setFolderCount: () => undefined,
@@ -54,6 +56,10 @@ describe("presentScan", () => {
     ],
     ["failed", context(makeScan("failed", { error: "disk" }))],
     ["fetch-failed", context(null, { error: "network" as UiText })],
+    [
+      "not-run",
+      context(null, { error: "refused" as UiText, startError: "refused" as UiText }),
+    ],
   ] as const)("maps %s", (expected, value) => {
     expect(presentScan(value).state).toBe(expected);
   });

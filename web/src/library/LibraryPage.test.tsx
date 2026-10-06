@@ -229,7 +229,10 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Scan" })).toBeDefined();
+    // 押しても取り込みを始めず、開始の場所である設定の「Scan status」へ移る。
+    expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
+      "/settings#scan-status",
+    );
   });
 
   it("失敗なら再試行を出し、再試行中は読み込み表示へ戻す", async () => {
@@ -1953,7 +1956,7 @@ describe("LibraryPage", () => {
       renderLibrary("/", "guest");
       expect(await screen.findByText("No videos are public")).toBeDefined();
       expect(screen.getByText("Sign in to see all videos.")).toBeDefined();
-      expect(screen.queryByRole("button", { name: "Scan" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Scan" })).toBeNull();
       const login = screen.getByRole("link", { name: "Sign in" });
       expect(login.getAttribute("href")).toBe("/login?next=%2F");
     });

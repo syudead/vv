@@ -386,7 +386,9 @@ describe("FolderPage", () => {
     expect(
       screen.getByText("No videos or subfolders were found. Put files there, then scan."),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Scan" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
+      "/settings#scan-status",
+    );
   });
 
   it("直下の子フォルダと直下の動画を、子フォルダを先にして出す", async () => {

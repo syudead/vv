@@ -58,8 +58,8 @@ test.describe.serial("scan issues with the real server", () => {
     folder = (await created.json()) as MediaFolder;
 
     await page.goto("/settings#scan-status");
-    await expect(page.getByRole("button", { name: "Refresh library" })).toBeEnabled();
-    await page.getByRole("button", { name: "Refresh library" }).click();
+    await expect(page.getByRole("button", { name: "Scan library" })).toBeEnabled();
+    await page.getByRole("button", { name: "Scan library" }).click();
 
     // 解析はやり直しの上限まで失敗してから終わる。
     const section = page.locator("#scan-status");

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useLocation } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import type { FolderRef, FolderScope } from "../api/client";
 import {
@@ -302,9 +302,10 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         description={owner ? t.folders.empty.description : undefined}
         action={
           // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
+          // 押すと開始の場所である設定の「Scan status」へ移る（issue 830）。
           owner ? (
-            <Button size="sm" onClick={scan.start} disabled={scan.running}>
-              {scan.running ? t.list.scanning : t.list.scan}
+            <Button asChild size="sm">
+              <Link to="/settings#scan-status">{t.list.scan}</Link>
             </Button>
           ) : undefined
         }
