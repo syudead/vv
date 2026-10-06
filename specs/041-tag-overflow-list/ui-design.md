@@ -200,8 +200,11 @@ on a card with two hidden tags.
    chip; pressing one filters and closes the panel, and nothing in the panel
    does anything else.
 6. **Inside the viewport**: for a card in the last row at 1280×800 and for any
-   card at 390×844, the whole panel lies inside the viewport, including its
-   shadow's edge, and scrolling the list reaches the last chip.
+   card at 390×844, the panel's box lies inside the viewport, at least
+   `collisionPadding` from each edge, and scrolling the list reaches the last
+   chip. The `shadow-elevated` beyond the box may be cut by the viewport's
+   edge: Radix places the box, not its painted shadow, and the design keeps
+   the component's default collision padding.
 7. **Hover intent**: at 1280×800, moving the mouse across the tag row and off
    the card opens nothing; resting on `+N` opens the list without a click and
    without the page's focus outline appearing anywhere; moving down into the
