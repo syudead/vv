@@ -27,10 +27,11 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs only on a push to `main` |
 
 The costs are the mean worker time per test in one full Vitest run (October
-2026), with every `.ts` test file counted as a logic test. E2E does not cover
-the production Vite build or its embedding in the Go binary; `task test-web`
-builds the SPA, and nothing serves that build in a test. Page tests were 510 of 1,736 unit tests and 74% of the run's worker
-time.
+2026), with every `.ts` test file counted as a logic test. Page tests were 510
+of 1,736 unit tests and 74% of the run's worker time.
+
+E2E does not cover the production Vite build or its embedding in the Go binary:
+`task test-web` builds the SPA, and no test serves that build.
 
 ## Choosing the level
 
