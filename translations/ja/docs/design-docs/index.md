@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: be75d5ca3e819652c4f7343d1ef17d0a49b751b0b755cc264916309e42e53b22
+sourceHash: 2e4b3c4a754d5128cb765464fb43f762f94f96b6427c13377512a85d54c08bc7
 ---
 
 # 設計文書 {#design-documents}
@@ -26,6 +26,7 @@ sourceHash: be75d5ca3e819652c4f7343d1ef17d0a49b751b0b755cc264916309e42e53b22
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [Windows デスクトップアプリ (VVMDM.exe)](windows-app.md)
 - [プロセスのライフサイクル: 起動と停止の順序](process-lifecycle.md)
+- [フォルダの監視: 変更のあったメディアフォルダの取り込み](folder-watching.md)
 - [再生画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [隣の字幕ファイル](sidecar-subtitles.md)

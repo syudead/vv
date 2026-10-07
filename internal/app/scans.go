@@ -135,6 +135,8 @@ type Scans struct {
 	// runOrigin と runFinished は走っている走査の origin と、その終わりを知らせる channel である。
 	runOrigin   domain.ScanOrigin
 	runFinished chan struct{}
+	// onFinish は走査を閉じたあとに呼ぶ。nil なら呼ばない。
+	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
 	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
 	// 走査は、始めた直後に取り消す。
 	stopped bool
@@ -176,8 +178,18 @@ func NewScans(opts ScansOptions) *Scans {
 // ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
+//
+// 走っているのが監視の走査なら、それを止めてから始める（research.md R-5）。止めた直後に
+// 監視が次の走査を始めて取り合ったときは、もう一度止めて始め直す。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
-	return s.start(ctx, s.store.StartScan, nil)
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		s.SupersedeWatchScan(ctx)
+		scan, started, err := s.start(ctx, s.store.StartScan, nil)
+		if err != nil || started || scan.Origin != domain.ScanOriginWatch || attempt >= attempts {
+			return scan, started, err
+		}
+	}
 }
 
 // StartWatchScan は変わったディレクトリ dirs だけを読む走査を、フォルダの監視の走査
@@ -363,6 +375,14 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 	return nil
 }
 
+// OnFinish は走査を閉じるたびに呼ぶ関数を登録する。origin は閉じた走査を始めた主体で、
+// 関数は走査の錠を取らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onFinish = f
+}
+
 // Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
 // 取り消したあとに呼ぶ。
 //
@@ -378,8 +398,10 @@ func (s *Scans) Wait() {
 // 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
 // ないので含めない。
 func (s *Scans) Busy(ctx context.Context) (bool, error) {
+	// 監視の走査は利用者に見えない取り込みなので、走っていても取り込みの途中とは数えない
+	// （specs/042-folder-watch-import/research.md R-4）。
 	s.mu.Lock()
-	running := s.running
+	running := s.running && s.runOrigin != domain.ScanOriginWatch
 	s.mu.Unlock()
 	if running {
 		return true, nil
@@ -485,12 +507,21 @@ func (s *Scans) stopRuns() {
 // run は走査を最後まで走らせ、結果を記録する。
 func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory) {
 	defer s.done.Done()
+	origin := domain.ScanOriginManual
+	if dirs != nil {
+		origin = domain.ScanOriginWatch
+	}
+	endState := domain.ScanFailed
 	defer func() {
 		s.mu.Lock()
 		s.running = false
 		s.cancelRun(nil)
 		s.cancelRun = nil
+		onFinish := s.onFinish
 		s.mu.Unlock()
+		if onFinish != nil {
+			onFinish(origin, endState)
+		}
 		close(finished)
 	}()
 
@@ -553,6 +584,8 @@ func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, d
 
 	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr); err != nil {
 		s.logger.Warn("could not record the end of the scan", slog.Any("error", err))
+	} else {
+		endState = state
 	}
 	s.scanChanged()
 }
