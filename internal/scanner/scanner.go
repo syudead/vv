@@ -225,6 +225,9 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 		}
 	}
 
+	// collected は実際に歩いたディレクトリ。削除の範囲はここから決める。メディアフォルダの
+	// 外にある項目や、メディアフォルダの祖先の項目は歩かないので、範囲に入れない。
+	var collected []domain.DirtyDirectory
 	for _, folder := range scanned {
 		root := folder.Path
 		if err := checkMediaFolder(root); err != nil {
@@ -246,6 +249,7 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 			if !domain.PathWithinRoot(root, dir.Path) {
 				continue
 			}
+			collected = append(collected, dir)
 			if err := s.collectDirectory(ctx, pass, root, dir); err != nil {
 				if ctx.Err() != nil {
 					return domain.ScanResult{}, ctx.Err()
@@ -347,7 +351,7 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 	}
 	inScope := func(string) bool { return true }
 	if scoped {
-		inScope = func(path string) bool { return domain.DirtyDirectoriesContain(dirs, path) }
+		inScope = func(path string) bool { return domain.DirtyDirectoriesContain(collected, path) }
 	}
 	removed, err := s.removeMissing(ctx, folders, seen, inScope)
 	if err != nil {

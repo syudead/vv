@@ -231,3 +231,22 @@ func TestScanScopedSkipsExcludedAndForeignDirectories(t *testing.T) {
 		t.Fatalf("取り込んだもの = %v", got)
 	}
 }
+
+// メディアフォルダの祖先の項目は歩かないので、その下のメディアフォルダの所在を消さない。
+func TestScanScopedAncestorOfMediaFolderRemovesNothing(t *testing.T) {
+	parent := mediaTree(t, map[string]string{"library/a/1.mp4": "1"})
+	root := filepath.Join(parent, "library")
+	index := newFakeIndex()
+	runScan(t, root, index)
+	if err := os.Remove(filepath.Join(root, "a", "1.mp4")); err != nil {
+		t.Fatal(err)
+	}
+
+	result := runScoped(t, root, index,
+		domain.DirtyDirectory{Path: parent, Recursive: true},
+		dirOf(root, "b", false))
+	if result.Removed != 0 || len(index.deleted) != 0 {
+		t.Fatalf("歩いていない所在を消した: %+v, deleted %v", result, index.deleted)
+	}
+	rowFor(t, index, filepath.Join(root, "a", "1.mp4"))
+}
