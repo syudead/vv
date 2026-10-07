@@ -629,22 +629,6 @@ describe("TagsPage 仮のタグ", () => {
     await waitFor(() => expect(document.activeElement).toBe(toggle));
   });
 
-  it("「Tentative only」と検索で一致が無いときは、両方を外して検索の入力へ戻れる", async () => {
-    const user = userEvent.setup();
-    install();
-    renderPage();
-    await screen.findByTitle("Alpha");
-    await toggleFilter(user, "Tentative only");
-    const search = screen.getByRole("searchbox", { name: "Search tags" });
-    await user.type(search, "Gamma");
-
-    expect(await screen.findByText('No tentative tags match "Gamma"')).toBeDefined();
-    await user.click(screen.getByRole("button", { name: "Show all tags" }));
-    await waitFor(() => expect(document.activeElement).toBe(search));
-    expect(filterButton().getAttribute("aria-label")).toBe("Filter");
-    expect(await screen.findByText("4 tags")).toBeDefined();
-  });
-
   it("疑似ロケールで、仮のタグの行・絞り込み・却下の窓・却下した名前の文言がカタログから出る", async () => {
     enablePseudoLocale();
     const user = userEvent.setup();

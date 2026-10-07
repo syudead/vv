@@ -1,9 +1,4 @@
-import {
-  defaultRangeExtractor,
-  useWindowVirtualizer,
-  type Range,
-} from "@tanstack/react-virtual";
-import { CircleDashed, Plus, SearchX, Tags as TagsIcon, VideoOff, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -12,11 +7,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type FocusEvent,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { flushSync } from "react-dom";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -24,17 +16,12 @@ import {
   confirmTag,
   createTag,
   deleteTag,
-  forgetRejectedTagName,
-  listRejectedTagNamePage,
-  listTagPage,
   maxTagBatch,
   rejectTag,
   renameTag,
-  type RejectedTagNameList,
-  tagPageLimit,
   type Tag,
 } from "../api/tags";
-import { errorText, formatNumber, t, type UiText } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import {
   readTagListPreferences,
@@ -42,14 +29,10 @@ import {
 } from "../preferences/tagListPreferences";
 import { AdminTablePage } from "../ui/patterns/admin-table-page";
 import { DataTable } from "../ui/patterns/data-table";
-import { EmptyState } from "../ui/patterns/empty-state";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
-import { Checkbox } from "../ui/shadcn/checkbox";
-import { TableBody, TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
-import { Tabs, TabsList, TabsTrigger } from "../ui/shadcn/tabs";
-import { Toggle } from "../ui/shadcn/toggle";
+import { TableBody } from "../ui/shadcn/table";
 import { useToast } from "../ui/Toast";
 import type { HistoryMode } from "../videoList/listCriteria";
 import BulkTagDialog, { type BulkTagAction } from "./BulkTagDialog";
@@ -62,18 +45,15 @@ import SynonymsDialog from "./SynonymsDialog";
 import type { TagListSort } from "./tagListOrder";
 import {
   addTag,
-  appendUniqueTags,
   confirmTags,
   insertionIndex,
   matchesTagQuery,
   removeTags,
   replaceTag,
-  type TagPageRows,
-  type TagRowsQuery,
 } from "./tagPageRows";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
 import { type TagListTab, useTagListCriteria } from "./tagListUrl";
-import TagRow, { type TagRowRefs } from "./TagRow";
+import TagRow from "./TagRow";
 import {
   TagListChanged,
   TagLoadFailed,
@@ -82,6 +62,21 @@ import {
   TagStaleList,
 } from "./TagListNotices";
 import TagSelectionBar from "./TagSelectionBar";
+import { tagCountText, tagListView } from "./tagListView";
+import {
+  countSelectable,
+  keepLoaded,
+  selectAllCheck,
+  selectedKinds,
+  withoutIds,
+} from "./tagSelection";
+import { useRejectedNames } from "./useRejectedNames";
+import TagFilterChips from "./TagFilterChips";
+import TagListEmptyState from "./TagListEmptyState";
+import TagListHead from "./TagListHead";
+import TagsTabs, { tagsPanelId, tagsTabId } from "./TagsTabs";
+import { useTagPage } from "./useTagPage";
+import { ROW_OVERSCAN, useVirtualTagRows } from "./useVirtualTagRows";
 import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 
@@ -91,57 +86,6 @@ function isTagNotFound(error: unknown): boolean {
 
 function isTagNotTentative(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_tentative";
-}
-
-type FocusTarget = "rename" | "synonyms" | "name" | "menu";
-
-/**
- * MoreState は一覧の末尾の続きの状態である（specs/036-tag-admin-scale/ui-design.md
- * 「Loading more」）。同時に 1 つだけで、`inconsistent` は続きの応答の `totalAll` が
- * 画面の値と違ったとき（research.md R-11）。
- */
-type MoreState =
-  | { kind: "idle" }
-  | { kind: "loading" }
-  | { kind: "failed"; error: UiText }
-  | { kind: "inconsistent" };
-
-const moreIdle: MoreState = { kind: "idle" };
-
-/**
- * ROW_ESTIMATE は、まだ描いていない行の高さの見積り（px）である。行（`py-2` と
- * `size-8` の操作、下の線 1px）の高さで、シノニムの行・改名の失敗の文言を持つ
- * 行は描いたあとに測った高さ（`measureElement`）で置き換わる。
- */
-const ROW_ESTIMATE = 49;
-
-/**
- * rejectedPageLimit は却下した名前の 1 ページの件数である（ui-design.md
- * 「Rejected names」の 100 件。research.md R-13）。
- */
-const rejectedPageLimit = 100;
-
-/** ROW_OVERSCAN は、表示域の前後に余分に描く行の数である。 */
-const ROW_OVERSCAN = 8;
-
-/** 行の中で Tab が止まる要素。 */
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/**
- * isShown は、要素が描かれている（CSS で隠れていない）かである。行の操作は
- * タッチの端末と `sm` 未満で「Actions」1 つにまとめ、残りを CSS で隠すので、
- * フォーカスの行き先を選ぶときに見る。`checkVisibility` の無い環境（jsdom）は
- * 描かれているものとして扱う。
- */
-function isShown(element: HTMLElement): boolean {
-  return "checkVisibility" in element ? element.checkVisibility() : true;
-}
-
-function rowFocusables(row: Element): HTMLElement[] {
-  return [...row.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (element) => element.tabIndex >= 0 && isShown(element),
-  );
 }
 
 /** RowHandlers は行へ渡す操作である。行の再描画を減らすため、同じ関数を渡し続ける。 */
@@ -182,16 +126,20 @@ interface RowHandlers {
  */
 export default function TagsPage() {
   const toast = useToast();
-  /** page は読み込んだ行と件数である。先頭のページをまだ一度も受けていなければ undefined。 */
-  const [page, setPage] = useState<TagPageRows | undefined>(undefined);
-  /**
-   * loadError は先頭のページの失敗である。一覧を持っていなければ失敗の表示、
-   * 持っていれば帯の中の「Stale list」の箱になる（ui-design.md「Stale list」）。
-   */
-  const [loadError, setLoadError] = useState<UiText | null>(null);
-  /** firstPending は先頭のページを待っているかである。 */
-  const [firstPending, setFirstPending] = useState(false);
-  const [more, setMore] = useState<MoreState>(moreIdle);
+  const rejected = useRejectedNames();
+  const {
+    page,
+    loadError,
+    firstPending,
+    more,
+    appliedSearch,
+    pageRef,
+    load,
+    reload,
+    loadMore,
+    retryMore,
+    applyLocal,
+  } = useTagPage(() => scrollListToTop());
   /**
    * 検索語・絞り込み・並び順・タブは URL に載せる（ライブラリの一覧の条件と同じ。
    * specs/036-tag-admin-scale/ui-design.md「URL state」）。URL に sort が無いときは
@@ -206,13 +154,6 @@ export default function TagsPage() {
    * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
    */
   const [tab, setTab] = useState<TagListTab>(urlTab);
-  /**
-   * appliedSearch は、今の行を読んだときの検索の入力である。空の状態の文言はこれを
-   * 出す。新しい検索の先頭のページを待つ間は前の結果が残るので、打ち直した入力を
-   * 出すと、まだ読んでいない語に「一致が無い」と言ってしまう。
-   */
-  const [appliedSearch, setAppliedSearch] = useState("");
-
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
@@ -268,37 +209,11 @@ export default function TagsPage() {
   } | null>(null);
   const [bulkError, setBulkError] = useState<UiText | null>(null);
   const selectAllRef = useRef<HTMLButtonElement | null>(null);
-  const selectAllLimitId = useId();
   const tabsId = useId();
   const barConfirmRef = useRef<HTMLButtonElement | null>(null);
   const barMergeRef = useRef<HTMLButtonElement | null>(null);
   const barRejectRef = useRef<HTMLButtonElement | null>(null);
   const barDeleteRef = useRef<HTMLButtonElement | null>(null);
-
-  /**
-   * 却下した名前は先頭から読み込んだ分（`items`）と、全部の数（`total`。入口の件数）、
-   * 続きのカーソル（`nextCursor`）で持つ（specs/036-tag-admin-scale/data-model.md §4、
-   * research.md R-13）。undefined の間は読み込み中か、先頭のページの読み込みの失敗。
-   */
-  const [rejectedPage, setRejectedPage] = useState<RejectedTagNameList | undefined>(
-    undefined,
-  );
-  const [rejectedError, setRejectedError] = useState<UiText | null>(null);
-  /** 続きの読み込みの送信中と、その失敗。 */
-  const [rejectedMorePending, setRejectedMorePending] = useState(false);
-  const [rejectedMoreError, setRejectedMoreError] = useState<UiText | null>(null);
-  /** 先頭のページを受けるたびに 1 増える。窓が開いていればスクロール位置を先頭へ戻す。 */
-  const [rejectedEpoch, setRejectedEpoch] = useState(0);
-  const rejectedGeneration = useRef(0);
-  /** 取り直しの応答を待っている世代。待っていなければ null。 */
-  const rejectedInFlight = useRef<number | null>(null);
-  /** 続きの要求を送っている間 true（同時に 1 つだけ送る）。 */
-  const rejectedMoreInFlight = useRef(false);
-  /**
-   * 先頭のページを受けたあとに × で外した名前。外す前に送った続きの応答に
-   * 載っていても並びに戻さない。
-   */
-  const rejectedForgotten = useRef(new Set<string>());
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -307,33 +222,8 @@ export default function TagsPage() {
   /** chipRefs は見出しの下の絞り込みのチップ（外したあとのフォーカス先）である。 */
   const tentativeChipRef = useRef<HTMLButtonElement | null>(null);
   const unusedChipRef = useRef<HTMLButtonElement | null>(null);
-  const rowRefs = useRef(new Map<number, TagRowRefs>());
-  const listRef = useRef<HTMLTableSectionElement | null>(null);
   /** listBoxRef は帯の下の一覧の箱（作成の行・行・空の状態を入れる）である。 */
   const listBoxRef = useRef<HTMLDivElement | null>(null);
-  /**
-   * pinnedRowId は、見えている範囲の外でも描き続ける行である。フォーカスを
-   * 持つ行（行から開いたメニューにあるときも含む）と、これからフォーカスを移す
-   * 行を指す。フォーカスが一覧の外へ出たら外す（`handleListBlur`。
-   * specs/036-tag-admin-scale/ui-design.md「Keyboard across virtualized rows」）。
-   */
-  const [pinnedRowId, setPinnedRowId] = useState<number | null>(null);
-  /**
-   * focusInListRef は、フォーカスが一覧（React の木での一覧で、行から開いた
-   * メニューを含む）の中にあるかである。`handleListBlur` が見る。
-   */
-  const focusInListRef = useRef(false);
-  /** afterCommitQueue は `afterCommit` が描き終えるのを待たせている処理である。 */
-  const afterCommitQueue = useRef<(() => void)[]>([]);
-  const [afterCommitTick, setAfterCommitTick] = useState(0);
-  useEffect(() => {
-    if (afterCommitQueue.current.length === 0) return;
-    const queued = afterCommitQueue.current;
-    afterCommitQueue.current = [];
-    setTimeout(() => {
-      for (const fn of queued) fn();
-    }, 0);
-  }, [afterCommitTick]);
   /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
   const [scrollMargin, setScrollMargin] = useState(0);
   /**
@@ -362,17 +252,6 @@ export default function TagsPage() {
     };
   }, []);
   const rowsTop = stuckBottom + headHeight;
-
-  const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
-    const current = rowRefs.current.get(id) ?? {
-      nameLink: null,
-      renameButton: null,
-      synonymsButton: null,
-      menuButton: null,
-      actionsButton: null,
-    };
-    rowRefs.current.set(id, { ...current, ...refs });
-  }, []);
 
   /**
    * filtersRef は今描いている「Tentative only」「Unused only」である。要求の応答を
@@ -408,278 +287,6 @@ export default function TagsPage() {
   }
 
   /**
-   * releasePinIfFocusOutside は、フォーカスが一覧の外にあれば、行を描き続ける
-   * のをやめる（`pinnedRowId`）。フォーカスを持つ要素は外さない。
-   */
-  function releasePinIfFocusOutside() {
-    if (focusInListRef.current) return;
-    if (listRef.current?.contains(document.activeElement)) return;
-    setPinnedRowId(null);
-  }
-
-  /**
-   * afterCommit は、いま置いた状態（応答で変えたタグの一覧や送信中の印）を
-   * React が描き終えてから、さらに setTimeout(0) で1呼吸置いて fn を呼ぶ
-   * （settings/SettingsPage.tsx の focusFolderAction と同じ1呼吸）。
-   * setTimeout(0) だけでは、応答のあとの再描画より先に走ることがあり、
-   * 新しい行がまだ一覧に無い、送信中で「新しいタグ」が押せない、といった
-   * 古い画面でフォーカス先を決めてしまう。
-   */
-  function afterCommit(fn: () => void) {
-    afterCommitQueue.current.push(fn);
-    setAfterCommitTick((tick) => tick + 1);
-  }
-
-  /**
-   * renderRow は、一覧にあるのに描いていない（見えている範囲の外の）行を
-   * 描かせる。描く範囲にその行を足して同期で描き直す（`pinnedRowId`）。
-   * 描いていなかった行なら一覧での位置を返し、もう描いていた行や一覧に無い
-   * 行なら -1 を返す。
-   */
-  function renderRow(id: number): number {
-    const index = visibleRowsRef.current.findIndex((tag) => tag.id === id);
-    if (index === -1) return -1;
-    const drawn = listRef.current?.querySelector(`[data-tag-id="${String(id)}"]`);
-    if (drawn !== null && drawn !== undefined) return -1;
-    flushSync(() => setPinnedRowId(id));
-    return index;
-  }
-
-  /**
-   * revealRow は、描いていない行を描かせてその行の位置へスクロールする。
-   * フォーカスを見えている範囲の外の行へ移す前に呼ぶ（行が描かれていなければ
-   * 移せない）。もう描いている行は、フォーカスを移すとブラウザが表示域へ
-   * 寄せる。
-   */
-  function revealRow(id: number) {
-    const index = renderRow(id);
-    if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
-  }
-
-  /**
-   * focusRow はタグの行のフォーカス先へ移す。その行がもう無ければ
-   * `fallbackFocus` へ移す。行の差し替えが DOM に反映されたあとで移す必要が
-   * あるので、同時に置いた状態を描き終えてから1呼吸置く（`afterCommit`）。
-   * 行が描かれていなければ、先にその行の位置へスクロールする（`revealRow`）。
-   */
-  function focusRow(id: number, part: FocusTarget) {
-    afterCommit(() => {
-      revealRow(id);
-      const refs = rowRefs.current.get(id);
-      const preferred =
-        part === "rename"
-          ? refs?.renameButton
-          : part === "synonyms"
-            ? refs?.synonymsButton
-            : part === "menu"
-              ? refs?.menuButton
-              : refs?.nameLink;
-      const target = rowActionTarget(refs, preferred);
-      if (target === null || target === undefined || !target.isConnected) {
-        fallbackFocus();
-      } else target.focus();
-    });
-  }
-
-  /**
-   * focusAfterRemoval は、行が一覧から消えた（削除・却下、tag_not_found の
-   * 取り直しで消えた、または「Tentative only」の絞り込みから外れた）あとの
-   * フォーカス先を決める。次の行の「改名」、無ければ前の行、1つも無ければ
-   * `fallbackFocus`（ui-design.md「Merge and delete」、031 の「Toolbar」）。
-   * order は消える前の（絞り込み後の）並びで、`alsoGone` は同時に一覧から
-   * 外れるほかの行（統合先が確定になって絞り込みから外れるときなど）である。
-   *
-   * 候補は、移す時点でまだ一覧にあって押せる「改名」に限る。ほかの行の確定が
-   * 並行していると、order を控えたあとにその行も外れていたり、送信中で
-   * 「改名」が disabled だったりするので、それを飛ばして次の行へ進む。
-   * 候補が見えている範囲の外で描かれていなければ、描かせてから確かめ、移す
-   * 前にその行の位置へスクロールする。
-   */
-  function focusAfterRemoval(
-    order: readonly Tag[],
-    removedId: number,
-    alsoGone: ReadonlySet<number> = new Set(),
-    fallback: () => void = fallbackFocus,
-  ) {
-    const index = order.findIndex((tag) => tag.id === removedId);
-    const stays = (tag: Tag) => tag.id !== removedId && !alsoGone.has(tag.id);
-    const candidates = [
-      ...order.slice(index + 1).filter(stays),
-      ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
-    ];
-    afterCommit(() => {
-      const listed = new Set(visibleRowsRef.current.map((tag) => tag.id));
-      for (const tag of candidates) {
-        if (!listed.has(tag.id)) continue;
-        const index = renderRow(tag.id);
-        const refs = rowRefs.current.get(tag.id);
-        const button = rowActionTarget(refs, refs?.renameButton);
-        if (button?.isConnected === true && !(button as HTMLButtonElement).disabled) {
-          if (index !== -1) virtualizer.scrollToIndex(index, { align: "auto" });
-          button.focus();
-          return;
-        }
-      }
-      fallback();
-    });
-  }
-
-  /**
-   * rowActionTarget は、行の操作へフォーカスを移すときの実際の行き先である。
-   * タッチの端末と `sm` 未満では行のアイコンのボタン（`RowIconButton`）が隠れて「Actions」1 つに
-   * まとまるので、隠れている操作の代わりに「Actions」を指す（ui-design.md
-   * 「Actions on touch and narrow widths」）。名前のリンクは隠れない。
-   */
-  function rowActionTarget(
-    refs: TagRowRefs | undefined,
-    preferred: HTMLElement | null | undefined,
-  ): HTMLElement | null | undefined {
-    if (preferred === null || preferred === undefined) return preferred;
-    if (preferred === refs?.nameLink || !preferred.isConnected) return preferred;
-    return isShown(preferred) ? preferred : refs?.actionsButton;
-  }
-
-  /**
-   * reloadRejectedNames は却下した名前の先頭の 1 ページを取り直す。却下・作成・
-   * 改名・シノニムの追加のあと（どれも一覧を変えうる。要件 15、受け入れ条件 14）と、
-   * 画面を開いたときに呼ぶ。読み込んだ続きは捨て、先頭の 1 ページに戻す
-   * （ui-design.md「Rejected names」）。追い越された古い取得の結果（続きも含む）は
-   * 捨てる。取り直しの失敗は、最初の読み込みの失敗と同じ見え方（件数を出さず、
-   * 「Couldn't load the rejected names」と Retry）にする。古い一覧を黙って残すと、
-   * 却下や作成で変わったはずの並びを正しいものとして見せ続けてしまう。
-   */
-  const reloadRejectedNames = useCallback(() => {
-    rejectedGeneration.current += 1;
-    const generation = rejectedGeneration.current;
-    rejectedInFlight.current = generation;
-    rejectedMoreInFlight.current = false;
-    setRejectedError(null);
-    setRejectedMorePending(false);
-    setRejectedMoreError(null);
-    listRejectedTagNamePage(undefined, rejectedPageLimit)
-      .then((page) => {
-        if (generation !== rejectedGeneration.current) return;
-        rejectedInFlight.current = null;
-        rejectedForgotten.current = new Set();
-        setRejectedPage(page);
-        setRejectedEpoch((epoch) => epoch + 1);
-      })
-      .catch((failure: unknown) => {
-        if (generation !== rejectedGeneration.current) return;
-        rejectedInFlight.current = null;
-        setRejectedPage(undefined);
-        setRejectedError(errorText(failure));
-      });
-  }, []);
-
-  /**
-   * loadMoreRejectedNames は窓の中身を末尾までスクロールしたときに、続きの
-   * 1 ページを読んで並びの末尾に足す。同時に 1 つだけ送る。失敗しても読み込んだ
-   * 名前は残し、Retry は同じカーソルで読み直す。入口の件数は先頭のページの
-   * `total` から外した数を引いたままにする（続きの応答で上書きすると、送ったあとの
-   * 取り外しの分がずれる）。
-   */
-  function loadMoreRejectedNames() {
-    const cursor = rejectedPage?.nextCursor;
-    if (cursor === undefined || rejectedMoreInFlight.current) return;
-    if (rejectedInFlight.current !== null) return;
-    const generation = rejectedGeneration.current;
-    rejectedMoreInFlight.current = true;
-    setRejectedMorePending(true);
-    setRejectedMoreError(null);
-    listRejectedTagNamePage(cursor, rejectedPageLimit)
-      .then((next) => {
-        if (generation !== rejectedGeneration.current) return;
-        rejectedMoreInFlight.current = false;
-        setRejectedMorePending(false);
-        setRejectedPage((current) => {
-          if (current === undefined) return current;
-          const known = new Set(current.items);
-          const added = next.items.filter(
-            (name) => !known.has(name) && !rejectedForgotten.current.has(name),
-          );
-          return {
-            items: [...current.items, ...added],
-            total: current.total,
-            ...(next.nextCursor === undefined ? {} : { nextCursor: next.nextCursor }),
-          };
-        });
-      })
-      .catch((failure: unknown) => {
-        if (generation !== rejectedGeneration.current) return;
-        rejectedMoreInFlight.current = false;
-        setRejectedMorePending(false);
-        setRejectedMoreError(errorText(failure));
-      });
-  }
-
-  /**
-   * forgetRejectedName は × の取り外しである。`204` でそのチップを消し、入口の
-   * 件数を 1 減らす（一覧は取り直さない）。取り外しの送信中に先頭のページの
-   * 取り直しが重なったとき（送る前から待っていた・送信中に始まった）は、その
-   * 応答が取り外しの前か後かが分からない。外した名前が先頭のページの外にあると、
-   * 局所の 1 減らしもできない。そのため、待っている応答は捨て、取り外しのあとで
-   * 取り直す。
-   */
-  async function forgetRejectedName(name: string) {
-    const generation = rejectedGeneration.current;
-    const refreshing = rejectedInFlight.current !== null;
-    await forgetRejectedTagName(name);
-    const overlapped =
-      refreshing ||
-      generation !== rejectedGeneration.current ||
-      rejectedInFlight.current !== null;
-    rejectedForgotten.current.add(name);
-    setRejectedPage((current) => {
-      if (current === undefined || !current.items.includes(name)) return current;
-      return {
-        ...current,
-        items: current.items.filter((item) => item !== name),
-        total: Math.max(current.total - 1, 0),
-      };
-    });
-    if (overlapped) reloadRejectedNames();
-  }
-
-  /**
-   * pageRef・moreRef・firstPendingRef・loadErrorRef は、要求の応答のあとや
-   * 続きのきっかけで今の状態を読むための控えである。描くたびに差し替える。
-   */
-  const pageRef = useRef<TagPageRows | undefined>(page);
-  const moreRef = useRef<MoreState>(more);
-  const firstPendingRef = useRef(firstPending);
-  const loadErrorRef = useRef<UiText | null>(loadError);
-  useLayoutEffect(() => {
-    pageRef.current = page;
-    moreRef.current = more;
-    firstPendingRef.current = firstPending;
-    loadErrorRef.current = loadError;
-  });
-
-  /**
-   * generationRef は先頭のページの要求の通し番号である。条件を変えるたびに進め、
-   * 古い条件の応答（先頭のページも続きも）を捨てる（research.md R-11）。
-   */
-  const generationRef = useRef(0);
-  /**
-   * mutationRef は、操作の結果を読み込んだ行へ局所で反映した回数である（`applyLocal`）。
-   * 要求を送ったあとに反映があれば、その応答は反映した変更の前の一覧かもしれないので、
-   * 行と件数に入れずに同じ条件で読み直す（先頭のページは先頭から、続きは同じカーソルで）。
-   * 入れると、消したタグが戻る・件数が操作の前に戻るなど、局所の反映が巻き戻る。
-   */
-  const mutationRef = useRef(0);
-  const firstAbortRef = useRef<AbortController | null>(null);
-  const moreAbortRef = useRef<AbortController | null>(null);
-  /** queryRef は最後に読み直しを始めた条件である。「Retry」「Reload」が同じ条件で読む。 */
-  const queryRef = useRef<TagRowsQuery & { search: string }>({
-    query: "",
-    search: "",
-    tentativeOnly: false,
-    unusedOnly: false,
-    sort: "name",
-  });
-
-  /**
    * scrollListToTop は、一覧の先頭が帯の下に隠れていれば先頭まで戻す（ui-design.md
    * 「Band」）。条件を変えて先頭のページが届いたときと「新しいタグ」で使う。
    */
@@ -689,148 +296,6 @@ export default function TagsPage() {
       window.scrollTo({ top: Math.max(0, window.scrollY + listTop - stuckBottom) });
     }
   }
-  const scrollListToTopRef = useRef(scrollListToTop);
-  useLayoutEffect(() => {
-    scrollListToTopRef.current = scrollListToTop;
-  });
-
-  /**
-   * loadFirst は今の条件（`queryRef`）で先頭のページを読み直す。進行中の要求
-   * （先頭のページと続き）を打ち切り、世代を進めて古い応答を捨てる。届くまで前の
-   * 行と件数を残し（`Skeleton` に戻さない）、届いたら差し替えて一覧の先頭へ戻す。
-   * 失敗したら、一覧を持っていなければ失敗の表示、持っていれば「Stale list」の箱に
-   * する（data-model.md §4「条件」「読み込み失敗」）。選択はここでは変えない
-   * （条件の変更と「Reload」は呼ぶ側が空にし、`notFoundIds` のあとの取り直しは
-   * 読み直した行に無い id だけが外れる）。
-   */
-  const loadFirst = useCallback((): Promise<void> => {
-    const run = (): Promise<void> => {
-      firstAbortRef.current?.abort();
-      moreAbortRef.current?.abort();
-      generationRef.current += 1;
-      const generation = generationRef.current;
-      const controller = new AbortController();
-      firstAbortRef.current = controller;
-      const { search: searched, ...query } = queryRef.current;
-      const mutation = mutationRef.current;
-      firstPendingRef.current = true;
-      setFirstPending(true);
-      moreRef.current = moreIdle;
-      setMore(moreIdle);
-      return listTagPage(
-        {
-          q: query.query === "" ? undefined : searched.trim(),
-          tentative: query.tentativeOnly,
-          unused: query.unusedOnly,
-          sort: query.sort,
-          limit: tagPageLimit,
-        },
-        controller.signal,
-      ).then(
-        (result) => {
-          if (generation !== generationRef.current) return;
-          // 送ったあとに局所の反映があった。応答はその変更を映していないかもしれない。
-          if (mutation !== mutationRef.current) return run();
-          setAppliedSearch(searched);
-          setPage({
-            rows: result.items,
-            total: result.total,
-            totalAll: result.totalAll,
-            nextCursor: result.nextCursor,
-            boundary: result.nextCursor === undefined ? undefined : result.items.at(-1),
-            query,
-          });
-          setLoadError(null);
-          setFirstPending(false);
-          scrollListToTopRef.current();
-        },
-        (failure: unknown) => {
-          if (generation !== generationRef.current) return;
-          setFirstPending(false);
-          setLoadError(errorText(failure));
-        },
-      );
-    };
-    return run();
-  }, []);
-
-  /**
-   * loadMore は続きの 1 ページを `nextCursor` で読み、`id` の重複を捨てて末尾に足す。
-   * 続きを読んでいる間・失敗や食い違いを出している間・先頭のページを待つ間・
-   * 「Stale list」の間は読まない（同時に 1 つだけ。持っているカーソルが前の条件の
-   * ものかもしれない）。応答の `totalAll` が画面の値と違えば、行は残して続きを止め、
-   * 「一覧が変わった」を出す（research.md R-11）。
-   */
-  const loadMore = useCallback(() => {
-    const run = () => {
-      const current = pageRef.current;
-      if (current?.nextCursor === undefined) return;
-      if (moreRef.current.kind !== "idle") return;
-      if (firstPendingRef.current || loadErrorRef.current !== null) return;
-      const generation = generationRef.current;
-      const mutation = mutationRef.current;
-      const controller = new AbortController();
-      moreAbortRef.current = controller;
-      moreRef.current = { kind: "loading" };
-      setMore(moreRef.current);
-      const { query } = current;
-      listTagPage(
-        {
-          q: query.query === "" ? undefined : queryRef.current.search.trim(),
-          tentative: query.tentativeOnly,
-          unused: query.unusedOnly,
-          sort: query.sort,
-          cursor: current.nextCursor,
-          limit: tagPageLimit,
-        },
-        controller.signal,
-      ).then(
-        (result) => {
-          if (generation !== generationRef.current) return;
-          if (mutation !== mutationRef.current) {
-            // 送ったあとに局所の反映があった。応答の行と件数はその変更の前かもしれない
-            // ので捨て、同じカーソルで読み直す（keyset なので、境より後ろの今の行が返る）。
-            moreRef.current = moreIdle;
-            setMore(moreIdle);
-            run();
-            return;
-          }
-          if (result.totalAll !== pageRef.current?.totalAll) {
-            moreRef.current = { kind: "inconsistent" };
-            setMore(moreRef.current);
-            return;
-          }
-          setPage((latest) =>
-            latest === undefined
-              ? latest
-              : {
-                  ...latest,
-                  rows: appendUniqueTags(latest.rows, result.items),
-                  total: result.total,
-                  nextCursor: result.nextCursor,
-                  boundary:
-                    result.nextCursor === undefined ? undefined : result.items.at(-1),
-                },
-          );
-          moreRef.current = moreIdle;
-          setMore(moreIdle);
-        },
-        (failure: unknown) => {
-          if (generation !== generationRef.current) return;
-          moreRef.current = { kind: "failed", error: errorText(failure) };
-          setMore(moreRef.current);
-        },
-      );
-    };
-    run();
-  }, []);
-
-  /** retryMore は続きの失敗の「Retry」で、同じカーソルで読み直す。 */
-  function retryMore() {
-    moreRef.current = moreIdle;
-    setMore(moreIdle);
-    loadMore();
-  }
 
   /**
    * reloadList は「一覧が変わった」の「Reload」で、選択を空にして先頭から読み直す
@@ -838,23 +303,8 @@ export default function TagsPage() {
    */
   function reloadList() {
     setSelected(new Set());
-    void loadFirst();
+    void reload();
   }
-
-  /** reload は、もう無いタグに当たったときなどに先頭から取り直す。選択は残る。 */
-  const reload = loadFirst;
-
-  useEffect(() => {
-    reloadRejectedNames();
-  }, [reloadRejectedNames]);
-
-  useEffect(
-    () => () => {
-      firstAbortRef.current?.abort();
-      moreAbortRef.current?.abort();
-    },
-    [],
-  );
 
   function changeSort(next: TagListSort) {
     applyCriteria({ sort: next }, "push");
@@ -892,16 +342,15 @@ export default function TagsPage() {
   // 検索・絞り込み・並び順のどれかが変わるたびに、選択を空にして先頭のページを読み
   // 直す（data-model.md §4「条件」、ui-design.md「Top bar」）。開いたときもここで読む。
   useEffect(() => {
-    queryRef.current = {
+    setSelected((current) => (current.size === 0 ? current : new Set()));
+    void load({
       query: normalizedQuery,
       search: searchRef.current,
       tentativeOnly,
       unusedOnly,
       sort,
-    };
-    setSelected((current) => (current.size === 0 ? current : new Set()));
-    void loadFirst();
-  }, [normalizedQuery, tentativeOnly, unusedOnly, sort, loadFirst]);
+    });
+  }, [normalizedQuery, tentativeOnly, unusedOnly, sort, load]);
 
   useLayoutEffect(() => {
     filtersRef.current = { tentativeOnly, unusedOnly };
@@ -962,33 +411,14 @@ export default function TagsPage() {
     return [...rows.slice(0, index), renaming, ...rows.slice(index)];
   }, [rows, page, renaming]);
 
-  const visibleRowsRef = useRef<readonly Tag[]>(visibleRows);
-  useLayoutEffect(() => {
-    visibleRowsRef.current = visibleRows;
-  }, [visibleRows]);
-
   // 選択は読み込んだ行の部分集合に保つ。操作や取り直しで行から消えた id と、
   // 改名中の行を外す（specs/036-tag-admin-scale/data-model.md §4「選択」）。条件の
   // 変更では、読み直しを始めるときに空にする。
   useLayoutEffect(() => {
-    setSelected((current) => {
-      if (current.size === 0) return current;
-      const loaded = new Set(rows.map((tag) => tag.id));
-      const next = new Set<number>();
-      for (const id of current) {
-        if (loaded.has(id) && id !== renamingId) next.add(id);
-      }
-      return next.size === current.size ? current : next;
-    });
+    setSelected((current) => keepLoaded(current, rows, renamingId));
   }, [rows, renamingId]);
 
-  /**
-   * selectableCount は「読み込んだものをすべて選ぶ」の対象の数である。改名中の行は
-   * 入らない（ui-design.md「Column header」）。読み込んでいないタグは選ばない（要件 10）。
-   */
-  const selectableCount =
-    rows.length -
-    (renamingId !== null && rows.some((tag) => tag.id === renamingId) ? 1 : 0);
+  const selectableCount = countSelectable(rows, renamingId);
   /**
    * 上限 `maxTagBatch` は送る id の数に掛かる（research.md R-4）。先頭のチェックは
    * 読み込んだ行の数で、まとめての操作は選んだ数で止める（ui-design.md「Column header」
@@ -996,73 +426,29 @@ export default function TagsPage() {
    */
   const selectAllOverLimit = rows.length > maxTagBatch;
   const selectionOverLimit = selected.size > maxTagBatch;
-  const selection = useMemo(() => {
-    let tentative = false;
-    let confirmed = false;
-    if (selected.size > 0) {
-      for (const tag of rows) {
-        if (!selected.has(tag.id)) continue;
-        if (tag.tentative) tentative = true;
-        else confirmed = true;
-        if (tentative && confirmed) break;
-      }
-    }
-    return { tentative, confirmed };
-  }, [selected, rows]);
-  const selectAllState: boolean | "indeterminate" =
-    selected.size === 0
-      ? false
-      : selected.size >= selectableCount
-        ? true
-        : "indeterminate";
+  const selection = useMemo(() => selectedKinds(rows, selected), [selected, rows]);
+  const selectAllState = selectAllCheck(selected.size, selectableCount);
 
-  // 一覧は表示域と前後の少数の行だけを描く（specs/036-tag-admin-scale/research.md
-  // R-2）。スクロールの持ち主は文書で、行の高さは描いた要素を測る。
-  const pinnedIndex = useMemo(
-    () =>
-      pinnedRowId === null ? -1 : visibleRows.findIndex((tag) => tag.id === pinnedRowId),
-    [visibleRows, pinnedRowId],
-  );
-  /**
-   * renamingIndex は改名中の行の位置である。改名中の行は、フォーカスが一覧の
-   * 外へ出ても（並び順のメニューを開くなど）描き続ける。外すと `TagRow` が
-   * 外れて打っている途中の名前を失う（並び順・絞り込みを変えても改名中の行を
-   * 消さない。specs/036-tag-admin-scale/plan.md）。
-   */
-  const renamingIndex = useMemo(
-    () =>
-      renamingId === null ? -1 : visibleRows.findIndex((tag) => tag.id === renamingId),
-    [visibleRows, renamingId],
-  );
-  const rangeExtractor = useCallback(
-    (range: Range) => {
-      const indexes = defaultRangeExtractor(range);
-      const extra = [pinnedIndex, renamingIndex].filter(
-        (index, i, all) =>
-          index >= 0 &&
-          index < range.count &&
-          !indexes.includes(index) &&
-          all.indexOf(index) === i,
-      );
-      if (extra.length === 0) return indexes;
-      return [...indexes, ...extra].sort((a, b) => a - b);
-    },
-    [pinnedIndex, renamingIndex],
-  );
-  const getItemKey = useCallback(
-    (index: number) => visibleRows[index]!.id,
-    [visibleRows],
-  );
-  const virtualizer = useWindowVirtualizer({
-    count: visibleRows.length,
-    estimateSize: () => ROW_ESTIMATE,
-    overscan: ROW_OVERSCAN,
+  const {
+    listRef,
+    registerRefs,
+    visibleRowsRef,
+    virtualizer,
+    virtualItems,
+    afterCommit,
+    focusRow,
+    focusAfterRemoval,
+    releasePinIfFocusOutside,
+    handleListFocus,
+    handleListBlur,
+    handleListKeyDown,
+  } = useVirtualTagRows({
+    visibleRows,
+    renamingId,
     scrollMargin,
-    scrollPaddingStart: rowsTop,
-    rangeExtractor,
-    getItemKey,
+    rowsTop,
+    fallbackFocus: () => fallbackFocus(),
   });
-  const virtualItems = virtualizer.getVirtualItems();
 
   // 続きを読むきっかけ: 仮想化が描く最後の行が読み込んだ行の末尾から overscan 行
   // 以内に入ったら、続きを 1 回要求する。操作で行が 1 つも残らなかったとき（描く行が
@@ -1098,7 +484,7 @@ export default function TagsPage() {
     const observer = new ResizeObserver(measure);
     observer.observe(document.body);
     return () => observer.disconnect();
-  }, [hasList]);
+  }, [hasList, listRef]);
 
   // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅や選択で高さが変わる。
   useLayoutEffect(() => {
@@ -1126,77 +512,13 @@ export default function TagsPage() {
   }, [rowsTop]);
 
   /**
-   * handleListFocus は、フォーカスを持った行を描き続ける行にする。スクロール
-   * で画面の外へ出ても、その行は外れず、フォーカスが `body` へ落ちない。
-   */
-  function handleListFocus(event: FocusEvent<HTMLTableSectionElement>) {
-    focusInListRef.current = true;
-    const row = (event.target as Element).closest<HTMLElement>("[data-tag-id]");
-    if (row === null || !event.currentTarget.contains(row)) return;
-    setPinnedRowId(Number(row.dataset.tagId));
-  }
-
-  /**
-   * handleListBlur は、フォーカスが一覧の外へ出たら行を描き続けるのをやめる。
-   * 残すと、表示域から遠い行が Tab の順に残り、ツールバーなどからの Tab が
-   * その行へ飛んで表示域が動く。フォーカスが決まったあとで見て、行の中や
-   * 行の間の移動、行から開いたメニュー（React の木では一覧の中なので focus が
-   * 一覧まで届く）への移動では外さない。ウィンドウ自体がフォーカスを失った
-   * ときは `document.activeElement` が一覧の中に残るので外さない。フォーカスを
-   * 持つ要素は外さない。
-   */
-  function handleListBlur() {
-    focusInListRef.current = false;
-    setTimeout(releasePinIfFocusOutside, 0);
-  }
-
-  /**
-   * handleListKeyDown は、描いている範囲の端の Tab を次の（Shift+Tab は前の）
-   * 行へ渡す。描いていない行は DOM に無いので、既定の Tab では一覧の外へ
-   * 飛んでしまう。全件の最後の行の Tab、最初の行の Shift+Tab は既定のまま
-   * 一覧の外へ進める（ui-design.md「Keyboard across virtualized rows」）。
-   */
-  function handleListKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
-    if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.defaultPrevented) return;
-    const list = event.currentTarget;
-    const target = event.target as HTMLElement;
-    const row = target.closest<HTMLElement>("[data-index]");
-    if (row === null || !list.contains(row)) return;
-    const focusables = rowFocusables(row);
-    const edge = event.shiftKey ? focusables[0] : focusables[focusables.length - 1];
-    if (target !== edge) return;
-    const nextIndex = Number(row.dataset.index) + (event.shiftKey ? -1 : 1);
-    const next = visibleRows[nextIndex];
-    if (next === undefined) return;
-    if (list.querySelector(`[data-index="${String(nextIndex)}"]`) !== null) return;
-    event.preventDefault();
-    revealRow(next.id);
-    const nextRow = list.querySelector(`[data-index="${String(nextIndex)}"]`);
-    if (nextRow === null) return;
-    const nextFocusables = rowFocusables(nextRow);
-    const into = event.shiftKey
-      ? nextFocusables[nextFocusables.length - 1]
-      : nextFocusables[0];
-    into?.focus();
-  }
-
-  /**
    * applied は読み込んだ行の条件である。件数の行と空の状態は、入力中の条件ではなく
    * 届いた行の条件で決める（先頭のページを待つ間は前の行と件数を残す）。
    */
   const applied = page?.query;
-  const searching = applied !== undefined && applied.query !== "";
   /** totalAll は全部のタグの数（読み込んでいないタグを含む）。 */
   const totalAll = page?.totalAll ?? 0;
-  // 件数は応答の total・totalAll で出す。読み込んだ行の数（ページの区切り）は出さない。
-  // 差し込んで残した改名中の行は数えない（ui-design.md「Header」）。
-  const countText =
-    page === undefined
-      ? t.tags.loading
-      : searching || page.query.tentativeOnly || page.query.unusedOnly
-        ? t.tags.filteredCount(page.total, page.totalAll)
-        : t.tags.count(page.totalAll);
+  const countText = tagCountText(page);
 
   function openCreate() {
     // 改名の送信中は、その応答が届くまで新しく作成を始めない（B2 と同じ規則。
@@ -1286,17 +608,6 @@ export default function TagsPage() {
   }
 
   /**
-   * applyLocal は、操作の結果を読み込んだ行と件数へ局所で反映する。反映の前に送った
-   * 先頭のページ・続きの応答を捨てて読み直させるため、`mutationRef` を進める。
-   */
-  function applyLocal(
-    update: (current: TagPageRows | undefined) => TagPageRows | undefined,
-  ) {
-    mutationRef.current += 1;
-    setPage(update);
-  }
-
-  /**
    * replaceRow は書き換わったタグ 1 件を読み込んだ行へ反映する。書き換わる前の状態は
    * 読み込んだ行（無ければ `before`）から取り、前後を今の条件に照らして件数を
    * 数え直し、並び順の位置へ置き直すか取り除く（data-model.md §4「操作のあとの反映」）。
@@ -1335,7 +646,7 @@ export default function TagsPage() {
         current === undefined ? current : addTag(current, created),
       );
       setCreating(false);
-      reloadRejectedNames();
+      rejected.reload();
       focusRow(created.id, "name");
     } catch (failure) {
       setCreateError(tagFieldError(failure, { submitted: name }));
@@ -1355,7 +666,7 @@ export default function TagsPage() {
       // ものと数え、`total` が 1 つ増えてしまう。
       replaceRow(updated, tag);
       setRenaming(null);
-      reloadRejectedNames();
+      rejected.reload();
       // 改名で確定になった仮のタグは「Tentative only」から外れる（031 の
       // ui-design.md「Toolbar」）。検索に一致しなくなったときも同じ扱い。
       if (shown(updated)) focusRow(tag.id, "rename");
@@ -1444,7 +755,7 @@ export default function TagsPage() {
       removeRows([target]);
       setRejectingTag(null);
       toast(t.tags.rejected(target.name));
-      reloadRejectedNames();
+      rejected.reload();
       focusAfterRemoval(order, target.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
@@ -1635,7 +946,7 @@ export default function TagsPage() {
     });
     setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
     // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
-    reloadRejectedNames();
+    rejected.reload();
   }
 
   /**
@@ -1694,13 +1005,6 @@ export default function TagsPage() {
       if (header !== null && !header.disabled) header.focus();
       else fallbackFocus();
     });
-  }
-
-  /** withoutIds は選択から ids を外した集合を返す。 */
-  function withoutIds(current: ReadonlySet<number>, ids: ReadonlySet<number>) {
-    const next = new Set(current);
-    for (const id of ids) next.delete(id);
-    return next;
   }
 
   /**
@@ -1794,7 +1098,7 @@ export default function TagsPage() {
           ? t.tags.selection.rejected(applied.size, skipped)
           : t.tags.selection.deleted(applied.size, skipped),
       );
-      if (action === "reject") reloadRejectedNames();
+      if (action === "reject") rejected.reload();
       afterStale(result.notFoundIds);
       // 消えた行の位置の次の行の「改名」、無ければ前の行。1 つも無ければ
       // 「Tentative only」が効いていれば「Filter」、効いていなければ先頭のチェック。
@@ -1891,53 +1195,16 @@ export default function TagsPage() {
     [],
   );
 
-  // 空の状態は、届いた行の条件（`applied`）で選ぶ。条件を変えて先頭のページを待つ
-  // 間は、前の状態をそのまま残す（ui-design.md「States」）。
+  const { empty, showRows, staleList, tail, noTags } = tagListView({
+    page,
+    loadError,
+    more,
+    visibleCount: visibleRows.length,
+    creating,
+  });
   const appliedTentative = applied?.tentativeOnly ?? false;
-  const appliedUnused = applied?.unusedOnly ?? false;
-  const showEmptyTags =
-    page !== undefined &&
-    page.totalAll === 0 &&
-    !creating &&
-    !appliedTentative &&
-    !appliedUnused;
-  /**
-   * moreToShow は、読み込んだ行が無くても続きがあるかである。操作で行が 1 つも
-   * 残らなかったときは、空の状態を出さずに末尾の続きの状態を出す（ui-design.md
-   * 「Loading more」）。
-   */
-  const moreToShow = page?.nextCursor !== undefined && page.total > 0;
-  const nothingShown =
-    page !== undefined &&
-    visibleRows.length === 0 &&
-    !creating &&
-    !showEmptyTags &&
-    !moreToShow;
-  const showNoUnused = nothingShown && appliedUnused && !searching;
-  const showNoUnusedMatch = nothingShown && appliedUnused && searching;
-  const showNoTentative =
-    nothingShown && !appliedUnused && appliedTentative && !searching;
-  const showNoTentativeMatch =
-    nothingShown && !appliedUnused && appliedTentative && searching;
-  const showNoMatch = nothingShown && !appliedTentative && !appliedUnused;
-  const showRows =
-    page !== undefined &&
-    (visibleRows.length > 0 || creating || moreToShow) &&
-    !showEmptyTags;
-  /**
-   * 先頭のページをまだ一度も受けていない間・一覧を持たないまま失敗したときは
-   * 何も押せない。押していない絞り込みと検索・並び順は、タグが 1 つも無いときも
-   * 押せない（ui-design.md「Top bar」）。
-   */
-  const noTags = page === undefined || page.totalAll === 0;
   const sortDisabled = noTags;
-  /** staleList は、一覧を持ったまま先頭のページを読めなかったか（「Stale list」）。 */
-  const staleList = page !== undefined && loadError !== null;
-  /** tail は一覧の末尾の続きの状態で、「Stale list」の間は出さない。 */
-  const tail = page === undefined || staleList ? moreIdle : more;
 
-  const tagsPanelId = `${tabsId}-panel-tags`;
-  const rejectedPanelId = `${tabsId}-panel-rejected`;
   const selecting = onTagsTab && selected.size > 0;
   // 作成・改名の送信中はタブを切り替えない（押せなくし、矢印でも移らない）。
   const tabsLocked = createPending || renamePending;
@@ -2058,83 +1325,22 @@ export default function TagsPage() {
       }
       band={
         <>
-          <Tabs
-            value={tab}
-            onValueChange={(next) => {
-              changeTab(next as TagListTab);
-            }}
-          >
-            <TabsList aria-label={t.tags.tabs.label}>
-              <TabsTrigger
-                value="tags"
-                id={tabId(tabsId, "tags")}
-                aria-controls={tagsPanelId}
-                disabled={tabsLocked && tab !== "tags"}
-              >
-                {t.tags.tabs.tags}
-                {page !== undefined && (
-                  <span className="font-normal text-muted-foreground tabular-nums">
-                    {formatNumber(page.totalAll)}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger
-                value="rejected"
-                id={tabId(tabsId, "rejected")}
-                aria-controls={rejectedPanelId}
-                disabled={tabsLocked && tab !== "rejected"}
-              >
-                {t.tags.rejectedNames.heading}
-                {rejectedPage !== undefined && (
-                  <span className="font-normal text-muted-foreground tabular-nums">
-                    {formatNumber(rejectedPage.total)}
-                  </span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-          {onTagsTab && (tentativeOnly || unusedOnly) && (
-            // 効いている絞り込みのチップ（ui-design.md「Active filters」）。押された
-            // Toggle で、押し戻すと外れる（components.md「Toggle and ToggleGroup」）。
-            <ul
-              aria-label={t.tags.activeFilters.label}
-              className="flex flex-wrap items-center gap-2"
-            >
-              {tentativeOnly && (
-                <li>
-                  <Toggle
-                    ref={tentativeChipRef}
-                    variant="outline"
-                    size="sm"
-                    pressed
-                    onPressedChange={() => removeFilterChip("tentative")}
-                    aria-label={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                    title={t.tags.activeFilters.remove(t.tags.tentativeOnly)}
-                  >
-                    <CircleDashed aria-hidden="true" />
-                    {t.tags.tentativeOnly}
-                    <X aria-hidden="true" />
-                  </Toggle>
-                </li>
-              )}
-              {unusedOnly && (
-                <li>
-                  <Toggle
-                    ref={unusedChipRef}
-                    variant="outline"
-                    size="sm"
-                    pressed
-                    onPressedChange={() => removeFilterChip("unused")}
-                    aria-label={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                    title={t.tags.activeFilters.remove(t.tags.unusedOnly)}
-                  >
-                    <VideoOff aria-hidden="true" />
-                    {t.tags.unusedOnly}
-                    <X aria-hidden="true" />
-                  </Toggle>
-                </li>
-              )}
-            </ul>
+          <TagsTabs
+            idPrefix={tabsId}
+            tab={tab}
+            onChange={changeTab}
+            tagsCount={page?.totalAll}
+            rejectedCount={rejected.page?.total}
+            locked={tabsLocked}
+          />
+          {onTagsTab && (
+            <TagFilterChips
+              tentativeOnly={tentativeOnly}
+              unusedOnly={unusedOnly}
+              onRemove={removeFilterChip}
+              tentativeRef={tentativeChipRef}
+              unusedRef={unusedChipRef}
+            />
           )}
         </>
       }
@@ -2142,12 +1348,12 @@ export default function TagsPage() {
       {onTagsTab ? (
         <div
           ref={listBoxRef}
-          id={tagsPanelId}
+          id={tagsPanelId(tabsId, "tags")}
           role="tabpanel"
-          aria-labelledby={tabId(tabsId, "tags")}
+          aria-labelledby={tagsTabId(tabsId, "tags")}
           className="flex flex-col gap-3"
         >
-          {staleList && (
+          {staleList && loadError !== null && (
             <TagStaleList
               reason={loadError}
               pending={firstPending}
@@ -2163,130 +1369,28 @@ export default function TagsPage() {
             <TagLoadFailed pending={firstPending} onRetry={() => void reload()} />
           )}
 
-          {showEmptyTags && (
-            <TagsEmpty
-              icon={<TagsIcon aria-hidden="true" />}
-              title={t.tags.empty.title}
-              description={t.tags.empty.description}
-              action={
-                <Button size="sm" onClick={openCreate}>
-                  <Plus aria-hidden="true" />
-                  {t.tags.newTag}
-                </Button>
-              }
-            />
-          )}
-
-          {showNoUnused && (
-            <TagsEmpty
-              icon={<VideoOff aria-hidden="true" />}
-              title={appliedTentative ? t.tags.noUnusedTentative : t.tags.noUnused.title}
-              description={appliedTentative ? undefined : t.tags.noUnused.description}
-              action={
-                <Button variant="outline" size="sm" onClick={showAllFromFilter}>
-                  {t.tags.clearSearch}
-                </Button>
-              }
-            />
-          )}
-
-          {showNoUnusedMatch && (
-            <TagsEmpty
-              icon={<SearchX aria-hidden="true" />}
-              title={
-                appliedTentative
-                  ? t.tags.noUnusedTentativeMatches(appliedSearch)
-                  : t.tags.noUnusedMatches(appliedSearch)
-              }
-              action={
-                <Button variant="outline" size="sm" onClick={showAllFromFilterSearch}>
-                  {t.tags.clearSearch}
-                </Button>
-              }
-            />
-          )}
-
-          {showNoTentative && (
-            <TagsEmpty
-              icon={<CircleDashed aria-hidden="true" />}
-              title={t.tags.noTentative.title}
-              description={t.tags.noTentative.description}
-              action={
-                <Button variant="outline" size="sm" onClick={showAllFromFilter}>
-                  {t.tags.clearSearch}
-                </Button>
-              }
-            />
-          )}
-
-          {showNoTentativeMatch && (
-            <TagsEmpty
-              icon={<SearchX aria-hidden="true" />}
-              title={t.tags.noTentativeMatches(appliedSearch)}
-              action={
-                <Button variant="outline" size="sm" onClick={showAllFromFilterSearch}>
-                  {t.tags.clearSearch}
-                </Button>
-              }
-            />
-          )}
-
-          {showNoMatch && (
-            <TagsEmpty
-              icon={<SearchX aria-hidden="true" />}
-              title={t.tags.noMatches(appliedSearch)}
-              action={
-                <Button variant="outline" size="sm" onClick={clearSearch}>
-                  {t.tags.clearSearch}
-                </Button>
-              }
+          {empty !== null && (
+            <TagListEmptyState
+              empty={empty}
+              appliedSearch={appliedSearch}
+              appliedTentative={appliedTentative}
+              onCreate={openCreate}
+              onShowAll={showAllFromFilter}
+              onShowAllAndSearch={showAllFromFilterSearch}
+              onClearSearch={clearSearch}
             />
           )}
 
           {showRows && (
             <DataTable label={t.tags.title} stickyHeaderTop={stuckBottom}>
-              {/*
-                列の見出し（ui-design.md「Column header」）。先頭のチェックは「読み込んだ
-                ものをすべて選ぶ」。読み込んだ行が上限を超えると押せず、理由を包みの title と
-                sr-only で添える。
-              */}
-              <TableHeader ref={headRef}>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>
-                    <div
-                      className="flex size-8 items-center justify-center"
-                      title={
-                        selectAllOverLimit
-                          ? t.tags.selectAllOverLimit(maxTagBatch)
-                          : undefined
-                      }
-                    >
-                      <Checkbox
-                        ref={selectAllRef}
-                        checked={selectAllState}
-                        onCheckedChange={toggleSelectAll}
-                        aria-label={
-                          selectAllState === true
-                            ? t.tags.clearSelection
-                            : t.tags.selectAllLoaded(selectableCount)
-                        }
-                        aria-describedby={
-                          selectAllOverLimit ? selectAllLimitId : undefined
-                        }
-                        disabled={selectableCount === 0 || selectAllOverLimit}
-                      />
-                      {selectAllOverLimit && (
-                        <span id={selectAllLimitId} className="sr-only">
-                          {t.tags.selectAllOverLimit(maxTagBatch)}
-                        </span>
-                      )}
-                    </div>
-                  </TableHead>
-                  <TableHead className="w-full">{t.tags.columns.name}</TableHead>
-                  <TableHead className="text-right">{t.tags.columns.videos}</TableHead>
-                  <TableHead aria-hidden="true" />
-                </TableRow>
-              </TableHeader>
+              <TagListHead
+                headRef={headRef}
+                selectAllRef={selectAllRef}
+                checked={selectAllState}
+                selectableCount={selectableCount}
+                overLimit={selectAllOverLimit}
+                onToggle={toggleSelectAll}
+              />
               {creating && (
                 <TableBody>
                   <CreateTagRow
@@ -2336,22 +1440,22 @@ export default function TagsPage() {
         </div>
       ) : (
         <div
-          id={rejectedPanelId}
+          id={tagsPanelId(tabsId, "rejected")}
           role="tabpanel"
-          aria-labelledby={tabId(tabsId, "rejected")}
+          aria-labelledby={tagsTabId(tabsId, "rejected")}
           className="flex flex-col gap-3"
         >
           <RejectedNames
-            page={rejectedPage}
-            error={rejectedError}
-            onRetry={reloadRejectedNames}
-            morePending={rejectedMorePending}
-            moreError={rejectedMoreError}
-            onLoadMore={loadMoreRejectedNames}
-            resetKey={rejectedEpoch}
-            onForget={forgetRejectedName}
+            page={rejected.page}
+            error={rejected.error}
+            onRetry={rejected.reload}
+            morePending={rejected.morePending}
+            moreError={rejected.moreError}
+            onLoadMore={rejected.loadMore}
+            resetKey={rejected.epoch}
+            onForget={rejected.forget}
             onFocusFallback={() =>
-              document.getElementById(tabId(tabsId, "rejected"))?.focus()
+              document.getElementById(tagsTabId(tabsId, "rejected"))?.focus()
             }
           />
         </div>
@@ -2414,41 +1518,11 @@ export default function TagsPage() {
 /** tagColumnCount は表の列の数（チェック・名前・本数・操作）。 */
 const tagColumnCount = 4;
 
-/** tabId はタブの id である。パネルの `aria-labelledby` とフォーカスの行き先に使う。 */
-function tabId(prefix: string, value: string): string {
-  return `${prefix}-tab-${value}`;
-}
-
 /** SpacerRow は描かない行の高さを保つ空の行である。読み上げない。 */
 function SpacerRow({ height }: { height: number }) {
   return (
     <tr aria-hidden="true" style={{ height }}>
       <td colSpan={tagColumnCount} className="p-0" />
     </tr>
-  );
-}
-
-/**
- * TagsEmpty は見出しつきの空の状態である。題は見出し（h2）にし、読み上げソフトで
- * 見出しから状態へ飛べるようにする（状態の部品の題は見出しの要素を持たないため）。
- */
-function TagsEmpty({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon: ReactNode;
-  title: UiText;
-  description?: UiText;
-  action: ReactNode;
-}) {
-  return (
-    <EmptyState
-      icon={icon}
-      title={<h2>{title}</h2>}
-      description={description}
-      action={action}
-    />
   );
 }
