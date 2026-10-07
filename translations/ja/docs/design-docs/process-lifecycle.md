@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/process-lifecycle.md
-sourceHash: ce75f869571be5e497ef8a4f71f1505f1d7b7381d83bef4a27d76ae32053ff2d
+sourceHash: 87c5b66e92443fe4ad388ea2913e10ccd522e8c20263f6f045c1c4258b78f814
 ---
 
 # プロセスのライフサイクル: 起動と停止の順序 {#process-lifecycle-startup-and-shutdown-order}
@@ -18,15 +18,17 @@ flowchart LR
     s3 --> s4[中断した実行を回復]
     s4 --> s5[ワーカーを開始]
     s5 --> s6[中断したスキャンを再開]
-    s6 --> s7[HTTP を待ち受け]
+    s6 --> s7[自動取り込みを開始]
+    s7 --> s8[HTTP を待ち受け]
   end
   subgraph stop[停止]
     direction TB
     t1[イベントストリームを閉じる] --> t2[HTTP リクエストを処理しきる]
     t2 --> t3[ワーカーを止める]
-    t3 --> t4[スキャンを待つ]
-    t4 --> t5[イベントバスを閉じる]
-    t5 --> t6[SQLite を閉じる]
+    t3 --> t4[自動取り込みを止める]
+    t4 --> t5[スキャンを待つ]
+    t5 --> t6[イベントバスを閉じる]
+    t6 --> t7[SQLite を閉じる]
   end
 ```
 
@@ -44,7 +46,8 @@ flowchart LR
   rec --> tmp[未完成の生成物を削除]
   tmp --> work[購読してワーカーを開始]
   work --> resume[中断したスキャンを再開]
-  resume --> enc[エンコーダの確認を開始]
+  resume --> auto[自動取り込みを開始]
+  auto --> enc[エンコーダの確認を開始]
   enc --> http[HTTP を待ち受け]
 ```
 
@@ -55,13 +58,14 @@ flowchart LR
 | フォルダ索引 | ログに記録する。次の再構築まで前の索引が残る ([017 data-model、索引を再構築する時期](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
 | `.tmp` 以下の未完成の生成物 | ログに記録する |
 | 中断したスキャンの再開 | ログに記録する。ユーザーはスキャンを開始できる |
+| 自動取り込みの開始 | ログに記録する。監視はバックグラウンドで追加し、リスナーを遅らせることはなく、スキャンは始まらない ([folder-watching.md](folder-watching.md)) |
 | エンコーダの確認 | バックグラウンドで実行し、リスナーを遅らせることはない ([hardware-encoding.md](hardware-encoding.md)) |
 
 フォルダ索引は検索キーが作るタイトルのキーを読むので、検索キーの後に更新する。未完成の生成物はワーカーの開始前に削除するので、まだ生成中のものが削除されることはない。
 
 ## 中断した実行の後の回復 {#recovery-after-an-interrupted-run}
 
-作業の途中で止まった実行は実行中の行を残し、起動はそれらを次の実行が続きから進められる状態に戻す。中断したスキャンは理由 `interrupted` で `failed` として閉じ、実行中のジョブは `queued` に戻し、ワーカーが動き出すと新しいスキャンを 1 つ開始する ([037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting))。
+作業の途中で止まった実行は実行中の行を残し、起動はそれらを次の実行が続きから進められる状態に戻す。中断したスキャンは理由 `interrupted` で `failed` として閉じ、実行中のジョブは `queued` に戻し、ワーカーが動き出すと新しい手動スキャンを 1 つ開始する。中断した監視スキャンは閉じるだけで再開しないので、起動時にそのためにディレクトリを読むことはない ([folder-watching.md](folder-watching.md)、[037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting))。
 
 ## 停止の順序 {#shutdown-order}
 
@@ -72,13 +76,16 @@ flowchart LR
   screen[画面の購読を外す] --> streams[イベントストリームを閉じる]
   streams --> drain[リクエストを処理しきる、10 秒]
   drain --> wake[ワーカーの起床通知を外す]
-  wake --> cancel[ワーカーとスキャンを取り消す]
+  wake --> auto[自動取り込みを止める]
+  auto --> cancel[ワーカーとスキャンを取り消す]
   cancel --> scan[スキャンを待つ、10 秒]
   scan --> bus[イベントバスを閉じる]
   bus --> db[SQLite を閉じる]
 ```
 
 `/api/events` のストリームは自然には終わらないので、10 秒のリクエストの猶予が始まる前に閉じる。取り消したジョブは `running` のまま残り、次の起動がそれを再投入する。ジョブがキューとワーカーの間で失われることはない。
+
+自動取り込みはスキャンを取り消す前に止まるので、監視を外し、実行中のスキャンを止めている間に新しい監視スキャンを始めない。
 
 ## 生成物の削除は購読を外さず処理しきる {#artifact-removals-drained-not-unsubscribed}
 
