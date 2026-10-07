@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/ui-design.md
-sourceHash: f560e2d04a307f0a09981d7b248e80825a341fe8c0b1cf50957a8818f7946a92
+sourceHash: 803cd0d84b41cc866b2981b02c6ff712e646c21a36c7d73b888e2ef941867ddb
 ---
 
 # UI 設計: 変更されたメディアフォルダを自動で取り込む {#ui-design-auto-import-changed-media-folders}
@@ -60,9 +60,9 @@ flowchart LR
 | 読み込みの失敗 | Couldn't load the auto-import settings: {reason} | `Retry` 付きの `ErrorState` |
 | 問題 `watch_limit` | The limit on watched folders was reached, so changes under {path} aren't picked up. Raise the limit (`fs.inotify.max_user_watches` on Linux) and turn auto-import off and on, then start a scan to pick up what was missed. | 題: Some folders aren't watched |
 | 問題 `events_lost` | Too many changes arrived at once and some were lost. Start a scan under Scan status to pick them up. | 題: Some changes were lost |
-| 問題 `folder_unreachable` | {path} can't be reached. Changes there aren't picked up until it is back and auto-import is turned off and on. | 題: A media folder can't be reached |
-| 問題 `permission_denied` | VVMDM can't read {path}. Changes there aren't picked up. | 題: A folder can't be read |
-| 状態の言葉、監視によるスキャンの `finding` か `running` | Auto-importing | `origin` が `watch` のとき「Scanning」を置き換える |
+| 問題 `folder_unreachable` | {path} can't be reached. Changes there aren't picked up until it is back and auto-import is turned off and on. Then start a scan to pick up what was missed. | 題: A media folder can't be reached |
+| 問題 `permission_denied` | VVMDM can't read {path}. Changes there aren't picked up until it can, and auto-import is turned off and on. Then start a scan to pick up what was missed. | 題: A folder can't be read |
+| 状態の言葉、監視によるスキャンの `finding` か `running` | なし | バッジなし: 走っている監視によるスキャンはどこにも示さない (`要件 7`) |
 | 状態の言葉、監視によるスキャンの `done` | Auto-imported | 「Done」を置き換える |
 | 状態の言葉、監視によるスキャンの `partial` | Auto-import: some failed | 「Some failed」を置き換える |
 | 状態の言葉、監視によるスキャンの `failed` | Auto-import failed | 「Scan failed」を置き換える |
@@ -131,10 +131,11 @@ stateDiagram-v2
 
 | 要素 | 手動のスキャン | 監視によるスキャン |
 | --- | --- | --- |
-| 状態のバッジ | 「Scanning」、「Done」、「Some failed」、「Scan failed」 | 「Auto-importing」、「Auto-imported」、「Auto-import: some failed」、「Auto-import failed」 |
+| 状態のバッジ | 「Scanning」、「Done」、「Some failed」、「Scan failed」 | 走っている間はなし。終わると「Auto-imported」、「Auto-import: some failed」、「Auto-import failed」 |
 | `Scan library` ボタン | スキャン中は理由の行とともに押せない | 監視によるスキャン中も押せる。手動のスキャンを始めるとそれに取って代わる (R-5)。理由の行はない |
 | `Media folders` のロック (「You can't change media folders while a scan is running」) | スキャン中に示す | 示さない。フォルダの変更は監視によるスキャンに取って代わる (R-5) |
-| 進み具合のバー、進み具合の文、詳細の行、問題の数、問題の一覧 | 024 のとおり | 024 のとおり。問題の一覧は前のスキャンから引き継いだ問題とこのスキャンの問題を持つ ([data-model.md、規則](data-model.md#rules)) |
+| 進み具合のバー、進み具合の文 | 024 のとおり | 走っている間も終わってからも示さない: 監視によるスキャンの進み具合はどこにも示さない |
+| 詳細の行、問題の数、問題の一覧 | 024 のとおり | 終わると 024 のとおり。問題の一覧は前のスキャンから引き継いだ問題とこのスキャンの問題を持つ ([data-model.md、規則](data-model.md#rules)) |
 | 取り込み自体の失敗 (`failed`) | `destructive` の `Alert` の中の理由 | 同じ |
 
 したがって `Scan library` ボタンが押せないと読める理由は、所有者 (または別のタブ) が始めた手動のスキャンの 1 つだけで、フォルダの行は所有者が始めていないもののせいで決してロックされない。
@@ -147,16 +148,19 @@ stateDiagram-v2
 | --- | --- | --- |
 | `finding`、`running` | 示さない。概要のポップオーバーは存在しない (`要件 7`) | なし |
 | `done`、要確認があってもなくても | 示さない | なし |
-| `partial` | 結果として示す: 「Auto-import: some failed · K failed」を 8 秒間。`×` で消すか、押して消す (`/settings#scan-status` へ移る)。概要はホバーとフォーカスで開き、024 の内容と「See Settings for the list.」を持つ | 「Auto-import finished with some failures. N videos may not be usable.」 |
+| `partial`、新しい失敗がある | 結果として示す: 「Auto-import: some failed · K failed」を 8 秒間。`×` で消すか、押して消す (`/settings#scan-status` へ移る)。概要はホバーとフォーカスで開き、024 の内容と「See Settings for the list.」を持つ | 「Auto-import finished with some failures. N videos may not be usable.」 |
+| `partial`、新しい失敗がない | 示さない | なし |
 | `failed` | 結果として示す: 「Auto-import failed」を 8 秒間。消し方と押し方は上と同じ | 「Auto-import failed.」 |
 
 監視によるスキャンの結果の知らせは何もないところから現れる。その前に走っている表示はなかった。そのため知らせは手動の結果と同じ枠、位置、大きさを持ち、手動のスキャンの終わりを見たことのある所有者はそれと分かり、状態の言葉が何についてかを言う。動画ページでも 024 の右下の位置と `z-index` を保つ (右上には閉じる `×` がある)。
+
+`partial` の監視によるスキャンの問題の一覧は、前のスキャンから引き継いだ失敗を持つ ([data-model.md、規則](data-model.md#rules))。そのため状態だけでは古い失敗をもう一度知らせてしまう。クライアントが `partial` の監視によるスキャンを知らせるのは、`GET /api/scans/current/issues` が、パスと種類が前のスキャンについて最後に読んだ一覧にない失敗の項目を返したときだけである。それ以前に読んだ一覧がなければ知らせる。種類が変わった失敗は新しいものと数える。所有者が前に消し、まだ同じままの失敗は、もう一度は知らせない。新しい失敗のない `partial` のスキャンは何も示さず、Settings は引き続きすべての問題を一覧にする。
 
 所有者の前の知らせが消されている間に `partial` で終わった監視によるスキャンは示す。消すのはスキャンの id ごとである (library-ui.md)。走っている監視によるスキャンに取って代わる手動のスキャンは「Starting」から自分の表示を示す。取って代わられたスキャンは `done` で閉じ、何も示さない。
 
 ## 監視によるスキャンのあとの開いている一覧 {#open-lists-after-a-watch-scan}
 
-監視によるスキャンが `done` か `partial` で終わると、画面の一覧 (ライブラリ、フォルダページ、ルートのフォルダ一覧) はその結果をその場で取り込む:
+監視によるスキャンが `done`、`partial`、`failed` で終わると (`failed` のスキャンは止まるまでに追加を書き込んでいることがある)、画面の一覧 (ライブラリ、フォルダページ、ルートのフォルダ一覧) はその結果をその場で取り込む:
 
 | 観点 | 規則 |
 | --- | --- |
@@ -188,9 +192,9 @@ stateDiagram-v2
 2. **情報の密度**: 節は 2 行から 3 行の高さである。スイッチの行と、問題があるときだけの問題の行。数も、監視しているフォルダの一覧も、最後のまとまりの時刻もない。上の `Scan status` は監視によるスキャンのために状態の言葉以外の要素を得ない。
 3. **余白のリズム**: `Scan status` と `Auto-import` の間隔は `Auto-import` と `Media folders` の間隔に等しい。スイッチの行の余白は `Network` の行のものに等しい。状態の行はラベルの下の `FieldDescription` の距離にあり、行の高さは Off、Starting、Active、Limited で同じである。
 4. **タイポグラフィ**: 状態の行は `text-sm` `text-muted-foreground` で、360px でもどの状態でも 1 行である。問題の題は `Alert` の題の太さで、パスは `<code>` である。`Scan status` と右下の状態の言葉は、置き換える手動の言葉と同じ大きさと太さである。
-5. **操作の優先順位**: スイッチは節の唯一の操作である。問題の `Alert` にボタンはなく、その文は上にある唯一の操作 `Scan library` を名指しする。`Scan status` に「Auto-importing」が出ている間も `Scan library` は押せたままで、`Media folders` の行は編集できたままである。
-6. **取り込み中は静か**: 監視によるスキャンの間 (`Scan status` に「Auto-importing」)、ライブラリ、フォルダページ、動画ページには新しいものが何も出ない。右下の表示も、トーストも、バーもない。スキャンが `done` で終わると、開いている一覧には並び順どおりに新しいカードがあり、ウィンドウはスクロールしていない。選択していたカードは選択されたままである。
-7. **失敗だけを知らせる**: 監視によるスキャンが `partial` で終わると、右下の結果が「Auto-import: some failed」と失敗した数で現れ、8 秒後に隠れ、押すと同じ状態の言葉と一覧の 2 つのファイルを持つ `Scan status` が開く。`done` で終わると、右下には何も現れない。
+5. **操作の優先順位**: スイッチは節の唯一の操作である。問題の `Alert` にボタンはなく、その文は上にある唯一の操作 `Scan library` を名指しする。監視によるスキャンが走っている間も `Scan library` は押せたままで、`Media folders` の行は編集できたままである。
+6. **取り込み中は静か**: 監視によるスキャンの間、`Scan status`、ライブラリ、フォルダページ、動画ページには新しいものが何も出ない。バッジも、進み具合のバーや文も、右下の表示も、トーストもない。スキャンが `done` で終わると、開いている一覧には並び順どおりに新しいカードがあり、ウィンドウはスクロールしていない。選択していたカードは選択されたままである。
+7. **失敗だけを知らせる**: 監視によるスキャンが新しい失敗を伴って `partial` で終わると、右下の結果が「Auto-import: some failed」と失敗した数で現れ、8 秒後に隠れ、押すと同じ状態の言葉と一覧の 2 つのファイルを持つ `Scan status` が開く。`done` で終わると、右下には何も現れない。
 8. **オンにしても静か**: 自動取り込みをオンにすると、状態の行は「Starting to watch the media folders…」を経て「Watching the media folders.」へ移り、`Scan status` にバーは出ず、右下の表示もトーストもなく、行が変わる間に `Media folders` の節は動かない。
 9. **問題は色なしで読める**: `events_lost` のとき、`Alert` のアイコンと題が何が起きたかを言い、文が何をすべきかを言う。状態の行は変更が漏れうることを言う。画面から色を取り除いても何も失われない。
 10. **ゲスト**: ゲストとしてサインインすると、Settings、スイッチ、右下の表示、読み上げは存在しない。

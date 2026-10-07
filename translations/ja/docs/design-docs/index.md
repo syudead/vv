@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: a12fd06eb20ae025793034ef9cb2611046713c250295bc221d48434067c3fb5c
+sourceHash: be75d5ca3e819652c4f7343d1ef17d0a49b751b0b755cc264916309e42e53b22
 ---
 
 # 設計文書 {#design-documents}
@@ -53,3 +53,4 @@ sourceHash: a12fd06eb20ae025793034ef9cb2611046713c250295bc221d48434067c3fb5c
 - [規模の大きいタグ管理画面 (上部バー、帯、タブ、並び順、選択、一括操作): UI](../../specs/036-tag-admin-scale/ui-design.md)
 - [shadcn/ui 上の vv デザインシステム (基礎、コンポーネント、ページのパターン): UI](../../specs/038-design-system/ui-design.md)
 - [カードの `+N` の裏に隠れたタグを、何個でも見えて押せるようにする: UI](../../specs/041-tag-overflow-list/ui-design.md)
+- [変更されたメディアフォルダの自動取り込み (設定、問題の知らせ、静かな結果の知らせ): UI](../../specs/042-folder-watch-import/ui-design.md)
