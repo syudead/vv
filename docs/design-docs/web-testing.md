@@ -9,10 +9,10 @@ The diagram shows the four levels and what each one renders.
 
 ```mermaid
 flowchart LR
-  logic[Logic test] --> fn[A pure module]
+  logic[Logic test] --> fn[A module or hook]
   component[Component test] --> one[One component, props in]
   page[Page test] --> route[A page and fake server]
-  e2e[E2E test] --> real[Real server and Chromium]
+  e2e[E2E test] --> real[Go server, Vite, Chromium]
 ```
 
 ## Test levels
@@ -21,13 +21,15 @@ Each level proves a different kind of behaviour, at a different cost per test.
 
 | Level | Proves | Renders | Cost per test |
 | --- | --- | --- | --- |
-| Logic test | A rule: ordering, filtering, validation, formatting | Nothing; calls a function in a `.ts` module | 0.01 s |
+| Logic test | A rule (ordering, filtering, validation, formatting), a hook, or an API module | Nothing, or a hook through `renderHook`; `fetch` stubbed where the module calls it | 0.01 s |
 | Component test | What one component shows and emits for given props | That component inside its providers | 0.10 s |
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
-| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The built app in Chromium | Seconds; runs only on a push to `main` |
+| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs only on a push to `main` |
 
 The costs are the mean worker time per test in one full Vitest run (October
-2026). Page tests were 510 of 1,736 unit tests and 74% of the run's worker
+2026), with every `.ts` test file counted as a logic test. E2E does not cover
+the production Vite build or its embedding in the Go binary; `task test-web`
+builds the SPA, and nothing serves that build in a test. Page tests were 510 of 1,736 unit tests and 74% of the run's worker
 time.
 
 ## Choosing the level
@@ -36,7 +38,7 @@ Pick the first level in the diagram whose test fails when the behaviour breaks.
 
 ```mermaid
 flowchart LR
-  b[Behaviour] --> q1{Pure rule?}
+  b[Behaviour] --> q1{Rule, hook or API?}
   q1 -->|yes| logic[Logic test]
   q1 -->|no| q2{Inside one component?}
   q2 -->|yes| component[Component test]
@@ -54,6 +56,7 @@ component; [Rules out of pages](#rules-out-of-pages) covers that case.
 | --- | --- |
 | Tags sorted by name compare by natural sort key, then by id | Logic ([`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts)) |
 | A name already used by a tag shows the catalog's reason, not the server's message | Logic ([`tagNameField.ts`](../../web/src/tags/tagNameField.ts)) |
+| Loading more videos sends the previous response's `nextCursor` | Logic ([`useVideos.ts`](../../web/src/api/useVideos.ts)) |
 | A tag row that enters rename mode fills in the name, focuses and selects it | Component ([`TagRow`](../../web/src/tags/TagRow.tsx)) |
 | A response that arrives after a newer request does not replace the newer rows | Page |
 | Focus returns to the next row after a delete | Page |
