@@ -135,8 +135,10 @@ type Scans struct {
 	// runOrigin と runFinished は走っている走査の origin と、その終わりを知らせる channel である。
 	runOrigin   domain.ScanOrigin
 	runFinished chan struct{}
-	// onFinish は走査を閉じたあとに呼ぶ。nil なら呼ばない。
+	// onFinish は走査を閉じたあとに、走査の錠を持って呼ぶ。nil なら呼ばない。
 	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
+	// onStart は走査を始めるたびに、走査の錠を持って呼ぶ。nil なら呼ばない。
+	onStart func(origin domain.ScanOrigin)
 	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
 	// 走査は、始めた直後に取り消す。
 	stopped bool
@@ -257,6 +259,9 @@ func (s *Scans) start(
 	}
 	if s.stopped {
 		cancel(nil)
+	}
+	if s.onStart != nil {
+		s.onStart(s.runOrigin)
 	}
 	go s.run(runCtx, scan.ID, s.runFinished, dirs)
 
@@ -381,6 +386,14 @@ func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onFinish = f
+}
+
+// OnStart は走査を新しく始めるたびに呼ぶ関数を登録する。関数は走査の錠を持って呼ばれるので、
+// 走査を触らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+func (s *Scans) OnStart(f func(origin domain.ScanOrigin)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onStart = f
 }
 
 // Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
@@ -517,11 +530,13 @@ func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, d
 		s.running = false
 		s.cancelRun(nil)
 		s.cancelRun = nil
-		onFinish := s.onFinish
-		s.mu.Unlock()
-		if onFinish != nil {
-			onFinish(origin, endState)
+		// 閉じる知らせは走査の錠を持ったまま呼ぶ。錠を放してから呼ぶと、その隙に次の走査が
+		// 始まって開始の知らせが先に届き、閉じる走査が自分の開始時点の状態を取り違える。
+		// 知らせを受ける側は、この錠を取る呼び出しをしてはならない。
+		if s.onFinish != nil {
+			s.onFinish(origin, endState)
 		}
+		s.mu.Unlock()
 		close(finished)
 	}()
 

@@ -42,6 +42,7 @@ func newAutoImport(
 		f(&opts)
 	}
 	auto = app.NewAutoImport(opts)
+	scans.OnStart(auto.ScanStarted)
 	scans.OnFinish(auto.ScanFinished)
 	return auto
 }

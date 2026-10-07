@@ -104,6 +104,8 @@ type fakeFolderWatcher struct {
 	arms    [][]string
 	disarms int
 	block   chan struct{}
+	// disarmBlock が nil でなければ、Disarm はそれが閉じるまで戻らない。
+	disarmBlock chan struct{}
 }
 
 func (f *fakeFolderWatcher) Arm(roots []string) error {
@@ -119,8 +121,12 @@ func (f *fakeFolderWatcher) Arm(roots []string) error {
 
 func (f *fakeFolderWatcher) Disarm() {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.disarms++
+	block := f.disarmBlock
+	f.mu.Unlock()
+	if block != nil {
+		<-block
+	}
 }
 
 func (f *fakeFolderWatcher) armed() [][]string {
@@ -499,6 +505,7 @@ func TestAutoImportStatus(t *testing.T) {
 			status.Problem.Kind != domain.FolderWatchProblemEventsLost {
 			t.Fatalf("状態 = %+v, want limited の events_lost", status)
 		}
+		rig.auto.ScanStarted(domain.ScanOriginManual)
 		rig.auto.ScanFinished(domain.ScanOriginWatch, domain.ScanDone)
 		if status := rig.auto.Status(); status.State != domain.FolderWatchLimited {
 			t.Fatalf("監視の走査が閉じて問題が解けた: %+v", status)
@@ -513,6 +520,7 @@ func TestAutoImportStatus(t *testing.T) {
 		}
 
 		rig.auto.WatchProblem(domain.FolderWatchProblem{Kind: domain.FolderWatchProblemLimit, Path: fixturePath("/media/x")})
+		rig.auto.ScanStarted(domain.ScanOriginManual)
 		rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
 		if status := rig.auto.Status(); status.State != domain.FolderWatchLimited ||
 			status.Problem == nil || status.Problem.Path != fixturePath("/media/x") {
@@ -535,4 +543,76 @@ func TestAutoImportStatus(t *testing.T) {
 			t.Fatalf("状態 = %+v, want 入のまま", status)
 		}
 	})
+}
+
+// 手動の走査が走っている間に報告された取りこぼしは、その走査が閉じても解けない。走査が読み終えた
+// ディレクトリのものかもしれないからである。次の手動の走査が全体を読めば解ける。
+func TestAutoImportKeepsEventsLostReportedDuringManualScan(t *testing.T) {
+	rig := newAutoImportRig(t, true, fixturePath("/media"))
+	rig.waitState(t, domain.FolderWatchActive)
+
+	rig.auto.ScanStarted(domain.ScanOriginManual)
+	rig.auto.WatchProblem(domain.FolderWatchProblem{Kind: domain.FolderWatchProblemEventsLost})
+	rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+	if status := rig.auto.Status(); status.State != domain.FolderWatchLimited || status.Problem == nil ||
+		status.Problem.Kind != domain.FolderWatchProblemEventsLost {
+		t.Fatalf("走査の間の取りこぼしが解けた: %+v", status)
+	}
+
+	rig.auto.ScanStarted(domain.ScanOriginManual)
+	rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+	if status := rig.auto.Status(); status.State != domain.FolderWatchActive || status.Problem != nil {
+		t.Fatalf("次の手動の走査で解けない: %+v", status)
+	}
+}
+
+// 同じディレクトリの変更の報告が続いても、変わったディレクトリの集合は報告の数では増えない。
+func TestAutoImportDirtySetGrowsPerDirectoryNotPerNotification(t *testing.T) {
+	rig := newAutoImportRig(t, true, fixturePath("/media"))
+	rig.waitState(t, domain.FolderWatchActive)
+
+	for range 1000 {
+		rig.auto.Changed(dirtyDir("/media/a", false))
+		rig.auto.Changed(dirtyDir("/media/b", false))
+		rig.auto.Changed(dirtyDir("/media/b", true))
+	}
+	rig.auto.mu.Lock()
+	got := len(rig.auto.dirty)
+	rig.auto.mu.Unlock()
+	if got != 3 {
+		t.Fatalf("変わったディレクトリの数 = %d, want 3", got)
+	}
+	rig.clock.Advance(autoImportQuiet)
+	started := rig.scans.started()
+	if len(started) != 1 || len(started[0]) != 2 {
+		t.Fatalf("始めた走査 = %v, want a と b（再帰）の 1 回", started)
+	}
+}
+
+// Disarm が応答しないマウントを読む goroutine を待っていても、Stop は上限で戻る。
+func TestAutoImportStopDoesNotWaitForeverOnDisarm(t *testing.T) {
+	watcher := &fakeFolderWatcher{disarmBlock: make(chan struct{})}
+	t.Cleanup(func() { close(watcher.disarmBlock) })
+	auto := NewAutoImport(AutoImportOptions{
+		Store:    &fakeAutoImportStore{enabled: true},
+		Folders:  fakeActivityFolders{roots: []domain.MediaFolder{{ID: 1, Path: fixturePath("/media")}}},
+		Watcher:  watcher,
+		Scans:    &fakeWatchScans{},
+		Clock:    newStepClock(),
+		Logger:   discardLogger(),
+		StopWait: 50 * time.Millisecond,
+	})
+	if err := auto.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	stopped := make(chan struct{})
+	go func() {
+		auto.Stop()
+		close(stopped)
+	}()
+	select {
+	case <-stopped:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Disarm が戻らないと Stop が戻らない")
+	}
 }

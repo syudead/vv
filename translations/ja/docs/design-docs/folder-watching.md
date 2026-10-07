@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/folder-watching.md
-sourceHash: 0e75116cd7aba1d836ef7d7c7bd97d5fbbff4936a31559273066f45a7ab5465f
+sourceHash: e3549e62f09815c737d697f3dc813397b6f843e254b829f18ae48ee9d4167d0b
 ---
 
 # フォルダの監視: 変更のあったメディアフォルダの取り込み {#folder-watching-importing-changed-media-folders}
@@ -62,7 +62,7 @@ flowchart LR
 | `active` | すべてのディレクトリを監視している |
 | `limited` | 問題が記録されている: 監視の上限、失われたイベント、到達できないフォルダ、権限 |
 
-問題は表示するだけで、スキャンでは修復しない ([R-6](../../specs/042-folder-watch-import/research.md#r-6-lost-events-and-watch-limits-are-reported-never-repaired-by-a-scan))。自動取り込みを無効にして有効にし直したとき、メディアフォルダが変わったとき、または失われたイベントについては手動スキャンが `done` で終わったときに解消する。
+問題は表示するだけで、スキャンでは修復しない ([R-6](../../specs/042-folder-watch-import/research.md#r-6-lost-events-and-watch-limits-are-reported-never-repaired-by-a-scan))。自動取り込みを無効にして有効にし直したとき、メディアフォルダが変わったとき、または失われたイベントについては、手動スキャンが `done` で終わり、かつそのスキャンの開始後に新たな損失が報告されていないときに解消する。スキャンの実行中に報告された損失は、スキャンがすでに影響のあるディレクトリを読んでいるかもしれないので、`limited` のまま表示される。次の手動スキャンがそれを解消する。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
