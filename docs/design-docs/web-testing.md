@@ -26,9 +26,7 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
 | E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs only on a push to `main` |
 
-The costs are the mean worker time per test in one full Vitest run (October
-2026), with every `.ts` test file counted as a logic test. Page tests were 510
-of 1,736 unit tests and 74% of the run's worker time.
+The costs are the mean worker time per test in a full Vitest run.
 
 E2E does not cover the production Vite build or its embedding in the Go binary:
 `task test-web` builds the SPA, and no test serves that build.
@@ -78,19 +76,10 @@ in order, so one long file sets the shard's duration
 ## Rules out of pages
 
 A rule a page computes moves to a pure module next to the page, and the page
-test keeps one case that shows the page uses it. The tag admin screen is split
-this way:
-
-| Part | Where | Tested by |
-| --- | --- | --- |
-| Rows after an action, which empty state to show, count text, selection | [`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts), [`tagListView.ts`](../../web/src/tags/tagListView.ts), [`tagSelection.ts`](../../web/src/tags/tagSelection.ts) | Logic tests |
-| Loading pages, rejected names, virtualized rows and their focus | [`useTagPage`](../../web/src/tags/useTagPage.ts), [`useRejectedNames`](../../web/src/tags/useRejectedNames.ts), [`useVirtualTagRows`](../../web/src/tags/useVirtualTagRows.ts) | Page tests written before the split |
-| Rendering of the empty states, column header, tabs and filter chips | Components next to the page | Component tests where the variants differ, such as [`TagListEmptyState`](../../web/src/tags/TagListEmptyState.tsx) |
-| Actions and where focus goes after them | [`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx) | Page tests |
-
-The hooks moved out without new tests, so the page tests written before the
-split still cover them; their cases move to logic tests through `renderHook`
-when the hooks next change ([Existing tests](#existing-tests)).
+test keeps one case that shows the page uses it. Which empty state the tag admin
+screen shows is such a rule: it lives in
+[`tagListView.ts`](../../web/src/tags/tagListView.ts) with logic tests, and the
+component that renders each empty state has a component test.
 
 ## Existing tests
 
