@@ -261,7 +261,8 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     expect(screen.getByRole("status", { name: "Loading more tags…" })).toBeDefined();
 
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 14");
-    await waitFor(() => expect(heldGetReleases.length).toBeGreaterThan(1));
+    // 入力途中の条件ではなく、最終の条件（Tag 14）の要求が止まるのを待つ。
+    await waitFor(() => expect(server.pageRequests.at(-1)?.get("q")).toBe("Tag 14"));
     scrollTo(0);
     // 新しい条件の応答を先に、古い続きの応答をあとに解く。
     for (const release of heldGetReleases.slice(1)) release();
