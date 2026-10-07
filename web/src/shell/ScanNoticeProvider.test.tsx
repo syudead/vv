@@ -5,6 +5,7 @@ import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { OwnerAudience } from "../testing/audience";
 import { ScanNoticeProvider, useScanNotice } from "./ScanNoticeProvider";
+import { forgetFailureKeys } from "./scanIssueMemory";
 import { ScanProvider, useScan } from "./ScanProvider";
 
 function json(body: unknown): Response {
@@ -65,6 +66,7 @@ describe("ScanNoticeProvider", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    forgetFailureKeys();
     window.sessionStorage.clear();
     vi.stubGlobal("fetch", fetchMock);
     installFakeEventSource();
@@ -327,5 +329,117 @@ describe("ScanNoticeProvider", () => {
     await act(async () => screen.getByRole("button", { name: "resume" }).click());
     await act(async () => vi.advanceTimersByTimeAsync(9000));
     expect(screen.getByTestId("notice").textContent).toBe("none");
+  });
+
+  describe("自動の取り込み（origin watch）", () => {
+    const watch = (id: number, state: Scan["state"], values: Partial<Scan> = {}) =>
+      scan(id, state, { origin: "watch", ...values });
+    const partial = (id: number, failed: number) =>
+      watch(id, "done", {
+        status: "partial",
+        issues: { failed, substituted: 0, revision: id },
+      });
+
+    /** files は今の取り込みの問題の一覧（失敗の動画のファイル名）である。 */
+    function serve(current: () => { id: number; files: string[] }) {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.startsWith("/api/scans/current/issues")) {
+          const { id, files } = current();
+          return Promise.resolve(
+            json({
+              scanId: id,
+              items: files.map((fileName) => ({
+                severity: "failed",
+                kinds: ["probe_failed"],
+                fileName,
+                folder: { rootId: 1, path: "" },
+              })),
+            }),
+          );
+        }
+        return Promise.resolve(json(scan(1, "done")));
+      });
+    }
+
+    it("走っているあいだと、失敗の無い完了は通知しない", async () => {
+      serve(() => ({ id: 1, files: [] }));
+      renderProvider();
+      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("none"));
+
+      await emitServerEvent("scan", watch(60, "running"));
+      expect(screen.getByTestId("tracking").textContent).not.toBe("60");
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+
+      await emitServerEvent("scan", watch(60, "done"));
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+    });
+
+    it("失敗で終わったものは通知する", async () => {
+      serve(() => ({ id: 1, files: [] }));
+      renderProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("tracking").textContent).toBeDefined(),
+      );
+
+      await emitServerEvent("scan", watch(61, "running"));
+      await emitServerEvent("scan", watch(61, "failed", { status: "failed" }));
+
+      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("61"));
+    });
+
+    it("新しい失敗を伴う partial だけ通知し、前に読んだ失敗だけなら通知しない", async () => {
+      let files = ["a.mp4"];
+      let id = 62;
+      serve(() => ({ id, files }));
+      renderProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("tracking").textContent).toBeDefined(),
+      );
+
+      // 前に読んだ一覧が無いので通知する。
+      await emitServerEvent("scan", partial(62, 1));
+      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("62"));
+      await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+
+      // 同じ失敗が持ち越されただけ。
+      id = 63;
+      await emitServerEvent("scan", partial(63, 1));
+      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+
+      // 新しい失敗が足された。
+      id = 64;
+      files = ["a.mp4", "b.mp4"];
+      await emitServerEvent("scan", partial(64, 2));
+      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("64"));
+    });
+
+    it("手動の取り込みで読んだ失敗は、次の自動の取り込みで通知しない", async () => {
+      let id = 70;
+      serve(() => ({ id, files: ["a.mp4"] }));
+      renderProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("tracking").textContent).toBeDefined(),
+      );
+
+      await emitServerEvent("scan", scan(70, "running"));
+      await emitServerEvent(
+        "scan",
+        scan(70, "done", {
+          status: "partial",
+          issues: { failed: 1, substituted: 0, revision: 1 },
+        }),
+      );
+      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
+
+      id = 71;
+      await emitServerEvent("scan", partial(71, 1));
+      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+    });
   });
 });

@@ -16,6 +16,7 @@ type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 type ScanActivityKind = components["schemas"]["ScanActivityKind"];
+type FolderWatchProblem = NonNullable<components["schemas"]["FolderWatch"]["problem"]>;
 type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
@@ -1472,6 +1473,18 @@ export const en = {
       toCheckCount: (count: number) => `${formatNumber(count)} to check`,
       seeSettingsForList: "See Settings for the list.",
       // 読み上げは完了・一部失敗・失敗の節目だけにする。
+      // 自動の取り込み（origin watch）の言葉。走っているあいだは何も出さないので、
+      // 終わったあとの状態だけがある（specs/042-folder-watch-import/ui-design.md「Words」）。
+      watchStatus: {
+        done: "Auto-imported",
+        partial: "Auto-import: some failed",
+        failed: "Auto-import failed",
+      },
+      watchAnnounce: {
+        partial: (failed: number) =>
+          `Auto-import finished with some failures. ${videos(failed)} may not be usable.`,
+        failed: "Auto-import failed.",
+      },
       announce: {
         done: (toCheck: number) =>
           toCheck === 0
@@ -1567,10 +1580,59 @@ export const en = {
         loadFailed: (reason: string) => `Couldn't load the list: ${reason}`,
       },
     },
+    autoImport: {
+      heading: "Auto-import",
+      description:
+        "Files added, removed, moved or renamed in a media folder are picked up as they happen, without a scan. Changes made while it's off or while VVMDM isn't running are picked up by “Scan library” under Scan status.",
+      label: "Pick up changes as they happen",
+      state: {
+        off: "Off. Changes are picked up by the next scan.",
+        noFolder: "Add a media folder below to watch it.",
+        starting: "Starting to watch the media folders…",
+        active: "Watching the media folders.",
+        limited: "Watching, but some changes may be missed.",
+      },
+      loading: "Loading the auto-import settings",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't change the setting: ${reason}`,
+      loadFailed: (reason: string) => `Couldn't load the auto-import settings: ${reason}`,
+      // 問題の文。{path} の前と後に分け、道筋（利用者のデータ）は画面が <code> で挟む。
+      problem: {
+        watch_limit: {
+          title: "Some folders aren't watched",
+          before: "The limit on watched folders was reached, so changes under ",
+          after:
+            " aren't picked up. Raise the limit (fs.inotify.max_user_watches on Linux) and turn auto-import off and on, then start a scan to pick up what was missed.",
+        },
+        events_lost: {
+          title: "Some changes were lost",
+          before:
+            "Too many changes arrived at once and some were lost. Start a scan under Scan status to pick them up.",
+          after: "",
+        },
+        folder_unreachable: {
+          title: "A media folder can't be reached",
+          before: "",
+          after:
+            " can't be reached. Changes there aren't picked up until it is back and auto-import is turned off and on. Then start a scan to pick up what was missed.",
+        },
+        permission_denied: {
+          title: "A folder can't be read",
+          before: "VVMDM can't read ",
+          after:
+            ". Changes there aren't picked up until it can, and auto-import is turned off and on. Then start a scan to pick up what was missed.",
+        },
+      } satisfies Record<
+        FolderWatchProblem,
+        { title: string; before: string; after: string }
+      >,
+      /** 問題が道筋を持たないときに、{path} の代わりに入れる言葉。 */
+      unknownPath: "a media folder",
+    },
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After a change, start a scan with “Scan library” under Scan status. Scans don't start automatically.",
+        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” under Scan status. Auto-import doesn't start one.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       list: "Added media folders",
       loading: "Loading the media folders",

@@ -9,7 +9,14 @@ import {
   useState,
 } from "react";
 
+import { isAborted } from "../api/client";
 import { inProgress, useScan } from "./ScanProvider";
+import {
+  hasNewFailure,
+  previousFailureKeys,
+  readFailureKeys,
+  rememberFailureKeys,
+} from "./scanIssueMemory";
 import {
   dismissedStorageKey,
   emptyScanNoticeSession,
@@ -125,6 +132,8 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const current = scan.scan;
     if (current === null) return;
+    // 自動の取り込みは走っているあいだ追わず、終わりの通知は下の effect が決める。
+    if (current.origin === "watch") return;
     // 走査が閉じても準備が残るあいだは status が running のままなので、完了を知らせない。
     if (inProgress(current)) {
       const next: ScanNoticeSession = {
@@ -169,6 +178,68 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     };
     updateSession({ ...session, completionNotice });
   }, [scan.scan, session, updateSession]);
+
+  // 手動の取り込みが終わったら、その失敗の一覧を覚える。次の自動の取り込みが、持ち越した
+  // 失敗を新しい失敗と取り違えないための比べる相手になる。
+  const manualFinished = scan.finished;
+  useEffect(() => {
+    if (manualFinished === null) return;
+    if (manualFinished.issues.failed === 0) {
+      rememberFailureKeys(manualFinished.id, new Set());
+      return;
+    }
+    const abort = new AbortController();
+    readFailureKeys(manualFinished.id, abort.signal)
+      .then((keys) => {
+        if (keys !== null) rememberFailureKeys(manualFinished.id, keys);
+      })
+      .catch(() => undefined);
+    return () => abort.abort();
+  }, [manualFinished]);
+
+  // 自動の取り込みが終わったとき、失敗で終わった（failed）か、新しい失敗を伴って終わった
+  // （partial）ときだけ、右下に結果を出す。新しい失敗かどうかは、前に読んだ一覧に無い
+  // （道筋と種類の）失敗があるかで決める。前に読んだ一覧が無ければ新しいとする。
+  const watchFinished = scan.watchFinished;
+  useEffect(() => {
+    if (watchFinished === null) return;
+    if (watchFinished.status !== "partial" && watchFinished.status !== "failed") {
+      if (watchFinished.issues.failed === 0) {
+        rememberFailureKeys(watchFinished.id, new Set());
+      }
+      return;
+    }
+    const abort = new AbortController();
+    const show = () => {
+      if (abort.signal.aborted || dismissedRef.current === watchFinished.id) return;
+      if (scanRef.current?.id !== watchFinished.id) return;
+      const currentSession = sessionRef.current;
+      updateSession({
+        ...currentSession,
+        completionNotice: {
+          scanId: watchFinished.id,
+          expiresAt: Date.now() + completionNoticeDuration,
+          pausedRemainingMs: null,
+        },
+      });
+    };
+    if (watchFinished.status === "failed") {
+      show();
+      return () => abort.abort();
+    }
+    readFailureKeys(watchFinished.id, abort.signal)
+      .then((keys) => {
+        if (abort.signal.aborted || keys === null) return;
+        const isNew = hasNewFailure(keys, previousFailureKeys());
+        rememberFailureKeys(watchFinished.id, keys);
+        if (isNew) show();
+      })
+      .catch((failure: unknown) => {
+        // 読めなかったときは、失敗があることを知らせる側に倒す。
+        if (!isAborted(failure)) show();
+      });
+    return () => abort.abort();
+  }, [updateSession, watchFinished]);
 
   useEffect(() => {
     const notice = session.completionNotice;

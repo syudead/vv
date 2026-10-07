@@ -856,4 +856,91 @@ describe("ScanProgressIndicator", () => {
     await act(async () => window.dispatchEvent(new Event("focus")));
     await open(/Scan failed/);
   });
+
+  describe("origin watch", () => {
+    function serve(failedFiles: string[]) {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.startsWith("/api/scans/current/issues")) {
+          return Promise.resolve(
+            json({
+              scanId: 9,
+              items: failedFiles.map((fileName) => ({
+                severity: "failed",
+                kinds: ["probe_failed"],
+                fileName,
+                folder: { rootId: 1, path: "" },
+              })),
+            }),
+          );
+        }
+        return Promise.resolve(json({}, 404));
+      });
+    }
+
+    it("shows nothing while a watch scan runs, and nothing when it ends done", async () => {
+      serve([]);
+      renderIndicator();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await emitServerEvent("scan", scan({ id: 9, origin: "watch", state: "running" }));
+      expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+      expect(screen.queryByRole("status")?.textContent ?? "").toBe("");
+
+      await emitServerEvent("scan", scan({ id: 9, origin: "watch", state: "done" }));
+      expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
+    });
+
+    it("shows a result for a new failure, with the auto-import words, and announces it", async () => {
+      serve(["a.mp4"]);
+      renderIndicator();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await emitServerEvent("scan", scan({ id: 9, origin: "watch", state: "running" }));
+      await emitServerEvent(
+        "scan",
+        scan({
+          id: 9,
+          origin: "watch",
+          state: "done",
+          status: "partial",
+          issues: { failed: 1, substituted: 0, revision: 1 },
+        }),
+      );
+
+      const trigger = await screen.findByRole("button", {
+        name: /^Auto-import: some failed, 1 failed\. Open the scan status$/,
+      });
+      expect(trigger.textContent).toContain("Auto-import: some failed");
+      expect(trigger.textContent).not.toContain("/");
+      expect(
+        screen
+          .getAllByRole("status")
+          .some((node) =>
+            node.textContent?.startsWith(
+              "Auto-import finished with some failures. 1 video may not be usable.",
+            ),
+          ),
+      ).toBe(true);
+    });
+
+    it("shows a result for a failed watch scan", async () => {
+      serve([]);
+      renderIndicator();
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+      await emitServerEvent("scan", scan({ id: 9, origin: "watch", state: "running" }));
+      await emitServerEvent(
+        "scan",
+        scan({ id: 9, origin: "watch", state: "failed", status: "failed" }),
+      );
+
+      expect(
+        await screen.findByRole("button", {
+          name: /^Auto-import failed\. Open the scan status$/,
+        }),
+      ).toBeDefined();
+    });
+  });
 });

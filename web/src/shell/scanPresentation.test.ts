@@ -38,6 +38,7 @@ function context(
     refresh: () => undefined,
     setFolderCount: () => undefined,
     finished: null,
+    watchFinished: null,
     ...values,
   };
 }
@@ -143,6 +144,7 @@ describe("presentScan", () => {
         "state",
         "statusText",
         "videos",
+        "watch",
       ].sort(),
     );
   });
@@ -202,5 +204,66 @@ describe("statusAnnouncement", () => {
     );
     expect(statusAnnouncement(first)).toBeNull();
     expect(statusAnnouncement(second)).toBeNull();
+  });
+
+  describe("origin watch", () => {
+    const watch = (status: Scan["status"], values: Partial<Scan> = {}) =>
+      makeScan(status, { origin: "watch", ...values });
+
+    it.each(["finding", "running"] as const)(
+      "shows nothing while a watch scan is %s",
+      (status) => {
+        const presentation = presentScan(
+          context(watch(status, { issues: { failed: 2, substituted: 1, revision: 1 } })),
+        );
+        expect(presentation.watch).toBe(true);
+        expect(presentation.statusText).toBeNull();
+        expect(presentation.videos).toBeNull();
+        expect(presentation.progressText).toBeNull();
+        expect(presentation.bar).toBe("none");
+        expect(presentation.detail).toBeNull();
+        expect(presentation.issues).toEqual({ failed: 0, substituted: 0 });
+        expect(statusAnnouncement(presentation)).toBeNull();
+      },
+    );
+
+    it("uses the auto-import words once it ends, and no progress", () => {
+      expect(presentScan(context(watch("done"))).statusText).toBe("Auto-imported");
+      const partial = presentScan(
+        context(
+          watch("partial", {
+            issues: { failed: 2, substituted: 0, revision: 1 },
+            settledAt: "2026-10-07T10:00:00Z",
+          }),
+        ),
+      );
+      expect(partial.statusText).toBe("Auto-import: some failed");
+      expect(partial.issues).toEqual({ failed: 2, substituted: 0 });
+      expect(partial.videos).toBeNull();
+      expect(partial.progressText).toBeNull();
+      expect(partial.bar).toBe("none");
+      expect(partial.detail?.text).toContain("Finished");
+      expect(presentScan(context(watch("failed"))).statusText).toBe("Auto-import failed");
+    });
+
+    it("announces only failures", () => {
+      expect(statusAnnouncement(presentScan(context(watch("done"))))).toBeNull();
+      expect(
+        statusAnnouncement(
+          presentScan(
+            context(
+              watch("partial", { issues: { failed: 2, substituted: 0, revision: 1 } }),
+            ),
+          ),
+        ),
+      ).toBe("Auto-import finished with some failures. 2 videos may not be usable.");
+      expect(statusAnnouncement(presentScan(context(watch("failed"))))).toBe(
+        "Auto-import failed.",
+      );
+    });
+
+    it("is not a watch presentation while a manual start is in flight", () => {
+      expect(presentScan(context(watch("done"), { starting: true })).watch).toBe(false);
+    });
   });
 });

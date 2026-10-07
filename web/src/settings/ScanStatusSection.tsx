@@ -15,8 +15,10 @@ import { Button } from "../ui/shadcn/button";
 import ScanIssueList from "./ScanIssueList";
 import { useScanIssues } from "./useScanIssues";
 
-function stateLabel(presentation: ScanPresentation): UiText {
+function stateLabel(presentation: ScanPresentation): UiText | null {
   if (presentation.statusText !== null) return presentation.statusText;
+  // 走っている自動の取り込みには状態の言葉が無い（何も出さない）。
+  if (presentation.watch) return null;
   return presentation.state === "fetch-failed"
     ? t.settings.scanStatus.state.fetchFailed
     : t.settings.scanStatus.state.notRun;
@@ -99,10 +101,12 @@ export default function ScanStatusSection() {
         }
         description={
           <span className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">
-              <ScanStatusIcon state={presentation.state} />
-              {stateLabel(presentation)}
-            </Badge>
+            {stateLabel(presentation) !== null && (
+              <Badge variant="secondary">
+                <ScanStatusIcon state={presentation.state} />
+                {stateLabel(presentation)}
+              </Badge>
+            )}
             {(presentation.issues.failed > 0 || presentation.issues.substituted > 0) && (
               <Badge variant="secondary">
                 <ScanIssueCounts

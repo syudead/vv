@@ -33,6 +33,7 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
 import { ListPage } from "../ui/patterns/list-page";
@@ -216,6 +217,7 @@ export default function LibraryPage() {
     loadMore,
     retryLoadMore,
     reload,
+    refreshInPlace,
     staleGroups,
   } = useVideos({ ...criteria, tag: tagIds }, restored, "library");
 
@@ -463,6 +465,8 @@ export default function LibraryPage() {
   const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
+  // 自動の取り込みが終わったら、開いている一覧を消さずにその場で取り直す。
+  useWatchScanRefresh(refreshInPlace);
   useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;

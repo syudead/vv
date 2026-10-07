@@ -466,6 +466,13 @@ test.describe.serial("guest", () => {
     }
     expect(tree).not.toMatch(/link "Settings"|link "Tags"/);
 
+    // 設定は所有者だけのもので、自動の取り込みのスイッチはゲストに出ない（specs/042-folder-watch-import）。
+    await page.goto("/settings");
+    await expect(
+      page.getByRole("switch", { name: "Pick up changes as they happen" }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Auto-import" })).toHaveCount(0);
+
     await page.goto("/folders");
     await expect(page.locator("[data-folder-path]")).toHaveCount(1);
 

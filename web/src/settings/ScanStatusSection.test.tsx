@@ -359,4 +359,72 @@ describe("ScanStatusSection", () => {
 
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
+
+  describe("origin watch", () => {
+    function serve(current: Scan) {
+      fetchMock.mockImplementation((input) =>
+        Promise.resolve(
+          String(input) === "/api/media-folders"
+            ? json([{}])
+            : String(input).startsWith("/api/scans/current/issues")
+              ? json({ scanId: current.id, items: [] })
+              : json(current),
+        ),
+      );
+    }
+
+    it("shows nothing but an enabled Scan library button while a watch scan runs", async () => {
+      serve(
+        scan({
+          origin: "watch",
+          state: "running",
+          status: "running",
+          videos: { total: 10, settled: 4 },
+          activity: { kind: "probe", fileName: "clip.mp4" },
+          issues: { failed: 1, substituted: 0, revision: 3 },
+        }),
+      );
+      renderSection();
+
+      const button = await screen.findByRole("button", { name: "Scan library" });
+      await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+      expect(screen.queryByText("Not run")).toBeNull();
+      expect(screen.queryByText("Done")).toBeNull();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByText(/of 10 videos done/)).toBeNull();
+      expect(screen.queryByText(/clip\.mp4/)).toBeNull();
+      expect(screen.queryByText(/A scan is running/)).toBeNull();
+      expect(screen.queryByText("1 failed")).toBeNull();
+    });
+
+    it("shows the auto-import status word once it ends, and no progress", async () => {
+      serve(
+        scan({
+          origin: "watch",
+          status: "partial",
+          videos: { total: 3, settled: 3 },
+          issues: { failed: 2, substituted: 0, revision: 2 },
+        }),
+      );
+      renderSection();
+
+      expect(await screen.findByText("Auto-import: some failed")).toBeDefined();
+      expect(screen.getAllByText("2 failed").length).toBeGreaterThan(0);
+      expect(screen.getByText(/^Finished /)).toBeDefined();
+      expect(screen.queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByText(/of 3 videos done/)).toBeNull();
+    });
+
+    it.each([
+      ["done", "Auto-imported"],
+      ["failed", "Auto-import failed"],
+    ] as const)("words a watch scan that ended %s", async (status, word) => {
+      serve(
+        scan({ origin: "watch", status, state: status === "failed" ? "failed" : "done" }),
+      );
+      renderSection();
+
+      expect(await screen.findByText(word)).toBeDefined();
+    });
+  });
 });
