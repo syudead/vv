@@ -73,7 +73,12 @@ jobs:
   # なる。task check に検査を足したら、どれかの組にも足す。
   # vitest は最も長いので、ファイルを 3 組に分けて流す（--shard）。分けるのは
   # ファイル単位なので、1 つのファイルが長くなりすぎたら話題ごとに分ける
-  # （src/tags/TagsPage*.test.tsx）。
+  # （src/tags/TagsPage*.test.tsx）。SPA のビルド検査は web lint の組で 1 回だけ流す。
+  #
+  # Go のビルドキャッシュは Go を使う組（go: に名前）だけが復元し、main への push で
+  # その組自身が保存する。setup-go の cache: true では全組が同じキーを奪い合い、
+  # 最初に終わる Go を使わない組が空のキャッシュを保存して、go.sum が変わるたびに
+  # 以後の全実行が golangci-lint のビルドからやり直しになっていた。
   check-group:
     name: Checks (${{ matrix.group }})
     needs: changes
@@ -89,31 +94,47 @@ jobs:
             web: true
             tools: true
             golangci: true
+            go: lint
           - group: go test
             tasks: test-go
+            go: test
           - group: web lint
-            tasks: fmt-check-web lint-web
+            tasks: fmt-check-web lint-web build-check-web
             web: true
           - group: web test 1
-            tasks: test-web -- --shard=1/3
+            tasks: test-web-unit -- --shard=1/3
             web: true
           - group: web test 2
-            tasks: test-web -- --shard=2/3
+            tasks: test-web-unit -- --shard=2/3
             web: true
           - group: web test 3
-            tasks: test-web -- --shard=3/3
+            tasks: test-web-unit -- --shard=3/3
             web: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
+        if: matrix.go
         with:
           # 版は go.mod に合わせる。
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/go.sum
+          cache: false
+
+      # 組ごとに作るものが違う（lint は golangci-lint 本体と go build、test は
+      # テストの binary）ので、キャッシュも組ごとに分ける。キーには Go の版も
+      # 入れる。go.sum が同じまま版だけ上がると、古い compiler の分に完全一致して
+      # 保存が飛ばされ、以後ずっと冷えたままになるため。
+      - name: Goのビルドキャッシュを復元する
+        id: go-cache
+        if: matrix.go
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: matrix.web || matrix.tools
@@ -166,6 +187,15 @@ jobs:
           path: ~/.cache/golangci-lint
           key: golangci-lint-${{ runner.os }}-${{ github.sha }}
 
+      - name: Goのビルドキャッシュを保存する
+        if: matrix.go && github.event_name == 'push' && steps.go-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+
   # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
   # 文書だけの変更では文書検査をここで流す。
   check:
@@ -194,13 +224,22 @@ jobs:
         if: needs.changes.outputs.code == 'false'
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
         if: needs.changes.outputs.code == 'false'
         with:
           go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            tools/go.sum
+          cache: false
+
+      # 文書検査は Go のテストなので、go test の組が保存した分を読むだけにする。
+      - name: Goのビルドキャッシュを復元する
+        if: needs.changes.outputs.code == 'false'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         if: needs.changes.outputs.code == 'false'
@@ -236,17 +275,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
         with:
           go-version-file: go.mod
-          cache: true
-          # Checks ジョブと同じキーにして、以前の実行の task check が保存した
-          # ビルドキャッシュを使う（同じ実行の Checks は並行なので間に合わない）。
-          cache-dependency-path: |
-            go.sum
-            tools/go.sum
+          cache: false
 
-      # run-e2e.mjs は GOCACHE が決まっていればそこを使う。setup-go が復元した
-      # 場所を渡し、ビルドをゼロからやり直さないようにする。
+      # サーバーの go build は go lint の組と同じ物を作るので、以前の実行で
+      # その組が保存した分を読む（同じ実行の組は並行なので間に合わない）。
+      # 保存はしない。
+      - name: Goのビルドキャッシュを復元する
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
+
+      # run-e2e.mjs は GOCACHE が決まっていればそこを使う。復元した場所を渡し、
+      # ビルドをゼロからやり直さないようにする。
       - name: Goのビルドキャッシュの場所を渡す
         run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
 

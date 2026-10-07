@@ -35,6 +35,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Screen text and formatting (i18n)](i18n.md)
+- [Web test levels](web-testing.md)
 - [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md)
 - [Thumbnail preview while seeking: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [Hover video preview in lists: UI](../../specs/010-hover-video-preview/ui-design.md)

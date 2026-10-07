@@ -75,11 +75,14 @@ flowchart LR
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
 runs the subtasks of `task check` as parallel `Checks (<group>)` jobs: Go lint
 with the generated-file, migration and Windows build checks, Go tests, Web
-lint, and the Vitest suite split into three shards (`task test-web --
---shard=1/3`). A check added to `task check` also goes into one of these groups
-in `.github/workflows/ci.yml`. Vitest shards by file, so a test file that grows
-to dominate a shard is split by topic, as `web/src/tags/TagsPage*.test.tsx`
-are around the shared `web/src/testing/tagsPage.tsx`. A push to `main` is a
+lint with the SPA build check (`task build-check-web`), and the Vitest suite
+split into three shards (`task test-web-unit -- --shard=1/3`). `task test-web`
+runs the build check and the whole suite. A check added to `task check` also
+goes into one of these groups in `.github/workflows/ci.yml`. Only the Go groups
+restore the Go build cache, and each saves its own copy on a push to `main`.
+Vitest shards by file, so a test file that grows to dominate a shard is split by
+topic, as `web/src/tags/TagsPage*.test.tsx` are around the shared
+`web/src/testing/tagsPage.tsx`. A push to `main` is a
 merged pull request, so browser E2E and the Docker image build never run on a
 pull request; `Browser E2E` passes there without running.
 

@@ -179,8 +179,20 @@ tasks:
 
   test-web:
     desc: Run the Web build check and unit tests.
+    # CI はビルド検査を 1 回だけ流し、vitest を組に分ける。後ろの引数は vitest へ渡す。
     cmds:
-      - npm --prefix web run test -- {{.CLI_ARGS}}
+      - task: build-check-web
+      - task: test-web-unit
+
+  build-check-web:
+    desc: Check that the SPA builds.
+    cmds:
+      - npm --prefix web run build:check
+
+  test-web-unit:
+    desc: Run the Web unit tests without the build check.
+    cmds:
+      - npm --prefix web run test:unit -- {{.CLI_ARGS}}
 
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.

@@ -3,7 +3,7 @@
 // @testing-library/jest-dom は入れない。表明は Vitest の expect だけで書く
 // （実行時にも開発時にも依存を増やさないため）。
 import { cleanup } from "@testing-library/react";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { resetLocale } from "./src/i18n/pseudo";
 
@@ -50,3 +50,16 @@ if (
 ) {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
+
+// sonner（ui/Toast）は読み込んだ時点で約 100 規則の <style> を head に足す。jsdom は
+// getComputedStyle のたびに全規則を照合し、Testing Library の getByRole は要素が
+// 隠れているかを祖先ごとに getComputedStyle で調べるので、この 1 枚が役割での検索を
+// 重くする。jsdom は描画しないので、見た目の規則は要らない。テストのファイルが
+// sonner を読み込んだあと、各テストの前に取り除く。
+const sonnerStylePrefix = "[data-sonner-toaster]";
+beforeEach(() => {
+  if (typeof document === "undefined") return;
+  for (const style of document.head.querySelectorAll("style")) {
+    if (style.textContent?.startsWith(sonnerStylePrefix)) style.remove();
+  }
+});
