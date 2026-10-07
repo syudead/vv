@@ -114,6 +114,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
         if: matrix.go
         with:
           # 版は go.mod に合わせる。
@@ -121,7 +122,9 @@ jobs:
           cache: false
 
       # 組ごとに作るものが違う（lint は golangci-lint 本体と go build、test は
-      # テストの binary）ので、キャッシュも組ごとに分ける。
+      # テストの binary）ので、キャッシュも組ごとに分ける。キーには Go の版も
+      # 入れる。go.sum が同じまま版だけ上がると、古い compiler の分に完全一致して
+      # 保存が飛ばされ、以後ずっと冷えたままになるため。
       - name: Goのビルドキャッシュを復元する
         id: go-cache
         if: matrix.go
@@ -130,8 +133,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ matrix.go }}-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-${{ matrix.go }}-${{ runner.os }}-
+          key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: matrix.web || matrix.tools
@@ -191,7 +194,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-${{ matrix.go }}-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
 
   # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
   # 文書だけの変更では文書検査をここで流す。
@@ -221,6 +224,7 @@ jobs:
         if: needs.changes.outputs.code == 'false'
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
         if: needs.changes.outputs.code == 'false'
         with:
           go-version-file: go.mod
@@ -234,8 +238,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-test-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-test-${{ runner.os }}-
+          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         if: needs.changes.outputs.code == 'false'
@@ -271,6 +275,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: setup-go
         with:
           go-version-file: go.mod
           cache: false
@@ -284,8 +289,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-lint-${{ runner.os }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-lint-${{ runner.os }}-
+          key: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       # run-e2e.mjs は GOCACHE が決まっていればそこを使う。復元した場所を渡し、
       # ビルドをゼロからやり直さないようにする。
