@@ -65,3 +65,21 @@ func (s *SettingsStore) LANAccess(ctx context.Context) (bool, error) {
 func (s *SettingsStore) SaveLANAccess(ctx context.Context, allowed bool) error {
 	return writeSetting(ctx, s.db.sql, desktopLANAccessKey, strconv.FormatBool(allowed))
 }
+
+// libraryAutoImportKey はメディアフォルダの変更を検知して自動で取り込むかのキーである。
+// 値は "true" か "false" で、行が無ければ入である（specs/042-folder-watch-import/research.md R-7）。
+const libraryAutoImportKey = "library.auto_import"
+
+// AutoImport は自動の取り込みが入かを返す。行が無いか "false" でなければ入である。
+func (s *SettingsStore) AutoImport(ctx context.Context) (bool, error) {
+	value, found, err := readSetting(ctx, s.db.sql, libraryAutoImportKey)
+	if err != nil {
+		return false, err
+	}
+	return !found || value != strconv.FormatBool(false), nil
+}
+
+// SaveAutoImport は自動の取り込みの入と切を保存する。
+func (s *SettingsStore) SaveAutoImport(ctx context.Context, enabled bool) error {
+	return writeSetting(ctx, s.db.sql, libraryAutoImportKey, strconv.FormatBool(enabled))
+}

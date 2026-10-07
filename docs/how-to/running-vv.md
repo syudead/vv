@@ -37,8 +37,13 @@ You need Task and Docker.
 3. Add the mounted folder in Settings and start a scan.
 4. Stop VVMDM with `task down`.
 
-Scans are manual: adding files does not start one. Source videos are never
-modified, moved, deleted or converted. During and after a scan:
+A change in a media folder (a file added, deleted, moved or renamed) is read
+without a scan: VVMDM re-reads only the directories that changed, about 15 s
+after the last change, and nothing is read while nothing changes
+([Folder watching](../design-docs/folder-watching.md)). The full scan stays
+manual, and changes made while VVMDM was stopped or auto-import was off wait
+for it. Source videos are never modified, moved, deleted or converted. During
+and after a scan:
 
 - the library and player stay available while indexing continues;
 - moved or renamed files keep their identity and playback position;

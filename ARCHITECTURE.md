@@ -27,6 +27,7 @@ flowchart LR
   http --> mediafs[File access]
   http -->|live transcoding| media[Media and ffmpeg]
   app --> scanner[Scanner]
+  app --> watcher[Folder watcher]
   app --> media
   app --> artifacts[Generated files]
   app --> store
@@ -39,6 +40,7 @@ flowchart LR
   bus --> workers
   bus -->|artifact removal| app
   scanner --> disk[(Media files)]
+  watcher -->|directory entries| disk
   mediafs --> disk
   media --> disk
   artifacts --> gendisk[(Data directory)]
@@ -64,8 +66,8 @@ flowchart LR
 | Layer | Packages | Owns | Must not import |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
-| Application | `internal/app` | The use cases (scans, ingest, catalog, media folders, encoder choice, authentication) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `jobs`, `password` | Talking to the outside world | Each other and `internal/app` |
+| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -163,6 +165,7 @@ from SQLite, never from the filesystem.
 | Package | Owns | Detail |
 | --- | --- | --- |
 | `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [017 data-model](specs/017-folder-groups/data-model.md), [033 research](specs/033-video-dates/research.md) |
+| `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md), [042 research](specs/042-folder-watch-import/research.md) |
 | `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue; import progress and issues | [020 data-model](specs/020-seek-thumbnail-stage/data-model.md), [024 research](specs/024-import-progress/research.md) |
 | `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [030 research](specs/030-video-versions/research.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
