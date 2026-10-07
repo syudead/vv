@@ -1393,6 +1393,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/settings/auto-import:
+    get:
+      operationId: getAutoImportSettings
+      summary: 自動の取り込みの選択と、フォルダの監視の今の状態を返す
+      description: |
+        保存した選択（`enabled`）と、監視が今していること（`watch.state`）を返す。問題があれば
+        `watch.problem` と、あればその場所 `watch.path` を返す
+        （specs/042-folder-watch-import/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 今の設定と監視の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoImportSettings"
+    put:
+      operationId: updateAutoImportSettings
+      summary: 自動の取り込みを入れる／切るを保存し、監視を張る／外す
+      description: |
+        選択を保存し、監視を張る／外すだけで、スキャンは始めない。今と同じ値なら何も変えない
+        （specs/042-folder-watch-import/contracts/screen-api.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAutoImportSettingsRequest"
+      responses:
+        "200":
+          description: 変更後の設定。`watch.state` は `starting` か `off`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoImportSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/api-tokens:
     get:
       operationId: listApiTokens
@@ -2655,6 +2694,45 @@ components:
       additionalProperties: false
       properties:
         lanAccess:
+          type: boolean
+
+    AutoImportSettings:
+      type: object
+      required: [enabled, watch]
+      additionalProperties: false
+      description: 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md）
+      properties:
+        enabled:
+          type: boolean
+          description: 保存した選択。保存値が無ければ true
+        watch:
+          $ref: "#/components/schemas/FolderWatch"
+
+    FolderWatch:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          description: >-
+            off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は
+            すべてのディレクトリを監視している。limited は問題がある
+          enum: [off, starting, active, limited]
+        problem:
+          type: string
+          description: 直近の問題。state が limited のときだけ返す
+          enum: [watch_limit, events_lost, folder_unreachable, permission_denied]
+        path:
+          type: string
+          description: 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない）
+
+    UpdateAutoImportSettingsRequest:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
           type: boolean
 
     APIToken:
@@ -3989,12 +4067,18 @@ components:
       description: >-
         直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、
         どちらもこの1つを読む
-      required: [id, status, issues, state]
+      required: [id, status, issues, state, origin]
       additionalProperties: false
       properties:
         id:
           type: integer
           format: int64
+        origin:
+          type: string
+          description: >-
+            取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み
+            （specs/042-folder-watch-import/contracts/screen-api.md）
+          enum: [manual, watch]
         status:
           $ref: "#/components/schemas/ScanStatus"
         videos:

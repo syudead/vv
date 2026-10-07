@@ -25,6 +25,7 @@ function scan(values: Partial<Scan> = {}): Scan {
   const state = values.state ?? "done";
   return {
     id: 2,
+    origin: "manual",
     status: state,
     videos: { total: 0, settled: 0 },
     issues: { failed: 0, substituted: 0, revision: 0 },

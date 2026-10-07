@@ -146,6 +146,15 @@ type NetworkSettings interface {
 	SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error)
 }
 
+// AutoImportSettings は自動の取り込みの選択と、フォルダの監視の状態である。internal/app の
+// *AutoImport がこれを満たす（specs/042-folder-watch-import/contracts/screen-api.md）。
+type AutoImportSettings interface {
+	// Status は保存した選択と監視の今の状態を返す。
+	Status() domain.AutoImportStatus
+	// SetEnabled は選択を保存し、監視を張る／外す。走査は始めない。今と同じ値なら何もしない。
+	SetEnabled(ctx context.Context, enabled bool) (domain.AutoImportStatus, error)
+}
+
 // TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
 // internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
 // data-model.md §4）。
@@ -268,6 +277,9 @@ type Options struct {
 	// NetworkSettings は LAN からの接続の許可。デスクトップ版だけが渡し、nil なら
 	// /api/settings/network は 404 を返す。
 	NetworkSettings NetworkSettings
+	// AutoImport は自動の取り込みの選択と監視の状態。nil なら /api/settings/auto-import は
+	// 500 を返す。
+	AutoImport AutoImportSettings
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -332,6 +344,7 @@ type server struct {
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
+	autoImport        AutoImportSettings
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -403,6 +416,7 @@ func NewRouter(opts Options) http.Handler {
 		transcodeProbes:   opts.TranscodeProbes,
 		transcodeSettings: opts.TranscodeSettings,
 		networkSettings:   opts.NetworkSettings,
+		autoImport:        opts.AutoImport,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,
@@ -534,7 +548,7 @@ func requiresJSONBody(r *http.Request) bool {
 		}
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
-			r.URL.Path == "/api/settings/network" {
+			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {

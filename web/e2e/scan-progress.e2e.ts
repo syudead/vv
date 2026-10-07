@@ -41,6 +41,7 @@ const logoutFailed = "Couldn't sign out";
 /** scanBody は `GET /api/scans/current` の応答（contracts/scan-api.md §2）を作る。 */
 function scanBody(values: Record<string, unknown>) {
   return {
+    origin: "manual",
     status: "running",
     issues: { failed: 0, substituted: 0, revision: 0 },
     state: "running",
