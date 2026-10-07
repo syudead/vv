@@ -165,6 +165,10 @@ export function useVideoPages({
 
       // その場の更新が終わったあとに続きを取るときの、続きのカーソル。
       let resumeCursor: string | undefined;
+      // このページを反映した直後の件数。itemsRef は描画で更新されるので、dispatch の直後は
+      // まだ前の件数のままである。ページの取得の途中で頼まれたその場の更新が、少ない件数で
+      // 一覧を置き換えないよう、ここで数える。
+      let loadedAfter: number | undefined;
       const mark = visibilityMark();
       const favoriteSince = favoriteMark();
       try {
@@ -257,6 +261,11 @@ export function useVideoPages({
         if (replace) resyncAttempted.current = false;
         if (keep !== undefined) resumeCursor = page.nextCursor;
         const shownBefore = new Set(shownVideoIds(itemsRef.current));
+        // 続きのページが既に出ている項目と重なると、reducer（appendUnique）は捨てる。
+        // 同じ itemKey の重複排除で数え、取り直しの件数を実際の件数に合わせる。
+        loadedAfter = replace
+          ? page.items.length
+          : new Set([...itemsRef.current, ...page.items].map(itemKey)).size;
         dispatch({ type: "page", page, replace });
         const changed = shownVideoIds(page.items).filter((id) =>
           changedWhileLoading.current.has(id),
@@ -374,7 +383,7 @@ export function useVideoPages({
             void fetchPageRef.current?.(
               undefined,
               true,
-              Math.max(itemsRef.current.length, 1),
+              Math.max(loadedAfter ?? itemsRef.current.length, 1),
             );
           } else if (resumeMore && resumeCursor !== undefined) {
             void fetchPageRef.current?.(resumeCursor, false);

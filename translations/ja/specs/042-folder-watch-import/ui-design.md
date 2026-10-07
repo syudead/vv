@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/ui-design.md
-sourceHash: 803cd0d84b41cc866b2981b02c6ff712e646c21a36c7d73b888e2ef941867ddb
+sourceHash: b4010402740cceec651ce30930d1c102dae9e10a2606f2adcc88dd9cbfb32710
 ---
 
 # UI 設計: 変更されたメディアフォルダを自動で取り込む {#ui-design-auto-import-changed-media-folders}
