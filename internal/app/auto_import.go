@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	// autoImportStopWait は Stop が張り込みの終わりを待つ長さの上限である。応答しないマウントの
+	// ツリーをたどる張り込みが、プロセスの停止を止めないようにする。
+	autoImportStopWait = 5 * time.Second
 	// autoImportQuiet は最後の変更から取り込みを始めるまでの静止の長さである
 	// （specs/042-folder-watch-import/research.md R-3）。
 	autoImportQuiet = 2 * time.Second
@@ -78,6 +81,8 @@ type AutoImportOptions struct {
 	Settle time.Duration
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
+	// StopWait は Stop が張り込みの終わりを待つ長さの上限で、0 なら 5 秒である。
+	StopWait time.Duration
 }
 
 // AutoImport はメディアフォルダの変更の報告を変わったディレクトリの集合にまとめ、静止した
@@ -93,9 +98,19 @@ type AutoImport struct {
 	quiet   time.Duration
 	settle  time.Duration
 	logger  *slog.Logger
+	// stopWait は Stop が張り込みを待つ長さの上限である。
+	stopWait time.Duration
 
 	// setMu は入と切の切り替えと、フォルダの変更に伴う張り直しを 1 つずつにする。
 	setMu sync.Mutex
+	// startMu は監視の走査を始める判断と開始（fire の最後）を、入と切の切り替え・停止・フォルダの
+	// 変更から守る。切り替えは先に状態（enabled・stopped・holding）を変え、そのあとで startMu を
+	// 取って放すので、それより前に始まった走査は SupersedeWatchScan が見つけ、あとの開始は
+	// 状態を見て諦める。取る順は startMu のあとに mu。
+	startMu sync.Mutex
+	// armMu は監視の張り直し（Arm と Disarm の呼び出しと、その前の世代の確認）を 1 つずつにする。
+	// 古い世代が新しい世代のあとに Arm して、最新の監視を置き換えることを防ぐ。
+	armMu sync.Mutex
 
 	mu      sync.Mutex
 	ctx     context.Context
@@ -147,6 +162,10 @@ func NewAutoImport(opts AutoImportOptions) *AutoImport {
 	if a.settle <= 0 {
 		a.settle = autoImportSettle
 	}
+	a.stopWait = opts.StopWait
+	if a.stopWait <= 0 {
+		a.stopWait = autoImportStopWait
+	}
 	if a.logger == nil {
 		a.logger = slog.Default()
 	}
@@ -173,16 +192,60 @@ func (a *AutoImport) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop は監視を外し、予約を取り消し、張り込みの終わりを待つ。走っている監視の走査は止めない
-// （走査の寿命の context の取り消しが止める）。Stop のあとは何も始めない。
+// Stop は監視を外し、予約を取り消し、張り込みの終わりを（上限つきで）待つ。走っている監視の走査は
+// 止めない（走査の寿命の context の取り消しが止める）。Stop が戻ったあとは、走査を始めない。
+// 張り込みが上限までに終わらなくても戻る。残った張り込みは、世代が古いので、終わったときに
+// 自分で監視を外す。
 func (a *AutoImport) Stop() {
 	a.mu.Lock()
 	a.stopped = true
 	a.cancelTimerLocked()
 	a.armGen++
 	a.mu.Unlock()
+	// 判断の途中にある開始を待つ。これより後の開始は、stopped を見て諦める。
+	a.quiesceStarts()
 	a.watcher.Disarm()
-	a.arms.Wait()
+	done := make(chan struct{})
+	go func() {
+		a.arms.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(a.stopWait):
+		a.logger.Warn("stopping while the media folders are still being armed")
+	}
+}
+
+// quiesceStarts は、走査を始めている最中の fire があれば、その終わりを待つ。
+func (a *AutoImport) quiesceStarts() {
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
+}
+
+// holdStarts は新しい監視の走査の開始を止め（holding）、走っている監視の走査を止める。止めた
+// 走査が読んでいたディレクトリを返す。呼び出し側が releaseStarts で holding を戻す。
+func (a *AutoImport) holdStarts(ctx context.Context) []domain.DirtyDirectory {
+	a.mu.Lock()
+	a.holding++
+	a.mu.Unlock()
+	a.quiesceStarts()
+	a.mu.Lock()
+	batch := slices.Clone(a.inflight)
+	a.mu.Unlock()
+	if !a.scans.SupersedeWatchScan(ctx) {
+		return nil
+	}
+	return batch
+}
+
+// requeueLocked は止めた走査のディレクトリを、変わったものとして戻す。
+func (a *AutoImport) requeueLocked(batch []domain.DirtyDirectory) {
+	if len(batch) == 0 {
+		return
+	}
+	a.dirty = append(a.dirty, batch...)
+	a.inflight = nil
 }
 
 // Status は保存された選択と、監視の今の状態を返す。
@@ -215,17 +278,29 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 	if same {
 		return a.Status(), nil
 	}
+	var batch []domain.DirtyDirectory
 	if !enabled {
-		// 走っている取り込みを止めてから切る。
-		a.scans.SupersedeWatchScan(ctx)
+		// 新しい開始を止め、走っている取り込みを止めてから切る。
+		batch = a.holdStarts(ctx)
 	}
 	if err := a.store.SaveAutoImport(ctx, enabled); err != nil {
+		if !enabled {
+			// 切れなかった。止めた取り込みを戻す。
+			a.mu.Lock()
+			a.holding--
+			a.requeueLocked(batch)
+			if a.enabled && !a.stopped && len(a.dirty) > 0 {
+				a.scheduleLocked(a.quiet)
+			}
+			a.mu.Unlock()
+		}
 		return domain.AutoImportStatus{}, err
 	}
 	a.mu.Lock()
 	a.enabled = enabled
 	a.problem = nil
 	if !enabled {
+		a.holding--
 		a.state = domain.FolderWatchOff
 		a.dirty, a.inflight = nil, nil
 		a.cancelTimerLocked()
@@ -246,18 +321,9 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 //
 // 変更が終わる（FoldersChanged）まで、新しい監視の走査は始めない。
 func (a *AutoImport) FoldersChanging(ctx context.Context) {
+	batch := a.holdStarts(ctx)
 	a.mu.Lock()
-	a.holding++
-	batch := slices.Clone(a.inflight)
-	a.mu.Unlock()
-	if !a.scans.SupersedeWatchScan(ctx) {
-		return
-	}
-	a.mu.Lock()
-	a.dirty = append(a.dirty, batch...)
-	if a.inflight != nil {
-		a.inflight = nil
-	}
+	a.requeueLocked(batch)
 	a.mu.Unlock()
 }
 
@@ -338,6 +404,17 @@ func (a *AutoImport) armTree(ctx context.Context, gen int) {
 	for _, folder := range folders {
 		roots = append(roots, folder.Path)
 	}
+	// 一覧のあとの Arm・Disarm を 1 つずつにし、その前に世代を確かめる。待っている間に新しい世代が
+	// 始まっていれば、古い世代は監視を触らない（新しい世代が最新の一覧で張る）。
+	a.armMu.Lock()
+	defer a.armMu.Unlock()
+	a.mu.Lock()
+	current := gen == a.armGen
+	a.mu.Unlock()
+	if !current {
+		a.disarmIfOff()
+		return
+	}
 	if len(roots) == 0 {
 		a.watcher.Disarm()
 		a.mu.Lock()
@@ -347,22 +424,37 @@ func (a *AutoImport) armTree(ctx context.Context, gen int) {
 		a.mu.Unlock()
 		return
 	}
-	if err := a.watcher.Arm(roots); err != nil {
-		a.logger.Warn("could not watch the media folders", slog.Any("error", err))
+	armErr := a.watcher.Arm(roots)
+	if armErr != nil {
+		a.logger.Warn("could not watch the media folders", slog.Any("error", armErr))
 	}
 	a.mu.Lock()
 	if gen != a.armGen {
-		// 張り直しに替わったか、切った・止めたあとである。切った・止めたあとに監視が残らないようにする。
-		off := !a.enabled || a.stopped
 		a.mu.Unlock()
-		if off {
-			a.watcher.Disarm()
-		}
+		a.disarmIfOff()
 		return
 	}
 	defer a.mu.Unlock()
-	if a.problem == nil {
+	if armErr != nil && a.problem == nil {
+		// 監視が 1 つも張れなかった。問題の報告が先に届いていなくても、active とは言わない。
+		a.problem = &domain.FolderWatchProblem{Kind: domain.FolderWatchProblemFolderUnreachable}
+	}
+	// 張っている間に届いた問題（WatchProblem）を active で上書きしない。
+	if a.problem != nil {
+		a.state = domain.FolderWatchLimited
+	} else {
 		a.state = domain.FolderWatchActive
+	}
+}
+
+// disarmIfOff は、世代が替わった張り込みの後始末である。切った・止めたあとなら、監視を残さない。
+// 張り直しに替わったなら、新しい世代が張る。armMu を持って呼ぶ。
+func (a *AutoImport) disarmIfOff() {
+	a.mu.Lock()
+	off := !a.enabled || a.stopped
+	a.mu.Unlock()
+	if off {
+		a.watcher.Disarm()
 	}
 }
 
@@ -436,12 +528,11 @@ func (a *AutoImport) fire(seq int) {
 	settled, unsettled, wait := a.settledSplit(taken)
 
 	a.mu.Lock()
-	a.dirty = append(a.dirty, unsettled...)
-	if len(unsettled) > 0 && !a.stopped && a.enabled {
-		a.scheduleLocked(wait)
-	}
-	if len(settled) > 0 {
-		a.inflight = settled
+	if a.enabled && !a.stopped {
+		a.dirty = append(a.dirty, unsettled...)
+		if len(unsettled) > 0 {
+			a.scheduleLocked(wait)
+		}
 	}
 	a.mu.Unlock()
 
@@ -461,7 +552,25 @@ func (a *AutoImport) fire(seq int) {
 }
 
 // start は settled を監視の走査として始める。始められなければ、変わったままに戻す。
+// 状態の確認から開始までを startMu で 1 つにし、切・停止・フォルダの変更が、状態を変えたあとに
+// 走査が始まることのないようにする（切り替えは startMu を通ってから走査を止める）。
 func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory, finishes int) {
+	a.startMu.Lock()
+	defer a.startMu.Unlock()
+	a.mu.Lock()
+	if a.stopped || !a.enabled {
+		a.mu.Unlock()
+		return
+	}
+	if a.holding > 0 {
+		// フォルダの変更の途中である。FoldersChanged が残りを予約する。
+		a.dirty = append(a.dirty, settled...)
+		a.mu.Unlock()
+		return
+	}
+	a.inflight = settled
+	a.mu.Unlock()
+
 	_, started, err := a.scans.StartWatchScan(ctx, settled)
 	if err == nil && started {
 		return
@@ -469,10 +578,10 @@ func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory,
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.inflight = nil
-	a.dirty = append(a.dirty, settled...)
 	if a.stopped || !a.enabled {
 		return
 	}
+	a.dirty = append(a.dirty, settled...)
 	switch {
 	case err != nil:
 		a.logger.Warn("could not start a watch scan", slog.Any("error", err))
