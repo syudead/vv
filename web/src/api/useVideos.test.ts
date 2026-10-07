@@ -321,6 +321,36 @@ describe("useVideos（一覧の読み込み）", () => {
     ]);
   });
 
+  it("続きのページが既に出ている項目と重なっても、取り直しは実際の件数で止まる", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2], "cursor-1"));
+    });
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    act(() => result.current.refreshInPlace());
+
+    // 続きは 2 と 3。2 は既に出ているので、一覧は 3 件になる。
+    await act(async () => {
+      calls[1]?.resolve(page([2, 3], "cursor-2"));
+    });
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
+    await waitFor(() => expect(calls).toHaveLength(3));
+    await act(async () => {
+      calls[2]?.resolve(page([1, 2], "cursor-1"));
+    });
+    await waitFor(() => expect(calls).toHaveLength(4));
+    await act(async () => {
+      calls[3]?.resolve(page([3], "cursor-2"));
+    });
+
+    // 3 件に届いたので、4 件目を探す要求は出さない。
+    expect(calls).toHaveLength(4);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
+  });
+
   it("続きの応答で total がカード数を下回ったら先頭から読み直す", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
       wrapper: OwnerAudience,

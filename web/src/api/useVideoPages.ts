@@ -261,9 +261,11 @@ export function useVideoPages({
         if (replace) resyncAttempted.current = false;
         if (keep !== undefined) resumeCursor = page.nextCursor;
         const shownBefore = new Set(shownVideoIds(itemsRef.current));
+        // 続きのページが既に出ている項目と重なると、reducer（appendUnique）は捨てる。
+        // 同じ itemKey の重複排除で数え、取り直しの件数を実際の件数に合わせる。
         loadedAfter = replace
           ? page.items.length
-          : itemsRef.current.length + page.items.length;
+          : new Set([...itemsRef.current, ...page.items].map(itemKey)).size;
         dispatch({ type: "page", page, replace });
         const changed = shownVideoIds(page.items).filter((id) =>
           changedWhileLoading.current.has(id),
