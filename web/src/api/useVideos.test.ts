@@ -287,6 +287,40 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(calls[1]?.params.cursor).toBeUndefined();
   });
 
+  it("続きの取得の途中の refreshInPlace は、続きを加えた件数まで取り直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2], "cursor-1"));
+    });
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    // 続きの取得の途中で頼まれる。
+    act(() => result.current.refreshInPlace());
+    expect(calls).toHaveLength(2);
+
+    await act(async () => {
+      calls[1]?.resolve(page([3, 4], "cursor-2"));
+    });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params.cursor).toBeUndefined();
+
+    // 4 件に届くまで取り、続きを加えた分を一覧から落とさない。
+    await act(async () => {
+      calls[2]?.resolve(page([1, 2], "cursor-1"));
+    });
+    await waitFor(() => expect(calls).toHaveLength(4));
+    expect(calls[3]?.params.cursor).toBe("cursor-1");
+    await act(async () => {
+      calls[3]?.resolve(page([3, 4], "cursor-2"));
+    });
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([
+      1, 2, 3, 4,
+    ]);
+  });
+
   it("続きの応答で total がカード数を下回ったら先頭から読み直す", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
       wrapper: OwnerAudience,
