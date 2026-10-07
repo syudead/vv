@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/web-testing.md
-sourceHash: e8c6c4c35ab4f76d17402b4f13e5ddbbbaabb1e05aa64fe1eada53e5b4c54bca
+sourceHash: c7348fa4109bbfcb8e1243b554cc1ee9033e241758d2dc525dfd800932f38a17
 ---
 
 # Web のテストレベル {#web-test-levels}
@@ -67,9 +67,16 @@ Vitest は 1 つの CI シャードのファイルを並列に実行し、1 つ�
 
 ## 規則をページの外へ {#rules-out-of-pages}
 
-ページが計算する規則はページの隣の純粋なモジュールに移し、ページテストにはページがそれを使うことを示すケースを 1 つ残す。[`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts) は、タグ管理画面の行についてのこの分割である。
+ページが計算する規則はページの隣の純粋なモジュールに移し、ページテストにはページがそれを使うことを示すケースを 1 つ残す。タグ管理画面はこのように分割している:
 
-移すたびに一連のページテストがロジックテストになり、ページコンポーネントが短くなる。これは大きなページコンポーネントを分割するのと同じ作業である (タグ管理画面は 2,200 行の 1 つのコンポーネントである)。
+| 部分 | 置き場所 | 担うテスト |
+| --- | --- | --- |
+| 操作の後の行、どの空の状態を表示するか、件数の文言、選択 | [`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts)、[`tagListView.ts`](../../web/src/tags/tagListView.ts)、[`tagSelection.ts`](../../web/src/tags/tagSelection.ts) | ロジックテスト |
+| ページの読み込み、拒否された名前、仮想化した行とそのフォーカス | [`useTagPage`](../../web/src/tags/useTagPage.ts)、[`useRejectedNames`](../../web/src/tags/useRejectedNames.ts)、[`useVirtualTagRows`](../../web/src/tags/useVirtualTagRows.ts) | 分割の前に書いたページテスト |
+| 空の状態、列見出し、タブ、絞り込みのチップの描画 | ページの隣のコンポーネント | バリエーションに違いがあるものはコンポーネントテスト ([`TagListEmptyState`](../../web/src/tags/TagListEmptyState.tsx) など) |
+| 操作と、その後にフォーカスが移る先 | [`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx) | ページテスト |
+
+フックは新しいテストなしで外に移したので、分割の前に書いたページテストが引き続きフックを扱う。そのケースは、次にフックが変わるときに `renderHook` を通したロジックテストに移る ([既存のテスト](#existing-tests))。
 
 ## 既存のテスト {#existing-tests}
 

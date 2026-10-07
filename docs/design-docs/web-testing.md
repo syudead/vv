@@ -78,13 +78,19 @@ in order, so one long file sets the shard's duration
 ## Rules out of pages
 
 A rule a page computes moves to a pure module next to the page, and the page
-test keeps one case that shows the page uses it.
-[`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts) is this split for the tag
-admin screen's rows.
+test keeps one case that shows the page uses it. The tag admin screen is split
+this way:
 
-Each move turns a set of page tests into logic tests and leaves the page
-component shorter, which is the same work as splitting a large page component
-(the tag admin screen is one 2,200-line component).
+| Part | Where | Tested by |
+| --- | --- | --- |
+| Rows after an action, which empty state to show, count text, selection | [`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts), [`tagListView.ts`](../../web/src/tags/tagListView.ts), [`tagSelection.ts`](../../web/src/tags/tagSelection.ts) | Logic tests |
+| Loading pages, rejected names, virtualized rows and their focus | [`useTagPage`](../../web/src/tags/useTagPage.ts), [`useRejectedNames`](../../web/src/tags/useRejectedNames.ts), [`useVirtualTagRows`](../../web/src/tags/useVirtualTagRows.ts) | Page tests written before the split |
+| Rendering of the empty states, column header, tabs and filter chips | Components next to the page | Component tests where the variants differ, such as [`TagListEmptyState`](../../web/src/tags/TagListEmptyState.tsx) |
+| Actions and where focus goes after them | [`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx) | Page tests |
+
+The hooks moved out without new tests, so the page tests written before the
+split still cover them; their cases move to logic tests through `renderHook`
+when the hooks next change ([Existing tests](#existing-tests)).
 
 ## Existing tests
 
