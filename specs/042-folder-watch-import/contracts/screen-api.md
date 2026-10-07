@@ -54,4 +54,5 @@ Stores the choice and arms or removes the watches. Starts no scan (`要件 6`).
 ## Client use
 
 Settings reads `GET /api/settings/auto-import` when the section mounts and when
-the window regains focus, so a `starting` state settles without a push event.
+the window regains focus, and every 2 s while `watch.state` is `starting`, so
+the state settles on screen without a push event or a focus change.

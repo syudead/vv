@@ -35,7 +35,7 @@ existing row.
 | Every addition of a watch scan is written before its first removal ([R-3](research.md#r-3-a-batch-waits-for-quiet-imports-settled-files-then-removes)) | `internal/scanner` |
 | A superseded watch scan writes no removal and closes `done` ([R-5](research.md#r-5-a-manual-scan-or-a-media-folder-change-supersedes-a-watch-batch)) | `internal/app` (`Scans`), `internal/scanner` |
 | Starting a watch scan keeps the previous scan's `scan_issues` rows whose path is outside its dirty set, re-attached to the new scan; rows inside the set are dropped and re-evaluated. A manual scan still clears them all | `internal/store` (`startScan`) |
-| A `done` watch scan that was not superseded applies ready successions ([R-9](research.md#r-9-a-finished-watch-batch-applies-same-path-content-changes)) | `internal/store` (`FinishScan`) |
+| A watch scan never makes a succession ready; only a `done` manual scan applies them ([R-9](research.md#r-9-same-path-content-changes-wait-for-a-full-scan)) | `internal/store` (`FinishScan`) |
 | Startup closes an interrupted scan of either origin and resumes only a `manual` one ([R-8](research.md#r-8-an-interrupted-watch-batch-is-closed-not-resumed)) | `internal/app` (`Scans`) |
 
 ## What does not change

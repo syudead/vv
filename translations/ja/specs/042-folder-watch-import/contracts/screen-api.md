@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/contracts/screen-api.md
-sourceHash: 10ab0ac46af26a19a7e30d1f229fc8da6f6a38cd87ffb97f346a56a6ab031b15
+sourceHash: 8f66851781a44ad7402dead8dcfd8a57618d71dc7cddda256d54701403347c1e
 ---
 
 # 契約: 自動取り込みの設定とスキャンの起点 {#contract-auto-import-setting-and-scan-origin}
@@ -48,4 +48,4 @@ sourceHash: 10ab0ac46af26a19a7e30d1f229fc8da6f6a38cd87ffb97f346a56a6ab031b15
 
 ## クライアントでの使い方 {#client-use}
 
-Settings は、節がマウントされたときと、ウィンドウがフォーカスを取り戻したときに `GET /api/settings/auto-import` を読むので、`starting` の状態はプッシュのイベントなしで落ち着く。
+Settings は、節がマウントされたときと、ウィンドウがフォーカスを取り戻したときに、そして `watch.state` が `starting` の間は 2 秒ごとに `GET /api/settings/auto-import` を読むので、プッシュのイベントやフォーカスの変化がなくても、状態は画面上で落ち着く。

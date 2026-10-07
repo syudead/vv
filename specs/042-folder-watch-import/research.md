@@ -21,7 +21,12 @@ watch per directory below each media folder, on Linux and on Windows.
 
 **Rationale**: fsnotify v1.10.1 has no public recursive watch, so a new
 directory is watched when its create event arrives, and the startup walk reads
-directories only. Change notifications do not cross NFS or SMB mounts made
+directories only. Each directory gets its watch before its entries are listed,
+so nothing created after the watch is missed; a change made before the watch is
+added counts as a change made while auto-import was off, which the Issue leaves
+to the manual scan. A directory created while running is marked dirty with its
+subtree (R-2), so files written into it before its own watch exists are read by
+the next batch. Change notifications do not cross NFS or SMB mounts made
 inside the container; the Issue puts those environments out of scope.
 
 ## R-2: A change marks a directory dirty, and only dirty directories are re-read
@@ -128,13 +133,18 @@ puts out of scope; changes made while VVMDM was stopped belong to the manual
 scan. Additions-first ordering (R-3) leaves no orphaned video when a batch stops
 part-way.
 
-## R-9: A finished watch batch applies same-path content changes
+## R-9: Same-path content changes wait for a full scan
 
-**Decision**: A watch batch that closes `done` (and was not superseded) applies
-the pending same-path successions, as a `done` full scan does
+**Decision**: A watch batch records same-path successions as any scan does but
+never makes them ready; only a `done` full scan applies them, as today
 ([030 data-model, Carry-over of content at the same path](../030-video-versions/data-model.md#carry-over-of-content-at-the-same-path)).
 
-**Rationale**: The batch contains every change notified up to its start, which
-is what the full scan's "all paths seen" gate stands for. Waiting for the next
-manual scan would leave a replaced file without its tags and playback position
-in the meantime.
+| Option | Verdict |
+| --- | --- |
+| **Keep the full-scan gate** | Chosen |
+| A `done` watch batch readies every pending succession | Rejected: rows left by an earlier failed scan would be judged by a batch that read unrelated directories, and could hand tags and playback position to the wrong content |
+| A watch batch readies only the rows it recorded | Rejected: needs a scan key on `video_successions` for a case (a file replaced in place under the same name) that the Issue does not ask to cover |
+
+**Rationale**: Until the next manual scan, a file replaced in place shows
+without the old content's tags and playback position; those stay keyed by the
+old content key, so the full scan restores them.

@@ -103,7 +103,7 @@ specs/042-folder-watch-import/
 | Boundary | What it owns in this feature |
 | --- | --- |
 | `internal/scanner` | Scoped scan: walk dirty directories, additions before removals, scoped removal |
-| `internal/store` | `scans.origin`, issue carry-over for watch scans, successions on a `done` watch scan, the `library.auto_import` key |
+| `internal/store` | `scans.origin`, issue carry-over for watch scans, successions left to manual scans, the `library.auto_import` key |
 | `internal/watcher` (new) | fsnotify watches, the directory walk that arms them, event-to-dirty-directory mapping, watch problems |
 | `internal/app` | `AutoImport`: the dirty set, quiet and settle timers, running watch scans through `Scans`, supersede rules, the setting |
 | `internal/httpapi`, `api/openapi.yaml` | `Scan.origin`, `/api/settings/auto-import` |
@@ -135,8 +135,8 @@ flowchart LR
 **Scope**: The scanner's scoped scan and the store changes in
 [data-model.md, Rules](data-model.md#rules): `scans.origin` and its migration,
 scoped removal, additions before removals, the supersede stop, issue
-carry-over, successions on a `done` watch scan, and startup resuming only manual
-scans. The full scan's behaviour does not change.
+carry-over, successions applied only by a `done` manual scan, and startup
+resuming only manual scans. The full scan's behaviour does not change.
 
 **Dependencies**: None.
 
@@ -145,7 +145,8 @@ scan of one directory leaves every location outside it; a file moved between two
 dirty directories in one batch keeps its video id, tags and playback position; a
 deleted dirty subtree loses its locations; a superseded scan removes nothing and
 closes `done`; a watch scan keeps the previous scan's issues outside its scope;
-an interrupted watch scan is closed and not resumed at startup.
+an interrupted watch scan is closed and not resumed at startup; a `done` watch
+scan leaves pending successions unready.
 
 ### Watch media folders for changes with fsnotify
 
@@ -164,7 +165,8 @@ fsnotify dependency.
 **Acceptance**: `task check` and `task build-windows-check` pass; Linux tests on
 a temporary directory show a created, removed and renamed file each reporting
 its parent, a created or removed directory reporting itself as recursive, a file
-in a newly created subdirectory being reported, and a forced overflow and an
+written into a newly created subdirectory before its watch exists being covered
+by the subdirectory's recursive report, and a forced overflow and an
 unreadable directory each reporting their problem.
 
 ### Import changed folders in the background

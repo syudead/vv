@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/data-model.md
-sourceHash: 14c787356fc1491107845546ece37f2804a130da34d111e17d6a8d3a8c537399
+sourceHash: 38614d9c6555e003473e70875d84cd52248f45971db54ab1396f99bc5b3ef5fd
 ---
 
 # データモデル: 変更されたメディアフォルダを自動で取り込む {#data-model-auto-import-changed-media-folders}
@@ -34,7 +34,7 @@ sourceHash: 14c787356fc1491107845546ece37f2804a130da34d111e17d6a8d3a8c537399
 | 監視によるスキャンのすべての追加は、最初の削除より先に書く ([R-3](research.md#r-3-a-batch-waits-for-quiet-imports-settled-files-then-removes)) | `internal/scanner` |
 | 取って代わられた監視によるスキャンは削除を書かず、`done` で閉じる ([R-5](research.md#r-5-a-manual-scan-or-a-media-folder-change-supersedes-a-watch-batch)) | `internal/app` (`Scans`)、`internal/scanner` |
 | 監視によるスキャンを始めるとき、前のスキャンの `scan_issues` の行のうちパスが印の付いた集合の外にあるものを残し、新しいスキャンに付け直す。集合の中の行は捨てて評価し直す。手動のスキャンは今までどおりすべてを消す | `internal/store` (`startScan`) |
-| 取って代わられなかった `done` の監視によるスキャンは、準備のできた継承を適用する ([R-9](research.md#r-9-a-finished-watch-batch-applies-same-path-content-changes)) | `internal/store` (`FinishScan`) |
+| 監視によるスキャンは継承を準備のできた状態にしない。それを適用するのは `done` の手動のスキャンだけである ([R-9](research.md#r-9-same-path-content-changes-wait-for-a-full-scan)) | `internal/store` (`FinishScan`) |
 | 起動時は、どちらの起点の中断されたスキャンも閉じ、`manual` のものだけを再開する ([R-8](research.md#r-8-an-interrupted-watch-batch-is-closed-not-resumed)) | `internal/app` (`Scans`) |
 
 ## 変わらないもの {#what-does-not-change}
