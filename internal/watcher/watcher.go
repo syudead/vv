@@ -66,6 +66,7 @@ type Watcher struct {
 // backend is the part of fsnotify.Watcher a session uses.
 type backend interface {
 	Add(name string) error
+	Remove(name string) error
 	Close() error
 	Events() <-chan fsnotify.Event
 	Errors() <-chan error
@@ -73,6 +74,7 @@ type backend interface {
 
 type fsnotifyBackend struct{ *fsnotify.Watcher }
 
+func (b fsnotifyBackend) Remove(name string) error      { return b.Watcher.Remove(name) }
 func (b fsnotifyBackend) Events() <-chan fsnotify.Event { return b.Watcher.Events }
 func (b fsnotifyBackend) Errors() <-chan error          { return b.Watcher.Errors }
 
@@ -96,30 +98,43 @@ func New(handler Handler) *Watcher {
 // arming are reported through the handler, so a media folder that cannot be
 // watched does not stop the others. The returned error is set only when no
 // watch instance can be created at all; it has been reported as a problem too.
+//
+// A media folder that is removed or renamed after arming is reported as
+// ProblemUnreachable and is not watched again until the next Arm. Arm and
+// Disarm may be called from different goroutines: the last Arm or Disarm to
+// take effect wins, and an Arm that has been replaced stops walking early.
 func (w *Watcher) Arm(roots []string) error {
-	w.Disarm()
-
 	b, err := w.newBackend()
 	if err != nil {
+		w.Disarm()
 		if w.handler.Problem != nil {
 			w.handler.Problem(classify("", err))
 		}
 		return fmt.Errorf("create watcher: %w", err)
 	}
 	s := &session{
-		w:    w,
-		b:    b,
-		dirs: map[string]struct{}{},
-		done: make(chan struct{}),
+		w:     w,
+		b:     b,
+		dirs:  map[string]struct{}{},
+		roots: map[string]struct{}{},
+		done:  make(chan struct{}),
 	}
+	// The consumer runs before any watch exists: on Windows the backend
+	// delivers events and handles Add on one goroutine, so an event nobody
+	// reads would block the next Add.
+	go s.run()
+
+	w.mu.Lock()
+	old := w.current
+	w.current = s
+	w.mu.Unlock()
+	if old != nil {
+		old.stop()
+	}
+
 	for _, root := range roots {
 		s.armRoot(root)
 	}
-
-	w.mu.Lock()
-	w.current = s
-	w.mu.Unlock()
-	go s.run()
 	return nil
 }
 
@@ -149,12 +164,14 @@ type session struct {
 
 	mu      sync.Mutex
 	dirs    map[string]struct{}
+	roots   map[string]struct{} // armed media folders, a subset of dirs
 	stopped bool
 	limit   bool // a watch limit was reported; stop adding and stop repeating it
 
 	done chan struct{}
 }
 
+// stop is safe to call more than once and from several goroutines.
 func (s *session) stop() {
 	s.mu.Lock()
 	s.stopped = true
@@ -194,6 +211,10 @@ func (s *session) armRoot(root string) {
 			Err: fmt.Errorf("%s is not a directory", root)})
 		return
 	}
+	root = filepath.Clean(root)
+	s.mu.Lock()
+	s.roots[root] = struct{}{}
+	s.mu.Unlock()
 	s.addTree(root)
 }
 
@@ -284,7 +305,13 @@ func (s *session) handleEvent(ev fsnotify.Event) {
 		}
 		s.change(Change{Dir: filepath.Dir(path)})
 	case ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename):
-		if s.forget(path) {
+		if was, lostRoots := s.forget(path); was {
+			// A media folder that vanishes takes its watch with it, and its
+			// parent is not watched, so it cannot be noticed coming back.
+			for _, root := range lostRoots {
+				s.problem(Problem{Kind: ProblemUnreachable, Path: root,
+					Err: fmt.Errorf("media folder %s was removed or renamed", root)})
+			}
 			s.change(Change{Dir: path, Recursive: true})
 			return
 		}
@@ -294,19 +321,33 @@ func (s *session) handleEvent(ev fsnotify.Event) {
 	}
 }
 
-// forget drops path and every watched directory below it. It reports whether
-// path was a watched directory.
-func (s *session) forget(path string) bool {
+// forget drops path and every watched directory below it, in the session and
+// in the backend (a renamed directory keeps its OS watch otherwise, and keeps
+// reporting from where it went). It reports whether path was a watched
+// directory and which armed media folders were dropped.
+func (s *session) forget(path string) (bool, []string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	_, was := s.dirs[path]
 	prefix := path + string(filepath.Separator)
+	var dropped, lostRoots []string
 	for d := range s.dirs {
 		if d == path || strings.HasPrefix(d, prefix) {
-			delete(s.dirs, d)
+			dropped = append(dropped, d)
+			if _, ok := s.roots[d]; ok {
+				lostRoots = append(lostRoots, d)
+			}
 		}
 	}
-	return was
+	for _, d := range dropped {
+		delete(s.dirs, d)
+		delete(s.roots, d)
+	}
+	s.mu.Unlock()
+	for _, d := range dropped {
+		// The OS may have removed a deleted directory's watch already.
+		_ = s.b.Remove(d)
+	}
+	return was, lostRoots
 }
 
 // classify turns an error into a problem for path.

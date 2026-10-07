@@ -295,6 +295,9 @@ type fakeBackend struct {
 	errs   chan error
 	addErr map[string]error
 	once   sync.Once
+
+	mu      sync.Mutex
+	removed []string
 }
 
 func newFakeBackend() *fakeBackend {
@@ -307,6 +310,12 @@ func newFakeBackend() *fakeBackend {
 
 func (f *fakeBackend) Add(name string) error {
 	return f.addErr[name]
+}
+func (f *fakeBackend) Remove(name string) error {
+	f.mu.Lock()
+	f.removed = append(f.removed, name)
+	f.mu.Unlock()
+	return nil
 }
 func (f *fakeBackend) Close() error {
 	f.once.Do(func() { close(f.events); close(f.errs) })
@@ -400,5 +409,76 @@ func TestArmReplacesEarlierWatches(t *testing.T) {
 	waitChange(t, r, Change{Dir: second})
 	if r.hasChange(Change{Dir: first}) {
 		t.Fatalf("a replaced media folder is still watched: %+v", r.changes)
+	}
+}
+
+func TestRemovedRootIsReportedUnreachable(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "videos")
+	sub := filepath.Join(root, "sub")
+	mkdir(t, sub)
+	_, r := armed(t, root)
+
+	if err := os.Rename(root, filepath.Join(parent, "old")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(waitFor)
+	for !r.hasProblem(ProblemUnreachable, root) {
+		select {
+		case <-r.notify:
+		case <-deadline:
+			t.Fatalf("removed media folder not reported: %+v", r.problems)
+		}
+	}
+	waitChange(t, r, Change{Dir: root, Recursive: true})
+}
+
+func TestRenamedDirectoryIsRemovedFromTheBackend(t *testing.T) {
+	root := t.TempDir()
+	films := filepath.Join(root, "films")
+	deep := filepath.Join(films, "deep")
+	mkdir(t, deep)
+	fb := newFakeBackend()
+	r := armedFake(t, fb, root)
+
+	fb.events <- fsnotify.Event{Name: films, Op: fsnotify.Rename}
+	waitChange(t, r, Change{Dir: films, Recursive: true})
+
+	fb.mu.Lock()
+	defer fb.mu.Unlock()
+	got := map[string]bool{}
+	for _, p := range fb.removed {
+		got[p] = true
+	}
+	if !got[films] || !got[deep] || got[root] {
+		t.Fatalf("backend removals = %v, want films and deep only", fb.removed)
+	}
+}
+
+func TestDisarmDuringArmLeavesNothingWatching(t *testing.T) {
+	root := t.TempDir()
+	r := newRecorder()
+	w := New(r.handler())
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	real := w.readDir
+	var once sync.Once
+	w.readDir = func(name string) ([]fs.DirEntry, error) {
+		once.Do(func() { close(entered); <-release })
+		return real(name)
+	}
+	done := make(chan struct{})
+	go func() { _ = w.Arm([]string{root}); close(done) }()
+	<-entered
+	w.Disarm()
+	close(release)
+	<-done
+
+	write(t, filepath.Join(root, "a.mp4"))
+	time.Sleep(100 * time.Millisecond)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.changes) != 0 {
+		t.Fatalf("a change was reported after Disarm: %+v", r.changes)
 	}
 }

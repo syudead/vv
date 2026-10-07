@@ -151,10 +151,12 @@ into bearer, anyone, guests too or owner only, matching each operation's
 the same `404` as missing ones
 ([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
 
-**Only a scan touches the media folders' tree.** Only a user-started scan walks
-the media folders. The folder index (folder groups and folder names), folder
-browsing and the import status are derived from SQLite, never from the
-filesystem.
+**Only a scan reads the media folders' files.** Only a scan opens the files
+in the media folders, and only a user-started scan walks them whole. The
+folder watcher (`internal/watcher`) reads directory entries only, to place a
+watch on each directory, and never opens a file. The folder index (folder
+groups and folder names), folder browsing and the import status are derived
+from SQLite, never from the filesystem.
 
 ## Subsystem map
 
