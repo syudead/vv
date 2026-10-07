@@ -811,6 +811,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/auto-import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 自動の取り込みの選択と、フォルダの監視の今の状態を返す
+         * @description 保存した選択（`enabled`）と、監視が今していること（`watch.state`）を返す。問題があれば
+         *     `watch.problem` と、あればその場所 `watch.path` を返す
+         *     （specs/042-folder-watch-import/contracts/screen-api.md）。
+         */
+        get: operations["getAutoImportSettings"];
+        /**
+         * 自動の取り込みを入れる／切るを保存し、監視を張る／外す
+         * @description 選択を保存し、監視を張る／外すだけで、スキャンは始めない。今と同じ値なら何も変えない
+         *     （specs/042-folder-watch-import/contracts/screen-api.md）。
+         */
+        put: operations["updateAutoImportSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/api-tokens": {
         parameters: {
             query?: never;
@@ -1618,6 +1645,29 @@ export interface components {
         UpdateNetworkSettingsRequest: {
             lanAccess: boolean;
         };
+        /** @description 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md） */
+        AutoImportSettings: {
+            /** @description 保存した選択。保存値が無ければ true */
+            enabled: boolean;
+            watch: components["schemas"]["FolderWatch"];
+        };
+        FolderWatch: {
+            /**
+             * @description off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は すべてのディレクトリを監視している。limited は問題がある
+             * @enum {string}
+             */
+            state: "off" | "starting" | "active" | "limited";
+            /**
+             * @description 直近の問題。state が limited のときだけ返す
+             * @enum {string}
+             */
+            problem?: "watch_limit" | "events_lost" | "folder_unreachable" | "permission_denied";
+            /** @description 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない） */
+            path?: string;
+        };
+        UpdateAutoImportSettingsRequest: {
+            enabled: boolean;
+        };
         /** @description 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。 */
         APIToken: {
             /** Format: int64 */
@@ -2380,6 +2430,11 @@ export interface components {
         Scan: {
             /** Format: int64 */
             id: number;
+            /**
+             * @description 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み （specs/042-folder-watch-import/contracts/screen-api.md）
+             * @enum {string}
+             */
+            origin: "manual" | "watch";
             status: components["schemas"]["ScanStatus"];
             videos?: components["schemas"]["ScanVideos"];
             issues: components["schemas"]["ScanIssueCounts"];
@@ -3809,6 +3864,52 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getAutoImportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定と監視の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoImportSettings"];
+                };
+            };
+        };
+    };
+    updateAutoImportSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAutoImportSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後の設定。`watch.state` は `starting` か `off` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoImportSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listApiTokens: {

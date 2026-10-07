@@ -1,6 +1,7 @@
 package watcher
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -189,9 +190,19 @@ func TestFileWrittenBeforeSubdirectoryWatchIsCoveredByRecursiveReport(t *testing
 		t.Fatal(err)
 	}
 
-	// The nested watches exist by then: a later write below reports its parent.
-	write(t, filepath.Join(nested, "late.mp4"))
-	waitChange(t, r, Change{Dir: nested})
+	// The report for the topmost directory can arrive before the event for
+	// the nested one has been handled and its watch added, so a write below
+	// is retried until the nested watch reports its parent.
+	deadline := time.After(waitFor)
+	for i := 0; !r.hasChange(Change{Dir: nested}); i++ {
+		write(t, filepath.Join(nested, fmt.Sprintf("late%d.mp4", i)))
+		select {
+		case <-r.notify:
+		case <-time.After(20 * time.Millisecond):
+		case <-deadline:
+			t.Fatalf("change %+v not reported; got %+v", Change{Dir: nested}, r.changes)
+		}
+	}
 }
 
 func TestArmWatchesExistingTreeAndSkipsExcludedDirectoriesAndSymlinks(t *testing.T) {

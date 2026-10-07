@@ -8,6 +8,7 @@ import { presentScan, statusAnnouncement } from "./scanPresentation";
 function makeScan(status: Scan["status"], values: Partial<Scan> = {}): Scan {
   return {
     id: 1,
+    origin: "manual",
     status,
     videos:
       status === "finding"

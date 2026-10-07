@@ -358,6 +358,7 @@ func run(opts runOptions) error {
 		// 要求ごとに今の方式を読むので、方式の変更は再起動なしに次の要求から効く。
 		TranscodeSettings: transcodeSettings,
 		NetworkSettings:   networkSettings,
+		AutoImport:        autoImport,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

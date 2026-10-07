@@ -362,6 +362,54 @@ func (e FolderScope) Valid() bool {
 	}
 }
 
+// Defines values for FolderWatchProblem.
+const (
+	EventsLost        FolderWatchProblem = "events_lost"
+	FolderUnreachable FolderWatchProblem = "folder_unreachable"
+	PermissionDenied  FolderWatchProblem = "permission_denied"
+	WatchLimit        FolderWatchProblem = "watch_limit"
+)
+
+// Valid indicates whether the value is a known member of the FolderWatchProblem enum.
+func (e FolderWatchProblem) Valid() bool {
+	switch e {
+	case EventsLost:
+		return true
+	case FolderUnreachable:
+		return true
+	case PermissionDenied:
+		return true
+	case WatchLimit:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FolderWatchState.
+const (
+	Active   FolderWatchState = "active"
+	Limited  FolderWatchState = "limited"
+	Off      FolderWatchState = "off"
+	Starting FolderWatchState = "starting"
+)
+
+// Valid indicates whether the value is a known member of the FolderWatchState enum.
+func (e FolderWatchState) Valid() bool {
+	switch e {
+	case Active:
+		return true
+	case Limited:
+		return true
+	case Off:
+		return true
+	case Starting:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Degraded HealthStatus = "degraded"
@@ -440,6 +488,24 @@ func (e ProbeErrorCode) Valid() bool {
 	case ProbeErrorCodeProbeFailed:
 		return true
 	case ProbeErrorCodeProbeUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanOrigin.
+const (
+	Manual ScanOrigin = "manual"
+	Watch  ScanOrigin = "watch"
+)
+
+// Valid indicates whether the value is a known member of the ScanOrigin enum.
+func (e ScanOrigin) Valid() bool {
+	switch e {
+	case Manual:
+		return true
+	case Watch:
 		return true
 	default:
 		return false
@@ -1030,6 +1096,13 @@ type AuthSession struct {
 // AuthSessionState owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
 type AuthSessionState string
 
+// AutoImportSettings 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md）
+type AutoImportSettings struct {
+	// Enabled 保存した選択。保存値が無ければ true
+	Enabled bool        `json:"enabled"`
+	Watch   FolderWatch `json:"watch"`
+}
+
 // CreateAPITokenRequest defines model for CreateAPITokenRequest.
 type CreateAPITokenRequest struct {
 	// Name 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
@@ -1224,6 +1297,24 @@ type FolderSummary struct {
 	// VideoCount 直下の動画の件数（ゲストでは公開の動画だけを数える）
 	VideoCount int `json:"videoCount"`
 }
+
+// FolderWatch defines model for FolderWatch.
+type FolderWatch struct {
+	// Path 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない）
+	Path *string `json:"path,omitempty"`
+
+	// Problem 直近の問題。state が limited のときだけ返す
+	Problem *FolderWatchProblem `json:"problem,omitempty"`
+
+	// State off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は すべてのディレクトリを監視している。limited は問題がある
+	State FolderWatchState `json:"state"`
+}
+
+// FolderWatchProblem 直近の問題。state が limited のときだけ返す
+type FolderWatchProblem string
+
+// FolderWatchState off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は すべてのディレクトリを監視している。limited は問題がある
+type FolderWatchState string
 
 // GroupMemberPage グループのメンバーの、グループの中の並びで連続する範囲
 type GroupMemberPage struct {
@@ -1498,6 +1589,9 @@ type Scan struct {
 	// Issues 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
 	Issues ScanIssueCounts `json:"issues"`
 
+	// Origin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み （specs/042-folder-watch-import/contracts/screen-api.md）
+	Origin ScanOrigin `json:"origin"`
+
 	// SettledAt 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 
@@ -1510,6 +1604,9 @@ type Scan struct {
 	// Videos 取り込みの進み具合。status が finding のあいだは省く
 	Videos *ScanVideos `json:"videos,omitempty"`
 }
+
+// ScanOrigin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み （specs/042-folder-watch-import/contracts/screen-api.md）
+type ScanOrigin string
 
 // ScanState 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 type ScanState string
@@ -1792,6 +1889,11 @@ type TranscodingSettings struct {
 
 	// VideoEncoder 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
+}
+
+// UpdateAutoImportSettingsRequest defines model for UpdateAutoImportSettingsRequest.
+type UpdateAutoImportSettingsRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
@@ -2540,6 +2642,9 @@ type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
 
+// UpdateAutoImportSettingsJSONRequestBody defines body for UpdateAutoImportSettings for application/json ContentType.
+type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
+
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
@@ -2668,6 +2773,12 @@ type ServerInterface interface {
 	// ListCurrentScanIssues 直近の取り込みの問題の一覧を返す
 	// (GET /api/scans/current/issues)
 	ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params ListCurrentScanIssuesParams)
+	// GetAutoImportSettings 自動の取り込みの選択と、フォルダの監視の今の状態を返す
+	// (GET /api/settings/auto-import)
+	GetAutoImportSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateAutoImportSettings 自動の取り込みを入れる／切るを保存し、監視を張る／外す
+	// (PUT /api/settings/auto-import)
+	UpdateAutoImportSettings(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
@@ -3739,6 +3850,34 @@ func (siw *ServerInterfaceWrapper) ListCurrentScanIssues(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCurrentScanIssues(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAutoImportSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetAutoImportSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAutoImportSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAutoImportSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAutoImportSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAutoImportSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5304,6 +5443,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
