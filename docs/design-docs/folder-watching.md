@@ -87,7 +87,10 @@ every watch, drops the dirty set and stops a running batch
 A problem is shown, never repaired by a scan
 ([R-6](../../specs/042-folder-watch-import/research.md#r-6-lost-events-and-watch-limits-are-reported-never-repaired-by-a-scan)).
 It clears when auto-import is turned off and on, when the media folders change,
-or, for lost events, when a manual scan finishes `done`.
+or, for lost events, when a manual scan finishes `done` and no further loss was
+reported since that scan started. A loss reported while the scan ran stays
+visible as `limited`, because the scan may already have read the affected
+directory; the next manual scan clears it.
 
 | Rejected | Why |
 | --- | --- |

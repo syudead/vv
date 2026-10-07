@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -117,5 +118,54 @@ func TestOnStartReportsOrigin(t *testing.T) {
 	want := []domain.ScanOrigin{domain.ScanOriginWatch, domain.ScanOriginManual}
 	if !slices.Equal(got, want) {
 		t.Fatalf("知らせ = %v, want %v", got, want)
+	}
+}
+
+// 閉じる知らせの最中に次の手動の走査は始められず、開始の知らせは閉じる知らせのあとに届く。
+// 錠を放してから閉じる知らせを呼ぶと、その隙に次の走査の開始の知らせが先に届く。
+func TestOnFinishRunsBeforeNextScanStarts(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	var mu sync.Mutex
+	var events []string
+	scans.OnStart(func(origin domain.ScanOrigin) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, "start")
+	})
+	nextStarted := make(chan struct{})
+	var once sync.Once
+	scans.OnFinish(func(origin domain.ScanOrigin, state domain.ScanState) {
+		once.Do(func() {
+			go func() {
+				defer close(nextStarted)
+				if _, _, err := scans.StartScan(context.Background()); err != nil {
+					t.Error(err)
+				}
+			}()
+			// 次の走査が割り込めるなら、ここで開始の知らせが届く。
+			select {
+			case <-nextStarted:
+			case <-time.After(200 * time.Millisecond):
+			}
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, "finish")
+	})
+
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	<-nextStarted
+	store.waitFinished(t)
+	scans.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"start", "finish", "start", "finish"}
+	if !slices.Equal(events, want) {
+		t.Fatalf("知らせの順 = %v, want %v", events, want)
 	}
 }
