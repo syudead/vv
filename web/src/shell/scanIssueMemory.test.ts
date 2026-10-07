@@ -90,6 +90,49 @@ describe("readFailureKeys", () => {
     expect(await readFailureKeys(6, new AbortController().signal)).toBeNull();
   });
 
+  it("follows every cursor, however many pages there are", async () => {
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => {
+        call += 1;
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              scanId: 5,
+              items: [issue(`f${String(call)}.mp4`, ["unreadable"])],
+              ...(call < 40 ? { nextCursor: `c${String(call)}` } : {}),
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+        );
+      }),
+    );
+    const keys = await readFailureKeys(5, new AbortController().signal);
+    expect(keys?.size).toBe(40);
+  });
+
+  it("rejects a list whose cursor does not advance instead of reading it as complete", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ scanId: 5, items: [], nextCursor: "same" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+    await expect(readFailureKeys(5, new AbortController().signal)).rejects.toThrow();
+  });
+
+  it("does not let an older scan overwrite a newer list", () => {
+    rememberFailureKeys(9, new Set(["new"]));
+    rememberFailureKeys(8, new Set(["old"]));
+    expect(previousFailureKeys()?.has("new")).toBe(true);
+  });
+
   it("remembers the last list", () => {
     expect(previousFailureKeys()).toBeNull();
     rememberFailureKeys(3, new Set(["k"]));

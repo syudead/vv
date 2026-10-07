@@ -211,6 +211,66 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.hasMore).toBe(true);
   });
 
+  it("取り直しの途中の loadMore と retryLoadMore は取り直しを打ち切らず、終わってから続きを取る", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2], "cursor-1"));
+    });
+
+    act(() => result.current.refreshInPlace());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    act(() => result.current.loadMore());
+    act(() => result.current.retryLoadMore());
+    // 取り直しは続き、続きの取得はまだ始めない。
+    expect(calls).toHaveLength(2);
+
+    // 先頭に新しい動画が入った。
+    await act(async () => {
+      calls[1]?.resolve(page([9, 1], "cursor-2"));
+    });
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([9, 1]);
+    // 取り直しで替わったあとのカーソルから続きを取る。
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params.cursor).toBe("cursor-2");
+  });
+
+  it("取り直しは、ページの境で重なった項目を数えずに件数に届くまで続きを取る", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2], "cursor-1"));
+    });
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      calls[1]?.resolve(page([3, 4], "cursor-2"));
+    });
+
+    act(() => result.current.refreshInPlace());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    // 1 ページ目の末尾と 2 ページ目の先頭が同じ動画（2）になった。
+    await act(async () => {
+      calls[2]?.resolve(page([1, 2], "cursor-a"));
+    });
+    await waitFor(() => expect(calls).toHaveLength(4));
+    await act(async () => {
+      calls[3]?.resolve(page([2, 3], "cursor-b"));
+    });
+    // 重なりを除くと 3 件。4 件に届くまで、さらに続きを取る。
+    await waitFor(() => expect(calls).toHaveLength(5));
+    expect(calls[4]?.params.cursor).toBe("cursor-b");
+    await act(async () => {
+      calls[4]?.resolve(page([4, 5], "cursor-c"));
+    });
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
+    expect(result.current.cursor).toBe("cursor-c");
+  });
+
   it("ページの取得の途中の refreshInPlace は、その取得が終わってから取り直す", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
       wrapper: OwnerAudience,

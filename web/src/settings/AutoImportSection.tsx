@@ -36,8 +36,10 @@ function stateLine(settings: AutoImportSettings): UiText {
 
 function ProblemAlert({ watch }: { watch: AutoImportSettings["watch"] }) {
   if (watch.state !== "limited" || watch.problem === undefined) return null;
-  const problem = t.settings.autoImport.problem[watch.problem];
-  const path = watch.path ?? t.settings.autoImport.unknownPath;
+  const text = t.settings.autoImport;
+  const problem = text.problem[watch.problem];
+  // 道筋を持たない問題（events_lost）は、文がそれだけで完結している。
+  const path = watch.problem === "events_lost" ? null : (watch.path ?? text.unknownPath);
   return (
     <div>
       <Alert variant="warning" role="note">
@@ -46,7 +48,12 @@ function ProblemAlert({ watch }: { watch: AutoImportSettings["watch"] }) {
         <AlertDescription>
           <p>
             {problem.before}
-            {watch.path !== undefined ? <code className="break-all">{path}</code> : path}
+            {path !== null &&
+              (watch.path !== undefined ? (
+                <code className="break-all">{path}</code>
+              ) : (
+                path
+              ))}
             {problem.after}
           </p>
         </AlertDescription>
@@ -74,10 +81,14 @@ export default function AutoImportSection({ reloadToken }: { reloadToken: number
   // 読み込みと保存は重なる。いちばん新しく始めたものの応答だけを使う。
   const revision = useRef(0);
   const controller = useRef<AbortController | null>(null);
+  // 保存（PUT）の最中は読み直さない。重なった読み込みの古い値が、保存の結果を上書きしたり
+  // 保存の応答を捨てさせたりしないよう、保存が終わるまで読み込みを止める。
+  const saveInFlight = useRef(false);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
 
   const load = useCallback(async () => {
+    if (saveInFlight.current) return;
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
@@ -136,18 +147,18 @@ export default function AutoImportSection({ reloadToken }: { reloadToken: number
   const toggle = async () => {
     if (settings === null || saving !== null) return;
     const next = !settings.enabled;
+    // 保存より前に始めた読み込みの応答は使わない。
     controller.current?.abort();
     revision.current += 1;
-    const mine = revision.current;
+    saveInFlight.current = true;
     setSaveError(null);
     setSaving(next);
     try {
-      const saved = await updateAutoImportSettings(next);
-      if (mine === revision.current) setSettings(saved);
-      else void load();
+      setSettings(await updateAutoImportSettings(next));
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
     } finally {
+      saveInFlight.current = false;
       setSaving(null);
     }
   };

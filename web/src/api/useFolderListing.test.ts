@@ -73,4 +73,26 @@ describe("useFolderListing の取り直し", () => {
     act(() => result.current.reload());
     await waitFor(() => expect(getFolder).toHaveBeenCalledTimes(1));
   });
+
+  it("通常の読み込みの途中の refresh は、その読み込みが終わってから取り、古い応答で上書きしない", async () => {
+    const pending: ((value: FolderListing) => void)[] = [];
+    getFolder.mockImplementation(
+      () =>
+        new Promise<FolderListing>((resolve) => {
+          pending.push(resolve);
+        }),
+    );
+    const { result } = renderHook(() => useFolderListing({ rootId: 1, path: "a" }));
+    await waitFor(() => expect(pending).toHaveLength(1));
+
+    act(() => result.current.refresh());
+    // 通常の読み込みが終わるまで、2つ目の要求は出さない。
+    expect(getFolder).toHaveBeenCalledTimes(1);
+
+    await act(async () => pending[0]?.(listing("old")));
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => pending[1]?.(listing("new")));
+    expect(result.current.data).toEqual(listing("new"));
+    expect(result.current.loading).toBe(false);
+  });
 });

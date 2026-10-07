@@ -266,4 +266,36 @@ describe("AutoImportSection", () => {
       expect(screen.queryByText("A media folder can't be reached")).toBeNull(),
     );
   });
+
+  it("keeps a saved switch when the window regains focus while the save is pending", async () => {
+    current = settings(false);
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText("Off. Changes are picked up by the next scan.");
+
+    const save = deferred<Response>();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === URL && init?.method === "PUT" ? save.promise : route(input, init),
+    );
+    await user.click(autoImportSwitch());
+    const before = getsOfSettings();
+    await act(async () => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    // 保存の最中は読み直さない。
+    expect(getsOfSettings()).toBe(before);
+
+    await act(async () => save.resolve(json(settings(true, { state: "active" }))));
+    await screen.findByText("Watching the media folders.");
+    expect(autoImportSwitch().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("shows the lost-events problem without a path placeholder", async () => {
+    current = settings(true, { state: "limited", problem: "events_lost" });
+    renderSection();
+
+    const alert = await screen.findByRole("note");
+    expect(alert.textContent).toContain("pick them up.");
+    expect(alert.textContent).not.toContain("a media folder");
+  });
 });

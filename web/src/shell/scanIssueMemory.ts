@@ -12,9 +12,6 @@ import {
  */
 let lastRead: { scanId: number; keys: ReadonlySet<string> } | null = null;
 
-/** pageLimit は、1回の読み込みで辿る一覧のページ数の上限である（失敗が際限なく多いとき）。 */
-const pageLimit = 25;
-
 /** failureKeys は、失敗の項目の（道筋, 種類）の組である。種類が変われば別の失敗になる。 */
 export function failureKeys(items: readonly ScanIssue[]): Set<string> {
   const keys = new Set<string>();
@@ -40,8 +37,9 @@ export function hasNewFailure(
 }
 
 /**
- * readFailureKeys は直近の取り込みの問題を最後まで読み、失敗の組を返す。読んでいる途中で
- * 取り込みが替わった（`scanId` が `expected` と違う）ときは null を返す。
+ * readFailureKeys は直近の取り込みの問題を最後まで（すべてのカーソルを）読み、失敗の組を返す。
+ * 読んでいる途中で取り込みが替わった（`scanId` が `expected` と違う）ときは null を返す。
+ * 一部しか読めない一覧（カーソルが進まない）は、新しい失敗を見逃さないよう例外にする。
  */
 export async function readFailureKeys(
   expected: number,
@@ -49,7 +47,7 @@ export async function readFailureKeys(
 ): Promise<Set<string> | null> {
   const items: ScanIssue[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < pageLimit; page += 1) {
+  for (;;) {
     const result = await listCurrentScanIssues({
       limit: MAX_SCAN_ISSUE_PAGE_SIZE,
       cursor,
@@ -57,8 +55,10 @@ export async function readFailureKeys(
     });
     if (result === null || result.scanId !== expected) return null;
     items.push(...result.items);
+    if (result.nextCursor === undefined) break;
+    if (result.nextCursor === cursor)
+      throw new Error("scan issue cursor did not advance");
     cursor = result.nextCursor;
-    if (cursor === undefined) break;
   }
   return failureKeys(items);
 }
@@ -70,6 +70,8 @@ export function previousFailureKeys(): ReadonlySet<string> | null {
 
 /** rememberFailureKeys は読んだ一覧を、次の比べる相手として覚える。 */
 export function rememberFailureKeys(scanId: number, keys: ReadonlySet<string>): void {
+  // 遅れて届いた古い取り込みの読み込みで、新しい取り込みの一覧を上書きしない。
+  if (lastRead !== null && lastRead.scanId > scanId) return;
   lastRead = { scanId, keys };
 }
 

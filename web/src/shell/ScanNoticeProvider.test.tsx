@@ -417,6 +417,33 @@ describe("ScanNoticeProvider", () => {
       await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("64"));
     });
 
+    it("失敗で終わった取り込みの失敗も覚え、次の partial が持ち越しても通知しない", async () => {
+      let id = 80;
+      serve(() => ({ id, files: ["a.mp4"] }));
+      renderProvider();
+      await waitFor(() =>
+        expect(screen.getByTestId("tracking").textContent).toBeDefined(),
+      );
+
+      await emitServerEvent("scan", watch(80, "running"));
+      await emitServerEvent(
+        "scan",
+        watch(80, "failed", {
+          status: "failed",
+          issues: { failed: 1, substituted: 0, revision: 80 },
+        }),
+      );
+      await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("80"));
+      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
+
+      // 同じ a.mp4 が持ち越されただけの partial。
+      id = 81;
+      await emitServerEvent("scan", partial(81, 1));
+      await act(async () => new Promise((done) => setTimeout(done, 20)));
+      expect(screen.getByTestId("notice").textContent).toBe("none");
+    });
+
     it("手動の取り込みで読んだ失敗は、次の自動の取り込みで通知しない", async () => {
       let id = 70;
       serve(() => ({ id, files: ["a.mp4"] }));

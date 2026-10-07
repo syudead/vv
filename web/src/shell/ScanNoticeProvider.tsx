@@ -224,7 +224,16 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       });
     };
     if (watchFinished.status === "failed") {
+      // 失敗で終わった取り込みにも、記録した失敗の項目がありうる。次の取り込みが持ち越して
+      // 新しい失敗と取り違えないよう、その一覧も覚える。通知は読み終わりを待たず出す。
       show();
+      readFailureKeys(watchFinished.id, abort.signal)
+        .then((keys) => {
+          if (!abort.signal.aborted && keys !== null) {
+            rememberFailureKeys(watchFinished.id, keys);
+          }
+        })
+        .catch(() => undefined);
       return () => abort.abort();
     }
     readFailureKeys(watchFinished.id, abort.signal)
