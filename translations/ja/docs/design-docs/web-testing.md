@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/web-testing.md
-sourceHash: c7348fa4109bbfcb8e1243b554cc1ee9033e241758d2dc525dfd800932f38a17
+sourceHash: 754a821ecdec797d9887d924ed2becc31f98b1495764a447f77ac8f781179517
 ---
 
 # Web のテストレベル {#web-test-levels}
@@ -28,7 +28,7 @@ flowchart LR
 | ページテスト | コンポーネントをまたぐ流れ、リクエストの順序、部品間のフォーカス移動、URL の状態 | `fetch` を偽のサーバーに置き換えた `*Page` コンポーネント | 0.35 秒 |
 | E2E テスト | 実際のサーバー、ブラウザ、メディアだけが示すもの: 再生、セットアップとログイン、スキャン | ビルドした Go サーバーを相手に、Vite の開発サーバーから配信したアプリを Chromium で動かしたもの | 数秒。`main` への push でだけ動く |
 
-コストは、Vitest の 1 回の全体実行 (2026 年 10 月) におけるテスト 1 件あたりの平均ワーカー時間で、`.ts` のテストファイルはすべてロジックテストとして数えた。ページテストは 1,736 件のユニットテストのうち 510 件で、その実行のワーカー時間の 74% を占めた。
+コストは、Vitest の 1 回の全体実行におけるテスト 1 件あたりの平均ワーカー時間である。
 
 E2E は Vite の本番ビルドも、それを Go のバイナリに埋め込むことも扱わない。`task test-web` は SPA をビルドするが、そのビルドを配信するテストはない。
 
@@ -67,16 +67,7 @@ Vitest は 1 つの CI シャードのファイルを並列に実行し、1 つ�
 
 ## 規則をページの外へ {#rules-out-of-pages}
 
-ページが計算する規則はページの隣の純粋なモジュールに移し、ページテストにはページがそれを使うことを示すケースを 1 つ残す。タグ管理画面はこのように分割している:
-
-| 部分 | 置き場所 | 担うテスト |
-| --- | --- | --- |
-| 操作の後の行、どの空の状態を表示するか、件数の文言、選択 | [`tagPageRows.ts`](../../web/src/tags/tagPageRows.ts)、[`tagListView.ts`](../../web/src/tags/tagListView.ts)、[`tagSelection.ts`](../../web/src/tags/tagSelection.ts) | ロジックテスト |
-| ページの読み込み、拒否された名前、仮想化した行とそのフォーカス | [`useTagPage`](../../web/src/tags/useTagPage.ts)、[`useRejectedNames`](../../web/src/tags/useRejectedNames.ts)、[`useVirtualTagRows`](../../web/src/tags/useVirtualTagRows.ts) | 分割の前に書いたページテスト |
-| 空の状態、列見出し、タブ、絞り込みのチップの描画 | ページの隣のコンポーネント | バリエーションに違いがあるものはコンポーネントテスト ([`TagListEmptyState`](../../web/src/tags/TagListEmptyState.tsx) など) |
-| 操作と、その後にフォーカスが移る先 | [`TagsPage.tsx`](../../web/src/tags/TagsPage.tsx) | ページテスト |
-
-フックは新しいテストなしで外に移したので、分割の前に書いたページテストが引き続きフックを扱う。そのケースは、次にフックが変わるときに `renderHook` を通したロジックテストに移る ([既存のテスト](#existing-tests))。
+ページが計算する規則はページの隣の純粋なモジュールに移し、ページテストにはページがそれを使うことを示すケースを 1 つ残す。タグ管理画面がどの空の状態を表示するかはそのような規則である。この規則はロジックテストとともに [`tagListView.ts`](../../web/src/tags/tagListView.ts) にあり、空の状態それぞれを描画するコンポーネントにはコンポーネントテストがある。
 
 ## 既存のテスト {#existing-tests}
 
