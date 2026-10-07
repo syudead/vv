@@ -86,9 +86,9 @@ Text in `web/src/i18n/en.ts`. User data (paths) is embedded as an argument.
 | Load failed | Couldn't load the auto-import settings: {reason} | `ErrorState` with `Retry` |
 | Problem `watch_limit` | The limit on watched folders was reached, so changes under {path} aren't picked up. Raise the limit (`fs.inotify.max_user_watches` on Linux) and turn auto-import off and on, then start a scan to pick up what was missed. | Title: Some folders aren't watched |
 | Problem `events_lost` | Too many changes arrived at once and some were lost. Start a scan under Scan status to pick them up. | Title: Some changes were lost |
-| Problem `folder_unreachable` | {path} can't be reached. Changes there aren't picked up until it is back and auto-import is turned off and on. | Title: A media folder can't be reached |
-| Problem `permission_denied` | VVMDM can't read {path}. Changes there aren't picked up. | Title: A folder can't be read |
-| Status word, watch scan `finding` or `running` | Auto-importing | Replaces "Scanning" for `origin` `watch` |
+| Problem `folder_unreachable` | {path} can't be reached. Changes there aren't picked up until it is back and auto-import is turned off and on. Then start a scan to pick up what was missed. | Title: A media folder can't be reached |
+| Problem `permission_denied` | VVMDM can't read {path}. Changes there aren't picked up until it can, and auto-import is turned off and on. Then start a scan to pick up what was missed. | Title: A folder can't be read |
+| Status word, watch scan `finding` or `running` | None | No badge: a running watch scan is shown nowhere (`要件 7`) |
 | Status word, watch scan `done` | Auto-imported | Replaces "Done" |
 | Status word, watch scan `partial` | Auto-import: some failed | Replaces "Some failed" |
 | Status word, watch scan `failed` | Auto-import failed | Replaces "Scan failed" |
@@ -175,10 +175,11 @@ elements. What differs for `origin` `watch`:
 
 | Element | Manual scan | Watch scan |
 | --- | --- | --- |
-| Status badge | "Scanning", "Done", "Some failed", "Scan failed" | "Auto-importing", "Auto-imported", "Auto-import: some failed", "Auto-import failed" |
+| Status badge | "Scanning", "Done", "Some failed", "Scan failed" | None while it runs; "Auto-imported", "Auto-import: some failed", "Auto-import failed" once it ends |
 | `Scan library` button | Disabled while the scan runs, with the reason line | Enabled while a watch scan runs: starting a manual scan supersedes it (R-5); no reason line |
 | `Media folders` lock ("You can't change media folders while a scan is running") | Shown while the scan runs | Not shown: a folder change supersedes the watch scan (R-5) |
-| Progress bar, progress sentence, detail line, issue counts, issue list | As 024 | As 024; the issue list holds the issues carried over from the previous scan plus this one's ([data-model.md, Rules](data-model.md#rules)) |
+| Progress bar, progress sentence | As 024 | Never shown, running or ended: a watch scan's progress is shown nowhere |
+| Detail line, issue counts, issue list | As 024 | As 024 once it ends; the issue list holds the issues carried over from the previous scan plus this one's ([data-model.md, Rules](data-model.md#rules)) |
 | Failure of the import itself (`failed`) | Reason in a `destructive` `Alert` | The same |
 
 The `Scan library` button therefore reads disabled for one reason only, a
@@ -195,7 +196,8 @@ it is shown.
 | --- | --- | --- |
 | `finding`, `running` | Not shown; the summary popover does not exist (`要件 7`) | None |
 | `done`, with or without to-check items | Not shown | None |
-| `partial` | Shown as a result: "Auto-import: some failed · K failed", for 8 s, hidden by `×`, or by pressing it (goes to `/settings#scan-status`); the summary opens on hover and focus with 024's content and "See Settings for the list." | "Auto-import finished with some failures. N videos may not be usable." |
+| `partial`, with a new failure | Shown as a result: "Auto-import: some failed · K failed", for 8 s, hidden by `×`, or by pressing it (goes to `/settings#scan-status`); the summary opens on hover and focus with 024's content and "See Settings for the list." | "Auto-import finished with some failures. N videos may not be usable." |
+| `partial`, no new failure | Not shown | None |
 | `failed` | Shown as a result: "Auto-import failed", for 8 s, hidden and pressed as above | "Auto-import failed." |
 
 A result notice for a watch scan appears from nothing: there was no running
@@ -205,6 +207,8 @@ recognises it, and its status word says what it is about. On the video page it
 keeps the bottom-right position and `z-index` of 024 (the top right holds the
 close `×`).
 
+The issue list of a `partial` watch scan holds failures carried over from earlier scans ([data-model.md, Rules](data-model.md#rules)), so the status alone would announce an old failure again. The client announces a `partial` watch scan only when `GET /api/scans/current/issues` returns a failed item whose path and kind are not in the list it last read for the previous scan; with no earlier list read, it announces. A failure that changed kind counts as new; a failure the owner dismissed earlier and that is still the same is not announced again. A `partial` scan with no new failure shows nothing, and Settings still lists every issue.
+
 A watch scan that ends `partial` while the owner's previous notice is
 dismissed shows: dismissal is per scan id (library-ui.md). A manual scan
 that supersedes a running watch scan shows its own indicator from "Starting";
@@ -212,7 +216,7 @@ the superseded scan closes `done` and shows nothing.
 
 ## Open lists after a watch scan
 
-When a watch scan ends `done` or `partial`, the list on screen (the library,
+When a watch scan ends `done`, `partial` or `failed` (a `failed` scan can have written additions before it stopped), the list on screen (the library,
 a folder page, the root folder list) takes in its result in place:
 
 | Aspect | Rule |
@@ -266,15 +270,15 @@ and after one that ended `done`.
    replace.
 5. **Priority of actions**: the switch is the only control in the section;
    the problem `Alert` has no button, and its text names `Scan library`, which
-   is the one action above. `Scan library` stays enabled while
-   "Auto-importing" shows in `Scan status`, and the `Media folders` rows stay
-   editable.
-6. **Quiet while importing**: during a watch scan ("Auto-importing" in
-   `Scan status`), the library, a folder page and the video page show nothing
-   new: no bottom-right indicator, no toast, no bar. When the scan ends `done`,
+   is the one action above. `Scan library` stays enabled while a watch scan
+   runs, and the `Media folders` rows stay editable.
+6. **Quiet while importing**: during a watch scan, `Scan status`, the
+   library, a folder page and the video page show nothing new: no badge, no
+   progress bar or sentence, no bottom-right indicator, no toast. When the scan ends `done`,
    the open list has the new cards in sort order and the window has not
    scrolled; a selected card is still selected.
-7. **Only failures are announced**: when a watch scan ends `partial`, the
+7. **Only failures are announced**: when a watch scan ends `partial` with a new
+   failure, the
    bottom-right result appears with "Auto-import: some failed" and the failed
    count, hides after 8 s, and pressing it opens `Scan status` with the same
    status word and the two files in the list. When it ends `done`, nothing
