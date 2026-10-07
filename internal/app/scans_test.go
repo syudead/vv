@@ -33,6 +33,8 @@ type fakeScanStore struct {
 	issues []domain.ScanIssue
 	// resumedFrom は走査を始めるたびの持ち越し元（StartScan なら 0）である。
 	resumedFrom []int64
+	// watchDirs は監視の走査を始めたときの範囲である。
+	watchDirs [][]domain.DirtyDirectory
 	// unfinished は queued か running の仕事があるか、unfinishedErr はその問い合わせの失敗である。
 	unfinished    bool
 	unfinishedErr error
@@ -48,6 +50,18 @@ func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error
 
 // ResumeScan は StartScan と同じで、持ち越し元を resumedFrom に残す。
 func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, bool, error) {
+	return f.begin(from, domain.ScanOriginManual)
+}
+
+// StartWatchScan は origin が watch の走査を始め、範囲を watchDirs に残す。
+func (f *fakeScanStore) StartWatchScan(_ context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
+	f.mu.Lock()
+	f.watchDirs = append(f.watchDirs, dirs)
+	f.mu.Unlock()
+	return f.begin(0, domain.ScanOriginWatch)
+}
+
+func (f *fakeScanStore) begin(from int64, origin domain.ScanOrigin) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.hasScan && f.current.State == domain.ScanRunning {
@@ -55,7 +69,7 @@ func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, 
 	}
 	f.nextID++
 	f.resumedFrom = append(f.resumedFrom, from)
-	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, StartedAt: time.Now()}
+	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, Origin: origin, StartedAt: time.Now()}
 	f.hasScan = true
 	return f.current, true, nil
 }
@@ -167,7 +181,22 @@ type fakeScanner struct {
 	release      chan struct{}
 	started      chan struct{}
 	runs         int
-	mu           sync.Mutex
+	// scoped は範囲を絞った走査の呼び出しで受け取った範囲である。
+	scoped [][]domain.DirtyDirectory
+	mu     sync.Mutex
+}
+
+// ScanScoped は Scan と同じ決め打ちで、範囲を scoped に残す。取り消しの理由が
+// 取って代わられたことなら、ErrScanSuperseded を返す。
+func (f *fakeScanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
+	f.mu.Lock()
+	f.scoped = append(f.scoped, dirs)
+	f.mu.Unlock()
+	result, err := f.Scan(ctx)
+	if err != nil && errors.Is(context.Cause(ctx), domain.ErrScanSuperseded) {
+		return result, domain.ErrScanSuperseded
+	}
+	return result, err
 }
 
 func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
@@ -451,6 +480,10 @@ func TestResumeInterrupted(t *testing.T) {
 		{"interrupted 以外の failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInternal}, false},
 		{"理由のコードの無い failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed}, false},
 		{"走査の記録が無ければ始めない", nil, false},
+		// 中断した監視の走査は閉じるだけで、続きは始めない（R-8）。
+		{"中断した監視の走査は始めない", &domain.Scan{
+			ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInterrupted, Origin: domain.ScanOriginWatch,
+		}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -650,4 +683,75 @@ func TestListScanIssues(t *testing.T) {
 	if _, err := scans.ListScanIssues(context.Background(), "not a cursor", 1); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Fatalf("不正なカーソル: err = %v, want ErrInvalidCursor", err)
 	}
+}
+
+// 監視の走査は範囲を絞った走査として走り、origin は watch で記録される。範囲は整えて渡す。
+func TestStartWatchScanRunsScopedScan(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	dirs := []domain.DirtyDirectory{
+		{Path: fixturePath("/media/a/b"), Recursive: false},
+		{Path: fixturePath("/media/a"), Recursive: true},
+	}
+
+	scan, started, err := scans.StartWatchScan(context.Background(), dirs)
+	if err != nil || !started {
+		t.Fatalf("StartWatchScan = %v, started %v", err, started)
+	}
+	if scan.Origin != domain.ScanOriginWatch {
+		t.Fatalf("origin = %q, want watch", scan.Origin)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+
+	want := []domain.DirtyDirectory{{Path: fixturePath("/media/a"), Recursive: true}}
+	scanner.mu.Lock()
+	defer scanner.mu.Unlock()
+	if len(scanner.scoped) != 1 || !slices.Equal(scanner.scoped[0], want) {
+		t.Fatalf("範囲 = %v, want [%v]", scanner.scoped, want)
+	}
+	if scanner.runs != 1 {
+		t.Fatalf("走査の回数 = %d, want 1", scanner.runs)
+	}
+}
+
+// 取って代わられた監視の走査は、失敗でも interrupted でもなく done で閉じる。
+func TestSupersedeWatchScanClosesDone(t *testing.T) {
+	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	if _, _, err := scans.StartWatchScan(context.Background(), []domain.DirtyDirectory{{Path: fixturePath("/media/a")}}); err != nil {
+		t.Fatal(err)
+	}
+	<-scanner.started
+
+	if !scans.SupersedeWatchScan(context.Background()) {
+		t.Fatal("走っている監視の走査を止められなかった")
+	}
+	closed := store.waitFinished(t)
+	if closed.State != domain.ScanDone || closed.Error != "" || closed.ErrorCode != "" {
+		t.Fatalf("閉じた状態 = %q (%q, %q), want done", closed.State, closed.Error, closed.ErrorCode)
+	}
+	scans.Wait()
+	if scans.SupersedeWatchScan(context.Background()) {
+		t.Fatal("何も走っていないのに止めたと答えた")
+	}
+}
+
+// 手動の走査は取って代わられず、走り続ける。
+func TestSupersedeWatchScanLeavesManualScan(t *testing.T) {
+	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	<-scanner.started
+
+	if scans.SupersedeWatchScan(context.Background()) {
+		t.Fatal("手動の走査を止めてしまった")
+	}
+	close(scanner.release)
+	if closed := store.waitFinished(t); closed.State != domain.ScanDone {
+		t.Fatalf("閉じた状態 = %q, want done", closed.State)
+	}
+	scans.Wait()
 }
