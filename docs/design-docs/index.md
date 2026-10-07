@@ -55,3 +55,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Tag admin screen at scale (top bar, band, tabs, sort, selection and bulk actions): UI](../../specs/036-tag-admin-scale/ui-design.md)
 - [vv design system on shadcn/ui (foundations, components, page patterns): UI](../../specs/038-design-system/ui-design.md)
 - [Hidden tags behind a card's `+N`, visible and pressable at any count: UI](../../specs/041-tag-overflow-list/ui-design.md)
+- [Auto-import of changed media folders (setting, problem notice, quiet result notice): UI](../../specs/042-folder-watch-import/ui-design.md)
