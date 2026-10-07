@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/quickstart.md
-sourceHash: f312e3ad34faa4064b8980ad840adf5cd534aabd007d571af844eabfb4a2962e
+sourceHash: d18f2fa379d9d2e946e752a2ebb151da34a9cda9a1b8e52e68d1b51971f26863
 ---
 
 # クイックスタート: メディアフォルダに加えたファイルがスキャンなしで現れる {#quickstart-files-added-to-a-media-folder-appear-without-a-scan}
@@ -10,7 +10,7 @@ sourceHash: f312e3ad34faa4064b8980ad840adf5cd534aabd007d571af844eabfb4a2962e
 ## 前提条件 {#prerequisites}
 
 - ローカルのメディアフォルダを持つ、Linux の Docker で動く VVMDM ([Run with Docker](../../docs/how-to/running-vv.md))。アカウントを設定し、フォルダを Settings で加え、手動のスキャンを 1 回終えている。
-- ホストの `strace` と、`docker inspect -f '{{.State.Pid}}' <container>` で得たコンテナのプロセス id。
+- ホストの `strace` と、VVMDM のホスト上のプロセス id。`docker top <container>` が `PID` 列に挙げる。
 - Windows の行には、`nightly` リリースの `VVMDM.exe` と、ローカルの NTFS ドライブ上のフォルダ。
 
 ## 手順 {#steps}

@@ -10,8 +10,8 @@ rules with a fake watcher; they do not observe disk access.
 - VVMDM running in Docker on Linux with a local media folder
   ([Run with Docker](../../docs/how-to/running-vv.md)), the account set up, the
   folder added in Settings and one manual scan finished.
-- `strace` on the host, and the container's process id from
-  `docker inspect -f '{{.State.Pid}}' <container>`.
+- `strace` on the host, and the host process id of VVMDM, which
+  `docker top <container>` lists in its `PID` column.
 - For the Windows rows: `VVMDM.exe` from the `nightly` release with a folder on
   a local NTFS drive.
 
