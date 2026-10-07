@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"slices"
 	"sync"
 	"time"
@@ -123,8 +124,10 @@ type AutoImport struct {
 	armGen int
 	arms   sync.WaitGroup
 
-	// dirty は読み直す必要のあるディレクトリである。
-	dirty []domain.DirtyDirectory
+	// dirty は読み直す必要のあるディレクトリである。dirtyKeys は dirty の中身を引く鍵で、同じ
+	// ディレクトリの変更の報告が続いても、dirty は変わったディレクトリの数でしか増えない。
+	dirty     []domain.DirtyDirectory
+	dirtyKeys map[domain.DirtyDirectory]struct{}
 	// inflight は走っている監視の走査が読んでいるディレクトリである。
 	inflight []domain.DirtyDirectory
 	timer    ClockTimer
@@ -136,6 +139,11 @@ type AutoImport struct {
 	holding int
 	// finishes は走査が閉じた回数。判断の途中で走査が閉じたかを見るのに使う。
 	finishes int
+	// lostGen は通知の取りこぼし（events_lost）を記録した回数、scanLostGen は走っている手動の
+	// 走査が始まったときの lostGen である。走査が始まったあとの取りこぼしは、その走査が
+	// 読み終えたディレクトリのものかもしれないので、走査が閉じても解けない。
+	lostGen     int
+	scanLostGen int
 }
 
 // NewAutoImport は自動の取り込みを組み立てる。Start を呼ぶまで何も監視しない。
@@ -204,9 +212,11 @@ func (a *AutoImport) Stop() {
 	a.mu.Unlock()
 	// 判断の途中にある開始を待つ。これより後の開始は、stopped を見て諦める。
 	a.quiesceStarts()
-	a.watcher.Disarm()
+	// Disarm は監視の goroutine の終わりを待つ。その goroutine が応答しないマウントを読んでいても
+	// Stop が止まらないよう、Disarm も上限つきの待ちに含める。
 	done := make(chan struct{})
 	go func() {
+		a.watcher.Disarm()
 		a.arms.Wait()
 		close(done)
 	}()
@@ -244,8 +254,33 @@ func (a *AutoImport) requeueLocked(batch []domain.DirtyDirectory) {
 	if len(batch) == 0 {
 		return
 	}
-	a.dirty = append(a.dirty, batch...)
+	a.addDirtyLocked(batch...)
 	a.inflight = nil
+}
+
+// addDirtyLocked は dirs を変わったディレクトリの集合へ足す。すでにあるものは足さない。
+func (a *AutoImport) addDirtyLocked(dirs ...domain.DirtyDirectory) {
+	for _, dir := range dirs {
+		if dir.Path == "" {
+			continue
+		}
+		dir.Path = filepath.Clean(dir.Path)
+		if _, ok := a.dirtyKeys[dir]; ok {
+			continue
+		}
+		if a.dirtyKeys == nil {
+			a.dirtyKeys = map[domain.DirtyDirectory]struct{}{}
+		}
+		a.dirtyKeys[dir] = struct{}{}
+		a.dirty = append(a.dirty, dir)
+	}
+}
+
+// takeDirtyLocked は変わったディレクトリの集合を取り出して空にする。
+func (a *AutoImport) takeDirtyLocked() []domain.DirtyDirectory {
+	taken := a.dirty
+	a.dirty, a.dirtyKeys = nil, nil
+	return taken
 }
 
 // Status は保存された選択と、監視の今の状態を返す。
@@ -302,7 +337,8 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 	if !enabled {
 		a.holding--
 		a.state = domain.FolderWatchOff
-		a.dirty, a.inflight = nil, nil
+		a.takeDirtyLocked()
+		a.inflight = nil
 		a.cancelTimerLocked()
 		a.armGen++
 	}
@@ -354,7 +390,7 @@ func (a *AutoImport) Changed(dir domain.DirtyDirectory) {
 	if !a.enabled || !a.started || a.stopped {
 		return
 	}
-	a.dirty = append(a.dirty, dir)
+	a.addDirtyLocked(dir)
 	a.scheduleLocked(a.quiet)
 }
 
@@ -364,6 +400,9 @@ func (a *AutoImport) WatchProblem(problem domain.FolderWatchProblem) {
 	defer a.mu.Unlock()
 	if !a.enabled || a.stopped {
 		return
+	}
+	if problem.Kind == domain.FolderWatchProblemEventsLost {
+		a.lostGen++
 	}
 	a.problem = &problem
 	a.state = domain.FolderWatchLimited
@@ -460,7 +499,9 @@ func (a *AutoImport) disarmIfOff() {
 
 // ScanFinished は走査が閉じたことを受ける。監視の走査なら、読んでいたディレクトリを手放す。
 // 取り込めずに残ったディレクトリがあれば、静止の予約を入れ直す。手動の走査が done で閉じたなら、
-// 全体を読み直したので、通知を取りこぼした問題は解ける（contracts/screen-api.md）。
+// 全体を読み直したので、通知を取りこぼした問題は解ける（contracts/screen-api.md）。ただし、
+// その走査が始まったあとに報告された取りこぼしは、読み終えたディレクトリのものかもしれないので
+// 解かず、次の手動の走査まで見せる。
 func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanState) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -469,7 +510,8 @@ func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanSta
 		a.inflight = nil
 	}
 	if origin == domain.ScanOriginManual && state == domain.ScanDone &&
-		a.problem != nil && a.problem.Kind == domain.FolderWatchProblemEventsLost {
+		a.problem != nil && a.problem.Kind == domain.FolderWatchProblemEventsLost &&
+		a.lostGen == a.scanLostGen {
 		a.problem = nil
 		if a.state == domain.FolderWatchLimited {
 			a.state = domain.FolderWatchActive
@@ -477,6 +519,16 @@ func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanSta
 	}
 	if a.enabled && !a.stopped && len(a.dirty) > 0 {
 		a.scheduleLocked(a.quiet)
+	}
+}
+
+// ScanStarted は走査が始まったことを受ける。手動の走査なら、その時点までに報告された取りこぼしを
+// その走査が覚える。走査の錠を持って呼ばれるので、短く戻る。
+func (a *AutoImport) ScanStarted(origin domain.ScanOrigin) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if origin == domain.ScanOriginManual {
+		a.scanLostGen = a.lostGen
 	}
 }
 
@@ -519,8 +571,7 @@ func (a *AutoImport) fire(seq int) {
 		return
 	}
 	a.batching = true
-	taken := domain.NormalizeDirtyDirectories(a.dirty)
-	a.dirty = nil
+	taken := domain.NormalizeDirtyDirectories(a.takeDirtyLocked())
 	ctx := a.ctx
 	finishes := a.finishes
 	a.mu.Unlock()
@@ -529,7 +580,7 @@ func (a *AutoImport) fire(seq int) {
 
 	a.mu.Lock()
 	if a.enabled && !a.stopped {
-		a.dirty = append(a.dirty, unsettled...)
+		a.addDirtyLocked(unsettled...)
 		if len(unsettled) > 0 {
 			a.scheduleLocked(wait)
 		}
@@ -564,7 +615,7 @@ func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory,
 	}
 	if a.holding > 0 {
 		// フォルダの変更の途中である。FoldersChanged が残りを予約する。
-		a.dirty = append(a.dirty, settled...)
+		a.addDirtyLocked(settled...)
 		a.mu.Unlock()
 		return
 	}
@@ -581,7 +632,7 @@ func (a *AutoImport) start(ctx context.Context, settled []domain.DirtyDirectory,
 	if a.stopped || !a.enabled {
 		return
 	}
-	a.dirty = append(a.dirty, settled...)
+	a.addDirtyLocked(settled...)
 	switch {
 	case err != nil:
 		a.logger.Warn("could not start a watch scan", slog.Any("error", err))

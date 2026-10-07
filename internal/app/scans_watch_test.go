@@ -88,3 +88,34 @@ func TestOnFinishReportsOriginAndState(t *testing.T) {
 		t.Fatalf("知らせ = %v, want %v", got, want)
 	}
 }
+
+// 走査を始めるたびに、始めた主体を知らせる。
+func TestOnStartReportsOrigin(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	var mu sync.Mutex
+	var got []domain.ScanOrigin
+	scans.OnStart(func(origin domain.ScanOrigin) {
+		mu.Lock()
+		defer mu.Unlock()
+		got = append(got, origin)
+	})
+
+	if _, _, err := scans.StartWatchScan(context.Background(), []domain.DirtyDirectory{{Path: fixturePath("/media/a")}}); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	want := []domain.ScanOrigin{domain.ScanOriginWatch, domain.ScanOriginManual}
+	if !slices.Equal(got, want) {
+		t.Fatalf("知らせ = %v, want %v", got, want)
+	}
+}
