@@ -77,6 +77,9 @@ describe("SettingsPage", () => {
       // 「Network」区画は NetworkSection.test.tsx が確かめる。ここではデスクトップ版でない。
       if (String(input) === "/api/settings/network")
         return Promise.resolve(json({ code: "not_found", message: "not found" }, 404));
+      // 「Auto-import」区画は AutoImportSection.test.tsx が確かめる。ここでは切れている。
+      if (String(input) === "/api/settings/auto-import")
+        return Promise.resolve(json({ enabled: false, watch: { state: "off" } }));
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({

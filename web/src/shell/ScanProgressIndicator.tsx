@@ -68,7 +68,11 @@ export default function ScanProgressIndicator() {
     (presentation.state !== "starting" &&
       presentation.scan !== null &&
       presentation.scan.id === notice.dismissedScanId);
-  const visible = !dismissed && (inProgressState(presentation.state) || terminalVisible);
+  // 走っている自動の取り込みは右下に出さない。終わりが失敗を伴うときだけ、結果として出す
+  // （ScanNoticeProvider が通知を決める）。
+  const visible =
+    !dismissed &&
+    ((inProgressState(presentation.state) && !presentation.watch) || terminalVisible);
 
   const clearPointerCloseTimer = () => {
     if (pointerCloseTimer.current !== null) {

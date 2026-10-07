@@ -43,6 +43,12 @@ export interface ScanPresentation {
   issues: { failed: number; substituted: number };
   error: UiText | null;
   refreshing: boolean;
+  /**
+   * フォルダの監視が始めた取り込み（`origin` が `watch`）である。走っているあいだは画面のどこにも
+   * 出さず（状態の言葉も進み具合も無い）、終わったあとだけ自動の取り込みの言葉で示す
+   * （specs/042-folder-watch-import/ui-design.md「Words」）。開始の途中は手動の取り込みなので false。
+   */
+  watch: boolean;
 }
 
 /** inProgressState は、取り込みがまだ終わっていない画面の状態かを返す。 */
@@ -88,6 +94,35 @@ function detailFor(
 
 const noIssues = { failed: 0, substituted: 0 };
 
+/**
+ * presentWatchScan は自動の取り込みの表示である。走っているあいだは状態の言葉・進み具合・
+ * 今の処理・本数を持たない。終わったあとは、状態の言葉だけを自動の取り込みのものにし、
+ * 完了の時刻・本数・一覧は手動と同じに出す。進み具合は終わっても出さない。
+ */
+function presentWatchScan(
+  scan: Scan,
+  state: ScanPresentationState,
+  loadError: UiText | null,
+): ScanPresentation {
+  const text = t.shell.scan;
+  const ended = state === "done" || state === "partial" || state === "failed";
+  return {
+    state,
+    scan,
+    statusText: ended ? text.watchStatus[state] : null,
+    videos: null,
+    progressText: null,
+    bar: "none",
+    detail: ended ? detailFor(state, scan, null) : null,
+    issues: ended
+      ? { failed: scan.issues.failed, substituted: scan.issues.substituted }
+      : noIssues,
+    error: loadError,
+    refreshing: loadError !== null,
+    watch: true,
+  };
+}
+
 /** Converts the scan context into the shared state model used by shell views. */
 export function presentScan(value: ScanContextValue): ScanPresentation {
   const { scan } = value;
@@ -107,6 +142,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       issues: noIssues,
       error: value.error,
       refreshing: false,
+      watch: false,
     };
   }
 
@@ -122,10 +158,12 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       issues: noIssues,
       error: value.error,
       refreshing: loadError !== null,
+      watch: false,
     };
   }
 
   const state: ScanPresentationState = scan.status;
+  if (scan.origin === "watch") return presentWatchScan(scan, state, loadError);
   // finding のあいだは数字を出さない（割合も出さない）。
   const counted = state !== "finding" && scan.videos !== undefined;
   const total = counted ? (scan.videos?.total ?? 0) : 0;
@@ -158,6 +196,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     issues: { failed: scan.issues.failed, substituted: scan.issues.substituted },
     error: value.error,
     refreshing: loadError !== null,
+    watch: false,
   };
 }
 
@@ -177,6 +216,13 @@ export function issueCountTexts(presentation: ScanPresentation): UiText[] {
  * 節目だけにし、今の処理や進み具合の変化では何も読み上げない。
  */
 export function statusAnnouncement(presentation: ScanPresentation): UiText | null {
+  if (presentation.watch) {
+    // 自動の取り込みは、終わりが失敗を伴うときだけ知らせる（完了は知らせない）。
+    const watch = t.shell.scan.watchAnnounce;
+    if (presentation.state === "partial")
+      return watch.partial(presentation.issues.failed);
+    return presentation.state === "failed" ? watch.failed : null;
+  }
   const announce = t.shell.scan.announce;
   switch (presentation.state) {
     case "done":

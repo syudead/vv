@@ -20,6 +20,7 @@ import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
+import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
@@ -159,7 +160,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     if (!listing.loading && !videos.loading) reloadPending.current = false;
   }, [listing.loading, videos.loading]);
   const { reload: reloadListing } = listing;
-  const { reload: reloadVideos } = videos;
+  const { reload: reloadVideos, refreshInPlace: refreshVideos } = videos;
+  const { refresh: refreshListing } = listing;
+  // 自動の取り込みが終わったら、子フォルダと動画の一覧を消さずにその場で取り直す。
+  const refreshOpenLists = useCallback(() => {
+    refreshListing();
+    refreshVideos();
+  }, [refreshListing, refreshVideos]);
+  useWatchScanRefresh(refreshOpenLists);
   useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;

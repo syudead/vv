@@ -19,7 +19,13 @@ import {
   type TagRef,
 } from "./client";
 import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favorites";
-import { folderRefKey, groupRef, groupsWithMembers, videoItem } from "./libraryItems";
+import {
+  folderRefKey,
+  groupRef,
+  groupsWithMembers,
+  itemKey,
+  videoItem,
+} from "./libraryItems";
 import type { useGroupRefresh } from "./useGroupRefresh";
 import type { useItemRefresh } from "./useItemRefresh";
 import type { VideosCriteria } from "./videosCriteria";
@@ -95,12 +101,36 @@ export function useVideoPages({
   // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。
   const inFlight = useRef<AbortController | null>(null);
+  // その場の更新（keep）の要求。1つだけ走らせ、条件の変更や続きの取得が来たら打ち切る。
+  const keepInFlight = useRef<AbortController | null>(null);
+  // ページの取得の途中で更新を求められたとき、その取得が終わってからやり直す。
+  const refreshAfterPage = useRef(false);
+  // その場の更新の途中で続きの取得を求められたとき、更新が終わってから続きを取る。
+  // 更新を打ち切ると、先頭のページが置き換わらない。
+  const moreAfterRefresh = useRef(false);
+  const cursorRef = useRef(cursor);
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
+  const fetchPageRef = useRef<
+    ((from: string | undefined, replace: boolean, keep?: number) => Promise<void>) | null
+  >(null);
 
+  /**
+   * fetchPage は1ページを取る。`keep` を与えると、条件の変更ではなく取り込みの結果を
+   * その場で取り込む更新になる。読み込み済みの件数に届くまで先頭からページを取り直して
+   * 置き換え、置き換わるまで今の項目を見せ続ける（一覧を消さず、読み込み中の表示も出さない。
+   * スクロールの位置と選択はそのまま）。失敗は静かに捨てて今の一覧を残す
+   * （specs/042-folder-watch-import/ui-design.md「Open lists after a watch scan」）。
+   */
   const fetchPage = useCallback(
-    async (from: string | undefined, replace: boolean) => {
+    async (from: string | undefined, replace: boolean, keep?: number) => {
       inFlight.current?.abort();
+      keepInFlight.current = null;
+      if (keep === undefined) moreAfterRefresh.current = false;
       const controller = new AbortController();
       inFlight.current = controller;
+      if (keep !== undefined) keepInFlight.current = controller;
       pageLoading.current = true;
       changedWhileLoading.current.clear();
       progressChangedWhileLoading.current.clear();
@@ -123,7 +153,9 @@ export function useVideoPages({
         tagsChangedWhileLoading.current.clear();
       }
 
-      if (replace) {
+      if (keep !== undefined) {
+        // 表示中の項目はそのままにする。
+      } else if (replace) {
         setLoading(true);
         setError(null);
         setNotFound(false);
@@ -131,6 +163,8 @@ export function useVideoPages({
         setLoadingMore(true);
       }
 
+      // その場の更新が終わったあとに続きを取るときの、続きのカーソル。
+      let resumeCursor: string | undefined;
       const mark = visibilityMark();
       const favoriteSince = favoriteMark();
       try {
@@ -146,13 +180,18 @@ export function useVideoPages({
           cursor: from,
           signal: controller.signal,
         };
-        const fetched =
+        const fetchOne = (cursorFrom: string | undefined) =>
           target !== undefined
-            ? await listFolderVideos({ folder: target, scope: current.scope, ...params })
+            ? listFolderVideos({
+                folder: target,
+                scope: current.scope,
+                ...params,
+                cursor: cursorFrom,
+              })
             : libraryRef.current
-              ? await listLibrary({ ...params, tag: current.tag })
-              : await listVideos({ ...params, tag: current.tag });
-        const page = {
+              ? listLibrary({ ...params, cursor: cursorFrom, tag: current.tag })
+              : listVideos({ ...params, cursor: cursorFrom, tag: current.tag });
+        const toPage = (fetched: Awaited<ReturnType<typeof fetchOne>>) => ({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {
             if ("kind" in item) {
@@ -172,10 +211,38 @@ export function useVideoPages({
               withFavoriteSince(withVisibilitySince(item, mark), favoriteSince),
             );
           }),
-        };
+        });
+        let page = toPage(await fetchOne(from));
+        if (keep !== undefined) {
+          // 読み込み済みの件数に届くまで続きを取り、1つの先頭からの一覧にまとめる。
+          // 取っている間にずれてページの境で重なった項目は、1つにする。
+          // 重なりはその場で除き、重ならない項目が件数に届くまで取る（重なった分を
+          // 数えて早く止めると、続きがあるのに件数が足りなくなる）。
+          const seen = new Set<string>();
+          const gathered: LibraryItem[] = [];
+          const gather = (items: LibraryItem[]) => {
+            for (const item of items) {
+              const itemId = itemKey(item);
+              if (seen.has(itemId)) continue;
+              seen.add(itemId);
+              gathered.push(item);
+            }
+          };
+          gather(page.items);
+          while (gathered.length < keep && page.nextCursor !== undefined) {
+            page = toPage(await fetchOne(page.nextCursor));
+            gather(page.items);
+          }
+          page = { ...page, items: gathered };
+        }
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
+        if (keep !== undefined && page.items.length > page.total) {
+          // 取っている間にライブラリが変わり、ページを結べなかった。今の一覧を残す。
+          resumeCursor = cursorRef.current;
+          return;
+        }
         if (replace && page.items.length > page.total) {
           if (!resyncAttempted.current) {
             resyncAttempted.current = true;
@@ -188,6 +255,7 @@ export function useVideoPages({
           return;
         }
         if (replace) resyncAttempted.current = false;
+        if (keep !== undefined) resumeCursor = page.nextCursor;
         const shownBefore = new Set(shownVideoIds(itemsRef.current));
         dispatch({ type: "page", page, replace });
         const changed = shownVideoIds(page.items).filter((id) =>
@@ -270,6 +338,11 @@ export function useVideoPages({
         ) {
           return;
         }
+        // その場の更新の失敗は、今の一覧を残して静かに捨てる。
+        if (keep !== undefined) {
+          resumeCursor = cursorRef.current;
+          return;
+        }
         if (
           folderRef.current !== undefined &&
           failure instanceof RequestFailed &&
@@ -290,9 +363,22 @@ export function useVideoPages({
       } finally {
         if (!controller.signal.aborted) {
           pageLoading.current = false;
+          if (keepInFlight.current === controller) keepInFlight.current = null;
           setLoading(false);
           setLoadingMore(false);
           notifyIfIdle();
+          const resumeMore = moreAfterRefresh.current && keep !== undefined;
+          if (keep !== undefined) moreAfterRefresh.current = false;
+          if (refreshAfterPage.current) {
+            refreshAfterPage.current = false;
+            void fetchPageRef.current?.(
+              undefined,
+              true,
+              Math.max(itemsRef.current.length, 1),
+            );
+          } else if (resumeMore && resumeCursor !== undefined) {
+            void fetchPageRef.current?.(resumeCursor, false);
+          }
         }
       }
     },
@@ -328,6 +414,10 @@ export function useVideoPages({
       unsettledGroups,
     ],
   );
+
+  useEffect(() => {
+    fetchPageRef.current = fetchPage;
+  }, [fetchPage]);
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
   //
@@ -381,11 +471,19 @@ export function useVideoPages({
     if (loading || loadingMore || !hasMore || cursor === undefined) {
       return;
     }
+    if (keepInFlight.current !== null) {
+      moreAfterRefresh.current = true;
+      return;
+    }
     void fetchPage(cursor, false);
   }, [cursor, fetchPage, hasMore, loading, loadingMore]);
 
   const retryLoadMore = useCallback(() => {
     if (loading || loadingMore || cursor === undefined) return;
+    if (keepInFlight.current !== null) {
+      moreAfterRefresh.current = true;
+      return;
+    }
     void fetchPage(cursor, false);
   }, [cursor, fetchPage, loading, loadingMore]);
 
@@ -394,5 +492,15 @@ export function useVideoPages({
     setGeneration((value) => value + 1);
   }, [resyncAttempted, setGeneration]);
 
-  return { loadMore, retryLoadMore, reload };
+  // refreshInPlace は、読み込み済みのページを取り直して置き換える。reload と違い、一覧を
+  // 消さずに今の項目を見せ続ける。ほかのページの取得の途中なら、それが終わってからやり直す。
+  const refreshInPlace = useCallback(() => {
+    if (pageLoading.current && keepInFlight.current === null) {
+      refreshAfterPage.current = true;
+      return;
+    }
+    void fetchPage(undefined, true, Math.max(itemsRef.current.length, 1));
+  }, [fetchPage, itemsRef, pageLoading]);
+
+  return { loadMore, retryLoadMore, reload, refreshInPlace };
 }

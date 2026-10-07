@@ -40,7 +40,10 @@ You need Task and Docker.
 A change in a media folder (a file added, deleted, moved or renamed) is read
 without a scan: VVMDM re-reads only the directories that changed, about 15 s
 after the last change, and nothing is read while nothing changes
-([Folder watching](../design-docs/folder-watching.md)). The full scan stays
+([Folder watching](../design-docs/folder-watching.md)). The owner turns this
+on or off with the switch under Auto-import in Settings, which also says
+whether VVMDM is watching. A failed read is reported at the bottom right; a
+successful one is silent and open lists update in place. The full scan stays
 manual, and changes made while VVMDM was stopped or auto-import was off wait
 for it. Source videos are never modified, moved, deleted or converted. During
 and after a scan:

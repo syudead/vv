@@ -346,7 +346,7 @@ export function useVideos(
     staleGroups,
   ]);
 
-  const { loadMore, retryLoadMore, reload } = useVideoPages({
+  const { loadMore, retryLoadMore, reload, refreshInPlace } = useVideoPages({
     key,
     folderKey,
     criteriaRef,
@@ -389,6 +389,7 @@ export function useVideos(
     loadMore,
     retryLoadMore,
     reload,
+    refreshInPlace,
     staleGroups: unsettledGroupRefs,
   };
 }
