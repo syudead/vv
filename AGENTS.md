@@ -53,6 +53,9 @@ file into a handbook.
 - Before building or changing a screen, read
   [docs/design-docs/design-system.md](docs/design-docs/design-system.md); it
   routes to the registry of components, tokens and rules every screen uses.
+- Before writing or moving Web tests, read
+  [docs/design-docs/web-testing.md](docs/design-docs/web-testing.md) for the
+  level each behaviour is tested at.
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).
