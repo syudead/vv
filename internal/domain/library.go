@@ -161,8 +161,10 @@ const (
 
 // Scan は走査1回の記録である。進捗として API に出る。
 type Scan struct {
-	ID         int64
-	State      ScanState
+	ID    int64
+	State ScanState
+	// Origin は走査を始めた主体である。アップグレード前の行は manual になる。
+	Origin     ScanOrigin
 	StartedAt  time.Time
 	FinishedAt time.Time
 	Total      int

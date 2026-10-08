@@ -7,6 +7,7 @@ import { useRootFolders } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { useScanControls } from "../shell/ScanProvider";
+import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { ListPage } from "../ui/patterns/list-page";
 import { PageHeader } from "../ui/patterns/page-header";
@@ -76,7 +77,8 @@ export default function RootView() {
   const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(scan.finished?.id);
-  const { reload } = roots;
+  const { reload, refresh } = roots;
+  useWatchScanRefresh(refresh);
   useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;

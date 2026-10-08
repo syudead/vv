@@ -11,6 +11,7 @@ import { useVideos } from "../api/useVideos";
 import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import type { ListCriteria } from "../videoList/listCriteria";
 import { CardGrid } from "../ui/patterns/card-grid";
 import { resultCountText } from "../videoList/listSummary";
@@ -60,6 +61,7 @@ export default function RootSearchResults({
     loadMore,
     retryLoadMore,
     reload,
+    refreshInPlace,
     staleGroups,
   } = useVideos(criteria, restored);
 
@@ -73,6 +75,7 @@ export default function RootSearchResults({
   const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
+  useWatchScanRefresh(refreshInPlace);
   useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;

@@ -91,6 +91,8 @@ export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"]
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
+export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
+export type FolderWatch = components["schemas"]["FolderWatch"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
 export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
@@ -789,6 +791,27 @@ export function updateNetworkSettings(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lanAccess }),
+    signal,
+  });
+}
+
+/**
+ * getAutoImportSettings は自動の取り込みの選択と、監視が今していることを取得する
+ * （specs/042-folder-watch-import/contracts/screen-api.md）。
+ */
+export function getAutoImportSettings(signal?: AbortSignal): Promise<AutoImportSettings> {
+  return request<AutoImportSettings>("/api/settings/auto-import", { signal });
+}
+
+/** updateAutoImportSettings は選択を保存し、保存後の状態を返す。取り込みは始めない。 */
+export function updateAutoImportSettings(
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<AutoImportSettings> {
+  return request<AutoImportSettings>("/api/settings/auto-import", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
     signal,
   });
 }

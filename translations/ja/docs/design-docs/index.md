@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 2464032ff2f85d45144e10a75768b38df9c1e7456451f438ed9a63aa2004bf5c
+sourceHash: 0468eb6b34e48eeed831afdba46cc1c01d5bbe6c7caf45a88314ab53681e1a69
 ---
 
 # 設計文書 {#design-documents}
@@ -26,6 +26,7 @@ sourceHash: 2464032ff2f85d45144e10a75768b38df9c1e7456451f438ed9a63aa2004bf5c
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [Windows デスクトップアプリ (VVMDM.exe)](windows-app.md)
 - [プロセスのライフサイクル: 起動と停止の順序](process-lifecycle.md)
+- [フォルダの監視: 変更のあったメディアフォルダの取り込み](folder-watching.md)
 - [再生画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [隣の字幕ファイル](sidecar-subtitles.md)
@@ -54,3 +55,4 @@ sourceHash: 2464032ff2f85d45144e10a75768b38df9c1e7456451f438ed9a63aa2004bf5c
 - [規模の大きいタグ管理画面 (上部バー、帯、タブ、並び順、選択、一括操作): UI](../../specs/036-tag-admin-scale/ui-design.md)
 - [shadcn/ui 上の vv デザインシステム (基礎、コンポーネント、ページのパターン): UI](../../specs/038-design-system/ui-design.md)
 - [カードの `+N` の裏に隠れたタグを、何個でも見えて押せるようにする: UI](../../specs/041-tag-overflow-list/ui-design.md)
+- [変更されたメディアフォルダの自動取り込み (設定、問題の知らせ、静かな結果の知らせ): UI](../../specs/042-folder-watch-import/ui-design.md)

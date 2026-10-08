@@ -18,6 +18,9 @@ type ScanStore interface {
 	// ResumeScan は StartScan と同じだが、中断で終わった走査 from の対象の動画の
 	// 集合と、仕事の段階の問題（失敗と代用）を新しい走査へ持ち越す。
 	ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error)
+	// StartWatchScan は StartScan と同じだが、origin が watch の走査の行を作り、前の走査の
+	// 問題のうち dirs の読む範囲の外のものを新しい走査へ持ち越す。
+	StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
@@ -55,6 +58,10 @@ type FolderIndexStore interface {
 // *Scanner がこれを満たす。
 type Scanner interface {
 	Scan(ctx context.Context) (domain.ScanResult, error)
+	// ScanScoped は dirs のディレクトリだけを読み、消すのもその範囲の所在だけにする。
+	// ctx が domain.ErrScanSuperseded を理由に取り消されたら、何も消さずに
+	// domain.ErrScanSuperseded を返す。
+	ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error)
 }
 
 // ScanReporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。
@@ -124,7 +131,14 @@ type Scans struct {
 	mu      sync.Mutex
 	running bool
 	// cancelRun は走っている走査の context を取り消す。走っていなければ nil。
-	cancelRun context.CancelFunc
+	cancelRun context.CancelCauseFunc
+	// runOrigin と runFinished は走っている走査の origin と、その終わりを知らせる channel である。
+	runOrigin   domain.ScanOrigin
+	runFinished chan struct{}
+	// onFinish は走査を閉じたあとに、走査の錠を持って呼ぶ。nil なら呼ばない。
+	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
+	// onStart は走査を始めるたびに、走査の錠を持って呼ぶ。nil なら呼ばない。
+	onStart func(origin domain.ScanOrigin)
 	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
 	// 走査は、始めた直後に取り消す。
 	stopped bool
@@ -166,13 +180,54 @@ func NewScans(opts ScansOptions) *Scans {
 // ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
+//
+// 走っているのが監視の走査なら、それを止めてから始める（research.md R-5）。止めた直後に
+// 監視が次の走査を始めて取り合ったときは、もう一度止めて始め直す。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
-	return s.start(ctx, s.store.StartScan)
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		s.SupersedeWatchScan(ctx)
+		scan, started, err := s.start(ctx, s.store.StartScan, nil)
+		if err != nil || started || scan.Origin != domain.ScanOriginWatch || attempt >= attempts {
+			return scan, started, err
+		}
+	}
 }
 
-// start は open で走査の行を作り、新しく作ったなら背後で走らせる。
+// StartWatchScan は変わったディレクトリ dirs だけを読む走査を、フォルダの監視の走査
+// （origin が watch）として始める。実行中の走査があれば、新しく始めずにそれを返す。
+// 打ち切りと出力は StartScan と同じである
+// （specs/042-folder-watch-import/research.md R-4）。
+func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
+	dirs = domain.NormalizeDirtyDirectories(dirs)
+	return s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
+		return s.store.StartWatchScan(ctx, dirs)
+	}, &dirs)
+}
+
+// SupersedeWatchScan は走っている監視の走査を次のファイルの前で止め、何も消さずに done で
+// 閉じさせ、閉じるまで待つ。走っているのが手動の走査か、何も走っていなければ何もしない。
+// 止めたら true を返す（research.md R-5）。
+func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
+	s.mu.Lock()
+	if !s.running || s.runOrigin != domain.ScanOriginWatch || s.cancelRun == nil {
+		s.mu.Unlock()
+		return false
+	}
+	finished := s.runFinished
+	s.cancelRun(domain.ErrScanSuperseded)
+	s.mu.Unlock()
+	select {
+	case <-finished:
+	case <-ctx.Done():
+	}
+	return true
+}
+
+// start は open で走査の行を作り、新しく作ったなら背後で走らせる。dirs が nil でなければ、
+// その範囲だけを読む監視の走査である。
 func (s *Scans) start(
-	ctx context.Context, open func(context.Context) (domain.Scan, bool, error),
+	ctx context.Context, open func(context.Context) (domain.Scan, bool, error), dirs *[]domain.DirtyDirectory,
 ) (domain.Scan, bool, error) {
 	scan, started, err := open(ctx)
 	if err != nil {
@@ -195,12 +250,20 @@ func (s *Scans) start(
 	// 走査は要求の ctx の取り消しを受け継がない（WithoutCancel）。受け継ぐと
 	// 応答を返した時点で走査が打ち切られる。止めるのは、組み立て時に渡した
 	// 寿命の長い context が取り消されたときの stopRuns だけである。
-	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	s.cancelRun = cancel
-	if s.stopped {
-		cancel()
+	s.runOrigin = domain.ScanOriginManual
+	s.runFinished = make(chan struct{})
+	if dirs != nil {
+		s.runOrigin = domain.ScanOriginWatch
 	}
-	go s.run(runCtx, scan.ID)
+	if s.stopped {
+		cancel(nil)
+	}
+	if s.onStart != nil {
+		s.onStart(s.runOrigin)
+	}
+	go s.run(runCtx, scan.ID, s.runFinished, dirs)
 
 	s.scanChanged()
 	scan, err = s.withImport(ctx, scan)
@@ -317,6 +380,22 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 	return nil
 }
 
+// OnFinish は走査を閉じるたびに呼ぶ関数を登録する。origin は閉じた走査を始めた主体で、
+// 関数は走査の錠を取らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onFinish = f
+}
+
+// OnStart は走査を新しく始めるたびに呼ぶ関数を登録する。関数は走査の錠を持って呼ばれるので、
+// 走査を触らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+func (s *Scans) OnStart(f func(origin domain.ScanOrigin)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.onStart = f
+}
+
 // Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
 // 取り消したあとに呼ぶ。
 //
@@ -332,8 +411,10 @@ func (s *Scans) Wait() {
 // 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
 // ないので含めない。
 func (s *Scans) Busy(ctx context.Context) (bool, error) {
+	// 監視の走査は利用者に見えない取り込みなので、走っていても取り込みの途中とは数えない
+	// （specs/042-folder-watch-import/research.md R-4）。
 	s.mu.Lock()
-	running := s.running
+	running := s.running && s.runOrigin != domain.ScanOriginWatch
 	s.mu.Unlock()
 	if running {
 		return true, nil
@@ -396,12 +477,15 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted {
+	// 中断した監視の走査は閉じるだけで、続きは始めない。起動時にディレクトリを読み直さない
+	// ためで、止まっていた間の変更は手動の走査が受け持つ（specs/042-folder-watch-import/research.md R-8）。
+	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted ||
+		latest.Origin == domain.ScanOriginWatch {
 		return false, nil
 	}
 	scan, started, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
 		return s.store.ResumeScan(ctx, latest.ID)
-	})
+	}, nil)
 	if err != nil {
 		return false, err
 	}
@@ -429,19 +513,31 @@ func (s *Scans) stopRuns() {
 	defer s.mu.Unlock()
 	s.stopped = true
 	if s.cancelRun != nil {
-		s.cancelRun()
+		s.cancelRun(nil)
 	}
 }
 
 // run は走査を最後まで走らせ、結果を記録する。
-func (s *Scans) run(ctx context.Context, scanID int64) {
+func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory) {
 	defer s.done.Done()
+	origin := domain.ScanOriginManual
+	if dirs != nil {
+		origin = domain.ScanOriginWatch
+	}
+	endState := domain.ScanFailed
 	defer func() {
 		s.mu.Lock()
 		s.running = false
-		s.cancelRun()
+		s.cancelRun(nil)
 		s.cancelRun = nil
+		// 閉じる知らせは走査の錠を持ったまま呼ぶ。錠を放してから呼ぶと、その隙に次の走査が
+		// 始まって開始の知らせが先に届き、閉じる走査が自分の開始時点の状態を取り違える。
+		// 知らせを受ける側は、この錠を取る呼び出しをしてはならない。
+		if s.onFinish != nil {
+			s.onFinish(origin, endState)
+		}
 		s.mu.Unlock()
+		close(finished)
 	}()
 
 	result, scanErr := func() (result domain.ScanResult, err error) {
@@ -453,6 +549,9 @@ func (s *Scans) run(ctx context.Context, scanID int64) {
 		if s.scanner == nil {
 			return domain.ScanResult{}, errors.New("scanner is not configured")
 		}
+		if dirs != nil {
+			return s.scanner.ScanScoped(ctx, *dirs)
+		}
 		return s.scanner.Scan(ctx)
 	}()
 	// 走査が途中で止まっても、登録中のファイルを今の処理に残さない。
@@ -461,6 +560,12 @@ func (s *Scans) run(ctx context.Context, scanID int64) {
 	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
 	// 理由は interrupted で、走査が包んだ理由より優先する（data-model.md §2）。
 	state := domain.ScanDone
+	if errors.Is(scanErr, domain.ErrScanSuperseded) && s.lifetime.Err() == nil {
+		// 取って代わられた走査は、何も消さずに終わる。失敗ではないので done で閉じる
+		// （research.md R-5）。
+		s.logger.Info("the watch scan was superseded", slog.Int("added", result.Added))
+		scanErr = nil
+	}
 	if scanErr != nil {
 		state = domain.ScanFailed
 		if ctx.Err() != nil || s.lifetime.Err() != nil {
@@ -494,6 +599,8 @@ func (s *Scans) run(ctx context.Context, scanID int64) {
 
 	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr); err != nil {
 		s.logger.Warn("could not record the end of the scan", slog.Any("error", err))
+	} else {
+		endState = state
 	}
 	s.scanChanged()
 }

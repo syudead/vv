@@ -230,6 +230,10 @@ func (finishedScanner) Scan(context.Context) (domain.ScanResult, error) {
 	return domain.ScanResult{}, nil
 }
 
+func (finishedScanner) ScanScoped(context.Context, []domain.DirtyDirectory) (domain.ScanResult, error) {
+	return domain.ScanResult{}, nil
+}
+
 // 購読者を1つ加えるには、購読者と、配り先への登録だけがあればよい。発行する
 // 側（保存層・取り込み・走査）は変えずに、定めたすべての変化が届く。
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {

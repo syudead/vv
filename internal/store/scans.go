@@ -21,7 +21,15 @@ import (
 // 仕事がある動画は新しい走査の対象へ持ち越す
 // （specs/024-import-progress/research.md R-3）。
 func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
-	return s.startScan(ctx, 0)
+	return s.startScan(ctx, 0, domain.ScanOriginManual, nil)
+}
+
+// StartWatchScan はフォルダの監視の走査を始める。StartScan と同じだが、origin は watch で、
+// 前の走査の問題のうち dirs の読む範囲の外のものは、消さずに新しい走査へ付け替える
+// （範囲の中は走査が読み直して見つけ直す。specs/042-folder-watch-import/data-model.md の Rules）。
+// 手動の走査は今までどおり、問題をすべて消す。
+func (s *ScanStore) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error) {
+	return s.startScan(ctx, 0, domain.ScanOriginWatch, dirs)
 }
 
 // ResumeScan は中断で終わった走査 from の続きとして走査を始める。StartScan と
@@ -33,12 +41,14 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 // 見つける種類（domain.ScanIssueKind.FromScan）は、新しい走査が見つけ直すので
 // 持ち越さない。
 func (s *ScanStore) ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
-	return s.startScan(ctx, from)
+	return s.startScan(ctx, from, domain.ScanOriginManual, nil)
 }
 
 // startScan は走査を始める。from が 0 でなければ、その走査の集合と仕事の段階の
-// 問題を新しい走査へ持ち越す。
-func (s *ScanStore) startScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
+// 問題を新しい走査へ持ち越す。origin が watch なら、dirs の外の問題も持ち越す。
+func (s *ScanStore) startScan(
+	ctx context.Context, from int64, origin domain.ScanOrigin, dirs []domain.DirtyDirectory,
+) (scan domain.Scan, started bool, err error) {
 	s.db.folderMu.Lock()
 	defer s.db.folderMu.Unlock()
 	var folderCount int
@@ -62,8 +72,8 @@ func (s *ScanStore) startScan(ctx context.Context, from int64) (scan domain.Scan
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`insert into scans (state, started_at, total, completed, failed) values ('running', ?, 0, 0, 0)`,
-		time.Now().Unix())
+		`insert into scans (state, origin, started_at, total, completed, failed) values ('running', ?, ?, 0, 0, 0)`,
+		string(origin), time.Now().Unix())
 	if err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
@@ -82,7 +92,13 @@ func (s *ScanStore) startScan(ctx context.Context, from int64) (scan domain.Scan
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
 	}
-	// 前の走査の問題は新しい取り込みに持ち越さない（research.md R-3）。
+	// 手動の走査は、前の走査の問題を新しい取り込みに持ち越さない（research.md R-3）。
+	// 監視の走査は、自分が読み直さない範囲の問題を持ち越す。
+	if origin == domain.ScanOriginWatch {
+		if err := carryWatchIssues(ctx, tx, id, dirs); err != nil {
+			return domain.Scan{}, false, err
+		}
+	}
 	cleared, err := tx.ExecContext(ctx, `delete from scan_issues where scan_id <> ?`, id)
 	if err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's issues: %w", err)
@@ -146,10 +162,19 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 	// 全パスを見終えた走査だけが、同じパスの中身の後継の記録を判定してよい状態にする
 	// （specs/030-video-versions/data-model.md §5）。failed で閉じた走査は見ていないパスに
 	// 前の中身が残りうるので触らず、次に done で閉じる走査に任せる。
+	//
+	// 監視の走査は読み直したディレクトリしか見ていないので、done でも判定しない。後継の
+	// 判定は done で閉じた手動の走査だけが行う（specs/042-folder-watch-import/research.md R-9）。
 	var succeeded []int64
 	if state == domain.ScanDone {
-		if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
+		var origin string
+		if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {
 			return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+		}
+		if domain.ScanOrigin(origin) == domain.ScanOriginManual {
+			if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
+				return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+			}
 		}
 	}
 	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
@@ -208,7 +233,7 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 // scanColumns は Scan を組み立てるのに要る列である。並びは scanBy の Scan と対応させる。
 // 対象の動画の本数と、そのうち残りの仕事が無い本数は、読み出しのたびに仕事の状態から
 // 数える（specs/024-import-progress/research.md R-1）。
-var scanColumns = `id, state, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at, issues_revision,
+var scanColumns = `id, state, origin, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at, issues_revision,
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id),
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id and not exists (
 		select 1 from jobs j where j.video_id = sv.video_id and ` + remainingJobCondition("j") + `))`
@@ -220,14 +245,14 @@ func (s *ScanStore) scanByID(ctx context.Context, id int64) (domain.Scan, error)
 func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (domain.Scan, error) {
 	var (
 		scan                  domain.Scan
-		state                 string
+		state, origin         string
 		startedAt, finishedAt sql.NullInt64
 		settledAt             sql.NullInt64
 		reason, code, path    sql.NullString
 	)
 
 	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
-		&scan.ID, &state, &startedAt, &finishedAt,
+		&scan.ID, &state, &origin, &startedAt, &finishedAt,
 		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt, &scan.IssuesRevision,
 		&scan.Videos, &scan.SettledVideos,
 	)
@@ -239,6 +264,7 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 	}
 
 	scan.State = domain.ScanState(state)
+	scan.Origin = domain.ScanOrigin(origin)
 	if startedAt.Valid {
 		scan.StartedAt = time.Unix(startedAt.Int64, 0)
 	}
@@ -275,4 +301,49 @@ func carryInterruptedImport(ctx context.Context, q queryExecer, from, to int64) 
 		return fmt.Errorf("cannot carry the interrupted import's issues: %w", err)
 	}
 	return nil
+}
+
+// carryWatchIssues は前の走査の問題のうち、監視の走査 to が読み直さないものを to へ付け替える。
+// 付け替えないと、前の走査の失敗が一覧から消える。
+//
+// 付け替えるのは、パスが dirs の読む範囲の外にあるものと、仕事の段階の問題（走査が
+// 見つけ直す種類ではないもの）である。段階の問題は、変わらないファイルでは仕事が積み
+// 直されないので、読み直しても見つからず、消すと取り込みが済んだように見える
+// （carryInterruptedImport と同じ理由）。範囲の中の、走査が見つける種類の問題は消し、
+// 走査が見つけ直す。
+func carryWatchIssues(ctx context.Context, q queryExecer, to int64, dirs []domain.DirtyDirectory) error {
+	keep, err := issuesToCarry(ctx, q, to, dirs)
+	if err != nil {
+		return err
+	}
+	for _, id := range keep {
+		if _, err := q.ExecContext(ctx, `update scan_issues set scan_id = ? where id = ?`, to, id); err != nil {
+			return fmt.Errorf("cannot carry the previous import's issues: %w", err)
+		}
+	}
+	return nil
+}
+
+// issuesToCarry は carryWatchIssues が走査 to へ付け替える問題の id を返す。
+func issuesToCarry(ctx context.Context, q queryExecer, to int64, dirs []domain.DirtyDirectory) ([]int64, error) {
+	rows, err := q.QueryContext(ctx, `select id, path, kind from scan_issues where scan_id <> ?`, to)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the previous import's issues: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var keep []int64
+	for rows.Next() {
+		var id int64
+		var path, kind string
+		if err := rows.Scan(&id, &path, &kind); err != nil {
+			return nil, fmt.Errorf("cannot read the previous import's issues: %w", err)
+		}
+		if !domain.ScanIssueKind(kind).FromScan() || !domain.DirtyDirectoriesContain(dirs, path) {
+			keep = append(keep, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the previous import's issues: %w", err)
+	}
+	return keep, nil
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { errorText, type UiText } from "../i18n";
 import {
@@ -20,6 +20,11 @@ export interface FolderListingState<T> {
   error: UiText | null;
   reload: () => void;
   /**
+   * refresh は値を取り直して置き換える。reload と違い、今の値を見せ続け（読み込み中にせず）、
+   * 失敗は静かに捨てる。フォルダが無くなっていれば notFound になる。
+   */
+  refresh: () => void;
+  /**
    * update は読み込み済みの値を書き換える（取り直さない）。まだ値が無ければ何もしない。
    * 操作の応答で一部だけが変わったとき（フォルダのまとめ方）に使う。
    */
@@ -40,22 +45,43 @@ function useFolderData<T>(
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
   const [generation, setGeneration] = useState(seed === undefined ? 1 : 0);
+  const [quietGeneration, setQuietGeneration] = useState(0);
 
   // load は呼び出し元が描画のたびに作り直す。key が同じ間は同じ要求を表すので、
   // 取り直すきっかけは世代と key だけにする。
   const request = useEffectEvent((signal: AbortSignal) => load(signal));
 
+  // 通常の読み込みとその場の取り直しは重ならせない。通常の読み込みが走っている間に
+  // 取り直しが始まると、先に返った新しい値を、あとから返った古い通常の応答が上書きする。
+  // そこで、通常の読み込みの間は取り直しを保留し、終わってから行う。通常の読み込みが
+  // 始まったら、走っている取り直しは捨てる（通常の読み込みの方が新しい）。
+  const normalInFlight = useRef(false);
+  const quietPending = useRef(false);
+  const quietController = useRef<AbortController | null>(null);
+
   useEffect(() => {
     // 0 番目の世代は復元した控え（seed）で、取りに行かない。
     if (generation === 0) return;
     const controller = new AbortController();
+    quietController.current?.abort();
+    quietPending.current = false;
+    normalInFlight.current = true;
     setLoading(true);
     setError(null);
     setNotFound(false);
+    const settle = () => {
+      if (controller.signal.aborted) return;
+      normalInFlight.current = false;
+      if (quietPending.current) {
+        quietPending.current = false;
+        setQuietGeneration((value) => value + 1);
+      }
+    };
     request(controller.signal)
       .then((value) => {
         setData(value);
         setLoading(false);
+        settle();
       })
       .catch((failure: unknown) => {
         if (isAborted(failure)) return;
@@ -66,17 +92,47 @@ function useFolderData<T>(
         }
         setData(null);
         setLoading(false);
+        settle();
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      normalInFlight.current = false;
+    };
   }, [generation, key]);
 
+  // その場の取り直し。読み込み中の表示にせず、今の値を新しい値で置き換える。
+  useEffect(() => {
+    if (quietGeneration === 0) return;
+    if (normalInFlight.current) {
+      quietPending.current = true;
+      return;
+    }
+    const controller = new AbortController();
+    quietController.current = controller;
+    request(controller.signal)
+      .then((value) => {
+        setData(value);
+        setNotFound(false);
+        setError(null);
+      })
+      .catch((failure: unknown) => {
+        if (isAborted(failure)) return;
+        if (failure instanceof RequestFailed && failure.status === 404) {
+          setNotFound(true);
+          setData(null);
+        }
+      });
+    return () => controller.abort();
+  }, [quietGeneration]);
+
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
+  const refresh = useCallback(() => setQuietGeneration((value) => value + 1), []);
   const update = useCallback(
     (change: (data: T) => T) =>
       setData((current) => (current === null ? current : change(current))),
     [],
   );
-  return { data, loading, notFound, error, reload, update };
+  return { data, loading, notFound, error, reload, refresh, update };
 }
 
 /** useRootFolders はフォルダ画面の最上位（登録済みメディアフォルダ）を読む。 */

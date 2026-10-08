@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: e91fbee04787d2015fe5e5128409a71e8795513c9e5ef413da88088ac3c77eba
+sourceHash: 14c991e749b35fee8fcf8a44808e1e7d9d6e77853679644ec5dc53f2413e0824
 ---
 
 # アーキテクチャ {#architecture}
@@ -22,6 +22,7 @@ flowchart LR
   http --> mediafs[ファイルアクセス]
   http -->|ライブ変換| media[メディアと ffmpeg]
   app --> scanner[スキャナ]
+  app --> watcher[フォルダ監視]
   app --> media
   app --> artifacts[生成ファイル]
   app --> store
@@ -34,6 +35,7 @@ flowchart LR
   bus --> workers
   bus -->|生成ファイルの削除| app
   scanner --> disk[(メディアファイル)]
+  watcher -->|ディレクトリエントリ| disk
   mediafs --> disk
   media --> disk
   artifacts --> gendisk[(データディレクトリ)]
@@ -58,8 +60,8 @@ flowchart LR
 | 層 | パッケージ | 担当 | インポートしてはならないもの |
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
-| アプリケーション | `internal/app` | ユースケース (スキャン、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
-| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`jobs`、`password` | 外部とのやり取り | 互いと `internal/app` |
+| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
+| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
 `internal/app` は、ストレージ、`ffmpeg`、生成ファイルに、自身が宣言するインターフェースを通してのみ到達する。そのため単体テストは SQLite、`ffmpeg`、HTTP サーバーなしで動く。
@@ -99,13 +101,14 @@ flowchart LR
 
 **どの読み取りも閲覧者を知っている。** 動画、所在、フォルダを返すストアの読み取りはそれぞれ `domain.Audience` を受け取り、そのゼロ値はゲストである。HTTP 層はすべてのリクエストを、ルーティングの前に最も外側の層で、パスによって bearer、誰でも、ゲストも可、所有者のみに分類し、`api/openapi.yaml` の各操作の `security` と一致させる (Go のテストがそれを確認する)。非表示の動画は、存在しない動画と同じ `404` を返す ([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md))。
 
-**メディアフォルダのツリーに触れるのはスキャンだけ。** メディアフォルダを走査するのは、ユーザーが開始したスキャンだけである。フォルダの索引 (フォルダのグループとフォルダ名)、フォルダの閲覧、取り込みの状況は SQLite から導き、ファイルシステムからは決して導かない。
+**メディアフォルダのファイルを読むのはスキャンだけ。** メディアフォルダのファイルを開くのはスキャンだけであり、全体を走査するのはユーザーが開始したスキャンだけである。フォルダの監視 (`internal/watcher`) が読むのはディレクトリエントリだけで、各ディレクトリに監視を置くために読み、ファイルは決して開かない。フォルダの索引 (フォルダのグループとフォルダ名)、フォルダの閲覧、取り込みの状況は SQLite から導き、ファイルシステムからは決して導かない。
 
 ## サブシステムの地図 {#subsystem-map}
 
 | パッケージ | 担当 | 詳細 |
 | --- | --- | --- |
 | `internal/scanner` | メディアフォルダの走査と、内容によるファイルの識別。これにより移動や名前の変更があっても動画が保たれる | [017 data-model](specs/017-folder-groups/data-model.md)、[033 research](specs/033-video-dates/research.md) |
+| `internal/watcher`、`internal/app` (`AutoImport`) | フォルダの変更通知を、変更のあったディレクトリとして受け取る。変更ディレクトリの集合、静止と安定の待機、それらを取り込む監視スキャン | [folder-watching.md](docs/design-docs/folder-watching.md)、[042 research](specs/042-folder-watch-import/research.md) |
 | `internal/jobs`、`internal/app` (`Ingest`、`Scans`) | 永続的なジョブキューに対する、取り込み段階ごとに 1 つのワーカー。取り込みの進捗と問題 | [020 data-model](specs/020-seek-thumbnail-stage/data-model.md)、[024 research](specs/024-import-progress/research.md) |
 | `internal/media` | `ffprobe`/`ffmpeg` の実行: メタデータ、サムネイル、シーク用スプライト、プレビュー、フィンガープリント | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)、[030 research](specs/030-video-versions/research.md) |
 | `internal/artifacts` | `MDM_DATA_DIR/thumbnails` の下の生成ファイルのパス、公開、削除 | [`internal/artifacts`](internal/artifacts) |

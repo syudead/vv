@@ -18,6 +18,7 @@ function json(body: unknown, status = 200) {
 function scan(values: Partial<Scan> = {}): Scan {
   return {
     id: 2,
+    origin: "manual",
     status: "partial",
     state: "done",
     videos: { total: 3, settled: 3 },

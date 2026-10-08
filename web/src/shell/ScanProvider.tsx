@@ -48,6 +48,12 @@ export interface ScanContextValue {
    * （利用者が待っていたものではないため、一覧を勝手に入れ替えない）。
    */
   finished: Scan | null;
+  /**
+   * 「終わったのを見た」自動の取り込み（`origin` が `watch`）のスキャン。終わりは `status` で
+   * 決める。手動の `finished` とは分け、開いている一覧はこちらでその場で更新する
+   * （specs/042-folder-watch-import/ui-design.md「Open lists after a watch scan」）。
+   */
+  watchFinished: Scan | null;
 }
 
 /**
@@ -58,7 +64,13 @@ export interface ScanContextValue {
  */
 export type ScanControlsValue = Pick<
   ScanContextValue,
-  "running" | "canStart" | "start" | "refresh" | "setFolderCount" | "finished"
+  | "running"
+  | "canStart"
+  | "start"
+  | "refresh"
+  | "setFolderCount"
+  | "finished"
+  | "watchFinished"
 >;
 
 /**
@@ -85,6 +97,14 @@ export function useScanControls(): ScanControlsValue {
     throw new Error("useScanControls must be used inside ScanProvider");
   }
   return value;
+}
+
+/**
+ * isWatchScan は、フォルダの監視が始めた取り込みかを返す。走っているあいだは画面のどこにも
+ * 出さず、「取り込みを始められない」理由にもしない（ui-design.md「Settings: Scan status with a watch scan」）。
+ */
+export function isWatchScan(scan: Scan | null): boolean {
+  return scan?.origin === "watch";
 }
 
 /** inProgress は、取り込みがまだ終わっていない（走査中か、準備が残る）かを返す。 */
@@ -132,6 +152,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [startError, setStartError] = useState<UiText | null>(null);
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
+  const [watchFinished, setWatchFinished] = useState<Scan | null>(null);
+  const observedRunningWatchId = useRef<number | null>(null);
+  const handledWatchId = useRef<number | null>(null);
   const [folderCount, setFolderCount] = useState<number | null>(null);
   const folderCountRevision = useRef(0);
   const requestedScanId = useRef<number | null>(null);
@@ -159,6 +182,23 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setLoaded(true);
     setLoadError(null);
     if (current === null) return;
+
+    if (current.origin === "watch") {
+      // 自動の取り込みの終わりは、開いている一覧のその場の更新だけに使う。終わりは
+      // 準備まで済んだ `status` で決め、取り込みが始まっていた時点を見たもの、または
+      // 最初の取得のあとに現れたものに限る（最初から終わっていたものは反映済み）。
+      if (inProgress(current)) {
+        observedRunningWatchId.current = current.id;
+      } else if (
+        handledWatchId.current !== current.id &&
+        (observedRunningWatchId.current === current.id ||
+          (previousScanId !== undefined && current.id !== previousScanId))
+      ) {
+        handledWatchId.current = current.id;
+        setWatchFinished(current);
+      }
+      return;
+    }
 
     if (
       previousScanId !== undefined &&
@@ -339,18 +379,20 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       startError,
       starting,
-      running: starting || scan?.state === "running",
+      running: starting || (scan?.state === "running" && !isWatchScan(scan)),
       canStart: folderCount !== null && folderCount > 0,
       noMediaFolders: folderCount === 0,
       start,
       refresh,
       setFolderCount: updateFolderCount,
       finished,
+      watchFinished,
     }),
     [
       activity,
       error,
       finished,
+      watchFinished,
       folderCount,
       loaded,
       refresh,
@@ -362,7 +404,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  const running = starting || scan?.state === "running";
+  const running = starting || (scan?.state === "running" && !isWatchScan(scan));
   const canStart = folderCount !== null && folderCount > 0;
   const controls = useMemo<ScanControlsValue>(
     () => ({
@@ -372,8 +414,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       refresh,
       setFolderCount: updateFolderCount,
       finished,
+      watchFinished,
     }),
-    [canStart, finished, refresh, running, start, updateFolderCount],
+    [canStart, finished, refresh, running, start, updateFolderCount, watchFinished],
   );
 
   return (

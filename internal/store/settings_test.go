@@ -121,3 +121,38 @@ func TestLANAccessTreatsUnknownValueAsDenied(t *testing.T) {
 		t.Fatal("知らない値を許可として読んだ")
 	}
 }
+
+// 自動の取り込みは、行が無ければ入で、保存した値が読める
+// （specs/042-folder-watch-import/research.md R-7）。
+func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	settings := db.Settings()
+
+	enabled, err := settings.AutoImport(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enabled {
+		t.Fatal("行が無いのに切になっている")
+	}
+	for _, want := range []bool{false, true, false} {
+		if err := settings.SaveAutoImport(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		got, err := settings.AutoImport(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("保存した %v を読むと %v", want, got)
+		}
+	}
+	var value string
+	if err := db.sql.QueryRowContext(ctx, "select value from settings where key = 'library.auto_import'").Scan(&value); err != nil {
+		t.Fatal(err)
+	}
+	if value != "false" {
+		t.Fatalf("保存値 = %q, want false", value)
+	}
+}

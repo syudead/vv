@@ -17,15 +17,17 @@ flowchart LR
     s3 --> s4[Recover interrupted run]
     s4 --> s5[Start workers]
     s5 --> s6[Resume interrupted scan]
-    s6 --> s7[Listen for HTTP]
+    s6 --> s7[Start auto-import]
+    s7 --> s8[Listen for HTTP]
   end
   subgraph stop[Shutdown]
     direction TB
     t1[Close event streams] --> t2[Drain HTTP requests]
     t2 --> t3[Stop workers]
-    t3 --> t4[Wait for scan]
-    t4 --> t5[Close event bus]
-    t5 --> t6[Close SQLite]
+    t3 --> t4[Stop auto-import]
+    t4 --> t5[Wait for scan]
+    t5 --> t6[Close event bus]
+    t6 --> t7[Close SQLite]
   end
 ```
 
@@ -44,7 +46,8 @@ flowchart LR
   rec --> tmp[Remove unfinished artifacts]
   tmp --> work[Subscribe and start workers]
   work --> resume[Resume interrupted scan]
-  resume --> enc[Start encoder checks]
+  resume --> auto[Start auto-import]
+  auto --> enc[Start encoder checks]
   enc --> http[Listen for HTTP]
 ```
 
@@ -55,6 +58,7 @@ flowchart LR
 | Folder index | Logged; the previous index stays until the next rebuild ([017 data-model, When the index is rebuilt](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
 | Unfinished artifacts under `.tmp` | Logged |
 | Resuming the interrupted scan | Logged; the user can start a scan |
+| Starting auto-import | Logged; the watches are added in the background and never delay the listener, and no scan starts ([folder-watching.md](folder-watching.md)) |
 | Encoder checks | Run in the background and never delay the listener ([hardware-encoding.md](hardware-encoding.md)) |
 
 The folder index is refreshed after the search keys because it reads the title
@@ -66,8 +70,10 @@ so nothing still being generated is deleted.
 A run that stopped mid-work leaves running rows behind, and startup returns
 them to a state the next run continues from: interrupted scans are closed as
 `failed` with the reason `interrupted`, running jobs go back to `queued`, and
-once the workers run one new scan starts
-([037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting)).
+once the workers run one new manual scan starts. An interrupted watch scan is
+closed and not resumed, so startup reads no directory for it
+([folder-watching.md](folder-watching.md);
+[037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting)).
 
 ## Shutdown order
 
@@ -79,7 +85,8 @@ flowchart LR
   screen[Drop screen subscription] --> streams[Close event streams]
   streams --> drain[Drain requests, 10 s]
   drain --> wake[Drop worker wake-ups]
-  wake --> cancel[Cancel workers and scan]
+  wake --> auto[Stop auto-import]
+  auto --> cancel[Cancel workers and scan]
   cancel --> scan[Wait for scan, 10 s]
   scan --> bus[Close event bus]
   bus --> db[Close SQLite]
@@ -88,6 +95,9 @@ flowchart LR
 The `/api/events` streams never end on their own, so they close before the
 10-second request grace starts. A cancelled job stays `running` and the next
 startup requeues it; a job is never lost between the queue and a worker.
+
+Auto-import stops before the scan is cancelled, so it removes its watches and
+starts no new watch scan while the running one is being stopped.
 
 ## Artifact removals drained, not unsubscribed
 

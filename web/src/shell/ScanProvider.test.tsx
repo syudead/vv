@@ -18,6 +18,7 @@ function json(body: unknown, status = 200): Response {
 function scan(id: number, state: Scan["state"], values: Partial<Scan> = {}): Scan {
   return {
     id,
+    origin: "manual",
     status: state,
     videos: { total: 1, settled: state === "running" ? 0 : 1 },
     issues: { failed: 0, substituted: 0, revision: 0 },
@@ -43,6 +44,7 @@ function Harness() {
       <p>状態: {value.scan?.id ?? "なし"}</p>
       <p>実行中: {value.running ? "はい" : "いいえ"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
+      <p>自動の完了: {value.watchFinished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
       <p>今の処理: {value.activity?.fileName ?? "なし"}</p>
     </>
@@ -583,5 +585,77 @@ describe("ScanProvider", () => {
     await act(async () => resolveCurrent?.(json(scan(6, "running"))));
 
     expect(screen.getByText("状態: 7")).toBeDefined();
+  });
+
+  describe("自動の取り込み（origin watch）", () => {
+    function mount() {
+      fetchMock.mockImplementation((input) => {
+        if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+        return Promise.resolve(json({}, 404));
+      });
+      return render(
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>,
+      );
+    }
+    const watch = (id: number, state: Scan["state"], values: Partial<Scan> = {}) =>
+      scan(id, state, { origin: "watch", ...values });
+
+    it("走っているあいだは実行中にせず、終わりは手動の完了と別に知らせる", async () => {
+      mount();
+      await waitFor(() => expect(screen.getByText("実行中: いいえ")).toBeDefined());
+
+      await emitServerEvent("scan", watch(30, "running"));
+      expect(screen.getByText("状態: 30")).toBeDefined();
+      expect(screen.getByText("実行中: いいえ")).toBeDefined();
+      expect(screen.getByText("自動の完了: なし")).toBeDefined();
+
+      await emitServerEvent("scan", watch(30, "done"));
+      expect(screen.getByText("自動の完了: 30")).toBeDefined();
+      expect(screen.getByText("完了: なし")).toBeDefined();
+    });
+
+    it("見た時点で終わっていた取り込みは完了にしないが、あとから現れた終わりは完了にする", async () => {
+      fetchMock.mockImplementation((input) => {
+        if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+        return Promise.resolve(json(watch(40, "done")));
+      });
+      render(
+        <OwnerAudience>
+          <ScanProvider>
+            <Harness />
+          </ScanProvider>
+        </OwnerAudience>,
+      );
+      await waitFor(() => expect(screen.getByText("状態: 40")).toBeDefined());
+      expect(screen.getByText("自動の完了: なし")).toBeDefined();
+
+      // 走っているところを見ないまま、新しい取り込みが終わった形で届く。
+      await emitServerEvent("scan", watch(41, "done", { status: "partial" }));
+      expect(screen.getByText("自動の完了: 41")).toBeDefined();
+
+      // 同じ取り込みの更新では、もう一度は完了にしない。
+      await emitServerEvent(
+        "scan",
+        watch(41, "done", {
+          status: "partial",
+          issues: { failed: 1, substituted: 0, revision: 2 },
+        }),
+      );
+      expect(screen.getByText("自動の完了: 41")).toBeDefined();
+    });
+
+    it("準備が残るあいだ（state done, status running）は終わりにしない", async () => {
+      mount();
+      await waitFor(() => expect(screen.getByText("実行中: いいえ")).toBeDefined());
+      await emitServerEvent("scan", watch(50, "running"));
+      await emitServerEvent("scan", watch(50, "done", { status: "running" }));
+      expect(screen.getByText("自動の完了: なし")).toBeDefined();
+      await emitServerEvent("scan", watch(50, "done", { status: "done" }));
+      expect(screen.getByText("自動の完了: 50")).toBeDefined();
+    });
   });
 });

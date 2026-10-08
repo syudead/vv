@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -144,7 +145,18 @@ func New(opts Options) *Scanner {
 	}
 }
 
-// Scan は走査を1回行い、集計を返す。
+// scanPass は1回の走査が集めるものである。
+type scanPass struct {
+	indexed map[string]domain.IndexedVideo
+	result  domain.ScanResult
+	// seen は走査で見つけたパス。ここに無い索引の行が「消えたファイル」になる。
+	seen map[string]struct{}
+	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
+	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
+	targets []scanTarget
+}
+
+// Scan は全体の走査を1回行い、集計を返す。
 //
 // 手順は次のとおり。
 //
@@ -160,6 +172,32 @@ func New(opts Options) *Scanner {
 // 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない。
 // 個別のファイルの失敗では中止せず、失敗として数えて次へ進む。
 func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
+	return s.scan(ctx, nil, false)
+}
+
+// ScanScoped は dirs のディレクトリだけを読む走査を1回行い、集計を返す
+// （specs/042-folder-watch-import/research.md R-2・R-3）。
+//
+// Scan と手順は同じだが、歩くのは dirs だけで、消すのは「パスが dirs の読む範囲に
+// あり、今回の走査で見つからなかった」所在だけである。範囲の外は、索引にあっても
+// 見ていないので何も変えない。追加をすべて終えてから削除するので、dirs の間で動かした
+// 動画は同じ動画のまま所在が付け替わる。
+//
+// 走査の context が domain.ErrScanSuperseded を理由に取り消されたら、次のファイルの
+// 前で止め、何も消さずに domain.ErrScanSuperseded を返す。
+func (s *Scanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
+	return s.scan(ctx, domain.NormalizeDirtyDirectories(dirs), true)
+}
+
+func (s *Scanner) scan(ctx context.Context, dirs []domain.DirtyDirectory, scoped bool) (domain.ScanResult, error) {
+	result, err := s.scanOnce(ctx, dirs, scoped)
+	if err != nil && ctx.Err() != nil && errors.Is(context.Cause(ctx), domain.ErrScanSuperseded) {
+		return result, domain.ErrScanSuperseded
+	}
+	return result, err
+}
+
+func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, scoped bool) (domain.ScanResult, error) {
 	folders, err := s.index.ListMediaFolders(ctx)
 	if err != nil {
 		return domain.ScanResult{}, err
@@ -172,100 +210,57 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return domain.ScanResult{}, err
 	}
 
-	var result domain.ScanResult
-	// seen は走査で見つけたパス。ここに無い索引の行が「消えたファイル」になる。
-	seen := map[string]struct{}{}
-	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
-	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
-	targets := []scanTarget{}
-
-	for _, folder := range folders {
-		root := folder.Path
-		rootInfo, rootErr := os.Lstat(root)
-		if rootErr != nil {
-			return domain.ScanResult{}, domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, root,
-				fmt.Errorf("could not read the media folder (%s): %w", root, rootErr))
-		}
-		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			return domain.ScanResult{}, domain.NewScanFailure(domain.ScanErrorMediaFolderNotDirectory, root,
-				fmt.Errorf("the media folder is not a directory (%s)", root))
-		}
-		walkErr := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return ctxErr
+	pass := &scanPass{indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}}
+	// scanned は今回の走査が読むメディアフォルダ。全体の走査は全部、範囲を絞った走査は
+	// 読むディレクトリを持つものだけである（ほかのフォルダが読めなくても止めない）。
+	scanned := folders
+	if scoped {
+		scanned = nil
+		for _, folder := range folders {
+			if slices.ContainsFunc(dirs, func(d domain.DirtyDirectory) bool {
+				return domain.PathWithinRoot(folder.Path, d.Path)
+			}) {
+				scanned = append(scanned, folder)
 			}
-			if err != nil {
-				s.logger.Warn("could not read a location during the scan",
-					slog.String("path", path), slog.Any("error", err))
-				// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
-				code := domain.ScanErrorLocationUnreadable
-				if path == root {
-					code = domain.ScanErrorMediaFolderUnreadable
-				}
-				return domain.NewScanFailure(code, path, fmt.Errorf("could not read a location (%s): %w", path, err))
-			}
-
-			if entry.IsDir() {
-				if path != root && isExcludedDir(entry.Name()) {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			if entry.Type()&os.ModeSymlink != 0 {
-				return nil
-			}
-
-			if !isMediaFile(entry.Name()) {
-				return nil
-			}
-
-			seen[path] = struct{}{}
-			info, infoErr := entry.Info()
-			if infoErr != nil {
-				// media file だと判定できた時点で取り込み候補である。metadata を
-				// 読めない場合も対象件数と失敗件数に含める。
-				result.Total++
-				result.Failed++
-				s.logger.Warn("could not read the file information of a scan target",
-					slog.String("path", path), slog.Any("error", infoErr))
-				return s.reportIssue(ctx, domain.ScanFileIssue{
-					VideoID: indexed[path].ID, Path: path, Kind: domain.IssueUnreadable,
-				})
-			}
-
-			if existing, ok := indexed[path]; ok &&
-				existing.SizeBytes == info.Size() &&
-				existing.MTime.Unix() == info.ModTime().Unix() {
-				// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
-				// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
-				// failureは復活させない。
-				createdErr := s.refreshCreatedAt(ctx, path, info, existing)
-				jobsErr := s.ensurePendingJobs(ctx, existing)
-				if err := errors.Join(createdErr, jobsErr); err != nil {
-					if ctx.Err() != nil {
-						return err
-					}
-					s.logger.Warn("could not update an indexed file",
-						slog.String("path", path), slog.Any("error", err))
-					result.Total++
-					result.Failed++
-					return s.reportIssue(ctx, domain.ScanFileIssue{
-						VideoID: existing.ID, Path: path, Kind: domain.IssueRegisterFailed,
-					})
-				}
-				return nil
-			}
-
-			targets = append(targets, scanTarget{path: path})
-			return nil
-		})
-		if walkErr != nil {
-			if ctx.Err() != nil {
-				return domain.ScanResult{}, ctx.Err()
-			}
-			return domain.ScanResult{}, fmt.Errorf("could not finish scanning the media folder (%s): %w", root, walkErr)
 		}
 	}
+
+	// collected は実際に歩いたディレクトリ。削除の範囲はここから決める。メディアフォルダの
+	// 外にある項目や、メディアフォルダの祖先の項目は歩かないので、範囲に入れない。
+	var collected []domain.DirtyDirectory
+	for _, folder := range scanned {
+		root := folder.Path
+		if err := checkMediaFolder(root); err != nil {
+			return domain.ScanResult{}, err
+		}
+		if !scoped {
+			err = s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
+				return s.visit(ctx, pass, root, root, true, path, entry, err)
+			})
+			if err != nil {
+				if ctx.Err() != nil {
+					return domain.ScanResult{}, ctx.Err()
+				}
+				return domain.ScanResult{}, fmt.Errorf("could not finish scanning the media folder (%s): %w", root, err)
+			}
+			continue
+		}
+		for _, dir := range dirs {
+			if !domain.PathWithinRoot(root, dir.Path) {
+				continue
+			}
+			collected = append(collected, dir)
+			if err := s.collectDirectory(ctx, pass, root, dir); err != nil {
+				if ctx.Err() != nil {
+					return domain.ScanResult{}, ctx.Err()
+				}
+				return domain.ScanResult{}, err
+			}
+		}
+	}
+	result := pass.result
+	seen := pass.seen
+	targets := pass.targets
 	result.Total += len(targets)
 	// 対象列挙中は total=0 の不確定表示で、ここから確定した 0 / total を示す。
 	if err := s.report(ctx, result); err != nil {
@@ -273,6 +268,9 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	}
 
 	for _, target := range targets {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		s.reportFile(target.path, indexed[target.path].ID)
 		if err := s.ingest(ctx, target, &result); err != nil {
 			if ctx.Err() != nil {
@@ -308,7 +306,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	s.reportFile("", 0)
 
 	checkedDirs := map[string]struct{}{}
-	for _, folder := range folders {
+	for _, folder := range scanned {
 		if err := ensureReadableDirectory(folder.Path); err != nil {
 			code := domain.ScanErrorMediaFolderUnreadable
 			if errors.Is(err, errNotDirectory) {
@@ -347,13 +345,155 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		}
 	}
 
-	removed, err := s.removeMissing(ctx, folders, seen)
+	// 取って代わられた走査は、ここまでに足したものを残し、何も消さない。
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	inScope := func(string) bool { return true }
+	if scoped {
+		inScope = func(path string) bool { return domain.DirtyDirectoriesContain(collected, path) }
+	}
+	removed, err := s.removeMissing(ctx, folders, seen, inScope)
 	if err != nil {
 		return result, err
 	}
 	result.Removed = removed
 
 	return result, nil
+}
+
+// checkMediaFolder はメディアフォルダ root が読めるディレクトリかを確かめる。
+func checkMediaFolder(root string) error {
+	rootInfo, rootErr := os.Lstat(root)
+	if rootErr != nil {
+		return domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, root,
+			fmt.Errorf("could not read the media folder (%s): %w", root, rootErr))
+	}
+	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return domain.NewScanFailure(domain.ScanErrorMediaFolderNotDirectory, root,
+			fmt.Errorf("the media folder is not a directory (%s)", root))
+	}
+	return nil
+}
+
+// collectDirectory はメディアフォルダ root の中の読み直すディレクトリ dir を歩く。
+// 消えたディレクトリ（と、シンボリックリンクやファイルに変わったもの）は空として扱う。
+// 除外するディレクトリの中は読まない。
+func (s *Scanner) collectDirectory(ctx context.Context, pass *scanPass, root string, dir domain.DirtyDirectory) error {
+	if rel, err := filepath.Rel(root, dir.Path); err == nil && rel != "." {
+		for _, name := range strings.Split(rel, string(filepath.Separator)) {
+			if isExcludedDir(name) {
+				return nil
+			}
+		}
+	}
+	info, err := s.lstat(dir.Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return domain.NewScanFailure(domain.ScanErrorLocationUnreadable, dir.Path,
+			fmt.Errorf("could not read a location (%s): %w", dir.Path, err))
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return nil
+	}
+	err = s.walkDir(dir.Path, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil && path == dir.Path && errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return s.visit(ctx, pass, root, dir.Path, dir.Recursive, path, entry, err)
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		var failure *domain.ScanFailure
+		if errors.As(err, &failure) {
+			return err
+		}
+		return fmt.Errorf("could not finish scanning the directory (%s): %w", dir.Path, err)
+	}
+	return nil
+}
+
+// visit は走査の1つの入口（ファイルかディレクトリ）を見て、取り込み対象を pass に集める。
+// walkRoot は歩き始めた場所で、除外の判定の対象にしない。recursive が偽なら、その下の
+// ディレクトリには入らない。
+func (s *Scanner) visit(
+	ctx context.Context, pass *scanPass, folderRoot, walkRoot string, recursive bool,
+	path string, entry fs.DirEntry, err error,
+) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if err != nil {
+		s.logger.Warn("could not read a location during the scan",
+			slog.String("path", path), slog.Any("error", err))
+		// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
+		code := domain.ScanErrorLocationUnreadable
+		if path == folderRoot {
+			code = domain.ScanErrorMediaFolderUnreadable
+		}
+		return domain.NewScanFailure(code, path, fmt.Errorf("could not read a location (%s): %w", path, err))
+	}
+
+	if entry.IsDir() {
+		if path != walkRoot && !recursive {
+			return fs.SkipDir
+		}
+		if path != walkRoot && isExcludedDir(entry.Name()) {
+			return fs.SkipDir
+		}
+		return nil
+	}
+	if entry.Type()&os.ModeSymlink != 0 {
+		return nil
+	}
+
+	if !isMediaFile(entry.Name()) {
+		return nil
+	}
+
+	pass.seen[path] = struct{}{}
+	info, infoErr := entry.Info()
+	if infoErr != nil {
+		// media file だと判定できた時点で取り込み候補である。metadata を
+		// 読めない場合も対象件数と失敗件数に含める。
+		pass.result.Total++
+		pass.result.Failed++
+		s.logger.Warn("could not read the file information of a scan target",
+			slog.String("path", path), slog.Any("error", infoErr))
+		return s.reportIssue(ctx, domain.ScanFileIssue{
+			VideoID: pass.indexed[path].ID, Path: path, Kind: domain.IssueUnreadable,
+		})
+	}
+
+	if existing, ok := pass.indexed[path]; ok &&
+		existing.SizeBytes == info.Size() &&
+		existing.MTime.Unix() == info.ModTime().Unix() {
+		// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
+		// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
+		// failureは復活させない。
+		createdErr := s.refreshCreatedAt(ctx, path, info, existing)
+		jobsErr := s.ensurePendingJobs(ctx, existing)
+		if err := errors.Join(createdErr, jobsErr); err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
+			s.logger.Warn("could not update an indexed file",
+				slog.String("path", path), slog.Any("error", err))
+			pass.result.Total++
+			pass.result.Failed++
+			return s.reportIssue(ctx, domain.ScanFileIssue{
+				VideoID: existing.ID, Path: path, Kind: domain.IssueRegisterFailed,
+			})
+		}
+		return nil
+	}
+
+	pass.targets = append(pass.targets, scanTarget{path: path})
+	return nil
 }
 
 func ensureReadableDirectory(path string) error {
@@ -538,8 +678,11 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 // 移動・改名の場合は、新しいパスの取り込みで content_key が一致し、既存の行が
 // そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
 // 「消えたファイル」として扱われることはない。
+//
+// inScope が偽を返すパスは、今回の走査が見ていないので消さない。全体の走査は全部を
+// 見ているので常に真である。
 func (s *Scanner) removeMissing(
-	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{},
+	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{}, inScope func(string) bool,
 ) (int, error) {
 	current, err := s.index.IndexedVideosByPath(ctx)
 	if err != nil {
@@ -548,7 +691,7 @@ func (s *Scanner) removeMissing(
 
 	var missing []int64
 	for path, row := range current {
-		if _, ok := seen[path]; ok {
+		if _, ok := seen[path]; ok || !inScope(path) {
 			continue
 		}
 		managed := false

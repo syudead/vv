@@ -202,6 +202,10 @@ func run(opts runOptions) error {
 		Logger:    logger,
 	})
 
+	// メディアフォルダの変更を検知して、変わったディレクトリだけを取り込む。始めるのは、
+	// 中断した走査を閉じて始め直したあとである。
+	autoImport := newAutoImport(settingsStore, scanIndexStore, scans, logger)
+
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
@@ -271,6 +275,8 @@ func run(opts runOptions) error {
 			logger.Warn("the hardware encoder checks did not stop within the grace period")
 		}
 		subscriptions.StopWorkers()
+		// 監視を外し、新しい取り込みを始めないようにしてから、走査を止める。
+		autoImport.Stop()
 		stopBackground()
 		workersDone.Wait()
 		// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
@@ -293,6 +299,11 @@ func run(opts runOptions) error {
 	if _, err := scans.ResumeInterrupted(backgroundCtx); err != nil {
 		logger.Warn("could not resume the interrupted scan", slog.Any("error", err))
 	}
+	// 自動の取り込みを始める。監視は背後で張り、走査は始めない
+	// （specs/042-folder-watch-import/research.md R-7）。始められなくても起動は止めない。
+	if err := autoImport.Start(backgroundCtx); err != nil {
+		logger.Warn("could not start the auto-import", slog.Any("error", err))
+	}
 
 	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
 	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
@@ -314,7 +325,7 @@ func run(opts runOptions) error {
 	// 持ち、配信・既定アプリで開く機能・フォルダの登録・ディレクトリ選択が共有する。
 	mediaFiles := mediafs.New()
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
-	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles})
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles, Changes: autoImport})
 
 	// ライブ変換の映像エンコード方式。起動時の確認は背後で走り、HTTP の待ち受けを
 	// 待たせない。停止の指示で確認を止める。
@@ -347,6 +358,7 @@ func run(opts runOptions) error {
 		// 要求ごとに今の方式を読むので、方式の変更は再起動なしに次の要求から効く。
 		TranscodeSettings: transcodeSettings,
 		NetworkSettings:   networkSettings,
+		AutoImport:        autoImport,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

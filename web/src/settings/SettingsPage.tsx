@@ -37,6 +37,7 @@ import {
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
+import AutoImportSection from "./AutoImportSection";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
 import APITokensSection from "./APITokensSection";
@@ -117,6 +118,8 @@ export default function SettingsPage() {
   const [picker, setPicker] = useState<MediaFolder | "add" | null>(null);
   const [deleting, setDeleting] = useState<MediaFolder | null>(null);
   const [pending, setPending] = useState<Pending>(null);
+  // メディアフォルダを足す・変える・消すたびに進め、自動の取り込みの状態を読み直させる。
+  const [foldersRevision, setFoldersRevision] = useState(0);
   const [operationError, setOperationError] = useState<UiText | null>(null);
   const [rowError, setRowError] = useState<{ id: number; message: UiText } | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
@@ -198,6 +201,7 @@ export default function SettingsPage() {
         setFolders((current) => [...current, created].sort((a, b) => a.id - b.id));
         scan.setFolderCount(1);
         await load();
+        setFoldersRevision((value) => value + 1);
         toast(t.settings.mediaFolders.added);
       } else {
         const updated = await updateMediaFolder(replacing.id, path, replacing.version);
@@ -205,6 +209,7 @@ export default function SettingsPage() {
           current.map((folder) => (folder.id === updated.id ? updated : folder)),
         );
         setRowError((current) => (current?.id === updated.id ? null : current));
+        setFoldersRevision((value) => value + 1);
         toast(t.settings.mediaFolders.changed);
       }
       setPicker(null);
@@ -227,6 +232,7 @@ export default function SettingsPage() {
       setFolders(remaining);
       scan.setFolderCount(remaining.length);
       setDeleting(null);
+      setFoldersRevision((value) => value + 1);
       toast(t.settings.mediaFolders.removed);
       const refreshed = await load();
       const current = refreshed ?? remaining;
@@ -246,6 +252,7 @@ export default function SettingsPage() {
   return (
     <SettingsPageLayout header={<PageHeader title={t.settings.title} />}>
       <ScanStatusSection />
+      <AutoImportSection reloadToken={foldersRevision} />
       <PageSection
         title={text.heading}
         description={text.description}

@@ -137,6 +137,7 @@ func (s *server) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, p
 func toAPIScan(scan domain.Scan) gen.Scan {
 	out := gen.Scan{
 		Id:     scan.ID,
+		Origin: gen.ScanOrigin(scan.Origin),
 		Status: gen.ScanStatus(scan.Import.Status),
 		Issues: gen.ScanIssueCounts{
 			Failed: scan.Issues.Failed, Substituted: scan.Issues.Substituted, Revision: scan.IssuesRevision,
