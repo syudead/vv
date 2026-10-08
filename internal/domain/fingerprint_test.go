@@ -150,13 +150,32 @@ func TestCompareFingerprintsAlignsFramesByTime(t *testing.T) {
 	}
 	short := fingerprintOf(60_000, 5000, sceneAt(0))
 	longer := fingerprintOf(3_600_000, NewSeekSpriteLayout(3_600_000).IntervalMs, sceneAt(0))
-	if _, ok := CompareFingerprints(short, longer); !ok {
-		t.Error("区間の中央を受け持つコマがあるのに比べない")
+	if _, ok := CompareFingerprints(short, longer); ok {
+		t.Error("先頭が間隔の半分より離れたコマを組にしている")
 	}
 
 	other := fingerprintOf(3_600_000, a.IntervalMs, sceneAt(1000))
 	if FingerprintsMatch(a, other) {
 		t.Error("別の動画が一致する")
+	}
+}
+
+// 間隔の下限が 5 秒だったころの指紋と 1 秒間隔の指紋も、先頭の時刻が揃うコマどうしで
+// 比べるので一致する。場面が 1 秒ごとに変わっても、別の時刻の場面とは組にしない。
+func TestCompareFingerprintsMatchesOldFiveSecondInterval(t *testing.T) {
+	everySecond := func(positionMs int64) FrameHash {
+		return HashFrame(toLuma(sceneLuma(uint64(positionMs/1000)), 0, 1))
+	}
+	fine := fingerprintOf(30_000, NewSeekSpriteLayout(30_000).IntervalMs, everySecond)
+	coarse := fingerprintOf(30_000, 5000, everySecond)
+	if fine.IntervalMs != 1000 {
+		t.Fatalf("間隔 %d", fine.IntervalMs)
+	}
+	for _, pair := range [][2]Fingerprint{{fine, coarse}, {coarse, fine}} {
+		distance, ok := CompareFingerprints(pair[0], pair[1])
+		if !ok || distance != 0 {
+			t.Errorf("同じ動画: distance=%d ok=%v", distance, ok)
+		}
 	}
 }
 

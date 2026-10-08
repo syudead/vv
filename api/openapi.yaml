@@ -3706,7 +3706,7 @@ components:
         intervalMs:
           type: integer
           format: int64
-          minimum: 5000
+          minimum: 1000
           description: コマ k が受け持つ位置は [k*intervalMs, (k+1)*intervalMs)
         frameCount:
           type: integer

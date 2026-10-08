@@ -154,20 +154,24 @@ func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash
 // CompareFingerprints は 2 本の指紋のハミング距離の中央値を返す。版が違う、間隔が
 // 正でない、または比べた組が FingerprintMinComparableFrames 未満なら ok は偽である。
 //
-// コマは時刻で組にする。a のコマ i の区間の中央（i*a.IntervalMs + a.IntervalMs/2）を
-// 受け持つ b のコマ（b の配置の FrameAt と同じ規則）と組にし、b のコマ数の外なら組に
-// しない。405 秒を超える動画は間隔が ceil(尺 / 81) で、尺が数ミリ秒違うだけで間隔が
-// 変わるため、番号では同じ場面を組にできない。どちらかが単色のコマの組は数えない。
-// 組の数が偶数のときは、真ん中の 2 つのうち小さい方を中央値とする。
+// コマは時刻で組にする。コマの画像は区間の先頭の場面なので、a のコマ i の先頭
+// （i*a.IntervalMs）に先頭が最も近い b のコマと組にし、先頭どうしが短い方の間隔の半分より
+// 離れていれば組にしない。b のコマ数の外も組にしない。81 秒を超える動画は間隔が
+// ceil(尺 / 81) で、尺が数ミリ秒違うだけで間隔が変わるため、番号では同じ場面を組に
+// できない。間隔の下限が 5 秒から 1 秒になったので、同じ動画でも 1 秒間隔と 5 秒間隔の
+// 指紋がある。区間に含まれるかで組にすると、1 秒間隔のコマ 1〜4 が 5 秒間隔のコマ 0
+// （0 秒の場面）と組になるので、先頭の近さで組にする。どちらかが単色のコマの組は
+// 数えない。組の数が偶数のときは、真ん中の 2 つのうち小さい方を中央値とする。
 func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 	if a.Version != b.Version || a.IntervalMs <= 0 || b.IntervalMs <= 0 {
 		return 0, false
 	}
+	tolerance := min(a.IntervalMs, b.IntervalMs) / 2
 	distances := make([]int, 0, len(a.Frames))
 	for i, frame := range a.Frames {
-		center := int64(i)*a.IntervalMs + a.IntervalMs/2
-		j := center / b.IntervalMs
-		if j >= int64(len(b.Frames)) {
+		start := int64(i) * a.IntervalMs
+		j := (start + b.IntervalMs/2) / b.IntervalMs
+		if j >= int64(len(b.Frames)) || abs64(j*b.IntervalMs-start) > tolerance {
 			continue
 		}
 		other := b.Frames[j]
@@ -187,4 +191,11 @@ func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 func FingerprintsMatch(a, b Fingerprint) bool {
 	distance, ok := CompareFingerprints(a, b)
 	return ok && distance <= FingerprintMatchMaxDistance
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

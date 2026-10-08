@@ -12,11 +12,13 @@ func TestNewSeekSpriteLayout(t *testing.T) {
 		frames     int
 		intervalMs int64
 	}{
-		{"unknown duration", 0, 1, 5000},
-		{"one second", 1000, 1, 5000},
-		{"three minutes", 180_000, 36, 5000},
-		{"81 frames at five seconds", 405_000, 81, 5000},
-		{"above 81 frames widens interval", 405_001, 81, 5001},
+		{"unknown duration", 0, 1, 1000},
+		{"half a second", 500, 1, 1000},
+		{"ten seconds", 10_000, 10, 1000},
+		{"thirty seconds", 30_000, 30, 1000},
+		{"81 frames at one second", 81_000, 81, 1000},
+		{"above 81 frames widens interval", 81_001, 81, 1001},
+		{"three minutes", 180_000, 81, 2223},
 		{"45 minutes", 2_700_000, 81, 33_334},
 		{"two hours", 7_200_000, 81, 88_889},
 	}
@@ -32,7 +34,7 @@ func TestNewSeekSpriteLayout(t *testing.T) {
 }
 
 func TestSeekSpriteLayoutNeverExceedsLimits(t *testing.T) {
-	durations := []int64{1, 4999, 5001, 404_999, 405_000, 405_001, 2_700_000, math.MaxInt64 - 1, math.MaxInt64}
+	durations := []int64{1, 999, 1001, 80_999, 81_000, 81_001, 405_001, 2_700_000, math.MaxInt64 - 1, math.MaxInt64}
 	for d := int64(1); d < 20_000_000; d = d*3 + 7 {
 		durations = append(durations, d)
 	}
