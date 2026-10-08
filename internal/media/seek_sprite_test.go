@@ -118,7 +118,7 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"), "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
 
 	output, layout := generateSprite(t, videoPath, 30_000)
-	if layout.FrameCount != 6 || layout.IntervalMs != 5000 {
+	if layout.FrameCount != 30 || layout.IntervalMs != 1000 {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
@@ -128,7 +128,7 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	if b := sheets[0].Bounds(); b.Dx() != 576 || b.Dy() != 576 {
 		t.Fatalf("シートの大きさ %v（576x576 のはず）", b)
 	}
-	for _, k := range []int{0, 3, 5} {
+	for _, k := range []int{0, 15, 29} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
 		got := frameSeconds(t, sheets, layout, k)
 		// 入力側シークは区間の先頭のフレームを選ぶ。圧縮と JPEG の誤差を許す。
@@ -137,7 +137,7 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 		}
 	}
 	// 使わない升目は黒のまま。
-	if luma := frameLuma(t, sheets, layout, 6); luma > 20 {
+	if luma := frameLuma(t, sheets, layout, 30); luma > 20 {
 		t.Errorf("空きの升目の輝度が %d", luma)
 	}
 }
@@ -152,20 +152,20 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 		"-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", "-y", videoPath)
 
 	output, layout := generateSprite(t, videoPath, 30_000)
-	if layout.FrameCount != 6 {
+	if layout.FrameCount != 30 {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
-	for _, k := range []int{0, 1, 3, 4} {
+	for _, k := range []int{0, 5, 15, 22} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
 		got := frameSeconds(t, sheets, layout, k)
 		if got < startSec-0.5 || got > startSec+1 {
 			t.Errorf("コマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
 		}
 	}
-	// 映像の無い最後の区間（25〜30 秒）は、直前のコマ（20 秒の場面）で埋まる。
-	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 19.5 || last > 21 {
-		t.Fatalf("末尾のコマの時刻が %.2f 秒（20 秒の場面のはず）", last)
+	// 映像の無い区間（23〜30 秒）は、直前のコマ（22 秒の場面）で埋まる。
+	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 21.5 || last > 23 {
+		t.Fatalf("末尾のコマの時刻が %.2f 秒（22 秒の場面のはず）", last)
 	}
 }
 
@@ -188,7 +188,7 @@ func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
 	for _, check := range []struct {
 		frame int
 		want  float64
-	}{{1, 0}, {2, 10}} {
+	}{{1, 0}, {9, 0}, {10, 10}} {
 		if got := frameSeconds(t, sheets, layout, check.frame); got < check.want-0.5 || got > check.want+1 {
 			t.Errorf("コマ %d は %.2f 秒（%.0f 秒の場面のはず）", check.frame, got, check.want)
 		}

@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/seek-sprite-generation.md
-sourceHash: 54dc84cb5ce7e5b5b4c11e46028435291f0876fdf42c9ca0dc102ad4745055d4
+sourceHash: 43fbd35249a1cfb4584672bab94db4318c68365a46fda6e91213770797389226
 ---
 
 # シーク用スプライトの生成 {#seek-sprite-generation}
 
-シーク用プレビューは最大 81 フレームからなる 9×9 のスプライト 1 枚で、各フレームは長辺 320px 以内に収まり、JPEG として `-q:v 2` でエンコードする（[`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)）。間隔は `max(5 s, ceil(durationMs / 81))` なので、短い動画は 5 秒のままで、長い動画は 81 フレームを均等に配置する。長さが不明な動画は 1 フレームになる。フレーム k は `[k × intervalMs, (k + 1) × intervalMs)` を受け持ち、プレーヤーはレイアウト（[`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)）の `intervalMs`、`frameCount`、`columns`、`rows` からフレームを選ぶ。
+シーク用プレビューは最大 81 フレームからなる 9×9 のスプライト 1 枚で、各フレームは長辺 320px 以内に収まり、JPEG として `-q:v 2` でエンコードする（[`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)）。間隔は `max(1 s, ceil(durationMs / 81))` なので、81 秒までの動画は 1 秒ごとに 1 フレームになり、それより長い動画は 81 フレームを均等に配置する。長さが不明な動画は 1 フレームになる。以前の下限は 5 秒で、30 秒の動画は 6 フレームしか得られなかった。公開済みのスプライトは自身の間隔を持つので、以前の下限で作ったスプライトも引き続き読める。フレーム k は `[k × intervalMs, (k + 1) × intervalMs)` を受け持ち、プレーヤーはレイアウト（[`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)）の `intervalMs`、`frameCount`、`columns`、`rows` からフレームを選ぶ。
 
 生成は最も安価な方法から試し、失敗すると次の方法にフォールバックする。
 
@@ -74,6 +74,8 @@ flowchart LR
 | サンプル記述が複数ある | 途中で解像度などが変わる |
 | 空でないエディットが複数ある | 途中の部分が切り取られている |
 | 回転以外を含む表示行列（反転など） | その変換はかけ直さない |
+
+レイアウトに対してキーフレームがまばらな入力も、区間ごとの抽出に進む。自身のキーフレームを得るフレームが 4 分の 3 未満になるときは、1 秒間隔のフレームでキーフレームが 10 秒おきにある 30 秒のクリップのように、インデックスでは多くのフレームに同じ場面が繰り返される。区間ごとの抽出は代わりに各区間の開始点までデコードし、そのコストは動画の長さではなく、フレーム数とキーフレームの間隔に従う。このような入力にとってはこれが通常の経路なので、警告はログに出さない。
 
 壊れたインデックスなど、読み込みやデコードに失敗したときは警告をログに出し、区間ごとの抽出に切り替える。
 

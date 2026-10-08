@@ -1,7 +1,7 @@
 package domain
 
 // シーク用サムネイルの配置。1 本の動画を最大 81 コマの 9 × 9 シートにする。
-// 短い動画では 5 秒間隔を保ち、長い動画では全体にコマを均等配置する。
+// 短い動画では SeekThumbnailInterval（1 秒）の間隔を保ち、長い動画では全体にコマを均等配置する。
 const (
 	SeekSpriteColumns   = 9
 	SeekSpriteRows      = 9

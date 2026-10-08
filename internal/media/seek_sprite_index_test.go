@@ -109,7 +109,7 @@ func TestGenerateSeekSpriteFromIndexPicksKeyframeAtIntervalStart(t *testing.T) {
 func TestGenerateSeekSpriteFromIndexUsesPreviousKeyframeAfterVideoEnds(t *testing.T) {
 	videoPath := makeH264Clock(t, "clock.mp4", "10")
 	layout := domain.NewSeekSpriteLayout(10_010)
-	if layout.FrameCount != 3 {
+	if layout.FrameCount != 11 {
 		t.Fatalf("配置 %+v", layout)
 	}
 	output := t.TempDir()
@@ -117,7 +117,7 @@ func TestGenerateSeekSpriteFromIndexUsesPreviousKeyframeAfterVideoEnds(t *testin
 		t.Fatal(err)
 	}
 	sheets := readSheets(t, output)
-	if got := frameSeconds(t, sheets, layout, 2); got < 8.5 || got > 9.5 {
+	if got := frameSeconds(t, sheets, layout, 10); got < 8.5 || got > 9.5 {
 		t.Fatalf("末尾のコマの時刻が %.2f 秒（最後のキーフレーム 9 秒のはず）", got)
 	}
 }
@@ -127,21 +127,49 @@ func TestGenerateSeekSpriteFromIndexRepeatsKeyframeForLongGOP(t *testing.T) {
 	requireEncoder(t, "libx264")
 	videoPath := filepath.Join(t.TempDir(), "long-gop.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"),
-		"-c:v", "libx264", "-g", "100", "-keyint_min", "100", "-sc_threshold", "0", "-crf", "10", "-y", videoPath)
+		"-c:v", "libx264", "-g", "70", "-keyint_min", "70", "-sc_threshold", "0", "-crf", "10", "-y", videoPath)
 
-	layout := domain.NewSeekSpriteLayout(30_000)
+	layout := domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 6, Columns: 9, Rows: 9, SheetCount: 1}
 	output := t.TempDir()
 	if err := generateSeekSpriteFromIndex(context.Background(), videoPath, output, layout); err != nil {
 		t.Fatal(err)
 	}
 	sheets := readSheets(t, output)
-	// キーフレームは 0, 10, 20 秒。区間 5〜10 秒には無いので 0 秒の場面になる。
+	// キーフレームは 0, 7, 14, 21, 28 秒。区間 15〜20 秒には無いので 14 秒の場面になる。
 	for _, check := range []struct {
 		frame int
 		want  float64
-	}{{0, 0}, {1, 0}, {2, 10}, {3, 10}, {4, 20}, {5, 20}} {
+	}{{0, 0}, {1, 7}, {2, 14}, {3, 14}, {4, 21}, {5, 28}} {
 		if got := frameSeconds(t, sheets, layout, check.frame); got < check.want-0.5 || got > check.want+0.5 {
 			t.Errorf("コマ %d は %.2f 秒（%.0f 秒の場面のはず）", check.frame, got, check.want)
+		}
+	}
+}
+
+// キーフレームがコマに対して疎な動画（短い動画の多く）は、索引からは同じ場面が
+// 並ぶので errSeekIndexUnsupported になり、GenerateSeekSprite は区間ごとの抽出で
+// 各区間の先頭の場面を作る。
+func TestGenerateSeekSpriteExtractsPerIntervalForSparseKeyframes(t *testing.T) {
+	requireEncoder(t, "libx264")
+	videoPath := filepath.Join(t.TempDir(), "sparse-keyframes.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"),
+		"-c:v", "libx264", "-g", "100", "-keyint_min", "100", "-sc_threshold", "0", "-crf", "10", "-y", videoPath)
+
+	layout := domain.NewSeekSpriteLayout(30_000)
+	err := generateSeekSpriteFromIndex(context.Background(), videoPath, t.TempDir(), layout)
+	if !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("キーフレーム 3 枚で 30 コマに %v（errSeekIndexUnsupported のはず）", err)
+	}
+	output := t.TempDir()
+	fullDecode, err := GenerateSeekSprite(context.Background(), videoPath, output, layout)
+	if err != nil || fullDecode {
+		t.Fatalf("fullDecode = %v, err = %v", fullDecode, err)
+	}
+	sheets := readSheets(t, output)
+	for _, k := range []int{1, 5, 13, 27} {
+		startSec := float64(k) * float64(layout.IntervalMs) / 1000
+		if got := frameSeconds(t, sheets, layout, k); got < startSec-0.5 || got > startSec+1 {
+			t.Errorf("コマ %d の時刻 %.2f 秒（区間の先頭 %.0f 秒のはず）", k, got, startSec)
 		}
 	}
 }
@@ -185,8 +213,8 @@ func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 		}
 		output, layout := generateSprite(t, videoPath, 10_000)
 		sheets := readSheets(t, output)
-		if got := frameSeconds(t, sheets, layout, 1); got < 4.5 || got > 6 {
-			t.Errorf("%s: コマ 1 の時刻 %.2f 秒（5 秒のはず）", filepath.Base(videoPath), got)
+		if got := frameSeconds(t, sheets, layout, 5); got < 4.5 || got > 6 {
+			t.Errorf("%s: コマ 5 の時刻 %.2f 秒（5 秒のはず）", filepath.Base(videoPath), got)
 		}
 	}
 }
@@ -203,8 +231,8 @@ func TestGenerateSeekSpriteParallelRepeatsPreviousFrameAfterVideoEnds(t *testing
 		t.Fatalf("映像の後ろの区間で失敗した: %v", err)
 	}
 	sheets := readSheets(t, output)
-	if got := frameSeconds(t, sheets, layout, 2); got < 4.5 || got > 6 {
-		t.Fatalf("末尾のコマの時刻が %.2f 秒（直前のコマの 5 秒のはず）", got)
+	if got := frameSeconds(t, sheets, layout, 10); got < 8.5 || got > 10 {
+		t.Fatalf("末尾のコマの時刻が %.2f 秒（直前のコマの 9 秒のはず）", got)
 	}
 }
 
@@ -486,7 +514,7 @@ func TestGenerateSeekSpriteFromIndexAppliesDisplayRotation(t *testing.T) {
 			}
 			sheet := readSheets(t, output)[0]
 			expectedPath := filepath.Join(t.TempDir(), "expected.png")
-			runFFmpeg(t, "-ss", "5", "-i", videoPath, "-frames:v", "1", "-vf", seekSpriteFastScale, "-y", expectedPath)
+			runFFmpeg(t, "-ss", "1", "-i", videoPath, "-frames:v", "1", "-vf", seekSpriteFastScale, "-y", expectedPath)
 			expected := decodePNG(t, expectedPath)
 
 			w, h := expected.Bounds().Dx(), expected.Bounds().Dy()

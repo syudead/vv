@@ -3,9 +3,11 @@
 A seek preview is one 9×9 sprite of at most 81 frames, each within 320px on the
 long side and encoded as JPEG at `-q:v 2`
 ([`internal/media/seek_thumbnail.go`](../../internal/media/seek_thumbnail.go)).
-The interval is `max(5 s, ceil(durationMs / 81))`, so short videos keep 5
-seconds and longer ones spread 81 frames evenly; a video of unknown length gets
-one frame. Frame k covers `[k × intervalMs, (k + 1) × intervalMs)`, and the
+The interval is `max(1 s, ceil(durationMs / 81))`, so videos up to 81 seconds
+get one frame per second and longer ones spread 81 frames evenly; a video of
+unknown length gets one frame. The floor was 5 seconds, which gave a 30-second
+video only 6 frames. Published sprites carry their own interval, so sprites
+made with the old floor stay readable. Frame k covers `[k × intervalMs, (k + 1) × intervalMs)`, and the
 player picks a frame from `intervalMs`, `frameCount`, `columns` and `rows` in
 the layout ([`domain.SeekSpriteLayout`](../../internal/domain/seek_sprite.go)).
 
@@ -87,6 +89,14 @@ These inputs go straight to per-interval extraction:
 | More than one sample description | Resolution or similar changes midway |
 | More than one non-empty edit | A middle section is cut out |
 | Display matrix beyond rotation (a flip, for example) | The transform is not reapplied |
+
+Inputs whose keyframes are sparse for the layout also go to per-interval
+extraction. When fewer than three quarters of the frames would get a keyframe
+of their own, the index would repeat the same scene across many frames, as in
+a 30-second clip with a keyframe every 10 seconds at 1-second frames.
+Per-interval extraction decodes to each interval start instead; its cost
+follows the frame count and the keyframe gap, not the video length. This is
+the normal path for such inputs, so no warning is logged.
 
 A read or decode failure, such as a broken index, logs a warning and switches
 to per-interval extraction.

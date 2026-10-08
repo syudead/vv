@@ -379,7 +379,7 @@ var ErrPreviewStale = errors.New("preview source identity changed")
 
 // SeekThumbnailInterval はシーク用プレビューのフレームの間隔の最小値である。
 // スプライトの配置（NewSeekSpriteLayout）は、これで上限のコマ数に収まらない
-// 長さの動画だけ間隔を広げる。個別 JPEG の生成（internal/media の ffmpeg の式）と
-// 読み出し（internal/artifacts の位置からフレームの番号への変換）は、まだこの
-// 値をそのまま間隔に使う。片方だけ変えると、読み出す番号が別の場面を指す。
-const SeekThumbnailInterval = 5 * time.Second
+// 長さの動画だけ間隔を広げる。短い動画でもシークバーの上でコマが切り替わるよう、
+// 1 秒にする（以前の 5 秒では 30 秒の動画が 6 コマにしかならなかった）。公開済みの
+// スプライトは配置情報に間隔を持つので、間隔の違う古いものもそのまま読める。
+const SeekThumbnailInterval = 1 * time.Second

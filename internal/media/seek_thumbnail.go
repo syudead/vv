@@ -28,6 +28,11 @@ const (
 	seekSpriteParallel = 4
 	// seekSpriteReadParallel は索引から求めたキーフレームを同時に読む数である。
 	seekSpriteReadParallel = 8
+	// seekIndexMinDistinct は、索引から作るときに別々のキーフレームを持つべきコマの
+	// 割合（分子／分母）である。キーフレームの間隔がコマの間隔より長い動画（短い
+	// 動画の多く）では、索引からは同じ場面が並ぶので、区間ごとの抽出で正確に作る。
+	seekIndexMinDistinctNum = 3
+	seekIndexMinDistinctDen = 4
 )
 
 // GenerateSeekSprite はシーク用スプライトのシートを生成する。
@@ -80,7 +85,8 @@ func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 
 // generateSeekSpriteFromIndex は MP4／MOV の索引を 1 回だけ読み、各コマに使う
 // キーフレームを決めてから、そのバイトだけを読んで 1 回の ffmpeg で復号する。
-// 索引から取れない入力では errSeekIndexUnsupported を返す。
+// 索引から取れない入力と、キーフレームがコマに対して疎で同じ場面が多く並ぶ入力では
+// errSeekIndexUnsupported を返す。
 func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	file, err := os.Open(videoPath)
 	if err != nil {
@@ -110,6 +116,10 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 			decodeOrder[pick] = len(unique)
 			unique = append(unique, pick)
 		}
+	}
+	if len(unique)*seekIndexMinDistinctDen < layout.FrameCount*seekIndexMinDistinctNum {
+		return fmt.Errorf("%w: only %d distinct keyframes for %d frames",
+			errSeekIndexUnsupported, len(unique), layout.FrameCount)
 	}
 
 	temporary, err := os.MkdirTemp(outputDir, ".seek-sprite-")
