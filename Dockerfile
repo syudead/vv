@@ -8,8 +8,10 @@
 FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS web
 WORKDIR /src/web
 # 依存の取得だけを先に行い、ソースの変更でこの層が無駄にならないようにする。
+# npm のキャッシュはキャッシュマウントに置き、lockfile が変わっても取得し直さずに済ませる。
 COPY web/package.json web/package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 COPY web/ ./
 RUN npm run build
 
@@ -17,8 +19,16 @@ RUN npm run build
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:8a5910f31396cd4d89662f56c68b3ae31d374308270a1c3bd96672ee5ed43414 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
+# モジュールとビルドのキャッシュはキャッシュマウントに置き、依存やコードが変わっても
+# 前回の結果を使い回す。キャッシュマウントは層に残らないので、go build でも同じ場所を
+# マウントする。
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+# バイナリが読むものだけをコピーし、文書や SPA のソースの変更で go build の層が
+# やり直しにならないようにする。
+COPY cmd/ cmd/
+COPY internal/ internal/
+COPY web/embed.go web/
 # 埋め込み先へ SPA の成果物を置く。手元の web/dist は .dockerignore で除いてあるので、
 # ここで入るのは web ステージが作ったものだけである。
 COPY --from=web /src/web/dist ./web/dist
@@ -28,7 +38,9 @@ ARG TARGETARCH
 # CGO_ENABLED=0 を維持する（modernc.org/sqlite は CGO を必要としない）。
 # .dockerignore が .git を除くため、コミット情報の自動埋め込みは無効にする。
 # リリース名だけ ldflags で渡す（commit / builtAt は契約上省略可）。
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/mdm ./cmd/mdm
 

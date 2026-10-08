@@ -1,19 +1,31 @@
-# ビルドに要らないものは context へ入れない。
-# .git を除くため、Dockerfile では go build -buildvcs=false を指定している。
-.git
-.gitignore
-.github
-.claude
-.dockerignore
-Dockerfile
-compose.yaml
-Taskfile.yml
-bin/
-docs/
+# 許可リスト方式にする。いったん全部を除き、イメージのビルドに要るものだけを戻す。
+# 手元の .local/ や media/ などの大きなディレクトリを、ディレクトリを足すたびに
+# ここへ書き足さなくても context へ入らないようにするためである。
+# .git も除かれるので、Dockerfile では go build -buildvcs=false を指定している。
+*
+
+# 単一バイナリのビルドに要るもの（go build ./cmd/mdm が読むのは cmd/、internal/、
+# web/embed.go と、web ステージが作る web/dist だけである）。
+!go.mod
+!go.sum
+!cmd/
+!internal/
+# テストはバイナリに入らない。context から除き、テストだけの変更で go build の層が
+# やり直しにならないようにする。
+**/*_test.go
+**/testdata
+
+# SPA のビルドに要るもの。
+!web/
 **/node_modules
 # SPA の成果物は web ステージから COPY する。手元のビルドを持ち込まない。
 web/dist
-*.log
-.env
-.env.*
-.DS_Store
+web/.vite-build-check
+web/playwright-report
+web/test-results
+**/*.tsbuildinfo
+**/.DS_Store
+# 戻したディレクトリの中にある手元の秘密情報やログも持ち込まない（Vite は web/.env を読む）。
+**/.env
+**/.env.*
+**/*.log
