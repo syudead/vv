@@ -172,6 +172,14 @@ reach it: in `TestSpriteFingerprintMatchesAcrossSpriteSizes` a 160px `-q:v 4`
 sprite and a 320px `-q:v 2` sprite of the same video differ by a median of 2
 bits, against a match limit of 12.
 
+Fingerprints with different intervals are compared by time. Each frame is
+paired with the other fingerprint's frame whose start is nearest to its own
+start, and only when the two starts are within half the shorter interval
+([`domain.CompareFingerprints`](../../internal/domain/fingerprint.go)). A frame
+shows its interval's start, so a 1-second sprite and an older 5-second sprite
+of the same video compare the frames at 0, 5, 10 seconds and so on, rather
+than comparing the 1–4 second frames with the 0-second frame.
+
 ## Speed and limits
 
 Measured on a 21-minute 1080p H.264 video on local disk, 81 frames of 160px,
