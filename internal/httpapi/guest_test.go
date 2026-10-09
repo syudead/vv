@@ -73,9 +73,11 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Tags:       db.Tags(),
 			Visibility: db.Visibility(),
 			Favorites:  db.Favorites(),
-			Overrides:  db.Overrides(),
-			Versions:   db.Versions(),
-			Library:    library,
+			// 視聴履歴の経路（watch_history_test.go）。
+			WatchHistory: db.Playback(),
+			Overrides:    db.Overrides(),
+			Versions:     db.Versions(),
+			Library:      library,
 			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
 			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。

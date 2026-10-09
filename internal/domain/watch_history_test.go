@@ -28,3 +28,21 @@ func TestValidatePlaybackID(t *testing.T) {
 		}
 	}
 }
+
+// 視聴履歴のカーソルは書いたものを読み戻せ、読めないものは ErrInvalidCursor になる。
+func TestWatchHistoryCursorRoundTrip(t *testing.T) {
+	want := WatchHistoryCursor{PlayedAtMs: 1_760_000_000_123, ID: 42}
+	got, err := DecodeWatchHistoryCursor(EncodeWatchHistoryCursor(want))
+	if err != nil || got != want {
+		t.Fatalf("読み戻し = %+v, %v, want %+v", got, err, want)
+	}
+	for _, cursor := range []string{
+		"", "!!", "bm90LWpzb24", // "not-json"
+		EncodeWatchHistoryCursor(WatchHistoryCursor{PlayedAtMs: 1, ID: 0}),
+		"eyJwIjoxfQ", // {"p":1}
+	} {
+		if _, err := DecodeWatchHistoryCursor(cursor); !errors.Is(err, ErrInvalidCursor) {
+			t.Errorf("DecodeWatchHistoryCursor(%q) = %v, want ErrInvalidCursor", cursor, err)
+		}
+	}
+}
