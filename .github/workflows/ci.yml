@@ -406,6 +406,37 @@ jobs:
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        id: buildx
+
+      # type=gha が持ち越すのは層だけで、RUN --mount=type=cache の中身（Go の
+      # モジュールとビルドキャッシュ、npm のキャッシュ）は runner ごとに空になる。
+      # そのため Go のコードが変わるたびに go build が依存の取得とコンパイルを
+      # ゼロからやり直していた。中身を actions/cache に取っておき、ビルドの前に
+      # キャッシュマウントへ戻し、後で取り出す。キーは依存と Dockerfile から作り、
+      # 一致しない時だけ取り出して保存する。自分のコードの分は古くなるが、時間の
+      # 大半を占める依存のコンパイルは使い回せる。go build は VERSION が commit
+      # ごとに変わるので層が当たらず毎回走り、保存する中身は必ず埋まる。
+      - name: キャッシュマウントの中身を復元する
+        id: mount-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: docker-mount-cache
+          key: docker-mount-${{ runner.os }}-${{ hashFiles('Dockerfile', 'go.sum', 'web/package-lock.json') }}
+          restore-keys: docker-mount-${{ runner.os }}-
+
+      # 対応は Dockerfile のキャッシュマウントの target と揃える。context に
+      # 入らないのは .dockerignore が許可リスト方式だからである。
+      - name: キャッシュマウントへ戻す
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
+        with:
+          builder: ${{ steps.buildx.outputs.name }}
+          cache-map: |
+            {
+              "docker-mount-cache/go-mod": "/go/pkg/mod",
+              "docker-mount-cache/go-build": "/root/.cache/go-build",
+              "docker-mount-cache/npm": "/root/.npm"
+            }
+          skip-extraction: ${{ steps.mount-cache.outputs.cache-hit }}
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
