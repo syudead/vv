@@ -71,30 +71,35 @@ export function useProgressSaving(
     [id, owner],
   );
 
+  // startPlayback は、作ったまま送っていない識別子を付けた最初の保存を送る。サーバーは
+  // その保存の時刻を視聴の時刻にする。送る位置をまだ知らないときは送ったことにせず、
+  // 次に位置を知ったときに送る。
+  const startPlayback = useCallback(() => {
+    const current = playback.current;
+    if (current?.videoId !== id || current.started) return false;
+    const latest = latestPosition.current;
+    if (latest?.videoId !== id) return false;
+    current.started = true;
+    send(latest.positionMs, false, true);
+    return true;
+  }, [id, send]);
+
   const rememberProgress = useCallback(
     (positionMs: number) => {
       latestPosition.current = { videoId: id, positionMs };
+      if (positionedRef.current) startPlayback();
     },
-    [id],
+    [id, startPlayback],
   );
 
   const savePlayerProgress = useCallback(
     (positionMs: number, immediate: boolean) => {
       latestPosition.current = { videoId: id, positionMs };
+      if (positionedRef.current && startPlayback()) return;
       send(positionMs, false, immediate);
     },
-    [id, send],
+    [id, send, startPlayback],
   );
-
-  // startPlayback は、作ったまま送っていない識別子を付けた最初の保存を送る。サーバーは
-  // その保存の時刻を視聴の時刻にする。
-  const startPlayback = useCallback(() => {
-    const current = playback.current;
-    if (current?.videoId !== id || current.started) return;
-    current.started = true;
-    const latest = latestPosition.current;
-    if (latest?.videoId === id) send(latest.positionMs, false, true);
-  }, [id, send]);
 
   const markPlayed = useCallback(() => {
     if (!owner) return;

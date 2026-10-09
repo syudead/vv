@@ -91,6 +91,34 @@ describe("useProgressSaving の視聴の識別子", () => {
     expect(save.mock.calls[0]?.[2]).toHaveLength(36);
   });
 
+  it("positioned のあとでも位置をまだ知らなければ、最初の位置を知ったときに識別子を付けて送る", () => {
+    const { result } = renderSaving({ status: positioned });
+
+    result.current.markPlayed();
+    expect(save).not.toHaveBeenCalled();
+
+    result.current.rememberProgress(0);
+    result.current.savePlayerProgress(5_000, false);
+
+    const playbackId = save.mock.calls[0]?.[2];
+    expect(playbackId).toHaveLength(36);
+    expect(save.mock.calls.map((call) => call.slice(0, 3))).toEqual([
+      [7, 0, playbackId],
+      [7, 5_000, playbackId],
+    ]);
+  });
+
+  it("位置を知る前の最初の保存は、識別子を付けた最初の保存としてすぐ送る", () => {
+    const { result } = renderSaving({ status: positioned });
+
+    result.current.markPlayed();
+    result.current.savePlayerProgress(400, false);
+
+    expect(save).toHaveBeenCalledOnce();
+    expect(save.mock.calls[0]?.[1]).toBe(400);
+    expect(save.mock.calls[0]?.[2]).toHaveLength(36);
+  });
+
   it("以後の保存、一時停止時の保存、離脱時の送信は同じ識別子を持つ", () => {
     const { result } = renderSaving({ status: positioned });
     result.current.rememberProgress(1_000);

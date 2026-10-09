@@ -1682,6 +1682,36 @@ describe("VideoPage", () => {
       });
     });
 
+    it("位置を知らせる前に positioned で再生しても、最初の位置で視聴の識別子を送る", async () => {
+      renderPage();
+      await ready();
+      // 続きの位置が無い動画は、メタデータで positioned になる。
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: false,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      act(() => player().onPlay?.());
+      act(() => player().onPosition(0));
+      await waitFor(() => {
+        const bodies = fetchMock.mock.calls
+          .filter(
+            ([input, init]) =>
+              String(input) === "/api/videos/7/progress" && init?.method === "PUT",
+          )
+          .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+        expect(bodies).toEqual([
+          { positionMs: 0, playbackId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+        ]);
+      });
+    });
+
     it("アンマウントでも最後の再生位置を送る", async () => {
       const page = renderPage();
       await ready();

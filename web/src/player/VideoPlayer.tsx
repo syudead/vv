@@ -455,8 +455,11 @@ export default function VideoPlayer(props: Props) {
     };
     latest.current.onStatus(status);
     // markPositioned は確定の条件がそろったら positioned を立てる。一度立てたら下ろさない。
+    // 立てるときに確定した位置を onPosition で知らせる。続きからの位置がない直接再生は
+    // ここまで位置を一度も知らせないので、知らせないと保存する位置がない。
     const markPositioned = () => {
       if (metadataAccepted && !resumeSeekPending && !liveOffsetPending) {
+        if (!status.positioned) reportPosition();
         setStatus({ positioned: true });
       }
     };
@@ -661,6 +664,10 @@ export default function VideoPlayer(props: Props) {
       if (recovering) return;
       attempt = { ...attempt, state: "playing", playIntended: true };
       setStatus({ playing: true, ended: false });
+      // play の前のシーク（Replay は先頭へ戻してすぐ play する）は timeupdate より先に
+      // play が届くことがあるので、onPlay の前に今の位置を知らせる。positioned の前の
+      // 位置は確定していないので知らせない。
+      if (status.positioned) reportPosition();
       latest.current.onPlay?.();
     });
     player.on("waiting", () => setStatus({ loading: true }));
