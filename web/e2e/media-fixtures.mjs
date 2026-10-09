@@ -611,3 +611,30 @@ export function generateGuestFixtures(root) {
     clip(path.join(hidden, `確認用${name}.mp4`), 20 + index * 55);
   }
 }
+
+/**
+ * generateHistoryFixtures は、視聴履歴の流れ（specs/043-watch-history、子 #864）を
+ * 確かめるための動画を2本作る（web/e2e/history.e2e.ts）。数秒の再生と一時停止の後も
+ * 見終わったことにならず進捗バーが残るよう、末尾とみなす 15 秒（internal/domain/progress.go
+ * の CompletionTailMs）より十分長い 40 秒にし、中身で同じ動画とみなされないよう色合いを変える。
+ */
+export const HISTORY_VIDEOS = ["履歴の確認A", "履歴の確認B"];
+
+export function generateHistoryFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  for (const [index, name] of HISTORY_VIDEOS.entries()) {
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=15:duration=40",
+      "-vf",
+      `hue=h=${String(70 + index * 150)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(root, `${name}.mp4`),
+    ]);
+  }
+}
