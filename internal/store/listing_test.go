@@ -280,7 +280,7 @@ func watchFixture(t *testing.T) *DB {
 				}
 			}
 			if state.progress != nil {
-				if _, err := db.Playback().SaveProgress(ctx, key, *state.progress); err != nil {
+				if _, err := db.Playback().SaveProgress(ctx, key, *state.progress, nil); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -527,7 +527,7 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids[fixturePath("/media/legacy.mp4")]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	for watch, want := range map[domain.WatchFilter]int{
@@ -582,7 +582,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 
 	// 視聴状態と組み合わさる。
-	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	unwatched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}, Watch: domain.WatchUnwatched})

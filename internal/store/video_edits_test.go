@@ -373,7 +373,7 @@ func TestNonEditingWritesKeepEditedAt(t *testing.T) {
 	}{
 		{"再生位置", func() error {
 			_, err := db.Playback().SaveProgress(ctx, userKey,
-				domain.Progress{PositionMs: 1_000, DurationMs: 100_000})
+				domain.Progress{PositionMs: 1_000, DurationMs: 100_000}, nil)
 			return err
 		}},
 		{"取り込み", func() error {

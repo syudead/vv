@@ -56,7 +56,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if claimed.LocationPath != fileA.Path {
 		t.Fatalf("claimed path = %q, want %q", claimed.LocationPath, fileA.Path)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "same-content", domain.Progress{PositionMs: 1234}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "same-content", domain.Progress{PositionMs: 1234}, nil); err != nil {
 		t.Fatal(err)
 	}
 	unchanged, err := db.Settings().ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootA)

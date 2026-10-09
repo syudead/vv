@@ -52,7 +52,7 @@ func successionCount(t *testing.T, db *DB) int {
 func saveTestProgress(t *testing.T, db *DB, key string, positionMs int64) {
 	t.Helper()
 	if _, err := db.Playback().SaveProgress(context.Background(), key,
-		domain.Progress{PositionMs: positionMs, DurationMs: 100_000}); err != nil {
+		domain.Progress{PositionMs: positionMs, DurationMs: 100_000}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
