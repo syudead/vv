@@ -40,6 +40,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `field`                    | Component     | Label, control, description and error of one form field                      |
 | `form-dialog`              | Page skeleton | A few values asked without leaving the screen                                |
 | `form-dialog-example`      | Block         | Copy to start a form dialog                                                  |
+| `grouped-list`             | Section       | Rows under headings that stick, such as days                                 |
+| `grouped-list-example`     | Block         | Copy to start a list of rows grouped under headings                          |
 | `form-row`                 | Section       | One setting: label, description, control                                     |
 | `input`                    | Component     | One line of text                                                             |
 | `kbd`                      | Component     | A key or search operator in text                                             |

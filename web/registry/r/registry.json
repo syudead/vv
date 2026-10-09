@@ -785,6 +785,19 @@
       ]
     },
     {
+      "name": "grouped-list",
+      "type": "registry:ui",
+      "title": "GroupedList",
+      "description": "Section: rows under headings that stick below the top bar, each group's rows on one card divided by a line.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/grouped-list.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "data-table",
       "type": "registry:ui",
       "title": "DataTable",
@@ -884,6 +897,23 @@
       "files": [
         {
           "path": "src/designSystem/blocks/list-states-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "grouped-list-example",
+      "type": "registry:block",
+      "title": "Grouped list example",
+      "description": "A list page body of rows grouped under day headings, each row a thumbnail, a title, a time and a quiet remove button.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/grouped-list-example.tsx",
           "type": "registry:component"
         },
         {

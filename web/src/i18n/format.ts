@@ -12,6 +12,7 @@ const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const timeFormat = new Intl.DateTimeFormat(LOCALE, { timeStyle: "short" });
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: "always" });
 
 const empty = asUiText("");
@@ -31,6 +32,12 @@ export function formatDate(value: string | Date): UiText {
 export function formatDateTime(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(dateTimeFormat.format(date));
+}
+
+/** formatTime は時刻を表す（例: 3:04 PM）。読めない値は空。 */
+export function formatTime(value: string | Date): UiText {
+  const date = toDate(value);
+  return date === null ? empty : decorated(timeFormat.format(date));
 }
 
 /**

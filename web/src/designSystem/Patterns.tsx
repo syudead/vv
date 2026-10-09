@@ -6,6 +6,7 @@ import { CenteredFormExample } from "./blocks/centered-form-example";
 import { ConfirmDialogExample } from "./blocks/confirm-dialog-example";
 import { DetailPageExample } from "./blocks/detail-page-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
+import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
@@ -98,6 +99,13 @@ export default function Patterns() {
           <ListStatesExample state={state} />
         </Pattern>
       ))}
+      <Pattern
+        id="grouped-list"
+        name={p.names.groupedList}
+        items={["list-page", "grouped-list", "grouped-list-example"]}
+      >
+        <GroupedListExample />
+      </Pattern>
       <Pattern
         id="admin-table-page"
         name={p.names.adminTablePage}
