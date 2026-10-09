@@ -7,6 +7,7 @@ import {
   generateFolderFixtures,
   generateFolderSearchFixtures,
   generateGuestFixtures,
+  generateHistoryFixtures,
   generateMediaFixtures,
   generateScanIssueFixtures,
   generateScanProgressFixtures,
@@ -26,6 +27,7 @@ const searchMediaDir = path.join(runRoot, "search-media");
 const foldersSearchMediaDir = path.join(runRoot, "folders-search-media");
 const tagsMediaDir = path.join(runRoot, "tags-media");
 const guestMediaDir = path.join(runRoot, "guest-media");
+const historyMediaDir = path.join(runRoot, "history-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
@@ -43,6 +45,7 @@ function run() {
     generateFolderSearchFixtures(foldersSearchMediaDir);
     generateTagsFixtures(tagsMediaDir);
     generateGuestFixtures(guestMediaDir);
+    generateHistoryFixtures(historyMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
     const mediaContract = spawnSync(
@@ -90,6 +93,7 @@ function run() {
           MDM_E2E_SEARCH_MEDIA_DIR: searchMediaDir,
           MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
           MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
+          MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
         },
