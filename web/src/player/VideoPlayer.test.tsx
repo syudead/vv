@@ -892,12 +892,27 @@ describe("VideoPlayer", () => {
     );
   });
 
-  it("続きの位置が無ければ最初のメタデータで positioned を立て、その位置を知らせる", async () => {
+  it("続きの位置が無ければ最初のメタデータで positioned を立て、再生していなければ位置を知らせない", async () => {
     const values = props();
     render(<VideoPlayer {...values} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const player = mock.instances[0];
     if (player === undefined) throw new Error("playerがありません");
+    act(() => player.trigger("loadedmetadata"));
+    expect(values.onStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ positioned: true }),
+    );
+    // 開いただけで知らせると、離脱時の保存が再生していない動画に進捗を作る。
+    expect(values.onPosition).not.toHaveBeenCalled();
+  });
+
+  it("positioned の前に play が届いていれば、positioned を立てるときにその位置を知らせる", async () => {
+    const values = { ...props(), onPlay: vi.fn() };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    act(() => player.trigger("play"));
     expect(values.onPosition).not.toHaveBeenCalled();
     act(() => player.trigger("loadedmetadata"));
     expect(values.onStatus).toHaveBeenLastCalledWith(
