@@ -1200,6 +1200,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watch-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 視聴履歴を新しい順に返す
+         * @description 所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す
+         *     （specs/043-watch-history/contracts/screen-api.md）。各件の `video` は、その内容の動画が
+         *     いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
+         *     `cursor` が読めなければ 400 `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。
+         */
+        get: operations["listWatchHistory"];
+        put?: never;
+        post?: never;
+        /**
+         * 視聴履歴を全件消す
+         * @description 所有者だけ。視聴履歴をすべて消す。空でも 204。再生位置・視聴済み・最後に再生した日時は
+         *     変えず、`/api/events` の知らせも無い（specs/043-watch-history/contracts/screen-api.md）。
+         */
+        delete: operations["clearWatchHistory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watch-history/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 視聴履歴を 1 件消す
+         * @description 所有者だけ。その件が無ければ 404 `not_found`（別のタブで消えた件）。再生位置・視聴済み・
+         *     最後に再生した日時は変えず、`/api/events` の知らせも無い
+         *     （specs/043-watch-history/contracts/screen-api.md）。
+         */
+        delete: operations["deleteWatchHistoryEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-bundles": {
         parameters: {
             query?: never;
@@ -2502,6 +2552,31 @@ export interface components {
              */
             revision: number;
         };
+        WatchHistoryPage: {
+            items: components["schemas"]["WatchHistoryEntry"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /**
+         * @description 視聴履歴の 1 件。再生 1 回につき 1 件。`video` はその内容の動画がいまライブラリにあって
+         *     開けるときだけ入り、一覧と同じ形で `progress`・`tags`・`favorite` も入る。無ければ履歴から
+         *     再生できない
+         */
+        WatchHistoryEntry: {
+            /**
+             * Format: int64
+             * @description 削除の対象と、同じ時刻の並びに使う識別子
+             */
+            id: number;
+            /**
+             * Format: date-time
+             * @description 視聴を始めた時刻（その視聴の最初の保存のサーバーの時刻）
+             */
+            playedAt: string;
+            /** @description 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う */
+            title: string;
+            video?: components["schemas"]["Video"];
+        };
         ScanIssuePage: {
             /**
              * Format: int64
@@ -2617,6 +2692,8 @@ export interface components {
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description 視聴履歴の 1 件の識別子 */
+        WatchHistoryEntryId: number;
         /** @description タグの識別子 */
         TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
@@ -4454,6 +4531,75 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listWatchHistory: {
+        parameters: {
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 視聴履歴の1ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchHistoryPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    clearWatchHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteWatchHistoryEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 視聴履歴の 1 件の識別子 */
+                id: components["parameters"]["WatchHistoryEntryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     bundleVideos: {
