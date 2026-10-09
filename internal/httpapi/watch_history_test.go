@@ -108,6 +108,9 @@ func TestListWatchHistory(t *testing.T) {
 	if a.Video.Favorite == nil {
 		t.Error("a の件に favorite が無い")
 	}
+	if want := (gen.VideoFolder{RootId: f.rootID, Path: "pub"}); a.Video.Folder == nil || *a.Video.Folder != want {
+		t.Errorf("a の件の folder = %+v, want %+v", a.Video.Folder, want)
+	}
 }
 
 // limit の範囲外と読めないカーソルは 400。
@@ -145,6 +148,21 @@ func TestDeleteWatchHistory(t *testing.T) {
 	}
 	if page := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history", f.owner)); len(page.Items) != 0 {
 		t.Errorf("全件消したあとの一覧 = %+v", page.Items)
+	}
+}
+
+// 1 未満の id は 400 で、何も消えない。
+func TestDeleteWatchHistoryEntryRejectsInvalidID(t *testing.T) {
+	f := newGuestFixture(t, true)
+	ids := f.recordHistory(t)
+
+	for _, id := range []int64{0, -1} {
+		rec := f.deleteHistory(historyEntryPath(id), f.owner)
+		assertErrorBody(t, historyEntryPath(id), rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if page := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history", f.owner)); len(page.Items) != len(ids) {
+		t.Errorf("400 のあとの一覧 = %d 件, want %d", len(page.Items), len(ids))
 	}
 }
 

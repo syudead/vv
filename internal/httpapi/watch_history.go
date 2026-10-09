@@ -30,8 +30,8 @@ const (
 	maxWatchHistoryLimit     = 200
 )
 
-// ListWatchHistory は視聴履歴を新しい順に返す（GET /api/watch-history）。各件の video には一覧と
-// 同じく再生位置・タグ・お気に入りを載せる。
+// ListWatchHistory は視聴履歴を新しい順に返す（GET /api/watch-history）。各件の video は一覧の
+// 項目と同じ形で、再生位置・タグ・お気に入りと置かれたフォルダ（Video.folder）を載せる。
 func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params gen.ListWatchHistoryParams) {
 	if s.watchHistory == nil {
 		s.internalError(w, "Watch history storage is not configured.", nil)
@@ -70,6 +70,10 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 	progress := s.progressFor(r.Context(), videos)
 	tags := s.tagsFor(r.Context(), videos)
 	views := s.presentVideos(r.Context(), videos)
+	var roots []domain.MediaFolder
+	if len(videos) > 0 {
+		roots = s.registeredRoots(r.Context())
+	}
 
 	out := gen.WatchHistoryPage{Items: make([]gen.WatchHistoryEntry, 0, len(page.Items))}
 	next := 0
@@ -79,6 +83,9 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 			view := views[next]
 			next++
 			video := withTags(withProgress(toAPIVideo(view), progress, view.Video.UserKey), tags, view.Video.UserKey)
+			if folder, ok := domain.LocateVideoFolder(roots, view.Video.Path); ok {
+				video.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
+			}
 			video = forAudience(audience, video)
 			item.Video = &video
 		}
@@ -94,8 +101,13 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 }
 
 // DeleteWatchHistoryEntry は視聴履歴を 1 件消す（DELETE /api/watch-history/{id}）。無ければ
-// 404 not_found で、画面は一覧を読み直す（research.md R-6）。
+// 404 not_found で、画面は一覧を読み直す（research.md R-6）。生成された経路の読み取りは
+// minimum: 1 を確かめないので、1 未満の id はここで 400 にする。
 func (s *server) DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id gen.WatchHistoryEntryId) {
+	if id < 1 {
+		s.invalidRequest(w, "Specify a valid watch history entry id.")
+		return
+	}
 	if s.watchHistory == nil {
 		s.internalError(w, "Watch history storage is not configured.", nil)
 		return
