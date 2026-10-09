@@ -230,6 +230,7 @@ describe("App", () => {
     expect(names).toEqual([
       "Library",
       "Folders",
+      "History",
       "Tags",
       "Duplicates",
       "Settings",

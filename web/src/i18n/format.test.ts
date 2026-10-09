@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { formatDate, formatDateTime, formatNumber, formatRelative } from "./format";
+import {
+  formatDate,
+  formatDateTime,
+  formatNumber,
+  formatRelative,
+  formatTime,
+} from "./format";
 import { t } from "./messages";
 
 describe("counts", () => {
@@ -31,7 +37,12 @@ describe("dates", () => {
     );
   });
 
+  it("formats a time of day in English", () => {
+    expect(formatTime(new Date(2026, 8, 27, 15, 4))).toMatch(/^3:04\s?PM$/);
+  });
+
   it("returns an empty string for unreadable dates", () => {
+    expect(formatTime("nope")).toBe("");
     expect(formatDate("nope")).toBe("");
     expect(formatDateTime("nope")).toBe("");
   });

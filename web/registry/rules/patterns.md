@@ -51,13 +51,13 @@ example block and a section here.
 Item `list-page`. `ListPage` stacks, top to bottom, with `gap-3` and `p-3`
 (`p-4` from `sm`):
 
-| Slot           | Put in it                                                         | Never                                    |
-| -------------- | ----------------------------------------------------------------- | ---------------------------------------- |
-| `header`       | `PageHeader` with the title, the count and the one main action    | Filters or view controls                 |
-| `toolbar`      | `Toolbar` with search, filter triggers and the view controls      | The main action; a second row of filters |
-| `band`         | The active filters (removable tag chips), when any apply          | Controls that change the view            |
-| children       | `CardGrid` or `DataTable`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins       |
-| `selectionBar` | `SelectionBar`, only while something is selected                  | Actions that do not use the selection    |
+| Slot           | Put in it                                                                        | Never                                    |
+| -------------- | -------------------------------------------------------------------------------- | ---------------------------------------- |
+| `header`       | `PageHeader` with the title, the count and the one main action                   | Filters or view controls                 |
+| `toolbar`      | `Toolbar` with search, filter triggers and the view controls                     | The main action; a second row of filters |
+| `band`         | The active filters (removable tag chips), when any apply                         | Controls that change the view            |
+| children       | `CardGrid`, `DataTable` or `GroupedList`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins       |
+| `selectionBar` | `SelectionBar`, only while something is selected                                 | Actions that do not use the selection    |
 
 A list people browse (the library, folder pages) puts its toolbar in the
 shell's top bar: pass a `Toolbar` with `placement="topBar"` wrapped in the
@@ -179,6 +179,7 @@ such as the count of affected videos.
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                    |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                           |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                                                                                                                                   |
+| `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`) that stick under the top bar while their group scrolls; each group's rows on one card, divided by a line with no gap, and groups `gap-6` apart                                                                                            |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`; `stickyHeaderTop` sticks the column header that many px from the top, under an admin table page's stuck band                                                                                                    |
 | `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                                                                                                                      |
 
@@ -197,6 +198,12 @@ control }`: inline, the controls stand without a visible name, so each needs
     `compact` for its popover form (the sort's two radio columns, with
     `compactLabelled` when that form has its own legend) and `hideBelowSm`
     when it means nothing in one column (card size).
+- `GroupedList`: pass a `label`, then one `GroupedListGroup` per heading with
+  its rows as `GroupedListItem`s. A row lays its children out in one line;
+  put the row's own content in it and write no padding, border or gap around
+  the rows. Use it when the headings carry information the rows then leave
+  out, such as the day of a history; a table with a repeated column, or cards,
+  is the wrong shape for it. Example block `grouped-list-example`.
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
 - `SelectionBar`: use `ghost` `sm` buttons with a visible name at every width,

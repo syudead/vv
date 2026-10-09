@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "grouped-list",
+  "title": "GroupedList",
+  "description": "Section: rows under headings that stick below the top bar, each group's rows on one card divided by a line.",
+  "files": [
+    {
+      "path": "src/ui/patterns/grouped-list.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\n// 見出しつきのまとまりの一覧（区画）。まとまりの見出しと、その行を 1 枚の card の面に\n// 線で区切って並べる。まとまりの間・見出しと面の間・行の間の間隔、見出しの見た目と\n// トップバーの下に貼り付くこと、面の見た目はこの区画が持ち、画面は見出しの文言と行の中身を\n// 渡すだけにする。規則は web/registry/rules/patterns.md の Sections。\n\nexport interface GroupedListProps {\n  /** 一覧の名前（「Watch history」）。支援技術に読まれる。 */\n  label: string;\n  /** GroupedListGroup を並べる。 */\n  children: ReactNode;\n}\n\nfunction GroupedListRoot({ label, children }: GroupedListProps) {\n  return (\n    <ul data-slot=\"grouped-list\" aria-label={label} className=\"flex flex-col gap-6\">\n      {children}\n    </ul>\n  );\n}\n\nexport interface GroupedListGroupProps {\n  /** まとまりの見出し（「Today」）。h2 になる。 */\n  heading: ReactNode;\n  /** GroupedListItem を並べる。 */\n  children: ReactNode;\n}\n\n/**\n * GroupedListGroup は見出しと、その行の面である。見出しはまとまりの行が流れる間トップバーの\n * 下に貼り付き、次のまとまりの見出しに押し出される。\n */\nfunction GroupedListGroup({ heading, children }: GroupedListGroupProps) {\n  return (\n    <li data-slot=\"grouped-list-group\" className=\"flex flex-col gap-2\">\n      <h2 className=\"sticky top-navbar z-10 bg-background py-2 text-sm font-semibold text-foreground\">\n        {heading}\n      </h2>\n      <ul className=\"flex flex-col divide-y divide-border rounded-md border border-border bg-card text-card-foreground\">\n        {children}\n      </ul>\n    </li>\n  );\n}\n\nexport interface GroupedListItemProps {\n  /** 行の中身。左から右へ並び、縦は中央に揃う。 */\n  children: ReactNode;\n}\n\n/** GroupedListItem はまとまりの 1 行である。行の間に隙間は無く、線で区切る。 */\nfunction GroupedListItem({ children }: GroupedListItemProps) {\n  return (\n    <li data-slot=\"grouped-list-item\" className=\"flex min-w-0 items-center gap-3 p-2\">\n      {children}\n    </li>\n  );\n}\n\n/** GroupedList は一覧の全体で、`GroupedList.Group` と `GroupedList.Item` を持つ。 */\nconst GroupedList = Object.assign(GroupedListRoot, {\n  Group: GroupedListGroup,\n  Item: GroupedListItem,\n});\n\nexport { GroupedList, GroupedListGroup, GroupedListItem };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

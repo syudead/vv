@@ -5,6 +5,7 @@ export {
   formatDateTime,
   formatNumber,
   formatRelative,
+  formatTime,
   selectPlural,
   type PluralForms,
 } from "./format";

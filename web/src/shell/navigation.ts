@@ -1,4 +1,4 @@
-import { Folder, Layers, Library, Tags, type LucideIcon } from "lucide-react";
+import { Folder, History, Layers, Library, Tags, type LucideIcon } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
 
@@ -11,7 +11,7 @@ export interface NavEntry {
   /** 行き先より下の URL（`/folders/3/A` など）でも選択中にする。 */
   matchDescendants?: boolean;
   /**
-   * 所有者のデータ（タグ・候補）に依る項目。ゲストには出さない
+   * 所有者のデータ（タグ・視聴履歴・候補）に依る項目。ゲストには出さない
    * （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
    */
   ownerOnly?: boolean;
@@ -30,6 +30,13 @@ export function navEntries(): readonly NavEntry[] {
       icon: Folder,
       to: "/folders",
       matchDescendants: true,
+    },
+    {
+      id: "history",
+      label: t.shell.nav.history,
+      icon: History,
+      to: "/history",
+      ownerOnly: true,
     },
     { id: "tags", label: t.shell.nav.tags, icon: Tags, to: "/tags", ownerOnly: true },
     {
