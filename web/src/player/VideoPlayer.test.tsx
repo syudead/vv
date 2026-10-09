@@ -389,6 +389,39 @@ describe("VideoPlayer", () => {
     expect(player.disposed).toBe(true);
   });
 
+  it("play を onPlay で知らせる", async () => {
+    const values = { ...props(), onPlay: vi.fn() };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+
+    act(() => player.trigger("play"));
+    expect(values.onPlay).toHaveBeenCalledOnce();
+  });
+
+  it("positioned のあとの play は、onPlay の前に今の位置を onPosition で知らせる", async () => {
+    const values = { ...props(), onPlay: vi.fn() };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    act(() => player.trigger("loadedmetadata"));
+    act(() => player.trigger("timeupdate"));
+    player.time = 90;
+    act(() => player.trigger("timeupdate"));
+    expect(values.onPosition).toHaveBeenLastCalledWith(90_000);
+
+    // Replay は先頭へ戻してすぐ play し、timeupdate より先に play が届くことがある。
+    player.time = 0;
+    act(() => player.trigger("play"));
+
+    expect(values.onPosition).toHaveBeenLastCalledWith(0);
+    const reported = values.onPosition.mock.invocationCallOrder.at(-1) ?? Infinity;
+    const played = values.onPlay.mock.invocationCallOrder[0] ?? -Infinity;
+    expect(reported).toBeLessThan(played);
+  });
+
   it("操作バーは画質・速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
@@ -859,16 +892,18 @@ describe("VideoPlayer", () => {
     );
   });
 
-  it("続きの位置が無ければ最初のメタデータで positioned を立てる", async () => {
+  it("続きの位置が無ければ最初のメタデータで positioned を立て、その位置を知らせる", async () => {
     const values = props();
     render(<VideoPlayer {...values} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const player = mock.instances[0];
     if (player === undefined) throw new Error("playerがありません");
+    expect(values.onPosition).not.toHaveBeenCalled();
     act(() => player.trigger("loadedmetadata"));
     expect(values.onStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ positioned: true }),
     );
+    expect(values.onPosition).toHaveBeenLastCalledWith(0);
   });
 
   it("全画面は上に重ねる層ごと（渡した入れ物）にし、吹き出しもその中に描く", async () => {
