@@ -133,8 +133,8 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
           if (keeping && now.kind === "ready") {
             // 行は残す。読み直しの間は続きの読み込みを断っているので、最後の行が見えたままでも
             // 見張りの知らせは二度と来ない。行の配列を新しくして見張りを付け直させ、見えて
-            // いればすぐ続きを読ませる。
-            show({ ...now, items: [...now.items] });
+            // いればすぐ続きを読ませる。その間に行が尽きていれば、見張る行が無いのでここで読む。
+            fill({ ...now, items: [...now.items] });
             onReloadFailedRef.current(error);
             return;
           }

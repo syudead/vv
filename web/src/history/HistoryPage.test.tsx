@@ -409,6 +409,43 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     );
   });
 
+  it("読み直しに失敗したとき、その間に行が尽きていれば続きを読む", async () => {
+    const user = userEvent.setup();
+    server.pageSize = 2;
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    server.deleteStatus = 404;
+    let release = () => {};
+    server.holdList = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.listUrls).toHaveLength(2));
+    // 読み直しの間に見えている行を全部消す。続きの読み込みは断られる。
+    server.deleteStatus = 204;
+    await user.click(screen.getByRole("button", { name: /^Remove "Harbour lights"/ }));
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.deletes).toHaveLength(3));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull(),
+    );
+    expect(server.listUrls).toHaveLength(2);
+
+    server.listStatus = 500;
+    server.holdList = null;
+    act(() => release());
+    await waitFor(() =>
+      expect(toasts()).toEqual(["Something went wrong on the server."]),
+    );
+
+    // 見張る行が無くても、残っている古い件を読む。
+    server.listStatus = 200;
+    await waitFor(() =>
+      expect(server.listUrls.at(-1)).toBe("/api/watch-history?cursor=3&limit=60"),
+    );
+  });
+
   it("削除に失敗したら行を残してトーストを出す", async () => {
     const user = userEvent.setup();
     server.deleteStatus = 500;
