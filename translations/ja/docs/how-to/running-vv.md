@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 943b87948952ca02c1dfa8cbc07cfe65f9bf3ddcdc3dba251dcfb78728061555
+sourceHash: 67c4ea002d3115a0cd10157dc29e09f54ce0cced6ca668ca9ea3fad72e7af088
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -256,7 +256,7 @@ Docker の構成では、アプリケーションのデータを `vv_data` ボ�
 | 分類 | テーブルとファイル | 復旧の手段 |
 | --- | --- | --- |
 | 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`folder_groups`、`folder_group_members`、`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
-| ユーザーデータ | `playback_progress`、`tags`、`tag_names`、`video_tags`、`rejected_tag_names`、`public_videos`、`video_overrides`、`video_edits`、`video_favorites`、`folder_favorites`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
+| ユーザーデータ | `playback_progress`、`watch_history`、`tags`、`tag_names`、`video_tags`、`rejected_tag_names`、`public_videos`、`video_overrides`、`video_edits`、`video_favorites`、`folder_favorites`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
 | 設定 | `account`、`media_folders`、`settings`、`api_tokens` | バックアップ、または設定し直す |
 | セッション | `sessions` | ログインし直す |
 
