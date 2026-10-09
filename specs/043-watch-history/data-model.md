@@ -40,8 +40,8 @@ The backfill inserts one row per `playback_progress` row:
 
 | Column | Value |
 | --- | --- |
-| `content_key` | The record's key; a `bundle:<id>` key becomes that bundle's `representative_key`. A record whose key resolves to nothing is skipped |
-| `title` | `coalesce(video_overrides.display_name, <representative location's title>, '')` for the video with that content key at migration time |
+| `content_key` | The record's key, whether or not a video has it at migration time; a `bundle:<id>` key becomes that bundle's `representative_key`. Only a `bundle:<id>` key without a `video_bundles` row is skipped ([R-4](research.md#r-4-existing-playback-records-are-backfilled-by-the-migration)) |
+| `title` | `coalesce(video_overrides.display_name, <representative location's title>, '')` for that content key at migration time; `video_overrides` is keyed by content, so a removed video keeps its display name, else the title is empty |
 | `played_at` | `playback_progress.updated_at * 1000` (the record is in seconds) |
 | `playback_id` | Null |
 
@@ -88,7 +88,7 @@ Succession and bundling:
 | A save whose video has an empty `content_key` writes no entry | `PlaybackStore.SaveProgress`, `check (content_key <> '')` |
 | The entry's time and title are fixed at its first save | `insert or ignore`: later saves change nothing |
 | Deleting entries changes no row of any other table (requirement 9) | `PlaybackStore.DeleteWatchHistoryEntry`, `ClearWatchHistory` |
-| An entry resolves to a video only when a video with its content key has a location the owner may open | `PlaybackStore.ListWatchHistory` (`visibleVideoCondition` for the owner) |
+| An entry resolves to a video only when a video with its content key has a location the viewer may open | `PlaybackStore.ListWatchHistory` (`visibleVideoCondition` with the `domain.Audience` it is given, as every store read returning videos takes one: ARCHITECTURE.md, "Every read knows its viewer") |
 
 ## Store operations (`PlaybackStore`)
 
@@ -101,7 +101,7 @@ would split one business operation.
 | Operation | Behaviour |
 | --- | --- |
 | `SaveProgress(ctx, userKey, progress, play *domain.Play)` | As today, plus, when `play` is not nil and `play.ContentKey` is not empty, `insert or ignore into watch_history (content_key, playback_id, title, played_at)` with the current time in milliseconds, in the same transaction |
-| `ListWatchHistory(ctx, cursor string, limit int)` | The page after `cursor` in `(played_at desc, id desc)` order, `limit` items, each with the owner's `Video` when present. `NextCursor` is set when a further row exists |
+| `ListWatchHistory(ctx, audience domain.Audience, cursor string, limit int)` | The page after `cursor` in `(played_at desc, id desc)` order, `limit` items, each with the `Video` that `audience` may open when present (`visibleVideoCondition` with `audience`; the handler passes the audience the boundary classified, which on these owner-only routes is the owner). `NextCursor` is set when a further row exists |
 | `DeleteWatchHistoryEntry(ctx, id int64) (bool, error)` | Deletes the row; false when it did not exist |
 | `ClearWatchHistory(ctx) error` | Deletes every row |
 

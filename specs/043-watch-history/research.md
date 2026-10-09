@@ -36,13 +36,21 @@ gone. Deleting history rows touches no other table, which is requirement 9.
 
 **Decision**: `PUT /api/videos/{id}/progress` gains an optional `playbackId`
 ([contracts/screen-api.md](contracts/screen-api.md#playbackid-on-put-apivideosidprogress)).
-The video page creates one id (`crypto.randomUUID()`) at the first `play`
-event for a video and sends it with every save and beacon until the video id
-changes; saves before the first play carry none. The server inserts the entry
+The video page creates one id at the first `play` event for a video and sends
+it with every save and beacon until the video id changes or the video plays to
+its end; saves before the first play carry none. The id is an RFC 4122
+version 4 id formatted from 16 bytes of `crypto.getRandomValues()`:
+`crypto.randomUUID()` exists only in a secure context, and the owner can open
+vv over plain HTTP from another device on the local network
+([running-vv.md](../../docs/how-to/running-vv.md)), as `newAttempt` in
+`web/src/player/liveOffset.ts` already accounts for. The server inserts the entry
 with `insert or ignore` on the unique `playback_id` in the same transaction as
 the position, so pauses, resumes and seeks extend nothing and create nothing.
 The id lives in the page's progress-saving hook, not in `VideoPlayer`, so a
-player remount (error recovery, quality switch) keeps the entry.
+player remount (error recovery, quality switch) keeps the entry. The save the
+player sends at `ended` still carries the id; then the hook drops it, so
+**Replay** in the ended overlay, or playing again from the end, starts a new
+entry on its `play`. Pauses, seeks and remounts before the end keep the id.
 
 | Option | Verdict |
 | --- | --- |
@@ -50,20 +58,31 @@ player remount (error recovery, quality switch) keeps the entry.
 | Server-side merging by time gap between saves | Rejected: two tabs playing the same video would merge into one entry (Edge Case), and a pause longer than the gap would split one viewing (acceptance criterion 3) |
 | A separate `POST` at the first play | Rejected: one more round trip per play, and after the owner deletes the entry mid-playback the client would have to notice and post again; with the id on every save the next save recreates it, which is the Edge Case's "a new entry" |
 | The id per `VideoPlayer` instance | Rejected: recovery and quality switches remount the player, which would split one viewing |
+| Keep the id across **Replay** after the end | Rejected: a viewing that reached the end is finished, and watching it again is the repeat viewing requirement 4 counts; keeping the id would fold it into the first entry |
+| `crypto.randomUUID()` | Rejected: undefined over plain HTTP on the local network, so no entry would be written from a phone |
 
 **Rationale**: The client is the only party that knows where one viewing
 starts and ends (the page), and the server is the only party that must not
 trust it for anything but identity: it decides the time and what the entry
 points at. Reloading the page starts a new entry; the Issue calls a repeat
-viewing "after a while" a separate entry, and a reload is the closest thing
-the page can observe.
+viewing "after a while" a separate entry, and a reload or a replay after the
+end are the boundaries the page can observe.
 
 ## R-3: The entry's time is the server time of the first save with its id
 
 **Decision**: `played_at` is the server's clock at the first save carrying the
-playback id. The client sends a save immediately at the first `play` (today
-the first save waits for the 5 s timer or a pause), so the time is the start
-of playback within a round trip. The list orders by `played_at` descending,
+playback id. The client sends that save immediately at the first `play`
+(today the first save waits for the 5 s timer or a pause), but not before the
+player reports `positioned` (`PlayerStatus.positioned` in
+`web/src/player/VideoPlayer.tsx`: the first metadata arrived and the resume
+seek or the transcode's start report settled). Autoplay calls `play()` right
+after setting the source, so the first `play` can fire while the position is
+still 0 and the stored resume position not yet applied; a save then would
+overwrite the resume position. When `play` comes first, the hook holds the id
+and sends the save when `positioned` arrives; until then no save or beacon
+carries the id, so leaving that early records no viewing. The time is
+therefore the start of playback within the metadata load, the resume seek and
+one round trip. The list orders by `played_at` descending,
 then `id` descending, and the entry keeps its place while it is being watched.
 
 | Option | Verdict |
@@ -71,6 +90,7 @@ then `id` descending, and the entry keeps its place while it is being watched.
 | **Server time of the first save** | Chosen |
 | A client-reported start time | Rejected: a device clock the server does not control orders the owner's history |
 | The time of the latest save (last activity) | Rejected: a long viewing would keep jumping to the top while two other viewings happen; "when I watched it" is when it started |
+| Record the start apart from the position (a save that writes no position, or a separate request) | Rejected: one more request shape for a gain of the resume seek's duration, usually under a second; the device clock stays out of the order either way |
 
 ## R-4: Existing playback records are backfilled by the migration
 
@@ -78,8 +98,17 @@ then `id` descending, and the entry keeps its place while it is being watched.
 with `played_at` = its `updated_at`, no playback id, the content key of the
 record (a bundle key resolves to the bundle's representative), and the title
 the video page shows at that moment (the display name override, else the
-file title; empty when the content is not in the library). Rows whose key
-resolves to nothing are skipped.
+file title; the display name, else empty, when the content is not in the
+library). A record whose content has no video at migration time still gets
+its entry: playback positions are user data keyed by content and outlive
+removal from the library (ARCHITECTURE.md, "User data survives a rebuild";
+nothing in `internal/store` deletes a `playback_progress` row), and the entry
+without a video is the case R-5 already shows; the backfill runs once, so
+skipping it would lose that viewing for good even after the content returns.
+A `bundle:<id>` key with no `video_bundles` row is skipped, because no content
+key can be derived from it; bundling and dissolving move user data in the
+same transaction (`internal/store/versions.go`), so such a row is not
+expected.
 
 | Option | Verdict |
 | --- | --- |

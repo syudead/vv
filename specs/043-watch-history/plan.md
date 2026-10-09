@@ -65,8 +65,12 @@ positions or watch states, the external API, guest viewings, and statistics.
 - `PUT /api/videos/{id}/progress` is the only existing route that changes;
   the three history routes are new
   ([contracts/screen-api.md](contracts/screen-api.md)).
-- No new dependency: the playback id is `crypto.randomUUID()`, available in
-  every browser the SPA targets.
+- No new dependency: the playback id is an RFC 4122 version 4 id built from
+  `crypto.getRandomValues()`, because `crypto.randomUUID()` needs a secure
+  context and the owner can open vv over plain HTTP on the local network
+  ([running-vv.md](../../docs/how-to/running-vv.md); `newAttempt` in
+  [web/src/player/liveOffset.ts](../../web/src/player/liveOffset.ts) avoids
+  it for the same reason).
 
 ## Constitution Check
 
@@ -76,7 +80,7 @@ positions or watch states, the external API, guest viewings, and statistics.
 | The domain decides, the store enforces (ARCHITECTURE.md) | Pass: `ValidatePlaybackID` and the cursor live in `internal/domain`; one entry per id is the unique index |
 | Events after commit (ARCHITECTURE.md) | Pass: no new domain event ([R-6](research.md#r-6-deleting-entries-is-a-plain-delete-a-vanished-entry-answers-404-and-the-screen-reloads)) |
 | User data survives a rebuild (ARCHITECTURE.md) | Pass: keyed by the content key, no foreign key; the invariant's list and the recovery table gain `watch_history` |
-| Every read knows its viewer (ARCHITECTURE.md) | Pass: the routes are owner-only, and the list reads videos with the owner's `Audience` through `visibleVideoCondition` |
+| Every read knows its viewer (ARCHITECTURE.md) | Pass: the routes are owner-only, and `ListWatchHistory` takes the request's classified `domain.Audience` from the HTTP boundary and reads videos through `visibleVideoCondition` with it |
 | Do not hand-edit generated files (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
 | Read design-system.md before a screen; test at the lowest level (AGENTS.md) | Pass: the screen composes registry page patterns, decided in `ui-design.md`; rules out of the page get logic tests |
 
@@ -155,7 +159,9 @@ first save's; saves with two ids for one video write two entries; a save
 after the entry was deleted writes a new one; a malformed id is `400`; a
 database with three `playback_progress` rows, one under a bundle key, has
 three entries after migration, at the records' times and with the current
-titles; same-path succession moves the entries to the new key and keeps the
+titles; a `playback_progress` row whose content has no video at migration
+time still gets an entry (title from its display name, else empty), and that
+entry carries the video again once the content is rescanned; same-path succession moves the entries to the new key and keeps the
 new key's own entries; deleting an entry leaves `playback_progress` unchanged.
 
 ### Add the watch history list and delete endpoints to the screen API
@@ -173,14 +179,16 @@ new key's own entries; deleting an entry leaves `playback_progress` unchanged.
 tests show: the list is newest first with `id` breaking ties, and a second
 page from `nextCursor` continues without repeating; an entry whose content
 has no location has no `video` while another entry of present content
-carries one with `progress`; a non-representative bundle member's entry
+carries one with `progress`; the store read receives the audience the
+boundary classified; a non-representative bundle member's entry
 carries that member; delete answers `204` then `404`; clear answers `204` on
 an empty history; a guest gets `401` on all three; `limit` 201 and an
 unreadable cursor are `400`.
 
 ### Send a playback id from the video page from the first play on
 
-**Scope**: `useProgressSaving` holding the id and `markPlayed()`,
+**Scope**: `useProgressSaving` holding the id, `markPlayed()` and
+`markEnded()`, the id generator from `crypto.getRandomValues()`,
 `VideoPlayer`'s `onPlay`, and `playbackId` on `saveProgress` and
 `beaconProgress`
 ([contracts/screen-api.md, Client use](contracts/screen-api.md#client-use),
@@ -189,11 +197,15 @@ unreadable cursor are `400`.
 **Dependencies**: Record a watch history entry for each playback.
 
 **Acceptance**: `task check` passes; logic tests of the hook and the client
-show: no save before the first play carries an id; the first play sends one
-immediate save with an id; later saves, the pause save and the leave beacon
-carry the same id; a remount of the player under the same video id keeps the
-id; a new video id gets a new id; the page test of the video page shows the
-id reaching the request body.
+show: no save before the first play carries an id; the generated id is in
+the 36-character RFC 4122 form without `crypto.randomUUID`; a first play
+before the player reports `positioned` sends nothing until it does, then one
+immediate save with the id at the settled position, and the leave beacon
+sent in between carries no id; later
+saves, the pause save and the leave beacon carry the same id; a remount of
+the player under the same video id keeps the id; the save at `ended` carries
+the id and the next `play` (Replay) gets a new one; a new video id gets a new
+id; the page test of the video page shows the id reaching the request body.
 
 ### Add the watch history screen to the sidebar for the owner
 
