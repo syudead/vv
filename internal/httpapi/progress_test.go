@@ -17,6 +17,8 @@ type fakePlayback struct {
 	saved map[string]domain.Progress
 	// lastKey は最後に書き込んだ鍵。content_key で記録していることの確認に使う。
 	lastKey string
+	// plays は保存のたびに渡された視聴の値（nil を含む）である。
+	plays []*domain.Play
 }
 
 func newFakePlayback() *fakePlayback {
@@ -24,9 +26,10 @@ func newFakePlayback() *fakePlayback {
 }
 
 func (f *fakePlayback) SaveProgress(
-	_ context.Context, contentKey string, progress domain.Progress,
+	_ context.Context, contentKey string, progress domain.Progress, play *domain.Play,
 ) (domain.Progress, error) {
 	f.lastKey = contentKey
+	f.plays = append(f.plays, play)
 	// 実際の保存先と同じく、記録した時刻を入れて返す。
 	progress.UpdatedAt = time.Now()
 	f.saved[contentKey] = progress
@@ -171,6 +174,12 @@ func TestPutProgressRejectsInvalidBody(t *testing.T) {
 		{"負の値", `{"positionMs": -1}`},
 		{"位置が無い", `{}`},
 		{"型が違う", `{"positionMs": "4000"}`},
+		{"識別子の型が違う", `{"positionMs": 1, "playbackId": 1}`},
+		{"識別子が短い", `{"positionMs": 1, "playbackId": "0f8fad5b-d9cb-469f-a165-70867728950"}`},
+		{"識別子の区切りが違う", `{"positionMs": 1, "playbackId": "0f8fad5bd9cb-469f-a165-70867728950e1"}`},
+		{"識別子が 16 進でない", `{"positionMs": 1, "playbackId": "0f8fad5b-d9cb-469f-a165-70867728950g"}`},
+		{"識別子が空", `{"positionMs": 1, "playbackId": ""}`},
+		{"識別子が null", `{"positionMs": 1, "playbackId": null}`},
 	}
 
 	for _, tc := range tests {
@@ -261,4 +270,70 @@ func TestVideosWithoutPlayback(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
 	}
+}
+
+// 視聴の識別子があれば、再生したバージョンの content_key と有効な題名で視聴履歴を渡す。
+// 応答は識別子の有無で変わらない（specs/043-watch-history/contracts/screen-api.md）。
+func TestPutProgressPassesPlay(t *testing.T) {
+	playback := newFakePlayback()
+	video := sampleVideo(1, "京都の街並み")
+	// 集まりのメンバー。履歴の鍵は集まりの鍵ではなく、再生したバージョンの content_key である。
+	video.UserKey = "bundle:7"
+	handler := newTestServer(t, Options{
+		Videos:   &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Playback: playback,
+	})
+
+	rec := putProgress(t, handler, "/api/videos/1/progress", "application/json",
+		`{"positionMs": 4000, "playbackId": "0F8FAD5B-D9CB-469F-A165-70867728950E"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Progress](t, rec); got.PositionMs != 4000 {
+		t.Errorf("positionMs = %d, want 4000", got.PositionMs)
+	}
+	if playback.lastKey != "bundle:7" {
+		t.Errorf("再生位置の鍵 = %q, want bundle:7", playback.lastKey)
+	}
+	// 大文字で送られた識別子は小文字にそろえて渡す。大小だけ違う同じ識別子で 2 件にしない。
+	want := domain.Play{
+		PlaybackID: "0f8fad5b-d9cb-469f-a165-70867728950e",
+		ContentKey: "abcdef0123456789abcdef:1024",
+		Title:      "京都の街並み",
+	}
+	if len(playback.plays) != 1 || playback.plays[0] == nil || *playback.plays[0] != want {
+		t.Errorf("plays = %+v, want [%+v]", playback.plays, want)
+	}
+}
+
+// 識別子が無い保存と、content_key が空の動画の保存は履歴を書かない。
+func TestPutProgressWithoutPlay(t *testing.T) {
+	t.Run("識別子が無い", func(t *testing.T) {
+		playback := newFakePlayback()
+		rec := putProgress(t, progressServer(t, playback), "/api/videos/1/progress", "application/json",
+			`{"positionMs": 4000}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+		}
+		if len(playback.plays) != 1 || playback.plays[0] != nil {
+			t.Errorf("plays = %+v, want [nil]", playback.plays)
+		}
+	})
+	t.Run("content_key が空", func(t *testing.T) {
+		playback := newFakePlayback()
+		video := sampleVideo(1, "京都の街並み")
+		video.ContentKey = ""
+		handler := newTestServer(t, Options{
+			Videos:   &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+			Playback: playback,
+		})
+		rec := putProgress(t, handler, "/api/videos/1/progress", "application/json",
+			`{"positionMs": 4000, "playbackId": "0f8fad5b-d9cb-469f-a165-70867728950e"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+		}
+		if len(playback.plays) != 1 || playback.plays[0] != nil {
+			t.Errorf("plays = %+v, want [nil]", playback.plays)
+		}
+	})
 }

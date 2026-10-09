@@ -14,7 +14,7 @@ func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	saved, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000))
+	saved, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestPlaybackStoreSavesAndLoadsWithoutVideoRows(t *testing.T) {
 	ctx := context.Background()
 	playback := db.Playback()
 
-	saved, err := playback.SaveProgress(ctx, "detached-key", domain.EvaluateProgress(12_000, 120_000))
+	saved, err := playback.SaveProgress(ctx, "detached-key", domain.EvaluateProgress(12_000, 120_000), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	ctx := context.Background()
 
 	for _, position := range []int64{1000, 5000, 3000} {
-		if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(position, 600_000)); err != nil {
+		if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(position, 600_000), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -108,7 +108,7 @@ func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000), nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +134,7 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/元.mp4"), "元", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000), nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -167,7 +167,7 @@ func TestProgressByContentKeys(t *testing.T) {
 	ctx := context.Background()
 
 	for _, key := range []string{"key-a", "key-b", "key-c"} {
-		if _, err := db.Playback().SaveProgress(ctx, key, domain.EvaluateProgress(1000, 600_000)); err != nil {
+		if _, err := db.Playback().SaveProgress(ctx, key, domain.EvaluateProgress(1000, 600_000), nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -198,7 +198,7 @@ func TestSaveProgressStoresCompletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(7_990, 8_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(7_990, 8_000), nil); err != nil {
 		t.Fatal(err)
 	}
 

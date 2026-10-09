@@ -169,7 +169,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{f.ids["a"], f.ids["b"]}, tag.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "content-key-a", domain.Progress{PositionMs: 30_000, DurationMs: 60_000}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "content-key-a", domain.Progress{PositionMs: 30_000, DurationMs: 60_000}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{f.ids["a"], f.ids["d"]}, true); err != nil {

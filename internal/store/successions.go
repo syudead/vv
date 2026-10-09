@@ -223,8 +223,8 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグを鍵 to へ付け替える。
-// 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグは和にする。
+// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴を鍵 to へ付け替える。
+// 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits"} {
 		if _, err := tx.ExecContext(ctx, `delete from `+table+` where content_key = ?
@@ -241,6 +241,10 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	}
 	if _, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ?`, from); err != nil {
 		return fmt.Errorf("cannot move the video_tags values: %w", err)
+	}
+	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す（specs/043-watch-history/data-model.md）。
+	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
+		return fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
 	return nil
 }

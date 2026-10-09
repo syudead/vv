@@ -292,7 +292,7 @@ func TestFavoriteSurvivesMoveAndCompletion(t *testing.T) {
 	}
 
 	if _, err := db.Playback().SaveProgress(ctx, video.UserKey,
-		domain.Progress{PositionMs: 100_000, DurationMs: 100_000, Completed: true}); err != nil {
+		domain.Progress{PositionMs: 100_000, DurationMs: 100_000, Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !ownerVideo(t, db, a).Favorite {

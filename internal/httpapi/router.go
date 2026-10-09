@@ -47,9 +47,12 @@ type Library interface {
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
-// 動画の行が消えても記録が残る。
+// 動画の行が消えても記録が残る。play が nil でなく ContentKey が空でなければ、同じ取引で
+// 視聴履歴を 1 件書く（同じ PlaybackID の 2 回目以降は何も足さない）。
 type Playback interface {
-	SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error)
+	SaveProgress(
+		ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
+	) (domain.Progress, error)
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
 }
 

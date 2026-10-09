@@ -2397,6 +2397,12 @@ export interface components {
         ProgressUpdate: {
             /** Format: int64 */
             positionMs: number;
+            /**
+             * @description この視聴にクライアントが付けた識別子（RFC 4122 の文字列の形）。ある識別子での
+             *     最初の保存が動画の視聴履歴を 1 件足し、同じ識別子での以降の保存は何も足さない。
+             *     再生が始まる前は送らない。形が違えば 400 invalid_request。
+             */
+            playbackId?: string;
         };
         SubtitleTrackList: {
             subtitles: components["schemas"]["SubtitleTrack"][];
