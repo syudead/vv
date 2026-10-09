@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/ui-design.md
-sourceHash: 6098addf260f5af955f1b6af315e9056e6d096adba17613db64c4d8803912e81
+sourceHash: 451a571753697a3a79e70eac15bbb716b545094af72b2df2628a9300d1936330
 ---
 
 # UI 設計: 視聴履歴の画面 {#ui-design-watch-history-screen}
@@ -59,9 +59,9 @@ flowchart LR
 | 日の見出し、前日 | Yesterday | `history.day.yesterday` |
 | 日の見出し、それ以外の日 | Sep 27, 2026 | その日の `formatDate` |
 | エントリの時刻 | 3:04 PM | `formatTime`。`format.ts` に、カタログのロケールで `timeStyle: "short"` の `Intl.DateTimeFormat` として加える |
-| エントリのリンクのアクセシブルな名前 | {title}, {duration} | 既存の `videoLinkLabel` |
+| エントリのリンクのアクセシブルな名前 | {title}, {duration}, played {day} at {time} | `history.entryLink`。{day} はその行の日の見出しの文字（「Today」「Yesterday」または日付）なので、1 つの動画の 2 回の視聴は違う名前になる |
 | 削除ボタン、ツールチップ | Remove from history | `history.remove` |
-| 削除ボタン、アクセシブルな名前 | Remove "{title}" from history | `history.removeFor` |
+| 削除ボタン、アクセシブルな名前 | Remove "{title}" played {day} at {time} from history | `history.removeFor`。{day} はエントリのリンクと同じ |
 | ライブラリにないエントリ | Not in the library | `history.notInLibrary`。警告の行 |
 | スナップショットのタイトルが空のエントリ | Unknown video | `history.unknownTitle` |
 | ヘッダーのメニューボタン、ツールチップとアクセシブルな名前 | More | `common.more` |
@@ -85,19 +85,27 @@ flowchart LR
 
 ## 履歴の画面 {#history-screen}
 
-`PageHeader` を持ち、ツールバー、帯、選択バーを持たない `ListPage` である。ヘッダーはタイトル「History」と、`actions` に `ghost` `icon-sm` のボタン 1 つ（lucide `Ellipsis`、`Tooltip`「More」）を持ち、このボタンは[履歴を消す](#clearing-the-history)のメニューを開く。件数は出さない。API は総数を返さず、数字は減らすべきものと読まれてしまう。本体は日のグループで、次のページを読み込む間はその後に `LoadMoreRow` が続く。または状態のブロック 1 つである。
+`PageHeader` を持ち、ツールバー、帯、選択バーを持たない `ListPage` である。ヘッダーはタイトル「History」と、`actions` に `ghost` `icon-sm` のボタン 1 つ（lucide `Ellipsis`、`Tooltip`「More」）を持ち、このボタンは[履歴を消す](#clearing-the-history)のメニューを開く。件数は出さない。API は総数を返さず、数字は減らすべきものと読まれてしまう。本体は日のグループの `GroupedList` 1 つで、次のページを読み込む間はその後に `LoadMoreRow` が続く。または状態のブロック 1 つである。
+
+### デザインシステムのグループ付き一覧 {#grouped-list-in-the-design-system}
+
+`ListPage` の子のスロットは `CardGrid` か `DataTable` を取り、見出しは決して取らない。画面はパターンの周りに余白を書かない（[patterns.md の List page](../../web/registry/rules/patterns.md#list-page)）。既存のどちらの一覧も見出し付きのグループを描かないので、この機能は、合うパターンがないときに patterns.md が求めるとおり、画面が使う前にデザインシステムへ一覧のセクションを加える。`GroupedList`（項目 `grouped-list`、`web/src/ui/patterns` に置き、`grouped-list-example` ブロックを持つ）であり、patterns.md の List page の子の行で、`GroupedList` を `CardGrid` と `DataTable` の横に加える。
+
+`GroupedList` は一覧のラベルとそのグループを子として取る。各 `GroupedList.Group` は `heading` のノードとその行を取る。セクションは、すべての間隔、見出しの見た目とその固定表示、カードの面を受け持つ。画面は文字と行を渡し、余白のクラスを書かない。重複の画面は自分の一覧を保つ。それをこのセクションに移すことは、この機能に含まない。
 
 ### 日のグループ {#day-groups}
 
-エントリは、ブラウザのタイムゾーンでの `playedAt` の暦日でまとめ、新しい日から並べる。1 日の中では API が返す順に並べる（R-3）。グループは `section` である。見出しの後に、その行を 1 つの `bg-card` の面に `rounded-md border border-border` で置き、行の間を `divide-y divide-border` で区切る。重複の画面が一覧を描くのと同じである。
+エントリは、ブラウザのタイムゾーンでの `playedAt` の暦日でまとめ、新しい日から並べる。1 日の中では API が返す順に並べる（R-3）。各日は 1 つの `GroupedList.Group` である。見出しの後に、その行を 1 つの `bg-card` の面に `rounded-md border border-border` で置き、行の間を `divide-y divide-border` で区切る。重複の画面が一覧を描くのと同じである。以下の形は `GroupedList` が描くものである。
 
 | 部分 | 形 |
 | --- | --- |
 | 見出し | `h2`、`text-sm font-semibold text-foreground`、`py-2`。「Today」「Yesterday」、それ以外は `formatDate`。`sticky top-navbar z-10 bg-background` で、その行がスクロールして過ぎる間トップバーの下に留まり、次の日の見出しに押し出される |
 | 行 | エントリの行。線で区切り、間隔は空けない |
-| グループの間 | ページの本体で `gap-6`。グループの中では見出しとそのカードの間が `gap-2` |
+| グループの間 | グループの間は `gap-6`。グループの中では見出しとそのカードの間が `gap-2` |
 
 日の境界は見る人のローカルの午前 0 時なので、午後 11:50 のエントリと午前 0:10 のエントリは 2 つのグループに分かれる。ページングで 1 日が 2 つのページに分かれることがある。次のページの最初のエントリが同じ日なら開いているグループに加わるので、同じ日が二度現れることはない。
+
+「Today」と「Yesterday」は描画時の現在の日付から計算する。画面は、見る人の次のローカルの午前 0 時と、タブが再び見えるようになったときに、一覧を読み直さずに見出しを描き直す。そのため、一晩開いたままの画面は、昨日のエントリを「Yesterday」の下に、その前の日のエントリをその日付の下に出す。
 
 ### エントリの行 {#entry-row}
 
@@ -112,7 +120,7 @@ flowchart LR
 
 サムネイルと 2 つの行は、`state.from` を `/history` にした `/videos/{video.id}` への 1 つの `Link` である。そのため、動画の画面の `×` と Esc はここに戻る。リンクは削除ボタンまでの行を覆い、行の `hover:bg-accent` の塗りと `rounded-md` を持つ。そのため、`×` 以外の行のどこを押しても動画が開く（`UI品質`、操作の優先度）。動画の画面は、どこから開いたときとも同じに再開する（要件 5）。
 
-同じ動画を二度見ると、サムネイルとタイトルが同じで時刻が違う 2 つの行になる（要件 4）。何もそれらをまとめず、数えない。
+同じ動画を二度見ると、サムネイルとタイトルが同じで時刻が違う 2 つの行になる（要件 4）。何もそれらをまとめず、数えない。それらのリンクと `×` の名前は日と時刻を持つので（[文言](#words)を参照）、スクリーンリーダーは目と同じように 2 回の視聴を区別する。
 
 ライブラリにあるが再生できない動画（`playable` が false）はリンクを保ち、時刻の下にリスト表示の行の警告の行（`text-xs text-warning`、lucide `AlertTriangle` `size-3`、行の `unplayable` の文言）を出す。そのため、見る人は動画の画面が同じことを言う前にそれを知る。
 
@@ -137,8 +145,8 @@ flowchart LR
 | 出来事 | 振る舞い |
 | --- | --- |
 | 押した | ボタンは `disabled` になり、`X` の代わりに `Spinner` を出す。行は残る。二度目に押しても何も起きない |
-| `204` | 行が消える。最後の行が消えた日は、見出しとともに消える。フォーカスは次の行の `×`、なければ前の行のもの、なければページのタイトル（`titleRef`）に移る。重複の画面と同じである |
-| `404` | 一覧が古い（別のタブで削除された）。画面は最初のページから読み直し、そのページが届いたら、スケルトンもメッセージもなしに表示を置き換える（R-6）。ウィンドウは、短くなった一覧が許す限りスクロール位置を保つ |
+| `204` | 行が消える。最後の行が消えた日は、見出しとともに消える。フォーカスは次の行の `×`、なければ前の行のもの、なければページのタイトル（`titleRef`）に移る。重複の画面と同じである。最後に読み込んだ行が消え、`nextCursor` が残っているときは、もっと古いエントリがある。[ページング](#paging)を参照 |
+| `404` | 一覧が古い（別のタブで削除された）。画面は、今の行を描いたまま最初のページから読み直し、そのページが届いたら、スケルトンもメッセージもなしに行を置き換える（R-6）。ウィンドウは、短くなった一覧が許す限りスクロール位置を保つ。最初のページが空なら空の状態になる。読み直しが失敗すると、行を保ち、トーストに `errorText(error)` を出す |
 | そのほかの失敗 | 行は残り、ボタンは `X` に戻り、トーストが `errorText(error)` を出す |
 
 別のタブで再生中の動画のエントリを削除しても、何も止めない。そのタブの次の保存が新しいエントリを書き、この画面は次に読んだときにそれを出す（Edge Case）。
@@ -161,6 +169,8 @@ flowchart LR
 
 最初の読み込みは既定のページ（`limit` 60）を求める。最後の行が下端から 1 ビューポート以内に来ると、ライブラリが `IntersectionObserver` でするのと同じに `nextCursor` で次のページを求め、最後のグループの下に `LoadMoreRow` を出す。ページの読み込みが失敗すると、行を保ったまま、同じカーソルへの `Retry` を持つ `LoadMoreRow` の失敗を出す。「Load more」ボタンもページ番号もない。履歴はスクロールで遡って読むものである（要件 6）。
 
+行を削除すると、`nextCursor` がまだ古いエントリを指しているのに、読み込んだ行が 1 つもなくなることがある。そのとき画面はすぐに次のページを求め（またはすでに走っている要求を待ち）、本体には `LoadMoreRow` だけを出し、届いた行を出す。そこでの失敗は、`Retry` を持つ `LoadMoreRow` の失敗である。空の状態は、読み込んだ行がなく、`nextCursor` も残っていないときにだけ出る。そのため、古いエントリが再読み込みまで届かなくなることはない。
+
 ### 状態 {#states}
 
 図は、本体の状態と、状態の間を移すものを示す。
@@ -176,16 +186,18 @@ stateDiagram-v2
   LoadingMore --> Content: 次のページ
   LoadingMore --> LoadMoreFailed: 要求が失敗した
   LoadMoreFailed --> LoadingMore: Retry
-  Content --> Content: 行の ×、204
-  Content --> Loading: 行の ×、404
-  Content --> Empty: 最後の行を削除、または Clear
+  Content --> Content: 行の ×、204、または 404 と読み直した最初のページ
+  Content --> LoadingMore: 読み込んだ最後の行を削除、続きがある
+  Content --> Empty: 最後の行を削除して続きがない、Clear、または 404 と空の最初のページ
 ```
+
+`404` の読み直しはそれだけの状態ではない。最初のページが行を置き換えるまで、本体は行を描いたまま `Content` にとどまる。
 
 | 状態 | 画面に出すもの |
 | --- | --- |
 | Loading | `More` のないヘッダー。本体に見出しの高さの `Skeleton` 1 つと、行の高さの `Skeleton` 6 つ。`aria-hidden` |
 | Load failed | 「Couldn't load the history」と `Retry` を持つ `ErrorState`。`More` はない |
-| Empty | lucide `History`、「No watch history」、「Videos you play are listed here, newest first.」を持つ `EmptyState`。操作も `More` もない。消した後と、最後の行を削除した後も同じブロック |
+| Empty | lucide `History`、「No watch history」、「Videos you play are listed here, newest first.」を持つ `EmptyState`。操作も `More` もない。消した後と、`nextCursor` が残っていないときに最後の行を削除した後も同じブロック |
 | Content | 日のグループ。ヘッダーに `More` |
 | Loading more | グループ、その後に読み込み中の `LoadMoreRow` |
 | Load more failed | グループ、その後に `Retry` を持つ失敗の `LoadMoreRow` |
@@ -215,7 +227,7 @@ stateDiagram-v2
 5. **操作の優先度**: 行の `×` 以外のどこを押しても動画が開き、動画は保存された位置から再開する。エントリを 1 つ削除するのは `×` を 1 回押すことである。消すには `More`、「Clear history…」、「Clear」と進み、最初の 2 つは決して画面で最も目立つ操作にならない。
 6. **ライブラリにないエントリ**: 削除した動画の行は、タイトルを薄い色で、「Not in the library」を警告のアイコンとともに出し、ホバーの塗りはない。押しても何も開かない。その `×` は働く。タイトルが空のエントリは「Unknown video」と読める。ファイルが戻って再スキャンした後、行は再び動画を開く。
 7. **削除と消去は再生に触れない**: 行を削除した後と消した後、その動画のライブラリのカードは、前と同じ進み具合のバー、視聴済みの印、「Last played」での位置を出す（受け入れ条件 6）。
-8. **同じ動画を二度**: 1 日の 2 回の視聴は時刻の違う 2 つの行であり、画面の何もそれらを数えず、まとめない。
+8. **同じ動画を二度**: 1 日の 2 回の視聴は時刻の違う 2 つの行であり、画面の何もそれらを数えず、まとめない。スクリーンリーダーは、それらのリンクと `×` ボタンを違う時刻で読み上げる。
 9. **確認**: 「Clear history…」はダイアログを開く。Cancel と Esc は一覧を変えずにそれを閉じる。「Clear」は「Clearing…」を出し、その後に空の状態を出す。要求が走る間、どちらのボタンも再び押せない。
 10. **古い一覧**: 2 つのタブで一覧を開き、一方でエントリを削除し、次にもう一方で削除すると、2 番目のタブはエラーもトーストもなしに現在の一覧を出す。
 11. **ゲスト**: ゲストとしてサインインすると、どの幅でもサイドバーに「History」はなく、`/history` を開くとログインの画面が出る（受け入れ条件 9）。
