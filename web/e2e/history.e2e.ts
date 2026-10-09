@@ -194,9 +194,8 @@ async function watchVideo(page: Page, item: Video, seconds: number) {
 }
 
 /**
- * libraryCards はライブラリで 2 本を「最後に再生した順」に並べ、各カードの題名・進捗バーの
- * 値・視聴済みの印を並びのまま返す。履歴を消してもこれが変わらないことを確かめる
- * （受け入れ条件 6）。
+ * libraryCards はライブラリで 2 本を「最後に再生した順」に並べ、各カードの題名と進捗バーの
+ * 値を並びのまま返す。履歴を消してもこれが変わらないことを確かめる（受け入れ条件 6）。
  */
 async function libraryCards(page: Page) {
   await page.goto(`/?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc`);
@@ -208,9 +207,21 @@ async function libraryCards(page: Page) {
       progress:
         element.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow") ??
         null,
-      watched: element.querySelector('[aria-label="Watched"]') !== null,
     })),
   );
+}
+
+/**
+ * watchedCards はライブラリの「Watched」の絞り込みで出る 2 本のうちの題名を返す。格子のカードは
+ * 視聴済みを題名の色でしか示さないので、視聴状態は絞り込みの結果で見る（受け入れ条件 6）。
+ */
+async function watchedCards(page: Page, expected: number) {
+  await page.goto(
+    `/?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc&watch=watched`,
+  );
+  const cards = page.locator("article[data-video-id]");
+  await expect(cards).toHaveCount(expected);
+  return cards.locator("h3").allTextContents();
 }
 
 async function guestPage(browser: Browser) {
@@ -221,6 +232,8 @@ async function guestPage(browser: Browser) {
 }
 
 test.describe.serial("watch history", () => {
+  let folder: MediaFolder | undefined;
+
   test.beforeAll(async ({ request }) => {
     test.setTimeout(180_000);
     const root = process.env.MDM_E2E_HISTORY_MEDIA_DIR;
@@ -232,7 +245,7 @@ test.describe.serial("watch history", () => {
       data: { path: root },
     });
     expect(created.status()).toBe(201);
-    const folder = (await created.json()) as MediaFolder;
+    folder = (await created.json()) as MediaFolder;
     expect(folder.id).toBeGreaterThan(0);
 
     const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
@@ -261,6 +274,17 @@ test.describe.serial("watch history", () => {
       headers: { Origin: origin },
     });
     expect(cleared.status()).toBe(204);
+  });
+
+  // 登録したフォルダは消す。失敗時の再試行で beforeAll をやり直せるようにし、後に続く e2e の
+  // ライブラリにこの 2 本を残さない。
+  test.afterAll(async ({ request }) => {
+    if (folder === undefined) return;
+    const removed = await request.delete(
+      `/api/media-folders/${String(folder.id)}?version=${String(folder.version)}`,
+      { headers: mutationHeaders },
+    );
+    expect(removed.status()).toBe(204);
   });
 
   test("動画を開いて再生せずに戻ると、履歴は増えない（受け入れ条件 2）", async ({
@@ -358,10 +382,22 @@ test.describe.serial("watch history", () => {
     request,
   }) => {
     const item = video(titleA);
+    // 消す件の動画（A）を視聴済みにして、印が残ることも確かめる。再生 ID の無い保存なので
+    // 履歴は増えない。40 秒の 30 秒目は末尾 15 秒（CompletionTailMs）の内側である。
+    const finished = await request.put(`/api/videos/${String(item.id)}/progress`, {
+      headers: mutationHeaders,
+      data: { positionMs: 30_000 },
+    });
+    expect(finished.status()).toBe(200);
+    expect(((await finished.json()) as Progress).completed).toBe(true);
+    expect((await historyEntries(request)).length).toBe(3);
+
     const progressBefore = await savedProgress(request, item);
     const cardsBefore = await libraryCards(page);
     expect(cardsBefore.map((card) => card.title)).toEqual([titleA, titleB]);
-    expect(cardsBefore[0]?.progress).not.toBeNull();
+    // B は途中まで見たので進捗バーがあり、A は視聴済みなので一覧の「Watched」に出る。
+    expect(cardsBefore[1]?.progress).not.toBeNull();
+    expect(await watchedCards(page, 1)).toEqual([titleA]);
 
     await openHistory(page);
     // いちばん上（A の 2 回目の視聴）の行の × を押す。
@@ -380,6 +416,7 @@ test.describe.serial("watch history", () => {
 
     expect(await savedProgress(request, item)).toEqual(progressBefore);
     expect(await libraryCards(page)).toEqual(cardsBefore);
+    expect(await watchedCards(page, 1)).toEqual([titleA]);
   });
 
   test("全件削除は確認を出し、取り消せば何も消えず、確定すれば空の表示になる（受け入れ条件 7）", async ({
