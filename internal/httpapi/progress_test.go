@@ -179,6 +179,7 @@ func TestPutProgressRejectsInvalidBody(t *testing.T) {
 		{"識別子の区切りが違う", `{"positionMs": 1, "playbackId": "0f8fad5bd9cb-469f-a165-70867728950e1"}`},
 		{"識別子が 16 進でない", `{"positionMs": 1, "playbackId": "0f8fad5b-d9cb-469f-a165-70867728950g"}`},
 		{"識別子が空", `{"positionMs": 1, "playbackId": ""}`},
+		{"識別子が null", `{"positionMs": 1, "playbackId": null}`},
 	}
 
 	for _, tc := range tests {
@@ -294,8 +295,9 @@ func TestPutProgressPassesPlay(t *testing.T) {
 	if playback.lastKey != "bundle:7" {
 		t.Errorf("再生位置の鍵 = %q, want bundle:7", playback.lastKey)
 	}
+	// 大文字で送られた識別子は小文字にそろえて渡す。大小だけ違う同じ識別子で 2 件にしない。
 	want := domain.Play{
-		PlaybackID: "0F8FAD5B-D9CB-469F-A165-70867728950E",
+		PlaybackID: "0f8fad5b-d9cb-469f-a165-70867728950e",
 		ContentKey: "abcdef0123456789abcdef:1024",
 		Title:      "京都の街並み",
 	}

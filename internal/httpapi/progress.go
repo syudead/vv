@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -93,17 +94,14 @@ func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (pro
 	}
 
 	// positionMs と playbackId だけを読む。completed のような申告があっても採らない。
+	// playbackId は生のまま受け取り、明示の null を「送られていない」と区別して断る。
 	var update struct {
-		PositionMs *int64  `json:"positionMs"`
-		PlaybackID *string `json:"playbackId"`
+		PositionMs *int64          `json:"positionMs"`
+		PlaybackID json.RawMessage `json:"playbackId"`
 	}
 	if err := json.Unmarshal(body, &update); err != nil {
 		var typeErr *json.UnmarshalTypeError
 		if errors.As(err, &typeErr) {
-			if typeErr.Field == "playbackId" {
-				s.invalidRequest(w, "playbackId must be a string.")
-				return progressUpdate{}, false
-			}
 			s.invalidRequest(w, "positionMs must be a number.")
 			return progressUpdate{}, false
 		}
@@ -120,11 +118,18 @@ func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (pro
 	}
 	out := progressUpdate{positionMs: *update.PositionMs}
 	if update.PlaybackID != nil {
-		if err := domain.ValidatePlaybackID(*update.PlaybackID); err != nil {
+		var playbackID string
+		if string(update.PlaybackID) == "null" || json.Unmarshal(update.PlaybackID, &playbackID) != nil {
+			s.invalidRequest(w, "playbackId must be a string.")
+			return progressUpdate{}, false
+		}
+		if err := domain.ValidatePlaybackID(playbackID); err != nil {
 			s.invalidRequest(w, "playbackId must be an RFC 4122 id (8-4-4-4-12 hexadecimal).")
 			return progressUpdate{}, false
 		}
-		out.playbackID = *update.PlaybackID
+		// 16 進の大文字と小文字は同じ識別子なので、小文字にそろえてから一意の鍵に渡す。
+		// そろえないと、大小だけ違う同じ識別子で履歴が 2 件になる。
+		out.playbackID = strings.ToLower(playbackID)
 	}
 	return out, true
 }
