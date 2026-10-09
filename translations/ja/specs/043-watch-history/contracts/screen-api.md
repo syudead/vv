@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/contracts/screen-api.md
-sourceHash: cbb7898d05f130b967048fa7b183ebbee3f3aa235e6b539a497fc8c99da3d69f
+sourceHash: 209f0246bc80b6748e275afc7688d8a1aa9f46a8250578abe1c8d50451773fc9
 ---
 
 # 契約: 画面の API の変更 {#contract-screen-api-changes}
@@ -60,13 +60,13 @@ WatchHistoryEntry:
   properties:
     id:       { type: integer, format: int64 }
     playedAt: { type: string, format: date-time }   # when the viewing started
-    title:    { type: string }                       # the title at that time
+    title:    { type: string }                       # the title at that time; may be empty
     video:
       $ref: Video   # the video now in the library with the played content;
                     # absent when there is none (not playable from the history)
 ```
 
-`video` は一覧の項目と同じ形で、`progress`、`tags`、`favorite` は所有者に対するものと同じく埋まっているので、画面はそれを開き、その状態を示せる。あるとき、`video.title` は今のタイトルであり、画面はそれを表示する。`title` は動画のないエントリのためのものである。
+`video` は一覧の項目と同じ形で、`progress`、`tags`、`favorite` は所有者に対するものと同じく埋まっているので、画面はそれを開き、その状態を示せる。あるとき、`video.title` は今のタイトルであり、画面はそれを表示する。`title` は動画のないエントリのためのものである。内容がライブラリを離れていて表示名もなかった埋め戻しのエントリは、空の `title` を持つ。そのとき表示する文言は `ui-design.md` が決める。
 
 | ステータス | `code` | 条件 |
 | --- | --- | --- |
@@ -96,7 +96,7 @@ WatchHistoryEntry:
 | 変更 | 詳細 |
 | --- | --- |
 | `web/src/api/client.ts` の `saveProgress(id, positionMs, playbackId?)` と `beaconProgress(id, positionMs, playbackId?)` | 与えられたときに `playbackId` を送る。動画ごとの送信キューと `recordSavedProgress` は変わらない |
-| `useProgressSaving` (`web/src/player/useProgressSaving.ts`) | 今の動画 id の再生 id を持つ。`markPlayed()` は最初の `play` でそれを作り、即時の保存を 1 回送る。動画 id が変わると id を捨てる |
-| `VideoPlayer` | ページが `markPlayed()` を呼べるように `play` イベントを知らせる (`onPlay`) |
+| `useProgressSaving` (`web/src/player/useProgressSaving.ts`) | 今の動画 id の再生 id を持つ。`markPlayed()` は最初の `play` で、`crypto.getRandomValues()` から RFC 4122 バージョン 4 の形でそれを作る (平文の HTTP では `crypto.randomUUID()` がない)。それを持つ 1 回の即時の保存は、プレーヤーの状態が `positioned` になったときに送り、すでにそうであればすぐに送るので、その保存がシークの前に再開位置を上書きすることはない ([R-3](../research.md#r-3-the-entrys-time-is-the-server-time-of-the-first-save-with-its-id))。その保存の前に id を持つ保存やビーコンはない。`markEnded()` は `ended` での保存に id を持たせてからそれを捨てるので、次の `play` は新しいエントリを始める。動画 id が変わったときも id を捨てる |
+| `VideoPlayer` | ページが `markPlayed()` を呼べるように `play` イベントを知らせる (`onPlay`)。ページは `PlayerStatus.positioned` と `ended` をフックに渡す |
 | `web/src/api/history.ts` (新規) | `listWatchHistory({ cursor, limit })`、`deleteWatchHistoryEntry(id)`、`clearWatchHistory()` |
 | 履歴の画面 | `204` で行を消す。`404` でメッセージなしに最初のページから読み直す。それ以外の失敗では行を残し、トーストを出す (`errorText`) |

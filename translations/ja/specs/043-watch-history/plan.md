@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/plan.md
-sourceHash: 1f31471d92d0fb864d52fb85c3a75e71709d39fc9b20501e1c58e12c9c079a82
+sourceHash: 6b73e9157af5b39fa62da28500f7091cbfe5ffcca72a90f08d448d48131ee136
 ---
 
 # 実装計画: 視聴履歴の画面 {#implementation-plan-watch-history-screen}
@@ -59,7 +59,7 @@ Issue には `ui` ラベルがあるので、一覧のレイアウト、日付�
 
 - マイグレーションを 1 つ、`00034_watch_history.sql`。埋め戻しを含む ([data-model.md、Migration](data-model.md#migration))。
 - 変わる既存のルートは `PUT /api/videos/{id}/progress` だけである。履歴の 3 つのルートは新しい ([contracts/screen-api.md](contracts/screen-api.md))。
-- 新しい依存はない: 再生 id は `crypto.randomUUID()` であり、SPA が対象にするすべてのブラウザーで使える。
+- 新しい依存はない: 再生 id は `crypto.getRandomValues()` から作る RFC 4122 バージョン 4 の id である。`crypto.randomUUID()` は安全なコンテキストを必要とし、所有者はローカルネットワークで平文の HTTP で vv を開けるからである ([running-vv.md](../../docs/how-to/running-vv.md)。[web/src/player/liveOffset.ts](../../web/src/player/liveOffset.ts) の `newAttempt` も同じ理由でそれを避けている)。
 
 ## Constitution Check {#constitution-check}
 
@@ -69,7 +69,7 @@ Issue には `ui` ラベルがあるので、一覧のレイアウト、日付�
 | ドメインが決め、ストアが強制する (ARCHITECTURE.md) | 適合: `ValidatePlaybackID` とカーソルは `internal/domain` にある。id ごとに 1 つのエントリであることは一意インデックスが保つ |
 | コミット後のイベント (ARCHITECTURE.md) | 適合: 新しいドメインイベントはない ([R-6](research.md#r-6-deleting-entries-is-a-plain-delete-a-vanished-entry-answers-404-and-the-screen-reloads)) |
 | ユーザーデータは作り直しの後も残る (ARCHITECTURE.md) | 適合: 内容の鍵をキーにし、外部キーを持たない。不変条件の一覧と復旧の表に `watch_history` を加える |
-| すべての読み取りは閲覧者を知る (ARCHITECTURE.md) | 適合: ルートは所有者専用であり、一覧は所有者の `Audience` で、`visibleVideoCondition` を通じて動画を読む |
+| すべての読み取りは閲覧者を知る (ARCHITECTURE.md) | 適合: ルートは所有者専用であり、`ListWatchHistory` は HTTP の境界からリクエストの分類された `domain.Audience` を受け取り、それで `visibleVideoCondition` を通じて動画を読む |
 | 生成ファイルを手で編集しない (AGENTS.md) | 適合: `api/openapi.yaml` を変え、`task generate` を実行する |
 | 画面の前に design-system.md を読む。最も低いレベルでテストする (AGENTS.md) | 適合: 画面はレジストリのページパターンを組み合わせ、それは `ui-design.md` で決める。ページの外の規則はロジックのテストを持つ |
 
@@ -127,7 +127,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ストアとハンドラーのテストが次を示す: `playbackId` のない保存はエントリを書かない。1 つの id での 2 回の保存は 1 つのエントリを書き、その時刻は最初の保存のものである。1 つの動画への 2 つの id での保存は 2 つのエントリを書く。エントリが削除された後の保存は新しいエントリを書く。形式の誤った id は `400` である。`playback_progress` の行を 3 つ持ち、そのうち 1 つがまとまりのキーの下にあるデータベースは、マイグレーションの後に、記録の時刻と今のタイトルで 3 つのエントリを持つ。同じパスでの継承はエントリを新しいキーに移し、新しいキー自身のエントリを保つ。エントリを削除しても `playback_progress` は変わらない。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ストアとハンドラーのテストが次を示す: `playbackId` のない保存はエントリを書かない。1 つの id での 2 回の保存は 1 つのエントリを書き、その時刻は最初の保存のものである。1 つの動画への 2 つの id での保存は 2 つのエントリを書く。エントリが削除された後の保存は新しいエントリを書く。形式の誤った id は `400` である。`playback_progress` の行を 3 つ持ち、そのうち 1 つがまとまりのキーの下にあるデータベースは、マイグレーションの後に、記録の時刻と今のタイトルで 3 つのエントリを持つ。マイグレーションの時点で内容が動画を持たない `playback_progress` の行もエントリを得て (タイトルは表示名、なければ空)、内容が再スキャンされると、そのエントリは再び動画を持つ。同じパスでの継承はエントリを新しいキーに移し、新しいキー自身のエントリを保つ。エントリを削除しても `playback_progress` は変わらない。
 
 ### 視聴履歴の一覧と削除のエンドポイントを画面の API に加える {#add-the-watch-history-list-and-delete-endpoints-to-the-screen-api}
 
@@ -135,15 +135,15 @@ flowchart LR
 
 **依存**: 再生ごとに視聴履歴のエントリを記録する。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。テストが次を示す: 一覧は新しい順で、同じ時刻は `id` で決まる。`nextCursor` からの 2 ページ目は繰り返さずに続く。内容が場所を持たないエントリは `video` を持たず、ライブラリにある内容の別のエントリは動画を `progress` 付きで持つ。まとまりの代表でないメンバーのエントリはそのメンバーを持つ。削除は `204`、次に `404` を返す。全消去は空の履歴にも `204` を返す。ゲストは 3 つすべてで `401` を受け取る。`limit` 201 と読めないカーソルは `400` である。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。テストが次を示す: 一覧は新しい順で、同じ時刻は `id` で決まる。`nextCursor` からの 2 ページ目は繰り返さずに続く。内容が場所を持たないエントリは `video` を持たず、ライブラリにある内容の別のエントリは動画を `progress` 付きで持つ。ストアの読み取りは、境界が分類した audience を受け取る。まとまりの代表でないメンバーのエントリはそのメンバーを持つ。削除は `204`、次に `404` を返す。全消去は空の履歴にも `204` を返す。ゲストは 3 つすべてで `401` を受け取る。`limit` 201 と読めないカーソルは `400` である。
 
 ### 動画のページから最初の再生以降に再生 id を送る {#send-a-playback-id-from-the-video-page-from-the-first-play-on}
 
-**範囲**: id と `markPlayed()` を持つ `useProgressSaving`、`VideoPlayer` の `onPlay`、`saveProgress` と `beaconProgress` の `playbackId` ([contracts/screen-api.md、Client use](contracts/screen-api.md#client-use)、[R-2](research.md#r-2-one-entry-per-playback-identified-by-a-client-generated-playback-id))。
+**範囲**: id、`markPlayed()` と `markEnded()` を持つ `useProgressSaving`、`crypto.getRandomValues()` からの id の生成、`VideoPlayer` の `onPlay`、`saveProgress` と `beaconProgress` の `playbackId` ([contracts/screen-api.md、Client use](contracts/screen-api.md#client-use)、[R-2](research.md#r-2-one-entry-per-playback-identified-by-a-client-generated-playback-id))。
 
 **依存**: 再生ごとに視聴履歴のエントリを記録する。
 
-**受け入れ**: `task check` が通る。フックとクライアントのロジックのテストが次を示す: 最初の再生の前の保存は id を持たない。最初の再生は id 付きの即時の保存を 1 回送る。その後の保存、一時停止の保存、離れるときのビーコンは同じ id を持つ。同じ動画 id の下でプレーヤーを再マウントしても id を保つ。新しい動画 id は新しい id を得る。動画のページのページテストが、id がリクエストの本文に届くことを示す。
+**受け入れ**: `task check` が通る。フックとクライアントのロジックのテストが次を示す: 最初の再生の前の保存は id を持たない。生成した id は、`crypto.randomUUID` を使わずに 36 文字の RFC 4122 の形である。プレーヤーが `positioned` を知らせる前の最初の再生は、そうなるまで何も送らず、それから落ち着いた位置で id 付きの即時の保存を 1 回送り、その間に送った離れるときのビーコンは id を持たない。その後の保存、一時停止の保存、離れるときのビーコンは同じ id を持つ。同じ動画 id の下でプレーヤーを再マウントしても id を保つ。`ended` での保存は id を持ち、次の `play` (Replay) は新しい id を得る。新しい動画 id は新しい id を得る。動画のページのページテストが、id がリクエストの本文に届くことを示す。
 
 ### 所有者のサイドバーに視聴履歴の画面を加える {#add-the-watch-history-screen-to-the-sidebar-for-the-owner}
 

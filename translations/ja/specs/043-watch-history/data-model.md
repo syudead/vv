@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/data-model.md
-sourceHash: f0453355c54afcd38b7c5428c81ea3ef2a00181921ee400e361f78b62b4589e4
+sourceHash: 25a3d9f53e45ee6adba645f2ed3b884b50211e8f3a45fc3c00c5a283b90930be
 ---
 
 # データモデル: 視聴履歴の画面 {#data-model-watch-history-screen}
@@ -40,8 +40,8 @@ create index watch_history_content_idx on watch_history (content_key);
 
 | 列 | 値 |
 | --- | --- |
-| `content_key` | 記録のキー。`bundle:<id>` のキーはそのまとまりの `representative_key` になる。キーが何にも解決しない記録は飛ばす |
-| `title` | マイグレーションの時点でその内容の鍵を持つ動画の `coalesce(video_overrides.display_name, <representative location's title>, '')` |
+| `content_key` | 記録のキー。マイグレーションの時点で動画がそれを持つかどうかによらない。`bundle:<id>` のキーはそのまとまりの `representative_key` になる。飛ばすのは、`video_bundles` の行のない `bundle:<id>` のキーだけである ([R-4](research.md#r-4-existing-playback-records-are-backfilled-by-the-migration)) |
+| `title` | マイグレーションの時点でのその内容の鍵に対する `coalesce(video_overrides.display_name, <representative location's title>, '')`。`video_overrides` は内容をキーにするので、取り除かれた動画も表示名を保ち、なければタイトルは空である |
 | `played_at` | `playback_progress.updated_at * 1000` (記録は秒単位) |
 | `playback_id` | Null |
 
@@ -85,7 +85,7 @@ Down はテーブルを削除する。
 | 動画の `content_key` が空の保存はエントリを書かない | `PlaybackStore.SaveProgress`、`check (content_key <> '')` |
 | エントリの時刻とタイトルは最初の保存で決まる | `insert or ignore`: その後の保存は何も変えない |
 | エントリを削除しても他のどのテーブルの行も変わらない (要件 9) | `PlaybackStore.DeleteWatchHistoryEntry`、`ClearWatchHistory` |
-| エントリが動画に解決するのは、その内容の鍵を持つ動画が所有者の開ける場所を持つときだけである | `PlaybackStore.ListWatchHistory` (所有者に対する `visibleVideoCondition`) |
+| エントリが動画に解決するのは、その内容の鍵を持つ動画が閲覧者の開ける場所を持つときだけである | `PlaybackStore.ListWatchHistory` (与えられた `domain.Audience` での `visibleVideoCondition`。動画を返すストアの読み取りはすべてそれを受け取る: ARCHITECTURE.md、「Every read knows its viewer」) |
 
 ## ストアの操作 (`PlaybackStore`) {#store-operations-playbackstore}
 
@@ -94,7 +94,7 @@ Down はテーブルを削除する。
 | 操作 | 振る舞い |
 | --- | --- |
 | `SaveProgress(ctx, userKey, progress, play *domain.Play)` | 今と同じ。加えて、`play` が nil でなく `play.ContentKey` が空でないとき、同じトランザクションの中で、今の時刻をミリ秒で `insert or ignore into watch_history (content_key, playback_id, title, played_at)` する |
-| `ListWatchHistory(ctx, cursor string, limit int)` | `(played_at desc, id desc)` の順で `cursor` の後のページを `limit` 項目返す。各項目は、あるときは所有者の `Video` を持つ。さらに行があるときは `NextCursor` を設定する |
+| `ListWatchHistory(ctx, audience domain.Audience, cursor string, limit int)` | `(played_at desc, id desc)` の順で `cursor` の後のページを `limit` 項目返す。各項目は、あるときは `audience` が開ける `Video` を持つ (`audience` での `visibleVideoCondition`。ハンドラーは境界が分類した audience を渡し、所有者専用のこれらのルートではそれは所有者である)。さらに行があるときは `NextCursor` を設定する |
 | `DeleteWatchHistoryEntry(ctx, id int64) (bool, error)` | 行を削除する。なかったときは false |
 | `ClearWatchHistory(ctx) error` | すべての行を削除する |
 
