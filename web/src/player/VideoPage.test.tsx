@@ -32,6 +32,7 @@ interface PlayerProps {
   autoplay: boolean;
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
+  onPlay?: () => void;
   onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
@@ -1648,6 +1649,36 @@ describe("VideoPage", () => {
               init.body === JSON.stringify({ positionMs: 12_345 }),
           ),
         ).toBe(true);
+      });
+    });
+
+    it("最初の再生で、positioned のあとに視聴の識別子を progress API の body へ送る", async () => {
+      renderPage();
+      await ready();
+      // 自動再生の play は、続きからの位置へシークし終える前に届く。
+      act(() => player().onPlay?.());
+      act(() => player().onPosition(42_000));
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      await waitFor(() => {
+        const bodies = fetchMock.mock.calls
+          .filter(
+            ([input, init]) =>
+              String(input) === "/api/videos/7/progress" && init?.method === "PUT",
+          )
+          .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+        expect(bodies).toEqual([
+          { positionMs: 42_000, playbackId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+        ]);
       });
     });
 

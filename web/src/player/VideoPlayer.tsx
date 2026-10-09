@@ -181,6 +181,11 @@ interface Props {
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
   /**
+   * 再生が始まった（video.js の play）。視聴履歴の視聴の始まりに使う
+   * （specs/043-watch-history/research.md R-2）。回復のための読み込み直しでは呼ばない。
+   */
+  onPlay?: () => void;
+  /**
    * 再生できなかった。positionMs は失敗した論理上の位置、kind は見る人に伝える失敗の種類。
    * 通信が切れたときは読み込み直しを使い切ってから呼ぶ。
    */
@@ -656,6 +661,7 @@ export default function VideoPlayer(props: Props) {
       if (recovering) return;
       attempt = { ...attempt, state: "playing", playIntended: true };
       setStatus({ playing: true, ended: false });
+      latest.current.onPlay?.();
     });
     player.on("waiting", () => setStatus({ loading: true }));
     for (const event of ["playing", "canplay", "seeked"]) {

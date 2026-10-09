@@ -389,6 +389,17 @@ describe("VideoPlayer", () => {
     expect(player.disposed).toBe(true);
   });
 
+  it("play を onPlay で知らせる", async () => {
+    const values = { ...props(), onPlay: vi.fn() };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+
+    act(() => player.trigger("play"));
+    expect(values.onPlay).toHaveBeenCalledOnce();
+  });
+
   it("操作バーは画質・速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
