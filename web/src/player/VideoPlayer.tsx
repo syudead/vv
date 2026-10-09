@@ -181,6 +181,11 @@ interface Props {
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
   /**
+   * 再生が始まった（video.js の play）。視聴履歴の視聴の始まりに使う
+   * （specs/043-watch-history/research.md R-2）。回復のための読み込み直しでは呼ばない。
+   */
+  onPlay?: () => void;
+  /**
    * 再生できなかった。positionMs は失敗した論理上の位置、kind は見る人に伝える失敗の種類。
    * 通信が切れたときは読み込み直しを使い切ってから呼ぶ。
    */
@@ -450,8 +455,11 @@ export default function VideoPlayer(props: Props) {
     };
     latest.current.onStatus(status);
     // markPositioned は確定の条件がそろったら positioned を立てる。一度立てたら下ろさない。
+    // 立てるときに確定した位置を onPosition で知らせる。続きからの位置がない直接再生は
+    // ここまで位置を一度も知らせないので、知らせないと保存する位置がない。
     const markPositioned = () => {
       if (metadataAccepted && !resumeSeekPending && !liveOffsetPending) {
+        if (!status.positioned) reportPosition();
         setStatus({ positioned: true });
       }
     };
@@ -656,6 +664,11 @@ export default function VideoPlayer(props: Props) {
       if (recovering) return;
       attempt = { ...attempt, state: "playing", playIntended: true };
       setStatus({ playing: true, ended: false });
+      // play の前のシーク（Replay は先頭へ戻してすぐ play する）は timeupdate より先に
+      // play が届くことがあるので、onPlay の前に今の位置を知らせる。positioned の前の
+      // 位置は確定していないので知らせない。
+      if (status.positioned) reportPosition();
+      latest.current.onPlay?.();
     });
     player.on("waiting", () => setStatus({ loading: true }));
     for (const event of ["playing", "canplay", "seeked"]) {
