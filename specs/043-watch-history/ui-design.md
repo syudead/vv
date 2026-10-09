@@ -87,9 +87,9 @@ User data (the title) is embedded as an argument.
 | Day heading, the day before | Yesterday | `history.day.yesterday` |
 | Day heading, any other day | Sep 27, 2026 | `formatDate` of the day |
 | Entry time | 3:04 PM | `formatTime`, added to `format.ts` as `Intl.DateTimeFormat` with `timeStyle: "short"` in the catalog's locale |
-| Entry link accessible name | {title}, {duration} | The existing `videoLinkLabel` |
+| Entry link accessible name | {title}, {duration}, played {day} at {time} | `history.entryLink`; {day} is the row's day heading text ("Today", "Yesterday" or the date), so two viewings of one video have different names |
 | Remove button, tooltip | Remove from history | `history.remove` |
-| Remove button, accessible name | Remove "{title}" from history | `history.removeFor` |
+| Remove button, accessible name | Remove "{title}" played {day} at {time} from history | `history.removeFor`; {day} as in the entry link |
 | Entry not in the library | Not in the library | `history.notInLibrary`; the warning line |
 | Entry with an empty snapshot title | Unknown video | `history.unknownTitle` |
 | Header menu button, tooltip and accessible name | More | `common.more` |
@@ -124,28 +124,52 @@ A `ListPage` with a `PageHeader` and no toolbar, band or selection bar. The
 header holds the title "History" and, in `actions`, one `ghost` `icon-sm`
 button (lucide `Ellipsis`, `Tooltip` "More") that opens the menu of
 [Clearing the history](#clearing-the-history). No count: the API gives no
-total, and a number would be read as something to reduce. The body is the
-day groups, then a `LoadMoreRow` while the next page loads, or one state
-block.
+total, and a number would be read as something to reduce. The body is one
+`GroupedList` of day groups, then a `LoadMoreRow` while the next page loads,
+or one state block.
+
+### Grouped list in the design system
+
+The `ListPage` children slot takes `CardGrid` or `DataTable`, never a heading,
+and the screen writes no spacing around the patterns
+([patterns.md, List page](../../web/registry/rules/patterns.md#list-page)).
+Neither existing list draws headed groups, so this feature adds a list section
+to the design system before the screen uses it, as patterns.md asks when no
+pattern fits: `GroupedList` (item `grouped-list`, in `web/src/ui/patterns`,
+with a `grouped-list-example` block), and `GroupedList` is added beside
+`CardGrid` and `DataTable` in the List page children row of patterns.md.
+
+`GroupedList` takes a list label and its groups as children; each
+`GroupedList.Group` takes a `heading` node and its rows. The section owns every
+gap, the heading's look and its stickiness, and the card surface; the screen
+passes text and rows and writes no spacing class. The duplicates page keeps its
+own list; moving it onto the section is not part of this feature.
 
 ### Day groups
 
 Entries are grouped by the calendar day of `playedAt` in the browser's time
 zone, newest day first, and within a day in the order the API gives (R-3).
-A group is a `section`: its heading, then its rows on one `bg-card` surface
-with `rounded-md border border-border` and `divide-y divide-border` between
-rows, as the duplicates page draws its list.
+Each day is one `GroupedList.Group`: its heading, then its rows on one
+`bg-card` surface with `rounded-md border border-border` and
+`divide-y divide-border` between rows, as the duplicates page draws its list.
+The forms below are what `GroupedList` draws.
 
 | Part | Form |
 | --- | --- |
 | Heading | `h2`, `text-sm font-semibold text-foreground`, `py-2`; "Today", "Yesterday", else `formatDate`. `sticky top-navbar z-10 bg-background`, so it stays under the top bar while its rows scroll past, and the next day's heading pushes it away |
 | Rows | The entry rows, divided by a line, with no gap between them |
-| Between groups | `gap-6` in the page body; inside a group the heading and its card are `gap-2` apart |
+| Between groups | `gap-6` between groups; inside a group the heading and its card are `gap-2` apart |
 
 The day boundary is the viewer's local midnight, so an entry from 11:50 PM
 and one from 12:10 AM are in two groups. Paging can split a day across two
 pages; the next page's first entries join the open group when they fall on the
 same day, so a day never appears twice.
+
+"Today" and "Yesterday" are computed from the current date at render, and the
+screen renders its headings again at the viewer's next local midnight and when
+the tab becomes visible again, without re-reading the list. A screen left open
+overnight then shows yesterday's entries under "Yesterday" and the day before
+under its date.
 
 ### Entry row
 
@@ -166,7 +190,9 @@ video (`UI品質`, priority of actions). The video page resumes as it does from
 anywhere (requirement 5).
 
 The same video seen twice is two rows with the same thumbnail and title and
-different times (requirement 4); nothing merges or counts them.
+different times (requirement 4); nothing merges or counts them. Their link
+and `×` names carry the day and the time (see [Words](#words)), so a screen
+reader tells the two viewings apart as the eye does.
 
 A video that is in the library but cannot be played (`playable` false) keeps
 its link, and shows under the time the list view row's warning line
@@ -200,8 +226,8 @@ for every removal would turn a tidy-up into a stream of notices.
 | Event | Behaviour |
 | --- | --- |
 | Pressed | The button is `disabled` and shows a `Spinner` in place of the `X`; the row stays; a second press does nothing |
-| `204` | The row leaves; a day whose last row left leaves with its heading. Focus moves to the next row's `×`, else the previous row's, else the page title (`titleRef`), as the duplicates page does |
-| `404` | The list is stale (deleted in another tab): the screen re-reads from the first page and replaces what it shows when the page arrives, with no skeleton and no message (R-6). The window keeps its scroll position as far as the shorter list allows |
+| `204` | The row leaves; a day whose last row left leaves with its heading. Focus moves to the next row's `×`, else the previous row's, else the page title (`titleRef`), as the duplicates page does. When the last loaded row leaves and `nextCursor` remains, older entries exist: see [Paging](#paging) |
+| `404` | The list is stale (deleted in another tab): the screen re-reads from the first page while the current rows stay drawn, and replaces them when the page arrives, with no skeleton and no message (R-6). The window keeps its scroll position as far as the shorter list allows. An empty first page gives the empty state; a failed re-read keeps the rows and shows `errorText(error)` in a toast |
 | Other failure | The row stays, the button returns to `X`, and a toast shows `errorText(error)` |
 
 Removing the entry of a video that is playing in another tab stops nothing:
@@ -237,6 +263,14 @@ shows the `LoadMoreRow` failure with `Retry` for the same cursor. No "Load
 more" button and no page numbers: the history is read by scrolling back
 (requirement 6).
 
+Removing rows can leave no loaded row while `nextCursor` still points at older
+entries. The screen then requests the next page at once (or waits for the
+request already running), with the `LoadMoreRow` alone in the body, and shows
+the rows that arrive. A failure there is the `LoadMoreRow` failure with
+`Retry`. The empty state appears only when no row is loaded and no
+`nextCursor` remains, so older entries never become unreachable until a
+reload.
+
 ### States
 
 The diagram shows the body's states and what moves it between them.
@@ -252,16 +286,19 @@ stateDiagram-v2
   LoadingMore --> Content: next page
   LoadingMore --> LoadMoreFailed: request failed
   LoadMoreFailed --> LoadingMore: Retry
-  Content --> Content: × on a row, 204
-  Content --> Loading: × on a row, 404
-  Content --> Empty: last row removed, or Clear
+  Content --> Content: × on a row, 204, or 404 and the re-read first page
+  Content --> LoadingMore: last loaded row removed, more exists
+  Content --> Empty: last row removed and no more, Clear, or 404 and an empty first page
 ```
+
+A `404` re-read is not a state of its own: the body stays in `Content`, rows
+drawn, until the first page replaces them.
 
 | State | What the screen shows |
 | --- | --- |
 | Loading | The header without `More`; in the body one heading-height `Skeleton` and six row-height `Skeleton`s, `aria-hidden` |
 | Load failed | `ErrorState` with "Couldn't load the history" and `Retry`; no `More` |
-| Empty | `EmptyState` with lucide `History`, "No watch history" and "Videos you play are listed here, newest first."; no action and no `More`. The same block after clearing, and after the last row is removed |
+| Empty | `EmptyState` with lucide `History`, "No watch history" and "Videos you play are listed here, newest first."; no action and no `More`. The same block after clearing, and after the last row is removed when no `nextCursor` remains |
 | Content | The day groups; `More` in the header |
 | Loading more | The groups, then `LoadMoreRow` loading |
 | Load more failed | The groups, then `LoadMoreRow` failed with `Retry` |
@@ -324,7 +361,8 @@ day, one entry whose file was removed, and one entry with an empty title.
    bar, watched mark and place under "Last played" as before (acceptance
    criterion 6).
 8. **Same video twice**: the two viewings of one day are two rows with
-   different times, and nothing on the screen counts or merges them.
+   different times, and nothing on the screen counts or merges them. A
+   screen reader names their links and `×` buttons with different times.
 9. **Confirmation**: "Clear history…" opens the dialog; Cancel and Esc close
    it with the list unchanged; "Clear" shows "Clearing…", then the empty
    state. While the request runs neither button can be pressed again.
