@@ -1959,6 +1959,70 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/watch-history:
+    get:
+      operationId: listWatchHistory
+      summary: 視聴履歴を新しい順に返す
+      description: |
+        所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す
+        （specs/043-watch-history/contracts/screen-api.md）。各件の `video` は、その内容の動画が
+        いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
+        `cursor` が読めなければ 400 `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
+      responses:
+        "200":
+          description: 視聴履歴の1ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchHistoryPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+    delete:
+      operationId: clearWatchHistory
+      summary: 視聴履歴を全件消す
+      description: |
+        所有者だけ。視聴履歴をすべて消す。空でも 204。再生位置・視聴済み・最後に再生した日時は
+        変えず、`/api/events` の知らせも無い（specs/043-watch-history/contracts/screen-api.md）。
+      responses:
+        "204":
+          description: 消した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/watch-history/{id}:
+    delete:
+      operationId: deleteWatchHistoryEntry
+      summary: 視聴履歴を 1 件消す
+      description: |
+        所有者だけ。その件が無ければ 404 `not_found`（別のタブで消えた件）。再生位置・視聴済み・
+        最後に再生した日時は変えず、`/api/events` の知らせも無い
+        （specs/043-watch-history/contracts/screen-api.md）。
+      parameters:
+        - $ref: "#/components/parameters/WatchHistoryEntryId"
+      responses:
+        "204":
+          description: 消した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/video-bundles:
     post:
       operationId: bundleVideos
@@ -2428,6 +2492,15 @@ components:
       in: path
       required: true
       description: API トークンの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    WatchHistoryEntryId:
+      name: id
+      in: path
+      required: true
+      description: 視聴履歴の 1 件の識別子
       schema:
         type: integer
         format: int64
@@ -4190,6 +4263,42 @@ components:
           description: >-
             問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。
             画面はこれが変わったら一覧を読み直す
+
+    WatchHistoryPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchHistoryEntry"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+
+    WatchHistoryEntry:
+      type: object
+      description: |
+        視聴履歴の 1 件。再生 1 回につき 1 件。`video` はその内容の動画がいまライブラリにあって
+        開けるときだけ入り、一覧と同じ形で `progress`・`tags`・`favorite` も入る。無ければ履歴から
+        再生できない
+      required: [id, playedAt, title]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 削除の対象と、同じ時刻の並びに使う識別子
+        playedAt:
+          type: string
+          format: date-time
+          description: 視聴を始めた時刻（その視聴の最初の保存のサーバーの時刻）
+        title:
+          type: string
+          description: 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う
+        video:
+          $ref: "#/components/schemas/Video"
 
     ScanIssuePage:
       type: object

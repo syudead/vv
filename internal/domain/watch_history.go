@@ -1,7 +1,11 @@
 package domain
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -29,6 +33,44 @@ type WatchHistoryEntry struct {
 	PlayedAt time.Time
 	Title    string
 	Video    *Video
+}
+
+// WatchHistoryPage は視聴履歴の 1 ページである。NextCursor は続きがあるときだけ入る。
+type WatchHistoryPage struct {
+	Items      []WatchHistoryEntry
+	NextCursor string
+}
+
+// WatchHistoryCursor は視聴履歴の一覧のカーソルの中身で、前のページの最後の件の played_at
+// （Unix ミリ秒）と id である。並びは (played_at desc, id desc) なので、次のページはこの組より
+// 小さい件から始まる。
+type WatchHistoryCursor struct {
+	PlayedAtMs int64 `json:"p"`
+	ID         int64 `json:"i"`
+}
+
+// EncodeWatchHistoryCursor はカーソルを不透明な文字列にする。問題の一覧のカーソル
+// （encodeIssueCursor）と同じく、JSON を URL に使える base64 で包む。
+func EncodeWatchHistoryCursor(cursor WatchHistoryCursor) string {
+	body, _ := json.Marshal(cursor) // 整数 2 つの構造体の Marshal は失敗しない。
+	return base64.RawURLEncoding.EncodeToString(body)
+}
+
+// DecodeWatchHistoryCursor は EncodeWatchHistoryCursor の逆である。読めないもの、欄の欠けたもの、
+// id が 1 未満のものは ErrInvalidCursor を返す。
+func DecodeWatchHistoryCursor(cursor string) (WatchHistoryCursor, error) {
+	body, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return WatchHistoryCursor{}, fmt.Errorf("%w: %s", ErrInvalidCursor, strconv.Quote(cursor))
+	}
+	var fields struct {
+		PlayedAtMs *int64 `json:"p"`
+		ID         *int64 `json:"i"`
+	}
+	if err := json.Unmarshal(body, &fields); err != nil || fields.PlayedAtMs == nil || fields.ID == nil || *fields.ID < 1 {
+		return WatchHistoryCursor{}, fmt.Errorf("%w: %s", ErrInvalidCursor, strconv.Quote(cursor))
+	}
+	return WatchHistoryCursor{PlayedAtMs: *fields.PlayedAtMs, ID: *fields.ID}, nil
 }
 
 // ValidatePlaybackID は id が RFC 4122 の文字列の形（36 文字、8-4-4-4-12 の 16 進）かを確かめる。

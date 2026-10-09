@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"io/fs"
+	"maps"
 	"slices"
 	"testing"
 
@@ -277,5 +279,152 @@ func TestWatchHistoryMigrationKeepsRemovedContent(t *testing.T) {
 	}
 	if !slices.Equal(withVideo, []string{"key-plain"}) {
 		t.Errorf("動画を持つ件 = %v, want [key-plain]", withVideo)
+	}
+}
+
+// insertHistory は視聴履歴を 1 行入れ、その id を返す。
+func insertHistory(t *testing.T, db *DB, contentKey, title string, playedAtMs int64) int64 {
+	t.Helper()
+	result, err := db.sql.Exec(`insert into watch_history (content_key, title, played_at) values (?, ?, ?)`,
+		contentKey, title, playedAtMs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+func listHistory(t *testing.T, db *DB, audience domain.Audience, cursor string, limit int) domain.WatchHistoryPage {
+	t.Helper()
+	page, err := db.Playback().ListWatchHistory(context.Background(), audience, cursor, limit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return page
+}
+
+func historyIDs(page domain.WatchHistoryPage) []int64 {
+	ids := make([]int64, 0, len(page.Items))
+	for _, entry := range page.Items {
+		ids = append(ids, entry.ID)
+	}
+	return ids
+}
+
+// 一覧は played_at の新しい順で、同じ時刻は id の大きい順。nextCursor からの次のページは重複なく続き、
+// 最後のページにはカーソルが無い。
+func TestListWatchHistoryOrderAndPages(t *testing.T) {
+	db := migratedDB(t)
+	oldest := insertHistory(t, db, "key-a", "a", 1000)
+	tieLow := insertHistory(t, db, "key-b", "b", 2000)
+	tieHigh := insertHistory(t, db, "key-c", "c", 2000)
+	newest := insertHistory(t, db, "key-d", "d", 3000)
+
+	first := listHistory(t, db, domain.AudienceOwner, "", 2)
+	if got, want := historyIDs(first), []int64{newest, tieHigh}; !slices.Equal(got, want) {
+		t.Fatalf("1 ページ目 = %v, want %v", got, want)
+	}
+	if first.NextCursor == "" {
+		t.Fatal("1 ページ目に nextCursor が無い")
+	}
+	if got := first.Items[0].PlayedAt.UnixMilli(); got != 3000 || first.Items[0].Title != "d" {
+		t.Errorf("先頭 = %+v", first.Items[0])
+	}
+	second := listHistory(t, db, domain.AudienceOwner, first.NextCursor, 2)
+	if got, want := historyIDs(second), []int64{tieLow, oldest}; !slices.Equal(got, want) {
+		t.Fatalf("2 ページ目 = %v, want %v", got, want)
+	}
+	if second.NextCursor != "" {
+		t.Errorf("最後のページの nextCursor = %q, want 空", second.NextCursor)
+	}
+
+	if _, err := db.Playback().ListWatchHistory(context.Background(), domain.AudienceOwner, "not a cursor", 2); !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Errorf("読めないカーソル = %v, want ErrInvalidCursor", err)
+	}
+	if page := listHistory(t, migratedDB(t), domain.AudienceOwner, "", 60); len(page.Items) != 0 || page.NextCursor != "" {
+		t.Errorf("空の履歴 = %+v", page)
+	}
+}
+
+// 所在のある内容の件は動画を持ち、ライブラリに無い内容の件は持たない。読みは渡された見る人の条件で
+// 動画を結ぶ（ゲストには公開の動画だけ）。代表でない集まりのメンバーの件は、そのメンバーを持つ。
+func TestListWatchHistoryResolvesVideos(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := upsertAll(t, db,
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 1),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 2),
+		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 3),
+	)
+	a, b, c := ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")], ids[fixturePath("/media/c.mp4")]
+	if _, err := db.Versions().Bundle(ctx, []int64{a, b}, a); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{c}, true); err != nil {
+		t.Fatal(err)
+	}
+	gone := insertHistory(t, db, "key-gone", "消えた", 1000)
+	member := insertHistory(t, db, "key-b", "b の当時", 2000)
+	public := insertHistory(t, db, "key-c", "c", 3000)
+
+	videoOf := func(page domain.WatchHistoryPage) map[int64]int64 {
+		out := map[int64]int64{}
+		for _, entry := range page.Items {
+			if entry.Video != nil {
+				out[entry.ID] = entry.Video.ID
+			}
+		}
+		return out
+	}
+	owner := listHistory(t, db, domain.AudienceOwner, "", 60)
+	if got, want := videoOf(owner), map[int64]int64{member: b, public: c}; !maps.Equal(got, want) {
+		t.Errorf("所有者の件の動画 = %v, want %v（%d は動画なし）", got, want, gone)
+	}
+	for _, entry := range owner.Items {
+		if entry.ID == gone && entry.Title != "消えた" {
+			t.Errorf("動画の無い件の題名 = %q", entry.Title)
+		}
+	}
+	guest := listHistory(t, db, domain.AudienceGuest, "", 60)
+	if got, want := videoOf(guest), map[int64]int64{public: c}; !maps.Equal(got, want) {
+		t.Errorf("ゲストの件の動画 = %v, want %v", got, want)
+	}
+}
+
+// 1 件の削除はあれば true、もう一度で false。全件の削除は空でも誤りにならない。どちらも再生位置を
+// 変えない（要件 9）。
+func TestDeleteAndClearWatchHistory(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	savePlay(t, db, "key-a", 4000, &domain.Play{PlaybackID: testPlaybackA, ContentKey: "key-a", Title: "a"})
+	savePlay(t, db, "key-a", 5000, &domain.Play{PlaybackID: testPlaybackB, ContentKey: "key-a", Title: "a"})
+	page := listHistory(t, db, domain.AudienceOwner, "", 60)
+	if len(page.Items) != 2 {
+		t.Fatalf("履歴 = %+v, want 2 件", page.Items)
+	}
+
+	target := page.Items[0].ID
+	for attempt, want := range []bool{true, false} {
+		deleted, err := db.Playback().DeleteWatchHistoryEntry(ctx, target)
+		if err != nil || deleted != want {
+			t.Errorf("%d 回目の削除 = %v, %v, want %v", attempt+1, deleted, err, want)
+		}
+	}
+	if rows := historyRows(t, db); len(rows) != 1 {
+		t.Errorf("1 件消したあとの履歴 = %+v", rows)
+	}
+	for range 2 {
+		if err := db.Playback().ClearWatchHistory(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rows := historyRows(t, db); len(rows) != 0 {
+		t.Errorf("全件消したあとの履歴 = %+v", rows)
+	}
+	if got := progressOf(t, db, "key-a"); got != 5000 {
+		t.Errorf("再生位置 = %d, want 5000", got)
 	}
 }

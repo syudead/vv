@@ -2293,6 +2293,34 @@ type VideoVisibilityResponse struct {
 // watched = 視聴済み
 type WatchFilter string
 
+// WatchHistoryEntry 視聴履歴の 1 件。再生 1 回につき 1 件。`video` はその内容の動画がいまライブラリにあって
+// 開けるときだけ入り、一覧と同じ形で `progress`・`tags`・`favorite` も入る。無ければ履歴から
+// 再生できない
+type WatchHistoryEntry struct {
+	// Id 削除の対象と、同じ時刻の並びに使う識別子
+	Id int64 `json:"id"`
+
+	// PlayedAt 視聴を始めた時刻（その視聴の最初の保存のサーバーの時刻）
+	PlayedAt time.Time `json:"playedAt"`
+
+	// Title 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う
+	Title string `json:"title"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// WatchHistoryPage defines model for WatchHistoryPage.
+type WatchHistoryPage struct {
+	Items []WatchHistoryEntry `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // APITokenId defines model for APITokenId.
 type APITokenId = int64
 
@@ -2310,6 +2338,9 @@ type TagId = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
+
+// WatchHistoryEntryId defines model for WatchHistoryEntryId.
+type WatchHistoryEntryId = int64
 
 // Conflict defines model for Conflict.
 type Conflict = Error
@@ -2622,6 +2653,15 @@ type TranscodeVideoParams struct {
 // TranscodeVideoParamsQuality defines parameters for TranscodeVideo.
 type TranscodeVideoParamsQuality string
 
+// ListWatchHistoryParams defines parameters for ListWatchHistory.
+type ListWatchHistoryParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
 
@@ -2915,6 +2955,15 @@ type ServerInterface interface {
 	// ListVideoVersions 動画の集まりの全バージョンを返す
 	// (GET /api/videos/{id}/versions)
 	ListVideoVersions(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ClearWatchHistory 視聴履歴を全件消す
+	// (DELETE /api/watch-history)
+	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
+	// ListWatchHistory 視聴履歴を新しい順に返す
+	// (GET /api/watch-history)
+	ListWatchHistory(w http.ResponseWriter, r *http.Request, params ListWatchHistoryParams)
+	// DeleteWatchHistoryEntry 視聴履歴を 1 件消す
+	// (DELETE /api/watch-history/{id})
+	DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id WatchHistoryEntryId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -5290,6 +5339,92 @@ func (siw *ServerInterfaceWrapper) ListVideoVersions(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ClearWatchHistory operation middleware
+func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearWatchHistory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWatchHistory operation middleware
+func (siw *ServerInterfaceWrapper) ListWatchHistory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWatchHistoryParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWatchHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWatchHistoryEntry operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WatchHistoryEntryId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWatchHistoryEntry(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -5469,6 +5604,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history", wrapper.ClearWatchHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history", wrapper.ListWatchHistory)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history/{id}", wrapper.DeleteWatchHistoryEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
