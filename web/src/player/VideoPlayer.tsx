@@ -306,6 +306,9 @@ export default function VideoPlayer(props: Props) {
     // 開始位置の報告を待っていること（その間の仲立ちは指定位置を返し、映っているのはそれより
     // 前のキーフレームからの場面である）を表す。
     let metadataAccepted = false;
+    // played はこのプレイヤーで play が届いたこと。開いただけで再生しない動画では、確定した
+    // 位置を知らせない（知らせると離脱時の保存が再生の記録を作る）。
+    let played = false;
     let resumeSeekPending = false;
     let liveOffsetPending = false;
     // 誤りからの回復（playbackRecovery.ts）。recovering は誤りを受けてから、読み込み直しの
@@ -455,11 +458,12 @@ export default function VideoPlayer(props: Props) {
     };
     latest.current.onStatus(status);
     // markPositioned は確定の条件がそろったら positioned を立てる。一度立てたら下ろさない。
-    // 立てるときに確定した位置を onPosition で知らせる。続きからの位置がない直接再生は
-    // ここまで位置を一度も知らせないので、知らせないと保存する位置がない。
+    // 再生が先に始まっていたら、立てるときに確定した位置を onPosition で知らせる。続きからの
+    // 位置がない直接再生はここまで位置を一度も知らせないので、知らせないと最初の保存の位置が
+    // ない。再生していなければ知らせない。play が後から届けば、そこで知らせる。
     const markPositioned = () => {
       if (metadataAccepted && !resumeSeekPending && !liveOffsetPending) {
-        if (!status.positioned) reportPosition();
+        if (!status.positioned && (played || attempt.playIntended)) reportPosition();
         setStatus({ positioned: true });
       }
     };
@@ -663,6 +667,7 @@ export default function VideoPlayer(props: Props) {
     player.on("play", () => {
       if (recovering) return;
       attempt = { ...attempt, state: "playing", playIntended: true };
+      played = true;
       setStatus({ playing: true, ended: false });
       // play の前のシーク（Replay は先頭へ戻してすぐ play する）は timeupdate より先に
       // play が届くことがあるので、onPlay の前に今の位置を知らせる。positioned の前の

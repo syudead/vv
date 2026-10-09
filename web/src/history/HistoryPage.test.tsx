@@ -54,6 +54,8 @@ const server = {
   clearStatus: 204,
   /** 有れば、一覧の応答を作った後、これが解けるまで返さない。 */
   holdList: null as Promise<void> | null,
+  /** 200 でなければ、一覧の要求にこの状態で答える。 */
+  listStatus: 200,
 };
 
 function install() {
@@ -77,8 +79,13 @@ function install() {
           ? { nextCursor: String(last.id) }
           : {}),
       });
+      // 状態は応答を返すときに読むので、止めた応答も後から失敗にできる。
+      const respond = () =>
+        server.listStatus === 200
+          ? body
+          : json({ code: "internal", message: "x" }, server.listStatus);
       const hold = server.holdList;
-      return hold === null ? Promise.resolve(body) : hold.then(() => body);
+      return hold === null ? Promise.resolve(respond()) : hold.then(respond);
     }
     if (url.startsWith("/api/watch-history") && method === "DELETE") {
       server.deletes.push(url);
@@ -105,6 +112,8 @@ function install() {
 }
 
 let intersect: IntersectionObserverCallback | undefined;
+/** 作られた IntersectionObserver の数。 */
+let observers = 0;
 let location: { pathname: string; state: unknown } | undefined;
 
 function LocationProbe() {
@@ -162,13 +171,16 @@ beforeEach(() => {
   server.deleteStatus = 204;
   server.clearStatus = 204;
   server.holdList = null;
+  server.listStatus = 200;
   intersect = undefined;
+  observers = 0;
   location = undefined;
   vi.stubGlobal(
     "IntersectionObserver",
     class {
       constructor(callback: IntersectionObserverCallback) {
         intersect = callback;
+        observers += 1;
       }
       observe() {}
       disconnect() {}
@@ -351,6 +363,87 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
       "/api/watch-history?limit=60",
       "/api/watch-history?cursor=3&limit=60",
     ]);
+  });
+
+  it("読み直しに失敗したら、その間に断った続きの読み込みのために最後の行を見張り直す", async () => {
+    const user = userEvent.setup();
+    server.pageSize = 3;
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    server.deleteStatus = 404;
+    let release = () => {};
+    server.holdList = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.listUrls).toHaveLength(2));
+    // 読み直しの間に最後の行が見えても、続きは読まない。
+    const armed = observers;
+    act(() => {
+      intersect?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(server.listUrls).toHaveLength(2);
+
+    server.listStatus = 500;
+    server.holdList = null;
+    act(() => release());
+    await waitFor(() =>
+      expect(toasts()).toEqual(["Something went wrong on the server."]),
+    );
+
+    // 見張りを付け直すので、最後の行が見えたままなら続きを読む。
+    expect(observers).toBeGreaterThan(armed);
+    server.listStatus = 200;
+    act(() => {
+      intersect?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+    await waitFor(() =>
+      expect(server.listUrls.at(-1)).toBe("/api/watch-history?cursor=2&limit=60"),
+    );
+  });
+
+  it("読み直しに失敗したとき、その間に行が尽きていれば続きを読む", async () => {
+    const user = userEvent.setup();
+    server.pageSize = 2;
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    server.deleteStatus = 404;
+    let release = () => {};
+    server.holdList = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.listUrls).toHaveLength(2));
+    // 読み直しの間に見えている行を全部消す。続きの読み込みは断られる。
+    server.deleteStatus = 204;
+    await user.click(screen.getByRole("button", { name: /^Remove "Harbour lights"/ }));
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.deletes).toHaveLength(3));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull(),
+    );
+    expect(server.listUrls).toHaveLength(2);
+
+    server.listStatus = 500;
+    server.holdList = null;
+    act(() => release());
+    await waitFor(() =>
+      expect(toasts()).toEqual(["Something went wrong on the server."]),
+    );
+
+    // 見張る行が無くても、残っている古い件を読む。
+    server.listStatus = 200;
+    await waitFor(() =>
+      expect(server.listUrls.at(-1)).toBe("/api/watch-history?cursor=3&limit=60"),
+    );
   });
 
   it("削除に失敗したら行を残してトーストを出す", async () => {
