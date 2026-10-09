@@ -52,6 +52,8 @@ const server = {
   deletes: [] as string[],
   deleteStatus: 204,
   clearStatus: 204,
+  /** 有れば、一覧の応答を作った後、これが解けるまで返さない。 */
+  holdList: null as Promise<void> | null,
 };
 
 function install() {
@@ -61,14 +63,22 @@ function install() {
     if (url.startsWith("/api/watch-history?") && method === "GET") {
       server.listUrls.push(url);
       const query = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-      const start = Number(query.get("cursor") ?? "0");
-      const end = start + server.pageSize;
-      return Promise.resolve(
-        json({
-          items: server.entries.slice(start, end),
-          ...(end < server.entries.length ? { nextCursor: String(end) } : {}),
-        }),
-      );
+      // 鍵は前のページの最後の件の id。その間に件が消えても続きの位置はずれない。
+      const cursor = query.get("cursor");
+      const rest =
+        cursor === null
+          ? server.entries
+          : server.entries.filter((entry) => entry.id < Number(cursor));
+      const items = rest.slice(0, server.pageSize);
+      const last = items.at(-1);
+      const body = json({
+        items,
+        ...(rest.length > items.length && last !== undefined
+          ? { nextCursor: String(last.id) }
+          : {}),
+      });
+      const hold = server.holdList;
+      return hold === null ? Promise.resolve(body) : hold.then(() => body);
     }
     if (url.startsWith("/api/watch-history") && method === "DELETE") {
       server.deletes.push(url);
@@ -151,6 +161,7 @@ beforeEach(() => {
   server.deletes = [];
   server.deleteStatus = 204;
   server.clearStatus = 204;
+  server.holdList = null;
   intersect = undefined;
   location = undefined;
   vi.stubGlobal(
@@ -252,7 +263,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     );
     expect(server.listUrls).toEqual([
       "/api/watch-history?limit=60",
-      "/api/watch-history?cursor=3&limit=60",
+      "/api/watch-history?cursor=2&limit=60",
     ]);
     expect(
       within(historyList())
@@ -299,6 +310,47 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     ).toHaveLength(2);
     expect(toasts()).toEqual([]);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("読み直しの間に表示の行を消し尽くしても、応答の nextCursor から続きを読む", async () => {
+    const user = userEvent.setup();
+    server.pageSize = 2;
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    // 別のタブで消えたと答えさせ、読み直しの応答を止めておく。
+    server.deleteStatus = 404;
+    let release = () => {};
+    server.holdList = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(server.listUrls).toHaveLength(2));
+    server.deleteStatus = 204;
+    await user.click(screen.getByRole("button", { name: /^Remove "Harbour lights"/ }));
+    await waitFor(() => expect(screen.queryByText("Harbour lights")).toBeNull());
+    await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
+    await waitFor(() => expect(screen.queryByText("Gone")).toBeNull());
+
+    // 止めていた応答は消した 2 件と、その後ろの鍵を返す。
+    server.holdList = null;
+    act(() => release());
+
+    await waitFor(() =>
+      expect(
+        within(historyList())
+          .getAllByRole("button", { name: /^Remove/ })
+          .map((button) => button.getAttribute("aria-label")),
+      ).toEqual([
+        expect.stringMatching(/^Remove "Unknown video"/),
+        expect.stringMatching(/^Remove "Kyoto"/),
+      ]),
+    );
+    expect(server.listUrls).toEqual([
+      "/api/watch-history?limit=60",
+      "/api/watch-history?limit=60",
+      "/api/watch-history?cursor=3&limit=60",
+    ]);
   });
 
   it("削除に失敗したら行を残してトーストを出す", async () => {

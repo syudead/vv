@@ -80,6 +80,22 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
     };
   }, []);
 
+  // 読み込んだ行が尽きても古い件が残っていれば、すぐに続きを読む（「Paging」）。行が
+  // 無いと最後の行を見る IntersectionObserver が働かないので、ここで読む。
+  const loadMoreRef = useRef(() => {});
+  const fill = useCallback(
+    (next: HistoryState) => {
+      show(next);
+      if (
+        next.kind === "ready" &&
+        next.items.length === 0 &&
+        next.nextCursor !== undefined
+      )
+        loadMoreRef.current();
+    },
+    [show],
+  );
+
   const kept = useCallback(
     (items: readonly WatchHistoryEntry[]) =>
       items.filter((item) => !removed.current.has(item.id)),
@@ -101,7 +117,8 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
           request.done();
           if (gen !== generation.current) return;
           readingFirst.current = false;
-          show({
+          // 読み直しの間に消した件が応答の全部でも、応答の鍵から続きを読む。
+          fill({
             kind: "ready",
             items: kept(page.items),
             nextCursor: page.nextCursor,
@@ -123,7 +140,7 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
         },
       );
     },
-    [begin, kept, show, track],
+    [begin, fill, kept, show, track],
   );
 
   const loadMore = useCallback(() => {
@@ -146,7 +163,7 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
         if (gen !== generation.current || now.kind !== "ready") return;
         const known = new Set(now.items.map((item) => item.id));
         const added = kept(page.items).filter((item) => !known.has(item.id));
-        show({
+        fill({
           kind: "ready",
           items: [...now.items, ...added],
           nextCursor: page.nextCursor,
@@ -161,7 +178,10 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
         show({ ...now, more: { kind: "failed", error } });
       },
     );
-  }, [kept, show, track]);
+  }, [fill, kept, show, track]);
+  useEffect(() => {
+    loadMoreRef.current = loadMore;
+  }, [loadMore]);
 
   const remove = useCallback(
     (id: number): number | null => {
@@ -171,13 +191,11 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
       const index = current.items.findIndex((item) => item.id === id);
       if (index < 0) return null;
       const items = current.items.filter((_, position) => position !== index);
-      show({ ...current, items });
-      // 読み込んだ行が尽きても古い件が残っていれば、すぐに続きを読む（「Paging」）。
-      if (items.length === 0) loadMore();
+      fill({ ...current, items });
       const next = items[index] ?? items[index - 1];
       return next === undefined ? null : next.id;
     },
-    [loadMore, show],
+    [fill],
   );
 
   const clear = useCallback(() => {
