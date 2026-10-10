@@ -1652,7 +1652,7 @@ export const en = {
       save: "Save",
       saving: "Saving…",
       saved: "Auto-tagging settings saved",
-      check: "Test connection",
+      check: "Save and test connection",
       checking: "Testing… Loading the model can take a few minutes.",
       checkOk: "The classifier answered.",
       checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,

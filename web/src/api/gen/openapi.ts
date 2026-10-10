@@ -896,9 +896,10 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 問い合わせ先と模型で判定できるかを確かめる
-         * @description 短い質問を 1 つ判定させて確かめる。設定は保存しない。模型の読み込みを含むので
-         *     数分かかることがある。
+         * 保存した問い合わせ先と模型で判定できるかを確かめる
+         * @description 保存した設定で短い質問を 1 つ判定させて確かめる。問い合わせ先は要求の本文から取らない
+         *     （任意の URL へサーバーから要求を送らせないため）。模型の読み込みを含むので数分かかる
+         *     ことがある。要求の本文は無い。
          */
         post: operations["checkAutoTagging"];
         delete?: never;
@@ -1792,13 +1793,9 @@ export interface components {
              */
             threshold: number;
         };
-        AutoTaggingCheckRequest: {
-            endpoint: string;
-            model: string;
-        };
         AutoTaggingCheck: {
             available: boolean;
-            /** @description 使えないときの理由（英語。Ollama の応答を含むことがある） */
+            /** @description 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある） */
             message?: string;
         };
         StartAutoTaggingRequest: {
@@ -4135,11 +4132,7 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AutoTaggingCheckRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description 確かめた結果 */
             200: {
@@ -4150,7 +4143,6 @@ export interface operations {
                     "application/json": components["schemas"]["AutoTaggingCheck"];
                 };
             };
-            400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
         };
     };

@@ -844,16 +844,13 @@ export function updateAutoTaggingSettings(
   });
 }
 
-/** checkAutoTagging は問い合わせ先と模型で判定できるかを確かめる。設定は保存しない。 */
-export function checkAutoTagging(
-  endpoint: string,
-  model: string,
-  signal?: AbortSignal,
-): Promise<AutoTaggingCheck> {
+/**
+ * checkAutoTagging は保存した問い合わせ先と模型で判定できるかを確かめる。問い合わせ先は
+ * 送らない（サーバーは保存した設定だけを使う）。
+ */
+export function checkAutoTagging(signal?: AbortSignal): Promise<AutoTaggingCheck> {
   return request<AutoTaggingCheck>("/api/settings/auto-tagging/check", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ endpoint, model }),
     signal,
   });
 }

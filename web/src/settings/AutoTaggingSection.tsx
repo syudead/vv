@@ -105,9 +105,17 @@ export default function AutoTaggingSection() {
 
   const threshold = draft === null ? null : parseThreshold(draft.threshold);
 
-  const save = async () => {
-    if (draft === null || threshold === null || saving) return;
-    setSaving(true);
+  const dirty =
+    draft !== null &&
+    settings !== null &&
+    (draft.enabled !== settings.enabled ||
+      draft.endpoint !== settings.endpoint ||
+      draft.model !== settings.model ||
+      threshold !== settings.threshold);
+
+  /** persist は下書きを保存する。保存できたら true を返す。 */
+  const persist = async (): Promise<boolean> => {
+    if (draft === null || threshold === null) return false;
     setSaveError(null);
     try {
       const saved = await updateAutoTaggingSettings({
@@ -118,19 +126,35 @@ export default function AutoTaggingSection() {
       });
       setSettings(saved);
       setDraft(toDraft(saved));
-      toast(text.saved);
+      return true;
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
+      return false;
+    }
+  };
+
+  const save = async () => {
+    if (draft === null || threshold === null || saving) return;
+    setSaving(true);
+    try {
+      if (await persist()) toast(text.saved);
     } finally {
       setSaving(false);
     }
   };
 
+  // サーバーは保存した設定でしか確かめないので、編集中の値があれば先に保存する。
   const runCheck = async () => {
-    if (draft === null || check.kind === "checking") return;
+    if (draft === null || check.kind === "checking" || saving) return;
+    if (dirty) {
+      if (threshold === null) return;
+      setSaving(true);
+      const saved = await persist().finally(() => setSaving(false));
+      if (!saved) return;
+    }
     setCheck({ kind: "checking" });
     try {
-      const result = await checkAutoTagging(draft.endpoint, draft.model);
+      const result = await checkAutoTagging();
       setCheck(
         result.available
           ? { kind: "ok" }

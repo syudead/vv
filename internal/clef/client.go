@@ -115,9 +115,11 @@ func (c *Client) Classify(ctx context.Context, req domain.AutoTagRequest) (map[s
 	var decoded responseBody
 	decodeErr := json.Unmarshal(raw, &decoded)
 	if resp.StatusCode != http.StatusOK {
+		// Ollama が JSON で返した誤りの文だけを伝える。応答の本文そのものは、問い合わせ先が
+		// Ollama でないときに別のサービスの中身を画面へ写すことになるので返さない。
 		message := strings.TrimSpace(decoded.Error)
 		if decodeErr != nil || message == "" {
-			message = strings.TrimSpace(string(raw))
+			return nil, fmt.Errorf("ollama answered %d", resp.StatusCode)
 		}
 		if len(message) > 300 {
 			message = message[:300]

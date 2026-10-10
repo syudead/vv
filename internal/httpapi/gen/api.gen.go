@@ -1131,14 +1131,8 @@ type AutoTagVideoResult struct {
 type AutoTaggingCheck struct {
 	Available bool `json:"available"`
 
-	// Message 使えないときの理由（英語。Ollama の応答を含むことがある）
+	// Message 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある）
 	Message *string `json:"message,omitempty"`
-}
-
-// AutoTaggingCheckRequest defines model for AutoTaggingCheckRequest.
-type AutoTaggingCheckRequest struct {
-	Endpoint string `json:"endpoint"`
-	Model    string `json:"model"`
 }
 
 // AutoTaggingQueue defines model for AutoTaggingQueue.
@@ -2742,9 +2736,6 @@ type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
 // UpdateAutoTaggingSettingsJSONRequestBody defines body for UpdateAutoTaggingSettings for application/json ContentType.
 type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 
-// CheckAutoTaggingJSONRequestBody defines body for CheckAutoTagging for application/json ContentType.
-type CheckAutoTaggingJSONRequestBody = AutoTaggingCheckRequest
-
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
@@ -2888,7 +2879,7 @@ type ServerInterface interface {
 	// UpdateAutoTaggingSettings 自動タグ付けの設定を保存する
 	// (PUT /api/settings/auto-tagging)
 	UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
-	// CheckAutoTagging 問い合わせ先と模型で判定できるかを確かめる
+	// CheckAutoTagging 保存した問い合わせ先と模型で判定できるかを確かめる
 	// (POST /api/settings/auto-tagging/check)
 	CheckAutoTagging(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す

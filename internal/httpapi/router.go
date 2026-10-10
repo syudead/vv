@@ -539,7 +539,7 @@ func requiresJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/settings/auto-tagging/check", "/api/auto-tagging/runs":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {

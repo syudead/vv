@@ -87,23 +87,38 @@ func TestAutoTaggingSettingsRejectInvalidBodies(t *testing.T) {
 	}
 }
 
-func TestCheckAutoTaggingReportsAvailability(t *testing.T) {
-	ok := newAutoTaggingFixture(t, autoTagClassifier{})
+// recordingClassifier は問い合わせ先を覚え、err があれば失敗を返す。
+type recordingClassifier struct {
+	err       error
+	endpoints *[]string
+}
+
+func (c recordingClassifier) Classify(_ context.Context, req domain.AutoTagRequest) (map[string]float64, error) {
+	*c.endpoints = append(*c.endpoints, req.Endpoint)
+	return map[string]float64{}, c.err
+}
+
+// 確かめは保存した問い合わせ先にだけ送り、要求の本文の URL は使わない。
+func TestCheckAutoTaggingUsesSavedEndpoint(t *testing.T) {
+	var endpoints []string
+	ok := newAutoTaggingFixture(t, recordingClassifier{endpoints: &endpoints})
 	rec := ok.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/auto-tagging/check",
-		body: `{"endpoint":"http://h:1","model":"clef"}`, cookies: []*http.Cookie{ok.owner}})
+		body: `{"endpoint":"http://attacker.example","model":"clef"}`, cookies: []*http.Cookie{ok.owner}})
 	if got := decode[gen.AutoTaggingCheck](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil {
 		t.Fatalf("available check = %d %+v", rec.Code, got)
 	}
+	if len(endpoints) != 1 || endpoints[0] != domain.DefaultAutoTagEndpoint {
+		t.Fatalf("問い合わせ先 = %v", endpoints)
+	}
 
-	down := newAutoTaggingFixture(t, autoTagClassifier{err: errors.New("cannot reach Ollama at http://h:1")})
+	down := newAutoTaggingFixture(t, recordingClassifier{
+		err: errors.New("cannot reach Ollama at http://127.0.0.1:11434"), endpoints: &endpoints,
+	})
 	rec = down.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/auto-tagging/check",
-		body: `{"endpoint":"http://h:1","model":"clef"}`, cookies: []*http.Cookie{down.owner}})
+		cookies: []*http.Cookie{down.owner}})
 	got := decode[gen.AutoTaggingCheck](t, rec)
 	if rec.Code != http.StatusOK || got.Available || got.Message == nil || !strings.Contains(*got.Message, "cannot reach Ollama") {
 		t.Fatalf("unavailable check = %d %+v", rec.Code, got)
-	}
-	if res := down.send(http.MethodPost, "/api/settings/auto-tagging/check", `{"endpoint":"nope","model":"clef"}`); res.StatusCode != http.StatusBadRequest {
-		t.Fatalf("invalid endpoint: status = %d", res.StatusCode)
 	}
 }
 
@@ -133,7 +148,7 @@ func TestAutoTaggingIsOwnerOnly(t *testing.T) {
 	assertUnauthenticated(t, "GET", f.env.get("/api/settings/auto-tagging"))
 	for _, req := range []authRequest{
 		{method: http.MethodPut, target: "/api/settings/auto-tagging", body: `{"enabled":true,"endpoint":"http://h","model":"m","threshold":0.5}`},
-		{method: http.MethodPost, target: "/api/settings/auto-tagging/check", body: `{"endpoint":"http://h","model":"m"}`},
+		{method: http.MethodPost, target: "/api/settings/auto-tagging/check"},
 		{method: http.MethodPost, target: "/api/auto-tagging/runs", body: `{"scope":"all"}`},
 		{method: http.MethodPost, target: "/api/videos/1/auto-tag"},
 	} {

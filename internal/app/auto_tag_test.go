@@ -279,7 +279,7 @@ func TestAutoTaggerQueuesAfterThumbnailOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-// 設定は確かめてから保存し、規則に合わなければ保存しない。確かめは保存しない。
+// 設定は確かめてから保存し、規則に合わなければ保存しない。確かめは保存した設定で問い合わせる。
 func TestAutoTaggerSaveSettingsAndCheck(t *testing.T) {
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
 	classifier := &fakeClassifier{}
@@ -297,10 +297,10 @@ func TestAutoTaggerSaveSettingsAndCheck(t *testing.T) {
 	if status.Settings != want || status.Counts.Done != 1 {
 		t.Fatalf("status = %+v", status)
 	}
-	if err := tagger.Check(ctx, domain.AutoTagSettings{Endpoint: "http://other:2", Model: "clef-flash", Threshold: 0.8}); err != nil {
+	if err := tagger.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if classifier.requests[0].Endpoint != "http://other:2" || settings.settings != want {
-		t.Fatalf("確かめが設定を変えた: %+v / %+v", classifier.requests[0], settings.settings)
+	if classifier.requests[0].Endpoint != "http://h:1" || classifier.requests[0].Model != "clef" || settings.settings != want {
+		t.Fatalf("確かめが保存した設定を使わない: %+v / %+v", classifier.requests[0], settings.settings)
 	}
 }

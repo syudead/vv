@@ -14,7 +14,7 @@ import (
 type AutoTagging interface {
 	Status(ctx context.Context) (domain.AutoTagStatus, error)
 	SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error)
-	Check(ctx context.Context, settings domain.AutoTagSettings) error
+	Check(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
 }
@@ -72,33 +72,14 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
 }
 
-// CheckAutoTagging は問い合わせ先と模型で判定できるかを確かめる。使えないことは 200 の
-// available=false で返し、要求の形の誤りだけを 400 にする。
+// CheckAutoTagging は保存した問い合わせ先と模型で判定できるかを確かめる。使えないことは 200 の
+// available=false で返す。問い合わせ先は要求から取らず、保存した設定だけを使う。
 func (s *server) CheckAutoTagging(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
 		return
 	}
-	var body struct {
-		Endpoint *string `json:"endpoint"`
-		Model    *string `json:"model"`
-	}
-	if !s.readJSONBody(w, r, &body) {
-		return
-	}
-	if body.Endpoint == nil || body.Model == nil {
-		s.invalidRequest(w, "endpoint and model are required.")
-		return
-	}
-	err := s.autoTagging.Check(r.Context(), domain.AutoTagSettings{
-		Endpoint:  *body.Endpoint,
-		Model:     *body.Model,
-		Threshold: domain.DefaultAutoTagThreshold,
-	})
-	if errors.Is(err, domain.ErrInvalidAutoTagSettings) {
-		s.invalidRequest(w, err.Error())
-		return
-	}
+	err := s.autoTagging.Check(r.Context())
 	result := gen.AutoTaggingCheck{Available: err == nil}
 	if err != nil {
 		message := err.Error()

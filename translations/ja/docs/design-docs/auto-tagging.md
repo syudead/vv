@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: 861619ddeacc1ec11e96497e8728526d82991d4a1352fe4a6c6655f6f1177907
+sourceHash: 188585686da424526d32fb7e65e45f76b3bee9b831cbefce1dc70d7fe6b9cd78
 ---
 
 # Ollama 上の Clef 分類器による自動タグ付け {#auto-tagging-with-a-clef-classifier-in-ollama}
@@ -77,7 +77,9 @@ Ollama が止まっていると、キューを塞ぐ代わりに、キューに�
 
 ## 設定 {#settings}
 
-所有者は Settings の Auto-tagging で、Ollama の URL、モデル、しきい値、自動の判定を設定する。"Test connection" は保存せずに質問を 1 つ送る。
+所有者は Settings の Auto-tagging で、Ollama の URL、モデル、しきい値、自動の判定を設定する。"Save and test connection" はフォームを保存し、保存した URL に質問を 1 つ送る。
+
+サーバーは保存した URL にだけリクエストを送り、リクエスト本文の URL には決して送らない。また、Ollama の JSON 応答のうちエラーの文言だけを伝える。そうしなければ、リクエストによってサーバーに到達可能な任意のアドレスを取得させ、その応答を表示させることができてしまう。
 
 | 設定 | 既定値 |
 | --- | --- |

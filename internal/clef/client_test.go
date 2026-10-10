@@ -89,6 +89,21 @@ func TestClassifyReportsOllamaErrors(t *testing.T) {
 	}
 }
 
+// Ollama 以外の応答の本文は誤りの文に写さない。
+func TestClassifyDoesNotEchoNonOllamaBodies(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte("<html>secret internal page</html>"))
+	}))
+	defer server.Close()
+	_, err := New().Classify(context.Background(), domain.AutoTagRequest{
+		Endpoint: server.URL, Model: "clef", Questions: []domain.AutoTagQuestion{{Key: "a", Instructions: "?"}},
+	})
+	if err == nil || err.Error() != "ollama answered 403" {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestClassifyReportsUnreachableEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	url := server.URL

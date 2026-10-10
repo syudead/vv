@@ -132,10 +132,33 @@ describe("AutoTaggingSection", () => {
     expect(saved).toBeUndefined();
   });
 
+  it("saves unsaved edits before testing the connection", async () => {
+    const user = userEvent.setup();
+    render(<AutoTaggingSection />);
+    const model = await screen.findByLabelText("Model");
+    await user.clear(model);
+    await user.type(model, "clef");
+    await user.click(screen.getByRole("button", { name: "Save and test connection" }));
+    await screen.findByText(
+      "The classifier didn't answer: cannot reach Ollama at http://gpu:11434",
+    );
+    const urls = fetchMock.mock.calls.map(
+      ([input, init]) => `${init?.method ?? "GET"} ${String(input)}`,
+    );
+    expect(urls.indexOf(`PUT ${URL}`)).toBeLessThan(urls.indexOf(`POST ${URL}/check`));
+    expect((saved as { model: string }).model).toBe("clef");
+    const check = fetchMock.mock.calls.find(
+      ([input]) => String(input) === `${URL}/check`,
+    );
+    expect(check?.[1]?.body).toBeUndefined();
+  });
+
   it("shows why the connection test failed", async () => {
     const user = userEvent.setup();
     render(<AutoTaggingSection />);
-    await user.click(await screen.findByRole("button", { name: "Test connection" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Save and test connection" }),
+    );
     expect(
       await screen.findByText(
         "The classifier didn't answer: cannot reach Ollama at http://gpu:11434",

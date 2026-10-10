@@ -130,18 +130,19 @@ func (a *AutoTagger) SaveSettings(ctx context.Context, settings domain.AutoTagSe
 	return a.Status(ctx)
 }
 
-// Check は設定の問い合わせ先と模型で、短い質問を 1 つ判定させて、使えるかを確かめる。
-// 使えなければ理由を包んだ誤りを返す。設定は保存しない。
-func (a *AutoTagger) Check(ctx context.Context, settings domain.AutoTagSettings) error {
-	normalized, err := domain.NormalizeAutoTagSettings(settings)
+// Check は保存した問い合わせ先と模型で、短い質問を 1 つ判定させて、使えるかを確かめる。
+// 使えなければ理由を包んだ誤りを返す。問い合わせ先は保存した設定だけから取り、呼び出し側が
+// 渡した URL へは要求を送らない。
+func (a *AutoTagger) Check(ctx context.Context) error {
+	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, autoTagCheckTimeout)
 	defer cancel()
 	_, err = a.classifier.Classify(ctx, domain.AutoTagRequest{
-		Endpoint: normalized.Endpoint,
-		Model:    normalized.Model,
+		Endpoint: settings.Endpoint,
+		Model:    settings.Model,
 		Subject:  domain.NewAutoTagSubject("Connection check", "/videos/check.mp4"),
 		Questions: []domain.AutoTagQuestion{{
 			Key:          "check",

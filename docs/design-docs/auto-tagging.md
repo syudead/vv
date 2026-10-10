@@ -96,8 +96,12 @@ startup.
 ## Settings
 
 The owner sets the Ollama URL, the model, the threshold and automatic
-judging under Settings, Auto-tagging; "Test connection" sends one question
-without saving.
+judging under Settings, Auto-tagging; "Save and test connection" saves the
+form and sends one question to the saved URL.
+
+The server only sends requests to the saved URL, never to one in a request
+body, and passes on only the error text of an Ollama JSON reply. Otherwise a
+request could make the server fetch any reachable address and show the reply.
 
 | Setting | Default |
 | --- | --- |
