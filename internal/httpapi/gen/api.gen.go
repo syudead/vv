@@ -1031,6 +1031,27 @@ func (e WatchFilter) Valid() bool {
 	}
 }
 
+// Defines values for WatchHistoryFilter.
+const (
+	WatchHistoryFilterAll        WatchHistoryFilter = "all"
+	WatchHistoryFilterInProgress WatchHistoryFilter = "inProgress"
+	WatchHistoryFilterWatched    WatchHistoryFilter = "watched"
+)
+
+// Valid indicates whether the value is a known member of the WatchHistoryFilter enum.
+func (e WatchHistoryFilter) Valid() bool {
+	switch e {
+	case WatchHistoryFilterAll:
+		return true
+	case WatchHistoryFilterInProgress:
+		return true
+	case WatchHistoryFilterWatched:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TranscodeVideoParamsQuality.
 const (
 	N1080p TranscodeVideoParamsQuality = "1080p"
@@ -2293,6 +2314,12 @@ type VideoVisibilityResponse struct {
 // watched = 視聴済み
 type WatchFilter string
 
+// WatchHistoryDates defines model for WatchHistoryDates.
+type WatchHistoryDates struct {
+	// Days 件のある日。新しい順で、合う件が無ければ空
+	Days []string `json:"days"`
+}
+
 // WatchHistoryEntry 視聴履歴の 1 件。再生 1 回につき 1 件。`video` はその内容の動画がいまライブラリにあって
 // 開けるときだけ入り、一覧と同じ形で `progress`・`tags`・`favorite` も入る。無ければ履歴から
 // 再生できない
@@ -2312,6 +2339,10 @@ type WatchHistoryEntry struct {
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
 }
+
+// WatchHistoryFilter 視聴履歴を動画のいまの視聴状態で絞る。all = 絞り込まない、inProgress = 視聴途中、watched = 視聴済み。
+// 視聴途中と視聴済みはライブラリの絞り込みと同じ規則で、動画の無い件は all にだけ出る
+type WatchHistoryFilter string
 
 // WatchHistoryPage defines model for WatchHistoryPage.
 type WatchHistoryPage struct {
@@ -2660,6 +2691,33 @@ type ListWatchHistoryParams struct {
 
 	// Limit 1ページの件数
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Watch 動画のいまの視聴状態で絞る。all は絞り込まない。動画の無い件は all にだけ出る
+	Watch *WatchHistoryFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Query 検索語。書き方は `GET /api/videos` の `query` と同じ（AND・フレーズ・除外・OR、表記の揺れの吸収、
+	// 先頭から 16 語まで）。照合するのは題名だけで、動画のある件はファイルの題名と表示名、動画の無い件は
+	// 題名の写し。相対パスとタグ名には照合しない
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Date `YYYY-MM-DD` か `YYYY-MM`。`tz` の暦でその日か月が終わるより前の件だけにする。1 ページ目は
+	// その日付から始まり、`nextCursor` で古い件へ続く。`tz` が必須
+	Date *string `form:"date,omitempty" json:"date,omitempty"`
+
+	// Tz 日と月の境目を取る IANA のタイムゾーン名（例 Asia/Tokyo）。`date` があるときは必須
+	Tz *string `form:"tz,omitempty" json:"tz,omitempty"`
+}
+
+// ListWatchHistoryDatesParams defines parameters for ListWatchHistoryDates.
+type ListWatchHistoryDatesParams struct {
+	// Tz 日を数える IANA のタイムゾーン名（例 Asia/Tokyo）
+	Tz string `form:"tz" json:"tz"`
+
+	// Watch 一覧の `watch` と同じ
+	Watch *WatchHistoryFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Query 一覧の `query` と同じ
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
@@ -2961,6 +3019,9 @@ type ServerInterface interface {
 	// ListWatchHistory 視聴履歴を新しい順に返す
 	// (GET /api/watch-history)
 	ListWatchHistory(w http.ResponseWriter, r *http.Request, params ListWatchHistoryParams)
+	// ListWatchHistoryDates 視聴履歴のある日を新しい順に返す
+	// (GET /api/watch-history/dates)
+	ListWatchHistoryDates(w http.ResponseWriter, r *http.Request, params ListWatchHistoryDatesParams)
 	// DeleteWatchHistoryEntry 視聴履歴を 1 件消す
 	// (DELETE /api/watch-history/{id})
 	DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id WatchHistoryEntryId)
@@ -5388,8 +5449,119 @@ func (siw *ServerInterfaceWrapper) ListWatchHistory(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "date" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "date", r.URL.Query(), &params.Date, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "date"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "date", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tz" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tz", r.URL.Query(), &params.Tz, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tz"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tz", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListWatchHistory(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListWatchHistoryDates operation middleware
+func (siw *ServerInterfaceWrapper) ListWatchHistoryDates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListWatchHistoryDatesParams
+
+	// ------------- Required query parameter "tz" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "tz", r.URL.Query(), &params.Tz, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tz"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tz", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWatchHistoryDates(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5606,6 +5778,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history", wrapper.ClearWatchHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history", wrapper.ListWatchHistory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history/dates", wrapper.ListWatchHistoryDates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history/{id}", wrapper.DeleteWatchHistoryEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)

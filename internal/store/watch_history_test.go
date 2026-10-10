@@ -299,7 +299,7 @@ func insertHistory(t *testing.T, db *DB, contentKey, title string, playedAtMs in
 
 func listHistory(t *testing.T, db *DB, audience domain.Audience, cursor string, limit int) domain.WatchHistoryPage {
 	t.Helper()
-	page, err := db.Playback().ListWatchHistory(context.Background(), audience, cursor, limit)
+	page, err := db.Playback().ListWatchHistory(context.Background(), audience, domain.WatchHistoryQuery{}, cursor, limit)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +341,7 @@ func TestListWatchHistoryOrderAndPages(t *testing.T) {
 		t.Errorf("最後のページの nextCursor = %q, want 空", second.NextCursor)
 	}
 
-	if _, err := db.Playback().ListWatchHistory(context.Background(), domain.AudienceOwner, "not a cursor", 2); !errors.Is(err, domain.ErrInvalidCursor) {
+	if _, err := db.Playback().ListWatchHistory(context.Background(), domain.AudienceOwner, domain.WatchHistoryQuery{}, "not a cursor", 2); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("読めないカーソル = %v, want ErrInvalidCursor", err)
 	}
 	if page := listHistory(t, migratedDB(t), domain.AudienceOwner, "", 60); len(page.Items) != 0 || page.NextCursor != "" {

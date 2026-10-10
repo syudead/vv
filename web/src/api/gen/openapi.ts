@@ -1212,7 +1212,10 @@ export interface paths {
          * @description 所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す
          *     （specs/043-watch-history/contracts/screen-api.md）。各件の `video` は、その内容の動画が
          *     いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
-         *     `cursor` が読めなければ 400 `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。
+         *     `watch`・`query`・`date` はページを切る前に掛け、`and` で結ぶ。`cursor` が読めなければ 400
+         *     `invalid_cursor`。`limit` が範囲の外、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
+         *     超える、`date` が 2 つの形のどちらでもない、`date` に `tz` が無い、`tz` をサーバーが知らない
+         *     ときは 400 `invalid_request`。
          */
         get: operations["listWatchHistory"];
         put?: never;
@@ -1223,6 +1226,29 @@ export interface paths {
          *     変えず、`/api/events` の知らせも無い（specs/043-watch-history/contracts/screen-api.md）。
          */
         delete: operations["clearWatchHistory"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watch-history/dates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 視聴履歴のある日を新しい順に返す
+         * @description 所有者だけ。`watch` と `query` を満たす件のある日を、`tz` の暦の `YYYY-MM-DD` で新しい順に返す
+         *     （specs/043-watch-history/contracts/screen-api.md）。どの日もその月も一覧の `date` に渡せる。
+         *     `tz` が無いかサーバーが知らない、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
+         *     超えるときは 400 `invalid_request`。
+         */
+        get: operations["listWatchHistoryDates"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -2551,6 +2577,17 @@ export interface components {
              * @description 問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。 画面はこれが変わったら一覧を読み直す
              */
             revision: number;
+        };
+        /**
+         * @description 視聴履歴を動画のいまの視聴状態で絞る。all = 絞り込まない、inProgress = 視聴途中、watched = 視聴済み。
+         *     視聴途中と視聴済みはライブラリの絞り込みと同じ規則で、動画の無い件は all にだけ出る
+         * @default all
+         * @enum {string}
+         */
+        WatchHistoryFilter: "all" | "inProgress" | "watched";
+        WatchHistoryDates: {
+            /** @description 件のある日。新しい順で、合う件が無ければ空 */
+            days: string[];
         };
         WatchHistoryPage: {
             items: components["schemas"]["WatchHistoryEntry"][];
@@ -4540,6 +4577,21 @@ export interface operations {
                 cursor?: string;
                 /** @description 1ページの件数 */
                 limit?: number;
+                /** @description 動画のいまの視聴状態で絞る。all は絞り込まない。動画の無い件は all にだけ出る */
+                watch?: components["schemas"]["WatchHistoryFilter"];
+                /**
+                 * @description 検索語。書き方は `GET /api/videos` の `query` と同じ（AND・フレーズ・除外・OR、表記の揺れの吸収、
+                 *     先頭から 16 語まで）。照合するのは題名だけで、動画のある件はファイルの題名と表示名、動画の無い件は
+                 *     題名の写し。相対パスとタグ名には照合しない
+                 */
+                query?: string;
+                /**
+                 * @description `YYYY-MM-DD` か `YYYY-MM`。`tz` の暦でその日か月が終わるより前の件だけにする。1 ページ目は
+                 *     その日付から始まり、`nextCursor` で古い件へ続く。`tz` が必須
+                 */
+                date?: string;
+                /** @description 日と月の境目を取る IANA のタイムゾーン名（例 Asia/Tokyo）。`date` があるときは必須 */
+                tz?: string;
             };
             header?: never;
             path?: never;
@@ -4576,6 +4628,34 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listWatchHistoryDates: {
+        parameters: {
+            query: {
+                /** @description 日を数える IANA のタイムゾーン名（例 Asia/Tokyo） */
+                tz: string;
+                /** @description 一覧の `watch` と同じ */
+                watch?: components["schemas"]["WatchHistoryFilter"];
+                /** @description 一覧の `query` と同じ */
+                query?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 件のある日 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchHistoryDates"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
         };
     };
     deleteWatchHistoryEntry: {
