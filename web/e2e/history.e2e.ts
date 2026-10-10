@@ -7,6 +7,8 @@ import {
   type Request,
   test,
 } from "@playwright/test";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 // 視聴履歴の流れ（specs/043-watch-history、親 #792、子 #864）を、実サーバーと実メディアに
 // 通す。動画は run-e2e.mjs が generateHistoryFixtures で作る 40 秒の2本で、ほかの e2e の
@@ -15,6 +17,11 @@ import {
 //
 // バックフィル（受け入れ条件 8）と 2 タブ同時の再生はここでは用意できないので、
 // specs/043-watch-history/quickstart.md の手動手順で確かめる。
+//
+// 改訂（子 #877）の絞り込み・検索・日付への移動・位置と「Resume」「Start over」（受け入れ
+// 条件 10〜16）も同じ 2 本で確かめる。実時間では数分の内の件しか作れないので、日付の一覧
+// （13）の確認ではサーバーの DB の 1 件の再生時刻だけを 3 日前へずらす（backdateEntry）。
+// 月の項目と別の時間帯のブラウザは quickstart.md の手動手順に残す。
 
 interface MediaFolder {
   id: number;
@@ -119,15 +126,35 @@ async function openHistory(page: Page) {
   ).toBeVisible();
 }
 
-/** progressSaves は、そのページが item に送った再生位置の保存の本文を集める。 */
+interface ProgressSave {
+  positionMs: number;
+  playbackId?: string;
+  /** stored はサーバーが保存を受け付けた応答が返ったこと。 */
+  stored: boolean;
+}
+
+/**
+ * progressSaves は、そのページが item に送った再生位置の保存の本文を集め、成功の応答が
+ * 返ったものに stored を立てる。
+ */
 function progressSaves(page: Page, item: Video) {
-  const saves: { positionMs: number; playbackId?: string }[] = [];
+  const saves: ProgressSave[] = [];
   page.on("request", (candidate: Request) => {
     if (
       candidate.method() === "PUT" &&
       candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`)
     ) {
-      saves.push(candidate.postDataJSON() as { positionMs: number; playbackId?: string });
+      const save: ProgressSave = {
+        ...(candidate.postDataJSON() as { positionMs: number; playbackId?: string }),
+        stored: false,
+      };
+      saves.push(save);
+      void candidate
+        .response()
+        .then((response) => {
+          save.stored = response?.ok() ?? false;
+        })
+        .catch(() => undefined);
     }
   });
   return saves;
@@ -187,10 +214,19 @@ async function watchVideo(page: Page, item: Video, seconds: number) {
   await waitForPlayerReady(page);
   await playFor(page, seconds, () => page.locator(".vjs-big-play-button").click());
   await pause(page);
-  // 止めたときの保存（ID つき）が届くまで待つ。
+  // 止めたときの保存（ID つき）がサーバーに受け付けられるまで待つ。要求が出ただけで戻ると、
+  // 直後に API で読む位置が止める前のままのことがある。
+  const pausedMs = Math.round((await currentTime(page)) * 1000);
   await expect
-    .poll(() => saves.filter((save) => save.playbackId).length)
-    .toBeGreaterThan(0);
+    .poll(() =>
+      saves.some(
+        (save) =>
+          save.playbackId !== undefined &&
+          save.stored &&
+          Math.abs(save.positionMs - pausedMs) < 1000,
+      ),
+    )
+    .toBe(true);
   return saves;
 }
 
@@ -223,6 +259,139 @@ async function watchedCards(page: Page, expected: number) {
   const cards = page.locator("article[data-video-id]");
   await expect(cards).toHaveCount(expected);
   return cards.locator("h3").allTextContents();
+}
+
+/**
+ * playToEnd は動画の画面で再生を始め、末尾の数秒前へ送って最後まで再生する。終わった後の保存で
+ * 視聴済みになるまで待つ（受け入れ条件 10、16 の「最後まで見た動画」）。
+ */
+async function playToEnd(page: Page, request: APIRequestContext, item: Video) {
+  const saves = progressSaves(page, item);
+  await page.goto(`/videos/${String(item.id)}`);
+  await waitForPlayerReady(page);
+  await playFor(page, 1, () => page.locator(".vjs-big-play-button").click());
+  await page.locator("video.vjs-tech").evaluate((element) => {
+    const video = element as HTMLVideoElement;
+    video.currentTime = video.duration - 4;
+  });
+  await page.waitForFunction(
+    () => document.querySelector<HTMLVideoElement>("video.vjs-tech")?.ended === true,
+    undefined,
+    { timeout: 20_000 },
+  );
+  expect(saves.filter((save) => save.playbackId).length).toBeGreaterThan(0);
+  await expect
+    .poll(async () => (await savedProgress(request, item))?.completed)
+    .toBe(true);
+}
+
+/** watchFilter は履歴の画面の状態の切り替え（「All」「In progress」「Watched」）の 1 つである。 */
+function watchFilter(page: Page, name: "All" | "In progress" | "Watched"): Locator {
+  return page
+    .getByRole("radiogroup", { name: "Watch status" })
+    .getByRole("radio", { name, exact: true });
+}
+
+function searchField(page: Page): Locator {
+  return page.getByRole("searchbox", { name: "Search titles" });
+}
+
+/** entryRows は履歴の画面で、title の動画の行（時間軸の 1 件）である。 */
+function entryRows(page: Page, title: string): Locator {
+  return historyList(page)
+    .locator('[data-slot="timeline-item"]')
+    .filter({
+      has: page.getByRole("link", { name: new RegExp(`^${escapeRegExp(title)}, `) }),
+    });
+}
+
+/** positionText は行の「0:06 / 0:40」の文字である。 */
+function positionText(row: Locator): Locator {
+  return row.getByText(/^\d+:\d{2} \/ \d+:\d{2}$/);
+}
+
+/**
+ * positionBar は行の位置の行のバーである。途中の動画はサムネイルの下端にも同じ名前のバーが
+ * あり、位置の行はその後ろにある。
+ */
+function positionBar(row: Locator): Locator {
+  return row.getByRole("progressbar", { name: "Watched portion" }).last();
+}
+
+/** seconds は「0:06 / 0:40」の前半（今の位置）を秒にする。 */
+function seconds(text: string): number {
+  const [minutes = "", rest = ""] = text.split(" / ")[0]?.split(":") ?? [];
+  return Number(minutes) * 60 + Number(rest);
+}
+
+/** jumpItems は「Jump to date」の項目（lg からは横の欄の日と月）である。 */
+function jumpItems(page: Page): Locator {
+  return page.getByRole("region", { name: "Jump to date" }).getByRole("radio");
+}
+
+/** localDays は時刻（ISO 文字列）をブラウザの暦の YYYY-MM-DD にし、重複を除いて返す。 */
+async function localDays(page: Page, times: string[]): Promise<string[]> {
+  return page.evaluate((values) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const days = values.map((value) => {
+      const date = new Date(value);
+      return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    });
+    return [...new Set(days)];
+  }, times);
+}
+
+/**
+ * backdateEntry はサーバーの DB で、視聴履歴の 1 件の再生時刻を playedAtMs（Unix ミリ秒）に
+ * 書き換える。何日も前の視聴は e2e の実時間では作れないので、日付の一覧（受け入れ条件 13）の
+ * 確認のためだけに使う。サーバーは WAL で開いているので、別の接続から書いてよい。
+ */
+function backdateEntry(id: number, playedAtMs: number) {
+  const runRoot = process.env.MDM_E2E_RUN_ROOT;
+  if (runRoot === undefined) throw new Error("MDM_E2E_RUN_ROOT is not configured");
+  // playwright.config.ts の MDM_DATA_DIR と internal/store/sqlite.go の DatabaseFileName。
+  const db = new DatabaseSync(path.join(runRoot, "data", "mdm.db"));
+  try {
+    db.exec("pragma busy_timeout = 5000");
+    const result = db
+      .prepare("update watch_history set played_at = ? where id = ?")
+      .run(playedAtMs, id);
+    expect(Number(result.changes)).toBe(1);
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * recordFirstPlaying は、この後に開く動画が最初に実際に再生し始めた（playing）ときの位置を
+ * 覚えさせる。自動再生は play をメタデータより先に呼ぶので、paused が外れた直後の位置は
+ * 続きからのシークの前の 0 のことがある。playing はメタデータで位置を当てた後に届く。
+ * 画面の移り変わりはクライアント側なので、ここで付けた待ち受けは動画の画面でも生きている。
+ */
+async function recordFirstPlaying(page: Page) {
+  await page.evaluate(() => {
+    const record = window as unknown as { firstPlayingAt?: number };
+    delete record.firstPlayingAt;
+    document.addEventListener(
+      "playing",
+      (event) => {
+        if (
+          record.firstPlayingAt === undefined &&
+          event.target instanceof HTMLVideoElement
+        ) {
+          record.firstPlayingAt = event.target.currentTime;
+        }
+      },
+      { capture: true },
+    );
+  });
+}
+
+/** firstPlayingAt は recordFirstPlaying が覚えた位置（秒）を返し、まだ再生していなければ null。 */
+async function firstPlayingAt(page: Page): Promise<number | null> {
+  return page.evaluate(
+    () => (window as unknown as { firstPlayingAt?: number }).firstPlayingAt ?? null,
+  );
 }
 
 async function guestPage(browser: Browser) {
@@ -448,6 +617,248 @@ test.describe.serial("watch history", () => {
     await expect(page.getByRole("heading", { name: "No watch history" })).toBeVisible();
     await expect(historyList(page)).toHaveCount(0);
     expect(await historyEntries(request)).toEqual([]);
+  });
+
+  // ここから改訂（子 #877）。前のテストで履歴は空になり、A は視聴済み、B は先頭近くまで
+  // 見た状態である。
+
+  test("途中の B と最後まで見た A で、「In progress」は B だけ、「Watched」は A だけ、既定は両方を出す（受け入れ条件 10）", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    const cleared = await request.delete("/api/watch-history", {
+      headers: { Origin: origin },
+    });
+    expect(cleared.status()).toBe(204);
+
+    // B を 2 回（2 回目は 5 秒の MinResumeMs より先まで）、その間に A を最後まで見る。
+    // 日付の一覧のテストは、最も古い B の 1 回目を前の日へずらす。
+    await watchVideo(page, video(titleB), 2);
+    await playToEnd(page, request, video(titleA));
+    await watchVideo(page, video(titleB), 6);
+    const progressB = await savedProgress(request, video(titleB));
+    expect(progressB?.completed).toBe(false);
+    expect(progressB?.positionMs ?? 0).toBeGreaterThanOrEqual(5000);
+    expect((await historyEntries(request)).map((entry) => entry.video?.id)).toEqual([
+      video(titleB).id,
+      video(titleA).id,
+      video(titleB).id,
+    ]);
+
+    await openHistory(page);
+    await expect(watchFilter(page, "All")).toHaveAttribute("aria-checked", "true");
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+
+    await watchFilter(page, "In progress").click();
+    await expect(page).toHaveURL("/history?watch=inProgress");
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+    await expect(entryLinks(page, titleA)).toHaveCount(0);
+
+    await watchFilter(page, "Watched").click();
+    await expect(page).toHaveURL("/history?watch=watched");
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(0);
+
+    await watchFilter(page, "All").click();
+    await expect(page).toHaveURL("/history");
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+
+    // ライブラリで視聴済みのカードは、履歴の「Watched」に出る A と同じである。
+    expect(await watchedCards(page, 1)).toEqual([titleA]);
+  });
+
+  test("狭い画面で / を押すと検索欄が開いてフォーカスが入り、題名の一部で絞り、消すと戻る（受け入れ条件 11）", async ({
+    page,
+  }) => {
+    // lg（1024 px）未満では検索欄は畳まれ、見出しの検索のボタンで開く（ui-design.md「Header row」）。
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/history");
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+    await expect(searchField(page)).toBeHidden();
+    await expect(page.getByRole("button", { name: "Search titles" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+
+    // HistoryPage と SearchBox のどちらも / を受ける。欄が開いてフォーカスが入り、/ は入らない。
+    await page.locator("body").press("/");
+    await expect(searchField(page)).toBeVisible();
+    await expect(searchField(page)).toBeFocused();
+    await expect(searchField(page)).toHaveValue("");
+
+    await page.keyboard.type("確認A");
+    await expect(page).toHaveURL(`/history?q=${encodeURIComponent("確認A")}`);
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(0);
+
+    // Esc は欄を空にしてフォーカスを外す。
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL("/history");
+    await expect(searchField(page)).toHaveValue("");
+    await expect(searchField(page)).not.toBeFocused();
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+  });
+
+  test("「In progress」とタイトルの検索を合わせると、両方を満たす件だけが残る（受け入れ条件 12）", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await openHistory(page);
+    await watchFilter(page, "In progress").click();
+    await expect(entryLinks(page, titleA)).toHaveCount(0);
+
+    // lg からは欄がいつも出ていて、/ でフォーカスが入る。
+    await page.locator("body").press("/");
+    await expect(searchField(page)).toBeFocused();
+    await page.keyboard.type("確認B");
+    await expect(page).toHaveURL(
+      `/history?watch=inProgress&q=${encodeURIComponent("確認B")}`,
+    );
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+    await expect(entryLinks(page, titleA)).toHaveCount(0);
+
+    // 題名は合っても途中ではない A は出ず、該当なしの表示になる。
+    await searchField(page).fill("確認A");
+    await expect(page).toHaveURL(
+      `/history?watch=inProgress&q=${encodeURIComponent("確認A")}`,
+    );
+    await expect(
+      page.getByRole("heading", { name: "No history matches these conditions" }),
+    ).toBeVisible();
+    await expect(historyList(page)).toHaveCount(0);
+
+    await watchFilter(page, "All").click();
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(0);
+  });
+
+  test("日付の一覧には件のある日だけが並び、1 つ選ぶとその日からの履歴が出る（受け入れ条件 13）", async ({
+    page,
+    request,
+  }) => {
+    const entries = await historyEntries(request);
+    const oldest = entries.at(-1);
+    expect(oldest?.video?.id).toBe(video(titleB).id);
+    if (oldest === undefined) return;
+    backdateEntry(oldest.id, Date.parse(oldest.playedAt) - 3 * 24 * 60 * 60 * 1000);
+    const moved = await historyEntries(request);
+
+    await page.goto("/");
+    await openHistory(page);
+    const days = await localDays(
+      page,
+      moved.map((entry) => entry.playedAt),
+    );
+    expect(days.length).toBeGreaterThanOrEqual(2);
+    const items = jumpItems(page);
+    await expect(items).toHaveCount(days.length);
+    expect(
+      await items.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("data-value")),
+      ),
+    ).toEqual(days);
+
+    // 3 日前の日を選ぶと、その日の件から始まり、それより新しい件は出ない。
+    const day = days.at(-1) ?? "";
+    await items.last().click();
+    await expect(page).toHaveURL(`/history?date=${day}`);
+    await expect(items.last()).toHaveAttribute("aria-checked", "true");
+    await expect(entryLinks(page, titleB)).toHaveCount(1);
+    await expect(entryLinks(page, titleA)).toHaveCount(0);
+
+    // 最初の項目は一覧の先頭なので、date を外して全件に戻る。
+    await items.first().click();
+    await expect(page).toHaveURL("/history");
+    await expect(entryLinks(page, titleA)).toHaveCount(1);
+    await expect(entryLinks(page, titleB)).toHaveCount(2);
+  });
+
+  test("途中の件は位置と長さを出し、別のタブで見進めてから開き直すと表示が進む（受け入れ条件 14）", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(60_000);
+    await page.goto("/");
+    await openHistory(page);
+    const item = video(titleB);
+    const rows = entryRows(page, titleB);
+    await expect(rows).toHaveCount(2);
+    const saved = (await savedProgress(request, item))?.positionMs ?? 0;
+    // 同じ動画の行は、どれも今の位置を出す。
+    for (const row of await rows.all()) {
+      await expect(positionText(row)).toHaveText(
+        new RegExp(`^0:${String(Math.floor(saved / 1000)).padStart(2, "0")} / 0:40$`),
+      );
+      await expect(positionBar(row)).toBeVisible();
+    }
+    const before = seconds((await positionText(rows.first()).textContent()) ?? "");
+
+    const other = await page.context().newPage();
+    await watchVideo(other, item, 3);
+    await other.close();
+    const after = (await savedProgress(request, item))?.positionMs ?? 0;
+    expect(Math.floor(after / 1000)).toBeGreaterThan(before);
+
+    await page.reload();
+    await expect(entryRows(page, titleB)).toHaveCount(3);
+    for (const row of await entryRows(page, titleB).all()) {
+      await expect(positionText(row)).toHaveText(
+        new RegExp(`^0:${String(Math.floor(after / 1000)).padStart(2, "0")} / 0:40$`),
+      );
+    }
+  });
+
+  test("「Resume」を押すと動画が開き、出ていた位置から再生が始まる（受け入れ条件 15）", async ({
+    page,
+    request,
+  }) => {
+    const item = video(titleB);
+    const saved = (await savedProgress(request, item))?.positionMs ?? 0;
+    expect(saved).toBeGreaterThanOrEqual(5000);
+
+    await page.goto("/");
+    await openHistory(page);
+    const row = entryRows(page, titleB).first();
+    const shown = seconds((await positionText(row).textContent()) ?? "");
+    expect(shown).toBe(Math.floor(saved / 1000));
+    await recordFirstPlaying(page);
+    await row.getByRole("link", { name: `Resume ${titleB}` }).click();
+    await expect(page).toHaveURL(`/videos/${String(item.id)}`);
+
+    // 押しただけで再生が始まり、その最初の位置は行に出ていた位置である。
+    await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
+    const startedAt = (await firstPlayingAt(page)) ?? 0;
+    expect(startedAt).toBeGreaterThanOrEqual(shown);
+    expect(startedAt).toBeLessThan(shown + 2);
+    await pause(page);
+  });
+
+  test("見終わった件は「Start over」を出し、押すと 0 から再生が始まる（受け入れ条件 16）", async ({
+    page,
+  }) => {
+    const item = video(titleA);
+    await page.goto("/");
+    await openHistory(page);
+    const row = entryRows(page, titleA);
+    await expect(row).toHaveCount(1);
+    await expect(row.getByRole("link", { name: `Resume ${titleA}` })).toHaveCount(0);
+    // 視聴済みの行のバーは満ちている。
+    const bar = positionBar(row);
+    await expect(bar).toHaveAttribute(
+      "aria-valuenow",
+      (await bar.getAttribute("aria-valuemax")) ?? "",
+    );
+    await recordFirstPlaying(page);
+    await row.getByRole("link", { name: `Start ${titleA} over` }).click();
+    await expect(page).toHaveURL(`/videos/${String(item.id)}`);
+
+    await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
+    expect((await firstPlayingAt(page)) ?? 99).toBeLessThan(2);
+    await pause(page);
   });
 
   test("ゲストのサイドバーに履歴は無く、/history を開くとログイン画面になる（受け入れ条件 9）", async ({
