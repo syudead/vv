@@ -345,6 +345,7 @@ that scanning cannot restore, next to an index that a scan rebuilds:
 | Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
 | User data | `playback_progress`, `watch_history`, `tags`, `tag_names`, `video_tags`, `rejected_tag_names`, `public_videos`, `video_overrides`, `video_edits`, `video_favorites`, `folder_favorites`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `folder_group_overrides` | A backup only |
 | Configuration | `account`, `media_folders`, `settings`, `api_tokens` | A backup, or setting it up again |
+| Auto-tagging record | `auto_tag_queue` | Tagging the videos again under Settings, Auto-tagging; tags the owner removed can come back ([auto-tagging](../design-docs/auto-tagging.md)) |
 | Session | `sessions` | Logging in again |
 
 User data is keyed by values a rescan reproduces (the content key, a version

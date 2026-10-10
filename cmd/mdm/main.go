@@ -21,6 +21,7 @@ import (
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
+	"github.com/syudead/vv/internal/clef"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
@@ -258,10 +259,25 @@ func run(opts runOptions) error {
 		workers = append(workers, worker)
 		wakers[kind] = worker
 	}
+	// 自動タグ付け。取り込みで代表サムネイルの段階を終えた動画を、入なら判定に回す
+	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
+	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
+		Queue:      db.AutoTags(),
+		Settings:   settingsStore,
+		Classifier: clef.New(),
+		Thumbnails: thumbnailSource{artifacts: artifactStore},
+		Logger:     logger,
+	})
+	if err := autoTagger.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
+	}
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
+		ThumbnailFinished: func(videoID int64) {
+			autoTagger.VideoThumbnailFinished(backgroundCtx, videoID)
+		},
 	})
 	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
@@ -273,6 +289,7 @@ func run(opts runOptions) error {
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
+	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
 	// 猶予を越えたときも）、データベースを閉じる前に走査とワーカーを止める。止めずに
 	// 戻ると、始め直した走査やワーカーが閉じたデータベースへ書く。データベースを
@@ -372,6 +389,7 @@ func run(opts runOptions) error {
 		TranscodeSettings: transcodeSettings,
 		NetworkSettings:   networkSettings,
 		AutoImport:        autoImport,
+		AutoTagging:       autoTagger,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

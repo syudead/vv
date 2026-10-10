@@ -68,6 +68,12 @@ type VisibilityStore struct{ sql *sql.DB }
 // ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない。
 type FavoriteStore struct{ sql *sql.DB }
 
+// AutoTagStore は自動タグ付けの待ち行列（積む・専有する・終える・失敗にする・数える）と、
+// 判定の結果のタグの付与を受け持つ（auto_tags.go、docs/design-docs/auto-tagging.md）。
+// 付与は TagStore と同じ非公開の関数で行い、確定後に domain.AutoTagApplied を発行するため、
+// 発行先を持つ *DB を通して使う。設定の保存は SettingsStore が持つ。
+type AutoTagStore struct{ db *DB }
+
 // OverrideStore は動画の上書き（表示名）を、その内容の動画の全所在の照合用の鍵の
 // 書き直しと同じ取引で保存する（overrides.go、specs/029-video-overrides/data-model.md §3）。
 // 動画を返す読み出しがそれを Video.Title などへ写すのは、各役割の読み出しである。
@@ -96,4 +102,5 @@ func (db *DB) Visibility() *VisibilityStore {
 func (db *DB) Favorites() *FavoriteStore       { return &FavoriteStore{sql: db.sql} }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
+func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }

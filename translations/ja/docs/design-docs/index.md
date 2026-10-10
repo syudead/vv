@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
+sourceHash: 3ac3db33e2da3cfe5c278fa1b432e961f2014df57ba662554277794215febf0d
 ---
 
 # 設計文書 {#design-documents}
@@ -30,6 +30,7 @@ sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
 - [再生画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [隣の字幕ファイル](sidecar-subtitles.md)
+- [Ollama 上の Clef 分類器による自動タグ付け](auto-tagging.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [画面の文言と書式 (i18n)](i18n.md)

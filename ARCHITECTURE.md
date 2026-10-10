@@ -66,8 +66,8 @@ flowchart LR
 | Layer | Packages | Owns | Must not import |
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
-| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password` | Talking to the outside world | Each other and `internal/app` |
+| Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `clef` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -174,6 +174,7 @@ from SQLite, never from the filesystem.
 | `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md), [error-api.md](specs/023-english-i18n/contracts/error-api.md) |
 | External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md), [mcp.md](specs/026-external-api/contracts/mcp.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
+| `internal/clef`, `internal/app` (`AutoTagger`) | Asking a Clef classifier in Ollama which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | Argon2id hashing in PHC strings | [016 data-model](specs/016-single-account-auth/data-model.md) |
 | `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [016 data-model](specs/016-single-account-auth/data-model.md), [026 data-model](specs/026-external-api/data-model.md) |

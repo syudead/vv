@@ -1335,6 +1335,13 @@ export const en = {
       attachFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
       detachFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
     },
+    autoTag: {
+      run: "Suggest tags",
+      queued:
+        "Asking the classifier for tags. Matching tags are added when it answers, which can take a few minutes.",
+      alreadyRunning: "This video is already being tagged.",
+      failed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+    },
   },
   versions: {
     bundle: {
@@ -1687,6 +1694,44 @@ export const en = {
       >,
       /** 問題が道筋を持たないときに、{path} の代わりに入れる言葉。 */
       unknownPath: "a media folder",
+    },
+    autoTagging: {
+      heading: "Auto-tagging",
+      description:
+        "A classifier model running in Ollama (Clef) looks at each video's thumbnail, title, file name and folder, and adds the existing tags it judges likely. No new tags are created.",
+      enabled: "Tag new videos automatically",
+      enabledHint: "After a video is imported, ask the classifier for its tags.",
+      endpoint: "Ollama URL",
+      endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
+      model: "Model",
+      modelHint: "clef-flash is fast; clef is larger and more accurate.",
+      threshold: "Minimum probability",
+      thresholdHint:
+        "A tag is added when the classifier's probability is at least this value (above 0, up to 1).",
+      save: "Save",
+      saving: "Saving…",
+      saved: "Auto-tagging settings saved",
+      check: "Save and test connection",
+      checking: "Testing… Loading the model can take a few minutes.",
+      checkOk: "The classifier answered.",
+      checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      loading: "Loading the auto-tagging settings",
+      loadFailed: (reason: string) =>
+        `Couldn't load the auto-tagging settings: ${reason}`,
+      queue: (queued: number, running: number, done: number, failed: number) =>
+        `Waiting ${formatNumber(queued)} · Tagging ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      lastError: "Last failure",
+      runMissing: "Tag videos not yet tagged",
+      runAll: "Tag all videos again",
+      started: (count: number) =>
+        count === 0
+          ? "There were no videos to tag"
+          : selectPlural(count, {
+              one: `${formatNumber(count)} video was queued for auto-tagging`,
+              other: `${formatNumber(count)} videos were queued for auto-tagging`,
+            }),
+      startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",
