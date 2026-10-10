@@ -1967,7 +1967,10 @@ paths:
         所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す
         （specs/043-watch-history/contracts/screen-api.md）。各件の `video` は、その内容の動画が
         いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
-        `cursor` が読めなければ 400 `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。
+        `watch`・`query`・`date` はページを切る前に掛け、`and` で結ぶ。`cursor` が読めなければ 400
+        `invalid_cursor`。`limit` が範囲の外、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
+        超える、`date` が 2 つの形のどちらでもない、`date` に `tz` が無い、`tz` をサーバーが知らない
+        ときは 400 `invalid_request`。
       parameters:
         - name: cursor
           in: query
@@ -1982,6 +1985,32 @@ paths:
             minimum: 1
             maximum: 200
             default: 60
+        - name: watch
+          in: query
+          description: 動画のいまの視聴状態で絞る。all は絞り込まない。動画の無い件は all にだけ出る
+          schema:
+            $ref: "#/components/schemas/WatchHistoryFilter"
+        - name: query
+          in: query
+          description: |
+            検索語。書き方は `GET /api/videos` の `query` と同じ（AND・フレーズ・除外・OR、表記の揺れの吸収、
+            先頭から 16 語まで）。照合するのは題名だけで、動画のある件はファイルの題名と表示名、動画の無い件は
+            題名の写し。相対パスとタグ名には照合しない
+          schema:
+            type: string
+            maxLength: 100
+        - name: date
+          in: query
+          description: |
+            `YYYY-MM-DD` か `YYYY-MM`。`tz` の暦でその日か月が終わるより前の件だけにする。1 ページ目は
+            その日付から始まり、`nextCursor` で古い件へ続く。`tz` が必須
+          schema:
+            type: string
+        - name: tz
+          in: query
+          description: 日と月の境目を取る IANA のタイムゾーン名（例 Asia/Tokyo）。`date` があるときは必須
+          schema:
+            type: string
       responses:
         "200":
           description: 視聴履歴の1ページ
@@ -2002,6 +2031,43 @@ paths:
           description: 消した
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/watch-history/dates:
+    get:
+      operationId: listWatchHistoryDates
+      summary: 視聴履歴のある日を新しい順に返す
+      description: |
+        所有者だけ。`watch` と `query` を満たす件のある日を、`tz` の暦の `YYYY-MM-DD` で新しい順に返す
+        （specs/043-watch-history/contracts/screen-api.md）。どの日もその月も一覧の `date` に渡せる。
+        `tz` が無いかサーバーが知らない、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
+        超えるときは 400 `invalid_request`。
+      parameters:
+        - name: tz
+          in: query
+          required: true
+          description: 日を数える IANA のタイムゾーン名（例 Asia/Tokyo）
+          schema:
+            type: string
+        - name: watch
+          in: query
+          description: 一覧の `watch` と同じ
+          schema:
+            $ref: "#/components/schemas/WatchHistoryFilter"
+        - name: query
+          in: query
+          description: 一覧の `query` と同じ
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: 件のある日
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchHistoryDates"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
 
   /api/watch-history/{id}:
     delete:
@@ -4263,6 +4329,26 @@ components:
           description: >-
             問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。
             画面はこれが変わったら一覧を読み直す
+
+    WatchHistoryFilter:
+      type: string
+      enum: [all, inProgress, watched]
+      default: all
+      description: |
+        視聴履歴を動画のいまの視聴状態で絞る。all = 絞り込まない、inProgress = 視聴途中、watched = 視聴済み。
+        視聴途中と視聴済みはライブラリの絞り込みと同じ規則で、動画の無い件は all にだけ出る
+
+    WatchHistoryDates:
+      type: object
+      required: [days]
+      additionalProperties: false
+      properties:
+        days:
+          type: array
+          description: 件のある日。新しい順で、合う件が無ければ空
+          items:
+            type: string
+            pattern: '^\d{4}-\d{2}-\d{2}$'
 
     WatchHistoryPage:
       type: object

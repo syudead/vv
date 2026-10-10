@@ -98,3 +98,93 @@ func ValidatePlaybackID(id string) error {
 func isHexDigit(c byte) bool {
 	return ('0' <= c && c <= '9') || ('a' <= c && c <= 'f') || ('A' <= c && c <= 'F')
 }
+
+// ErrInvalidWatchHistoryFilter は視聴履歴の絞り込みが all・inProgress・watched のどれでもないことを表す。
+var ErrInvalidWatchHistoryFilter = errors.New("invalid watch history filter")
+
+// ErrInvalidWatchHistoryPeriod は日付への移動が YYYY-MM-DD でも YYYY-MM でもないことを表す。
+var ErrInvalidWatchHistoryPeriod = errors.New("invalid watch history period")
+
+// WatchHistoryFilter は視聴履歴を動画のいまの視聴状態で絞る条件である（research.md R-9）。値は
+// api/openapi.yaml の WatchHistoryFilter に対応する。視聴の 1 回に「未視聴」は無いので、一覧の
+// WatchFilter と違って unwatched を持たない。
+type WatchHistoryFilter string
+
+const (
+	// WatchHistoryAll は絞り込まない（既定）。動画の無い件もここにだけ出る。
+	WatchHistoryAll WatchHistoryFilter = "all"
+	// WatchHistoryInProgress は動画が視聴途中の件だけにする。
+	WatchHistoryInProgress WatchHistoryFilter = "inProgress"
+	// WatchHistoryWatched は動画が視聴済みの件だけにする。
+	WatchHistoryWatched WatchHistoryFilter = "watched"
+)
+
+// ParseWatchHistoryFilter は絞り込みの値を読む。3 つの値のほかは ErrInvalidWatchHistoryFilter。
+func ParseWatchHistoryFilter(value string) (WatchHistoryFilter, error) {
+	switch filter := WatchHistoryFilter(value); filter {
+	case WatchHistoryAll, WatchHistoryInProgress, WatchHistoryWatched:
+		return filter, nil
+	default:
+		return "", fmt.Errorf("%w: %s", ErrInvalidWatchHistoryFilter, strconv.Quote(value))
+	}
+}
+
+// WatchFilter は同じ状態を表す一覧の絞り込みを返す。保存層が一覧と同じ条件句
+// （watchCondition）を使うためで、WatchHistoryAll と空は WatchAll になる。
+func (f WatchHistoryFilter) WatchFilter() WatchFilter {
+	switch f {
+	case WatchHistoryInProgress:
+		return WatchInProgress
+	case WatchHistoryWatched:
+		return WatchWatched
+	default:
+		return WatchAll
+	}
+}
+
+// WatchHistoryQuery は視聴履歴の一覧と日付の一覧の条件である（specs/043-watch-history/data-model.md
+// 「domain values added」）。Filter が空なら WatchHistoryAll と同じ。Search が空なら検索で絞らない。
+// Before がゼロでなければ played_at がそれより前の件だけにする（日付の一覧は Before を見ない）。
+type WatchHistoryQuery struct {
+	Filter WatchHistoryFilter
+	Search SearchExpr
+	Before time.Time
+}
+
+// WatchHistoryPeriod は日付への移動の先で、日（YYYY-MM-DD）か月（YYYY-MM）である。Day が 0 なら月。
+type WatchHistoryPeriod struct {
+	Year  int
+	Month time.Month
+	Day   int
+}
+
+// ParseWatchHistoryPeriod は YYYY-MM-DD か YYYY-MM を読む。桁の欠けたもの（2026-9）、
+// 無い日（2026-02-30）とほかの形は ErrInvalidWatchHistoryPeriod。
+func ParseWatchHistoryPeriod(value string) (WatchHistoryPeriod, error) {
+	invalid := fmt.Errorf("%w: %s", ErrInvalidWatchHistoryPeriod, strconv.Quote(value))
+	switch len(value) {
+	case len("2006-01-02"):
+		day, err := time.Parse("2006-01-02", value)
+		if err != nil {
+			return WatchHistoryPeriod{}, invalid
+		}
+		return WatchHistoryPeriod{Year: day.Year(), Month: day.Month(), Day: day.Day()}, nil
+	case len("2006-01"):
+		month, err := time.Parse("2006-01", value)
+		if err != nil {
+			return WatchHistoryPeriod{}, invalid
+		}
+		return WatchHistoryPeriod{Year: month.Year(), Month: month.Month()}, nil
+	default:
+		return WatchHistoryPeriod{}, invalid
+	}
+}
+
+// End は loc で見たその日か月が終わった直後の時刻（次の日か次の月の 0 時）を返す
+// （research.md R-11）。夏時間の切り替えの日も loc の暦で数える。
+func (p WatchHistoryPeriod) End(loc *time.Location) time.Time {
+	if p.Day == 0 {
+		return time.Date(p.Year, p.Month+1, 1, 0, 0, 0, 0, loc)
+	}
+	return time.Date(p.Year, p.Month, p.Day+1, 0, 0, 0, 0, loc)
+}
