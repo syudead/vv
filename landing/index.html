@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VVMDM — self-hosted video library</title>
+<meta name="description" content="VVMDM indexes the videos on your own storage and plays them in the browser, with thumbnails, previews, resume and tags.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;display=swap">
+<style>
+/* Layout: one quiet 1080px column; headline, one library shot, four lines of features, install, demo. */
+body{margin:0;background:#0d1011;color:#eef3f3;font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#7fd6e2}a:hover{color:#b3e8ef}
+a:focus-visible{outline:2px solid #7fd6e2;outline-offset:3px}
+h1,h2{text-wrap:balance}
+.wrap{max-width:1080px;margin:0 auto;padding-inline:24px;box-sizing:border-box}
+.shots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.features{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:32px}
+.install{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px}
+@media (max-width:860px){.shots,.features{grid-template-columns:repeat(2,minmax(0,1fr))}.install{grid-template-columns:minmax(0,1fr)}.navlinks{display:none !important}}
+@media (max-width:520px){.features{grid-template-columns:minmax(0,1fr)}.display{font-size:42px !important}}
+</style>
+</head>
+<body>
+<div style="min-height: 100%; background: #0d1011; color: #eef3f3; font-family: 'IBM Plex Sans', system-ui, sans-serif">
+
+<!-- Navigation -->
+<nav class="wrap" style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding-block: 20px" aria-label="Main">
+<a href="#top" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #eef3f3">
+<svg width="26" height="26" viewBox="8 8 84 84" aria-hidden="true"><g fill="#3ec1d3"><path d="M26.667,10C17.461,10,10,17.461,10,26.667c0,9.206,7.461,16.667,16.667,16.667c9.202,0,16.667-7.465,16.667-16.667C43.333,17.464,35.868,10,26.667,10z M26.667,36.667c-5.525,0-10-4.476-10-10c0-5.525,4.475-10,10-10c5.524,0,10,4.475,10,10C36.667,32.191,32.191,36.667,26.667,36.667z"></path><rect x="19.729" y="43.062" transform="matrix(0.7071 -0.7071 0.7071 0.7071 -19.2177 46.3949)" width="53.332" height="6.667"></rect><rect x="22.491" y="52.489" transform="matrix(0.7071 -0.7071 0.7071 0.7071 -23.1228 55.8204)" width="66.666" height="6.668"></rect><path d="M36.667,90H90V36.667L36.667,90z M83.334,83.334H52.76l30.574-30.569V83.334z"></path></g></svg>
+<span style="font-family: Archivo, 'Arial Narrow', sans-serif; font-stretch: 125%; font-weight: 800; font-size: 17px; letter-spacing: 0.04em">VVMDM</span>
+</a>
+<div style="display: flex; align-items: center; gap: 28px; font-size: 14px">
+<span class="navlinks" style="display: flex; gap: 28px">
+<a href="https://syudead.github.io/vv/" style="color: #a3b1b3; text-decoration: none">Docs</a>
+<a href="https://github.com/syudead/vv" style="color: #a3b1b3; text-decoration: none">GitHub</a>
+</span>
+<a href="#demo" style="display: inline-flex; align-items: center; min-height: 44px; color: #3ec1d3; font-weight: 600; text-decoration: none">Try the demo →</a>
+</div>
+</nav>
+
+<!-- Hero -->
+<section id="top" class="wrap" style="padding-block: 96px 64px; display: flex; flex-direction: column; gap: 24px">
+<h1 class="display" style="margin: 0; max-width: 14em; font-family: Archivo, 'Arial Narrow', sans-serif; font-stretch: 112%; font-weight: 800; font-size: 64px; line-height: 1.03; letter-spacing: -0.02em">Your video folders, streaming like a library.</h1>
+<p style="margin: 0; max-width: 32em; font-size: 19px; line-height: 1.6; color: #a3b1b3">A self-hosted video library. Point it at your folders and watch everything in the browser. Your files are never changed.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px">
+<a href="#demo" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 8px; background: #3ec1d3; color: #0d1011; font-weight: 600; text-decoration: none">Open the live demo</a>
+<a href="#install" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 8px; border: 1px solid #3a4648; color: #eef3f3; font-weight: 500; text-decoration: none">Install</a>
+</div>
+</section>
+
+<!-- Library shot -->
+<section class="wrap" style="padding-block: 0 112px">
+<img src="library.webp" alt="The VVMDM library: a grid of video thumbnails with durations, a search bar, and a sidebar with Library, Folders, Tags and Duplicates" style="display: block; width: 100%; max-width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 12px; border: 1px solid #263032; box-shadow: 0 24px 64px rgb(0 0 0 / 0.5)">
+</section>
+
+<!-- Features -->
+<section class="wrap" style="padding-block: 0 112px">
+<div class="features">
+<div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2a3436; padding-top: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Previews</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #a3b1b3">Thumbnails, hover clips and seek frames, made for every video.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2a3436; padding-top: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Resume</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #a3b1b3">Pick up where you stopped, on any device.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2a3436; padding-top: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Any format</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #a3b1b3">Files the browser can't play are converted as they stream.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #2a3436; padding-top: 20px">
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Tags and search</h2>
+<p style="margin: 0; font-size: 15px; line-height: 1.55; color: #a3b1b3">Organize the library without renaming a file.</p>
+</div>
+</div>
+</section>
+
+<!-- Install -->
+<section id="install" class="wrap" style="padding-block: 0 112px">
+<h2 style="margin: 0 0 32px; font-family: Archivo, 'Arial Narrow', sans-serif; font-stretch: 112%; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.015em">Install</h2>
+<div class="install" style="align-items: stretch">
+<div style="display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 28px; border: 1px solid #263032; border-radius: 12px">
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="flex: 0 0 auto; width: 48px; height: 48px; border-radius: 10px; background: #163b40; display: flex; align-items: center; justify-content: center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3ec1d3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="4" width="19" height="13" rx="2"></rect><path d="M8 21h8M12 17v4"></path><path d="M10 8.5v4l3.5-2z"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h3 style="margin: 0; font-size: 19px; font-weight: 600">Windows</h3>
+<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #7d8b8d">64-bit · desktop app</span>
+</div>
+</div>
+<p style="margin: 0; font-size: 15px; line-height: 1.6; color: #a3b1b3">Download the zip, unzip it and run <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #eef3f3">VVMDM.exe</span>. FFmpeg is included.</p>
+<a href="https://github.com/syudead/vv/releases/latest" style="margin-top: auto; align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; padding: 0 20px; border-radius: 8px; border: 1px solid #3a4648; color: #eef3f3; font-weight: 500; text-decoration: none">Download for Windows</a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 28px; border: 1px solid #263032; border-radius: 12px">
+<div style="display: flex; align-items: center; gap: 16px">
+<div style="flex: 0 0 auto; width: 48px; height: 48px; border-radius: 10px; background: #163b40; display: flex; align-items: center; justify-content: center"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#3ec1d3" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l8.5 4.75v9.5L12 21.5l-8.5-4.75v-9.5z"></path><path d="M3.5 7.25L12 12l8.5-4.75M12 12v9.5"></path></svg></div>
+<div style="display: flex; flex-direction: column; gap: 2px">
+<h3 style="margin: 0; font-size: 19px; font-weight: 600">Docker and NAS</h3>
+<span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #7d8b8d">linux/amd64 · linux/arm64</span>
+</div>
+</div>
+<pre style="margin: 0; min-width: 0; overflow-x: auto; padding: 18px 20px; border-radius: 8px; background: #151a1b; font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 14px; line-height: 1.7; color: #d4dcdd"><code>docker run -p 8080:8080 \
+  -v /path/to/videos:/media:ro \
+  -v /path/to/vv-data:/data \
+  ghcr.io/syudead/vv</code></pre>
+</div>
+</div>
+</section>
+
+<!-- Demo -->
+<section id="demo" class="wrap" style="padding-block: 0 112px">
+<div style="border-top: 1px solid #2a3436; padding-top: 48px; display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: center; justify-content: space-between">
+<div style="flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+<h2 style="margin: 0; font-family: Archivo, 'Arial Narrow', sans-serif; font-stretch: 112%; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.015em">Try the demo</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #a3b1b3">Sign in with <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #eef3f3">[DEMO USERNAME]</span> / <span style="font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #eef3f3">[DEMO PASSWORD]</span>. It resets when idle.</p>
+</div>
+<a href="#demo" style="display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 8px; background: #3ec1d3; color: #0d1011; font-weight: 600; text-decoration: none">Open the live demo</a>
+</div>
+</section>
+
+<!-- Footer -->
+<footer class="wrap" style="padding-block: 32px 40px; display: flex; flex-wrap: wrap; gap: 12px 32px; justify-content: space-between; font-size: 13px; line-height: 1.6; color: #7d8b8d">
+<span>VVMDM · self-hosted video library</span>
+<span style="display: flex; gap: 24px">
+<a href="https://syudead.github.io/vv/" style="color: #a3b1b3">Docs</a>
+<a href="https://github.com/syudead/vv" style="color: #a3b1b3">GitHub</a>
+</span>
+</footer>
+
+</div>
+</body>
+</html>
