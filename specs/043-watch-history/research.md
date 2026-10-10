@@ -318,7 +318,8 @@ no gain on the screen.
 ## R-15: The `Timeline` section leaves the registry
 
 **Decision**: The `Timeline` section (`web/src/ui/patterns/timeline.tsx`,
-registry item `timeline`), its example block `timeline-example`, the
+registry item `timeline`), its example block `timeline-example` (with both
+items' entries in `web/registry.json`), the
 `timeline` layout of `LoadingState`, the `timeline-label` and `timeline-time`
 tokens and the `grid-cols-timeline-*` utilities are removed in the unit that
 builds the day-grouped list; the registry rules and

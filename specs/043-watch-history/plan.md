@@ -485,9 +485,14 @@ the `Timeline` section (`web/src/ui/patterns/timeline.tsx`), its example block,
 the `timeline` layout of `LoadingState`, the `timeline-label` and
 `timeline-time` tokens and the `grid-cols-timeline-*` utilities in
 `web/src/ui/tokens.css`, their rows in `web/registry/rules/patterns.md`,
-`web/registry/index.md` and `docs/design-docs/design-system.md`, with
-`task generate` rebuilding `web/registry/r/`
-([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)); the
+`web/registry/index.md` and `docs/design-docs/design-system.md`, and the
+`timeline` and `timeline-example` items in `web/registry.json`, the manifest
+`task generate` rebuilds `web/registry/r/` from
+([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)); when the
+revised `ui-design.md` composes the list from `GroupedList`, the time on the
+rows of its example block
+(`web/src/designSystem/blocks/grouped-list-example.tsx`), so the block a later
+screen copies matches the history it stands for; the
 thumbnail tokens stay under the names the revised `ui-design.md` gives them;
 `web/src/history/HistoryPage.test.tsx`, the logic tests of `historyDays.ts`
 and `web/e2e/history.e2e.ts` for the new shape and words.
