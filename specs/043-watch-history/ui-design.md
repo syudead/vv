@@ -11,15 +11,21 @@
 [R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone) ·
 [R-12](research.md#r-12-the-filter-the-search-and-the-date-live-in-the-screens-url) ·
 [R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position) ·
+[R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day) ·
+[R-15](research.md#r-15-the-timeline-section-leaves-the-registry) ·
 [contracts/screen-api.md](contracts/screen-api.md) ·
 [quickstart.md](quickstart.md)
 
-This revision replaces the first design of the screen (a `GroupedList` of
-day cards with a `More` menu in the header) with the layout the maintainer
-chose from the mockups: a day timeline, a header row that holds the filter
-and the search, and a side column for the date jump and the clear action.
-The removal behaviour, the dialog, the entry without a video and the gate
-rules of the first design stand.
+This is the second revision of the screen. The first revision replaced the
+first design (a `GroupedList` of day cards with a `More` menu in the header)
+with a day timeline, a header row that holds the filter and the search, and a
+side column for the date jump and the clear action. This revision follows the
+maintainer's change to requirement 3 and `UI品質`: the day is the only unit of
+time on the screen, so the list is a day-grouped list with one heading per day
+and no time, no vertical rule and no dots on a row. The header row, the side
+column, the row's content, the Resume and Start over actions, the removal
+behaviour, the dialog, the entry without a video and the gate rules of the
+first revision stand.
 
 Sources that already decide things, linked rather than repeated here:
 
@@ -27,15 +33,16 @@ Sources that already decide things, linked rather than repeated here:
 | --- | --- |
 | Tokens, closed scales, library density | [design-system.md, Foundations](../../docs/design-docs/design-system.md#foundations); the values in `@theme` of [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css), named here and never copied |
 | `ListPage`, `PageHeader`, `Toolbar`, the state blocks, `LoadMoreRow` | [patterns.md, List page](../../web/registry/rules/patterns.md#list-page) and [States](../../web/registry/rules/patterns.md#states) |
+| `GroupedList`: the sticky heading, the rows on one card divided by a line, the gap between groups | [patterns.md, Sections](../../web/registry/rules/patterns.md#sections) |
 | `ConfirmDialog`: what it confirms, `pending`, the failure `Alert` inside it | [patterns.md, Confirm dialog](../../web/registry/rules/patterns.md#confirm-dialog) |
 | `Button`, `ToggleGroup`, `Input`, `DropdownMenu`, `Tooltip`, `Separator`, `Progress`, `Sonner`, `VideoThumbnail`: what each is for | [components.md](../../web/registry/rules/components.md) |
 | The library's search field: `/` focuses it, Esc clears it, the query is cut at 100 code points | [`SearchBox.tsx`](../../web/src/videoList/SearchBox.tsx); [013 list-url.md](../013-library-search/contracts/list-url.md) |
 | The library's watch filter words and the `ToggleGroup` that picks one | [`FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx), `watchLabel` in [`listSummary.ts`](../../web/src/videoList/listSummary.ts) |
-| The list view row: title weight and clamp, the warning line of an unplayable video | [library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection); the `VideoRow` in [`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) |
-| An owner-only list screen: entry, route, `document.title`, focus after a row leaves | [030 UI design, Duplicates page](../030-video-versions/ui-design.md#duplicates-page) |
+| The list view row: title weight and clamp, the warning line of an unplayable video; its rows on a card | [library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection); the `VideoRow` in [`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) |
+| An owner-only list screen: entry, route, `document.title`, focus after a row leaves; its list on a card divided by lines | [030 UI design, Duplicates page](../030-video-versions/ui-design.md#duplicates-page) |
 | Sidebar entries, the rail and the drawer, what guests do not see | [016 UI design, Sidebar](../016-single-account-auth/ui-design.md#sidebar) and [Guest degradation](../016-single-account-auth/ui-design.md#guest-degradation) |
 | Autoplay on arrival and the resume rule | `autoplayRequested` and `resumePosition` in [`pageDecisions.ts`](../../web/src/player/pageDecisions.ts) |
-| Dates and times are formatted by `Intl` in the catalog's locale | [`web/src/i18n/format.ts`](../../web/src/i18n/format.ts) |
+| Dates are formatted by `Intl` in the catalog's locale | [`web/src/i18n/format.ts`](../../web/src/i18n/format.ts) |
 | Width breakpoints in CSS; layout checked by people | [library-ui.md, Width breakpoints](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), [Layout verified by people](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines) |
 | Screen text | [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) (`shell.nav`, `common`, `list`); this feature adds `history` and the words below |
 
@@ -45,11 +52,11 @@ The diagram shows the parts of the screen and where each action leads.
 flowchart LR
   side[Sidebar: History] --> page[History screen]
   page --> header[Header row: filter, search]
-  page --> timeline[Day timeline]
+  page --> list[Day-grouped list]
   page --> jump[Jump to date]
-  header -->|change| timeline
-  jump -->|day or month| timeline
-  timeline --> row[Entry row]
+  header -->|change| list
+  jump -->|day or month| list
+  list --> row[Entry row]
   row -->|press| video[Video page]
   row -->|Resume, Start over| play[Video page, playing]
   row -->|×| gone[Row leaves]
@@ -62,49 +69,69 @@ view, the `Last played` sort, the sidebar's other entries, and the gate.
 
 ## Why this shape
 
-The screen is a day timeline: the day stands in a column of its own at the
-left, a vertical rule runs down the page, and every viewing is a row on that
-rule with its time first. The parent Issue's `UI品質` asks for "when" and
-"what" to be the only things the eye lands on; on a timeline the day is read
-from the margin and the time from the rule before the thumbnail is even
-seen, so the eye never searches a row for its date. The first design's day
-cards were rejected by the maintainer on the running screen: a card of rows
-reads as a list of videos that happens to have a heading, not as a record of
-time. A `DataTable` with a date column was rejected for the same reason as
-before: the date would repeat on every row, and the grouping that answers
-"what did I watch last week" cannot be drawn by a table.
+The screen is a list grouped by day: one heading per day, the day's rows under
+it on one card, and a wider gap between two days than between two rows. The
+revised requirement 3 and `UI品質` make the day the unit of looking back and
+rule out a time on an entry and any decoration that draws the flow of time
+finer than the day; what remains of the first revision's timeline once its
+rule, its dots and its time column are gone is rows under a day heading, and
+that is the shape the registry's `GroupedList` is for ("the day of a history",
+[patterns.md, Sections](../../web/registry/rules/patterns.md#sections);
+[R-15](research.md#r-15-the-timeline-section-leaves-the-registry)). The
+screen composes `GroupedList` as the registry has it. A variant of it without
+the card (rows divided by lines on the page background) was rejected: the
+repository's two other row lists, the library's list view and the duplicates
+page, both stand on a card divided by lines, so the card is what "the same
+hierarchy as the existing list screens" (`UI品質`) looks like here, and a
+surface no other screen uses would be a rule no screen checks, the reason
+R-15 gives for not keeping `Timeline`. The first design's day cards were
+turned down by the maintainer because a card of rows did not read as a record
+of time; the revision gives up that reading on purpose, and the heading alone
+now says when. A `DataTable` with a date column stays rejected: the date would
+repeat on every row, and the grouping that answers "what did I watch last
+week" cannot be drawn by a table.
 
-The filter, the search and the date list are tools that narrow the timeline,
-so they sit where tools sit and in the quiet forms the design system has for
+The heading carries the whole of "when": "Today", "Yesterday" or the weekday,
+then the date in the muted colour, on one line. The parent Issue's `UI品質`
+asks for "what" and the day it belongs to to be the two things the eye lands
+on; the heading sticks under the top bar while its rows scroll, so the day is
+always in view above the rows that belong to it, and no row has to say it
+again. Two viewings of one video on one day are two rows under one heading
+with nothing to tell them apart but their order, as requirement 3 wants: the
+entry says which video, and the day says when.
+
+The filter, the search and the date list are tools that narrow the list, so
+they sit where tools sit and in the quiet forms the design system has for
 them: a segmented `ToggleGroup` and a search `Input` on the header row, and a
-plain list of dates in a side column that is read after the timeline. A
-filter popover like the library's was rejected because the Issue names the
-three states as the screen's own switch, and three words on the header row
-cost less than a popover's extra press. The date list is a side column and
-not a calendar, because only the days that have entries are listed and a
-calendar's empty cells would be the placeholders Q-5 forbids.
+plain list of dates in a side column that is read after the list. A filter
+popover like the library's was rejected because the Issue names the three
+states as the screen's own switch, and three words on the header row cost less
+than a popover's extra press. The date list is a side column and not a
+calendar, because only the days that have entries are listed and a calendar's
+empty cells would be the placeholders Q-5 forbids.
 
 The row shows the current position as text and a bar, next to the resume
 action, because requirement 16 and 17 pair them: the viewer reads where they
-are and presses the button that continues from there. The thumbnail is
-wider than the library's list row (`timeline-thumb`, about 192×108 px at
-the widths from `lg`) because the maintainer's mockup makes the frame the
-one picture on the row and the position bar under it has to be readable;
-the row is still one line of a log, shorter than a library card, and holds
-no tags, size, quality or favorite. The library's `list-thumb` width was
-rejected for the position bar's sake: a 112 px bar cannot show a position
-that moved by a minute in a two-hour video.
+are and presses the button that continues from there. The thumbnail is wider
+than the library's list row (`history-thumb`, about 192×108 px at the widths
+from `lg`) because the maintainer's mockup makes the frame the one picture on
+the row and the position bar under it has to be readable; the row is still one
+line of a log, shorter than a library card, and holds no tags, size, quality or
+favorite. The library's `list-thumb` width was rejected for the position bar's
+sake: a 112 px bar cannot show a position that moved by a minute in a two-hour
+video. The tokens keep the widths the first revision chose and take the name
+of the screen that chose them, as `related-thumb` is the video page's
+([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)).
 
-The row takes its one-line form, and the day label its column, from `lg`
-(1024 px), the width at which the date list turns from a strip into a side
-column; below `lg` the timeline keeps the compact form of the phone. The
-first design switched at `sm` (640 px), but in review of #879 the one-line
-row left the title column 0 px wide at 640 px and 126 px at 768 px, once the
-rail, the page padding, the label and time columns, the 192 px thumbnail and
-the two buttons had taken their widths, so titles broke into a narrow strip.
-The maintainer chose the compact form for every width below `lg` over
-narrower fixed columns, so the row has one form per side of the breakpoint
-the rest of the screen already uses.
+The row takes its one-line form from `lg` (1024 px), the width at which the
+date list turns from a strip into a side column; below `lg` the row keeps the
+compact form of the phone. The first design switched at `sm` (640 px), but in
+review of #879 the one-line row left the title column 0 px wide at 640 px and
+126 px at 768 px, once the rail, the page padding, the 192 px thumbnail and the
+two buttons had taken their widths, so titles broke into a narrow strip. The
+maintainer chose the compact form for every width below `lg` over narrower
+fixed columns, so the row has one form per side of the breakpoint the rest of
+the screen already uses.
 
 Clearing everything is the last item of the side column, after a divider, in
 the `ghost-destructive` form, which is as quiet as the column's dates and
@@ -127,31 +154,32 @@ by R-5.
 Text in `web/src/i18n/en.ts` under `history`, except where a key is named.
 User data (the title) is embedded as an argument. The Issue's `続きから` and
 `最初から` are "Resume" and "Start over" ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)).
+No text on the screen is a time of day: `formatTime` is not used.
 
 | Place | Text | Notes |
 | --- | --- | --- |
 | Sidebar entry, page title, `document.title` | History | `shell.nav.history`, `history.title`, `history.documentTitle` |
-| Timeline accessible name | Watch history | `history.list` |
+| List accessible name | Watch history | `history.list` |
 | Filter group accessible name | Watch status | `list.filter.watch` |
 | Filter options | All, In progress, Watched | `list.filter.watchOptions.all`, `.inProgress`, `.watched`; `watchLabel` |
 | Search field placeholder and accessible name; the search button below `lg`, its tooltip | Search titles | `history.search.label` |
 | Clear the search | Clear search | `list.search.clear` |
-| Day label, first line | Today, Yesterday, else the weekday "Tuesday" | `history.day.today`, `history.day.yesterday`, else `formatWeekday`, added to `format.ts` as `Intl.DateTimeFormat` with `weekday: "long"` |
-| Day label, second line | Oct 7; Oct 7, 2025 outside the current year | `formatMonthDay`, added to `format.ts` (`month: "short", day: "numeric"`, plus `year` when the day is not in the current year) |
-| Entry time | 9:42 PM | `formatTime` |
+| Day heading, first part | Today, Yesterday, else the weekday "Tuesday" | `history.day.today`, `history.day.yesterday`, else `formatWeekday` (`Intl.DateTimeFormat` with `weekday: "long"`) |
+| Day heading, second part | Oct 7; Oct 7, 2025 outside the current year | `formatMonthDay` (`month: "short", day: "numeric"`, plus `year` when the day is not in the current year) |
+| Day in an accessible name | Today, Oct 7 | `history.day.full(name, date)`: the heading's two parts joined by ", " |
 | Folder line | Travel / 2024 | `video.folder.path` with ` / ` between segments; no line when the path is empty or `folder` is absent |
 | Position | 16:05 / 42:18 | `history.position(position, duration)`; both through `formatDuration` |
 | Position bar accessible name | Watched portion | The card's `list.card.watchedRatio` |
 | Resume action, accessible name | Resume; Resume {title} | `history.resume`, `history.resumeFor` |
 | Start-over action, accessible name | Start over; Start {title} over | `history.startOver`, `history.startOverFor` |
-| Entry link accessible name | {title}, {duration}, played {day} at {time} | `history.entryLink`; {day} is the row's first day-label line ("Today", "Yesterday" or the weekday) followed by the second line, so two viewings of one video have different names |
+| Entry link accessible name | {title}, {duration}, played {day} | `history.entryLink(title, duration, day)`; {day} is `history.day.full`; without a duration, "{title}, played {day}". No time: see [Entry row](#entry-row) |
 | Remove button, tooltip | Remove from history | `history.remove` |
-| Remove button, accessible name | Remove "{title}" played {day} at {time} from history | `history.removeFor`; {day} as in the entry link |
+| Remove button, accessible name | Remove "{title}" played {day} from history | `history.removeFor(title, day)`; {day} as in the entry link |
 | Entry not in the library | Not in the library | `history.notInLibrary`; the warning line |
 | Entry with an empty snapshot title | Unknown video | `history.unknownTitle` |
 | Jump list heading, strip accessible name | Jump to date | `history.jump.title` |
-| Jump list day | Today, Yesterday, else Tue, Oct 7 | `history.day.*`, else `formatWeekdayDate`, added to `format.ts` (`weekday: "short", month: "short", day: "numeric"`, plus `year` outside the current year) |
-| Jump list month | September; December 2025 outside the current year | `formatMonth`, added to `format.ts` (`month: "long"`, plus `year`) |
+| Jump list day | Today, Yesterday, else Tue, Oct 7 | `history.day.*`, else `formatWeekdayDate` (`weekday: "short", month: "short", day: "numeric"`, plus `year` outside the current year) |
+| Jump list month | September; December 2025 outside the current year | `formatMonth` (`month: "long"`, plus `year`) |
 | Jump list with nothing to jump to | No dates to jump to | `history.jump.none` |
 | Jump list whose request failed | Couldn't load the dates | `history.jump.loadFailed`; `Retry` is `common.retry` |
 | Header menu button below `lg`, tooltip and accessible name | More | `common.more` |
@@ -170,29 +198,37 @@ User data (the title) is embedded as an argument. The Issue's `続きから` and
 | Load failed | Couldn't load the history | `history.loadFailed`; `Retry` is `common.retry` |
 | Loading more, load more failed | Loading…, Couldn't load more: {reason} | The existing `list.loading` and `list.loadMoreFailed` |
 
-## Additions to the design system
+## Changes to the design system
 
-The screen needs six things the design system lacks. Each is added to the
-registry, its rules file and
-[design-system.md](../../docs/design-docs/design-system.md) before the screen
-uses it, as [patterns.md](../../web/registry/rules/patterns.md) asks. The
-first design's `GroupedList` stays in the registry unchanged; this screen no
-longer uses it.
+The first revision added six things to the registry. Five stand; the
+`Timeline` section leaves with this revision, and the loading state and the
+named steps change with it. Each change is made in the registry, its rules
+file and [design-system.md](../../docs/design-docs/design-system.md) before
+the screen uses it, as [patterns.md](../../web/registry/rules/patterns.md)
+asks.
 
-| Addition | Item | What it is |
+| Change | Item | What it is |
 | --- | --- | --- |
-| `ListPage` `aside` slot and `toolbarRow="header"` | `list-page` | `aside`: a column at the right of the body from `lg`, `w-list-aside` wide (a named step for a column that fits "Tue, Oct 7" and "Clear history…" on one line), stuck under the top bar while the body scrolls; below `lg` it is drawn full width between the band and the body, and the section in it decides its narrow form. `toolbarRow="header"`: from `lg` the header and the toolbar share one row, the header at its own width and the toolbar filling the rest; below `lg` they stack as today. The grid is a named utility in `tokens.css`, as `grid-cols-term` is |
-| `Toolbar` `searchPlacement="end"` | `toolbar` | In the `page` placement, the search moves after the filters to the row's end, no wider than `max-w-sm`, for a row that begins with the page title; below `sm` it still takes its own full-width line |
-| `Timeline` section | `timeline`, block `timeline-example` | Rows on one vertical rule, grouped by a label that stands beside the group from `lg` and above it below; see [Timeline](#timeline). It takes a `label`, then one `TimelineGroup` per label with its rows as `TimelineItem`s; the section owns the rule, the dots, the label column, the time column and every gap, and the screen passes text and row content |
-| `JumpList` section | `jump-list` | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s, with an optional `action` slot after a last divider; a vertical list under an `h2` from `lg` and a horizontally scrolling strip of `outline` `sm` chips below, with the heading for screen readers only and no `action`; see [Jump to date](#jump-to-date) |
-| `Button` variant `ghost-destructive` | `button` | `ghost`'s shape with `text-destructive` and a `bg-destructive-soft` hover, the button form of `DropdownMenuItem variant="destructive"`; for a destructive action that stands among plain actions outside a menu, after a `Separator`, and always opens a `ConfirmDialog`. One per screen |
-| `LoadingState` `layout="timeline"` | `loading-state` | `Skeleton` shapes of a timeline: a label block and three rows with a thumbnail-sized block, under one rule |
+| `ListPage` `aside` slot and `toolbarRow="header"` (stands) | `list-page` | `aside`: a column at the right of the body from `lg`, `w-list-aside` wide (a named step for a column that fits "Tue, Oct 7" and "Clear history…" on one line), stuck under the top bar while the body scrolls; below `lg` it is drawn full width between the band and the body, and the section in it decides its narrow form. `toolbarRow="header"`: from `lg` the header and the toolbar share one row, the header at its own width and the toolbar filling the rest; below `lg` they stack as today. The grid is a named utility in `tokens.css`, as `grid-cols-term` is |
+| `Toolbar` `searchPlacement="end"` (stands) | `toolbar` | In the `page` placement, the search moves after the filters to the row's end, no wider than `max-w-sm`, for a row that begins with the page title; below `sm` it still takes its own full-width line |
+| `JumpList` section (stands) | `jump-list` | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s, with an optional `action` slot after a last divider; a vertical list under an `h2` from `lg` and a horizontally scrolling strip of `outline` `sm` chips below, with the heading for screen readers only and no `action`; see [Jump to date](#jump-to-date) |
+| `Button` variant `ghost-destructive` (stands) | `button` | `ghost`'s shape with `text-destructive` and a `bg-destructive-soft` hover, the button form of `DropdownMenuItem variant="destructive"`; for a destructive action that stands among plain actions outside a menu, after a `Separator`, and always opens a `ConfirmDialog`. One per screen |
+| `Timeline` section (removed) | `timeline`, block `timeline-example` | Leaves the registry with its rules row, its row in `design-system.md` and the `timeline` and `timeline-example` items of the manifest ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)). The history was its only user |
+| `GroupedList` section (used as it is) | `grouped-list`, block `grouped-list-example` | Unchanged in form: the sticky `h2`, the rows on one card divided by a line, groups `gap-6` apart. The example block loses the time under each row's title, because the block stands for the history and the history shows no time; its rows keep the thumbnail, the title and the `×` |
+| `LoadingState` `layout="grouped"` (replaces `layout="timeline"`) | `loading-state` | `Skeleton` shapes of a grouped list: a heading-sized bar, then one card with three rows, each a thumbnail-sized block (`w-history-thumb-sm`, `lg:w-history-thumb`) and two text bars, divided by lines as the rows will be. The `timeline` layout leaves |
 
-Named steps added to `tokens.css`: `list-aside`, `timeline-label` (the day
-label column), `timeline-time` (the time column), `timeline-thumb` (the row
-thumbnail from `lg`, 16:9, about 192 px wide) and `timeline-thumb-sm` (below
-`lg`, about 128 px wide). No new colour token, so the contrast pairs in
-`web/src/theme/tokens.test.ts` gain nothing.
+Named steps in `tokens.css`: `list-aside` stands; `timeline-label` and
+`timeline-time` leave with the section, and so do the `grid-cols-timeline-*`
+utilities. `timeline-thumb` and `timeline-thumb-sm` keep their values and
+become `history-thumb` (the row thumbnail from `lg`, 16:9, about 192 px wide)
+and `history-thumb-sm` (below `lg`, about 128 px wide), named for the screen
+whose position bar set them, as `related-thumb` is named for the video page.
+Two named utilities, `grid-cols-history-row` (below `lg`: the `history-thumb-sm`
+column, the text column, the `×` column) and `grid-cols-history-row-wide` (from
+`lg`: the `history-thumb` column, the text column, the action column, the `×`
+column), carry the row's columns, as `grid-cols-term` carries the fact list's.
+No new colour token, so the contrast pairs in `web/src/theme/tokens.test.ts`
+gain nothing.
 
 ## Sidebar entry and route
 
@@ -217,7 +253,7 @@ page's `×` and Esc come back to the same filter, search and date.
 ## History screen
 
 A `ListPage` with `toolbarRow="header"` and the `aside` slot, no band and no
-selection bar. The body is one `Timeline`, then a `LoadMoreRow` while the
+selection bar. The body is one `GroupedList`, then a `LoadMoreRow` while the
 next page loads, or one state block. The header, the toolbar and the aside
 stay where they are in every state; only the body changes.
 
@@ -248,22 +284,22 @@ the list is loading, failed, empty or shows no match: there is nothing
 visible to clear, and clearing from a view that shows nothing would delete
 what the viewer cannot see.
 
-### Timeline
+### Day groups
 
-The `Timeline` is one unbroken vertical rule from the first row to the last
-row; a day group is its label beside the rule and its rows on the rule, and
-the gap between two day groups is empty rule, wider than any gap inside a
-group. Entries are grouped by the calendar day of `playedAt` in the browser's
-time zone, newest day first, and within a day in the order the API gives
-(R-3).
+The list is a `GroupedList` named "Watch history": one `GroupedListGroup`
+per day, newest day first, with the day's entries as `GroupedListItem`s in
+the order the API gives (R-3). Entries are grouped by the calendar day of
+`playedAt` in the browser's time zone
+([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day)).
+The section owns the heading's place, the card, the line between rows and
+every gap; the screen passes the heading's words and the row's content.
 
 | Part | Form |
 | --- | --- |
-| Day label | From `lg`, a column `w-timeline-label` wide at the left of the group, aligned with the group's first row: the first line "Today", "Yesterday" or the weekday in `text-sm font-semibold text-foreground`, the second line the date in `text-xs text-muted-foreground`. Below `lg`, the two lines sit on one line above the group's rows (`Today · Oct 10`), to the right of the rule, with a dot of their own. The label is an `h2` |
-| Rule and dot | The rule is `border-l border-border`; each row has a `size-2 rounded-full bg-muted-foreground` dot centred on the rule at the row's first line |
-| Time | `text-xs text-muted-foreground tabular-nums`, `w-timeline-time`, right after the dot, aligned with the row's first line |
-| Rows inside a day | `py-2` each, no divider line and no card: the rule is the only line on the screen |
-| Between day groups | `pb-6` under the last row of a group, so the next label starts a visible step down the rule |
+| Day heading | The section's `h2`, one line: "Today", "Yesterday" or the weekday in `text-sm font-semibold text-foreground`, then a `·` hidden from assistive technology, then the date in `text-xs text-muted-foreground` ("Today · Oct 10", "Tuesday · Oct 7"). It sticks under the top bar (`top-navbar`) while its rows scroll past, and the next day's heading pushes it away. The same at every width |
+| Rows inside a day | On one card (`bg-card`, `rounded-md border border-border`), divided by a line, with no gap between them: the section's form |
+| Between day groups | The section's `gap-6`, visibly wider than the line between two rows, so the days read as blocks down the page |
+| Nothing else | No vertical rule, no dot, no time on a row and no date on a row (`UI品質`, `時系列の粒度`) |
 
 The day boundary is the viewer's local midnight, so an entry from 11:50 PM
 and one from 12:10 AM are in two groups. Paging can split a day across two
@@ -271,35 +307,36 @@ pages; the next page's first entries join the open group when they fall on the
 same day, so a day never appears twice.
 
 "Today" and "Yesterday" are computed from the current date at render, and the
-screen renders its labels again at the viewer's next local midnight and when
+screen renders its headings again at the viewer's next local midnight and when
 the tab becomes visible again, without re-reading the list. A screen left open
 overnight then shows yesterday's entries under "Yesterday" and the day before
 under its weekday.
 
 ### Entry row
 
-From `lg`, a row is one line: the time, the thumbnail, the text column and the
-actions, `items-start` so the time and the title share the first line. Below
-`lg`, the row is the compact form: the time on its own line with the `×` at
-its end, then the `w-timeline-thumb-sm` thumbnail at the left with the text
-column beside it, and the resume or start-over button under the text column.
+A row is one `GroupedListItem` whose content is a grid of the named columns.
+From `lg` (`grid-cols-history-row-wide`), a row is one line: the thumbnail,
+the text column, and the actions at the row's end. Below `lg`
+(`grid-cols-history-row`), the row is the compact form: the `history-thumb-sm`
+thumbnail at the left with the text column beside it and the `×` at the row's
+end, and the resume or start-over button under the text column, aligned with
+its left edge. The thumbnail, the title and the actions are vertically
+centred in the row, as the list view's cells are.
 
 | Part | Form |
 | --- | --- |
-| Thumbnail | `VideoThumbnail` `w-timeline-thumb rounded-md`: the image or the "No image" placeholder, `VideoThumbnailDuration` bottom right, and `VideoThumbnailProgress` on the bottom edge with `watchedRatio(video)` while the video is in progress, as the card draws it. No favorite, no selection mark, no public mark |
+| Thumbnail | `VideoThumbnail` `w-history-thumb rounded-md` from `lg`, `w-history-thumb-sm` below: the image or the "No image" placeholder, `VideoThumbnailDuration` bottom right, and `VideoThumbnailProgress` on the bottom edge with `watchedRatio(video)` while the video is in progress, as the card draws it. No favorite, no selection mark, no public mark |
 | Title | `text-sm font-medium text-foreground line-clamp-2`, breaking inside a word when it has to; the full title in `title`. The video's current `video.title` |
 | Folder line | `text-xs text-muted-foreground truncate`: the folder path, "Travel / 2024"; absent when the video is directly in a registered folder |
 | Position line | A `Progress` (`h-1`, `max-w-xs`, `aria-label` "Watched portion") with `max` `durationMs` and `value` `progress.positionMs`, or `durationMs` when `progress.completed` is true, because the server marks a video watched up to 15 seconds or 5% before its end and a watched row's bar is full; then "16:05 / 42:18" in `text-xs text-muted-foreground tabular-nums`. The line is absent when the video has no `progress` or no `durationMs` |
-| Actions | From `lg` at the row's end, `shrink-0`: the `outline` `sm` resume or start-over button, then the `ghost` `icon-sm` remove button (lucide `X`, `text-muted-foreground`, tooltip "Remove from history"); below `lg` the button under the text column and the `×` at the end of the time's line. Both are always drawn, never revealed on hover only, because the screen is used by touch as well |
+| Actions | From `lg` at the row's end, `shrink-0`: the `outline` `sm` resume or start-over button, then the `ghost` `icon-sm` remove button (lucide `X`, `text-muted-foreground`, tooltip "Remove from history"); below `lg` the button under the text column and the `×` at the row's end, on the thumbnail's first line. Both are always drawn, never revealed on hover only, because the screen is used by touch as well |
 
-The time, the thumbnail and the text column are one `Link` to
-`/videos/{video.id}` with `state.from` the current history URL. The link
-covers the row from the time to the actions, with `hover:bg-accent
-rounded-md`; below `lg`, where the time stands on its own line with the `×`
-at its end, the time is in the same link and only the `×` and the resume or
-start-over button sit outside it. A press anywhere on the row but the buttons
-therefore opens the video as requirement 5 says: the page resumes by its own
-rule, without autoplay.
+The thumbnail and the text column are one `Link` to `/videos/{video.id}` with
+`state.from` the current history URL. The link covers the row from the
+thumbnail to the actions, with `hover:bg-accent rounded-md` inside the card's
+row; only the `×` and the resume or start-over button sit outside it. A press
+anywhere on the row but the buttons therefore opens the video as requirement
+5 says: the page resumes by its own rule, without autoplay.
 
 The resume and start-over buttons are `Button asChild` around a `Link` to the
 same video with `state: { from, autoplay: true }` (R-13), so they stay
@@ -315,11 +352,17 @@ The `×` is not a `Link` and sits after the button, so Tab reaches the row
 link, then the button, then `×`. Pressing the button does not also open the
 row link.
 
-The same video seen twice is two rows with the same thumbnail and title and
-different times (requirement 4); nothing merges or counts them, and both rows
-show the same current position (requirement 16). Their link and `×` names
-carry the day and the time (see [Words](#words)), so a screen reader tells
-the two viewings apart as the eye does.
+The same video seen twice on one day is two rows under one heading with the
+same thumbnail, title and current position (requirements 4 and 16); nothing
+merges or counts them. Their link and `×` names are the same words, "{title},
+{duration}, played Today, Oct 10" and "Remove "{title}" played Today, Oct 10
+from history", and the two rows are told apart by their order under the
+heading, which is all that tells them apart on the screen. Reading a time in
+the name was rejected by R-14 (requirement 3 removes it from the entry, for a
+screen reader as for the eye), and an ordinal ("second viewing") was rejected
+because it would say something the screen does not show and that a page
+split across a day cannot count. The two viewings seen on two days have
+different days in their names, as the eye reads them under two headings.
 
 A video that is in the library but cannot be played (`playable` false) keeps
 its link and its button, and shows under the folder line the list view row's
@@ -350,8 +393,8 @@ thumbnail and button back; nothing on this screen watches for it.
 The `aside` is a `JumpList` of the days and months that have entries under
 the current filter and search, from `GET /api/watch-history/dates` (R-11).
 From `lg` it is the side column under the `h2` "Jump to date"; below `lg` it
-is the strip of chips between the toolbar and the timeline. The diagram
-shows how the days the API returns become the list.
+is the strip of chips between the toolbar and the list. The diagram shows
+how the days the API returns become the list.
 
 ```mermaid
 flowchart LR
@@ -376,7 +419,7 @@ the days, a `Separator`, the months, and from `lg` a `Separator` and
 | Below `lg` | The strip: the same items as `outline` `sm` chips in one horizontally scrolling line, days then a vertical `Separator` then months, no heading shown and no "Clear history…" (it is in `More`). The chosen chip is pressed and scrolled into view when the list arrives |
 | Clear history… | From `lg` only: a `ghost-destructive` `sm` `Button` with lucide `Trash2`, after the last `Separator`, opening the [confirmation](#clearing-the-history) |
 | Nothing to jump to | "No dates to jump to" in `text-xs text-muted-foreground` in place of the items (from `lg`); below `lg` the strip is not drawn |
-| Dates failed | When `GET /api/watch-history/dates` fails, "Couldn't load the dates" in `text-xs text-muted-foreground` and a `ghost` `sm` "Retry" in place of the items: from `lg` under the heading, with "Clear history…" still after its `Separator` when the timeline has rows; below `lg` as the strip's one line. "Retry" requests the dates again and shows the `Skeleton` lines while it runs. The timeline does not depend on the dates and keeps its own state |
+| Dates failed | When `GET /api/watch-history/dates` fails, "Couldn't load the dates" in `text-xs text-muted-foreground` and a `ghost` `sm` "Retry" in place of the items: from `lg` under the heading, with "Clear history…" still after its `Separator` when the list has rows; below `lg` as the strip's one line. "Retry" requests the dates again and shows the `Skeleton` lines while it runs. The list does not depend on the dates and keeps its own state |
 
 Choosing an item writes `date` (`YYYY-MM-DD` for a day, `YYYY-MM` for a
 month) and re-reads the first page, which then starts at that day's or
@@ -387,7 +430,7 @@ URLs; pressing the chosen item again also removes `date`. The dates are
 requested when the screen opens and again when `watch` or `q` changes, not
 when `date` changes, so the list does not flicker on a jump. When the new
 list no longer holds the chosen `date`, the `date` stays in the URL, no item
-is pressed, and the timeline shows what matches before that date; "Clear
+is pressed, and the list shows what matches before that date; "Clear
 filters" in the no-match state removes it with the rest.
 
 ### Removing one entry
@@ -399,7 +442,7 @@ for every removal would turn a tidy-up into a stream of notices.
 | Event | Behaviour |
 | --- | --- |
 | Pressed | The button is `disabled` and shows a `Spinner` in place of the `X`; the row stays; a second press does nothing |
-| `204` | The row leaves; a day whose last row left leaves with its label. Focus moves to the next row's `×`, else the previous row's, else the page title (`titleRef`), as the duplicates page does. The jump list is not re-read: a day that lost its last entry stays listed until the next read of the dates, and choosing it then shows the entries before it. When the last loaded row leaves and `nextCursor` remains, older entries exist: see [Paging](#paging) |
+| `204` | The row leaves; a day whose last row left leaves with its heading. Focus moves to the next row's `×`, else the previous row's, else the page title (`titleRef`), as the duplicates page does. The jump list is not re-read: a day that lost its last entry stays listed until the next read of the dates, and choosing it then shows the entries before it. When the last loaded row leaves and `nextCursor` remains, older entries exist: see [Paging](#paging) |
 | `404` | The list is stale (deleted in another tab): the screen re-reads from the first page under the current conditions while the current rows stay drawn, and replaces them when the page arrives, with no skeleton and no message (R-6). The window keeps its scroll position as far as the shorter list allows. An empty first page gives the empty or the no-match state; a failed re-read keeps the rows and shows `errorText(error)` in a toast |
 | Other failure | The row stays, the button returns to `X`, and a toast shows `errorText(error)` |
 
@@ -432,7 +475,7 @@ The first read asks for the default page (`limit` 60) with the URL's
 `watch`, `query`, `date` and `tz`. When the last row comes within one
 viewport of the bottom, the next page is requested with `nextCursor` and the
 same conditions, as the library does with its `IntersectionObserver`, and a
-`LoadMoreRow` shows under the timeline. A failed page keeps the rows and
+`LoadMoreRow` shows under the list. A failed page keeps the rows and
 shows the `LoadMoreRow` failure with `Retry` for the same cursor. No "Load
 more" button and no page numbers: the history is read by scrolling back
 (requirement 6).
@@ -476,13 +519,13 @@ present. A `404` re-read is not a state of its own: the body stays in
 
 | State | What the screen shows |
 | --- | --- |
-| Loading | `LoadingState` `layout="timeline"` in the body; the header row with its filter and search; the aside with its items when the dates have arrived, its failed form when their request failed, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
+| Loading | `LoadingState` `layout="grouped"` in the body: a heading-sized bar and one card of three thumbnail-sized rows; the header row with its filter and search; the aside with its items when the dates have arrived, its failed form when their request failed, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
 | Load failed | `ErrorState` with "Couldn't load the history" and `Retry`; the aside shows "No dates to jump to" |
 | Empty | `EmptyState` with lucide `History`, "No watch history" and "Videos you play are listed here, newest first."; no action. The filter and the search stay usable but find nothing. The aside shows "No dates to jump to"; below `lg` no strip |
 | No match | `EmptyState` with lucide `SearchX`, "No history matches these conditions", "Try a different search or change the filters." and the `default` `sm` action "Clear filters", which removes `watch`, `q` and `date`. The filter keeps its pressed option and the search its text, so the viewer sees what excluded everything; the aside shows "No dates to jump to" or, under a `date` the new dates no longer hold, the dates with nothing pressed |
-| Content | The timeline; the aside with its items (or its failed form) and "Clear history…"; `More` below `lg` |
-| Loading more | The timeline, then `LoadMoreRow` loading |
-| Load more failed | The timeline, then `LoadMoreRow` failed with `Retry` |
+| Content | The day-grouped list; the aside with its items (or its failed form) and "Clear history…"; `More` below `lg` |
+| Loading more | The list, then `LoadMoreRow` loading |
+| Load more failed | The list, then `LoadMoreRow` failed with `Retry` |
 | Removing a row | That row's `×` is a `Spinner`; the rest unchanged |
 | Clearing | The dialog in its `pending` form over the unchanged list |
 
@@ -507,14 +550,14 @@ path covers (R-6).
 
 The widths below are the ones the implementation is judged at. The layout
 changes at `lg` (1024 px: the header row, the side column, where the clear
-action lives, the row's form and the day label's place); at `sm` (640 px)
-the drawer becomes the rail.
+action lives, and the row's form); at `sm` (640 px) the drawer becomes the
+rail. The day heading has one form at every width.
 
 | Width | Layout |
 | --- | --- |
-| 360px | The sidebar is the drawer. The header row is the title with the search toggle and `More` at its right; under it the filter's three options fill the toolbar row, and the search field appears on its own line while open; then the strip of date chips, scrolling sideways with the chosen chip in view. In the timeline the day label is one line above its rows, to the right of the rule; a row is the time with the `×` at the line's end, then the `w-timeline-thumb-sm` thumbnail at the left with the title, the position text and the `outline` `sm` "Resume" or "Start over" button in the remaining width. A long title clamps to two lines and never pushes the button out of the row. The dialog spans the width with the dialog's own margin |
-| 768px | The rail sidebar. The header row as at 360px; the strip as at 360px. The timeline keeps the compact form of 360px: the day label one line above its rows, the time on its own line with the `×`, the `w-timeline-thumb-sm` thumbnail with the text column beside it and the button under the text; the wider text column leaves more of a long title on its two lines |
-| 1280px | The timeline takes the row form from `lg`: the day label in its column at the left, the time after the dot, the `w-timeline-thumb` thumbnail, the title, the folder line and the position bar in the middle, and the resume or start-over button and the `×` at the row's end. The header row holds the title, the filter and the search field at the row's end; no search toggle and no `More`. The `w-list-aside` side column stands at the right of the timeline under "Jump to date", stuck under the top bar, with "Clear history…" after its last divider. The dialog is `max-w-lg` centred |
+| 360px | The sidebar is the drawer. The header row is the title with the search toggle and `More` at its right; under it the filter's three options fill the toolbar row, and the search field appears on its own line while open; then the strip of date chips, scrolling sideways with the chosen chip in view. Each day is its heading ("Today · Oct 10") stuck under the top bar and one card of rows; a row is the `w-history-thumb-sm` thumbnail at the left with the title and the position text beside it and the `×` at the row's end, and the `outline` `sm` "Resume" or "Start over" button under the text column. A long title clamps to two lines and never pushes the `×` out of the row. The dialog spans the width with the dialog's own margin |
+| 768px | The rail sidebar. The header row as at 360px; the strip as at 360px. The rows keep the compact form of 360px: the `w-history-thumb-sm` thumbnail with the text column beside it, the `×` at the row's end and the button under the text; the wider text column leaves more of a long title on its two lines |
+| 1280px | The rows take the one-line form from `lg`: the `w-history-thumb` thumbnail, the title, the folder line and the position bar in the middle, and the resume or start-over button and the `×` at the row's end. The header row holds the title, the filter and the search field at the row's end; no search toggle and no `More`. The `w-list-aside` side column stands at the right of the list under "Jump to date", stuck under the top bar, with "Clear history…" after its last divider. The dialog is `max-w-lg` centred |
 
 ## Review criteria
 
@@ -523,91 +566,96 @@ at least 30 entries over four days and two older months, including one video
 seen twice on one day, one video watched to the end, one entry whose file
 was removed, one entry with an empty title and one video in a subfolder.
 
-1. **Visual hierarchy**: on each row the title is read first, the time and
-   the day second and the position third; the thumbnail supports the title
-   and does not compete with it. The day label is the strongest text on the
-   screen after the page title, and nothing in a row is drawn in `primary`
-   except the progress bar's fill and nothing in `semibold` or a larger
-   size. `×` is the quietest element in the row; the filter and the search
-   on the header row and the dates in the side column are drawn in the
-   muted colour and the outline form, so the timeline is what the eye lands
-   on, not its tools (`UI品質`).
-2. **Information density**: at 1280×800 at least five entries are on screen
-   without scrolling, and at 360×780 at least five, counting the day labels
-   as rows; every row is shorter than a library card at the default card
-   size, and holds a thumbnail, a title, one folder line, one position line
-   and two buttons, with no tags, favorite, size or quality. The position
+1. **Visual hierarchy**: on each row the title is read first and the position
+   second; the thumbnail supports the title and does not compete with it. The
+   day heading is the strongest text on the screen after the page title, and
+   nothing in a row is drawn in `primary` except the progress bar's fill and
+   nothing in `semibold` or a larger size. `×` is the quietest element in the
+   row; the filter and the search on the header row and the dates in the side
+   column are drawn in the muted colour and the outline form, so the list is
+   what the eye lands on, not its tools (`UI品質`).
+2. **The day is the unit of time**: no row shows a time of day or a date, and
+   no rule, dot or other mark draws the order of the viewings inside a day;
+   the heading is the only place a day is named, once per day (`UI品質`,
+   `時系列の粒度`; acceptance criterion 1). The two viewings of one video on
+   one day are two rows under one heading that differ in nothing but their
+   place.
+3. **Information density**: at 1280×800 at least five entries are on screen
+   without scrolling, and at 360×780 at least four, counting the day headings
+   as rows; every row is shorter than a library card at the default card size,
+   and holds a thumbnail, a title, one folder line, one position line and two
+   buttons, with no tags, favorite, size or quality. From `lg` the position
    bar and text add no row height beyond the thumbnail's.
-3. **Spacing rhythm**: the rule is one unbroken line; the empty rule between
-   two day groups is visibly longer than the gap between two rows, and rows
-   inside a day have no line between them, so the days read as steps down
-   the rule. The day label's first line aligns with its first row's time.
-4. **Typography**: the title is `text-sm` `font-medium` as the list view
-   row's title; the time, the folder line and the position are `text-xs`
-   `text-muted-foreground`, with `tabular-nums` on the time and the position
-   so the times of one day and the positions of a column align; the day
-   label is `text-sm` `font-semibold` over `text-xs`. Side by side with the
-   library's list view, the title and the secondary lines are the same size,
-   weight and colour.
-5. **Priority of actions**: pressing anywhere on a row except the buttons
-   opens the video, which resumes by its own rule, the time included;
-   "Resume" is the one outlined control on the row and starts playback
-   without a further press at the shown position, or at 0 when that is under
-   5 seconds; "Start over" on the watched video starts at 0.
-   Removing one entry is one press on `×`. Clearing takes "Clear history…"
-   (in the side column, or `More` then the item) and then "Clear"; the clear
-   entry is the last thing in the column, after a divider, and is never the
-   most visible control on the screen.
-6. **Filter and search**: pressing "In progress" lists only the midway
+4. **Spacing rhythm**: the gap between two day cards is visibly wider than the
+   line between two rows, and rows inside a day have no gap, so the days read
+   as blocks down the page. When a day's rows scroll past, its heading stays
+   under the top bar until the next day's heading pushes it away.
+5. **Typography**: the title is `text-sm` `font-medium` as the list view
+   row's title; the folder line and the position are `text-xs`
+   `text-muted-foreground`, with `tabular-nums` on the position so the
+   positions of a column align; the day heading is `text-sm` `font-semibold`
+   followed by the date in `text-xs` muted. Side by side with the library's
+   list view, the title and the secondary lines are the same size, weight and
+   colour.
+6. **Priority of actions**: pressing anywhere on a row except the buttons
+   opens the video, which resumes by its own rule; "Resume" is the one
+   outlined control on the row and starts playback without a further press at
+   the shown position, or at 0 when that is under 5 seconds; "Start over" on
+   the watched video starts at 0. Removing one entry is one press on `×`.
+   Clearing takes "Clear history…" (in the side column, or `More` then the
+   item) and then "Clear"; the clear entry is the last thing in the column,
+   after a divider, and is never the most visible control on the screen.
+7. **Filter and search**: pressing "In progress" lists only the midway
    video's entries, "Watched" only the finished one's, "All" both, and the
    video the library marks watched is under "Watched"; the two viewings of
-   one video fall on the same side. Typing part of a title narrows the
-   timeline after the debounce, and clearing the field with `×` or Esc
-   restores it; "In progress" with text keeps only entries that satisfy
-   both. The URL carries `watch` and `q`, and Back restores the previous
-   conditions.
-7. **No match and empty**: under a filter or search that matches nothing,
+   one video fall on the same side. Typing part of a title narrows the list
+   after the debounce, and clearing the field with `×` or Esc restores it;
+   "In progress" with text keeps only entries that satisfy both. The URL
+   carries `watch` and `q`, and Back restores the previous conditions.
+8. **No match and empty**: under a filter or search that matches nothing,
    the body shows "No history matches these conditions" with the `SearchX`
    icon and "Clear filters", while the header still shows the pressed option
    or the text; with the history empty and no condition set, the body shows
    "No watch history" with the `History` icon and no button. The two are told
    apart without reading the title.
-8. **Date jump**: the side column lists only the days and months with
+9. **Date jump**: the side column lists only the days and months with
    entries, days within the last two weeks and months before them, newest
-   first; choosing a month scrolls to the top and the timeline starts at
-   that month's newest entry and continues into older months; the chosen
-   item is pressed; choosing the first item or the pressed item returns to
-   the top with `date` gone; the chips at 360px and 768px are the same list
-   and the chosen chip is in view. Opening a video from a jumped view and
-   coming back with `×` shows the same date, filter and search.
-9. **An entry not in the library**: the removed video's row shows its title
-   in the muted colour, "Not in the library" with the warning icon, no
-   position, no "Resume" and no hover fill; pressing it opens nothing; its
-   `×` works. The entry with the empty title reads "Unknown video". After
-   the file returns and a rescan, the row opens the video again and shows
-   its button.
-10. **Position**: the midway video's rows show "16:05 / 42:18"-style text
+   first; choosing a month scrolls to the top and the list starts at that
+   month's newest entry and continues into older months; the chosen item is
+   pressed; choosing the first item or the pressed item returns to the top
+   with `date` gone; the chips at 360px and 768px are the same list and the
+   chosen chip is in view. Opening a video from a jumped view and coming back
+   with `×` shows the same date, filter and search.
+10. **An entry not in the library**: the removed video's row shows its title
+    in the muted colour, "Not in the library" with the warning icon, no
+    position, no "Resume" and no hover fill; pressing it opens nothing; its
+    `×` works. The entry with the empty title reads "Unknown video". After
+    the file returns and a rescan, the row opens the video again and shows
+    its button.
+11. **Position**: the midway video's rows show "16:05 / 42:18"-style text
     and a bar at that ratio, the same on both of its rows; after watching
     further in another tab and reopening the history, the text and the bar
     have moved. The watched video's row shows a full bar and "Start over".
-11. **Removing and clearing leave playback alone**: after removing a row and
+12. **Removing and clearing leave playback alone**: after removing a row and
     after clearing, the library card of that video shows the same progress
     bar, watched mark and place under "Last played" as before (acceptance
-    criterion 6).
-12. **Confirmation**: "Clear history…" opens the dialog; Cancel and Esc close
+    criterion 6). Removing the last row of a day removes its heading and card
+    with it.
+13. **Confirmation**: "Clear history…" opens the dialog; Cancel and Esc close
     it with the list unchanged; "Clear" shows "Clearing…", then the empty
     state with the conditions dropped. While the request runs neither
     button can be pressed again.
-13. **Stale list**: with the list open in two tabs, removing an entry in one
+14. **Stale list**: with the list open in two tabs, removing an entry in one
     and then in the other leaves the second tab showing the current list
     under its conditions, with no error and no toast.
-14. **Guests**: signed in as a guest, the sidebar has no "History" at any
+15. **Guests**: signed in as a guest, the sidebar has no "History" at any
     width, and opening `/history` or `/history?watch=watched` shows the
     login page (acceptance criterion 9).
-15. **Failing examples** (`UI品質`): the title and the time in the same size
-    and weight; a filled or large filter whose pressed option is brighter
-    than any title; the side column drawn on a card or in `primary`; a date
-    repeated on every row; rows on cards instead of on the rule; "Resume"
-    drawn as a `default` cyan button on every row; `×` drawn in
-    `destructive` on every row; "Clear history…" above the dates or as a
-    filled button.
+16. **Failing examples** (`UI品質`): a time on any row, or a date repeated on
+    every row; a vertical rule, dots or any other mark that draws the order
+    inside a day; the title and the day heading in the same size and weight;
+    a filled or large filter whose pressed option is brighter than any title;
+    the side column drawn on a card or in `primary`; day cards with no gap
+    between them, so the days run into one list; "Resume" drawn as a
+    `default` cyan button on every row; `×` drawn in `destructive` on every
+    row; "Clear history…" above the dates or as a filled button.
