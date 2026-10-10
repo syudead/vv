@@ -5,17 +5,28 @@ import {
   ImageOff,
   Play,
   RotateCcw,
+  Search,
+  SearchX,
   Trash2,
   X,
 } from "lucide-react";
-import { type Ref, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import {
+  type FocusEvent,
+  type Ref,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, useLocation, useNavigate } from "react-router";
 
 import { RequestFailed } from "../api/client";
 import {
   clearWatchHistory,
   deleteWatchHistoryEntry,
   type WatchHistoryEntry,
+  type WatchHistoryFilter,
 } from "../api/history";
 import { errorText, formatTime, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -25,11 +36,13 @@ import { DialogError } from "../tags/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
+import { JumpList } from "../ui/patterns/jump-list";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Timeline, TimelineGroup, TimelineItem } from "../ui/patterns/timeline";
+import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -39,12 +52,29 @@ import {
 } from "../ui/shadcn/dropdown-menu";
 import { Progress } from "../ui/shadcn/progress";
 import { Spinner } from "../ui/shadcn/spinner";
+import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
 import { VideoThumbnail as ThumbnailFrame } from "../ui/VideoThumbnail";
+import type { HistoryMode } from "../videoList/listCriteria";
+import SearchBox from "../videoList/SearchBox";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
+import {
+  DEFAULT_HISTORY_CRITERIA,
+  type HistoryCriteria,
+  hasHistoryConditions,
+  historyCriteriaKey,
+  parseHistoryCriteria,
+  serializeHistoryCriteria,
+} from "./historyCriteria";
 import { dayLabel, groupByDay, msUntilNextMidnight } from "./historyDays";
 import { entryAction, entryPosition, folderLine } from "./historyEntry";
+import { firstTarget, jumpTargets } from "./historyJump";
+import { useHistoryDates } from "./useHistoryDates";
 import { type HistoryState, useWatchHistory } from "./useWatchHistory";
+
+/** 状態の切り替えの選択肢（ui-design.md「Header row」）。 */
+const watchOptions: readonly WatchHistoryFilter[] = ["all", "inProgress", "watched"];
 
 /**
  * useNow は日の見出し（Today・Yesterday）を決める今の時刻である。見る人のローカルの 0 時と、
@@ -67,6 +97,34 @@ function useNow(): Date {
   return now;
 }
 
+/**
+ * useHistoryCriteria は URL（`watch`・`q`・`date`）を画面の条件として読み、書き換える口を
+ * 返す（contracts/screen-api.md「Client use」、research.md R-12）。
+ */
+function useHistoryCriteria(): {
+  criteria: HistoryCriteria;
+  apply: (next: HistoryCriteria, mode: HistoryMode) => void;
+} {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const criteria = useMemo(
+    () => parseHistoryCriteria(new URLSearchParams(location.search)),
+    [location.search],
+  );
+  const pathname = location.pathname;
+  const apply = useCallback(
+    (next: HistoryCriteria, mode: HistoryMode) => {
+      const search = serializeHistoryCriteria(next).toString();
+      navigate(
+        { pathname, search: search === "" ? "" : `?${search}` },
+        { replace: mode === "replace" },
+      );
+    },
+    [navigate, pathname],
+  );
+  return { criteria, apply };
+}
+
 function readyItems(state: HistoryState): WatchHistoryEntry[] {
   return state.kind === "ready" ? state.items : [];
 }
@@ -75,26 +133,36 @@ function readyItems(state: HistoryState): WatchHistoryEntry[] {
  * HistoryPage は所有者の視聴履歴を、日ごとの時間軸に新しい順に並べる画面である
  * （specs/043-watch-history/ui-design.md「History screen」）。
  *
- * 行を押すと再生画面を開き、「Resume」「Start over」はその場で再生を始めさせる。行の × で
- * その件を確かめずに消す。全件を消すのは見出しの
- * 「More」の奥にあり、確認の窓を通す。削除の 404 は一覧が古いということなので、行を
- * 残したまま最初のページから読み直す（research.md R-6）。
+ * 見出しの行で視聴状態を切り替え、題名を検索し、横の欄で件のある日か月へ移る。条件は URL に
+ * 持つ。行を押すと再生画面を開き、「Resume」「Start over」はその場で再生を始めさせる。行の ×
+ * でその件を確かめずに消す。全件を消すのは lg からは横の欄の最後、lg 未満では見出しの
+ * 「More」の奥にあり、確認の窓を通す。削除の 404 は一覧が古いということなので、行を残した
+ * まま最初のページから読み直す（research.md R-6）。
  */
 export default function HistoryPage() {
   const toast = useToast();
-  // 行から開いた再生画面の戻り先は、今の履歴の URL（ui-design.md「Entry row」）。
+  // 行から開いた再生画面の戻り先は、今の履歴の URL をクエリ文字列ごと（ui-design.md「Entry row」）。
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
-  const history = useWatchHistory((error) => toast(errorText(error)));
+  const { criteria, apply } = useHistoryCriteria();
+  const conditions = hasHistoryConditions(criteria);
+  const history = useWatchHistory(criteria, (error) => toast(errorText(error)));
+  const dates = useHistoryDates(criteria.watch, criteria.query);
   const { state, loadMore } = history;
   const now = useNow();
   const heading = useRef<HTMLHeadingElement>(null);
+  const searchField = useRef<HTMLInputElement | null>(null);
   const removeButtons = useRef(new Map<number, HTMLButtonElement>());
   const lastRow = useRef<HTMLElement | null>(null);
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<UiText | null>(null);
+  // lg 未満の検索欄を開いているか。検索語があるあいだは閉じない（ui-design.md「Header row」）。
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchShown = searchOpen || criteria.query !== "";
+
+  useScrollTopOnChange(historyCriteriaKey(criteria));
 
   useEffect(() => {
     const previous = document.title;
@@ -102,6 +170,20 @@ export default function HistoryPage() {
     return () => {
       document.title = previous;
     };
+  }, []);
+
+  // lg 未満では検索欄が畳まれているので、`/` で開いてからフォーカスを入れる（入れるのは
+  // SearchBox の `/` と同じ。畳んだ欄には入らないので、開いた後にもう一度入れる）。
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable=true]")) return;
+      setSearchOpen(true);
+      setTimeout(() => searchField.current?.focus(), 0);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   const items = readyItems(state);
@@ -159,6 +241,11 @@ export default function HistoryPage() {
     );
   }
 
+  function openClear() {
+    setClearError(null);
+    setClearOpen(true);
+  }
+
   function clear() {
     setClearing(true);
     setClearError(null);
@@ -167,6 +254,9 @@ export default function HistoryPage() {
         setClearing(false);
         setClearOpen(false);
         history.clear();
+        dates.clear();
+        // 空の表示を「該当なし」と取り違えないよう、条件を外す（ui-design.md「Clearing the history」）。
+        if (conditions) apply(DEFAULT_HISTORY_CRITERIA, "replace");
         setTimeout(() => heading.current?.focus(), 0);
       },
       (error: unknown) => {
@@ -176,42 +266,160 @@ export default function HistoryPage() {
     );
   }
 
+  function openSearch() {
+    setSearchOpen(true);
+    setTimeout(() => searchField.current?.focus(), 0);
+  }
+
+  // 検索欄からフォーカスが外れ、欄が空なら畳む（Esc と × で空にした後を含む）。
+  function onSearchBlur(event: FocusEvent<HTMLDivElement>) {
+    if (event.currentTarget.contains(event.relatedTarget)) return;
+    if (searchField.current?.value === "") setSearchOpen(false);
+  }
+
   const hasRows = items.length > 0;
   const refilling = state.kind === "ready" && !hasRows && state.nextCursor !== undefined;
   const empty = state.kind === "ready" && !hasRows && state.nextCursor === undefined;
 
+  // 日付へ移る一覧。日は状態と検索語が変わったときだけ読み直す（R-11）。
+  const targets = useMemo(
+    () => jumpTargets(dates.state.kind === "ready" ? dates.state.days : [], now),
+    [dates.state, now],
+  );
+  const targetValues = [...targets.days, ...targets.months].map((item) => item.value);
+  const pressed =
+    criteria.date !== undefined && targetValues.includes(criteria.date)
+      ? criteria.date
+      : null;
+  function jump(value: string | null) {
+    // 最初の項目は一覧の先頭なので、同じ表示に 2 つの URL を作らないよう date を外す。
+    const date = value === null || value === firstTarget(targets) ? undefined : value;
+    const { date: _previous, ...rest } = criteria;
+    apply(date === undefined ? rest : { ...rest, date }, "push");
+  }
+
   return (
     <ListPage
+      toolbarRow="header"
       header={
         <PageHeader
           titleRef={heading}
           title={t.history.title}
           actions={
-            hasRows ? (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label={t.common.more}>
-                        <Ellipsis aria-hidden="true" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent>{t.common.more}</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => {
-                      setClearError(null);
-                      setClearOpen(true);
-                    }}
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="lg:hidden"
+                    aria-label={t.history.search.label}
+                    aria-expanded={searchShown}
+                    onClick={openSearch}
                   >
-                    <Trash2 aria-hidden="true" />
-                    {t.history.clear}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <Search aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t.history.search.label}</TooltipContent>
+              </Tooltip>
+              {hasRows && (
+                <DropdownMenu>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="lg:hidden"
+                          aria-label={t.common.more}
+                        >
+                          <Ellipsis aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>{t.common.more}</TooltipContent>
+                  </Tooltip>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem variant="destructive" onSelect={openClear}>
+                      <Trash2 aria-hidden="true" />
+                      {t.history.clear}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </>
+          }
+        />
+      }
+      toolbar={
+        <Toolbar
+          searchPlacement="end"
+          searchHiddenBelowLg={!searchShown}
+          search={
+            <div onBlur={onSearchBlur}>
+              <SearchBox
+                query={criteria.query}
+                onCommit={(query, mode) => apply({ ...criteria, query }, mode)}
+                inputRef={searchField}
+                label={t.history.search.label}
+                placeholder={t.history.search.label}
+                syntaxHelp={false}
+              />
+            </div>
+          }
+        >
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            aria-label={t.list.filter.watch}
+            value={criteria.watch}
+            onValueChange={(value) => {
+              // 押している選択肢は外せない。いつも 1 つが押されている。
+              if (value === "" || value === criteria.watch) return;
+              apply({ ...criteria, watch: value as WatchHistoryFilter }, "push");
+            }}
+          >
+            {watchOptions.map((option) => (
+              <ToggleGroupItem key={option} value={option} className="flex-none px-3">
+                {t.list.filter.watchOptions[option]}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
+        </Toolbar>
+      }
+      aside={
+        <JumpList
+          title={t.history.jump.title}
+          groups={
+            state.kind === "failed" || (empty && !conditions)
+              ? []
+              : [targets.days, targets.months]
+          }
+          value={pressed}
+          onValueChange={jump}
+          loading={dates.state.kind === "loading" && state.kind !== "failed" && !empty}
+          emptyText={t.history.jump.none}
+          failed={
+            dates.state.kind === "failed" && state.kind !== "failed" && !empty
+              ? {
+                  message: t.history.jump.loadFailed,
+                  retryLabel: t.common.retry,
+                  onRetry: dates.retry,
+                }
+              : undefined
+          }
+          action={
+            hasRows ? (
+              <Button
+                variant="ghost-destructive"
+                size="sm"
+                className="justify-start"
+                onClick={openClear}
+              >
+                <Trash2 aria-hidden="true" />
+                {t.history.clear}
+              </Button>
             ) : undefined
           }
         />
@@ -229,11 +437,24 @@ export default function HistoryPage() {
         />
       )}
 
-      {empty && (
+      {empty && !conditions && (
         <EmptyState
           icon={<History aria-hidden="true" />}
           title={<h2>{t.history.empty.title}</h2>}
           description={t.history.empty.description}
+        />
+      )}
+
+      {empty && conditions && (
+        <EmptyState
+          icon={<SearchX aria-hidden="true" />}
+          title={<h2>{t.history.noMatch.title}</h2>}
+          description={t.list.noMatchesHint}
+          action={
+            <Button size="sm" onClick={() => apply(DEFAULT_HISTORY_CRITERIA, "push")}>
+              {t.list.filter.clear}
+            </Button>
+          }
         />
       )}
 

@@ -1,11 +1,16 @@
-import { Film, Play, RotateCcw, X } from "lucide-react";
+import { Film, Play, RotateCcw, Search, Trash2, X } from "lucide-react";
+import { useState } from "react";
 
-import { formatMonthDay, formatTime, t } from "@/i18n";
+import { formatMonth, formatMonthDay, formatTime, formatWeekdayDate, t } from "@/i18n";
+import { JumpList } from "@/ui/patterns/jump-list";
 import { ListPage } from "@/ui/patterns/list-page";
 import { PageHeader } from "@/ui/patterns/page-header";
 import { Timeline, TimelineGroup, TimelineItem } from "@/ui/patterns/timeline";
+import { Toolbar } from "@/ui/patterns/toolbar";
 import { Button } from "@/ui/shadcn/button";
+import { Input } from "@/ui/shadcn/input";
 import { Progress } from "@/ui/shadcn/progress";
+import { ToggleGroup, ToggleGroupItem } from "@/ui/shadcn/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 import { VideoThumbnail, VideoThumbnailDuration } from "@/ui/VideoThumbnail";
 
@@ -13,8 +18,10 @@ import { sampleVideos } from "./list-page-example";
 
 // 日ごとの時間軸の見本（registry:block timeline-example）。一覧ページの本体に Timeline を
 // 置き、日の見出しの横に行（時刻・サムネイル・題名・フォルダ・位置・操作・行の端の ×）を
-// 並べる。写した画面は見出しと行の中身を自分のものに差し替え、間隔は書かない
-// （web/registry/rules/patterns.md の Sections）。
+// 並べる。見出しの行（toolbarRow="header"）に状態の切り替えと行の端の検索を、横の欄（aside）
+// に日付へ移る JumpList と最後の区切りの後ろの ghost-destructive の操作を置く。写した画面は
+// 見出しと行の中身を自分のものに差し替え、間隔は書かない（web/registry/rules/patterns.md の
+// Sections）。
 
 const rowsOf = [
   { time: [21, 30], position: ["16:05", 965, 2538], watched: false },
@@ -27,6 +34,17 @@ const rowsOf = [
 export function TimelineExample() {
   const p = t.designSystem.pattern;
   const now = new Date(2026, 8, 27, 23, 0);
+  const [watch, setWatch] = useState("all");
+  const [date, setDate] = useState<string | null>(null);
+  const jumpDays = [
+    { value: "2026-09-27", label: p.today },
+    { value: "2026-09-26", label: p.yesterday },
+    { value: "2026-09-21", label: formatWeekdayDate(new Date(2026, 8, 21), now) },
+  ];
+  const jumpMonths = [
+    { value: "2026-08", label: formatMonth(new Date(2026, 7, 1), now) },
+    { value: "2025-12", label: formatMonth(new Date(2025, 11, 1), now) },
+  ];
   const rows = sampleVideos()
     .slice(0, rowsOf.length)
     .map((video, index) => {
@@ -54,7 +72,64 @@ export function TimelineExample() {
     },
   ];
   return (
-    <ListPage header={<PageHeader title={p.history} />}>
+    <ListPage
+      toolbarRow="header"
+      header={<PageHeader title={p.history} />}
+      toolbar={
+        <Toolbar
+          searchPlacement="end"
+          search={
+            <div className="relative flex w-full items-center">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2 size-4 text-muted-foreground"
+              />
+              <Input
+                type="search"
+                aria-label={p.searchTitles}
+                placeholder={p.searchTitles}
+                className="h-8 pl-8"
+              />
+            </div>
+          }
+        >
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            aria-label={p.watchStatus}
+            value={watch}
+            onValueChange={(value) => {
+              if (value !== "") setWatch(value);
+            }}
+          >
+            <ToggleGroupItem value="all" className="flex-none px-3">
+              {p.watchAll}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="inProgress" className="flex-none px-3">
+              {p.watchInProgress}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="watched" className="flex-none px-3">
+              {p.watchWatched}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </Toolbar>
+      }
+      aside={
+        <JumpList
+          title={p.jumpToDate}
+          groups={[jumpDays, jumpMonths]}
+          value={date}
+          onValueChange={setDate}
+          action={
+            <Button variant="ghost-destructive" size="sm" className="justify-start">
+              <Trash2 aria-hidden="true" />
+              {p.clearHistory}
+            </Button>
+          }
+        />
+      }
+    >
       <Timeline label={p.historyEntries}>
         {groups.map((group) => (
           <TimelineGroup key={group.key} label={group.label} detail={group.date}>

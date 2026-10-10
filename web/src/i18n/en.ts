@@ -537,6 +537,14 @@ export const en = {
       watchedPortion: "Watched portion",
       resume: "Resume",
       startOver: "Start over",
+      // 時間軸の見本の見出しの行と横の欄（状態の切り替え・検索・日付へ移る一覧）。
+      watchStatus: "Watch status",
+      watchAll: "All",
+      watchInProgress: "In progress",
+      watchWatched: "Watched",
+      searchTitles: "Search titles",
+      jumpToDate: "Jump to date",
+      clearHistory: "Clear history…",
     },
   },
   app: {
@@ -1426,6 +1434,17 @@ export const en = {
       description: "Videos you play are listed here, newest first.",
     },
     loadFailed: "Couldn't load the history",
+    search: {
+      label: "Search titles",
+    },
+    jump: {
+      title: "Jump to date",
+      none: "No dates to jump to",
+      loadFailed: "Couldn't load the dates",
+    },
+    noMatch: {
+      title: "No history matches these conditions",
+    },
   },
   tagName: {
     required: "Enter a name",

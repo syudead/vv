@@ -51,13 +51,24 @@ example block and a section here.
 Item `list-page`. `ListPage` stacks, top to bottom, with `gap-3` and `p-3`
 (`p-4` from `sm`):
 
-| Slot           | Put in it                                                                                    | Never                                    |
-| -------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| `header`       | `PageHeader` with the title, the count and the one main action                               | Filters or view controls                 |
-| `toolbar`      | `Toolbar` with search, filter triggers and the view controls                                 | The main action; a second row of filters |
-| `band`         | The active filters (removable tag chips), when any apply                                     | Controls that change the view            |
-| children       | `CardGrid`, `DataTable`, `GroupedList` or `Timeline`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins       |
-| `selectionBar` | `SelectionBar`, only while something is selected                                             | Actions that do not use the selection    |
+| Slot           | Put in it                                                                                    | Never                                                                   |
+| -------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `header`       | `PageHeader` with the title, the count and the one main action                               | Filters or view controls                                                |
+| `toolbar`      | `Toolbar` with search, filter triggers and the view controls                                 | The main action; a second row of filters                                |
+| `band`         | The active filters (removable tag chips), when any apply                                     | Controls that change the view                                           |
+| `aside`        | Tools that narrow the body and are read after it, such as a `JumpList`; at most one section  | The body's content, the main action, filters that belong on the toolbar |
+| children       | `CardGrid`, `DataTable`, `GroupedList` or `Timeline`, then `LoadMoreRow`; or one state block | A heading, a toolbar, page margins                                      |
+| `selectionBar` | `SelectionBar`, only while something is selected                                             | Actions that do not use the selection                                   |
+
+`toolbarRow="header"` puts the header and the toolbar on one row from `lg`,
+the header at its own width and the toolbar filling the rest, for a page
+whose title is short and whose toolbar is a filter and a search; below `lg`
+they stack. `aside` is a column at the right of the body from `lg`,
+`list-aside` wide (the named utility `grid-cols-list-aside`), stuck under the
+top bar and scrolling inside itself when taller than the viewport; below
+`lg` it is drawn full width between the band and the body, and the section
+in it draws its own narrow form. The header, the toolbar and the aside stay
+where they are in every state of the body.
 
 A list people browse (the library, folder pages) puts its toolbar in the
 shell's top bar: pass a `Toolbar` with `placement="topBar"` wrapped in the
@@ -174,13 +185,14 @@ such as the count of affected videos.
 | Section        | Item            | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------- | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `titleHidden` keeps the title for screen readers only, when a breadcrumb already shows the same name                                                                                                                                                                                                                                                                                |
-| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control                                                                                                                                                                                                                                                                                                                                                                                         |
+| `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control; `searchPlacement="end"` puts the search after the filters at the row's end                                                                                                                                                                                                                                                                                                             |
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`) that stick under the top bar while their group scrolls; each group's rows on one card, divided by a line with no gap, and groups `gap-6` apart                                                                                                                                                                                                                                                                                                                                                                           |
 | `Timeline`     | `timeline`      | Rows on one vertical rule (`border-l`) with a dot each; a group's label (`h2`: `text-sm font-semibold`, then `text-xs` muted) stands in a `timeline-label` column beside its rows from `lg` and on one line above them below; from `lg` each row is a `timeline-time` time column, a `timeline-thumb` thumbnail, a text column, an action and a trailing quiet button, and below `lg` the time and the quiet button share a line above a `timeline-thumb-sm` thumbnail and the text column, with the action under the text; rows `py-2` with no divider, groups `pb-6` apart |
+| `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                                                                                                               |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`; `stickyHeaderTop` sticks the column header that many px from the top, under an admin table page's stuck band                                                                                                                                                                                                                                                                                                                                                                                   |
 | `SelectionBar` | `selection-bar` | The count of selected items, `Clear selection` and the bulk actions; stuck to the bottom of the page, or in place of an admin table page's header (`placement="header"`)                                                                                                                                                                                                                                                                                                                                                                                                     |
 
@@ -216,6 +228,21 @@ control }`: inline, the controls stand without a visible name, so each needs
   happened, where the day is read from the margin and the time from the
   rule; a `GroupedList` of cards reads as a list of items, not of times.
   Example block `timeline-example`.
+- `Toolbar` `searchPlacement="end"` (`page` only): the search moves after the
+  filters to the row's end, no wider than `max-w-sm`, for a row that begins
+  with the page title (`ListPage toolbarRow="header"`); below `sm` it still
+  takes its own line. `searchHiddenBelowLg` leaves it out below `lg` while the
+  screen's own header toggle has not revealed it.
+- `JumpList`: put it in `ListPage`'s `aside`. Pass the `title`, the `groups`
+  of items (`{ value, label }`, newest first), the pressed `value` and
+  `onValueChange`, which receives `null` when the pressed item is pressed
+  again. While the items load pass `loading`; when there are none pass
+  `emptyText`, shown from `lg` (below `lg` the strip is not drawn); when they
+  failed pass `failed` with the message and `Retry`. `action` is the one
+  quiet action that ends the column from `lg`, a `ghost-destructive` `sm`
+  `Button`; below `lg` the screen offers it elsewhere, such as a `More` menu.
+  The pressed chip is scrolled into view in the strip. Use it for jumping
+  within one long list; a calendar would draw empty days.
 - `PageSection`: put rows directly inside; do not add padding or borders to a
   row. Free text goes in one `<p>`, which becomes one padded row.
 - `SelectionBar`: use `ghost` `sm` buttons with a visible name at every width,

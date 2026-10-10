@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isAborted } from "../api/client";
 import { listWatchHistory, type WatchHistoryEntry } from "../api/history";
+import { type HistoryCriteria, historyCriteriaKey } from "./historyCriteria";
 
 // 視聴履歴の一覧の読み込み（specs/043-watch-history/ui-design.md「Paging」「States」）。
 
@@ -18,6 +19,15 @@ export type HistoryState =
       nextCursor?: string;
       more: MoreState;
     };
+
+/** conditionsOf は条件を一覧の要求の引数にする。既定の値は送らない。 */
+function conditionsOf(criteria: HistoryCriteria) {
+  return {
+    ...(criteria.watch === "all" ? {} : { watch: criteria.watch }),
+    ...(criteria.query === "" ? {} : { query: criteria.query }),
+    ...(criteria.date === undefined ? {} : { date: criteria.date }),
+  };
+}
 
 export interface WatchHistory {
   state: HistoryState;
@@ -40,10 +50,15 @@ export interface WatchHistory {
 }
 
 /**
- * useWatchHistory は視聴履歴を新しい順にページごとに読む。消した件の id を覚えておき、
+ * useWatchHistory は条件（状態・検索語・日）に合う視聴履歴を新しい順にページごとに読む。
+ * 条件が変わると最初のページから読み直し、同じ表示のどのページにも同じ条件を送る。日が
+ * あればブラウザの時間帯（tz）を添える（api/history.ts）。消した件の id を覚えておき、
  * 消す前に始まった読み込みの応答にあっても一覧へ戻さない。
  */
-export function useWatchHistory(onReloadFailed: (error: unknown) => void): WatchHistory {
+export function useWatchHistory(
+  criteria: HistoryCriteria,
+  onReloadFailed: (error: unknown) => void,
+): WatchHistory {
   const [state, setState] = useState<HistoryState>({ kind: "loading" });
   // 応答は後から届くので、描画を待たずに今の一覧を読めるようにする。
   const stateRef = useRef(state);
@@ -56,6 +71,14 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
   useEffect(() => {
     onReloadFailedRef.current = onReloadFailed;
   }, [onReloadFailed]);
+
+  // 今の条件と、今の表示（最初のページを読んだ条件）。続きのページは表示の条件で読む。
+  const criteriaKey = historyCriteriaKey(criteria);
+  const latestCriteria = useRef(criteria);
+  useEffect(() => {
+    latestCriteria.current = criteria;
+  });
+  const shownCriteria = useRef(criteria);
 
   // 最初のページを読み直すたび、全件を消すたびに増やし、古い応答を捨てる。
   const generation = useRef(0);
@@ -112,7 +135,11 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
       else if (current.more.kind === "loading")
         show({ ...current, more: { kind: "idle" } });
       const request = track();
-      listWatchHistory({ signal: request.signal }).then(
+      shownCriteria.current = latestCriteria.current;
+      listWatchHistory({
+        ...conditionsOf(shownCriteria.current),
+        signal: request.signal,
+      }).then(
         (page) => {
           request.done();
           if (gen !== generation.current) return;
@@ -158,7 +185,11 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
     const cursor = current.nextCursor;
     show({ ...current, more: { kind: "loading" } });
     const request = track();
-    listWatchHistory({ cursor, signal: request.signal }).then(
+    listWatchHistory({
+      ...conditionsOf(shownCriteria.current),
+      cursor,
+      signal: request.signal,
+    }).then(
       (page) => {
         request.done();
         const now = stateRef.current;
@@ -208,12 +239,13 @@ export function useWatchHistory(onReloadFailed: (error: unknown) => void): Watch
   const retry = useCallback(() => readFirst(false), [readFirst]);
   const reload = useCallback(() => readFirst(true), [readFirst]);
 
+  // 開いたときと条件が変わったときに、読み込み中の表示にして最初のページから読む。
   useEffect(() => {
     readFirst(false);
     return () => {
       begin();
     };
-  }, [begin, readFirst]);
+  }, [begin, readFirst, criteriaKey]);
 
   return { state, loadMore, retry, reload, remove, clear };
 }

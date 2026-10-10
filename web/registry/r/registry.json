@@ -128,7 +128,7 @@
       "name": "button",
       "type": "registry:ui",
       "title": "Button",
-      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive and link, in sizes sm, default, lg, icon-sm and icon.",
+      "description": "Actions: one default (primary) per area, then secondary, outline, ghost, destructive, ghost-destructive and link, in sizes sm, default, lg, icon-sm and icon.",
       "docs": "Usage rules: web/registry/rules/components.md#button (item vv-rules).",
       "files": [
         {
@@ -619,7 +619,7 @@
       "name": "list-page",
       "type": "registry:ui",
       "title": "ListPage",
-      "description": "Page skeleton: header row, toolbar, body (grid or table), selection bar.",
+      "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or timeline) with an optional aside column from lg, selection bar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
       "files": [
         {
@@ -723,7 +723,7 @@
       "name": "toolbar",
       "type": "registry:ui",
       "title": "Toolbar",
-      "description": "Section: search, filters, then view controls and actions; view controls collapse into a popover below lg. Uses popover.",
+      "description": "Section: search, filters, then view controls and actions; view controls collapse into a popover below lg; searchPlacement=end puts the search at the row's end. Uses popover.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -806,6 +806,19 @@
       "files": [
         {
           "path": "src/ui/patterns/timeline.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "jump-list",
+      "type": "registry:ui",
+      "title": "JumpList",
+      "description": "Section: a single-choice list of jump targets in groups divided by separators, with an action after a last divider; a vertical list under a heading from lg and a horizontally scrolling strip of chips below. Uses toggle-group, separator, skeleton and button.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/jump-list.tsx",
           "type": "registry:ui"
         }
       ]
@@ -939,7 +952,7 @@
       "name": "timeline-example",
       "type": "registry:block",
       "title": "Timeline example",
-      "description": "A list page body of rows on a day timeline, each row a time, a thumbnail, a title, a folder line, a position bar, a resume action and a quiet remove button.",
+      "description": "A list page of rows on a day timeline, each row a time, a thumbnail, a title, a folder line, a position bar, a resume action and a quiet remove button, with the filter and the search on the header row and a jump list in the aside.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {

@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 
 // shadcn/ui の Button（radix）。構造と variant は上流のまま、色・角丸・高さを vv の
 // トークンで着せる。フォーカスの輪は index.css の :focus-visible（全部品で同じ）に任せる。
+// vv が足した variant は ghost-destructive だけ。
 // 使い方の規則は web/registry/rules/components.md の Button。
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-colors select-none disabled:pointer-events-none disabled:opacity-50 aria-busy:cursor-progress aria-invalid:border-destructive [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
@@ -21,6 +22,10 @@ const buttonVariants = cva(
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:bg-secondary/60",
         ghost: "hover:bg-accent hover:text-accent-foreground active:bg-accent/70",
+        // ghost の形で、メニューの外に置く破壊的な操作（DropdownMenuItem variant="destructive"
+        // のボタン版）。必ず ConfirmDialog を開く。画面に 1 つまで。
+        "ghost-destructive":
+          "text-destructive hover:bg-destructive-soft active:bg-destructive-soft/70",
         link: "text-primary underline-offset-4 hover:underline active:text-primary-active",
       },
       size: {

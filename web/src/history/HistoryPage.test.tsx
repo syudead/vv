@@ -56,7 +56,32 @@ const server = {
   holdList: null as Promise<void> | null,
   /** 200 でなければ、一覧の要求にこの状態で答える。 */
   listStatus: 200,
+  /** 日付の一覧の応答。条件で絞らずにそのまま返す。 */
+  dates: [] as string[],
+  datesUrls: [] as string[],
+  /** 200 でなければ、日付の一覧の要求にこの状態で答える。 */
+  datesStatus: 200,
 };
+
+/** matches は一覧の要求の条件（watch・query・date）に件が合うかである。 */
+function matches(entry: WatchHistoryEntry, query: URLSearchParams): boolean {
+  const watch = query.get("watch");
+  const progress = entry.video?.progress;
+  if (watch === "inProgress" && (progress === undefined || progress.completed))
+    return false;
+  if (watch === "watched" && progress?.completed !== true) return false;
+  const text = query.get("query");
+  const title = entry.video?.title ?? entry.title;
+  if (text !== null && !title.toLowerCase().includes(text.toLowerCase())) return false;
+  const date = query.get("date");
+  if (date !== null) {
+    const [year = 0, month = 1, day] = date.split("-").map(Number);
+    const end =
+      day === undefined ? new Date(year, month, 1) : new Date(year, month - 1, day + 1);
+    if (new Date(entry.playedAt).getTime() >= end.getTime()) return false;
+  }
+  return true;
+}
 
 function install() {
   const fetchMock = vi.fn<typeof fetch>((input, init) => {
@@ -67,10 +92,11 @@ function install() {
       const query = new URLSearchParams(url.slice(url.indexOf("?") + 1));
       // 鍵は前のページの最後の件の id。その間に件が消えても続きの位置はずれない。
       const cursor = query.get("cursor");
+      const matching = server.entries.filter((entry) => matches(entry, query));
       const rest =
         cursor === null
-          ? server.entries
-          : server.entries.filter((entry) => entry.id < Number(cursor));
+          ? matching
+          : matching.filter((entry) => entry.id < Number(cursor));
       const items = rest.slice(0, server.pageSize);
       const last = items.at(-1);
       const body = json({
@@ -86,6 +112,14 @@ function install() {
           : json({ code: "internal", message: "x" }, server.listStatus);
       const hold = server.holdList;
       return hold === null ? Promise.resolve(respond()) : hold.then(respond);
+    }
+    if (url.startsWith("/api/watch-history/dates?") && method === "GET") {
+      server.datesUrls.push(url);
+      return Promise.resolve(
+        server.datesStatus === 200
+          ? json({ days: server.dates })
+          : json({ code: "internal", message: "x" }, server.datesStatus),
+      );
     }
     if (url.startsWith("/api/watch-history") && method === "DELETE") {
       server.deletes.push(url);
@@ -115,10 +149,12 @@ let intersect: IntersectionObserverCallback | undefined;
 /** 作られた IntersectionObserver の数。 */
 let observers = 0;
 let location: { pathname: string; state: unknown } | undefined;
+let search = "";
 
 function LocationProbe() {
   const current = useLocation();
   location = { pathname: current.pathname, state: current.state };
+  search = current.search;
   return null;
 }
 
@@ -182,6 +218,11 @@ beforeEach(() => {
   server.clearStatus = 204;
   server.holdList = null;
   server.listStatus = 200;
+  server.dates = ["2026-09-27", "2026-09-26"];
+  server.datesUrls = [];
+  server.datesStatus = 200;
+  search = "";
+  vi.stubGlobal("scrollTo", vi.fn());
   intersect = undefined;
   observers = 0;
   location = undefined;
@@ -670,6 +711,243 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
       screen.getByText("Videos you play are listed here, newest first."),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+  });
+
+  it("状態の切り替えと検索語は、最初のページにも続きのページにも watch と query を送る", async () => {
+    const user = userEvent.setup();
+    const updatedAt = at(27, 22, 0);
+    server.pageSize = 1;
+    server.entries = [
+      {
+        id: 3,
+        playedAt: at(27, 21, 30),
+        title: "Harbour lights",
+        video: video(10, {
+          title: "Harbour lights",
+          progress: { positionMs: 30_000, completed: false, updatedAt },
+        }),
+      },
+      {
+        id: 2,
+        playedAt: at(27, 15, 0),
+        title: "Kyoto",
+        video: video(11, {
+          title: "Kyoto",
+          progress: { positionMs: 60_000, completed: true, updatedAt },
+        }),
+      },
+      {
+        id: 1,
+        playedAt: at(26, 9, 0),
+        title: "Harbour at dawn",
+        video: video(12, {
+          title: "Harbour at dawn",
+          progress: { positionMs: 10_000, completed: false, updatedAt },
+        }),
+      },
+    ];
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+
+    const filter = screen.getByRole("radiogroup", { name: "Watch status" });
+    expect(
+      within(filter).getByRole("radio", { name: "All" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    await user.click(within(filter).getByRole("radio", { name: "In progress" }));
+    await waitFor(() => expect(search).toBe("?watch=inProgress"));
+    await user.type(screen.getByRole("searchbox", { name: "Search titles" }), "harbour");
+    await waitFor(() => expect(search).toBe("?watch=inProgress&q=harbour"));
+    await waitFor(() =>
+      expect(
+        within(historyList()).getAllByRole("link", { name: /^Harbour lights,/ }),
+      ).toHaveLength(1),
+    );
+
+    server.listUrls = [];
+    act(() => {
+      intersect?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+    });
+    expect(
+      await within(historyList()).findByRole("link", { name: /^Harbour at dawn,/ }),
+    ).toBeDefined();
+    const next = new URLSearchParams(server.listUrls.at(-1)?.split("?")[1]);
+    expect(next.get("cursor")).toBe("3");
+    expect(next.get("watch")).toBe("inProgress");
+    expect(next.get("query")).toBe("harbour");
+    expect(next.has("date")).toBe(false);
+    expect(within(historyList()).queryByText("Kyoto")).toBeNull();
+  });
+
+  it("日付の一覧は今の watch と query で日を求め、日と月を並べ、切り替えや検索が変わると求め直す", async () => {
+    const user = userEvent.setup();
+    server.dates = ["2026-09-27", "2026-09-26", "2026-08-20", "2026-08-03", "2025-12-31"];
+    renderPage("/history?watch=watched&q=kyoto");
+
+    const jump = await screen.findByRole("radiogroup", { name: "Jump to date" });
+    await waitFor(() =>
+      expect(
+        within(jump)
+          .getAllByRole("radio")
+          .map((item) => item.textContent),
+      ).toEqual(["Sun, Sep 27", "Sat, Sep 26", "August", "December 2025"]),
+    );
+    expect(server.datesUrls).toHaveLength(1);
+    const first = new URLSearchParams(server.datesUrls[0]?.split("?")[1]);
+    expect(first.get("watch")).toBe("watched");
+    expect(first.get("query")).toBe("kyoto");
+    expect(first.get("tz")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+
+    // 日を選んでも日付は読み直さない。
+    await user.click(within(jump).getByRole("radio", { name: "August" }));
+    await waitFor(() => expect(search).toBe("?watch=watched&q=kyoto&date=2026-08"));
+    expect(server.datesUrls).toHaveLength(1);
+
+    await user.click(
+      within(screen.getByRole("radiogroup", { name: "Watch status" })).getByRole(
+        "radio",
+        {
+          name: "All",
+        },
+      ),
+    );
+    await waitFor(() => expect(server.datesUrls).toHaveLength(2));
+    const second = new URLSearchParams(server.datesUrls[1]?.split("?")[1]);
+    expect(second.has("watch")).toBe(false);
+    expect(second.get("query")).toBe("kyoto");
+    // 状態を変えても日は残る。
+    expect(search).toBe("?q=kyoto&date=2026-08");
+  });
+
+  it("日を選ぶと date と tz を送って返ったページを出し、最初の項目か押した項目で date を外す", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const jump = await screen.findByRole("radiogroup", { name: "Jump to date" });
+    await screen.findByRole("list", { name: "Watch history" });
+
+    server.listUrls = [];
+    await user.click(within(jump).getByRole("radio", { name: "Sat, Sep 26" }));
+    await waitFor(() => expect(search).toBe("?date=2026-09-26"));
+    await waitFor(() =>
+      expect(within(historyList()).queryByText("Harbour lights")).toBeNull(),
+    );
+    expect(within(historyList()).getByText("Kyoto")).toBeDefined();
+    const request = new URLSearchParams(server.listUrls.at(-1)?.split("?")[1]);
+    expect(request.get("date")).toBe("2026-09-26");
+    expect(request.get("tz")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(
+      within(jump)
+        .getByRole("radio", { name: "Sat, Sep 26" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(window.scrollTo).toHaveBeenCalled();
+
+    // 押している項目をもう一度押すと date を外す。
+    await user.click(within(jump).getByRole("radio", { name: "Sat, Sep 26" }));
+    await waitFor(() => expect(search).toBe(""));
+    expect(await within(historyList()).findByText("Harbour lights")).toBeDefined();
+
+    // 最初の項目は一覧の先頭なので date を書かない。
+    await user.click(within(jump).getByRole("radio", { name: "Sun, Sep 27" }));
+    expect(search).toBe("");
+  });
+
+  it("絞り込みや検索で 1 件も返らなければ、空の表示ではなく該当なしの表示を出し、Clear filters で外す", async () => {
+    const user = userEvent.setup();
+    server.dates = [];
+    renderPage("/history?watch=watched&q=zzz&date=2026-09-27");
+
+    expect(
+      await screen.findByRole("heading", {
+        level: 2,
+        name: "No history matches these conditions",
+      }),
+    ).toBeDefined();
+    expect(screen.queryByRole("heading", { name: "No watch history" })).toBeNull();
+    expect(
+      screen.getByText("Try a different search or change the filters."),
+    ).toBeDefined();
+    // 見出しの行は何が外したかを見せたまま。
+    expect(
+      within(screen.getByRole("radiogroup", { name: "Watch status" }))
+        .getByRole("radio", { name: "Watched" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      (screen.getByRole("searchbox", { name: "Search titles" }) as HTMLInputElement)
+        .value,
+    ).toBe("zzz");
+    expect(screen.getByText("No dates to jump to")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear history…" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(search).toBe(""));
+    expect(await screen.findByRole("list", { name: "Watch history" })).toBeDefined();
+  });
+
+  it("検索語を消すと絞り込みの無い一覧に戻る", async () => {
+    const user = userEvent.setup();
+    renderPage("/history?q=kyoto");
+    await screen.findByRole("list", { name: "Watch history" });
+    expect(within(historyList()).queryByText("Harbour lights")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    await waitFor(() => expect(search).toBe(""));
+    expect(await within(historyList()).findByText("Harbour lights")).toBeDefined();
+    const request = new URLSearchParams(server.listUrls.at(-1)?.split("?")[1]);
+    expect(request.has("query")).toBe(false);
+  });
+
+  it("行のリンクと操作の state.from は今のクエリ文字列を持つ", async () => {
+    const user = userEvent.setup();
+    renderPage("/history?watch=all&q=kyoto&date=2026-09");
+    await screen.findByRole("list", { name: "Watch history" });
+
+    await user.click(within(historyList()).getByRole("link", { name: /^Kyoto,/ }));
+    expect(await screen.findByText("Video page")).toBeDefined();
+    expect(location).toEqual({
+      pathname: "/videos/11",
+      state: { from: "/history?watch=all&q=kyoto&date=2026-09" },
+    });
+  });
+
+  it("日付の読み込みに失敗したら、横の欄に理由と Retry を出し、一覧はそのまま出す", async () => {
+    const user = userEvent.setup();
+    server.datesStatus = 500;
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    expect(await screen.findByText("Couldn't load the dates")).toBeDefined();
+
+    server.datesStatus = 200;
+    const jump = screen.getByRole("region", { name: "Jump to date" });
+    await user.click(within(jump).getByRole("button", { name: "Retry" }));
+    expect(await within(jump).findByRole("radio", { name: "Sun, Sep 27" })).toBeDefined();
+    // 横の欄の最後の「Clear history…」から確認の窓を開く。
+    await user.click(within(jump).getByRole("button", { name: "Clear history…" }));
+    expect(
+      await screen.findByRole("alertdialog", { name: "Clear watch history?" }),
+    ).toBeDefined();
+  });
+
+  it("全件を消すと条件を URL から外し、日付の一覧を空にする", async () => {
+    const user = userEvent.setup();
+    renderPage("/history?q=o");
+    await screen.findByRole("list", { name: "Watch history" });
+    const jump = screen.getByRole("region", { name: "Jump to date" });
+    await user.click(await within(jump).findByRole("button", { name: "Clear history…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Clear watch history?",
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Clear" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "No watch history" }),
+    ).toBeDefined();
+    expect(search).toBe("");
+    expect(screen.getByText("No dates to jump to")).toBeDefined();
   });
 
   it("疑似ロケールではカタログの文言だけを描く", async () => {

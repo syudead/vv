@@ -44,6 +44,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `grouped-list-example`     | Block         | Copy to start a list of rows grouped under headings                          |
 | `form-row`                 | Section       | One setting: label, description, control                                     |
 | `input`                    | Component     | One line of text                                                             |
+| `jump-list`                | Section       | Jump to a day or month from a side column or a strip of chips                |
 | `kbd`                      | Component     | A key or search operator in text                                             |
 | `label`                    | Component     | The visible name of a control                                                |
 | `list-page`                | Page skeleton | Items to browse, filter and select (rules: patterns.md)                      |

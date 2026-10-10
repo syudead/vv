@@ -426,9 +426,12 @@ test.describe.serial("watch history", () => {
   }) => {
     await page.goto("/");
     await openHistory(page);
+    // lg から全件の削除は横の欄の最後にある（lg 未満の More の奥はページテストで確かめる）。
     const openClear = async () => {
-      await page.getByRole("button", { name: "More" }).click();
-      await page.getByRole("menuitem", { name: "Clear history…" }).click();
+      await page
+        .getByRole("region", { name: "Jump to date" })
+        .getByRole("button", { name: "Clear history…" })
+        .click();
       return page.getByRole("alertdialog", { name: "Clear watch history?" });
     };
 
