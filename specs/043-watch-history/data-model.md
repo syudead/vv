@@ -11,7 +11,8 @@ Parent Issue: #792. The rest of the model is unchanged. Sources of truth:
 | Effective title | [029 data-model, Values added to `domain`](../029-video-overrides/data-model.md#values-added-to-domain) |
 
 This file covers only the table, values and read and write rules this feature
-adds.
+adds. The sections marked *revision* were added with requirements 12 to 18
+([research.md, Revision](research.md#revision-filter-search-date-jump-and-resume-actions)).
 
 ## Migration
 
@@ -47,6 +48,24 @@ The backfill inserts one row per `playback_progress` row:
 
 Down drops the table.
 
+`00035_watch_history_title_key.sql` (*revision*; confirm the number when
+implementing) adds the search column of
+[R-10](research.md#r-10-title-search-uses-the-librarys-query-syntax-on-the-title-alone):
+
+```sql
+alter table watch_history add column title_key text;
+```
+
+SQL cannot fold a title ([013 data-model, `search_key` rules](../013-library-search/data-model.md#search_key-rules)),
+so the migration leaves the column null and `PlaybackStore.RefreshWatchHistoryTitleKeys`
+fills every null row with the title's match form at startup, right after
+migrations and before the listener opens, where `cmd/mdm` already refreshes the
+location and tag search keys. The match form is the one the library uses for a
+title line of `search_key` (`searchKeyPart` in `internal/store/search_keys.go`):
+`FoldForMatch(title)` with every newline replaced by a space. The library's
+condition reads a search term the same way, so a phrase matches a title that
+contains a newline both in `search_key` and in `title_key`. Down drops the column.
+
 ## `watch_history`
 
 | Field | Type | Null | Meaning |
@@ -56,6 +75,7 @@ Down drops the table.
 | `playback_id` | text | yes | The playback id of [R-2](research.md#r-2-one-entry-per-playback-identified-by-a-client-generated-playback-id); unique, so a second save with the same id adds nothing |
 | `title` | text | no | Snapshot of the effective title when the entry was written; shown when the content is not in the library |
 | `played_at` | integer | no | Unix milliseconds; the server's clock at the entry's first save |
+| `title_key` | text | yes | *Revision.* The title's match form, `FoldForMatch(title)` with newlines as spaces ([Migration](#migration)); the search target of an entry without a video. Null only between the migration and the startup fill |
 
 **Relationships**: None. No foreign key to `videos` or `playback_progress`.
 
@@ -79,6 +99,9 @@ Succession and bundling:
 | `WatchHistoryEntry` | `ID int64`, `PlayedAt time.Time`, `Title string`, `Video *Video` (nil when the content is not in the library) |
 | `WatchHistoryPage` | `Items []WatchHistoryEntry`, `NextCursor string` (empty when there is no more) |
 | Cursor | `played_at` and `id` of the last item, encoded and decoded like the scan issue cursor; an unreadable cursor is `ErrInvalidCursor` |
+| `WatchHistoryFilter` (*revision*) | `all`, `inProgress`, `watched`; the values of the `WatchHistoryFilter` schema. `ParseWatchHistoryFilter` rejects anything else |
+| `WatchHistoryQuery` (*revision*) | The conditions of one list or dates read: `Filter WatchHistoryFilter`, `Search SearchExpr` (from `ParseSearchQuery`), `Before time.Time` (zero when no `date` was given) |
+| `WatchHistoryPeriod` (*revision*) | A `date` parameter: `YYYY-MM-DD` or `YYYY-MM`. `ParseWatchHistoryPeriod` accepts those two forms and nothing else; `End(loc)` is the first instant after the day or month in `loc` |
 
 ## Rules
 
@@ -89,6 +112,10 @@ Succession and bundling:
 | The entry's time and title are fixed at its first save | `insert or ignore`: later saves change nothing |
 | Deleting entries changes no row of any other table (requirement 9) | `PlaybackStore.DeleteWatchHistoryEntry`, `ClearWatchHistory` |
 | An entry resolves to a video only when a video with its content key has a location the viewer may open | `PlaybackStore.ListWatchHistory` (`visibleVideoCondition` with the `domain.Audience` it is given, as every store read returning videos takes one: ARCHITECTURE.md, "Every read knows its viewer") |
+| *Revision.* `inProgress` and `watched` keep only entries with a video whose `playback_progress` row, joined by `userKeyExpr`, satisfies `watchCondition`; `all` keeps every entry ([R-9](research.md#r-9-the-state-filter-reads-the-videos-current-watch-state-with-the-librarys-rule)) | `PlaybackStore.ListWatchHistory`, `ListWatchHistoryDays` |
+| *Revision.* A search term matches an entry with a video when the title line or the display-name line of `search_key` of one of its registered locations contains the folded term; an entry without a video when `title_key` contains it; AND, OR and NOT as in the library ([R-10](research.md#r-10-title-search-uses-the-librarys-query-syntax-on-the-title-alone)) | `PlaybackStore.ListWatchHistory`, `ListWatchHistoryDays` |
+| *Revision.* A `date` keeps the entries with `played_at` before `WatchHistoryPeriod.End` in the request's zone ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone)) | `PlaybackStore.ListWatchHistory` |
+| *Revision.* `title_key` is written with the entry and never updated; the startup fill touches only null rows | `PlaybackStore.SaveProgress`, `RefreshWatchHistoryTitleKeys` |
 
 ## Store operations (`PlaybackStore`)
 
@@ -100,8 +127,10 @@ would split one business operation.
 
 | Operation | Behaviour |
 | --- | --- |
-| `SaveProgress(ctx, userKey, progress, play *domain.Play)` | As today, plus, when `play` is not nil and `play.ContentKey` is not empty, `insert or ignore into watch_history (content_key, playback_id, title, played_at)` with the current time in milliseconds, in the same transaction |
-| `ListWatchHistory(ctx, audience domain.Audience, cursor string, limit int)` | The page after `cursor` in `(played_at desc, id desc)` order, `limit` items, each with the `Video` that `audience` may open when present (`visibleVideoCondition` with `audience`; the handler passes the audience the boundary classified, which on these owner-only routes is the owner). `NextCursor` is set when a further row exists |
+| `SaveProgress(ctx, userKey, progress, play *domain.Play)` | As today, plus, when `play` is not nil and `play.ContentKey` is not empty, `insert or ignore into watch_history (content_key, playback_id, title, title_key, played_at)` with the current time in milliseconds and the match form of `play.Title` ([Migration](#migration)), in the same transaction |
+| `ListWatchHistory(ctx, audience domain.Audience, query domain.WatchHistoryQuery, cursor string, limit int)` | The page after `cursor` in `(played_at desc, id desc)` order among the entries that satisfy `query` (*revision*: the filter, the search and `Before`, applied in the same SQL statement before the limit, with the video joined by content key under `visibleVideoCondition` and its progress by `userKeyExpr`), `limit` items, each with the `Video` that `audience` may open when present (the handler passes the audience the boundary classified, which on these owner-only routes is the owner). `NextCursor` is set when a further row exists |
+| `ListWatchHistoryDays(ctx, audience domain.Audience, query domain.WatchHistoryQuery, loc *time.Location) ([]string, error)` (*revision*) | The distinct calendar days in `loc`, as `YYYY-MM-DD`, newest first, of the entries that satisfy `query` (its `Before` is ignored). Reads `played_at` of the matching rows and groups in Go ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone)) |
+| `RefreshWatchHistoryTitleKeys(ctx) (int, error)` (*revision*) | Fills `title_key` of every row where it is null and returns the count; called at startup by `cmd/mdm` |
 | `DeleteWatchHistoryEntry(ctx, id int64) (bool, error)` | Deletes the row; false when it did not exist |
 | `ClearWatchHistory(ctx) error` | Deletes every row |
 
@@ -114,4 +143,8 @@ No domain event is published
 state, `lastPlayedAt` and the `played*` sorts read nothing from
 `watch_history`, so deleting history leaves the card's progress bar, its watch
 state and its place in "Last played" as they were (requirement 9). The
-`Progress` response of the save does not change.
+`Progress` response of the save does not change. The revision stores no watch
+state and no position on the entry: the filter and the position bar read the
+video's current `playback_progress` row at request time
+([R-9](research.md#r-9-the-state-filter-reads-the-videos-current-watch-state-with-the-librarys-rule),
+[R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)).

@@ -163,3 +163,124 @@ route. The history is not added to the external API.
 | --- | --- |
 | **The existing owner-only path and route rules** | Chosen |
 | `404` for a guest at `/history`, as for hidden videos | Rejected: the screen already sends guests from `/settings`, `/tags` and `/duplicates` to the login page, and acceptance criterion 9 only requires that the history is not shown |
+
+## Revision: filter, search, date jump and resume actions
+
+Requirements 12 to 18 were added to the parent Issue after R-1 to R-7 were
+decided. R-8 to R-13 are the decisions that revision adds; R-1 to R-7
+stand.
+
+## R-8: Filter, search and date jump are conditions of the list request
+
+**Decision**: `GET /api/watch-history` gains `watch`, `query`, `date` and
+`tz`, and the store applies them in SQL before the page limit
+([contracts/screen-api.md](contracts/screen-api.md#get-apiwatch-history)); the
+screen never filters loaded rows itself.
+
+| Option | Verdict |
+| --- | --- |
+| **Conditions on the list request** | Chosen |
+| Filter and search the loaded pages in the browser | Rejected: requirement 6 reads the whole history, so a filter that matched three entries in a year would load every page to show them; the date list (requirement 15) needs the unloaded entries too |
+| A separate search endpoint | Rejected: requirement 14 combines the state and the search, and one request with two conditions is the shape the library uses (`listVideos`) |
+
+**Rationale**: The server already owns the order and the paging; a condition
+is one more `where` clause on the same query, and the cursor keeps working
+because it points into the filtered order.
+
+## R-9: The state filter reads the video's current watch state, with the library's rule
+
+**Decision**: `watch` is `all`, `inProgress` or `watched`
+(`WatchHistoryFilter`, a new schema); `inProgress` and `watched` keep the
+entries whose video is in the library and whose `playback_progress` row, read
+by the user key as the cards read it, satisfies `watchCondition` of
+`internal/store/listing.go`; entries without a video and entries whose video is
+unwatched appear only under `all` (Edge Case).
+
+| Option | Verdict |
+| --- | --- |
+| **A three-value filter on the video's current state** | Chosen |
+| Reuse `WatchFilter` and answer `400` to `unwatched` | Rejected: the generated client type would offer a value the screen has to refuse, and `unwatched` has no meaning for a viewing |
+| Decide by the position of that viewing (the entry) | Rejected by requirement 12: the state is the video's now, so every entry of one video falls on the same side |
+| Store the state on the entry | Rejected: the state changes with every save, and requirement 12 ties it to the library's "watched" |
+
+**Rationale**: One SQL condition shared with the library guarantees that a
+card marked watched is listed under `watched` (acceptance criterion 10), and the
+user key keeps a bundle's shared position in step with its cards.
+
+## R-10: Title search uses the library's query syntax on the title alone
+
+**Decision**: `query` is parsed by `domain.ParseSearchQuery` and matched with
+`instr` on the folded title: for an entry with a video, the title line and
+the display-name line of `search_key` of any of its registered locations
+(the lines `locationSearchKey` builds, without the path line); for an entry
+without a video, `watch_history.title_key`, the snapshot title in the same
+match form as a title line of `search_key`, newlines as spaces
+([data-model.md, Migration](data-model.md#migration)). Tags are not matched.
+
+| Option | Verdict |
+| --- | --- |
+| **Library syntax and match form, title lines only** | Chosen |
+| The library's whole condition (`searchExprCondition`) | Rejected: it matches the relative path and the tag names, so an entry whose title lacks the word would be listed, against requirement 13 |
+| Match the snapshot title for every entry | Rejected: a renamed video would be found by its old name and shown with its new one; the row shows the current title (ui-design.md, Entry row) |
+| Full-text index on the title | Rejected: `location_search_fts` indexes the whole key, path included, and the owner's viewings are far fewer than the library's locations, so `instr` is enough |
+
+**Rationale**: Requirement 13 asks for the library's matching (substring,
+NFKC, case and kana folding), not the library's targets; the parser and
+`FoldForMatch` are reused, the targets are the two name lines. A word in a
+renamed video's file title still finds the entry, which is accepted: the file
+title is one of the video's names.
+
+## R-11: The date list and the jump are computed on the server in the viewer's time zone
+
+**Decision**: `GET /api/watch-history/dates` returns the distinct days that
+have entries under the current `watch` and `query`, newest first, as
+`YYYY-MM-DD` in the IANA zone `tz` the screen sends; the screen folds older
+days into months. `date` (`YYYY-MM-DD` or `YYYY-MM`) with `tz` on the list
+request keeps the entries whose `played_at` is before the end of that day or
+month in `tz`, and paging continues with `nextCursor`. The server loads the
+zone with `time.LoadLocation` and embeds `time/tzdata` so a host without a
+zone database still answers.
+
+| Option | Verdict |
+| --- | --- |
+| **IANA zone from the browser, days computed in Go** | Chosen |
+| A UTC offset in minutes | Rejected: one offset is wrong for the months on the other side of a daylight-saving change, so a day list over a year puts late-evening entries on the wrong day |
+| The screen computes the day boundaries and sends an instant (`before`) | Rejected: the day list still needs the zone on the server, and two places doing the date arithmetic drift apart |
+| Group by day in SQL (`date(played_at / 1000, 'unixepoch')`) | Rejected: SQLite knows no zones; reading one integer per entry and grouping in Go is cheap for an owner's history |
+| The server cuts the list into days and months | Rejected: where days become months is a screen decision (`ui-design.md`), and the screen needs the days to draw either |
+| A list over the whole history, ignoring the filter and the search | Rejected: choosing a date would then land on the "no matches" state; acceptance criterion 13 lists the dates that have entries |
+
+**Rationale**: The day of an entry depends on where the viewer is, and only
+the browser knows that; the server knows every entry. Passing the zone name
+once gives one source of truth for both the list and the jump.
+
+## R-12: The filter, the search and the date live in the screen's URL
+
+**Decision**: `/history` carries `watch`, `q` and `date` as query parameters,
+written and read as [list-url.md](../013-library-search/contracts/list-url.md)
+does for the library (defaults omitted, unreadable values treated as the
+default), and the row link's `state.from` carries the full URL.
+
+| Option | Verdict |
+| --- | --- |
+| **URL query parameters** | Chosen |
+| Component state | Rejected: opening a video leaves the route, so coming back with `×` or Esc would reset the filter and the date |
+| `sessionStorage` | Rejected: the library already answers this with the URL; a second mechanism, and a view that cannot be reloaded or shared |
+
+## R-13: The resume and restart actions open the video page with autoplay, and the existing resume rule decides the position
+
+**Decision**: Both actions (the Issue's `続きから` and `最初から`; the English
+words are `ui-design.md`'s) navigate to `/videos/{id}` with
+`state: { from, autoplay: true }`, as "Play next" does; the page's
+`resumePosition` then starts an in-progress video at its saved position and a
+watched one at 0 (requirement 18 restates that rule). The row shows
+`video.progress.positionMs` over `video.durationMs`.
+
+| Option | Verdict |
+| --- | --- |
+| **Autoplay through the existing state, position from the resume rule** | Chosen |
+| A `startMs` in the navigation state | Rejected: a second source for the start position that can disagree with a plain open of the same video (requirement 5 keeps that rule); the rule already yields the displayed outcome |
+| Show `resumePosition` in the row instead of the saved position | Rejected: requirement 16 asks for the current position; the two differ only under `MinResumeMs` (5 s) and when a bundle member's shared position exceeds this version's length ([030 R-11](../030-video-versions/research.md)), where the viewer sees the video start from 0 |
+
+**Rationale**: The page already owns autoplay and the resume rule, so the
+history adds a link, not a player feature.

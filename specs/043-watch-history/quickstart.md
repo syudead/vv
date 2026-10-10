@@ -2,7 +2,9 @@
 
 These steps prove, on a database written before this feature and with two
 browser tabs, what `task check` and the browser test cannot set up: the
-backfill of existing records and two playbacks of one video at the same time.
+backfill of existing records, two playbacks of one video at the same time, and
+(revision) the search keys of entries written before the revision and the date
+list of a browser in another time zone.
 
 ## Prerequisites
 
@@ -13,6 +15,11 @@ backfill of existing records and two playbacks of one video at the same time.
   ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)).
 - A build with this feature, started on that data directory, signed in as the
   owner.
+- For the revision steps: a data directory written by the build before the
+  revision (the one with `00034_watch_history.sql` and no `title_key`), with
+  entries on at least two calendar months; and a browser whose time zone
+  differs from the server's (a phone, or the desktop browser's zone override in
+  its developer tools).
 
 ## Steps
 
@@ -25,3 +32,13 @@ backfill of existing records and two playbacks of one video at the same time.
 | Play a short video to the end, press **Replay**, then open the history | Two entries for that video | 4 |
 | While a video plays in one tab, delete its entry in another, then keep watching 10 s | Playback continues; the history shows a new entry for it | Edge Case: deleted while playing |
 | Delete one entry, then open that video's card in the library | The card's progress bar, watched mark and place under "Last played" are as before | 6 |
+
+## Revision: filter, search and date jump
+
+| Step | Expected result | Acceptance |
+| --- | --- | --- |
+| Start the revised build on the pre-revision data directory, open **History** and type part of the title of the entry whose video left the library | The entry is listed: its `title_key` was filled at startup | 11, Edge Case: not in the library |
+| Rename a listed video with a display name, then search for a word in the new name, and for a word in the old file title | Both searches list its entries, shown with the new name ([R-10](research.md#r-10-title-search-uses-the-librarys-query-syntax-on-the-title-alone)) | 11 |
+| In the browser whose zone differs from the server's, open the date list at 00:30 local time after playing a video at 23:50 the day before | The two days are listed as the browser's calendar says, not the server's | 13 |
+| Choose a month from the date list, then scroll down | The list starts with the newest entry of that month and continues into older months | 13 |
+| Choose a date, then open an entry and come back with `×` | The list is at the same date with the same filter and search | 13, [R-12](research.md#r-12-the-filter-the-search-and-the-date-live-in-the-screens-url) |
