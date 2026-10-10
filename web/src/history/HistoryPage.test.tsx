@@ -915,6 +915,40 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     expect(request.has("query")).toBe(false);
   });
 
+  it("lg 未満の検索欄は Esc で空にするとフォーカスが外れて畳まれる", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    const toggle = screen.getByRole("button", { name: "Search titles" });
+    const field = screen.getByRole("searchbox", { name: "Search titles" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    await user.click(toggle);
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    await user.type(field, "kyoto");
+    await user.keyboard("{Escape}");
+
+    expect((field as HTMLInputElement).value).toBe("");
+    await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("false"));
+    expect(document.activeElement).not.toBe(field);
+  });
+
+  it("lg 未満で空の検索欄にフォーカスがあるまま検索のボタンを押しても、欄は開いたままでフォーカスが戻る", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    const toggle = screen.getByRole("button", { name: "Search titles" });
+    const field = screen.getByRole("searchbox", { name: "Search titles" });
+
+    await user.click(toggle);
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    await user.click(toggle);
+
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("行のリンクと操作の state.from は今のクエリ文字列を持つ", async () => {
     const user = userEvent.setup();
     renderPage("/history?watch=all&q=kyoto&date=2026-09");

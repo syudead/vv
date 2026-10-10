@@ -161,6 +161,8 @@ export default function HistoryPage() {
   // lg 未満の検索欄を開いているか。検索語があるあいだは閉じない（ui-design.md「Header row」）。
   const [searchOpen, setSearchOpen] = useState(false);
   const searchShown = searchOpen || criteria.query !== "";
+  // 検索欄の blur から描画後の判定までの待ち。検索のボタンで開き直すときに取り消す。
+  const searchBlurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useScrollTopOnChange(historyCriteriaKey(criteria));
 
@@ -267,6 +269,9 @@ export default function HistoryPage() {
   }
 
   function openSearch() {
+    // 空の欄にフォーカスがあるまま検索のボタンを押すと、押した時点の blur が畳む判定を
+    // 待たせている。それより後の開く操作を優先する。
+    clearTimeout(searchBlurTimer.current);
     setSearchOpen(true);
     setTimeout(() => searchField.current?.focus(), 0);
   }
@@ -277,7 +282,8 @@ export default function HistoryPage() {
   function onSearchBlur(event: FocusEvent<HTMLDivElement>) {
     const container = event.currentTarget;
     if (container.contains(event.relatedTarget)) return;
-    setTimeout(() => {
+    clearTimeout(searchBlurTimer.current);
+    searchBlurTimer.current = setTimeout(() => {
       if (container.contains(document.activeElement)) return;
       if (searchField.current?.value === "") setSearchOpen(false);
     }, 0);
