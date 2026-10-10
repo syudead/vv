@@ -284,3 +284,57 @@ watched one at 0 (requirement 18 restates that rule). The row shows
 
 **Rationale**: The page already owns autoplay and the resume rule, so the
 history adds a link, not a player feature.
+
+## Second revision: day grouping without the entry time
+
+Requirement 3, the `UI品質` section and acceptance criterion 1 were revised
+after R-8 to R-13 were decided: the history groups its entries by day and
+shows no time on an entry, and the list is not cut finer than the day. R-14
+and R-15 are the decisions that revision adds; R-1 to R-13 stand, and R-3
+still orders the list.
+
+## R-14: The entry keeps its instant; the screen shows only the day
+
+**Decision**: `GET /api/watch-history` and `GET /api/watch-history/dates` do
+not change: an entry keeps `playedAt` as the instant R-3 records, the list
+stays ordered by it, and the screen groups the entries by the calendar day of
+`playedAt` in the browser's time zone (as `historyDays.ts` already does) and
+renders no time on a row, no vertical rule and no dots. The day heading, the
+row and the accessible names of the row link and the remove button are the
+revised `ui-design.md`'s to word.
+
+| Option | Verdict |
+| --- | --- |
+| **The instant in the API, the day on the screen** | Chosen |
+| Return the day instead of the instant (`playedAt` as `YYYY-MM-DD`) | Rejected: the order inside a day (R-3), the page cursor and the date jump (R-11) all read the instant, and the server would need the viewer's zone on the list request to cut a day, which R-11 gives only to the dates route and the `date` condition |
+| Have the server cut the list into days | Rejected in R-11: where a day starts is the viewer's, and the screen already groups by it |
+| Keep the time out of sight but in the row's markup (`sr-only`) | Rejected: a screen reader would still read a time on every row that the revised requirement 3 removes from the entry; what the accessible names say is `ui-design.md`'s decision, made against the same requirement |
+
+**Rationale**: The revision changes what the screen draws, not what a viewing
+is. The instant is what orders the history and places it on a day in any
+zone; dropping it from the API would move the day boundary to the server for
+no gain on the screen.
+
+## R-15: The `Timeline` section leaves the registry
+
+**Decision**: The `Timeline` section (`web/src/ui/patterns/timeline.tsx`,
+registry item `timeline`), its example block `timeline-example`, the
+`timeline` layout of `LoadingState`, the `timeline-label` and `timeline-time`
+tokens and the `grid-cols-timeline-*` utilities are removed in the unit that
+builds the day-grouped list; the registry rules and
+`docs/design-docs/design-system.md` stop listing them. The thumbnail tokens
+(`timeline-thumb`, `timeline-thumb-sm`) stay, under the names the revised
+`ui-design.md` gives them, because the row's thumbnail widths were decided for
+the position bar's sake and that decision stands.
+
+| Option | Verdict |
+| --- | --- |
+| **Remove the section with its block, layout and tokens** | Chosen |
+| Keep `Timeline` in the registry for a later screen | Rejected: the registry's sections are the parts the screens are built from ([design-system.md, Page patterns](../../docs/design-docs/design-system.md#page-patterns)); the history is `Timeline`'s only user, and a section no screen renders is a rule no screen checks |
+| Reduce `Timeline` in place to a form without the rule, the dots and the time | Rejected: what is left is rows under a day heading, which is the shape `GroupedList` already is for ("the day of a history", [patterns.md](../../web/registry/rules/patterns.md)); two sections of one shape under two names would make the next screen choose between them |
+
+**Rationale**: `Timeline` was added by this feature for this screen, and the
+revision removes the three things that made it a timeline. Which registry
+section draws the day-grouped list, and how its row and heading look, is the
+revised `ui-design.md`'s decision; the Plan only settles that the registry
+does not keep the section the design gives up.
