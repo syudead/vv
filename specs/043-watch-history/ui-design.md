@@ -33,13 +33,13 @@ Sources that already decide things, linked rather than repeated here:
 | --- | --- |
 | Tokens, closed scales, library density | [design-system.md, Foundations](../../docs/design-docs/design-system.md#foundations); the values in `@theme` of [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css), named here and never copied |
 | `ListPage`, `PageHeader`, `Toolbar`, the state blocks, `LoadMoreRow` | [patterns.md, List page](../../web/registry/rules/patterns.md#list-page) and [States](../../web/registry/rules/patterns.md#states) |
-| `GroupedList`: the sticky heading, the rows on one card divided by a line, the gap between groups | [patterns.md, Sections](../../web/registry/rules/patterns.md#sections) |
+| `GroupedList`: the sticky heading, the rows, the gap between groups | [patterns.md, Sections](../../web/registry/rules/patterns.md#sections), as this revision changes it |
 | `ConfirmDialog`: what it confirms, `pending`, the failure `Alert` inside it | [patterns.md, Confirm dialog](../../web/registry/rules/patterns.md#confirm-dialog) |
 | `Button`, `ToggleGroup`, `Input`, `DropdownMenu`, `Tooltip`, `Separator`, `Progress`, `Sonner`, `VideoThumbnail`: what each is for | [components.md](../../web/registry/rules/components.md) |
 | The library's search field: `/` focuses it, Esc clears it, the query is cut at 100 code points | [`SearchBox.tsx`](../../web/src/videoList/SearchBox.tsx); [013 list-url.md](../013-library-search/contracts/list-url.md) |
 | The library's watch filter words and the `ToggleGroup` that picks one | [`FilterMenu.tsx`](../../web/src/videoList/FilterMenu.tsx), `watchLabel` in [`listSummary.ts`](../../web/src/videoList/listSummary.ts) |
-| The list view row: title weight and clamp, the warning line of an unplayable video; its rows on a card | [library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection); the `VideoRow` in [`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) |
-| An owner-only list screen: entry, route, `document.title`, focus after a row leaves; its list on a card divided by lines | [030 UI design, Duplicates page](../030-video-versions/ui-design.md#duplicates-page) |
+| The list view row: title weight and clamp, the warning line of an unplayable video | [library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection); the `VideoRow` in [`VideoCard.tsx`](../../web/src/videoList/VideoCard.tsx) |
+| An owner-only list screen: entry, route, `document.title`, focus after a row leaves | [030 UI design, Duplicates page](../030-video-versions/ui-design.md#duplicates-page) |
 | Sidebar entries, the rail and the drawer, what guests do not see | [016 UI design, Sidebar](../016-single-account-auth/ui-design.md#sidebar) and [Guest degradation](../016-single-account-auth/ui-design.md#guest-degradation) |
 | Autoplay on arrival and the resume rule | `autoplayRequested` and `resumePosition` in [`pageDecisions.ts`](../../web/src/player/pageDecisions.ts) |
 | Dates are formatted by `Intl` in the catalog's locale | [`web/src/i18n/format.ts`](../../web/src/i18n/format.ts) |
@@ -70,7 +70,8 @@ view, the `Last played` sort, the sidebar's other entries, and the gate.
 ## Why this shape
 
 The screen is a list grouped by day: one heading per day, the day's rows under
-it on one card, and a wider gap between two days than between two rows. The
+it directly on the page background, with no card and no line between rows,
+and the space between two days wider than the space between two rows. The
 revised requirement 3 and `UI品質` make the day the unit of looking back and
 rule out a time on an entry and any decoration that draws the flow of time
 finer than the day; what remains of the first revision's timeline once its
@@ -78,18 +79,20 @@ rule, its dots and its time column are gone is rows under a day heading, and
 that is the shape the registry's `GroupedList` is for ("the day of a history",
 [patterns.md, Sections](../../web/registry/rules/patterns.md#sections);
 [R-15](research.md#r-15-the-timeline-section-leaves-the-registry)). The
-screen composes `GroupedList` as the registry has it. A variant of it without
-the card (rows divided by lines on the page background) was rejected: the
-repository's two other row lists, the library's list view and the duplicates
-page, both stand on a card divided by lines, so the card is what "the same
-hierarchy as the existing list screens" (`UI品質`) looks like here, and a
-surface no other screen uses would be a rule no screen checks, the reason
-R-15 gives for not keeping `Timeline`. The first design's day cards were
-turned down by the maintainer because a card of rows did not read as a record
-of time; the revision gives up that reading on purpose, and the heading alone
-now says when. A `DataTable` with a date column stays rejected: the date would
-repeat on every row, and the grouping that answers "what did I watch last
-week" cannot be drawn by a table.
+maintainer compared the two forms of that shape on a canvas, the rows on one
+card per day (the registry's current `GroupedList`) and the rows on the page
+background (the first revision's look minus the time, the rule and the dots),
+and chose the second: the first design's day cards had already been turned
+down on the running screen as a list of videos that happens to have a
+heading, and a frame per day draws a box the viewer does not read, where the
+gap alone marks the break (`UI品質`, `余白のリズム`). So `GroupedList`
+changes form rather than gaining a variant: its rows lose the card and the
+line, and the history is its one user, so a card form kept beside the plain
+one would be a rule no screen checks, the reason R-15 gives for not keeping
+`Timeline` ([Changes to the design system](#changes-to-the-design-system)).
+A `DataTable` with a date column stays rejected: the date would repeat on
+every row, and the grouping that answers "what did I watch last week" cannot
+be drawn by a table.
 
 The heading carries the whole of "when": "Today", "Yesterday" or the weekday,
 then the date in the muted colour, on one line. The parent Issue's `UI品質`
@@ -214,8 +217,8 @@ asks.
 | `JumpList` section (stands) | `jump-list` | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s, with an optional `action` slot after a last divider; a vertical list under an `h2` from `lg` and a horizontally scrolling strip of `outline` `sm` chips below, with the heading for screen readers only and no `action`; see [Jump to date](#jump-to-date) |
 | `Button` variant `ghost-destructive` (stands) | `button` | `ghost`'s shape with `text-destructive` and a `bg-destructive-soft` hover, the button form of `DropdownMenuItem variant="destructive"`; for a destructive action that stands among plain actions outside a menu, after a `Separator`, and always opens a `ConfirmDialog`. One per screen |
 | `Timeline` section (removed) | `timeline`, block `timeline-example` | Leaves the registry with its rules row, its row in `design-system.md` and the `timeline` and `timeline-example` items of the manifest ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)). The history was its only user |
-| `GroupedList` section (used as it is) | `grouped-list`, block `grouped-list-example` | Unchanged in form: the sticky `h2`, the rows on one card divided by a line, groups `gap-6` apart. The example block loses the time under each row's title, because the block stands for the history and the history shows no time; its rows keep the thumbnail, the title and the `×` |
-| `LoadingState` `layout="grouped"` (replaces `layout="timeline"`) | `loading-state` | `Skeleton` shapes of a grouped list: a heading-sized bar, then one card with three rows, each a thumbnail-sized block (`w-history-thumb-sm`, `lg:w-history-thumb`) and two text bars, divided by lines as the rows will be. The `timeline` layout leaves |
+| `GroupedList` section (changed) | `grouped-list`, block `grouped-list-example` | The heading stays: an `h2` in `text-sm font-semibold` that sticks under the top bar while its group scrolls. The rows lose the card (`bg-card`, `rounded-md border`) and the line between them: each row is `py-2` on the page background with no horizontal padding, so its first element aligns with the heading, and the section still owns the row's one-line layout, `gap-2` between the heading and its rows and `gap-6` between groups. Its rules row, its row in `design-system.md` and the example block change with it; the block also loses the time under each row's title, because it stands for the history and the history shows no time, and keeps the thumbnail, the title and the `×` |
+| `LoadingState` `layout="grouped"` (replaces `layout="timeline"`) | `loading-state` | `Skeleton` shapes of a grouped list: a heading-sized bar, then three rows on the page background, each a thumbnail-sized block (`w-history-thumb-sm`, `lg:w-history-thumb`) and two text bars, `py-2` with no line, as the rows will be. The `timeline` layout leaves |
 
 Named steps in `tokens.css`: `list-aside` stands; `timeline-label` and
 `timeline-time` leave with the section, and so do the `grid-cols-timeline-*`
@@ -291,14 +294,14 @@ per day, newest day first, with the day's entries as `GroupedListItem`s in
 the order the API gives (R-3). Entries are grouped by the calendar day of
 `playedAt` in the browser's time zone
 ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day)).
-The section owns the heading's place, the card, the line between rows and
-every gap; the screen passes the heading's words and the row's content.
+The section owns the heading's place, the rows' padding and every gap; the
+screen passes the heading's words and the row's content.
 
 | Part | Form |
 | --- | --- |
 | Day heading | The section's `h2`, one line: "Today", "Yesterday" or the weekday in `text-sm font-semibold text-foreground`, then a `·` hidden from assistive technology, then the date in `text-xs text-muted-foreground` ("Today · Oct 10", "Tuesday · Oct 7"). It sticks under the top bar (`top-navbar`) while its rows scroll past, and the next day's heading pushes it away. The same at every width |
-| Rows inside a day | On one card (`bg-card`, `rounded-md border border-border`), divided by a line, with no gap between them: the section's form |
-| Between day groups | The section's `gap-6`, visibly wider than the line between two rows, so the days read as blocks down the page |
+| Rows inside a day | Directly on the page background, `py-2` each, with no card, no line and no gap between them: the section's form as this revision changes it. The row's `hover:bg-accent` fill is the only surface a row ever shows |
+| Between day groups | The section's `gap-6`, visibly wider than the `py-2` between two rows, so the space alone marks the break and the days read as blocks down the page |
 | Nothing else | No vertical rule, no dot, no time on a row and no date on a row (`UI品質`, `時系列の粒度`) |
 
 The day boundary is the viewer's local midnight, so an entry from 11:50 PM
@@ -333,8 +336,8 @@ centred in the row, as the list view's cells are.
 
 The thumbnail and the text column are one `Link` to `/videos/{video.id}` with
 `state.from` the current history URL. The link covers the row from the
-thumbnail to the actions, with `hover:bg-accent rounded-md` inside the card's
-row; only the `×` and the resume or start-over button sit outside it. A press
+thumbnail to the actions, with `hover:bg-accent rounded-md`; only the `×` and
+the resume or start-over button sit outside it. A press
 anywhere on the row but the buttons therefore opens the video as requirement
 5 says: the page resumes by its own rule, without autoplay.
 
@@ -519,7 +522,7 @@ present. A `404` re-read is not a state of its own: the body stays in
 
 | State | What the screen shows |
 | --- | --- |
-| Loading | `LoadingState` `layout="grouped"` in the body: a heading-sized bar and one card of three thumbnail-sized rows; the header row with its filter and search; the aside with its items when the dates have arrived, its failed form when their request failed, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
+| Loading | `LoadingState` `layout="grouped"` in the body: a heading-sized bar and three thumbnail-sized rows on the page background; the header row with its filter and search; the aside with its items when the dates have arrived, its failed form when their request failed, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
 | Load failed | `ErrorState` with "Couldn't load the history" and `Retry`; the aside shows "No dates to jump to" |
 | Empty | `EmptyState` with lucide `History`, "No watch history" and "Videos you play are listed here, newest first."; no action. The filter and the search stay usable but find nothing. The aside shows "No dates to jump to"; below `lg` no strip |
 | No match | `EmptyState` with lucide `SearchX`, "No history matches these conditions", "Try a different search or change the filters." and the `default` `sm` action "Clear filters", which removes `watch`, `q` and `date`. The filter keeps its pressed option and the search its text, so the viewer sees what excluded everything; the aside shows "No dates to jump to" or, under a `date` the new dates no longer hold, the dates with nothing pressed |
@@ -555,7 +558,7 @@ rail. The day heading has one form at every width.
 
 | Width | Layout |
 | --- | --- |
-| 360px | The sidebar is the drawer. The header row is the title with the search toggle and `More` at its right; under it the filter's three options fill the toolbar row, and the search field appears on its own line while open; then the strip of date chips, scrolling sideways with the chosen chip in view. Each day is its heading ("Today · Oct 10") stuck under the top bar and one card of rows; a row is the `w-history-thumb-sm` thumbnail at the left with the title and the position text beside it and the `×` at the row's end, and the `outline` `sm` "Resume" or "Start over" button under the text column. A long title clamps to two lines and never pushes the `×` out of the row. The dialog spans the width with the dialog's own margin |
+| 360px | The sidebar is the drawer. The header row is the title with the search toggle and `More` at its right; under it the filter's three options fill the toolbar row, and the search field appears on its own line while open; then the strip of date chips, scrolling sideways with the chosen chip in view. Each day is its heading ("Today · Oct 10") stuck under the top bar and its rows on the page background, with no card and no line; a row is the `w-history-thumb-sm` thumbnail at the left with the title and the position text beside it and the `×` at the row's end, and the `outline` `sm` "Resume" or "Start over" button under the text column. A long title clamps to two lines and never pushes the `×` out of the row. The dialog spans the width with the dialog's own margin |
 | 768px | The rail sidebar. The header row as at 360px; the strip as at 360px. The rows keep the compact form of 360px: the `w-history-thumb-sm` thumbnail with the text column beside it, the `×` at the row's end and the button under the text; the wider text column leaves more of a long title on its two lines |
 | 1280px | The rows take the one-line form from `lg`: the `w-history-thumb` thumbnail, the title, the folder line and the position bar in the middle, and the resume or start-over button and the `×` at the row's end. The header row holds the title, the filter and the search field at the row's end; no search toggle and no `More`. The `w-list-aside` side column stands at the right of the list under "Jump to date", stuck under the top bar, with "Clear history…" after its last divider. The dialog is `max-w-lg` centred |
 
@@ -586,9 +589,9 @@ was removed, one entry with an empty title and one video in a subfolder.
    and holds a thumbnail, a title, one folder line, one position line and two
    buttons, with no tags, favorite, size or quality. From `lg` the position
    bar and text add no row height beyond the thumbnail's.
-4. **Spacing rhythm**: the gap between two day cards is visibly wider than the
-   line between two rows, and rows inside a day have no gap, so the days read
-   as blocks down the page. When a day's rows scroll past, its heading stays
+4. **Spacing rhythm**: no card, frame or line is drawn around or between the
+   rows; the space between two days is visibly wider than the space between
+   two rows, so the days read as blocks down the page from the spacing alone. When a day's rows scroll past, its heading stays
    under the top bar until the next day's heading pushes it away.
 5. **Typography**: the title is `text-sm` `font-medium` as the list view
    row's title; the folder line and the position are `text-xs`
@@ -639,8 +642,7 @@ was removed, one entry with an empty title and one video in a subfolder.
 12. **Removing and clearing leave playback alone**: after removing a row and
     after clearing, the library card of that video shows the same progress
     bar, watched mark and place under "Last played" as before (acceptance
-    criterion 6). Removing the last row of a day removes its heading and card
-    with it.
+    criterion 6). Removing the last row of a day removes its heading with it.
 13. **Confirmation**: "Clear history…" opens the dialog; Cancel and Esc close
     it with the list unchanged; "Clear" shows "Clearing…", then the empty
     state with the conditions dropped. While the request runs neither
@@ -655,7 +657,8 @@ was removed, one entry with an empty title and one video in a subfolder.
     every row; a vertical rule, dots or any other mark that draws the order
     inside a day; the title and the day heading in the same size and weight;
     a filled or large filter whose pressed option is brighter than any title;
-    the side column drawn on a card or in `primary`; day cards with no gap
-    between them, so the days run into one list; "Resume" drawn as a
+    the side column drawn on a card or in `primary`; the rows of a day on a
+    card, or a line between two rows; days so close together that they run
+    into one list; "Resume" drawn as a
     `default` cyan button on every row; `×` drawn in `destructive` on every
     row; "Clear history…" above the dates or as a filled button.
