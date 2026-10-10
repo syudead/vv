@@ -619,7 +619,7 @@
       "name": "list-page",
       "type": "registry:ui",
       "title": "ListPage",
-      "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or timeline) with an optional aside column from lg, selection bar.",
+      "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or grouped list) with an optional aside column from lg, selection bar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#list-page (item vv-rules).",
       "files": [
         {
@@ -788,24 +788,11 @@
       "name": "grouped-list",
       "type": "registry:ui",
       "title": "GroupedList",
-      "description": "Section: rows under headings that stick below the top bar, each group's rows on one card divided by a line.",
+      "description": "Section: rows under headings that stick below the top bar, each group's rows on the page background with no card and no line, groups further apart than rows.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
           "path": "src/ui/patterns/grouped-list.tsx",
-          "type": "registry:ui"
-        }
-      ]
-    },
-    {
-      "name": "timeline",
-      "type": "registry:ui",
-      "title": "Timeline",
-      "description": "Section: rows on one vertical rule, grouped under a label that stands beside its group from sm and above it below; the section owns the rule, the dots, the label and time columns and every gap.",
-      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
-      "files": [
-        {
-          "path": "src/ui/patterns/timeline.tsx",
           "type": "registry:ui"
         }
       ]
@@ -853,7 +840,7 @@
       "name": "loading-state",
       "type": "registry:ui",
       "title": "LoadingState",
-      "description": "State: Skeleton shapes of the final grid, table or timeline in the body slot. Uses skeleton.",
+      "description": "State: Skeleton shapes of the final grid, table or grouped list in the body slot. Uses skeleton.",
       "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
       "files": [
         {
@@ -935,28 +922,11 @@
       "name": "grouped-list-example",
       "type": "registry:block",
       "title": "Grouped list example",
-      "description": "A list page body of rows grouped under day headings, each row a thumbnail, a title, a time and a quiet remove button.",
+      "description": "A list page body of rows grouped under day headings, each row a thumbnail, a title and a quiet remove button, with no time on a row.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
           "path": "src/designSystem/blocks/grouped-list-example.tsx",
-          "type": "registry:component"
-        },
-        {
-          "path": "src/designSystem/blocks/list-page-example.tsx",
-          "type": "registry:component"
-        }
-      ]
-    },
-    {
-      "name": "timeline-example",
-      "type": "registry:block",
-      "title": "Timeline example",
-      "description": "A list page of rows on a day timeline, each row a time, a thumbnail, a title, a folder line, a position bar, a resume action and a quiet remove button, with the filter and the search on the header row and a jump list in the aside.",
-      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
-      "files": [
-        {
-          "path": "src/designSystem/blocks/timeline-example.tsx",
           "type": "registry:component"
         },
         {

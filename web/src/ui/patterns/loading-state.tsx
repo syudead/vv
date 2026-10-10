@@ -8,17 +8,17 @@ import { CardGrid, type CardSize } from "./card-grid";
 export interface LoadingStateProps {
   /** 読み込んでいるものの名前（「Loading videos」）。支援技術に読まれる。 */
   label: string;
-  /** 出来上がりの形: カードのグリッドか、表の行か、時間軸（Timeline）の行か。 */
-  layout: "grid" | "table" | "timeline";
+  /** 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か。 */
+  layout: "grid" | "table" | "grouped";
   /** grid のときのカードの大きさ。データが来たときの CardGrid と同じにする。 */
   size?: CardSize;
-  /** 並べる数。既定は grid と table で 8、timeline で 3。 */
+  /** 並べる数。既定は grid と table で 8、grouped で 3。 */
   count?: number;
 }
 
 export function LoadingState({ label, layout, size = 1, count }: LoadingStateProps) {
   const keys = Array.from(
-    { length: count ?? (layout === "timeline" ? 3 : 8) },
+    { length: count ?? (layout === "grouped" ? 3 : 8) },
     (_, index) => index,
   );
   return (
@@ -33,20 +33,17 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
             </div>
           ))}
         </CardGrid>
-      ) : layout === "timeline" ? (
-        // Timeline と同じ列: 見出しの塊と、1 本の線の上のサムネイルの大きさの行。
-        <div className="grid lg:grid-cols-timeline-group">
-          <div className="border-l border-border pb-1 pl-4 lg:border-l-0 lg:pt-2 lg:pr-3 lg:pb-0 lg:pl-0">
-            <div className="flex flex-col gap-1">
-              <Skeleton className="h-4 w-16" />
-              <Skeleton className="h-3 w-12" />
-            </div>
+      ) : layout === "grouped" ? (
+        // GroupedList と同じ形: 見出しの大きさの棒と、地の面の上のサムネイルの大きさの行。
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 py-2">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-3 w-12" />
           </div>
-          <div className="flex flex-col border-l border-border">
+          <div className="flex flex-col">
             {keys.map((key) => (
-              <div key={key} className="flex items-start gap-3 py-2 pl-4">
-                <Skeleton className="hidden h-3 w-timeline-time lg:block" />
-                <Skeleton className="aspect-video w-timeline-thumb-sm shrink-0 lg:w-timeline-thumb" />
+              <div key={key} className="flex items-center gap-3 py-2">
+                <Skeleton className="aspect-video w-history-thumb-sm shrink-0 lg:w-history-thumb" />
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <Skeleton className="h-4 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />

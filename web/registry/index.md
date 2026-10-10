@@ -51,7 +51,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-page-example`        | Block         | Copy to start a list page                                                    |
 | `list-states-example`      | Block         | The list body in every state                                                 |
 | `load-more-row`            | State         | The next page loading, or failed with Retry                                  |
-| `loading-state`            | State         | Skeleton shapes of the final layout: grid, table or timeline                 |
+| `loading-state`            | State         | Skeleton shapes of the final layout: grid, table or grouped list             |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
@@ -76,8 +76,6 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `tentative-mark`           | vv component  | The mark after a tentative tag                                               |
 | `textarea`                 | Component     | Several lines of text                                                        |
 | `thumbnail-backdrop`       | vv component  | Blurred fill behind a portrait thumbnail                                     |
-| `timeline`                 | Section       | Rows on a vertical rule grouped by day, such as a history                    |
-| `timeline-example`         | Block         | Copy to start a day timeline of rows                                         |
 | `toggle`                   | Component     | A button that stays pressed, such as an applied filter                       |
 | `toggle-group`             | Component     | Exclusive or independent toggles: view mode, direction                       |
 | `toolbar`                  | Section       | Search, filters, view controls of a list                                     |

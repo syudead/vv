@@ -42,15 +42,15 @@ export function groupByDay(entries: readonly WatchHistoryEntry[]): HistoryDay[] 
   return Array.from(days.values());
 }
 
-/** DayLabel は時間軸の日の見出しの 2 行である。 */
+/** DayLabel は日の見出しの 2 つの部分である（「Today · Oct 10」）。 */
 export interface DayLabel {
-  /** 1 行目: 「Today」「Yesterday」、ほかは曜日（「Tuesday」）。 */
+  /** 前半: 「Today」「Yesterday」、ほかは曜日（「Tuesday」）。 */
   name: UiText;
-  /** 2 行目: 月と日（「Oct 7」）。今年でなければ年も付く。 */
+  /** 後半: 月と日（「Oct 7」）。今年でなければ年も付く。 */
   date: UiText;
 }
 
-/** dayLabel はまとまりの見出しである（ui-design.md「Timeline」）。 */
+/** dayLabel はまとまりの見出しである（ui-design.md「Day groups」）。 */
 export function dayLabel(day: Date, now: Date): DayLabel {
   const today = startOfDay(now);
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);

@@ -2,7 +2,7 @@
   "$schema": "https://ui.shadcn.com/schema/registry-item.json",
   "name": "list-page",
   "title": "ListPage",
-  "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or timeline) with an optional aside column from lg, selection bar.",
+  "description": "Page skeleton: header row, toolbar (beside the header from lg with toolbarRow=header), band, body (grid, table or grouped list) with an optional aside column from lg, selection bar.",
   "files": [
     {
       "path": "src/ui/patterns/list-page.tsx",
