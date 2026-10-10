@@ -86,6 +86,25 @@ func TestWatchHistoryPeriod(t *testing.T) {
 			t.Errorf("%q の End = %v, want %v", value, got, want)
 		}
 	}
+	// America/Santiago は 2026-09-06 の 0 時に 1 時へ進むので、2026-09-05 の End は次の日の
+	// 1 時（-03）であり、その日の 23 時（-04）ではない。
+	santiago, err := time.LoadLocation("America/Santiago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	advance := time.Date(2026, 9, 6, 4, 0, 0, 0, time.UTC)
+	period, err := ParseWatchHistoryPeriod("2026-09-05")
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := period.End(santiago)
+	if !end.Equal(advance) {
+		t.Errorf("2026-09-05 の Santiago での End = %v, want %v", end, advance)
+	}
+	// 選んだ日の最後の瞬間は End より前で、日付の一覧と同じく loc の暦でその日に数えられる。
+	if last := end.Add(-time.Millisecond).In(santiago).Format(time.DateOnly); last != "2026-09-05" {
+		t.Errorf("2026-09-05 の End の直前の日 = %s", last)
+	}
 	for _, value := range []string{
 		"", "2026-9", "2026-9-15", "2026-09-5", "2026-13", "2026-02-30", "2026/09", "2026-09-15T00:00",
 	} {

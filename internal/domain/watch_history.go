@@ -180,11 +180,22 @@ func ParseWatchHistoryPeriod(value string) (WatchHistoryPeriod, error) {
 	}
 }
 
-// End は loc で見たその日か月が終わった直後の時刻（次の日か次の月の 0 時）を返す
+// End は loc で見たその日か月が終わった直後の時刻（次の日か次の月の最初の時刻）を返す
 // （research.md R-11）。夏時間の切り替えの日も loc の暦で数える。
+//
+// 0 時に時計が進む地域（America/Santiago など）では次の日の 0 時が無く、time.Date は切り替え前の
+// 時差でそれを解いて前の日の 23 時を返す。そのときは切り替えの時刻、つまり次の日の最初の実在する
+// 時刻を返し、日付の一覧（ListWatchHistoryDays）がその日に数える最後の 1 時間を落とさない。
 func (p WatchHistoryPeriod) End(loc *time.Location) time.Time {
+	year, month, day := p.Year, p.Month, p.Day+1
 	if p.Day == 0 {
-		return time.Date(p.Year, p.Month+1, 1, 0, 0, 0, 0, loc)
+		month, day = p.Month+1, 1
 	}
-	return time.Date(p.Year, p.Month, p.Day+1, 0, 0, 0, 0, loc)
+	end := time.Date(year, month, day, 0, 0, 0, 0, loc)
+	// 正規化した次の日（月や年の繰り上がりを含む）と、end の loc での日付を比べる。
+	next := time.Date(year, month, day, 12, 0, 0, 0, time.UTC)
+	if y, m, d := end.Date(); y != next.Year() || m != next.Month() || d != next.Day() {
+		_, end = end.ZoneBounds()
+	}
+	return end
 }

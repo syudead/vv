@@ -155,6 +155,30 @@ func TestListWatchHistorySearchesTitles(t *testing.T) {
 	}
 }
 
+// 検索式は動画の所在 1 つに対して評価する。語ごとに別の所在で満たした動画の件は当たらない
+// （ライブラリの要件 9 と同じ、R-10 の「AND, OR and NOT as in the library」）。
+func TestListWatchHistorySearchUsesOneLocation(t *testing.T) {
+	db := migratedDB(t)
+	upsertAll(t, db,
+		listingFile(fixturePath("/media/a/sunrise.mp4"), "Sunrise", "key-two", 1),
+		listingFile(fixturePath("/media/b/moonlight.mp4"), "Moonlight", "key-two", 1),
+	)
+	entry := insertHistory(t, db, "key-two", "Sunrise", 1000)
+	fillTitleKeys(t, db)
+
+	for text, want := range map[string][]int64{
+		"sunrise":           {entry},
+		"moonlight":         {entry},
+		"sunrise moonlight": nil,
+		"sunrise -sunrise":  nil,
+		"sunrise -moon":     {entry},
+	} {
+		if got := queryHistory(t, db, searchQuery(text)); !slices.Equal(got, want) {
+			t.Errorf("query=%q = %v, want %v", text, got, want)
+		}
+	}
+}
+
 // フレーズは改行を含む題名を、動画がライブラリにある間も離れた後も見つける（R-10）。
 func TestListWatchHistoryPhraseMatchesTitleWithNewline(t *testing.T) {
 	db := migratedDB(t)

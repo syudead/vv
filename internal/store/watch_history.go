@@ -146,24 +146,44 @@ func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery
 		// 動画の無い件は「すべて」にだけ出る（Edge Case）。
 		conditions = append(conditions, `hv.id is not null and `+watch)
 	}
-	for _, clause := range query.Search.Clauses {
+	if !query.Search.Empty() {
+		// 式全体を所在 1 行に対して評価する。語ごとに別の所在で満たした動画は当たらない
+		// （ライブラリの chosenLocationsCTE と同じ、要件 9）。
+		locationExpr, locationArgs := titleSearchCondition(query.Search, func(text string) (string, []any) {
+			return `(instr(` + searchKeyTitleLine("sl") + `, ?) > 0 or instr(` +
+				searchKeyDisplayNameLine("sl") + `, ?) > 0)`, []any{text, text}
+		})
+		snapshotExpr, snapshotArgs := titleSearchCondition(query.Search, func(text string) (string, []any) {
+			return `instr(coalesce(h.title_key, ''), ?) > 0`, []any{text}
+		})
+		conditions = append(conditions, `((hv.id is not null and exists (select 1 from video_locations sl where sl.video_id = hv.id and `+
+			visibleLocationCondition("sl", audience)+` and `+locationExpr+`)) or (hv.id is null and `+snapshotExpr+`))`)
+		args = append(args, locationArgs...)
+		args = append(args, snapshotArgs...)
+	}
+	return from, conditions, args
+}
+
+// titleSearchCondition は検索式を、語ごとに match が返す条件句でつないだ 1 つの条件句にする。
+// 節は and、節の中の語は or、除外の語は not でつなぐ（searchExprCondition と同じ）。
+func titleSearchCondition(expr domain.SearchExpr, match func(text string) (string, []any)) (string, []any) {
+	var args []any
+	clauses := make([]string, 0, len(expr.Clauses))
+	for _, clause := range expr.Clauses {
 		terms := make([]string, 0, len(clause.Terms))
 		for _, term := range clause.Terms {
 			// search_key と title_key の題名の中の改行は空白にしてあるので、語の側もそろえる
 			// （searchExprCondition と同じ）。
-			text := strings.ReplaceAll(term.Text, "\n", " ")
-			condition := `((hv.id is not null and exists (select 1 from video_locations sl where sl.video_id = hv.id and ` +
-				visibleLocationCondition("sl", audience) + ` and (instr(` + searchKeyTitleLine("sl") + `, ?) > 0 or instr(` +
-				searchKeyDisplayNameLine("sl") + `, ?) > 0))) or (hv.id is null and instr(coalesce(h.title_key, ''), ?) > 0))`
-			args = append(args, text, text, text)
+			condition, termArgs := match(strings.ReplaceAll(term.Text, "\n", " "))
 			if term.Negated {
 				condition = `not ` + condition
 			}
 			terms = append(terms, condition)
+			args = append(args, termArgs...)
 		}
-		conditions = append(conditions, `(`+strings.Join(terms, " or ")+`)`)
+		clauses = append(clauses, `(`+strings.Join(terms, " or ")+`)`)
 	}
-	return from, conditions, args
+	return `(` + strings.Join(clauses, " and ") + `)`, args
 }
 
 // searchKeyTitleLine は所在（別名 alias）の search_key の 1 行目（題名の照合形）を返す式である。
