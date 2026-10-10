@@ -50,6 +50,7 @@ import VideoPlayer, {
   initialPlayerStatus,
   type PlayerStatus,
 } from "./VideoPlayer";
+import AutoTagButton from "./AutoTagButton";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
 import { useProgressSaving } from "./useProgressSaving";
@@ -525,6 +526,11 @@ export default function VideoPage() {
                   // （specs/033-video-dates/ui-design.md「Refresh after edits」）。
                   onChanged={() => void refresh()}
                 />
+              )}
+              {owner && (
+                // タグの並びのすぐ下で、この動画のタグを判定モデルに聞く
+                // （docs/design-docs/auto-tagging.md）。
+                <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
               )}
               {owner && (
                 // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。

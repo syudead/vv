@@ -25,6 +25,9 @@ type eventSubscribers struct {
 	Workers map[domain.JobKind]waker
 	// ReleaseArtifacts は参照の無くなった内容の生成物を消す。
 	ReleaseArtifacts func(domain.ContentUnreferenced)
+	// ThumbnailFinished は動画の代表サムネイルの段階の成否が決まったことを受け取る。
+	// 自動タグ付けが、入なら判定に回す（docs/design-docs/auto-tagging.md）。
+	ThumbnailFinished func(videoID int64)
 }
 
 // eventSubscriptions は、停止の順番に合わせて購読をやめる関数である。
@@ -85,6 +88,17 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	// 指紋は完成したシーク用スプライトを待つ（domain.ClaimConditionFor）が、その仕事は
 	// シーク用サムネイルの完了を書く取引で積まれる（JobsQueued）ので、ほかの段階の成否で
 	// 起こし直す必要は無い。
+	// 自動タグ付けはサムネイルを手がかりにするので、代表サムネイルの段階を終えた動画を
+	// 判定に回す。失敗した動画も、題名・ファイル名・フォルダだけで判定する。
+	if s.ThumbnailFinished != nil {
+		finished := s.ThumbnailFinished
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "auto-tagging after thumbnail",
+			func(event domain.VideoIngestChanged) {
+				if event.Stage == domain.JobThumbnail {
+					finished(event.VideoID)
+				}
+			}))
+	}
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {
 			stop()

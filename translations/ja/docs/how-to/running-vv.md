@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 943b87948952ca02c1dfa8cbc07cfe65f9bf3ddcdc3dba251dcfb78728061555
+sourceHash: 7eda40a6898df58e37b9738cda46f9974d380a2ad9ae49cfddf7bbf875c59c91
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -258,6 +258,7 @@ Docker の構成では、アプリケーションのデータを `vv_data` ボ�
 | 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`folder_groups`、`folder_group_members`、`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
 | ユーザーデータ | `playback_progress`、`tags`、`tag_names`、`video_tags`、`rejected_tag_names`、`public_videos`、`video_overrides`、`video_edits`、`video_favorites`、`folder_favorites`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
 | 設定 | `account`、`media_folders`、`settings`、`api_tokens` | バックアップ、または設定し直す |
+| 自動タグ付けの記録 | `auto_tag_queue` | Settings の Auto-tagging で動画をタグ付けし直す。所有者が外したタグが戻ることがある ([自動タグ付け](../design-docs/auto-tagging.md)) |
 | セッション | `sessions` | ログインし直す |
 
 ユーザーデータは再スキャンで再現される値（内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス）をキーにし、動画の行の id をキーにすることはないため、インデックスを再構築しても残る。メディアフォルダを登録するまでスキャンは開始できず、失った API トークンは発行し直す必要がある。

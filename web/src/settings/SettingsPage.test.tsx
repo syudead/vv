@@ -80,6 +80,17 @@ describe("SettingsPage", () => {
       // 「Auto-import」区画は AutoImportSection.test.tsx が確かめる。ここでは切れている。
       if (String(input) === "/api/settings/auto-import")
         return Promise.resolve(json({ enabled: false, watch: { state: "off" } }));
+      // 「Auto-tagging」区画は AutoTaggingSection.test.tsx が確かめる。ここでは既定値を返す。
+      if (String(input) === "/api/settings/auto-tagging")
+        return Promise.resolve(
+          json({
+            enabled: false,
+            endpoint: "http://127.0.0.1:11434",
+            model: "clef-flash",
+            threshold: 0.8,
+            queue: { queued: 0, running: 0, done: 0, failed: 0 },
+          }),
+        );
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({

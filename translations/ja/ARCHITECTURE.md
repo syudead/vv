@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 14c991e749b35fee8fcf8a44808e1e7d9d6e77853679644ec5dc53f2413e0824
+sourceHash: 9dc3290e16eaa62001402a53c0b9f04bf5dac95cca72ded90cef4a290ab7aea1
 ---
 
 # アーキテクチャ {#architecture}
@@ -60,8 +60,8 @@ flowchart LR
 | 層 | パッケージ | 担当 | インポートしてはならないもの |
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
-| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
-| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password` | 外部とのやり取り | 互いと `internal/app` |
+| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
+| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`clef` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
 `internal/app` は、ストレージ、`ffmpeg`、生成ファイルに、自身が宣言するインターフェースを通してのみ到達する。そのため単体テストは SQLite、`ffmpeg`、HTTP サーバーなしで動く。
@@ -117,6 +117,7 @@ flowchart LR
 | `internal/httpapi` | 画面用 API、`/api/events`、認証の境界、クライアントが受け付けるときの JSON と画面用ファイルの gzip | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
 | 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
+| `internal/clef`、`internal/app` (`AutoTagger`) | 動画に合う既存のタグを Ollama 上の Clef 分類器に問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
 | `internal/app` (`Auth`) | 初期設定、ログインの試行制限、セッション、API トークン | [016 data-model](specs/016-single-account-auth/data-model.md)、[026 data-model](specs/026-external-api/data-model.md) |

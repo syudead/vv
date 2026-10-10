@@ -144,6 +144,11 @@ func (e *Events) Handle(event domain.Event) {
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
+	case domain.AutoTagApplied:
+		// 自動タグ付けの結果は、一覧と動画ページにタグを読み直させる（docs/design-docs/auto-tagging.md）。
+		for _, id := range event.VideoIDs {
+			e.VideoChanged(id)
+		}
 	}
 }
 

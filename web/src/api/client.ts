@@ -92,6 +92,11 @@ export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
+export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
+export type AutoTaggingCheck = components["schemas"]["AutoTaggingCheck"];
+export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
+export type UpdateAutoTaggingSettings =
+  components["schemas"]["UpdateAutoTaggingSettingsRequest"];
 export type FolderWatch = components["schemas"]["FolderWatch"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
@@ -814,6 +819,69 @@ export function updateAutoImportSettings(
     body: JSON.stringify({ enabled }),
     signal,
   });
+}
+
+/**
+ * getAutoTaggingSettings は自動タグ付けの設定と、判定の待ち行列の件数を取得する
+ * （docs/design-docs/auto-tagging.md）。
+ */
+export function getAutoTaggingSettings(
+  signal?: AbortSignal,
+): Promise<AutoTaggingSettings> {
+  return request<AutoTaggingSettings>("/api/settings/auto-tagging", { signal });
+}
+
+/** updateAutoTaggingSettings は設定を保存し、保存後の状態を返す。判定は始めない。 */
+export function updateAutoTaggingSettings(
+  settings: UpdateAutoTaggingSettings,
+  signal?: AbortSignal,
+): Promise<AutoTaggingSettings> {
+  return request<AutoTaggingSettings>("/api/settings/auto-tagging", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/** checkAutoTagging は問い合わせ先と模型で判定できるかを確かめる。設定は保存しない。 */
+export function checkAutoTagging(
+  endpoint: string,
+  model: string,
+  signal?: AbortSignal,
+): Promise<AutoTaggingCheck> {
+  return request<AutoTaggingCheck>("/api/settings/auto-tagging/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ endpoint, model }),
+    signal,
+  });
+}
+
+/** startAutoTagging はライブラリの動画を判定に回し、積んだ件数を返す。 */
+export async function startAutoTagging(
+  scope: AutoTaggingScope,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await request<components["schemas"]["AutoTaggingQueued"]>(
+    "/api/auto-tagging/runs",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+      signal,
+    },
+  );
+  return result.queued;
+}
+
+/** autoTagVideo は動画 1 本を判定に回し、積んだか（判定中なら偽）を返す。 */
+export async function autoTagVideo(id: number, signal?: AbortSignal): Promise<boolean> {
+  const result = await request<components["schemas"]["AutoTagVideoResult"]>(
+    `/api/videos/${String(id)}/auto-tag`,
+    { method: "POST", signal },
+  );
+  return result.queued;
 }
 
 /** listAPITokens は発行済みの API トークンを作成日時の新しい順で取得する。平文は含まない。 */
