@@ -37,14 +37,15 @@ no older component is left.
 
 Item `button`. An action that happens when pressed.
 
-| Variant       | Use it for                                                                           |
-| ------------- | ------------------------------------------------------------------------------------ |
-| `default`     | The one main action of an area (a dialog, a form, an empty state); at most one       |
-| `outline`     | Secondary actions next to a `default` one, and toolbar triggers (filter, sort, view) |
-| `secondary`   | A quieter filled action where an outline would be too strong                         |
-| `ghost`       | Actions in a dense row: the selection bar, menus' triggers, clearing a field         |
-| `destructive` | The action that deletes or rejects, named by its verb, in a confirmation             |
-| `link`        | An action that reads as a link inside text                                           |
+| Variant             | Use it for                                                                                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `default`           | The one main action of an area (a dialog, a form, an empty state); at most one                                                                                                                |
+| `outline`           | Secondary actions next to a `default` one, and toolbar triggers (filter, sort, view)                                                                                                          |
+| `secondary`         | A quieter filled action where an outline would be too strong                                                                                                                                  |
+| `ghost`             | Actions in a dense row: the selection bar, menus' triggers, clearing a field                                                                                                                  |
+| `destructive`       | The action that deletes or rejects, named by its verb, in a confirmation                                                                                                                      |
+| `ghost-destructive` | A destructive action that stands among plain actions outside a menu, after a `Separator` (clearing a history from its side column); it always opens a `ConfirmDialog`. At most one per screen |
+| `link`              | An action that reads as a link inside text                                                                                                                                                    |
 
 Sizes are `sm`, `default` and `lg`, and `icon-sm` and `icon` for icon-only
 buttons. Combine an icon-only button with `Tooltip`; put a link that looks like

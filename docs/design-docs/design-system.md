@@ -149,7 +149,7 @@ The scales are closed:
 | Scale | Steps |
 | --- | --- |
 | Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold` |
-| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, popover and combobox widths) |
+| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, the history row's thumbnail columns, the list page's side column, popover and combobox widths) |
 | Radius | `sm`, `md`, `lg`, `full` |
 | Shadow | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces |
 | Motion | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion |
@@ -196,7 +196,7 @@ with and when not to use it is in
 
 | Component | Item | Replaces |
 | --- | --- | --- |
-| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
 | `Input`, `Textarea`, `Label`, `Field` | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>` |
 | `Select`, `RadioGroup` | `select`, `radio-group` | Raw `<select>`, the sort radio columns |
 | `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox` |
@@ -230,7 +230,11 @@ because the attribute selector upstream uses is an arbitrary value,
 the shared focus ring shows in full inside the `Command`, and `CommandInput`
 takes a class for the frame around the input and an element after the input,
 so the vv `TagCommand` can draw its compact field with a busy spinner inside
-it. `Select`
+it. `Button`
+also has one variant upstream lacks, `ghost-destructive`: `ghost`'s shape
+with `destructive` text and a `destructive-soft` hover, the button form of the
+menu's destructive item, for one destructive action that stands outside a
+menu and opens a `ConfirmDialog`. `Select`
 and `Combobox` read Radix's position variables (`--radix-select-*`,
 `--radix-popover-*`); those classes are `special` entries in
 `web/design-exceptions.js`.
@@ -316,7 +320,7 @@ to pick, what goes in each slot and what must not is in
 | Layer | What it is | Registry |
 | --- | --- | --- |
 | Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
+| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
 | States | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
@@ -350,7 +354,9 @@ Skeletons and sections share four behaviours:
 `CardGrid` passes its column template through `style`, because a template made
 from a named step is an arbitrary value to the checks; the step still comes
 from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`
-(`detail-aside-wide` from `xl`). The video page's player frame sizes itself
+(`detail-aside-wide` from `xl`). `ListPage`'s optional aside is the column
+`list-aside` from `lg`, laid out by the named utility `grid-cols-list-aside`
+and capped at `list-aside-max` while it sticks under the top bar. The video page's player frame sizes itself
 from named steps declared in an `@theme inline` block (`player-width`,
 `player-height`, `aspect-player`), because their values read the video's
 aspect ratio from the frame at run time and must be resolved on the element,

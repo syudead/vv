@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 27316a174172677f7178ee9c7d8e4dcc10bba0e24053cc9b5ce6ac4eaaa8eb87
+sourceHash: 3ac3db33e2da3cfe5c278fa1b432e961f2014df57ba662554277794215febf0d
 ---
 
 # 設計文書 {#design-documents}
@@ -57,3 +57,4 @@ sourceHash: 27316a174172677f7178ee9c7d8e4dcc10bba0e24053cc9b5ce6ac4eaaa8eb87
 - [shadcn/ui 上の vv デザインシステム (基礎、コンポーネント、ページのパターン): UI](../../specs/038-design-system/ui-design.md)
 - [カードの `+N` の裏に隠れたタグを、何個でも見えて押せるようにする: UI](../../specs/041-tag-overflow-list/ui-design.md)
 - [変更されたメディアフォルダの自動取り込み (設定、問題の知らせ、静かな結果の知らせ): UI](../../specs/042-folder-watch-import/ui-design.md)
+- [視聴履歴の画面 (日のグループ、エントリを 1 つ削除する、履歴を消す): UI](../../specs/043-watch-history/ui-design.md)

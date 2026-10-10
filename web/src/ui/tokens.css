@@ -130,6 +130,10 @@
   --spacing-list-number: 5rem;
   --spacing-list-number-wide: 6rem;
   --spacing-list-date: 7rem;
+  /* 視聴履歴（web/src/history/HistoryPage.tsx）の行のサムネイル（lg 以上と lg 未満。16:9 で
+     約 192px と 128px）。再生位置の棒が読める幅として履歴の画面が決めた */
+  --spacing-history-thumb: 12rem;
+  --spacing-history-thumb-sm: 8rem;
   /* ツールバーの検索欄の最小幅（狭い幅と sm 以上）とズームの幅 */
   --spacing-search-min: 5rem;
   --spacing-search-min-sm: 10rem;
@@ -154,6 +158,10 @@
   /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方 */
   --spacing-detail-aside: 20rem;
   --spacing-detail-aside-wide: 24rem;
+  /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に
+     貼り付けたときの高さの上限（それより高ければ欄の中で動かす）。lg から */
+  --spacing-list-aside: 11rem;
+  --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
   /* 動画ページ: 関連動画の行のサムネイルの幅、前後の動画へのつまみの幅と最小の高さ（狭い幅と
      sm 以上）、状態の層の下に操作バーの分だけ空ける余白、バージョンの一覧の幅 */
   --spacing-related-thumb: 10rem;
@@ -296,6 +304,27 @@
  */
 @utility grid-cols-term {
   grid-template-columns: auto 1fr;
+}
+
+/*
+ * 横の欄のある一覧ページの本体（web/src/ui/patterns/list-page.tsx）。lg から本体と
+ * list-aside の幅の欄の 2 列。列の定義は段で表せないので名前つきのユーティリティにする。
+ */
+@utility grid-cols-list-aside {
+  grid-template-columns: minmax(0, 1fr) var(--spacing-list-aside);
+}
+
+/*
+ * 視聴履歴の行の列（web/src/history/HistoryPage.tsx）。lg 未満はサムネイル・文字・端の ×、
+ * lg からはサムネイル・文字・操作・端の ×。列の定義は段で表せないので名前つきの
+ * ユーティリティにする。
+ */
+@utility grid-cols-history-row {
+  grid-template-columns: var(--spacing-history-thumb-sm) minmax(0, 1fr) auto;
+}
+
+@utility grid-cols-history-row-wide {
+  grid-template-columns: var(--spacing-history-thumb) minmax(0, 1fr) auto auto;
 }
 
 /*

@@ -212,7 +212,7 @@ func TestListVideosAppliesQueryWatchAndSort(t *testing.T) {
 	f.add(t, "奈良.mp4", "奈良", 8_000)
 	if _, err := f.db.Playback().SaveProgress(f.ctx, watchedKey, domain.Progress{
 		PositionMs: 7_000, DurationMs: 7_000, Completed: true, UpdatedAt: time.Unix(2, 0),
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatal(err)
 	}
 

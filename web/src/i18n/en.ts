@@ -395,6 +395,7 @@ export const en = {
         detailPage: "Detail page",
         centeredForm: "Centered form",
         dialogs: "Form dialog and confirm dialog",
+        groupedList: "Grouped list",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -524,6 +525,11 @@ export const en = {
       deleteTagTitle: (name: string) => `Delete "${name}"?`,
       deleteTagDescription:
         "The tag is removed from 12 videos. The videos themselves are kept.",
+      history: "History",
+      historyEntries: "Watch history",
+      today: "Today",
+      yesterday: "Yesterday",
+      removeEntry: "Remove from history",
     },
   },
   app: {
@@ -1381,6 +1387,58 @@ export const en = {
       },
     },
   },
+  history: {
+    title: "History",
+    documentTitle: "History",
+    list: "Watch history",
+    day: {
+      today: "Today",
+      yesterday: "Yesterday",
+      // 行の読み上げ名に入れる日: 見出しの 1 行目と 2 行目（「Today, Oct 10」）。
+      full: (name: string, date: string) => `${name}, ${date}`,
+    },
+    // 行の再生位置と長さ（「16:05 / 42:18」）。どちらも formatDuration で整えた文字列。
+    position: (position: string, duration: string) => `${position} / ${duration}`,
+    resume: "Resume",
+    resumeFor: (title: string) => `Resume ${title}`,
+    startOver: "Start over",
+    startOverFor: (title: string) => `Start ${title} over`,
+    // 行のリンクと × の読み上げ名。日だけを入れ、時刻は入れない（日より細かく刻まない）。
+    entryLink: (title: string, duration: string, day: string) =>
+      duration === ""
+        ? `${title}, played ${day}`
+        : `${title}, ${duration}, played ${day}`,
+    remove: "Remove from history",
+    removeFor: (title: string, day: string) =>
+      `Remove "${title}" played ${day} from history`,
+    notInLibrary: "Not in the library",
+    unknownTitle: "Unknown video",
+    clear: "Clear history…",
+    clearDialog: {
+      title: "Clear watch history?",
+      description:
+        "Every entry is removed. Playback positions and watched marks stay as they are.",
+      submit: "Clear",
+      submitting: "Clearing…",
+      failed: (reason: string) => `Couldn't clear the history: ${reason}`,
+    },
+    empty: {
+      title: "No watch history",
+      description: "Videos you play are listed here, newest first.",
+    },
+    loadFailed: "Couldn't load the history",
+    search: {
+      label: "Search titles",
+    },
+    jump: {
+      title: "Jump to date",
+      none: "No dates to jump to",
+      loadFailed: "Couldn't load the dates",
+    },
+    noMatch: {
+      title: "No history matches these conditions",
+    },
+  },
   tagName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
@@ -1430,6 +1488,7 @@ export const en = {
       library: "Library",
       folders: "Folders",
       tags: "Tags",
+      history: "History",
       duplicates: "Duplicates",
       settings: "Settings",
       login: "Sign in",

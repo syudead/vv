@@ -71,6 +71,7 @@ export type ScanIssue = components["schemas"]["ScanIssue"];
 export type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 export type ScanIssuePage = components["schemas"]["ScanIssuePage"];
 export type Progress = components["schemas"]["Progress"];
+type ProgressUpdate = components["schemas"]["ProgressUpdate"];
 export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
 export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
@@ -1020,20 +1021,33 @@ function sendProgressNow<T>(id: number, send: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * progressBody は再生位置の保存の body を作る。playbackId は渡されたときだけ載せる
+ * （specs/043-watch-history/contracts/screen-api.md）。
+ */
+function progressBody(positionMs: number, playbackId?: string): string {
+  const update: ProgressUpdate = { positionMs: Math.max(0, Math.round(positionMs)) };
+  if (playbackId !== undefined) update.playbackId = playbackId;
+  return JSON.stringify(update);
+}
+
+/**
  * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
- * ここでは位置だけを送る。同じ動画の保存は、前の保存が終わってから送る。
+ * ここでは位置だけを送る。playbackId があれば、その視聴の視聴履歴を記録させる。
+ * 同じ動画の保存は、前の保存が終わってから送る。
  */
 export function saveProgress(
   id: number,
   positionMs: number,
+  playbackId?: string,
   signal?: AbortSignal,
 ): Promise<Progress> {
   const sequence = nextProgressSequence();
+  const body = progressBody(positionMs, playbackId);
   return enqueueProgress(id, async () => {
     const saved = await request<Progress>(`/api/videos/${String(id)}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
+      body,
       signal,
     });
     recordSavedProgress(id, saved, sequence);
@@ -1050,8 +1064,12 @@ export function saveProgress(
  * 保存はこの送信の完了を待つ。すでに送信中だった保存との順序は、クライアントだけ
  * では保証できない（サーバーは届いた順に上書きする）。
  */
-export function beaconProgress(id: number, positionMs: number): void {
-  const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
+export function beaconProgress(
+  id: number,
+  positionMs: number,
+  playbackId?: string,
+): void {
+  const body = progressBody(positionMs, playbackId);
   const sequence = nextProgressSequence();
   const send = () =>
     apiFetch(`/api/videos/${String(id)}/progress`, {

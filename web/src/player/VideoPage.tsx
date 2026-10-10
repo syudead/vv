@@ -198,8 +198,16 @@ export default function VideoPage() {
   }, [id]);
   const subtitles = subtitleState.id === id ? subtitleState.tracks : noSubtitles;
 
-  // --- 再生位置の保存（既存どおり） ---
-  const { rememberProgress, savePlayerProgress } = useProgressSaving(id, owner);
+  // --- 再生位置の保存と、視聴履歴の視聴の識別子 ---
+  // 識別子を付けた最初の保存は positioned を待ち、ended のあとで識別子を捨てる。
+  const { rememberProgress, savePlayerProgress, markPlayed } = useProgressSaving(
+    id,
+    owner,
+    {
+      positioned: status.positioned,
+      ended: status.ended,
+    },
+  );
 
   // --- プレイヤーの状態 ---
   const endedRef = useRef(false);
@@ -457,6 +465,7 @@ export default function VideoPage() {
                 autoplay={attempt.autoplay}
                 onPosition={rememberProgress}
                 onProgress={savePlayerProgress}
+                onPlay={markPlayed}
                 onError={onError}
                 onControls={setControls}
                 onStatus={onStatus}

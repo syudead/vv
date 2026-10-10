@@ -3,8 +3,13 @@ export { errorText, probeErrorText, scanErrorText } from "./errors";
 export {
   formatDate,
   formatDateTime,
+  formatMonth,
+  formatMonthDay,
   formatNumber,
   formatRelative,
+  formatTime,
+  formatWeekday,
+  formatWeekdayDate,
   selectPlural,
   type PluralForms,
 } from "./format";

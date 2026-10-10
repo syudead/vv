@@ -15,6 +15,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	// 視聴履歴の日付は画面が送る IANA の地域名で数える（specs/043-watch-history/research.md R-11）。
+	// 地域の情報を持たないホスト（Windows や最小のコンテナ）でも time.LoadLocation が読めるよう埋め込む。
+	_ "time/tzdata"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
@@ -140,6 +143,15 @@ func run(opts runOptions) error {
 		return fmt.Errorf("cannot rebuild the tag search keys: %w", err)
 	}
 	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
+
+	// 移行の前に書かれた視聴履歴の行に、題名の照合形（title_key）を埋める。動画の無い件の検索が
+	// 読むので、受け付けより前に行い、失敗したら起動を止める
+	// （specs/043-watch-history/data-model.md「Migration」）。
+	titleKeysFilled, err := db.Playback().RefreshWatchHistoryTitleKeys(context.Background())
+	if err != nil {
+		return fmt.Errorf("cannot fill the watch history title keys: %w", err)
+	}
+	logger.Info("filled the watch history title keys", slog.Int("entries", titleKeysFilled))
 
 	// フォルダの索引（グループとフォルダ名）を、規則の版が古いか前回の作り直しが
 	// 失敗していたときだけ作り直す。title_key は照合用の鍵の規則で作るので、その
@@ -362,6 +374,7 @@ func run(opts runOptions) error {
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
 		Favorites:    db.Favorites(),
+		WatchHistory: playbackStore,
 		Overrides:    db.Overrides(),
 		Versions:     db.Versions(),
 		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。
