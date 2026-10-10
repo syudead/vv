@@ -142,6 +142,7 @@ User data (the title) is embedded as an argument. The Issue's `続きから` and
 | Jump list day | Today, Yesterday, else Tue, Oct 7 | `history.day.*`, else `formatWeekdayDate`, added to `format.ts` (`weekday: "short", month: "short", day: "numeric"`, plus `year` outside the current year) |
 | Jump list month | September; December 2025 outside the current year | `formatMonth`, added to `format.ts` (`month: "long"`, plus `year`) |
 | Jump list with nothing to jump to | No dates to jump to | `history.jump.none` |
+| Jump list whose request failed | Couldn't load the dates | `history.jump.loadFailed`; `Retry` is `common.retry` |
 | Header menu button below `lg`, tooltip and accessible name | More | `common.more` |
 | Menu item below `lg`; the side column's last entry from `lg` | Clear history… | `history.clear` |
 | Dialog title | Clear watch history? | `history.clearDialog.title` |
@@ -271,17 +272,20 @@ actions, `items-start` so the time and the title share the first line.
 
 | Part | Form |
 | --- | --- |
-| Thumbnail | `VideoThumbnail` `w-timeline-thumb rounded-md`: the image or the "No image" placeholder, `VideoThumbnailDuration` bottom right, and `VideoThumbnailProgress` on the bottom edge while the video has a position. No favorite, no selection mark, no public mark |
+| Thumbnail | `VideoThumbnail` `w-timeline-thumb rounded-md`: the image or the "No image" placeholder, `VideoThumbnailDuration` bottom right, and `VideoThumbnailProgress` on the bottom edge with `watchedRatio(video)` while the video is in progress, as the card draws it. No favorite, no selection mark, no public mark |
 | Title | `text-sm font-medium text-foreground line-clamp-2`, breaking inside a word when it has to; the full title in `title`. The video's current `video.title` |
 | Folder line | `text-xs text-muted-foreground truncate`: the folder path, "Travel / 2024"; absent when the video is directly in a registered folder |
-| Position line | A `Progress` (`h-1`, `max-w-xs`, `aria-label` "Watched portion") with `value` `progress.positionMs` and `max` `durationMs`, then "16:05 / 42:18" in `text-xs text-muted-foreground tabular-nums`. The line is absent when the video has no `progress` or no `durationMs` |
+| Position line | A `Progress` (`h-1`, `max-w-xs`, `aria-label` "Watched portion") with `max` `durationMs` and `value` `progress.positionMs`, or `durationMs` when `progress.completed` is true, because the server marks a video watched up to 15 seconds or 5% before its end and a watched row's bar is full; then "16:05 / 42:18" in `text-xs text-muted-foreground tabular-nums`. The line is absent when the video has no `progress` or no `durationMs` |
 | Actions | At the row's end, `shrink-0`: the `outline` `sm` resume or start-over button, then the `ghost` `icon-sm` remove button (lucide `X`, `text-muted-foreground`, tooltip "Remove from history"). Both are always drawn, never revealed on hover only, because the screen is used by touch as well |
 
-The thumbnail and the text column are one `Link` to `/videos/{video.id}`
-with `state.from` the current history URL. The link covers the row from the
-thumbnail to the actions, with `hover:bg-accent rounded-md`, so a press
-anywhere on the row but the buttons opens the video as requirement 5 says:
-the page resumes by its own rule, without autoplay.
+The time, the thumbnail and the text column are one `Link` to
+`/videos/{video.id}` with `state.from` the current history URL. The link
+covers the row from the time to the actions, with `hover:bg-accent
+rounded-md`; below `sm`, where the time stands on its own line with the `×`
+at its end, the time is in the same link and only the `×` and the resume or
+start-over button sit outside it. A press anywhere on the row but the buttons
+therefore opens the video as requirement 5 says: the page resumes by its own
+rule, without autoplay.
 
 The resume and start-over buttons are `Button asChild` around a `Link` to the
 same video with `state: { from, autoplay: true }` (R-13), so they stay
@@ -289,7 +293,7 @@ links:
 
 | Video state (`progress`) | Button | What the video page does |
 | --- | --- | --- |
-| In progress (`completed` false) | "Resume" with lucide `Play` | Starts playing at `resumePosition(video)`, the position the row shows (within the 5 s `MinResumeMs`) |
+| In progress (`completed` false) | "Resume" with lucide `Play` | Starts playing at `resumePosition(video)`: the position the row shows, except below `MinResumeMs` (5 s) and when a bundle member's shared position is past this version's length, where it starts at 0 ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)). The word stays "Resume": the existing resume rule decides the start, as for a plain open of the video |
 | Watched (`completed` true) | "Start over" with lucide `RotateCcw` | Starts playing at 0; the row's text still shows the saved position and the bar is full |
 | No `progress` | None | The row itself opens the video. The case is rare (a position row exists for every viewing the server recorded), so a third word is not worth a third button |
 
@@ -358,6 +362,7 @@ the days, a `Separator`, the months, and from `lg` a `Separator` and
 | Below `lg` | The strip: the same items as `outline` `sm` chips in one horizontally scrolling line, days then a vertical `Separator` then months, no heading shown and no "Clear history…" (it is in `More`). The chosen chip is pressed and scrolled into view when the list arrives |
 | Clear history… | From `lg` only: a `ghost-destructive` `sm` `Button` with lucide `Trash2`, after the last `Separator`, opening the [confirmation](#clearing-the-history) |
 | Nothing to jump to | "No dates to jump to" in `text-xs text-muted-foreground` in place of the items (from `lg`); below `lg` the strip is not drawn |
+| Dates failed | When `GET /api/watch-history/dates` fails, "Couldn't load the dates" in `text-xs text-muted-foreground` and a `ghost` `sm` "Retry" in place of the items: from `lg` under the heading, with "Clear history…" still after its `Separator` when the timeline has rows; below `lg` as the strip's one line. "Retry" requests the dates again and shows the `Skeleton` lines while it runs. The timeline does not depend on the dates and keeps its own state |
 
 Choosing an item writes `date` (`YYYY-MM-DD` for a day, `YYYY-MM` for a
 month) and re-reads the first page, which then starts at that day's or
@@ -457,11 +462,11 @@ present. A `404` re-read is not a state of its own: the body stays in
 
 | State | What the screen shows |
 | --- | --- |
-| Loading | `LoadingState` `layout="timeline"` in the body; the header row with its filter and search; the aside with its items when the dates have arrived, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
+| Loading | `LoadingState` `layout="timeline"` in the body; the header row with its filter and search; the aside with its items when the dates have arrived, its failed form when their request failed, else the aside's own `Skeleton` lines; no `More` and no "Clear history…" |
 | Load failed | `ErrorState` with "Couldn't load the history" and `Retry`; the aside shows "No dates to jump to" |
 | Empty | `EmptyState` with lucide `History`, "No watch history" and "Videos you play are listed here, newest first."; no action. The filter and the search stay usable but find nothing. The aside shows "No dates to jump to"; below `lg` no strip |
 | No match | `EmptyState` with lucide `SearchX`, "No history matches these conditions", "Try a different search or change the filters." and the `default` `sm` action "Clear filters", which removes `watch`, `q` and `date`. The filter keeps its pressed option and the search its text, so the viewer sees what excluded everything; the aside shows "No dates to jump to" or, under a `date` the new dates no longer hold, the dates with nothing pressed |
-| Content | The timeline; the aside with its items and "Clear history…"; `More` below `lg` |
+| Content | The timeline; the aside with its items (or its failed form) and "Clear history…"; `More` below `lg` |
 | Loading more | The timeline, then `LoadMoreRow` loading |
 | Load more failed | The timeline, then `LoadMoreRow` failed with `Retry` |
 | Removing a row | That row's `×` is a `Spinner`; the rest unchanged |
@@ -475,9 +480,12 @@ a pressed date.
 
 The list is read when the screen opens, when a condition changes, and when
 the viewer returns to it from a video page (the `Link` leaves the route, so
-the screen mounts again with the same URL and reads the first page, where the
-viewing just finished now sits at the top and the position text has moved,
-acceptance criterion 14). It does not refresh on its own while open: the
+the screen mounts again with the same URL and reads the first page). Every
+row of that video shows the position the viewing reached (acceptance criterion
+14), and, when the URL has no `date` and the viewing matches the filter and
+the search, the viewing just finished sits at the top. Under a `date` the page
+starts at that day or month, so a newer viewing is above it and appears when
+the viewer chooses the first jump item. It does not refresh on its own while open: the
 only cross-tab change the Issue names is the stale removal, which the `404`
 path covers (R-6).
 
@@ -527,9 +535,10 @@ was removed, one entry with an empty title and one video in a subfolder.
    library's list view, the title and the secondary lines are the same size,
    weight and colour.
 5. **Priority of actions**: pressing anywhere on a row except the buttons
-   opens the video, which resumes by its own rule; "Resume" is the one
-   outlined control on the row and starts playback at the shown position
-   without a further press; "Start over" on the watched video starts at 0.
+   opens the video, which resumes by its own rule, the time included;
+   "Resume" is the one outlined control on the row and starts playback
+   without a further press at the shown position, or at 0 when that is under
+   5 seconds; "Start over" on the watched video starts at 0.
    Removing one entry is one press on `×`. Clearing takes "Clear history…"
    (in the side column, or `More` then the item) and then "Clear"; the clear
    entry is the last thing in the column, after a divider, and is never the
