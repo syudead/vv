@@ -296,3 +296,37 @@ func TestAutoTagCountsLastError(t *testing.T) {
 		t.Fatalf("counts = %+v", counts)
 	}
 }
+
+// 集まりのメンバーを判定すると、タグは集まりの鍵に付き、すべてのメンバーに知らせる。
+func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	p1, p2 := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+	if _, err := db.Versions().Bundle(ctx, []int64{p1, p2}, p1); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	store := db.AutoTags()
+	cat := createTestTag(t, db, "cat")
+	if _, err := store.QueueVideos(ctx, []int64{p2}, domain.AutoTagQueueIfNew); err != nil {
+		t.Fatal(err)
+	}
+	job := claimAutoTag(t, store)
+	if err := store.Finish(ctx, job.ContentKey, []int64{cat.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if tags := ownerVideo(t, db, p1).UserKey; len(manualTagIDs(t, db, tags)) != 1 {
+		t.Fatalf("代表の動画にタグが見えない")
+	}
+	want := []int64{min(p1, p2), max(p1, p2)}
+	found := false
+	for _, e := range recorder.events {
+		if applied, ok := e.(domain.AutoTagApplied); ok && reflect.DeepEqual(applied.VideoIDs, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("発行した変化 = %#v, want AutoTagApplied%v", recorder.events, want)
+	}
+}

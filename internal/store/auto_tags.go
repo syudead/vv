@@ -236,10 +236,16 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, tagIDs []i
 		where content_key = ?`, now.UnixMilli(), contentKey); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
+	// 集まりのメンバーなら、タグは集まりの鍵に付き、すべてのメンバーに見える。メンバーの
+	// どの動画を開いている画面にも知らせる。
+	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
+	if err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
-	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: []int64{videoID}})
+	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
 	return nil
 }
 
@@ -298,4 +304,29 @@ func videoIDForContent(ctx context.Context, q rowQueryer, contentKey string) (in
 		return 0, fmt.Errorf("cannot read the video: %w", err)
 	}
 	return id, nil
+}
+
+// videoIDsSharingUserKey は videoID の動画と利用者データの鍵が同じ動画（集まりのメンバー、
+// 束ねていなければその動画だけ）の id を、id の順で返す。
+func videoIDsSharingUserKey(ctx context.Context, tx *sql.Tx, videoID int64) ([]int64, error) {
+	rows, err := tx.QueryContext(ctx, `select v.id from videos v
+		where v.content_key <> '' and `+userKeyExpr("v")+` = (
+			select `+userKeyExpr("t")+` from videos t where t.id = ?)
+		order by v.id`, videoID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the videos sharing the tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("cannot read the videos sharing the tags: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the videos sharing the tags: %w", err)
+	}
+	return ids, nil
 }
