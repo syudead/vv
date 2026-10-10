@@ -166,8 +166,8 @@ route. The history is not added to the external API.
 
 ## Revision: filter, search, date jump and resume actions
 
-Requirements 12 to 18 were added to the parent Issue after the units above
-were built. R-8 to R-13 are the decisions that revision adds; R-1 to R-7
+Requirements 12 to 18 were added to the parent Issue after R-1 to R-7 were
+decided. R-8 to R-13 are the decisions that revision adds; R-1 to R-7
 stand.
 
 ## R-8: Filter, search and date jump are conditions of the list request
@@ -213,7 +213,8 @@ user key keeps a bundle's shared position in step with its cards.
 `instr` on the folded title: for an entry with a video, the title line and
 the display-name line of `search_key` of any of its registered locations
 (the lines `locationSearchKey` builds, without the path line); for an entry
-without a video, `watch_history.title_key`, the folded snapshot title
+without a video, `watch_history.title_key`, the snapshot title in the same
+match form as a title line of `search_key`, newlines as spaces
 ([data-model.md, Migration](data-model.md#migration)). Tags are not matched.
 
 | Option | Verdict |

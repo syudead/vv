@@ -166,20 +166,20 @@ shares nothing with the card lists beyond the thumbnail.
 
 ## Implementation Work
 
-The first five units are built: the parent's native sub-issues #860 to #864
-carry them, and their implementation PRs are merged into the feature branch.
-Their headings are kept as written so that `plan-to-issues` finds them
-represented and skips them; each one names its Issue. The four units after
-the rule are the new work, and the only units `plan-to-issues` creates.
+The first five units are carried by the parent's native sub-issues #860 to
+#864, and each one names its Issue. Their headings are kept as written so
+that `plan-to-issues` finds them represented and skips them. The four units
+after the rule are the revision's work, and the only units `plan-to-issues`
+creates.
 
 The diagram shows which units have to land first.
 
 ```mermaid
 flowchart LR
-  record["Record entries (done, #860)"] --> api["List and delete API (done, #861)"]
-  record --> client["Playback id from the page (done, #862)"]
-  api --> screen["History screen (done, #863)"]
-  client --> e2e["Browser test (done, #864)"]
+  record["Record entries (#860)"] --> api["List and delete API (#861)"]
+  record --> client["Playback id from the page (#862)"]
+  api --> screen["History screen (#863)"]
+  client --> e2e["Browser test (#864)"]
   screen --> e2e
   api --> conditions[Filter, search and dates API]
   screen --> position[Position bar, resume and restart]
@@ -191,7 +191,7 @@ flowchart LR
 
 ### Record a watch history entry for each playback
 
-**Issue**: #860, done.
+**Issue**: #860.
 
 **Scope**: The migration and backfill, `domain.Play`, `ValidatePlaybackID`
 and `WatchHistoryEntry`, `PlaybackStore.SaveProgress` writing the entry in
@@ -216,7 +216,7 @@ new key's own entries; deleting an entry leaves `playback_progress` unchanged.
 
 ### Add the watch history list and delete endpoints to the screen API
 
-**Issue**: #861, done.
+**Issue**: #861.
 
 **Scope**: `GET /api/watch-history`, `DELETE /api/watch-history/{id}`,
 `DELETE /api/watch-history`, the schemas, the cursor, and
@@ -239,7 +239,7 @@ unreadable cursor are `400`.
 
 ### Send a playback id from the video page from the first play on
 
-**Issue**: #862, done.
+**Issue**: #862.
 
 **Scope**: `useProgressSaving` holding the id, `markPlayed()` and
 `markEnded()`, the id generator from `crypto.getRandomValues()`,
@@ -263,7 +263,7 @@ id; the page test of the video page shows the id reaching the request body.
 
 ### Add the watch history screen to the sidebar for the owner
 
-**Issue**: #863, done.
+**Issue**: #863.
 
 **Scope**: `web/src/history/` (the page, its list hook, the delete and clear
 actions with the confirmation), `web/src/api/history.ts`, the `/history`
@@ -286,7 +286,7 @@ shows the empty state; the guest sidebar has no entry and a guest at
 
 ### Cover the watch history flow in a browser test
 
-**Issue**: #864, done.
+**Issue**: #864.
 
 **Scope**: `web/e2e/history.e2e.ts`, against the real server and media
 ([web-testing.md, Test levels](../../docs/design-docs/web-testing.md#test-levels)).
@@ -325,7 +325,7 @@ parameters on `listWatchHistory` and `listWatchHistoryDates` in
 [Store operations](data-model.md#store-operations-playbackstore)).
 
 **Dependencies**: Add the watch history list and delete endpoints to the
-screen API (done).
+screen API.
 
 **Acceptance**: `task check` passes, with no diff from `task generate`; store
 and handler tests show: with one video watched, one in progress, one
@@ -336,7 +336,9 @@ listed under `inProgress`; a bundle member's entry is classified by the
 bundle's shared progress; `query` finds an entry by a word in its video's
 file title, by a word in its display name, by a word in the snapshot title of
 an entry without a video, and not by a word that is only in the relative path
-or a tag name; `query` with `-word` and `a OR b` behaves as the library;
+or a tag name; the phrase `"Summer Trip"` finds an entry titled
+`Summer\nTrip` both while its video is in the library and after the video
+has left it; `query` with `-word` and `a OR b` behaves as the library;
 `watch` and `query` together keep only the entries both allow; rows written
 before the migration have a `title_key` after startup, and a new entry has one
 at once; `dates` with `tz=Asia/Tokyo` and `tz=America/Los_Angeles` puts an
@@ -358,8 +360,8 @@ a video, and the catalog text; look and words follow the revised
 ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position),
 [contracts/screen-api.md, Client use](contracts/screen-api.md#client-use)).
 
-**Dependencies**: Add the watch history screen to the sidebar for the owner
-(done); the `design` stage's revised `ui-design.md`.
+**Dependencies**: Add the watch history screen to the sidebar for the owner;
+the `design` stage's revised `ui-design.md`.
 
 **Acceptance**: This unit changes a screen, so it needs a visual and
 interaction review against the revised `ui-design.md` and the parent Issue's
