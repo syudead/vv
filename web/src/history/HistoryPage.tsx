@@ -294,6 +294,12 @@ export default function HistoryPage() {
   function jump(value: string | null) {
     // 最初の項目は一覧の先頭なので、同じ表示に 2 つの URL を作らないよう date を外す。
     const date = value === null || value === firstTarget(targets) ? undefined : value;
+    if (date === criteria.date) {
+      // date の無い一覧で最初の項目を選んだ。URL は変わらないが、移る先は一覧の先頭なので
+      // 先頭へ戻す（ui-design.md「Jump to date」）。
+      window.scrollTo({ top: 0, behavior: "auto" });
+      return;
+    }
     const { date: _previous, ...rest } = criteria;
     apply(date === undefined ? rest : { ...rest, date }, "push");
   }

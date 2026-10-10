@@ -854,6 +854,20 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     expect(search).toBe("");
   });
 
+  it("date の無い一覧で最初の項目を選ぶと、URL も一覧も変えずに先頭へ戻る", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const jump = await screen.findByRole("radiogroup", { name: "Jump to date" });
+    await screen.findByRole("list", { name: "Watch history" });
+
+    server.listUrls = [];
+    vi.mocked(window.scrollTo).mockClear();
+    await user.click(within(jump).getByRole("radio", { name: "Sun, Sep 27" }));
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+    expect(search).toBe("");
+    expect(server.listUrls).toEqual([]);
+  });
+
   it("絞り込みや検索で 1 件も返らなければ、空の表示ではなく該当なしの表示を出し、Clear filters で外す", async () => {
     const user = userEvent.setup();
     server.dates = [];
