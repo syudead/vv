@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   formatDate,
   formatDateTime,
+  formatMonthDay,
   formatNumber,
   formatRelative,
   formatTime,
+  formatWeekday,
 } from "./format";
 import { t } from "./messages";
 
@@ -41,7 +43,18 @@ describe("dates", () => {
     expect(formatTime(new Date(2026, 8, 27, 15, 4))).toMatch(/^3:04\s?PM$/);
   });
 
+  it("formats the weekday in English", () => {
+    expect(formatWeekday(noon)).toBe("Sunday");
+  });
+
+  it("formats the month and day, with the year only outside the current year", () => {
+    expect(formatMonthDay(noon, new Date(2026, 9, 10))).toBe("Sep 27");
+    expect(formatMonthDay(noon, new Date(2027, 0, 2))).toBe("Sep 27, 2026");
+  });
+
   it("returns an empty string for unreadable dates", () => {
+    expect(formatWeekday("nope")).toBe("");
+    expect(formatMonthDay("nope")).toBe("");
     expect(formatTime("nope")).toBe("");
     expect(formatDate("nope")).toBe("");
     expect(formatDateTime("nope")).toBe("");

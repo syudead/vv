@@ -13,6 +13,16 @@ const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
   timeStyle: "short",
 });
 const timeFormat = new Intl.DateTimeFormat(LOCALE, { timeStyle: "short" });
+const weekdayFormat = new Intl.DateTimeFormat(LOCALE, { weekday: "long" });
+const monthDayFormat = new Intl.DateTimeFormat(LOCALE, {
+  month: "short",
+  day: "numeric",
+});
+const monthDayYearFormat = new Intl.DateTimeFormat(LOCALE, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 const relativeFormat = new Intl.RelativeTimeFormat(LOCALE, { numeric: "always" });
 
 const empty = asUiText("");
@@ -38,6 +48,24 @@ export function formatDateTime(value: string | Date): UiText {
 export function formatTime(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(timeFormat.format(date));
+}
+
+/** formatWeekday は曜日の名前を表す（例: Tuesday）。読めない値は空。 */
+export function formatWeekday(value: string | Date): UiText {
+  const date = toDate(value);
+  return date === null ? empty : decorated(weekdayFormat.format(date));
+}
+
+/**
+ * formatMonthDay は月と日を表す（例: Oct 7）。`now` と年が違えば年も付ける（例: Oct 7, 2025）。
+ * 読めない値は空。now は検査のために差し替えられる。
+ */
+export function formatMonthDay(value: string | Date, now: Date = new Date()): UiText {
+  const date = toDate(value);
+  if (date === null) return empty;
+  const format =
+    date.getFullYear() === now.getFullYear() ? monthDayFormat : monthDayYearFormat;
+  return decorated(format.format(date));
 }
 
 /**

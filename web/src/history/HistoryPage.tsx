@@ -1,6 +1,15 @@
-import { AlertTriangle, Ellipsis, History, ImageOff, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Ellipsis,
+  History,
+  ImageOff,
+  Play,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import { type Ref, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -16,14 +25,11 @@ import { DialogError } from "../tags/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
-import {
-  GroupedList,
-  GroupedListGroup,
-  GroupedListItem,
-} from "../ui/patterns/grouped-list";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
+import { Timeline, TimelineGroup, TimelineItem } from "../ui/patterns/timeline";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -31,16 +37,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
-import { Skeleton } from "../ui/shadcn/skeleton";
+import { Progress } from "../ui/shadcn/progress";
 import { Spinner } from "../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
 import { VideoThumbnail as ThumbnailFrame } from "../ui/VideoThumbnail";
 import { dayLabel, groupByDay, msUntilNextMidnight } from "./historyDays";
+import { entryAction, entryPosition, folderLine } from "./historyEntry";
 import { type HistoryState, useWatchHistory } from "./useWatchHistory";
-
-/** 履歴から開いた再生画面の戻り先（ui-design.md「Entry row」）。 */
-const backTo = "/history";
 
 /**
  * useNow は日の見出し（Today・Yesterday）を決める今の時刻である。見る人のローカルの 0 時と、
@@ -68,15 +72,19 @@ function readyItems(state: HistoryState): WatchHistoryEntry[] {
 }
 
 /**
- * HistoryPage は所有者の視聴履歴を、日ごとのまとまりで新しい順に並べる画面である
+ * HistoryPage は所有者の視聴履歴を、日ごとの時間軸に新しい順に並べる画面である
  * （specs/043-watch-history/ui-design.md「History screen」）。
  *
- * 行を押すと再生画面を開き、行の × でその件を確かめずに消す。全件を消すのは見出しの
+ * 行を押すと再生画面を開き、「Resume」「Start over」はその場で再生を始めさせる。行の × で
+ * その件を確かめずに消す。全件を消すのは見出しの
  * 「More」の奥にあり、確認の窓を通す。削除の 404 は一覧が古いということなので、行を
  * 残したまま最初のページから読み直す（research.md R-6）。
  */
 export default function HistoryPage() {
   const toast = useToast();
+  // 行から開いた再生画面の戻り先は、今の履歴の URL（ui-design.md「Entry row」）。
+  const here = useLocation();
+  const from = `${here.pathname}${here.search}`;
   const history = useWatchHistory((error) => toast(errorText(error)));
   const { state, loadMore } = history;
   const now = useNow();
@@ -210,12 +218,7 @@ export default function HistoryPage() {
       }
     >
       {state.kind === "loading" && (
-        <div className="flex flex-col gap-2" aria-hidden="true">
-          <Skeleton className="h-9 w-1/4" />
-          {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-16 w-full" />
-          ))}
-        </div>
+        <LoadingState label={t.list.loading} layout="timeline" />
       )}
 
       {state.kind === "failed" && (
@@ -235,16 +238,18 @@ export default function HistoryPage() {
       )}
 
       {hasRows && (
-        <GroupedList label={t.history.list}>
+        <Timeline label={t.history.list}>
           {days.map((group) => {
-            const dayText = dayLabel(group.day, now);
+            const label = dayLabel(group.day, now);
+            const dayText = t.history.day.full(label.name, label.date);
             return (
-              <GroupedListGroup key={group.key} heading={dayText}>
+              <TimelineGroup key={group.key} label={label.name} detail={label.date}>
                 {group.entries.map((entry) => (
                   <HistoryRow
                     key={entry.id}
                     entry={entry}
                     dayText={dayText}
+                    from={from}
                     pending={removing.has(entry.id)}
                     rowRef={
                       entry.id === lastId
@@ -260,10 +265,10 @@ export default function HistoryPage() {
                     onRemove={() => remove(entry)}
                   />
                 ))}
-              </GroupedListGroup>
+              </TimelineGroup>
             );
           })}
-        </GroupedList>
+        </Timeline>
       )}
 
       {state.kind === "ready" &&
@@ -305,13 +310,15 @@ export default function HistoryPage() {
 }
 
 /**
- * HistoryRow は履歴の 1 件である。サムネイル・題名・時刻を 1 つのリンクにして再生画面を開き、
- * 行の端の × で消す。動画がライブラリに無い件はリンクにせず、「Not in the library」と
- * 書く（ui-design.md「Entry row」「Entry not in the library」）。
+ * HistoryRow は時間軸の 1 件である。時刻・サムネイル・文字を 1 つのリンクにして再生画面を
+ * 開き、その後ろに「Resume」か「Start over」、端に × を置く。動画がライブラリに無い件は
+ * リンクにも操作にもせず、「Not in the library」と書く（ui-design.md「Entry row」
+ * 「Entry not in the library」）。
  */
 function HistoryRow({
   entry,
   dayText,
+  from,
   pending,
   rowRef,
   removeRef,
@@ -319,8 +326,10 @@ function HistoryRow({
 }: {
   entry: WatchHistoryEntry;
   dayText: string;
+  /** 再生画面の戻り先（今の履歴の URL）。 */
+  from: string;
   pending: boolean;
-  rowRef?: (element: HTMLElement | null) => void;
+  rowRef?: Ref<HTMLLIElement>;
   removeRef: Ref<HTMLButtonElement>;
   onRemove: () => void;
 }) {
@@ -332,85 +341,138 @@ function HistoryRow({
       : entry.title === ""
         ? t.history.unknownTitle
         : entry.title;
+  const remove = (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          ref={removeRef}
+          variant="ghost"
+          size="icon-sm"
+          className="text-muted-foreground"
+          disabled={pending}
+          aria-label={t.history.removeFor(title, dayText, time)}
+          onClick={onRemove}
+        >
+          {pending ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t.history.remove}</TooltipContent>
+    </Tooltip>
+  );
+
+  if (video === undefined) {
+    return (
+      <TimelineItem
+        ref={rowRef}
+        time={time}
+        media={
+          <ThumbnailFrame className="rounded-md">
+            <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
+              <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
+              <span className="text-2xs">{t.list.card.noImage}</span>
+            </div>
+          </ThumbnailFrame>
+        }
+        remove={remove}
+      >
+        <EntryTitle title={title} muted />
+        <EntryWarning text={t.history.notInLibrary} />
+      </TimelineItem>
+    );
+  }
+
+  const to = `/videos/${String(video.id)}`;
+  const position = entryPosition(video);
+  const action = entryAction(video);
+  const folder = folderLine(video);
+  const warning = unplayableText(video);
   return (
-    <GroupedListItem>
-      {video !== undefined ? (
+    <TimelineItem
+      ref={rowRef}
+      time={time}
+      media={<VideoThumbnail video={video} className="rounded-md" />}
+      main={({ className, children }) => (
         <Link
-          ref={rowRef}
-          to={`/videos/${String(video.id)}`}
-          state={{ from: backTo }}
+          to={to}
+          state={{ from }}
           aria-label={t.history.entryLink(
             title,
             formatDuration(video.durationMs),
             dayText,
             time,
           )}
-          className="-m-1 flex min-w-0 flex-1 items-center gap-3 rounded-md p-1 transition-colors hover:bg-accent"
+          className={className}
         >
-          <VideoThumbnail video={video} className="w-list-thumb rounded-sm" />
-          <EntryLines title={title} time={time} warning={unplayableText(video)} />
+          {children}
         </Link>
-      ) : (
-        <div ref={rowRef} className="-m-1 flex min-w-0 flex-1 items-center gap-3 p-1">
-          <ThumbnailFrame className="w-list-thumb shrink-0 rounded-sm">
-            <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
-              <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
-              <span className="text-2xs">{t.list.card.noImage}</span>
-            </div>
-          </ThumbnailFrame>
-          <EntryLines title={title} time={time} warning={t.history.notInLibrary} muted />
-        </div>
       )}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            ref={removeRef}
-            variant="ghost"
-            size="icon-sm"
-            className="shrink-0 text-muted-foreground"
-            disabled={pending}
-            aria-label={t.history.removeFor(title, dayText, time)}
-            onClick={onRemove}
-          >
-            {pending ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
+      action={
+        action === null ? undefined : (
+          <Button asChild variant="outline" size="sm">
+            <Link
+              to={to}
+              state={{ from, autoplay: true }}
+              aria-label={
+                action === "resume"
+                  ? t.history.resumeFor(title)
+                  : t.history.startOverFor(title)
+              }
+            >
+              {action === "resume" ? (
+                <Play aria-hidden="true" />
+              ) : (
+                <RotateCcw aria-hidden="true" />
+              )}
+              {action === "resume" ? t.history.resume : t.history.startOver}
+            </Link>
           </Button>
-        </TooltipTrigger>
-        <TooltipContent>{t.history.remove}</TooltipContent>
-      </Tooltip>
-    </GroupedListItem>
+        )
+      }
+      remove={remove}
+    >
+      <EntryTitle title={title} />
+      {folder !== null && (
+        <span className="truncate text-xs text-muted-foreground">{folder}</span>
+      )}
+      {position !== null && (
+        <span className="flex items-center gap-2">
+          <Progress
+            value={position.value}
+            max={position.max}
+            aria-label={t.list.card.watchedRatio}
+            className="max-w-xs flex-1"
+          />
+          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+            {position.text}
+          </span>
+        </span>
+      )}
+      {warning !== null && <EntryWarning text={warning} />}
+    </TimelineItem>
   );
 }
 
-/** EntryLines は行の題名と時刻と、再生できないときの注意の行である。 */
-function EntryLines({
-  title,
-  time,
-  warning,
-  muted = false,
-}: {
-  title: string;
-  time: string;
-  warning: UiText | null;
-  muted?: boolean;
-}) {
+/** EntryTitle は行の題名である。ライブラリに無い件は弱い色で書く。 */
+function EntryTitle({ title, muted = false }: { title: string; muted?: boolean }) {
   return (
-    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <span
-        className={cn(
-          "line-clamp-2 text-sm font-medium wrap-anywhere",
-          muted ? "text-muted-foreground" : "text-foreground",
-        )}
-        title={title}
-      >
-        {title}
-      </span>
-      <span className="text-xs text-muted-foreground tabular-nums">{time}</span>
-      {warning !== null && (
-        <span className="flex items-center gap-1 text-xs text-warning">
-          <AlertTriangle aria-hidden="true" className="size-3" />
-          {warning}
-        </span>
+    <span
+      className={cn(
+        "line-clamp-2 text-sm font-medium wrap-anywhere",
+        muted ? "text-muted-foreground" : "text-foreground",
       )}
+      title={title}
+    >
+      {title}
+    </span>
+  );
+}
+
+/** EntryWarning は再生できないことを知らせる行である。 */
+function EntryWarning({ text }: { text: UiText }) {
+  return (
+    <span className="flex items-center gap-1 text-xs text-warning">
+      <AlertTriangle aria-hidden="true" className="size-3" />
+      {text}
     </span>
   );
 }

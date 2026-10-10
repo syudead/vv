@@ -43,14 +43,32 @@ describe("groupByDay", () => {
 describe("dayLabel", () => {
   const now = new Date(2026, 8, 27, 0, 5);
 
-  it("今日・昨日・それより前の日付を返す", () => {
-    expect(dayLabel(new Date(2026, 8, 27), now)).toBe("Today");
-    expect(dayLabel(new Date(2026, 8, 26), now)).toBe("Yesterday");
-    expect(dayLabel(new Date(2026, 8, 25), now)).toBe("Sep 25, 2026");
+  it("1 行目は今日・昨日・それより前の曜日、2 行目は月と日", () => {
+    expect(dayLabel(new Date(2026, 8, 27), now)).toEqual({
+      name: "Today",
+      date: "Sep 27",
+    });
+    expect(dayLabel(new Date(2026, 8, 26), now)).toEqual({
+      name: "Yesterday",
+      date: "Sep 26",
+    });
+    expect(dayLabel(new Date(2026, 8, 25), now)).toEqual({
+      name: "Friday",
+      date: "Sep 25",
+    });
+  });
+
+  it("今年でない日は 2 行目に年も書く", () => {
+    expect(dayLabel(new Date(2025, 9, 7), now)).toEqual({
+      name: "Tuesday",
+      date: "Oct 7, 2025",
+    });
   });
 
   it("月をまたいでも前の日を昨日にする", () => {
-    expect(dayLabel(new Date(2026, 8, 30), new Date(2026, 9, 1, 8, 0))).toBe("Yesterday");
+    expect(dayLabel(new Date(2026, 8, 30), new Date(2026, 9, 1, 8, 0)).name).toBe(
+      "Yesterday",
+    );
   });
 });
 

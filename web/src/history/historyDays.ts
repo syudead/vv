@@ -1,5 +1,5 @@
 import type { WatchHistoryEntry } from "../api/history";
-import { formatDate, t, type UiText } from "../i18n";
+import { formatMonthDay, formatWeekday, t, type UiText } from "../i18n";
 
 // 視聴履歴の日ごとのまとまり（specs/043-watch-history/ui-design.md「Day groups」）。
 // 日の境目は見る人のブラウザの時間帯の 0 時。
@@ -42,13 +42,25 @@ export function groupByDay(entries: readonly WatchHistoryEntry[]): HistoryDay[] 
   return Array.from(days.values());
 }
 
-/** dayLabel はまとまりの見出しである。今日は「Today」、前の日は「Yesterday」、ほかは日付。 */
-export function dayLabel(day: Date, now: Date): UiText {
+/** DayLabel は時間軸の日の見出しの 2 行である。 */
+export interface DayLabel {
+  /** 1 行目: 「Today」「Yesterday」、ほかは曜日（「Tuesday」）。 */
+  name: UiText;
+  /** 2 行目: 月と日（「Oct 7」）。今年でなければ年も付く。 */
+  date: UiText;
+}
+
+/** dayLabel はまとまりの見出しである（ui-design.md「Timeline」）。 */
+export function dayLabel(day: Date, now: Date): DayLabel {
   const today = startOfDay(now);
-  if (dayKey(day) === dayKey(today)) return t.history.day.today;
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-  if (dayKey(day) === dayKey(yesterday)) return t.history.day.yesterday;
-  return formatDate(day);
+  const name =
+    dayKey(day) === dayKey(today)
+      ? t.history.day.today
+      : dayKey(day) === dayKey(yesterday)
+        ? t.history.day.yesterday
+        : formatWeekday(day);
+  return { name, date: formatMonthDay(day, now) };
 }
 
 /** msUntilNextMidnight は `now` から次のローカルの 0 時までのミリ秒である。 */

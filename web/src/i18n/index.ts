@@ -3,9 +3,11 @@ export { errorText, probeErrorText, scanErrorText } from "./errors";
 export {
   formatDate,
   formatDateTime,
+  formatMonthDay,
   formatNumber,
   formatRelative,
   formatTime,
+  formatWeekday,
   selectPlural,
   type PluralForms,
 } from "./format";
