@@ -158,7 +158,12 @@ function Screen({ name }: { name: string }) {
   );
 }
 
-function renderPage(id = "7", from?: string, audience: Audience = "owner") {
+function renderPage(
+  id = "7",
+  from?: string,
+  audience: Audience = "owner",
+  autoplay = false,
+) {
   return render(
     <TooltipProvider>
       <ToastProvider>
@@ -166,7 +171,8 @@ function renderPage(id = "7", from?: string, audience: Audience = "owner") {
           initialEntries={[
             {
               pathname: `/videos/${id}`,
-              state: from === undefined ? undefined : { from },
+              state:
+                from === undefined ? undefined : autoplay ? { from, autoplay } : { from },
             },
           ]}
         >
@@ -544,6 +550,40 @@ describe("VideoPage", () => {
       fireEvent.click(next);
       await waitFor(() => expect(player().video.id).toBe(8));
       expect(player().autoplay).toBe(true);
+    });
+
+    it("履歴の「Resume」から来たら、再開の規則の位置から自動で再生を始める（043 R-13）", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          progress: {
+            positionMs: 65_000,
+            completed: false,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("7", "/history?watch=inProgress", "owner", true);
+      await ready();
+      expect(player().autoplay).toBe(true);
+      expect(player().initialPositionMs).toBe(65_000);
+    });
+
+    it("履歴の「Start over」から来た見終わった動画は、先頭から自動で再生を始める（043 R-13）", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          progress: {
+            positionMs: 240_000,
+            completed: true,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("7", "/history", "owner", true);
+      await ready();
+      expect(player().autoplay).toBe(true);
+      expect(player().initialPositionMs).toBe(0);
     });
 
     it("前後の矢印は操作バーと同じ時期に見せ、前後が無い側は出さない", async () => {

@@ -130,6 +130,12 @@
   --spacing-list-number: 5rem;
   --spacing-list-number-wide: 6rem;
   --spacing-list-date: 7rem;
+  /* 時間軸（web/src/ui/patterns/timeline.tsx）: 日の見出しの列、時刻の列、行のサムネイル
+     （lg 以上と lg 未満。16:9 で約 192px と 128px） */
+  --spacing-timeline-label: 6rem;
+  --spacing-timeline-time: 4rem;
+  --spacing-timeline-thumb: 12rem;
+  --spacing-timeline-thumb-sm: 8rem;
   /* ツールバーの検索欄の最小幅（狭い幅と sm 以上）とズームの幅 */
   --spacing-search-min: 5rem;
   --spacing-search-min-sm: 10rem;
@@ -296,6 +302,25 @@
  */
 @utility grid-cols-term {
   grid-template-columns: auto 1fr;
+}
+
+/*
+ * 時間軸の列（web/src/ui/patterns/timeline.tsx）。まとまりは日の見出しの列と行の列、行は
+ * lg 未満でサムネイル・文字・端のボタン、lg からは時刻・サムネイル・文字・操作・端のボタン。
+ * 列の定義は段で表せないので名前つきのユーティリティにする。
+ */
+@utility grid-cols-timeline-group {
+  grid-template-columns: var(--spacing-timeline-label) minmax(0, 1fr);
+}
+
+@utility grid-cols-timeline-item {
+  grid-template-columns: var(--spacing-timeline-thumb-sm) minmax(0, 1fr) auto;
+}
+
+@utility grid-cols-timeline-item-wide {
+  grid-template-columns:
+    var(--spacing-timeline-time) var(--spacing-timeline-thumb) minmax(0, 1fr)
+    auto auto;
 }
 
 /*

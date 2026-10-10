@@ -88,12 +88,23 @@ The row shows the current position as text and a bar, next to the resume
 action, because requirement 16 and 17 pair them: the viewer reads where they
 are and presses the button that continues from there. The thumbnail is
 wider than the library's list row (`timeline-thumb`, about 192×108 px at
-the widths from `sm`) because the maintainer's mockup makes the frame the
+the widths from `lg`) because the maintainer's mockup makes the frame the
 one picture on the row and the position bar under it has to be readable;
 the row is still one line of a log, shorter than a library card, and holds
 no tags, size, quality or favorite. The library's `list-thumb` width was
 rejected for the position bar's sake: a 112 px bar cannot show a position
 that moved by a minute in a two-hour video.
+
+The row takes its one-line form, and the day label its column, from `lg`
+(1024 px), the width at which the date list turns from a strip into a side
+column; below `lg` the timeline keeps the compact form of the phone. The
+first design switched at `sm` (640 px), but in review of #879 the one-line
+row left the title column 0 px wide at 640 px and 126 px at 768 px, once the
+rail, the page padding, the label and time columns, the 192 px thumbnail and
+the two buttons had taken their widths, so titles broke into a narrow strip.
+The maintainer chose the compact form for every width below `lg` over
+narrower fixed columns, so the row has one form per side of the breakpoint
+the rest of the screen already uses.
 
 Clearing everything is the last item of the side column, after a divider, in
 the `ghost-destructive` form, which is as quiet as the column's dates and
@@ -172,15 +183,15 @@ longer uses it.
 | --- | --- | --- |
 | `ListPage` `aside` slot and `toolbarRow="header"` | `list-page` | `aside`: a column at the right of the body from `lg`, `w-list-aside` wide (a named step for a column that fits "Tue, Oct 7" and "Clear history…" on one line), stuck under the top bar while the body scrolls; below `lg` it is drawn full width between the band and the body, and the section in it decides its narrow form. `toolbarRow="header"`: from `lg` the header and the toolbar share one row, the header at its own width and the toolbar filling the rest; below `lg` they stack as today. The grid is a named utility in `tokens.css`, as `grid-cols-term` is |
 | `Toolbar` `searchPlacement="end"` | `toolbar` | In the `page` placement, the search moves after the filters to the row's end, no wider than `max-w-sm`, for a row that begins with the page title; below `sm` it still takes its own full-width line |
-| `Timeline` section | `timeline`, block `timeline-example` | Rows on one vertical rule, grouped by a label that stands beside the group from `sm` and above it below; see [Timeline](#timeline). It takes a `label`, then one `TimelineGroup` per label with its rows as `TimelineItem`s; the section owns the rule, the dots, the label column, the time column and every gap, and the screen passes text and row content |
+| `Timeline` section | `timeline`, block `timeline-example` | Rows on one vertical rule, grouped by a label that stands beside the group from `lg` and above it below; see [Timeline](#timeline). It takes a `label`, then one `TimelineGroup` per label with its rows as `TimelineItem`s; the section owns the rule, the dots, the label column, the time column and every gap, and the screen passes text and row content |
 | `JumpList` section | `jump-list` | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s, with an optional `action` slot after a last divider; a vertical list under an `h2` from `lg` and a horizontally scrolling strip of `outline` `sm` chips below, with the heading for screen readers only and no `action`; see [Jump to date](#jump-to-date) |
 | `Button` variant `ghost-destructive` | `button` | `ghost`'s shape with `text-destructive` and a `bg-destructive-soft` hover, the button form of `DropdownMenuItem variant="destructive"`; for a destructive action that stands among plain actions outside a menu, after a `Separator`, and always opens a `ConfirmDialog`. One per screen |
 | `LoadingState` `layout="timeline"` | `loading-state` | `Skeleton` shapes of a timeline: a label block and three rows with a thumbnail-sized block, under one rule |
 
 Named steps added to `tokens.css`: `list-aside`, `timeline-label` (the day
 label column), `timeline-time` (the time column), `timeline-thumb` (the row
-thumbnail from `sm`, 16:9, about 192 px wide) and `timeline-thumb-sm` (below
-`sm`, about 128 px wide). No new colour token, so the contrast pairs in
+thumbnail from `lg`, 16:9, about 192 px wide) and `timeline-thumb-sm` (below
+`lg`, about 128 px wide). No new colour token, so the contrast pairs in
 `web/src/theme/tokens.test.ts` gain nothing.
 
 ## Sidebar entry and route
@@ -248,7 +259,7 @@ time zone, newest day first, and within a day in the order the API gives
 
 | Part | Form |
 | --- | --- |
-| Day label | From `sm`, a column `w-timeline-label` wide at the left of the group, aligned with the group's first row: the first line "Today", "Yesterday" or the weekday in `text-sm font-semibold text-foreground`, the second line the date in `text-xs text-muted-foreground`. Below `sm`, the two lines sit on one line above the group's rows (`Today · Oct 10`), to the right of the rule, with a dot of their own. The label is an `h2` |
+| Day label | From `lg`, a column `w-timeline-label` wide at the left of the group, aligned with the group's first row: the first line "Today", "Yesterday" or the weekday in `text-sm font-semibold text-foreground`, the second line the date in `text-xs text-muted-foreground`. Below `lg`, the two lines sit on one line above the group's rows (`Today · Oct 10`), to the right of the rule, with a dot of their own. The label is an `h2` |
 | Rule and dot | The rule is `border-l border-border`; each row has a `size-2 rounded-full bg-muted-foreground` dot centred on the rule at the row's first line |
 | Time | `text-xs text-muted-foreground tabular-nums`, `w-timeline-time`, right after the dot, aligned with the row's first line |
 | Rows inside a day | `py-2` each, no divider line and no card: the rule is the only line on the screen |
@@ -267,8 +278,11 @@ under its weekday.
 
 ### Entry row
 
-From `sm`, a row is one line: the time, the thumbnail, the text column and the
-actions, `items-start` so the time and the title share the first line.
+From `lg`, a row is one line: the time, the thumbnail, the text column and the
+actions, `items-start` so the time and the title share the first line. Below
+`lg`, the row is the compact form: the time on its own line with the `×` at
+its end, then the `w-timeline-thumb-sm` thumbnail at the left with the text
+column beside it, and the resume or start-over button under the text column.
 
 | Part | Form |
 | --- | --- |
@@ -276,12 +290,12 @@ actions, `items-start` so the time and the title share the first line.
 | Title | `text-sm font-medium text-foreground line-clamp-2`, breaking inside a word when it has to; the full title in `title`. The video's current `video.title` |
 | Folder line | `text-xs text-muted-foreground truncate`: the folder path, "Travel / 2024"; absent when the video is directly in a registered folder |
 | Position line | A `Progress` (`h-1`, `max-w-xs`, `aria-label` "Watched portion") with `max` `durationMs` and `value` `progress.positionMs`, or `durationMs` when `progress.completed` is true, because the server marks a video watched up to 15 seconds or 5% before its end and a watched row's bar is full; then "16:05 / 42:18" in `text-xs text-muted-foreground tabular-nums`. The line is absent when the video has no `progress` or no `durationMs` |
-| Actions | At the row's end, `shrink-0`: the `outline` `sm` resume or start-over button, then the `ghost` `icon-sm` remove button (lucide `X`, `text-muted-foreground`, tooltip "Remove from history"). Both are always drawn, never revealed on hover only, because the screen is used by touch as well |
+| Actions | From `lg` at the row's end, `shrink-0`: the `outline` `sm` resume or start-over button, then the `ghost` `icon-sm` remove button (lucide `X`, `text-muted-foreground`, tooltip "Remove from history"); below `lg` the button under the text column and the `×` at the end of the time's line. Both are always drawn, never revealed on hover only, because the screen is used by touch as well |
 
 The time, the thumbnail and the text column are one `Link` to
 `/videos/{video.id}` with `state.from` the current history URL. The link
 covers the row from the time to the actions, with `hover:bg-accent
-rounded-md`; below `sm`, where the time stands on its own line with the `×`
+rounded-md`; below `lg`, where the time stands on its own line with the `×`
 at its end, the time is in the same link and only the `×` and the resume or
 start-over button sit outside it. A press anywhere on the row but the buttons
 therefore opens the video as requirement 5 says: the page resumes by its own
@@ -492,14 +506,15 @@ path covers (R-6).
 ## Responsive behaviour
 
 The widths below are the ones the implementation is judged at. The layout
-changes at `sm` (640 px: the row's form and the day label's place) and `lg`
-(1024 px: the header row, the side column and where the clear action lives).
+changes at `lg` (1024 px: the header row, the side column, where the clear
+action lives, the row's form and the day label's place); at `sm` (640 px)
+the drawer becomes the rail.
 
 | Width | Layout |
 | --- | --- |
 | 360px | The sidebar is the drawer. The header row is the title with the search toggle and `More` at its right; under it the filter's three options fill the toolbar row, and the search field appears on its own line while open; then the strip of date chips, scrolling sideways with the chosen chip in view. In the timeline the day label is one line above its rows, to the right of the rule; a row is the time with the `×` at the line's end, then the `w-timeline-thumb-sm` thumbnail at the left with the title, the position text and the `outline` `sm` "Resume" or "Start over" button in the remaining width. A long title clamps to two lines and never pushes the button out of the row. The dialog spans the width with the dialog's own margin |
-| 768px | The rail sidebar. The header row as at 360px; the strip as at 360px. The timeline takes the row form from `sm`: the day label in its column at the left, the time after the dot, the `w-timeline-thumb` thumbnail, the title, the folder line and the position bar in the middle, and the two buttons at the row's end; most titles fit on one line |
-| 1280px | As 768px in the timeline. The header row holds the title, the filter and the search field at the row's end; no search toggle and no `More`. The `w-list-aside` side column stands at the right of the timeline under "Jump to date", stuck under the top bar, with "Clear history…" after its last divider. The dialog is `max-w-lg` centred |
+| 768px | The rail sidebar. The header row as at 360px; the strip as at 360px. The timeline keeps the compact form of 360px: the day label one line above its rows, the time on its own line with the `×`, the `w-timeline-thumb-sm` thumbnail with the text column beside it and the button under the text; the wider text column leaves more of a long title on its two lines |
+| 1280px | The timeline takes the row form from `lg`: the day label in its column at the left, the time after the dot, the `w-timeline-thumb` thumbnail, the title, the folder line and the position bar in the middle, and the resume or start-over button and the `×` at the row's end. The header row holds the title, the filter and the search field at the row's end; no search toggle and no `More`. The `w-list-aside` side column stands at the right of the timeline under "Jump to date", stuck under the top bar, with "Clear history…" after its last divider. The dialog is `max-w-lg` centred |
 
 ## Review criteria
 

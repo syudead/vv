@@ -396,6 +396,7 @@ export const en = {
         centeredForm: "Centered form",
         dialogs: "Form dialog and confirm dialog",
         groupedList: "Grouped list",
+        timeline: "Timeline",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -530,6 +531,12 @@ export const en = {
       today: "Today",
       yesterday: "Yesterday",
       removeEntry: "Remove from history",
+      // 時間軸の見本（timeline-example）の行の文言。
+      folderPath: "Travel / 2024",
+      position: (position: string, duration: string) => `${position} / ${duration}`,
+      watchedPortion: "Watched portion",
+      resume: "Resume",
+      startOver: "Start over",
     },
   },
   app: {
@@ -1387,7 +1394,15 @@ export const en = {
     day: {
       today: "Today",
       yesterday: "Yesterday",
+      // 行の読み上げ名に入れる日: 見出しの 1 行目と 2 行目（「Today, Oct 10」）。
+      full: (name: string, date: string) => `${name}, ${date}`,
     },
+    // 行の再生位置と長さ（「16:05 / 42:18」）。どちらも formatDuration で整えた文字列。
+    position: (position: string, duration: string) => `${position} / ${duration}`,
+    resume: "Resume",
+    resumeFor: (title: string) => `Resume ${title}`,
+    startOver: "Start over",
+    startOverFor: (title: string) => `Start ${title} over`,
     entryLink: (title: string, duration: string, day: string, time: string) =>
       duration === ""
         ? `${title}, played ${day} at ${time}`

@@ -47,9 +47,10 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const titleA = "履歴の確認A";
 const titleB = "履歴の確認B";
 const videos = new Map<string, Video>();
-// 履歴の行の時刻（en の formatTime、例 "3:04 PM"）。日の見出しは日付をまたいだ実行でも
-// 落ちないよう Today と Yesterday のどちらも受ける。
-const playedAt = /played (Today|Yesterday) at \d{1,2}:\d{2}\s?[AP]M$/;
+// 履歴の行の日と時刻（日の見出しの 2 行と en の formatTime、例 "Today, Oct 10 at 3:04 PM"）。
+// 日付をまたいだ実行でも落ちないよう Today と Yesterday のどちらも受ける。
+const playedAt =
+  /played (Today|Yesterday), [A-Z][a-z]{2} \d{1,2}(, \d{4})? at \d{1,2}:\d{2}\s?[AP]M$/;
 
 function video(title: string): Video {
   const found = videos.get(title);
@@ -401,8 +402,8 @@ test.describe.serial("watch history", () => {
 
     await openHistory(page);
     // いちばん上（A の 2 回目の視聴）の行の × を押す。
-    const newest = historyList(page).locator('[data-slot="grouped-list-item"]').first();
-    await expect(newest.getByRole("link")).toHaveAccessibleName(
+    const newest = historyList(page).locator('[data-slot="timeline-item"]').first();
+    await expect(newest.getByRole("link").first()).toHaveAccessibleName(
       new RegExp(`^${escapeRegExp(titleA)}, `),
     );
     await newest
@@ -434,7 +435,9 @@ test.describe.serial("watch history", () => {
     let dialog = await openClear();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
-    await expect(historyList(page).getByRole("link")).toHaveCount(2);
+    await expect(historyList(page).getByRole("link", { name: /, played / })).toHaveCount(
+      2,
+    );
 
     dialog = await openClear();
     await dialog.getByRole("button", { name: "Clear", exact: true }).click();

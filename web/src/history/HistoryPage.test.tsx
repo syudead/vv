@@ -122,9 +122,9 @@ function LocationProbe() {
   return null;
 }
 
-function renderPage() {
+function renderPage(url = "/history") {
   render(
-    <MemoryRouter initialEntries={["/history"]}>
+    <MemoryRouter initialEntries={[url]}>
       <TooltipProvider>
         <ToastProvider>
           <Routes>
@@ -142,6 +142,13 @@ function historyList(): HTMLElement {
   return screen.getByRole("list", { name: "Watch history" });
 }
 
+/** positionBar は行の位置の行のバー（最大が動画の長さのもの）である。 */
+function positionBar(bars: HTMLElement[]): HTMLElement {
+  const bar = bars.find((item) => item.getAttribute("aria-valuemax") === "2538000");
+  if (bar === undefined) throw new Error("no position bar");
+  return bar;
+}
+
 function toasts(): string[] {
   return Array.from(document.querySelectorAll("[data-sonner-toast]")).map(
     (toast) => toast.textContent ?? "",
@@ -149,6 +156,9 @@ function toasts(): string[] {
 }
 
 beforeEach(() => {
+  // 日の見出しの「今日」「今年」を決める今の日付を固定する（2026 年 10 月 1 日）。
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 9, 1, 12, 0));
   server.entries = [
     {
       id: 4,
@@ -191,12 +201,13 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」）", () => {
-  it("件を新しい順に、日の見出しの下へ時刻と題名つきで並べる", async () => {
+  it("件を新しい順に、日の見出しの下へ時刻と題名つきで時間軸に並べる", async () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeDefined();
     expect(document.title).toBe("History");
@@ -205,23 +216,23 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     const headings = within(historyList())
       .getAllByRole("heading", { level: 2 })
       .map((heading) => heading.textContent);
-    expect(headings).toEqual(["Sep 27, 2026", "Sep 26, 2026"]);
+    expect(headings).toEqual(["Sunday · Sep 27", "Saturday · Sep 26"]);
 
     const removeNames = within(historyList())
       .getAllByRole("button", { name: /^Remove/ })
       .map((button) => button.getAttribute("aria-label"));
     expect(removeNames).toEqual([
       expect.stringMatching(
-        /^Remove "Harbour lights" played Sep 27, 2026 at 9:30\sPM from history$/,
+        /^Remove "Harbour lights" played Sunday, Sep 27 at 9:30\sPM from history$/,
       ),
       expect.stringMatching(
-        /^Remove "Gone" played Sep 27, 2026 at 3:04\sPM from history$/,
+        /^Remove "Gone" played Sunday, Sep 27 at 3:04\sPM from history$/,
       ),
       expect.stringMatching(
-        /^Remove "Unknown video" played Sep 26, 2026 at 9:00\sAM from history$/,
+        /^Remove "Unknown video" played Saturday, Sep 26 at 9:00\sAM from history$/,
       ),
       expect.stringMatching(
-        /^Remove "Kyoto" played Sep 26, 2026 at 8:00\sAM from history$/,
+        /^Remove "Kyoto" played Saturday, Sep 26 at 8:00\sAM from history$/,
       ),
     ]);
     expect(within(historyList()).getByText(/^3:04\sPM$/)).toBeDefined();
@@ -239,7 +250,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     ]);
     // 題名はいまの動画の題名。写しの題名は使わない。
     expect(links[0]?.getAttribute("aria-label")).toMatch(
-      /^Harbour lights, 1:00, played Sep 27, 2026 at 9:30\sPM$/,
+      /^Harbour lights, 1:00, played Sunday, Sep 27 at 9:30\sPM$/,
     );
     expect(within(historyList()).queryByText("Old name")).toBeNull();
 
@@ -251,6 +262,131 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     await user.click(links[0]!);
     expect(await screen.findByText("Video page")).toBeDefined();
     expect(location).toEqual({ pathname: "/videos/10", state: { from: "/history" } });
+  });
+
+  it("途中の件は位置と長さとその比率のバー、「Resume」を出し、見終わった件は「Start over」", async () => {
+    const updatedAt = "2026-09-27T12:00:00Z";
+    server.entries = [
+      {
+        id: 4,
+        playedAt: at(27, 21, 30),
+        title: "Harbour lights",
+        video: video(10, {
+          title: "Harbour lights",
+          durationMs: 2_538_000,
+          progress: { positionMs: 965_000, completed: false, updatedAt },
+        }),
+      },
+      {
+        id: 3,
+        playedAt: at(27, 15, 4),
+        title: "Kyoto",
+        video: video(11, {
+          title: "Kyoto",
+          durationMs: 2_538_000,
+          progress: { positionMs: 2_530_000, completed: true, updatedAt },
+        }),
+      },
+      {
+        id: 2,
+        playedAt: at(27, 9, 0),
+        title: "Fresh",
+        video: video(12, { title: "Fresh" }),
+      },
+      { id: 1, playedAt: at(26, 9, 0), title: "Gone" },
+    ];
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+
+    const rows = within(historyList()).getAllByRole("listitem");
+    const row = (title: string) => {
+      const found = rows.find(
+        (item) =>
+          item.getAttribute("data-slot") === "timeline-item" &&
+          within(item).queryByText(title) !== null,
+      );
+      if (found === undefined) throw new Error(`no row for ${title}`);
+      return within(found);
+    };
+
+    const midway = row("Harbour lights");
+    expect(midway.getByText("16:05 / 42:18")).toBeDefined();
+    // サムネイルの下端の縁（百分率）とは別に、位置の行のバーを長さで描く。
+    const bar = positionBar(
+      midway.getAllByRole("progressbar", { name: "Watched portion" }),
+    );
+    expect(bar.getAttribute("aria-valuenow")).toBe("965000");
+    expect(midway.getByRole("link", { name: "Resume Harbour lights" })).toBeDefined();
+    expect(midway.queryByRole("link", { name: /^Start/ })).toBeNull();
+
+    const watched = row("Kyoto");
+    expect(watched.getByText("42:10 / 42:18")).toBeDefined();
+    const full = positionBar(
+      watched.getAllByRole("progressbar", { name: "Watched portion" }),
+    );
+    expect(full.getAttribute("aria-valuenow")).toBe("2538000");
+    expect(watched.getByRole("link", { name: "Start Kyoto over" })).toBeDefined();
+    expect(watched.queryByRole("link", { name: /^Resume/ })).toBeNull();
+
+    // 位置の無い動画は位置も操作も出さず、行そのものが動画を開く。
+    const fresh = row("Fresh");
+    expect(fresh.queryByRole("progressbar")).toBeNull();
+    expect(fresh.getAllByRole("link")).toHaveLength(1);
+
+    // 動画の無い件はどちらの操作も出さない。
+    const gone = row("Gone");
+    expect(gone.queryByRole("link")).toBeNull();
+    expect(gone.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("「Resume」は今の履歴の URL を戻り先に、自動再生を頼んで再生画面を開く", async () => {
+    const user = userEvent.setup();
+    server.entries = [
+      {
+        id: 4,
+        playedAt: at(27, 21, 30),
+        title: "Harbour lights",
+        video: video(10, {
+          title: "Harbour lights",
+          progress: { positionMs: 30_000, completed: false, updatedAt: at(27, 21, 40) },
+        }),
+      },
+    ];
+    renderPage("/history?q=harbour");
+    await screen.findByRole("list", { name: "Watch history" });
+
+    await user.click(screen.getByRole("link", { name: "Resume Harbour lights" }));
+
+    expect(await screen.findByText("Video page")).toBeDefined();
+    expect(location).toEqual({
+      pathname: "/videos/10",
+      state: { from: "/history?q=harbour", autoplay: true },
+    });
+  });
+
+  it("行そのものは自動再生を頼まずに再生画面を開く", async () => {
+    const user = userEvent.setup();
+    server.entries = [
+      {
+        id: 4,
+        playedAt: at(27, 21, 30),
+        title: "Harbour lights",
+        video: video(10, {
+          title: "Harbour lights",
+          progress: { positionMs: 30_000, completed: false, updatedAt: at(27, 21, 40) },
+        }),
+      },
+    ];
+    renderPage("/history?q=harbour");
+    await screen.findByRole("list", { name: "Watch history" });
+
+    await user.click(screen.getByRole("link", { name: /^Harbour lights, 1:00, played/ }));
+
+    expect(await screen.findByText("Video page")).toBeDefined();
+    expect(location).toEqual({
+      pathname: "/videos/10",
+      state: { from: "/history?q=harbour" },
+    });
   });
 
   it("続きは前回の nextCursor で読み、同じ日のまとまりに加える", async () => {
@@ -281,7 +417,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
       within(historyList())
         .getAllByRole("heading", { level: 2 })
         .map((heading) => heading.textContent),
-    ).toEqual(["Sep 27, 2026", "Sep 26, 2026"]);
+    ).toEqual(["Sunday · Sep 27", "Saturday · Sep 26"]);
   });
 
   it("× でその行だけを消し、フォーカスを次の行の × へ移す", async () => {
@@ -521,7 +657,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     ).toBeDefined();
     expect(screen.getByRole("alertdialog")).toBeDefined();
     // 窓の後ろの一覧は読み上げから隠れているので、行を数える。
-    expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(4);
+    expect(document.querySelectorAll('[data-slot="timeline-item"]')).toHaveLength(4);
   });
 
   it("履歴が無ければ空の表示にし、More を出さない", async () => {
