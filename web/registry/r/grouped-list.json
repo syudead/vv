@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "grouped-list",
+  "title": "GroupedList",
+  "description": "Section: rows under headings that stick below the top bar, each group's rows on the page background with no card and no line, groups further apart than rows.",
+  "files": [
+    {
+      "path": "src/ui/patterns/grouped-list.tsx",
+      "content": "import type { ReactNode, Ref } from \"react\";\n\n// 見出しつきのまとまりの一覧（区画）。まとまりの見出しの下に、その行を地の面のまま並べる。\n// 行に card の面も行の間の線も無く、まとまりの間の隙間が行の間より広いことだけで区切りを\n// 見せる。まとまりの間・見出しと行の間・行の上下の余白、見出しの見た目とトップバーの下に\n// 貼り付くことはこの区画が持ち、画面は見出しの文言と行の中身を渡すだけにする。規則は\n// web/registry/rules/patterns.md の Sections。\n\nexport interface GroupedListProps {\n  /** 一覧の名前（「Watch history」）。支援技術に読まれる。 */\n  label: string;\n  /** GroupedListGroup を並べる。 */\n  children: ReactNode;\n}\n\nfunction GroupedListRoot({ label, children }: GroupedListProps) {\n  return (\n    <ul data-slot=\"grouped-list\" aria-label={label} className=\"flex flex-col gap-6\">\n      {children}\n    </ul>\n  );\n}\n\nexport interface GroupedListGroupProps {\n  /** まとまりの見出し（「Today」）。h2 になる。 */\n  heading: ReactNode;\n  /** 見出しの同じ行の後ろに弱い色で添える語（「Oct 10」）。 */\n  detail?: ReactNode;\n  /** GroupedListItem を並べる。 */\n  children: ReactNode;\n}\n\n/**\n * GroupedListGroup は見出しと、その行である。見出しはまとまりの行が流れる間トップバーの\n * 下に貼り付き、次のまとまりの見出しに押し出される。`detail` は「·」の後ろに同じ 1 行で\n * 続く（「Today · Oct 10」）。「·」は支援技術に読ませない。\n */\nfunction GroupedListGroup({ heading, detail, children }: GroupedListGroupProps) {\n  return (\n    <li data-slot=\"grouped-list-group\" className=\"flex flex-col gap-2\">\n      <h2 className=\"sticky top-navbar z-10 flex flex-wrap items-baseline gap-x-1 bg-background py-2\">\n        <span className=\"text-sm font-semibold text-foreground\">{heading}</span>\n        {detail !== undefined && (\n          <>\n            {\" \"}\n            <span aria-hidden=\"true\" className=\"text-xs text-muted-foreground\">\n              ·\n            </span>{\" \"}\n            <span className=\"text-xs text-muted-foreground\">{detail}</span>\n          </>\n        )}\n      </h2>\n      <ul className=\"flex flex-col\">{children}</ul>\n    </li>\n  );\n}\n\nexport interface GroupedListItemProps {\n  /** 行の中身。左から右へ並び、縦は中央に揃う。 */\n  children: ReactNode;\n  ref?: Ref<HTMLLIElement>;\n}\n\n/**\n * GroupedListItem はまとまりの 1 行である。地の面の上に上下の余白だけで置き、横の余白は\n * 持たないので、行の最初の要素は見出しと揃う。行の間に隙間も線も無い。\n */\nfunction GroupedListItem({ children, ref }: GroupedListItemProps) {\n  return (\n    <li\n      ref={ref}\n      data-slot=\"grouped-list-item\"\n      className=\"flex min-w-0 items-center gap-3 py-2\"\n    >\n      {children}\n    </li>\n  );\n}\n\n/** GroupedList は一覧の全体で、`GroupedList.Group` と `GroupedList.Item` を持つ。 */\nconst GroupedList = Object.assign(GroupedListRoot, {\n  Group: GroupedListGroup,\n  Item: GroupedListItem,\n});\n\nexport { GroupedList, GroupedListGroup, GroupedListItem };\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -68,6 +68,7 @@ const buttonVariants = [
   "outline",
   "ghost",
   "destructive",
+  "ghost-destructive",
   "link",
 ] as const;
 

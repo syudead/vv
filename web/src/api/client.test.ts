@@ -667,6 +667,27 @@ describe("progress API client", () => {
     await next;
     expect(fetch).toHaveBeenCalledTimes(2);
   });
+
+  it("視聴の識別子は渡されたときだけ保存と離脱時の送信の body に載せる", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    fetch.mockImplementation(() => Promise.resolve(jsonResponse(progress)));
+    const playbackId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+
+    await saveProgress(11, 1_000);
+    await saveProgress(11, 2_000, playbackId);
+    beaconProgress(11, 3_000, playbackId);
+    beaconProgress(11, 4_000);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+
+    const bodies = fetch.mock.calls.map(([, init]) => String(init?.body));
+    expect(bodies).toEqual([
+      JSON.stringify({ positionMs: 1_000 }),
+      JSON.stringify({ positionMs: 2_000, playbackId }),
+      JSON.stringify({ positionMs: 3_000, playbackId }),
+      JSON.stringify({ positionMs: 4_000 }),
+    ]);
+  });
 });
 
 describe("list API client", () => {

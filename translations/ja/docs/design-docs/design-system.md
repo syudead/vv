@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: f4f01069774ce1cdee262743c5a944915a135110c3d01420cc002d4e13db8505
+sourceHash: cb34db2cf26513107af55e2cd717183b434f960d49a862d117e86507e611e729
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -107,7 +107,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | 尺度 | 段階 |
 | --- | --- |
 | 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階。`font-normal`、`font-medium`、`font-semibold` |
-| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、ポップオーバーとコンボボックスの幅） |
+| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、履歴の行のサムネイルの列、一覧ページの横の列、ポップオーバーとコンボボックスの幅） |
 | 角丸 | `sm`、`md`、`lg`、`full` |
 | 影 | `shadow-card-hover`、`shadow-elevated`、`drop-shadow-mark`。静止した面には付けない |
 | 動き | `fade-in`、`pop-in`、`slide-up`、および読み込み用の `shimmer`、`spin`、`pulse`。動きを減らす設定では無効 |
@@ -132,7 +132,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 
 | コンポーネント | 項目 | 置き換えるもの |
 | --- | --- | --- |
-| `Button`（`default`、`secondary`、`outline`、`ghost`、`destructive`、`link`。サイズは `sm`、`default`、`lg`、`icon-sm`、`icon`） | `button` | `ui/Button`、`ui/IconButton` |
+| `Button`（`default`、`secondary`、`outline`、`ghost`、`destructive`、`ghost-destructive`、`link`。サイズは `sm`、`default`、`lg`、`icon-sm`、`icon`） | `button` | `ui/Button`、`ui/IconButton` |
 | `Input`、`Textarea`、`Label`、`Field` | `input`、`textarea`、`label`、`field` | 生の `<input>` と `<textarea>` |
 | `Select`、`RadioGroup` | `select`、`radio-group` | 生の `<select>`、並び替えのラジオの列 |
 | `Checkbox`、`Switch` | `checkbox`、`switch` | `ui/Checkbox` |
@@ -158,7 +158,7 @@ flowchart LR
 | 選択中と押下中 | `primary-soft` の塗りに `primary` の文字（`Toggle`、`ToggleGroup`）、または `primary` の塗り（`Checkbox`、`Switch`、`RadioGroup`） |
 | 密度 | ライブラリの密度の画面は `sm` と `icon-sm`（`h-8`）を使い、動画ページは `default` と `lg` を使う |
 
-上流に対する 5 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。さらに `CommandInput` は入力欄を囲む枠のクラスと入力欄の後に置く要素を受け取り、vv の `TagCommand` が処理中のスピナーを内側に持つ小さな入力欄を描けるようにする。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
+上流に対する 5 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。さらに `CommandInput` は入力欄を囲む枠のクラスと入力欄の後に置く要素を受け取り、vv の `TagCommand` が処理中のスピナーを内側に持つ小さな入力欄を描けるようにする。`Button` には上流にない変種 `ghost-destructive` も 1 つある。`ghost` の形に `destructive` の文字色と `destructive-soft` のホバーを合わせたもので、メニューの破壊的な項目のボタン版であり、メニューの外に置かれて `ConfirmDialog` を開く 1 つの破壊的な操作に使う。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
 
 この層は既存の画面を変えなかった。古いコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパスに残り、最後の単位がどこからも import されていないものを削除した。動画ページのタグ名の入力欄とタグ管理画面の統合先の一覧は、古い `ui/Combobox` から vv のコンポーネント `TagCommand`（タグ名の規則を持つ `Command` で、選択バーのタグのポップオーバーも使う）に移り、`ui/Combobox` は削除された。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
 
@@ -207,7 +207,7 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 | 層 | 何であるか | レジストリ |
 | --- | --- | --- |
 | ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
-| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
+| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`GroupedList`、`JumpList`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
 | 状態 | `LoadingState`、`EmptyState`、`ErrorState`、`LoadMoreRow`。本体がデータの代わりに、またはデータの後に示すもの | `registry:ui`、それぞれ 1 項目 |
 
 各雛形には例のブロック（`list-page-example` など、加えて `list-states-example`）もある。雛形、そのセクションとコンポーネントを組み合わせた動作する構成であり、i18n カタログのサンプルデータで埋めてある。新しい画面を作るエージェントはブロックを複製し、文言とデータを置き換える。ブロックは `web/src/designSystem/blocks` にあり、ショーケースが描画するのはこれである。
@@ -234,7 +234,7 @@ flowchart TD
 | その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
 | 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
 
-`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。`ListPage` の任意の脇の領域は `lg` からの列 `list-aside` で、名前付きのユーティリティ `grid-cols-list-aside` で配置し、上部バーの下に貼り付いている間は `list-aside-max` を上限とする。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
 
 ショーケース（`/design-system`）は、すべての例のブロック、各状態の一覧ページ、ボタンの後ろにあるダイアログを描画するので、メンテナーはパターンを 1440px と 390px で確認する。
 

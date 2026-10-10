@@ -47,9 +47,12 @@ type Library interface {
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
-// 動画の行が消えても記録が残る。
+// 動画の行が消えても記録が残る。play が nil でなく ContentKey が空でなければ、同じ取引で
+// 視聴履歴を 1 件書く（同じ PlaybackID の 2 回目以降は何も足さない）。
 type Playback interface {
-	SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error)
+	SaveProgress(
+		ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
+	) (domain.Progress, error)
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
 }
 
@@ -255,6 +258,8 @@ type Options struct {
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
 	Favorites Favorites
+	// WatchHistory は視聴履歴の読みと削除の先。nilなら視聴履歴の経路は500を返す。
+	WatchHistory WatchHistory
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
 	Overrides OverrideStore
 	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
@@ -334,6 +339,7 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	favorites    Favorites
+	watchHistory WatchHistory
 	overrides    OverrideStore
 	thumbnails   ThumbnailPicker
 	versions     VersionStore
@@ -406,6 +412,7 @@ func NewRouter(opts Options) http.Handler {
 		tags:              opts.Tags,
 		visibility:        opts.Visibility,
 		favorites:         opts.Favorites,
+		watchHistory:      opts.WatchHistory,
 		overrides:         opts.Overrides,
 		thumbnails:        opts.ThumbnailPicker,
 		versions:          opts.Versions,

@@ -32,6 +32,7 @@ interface PlayerProps {
   autoplay: boolean;
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
+  onPlay?: () => void;
   onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
@@ -157,7 +158,12 @@ function Screen({ name }: { name: string }) {
   );
 }
 
-function renderPage(id = "7", from?: string, audience: Audience = "owner") {
+function renderPage(
+  id = "7",
+  from?: string,
+  audience: Audience = "owner",
+  autoplay = false,
+) {
   return render(
     <TooltipProvider>
       <ToastProvider>
@@ -165,7 +171,8 @@ function renderPage(id = "7", from?: string, audience: Audience = "owner") {
           initialEntries={[
             {
               pathname: `/videos/${id}`,
-              state: from === undefined ? undefined : { from },
+              state:
+                from === undefined ? undefined : autoplay ? { from, autoplay } : { from },
             },
           ]}
         >
@@ -543,6 +550,40 @@ describe("VideoPage", () => {
       fireEvent.click(next);
       await waitFor(() => expect(player().video.id).toBe(8));
       expect(player().autoplay).toBe(true);
+    });
+
+    it("履歴の「Resume」から来たら、再開の規則の位置から自動で再生を始める（043 R-13）", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          progress: {
+            positionMs: 65_000,
+            completed: false,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("7", "/history?watch=inProgress", "owner", true);
+      await ready();
+      expect(player().autoplay).toBe(true);
+      expect(player().initialPositionMs).toBe(65_000);
+    });
+
+    it("履歴の「Start over」から来た見終わった動画は、先頭から自動で再生を始める（043 R-13）", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          progress: {
+            positionMs: 240_000,
+            completed: true,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("7", "/history", "owner", true);
+      await ready();
+      expect(player().autoplay).toBe(true);
+      expect(player().initialPositionMs).toBe(0);
     });
 
     it("前後の矢印は操作バーと同じ時期に見せ、前後が無い側は出さない", async () => {
@@ -1648,6 +1689,66 @@ describe("VideoPage", () => {
               init.body === JSON.stringify({ positionMs: 12_345 }),
           ),
         ).toBe(true);
+      });
+    });
+
+    it("最初の再生で、positioned のあとに視聴の識別子を progress API の body へ送る", async () => {
+      renderPage();
+      await ready();
+      // 自動再生の play は、続きからの位置へシークし終える前に届く。
+      act(() => player().onPlay?.());
+      act(() => player().onPosition(42_000));
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      await waitFor(() => {
+        const bodies = fetchMock.mock.calls
+          .filter(
+            ([input, init]) =>
+              String(input) === "/api/videos/7/progress" && init?.method === "PUT",
+          )
+          .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+        expect(bodies).toEqual([
+          { positionMs: 42_000, playbackId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+        ]);
+      });
+    });
+
+    it("位置を知らせる前に positioned で再生しても、最初の位置で視聴の識別子を送る", async () => {
+      renderPage();
+      await ready();
+      // 続きの位置が無い動画は、メタデータで positioned になる。
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: false,
+          userActive: true,
+          ended: false,
+          stalled: false,
+          positioned: true,
+        }),
+      );
+      act(() => player().onPlay?.());
+      act(() => player().onPosition(0));
+      await waitFor(() => {
+        const bodies = fetchMock.mock.calls
+          .filter(
+            ([input, init]) =>
+              String(input) === "/api/videos/7/progress" && init?.method === "PUT",
+          )
+          .map(([, init]) => JSON.parse(String(init?.body)) as Record<string, unknown>);
+        expect(bodies).toEqual([
+          { positionMs: 0, playbackId: expect.stringMatching(/^[0-9a-f-]{36}$/) },
+        ]);
       });
     });
 

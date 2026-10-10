@@ -99,10 +99,10 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "key-ep1", domain.Progress{PositionMs: 60_000, DurationMs: 60_000, Completed: true}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-ep1", domain.Progress{PositionMs: 60_000, DurationMs: 60_000, Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Playback().SaveProgress(ctx, "key-ep2", domain.Progress{PositionMs: 30_000, DurationMs: 60_000}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-ep2", domain.Progress{PositionMs: 30_000, DurationMs: 60_000}, nil); err != nil {
 		t.Fatal(err)
 	}
 	manual, err := db.Tags().CreateTag(ctx, "手")

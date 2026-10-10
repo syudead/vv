@@ -8,16 +8,19 @@ import { CardGrid, type CardSize } from "./card-grid";
 export interface LoadingStateProps {
   /** 読み込んでいるものの名前（「Loading videos」）。支援技術に読まれる。 */
   label: string;
-  /** 出来上がりの形: カードのグリッドか、表の行か。 */
-  layout: "grid" | "table";
+  /** 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か。 */
+  layout: "grid" | "table" | "grouped";
   /** grid のときのカードの大きさ。データが来たときの CardGrid と同じにする。 */
   size?: CardSize;
-  /** 並べる数。 */
+  /** 並べる数。既定は grid と table で 8、grouped で 3。 */
   count?: number;
 }
 
-export function LoadingState({ label, layout, size = 1, count = 8 }: LoadingStateProps) {
-  const keys = Array.from({ length: count }, (_, index) => index);
+export function LoadingState({ label, layout, size = 1, count }: LoadingStateProps) {
+  const keys = Array.from(
+    { length: count ?? (layout === "grouped" ? 3 : 8) },
+    (_, index) => index,
+  );
   return (
     <div data-slot="loading-state" role="status" aria-label={label} aria-busy="true">
       {layout === "grid" ? (
@@ -30,6 +33,25 @@ export function LoadingState({ label, layout, size = 1, count = 8 }: LoadingStat
             </div>
           ))}
         </CardGrid>
+      ) : layout === "grouped" ? (
+        // GroupedList と同じ形: 見出しの大きさの棒と、地の面の上のサムネイルの大きさの行。
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 py-2">
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+          <div className="flex flex-col">
+            {keys.map((key) => (
+              <div key={key} className="flex items-center gap-3 py-2">
+                <Skeleton className="aspect-video w-history-thumb-sm shrink-0 lg:w-history-thumb" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       ) : (
         <div className="flex flex-col divide-y divide-border overflow-hidden rounded-md border border-border bg-card">
           {keys.map((key) => (

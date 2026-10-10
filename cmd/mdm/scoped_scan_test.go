@@ -58,7 +58,7 @@ func TestWatchScanKeepsVideoMovedBetweenDirtyDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.Playback().SaveProgress(ctx, movie.ContentKey,
-		domain.Progress{PositionMs: 40_000, DurationMs: 100_000}); err != nil {
+		domain.Progress{PositionMs: 40_000, DurationMs: 100_000}, nil); err != nil {
 		t.Fatal(err)
 	}
 

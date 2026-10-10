@@ -268,7 +268,7 @@ jobs:
           - group: tags
             files: e2e/tags.e2e.ts
           - group: library
-            files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/hover-preview.e2e.ts
+            files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts
           - group: scan and search
             files: e2e/auth.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts
     steps:

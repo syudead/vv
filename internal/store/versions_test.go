@@ -245,7 +245,7 @@ func TestUnbundleDissolvesAndCopiesValues(t *testing.T) {
 	attachNamedTag(t, db, "Y", ids["b"])
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
 	bundleKey := ownerVideo(t, db, ids["a"]).UserKey
-	if _, err := db.Playback().SaveProgress(ctx, bundleKey, domain.Progress{PositionMs: 4000, DurationMs: 10000}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, bundleKey, domain.Progress{PositionMs: 4000, DurationMs: 10000}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{ids["a"]}, true); err != nil {
@@ -316,7 +316,7 @@ func TestSaveProgressOnBundleMember(t *testing.T) {
 	ctx := context.Background()
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
 	b := ownerVideo(t, db, ids["b"])
-	if _, err := db.Playback().SaveProgress(ctx, b.UserKey, domain.Progress{PositionMs: 3000, DurationMs: 10000}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, b.UserKey, domain.Progress{PositionMs: 3000, DurationMs: 10000}, nil); err != nil {
 		t.Fatal(err)
 	}
 	a := ownerVideo(t, db, ids["a"])
