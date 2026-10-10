@@ -110,7 +110,14 @@ export default function Patterns() {
       <Pattern
         id="timeline"
         name={p.names.timeline}
-        items={["list-page", "timeline", "loading-state", "timeline-example"]}
+        items={[
+          "list-page",
+          "toolbar",
+          "timeline",
+          "jump-list",
+          "loading-state",
+          "timeline-example",
+        ]}
       >
         <TimelineExample />
       </Pattern>

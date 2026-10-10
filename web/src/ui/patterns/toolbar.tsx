@@ -13,6 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/ui/shadcn/popover";
 //   TopBarPortal で入れる）。折り返さず、検索欄が残りの幅を取り、表示の切り替えは
 //   それぞれの inlineFrom の幅から行に並ぶ。それより狭い幅ではアイコンだけの
 //   「View and sort」のポップオーバーに入る。
+// page の置き場で searchPlacement="end" にすると、検索欄を絞り込みの後ろ、行の端に max-w-sm
+// までの幅で置く（題で始まる行のため）。sm 未満では今まで通り 1 行を占める。
 // 規則は web/registry/rules/patterns.md の Sections。
 
 /** ToolbarBreakpoint は topBar の置き場で、表示の切り替えを行に並べ始める幅である。 */
@@ -49,6 +51,13 @@ export interface ToolbarProps {
   actions?: ReactNode;
   /** 置き場。既定は page。topBar は TopBarPortal で共通のトップバーへ入れる。 */
   placement?: "page" | "topBar";
+  /** page: 検索欄の位置。start（既定）は行の頭、end は絞り込みの後ろの行の端。 */
+  searchPlacement?: "start" | "end";
+  /**
+   * page: true なら lg 未満では検索欄を描かない（画面が見出しの検索ボタンで開く）。lg からは
+   * いつも描く。
+   */
+  searchHiddenBelowLg?: boolean;
 }
 
 export function Toolbar(props: ToolbarProps) {
@@ -59,19 +68,34 @@ export function Toolbar(props: ToolbarProps) {
   );
 }
 
-function PageToolbar({ search, children, view, viewLabel, actions }: ToolbarProps) {
+function PageToolbar({
+  search,
+  children,
+  view,
+  viewLabel,
+  actions,
+  searchPlacement = "start",
+  searchHiddenBelowLg = false,
+}: ToolbarProps) {
   const hasView = view !== undefined && view.length > 0;
+  const atEnd = searchPlacement === "end";
+  const searchSlot = search && (
+    <div
+      data-slot="toolbar-search"
+      className={cn(
+        "w-full sm:w-auto sm:min-w-search-min-sm sm:flex-1",
+        atEnd ? "sm:ml-auto sm:max-w-sm" : "sm:max-w-md",
+        searchHiddenBelowLg && "hidden lg:block",
+      )}
+    >
+      {search}
+    </div>
+  );
   return (
     <div data-slot="toolbar" className="flex flex-wrap items-center gap-2">
-      {search && (
-        <div
-          data-slot="toolbar-search"
-          className="w-full sm:w-auto sm:max-w-md sm:min-w-search-min-sm sm:flex-1"
-        >
-          {search}
-        </div>
-      )}
+      {!atEnd && searchSlot}
       {children}
+      {atEnd && searchSlot}
       {(hasView || actions) && (
         <div data-slot="toolbar-end" className="ml-auto flex items-center gap-2">
           {hasView && (

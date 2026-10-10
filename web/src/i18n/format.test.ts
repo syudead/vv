@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   formatDate,
   formatDateTime,
+  formatMonth,
   formatMonthDay,
   formatNumber,
   formatRelative,
   formatTime,
   formatWeekday,
+  formatWeekdayDate,
 } from "./format";
 import { t } from "./messages";
 
@@ -52,9 +54,18 @@ describe("dates", () => {
     expect(formatMonthDay(noon, new Date(2027, 0, 2))).toBe("Sep 27, 2026");
   });
 
+  it("formats the short weekday with the date, and the month, with the year only outside the current year", () => {
+    expect(formatWeekdayDate(noon, new Date(2026, 9, 10))).toBe("Sun, Sep 27");
+    expect(formatWeekdayDate(noon, new Date(2027, 0, 2))).toBe("Sun, Sep 27, 2026");
+    expect(formatMonth(noon, new Date(2026, 9, 10))).toBe("September");
+    expect(formatMonth(noon, new Date(2027, 0, 2))).toBe("September 2026");
+  });
+
   it("returns an empty string for unreadable dates", () => {
     expect(formatWeekday("nope")).toBe("");
     expect(formatMonthDay("nope")).toBe("");
+    expect(formatWeekdayDate("nope")).toBe("");
+    expect(formatMonth("nope")).toBe("");
     expect(formatTime("nope")).toBe("");
     expect(formatDate("nope")).toBe("");
     expect(formatDateTime("nope")).toBe("");
