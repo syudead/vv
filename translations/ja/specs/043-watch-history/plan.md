@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/plan.md
-sourceHash: 2394e21999b29809048932ec20b859f9fd840cd41784e32a672c55401506a678
+sourceHash: 0a5dd816d8f2557f5900c80c4a5112a56e8497a70542de08eac370845a13f73a
 ---
 
 # 実装計画: 視聴履歴の画面 {#implementation-plan-watch-history-screen}
@@ -11,7 +11,7 @@ sourceHash: 2394e21999b29809048932ec20b859f9fd840cd41784e32a672c55401506a678
 
 ## 概要 {#summary}
 
-動画を再生するたびに所有者の視聴履歴にエントリが 1 つ加わる。履歴の画面はそれらを新しい順に挙げ、エントリから動画を開き、エントリを 1 つまたはすべて削除する。再生位置、視聴状態、「Last played」の順序には触れない。改訂 (要件 12 から 18) は、所有者が動画の今の視聴状態とタイトルの検索で一覧を絞り込み、エントリのある日か月に移動し、各エントリの今の位置を見て、そこから、または最初から再生を始められるようにする。
+動画を再生するたびに所有者の視聴履歴にエントリが 1 つ加わる。履歴の画面はそれらを新しい順に挙げ、エントリから動画を開き、エントリを 1 つまたはすべて削除する。再生位置、視聴状態、「Last played」の順序には触れない。改訂 (要件 12 から 18) は、所有者が動画の今の視聴状態とタイトルの検索で一覧を絞り込み、エントリのある日か月に移動し、各エントリの今の位置を見て、そこから、または最初から再生を始められるようにする。2 回目の改訂 (要件 3、`UI品質` の節、受け入れ条件 1) は、日を画面の唯一の時間の単位にする: エントリは日ごとに 1 つの見出しの下に並び、どのエントリも時刻を示さず、一覧のどこも日より細かく時間の流れを描かない。
 
 図は、1 回の視聴が最初の `play` から履歴の画面が挙げるエントリまでたどる経路を示す。
 
@@ -39,6 +39,7 @@ flowchart LR
 | 日付の一覧と移動 (改訂) | ブラウザーの IANA のタイムゾーンでサーバーが計算する日。一覧の要求の `date` + `tz` ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone)) |
 | 画面の状態 (改訂) | ライブラリと同じく、URL の `watch`、`q`、`date` ([R-12](research.md#r-12-the-filter-the-search-and-the-date-live-in-the-screens-url)) |
 | 再開と最初から (改訂) | `autoplay` 付きの動画のページ。既存の再開の規則が位置を与える ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)) |
+| 時刻なしの日ごとのまとめ (2 回目の改訂) | エントリは `playedAt` を保つ。画面は閲覧者のローカルの日でまとめ、時刻を示さない ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day))。`Timeline` セクションはレジストリを離れる ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)) |
 
 図は、改訂後の画面の 1 つの表示がどう読まれるかを示す。
 
@@ -52,7 +53,7 @@ flowchart LR
   rows -->|"再開 / 最初から"| video["/videos/{id}、autoplay 付き"]
 ```
 
-Issue には `ui` ラベルがあるので、一覧のレイアウト、日付でのまとめ方、文言、操作の配置は、`ui-design.md` が親 Issue の `UI品質` に照らして決める。改訂の部分 (セグメントの絞り込み、検索ボックス、日付の一覧、位置のバー、再開と最初からの操作、「一致なし」の状態、スマートフォンのレイアウト) は今の `ui-design.md` にない。下の画面の単位を作る前に、`design` 段階がそれを改訂する。
+Issue には `ui` ラベルがあるので、一覧のレイアウト、日付でのまとめ方、文言、操作の配置は、`ui-design.md` が親 Issue の `UI品質` に照らして決める。改訂の部分 (セグメントの絞り込み、検索ボックス、日付の一覧、位置のバー、再開と最初からの操作、「一致なし」の状態、スマートフォンのレイアウト) は、画面の単位を作る前に `design` 段階が `ui-design.md` に加えた。今の `ui-design.md` はまだ日のタイムラインを記述している: すべての行の縦線、点、時刻と、行のリンクと削除ボタンのアクセシブルな名前の中の時刻である。2 回目の改訂はそれを日ごとにまとめた一覧に置き換えるので、下の最後の単位を作る前に、`design` 段階が `ui-design.md` を再び改訂する (一覧のセクション、行、見出し、読み込み中のスケルトン、時刻を運んでいた語、レビューの幅)。
 
 親 Issue のとおり範囲外のもの: タグや開始日と終了日での絞り込み、自動の整理と保持期間の設定、記録の一時停止、再生位置や視聴状態のリセット、外部 API、ゲストの視聴、統計。
 
@@ -77,6 +78,7 @@ Issue には `ui` ラベルがあるので、一覧のレイアウト、日付�
 - 変わる既存のルートは `PUT /api/videos/{id}/progress` だけである。履歴の 3 つのルートは新しい ([contracts/screen-api.md](contracts/screen-api.md))。改訂は `GET /api/watch-history` に 4 つのパラメーターと、ルート `GET /api/watch-history/dates` を加える。
 - 改訂は、タイムゾーンのデータベースのないホストでも `time.LoadLocation` が応答するように `time/tzdata` (標準ライブラリ、約 450 KiB) を埋め込む ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone))。コンテナのイメージはすでに `tzdata` を入れている。
 - 新しい依存はない: 再生 id は `crypto.getRandomValues()` から作る RFC 4122 バージョン 4 の id である。`crypto.randomUUID()` は安全なコンテキストを必要とし、所有者はローカルネットワークで平文の HTTP で vv を開けるからである ([running-vv.md](../../docs/how-to/running-vv.md)。[web/src/player/liveOffset.ts](../../web/src/player/liveOffset.ts) の `newAttempt` も同じ理由でそれを避けている)。
+- 2 回目の改訂はマイグレーション、ルート、スキーマを変えない: `playedAt` はエントリの時点のままであり、日は画面のまとめ方である ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day))。デザインシステムのレジストリから `Timeline` セクションを除き ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry))、その `web/registry/r/` の下のビルド済みの項目は `task generate` が作り直す ([design-system.md、Registry and agent route](../../docs/design-docs/design-system.md#registry-and-agent-route))。
 
 ## Constitution Check {#constitution-check}
 
@@ -107,7 +109,7 @@ specs/043-watch-history/
     └── screen-api.md
 ```
 
-`ui-design.md` は `design` 段階が書き (Issue に `ui` ラベルがある)、要件 12 から 18 のために同じ段階が改訂する。
+`ui-design.md` は `design` 段階が書き (Issue に `ui` ラベルがある)、要件 12 から 18 のために同じ段階が改訂し、2 回目の改訂の日ごとにまとめた一覧のために再び改訂する。
 
 ### ソースコード {#source-code}
 
@@ -120,16 +122,19 @@ specs/043-watch-history/
 | `internal/httpapi`、`api/openapi.yaml` | 再生位置の保存の `playbackId`、履歴の 3 つのルート。改訂: 一覧のパラメーター、日付のルート |
 | `cmd/mdm` | 改訂: `title_key` の起動時の埋め込み、`time/tzdata` の import |
 | `web/src/player`、`web/src/api` | `useProgressSaving` と `client.ts` の再生 id、`history.ts` |
-| `web/src/history` (新規)、`web/src/app`、`web/src/shell`、`web/src/auth`、`web/src/i18n` | 画面、そのルート、サイドバーの項目、所有者専用のパス、カタログの文言。改訂: URL の条件、絞り込み、検索、日付の操作部品、位置のバーと操作 |
+| `web/src/history` (新規)、`web/src/app`、`web/src/shell`、`web/src/auth`、`web/src/i18n` | 画面、そのルート、サイドバーの項目、所有者専用のパス、カタログの文言。改訂: URL の条件、絞り込み、検索、日付の操作部品、位置のバーと操作。2 回目の改訂: 時刻なしの日ごとにまとめた一覧と、時刻を運んでいた語 |
+| `web/src/ui`、`web/src/designSystem`、`web/registry`、`docs/design-docs/design-system.md` | 2 回目の改訂: `Timeline` セクション、その例のブロック、`LoadingState` の `timeline` レイアウト、`timeline-label` と `timeline-time` のトークンがレジストリを離れる。レジストリの規則とデザインシステムの文書はそれらを挙げなくなる ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)) |
 | `web/e2e` | 流れのブラウザーテスト |
 
 **新しいパス**: `internal/store/migrations/00034_watch_history.sql`、`internal/store/watch_history.go`、`internal/domain/watch_history.go`、`internal/httpapi/watch_history.go`、`web/src/api/history.ts`、`web/src/history/`、`web/e2e/history.e2e.ts`。改訂: `internal/store/migrations/00035_watch_history_title_key.sql`、`web/src/history/historyCriteria.ts` (URL のパラメーター。ライブラリに対する `web/src/videoList/listCriteria.ts` にあたる)。
 
-**構成の決定**: 履歴は新しい役割ではなく `PlaybackStore` に置く。エントリは位置のトランザクションの中で書かれ、1 つのテーブルを 2 つの役割の下に置くと 1 つの業務操作が分かれるからである ([data-model.md、Store operations](data-model.md#store-operations-playbackstore))。画面は `versions/` や `tags/` と同じく独自のディレクトリにする。カードの一覧と共有するものはサムネイルのほかにないからである。
+**除くパス** (2 回目の改訂): `web/src/ui/patterns/timeline.tsx`、`web/src/designSystem/blocks/timeline-example.tsx`、それらのビルド済みの項目 `web/registry/r/timeline.json` と `web/registry/r/timeline-example.json`。
+
+**構成の決定**: 履歴は新しい役割ではなく `PlaybackStore` に置く。エントリは位置のトランザクションの中で書かれ、1 つのテーブルを 2 つの役割の下に置くと 1 つの業務操作が分かれるからである ([data-model.md、Store operations](data-model.md#store-operations-playbackstore))。画面は `versions/` や `tags/` と同じく独自のディレクトリにする。カードの一覧と共有するものはサムネイルのほかにないからである。2 回目の改訂の日ごとにまとめた一覧は、改訂した `ui-design.md` が決めるとおりにレジストリのセクションから組み立てる。`Timeline` セクションは後の画面のためにレジストリに残さない ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry))。
 
 ## 実装作業 {#implementation-work}
 
-最初の 5 つの単位は親のネイティブのサブ Issue #860 から #864 が持ち、それぞれがその Issue を挙げる。`plan-to-issues` がそれらを表現済みと見て飛ばすように、見出しは書いたときのまま残す。区切り線の後の 4 つの単位が改訂の作業であり、`plan-to-issues` が作る単位はそれらだけである。
+最初の 5 つの単位は親のネイティブのサブ Issue #860 から #864 が、最初の区切り線の後の 4 つの単位は #874 から #877 が持ち、それぞれがその Issue を挙げる。`plan-to-issues` がそれらを表現済みと見て飛ばすように、見出しは書いたときのまま残す。2 つ目の区切り線の後の 1 つの単位が 2 回目の改訂の作業であり、`plan-to-issues` が作る単位はそれだけである。
 
 図は、どの単位が先に入る必要があるかを示す。
 
@@ -140,12 +145,13 @@ flowchart LR
   api --> screen["履歴の画面 (#863)"]
   client --> e2e["ブラウザーテスト (#864)"]
   screen --> e2e
-  api --> conditions[絞り込み、検索、日付の API]
-  screen --> position[位置のバー、再開と最初から]
-  conditions --> controls[画面での絞り込み、検索、日付への移動]
+  api --> conditions["絞り込み、検索、日付の API (#874)"]
+  screen --> position["位置のバー、再開と最初から (#875)"]
+  conditions --> controls["画面での絞り込み、検索、日付への移動 (#876)"]
   position --> controls
-  e2e --> e2e2[改訂のブラウザーテスト]
+  e2e --> e2e2["改訂のブラウザーテスト (#877)"]
   controls --> e2e2
+  e2e2 --> day[エントリの時刻なしの日ごとのまとめ]
 ```
 
 ### 再生ごとに視聴履歴のエントリを記録する {#record-a-watch-history-entry-for-each-playback}
@@ -204,6 +210,8 @@ flowchart LR
 
 ### 視聴履歴の API に状態の絞り込み、タイトルの検索、日付の一覧を加える {#add-the-state-filter-title-search-and-date-list-to-the-watch-history-api}
 
+**Issue**: #874。
+
 **範囲**: `00035_watch_history_title_key.sql`、エントリとともに書き、起動時に `cmd/mdm` が埋める `title_key`。`internal/domain` の `WatchHistoryFilter`、`WatchHistoryQuery`、`WatchHistoryPeriod`。`PlaybackStore.ListWatchHistory` の条件、`ListWatchHistoryDays`。`api/openapi.yaml` の `watch`、`query`、`date`、`tz` のパラメーター、`WatchHistoryFilter` と `WatchHistoryDates` のスキーマ、`GET /api/watch-history/dates` と、それらのハンドラー。`time/tzdata` の import。`web/src/api/history.ts` の `listWatchHistory` と `listWatchHistoryDates` のパラメーター ([contracts/screen-api.md、`GET /api/watch-history`](contracts/screen-api.md#get-apiwatch-history)、[`GET /api/watch-history/dates`](contracts/screen-api.md#get-apiwatch-historydates)、[data-model.md、Migration](data-model.md#migration)、[Store operations](data-model.md#store-operations-playbackstore))。
 
 **依存**: 視聴履歴の一覧と削除のエンドポイントを画面の API に加える。
@@ -211,6 +219,8 @@ flowchart LR
 **受け入れ**: `task check` が通り、`task generate` で差分が出ない。ストアとハンドラーのテストが次を示す: 視聴済みの動画 1 つ、視聴中の動画 1 つ、未視聴の動画 1 つ、動画のないエントリ 1 つがあるとき、`watch=inProgress` は視聴中の動画のエントリだけを、`watch=watched` は視聴済みの動画のエントリだけを、`watch=all` は 4 つすべてを挙げ、視聴中の動画の 2 つのエントリはどちらも `inProgress` の下に挙がる。まとまりのメンバーのエントリは、まとまりの共有の進み具合で分類される。`query` は、エントリをその動画のファイルのタイトルの語、その表示名の語、動画のないエントリのスナップショットのタイトルの語で見つけ、相対パスかタグ名にだけある語では見つけない。フレーズ `"Summer Trip"` は、`Summer\nTrip` というタイトルのエントリを、その動画がライブラリにある間も、動画がライブラリを離れた後も見つける。`-word` と `a OR b` を持つ `query` はライブラリと同じく振る舞う。`watch` と `query` を合わせると、両方が許すエントリだけを残す。マイグレーションの前に書かれた行は起動後に `title_key` を持ち、新しいエントリはすぐにそれを持つ。`tz=Asia/Tokyo` と `tz=America/Los_Angeles` での `dates` は、23:50 UTC のエントリと 00:10 UTC のエントリを、それぞれのタイムゾーンの言う日に新しい順で置き、`watch` と `query` に従う。`date=2026-09` は 9 月のエントリを先に挙げ、`nextCursor` は 8 月に届く。`date=2026-09-15` はその日から始まる。`watch=unwatched`、不明な `tz`、`tz` のない `date`、`date=2026-9`、101 文字の `query` は `400 invalid_request` を返す。ゲストは日付のルートで `401` を受け取る。
 
 ### 視聴履歴の各エントリに今の位置と、再開と最初からの操作を示す {#show-the-current-position-and-the-resume-and-restart-actions-on-each-watch-history-entry}
+
+**Issue**: #875。
 
 **範囲**: `web/src/history/` のエントリの行: `video.progress` と `video.durationMs` からのバー付きの位置と長さの文言、視聴中の動画の再開の操作と視聴済みの動画の最初からの操作 (どちらも `autoplay` 付きの動画のページへの `Link`)、動画のないエントリではそれらのない行、カタログの文言。見た目と文言は改訂した `ui-design.md` に従う ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)、[contracts/screen-api.md、Client use](contracts/screen-api.md#client-use))。
 
@@ -220,6 +230,8 @@ flowchart LR
 
 ### 視聴履歴の画面で絞り込み、検索し、日付で移動する {#filter-search-and-jump-by-date-on-the-watch-history-screen}
 
+**Issue**: #876。
+
 **範囲**: `web/src/history/historyCriteria.ts` (URL のパラメーター `watch`、`q`、`date`)、セグメントの状態の絞り込み、タイトルの検索ボックス、`GET /api/watch-history/dates` から日と月で作る日付の一覧、空の状態とは別の「一致なし」の状態、条件で読み、それが変わると読み直す `useWatchHistory`、完全な URL を持つ行のリンクの `state.from`、スマートフォンのレイアウト、カタログの文言。レイアウトと文言は改訂した `ui-design.md` に従う ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone)、[R-12](research.md#r-12-the-filter-the-search-and-the-date-live-in-the-screens-url)、[contracts/screen-api.md、Client use](contracts/screen-api.md#client-use))。
 
 **依存**: 視聴履歴の API に状態の絞り込み、タイトルの検索、日付の一覧を加える。視聴履歴の各エントリに今の位置と、再開と最初からの操作を示す。`design` 段階が改訂した `ui-design.md`。
@@ -228,8 +240,22 @@ flowchart LR
 
 ### 履歴の絞り込み、検索、日付への移動、再開の操作をブラウザーテストで覆う {#cover-the-history-filter-search-date-jump-and-resume-actions-in-a-browser-test}
 
+**Issue**: #877。
+
 **範囲**: 実際のサーバーとメディアに対する `web/e2e/history.e2e.ts` ([web-testing.md、Test levels](../../docs/design-docs/web-testing.md#test-levels))。
 
 **依存**: 視聴履歴の画面で絞り込み、検索し、日付で移動する。
 
 **受け入れ**: `task test-e2e -- e2e/history.e2e.ts` が通り、次を示す: 途中で止めた動画 1 つと最後まで再生した動画 1 つがあるとき、視聴中の絞り込みは 1 つ目だけを、視聴済みの絞り込みは 2 つ目だけを、既定は両方を挙げ、ライブラリで視聴済みと示されたカードは視聴済みの絞り込みの下にあるものである (受け入れ条件 10)。タイトルの一部を入力すると一致するエントリだけが挙がり、欄を消すと一覧が戻る (11)。検索付きの視聴中の絞り込みは両方を満たすエントリだけを残す (12)。日付の一覧にはエントリのある日だけがあり、1 つを選ぶとその日からの履歴を示す (13)。途中のエントリは位置と長さを示し、別のタブでさらに見て履歴を開き直すと文言が進んでいる (14)。再開の操作は動画を開き、示した位置から再生が始まる (15)。視聴済みのエントリは最初からの操作を示し、押すと 0 から始まる (16)。
+
+---
+
+**2 回目の改訂の単位。** 下の単位は改訂した要件 3、`UI品質` の節、受け入れ条件 1 を扱い、上の 9 つのどれも扱わない。
+
+### 視聴履歴をエントリの時刻なしで日ごとにまとめる {#group-the-watch-history-by-day-without-the-entry-time}
+
+**範囲**: 改訂した `ui-design.md` が挙げるレジストリのセクションから組み立てる `web/src/history/HistoryPage.tsx` の一覧: ローカルの日ごとに 1 つの見出しを新しい順に置き、その下の行は API の順序で、行に時刻はなく、縦線も点もない ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day))。同じ形の読み込み中のスケルトン。時刻を運んでいたカタログの文言 (`web/src/i18n/en.ts` の `history.entryLink`、`history.removeFor`、`history.day.full`) を、改訂した `ui-design.md` が言うとおりにする。`Timeline` セクション (`web/src/ui/patterns/timeline.tsx`)、その例のブロック、`LoadingState` の `timeline` レイアウト、`web/src/ui/tokens.css` の `timeline-label` と `timeline-time` のトークンと `grid-cols-timeline-*` のユーティリティ、`web/registry/rules/patterns.md`、`web/registry/index.md`、`docs/design-docs/design-system.md` のそれらの行を除き、`task generate` が `web/registry/r/` を作り直す ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry))。サムネイルのトークンは、改訂した `ui-design.md` が与える名前の下に残る。新しい形と語に合わせた `web/src/history/HistoryPage.test.tsx`、`historyDays.ts` のロジックのテスト、`web/e2e/history.e2e.ts`。
+
+**依存**: 履歴の絞り込み、検索、日付への移動、再開の操作をブラウザーテストで覆う。`design` 段階の 2 回目の `ui-design.md` の改訂。
+
+**受け入れ**: この単位は画面を変えるので、1 つの日に 1 つの動画を 2 回視聴した履歴で、`ui-design.md` が挙げる幅で、改訂した `ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが必要である。`task check` と `task check-docs` が通り、`task generate` で差分が出ない。ロジックのテストが次を示す: `historyDays.ts` は引き続きエントリを閲覧者のローカルの日で、新しい日を先にまとめ、次のページの最初のエントリを開いている日につなげる。ページテストが次を示す: 一覧は日ごとに 1 つのレベル 2 の見出しを、改訂した `ui-design.md` が与える語で持ち、ある日のすべての行は API の順序でその見出しの下にある。どの行も時刻を示さないので、一覧のどの文言も `formatTime` の形 (`9:42 PM`) に一致せず、文書は `timeline` のスロットを持たない。1 つの日の 1 つの動画の 2 回の視聴は 1 つの見出しの下の 2 つの行である。行のリンクと削除ボタンのアクセシブルな名前は時刻を持たず、改訂した `ui-design.md` が言うとおりに読める。読み込み中の状態、「一致なし」の状態、日付への移動、再開と最初からの操作、削除と全消去は、#863、#875、#876 のページテストがすでに示すとおりに、新しいセクションの上で振る舞う。`web/src/ui` は `Timeline` を export せず、`LoadingState` は `timeline` レイアウトを受け付けず、`web/registry/r/` は `timeline` と `timeline-example` の項目を持たない。`task test-e2e -- e2e/history.e2e.ts` が通り、次を示す: 動画を数秒再生すると、履歴は今日の見出しの下の最初の行としてそれを示し、その行は時刻を持たない (受け入れ条件 1)。条件 2 から 16 のテストは、時刻を持たない名前で引き続き通る。
