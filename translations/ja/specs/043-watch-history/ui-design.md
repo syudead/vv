@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/ui-design.md
-sourceHash: ccbce04ec0aeb2f85204c1e6c4979a2e3be7c9b26a0a54e6b2edc865ee59b9e8
+sourceHash: 78349cc0df190de4eb41dcc5cd246c5ecafb2bdea010e04d92aefa78a1fdf016
 ---
 
 # UI 設計: 視聴履歴の画面 {#ui-design-watch-history-screen}
@@ -88,6 +88,7 @@ flowchart LR
 | 移動の一覧の日 | Today、Yesterday、それ以外は Tue, Oct 7 | `history.day.*`、それ以外は `formatWeekdayDate`。`format.ts` に加える（`weekday: "short", month: "short", day: "numeric"`、今年以外は `year` も） |
 | 移動の一覧の月 | September。今年以外は December 2025 | `formatMonth`。`format.ts` に加える（`month: "long"`、加えて `year`） |
 | 移動先がない移動の一覧 | No dates to jump to | `history.jump.none` |
+| 要求が失敗した移動の一覧 | Couldn't load the dates | `history.jump.loadFailed`。`Retry` は `common.retry` |
 | `lg` 未満のヘッダーのメニューボタン、ツールチップとアクセシブルな名前 | More | `common.more` |
 | `lg` 未満のメニューの項目。`lg` 以上では横の列の最後の項目 | Clear history… | `history.clear` |
 | ダイアログのタイトル | Clear watch history? | `history.clearDialog.title` |
@@ -167,19 +168,19 @@ URL は、[contracts/screen-api.md の Client use](contracts/screen-api.md#clien
 
 | 部分 | 形 |
 | --- | --- |
-| サムネイル | `VideoThumbnail` `w-timeline-thumb rounded-md`: 画像または「No image」のプレースホルダー、右下に `VideoThumbnailDuration`、動画が位置を持つ間は下端に `VideoThumbnailProgress`。お気に入り、選択の印、公開の印はない |
+| サムネイル | `VideoThumbnail` `w-timeline-thumb rounded-md`: 画像または「No image」のプレースホルダー、右下に `VideoThumbnailDuration`、動画が視聴途中の間は、カードが描くのと同じに、下端に `watchedRatio(video)` の `VideoThumbnailProgress`。お気に入り、選択の印、公開の印はない |
 | タイトル | `text-sm font-medium text-foreground line-clamp-2`、必要なら単語の途中で折り返す。`title` に全文。動画の現在の `video.title` |
 | フォルダの行 | `text-xs text-muted-foreground truncate`: フォルダのパス「Travel / 2024」。動画が登録したフォルダの直下にあるときはない |
-| 位置の行 | `value` が `progress.positionMs`、`max` が `durationMs` の `Progress`（`h-1`、`max-w-xs`、`aria-label` は「Watched portion」）、その後に `text-xs text-muted-foreground tabular-nums` で「16:05 / 42:18」。動画が `progress` か `durationMs` を持たないときは行がない |
+| 位置の行 | `max` が `durationMs`、`value` が `progress.positionMs`、`progress.completed` が true のときは `durationMs` の `Progress`（`h-1`、`max-w-xs`、`aria-label` は「Watched portion」）。サーバーは終わりの 15 秒または 5% 手前まで見た動画を視聴済みとし、視聴済みの行のバーは満ちているからである。その後に `text-xs text-muted-foreground tabular-nums` で「16:05 / 42:18」。動画が `progress` か `durationMs` を持たないときは行がない |
 | 操作 | 行の端に `shrink-0` で: `outline` `sm` の再開または最初からのボタン、その後に `ghost` `icon-sm` の削除ボタン（lucide `X`、`text-muted-foreground`、ツールチップは「Remove from history」）。画面はタッチでも使うので、どちらも常に描き、ホバーのときだけ現すことはしない |
 
-サムネイルと文字の列は、`state.from` を今の履歴の URL にした `/videos/{video.id}` への 1 つの `Link` である。リンクはサムネイルから操作までの行を覆い、`hover:bg-accent rounded-md` を持つ。そのため、要件 5 のとおり、ボタン以外の行のどこを押しても動画が開く。動画の画面は自動再生なしに、自身の規則で再開する。
+時刻、サムネイルと文字の列は、`state.from` を今の履歴の URL にした `/videos/{video.id}` への 1 つの `Link` である。リンクは時刻から操作までの行を覆い、`hover:bg-accent rounded-md` を持つ。`sm` 未満では時刻が端に `×` を持つ自分の行に立つが、時刻は同じリンクの中にあり、`×` と再開または最初からのボタンだけがリンクの外に置かれる。そのため、要件 5 のとおり、ボタン以外の行のどこを押しても動画が開く。動画の画面は自動再生なしに、自身の規則で再開する。
 
 再開と最初からのボタンは、同じ動画への `state: { from, autoplay: true }` の `Link` を囲む `Button asChild` である（R-13）。そのため、それらはリンクのままである。
 
 | 動画の状態（`progress`） | ボタン | 動画の画面がすること |
 | --- | --- | --- |
-| 視聴途中（`completed` が false） | lucide `Play` 付きの「Resume」 | `resumePosition(video)`、つまり行が出す位置（5 秒の `MinResumeMs` の範囲内）から再生を始める |
+| 視聴途中（`completed` が false） | lucide `Play` 付きの「Resume」 | `resumePosition(video)` から再生を始める。行が出す位置だが、`MinResumeMs`（5 秒）未満のときと、バージョンのまとまりのメンバーの共有された位置がこのバージョンの長さを過ぎているときは 0 から始める（[R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)）。文言は「Resume」のままである。動画を普通に開くときと同じに、既存の再開の規則が開始位置を決める |
 | 視聴済み（`completed` が true） | lucide `RotateCcw` 付きの「Start over」 | 0 から再生を始める。行の文字は保存された位置を出したままで、バーは満ちている |
 | `progress` がない | なし | 行そのものが動画を開く。この場合はまれ（サーバーが記録したどの視聴にも位置の行がある）なので、3 つ目の語のために 3 つ目のボタンを置く価値はない |
 
@@ -226,6 +227,7 @@ flowchart LR
 | `lg` 未満 | 帯: 同じ項目を `outline` `sm` のチップとして、横にスクロールする 1 行に、日、縦の `Separator`、月の順で並べる。見出しは出さず、「Clear history…」はない（`More` にある）。選んだチップは押された状態で、一覧が届いたときにスクロールして見える位置に入る |
 | Clear history… | `lg` 以上だけ: 最後の `Separator` の後の、lucide `Trash2` 付きの `ghost-destructive` `sm` の `Button` で、[確認](#clearing-the-history)を開く |
 | 移動先がない | 項目の代わりに「No dates to jump to」を `text-xs text-muted-foreground` で（`lg` 以上）。`lg` 未満では帯を描かない |
+| 日付の失敗 | `GET /api/watch-history/dates` が失敗すると、項目の代わりに `text-xs text-muted-foreground` の「Couldn't load the dates」と `ghost` `sm` の「Retry」を出す。`lg` 以上では見出しの下に出し、タイムラインに行があるときは「Clear history…」がその `Separator` の後に残る。`lg` 未満では帯の 1 行として出す。「Retry」は日付を再び求め、その間 `Skeleton` の行を出す。タイムラインは日付に依存せず、自身の状態を保つ |
 
 項目を選ぶと `date`（日は `YYYY-MM-DD`、月は `YYYY-MM`）を書き、最初のページを読み直す。そのページはその日または月の最も新しいエントリから始まり、`nextCursor` で古いほうへ続く。ウィンドウは先頭までスクロールする。最初の項目を選ぶと、代わりに `date` を取り除く。最も新しい日は一覧の先頭であり、1 つの表示が 2 つの URL を持ってはならないからである。選んだ項目をもう一度押しても `date` を取り除く。日付は、画面を開いたときと、`watch` か `q` が変わったときに求め、`date` が変わったときには求めない。そのため、移動で一覧がちらつかない。新しい一覧が選んだ `date` をもう持たないときは、`date` は URL に残り、どの項目も押された状態にならず、タイムラインはその日付より前の一致するものを出す。一致なしの状態の「Clear filters」は、ほかの条件とともにそれを取り除く。
 
@@ -291,11 +293,11 @@ stateDiagram-v2
 
 | 状態 | 画面に出すもの |
 | --- | --- |
-| Loading | 本体に `LoadingState` `layout="timeline"`。絞り込みと検索を持つヘッダーの行。日付が届いていれば項目を持つ aside、そうでなければ aside 自身の `Skeleton` の行。`More` も「Clear history…」もない |
+| Loading | 本体に `LoadingState` `layout="timeline"`。絞り込みと検索を持つヘッダーの行。日付が届いていれば項目を持つ aside、その要求が失敗していれば失敗の形の aside、そうでなければ aside 自身の `Skeleton` の行。`More` も「Clear history…」もない |
 | Load failed | 「Couldn't load the history」と `Retry` を持つ `ErrorState`。aside は「No dates to jump to」を出す |
 | Empty | lucide `History`、「No watch history」、「Videos you play are listed here, newest first.」を持つ `EmptyState`。操作はない。絞り込みと検索は使えるままだが、何も見つけない。aside は「No dates to jump to」を出す。`lg` 未満では帯はない |
 | No match | lucide `SearchX`、「No history matches these conditions」、「Try a different search or change the filters.」と、`watch`、`q`、`date` を取り除く `default` `sm` の操作「Clear filters」を持つ `EmptyState`。絞り込みは押された選択肢を、検索はその文字を保つので、見る人は何がすべてを除いたかが分かる。aside は「No dates to jump to」を出すか、新しい日付がもう持たない `date` のもとでは、何も押されていない日付を出す |
-| Content | タイムライン。項目と「Clear history…」を持つ aside。`lg` 未満では `More` |
+| Content | タイムライン。項目（またはその失敗の形）と「Clear history…」を持つ aside。`lg` 未満では `More` |
 | Loading more | タイムライン、その後に読み込み中の `LoadMoreRow` |
 | Load more failed | タイムライン、その後に `Retry` を持つ失敗の `LoadMoreRow` |
 | Removing a row | その行の `×` が `Spinner`。ほかは変わらない |
@@ -303,7 +305,7 @@ stateDiagram-v2
 
 空と一致なしは、ひと目で別のものと読めなければならない。空の状態は `History` のアイコンを持ちボタンを持たない。一致なしの状態は `SearchX` のアイコンと「Clear filters」のボタンを持ち、その上のヘッダーは「All」以外の押された絞り込み、検索の文字、または押された日付を出す。
 
-一覧は、画面を開いたとき、条件が変わったとき、動画の画面からこの画面に戻ったときに読む（`Link` はルートを離れるので、画面は同じ URL で再びマウントされて最初のページを読み、終えたばかりの視聴がその先頭に来て、位置の文字が動いている。受け入れ条件 14）。開いている間に自分で更新はしない。Issue が挙げるタブをまたぐ変化は古くなった削除だけであり、それは `404` の経路が扱う（R-6）。
+一覧は、画面を開いたとき、条件が変わったとき、動画の画面からこの画面に戻ったときに読む（`Link` はルートを離れるので、画面は同じ URL で再びマウントされて最初のページを読む）。その動画のどの行も、視聴が達した位置を出す（受け入れ条件 14）。URL に `date` がなく、視聴が絞り込みと検索に合うときは、終えたばかりの視聴が先頭に来る。`date` のもとではページがその日または月から始まるので、新しい視聴はその上にあり、見る人が最初の移動の項目を選ぶと現れる。開いている間に自分で更新はしない。Issue が挙げるタブをまたぐ変化は古くなった削除だけであり、それは `404` の経路が扱う（R-6）。
 
 ## レスポンシブな振る舞い {#responsive-behaviour}
 
@@ -323,7 +325,7 @@ stateDiagram-v2
 2. **情報の密度**: 1280×800 ではスクロールせずに 5 つ以上のエントリが画面にあり、360×780 でも、日のラベルを行として数えて 5 つ以上ある。どの行も、既定のカードの大きさでのライブラリのカードより低く、サムネイル、タイトル、フォルダの行 1 つ、位置の行 1 つ、ボタン 2 つを持ち、タグ、お気に入り、サイズ、画質を持たない。位置のバーと文字は、サムネイルの高さを超えて行を高くしない。
 3. **余白のリズム**: 罫線は途切れない 1 本の線である。2 つの日のグループの間の何もない罫線は、2 つの行の間隔より目に見えて長く、1 日の中の行の間には線がない。そのため、日が罫線を下りる段として読める。日のラベルの 1 行目は、その最初の行の時刻に揃う。
 4. **文字組み**: タイトルはリスト表示の行のタイトルと同じ `text-sm` `font-medium` である。時刻、フォルダの行、位置は `text-xs` `text-muted-foreground` で、時刻と位置は `tabular-nums` なので、1 日の時刻と列の位置が揃う。日のラベルは `text-xs` の上に `text-sm` `font-semibold` である。ライブラリのリスト表示と並べると、タイトルと従の行は同じサイズ、太さ、色である。
-5. **操作の優先度**: 行のボタン以外のどこを押しても動画が開き、動画は自身の規則で再開する。「Resume」は行で唯一のアウトラインの操作であり、それ以上押さずに、出している位置から再生を始める。視聴済みの動画の「Start over」は 0 から始める。エントリを 1 つ削除するのは `×` を 1 回押すことである。消すには「Clear history…」（横の列で、または `More` の後にその項目）を押し、その後に「Clear」を押す。消去の項目は列の最後のもので、区切りの後にあり、決して画面で最も目立つ操作にならない。
+5. **操作の優先度**: 行のボタン以外のどこを押しても、時刻も含めて、動画が開き、動画は自身の規則で再開する。「Resume」は行で唯一のアウトラインの操作であり、それ以上押さずに、出している位置から、その位置が 5 秒未満なら 0 から再生を始める。視聴済みの動画の「Start over」は 0 から始める。エントリを 1 つ削除するのは `×` を 1 回押すことである。消すには「Clear history…」（横の列で、または `More` の後にその項目）を押し、その後に「Clear」を押す。消去の項目は列の最後のもので、区切りの後にあり、決して画面で最も目立つ操作にならない。
 6. **絞り込みと検索**: 「In progress」を押すと途中の動画のエントリだけが、「Watched」を押すと見終えた動画のものだけが、「All」を押すと両方が並ぶ。ライブラリが視聴済みと印を付ける動画は「Watched」の下にある。1 つの動画の 2 回の視聴は同じ側に入る。タイトルの一部を打つと、デバウンスの後にタイムラインが絞られ、`×` か Esc で欄を消すと元に戻る。文字のある「In progress」は、両方を満たすエントリだけを残す。URL は `watch` と `q` を持ち、戻ると前の条件に戻る。
 7. **一致なしと空**: 何にも一致しない絞り込みか検索のもとでは、本体は `SearchX` のアイコンと「Clear filters」とともに「No history matches these conditions」を出し、ヘッダーは押された選択肢か文字をなお出す。履歴が空で条件がないときは、本体は `History` のアイコンとともに「No watch history」を出し、ボタンはない。2 つはタイトルを読まずに見分けられる。
 8. **日付へ移動**: 横の列は、エントリを持つ日と月だけを、直近 2 週間の日とそれより前の月として、新しい順に挙げる。月を選ぶと先頭までスクロールし、タイムラインはその月の最も新しいエントリから始まり、より古い月へ続く。選んだ項目は押された状態である。最初の項目か押された項目を選ぶと、`date` がなくなって先頭に戻る。360px と 768px のチップは同じ一覧で、選んだチップが見える。移動した表示から動画を開き、`×` で戻ると、同じ日付、絞り込み、検索が出る。
