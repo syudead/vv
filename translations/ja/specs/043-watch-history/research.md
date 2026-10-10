@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/research.md
-sourceHash: 55b2edd6a8135d05e6fedffb3ede3a44537639364b7bce4dd0611035652392f0
+sourceHash: 0d91a502b61b458273e72d5d6027285f00df435c9c990c6995d7c88be7925720
 ---
 
 # 調査: 視聴履歴の画面 {#research-watch-history-screen}
@@ -99,7 +99,7 @@ sourceHash: 55b2edd6a8135d05e6fedffb3ede3a44537639364b7bce4dd0611035652392f0
 
 ## 改訂: 絞り込み、検索、日付への移動、再開の操作 {#revision-filter-search-date-jump-and-resume-actions}
 
-要件 12 から 18 は、上の単位を作った後に親 Issue に加えた。R-8 から R-13 はその改訂が加える決定である。R-1 から R-7 はそのまま有効である。
+要件 12 から 18 は、R-1 から R-7 を決めた後に親 Issue に加えた。R-8 から R-13 はその改訂が加える決定である。R-1 から R-7 はそのまま有効である。
 
 ## R-8: 絞り込み、検索、日付への移動は一覧の要求の条件である {#r-8-filter-search-and-date-jump-are-conditions-of-the-list-request}
 
@@ -128,7 +128,7 @@ sourceHash: 55b2edd6a8135d05e6fedffb3ede3a44537639364b7bce4dd0611035652392f0
 
 ## R-10: タイトルの検索は、ライブラリのクエリ構文をタイトルだけに使う {#r-10-title-search-uses-the-librarys-query-syntax-on-the-title-alone}
 
-**決定**: `query` は `domain.ParseSearchQuery` で解析し、畳み込んだタイトルに対して `instr` で照合する: 動画を持つエントリでは、その登録された場所のいずれかの `search_key` のタイトルの行と表示名の行 (`locationSearchKey` が作る行で、パスの行を除く)。動画のないエントリでは、畳み込んだスナップショットのタイトルである `watch_history.title_key` ([data-model.md、Migration](data-model.md#migration))。タグには照合しない。
+**決定**: `query` は `domain.ParseSearchQuery` で解析し、畳み込んだタイトルに対して `instr` で照合する: 動画を持つエントリでは、その登録された場所のいずれかの `search_key` のタイトルの行と表示名の行 (`locationSearchKey` が作る行で、パスの行を除く)。動画のないエントリでは、スナップショットのタイトルを `search_key` のタイトルの行と同じ照合形 (改行は空白) にした `watch_history.title_key` ([data-model.md、Migration](data-model.md#migration))。タグには照合しない。
 
 | 案 | 判定 |
 | --- | --- |

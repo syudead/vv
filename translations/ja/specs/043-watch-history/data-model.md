@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/data-model.md
-sourceHash: d34ca90b5e9560ab786bb329e20c4d452338dfd6a114a0b8b045805490513b1e
+sourceHash: fae6b75b9d934dd5f4d6272d652084e02bc7a5bdbd360fad5a2feb26df2896f8
 ---
 
 # データモデル: 視聴履歴の画面 {#data-model-watch-history-screen}
@@ -53,7 +53,7 @@ Down はテーブルを削除する。
 alter table watch_history add column title_key text;
 ```
 
-SQL はタイトルを畳み込めない ([013 データモデル、`search_key` rules](../013-library-search/data-model.md#search_key-rules)) ので、マイグレーションは列を null のままにし、起動時に、マイグレーションの直後でリスナーを開く前、`cmd/mdm` がすでに場所とタグの検索キーを更新する箇所で、`PlaybackStore.RefreshWatchHistoryTitleKeys` が null のすべての行を `domain.FoldForMatch(title)` で埋める。Down は列を削除する。
+SQL はタイトルを畳み込めない ([013 データモデル、`search_key` rules](../013-library-search/data-model.md#search_key-rules)) ので、マイグレーションは列を null のままにし、起動時に、マイグレーションの直後でリスナーを開く前、`cmd/mdm` がすでに場所とタグの検索キーを更新する箇所で、`PlaybackStore.RefreshWatchHistoryTitleKeys` が null のすべての行をタイトルの照合形で埋める。照合形は、ライブラリが `search_key` のタイトルの行に使うもの (`internal/store/search_keys.go` の `searchKeyPart`) であり、`FoldForMatch(title)` のすべての改行を空白に置き換えたものである。ライブラリの条件は検索語を同じように読むので、フレーズは改行を含むタイトルに、`search_key` でも `title_key` でも一致する。Down は列を削除する。
 
 ## `watch_history` {#watch_history}
 
@@ -64,7 +64,7 @@ SQL はタイトルを畳み込めない ([013 データモデル、`search_key`
 | `playback_id` | text | 可 | [R-2](research.md#r-2-one-entry-per-playback-identified-by-a-client-generated-playback-id) の再生 id。一意なので、同じ id での 2 回目の保存は何も加えない |
 | `title` | text | 不可 | エントリを書いたときの実際のタイトルのスナップショット。内容がライブラリにないときに表示する |
 | `played_at` | integer | 不可 | Unix ミリ秒。エントリの最初の保存でのサーバーの時計 |
-| `title_key` | text | 可 | *改訂。* `FoldForMatch(title)`。動画のないエントリの検索対象。null になるのはマイグレーションと起動時の埋め込みの間だけである |
+| `title_key` | text | 可 | *改訂。* タイトルの照合形で、改行を空白にした `FoldForMatch(title)` である ([マイグレーション](#migration))。動画のないエントリの検索対象。null になるのはマイグレーションと起動時の埋め込みの間だけである |
 
 **関係**: なし。`videos` にも `playback_progress` にも外部キーはない。
 
@@ -109,7 +109,7 @@ SQL はタイトルを畳み込めない ([013 データモデル、`search_key`
 
 | 操作 | 振る舞い |
 | --- | --- |
-| `SaveProgress(ctx, userKey, progress, play *domain.Play)` | 今と同じ。加えて、`play` が nil でなく `play.ContentKey` が空でないとき、同じトランザクションの中で、今の時刻のミリ秒と `FoldForMatch(play.Title)` で `insert or ignore into watch_history (content_key, playback_id, title, title_key, played_at)` する |
+| `SaveProgress(ctx, userKey, progress, play *domain.Play)` | 今と同じ。加えて、`play` が nil でなく `play.ContentKey` が空でないとき、同じトランザクションの中で、今の時刻のミリ秒と `play.Title` の照合形 ([マイグレーション](#migration)) で `insert or ignore into watch_history (content_key, playback_id, title, title_key, played_at)` する |
 | `ListWatchHistory(ctx, audience domain.Audience, query domain.WatchHistoryQuery, cursor string, limit int)` | `query` を満たすエントリの中で、`(played_at desc, id desc)` の順で `cursor` の後のページを `limit` 項目返す (*改訂*: 絞り込み、検索、`Before` は、件数の上限より前に同じ SQL 文の中で適用し、動画は `visibleVideoCondition` の下で内容の鍵により、その進み具合は `userKeyExpr` により結合する)。各項目は、あるときは `audience` が開ける `Video` を持つ (ハンドラーは境界が分類した audience を渡し、所有者専用のこれらのルートではそれは所有者である)。さらに行があるときは `NextCursor` を設定する |
 | `ListWatchHistoryDays(ctx, audience domain.Audience, query domain.WatchHistoryQuery, loc *time.Location) ([]string, error)` (*改訂*) | `query` を満たすエントリ (その `Before` は無視する) の `loc` での重複のない暦日を、`YYYY-MM-DD` として新しい順に返す。一致する行の `played_at` を読み、Go でまとめる ([R-11](research.md#r-11-the-date-list-and-the-jump-are-computed-on-the-server-in-the-viewers-time-zone)) |
 | `RefreshWatchHistoryTitleKeys(ctx) (int, error)` (*改訂*) | null であるすべての行の `title_key` を埋め、その数を返す。起動時に `cmd/mdm` が呼ぶ |

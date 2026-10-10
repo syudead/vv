@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/plan.md
-sourceHash: 9d3aff31cb217c7afab18faa1abfc6e9ca112a2bccbaaa148bcb4aea59d92a92
+sourceHash: 2394e21999b29809048932ec20b859f9fd840cd41784e32a672c55401506a678
 ---
 
 # 実装計画: 視聴履歴の画面 {#implementation-plan-watch-history-screen}
@@ -129,16 +129,16 @@ specs/043-watch-history/
 
 ## 実装作業 {#implementation-work}
 
-最初の 5 つの単位は作り終えている: 親のネイティブのサブ Issue #860 から #864 がそれらを持ち、その実装の PR は feature ブランチにマージ済みである。`plan-to-issues` がそれらを表現済みと見て飛ばすように、見出しは書いたときのまま残し、それぞれがその Issue を挙げる。区切り線の後の 4 つの単位が新しい作業であり、`plan-to-issues` が作る単位はそれらだけである。
+最初の 5 つの単位は親のネイティブのサブ Issue #860 から #864 が持ち、それぞれがその Issue を挙げる。`plan-to-issues` がそれらを表現済みと見て飛ばすように、見出しは書いたときのまま残す。区切り線の後の 4 つの単位が改訂の作業であり、`plan-to-issues` が作る単位はそれらだけである。
 
 図は、どの単位が先に入る必要があるかを示す。
 
 ```mermaid
 flowchart LR
-  record["エントリを記録する (完了、#860)"] --> api["一覧と削除の API (完了、#861)"]
-  record --> client["ページからの再生 id (完了、#862)"]
-  api --> screen["履歴の画面 (完了、#863)"]
-  client --> e2e["ブラウザーテスト (完了、#864)"]
+  record["エントリを記録する (#860)"] --> api["一覧と削除の API (#861)"]
+  record --> client["ページからの再生 id (#862)"]
+  api --> screen["履歴の画面 (#863)"]
+  client --> e2e["ブラウザーテスト (#864)"]
   screen --> e2e
   api --> conditions[絞り込み、検索、日付の API]
   screen --> position[位置のバー、再開と最初から]
@@ -150,7 +150,7 @@ flowchart LR
 
 ### 再生ごとに視聴履歴のエントリを記録する {#record-a-watch-history-entry-for-each-playback}
 
-**Issue**: #860、完了。
+**Issue**: #860。
 
 **範囲**: マイグレーションと埋め戻し、`domain.Play`、`ValidatePlaybackID` と `WatchHistoryEntry`、トランザクションの中でエントリを書く `PlaybackStore.SaveProgress`、継承での引き継ぎ、`PUT /api/videos/{id}/progress` の `playbackId` とそのハンドラー ([data-model.md](data-model.md)、[contracts/screen-api.md、`playbackId`](contracts/screen-api.md#playbackid-on-put-apivideosidprogress))。ARCHITECTURE.md と running-vv.md の一覧に `watch_history` を加える。
 
@@ -160,7 +160,7 @@ flowchart LR
 
 ### 視聴履歴の一覧と削除のエンドポイントを画面の API に加える {#add-the-watch-history-list-and-delete-endpoints-to-the-screen-api}
 
-**Issue**: #861、完了。
+**Issue**: #861。
 
 **範囲**: `GET /api/watch-history`、`DELETE /api/watch-history/{id}`、`DELETE /api/watch-history`、スキーマ、カーソル、`PlaybackStore.ListWatchHistory`、`DeleteWatchHistoryEntry`、`ClearWatchHistory` ([contracts/screen-api.md](contracts/screen-api.md)、[data-model.md、Store operations](data-model.md#store-operations-playbackstore))。
 
@@ -170,7 +170,7 @@ flowchart LR
 
 ### 動画のページから最初の再生以降に再生 id を送る {#send-a-playback-id-from-the-video-page-from-the-first-play-on}
 
-**Issue**: #862、完了。
+**Issue**: #862。
 
 **範囲**: id、`markPlayed()` と `markEnded()` を持つ `useProgressSaving`、`crypto.getRandomValues()` からの id の生成、`VideoPlayer` の `onPlay`、`saveProgress` と `beaconProgress` の `playbackId` ([contracts/screen-api.md、Client use](contracts/screen-api.md#client-use)、[R-2](research.md#r-2-one-entry-per-playback-identified-by-a-client-generated-playback-id))。
 
@@ -180,7 +180,7 @@ flowchart LR
 
 ### 所有者のサイドバーに視聴履歴の画面を加える {#add-the-watch-history-screen-to-the-sidebar-for-the-owner}
 
-**Issue**: #863、完了。
+**Issue**: #863。
 
 **範囲**: `web/src/history/` (ページ、その一覧のフック、確認付きの削除と全消去の操作)、`web/src/api/history.ts`、`/history` のルート、サイドバーの項目、ゲートの所有者専用のパス、カタログの文言。レイアウト、まとめ方、文言、操作の配置は `ui-design.md` に従う。
 
@@ -190,7 +190,7 @@ flowchart LR
 
 ### 視聴履歴の流れをブラウザーテストで覆う {#cover-the-watch-history-flow-in-a-browser-test}
 
-**Issue**: #864、完了。
+**Issue**: #864。
 
 **範囲**: 実際のサーバーとメディアに対する `web/e2e/history.e2e.ts` ([web-testing.md、Test levels](../../docs/design-docs/web-testing.md#test-levels))。
 
@@ -206,15 +206,15 @@ flowchart LR
 
 **範囲**: `00035_watch_history_title_key.sql`、エントリとともに書き、起動時に `cmd/mdm` が埋める `title_key`。`internal/domain` の `WatchHistoryFilter`、`WatchHistoryQuery`、`WatchHistoryPeriod`。`PlaybackStore.ListWatchHistory` の条件、`ListWatchHistoryDays`。`api/openapi.yaml` の `watch`、`query`、`date`、`tz` のパラメーター、`WatchHistoryFilter` と `WatchHistoryDates` のスキーマ、`GET /api/watch-history/dates` と、それらのハンドラー。`time/tzdata` の import。`web/src/api/history.ts` の `listWatchHistory` と `listWatchHistoryDates` のパラメーター ([contracts/screen-api.md、`GET /api/watch-history`](contracts/screen-api.md#get-apiwatch-history)、[`GET /api/watch-history/dates`](contracts/screen-api.md#get-apiwatch-historydates)、[data-model.md、Migration](data-model.md#migration)、[Store operations](data-model.md#store-operations-playbackstore))。
 
-**依存**: 視聴履歴の一覧と削除のエンドポイントを画面の API に加える (完了)。
+**依存**: 視聴履歴の一覧と削除のエンドポイントを画面の API に加える。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ストアとハンドラーのテストが次を示す: 視聴済みの動画 1 つ、視聴中の動画 1 つ、未視聴の動画 1 つ、動画のないエントリ 1 つがあるとき、`watch=inProgress` は視聴中の動画のエントリだけを、`watch=watched` は視聴済みの動画のエントリだけを、`watch=all` は 4 つすべてを挙げ、視聴中の動画の 2 つのエントリはどちらも `inProgress` の下に挙がる。まとまりのメンバーのエントリは、まとまりの共有の進み具合で分類される。`query` は、エントリをその動画のファイルのタイトルの語、その表示名の語、動画のないエントリのスナップショットのタイトルの語で見つけ、相対パスかタグ名にだけある語では見つけない。`-word` と `a OR b` を持つ `query` はライブラリと同じく振る舞う。`watch` と `query` を合わせると、両方が許すエントリだけを残す。マイグレーションの前に書かれた行は起動後に `title_key` を持ち、新しいエントリはすぐにそれを持つ。`tz=Asia/Tokyo` と `tz=America/Los_Angeles` での `dates` は、23:50 UTC のエントリと 00:10 UTC のエントリを、それぞれのタイムゾーンの言う日に新しい順で置き、`watch` と `query` に従う。`date=2026-09` は 9 月のエントリを先に挙げ、`nextCursor` は 8 月に届く。`date=2026-09-15` はその日から始まる。`watch=unwatched`、不明な `tz`、`tz` のない `date`、`date=2026-9`、101 文字の `query` は `400 invalid_request` を返す。ゲストは日付のルートで `401` を受け取る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ストアとハンドラーのテストが次を示す: 視聴済みの動画 1 つ、視聴中の動画 1 つ、未視聴の動画 1 つ、動画のないエントリ 1 つがあるとき、`watch=inProgress` は視聴中の動画のエントリだけを、`watch=watched` は視聴済みの動画のエントリだけを、`watch=all` は 4 つすべてを挙げ、視聴中の動画の 2 つのエントリはどちらも `inProgress` の下に挙がる。まとまりのメンバーのエントリは、まとまりの共有の進み具合で分類される。`query` は、エントリをその動画のファイルのタイトルの語、その表示名の語、動画のないエントリのスナップショットのタイトルの語で見つけ、相対パスかタグ名にだけある語では見つけない。フレーズ `"Summer Trip"` は、`Summer\nTrip` というタイトルのエントリを、その動画がライブラリにある間も、動画がライブラリを離れた後も見つける。`-word` と `a OR b` を持つ `query` はライブラリと同じく振る舞う。`watch` と `query` を合わせると、両方が許すエントリだけを残す。マイグレーションの前に書かれた行は起動後に `title_key` を持ち、新しいエントリはすぐにそれを持つ。`tz=Asia/Tokyo` と `tz=America/Los_Angeles` での `dates` は、23:50 UTC のエントリと 00:10 UTC のエントリを、それぞれのタイムゾーンの言う日に新しい順で置き、`watch` と `query` に従う。`date=2026-09` は 9 月のエントリを先に挙げ、`nextCursor` は 8 月に届く。`date=2026-09-15` はその日から始まる。`watch=unwatched`、不明な `tz`、`tz` のない `date`、`date=2026-9`、101 文字の `query` は `400 invalid_request` を返す。ゲストは日付のルートで `401` を受け取る。
 
 ### 視聴履歴の各エントリに今の位置と、再開と最初からの操作を示す {#show-the-current-position-and-the-resume-and-restart-actions-on-each-watch-history-entry}
 
 **範囲**: `web/src/history/` のエントリの行: `video.progress` と `video.durationMs` からのバー付きの位置と長さの文言、視聴中の動画の再開の操作と視聴済みの動画の最初からの操作 (どちらも `autoplay` 付きの動画のページへの `Link`)、動画のないエントリではそれらのない行、カタログの文言。見た目と文言は改訂した `ui-design.md` に従う ([R-13](research.md#r-13-the-resume-and-restart-actions-open-the-video-page-with-autoplay-and-the-existing-resume-rule-decides-the-position)、[contracts/screen-api.md、Client use](contracts/screen-api.md#client-use))。
 
-**依存**: 所有者のサイドバーに視聴履歴の画面を加える (完了)。`design` 段階が改訂した `ui-design.md`。
+**依存**: 所有者のサイドバーに視聴履歴の画面を加える。`design` 段階が改訂した `ui-design.md`。
 
 **受け入れ**: この単位は画面を変えるので、改訂した `ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが必要である。`task check` が通る。ページテストが次を示す: 視聴中のエントリは位置と長さを `16:05 / 42:18` として、その比率のバーと再開の操作とともに示す。視聴済みのエントリは最初からの操作を示し、再開の操作を示さない。動画を持ち進み具合のないエントリは位置を示さない。動画のないエントリはどちらの操作も示さない。再開の操作を押すと、`state.autoplay` を true、`state.from` を履歴の URL として `/videos/{id}` に移動する。行そのものを押すと `autoplay` なしで移動する。動画のページのテストが、履歴からの `autoplay` が `resumePosition(video)` で再生を始め、見終えた動画では 0 であることを示す。
 
