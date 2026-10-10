@@ -54,9 +54,9 @@ func (p *PlaybackStore) SaveProgress(
 
 	if play != nil && play.ContentKey != "" {
 		if _, err := tx.ExecContext(ctx, `
-			insert or ignore into watch_history (content_key, playback_id, title, played_at)
-			values (?, ?, ?, ?)`,
-			play.ContentKey, play.PlaybackID, play.Title, updatedAt.UnixMilli(),
+			insert or ignore into watch_history (content_key, playback_id, title, title_key, played_at)
+			values (?, ?, ?, ?, ?)`,
+			play.ContentKey, play.PlaybackID, play.Title, searchKeyPart(play.Title), updatedAt.UnixMilli(),
 		); err != nil {
 			return domain.Progress{}, fmt.Errorf("cannot record the watch history (%s): %w", play.ContentKey, err)
 		}

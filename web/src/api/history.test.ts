@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
-import { clearWatchHistory, deleteWatchHistoryEntry, listWatchHistory } from "./history";
+import {
+  browserTimeZone,
+  clearWatchHistory,
+  deleteWatchHistoryEntry,
+  listWatchHistory,
+  listWatchHistoryDates,
+} from "./history";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -27,6 +33,60 @@ describe("history API", () => {
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
       "/api/watch-history?limit=60",
       "/api/watch-history?cursor=c+2&limit=10",
+    ]);
+  });
+
+  it("listWatchHistory は watch・query・date と tz を送り、空の query と date の無い tz は送らない", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() => Promise.resolve(json({ items: [] })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await listWatchHistory({
+      watch: "inProgress",
+      query: '"Summer Trip" -rain',
+      date: "2026-09",
+      tz: "Asia/Tokyo",
+      cursor: "c2",
+    });
+    await listWatchHistory({ watch: "all", query: "", tz: "Asia/Tokyo" });
+    await listWatchHistory({ date: "2026-09-15" });
+
+    const urls = fetchMock.mock.calls.map(
+      ([input]) => new URL(String(input), "http://x"),
+    );
+    expect(Object.fromEntries(urls[0]?.searchParams ?? [])).toEqual({
+      cursor: "c2",
+      limit: "60",
+      watch: "inProgress",
+      query: '"Summer Trip" -rain',
+      date: "2026-09",
+      tz: "Asia/Tokyo",
+    });
+    expect(urls[0]?.pathname).toBe("/api/watch-history");
+    expect(Object.fromEntries(urls[1]?.searchParams ?? [])).toEqual({
+      limit: "60",
+      watch: "all",
+    });
+    expect(urls[2]?.searchParams.get("tz")).toBe(browserTimeZone());
+  });
+
+  it("listWatchHistoryDates は tz を必ず送り、省けばブラウザの地域を使う", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(json({ days: ["2026-09-15"] })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(
+      await listWatchHistoryDates({
+        watch: "watched",
+        query: "trip",
+        tz: "America/Los_Angeles",
+      }),
+    ).toEqual({ days: ["2026-09-15"] });
+    await listWatchHistoryDates();
+
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/api/watch-history/dates?tz=America%2FLos_Angeles&watch=watched&query=trip",
+      `/api/watch-history/dates?${new URLSearchParams({ tz: browserTimeZone() }).toString()}`,
     ]);
   });
 

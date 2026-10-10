@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -15,9 +16,17 @@ import (
 // WatchHistory は視聴履歴の読みと削除の先である。internal/store の *PlaybackStore がこれを満たす。
 // どの操作も 1 つの文で済むので、internal/app は通さない。
 type WatchHistory interface {
-	// ListWatchHistory は (played_at desc, id desc) の順に cursor の次から limit 件返す。各件の
-	// Video は audience が開ける動画があるときだけ入る。読めない cursor は domain.ErrInvalidCursor。
-	ListWatchHistory(ctx context.Context, audience domain.Audience, cursor string, limit int) (domain.WatchHistoryPage, error)
+	// ListWatchHistory は query を満たす件を (played_at desc, id desc) の順に cursor の次から limit 件
+	// 返す。各件の Video は audience が開ける動画があるときだけ入る。読めない cursor は
+	// domain.ErrInvalidCursor。
+	ListWatchHistory(
+		ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, cursor string, limit int,
+	) (domain.WatchHistoryPage, error)
+	// ListWatchHistoryDays は query の絞り込みと検索を満たす件のある日を、loc の暦の YYYY-MM-DD で
+	// 新しい順に返す。query.Before は見ない。
+	ListWatchHistoryDays(
+		ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, loc *time.Location,
+	) ([]string, error)
 	// DeleteWatchHistoryEntry は 1 件消し、その件があったかを返す。
 	DeleteWatchHistoryEntry(ctx context.Context, id int64) (bool, error)
 	// ClearWatchHistory はすべて消す。
@@ -30,7 +39,8 @@ const (
 	maxWatchHistoryLimit     = 200
 )
 
-// ListWatchHistory は視聴履歴を新しい順に返す（GET /api/watch-history）。各件の video は一覧の
+// ListWatchHistory は視聴履歴を新しい順に返す（GET /api/watch-history）。watch・query・date は
+// ページを切る前に保存層が掛ける（research.md R-8）。各件の video は一覧の
 // 項目と同じ形で、再生位置・タグ・お気に入りと置かれたフォルダ（Video.folder）を載せる。
 func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params gen.ListWatchHistoryParams) {
 	if s.watchHistory == nil {
@@ -49,9 +59,34 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 	if params.Cursor != nil {
 		cursor = *params.Cursor
 	}
+	query, ok := s.parseWatchHistoryQuery(w, params.Watch, params.Query)
+	if !ok {
+		return
+	}
+	if params.Date != nil {
+		period, err := domain.ParseWatchHistoryPeriod(*params.Date)
+		if err != nil {
+			s.invalidRequest(w, "date must be YYYY-MM-DD or YYYY-MM.")
+			return
+		}
+		if params.Tz == nil {
+			s.invalidRequest(w, "tz is required with date.")
+			return
+		}
+		loc, ok := s.parseTimeZone(w, *params.Tz)
+		if !ok {
+			return
+		}
+		query.Before = period.End(loc)
+	} else if params.Tz != nil {
+		// date の無い tz は使わないが、読めない値は date があるときと同じく誤りにする。
+		if _, ok := s.parseTimeZone(w, *params.Tz); !ok {
+			return
+		}
+	}
 
 	audience := audienceFrom(r.Context())
-	page, err := s.watchHistory.ListWatchHistory(r.Context(), audience, cursor, limit)
+	page, err := s.watchHistory.ListWatchHistory(r.Context(), audience, query, cursor, limit)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
@@ -98,6 +133,69 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
+// ListWatchHistoryDates は絞り込みと検索を満たす件のある日を、tz の暦で新しい順に返す
+// （GET /api/watch-history/dates、research.md R-11）。tz の欠けは生成された経路の読み取りが 400 にする。
+func (s *server) ListWatchHistoryDates(w http.ResponseWriter, r *http.Request, params gen.ListWatchHistoryDatesParams) {
+	if s.watchHistory == nil {
+		s.internalError(w, "Watch history storage is not configured.", nil)
+		return
+	}
+	loc, ok := s.parseTimeZone(w, params.Tz)
+	if !ok {
+		return
+	}
+	query, ok := s.parseWatchHistoryQuery(w, params.Watch, params.Query)
+	if !ok {
+		return
+	}
+	days, err := s.watchHistory.ListWatchHistoryDays(r.Context(), audienceFrom(r.Context()), query, loc)
+	if err != nil {
+		s.internalError(w, "Could not load the watch history dates.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.WatchHistoryDates{Days: days}, s.logger)
+}
+
+// parseWatchHistoryQuery は一覧と日付の一覧が共通に受ける watch と query を検査して条件にする。
+// 誤りなら 400 を書いて false を返す。query の長さの上限と書き方は動画の一覧と同じ
+// （parseSearchQuery、domain.ParseSearchQuery）。
+func (s *server) parseWatchHistoryQuery(
+	w http.ResponseWriter, watch *gen.WatchHistoryFilter, search *string,
+) (domain.WatchHistoryQuery, bool) {
+	query := domain.WatchHistoryQuery{Filter: domain.WatchHistoryAll}
+	if watch != nil {
+		filter, err := domain.ParseWatchHistoryFilter(string(*watch))
+		if err != nil {
+			s.invalidRequest(w, "Unknown watch filter.")
+			return domain.WatchHistoryQuery{}, false
+		}
+		query.Filter = filter
+	}
+	text, ok := s.parseSearchQuery(w, search)
+	if !ok {
+		return domain.WatchHistoryQuery{}, false
+	}
+	query.Search = domain.ParseSearchQuery(text)
+	return query, true
+}
+
+// parseTimeZone は IANA のタイムゾーン名を読む。空と Local（サーバーの地域）は名前ではないので
+// 受け付けない。サーバーが知らない名前と合わせて 400 を書いて false を返す。cmd/mdm が time/tzdata を
+// 埋め込むので、地域の情報を持たないホストでも読める（research.md R-11）。
+func (s *server) parseTimeZone(w http.ResponseWriter, name string) (*time.Location, bool) {
+	if name == "" || name == "Local" {
+		s.invalidRequest(w, "tz must be an IANA time zone name.")
+		return nil, false
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		s.invalidRequest(w, "Unknown time zone.")
+		return nil, false
+	}
+	return loc, true
 }
 
 // DeleteWatchHistoryEntry は視聴履歴を 1 件消す（DELETE /api/watch-history/{id}）。無ければ

@@ -4,9 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -37,7 +40,7 @@ func (f *guestFixture) recordHistory(t *testing.T) []int64 {
 			t.Fatal(err)
 		}
 	}
-	page, err := playback.ListWatchHistory(ctx, domain.AudienceOwner, "", 60)
+	page, err := playback.ListWatchHistory(ctx, domain.AudienceOwner, domain.WatchHistoryQuery{}, "", 60)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,13 +116,33 @@ func TestListWatchHistory(t *testing.T) {
 	}
 }
 
-// limit の範囲外と読めないカーソルは 400。
+// limit の範囲外、読めないカーソル、未知の watch・tz、tz の無い date、形の違う date、101 文字の
+// query は 400 invalid_request。日付の一覧は tz の欠けにも 400。
 func TestListWatchHistoryRejectsBadParameters(t *testing.T) {
 	f := newGuestFixture(t, true)
 	for target, want := range map[string]wantError{
-		"/api/watch-history?limit=201":         {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
-		"/api/watch-history?limit=0":           {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
-		"/api/watch-history?cursor=not-cursor": {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor},
+		"/api/watch-history?limit=201":                     {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?limit=0":                       {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?cursor=not-cursor":             {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor},
+		"/api/watch-history?watch=unwatched":               {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?watch=bogus":                   {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?tz=Nowhere/Zone":               {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-09&tz=Nowhere/Zone":  {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-09&tz=":              {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-09&tz=Local":         {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-09":                  {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-9&tz=Asia/Tokyo":     {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?date=2026-09-31&tz=Asia/Tokyo": {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history?query=" + strings.Repeat("a", 101): {
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonSearchTooLong, limit: maxQueryLength,
+		},
+		"/api/watch-history/dates":                        {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history/dates?tz=":                    {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history/dates?tz=Nowhere/Zone":        {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history/dates?tz=UTC&watch=unwatched": {status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest},
+		"/api/watch-history/dates?tz=UTC&query=" + strings.Repeat("a", 101): {
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonSearchTooLong, limit: maxQueryLength,
+		},
 	} {
 		rec := f.env.get(target, f.owner)
 		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(), want)
@@ -166,7 +189,7 @@ func TestDeleteWatchHistoryEntryRejectsInvalidID(t *testing.T) {
 	}
 }
 
-// ゲストには 3 つの経路とも 401 で、何も消えない。
+// ゲストには 4 つの経路とも 401 で、何も消えない。
 func TestWatchHistoryRequiresOwner(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)
@@ -175,6 +198,7 @@ func TestWatchHistoryRequiresOwner(t *testing.T) {
 		"一覧":    f.env.get("/api/watch-history"),
 		"1 件削除": f.deleteHistory(historyEntryPath(ids[0])),
 		"全件削除":  f.deleteHistory("/api/watch-history"),
+		"日付の一覧": f.env.get("/api/watch-history/dates?tz=UTC"),
 	} {
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("ゲストの%s: status = %d, want 401: %s", label, rec.Code, rec.Body)
@@ -183,4 +207,98 @@ func TestWatchHistoryRequiresOwner(t *testing.T) {
 	if page := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history", f.owner)); len(page.Items) != len(ids) {
 		t.Errorf("ゲストの操作のあとの一覧 = %d 件, want %d", len(page.Items), len(ids))
 	}
+}
+
+func historyItemIDs(page gen.WatchHistoryPage) []int64 {
+	ids := make([]int64, 0, len(page.Items))
+	for _, item := range page.Items {
+		ids = append(ids, item.Id)
+	}
+	return ids
+}
+
+// watch と query は一覧と日付の一覧の両方で件を絞る。動画の無い件は inProgress に出ない。
+func TestListWatchHistoryFilterAndSearch(t *testing.T) {
+	f := newGuestFixture(t, true)
+	ids := f.recordHistory(t) // ライブラリに無い内容、b、a。a と b は視聴途中。
+	gone, b, a := ids[0], ids[1], ids[2]
+
+	for target, want := range map[string][]int64{
+		"/api/watch-history?watch=all":                                        {gone, b, a},
+		"/api/watch-history?watch=inProgress":                                 {b, a},
+		"/api/watch-history?watch=watched":                                    {},
+		"/api/watch-history?query=" + url.QueryEscape("消えた"):                  {gone},
+		"/api/watch-history?query=" + url.QueryEscape("-消えた"):                 {b, a},
+		"/api/watch-history?watch=inProgress&query=" + url.QueryEscape("消えた"): {},
+	} {
+		rec := f.env.get(target, f.owner)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: %d %s", target, rec.Code, rec.Body)
+			continue
+		}
+		if got := historyItemIDs(decode[gen.WatchHistoryPage](t, rec)); !slices.Equal(got, want) {
+			t.Errorf("%s = %v, want %v", target, got, want)
+		}
+	}
+
+	page := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history", f.owner))
+	today := page.Items[0].PlayedAt.UTC().Format(time.DateOnly)
+	for target, want := range map[string][]string{
+		"/api/watch-history/dates?tz=UTC":                    {today},
+		"/api/watch-history/dates?tz=UTC&watch=watched":      {},
+		"/api/watch-history/dates?tz=UTC&watch=inProgress":   {today},
+		"/api/watch-history/dates?tz=UTC&query=nothingmatch": {},
+	} {
+		rec := f.env.get(target, f.owner)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s: %d %s", target, rec.Code, rec.Body)
+			continue
+		}
+		if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+			t.Errorf("%s: Cache-Control = %q", target, got)
+		}
+		if got := decode[gen.WatchHistoryDates](t, rec).Days; !slices.Equal(got, want) || got == nil {
+			t.Errorf("%s = %#v, want %#v", target, got, want)
+		}
+	}
+}
+
+// date はその日か月の終わりより前の件から始め、nextCursor で古い件へ続く。前の月なら件は無い。
+func TestListWatchHistoryDate(t *testing.T) {
+	f := newGuestFixture(t, true)
+	ids := f.recordHistory(t)
+	page := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history", f.owner))
+	newest := page.Items[0].PlayedAt.UTC()
+	oldest := page.Items[len(page.Items)-1].PlayedAt.UTC()
+
+	month := "/api/watch-history?tz=UTC&limit=2&date=" + newest.Format("2006-01")
+	first := decode[gen.WatchHistoryPage](t, f.env.get(month, f.owner))
+	if first.NextCursor == nil {
+		t.Fatalf("その月の 1 ページ目に nextCursor が無い: %+v", first)
+	}
+	second := decode[gen.WatchHistoryPage](t, f.env.get(month+"&cursor="+*first.NextCursor, f.owner))
+	if got := slices.Concat(historyItemIDs(first), historyItemIDs(second)); !slices.Equal(got, ids) {
+		t.Errorf("その月から続けた件 = %v, want %v", got, ids)
+	}
+
+	day := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history?tz=Asia/Tokyo&date="+
+		newest.In(mustLoadLocation(t, "Asia/Tokyo")).Format(time.DateOnly), f.owner))
+	if got := historyItemIDs(day); !slices.Equal(got, ids) {
+		t.Errorf("その日 = %v, want %v", got, ids)
+	}
+
+	previous := time.Date(oldest.Year(), oldest.Month()-1, 1, 0, 0, 0, 0, time.UTC).Format("2006-01")
+	before := decode[gen.WatchHistoryPage](t, f.env.get("/api/watch-history?tz=UTC&date="+previous, f.owner))
+	if len(before.Items) != 0 || before.NextCursor != nil {
+		t.Errorf("前の月 = %+v, want 空", before)
+	}
+}
+
+func mustLoadLocation(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
 }

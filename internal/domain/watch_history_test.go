@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 // 視聴の識別子は RFC 4122 の文字列の形（36 文字、8-4-4-4-12 の 16 進）だけを受け付ける。
@@ -43,6 +44,72 @@ func TestWatchHistoryCursorRoundTrip(t *testing.T) {
 	} {
 		if _, err := DecodeWatchHistoryCursor(cursor); !errors.Is(err, ErrInvalidCursor) {
 			t.Errorf("DecodeWatchHistoryCursor(%q) = %v, want ErrInvalidCursor", cursor, err)
+		}
+	}
+}
+
+// 絞り込みは 3 つの値だけを受け付け、一覧の同じ状態の絞り込みに写る。
+func TestParseWatchHistoryFilter(t *testing.T) {
+	for value, want := range map[string]WatchFilter{
+		"all": WatchAll, "inProgress": WatchInProgress, "watched": WatchWatched,
+	} {
+		filter, err := ParseWatchHistoryFilter(value)
+		if err != nil || filter.WatchFilter() != want {
+			t.Errorf("ParseWatchHistoryFilter(%q) = %q, %v, want %q", value, filter, err, want)
+		}
+	}
+	for _, value := range []string{"", "unwatched", "Watched", "in_progress"} {
+		if _, err := ParseWatchHistoryFilter(value); !errors.Is(err, ErrInvalidWatchHistoryFilter) {
+			t.Errorf("ParseWatchHistoryFilter(%q) = %v, want ErrInvalidWatchHistoryFilter", value, err)
+		}
+	}
+}
+
+// 日付への移動は YYYY-MM-DD と YYYY-MM だけを読み、End はその地域の次の日か次の月の 0 時になる。
+func TestWatchHistoryPeriod(t *testing.T) {
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for value, want := range map[string]time.Time{
+		"2026-09-15": time.Date(2026, 9, 16, 0, 0, 0, 0, tokyo),
+		"2026-09":    time.Date(2026, 10, 1, 0, 0, 0, 0, tokyo),
+		"2026-12":    time.Date(2027, 1, 1, 0, 0, 0, 0, tokyo),
+		"2026-12-31": time.Date(2027, 1, 1, 0, 0, 0, 0, tokyo),
+	} {
+		period, err := ParseWatchHistoryPeriod(value)
+		if err != nil {
+			t.Errorf("ParseWatchHistoryPeriod(%q) = %v", value, err)
+			continue
+		}
+		if got := period.End(tokyo); !got.Equal(want) {
+			t.Errorf("%q の End = %v, want %v", value, got, want)
+		}
+	}
+	// America/Santiago は 2026-09-06 の 0 時に 1 時へ進むので、2026-09-05 の End は次の日の
+	// 1 時（-03）であり、その日の 23 時（-04）ではない。
+	santiago, err := time.LoadLocation("America/Santiago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	advance := time.Date(2026, 9, 6, 4, 0, 0, 0, time.UTC)
+	period, err := ParseWatchHistoryPeriod("2026-09-05")
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := period.End(santiago)
+	if !end.Equal(advance) {
+		t.Errorf("2026-09-05 の Santiago での End = %v, want %v", end, advance)
+	}
+	// 選んだ日の最後の瞬間は End より前で、日付の一覧と同じく loc の暦でその日に数えられる。
+	if last := end.Add(-time.Millisecond).In(santiago).Format(time.DateOnly); last != "2026-09-05" {
+		t.Errorf("2026-09-05 の End の直前の日 = %s", last)
+	}
+	for _, value := range []string{
+		"", "2026-9", "2026-9-15", "2026-09-5", "2026-13", "2026-02-30", "2026/09", "2026-09-15T00:00",
+	} {
+		if _, err := ParseWatchHistoryPeriod(value); !errors.Is(err, ErrInvalidWatchHistoryPeriod) {
+			t.Errorf("ParseWatchHistoryPeriod(%q) = %v, want ErrInvalidWatchHistoryPeriod", value, err)
 		}
 	}
 }
