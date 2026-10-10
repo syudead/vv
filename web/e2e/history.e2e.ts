@@ -694,13 +694,22 @@ test.describe.serial("watch history", () => {
     await expect(entryLinks(page, titleA)).toHaveCount(1);
     await expect(entryLinks(page, titleB)).toHaveCount(0);
 
-    // Esc は欄を空にしてフォーカスを外す。
+    // Esc は欄を空にしてフォーカスを外し、空でフォーカスの無い欄は畳まれる
+    // （ui-design.md「Header row」）。
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL("/history");
-    await expect(searchField(page)).toHaveValue("");
-    await expect(searchField(page)).not.toBeFocused();
+    await expect(searchField(page)).toBeHidden();
+    await expect(page.getByRole("button", { name: "Search titles" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
     await expect(entryLinks(page, titleA)).toHaveCount(1);
     await expect(entryLinks(page, titleB)).toHaveCount(2);
+
+    // 開き直した欄は空のまま。
+    await page.getByRole("button", { name: "Search titles" }).click();
+    await expect(searchField(page)).toBeFocused();
+    await expect(searchField(page)).toHaveValue("");
   });
 
   test("「In progress」とタイトルの検索を合わせると、両方を満たす件だけが残る（受け入れ条件 12）", async ({

@@ -272,9 +272,15 @@ export default function HistoryPage() {
   }
 
   // 検索欄からフォーカスが外れ、欄が空なら畳む（Esc と × で空にした後を含む）。
+  // Esc は欄を空にする setState と同じ操作の中で blur するので、blur の時点の DOM には
+  // まだ消す前の語が残っている。描画が済んでから、空でフォーカスも戻っていないかを見る。
   function onSearchBlur(event: FocusEvent<HTMLDivElement>) {
-    if (event.currentTarget.contains(event.relatedTarget)) return;
-    if (searchField.current?.value === "") setSearchOpen(false);
+    const container = event.currentTarget;
+    if (container.contains(event.relatedTarget)) return;
+    setTimeout(() => {
+      if (container.contains(document.activeElement)) return;
+      if (searchField.current?.value === "") setSearchOpen(false);
+    }, 0);
   }
 
   const hasRows = items.length > 0;
