@@ -35,8 +35,8 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
         </CardGrid>
       ) : layout === "timeline" ? (
         // Timeline と同じ列: 見出しの塊と、1 本の線の上のサムネイルの大きさの行。
-        <div className="grid sm:grid-cols-timeline-group">
-          <div className="border-l border-border pb-1 pl-4 sm:border-l-0 sm:pt-2 sm:pr-3 sm:pb-0 sm:pl-0">
+        <div className="grid lg:grid-cols-timeline-group">
+          <div className="border-l border-border pb-1 pl-4 lg:border-l-0 lg:pt-2 lg:pr-3 lg:pb-0 lg:pl-0">
             <div className="flex flex-col gap-1">
               <Skeleton className="h-4 w-16" />
               <Skeleton className="h-3 w-12" />
@@ -45,8 +45,8 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           <div className="flex flex-col border-l border-border">
             {keys.map((key) => (
               <div key={key} className="flex items-start gap-3 py-2 pl-4">
-                <Skeleton className="hidden h-3 w-timeline-time sm:block" />
-                <Skeleton className="aspect-video w-timeline-thumb-sm shrink-0 sm:w-timeline-thumb" />
+                <Skeleton className="hidden h-3 w-timeline-time lg:block" />
+                <Skeleton className="aspect-video w-timeline-thumb-sm shrink-0 lg:w-timeline-thumb" />
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                   <Skeleton className="h-4 w-3/4" />
                   <Skeleton className="h-3 w-1/2" />

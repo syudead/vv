@@ -131,7 +131,7 @@
   --spacing-list-number-wide: 6rem;
   --spacing-list-date: 7rem;
   /* 時間軸（web/src/ui/patterns/timeline.tsx）: 日の見出しの列、時刻の列、行のサムネイル
-     （sm 以上と狭い幅。16:9 で約 192px と 128px） */
+     （lg 以上と lg 未満。16:9 で約 192px と 128px） */
   --spacing-timeline-label: 6rem;
   --spacing-timeline-time: 4rem;
   --spacing-timeline-thumb: 12rem;
@@ -306,7 +306,7 @@
 
 /*
  * 時間軸の列（web/src/ui/patterns/timeline.tsx）。まとまりは日の見出しの列と行の列、行は
- * 狭い幅でサムネイル・文字・端のボタン、sm からは時刻・サムネイル・文字・操作・端のボタン。
+ * lg 未満でサムネイル・文字・端のボタン、lg からは時刻・サムネイル・文字・操作・端のボタン。
  * 列の定義は段で表せないので名前つきのユーティリティにする。
  */
 @utility grid-cols-timeline-group {
