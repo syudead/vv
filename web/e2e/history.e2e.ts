@@ -126,15 +126,35 @@ async function openHistory(page: Page) {
   ).toBeVisible();
 }
 
-/** progressSaves は、そのページが item に送った再生位置の保存の本文を集める。 */
+interface ProgressSave {
+  positionMs: number;
+  playbackId?: string;
+  /** stored はサーバーが保存を受け付けた応答が返ったこと。 */
+  stored: boolean;
+}
+
+/**
+ * progressSaves は、そのページが item に送った再生位置の保存の本文を集め、成功の応答が
+ * 返ったものに stored を立てる。
+ */
 function progressSaves(page: Page, item: Video) {
-  const saves: { positionMs: number; playbackId?: string }[] = [];
+  const saves: ProgressSave[] = [];
   page.on("request", (candidate: Request) => {
     if (
       candidate.method() === "PUT" &&
       candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`)
     ) {
-      saves.push(candidate.postDataJSON() as { positionMs: number; playbackId?: string });
+      const save: ProgressSave = {
+        ...(candidate.postDataJSON() as { positionMs: number; playbackId?: string }),
+        stored: false,
+      };
+      saves.push(save);
+      void candidate
+        .response()
+        .then((response) => {
+          save.stored = response?.ok() ?? false;
+        })
+        .catch(() => undefined);
     }
   });
   return saves;
@@ -194,10 +214,19 @@ async function watchVideo(page: Page, item: Video, seconds: number) {
   await waitForPlayerReady(page);
   await playFor(page, seconds, () => page.locator(".vjs-big-play-button").click());
   await pause(page);
-  // 止めたときの保存（ID つき）が届くまで待つ。
+  // 止めたときの保存（ID つき）がサーバーに受け付けられるまで待つ。要求が出ただけで戻ると、
+  // 直後に API で読む位置が止める前のままのことがある。
+  const pausedMs = Math.round((await currentTime(page)) * 1000);
   await expect
-    .poll(() => saves.filter((save) => save.playbackId).length)
-    .toBeGreaterThan(0);
+    .poll(() =>
+      saves.some(
+        (save) =>
+          save.playbackId !== undefined &&
+          save.stored &&
+          Math.abs(save.positionMs - pausedMs) < 1000,
+      ),
+    )
+    .toBe(true);
   return saves;
 }
 
@@ -333,12 +362,36 @@ function backdateEntry(id: number, playedAtMs: number) {
   }
 }
 
-/** playingAt は動画が再生中ならその位置（秒）を返し、止まっていれば null を返す。 */
-async function playingAt(page: Page): Promise<number | null> {
-  return page.locator("video.vjs-tech").evaluate((element) => {
-    const video = element as HTMLVideoElement;
-    return video.paused ? null : video.currentTime;
+/**
+ * recordFirstPlaying は、この後に開く動画が最初に実際に再生し始めた（playing）ときの位置を
+ * 覚えさせる。自動再生は play をメタデータより先に呼ぶので、paused が外れた直後の位置は
+ * 続きからのシークの前の 0 のことがある。playing はメタデータで位置を当てた後に届く。
+ * 画面の移り変わりはクライアント側なので、ここで付けた待ち受けは動画の画面でも生きている。
+ */
+async function recordFirstPlaying(page: Page) {
+  await page.evaluate(() => {
+    const record = window as unknown as { firstPlayingAt?: number };
+    delete record.firstPlayingAt;
+    document.addEventListener(
+      "playing",
+      (event) => {
+        if (
+          record.firstPlayingAt === undefined &&
+          event.target instanceof HTMLVideoElement
+        ) {
+          record.firstPlayingAt = event.target.currentTime;
+        }
+      },
+      { capture: true },
+    );
   });
+}
+
+/** firstPlayingAt は recordFirstPlaying が覚えた位置（秒）を返し、まだ再生していなければ null。 */
+async function firstPlayingAt(page: Page): Promise<number | null> {
+  return page.evaluate(
+    () => (window as unknown as { firstPlayingAt?: number }).firstPlayingAt ?? null,
+  );
 }
 
 async function guestPage(browser: Browser) {
@@ -772,12 +825,13 @@ test.describe.serial("watch history", () => {
     const row = entryRows(page, titleB).first();
     const shown = seconds((await positionText(row).textContent()) ?? "");
     expect(shown).toBe(Math.floor(saved / 1000));
+    await recordFirstPlaying(page);
     await row.getByRole("link", { name: `Resume ${titleB}` }).click();
     await expect(page).toHaveURL(`/videos/${String(item.id)}`);
 
     // 押しただけで再生が始まり、その最初の位置は行に出ていた位置である。
-    await expect.poll(() => playingAt(page), { timeout: 15_000 }).not.toBeNull();
-    const startedAt = (await playingAt(page)) ?? 0;
+    await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
+    const startedAt = (await firstPlayingAt(page)) ?? 0;
     expect(startedAt).toBeGreaterThanOrEqual(shown);
     expect(startedAt).toBeLessThan(shown + 2);
     await pause(page);
@@ -798,11 +852,12 @@ test.describe.serial("watch history", () => {
       "aria-valuenow",
       (await bar.getAttribute("aria-valuemax")) ?? "",
     );
+    await recordFirstPlaying(page);
     await row.getByRole("link", { name: `Start ${titleA} over` }).click();
     await expect(page).toHaveURL(`/videos/${String(item.id)}`);
 
-    await expect.poll(() => playingAt(page), { timeout: 15_000 }).not.toBeNull();
-    expect((await playingAt(page)) ?? 99).toBeLessThan(2);
+    await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
+    expect((await firstPlayingAt(page)) ?? 99).toBeLessThan(2);
     await pause(page);
   });
 
