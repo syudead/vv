@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/research.md
-sourceHash: cbb38e8e3cdc7e86a251494b036f0af0b0aefc5b0970810fe710fb21743683ab
+sourceHash: 2453ee5d2829ccfdd48ba6afe4a99dc76a4f8a533e0b5b182f34867387c25f4a
 ---
 
 # 調査: 視聴履歴の画面 {#research-watch-history-screen}
@@ -195,7 +195,7 @@ sourceHash: cbb38e8e3cdc7e86a251494b036f0af0b0aefc5b0970810fe710fb21743683ab
 
 ## R-15: `Timeline` セクションはレジストリを離れる {#r-15-the-timeline-section-leaves-the-registry}
 
-**決定**: `Timeline` セクション (`web/src/ui/patterns/timeline.tsx`、レジストリの項目 `timeline`)、その例のブロック `timeline-example`、`LoadingState` の `timeline` レイアウト、`timeline-label` と `timeline-time` のトークン、`grid-cols-timeline-*` のユーティリティは、日ごとにまとめた一覧を作る単位で除く。レジストリの規則と `docs/design-docs/design-system.md` はそれらを挙げなくなる。サムネイルのトークン (`timeline-thumb`、`timeline-thumb-sm`) は、改訂した `ui-design.md` が与える名前の下に残る。行のサムネイルの幅は位置のバーのために決めたものであり、その決定はそのまま有効だからである。
+**決定**: `Timeline` セクション (`web/src/ui/patterns/timeline.tsx`、レジストリの項目 `timeline`)、その例のブロック `timeline-example` (`web/registry.json` にある両方の項目の記載を含む)、`LoadingState` の `timeline` レイアウト、`timeline-label` と `timeline-time` のトークン、`grid-cols-timeline-*` のユーティリティは、日ごとにまとめた一覧を作る単位で除く。レジストリの規則と `docs/design-docs/design-system.md` はそれらを挙げなくなる。サムネイルのトークン (`timeline-thumb`、`timeline-thumb-sm`) は、改訂した `ui-design.md` が与える名前の下に残る。行のサムネイルの幅は位置のバーのために決めたものであり、その決定はそのまま有効だからである。
 
 | 案 | 判定 |
 | --- | --- |

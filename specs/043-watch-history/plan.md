@@ -489,8 +489,8 @@ the `timeline` layout of `LoadingState`, the `timeline-label` and
 `timeline` and `timeline-example` items in `web/registry.json`, the manifest
 `task generate` rebuilds `web/registry/r/` from
 ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry)); when the
-revised `ui-design.md` composes the list from `GroupedList`, the time on the
-rows of its example block
+revised `ui-design.md` composes the list from `GroupedList`, the removal of the
+time on the rows of its example block
 (`web/src/designSystem/blocks/grouped-list-example.tsx`), so the block a later
 screen copies matches the history it stands for; the
 thumbnail tokens stay under the names the revised `ui-design.md` gives them;

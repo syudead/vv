@@ -1,6 +1,6 @@
 ---
 source: specs/043-watch-history/plan.md
-sourceHash: 0a5dd816d8f2557f5900c80c4a5112a56e8497a70542de08eac370845a13f73a
+sourceHash: 95be130b0cb718322631bcc7916d286334f3444b8ae25d12e8c5a05fb1b06c6c
 ---
 
 # 実装計画: 視聴履歴の画面 {#implementation-plan-watch-history-screen}
@@ -254,7 +254,7 @@ flowchart LR
 
 ### 視聴履歴をエントリの時刻なしで日ごとにまとめる {#group-the-watch-history-by-day-without-the-entry-time}
 
-**範囲**: 改訂した `ui-design.md` が挙げるレジストリのセクションから組み立てる `web/src/history/HistoryPage.tsx` の一覧: ローカルの日ごとに 1 つの見出しを新しい順に置き、その下の行は API の順序で、行に時刻はなく、縦線も点もない ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day))。同じ形の読み込み中のスケルトン。時刻を運んでいたカタログの文言 (`web/src/i18n/en.ts` の `history.entryLink`、`history.removeFor`、`history.day.full`) を、改訂した `ui-design.md` が言うとおりにする。`Timeline` セクション (`web/src/ui/patterns/timeline.tsx`)、その例のブロック、`LoadingState` の `timeline` レイアウト、`web/src/ui/tokens.css` の `timeline-label` と `timeline-time` のトークンと `grid-cols-timeline-*` のユーティリティ、`web/registry/rules/patterns.md`、`web/registry/index.md`、`docs/design-docs/design-system.md` のそれらの行を除き、`task generate` が `web/registry/r/` を作り直す ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry))。サムネイルのトークンは、改訂した `ui-design.md` が与える名前の下に残る。新しい形と語に合わせた `web/src/history/HistoryPage.test.tsx`、`historyDays.ts` のロジックのテスト、`web/e2e/history.e2e.ts`。
+**範囲**: 改訂した `ui-design.md` が挙げるレジストリのセクションから組み立てる `web/src/history/HistoryPage.tsx` の一覧: ローカルの日ごとに 1 つの見出しを新しい順に置き、その下の行は API の順序で、行に時刻はなく、縦線も点もない ([R-14](research.md#r-14-the-entry-keeps-its-instant-the-screen-shows-only-the-day))。同じ形の読み込み中のスケルトン。時刻を運んでいたカタログの文言 (`web/src/i18n/en.ts` の `history.entryLink`、`history.removeFor`、`history.day.full`) を、改訂した `ui-design.md` が言うとおりにする。`Timeline` セクション (`web/src/ui/patterns/timeline.tsx`)、その例のブロック、`LoadingState` の `timeline` レイアウト、`web/src/ui/tokens.css` の `timeline-label` と `timeline-time` のトークンと `grid-cols-timeline-*` のユーティリティ、`web/registry/rules/patterns.md`、`web/registry/index.md`、`docs/design-docs/design-system.md` のそれらの行、`task generate` が `web/registry/r/` を作り直す元のマニフェストである `web/registry.json` の `timeline` と `timeline-example` の項目を除く ([R-15](research.md#r-15-the-timeline-section-leaves-the-registry))。改訂した `ui-design.md` が一覧を `GroupedList` から組み立てる場合は、その例のブロック (`web/src/designSystem/blocks/grouped-list-example.tsx`) の行の時刻も除き、後の画面が写すブロックを、それが表す履歴に合わせる。サムネイルのトークンは、改訂した `ui-design.md` が与える名前の下に残る。新しい形と語に合わせた `web/src/history/HistoryPage.test.tsx`、`historyDays.ts` のロジックのテスト、`web/e2e/history.e2e.ts`。
 
 **依存**: 履歴の絞り込み、検索、日付への移動、再開の操作をブラウザーテストで覆う。`design` 段階の 2 回目の `ui-design.md` の改訂。
 
