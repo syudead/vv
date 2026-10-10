@@ -248,35 +248,86 @@ afterEach(() => {
 });
 
 describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」）", () => {
-  it("件を新しい順に、日の見出しの下へ時刻と題名つきで時間軸に並べる", async () => {
+  it("件を新しい順に、日ごとに 1 つの見出しの下へ時刻なしで並べる", async () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeDefined();
     expect(document.title).toBe("History");
 
     await screen.findByRole("list", { name: "Watch history" });
-    const headings = within(historyList())
-      .getAllByRole("heading", { level: 2 })
-      .map((heading) => heading.textContent);
-    expect(headings).toEqual(["Sunday · Sep 27", "Saturday · Sep 26"]);
-
-    const removeNames = within(historyList())
-      .getAllByRole("button", { name: /^Remove/ })
-      .map((button) => button.getAttribute("aria-label"));
-    expect(removeNames).toEqual([
-      expect.stringMatching(
-        /^Remove "Harbour lights" played Sunday, Sep 27 at 9:30\sPM from history$/,
-      ),
-      expect.stringMatching(
-        /^Remove "Gone" played Sunday, Sep 27 at 3:04\sPM from history$/,
-      ),
-      expect.stringMatching(
-        /^Remove "Unknown video" played Saturday, Sep 26 at 9:00\sAM from history$/,
-      ),
-      expect.stringMatching(
-        /^Remove "Kyoto" played Saturday, Sep 26 at 8:00\sAM from history$/,
-      ),
+    const headings = within(historyList()).getAllByRole("heading", { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      "Sunday · Sep 27",
+      "Saturday · Sep 26",
     ]);
-    expect(within(historyList()).getByText(/^3:04\sPM$/)).toBeDefined();
+
+    // その日の行はすべてその見出しの下に、API の順で並ぶ。
+    const titlesUnder = (heading: HTMLElement) => {
+      const group = heading.closest('[data-slot="grouped-list-group"]');
+      if (!(group instanceof HTMLElement)) throw new Error("no group");
+      return within(group)
+        .getAllByRole("button", { name: /^Remove/ })
+        .map((button) => button.getAttribute("aria-label"));
+    };
+    expect(titlesUnder(headings[0]!)).toEqual([
+      'Remove "Harbour lights" played Sunday, Sep 27 from history',
+      'Remove "Gone" played Sunday, Sep 27 from history',
+    ]);
+    expect(titlesUnder(headings[1]!)).toEqual([
+      'Remove "Unknown video" played Saturday, Sep 26 from history',
+      'Remove "Kyoto" played Saturday, Sep 26 from history',
+    ]);
+
+    // どの行にも時刻が無く（formatTime の形「9:42 PM」）、時間軸の区画も無い。
+    expect(historyList().textContent).not.toMatch(/\d{1,2}:\d{2}\s?[AP]M/);
+    expect(document.querySelector('[data-slot^="timeline"]')).toBeNull();
+  });
+
+  it("読み込み中は見出しつきのまとまりの形の Skeleton を出す", async () => {
+    let release = () => {};
+    server.holdList = new Promise((resolve) => {
+      release = resolve;
+    });
+    renderPage();
+
+    const loading = screen.getByRole("status", { name: "Loading…" });
+    expect(loading.getAttribute("aria-busy")).toBe("true");
+    expect(loading.querySelectorAll(".w-history-thumb-sm")).toHaveLength(3);
+    expect(screen.queryByRole("list", { name: "Watch history" })).toBeNull();
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    await screen.findByRole("list", { name: "Watch history" });
+    expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
+  });
+
+  it("同じ動画を同じ日に 2 度見た件は 1 つの見出しの下の 2 行になる", async () => {
+    server.entries = [
+      {
+        id: 2,
+        playedAt: at(27, 21, 30),
+        title: "Kyoto",
+        video: video(11, { title: "Kyoto" }),
+      },
+      {
+        id: 1,
+        playedAt: at(27, 8, 0),
+        title: "Kyoto",
+        video: video(11, { title: "Kyoto" }),
+      },
+    ];
+    server.dates = ["2026-09-27"];
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+
+    const headings = within(historyList()).getAllByRole("heading", { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual(["Sunday · Sep 27"]);
+    const links = within(historyList()).getAllByRole("link", {
+      name: "Kyoto, 1:00, played Sunday, Sep 27",
+    });
+    expect(links).toHaveLength(2);
+    expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(2);
   });
 
   it("動画のある件は再生画面を開き、無い件はリンクにせず再生できないと書く", async () => {
@@ -290,8 +341,8 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
       "/videos/11",
     ]);
     // 題名はいまの動画の題名。写しの題名は使わない。
-    expect(links[0]?.getAttribute("aria-label")).toMatch(
-      /^Harbour lights, 1:00, played Sunday, Sep 27 at 9:30\sPM$/,
+    expect(links[0]?.getAttribute("aria-label")).toBe(
+      "Harbour lights, 1:00, played Sunday, Sep 27",
     );
     expect(within(historyList()).queryByText("Old name")).toBeNull();
 
@@ -343,7 +394,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     const row = (title: string) => {
       const found = rows.find(
         (item) =>
-          item.getAttribute("data-slot") === "timeline-item" &&
+          item.getAttribute("data-slot") === "grouped-list-item" &&
           within(item).queryByText(title) !== null,
       );
       if (found === undefined) throw new Error(`no row for ${title}`);
@@ -698,7 +749,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     ).toBeDefined();
     expect(screen.getByRole("alertdialog")).toBeDefined();
     // 窓の後ろの一覧は読み上げから隠れているので、行を数える。
-    expect(document.querySelectorAll('[data-slot="timeline-item"]')).toHaveLength(4);
+    expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(4);
   });
 
   it("履歴が無ければ空の表示にし、More を出さない", async () => {

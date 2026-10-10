@@ -10,7 +10,6 @@ import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
-import { TimelineExample } from "./blocks/timeline-example";
 
 // 見本の画面の型の節（specs/038-design-system/ui-design.md「Page patterns」と「Review
 // criteria」6〜7）。骨格ごとに見本のブロックを枠に入れて並べ、一覧ページは状態ごとにも並べる。
@@ -106,20 +105,6 @@ export default function Patterns() {
         items={["list-page", "grouped-list", "grouped-list-example"]}
       >
         <GroupedListExample />
-      </Pattern>
-      <Pattern
-        id="timeline"
-        name={p.names.timeline}
-        items={[
-          "list-page",
-          "toolbar",
-          "timeline",
-          "jump-list",
-          "loading-state",
-          "timeline-example",
-        ]}
-      >
-        <TimelineExample />
       </Pattern>
       <Pattern
         id="admin-table-page"

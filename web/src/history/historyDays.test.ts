@@ -35,6 +35,16 @@ describe("groupByDay", () => {
     expect(days.map((day) => day.entries.length)).toEqual([2, 1]);
   });
 
+  it("同じ動画を同じ日に 2 度見た件は 1 つのまとまりの 2 件になる", () => {
+    const later = { ...entry(2, new Date(2026, 8, 27, 21, 0)), title: "Kyoto" };
+    const earlier = { ...entry(1, new Date(2026, 8, 27, 8, 0)), title: "Kyoto" };
+
+    const days = groupByDay([later, earlier]);
+
+    expect(days).toHaveLength(1);
+    expect(days[0]?.entries.map((item) => item.id)).toEqual([2, 1]);
+  });
+
   it("読めない時刻の件はまとめない", () => {
     expect(groupByDay([{ id: 1, playedAt: "nope", title: "" }])).toEqual([]);
   });

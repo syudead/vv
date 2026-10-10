@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: acfdd135da3ed062a0434b77a84d268db2aa728c8301b9faabc62b053f022489
+sourceHash: cb34db2cf26513107af55e2cd717183b434f960d49a862d117e86507e611e729
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -107,7 +107,7 @@ CLI は各ファイルの内容とアイテムの `docs` 行を出力する。�
 | 尺度 | 段階 |
 | --- | --- |
 | 文字 | `text-2xs`（サムネイルの文字）から `text-xl`（ページタイトル）までの 6 段階。`font-normal`、`font-medium`、`font-semibold` |
-| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、タイムラインのラベル・時刻・サムネイルの列、一覧ページの横の列、ポップオーバーとコンボボックスの幅） |
+| 余白と寸法 | 1 つの 4px の尺度（`0` から `16`。コントロールの高さに `9`）と、名前付きのレイアウトの段階（`navbar`、`sidebar`、`card-0` から `card-3`、一覧の列、履歴の行のサムネイルの列、一覧ページの横の列、ポップオーバーとコンボボックスの幅） |
 | 角丸 | `sm`、`md`、`lg`、`full` |
 | 影 | `shadow-card-hover`、`shadow-elevated`、`drop-shadow-mark`。静止した面には付けない |
 | 動き | `fade-in`、`pop-in`、`slide-up`、および読み込み用の `shimmer`、`spin`、`pulse`。動きを減らす設定では無効 |
@@ -207,7 +207,7 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 | 層 | 何であるか | レジストリ |
 | --- | --- | --- |
 | ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
-| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`GroupedList`、`Timeline`、`JumpList`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
+| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`GroupedList`、`JumpList`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
 | 状態 | `LoadingState`、`EmptyState`、`ErrorState`、`LoadMoreRow`。本体がデータの代わりに、またはデータの後に示すもの | `registry:ui`、それぞれ 1 項目 |
 
 各雛形には例のブロック（`list-page-example` など、加えて `list-states-example`）もある。雛形、そのセクションとコンポーネントを組み合わせた動作する構成であり、i18n カタログのサンプルデータで埋めてある。新しい画面を作るエージェントはブロックを複製し、文言とデータを置き換える。ブロックは `web/src/designSystem/blocks` にあり、ショーケースが描画するのはこれである。

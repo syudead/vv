@@ -54,10 +54,11 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const titleA = "履歴の確認A";
 const titleB = "履歴の確認B";
 const videos = new Map<string, Video>();
-// 履歴の行の日と時刻（日の見出しの 2 行と en の formatTime、例 "Today, Oct 10 at 3:04 PM"）。
+// 履歴の行の読み上げ名の日（日の見出しの 2 つの部分、例 "Today, Oct 10"）。時刻は入らない。
 // 日付をまたいだ実行でも落ちないよう Today と Yesterday のどちらも受ける。
-const playedAt =
-  /played (Today|Yesterday), [A-Z][a-z]{2} \d{1,2}(, \d{4})? at \d{1,2}:\d{2}\s?[AP]M$/;
+const playedAt = /played (Today|Yesterday), [A-Z][a-z]{2} \d{1,2}(, \d{4})?$/;
+// en の formatTime の形（例 "3:04 PM"）。履歴の一覧のどこにも出ない。
+const timeOfDay = /\d{1,2}:\d{2}\s?[AP]M/;
 
 function video(title: string): Video {
   const found = videos.get(title);
@@ -296,10 +297,10 @@ function searchField(page: Page): Locator {
   return page.getByRole("searchbox", { name: "Search titles" });
 }
 
-/** entryRows は履歴の画面で、title の動画の行（時間軸の 1 件）である。 */
+/** entryRows は履歴の画面で、title の動画の行（日のまとまりの 1 件）である。 */
 function entryRows(page: Page, title: string): Locator {
   return historyList(page)
-    .locator('[data-slot="timeline-item"]')
+    .locator('[data-slot="grouped-list-item"]')
     .filter({
       has: page.getByRole("link", { name: new RegExp(`^${escapeRegExp(title)}, `) }),
     });
@@ -472,7 +473,7 @@ test.describe.serial("watch history", () => {
     expect(await historyEntries(request)).toEqual([]);
   });
 
-  test("数秒再生すると時刻つきでいちばん上に出て、一時停止と再開を 2 回しても 1 件のまま（受け入れ条件 1、3）", async ({
+  test("数秒再生すると今日の見出しの下のいちばん上に時刻なしで出て、一時停止と再開を 2 回しても 1 件のまま（受け入れ条件 1、3）", async ({
     page,
     request,
   }) => {
@@ -497,10 +498,15 @@ test.describe.serial("watch history", () => {
     expect(ids.size).toBe(1);
 
     await openHistory(page);
-    const first = historyList(page).getByRole("link").first();
-    await expect(first).toHaveAccessibleName(
+    // いちばん上のまとまりは今日の見出しで、その先頭の行が A。行に時刻は無い。
+    const today = historyList(page).locator('[data-slot="grouped-list-group"]').first();
+    await expect(today.getByRole("heading", { level: 2 })).toHaveText(/^Today · /);
+    const firstRow = today.locator('[data-slot="grouped-list-item"]').first();
+    await expect(firstRow.getByRole("link").first()).toHaveAccessibleName(
       new RegExp(`^${escapeRegExp(titleA)}, .*${playedAt.source}`),
     );
+    await expect(firstRow).not.toContainText(timeOfDay);
+    await expect(historyList(page)).not.toContainText(timeOfDay);
     await expect(entryLinks(page, titleA)).toHaveCount(1);
     await expect(entryLinks(page, titleB)).toHaveCount(1);
     await expect(entryLinks(page, titleB)).toHaveAccessibleName(playedAt);
@@ -571,7 +577,7 @@ test.describe.serial("watch history", () => {
 
     await openHistory(page);
     // いちばん上（A の 2 回目の視聴）の行の × を押す。
-    const newest = historyList(page).locator('[data-slot="timeline-item"]').first();
+    const newest = historyList(page).locator('[data-slot="grouped-list-item"]').first();
     await expect(newest.getByRole("link").first()).toHaveAccessibleName(
       new RegExp(`^${escapeRegExp(titleA)}, `),
     );

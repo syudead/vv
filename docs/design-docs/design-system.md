@@ -149,7 +149,7 @@ The scales are closed:
 | Scale | Steps |
 | --- | --- |
 | Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold` |
-| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, the timeline's label, time and thumbnail columns, the list page's side column, popover and combobox widths) |
+| Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, the history row's thumbnail columns, the list page's side column, popover and combobox widths) |
 | Radius | `sm`, `md`, `lg`, `full` |
 | Shadow | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces |
 | Motion | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion |
@@ -320,7 +320,7 @@ to pick, what goes in each slot and what must not is in
 | Layer | What it is | Registry |
 | --- | --- | --- |
 | Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `Timeline`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
+| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
 | States | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus

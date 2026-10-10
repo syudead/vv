@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import {
   type FocusEvent,
+  type ReactNode,
   type Ref,
   useCallback,
   useEffect,
@@ -28,7 +29,7 @@ import {
   type WatchHistoryEntry,
   type WatchHistoryFilter,
 } from "../api/history";
-import { errorText, formatTime, t, type UiText } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, unplayableText } from "../lib/format";
 import { VideoThumbnail } from "../player/RelatedVideos";
@@ -39,9 +40,13 @@ import { ErrorState } from "../ui/patterns/error-state";
 import { JumpList } from "../ui/patterns/jump-list";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import {
+  GroupedList,
+  GroupedListGroup,
+  GroupedListItem,
+} from "../ui/patterns/grouped-list";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import { Timeline, TimelineGroup, TimelineItem } from "../ui/patterns/timeline";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import {
@@ -130,7 +135,7 @@ function readyItems(state: HistoryState): WatchHistoryEntry[] {
 }
 
 /**
- * HistoryPage は所有者の視聴履歴を、日ごとの時間軸に新しい順に並べる画面である
+ * HistoryPage は所有者の視聴履歴を、日ごとの見出しの下に新しい順に並べる画面である
  * （specs/043-watch-history/ui-design.md「History screen」）。
  *
  * 見出しの行で視聴状態を切り替え、題名を検索し、横の欄で件のある日か月へ移る。条件は URL に
@@ -444,7 +449,7 @@ export default function HistoryPage() {
       }
     >
       {state.kind === "loading" && (
-        <LoadingState label={t.list.loading} layout="timeline" />
+        <LoadingState label={t.list.loading} layout="grouped" />
       )}
 
       {state.kind === "failed" && (
@@ -477,12 +482,12 @@ export default function HistoryPage() {
       )}
 
       {hasRows && (
-        <Timeline label={t.history.list}>
+        <GroupedList label={t.history.list}>
           {days.map((group) => {
             const label = dayLabel(group.day, now);
             const dayText = t.history.day.full(label.name, label.date);
             return (
-              <TimelineGroup key={group.key} label={label.name} detail={label.date}>
+              <GroupedListGroup key={group.key} heading={label.name} detail={label.date}>
                 {group.entries.map((entry) => (
                   <HistoryRow
                     key={entry.id}
@@ -504,10 +509,10 @@ export default function HistoryPage() {
                     onRemove={() => remove(entry)}
                   />
                 ))}
-              </TimelineGroup>
+              </GroupedListGroup>
             );
           })}
-        </Timeline>
+        </GroupedList>
       )}
 
       {state.kind === "ready" &&
@@ -548,11 +553,16 @@ export default function HistoryPage() {
   );
 }
 
+// 行の本体（サムネイルと文字）の並び。行の列を subgrid で受け継ぎ、lg 未満はサムネイルと
+// 文字の列の 2 段（下の段は文字の列の下の操作の場所）、lg からは 1 段。
+const mainLayout =
+  "col-span-2 col-start-1 row-span-2 row-start-1 grid grid-cols-subgrid grid-rows-subgrid items-start lg:row-span-1 lg:items-center";
+
 /**
- * HistoryRow は時間軸の 1 件である。時刻・サムネイル・文字を 1 つのリンクにして再生画面を
- * 開き、その後ろに「Resume」か「Start over」、端に × を置く。動画がライブラリに無い件は
- * リンクにも操作にもせず、「Not in the library」と書く（ui-design.md「Entry row」
- * 「Entry not in the library」）。
+ * HistoryRow は日のまとまりの 1 件である。サムネイルと文字を 1 つのリンクにして再生画面を
+ * 開き、その後ろに「Resume」か「Start over」、端に × を置く。時刻は書かない（日は見出しが
+ * 持つ）。動画がライブラリに無い件はリンクにも操作にもせず、「Not in the library」と書く
+ * （ui-design.md「Entry row」「Entry not in the library」）。
  */
 function HistoryRow({
   entry,
@@ -564,6 +574,7 @@ function HistoryRow({
   onRemove,
 }: {
   entry: WatchHistoryEntry;
+  /** 読み上げ名に入れる日（「Today, Oct 10」）。 */
   dayText: string;
   /** 再生画面の戻り先（今の履歴の URL）。 */
   from: string;
@@ -572,7 +583,6 @@ function HistoryRow({
   removeRef: Ref<HTMLButtonElement>;
   onRemove: () => void;
 }) {
-  const time = formatTime(entry.playedAt);
   const video = entry.video;
   const title =
     video !== undefined
@@ -581,42 +591,45 @@ function HistoryRow({
         ? t.history.unknownTitle
         : entry.title;
   const remove = (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          ref={removeRef}
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground"
-          disabled={pending}
-          aria-label={t.history.removeFor(title, dayText, time)}
-          onClick={onRemove}
-        >
-          {pending ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{t.history.remove}</TooltipContent>
-    </Tooltip>
+    <div className="col-start-3 row-start-1 flex justify-end lg:col-start-4">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            ref={removeRef}
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            disabled={pending}
+            aria-label={t.history.removeFor(title, dayText)}
+            onClick={onRemove}
+          >
+            {pending ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{t.history.remove}</TooltipContent>
+      </Tooltip>
+    </div>
   );
 
   if (video === undefined) {
     return (
-      <TimelineItem
-        ref={rowRef}
-        time={time}
-        media={
-          <ThumbnailFrame className="rounded-md">
-            <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
-              <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
-              <span className="text-2xs">{t.list.card.noImage}</span>
-            </div>
-          </ThumbnailFrame>
-        }
-        remove={remove}
-      >
-        <EntryTitle title={title} muted />
-        <EntryWarning text={t.history.notInLibrary} />
-      </TimelineItem>
+      <HistoryRowLayout rowRef={rowRef}>
+        <div className={mainLayout}>
+          <EntryMedia>
+            <ThumbnailFrame className="rounded-md">
+              <div className="flex size-full flex-col items-center justify-center gap-1 text-muted-foreground">
+                <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                <span className="text-2xs">{t.list.card.noImage}</span>
+              </div>
+            </ThumbnailFrame>
+          </EntryMedia>
+          <EntryText>
+            <EntryTitle title={title} muted />
+            <EntryWarning text={t.history.notInLibrary} />
+          </EntryText>
+        </div>
+        {remove}
+      </HistoryRowLayout>
     );
   }
 
@@ -626,27 +639,39 @@ function HistoryRow({
   const folder = folderLine(video);
   const warning = unplayableText(video);
   return (
-    <TimelineItem
-      ref={rowRef}
-      time={time}
-      media={<VideoThumbnail video={video} className="rounded-md" />}
-      main={({ className, children }) => (
-        <Link
-          to={to}
-          state={{ from }}
-          aria-label={t.history.entryLink(
-            title,
-            formatDuration(video.durationMs),
-            dayText,
-            time,
+    <HistoryRowLayout rowRef={rowRef}>
+      <Link
+        to={to}
+        state={{ from }}
+        aria-label={t.history.entryLink(title, formatDuration(video.durationMs), dayText)}
+        className={cn(mainLayout, "rounded-md transition-colors hover:bg-accent")}
+      >
+        <EntryMedia>
+          <VideoThumbnail video={video} className="rounded-md" />
+        </EntryMedia>
+        <EntryText>
+          <EntryTitle title={title} />
+          {folder !== null && (
+            <span className="truncate text-xs text-muted-foreground">{folder}</span>
           )}
-          className={className}
-        >
-          {children}
-        </Link>
-      )}
-      action={
-        action === null ? undefined : (
+          {position !== null && (
+            <span className="flex items-center gap-2">
+              <Progress
+                value={position.value}
+                max={position.max}
+                aria-label={t.list.card.watchedRatio}
+                className="max-w-xs flex-1"
+              />
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {position.text}
+              </span>
+            </span>
+          )}
+          {warning !== null && <EntryWarning text={warning} />}
+        </EntryText>
+      </Link>
+      {action !== null && (
+        <div className="relative col-start-2 row-start-2 flex lg:col-start-3 lg:row-start-1">
           <Button asChild variant="outline" size="sm">
             <Link
               to={to}
@@ -665,30 +690,41 @@ function HistoryRow({
               {action === "resume" ? t.history.resume : t.history.startOver}
             </Link>
           </Button>
-        )
-      }
-      remove={remove}
-    >
-      <EntryTitle title={title} />
-      {folder !== null && (
-        <span className="truncate text-xs text-muted-foreground">{folder}</span>
+        </div>
       )}
-      {position !== null && (
-        <span className="flex items-center gap-2">
-          <Progress
-            value={position.value}
-            max={position.max}
-            aria-label={t.list.card.watchedRatio}
-            className="max-w-xs flex-1"
-          />
-          <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-            {position.text}
-          </span>
-        </span>
-      )}
-      {warning !== null && <EntryWarning text={warning} />}
-    </TimelineItem>
+      {remove}
+    </HistoryRowLayout>
   );
+}
+
+/**
+ * HistoryRowLayout は行の列である。lg 未満はサムネイル・文字・端の × の 3 列で、操作は
+ * 文字の列の下、lg からはサムネイル・文字・操作・端の × の 1 行（ui-design.md「Entry row」）。
+ */
+function HistoryRowLayout({
+  rowRef,
+  children,
+}: {
+  rowRef?: Ref<HTMLLIElement>;
+  children: ReactNode;
+}) {
+  return (
+    <GroupedListItem ref={rowRef}>
+      <div className="grid min-w-0 flex-1 grid-cols-history-row items-start gap-x-3 gap-y-1 lg:grid-cols-history-row-wide lg:items-center">
+        {children}
+      </div>
+    </GroupedListItem>
+  );
+}
+
+/** EntryMedia はサムネイルの列である。lg 未満は文字の列と操作の 2 段にまたがる。 */
+function EntryMedia({ children }: { children: ReactNode }) {
+  return <span className="row-span-2 min-w-0 lg:row-span-1">{children}</span>;
+}
+
+/** EntryText は文字の列（題名と補いの行）である。 */
+function EntryText({ children }: { children: ReactNode }) {
+  return <span className="flex min-w-0 flex-col gap-1">{children}</span>;
 }
 
 /** EntryTitle は行の題名である。ライブラリに無い件は弱い色で書く。 */

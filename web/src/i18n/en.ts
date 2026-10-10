@@ -396,7 +396,6 @@ export const en = {
         centeredForm: "Centered form",
         dialogs: "Form dialog and confirm dialog",
         groupedList: "Grouped list",
-        timeline: "Timeline",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -531,20 +530,6 @@ export const en = {
       today: "Today",
       yesterday: "Yesterday",
       removeEntry: "Remove from history",
-      // 時間軸の見本（timeline-example）の行の文言。
-      folderPath: "Travel / 2024",
-      position: (position: string, duration: string) => `${position} / ${duration}`,
-      watchedPortion: "Watched portion",
-      resume: "Resume",
-      startOver: "Start over",
-      // 時間軸の見本の見出しの行と横の欄（状態の切り替え・検索・日付へ移る一覧）。
-      watchStatus: "Watch status",
-      watchAll: "All",
-      watchInProgress: "In progress",
-      watchWatched: "Watched",
-      searchTitles: "Search titles",
-      jumpToDate: "Jump to date",
-      clearHistory: "Clear history…",
     },
   },
   app: {
@@ -1411,13 +1396,14 @@ export const en = {
     resumeFor: (title: string) => `Resume ${title}`,
     startOver: "Start over",
     startOverFor: (title: string) => `Start ${title} over`,
-    entryLink: (title: string, duration: string, day: string, time: string) =>
+    // 行のリンクと × の読み上げ名。日だけを入れ、時刻は入れない（日より細かく刻まない）。
+    entryLink: (title: string, duration: string, day: string) =>
       duration === ""
-        ? `${title}, played ${day} at ${time}`
-        : `${title}, ${duration}, played ${day} at ${time}`,
+        ? `${title}, played ${day}`
+        : `${title}, ${duration}, played ${day}`,
     remove: "Remove from history",
-    removeFor: (title: string, day: string, time: string) =>
-      `Remove "${title}" played ${day} at ${time} from history`,
+    removeFor: (title: string, day: string) =>
+      `Remove "${title}" played ${day} from history`,
     notInLibrary: "Not in the library",
     unknownTitle: "Unknown video",
     clear: "Clear history…",
