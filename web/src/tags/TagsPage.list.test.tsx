@@ -174,7 +174,7 @@ describe("TagsPage 見えている行だけ描く", () => {
 
     await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
-    await waitFor(() => expect(screen.queryByTitle(name(1))).not.toBeNull());
+    expect(await screen.findByTitle(name(1))).toBeDefined();
     await waitFor(() => expect(wrapperOf(tagCount - 1)).not.toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -552,7 +552,7 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     await chooseSort(user, "Name", "Video count");
     await toggleFilter(user, "Unused only");
     // Alpha は 5 本で「Unused only」に一致しないが、行は本数の順の位置に残る。
-    await waitFor(() => expect(screen.getByText("2 of 5 tags")).toBeDefined());
+    expect(await screen.findByText("2 of 5 tags")).toBeDefined();
     const still = screen.getByRole("textbox", { name: 'New name for "Alpha"' });
     expect(still).toBe(input);
     expect((still as HTMLInputElement).value).toBe("下書き");

@@ -349,7 +349,8 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     const gone = within(historyList()).getByText("Gone");
     expect(gone.closest("a")).toBeNull();
     expect(within(historyList()).getAllByText("Not in the library")).toHaveLength(2);
-    expect(within(historyList()).getByText("Unknown video").closest("a")).toBeNull();
+    const unknown = within(historyList()).getByText("Unknown video");
+    expect(unknown.closest("a")).toBeNull();
 
     await user.click(links[0]!);
     expect(await screen.findByText("Video page")).toBeDefined();
@@ -398,10 +399,10 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
           within(item).queryByText(title) !== null,
       );
       if (found === undefined) throw new Error(`no row for ${title}`);
-      return within(found);
+      return found;
     };
 
-    const midway = row("Harbour lights");
+    const midway = within(row("Harbour lights"));
     expect(midway.getByText("16:05 / 42:18")).toBeDefined();
     // サムネイルの下端の縁（百分率）とは別に、位置の行のバーを長さで描く。
     const bar = positionBar(
@@ -411,7 +412,7 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     expect(midway.getByRole("link", { name: "Resume Harbour lights" })).toBeDefined();
     expect(midway.queryByRole("link", { name: /^Start/ })).toBeNull();
 
-    const watched = row("Kyoto");
+    const watched = within(row("Kyoto"));
     expect(watched.getByText("42:10 / 42:18")).toBeDefined();
     const full = positionBar(
       watched.getAllByRole("progressbar", { name: "Watched portion" }),
@@ -421,12 +422,12 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     expect(watched.queryByRole("link", { name: /^Resume/ })).toBeNull();
 
     // 位置の無い動画は位置も操作も出さず、行そのものが動画を開く。
-    const fresh = row("Fresh");
+    const fresh = within(row("Fresh"));
     expect(fresh.queryByRole("progressbar")).toBeNull();
     expect(fresh.getAllByRole("link")).toHaveLength(1);
 
     // 動画の無い件はどちらの操作も出さない。
-    const gone = row("Gone");
+    const gone = within(row("Gone"));
     expect(gone.queryByRole("link")).toBeNull();
     expect(gone.queryByRole("progressbar")).toBeNull();
   });

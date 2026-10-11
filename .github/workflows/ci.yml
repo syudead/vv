@@ -84,6 +84,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov へ OIDC で送る（トークンを secret に置かない）。
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -95,21 +99,32 @@ jobs:
             tools: true
             golangci: true
             go: lint
+          # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
+          # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
+          # internal/media のテストは ffmpeg と ffprobe が無いと飛ぶ（47 件）ので入れる。
+          # go test は結果をキャッシュし、exec.LookPath で ffmpeg を探したことは結果の
+          # 鍵に入らない。ffmpeg の無い環境で「飛ばした」結果を使い回さないよう、
+          # ビルドキャッシュも ffmpeg のある環境の分として名前を分ける（test-media）。
           - group: go test
-            tasks: test-go
-            go: test
+            tasks: test-go-report
+            go: test-media
+            report: go
+            ffmpeg: true
           - group: web lint
             tasks: fmt-check-web lint-web build-check-web
             web: true
           - group: web test 1
-            tasks: test-web-unit -- --shard=1/3
+            tasks: test-web-report -- --shard=1/3
             web: true
+            report: web
           - group: web test 2
-            tasks: test-web-unit -- --shard=2/3
+            tasks: test-web-report -- --shard=2/3
             web: true
+            report: web
           - group: web test 3
-            tasks: test-web-unit -- --shard=3/3
+            tasks: test-web-report -- --shard=3/3
             web: true
+            report: web
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -175,10 +190,67 @@ jobs:
         env:
           BASE: ${{ github.base_ref }}
 
+      # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
+      - name: runnerのイメージ版を調べる
+        id: image
+        if: matrix.ffmpeg
+        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: メディア処理コマンドのパッケージを復元する
+        id: ffmpeg-debs
+        if: matrix.ffmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ffmpeg-debs
+          key: ffmpeg-debs-${{ steps.image.outputs.version }}
+
+      - name: メディア処理コマンドを取得する
+        if: matrix.ffmpeg
+        env:
+          CACHE_HIT: ${{ steps.ffmpeg-debs.outputs.cache-hit }}
+        run: |
+          debs="$HOME/.cache/ffmpeg-debs"
+          if [ "$CACHE_HIT" != "true" ]; then
+            mkdir -p "$debs/partial"
+            sudo apt-get update
+            sudo apt-get install --yes --download-only --no-install-recommends \
+              -o Dir::Cache::archives="$debs" ffmpeg
+            sudo rm -rf "$debs/partial" "$debs/lock"
+            sudo chown -R "$USER" "$debs"
+          fi
+          if compgen -G "$debs/*.deb" > /dev/null; then sudo dpkg -i "$debs"/*.deb; fi
+          ffmpeg -version | head -n 1
+
       - name: 検査する
         env:
           TASKS: ${{ matrix.tasks }}
         run: task $TASKS
+
+      # テストが落ちた実行の結果こそ、不安定なテストを見つける材料になるので、
+      # 失敗しても送る。Codecov が受け付けなくても、OIDC のトークンが取れなくても
+      # （Action が例外で止まり fail_ci_if_error: false では防げない）検査自体は落とさない。
+      - name: テスト結果をCodecovへ送る
+        if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          report_type: test_results
+          files: reports/${{ matrix.report }}-junit.xml
+          disable_search: true
+          flags: ${{ matrix.report }}
+          fail_ci_if_error: false
+
+      - name: カバレッジをCodecovへ送る
+        if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: ${{ matrix.report == 'go' && 'reports/go-coverage.out' || 'reports/web-coverage/lcov.info' }}
+          disable_search: true
+          flags: ${{ matrix.report }}
+          fail_ci_if_error: false
 
       - name: golangci-lintのキャッシュを保存する
         if: matrix.golangci && github.event_name == 'push'
@@ -238,8 +310,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
+          key: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         if: needs.changes.outputs.code == 'false'
@@ -259,6 +331,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -364,6 +439,19 @@ jobs:
           E2E_FILES: ${{ matrix.files }}
         run: task test-e2e -- $E2E_FILES
 
+      # 1 回のリトライで通ったテストも結果に残るので、不安定なテストが Codecov で見える。
+      - name: テスト結果をCodecovへ送る
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          report_type: test_results
+          files: reports/e2e-junit.xml
+          disable_search: true
+          flags: e2e
+          fail_ci_if_error: false
+
       - name: 失敗時のPlaywright artefact
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -459,6 +547,11 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      # /api/health の builtAt。task build の vcs.time と同じくコミットの時刻を渡す。
+      - name: コミットの時刻を求める
+        id: commit-time
+        run: echo "time=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -470,5 +563,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             VERSION=${{ github.sha }}
+            COMMIT=${{ github.sha }}
+            BUILT_AT=${{ steps.commit-time.outputs.time }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

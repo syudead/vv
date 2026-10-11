@@ -54,11 +54,13 @@ func TestAPITokenRequiresCurrentSession(t *testing.T) {
 		now     time.Time
 	}{
 		{name: "資格情報の変更の後", session: setupSession, now: authNow, prepare: func(t *testing.T, db *DB) {
+			t.Helper()
 			if err := db.Auth().ChangePassword(context.Background(), "new-hash", authNow); err != nil {
 				t.Fatal(err)
 			}
 		}},
 		{name: "版の合わないセッション", session: setupSession, now: authNow, prepare: func(t *testing.T, db *DB) {
+			t.Helper()
 			if _, err := db.sql.Exec(`update account set version = version + 1`); err != nil {
 				t.Fatal(err)
 			}

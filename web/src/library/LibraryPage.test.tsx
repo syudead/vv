@@ -1051,12 +1051,11 @@ describe("LibraryPage", () => {
       renderLibrary("/?tag=1&sort=random");
       await screen.findByRole("link", { name: "動画 1" });
 
-      await waitFor(() => {
-        const location = screen.getByTestId("location").textContent ?? "";
-        expect(location).toMatch(/tag=1/);
-        expect(location).toMatch(/sort=random/);
-        expect(location).toMatch(/seed=\d+/);
-      });
+      // 乱数の種は描いた後に URL へ足される。足されるのを待ち、ほかの条件が残ることを確かめる。
+      const location = () => screen.getByTestId("location").textContent ?? "";
+      await waitFor(() => expect(location()).toMatch(/seed=\d+/));
+      expect(location()).toMatch(/tag=1/);
+      expect(location()).toMatch(/sort=random/);
     });
 
     it("タグの絞り込みを変えると選択を解除する", async () => {
@@ -1139,12 +1138,10 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Filter by 旅行" }));
 
-      await waitFor(() => {
-        const location = screen.getByTestId("location").textContent ?? "";
-        expect(location).toContain("tag=1");
-        expect(location).toContain("q=abc");
-        expect(location).toContain("watch=unwatched");
-      });
+      const location = () => screen.getByTestId("location").textContent ?? "";
+      await waitFor(() => expect(location()).toContain("tag=1"));
+      expect(location()).toContain("q=abc");
+      expect(location()).toContain("watch=unwatched");
       // 一覧の要求にも、タグと一緒にほかの条件が残る。
       await waitFor(() => {
         const request = listRequests(fetchMock).at(-1);
@@ -1205,13 +1202,10 @@ describe("LibraryPage", () => {
       await user.click(
         screen.getByRole("button", { name: "Remove the filter for 2024" }),
       );
-      await waitFor(() => {
-        const location = screen.getByTestId("location").textContent ?? "";
-        expect(location).toContain("tag=1");
-        expect(location).not.toContain("tag=2&");
-        expect(location).not.toMatch(/tag=2$/);
-        expect(location).toContain("q=abc");
-      });
+      const location = () => screen.getByTestId("location").textContent ?? "";
+      await waitFor(() => expect(location()).not.toMatch(/tag=2(&|$)/));
+      expect(location()).toContain("tag=1");
+      expect(location()).toContain("q=abc");
     });
 
     it("missingTagIds を受けたら伝えて、タグの一覧を取り直し、一覧も取り直して URL から取り除く（N1）", async () => {
@@ -1523,9 +1517,7 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
 
       // ボタンは「選択中…」で固まらず、「すべて選択」に戻る。
-      await waitFor(() =>
-        expect(screen.getByRole("button", { name: "Select all" })).toBeDefined(),
-      );
+      expect(await screen.findByRole("button", { name: "Select all" })).toBeDefined();
       expect(screen.getByText("2 videos selected")).toBeDefined();
 
       // 遅れて届いた応答（もう無効）は、手動で選んだ2件を上書きしない。

@@ -558,7 +558,7 @@ describe("ScanProvider", () => {
     expect(screen.getByText("開始可否: 可")).toBeDefined();
     resolveFolders?.(json([]));
 
-    await waitFor(() => expect(screen.getByText("開始可否: 可")).toBeDefined());
+    expect(await screen.findByText("開始可否: 可")).toBeDefined();
   });
 
   it("取得の途中で届いた知らせを、遅れて返った古い応答で上書きしない", async () => {
@@ -606,7 +606,7 @@ describe("ScanProvider", () => {
 
     it("走っているあいだは実行中にせず、終わりは手動の完了と別に知らせる", async () => {
       mount();
-      await waitFor(() => expect(screen.getByText("実行中: いいえ")).toBeDefined());
+      expect(await screen.findByText("実行中: いいえ")).toBeDefined();
 
       await emitServerEvent("scan", watch(30, "running"));
       expect(screen.getByText("状態: 30")).toBeDefined();
@@ -630,7 +630,7 @@ describe("ScanProvider", () => {
           </ScanProvider>
         </OwnerAudience>,
       );
-      await waitFor(() => expect(screen.getByText("状態: 40")).toBeDefined());
+      expect(await screen.findByText("状態: 40")).toBeDefined();
       expect(screen.getByText("自動の完了: なし")).toBeDefined();
 
       // 走っているところを見ないまま、新しい取り込みが終わった形で届く。
@@ -650,7 +650,7 @@ describe("ScanProvider", () => {
 
     it("準備が残るあいだ（state done, status running）は終わりにしない", async () => {
       mount();
-      await waitFor(() => expect(screen.getByText("実行中: いいえ")).toBeDefined());
+      expect(await screen.findByText("実行中: いいえ")).toBeDefined();
       await emitServerEvent("scan", watch(50, "running"));
       await emitServerEvent("scan", watch(50, "done", { status: "running" }));
       expect(screen.getByText("自動の完了: なし")).toBeDefined();

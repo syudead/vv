@@ -140,7 +140,7 @@ describe("ScanProgressIndicator", () => {
       name: /^Scanning 4 of 10 videos done\./,
     });
 
-    await act(async () => fireEvent.click(trigger));
+    fireEvent.click(trigger);
 
     expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -213,9 +213,9 @@ describe("ScanProgressIndicator", () => {
 
     fireEvent.pointerEnter(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
-    await act(async () => fireEvent.keyDown(document.body, { key: "Escape" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    await act(async () => fireEvent.pointerMove(trigger));
+    fireEvent.pointerMove(trigger);
     await new Promise((resolve) => window.setTimeout(resolve, 150));
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -230,7 +230,7 @@ describe("ScanProgressIndicator", () => {
     });
 
     const user = userEvent.setup();
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
     // 外を押したことの受け取りは、開いた次の tick から始まる。
     await new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -273,7 +273,7 @@ describe("ScanProgressIndicator", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     // 閉じたことで本体へフォーカスが戻っても（focus が届いても）開き直らない。
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     expect(screen.queryByRole("dialog")).toBeNull();
 
     // フォーカスが本体から外れると閉じ、戻れば開く。
@@ -488,9 +488,9 @@ describe("ScanProgressIndicator", () => {
     const trigger = await screen.findByRole("button", { name: /^Done / });
     vi.useFakeTimers();
 
-    await act(async () => fireEvent.pointerEnter(trigger));
+    fireEvent.pointerEnter(trigger);
     expect(screen.getByRole("dialog")).toBeDefined();
-    await act(async () => fireEvent.keyDown(document.body, { key: "Escape" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
     // ポインタは本体の上に残っていても、閉じた概要は通知を止めない。
     await act(async () => vi.advanceTimersByTimeAsync(8100));
@@ -618,11 +618,11 @@ describe("ScanProgressIndicator", () => {
     const trigger = await screen.findByRole("button", { name: /^Done / });
     vi.useFakeTimers();
 
-    await act(async () => fireEvent.pointerEnter(trigger));
+    fireEvent.pointerEnter(trigger);
     await act(async () => vi.advanceTimersByTimeAsync(9000));
     expect(screen.getByRole("button", { name: /^Done / })).toBeDefined();
 
-    await act(async () => fireEvent.pointerLeave(trigger));
+    fireEvent.pointerLeave(trigger);
     await act(async () => vi.advanceTimersByTimeAsync(100));
     await act(async () => vi.advanceTimersByTimeAsync(8100));
     expect(screen.queryByRole("button", { name: /^Done / })).toBeNull();
@@ -642,11 +642,11 @@ describe("ScanProgressIndicator", () => {
     const trigger = await screen.findByRole("button", { name: /^Done / });
     vi.useFakeTimers();
 
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     await act(async () => vi.advanceTimersByTimeAsync(9000));
     expect(screen.getByRole("button", { name: /^Done / })).toBeDefined();
 
-    await act(async () => fireEvent.blur(trigger));
+    fireEvent.blur(trigger);
     await act(async () => vi.advanceTimersByTimeAsync(8000));
     expect(screen.queryByRole("button", { name: /^Done / })).toBeNull();
   });
@@ -672,7 +672,7 @@ describe("ScanProgressIndicator", () => {
     vi.useFakeTimers();
 
     await act(async () => vi.advanceTimersByTimeAsync(2000));
-    await act(async () => fireEvent.pointerEnter(trigger));
+    fireEvent.pointerEnter(trigger);
     await act(async () => vi.advanceTimersByTimeAsync(10000));
     const pausedRemainingMs = JSON.parse(
       window.sessionStorage.getItem("vv.scan-notice") ?? "{}",
@@ -716,11 +716,11 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("status").textContent).toBe("");
 
     // 仕事の件数や段階ごとの内訳は無い。
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByRole("term")).toBeNull();
     expect(dialog.textContent).not.toMatch(/Analysis|Thumbnails|Previews|left/);
-    await act(async () => fireEvent.blur(trigger));
+    fireEvent.blur(trigger);
 
     await emitServerEvent("scan", scan({ state: "done" }));
     expect(
@@ -741,7 +741,7 @@ describe("ScanProgressIndicator", () => {
     const trigger = await screen.findByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     const line = await screen.findByTestId("scan-detail");
     expect(line.textContent).toBe("Analyzing · a.mp4");
     const status = screen.getByRole("status");
@@ -799,13 +799,13 @@ describe("ScanProgressIndicator", () => {
       "The scan finished with some failures. 2 videos may not be usable.",
     );
 
-    await act(async () => fireEvent.focus(trigger));
+    fireEvent.focus(trigger);
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toContain("2 failed");
     expect(dialog.textContent).toContain("1 to check");
     expect(dialog.textContent).toContain("Finished ");
     expect(dialog.textContent).toContain("See Settings for the list.");
-    await act(async () => fireEvent.blur(trigger));
+    fireEvent.blur(trigger);
 
     await act(async () => vi.advanceTimersByTimeAsync(8100));
     expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
@@ -828,7 +828,7 @@ describe("ScanProgressIndicator", () => {
     renderIndicator();
     const open = async (name: RegExp) => {
       const trigger = await screen.findByRole("button", { name });
-      await act(async () => fireEvent.focus(trigger));
+      fireEvent.focus(trigger);
       await screen.findByRole("dialog");
       expectCatalogTextOnly(document.body, [
         "/settings#scan-status",
@@ -836,7 +836,7 @@ describe("ScanProgressIndicator", () => {
         "夏の旅行.mp4",
         "start for test",
       ]);
-      await act(async () => fireEvent.blur(trigger));
+      fireEvent.blur(trigger);
     };
     await open(/Scanning/);
 

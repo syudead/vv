@@ -16,6 +16,7 @@ import (
 // numberedSheetWriter は 1 コマ 32 × 18 の 10 × 10 のシートを sheets 枚書く。コマ k は
 // 明るさ k の一色で塗るので、切り出したコマの明るさからどのコマかが分かる。
 func numberedSheetWriter(t *testing.T, sheets int) func(string) error {
+	t.Helper()
 	return func(dir string) error {
 		for s := range sheets {
 			img := image.NewGray(image.Rect(0, 0, 320, 180))
