@@ -76,7 +76,7 @@ flowchart LR
 runs the subtasks of `task check` as parallel `Checks (<group>)` jobs: Go lint
 with the generated-file, migration and Windows build checks, Go tests, Web
 lint with the SPA build check (`task build-check-web`), and the Vitest suite
-split into three shards (`task test-web-unit -- --shard=1/3`). `task test-web`
+split into three shards (`task test-web-report -- --shard=1/3`). `task test-web`
 runs the build check and the whole suite. A check added to `task check` also
 goes into one of these groups in `.github/workflows/ci.yml`. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.
@@ -85,6 +85,18 @@ topic, as `web/src/tags/TagsPage*.test.tsx` are around the shared
 `web/src/testing/tagsPage.tsx`. A push to `main` is a
 merged pull request, so browser E2E and the Docker image build never run on a
 pull request; `Browser E2E` passes there without running.
+
+The Go and Vitest test groups run the same tests as `task test-go` and
+`task test-web-unit` through `task test-go-report` and `task test-web-report`,
+which also write coverage and JUnit test results under `reports/`. CI uploads
+them to [Codecov](https://app.codecov.io/gh/syudead/vv), together with the E2E
+results of a push to `main`, even when a test fails. Codecov reports flaky and
+slow tests from the test results, and comments the coverage of the changed lines
+on a pull request without blocking it
+([`.github/codecov.yml`](../../.github/codecov.yml)). The upload authenticates
+with GitHub OIDC, so the repository needs no Codecov token, but it must be
+activated once on codecov.io by signing in with GitHub and installing the
+Codecov GitHub App. A failed upload does not fail the check.
 
 When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit

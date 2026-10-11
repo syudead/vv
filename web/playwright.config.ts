@@ -23,7 +23,14 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   outputDir: path.join(webRoot, "test-results"),
-  reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : "list",
+  // CI では JUnit の結果も reports/ に書き、ci.yml が Codecov へ送る。
+  reporter: process.env.CI
+    ? [
+        ["html", { open: "never" }],
+        ["list"],
+        ["junit", { outputFile: path.join(repoRoot, "reports", "e2e-junit.xml") }],
+      ]
+    : "list",
   use: {
     baseURL: "http://127.0.0.1:15173",
     trace: "retain-on-failure",
