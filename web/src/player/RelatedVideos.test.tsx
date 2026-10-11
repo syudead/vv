@@ -39,10 +39,17 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
   };
 }
 
-function renderList(state: RelatedState) {
+const linkState = { from: "/folders/1/a", trail: [5, 1] };
+
+function renderList(state: RelatedState, onLoadMore = vi.fn()) {
   return render(
     <MemoryRouter>
-      <RelatedVideos state={state} backTo="/folders/1/a" onRetry={vi.fn()} />
+      <RelatedVideos
+        state={state}
+        linkState={linkState}
+        onRetry={vi.fn()}
+        onLoadMore={onLoadMore}
+      />
     </MemoryRouter>,
   );
 }
@@ -578,8 +585,9 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
             element={
               <RelatedVideos
                 state={{ kind: "ready", id: 1, related: { items: [scrubItem(2)] } }}
-                backTo="/"
+                linkState={{ from: "/", trail: [1] }}
                 onRetry={vi.fn()}
+                onLoadMore={vi.fn()}
               />
             }
           />
@@ -835,5 +843,106 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       await act(async () => Promise.resolve());
       expect(memberRows()).toHaveLength(101);
     });
+  });
+});
+
+describe("関連動画の続き（issue 931）", () => {
+  let intersect: Map<Element, IntersectionObserverCallback>;
+
+  beforeEach(() => {
+    intersect = new Map();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        private readonly callback: IntersectionObserverCallback;
+        constructor(callback: IntersectionObserverCallback) {
+          this.callback = callback;
+        }
+        observe(element: Element) {
+          intersect.set(element, this.callback);
+        }
+        disconnect() {}
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function reachEnd() {
+    const edges = [...intersect.entries()].filter(
+      ([element]) => element.isConnected && element.classList.contains("h-px"),
+    );
+    expect(edges).toHaveLength(1);
+    const [element, callback] = edges[0]!;
+    act(() =>
+      callback(
+        [
+          {
+            isIntersecting: true,
+            target: element,
+          } as unknown as IntersectionObserverEntry,
+        ],
+        {} as IntersectionObserver,
+      ),
+    );
+  }
+
+  it("続きがあれば、並びの終わりに来たところで続きを読む", () => {
+    const onLoadMore = vi.fn();
+    renderList(
+      { kind: "ready", id: 1, related: { items: [item(2)], nextCursor: "c1" } },
+      onLoadMore,
+    );
+    reachEnd();
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("グループのメンバーでも、境目の下の関連動画の終わりで続きを読む", () => {
+    const onLoadMore = vi.fn();
+    renderList(
+      {
+        kind: "ready",
+        id: 10,
+        related: {
+          items: [item(2)],
+          nextCursor: "c1",
+          group: {
+            folder: { rootId: 1, path: "show" },
+            name: "show",
+            items: [item(10), item(11)],
+            offset: 0,
+            total: 2,
+          },
+        },
+      },
+      onLoadMore,
+    );
+    reachEnd();
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("続きが無ければ目印を置かない", () => {
+    renderList({ kind: "ready", id: 1, related: { items: [item(2)] } });
+    const edges = [...intersect.keys()].filter(
+      (element) => element.isConnected && element.classList.contains("h-px"),
+    );
+    expect(edges).toHaveLength(0);
+  });
+
+  it("続きの読み込みに失敗したら、やり直しのボタンで読み直す", () => {
+    const onLoadMore = vi.fn();
+    renderList(
+      {
+        kind: "ready",
+        id: 1,
+        related: { items: [item(2)], nextCursor: "c1" },
+        more: "failed",
+      },
+      onLoadMore,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 });

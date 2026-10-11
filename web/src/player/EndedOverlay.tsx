@@ -5,13 +5,14 @@ import { Link } from "react-router";
 import type { Video } from "../api/client";
 import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
+import type { VideoLinkState } from "./pageDecisions";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
 /**
  * EndedOverlay は最後まで再生したときの層である（要件 14）。
  *
- * 次の動画（同じフォルダの自然順の次。グループのメンバーならグループの中の次）が
+ * 次の動画（関連動画の並びの先頭。グループのメンバーならグループの中の次）が
  * あれば、それと「次を再生」「もう一度見る」を出す。無ければ「もう一度見る」だけにする。
  * 自動では再生せず、カウントダウンも出さない（メンバーの予告は AutoplayNotice が出し、
  * これは予告を取り消した後の層になる）。
@@ -21,13 +22,14 @@ import { Dimmed } from "./StatusOverlays";
  */
 export default function EndedOverlay({
   next,
-  backTo,
+  linkState,
   takeFocus,
   onReplay,
   onPlayNext,
 }: {
   next: Video | undefined;
-  backTo: string;
+  /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
+  linkState: VideoLinkState;
   takeFocus: boolean;
   onReplay: () => void;
   onPlayNext: () => void;
@@ -59,7 +61,7 @@ export default function EndedOverlay({
           </span>
           <Link
             to={`/videos/${String(next.id)}`}
-            state={{ from: backTo }}
+            state={linkState}
             aria-label={videoLinkLabel(next)}
             className="flex items-start gap-3 rounded-md"
           >

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 213e91f87adb1cab1a27d1b6af3e3852e7217a2e18347d3ee9ef3d56d95f0215
+sourceHash: fb8ca503d9ae31ac771f749f64be373ef90c07d028823c396c891d9f3ca088ec
 ---
 
 # 設計文書 {#design-documents}
@@ -34,6 +34,7 @@ sourceHash: 213e91f87adb1cab1a27d1b6af3e3852e7217a2e18347d3ee9ef3d56d95f0215
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
+- [関連動画と前後の動画](related-videos.md)
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
 - [テストと CI の品質監視](test-quality-monitoring.md)

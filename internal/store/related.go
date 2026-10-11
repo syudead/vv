@@ -12,80 +12,100 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// DirectVideoPaths はディレクトリ直下の動画を、id とパスだけで全件返す。
-// 同じ動画の所在が直下に2つ以上あるときは、ListFolderVideos と同じく
-// パスの小さい方を1件だけ返す（chosenLocationsCTE）。並べ方は internal/domain の
-// OrderRelated が決める。ゲストには公開の動画だけを返す。
-func (s *LibraryStore) DirectVideoPaths(ctx context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error) {
-	cte, args := chosenLocationsCTE(folderScope(dir, domain.FolderScopeDirect, audience), domain.SearchExpr{})
-	rows, err := s.db.sql.QueryContext(ctx, cte+` select video_id, path from chosen`, args...)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	siblings := []domain.RelatedSibling{}
-	for rows.Next() {
-		var item domain.RelatedSibling
-		if err := rows.Scan(&item.VideoID, &item.Path); err != nil {
-			return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
-		}
-		siblings = append(siblings, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
-	}
-	return siblings, nil
-}
-
-// VideosAddedNear は追加日時がこの動画に近い動画を、前後それぞれ最大 limit 件
-// 返す。見る人に見せてよい所在の無い動画（登録フォルダの下に所在の無い動画と、
-// ゲストには非公開の動画）、見せる動画でないもの（集まりの代表以外のバージョン、
-// shownVideoCondition）と、この動画自身は含めない。
+// RelatedCandidates は関連動画の近さを測る手がかりを、見る人に見せる動画すべてについて
+// 返す（issue 931）。見せる動画は一覧と同じで、見る人に見せてよい所在のある動画のうち、
+// 集まりの代表以外のバージョン（shownVideoCondition）を除く。基準の動画 selfID は、
+// 代表以外のバージョンでも見せてよければ含める。並べ方は internal/domain の RankRelated が
+// 決める。
 //
-// 片側の並びは、追加日時の差が小さい順、差が同じなら id の大きい順で、
-// OrderRelated の補い方と同じである。そのため、同じフォルダの動画を除いたあとに
-// 要る件数（limit から同じフォルダの件数を引いた数）は、両側の先頭 limit 件の
-// 中に必ず入っている。
-func (s *LibraryStore) VideosAddedNear(ctx context.Context, audience domain.Audience, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error) {
-	at := addedAt.Unix()
-	visible := visibleVideoCondition("videos", audience) + ` and ` + shownVideoCondition("videos", audience)
-	before := `select id, added_at from videos
-		where (added_at < ? or (added_at = ? and id < ?)) and ` + visible + `
-		order by added_at desc, id desc limit ?`
-	after := `select id, added_at from videos
-		where (added_at > ? or (added_at = ? and id > ?)) and ` + visible + `
-		order by added_at asc, id desc limit ?`
-
-	neighbors := []domain.RelatedNeighbor{}
-	for _, query := range []string{before, after} {
-		side, err := s.relatedNeighbors(ctx, query, at, at, id, limit)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read videos added around the same time: %w", err)
-		}
-		neighbors = append(neighbors, side...)
+// 手がかりは代表の所在のパスと題名（表示名があればそれ）、追加日時、タグ、映像の指紋で
+// ある。タグは手で付けた分（確定と仮）とフォルダ名から付いた分を合わせる
+// （videoHasTagCondition と同じ 2 つの出所）。指紋は今の版でなくても返し、比べるかは
+// domain が決める。すべてを 1 つの読み取りのスナップショットで読む。
+func (s *LibraryStore) RelatedCandidates(ctx context.Context, audience domain.Audience, selfID int64) ([]domain.RelatedCandidate, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start reading related video candidates: %w", err)
 	}
-	return neighbors, nil
-}
+	defer func() { _ = tx.Rollback() }()
 
-func (s *LibraryStore) relatedNeighbors(ctx context.Context, query string, args ...any) ([]domain.RelatedNeighbor, error) {
-	rows, err := s.db.sql.QueryContext(ctx, query, args...)
+	rows, err := tx.QueryContext(ctx, `select videos.id, rep.path, rep.title,
+		(select ov.display_name from video_overrides ov
+		  where ov.content_key = videos.content_key and videos.content_key <> ''),
+		videos.added_at, f.version, f.interval_ms, f.hashes
+		from videos`+representativeJoin(audience)+`
+		left join video_fingerprints f on f.content_key = videos.content_key and videos.content_key <> ''
+		where `+visibleVideoCondition("videos", audience)+`
+		  and (`+shownVideoCondition("videos", audience)+` or videos.id = ?)`, selfID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read related video candidates: %w", err)
+	}
+	candidates, byID, err := scanRelatedCandidates(rows)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
 
-	var neighbors []domain.RelatedNeighbor
+	tagRows, err := tx.QueryContext(ctx, `select v.id, vt.tag_id from videos v
+		join video_tags vt on vt.content_key = `+userKeyExpr("v")+`
+		where v.content_key <> ''
+		union
+		select v.id, tn.tag_id from video_folder_names vfn
+		join tag_names tn on tn.name = vfn.name
+		join videos v on v.id = vfn.video_id and v.content_key <> ''`)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read tags of related video candidates: %w", err)
+	}
+	defer func() { _ = tagRows.Close() }()
+	for tagRows.Next() {
+		var videoID, tagID int64
+		if err := tagRows.Scan(&videoID, &tagID); err != nil {
+			return nil, fmt.Errorf("cannot read tags of related video candidates: %w", err)
+		}
+		if index, ok := byID[videoID]; ok {
+			candidates[index].TagIDs = append(candidates[index].TagIDs, tagID)
+		}
+	}
+	if err := tagRows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read tags of related video candidates: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cannot finish reading related video candidates: %w", err)
+	}
+	return candidates, nil
+}
+
+// scanRelatedCandidates は RelatedCandidates の動画の行を読み、id から位置への索引も返す。
+func scanRelatedCandidates(rows *sql.Rows) ([]domain.RelatedCandidate, map[int64]int, error) {
+	defer func() { _ = rows.Close() }()
+	candidates := []domain.RelatedCandidate{}
+	byID := map[int64]int{}
 	for rows.Next() {
-		var item domain.RelatedNeighbor
+		var item domain.RelatedCandidate
+		var displayName sql.NullString
 		var addedAt int64
-		if err := rows.Scan(&item.VideoID, &addedAt); err != nil {
-			return nil, err
+		var version, intervalMs sql.NullInt64
+		var hashes []byte
+		if err := rows.Scan(&item.VideoID, &item.Path, &item.Title, &displayName, &addedAt,
+			&version, &intervalMs, &hashes); err != nil {
+			return nil, nil, fmt.Errorf("cannot read related video candidates: %w", err)
+		}
+		if displayName.Valid && displayName.String != "" {
+			item.Title = displayName.String
 		}
 		item.AddedAt = time.Unix(addedAt, 0)
-		neighbors = append(neighbors, item)
+		if version.Valid && intervalMs.Valid {
+			// 読めない指紋は無いものとして扱う。指紋の点が 0 になるだけで、並びは作れる。
+			if fingerprint, err := domain.DecodeFingerprint(hashes, int(version.Int64), intervalMs.Int64); err == nil {
+				item.Fingerprint = &fingerprint
+			}
+		}
+		byID[item.VideoID] = len(candidates)
+		candidates = append(candidates, item)
 	}
-	return neighbors, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("cannot read related video candidates: %w", err)
+	}
+	return candidates, byID, nil
 }
 
 // VideosByIDs は指定した動画の本体を返す。並びは ids と同じで、見る人に見せて

@@ -28,7 +28,7 @@ func relatedFixture() (*fakeLibrary, *fakeCatalog) {
 	return &fakeLibrary{videos: videos}, catalog
 }
 
-// アプリケーション層が並べた順に返し、nextId を写す。一覧と同じく progress を
+// アプリケーション層が並べた順に返し、nextId・prevId を写す。一覧と同じく progress を
 // 付け、所在は載せない。並べ方は internal/app の Catalog.RelatedVideos で検証する。
 func TestGetRelatedVideos(t *testing.T) {
 	library, catalog := relatedFixture()
@@ -68,8 +68,40 @@ func TestGetRelatedVideos(t *testing.T) {
 	}
 }
 
-// 同じフォルダの後続・先行が無いとき nextId・prevId は省かれる。
-func TestGetRelatedVideosOmitsNextAtFolderEnd(t *testing.T) {
+// ページの指定を読んでアプリケーション層へ渡し、続きの位置を nextCursor に写す。指定が
+// 無ければ先頭から既定の件数。
+func TestGetRelatedVideosPages(t *testing.T) {
+	library, catalog := relatedFixture()
+	cursor := domain.RelatedCursor{Score: 25_000_000, AddedAt: 1_757_000_000, VideoID: 4}
+	catalog.related.NextCursor = &cursor
+	handler := newTestServer(t, Options{Videos: library, Catalog: catalog})
+
+	got := decode[gen.RelatedVideos](t, do(t, handler, http.MethodGet, "/api/videos/3/related"))
+	if got.NextCursor == nil || *got.NextCursor != cursor.String() {
+		t.Fatalf("nextCursor = %v, want %q", got.NextCursor, cursor.String())
+	}
+	rec := do(t, handler, http.MethodGet, "/api/videos/3/related?limit=5&cursor="+cursor.String())
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	want := []domain.RelatedPage{
+		{Limit: domain.DefaultRelatedPageSize},
+		{After: &cursor, Limit: 5},
+	}
+	if len(catalog.relatedPages) != 2 || catalog.relatedPages[0] != want[0] ||
+		catalog.relatedPages[1].Limit != 5 || *catalog.relatedPages[1].After != cursor {
+		t.Fatalf("pages = %+v, want %+v", catalog.relatedPages, want)
+	}
+
+	for _, query := range []string{"limit=0", "limit=101", "cursor=bogus", "cursor=1.2"} {
+		if rec := do(t, handler, http.MethodGet, "/api/videos/3/related?"+query); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+}
+
+// 次・前の動画が無いとき nextId・prevId は省かれる。
+func TestGetRelatedVideosOmitsMissingNeighbors(t *testing.T) {
 	library, catalog := relatedFixture()
 	catalog.related.NextID = 0
 	catalog.related.PrevID = 0

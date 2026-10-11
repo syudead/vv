@@ -30,3 +30,41 @@ export function resumePosition(video: Video): number {
   if (video.durationMs !== undefined && progress.positionMs >= video.durationMs) return 0;
   return progress.positionMs;
 }
+
+/** maxTrail は、見てきた動画の id をいくつまで覚えるかである。 */
+const maxTrail = 100;
+
+/**
+ * videoTrail は、この動画詳細画面へ来るまでに見てきた動画の id を古い順に返す（issue 931）。
+ * 最後の 1 つが ‹ で戻る「直前に見ていた動画」である。動画詳細画面から別の動画へ移った
+ * ときだけ積まれるので、URL を直接開いたときや一覧から来たときは空になる。形の正しくない
+ * 値は捨てる。
+ */
+export function videoTrail(state: unknown): number[] {
+  const trail: unknown = (state as { trail?: unknown } | null)?.trail;
+  if (!Array.isArray(trail)) return [];
+  return trail.filter(
+    (id): id is number => typeof id === "number" && Number.isSafeInteger(id) && id > 0,
+  );
+}
+
+/** VideoLinkState は、動画詳細画面から別の動画へ移るときに載せる状態である。 */
+export interface VideoLinkState {
+  /** 閉じる × の戻り先（backTarget）。最初の戻り先を引き継ぐ。 */
+  from: string;
+  /** 移った先から見た、見てきた動画（videoTrail）。 */
+  trail: number[];
+  autoplay?: boolean;
+}
+
+/**
+ * linkStateFrom は、動画 currentId の画面から別の動画へ移るときの状態を返す。見てきた動画の
+ * 後ろに今の動画を足す。
+ */
+export function linkStateFrom(
+  backTo: string,
+  trail: readonly number[],
+  currentId: number,
+): VideoLinkState {
+  return { from: backTo, trail: [...trail, currentId].slice(-maxTrail) };
+}

@@ -554,12 +554,18 @@ export async function setVideoThumbnailPosition(
   return video;
 }
 
-/** getRelatedVideos は動画詳細画面の関連動画（最大 20 件と次の動画の id）を取得する。 */
+/**
+ * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
+ * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
+ */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
+  cursor?: string,
 ): Promise<RelatedVideos> {
-  return request<RelatedVideos>(`/api/videos/${String(id)}/related`, { signal });
+  const query =
+    cursor === undefined ? "" : `?${new URLSearchParams({ cursor }).toString()}`;
+  return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**

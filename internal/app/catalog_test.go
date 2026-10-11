@@ -27,16 +27,12 @@ type fakeCatalogStore struct {
 
 	retried []int64
 
-	siblings  map[string][]domain.RelatedSibling
-	neighbors []domain.RelatedNeighbor
-	videos    map[int64]domain.Video
-	lastDir   string
+	candidates []domain.RelatedCandidate
+	videos     map[int64]domain.Video
 	// groups は動画 id ごとの、見る人に見せるグループ。
 	groups map[int64]domain.VideoGroup
 	// windows は VideoGroup に渡された窓を順に持つ。
 	windows []domain.GroupWindow
-	// nearLimit は VideosAddedNear が受け取った件数。
-	nearLimit int
 	// audiences は関連動画の読み出しが受け取った見る人を、呼ばれた順に持つ。
 	audiences []domain.Audience
 }
@@ -74,16 +70,9 @@ func (f *fakeCatalogStore) RetryProbe(_ context.Context, id int64) error {
 	return nil
 }
 
-func (f *fakeCatalogStore) DirectVideoPaths(_ context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error) {
+func (f *fakeCatalogStore) RelatedCandidates(_ context.Context, audience domain.Audience, _ int64) ([]domain.RelatedCandidate, error) {
 	f.audiences = append(f.audiences, audience)
-	f.lastDir = dir
-	return f.siblings[dir], nil
-}
-
-func (f *fakeCatalogStore) VideosAddedNear(_ context.Context, audience domain.Audience, _ int64, _ time.Time, limit int) ([]domain.RelatedNeighbor, error) {
-	f.audiences = append(f.audiences, audience)
-	f.nearLimit = limit
-	return f.neighbors, nil
+	return f.candidates, nil
 }
 
 func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error) {
@@ -277,70 +266,124 @@ func TestSeekThumbnailStateIgnoresRequeueFailure(t *testing.T) {
 	}
 }
 
-// 代表の所在のディレクトリで並べ、nextId は後続の先頭を指す。
+// relatedFixture は動画と、その近さの手がかりを同じ id で作る。
+func relatedFixture(entries ...domain.RelatedCandidate) *fakeCatalogStore {
+	store := &fakeCatalogStore{videos: map[int64]domain.Video{}}
+	for _, entry := range entries {
+		video := probedVideo(entry.VideoID, entry.Title)
+		video.Path = entry.Path
+		video.AddedAt = entry.AddedAt
+		store.videos[entry.VideoID] = video
+		store.candidates = append(store.candidates, entry)
+	}
+	return store
+}
+
+var relatedBase = time.Unix(1_757_000_000, 0)
+
+func relatedEntry(id int64, path string, tags ...int64) domain.RelatedCandidate {
+	return domain.RelatedCandidate{VideoID: id, Path: fixturePath(path), Title: "v", AddedAt: relatedBase, TagIDs: tags}
+}
+
+func videoIDs(videos []domain.Video) []int64 {
+	ids := make([]int64, 0, len(videos))
+	for _, video := range videos {
+		ids = append(ids, video.ID)
+	}
+	return ids
+}
+
+// 関連動画は近さの点の順に並び、次の動画はその先頭である。前の動画は返さない。続きは
+// 返した位置から読み、続きのページは次の動画もグループの窓も持たない。
 func TestRelatedVideos(t *testing.T) {
-	videos := map[int64]domain.Video{}
-	for id, name := range map[int64]string{1: "ep 2", 2: "ep 10", 3: "ep 9", 4: "other"} {
-		video := probedVideo(id, name)
-		video.Path = fixturePath("/media/show/") + name + ".mp4"
-		videos[id] = video
-	}
-	videos[4] = func(v domain.Video) domain.Video { v.Path = fixturePath("/media/other/other.mp4"); return v }(videos[4])
-	store := &fakeCatalogStore{
-		siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {
-			{VideoID: 1, Path: fixturePath("/media/show/ep 2.mp4")},
-			{VideoID: 2, Path: fixturePath("/media/show/ep 10.mp4")},
-			{VideoID: 3, Path: fixturePath("/media/show/ep 9.mp4")},
-		}},
-		neighbors: []domain.RelatedNeighbor{{VideoID: 4, AddedAt: time.Unix(1_757_000_001, 0)}},
-		videos:    videos,
-	}
+	store := relatedFixture(
+		relatedEntry(1, "/media/show/a.mp4", 7, 8),
+		relatedEntry(2, "/media/show/b.mp4"),
+		relatedEntry(3, "/media/other/c.mp4", 7, 8),
+		relatedEntry(4, "/media/else/d.mp4", 7, 9),
+		relatedEntry(5, "/media/far/e.mp4"),
+	)
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+	ctx := context.Background()
 
-	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[3])
+	got, err := catalog.RelatedVideos(ctx, domain.AudienceOwner, store.videos[1], domain.RelatedPage{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.lastDir != fixturePath("/media/show") {
-		t.Errorf("dir = %q, want /media/show", store.lastDir)
+	if want := []int64{3, 2}; !slices.Equal(videoIDs(got.Items), want) {
+		t.Fatalf("ids = %v, want %v", videoIDs(got.Items), want)
 	}
-	ids := make([]int64, 0, len(got.Items))
-	for _, item := range got.Items {
-		ids = append(ids, item.ID)
-	}
-	if want := []int64{2, 1, 4}; !slices.Equal(ids, want) {
-		t.Fatalf("ids = %v, want %v", ids, want)
-	}
-	if got.NextID != 2 {
-		t.Fatalf("nextId = %d, want 2", got.NextID)
+	if got.NextID != 3 || got.PrevID != 0 || got.Group != nil || got.NextCursor == nil {
+		t.Fatalf("next = %d, prev = %d, group = %+v, cursor = %v", got.NextID, got.PrevID, got.Group, got.NextCursor)
 	}
 
-	// 同じフォルダの後続が無いとき NextID は 0 で、先行の先頭から並ぶ。
-	got, err = catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[2])
+	rest, err := catalog.RelatedVideos(ctx, domain.AudienceOwner, store.videos[1], domain.RelatedPage{After: got.NextCursor, Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.NextID != 0 || len(got.Items) == 0 || got.Items[0].ID != 1 {
-		t.Fatalf("フォルダの末尾: next = %d, items = %+v", got.NextID, got.Items)
+	if want := []int64{4, 5}; !slices.Equal(videoIDs(rest.Items), want) {
+		t.Fatalf("rest = %v, want %v", videoIDs(rest.Items), want)
+	}
+	if rest.NextID != 0 || rest.NextCursor != nil || rest.Group != nil {
+		t.Fatalf("rest next = %d, cursor = %v, group = %+v", rest.NextID, rest.NextCursor, rest.Group)
+	}
+	if last := store.windows[len(store.windows)-1]; last.Limit != 0 {
+		t.Errorf("続きのページがグループの詳細を読んだ: %+v", last)
 	}
 }
 
-// 関連動画は、受け取った見る人のまま4つの読み出しすべてに渡す
+// 他に見せる動画が無いとき、基準の動画が読む間に消えたときは、関連動画も次の動画も無い。
+func TestRelatedVideosEmpty(t *testing.T) {
+	store := relatedFixture(relatedEntry(1, "/media/a.mp4"))
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, store.videos[1], domain.RelatedPage{Limit: 10})
+	if err != nil || len(got.Items) != 0 || got.NextID != 0 || got.NextCursor != nil {
+		t.Fatalf("only self = %+v, %v", got, err)
+	}
+
+	gone := relatedFixture(relatedEntry(2, "/media/b.mp4"))
+	catalog = NewCatalog(CatalogOptions{Index: gone, Ingest: gone, Files: fakeArtifactFiles{}})
+	got, err = catalog.RelatedVideos(context.Background(), domain.AudienceOwner, probedVideo(1, "a"), domain.RelatedPage{Limit: 10})
+	if err != nil || len(got.Items) != 0 || got.NextID != 0 {
+		t.Fatalf("self gone = %+v, %v", got, err)
+	}
+}
+
+// reverseIDScorer は id の小さい動画ほど近いとみなす、差し替えの確かめ用の付け方である。
+type reverseIDScorer struct{}
+
+func (reverseIDScorer) For(domain.RelatedCandidate) func(domain.RelatedCandidate) domain.RelatedScore {
+	return func(other domain.RelatedCandidate) domain.RelatedScore { return domain.RelatedScore(-other.VideoID) }
+}
+
+// 近さの付け方は差し替えられ、並びはその点だけで決まる（要件 6）。
+func TestRelatedVideosUsesTheGivenScorer(t *testing.T) {
+	store := relatedFixture(
+		relatedEntry(1, "/media/show/a.mp4", 7),
+		relatedEntry(2, "/media/x/b.mp4"),
+		relatedEntry(3, "/media/show/c.mp4", 7),
+	)
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}, Scorer: reverseIDScorer{}})
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, store.videos[1], domain.RelatedPage{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{2, 3}; !slices.Equal(videoIDs(got.Items), want) {
+		t.Fatalf("ids = %v, want %v", videoIDs(got.Items), want)
+	}
+}
+
+// 関連動画は、受け取った見る人のまま3つの読み出しすべてに渡す
 // （specs/016-single-account-auth/data-model.md §3）。ゲストの関連動画に非公開の
 // 動画を混ぜないため。
 func TestRelatedVideosPassesAudience(t *testing.T) {
 	for _, audience := range []domain.Audience{domain.AudienceGuest, domain.AudienceOwner} {
-		video := probedVideo(1, "a")
-		video.Path = fixturePath("/media/show/a.mp4")
-		store := &fakeCatalogStore{
-			siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: fixturePath("/media/show/b.mp4")}}},
-			videos:   map[int64]domain.Video{2: probedVideo(2, "b")},
-		}
+		store := relatedFixture(relatedEntry(1, "/media/show/a.mp4"), relatedEntry(2, "/media/show/b.mp4"))
 		catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-		if _, err := catalog.RelatedVideos(context.Background(), audience, video); err != nil {
+		if _, err := catalog.RelatedVideos(context.Background(), audience, store.videos[1], domain.RelatedPage{Limit: 10}); err != nil {
 			t.Fatal(err)
 		}
-		if want := []domain.Audience{audience, audience, audience, audience}; !slices.Equal(store.audiences, want) {
+		if want := []domain.Audience{audience, audience, audience}; !slices.Equal(store.audiences, want) {
 			t.Errorf("%s: audiences = %v, want %v", audience, store.audiences, want)
 		}
 	}
@@ -359,41 +402,27 @@ func TestRetryProbePassesVideoID(t *testing.T) {
 }
 
 // グループのメンバーでは（specs/017-folder-groups/contracts/folder-groups-api.md §3）、
-// グループを全メンバーで載せ、前後をグループの中の並びにする。関連動画は同じグループの
-// メンバーを先に除いてから並べ、上限はその後に掛かる。追加日時の近い動画は除く本数を
-// 見込んで多めに読む。
+// グループを載せ、前後をグループの中の並びにする。関連動画は同じグループのメンバーを除いて
+// から並べるので、メンバーが多くても関連動画が残る（受け入れ条件 6）。
 func TestRelatedVideosForGroupMember(t *testing.T) {
-	const size = domain.MaxRelatedVideos + 5
-	videos := map[int64]domain.Video{}
-	var members []domain.Video
-	var siblings []domain.RelatedSibling
-	var neighbors []domain.RelatedNeighbor
-	base := time.Unix(1_757_000_000, 0)
+	const size = 25
+	var entries []domain.RelatedCandidate
 	for i := range size {
-		id := int64(i + 1)
-		video := probedVideo(id, "m")
-		video.Path = fmt.Sprintf(fixturePath("/media/big/%02d.mp4"), id)
-		video.AddedAt = base.Add(time.Duration(i) * time.Second)
-		videos[id] = video
-		members = append(members, video)
-		siblings = append(siblings, domain.RelatedSibling{VideoID: id, Path: video.Path})
-		neighbors = append(neighbors, domain.RelatedNeighbor{VideoID: id, AddedAt: video.AddedAt})
+		entries = append(entries, relatedEntry(int64(i+1), fmt.Sprintf("/media/big/%02d.mp4", i+1), 7))
 	}
-	// グループの外の動画。同じディレクトリに1本、追加日時の近い動画に上限より多く。
-	outsider := probedVideo(100, "outsider")
-	outsider.Path = fixturePath("/media/big/zz.mp4")
-	videos[100] = outsider
-	siblings = append(siblings, domain.RelatedSibling{VideoID: 100, Path: outsider.Path})
-	for i := range domain.MaxRelatedVideos + 3 {
-		id := int64(200 + i)
-		videos[id] = probedVideo(id, "near")
-		neighbors = append(neighbors, domain.RelatedNeighbor{VideoID: id, AddedAt: base.Add(time.Duration(size+i) * time.Second)})
+	// グループの外の動画。同じディレクトリに1本と、遠い動画が1本。
+	entries = append(entries, relatedEntry(100, "/media/big/zz.mp4", 7), relatedEntry(200, "/media/far/far.mp4"))
+	store := relatedFixture(entries...)
+	var members []domain.Video
+	for i := range size {
+		members = append(members, store.videos[int64(i+1)])
 	}
 	group := domain.VideoGroup{Folder: domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
 	groups := map[int64]domain.VideoGroup{}
 	for _, member := range members {
 		groups[member.ID] = group
 	}
+	store.groups = groups
 
 	for _, tc := range []struct {
 		name       string
@@ -405,24 +434,14 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 		{name: "最後", self: size, prev: size - 1, next: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			store := &fakeCatalogStore{
-				siblings:  map[string][]domain.RelatedSibling{fixturePath("/media/big"): siblings},
-				neighbors: neighbors,
-				videos:    videos,
-				groups:    groups,
-			}
+			store.windows = nil
 			catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-			got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[tc.self])
+			got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, store.videos[tc.self], domain.RelatedPage{Limit: 10})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got.Group == nil || got.Group.Total() != size || len(got.Group.Members) != size {
 				t.Fatalf("group = %+v, want %d 本の全メンバー", got.Group, size)
-			}
-			for i, member := range got.Group.Members {
-				if member.ID != int64(i+1) {
-					t.Fatalf("group の %d 本目 = %d, want 並びの順", i+1, member.ID)
-				}
 			}
 			if want := (domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}); store.windows[0] != want {
 				t.Errorf("window = %+v, want %+v", store.windows[0], want)
@@ -430,39 +449,10 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 			if got.PrevID != tc.prev || got.NextID != tc.next {
 				t.Errorf("前後 = %d・%d, want %d・%d", got.PrevID, got.NextID, tc.prev, tc.next)
 			}
-			if len(got.Items) != domain.MaxRelatedVideos {
-				t.Errorf("関連動画 = %d 件, want %d", len(got.Items), domain.MaxRelatedVideos)
-			}
-			if got.Items[0].ID != 100 {
-				t.Errorf("関連動画の先頭 = %d, want 同じディレクトリのグループの外の動画 100", got.Items[0].ID)
-			}
-			for _, item := range got.Items {
-				if _, member := groups[item.ID]; member {
-					t.Errorf("関連動画にグループのメンバー %d がある", item.ID)
-				}
-			}
-			if want := domain.MaxRelatedVideos + size; store.nearLimit != want {
-				t.Errorf("VideosAddedNear の件数 = %d, want %d", store.nearLimit, want)
+			if want := []int64{100, 200}; !slices.Equal(videoIDs(got.Items), want) {
+				t.Errorf("関連動画 = %v, want グループの外の %v", videoIDs(got.Items), want)
 			}
 		})
-	}
-}
-
-// グループに属さない動画では、group は無く、読む件数も前後も今のまま。
-func TestRelatedVideosWithoutGroupKeepsFolderOrder(t *testing.T) {
-	video := probedVideo(1, "a")
-	video.Path = fixturePath("/media/show/a.mp4")
-	store := &fakeCatalogStore{
-		siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: fixturePath("/media/show/b.mp4")}}},
-		videos:   map[int64]domain.Video{2: probedVideo(2, "b")},
-	}
-	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, video)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Group != nil || got.NextID != 2 || got.PrevID != 0 || store.nearLimit != domain.MaxRelatedVideos {
-		t.Errorf("group = %+v・前後 %d・%d・件数 %d", got.Group, got.PrevID, got.NextID, store.nearLimit)
 	}
 }
 
@@ -503,7 +493,7 @@ func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
 	group := domain.VideoGroup{Folder: domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
 	store := &fakeCatalogStore{videos: videos, groups: map[int64]domain.VideoGroup{200: group}}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[200])
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[200], domain.RelatedPage{Limit: 10})
 	if err != nil {
 		t.Fatal(err)
 	}

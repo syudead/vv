@@ -93,11 +93,9 @@ GroupMemberPage:        # GET /api/videos/{id}/group-members?offset=&limit=
   - `nextId` and `prevId` are the next and previous members in the group's
     order. The last member has no `nextId` and the first no `prevId`.
   - `items` (related videos) is built by removing members of the same group
-    from the input of `domain.OrderRelated` (videos in the same folder and
-    videos added close in time) **first**, then ordering as now. The 20-item
-    limit applies afterwards, so related videos remain even for groups of more
-    than 20. The count passed to `VideosAddedNear` grows to allow for the
-    removed members.
+    **before** ranking
+    ([Related videos](../../../docs/design-docs/related-videos.md#excluded-videos)),
+    so related videos remain for a group of any size.
 - `GET /api/videos/{id}/group-members` returns up to `limit` (1 to 200,
   default 100) members from the 0-based `offset` (default 0) in the group's
   order, in the same form and with the same audience rules as `group.items`.

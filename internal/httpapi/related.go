@@ -12,9 +12,26 @@ import (
 // GetRelatedVideos は関連動画を返す（GET /api/videos/{id}/related）。
 //
 // 並べ方と問い合わせの流れはアプリケーション層（VideoCatalog）が持つ。ここは
-// 動画を引き、並んだ結果を契約の形へ写すだけである。グループのメンバーなら、
-// この動画を中ほどに置いたグループのメンバーの窓も関連動画と同じ形で載せる。
-func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+// ページの指定を読み、動画を引き、並んだ結果を契約の形へ写すだけである。グループの
+// メンバーなら、最初のページにこの動画を中ほどに置いたグループのメンバーの窓も関連動画と
+// 同じ形で載せる。
+func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetRelatedVideosParams) {
+	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize}
+	if params.Limit != nil {
+		if *params.Limit < 1 || *params.Limit > domain.MaxRelatedPageSize {
+			s.invalidRequest(w, "limit must be between 1 and 100.")
+			return
+		}
+		page.Limit = *params.Limit
+	}
+	if params.Cursor != nil {
+		cursor, err := domain.ParseRelatedCursor(*params.Cursor)
+		if err != nil {
+			s.invalidRequest(w, "cursor is not a value returned as nextCursor.")
+			return
+		}
+		page.After = &cursor
+	}
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
@@ -25,7 +42,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	}
 	audience := audienceFrom(r.Context())
 
-	related, err := s.catalog.RelatedVideos(r.Context(), audience, video)
+	related, err := s.catalog.RelatedVideos(r.Context(), audience, video, page)
 	if err != nil {
 		s.internalError(w, "Could not load related videos.", err)
 		return
@@ -46,6 +63,10 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 			Offset: group.Offset,
 			Total:  group.Total(),
 		}
+	}
+	if related.NextCursor != nil {
+		cursor := related.NextCursor.String()
+		payload.NextCursor = &cursor
 	}
 	if related.NextID != 0 {
 		next := related.NextID
