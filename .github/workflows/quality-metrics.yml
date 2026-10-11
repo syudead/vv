@@ -42,8 +42,14 @@ jobs:
   # 持たせない。同じリポジトリからの依存更新の PR でも、トークンで書き込めないように。
   measure:
     name: Measure
-    # CI の成功した main への push だけを測る（失敗した CI の commit は数えない）。
-    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    # このリポジトリの main への push で CI が成功したものだけを測る（失敗した CI の
+    # commit は数えない。workflow_run の branches はフォークの PR の枝名にも合うので、
+    # push であることと、起動元がこのリポジトリであることも確かめる）。
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -61,17 +67,16 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # workflow_run の実行は main の権限とキャッシュで動くので、checkout した commit の
+      # 依存を main のキャッシュへ書き込まない（キャッシュ汚染を避ける）。
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            web/package-lock.json
-            tools/package-lock.json
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           install_args: "task"
+          cache: false
 
       - name: Web依存を取得する
         run: npm --prefix web ci
