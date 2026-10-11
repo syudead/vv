@@ -75,3 +75,9 @@ if ! has_media_tools; then
     echo "session-start: ffmpeg／ffprobe を入れられなかった（メディア系のテストと e2e は動かない）" >&2
   fi
 fi
+
+# Ollama はコンテナで動かせないので、Cloudflare の Account ID が渡されている環境では、自動
+# タグ付けを Workers AI への中継で試せることを伝える（出力はセッションの文脈に入る）。
+if [ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]; then
+  echo "session-start: 自動タグ付けは Ollama の代わりに go run ./scripts/clefrelay（Workers AI の Clef への中継）で試せる。使い方は scripts/clefrelay/main.go の冒頭。"
+fi
