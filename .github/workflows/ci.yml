@@ -268,6 +268,71 @@ jobs:
             ~/go/pkg/mod
           key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
 
+  # 複雑度と重複を指標ごとに並列で測り、ツールの出力をそのまま artifact に残す
+  # （task complexity-go / complexity-web / duplication）。集計も比較もしない。
+  # 参考の出力なので、失敗しても CI は落とさず、必須チェックの Checks にも入れない。
+  quality:
+    name: Quality (${{ matrix.metric }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - metric: complexity-go
+            go: true
+          - metric: complexity-web
+            web: true
+          - metric: duplication
+            tools: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.go
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.web || matrix.tools
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ matrix.web && 'web/package-lock.json' || 'tools/package-lock.json' }}
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "task"
+
+      - name: Web依存を取得する
+        if: matrix.web
+        run: npm --prefix web ci
+
+      - name: Node開発ツールを取得する
+        if: matrix.tools
+        working-directory: tools
+        run: npm ci
+
+      - name: 測る
+        env:
+          METRIC: ${{ matrix.metric }}
+        run: task $METRIC
+
+      - name: 結果を残す
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.metric }}
+          path: reports/quality/${{ matrix.metric }}/
+          retention-days: 90
+
   # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
   # 文書だけの変更では文書検査をここで流す。
   check:
