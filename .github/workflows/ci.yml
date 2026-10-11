@@ -12,7 +12,10 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR は新しい push で古い実行を取り消す。main は取り消さず、commit ごとに最後まで流す。
+  # 取り消すと、その commit のカバレッジと E2E の結果が Codecov に届かず、後の PR が
+  # 比べる基準の commit も欠ける。
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:

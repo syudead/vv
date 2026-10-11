@@ -1,6 +1,14 @@
 # Codecov の設定。カバレッジとテスト結果は .github/workflows/ci.yml のテストの組が
 # 送る（task test-go-report / test-web-report と、main への push の E2E）。
-# いまは傾向を見る段階なので、PR の状態は情報として出すだけで、マージを止めない。
+# PR の状態は情報として出すだけで、マージを止めない
+# （docs/design-docs/test-quality-monitoring.md）。
+
+codecov:
+  notify:
+    # コードを変えた push のカバレッジは go の 1 回と web の 3 つの shard で 4 回届く。
+    # 揃う前に比べると、届いていない分が欠けた途中の値でコメントと状態を出すので待つ。
+    after_n_builds: 4
+
 coverage:
   status:
     project:
@@ -10,10 +18,112 @@ coverage:
       default:
         informational: true
 
+# flag は ci.yml の送信に付けた名前（go、web）。flag ごとに対象のパスを決め、
+# Go と Web のどちらで変わったかを状態とコメントで分けて出す。
+flag_management:
+  default_rules:
+    # 送信が欠けた回（取り消し、送信の失敗）は、前回の値を引き継いで全体が下がって
+    # 見えないようにする。
+    carryforward: true
+    statuses:
+      - type: project
+        informational: true
+      - type: patch
+        informational: true
+  individual_flags:
+    - name: go
+      paths:
+        - cmd/**
+        - internal/**
+    - name: web
+      paths:
+        - web/src/**
+
+# 領域ごとのカバレッジ。ARCHITECTURE.md の層と web/src のディレクトリに合わせる。
+# 状態は出さず、コメントと画面にだけ出す。
+component_management:
+  individual_components:
+    - component_id: go-domain
+      name: Go domain
+      paths:
+        - internal/domain/**
+    - component_id: go-app
+      name: Go application
+      paths:
+        - internal/app/**
+    - component_id: go-httpapi
+      name: Go HTTP API
+      paths:
+        - internal/httpapi/**
+    - component_id: go-store
+      name: Go store
+      paths:
+        - internal/store/**
+    - component_id: go-media
+      name: Go media
+      paths:
+        - internal/media/**
+        - internal/mediafs/**
+        - internal/artifacts/**
+    - component_id: go-import
+      name: Go import pipeline
+      paths:
+        - internal/scanner/**
+        - internal/watcher/**
+        - internal/jobs/**
+    - component_id: go-other
+      name: Go other adapters and entry point
+      paths:
+        - cmd/**
+        - internal/eventbus/**
+        - internal/desktop/**
+        - internal/opener/**
+        - internal/password/**
+        - internal/ollama/**
+    - component_id: web-api
+      name: Web API client
+      paths:
+        - web/src/api/**
+    - component_id: web-shell
+      name: Web shell and routes
+      paths:
+        - web/src/app/**
+        - web/src/shell/**
+        - web/src/auth/**
+    - component_id: web-flows
+      name: Web product flows
+      paths:
+        - web/src/library/**
+        - web/src/folders/**
+        - web/src/settings/**
+        - web/src/tags/**
+        - web/src/player/**
+        - web/src/versions/**
+        - web/src/videoList/**
+        - web/src/history/**
+        - web/src/preferences/**
+    - component_id: web-shared
+      name: Web shared UI and helpers
+      paths:
+        - web/src/ui/**
+        - web/src/designSystem/**
+        - web/src/hooks/**
+        - web/src/lib/**
+        - web/src/theme/**
+        - web/src/i18n/**
+
 comment:
-  layout: "condensed_header, diff, flags, files"
-  # カバレッジが変わらない PR にはコメントしない。
-  require_changes: true
+  layout: "condensed_header, diff, flags, components, condensed_files"
+  # コードを変えた PR には、カバレッジが変わらなくても flag と領域の表を出す。
+  require_changes: false
+
+# 変更行のうちテストで通っていない行を、PR の差分に注釈で出す。
+github_checks:
+  annotations: true
+
+# 不安定なテスト（同じ commit で成否が変わるテスト）を見つけて、PR のコメントで知らせる。
+test_analytics:
+  flake_detection: true
 
 # レポートの中のパスをリポジトリのパスに揃える。vitest は web/ からの相対パス、
 # go test はモジュールの import パスで書く。

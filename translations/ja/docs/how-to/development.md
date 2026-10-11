@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 8132910ccf280e229f5beb93f974523bff770d182016e32c2f26328f3471385e
+sourceHash: be171f67be4bc4de0961a4da71a928b57d9eb6557ac945cb75cb84d75f2794ca
 ---
 
 # 開発 {#development}
@@ -65,7 +65,7 @@ flowchart LR
 
 「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは決して実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。
 
-Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。Codecov はテスト結果から不安定なテストと遅いテストを報告し、変更された行のカバレッジを、プルリクエストをブロックせずにそのプルリクエストにコメントする（[`.github/codecov.yml`](../../.github/codecov.yml)）。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
+Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。コードを変更する各プルリクエストで、Codecov は `go` と `web` のフラグ別、コンポーネント別、ファイル別のカバレッジをコメントし、失敗したテストと不安定なテストの名前を示し、どのテストも実行しない変更行に印を付け、フラグごとに情報提供のステータスを設定する。マージはブロックしない（[`.github/codecov.yml`](../../.github/codecov.yml)）。新しいプッシュは、プルリクエストでは実行中の CI 実行をキャンセルするが、`main` ではキャンセルしない。そのため `main` のすべてのコミットが Codecov に届く。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
 
 確認グループと並んで、`Quality` ジョブはすべてのプルリクエストと `main` へのプッシュで `task complexity-go`、`task complexity-web`、`task duplication` を並列に実行する。それぞれが 1 つのツールの出力を `reports/quality/` の下に書き出す。gocyclo（`tools/go.mod` にツールとして固定されている）によるすべての Go の関数の循環的複雑度、ESLint の `complexity` ルールによるすべての Web の関数の循環的複雑度、そして jscpd が見つける重複コードだ。CI はそれぞれを同じ名前のアーティファクトとして 90 日間保持する（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。測定が失敗しても実行は失敗しない。`task quality-metrics` はローカルマシンで 3 つすべてを実行する。
 
