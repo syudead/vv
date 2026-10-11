@@ -13,8 +13,8 @@ type OllamaSettingsStore interface {
 	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
 }
 
-// OllamaProbe は保存した接続先で判定モデルが答えるかを確かめる。internal/ollama の
-// *Classifier が満たす。
+// OllamaProbe は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。
+// 判定はさせない。internal/ollama の *Classifier が満たす。
 type OllamaProbe interface {
 	Check(ctx context.Context) error
 }
@@ -53,7 +53,9 @@ func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.Oll
 	return normalized, nil
 }
 
-// Check は保存した接続先で判定モデルが答えるかを確かめる。要求の側が渡した URL へは送らない。
+// Check は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定に
+// 使えるかは確かめない（判定の口を使う機能が AutoTagger.CheckClassifier のように確かめる）。
+// 要求の側が渡した URL へは送らない。
 func (o *OllamaConnection) Check(ctx context.Context) error {
 	return o.probe.Check(ctx)
 }

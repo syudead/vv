@@ -19,9 +19,6 @@ import (
 // 1 回あたり数分かかることがある。
 const requestTimeout = 10 * time.Minute
 
-// checkTimeout は接続の確かめの上限時間である。模型の読み込みを含むので長めにとる。
-const checkTimeout = 5 * time.Minute
-
 // maxResponseBytes は読む応答の上限である。答えは質問の数に比例する小さな JSON である。
 const maxResponseBytes = 1 << 20
 
@@ -105,18 +102,6 @@ func (c *Classifier) Classify(ctx context.Context, req domain.ClassifierRequest)
 		}
 	}
 	return probabilities, nil
-}
-
-// Check は保存した接続先と模型で短い質問を 1 つ判定させ、使えるかを確かめる。使えなければ
-// 理由を包んだ誤りを返す。接続先は保存した設定だけから取る。
-func (c *Classifier) Check(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
-	defer cancel()
-	_, err := c.Classify(ctx, domain.ClassifierRequest{
-		Input:     domain.ClassifierInput{Facts: map[string]string{"title": "Connection check"}},
-		Questions: []domain.ClassifierQuestion{{Key: "check", Text: "Is this a connection check?"}},
-	})
-	return err
 }
 
 // post は 1 回の問い合わせを送り、質問ごとの確率を返す。

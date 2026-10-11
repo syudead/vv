@@ -404,3 +404,22 @@ type vanishingQueue struct{ *fakeAutoTagQueue }
 func (vanishingQueue) Candidates(context.Context, string) ([]domain.AutoTagCandidate, error) {
 	return nil, domain.ErrNotFound
 }
+
+// 判定の確かめは 1 問を判定させ、答えが返らなければ失敗にする。機能が切でも確かめられる。
+func TestAutoTaggerCheckClassifier(t *testing.T) {
+	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
+	answering := &fakeClassifier{answers: map[string]float64{"check": 0.9}}
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: answering})
+	if err := tagger.CheckClassifier(context.Background()); err != nil || len(answering.requests) != 1 || len(answering.requests[0].Questions) != 1 {
+		t.Fatalf("CheckClassifier = %v, requests = %+v", err, answering.requests)
+	}
+	silent := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: &fakeClassifier{}})
+	if err := silent.CheckClassifier(context.Background()); err == nil {
+		t.Fatal("答えの無い判定を成功にした")
+	}
+	failing := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings,
+		Classifier: &fakeClassifier{err: errors.New("model 'clef' not found")}})
+	if err := failing.CheckClassifier(context.Background()); err == nil || err.Error() != "model 'clef' not found" {
+		t.Fatalf("err = %v", err)
+	}
+}

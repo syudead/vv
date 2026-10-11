@@ -1533,18 +1533,19 @@ paths:
   /api/settings/ollama/check:
     post:
       operationId: checkOllama
-      summary: 保存した接続先と模型で判定できるかを確かめる
+      summary: 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
       description: |
-        保存した設定で短い質問を 1 つ判定させて確かめる。接続先は要求の本文から取らない
-        （任意の URL へサーバーから要求を送らせないため）。模型の読み込みを含むので数分かかる
-        ことがある。要求の本文は無い。
+        `GET /api/version` と `GET /api/tags` だけで確かめ、判定はさせず模型も読み込まないので
+        数秒で終わる。判定に使えるかは `POST /api/auto-tagging/check` が確かめる
+        （docs/design-docs/ai-layer.md）。接続先は要求の本文から取らない（任意の URL へ
+        サーバーから要求を送らせないため）。要求の本文は無い。
       responses:
         "200":
           description: 確かめた結果
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/OllamaCheck"
+                $ref: "#/components/schemas/CheckResult"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -1583,6 +1584,24 @@ paths:
                 $ref: "#/components/schemas/AutoTaggingSettings"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auto-tagging/check:
+    post:
+      operationId: checkAutoTaggingClassifier
+      summary: 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+      description: |
+        今の判定の提供元に短い質問を 1 つ判定させ、確率の答えが返るかを確かめる。機能の入切に
+        関係なく確かめられる。模型の読み込みを含むので数分かかることがある
+        （docs/design-docs/auto-tagging.md）。要求の本文は無い。
+      responses:
+        "200":
+          description: 確かめた結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResult"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -3139,8 +3158,9 @@ components:
           format: double
           description: 0 より大きく threshold 以下。threshold と同じなら仮に付けない
 
-    OllamaCheck:
+    CheckResult:
       type: object
+      description: 確かめた結果。使えないことも 200 で返す
       required: [available]
       additionalProperties: false
       properties:
@@ -3148,7 +3168,7 @@ components:
           type: boolean
         message:
           type: string
-          description: 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある）
+          description: 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
 
     StartAutoTaggingRequest:
       type: object

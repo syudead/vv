@@ -1184,6 +1184,14 @@ type AutoTaggingSettings struct {
 	Threshold float64 `json:"threshold"`
 }
 
+// CheckResult 確かめた結果。使えないことも 200 で返す
+type CheckResult struct {
+	Available bool `json:"available"`
+
+	// Message 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
+	Message *string `json:"message,omitempty"`
+}
+
 // CreateAPITokenRequest defines model for CreateAPITokenRequest.
 type CreateAPITokenRequest struct {
 	// Name 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
@@ -1568,14 +1576,6 @@ type NetworkSettings struct {
 
 	// Port 今の待ち受けのポート
 	Port int `json:"port"`
-}
-
-// OllamaCheck defines model for OllamaCheck.
-type OllamaCheck struct {
-	Available bool `json:"available"`
-
-	// Message 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある）
-	Message *string `json:"message,omitempty"`
 }
 
 // OllamaSettings Ollama の接続先（docs/design-docs/ai-layer.md）
@@ -2931,6 +2931,9 @@ type ServerInterface interface {
 	// SetupAccount 未設定のサーバーで最初のアカウントを作り、そのままログインする
 	// (POST /api/auth/setup)
 	SetupAccount(w http.ResponseWriter, r *http.Request)
+	// CheckAutoTaggingClassifier 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+	// (POST /api/auto-tagging/check)
+	CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request)
 	// StartAutoTagging ライブラリの動画を判定に回す
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
@@ -3015,7 +3018,7 @@ type ServerInterface interface {
 	// UpdateOllamaSettings Ollama の接続先を保存する
 	// (PUT /api/settings/ollama)
 	UpdateOllamaSettings(w http.ResponseWriter, r *http.Request)
-	// CheckOllama 保存した接続先と模型で判定できるかを確かめる
+	// CheckOllama 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
 	// (POST /api/settings/ollama/check)
 	CheckOllama(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
@@ -3296,6 +3299,20 @@ func (siw *ServerInterfaceWrapper) SetupAccount(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetupAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckAutoTaggingClassifier operation middleware
+func (siw *ServerInterfaceWrapper) CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckAutoTaggingClassifier(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6084,6 +6101,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)

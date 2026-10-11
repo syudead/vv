@@ -65,15 +65,20 @@ func (s *server) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: saved.Endpoint, Model: saved.Model}, s.logger)
 }
 
-// CheckOllama は保存した接続先と模型で判定できるかを確かめる。使えないことは 200 の
-// available=false で返す。接続先は要求から取らず、保存した設定だけを使う。
+// CheckOllama は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は
+// させない。使えないことは 200 の available=false で返す。接続先は要求から取らず、保存した
+// 設定だけを使う。
 func (s *server) CheckOllama(w http.ResponseWriter, r *http.Request) {
 	if s.ollama == nil {
 		s.internalError(w, "Ollama settings are not configured.", nil)
 		return
 	}
-	err := s.ollama.Check(r.Context())
-	result := gen.OllamaCheck{Available: err == nil}
+	s.writeCheckResult(w, s.ollama.Check(r.Context()))
+}
+
+// writeCheckResult は確かめの結果を 200 で返す。失敗は available=false と理由にする。
+func (s *server) writeCheckResult(w http.ResponseWriter, err error) {
+	result := gen.CheckResult{Available: err == nil}
 	if err != nil {
 		message := err.Error()
 		result.Message = &message

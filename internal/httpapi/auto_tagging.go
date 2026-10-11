@@ -15,6 +15,8 @@ import (
 type AutoTagging interface {
 	Status(ctx context.Context) (domain.AutoTagStatus, error)
 	SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error)
+	// CheckClassifier は判定の口に 1 問を判定させ、使えるかを確かめる。
+	CheckClassifier(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
 	// ConfirmTag と RejectTag は動画に仮に付いたタグを確定・却下する。仮に付いていなければ
@@ -74,6 +76,16 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
+}
+
+// CheckAutoTaggingClassifier は判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる。
+// 機能の入切に関係なく確かめる。使えないことは 200 の available=false で返す。
+func (s *server) CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request) {
+	if s.autoTagging == nil {
+		s.internalError(w, "Auto-tagging is not configured.", nil)
+		return
+	}
+	s.writeCheckResult(w, s.autoTagging.CheckClassifier(r.Context()))
 }
 
 // StartAutoTagging はライブラリの動画を判定に回す。

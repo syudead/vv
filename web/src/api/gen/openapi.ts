@@ -933,10 +933,11 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 保存した接続先と模型で判定できるかを確かめる
-         * @description 保存した設定で短い質問を 1 つ判定させて確かめる。接続先は要求の本文から取らない
-         *     （任意の URL へサーバーから要求を送らせないため）。模型の読み込みを含むので数分かかる
-         *     ことがある。要求の本文は無い。
+         * 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
+         * @description `GET /api/version` と `GET /api/tags` だけで確かめ、判定はさせず模型も読み込まないので
+         *     数秒で終わる。判定に使えるかは `POST /api/auto-tagging/check` が確かめる
+         *     （docs/design-docs/ai-layer.md）。接続先は要求の本文から取らない（任意の URL へ
+         *     サーバーから要求を送らせないため）。要求の本文は無い。
          */
         post: operations["checkOllama"];
         delete?: never;
@@ -965,6 +966,28 @@ export interface paths {
          */
         put: operations["updateAutoTaggingSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auto-tagging/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+         * @description 今の判定の提供元に短い質問を 1 つ判定させ、確率の答えが返るかを確かめる。機能の入切に
+         *     関係なく確かめられる。模型の読み込みを含むので数分かかることがある
+         *     （docs/design-docs/auto-tagging.md）。要求の本文は無い。
+         */
+        post: operations["checkAutoTaggingClassifier"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1945,9 +1968,10 @@ export interface components {
              */
             tentativeThreshold: number;
         };
-        OllamaCheck: {
+        /** @description 確かめた結果。使えないことも 200 で返す */
+        CheckResult: {
             available: boolean;
-            /** @description 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある） */
+            /** @description 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある） */
             message?: string;
         };
         StartAutoTaggingRequest: {
@@ -4402,7 +4426,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OllamaCheck"];
+                    "application/json": components["schemas"]["CheckResult"];
                 };
             };
             403: components["responses"]["Forbidden"];
@@ -4451,6 +4475,27 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    checkAutoTaggingClassifier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確かめた結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
             403: components["responses"]["Forbidden"];
         };
     };

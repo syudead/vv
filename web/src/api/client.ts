@@ -94,7 +94,7 @@ export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
-export type OllamaCheck = components["schemas"]["OllamaCheck"];
+export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
@@ -868,14 +868,22 @@ export function updateOllamaSettings(
 }
 
 /**
- * checkOllama は保存した接続先と模型で判定できるかを確かめる。接続先は送らない
- * （サーバーは保存した設定だけを使う）。
+ * checkOllama は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は
+ * させないので数秒で終わる。接続先は送らない（サーバーは保存した設定だけを使う）。
  */
-export function checkOllama(signal?: AbortSignal): Promise<OllamaCheck> {
-  return request<OllamaCheck>("/api/settings/ollama/check", {
+export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
+  return request<CheckResult>("/api/settings/ollama/check", {
     method: "POST",
     signal,
   });
+}
+
+/**
+ * checkAutoTaggingClassifier は判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる。
+ * 模型の読み込みを含むので数分かかることがある。
+ */
+export function checkAutoTaggingClassifier(signal?: AbortSignal): Promise<CheckResult> {
+  return request<CheckResult>("/api/auto-tagging/check", { method: "POST", signal });
 }
 
 /** startAutoTagging はライブラリの動画を判定に回し、積んだ件数を返す。 */

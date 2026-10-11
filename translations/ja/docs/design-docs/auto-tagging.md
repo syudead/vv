@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: 9fd72ef48d9c726843c416bd410de8d77b3b534aa4a4fca60584f928daf61158
+sourceHash: b6a376b6dd7239b51fd8633ad877d423b2a80c56738c427f551dca7891064727
 ---
 
 # 判定モデルによる自動タグ付け {#auto-tagging-with-a-decision-model}
@@ -123,7 +123,7 @@ Ollama が止まっていると、キューを塞ぐ代わりに、キューに�
 
 ## 設定 {#settings}
 
-Settings の Auto-tagging セクション (`/api/settings/auto-tagging`) は、機能を使うかどうか、取り込み後の自動の判定、2 つの確率、キューの件数を持つ。プロバイダへの接続は別のセクションとリソースだ ([ai-layer.md](ai-layer.md#ollama-provider))。
+Settings の Auto-tagging セクション (`/api/settings/auto-tagging`) は、機能を使うかどうか、取り込み後の自動の判定、2 つの確率、キューの件数を持つ。プロバイダへの接続は別のセクションとリソースだ ([ai-layer.md](ai-layer.md#ollama-provider))。"Test judging" (`POST /api/auto-tagging/check`) は、機能がオンでもオフでも分類器のポートに質問を 1 つ送り、プロバイダが判定できることを示す。
 
 自動タグ付けは任意で、既定ではオフだ。"Use auto-tagging" がオフの間は:
 
