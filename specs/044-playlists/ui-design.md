@@ -123,7 +123,7 @@ the catalog's "1 item" / "N items" helper, and `videos` its "N videos".
 | Header count on `/playlists` | 3 playlists | `playlists.count(count)`; "1 playlist" |
 | New-playlist button, dialog title | New playlist | `playlists.new`, `playlists.newDialog.title` |
 | Name field label | Name | `playlists.nameLabel` |
-| Name field error | Use a name of 1 to 100 characters. | `playlists.nameRule`; shown as `FieldError` when the trimmed name is empty or over 100 characters after a submit attempt |
+| Name field error | Use a name of 1 to 100 characters. | `playlists.nameRule`; shown as `FieldError` when, at a submit attempt, the trimmed name is empty or over 100 characters, counted in code points as the server counts (R-11) |
 | Create action; while sending | Create; Creating… | `playlists.newDialog.submit`, `.submitting` |
 | Create failed | Couldn't create the playlist: {reason} | `playlists.newDialog.failed`; `destructive` `Alert` in the dialog |
 | Empty playlists title | No playlists yet | `playlists.empty.title` |
@@ -177,6 +177,8 @@ the catalog's "1 item" / "N items" helper, and `videos` its "N videos".
 | End-of-playlist label | End of playlist | `player.playlist.end` |
 | End-of-playlist announcement | Playback finished. End of the playlist "{name}" | `player.playlist.endAnnouncement(name)`; `role="status"`, once |
 | Playlist gone during playback | This video is no longer in the playlist. Playback stops after it. | `player.playlist.gone`; a toast |
+| Unplayable item passed over | Skipped "{title}": it can't be played here. | `player.playlist.skipped(title)`; a toast ([Unplayable item](#unplayable-item)) |
+| Unplayable last item | Can't play "{title}". End of the playlist. | `player.playlist.skippedLast(title)`; a toast |
 
 "Item" is the word for a video or a group in a playlist, as the counts in
 the parent Issue count them, and the bulk toasts count items as the favorite
@@ -222,12 +224,15 @@ apart by their counts and dates, and nothing merges them.
 ### New playlist
 
 "New playlist" opens a `FormDialog` with one `Field`: the `Label` "Name" and
-an `Input` (`maxLength` 100, `autoComplete="off"`) that takes the focus when
-the dialog opens. The footer is `Cancel` and the `default` "Create".
+an `Input` (`autoComplete="off"`) that takes the focus when the dialog opens.
+The input has no `maxLength`: HTML counts UTF-16 units, so a name of 100 emoji
+would stop at 50, while the server counts code points (R-11). The dialog
+counts the trimmed name in code points instead (`Array.from`), as the search
+box does. The footer is `Cancel` and the `default` "Create".
 
 | Event | Behaviour |
 | --- | --- |
-| Name empty after trimming | "Create" is `submitDisabled`; the field shows no error until Enter or a press, after which "Use a name of 1 to 100 characters." is its `FieldError` and the field is `aria-invalid` until the text changes |
+| Name empty after trimming, or over 100 code points | "Create" stays enabled, and the field shows no error while the owner types. Enter or a press sends nothing; "Use a name of 1 to 100 characters." becomes the field's `FieldError` and the field is `aria-invalid` until the text changes |
 | Submit | `pending`: both buttons disabled, "Creating…" with a `Spinner`; the trimmed name is sent to `POST /api/playlists` |
 | `201` | The dialog closes, the new row is at the top of the table, and focus moves to its name link; no toast, the row is the result |
 | `400` | The field's `FieldError` is "Use a name of 1 to 100 characters."; the dialog stays open |
@@ -305,7 +310,8 @@ without saying where to start or what is left.
 A video that is in the library but cannot be played (`playable` false) keeps
 its link and shows the list view row's warning line under its title
 (`text-xs text-warning`, lucide `AlertTriangle` `size-3`), so the owner sees
-it before playback skips it.
+it before playback passes over it
+([Unplayable item](#unplayable-item)).
 
 ### Reordering
 
@@ -356,8 +362,8 @@ back from a card.
 "Rename…" opens a `FormDialog` "Rename playlist" with the one `Field` of
 [New playlist](#new-playlist), prefilled with the current name and the text
 selected, and the `default` action "Save". The rules of the name field are
-the same; "Save" is also `submitDisabled` while the trimmed text equals the
-current name. On `200` the dialog closes, the heading and `document.title`
+the same; "Save" is `submitDisabled` only while the trimmed text equals the
+current name, which needs no message. On `200` the dialog closes, the heading and `document.title`
 show the trimmed name, and focus returns to "More". A `404` shows the deleted
 state. Failures stay in the dialog as "Couldn't rename the playlist:
 {reason}".
@@ -437,10 +443,10 @@ flowchart LR
 | Part | Form |
 | --- | --- |
 | Popover | A `Popover` of `w-popover`, opening below the trigger on cards and rows and on the video page, and above it (`side="top"`) in the selection bar, as `Add tag` does. It closes on Esc, a press outside, and after a result |
-| Field | `CommandInput` with the placeholder and name "Search or create a playlist", focused when the popover opens; `maxLength` 100 |
+| Field | `CommandInput` with the placeholder and name "Search or create a playlist", focused when the popover opens; no `maxLength`, so the length rule below counts code points as the server does |
 | List | `CommandList` named "Playlists", `shouldFilter={false}`: the playlists whose name contains the trimmed text, ignoring case, in the API's order (last changed first), each with lucide `ListVideo`; with no text, every playlist. The first row is selected, so Enter acts on it |
 | Create row | Shown first, before the matches, while the trimmed text is not empty and no playlist's name equals it exactly; it reads "Create "{name}"" with lucide `Plus`. With no match it is the only row |
-| Typed name over 100 characters | The reason line "Use a name of up to 100 characters" under the field; neither Enter nor a press acts |
+| Typed name over 100 code points after trimming | The reason line "Use a name of up to 100 characters" under the field; neither Enter nor a press acts |
 | No playlists and no text | "No playlists yet. Type a name to create one." in place of the list |
 | Loading | "Loading…" in place of the list; `GET /api/playlists` is read each time the popover opens, so a playlist made on another screen is there |
 | Load failed | "Couldn't load the playlists" with a `ghost` `sm` "Retry" in place of the list; the field still takes a name, and Enter on a name creates |
@@ -497,13 +503,33 @@ stateDiagram-v2
 | Part | Form |
 | --- | --- |
 | Playlist line | One line above the title, first in the title block, in the group line's form: lucide `ListVideo` (`size-3.5`, `text-muted-foreground`), the playlist name (one line, truncated, full name in `title`), `·`, and "2 / 7" in `tabular-nums`; `text-xs`, `text-sm` from `sm`, `text-muted-foreground`. The line is a `Link` to `/playlists/{id}` (`state.from` carried over) with the accessible name "Playlist "{name}", item 2 of 7. Open the playlist". When `position` is 0 (the current item is hidden), the line shows the name alone. When the video is also in a group, the group line follows it, so the two lines read playlist then group then title |
-| Arrows | The player's edge arrows go to `previousItem` and `nextItem` (the start video of the adjacent items) instead of the related videos' neighbours; a side with no adjacent item is not drawn. Tooltips and names are "Previous item: {title}" and "Next item: {title}". Moving opens that video with `item` set to the step's `itemId` and the query kept; playing or ended moves start playback, paused moves do not, as today |
+| Arrows | The player's edge arrows go to `previousItem` and `nextItem` (the start video of the adjacent items) instead of the related videos' neighbours; a side with no adjacent item is not drawn. Tooltips and names are "Previous item: {title}" and "Next item: {title}". Moving opens that video with `item` set to the step's `itemId` and the query kept; playing or ended moves start playback, paused moves do not, as today. They are drawn over a state layer too, where the player is absent ([Unplayable item](#unplayable-item)) |
 | Notice | At the end of a video with `next`, the group autoplay notice unchanged: "Up next", the countdown, the thumbnail and title of `next.video`, `Cancel` and `Play now`. Its link and its advance open `/videos/{next.video.id}?playlist={id}&item={next.itemId}`; a step whose video is the one on the page but whose `item` differs restarts playback from the start with the new position on the line (R-7) |
 | Cancelled | The end-of-playback layer with "Next video" = `next.video`, "Play next" and "Watch again", as cancelling the group notice |
 | Next video gone | The playback is read again: with a new `next` the notice starts over with it, and with none the end-of-playlist layer shows |
 | End of playlist | At the end of a video with no `next`: the end-of-playback layer's centred `bg-navbar` surface with, from the top (`gap-3`), the label "End of playlist" in `text-xs font-semibold text-primary`, the playlist name in `text-base font-semibold` clamped to two lines, and the `secondary` "Watch again". Nothing advances and no countdown runs (requirement 9); the hidden announcement reads "Playback finished. End of the playlist "{name}"" once. `×` and Esc return to the playlist screen, which is `state.from` |
 | Dropped | A `404` from any read: the line is not drawn, the arrows follow the related videos again, no notice and no end-of-playlist layer follow the current video, and the toast "This video is no longer in the playlist. Playback stops after it." shows once. The URL keeps its query; a reload reads again and may find the playlist back |
 | Reading | Between the page opening and the first response, the line is not drawn and no arrows are drawn; the title block keeps its place, because the line, when it comes, is one `text-xs` row above the title |
+
+### Unplayable item
+
+The server's `next` is the next shown item and does not look at whether its
+video can be played, and a video that creates no player never ends. The page
+therefore passes over such an item itself. The rule covers the states that
+create no player and do not change by waiting: `ReadFailure` (probe failed),
+`Unplayable` (`playable` false) and `MissingVideo`.
+
+| Arrival | Behaviour |
+| --- | --- |
+| With `autoplay` in `state`: the header's "Play", a row press, the notice's advance or "Play now", "Play next" | Once the playback read answers, the page opens `next` with `replace`, keeping `autoplay`, and the toast "Skipped "{title}": it can't be played here." shows. With no `next`, the page stays on the video's state layer and the line shows its position, with the toast "Can't play "{title}". End of the playlist." |
+| Without `autoplay`: an arrow moved while paused, a reload, an opened link | Nothing advances. The state layer shows as today, with the reprobe for the owner, and the playlist's arrows stay drawn over it, so "Next item" continues by hand |
+| `ProcessingStages` (probe pending) | The page waits as today. It plays when the probe ends with a playable video, and passes over the item by the rule above when the probe fails |
+
+In a playlist context the arrows are drawn whenever the playback read has
+answered, with or without a player, because they are the way on from a video
+that cannot end. A run of unplayable items is passed over one at a time, each
+with its own toast; the toasts replace one another, so only the last one
+stays. `/api/playlists/{id}/playback` and its order rules are unchanged.
 
 A member of a group item plays the group's members in order to the group's
 end and then the next item, as the group notice does today; the aside's "Up
