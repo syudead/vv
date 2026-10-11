@@ -55,6 +55,11 @@ tasks:
     cmds:
       - go run ./scripts/preview
 
+  clef-relay:
+    desc: Relay the Ollama decision API to Clef on Cloudflare Workers AI (docs/how-to/workers-ai-relay.md).
+    cmds:
+      - go run ./scripts/clefrelay {{.CLI_ARGS}}
+
   build:
     desc: Build the SPA and the single Go binary.
     cmds:

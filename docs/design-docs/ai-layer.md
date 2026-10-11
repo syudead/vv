@@ -68,6 +68,44 @@ reachable address and show the reply.
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` is 27B and more accurate) |
 
+## Workers AI through a relay
+
+Clef also runs on Cloudflare Workers AI (`@cf/cloudflare/clef`,
+`@cf/cloudflare/clef-flash`). VVMDM has no Workers AI provider; to try
+auto-tagging where Ollama cannot run, `scripts/clefrelay` listens on Ollama's
+address and forwards the Ollama provider's requests
+([workers-ai-relay.md](../how-to/workers-ai-relay.md)). The relay is a
+development tool and is not shipped.
+
+| Difference | Ollama | Workers AI | Relay |
+| --- | --- | --- | --- |
+| URL | `{URL}/v1/systemone` | `/accounts/{id}/ai/run/@cf/cloudflare/{model}` | Picks the URL from `model` |
+| Authentication | None | Bearer token | Adds `CLOUDFLARE_API_TOKEN` when set |
+| Images | Raw base64, no limit seen | Data URL or `{content_type, base64}`, at most 4 | Tiles 5 or more images into one grid |
+| `keep_alive` | Accepted | Rejected (422) | Drops it |
+| Reply | `{"answers"}` or `{"error"}` | Wrapped in `{"result"}`; errors in `{"errors":[{"message"}]}` | Unwraps both |
+
+Five ways to fit the provider's nine images (thumbnail and eight frames) were
+compared on 12 generated videos made of real photographs, with 28 tags and 36
+expected tags, at the default probabilities (0.8 to add, 0.5 to suggest).
+Counts are correct / wrong.
+
+| Model | Images sent | Added | Suggested | Missed |
+| --- | --- | --- | --- | --- |
+| clef-flash | Thumbnail only | 13 / 0 | 4 / 4 | 19 |
+| clef-flash | Thumbnail and 3 frames | 16 / 0 | 14 / 4 | 6 |
+| clef-flash | Thumbnail and two 2×2 grids of frames | 17 / 0 | 13 / 4 | 6 |
+| clef-flash | All nine in one 3×3 grid | 19 / 0 | 12 / 6 | 5 |
+| clef | All nine in one 3×3 grid | 25 / 2 | 8 / 3 | 3 |
+
+Most wrong tags were `black and white` on photographs that are greyscale. The
+relay uses one grid because it missed the fewest tags. Every request
+succeeded; a request took 0.6 to 1.3 s (median) and a video about 2 s with two
+batches. A video used about 5,800 input tokens, which at the listed prices is
+about USD 0.0002 with clef-flash and USD 0.0014 with clef. Workers AI accepted
+64 questions in one request (about 8,800 tokens, 2 s); the provider still sends
+16, because the batch size belongs to the Ollama provider.
+
 ## Adding a provider
 
 A new provider is a new adapter package that implements
