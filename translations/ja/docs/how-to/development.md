@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: dfc4675a980c893fe1e07616332612affa522f562f4c1fef9560331712d572df
+sourceHash: 390bcd93f42131513d5e6c458a6528f2768f2193615b5b9c0fc1986dab4949bc
 ---
 
 # 開発 {#development}
@@ -67,7 +67,7 @@ flowchart LR
 
 Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。Codecov はテスト結果から不安定なテストと遅いテストを報告し、変更された行のカバレッジを、プルリクエストをブロックせずにそのプルリクエストにコメントする（[`.github/codecov.yml`](../../.github/codecov.yml)）。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
 
-`main` へのプッシュの CI 実行が成功するたびに、そのあとで `Quality metrics` ワークフロー（[`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)）が `task quality-metrics` を実行する。これは、すべての Go の関数（`go/ast`）と Web の関数（ESLint の `complexity` ルール）の循環的複雑度、jscpd が見つける重複行、`main` での直近 20 回の成功した CI 実行とその各ジョブの所要時間の p50 と p90 を測定する。測定結果を `quality-metrics` ブランチの `history.jsonl` に追記し、前回のプッシュからの変化を載せた Markdown の表を実行のサマリーに書き出し、測定値が悪化したときは `quality-regression` ラベルの付いた Issue にコメントする（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。`task quality-metrics -- -ci-runs 0` はローカルマシンでコードだけを測定する。CI の所要時間には `gh` が必要だ。ワークフロー、`scripts/qualitymetrics/`、またはそれが使うツール（`Taskfile.yml`、`mise.toml`、`tools/` と `web/` の npm マニフェスト、`web/eslint.config.js`）を変更するプルリクエストは、履歴を保存せずにそれを実行する。
+`main` へのプッシュの CI 実行が成功するたびに、そのあとで `Quality metrics` ワークフロー（[`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)）が `task quality-metrics` を実行する。これは、すべての Go の関数（`go/ast`）と Web の関数（ESLint の `complexity` ルール）の循環的複雑度、jscpd が見つける重複行、`main` での直近 20 回の成功した CI 実行とその各ジョブの所要時間の p50 と p90 を測定する。測定結果を `quality-metrics` ブランチの `history.jsonl` に追記し、前回のプッシュからの変化を載せた Markdown の表を実行のサマリーに書き出す（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。`task quality-metrics -- -ci-runs 0` はローカルマシンでコードだけを測定する。CI の所要時間には `gh` が必要だ。ワークフロー、`scripts/qualitymetrics/`、またはそれが使うツール（`Taskfile.yml`、`mise.toml`、`tools/` と `web/` の npm マニフェスト、`web/eslint.config.js`）を変更するプルリクエストは、履歴を保存せずにそれを実行する。
 
 毎月 1 日に `Mutation testing` ワークフロー（[`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml)）が、Go のテストが埋め込まれたバグを検出するかを測定する。ワークフローは `task mutation-go` を実行し、このタスクは gremlins（`tools/go.mod` にツールとして固定されている）を `./internal/domain/...` に対して実行して `reports/mutation/go/gremlins.json` を書き出す。ワークフローはテストの有効性（killed と lived のミュータントに対する killed のミュータントの割合）とミュータントのカバレッジを実行のサマリーに書き出し、レポートをアーティファクトとして 90 日間保持する。スコアが低くても実行は失敗しない。`MUTATION_GO_DIR=./internal/other task mutation-go` は別のパッケージツリーを測定し、`--` のあとの引数は `gremlins unleash` に渡る。ワークフローを変更するプルリクエストもそれを実行する。StrykerJS による Web のミューテーションテストは、[stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210) を修正する `@stryker-mutator/vitest-runner` のリリースを待っている。Vitest 5 ではランナーがすべてのテストを除外するので、すべてのミュータントが生き残る。
 
