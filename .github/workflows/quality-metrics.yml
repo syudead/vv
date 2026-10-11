@@ -1,18 +1,17 @@
-# 品質の指標（循環複雑度、重複、CI の所要時間）を main への push ごとに測り、
-# quality-metrics ブランチの history.jsonl に積む。まとめは実行の Summary に出し、前回からの
-# 差を示す。前回より悪くなった指標があれば Issue（ラベル quality-regression）に書く。
+# 品質の指標（循環複雑度、重複、CI の所要時間）を main への push の CI が成功するたびに
+# 測り、quality-metrics ブランチの history.jsonl に積む。まとめは実行の Summary に出し、前回
+# からの差を示す。前回より悪くなった指標があれば Issue（ラベル quality-regression）に書く。
 # カバレッジとテストごとの所要時間は Codecov が追う（ci.yml）。手元では task quality-metrics。
 # 運用は docs/design-docs/test-quality-monitoring.md。
 name: Quality metrics
 
 on:
-  # 文書だけの push はコードの指標を変えないので測らない（ci.yml の変更判定と同じ区分）。
-  push:
+  # push と同時に始めると、その commit の CI がまだ終わっておらず、CI の所要時間が
+  # 次の commit の計測に紛れ込む。CI が終わってから、その CI の commit を測る。
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "specs/**"
   workflow_dispatch: {}
   # 測る仕組みそのものか、それが使う道具（task、jscpd、eslint とその設定）を変えた
   # PR では、履歴に積まずに流して確かめる。依存の更新で計測が壊れるのを PR で止める。
@@ -33,14 +32,18 @@ permissions:
 
 concurrency:
   group: quality-metrics-${{ github.ref }}
-  # main では push ごとに 1 行ずつ積むので取り消さず順に流し、履歴への push の衝突も防ぐ。
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # main では CI ごとに 1 行ずつ積むので、取り消さずに順に流し、履歴への push の衝突も
+  # 防ぐ。既定（single）は待ちを 1 つしか残さず間の commit が抜けるので、すべて待たせる。
+  cancel-in-progress: false
+  queue: max
 
 jobs:
   # 計測は npm の依存のスクリプトと、PR が変えたコードを実行するので、書き込み権限を
   # 持たせない。同じリポジトリからの依存更新の PR でも、トークンで書き込めないように。
   measure:
     name: Measure
+    # CI の成功した main への push だけを測る（失敗した CI の commit は数えない）。
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,6 +53,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # workflow_run では、測るのは CI が走った commit（main の先頭とは限らない）。
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -120,7 +125,7 @@ jobs:
 
       - name: 履歴に足す
         env:
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           if git fetch --depth=1 origin quality-metrics; then
             git worktree add -B quality-metrics history FETCH_HEAD
@@ -140,7 +145,7 @@ jobs:
       - name: 悪化をIssueに書く
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.sha }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ "$(jq '.regressions // [] | length' measured/quality-metrics.json)" = "0" ]; then
