@@ -15,6 +15,7 @@ on:
       - .github/workflows/quality-metrics.yml
       - scripts/qualitymetrics/**
       - Taskfile.yml
+      - mise.toml
       - tools/package.json
       - tools/package-lock.json
       - web/package.json
