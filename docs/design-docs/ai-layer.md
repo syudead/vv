@@ -79,27 +79,6 @@ uses the port, so it works with whatever provider is behind it.
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` is 27B and more accurate) |
 
-## Workers AI through a relay
-
-To try auto-tagging where Ollama cannot run, the development tool
-`scripts/clefrelay` listens on Ollama's address and forwards the Ollama
-provider's requests to Clef on Cloudflare Workers AI
-([workers-ai-relay.md](../how-to/workers-ai-relay.md)); VVMDM has no Workers AI
-provider and ships no relay. The relay tiles five or more images into one grid
-because Workers AI accepts four, and on 12 test videos with 36 expected tags
-one 3×3 grid of the nine images missed 5 tags with clef-flash, against 6 for
-the thumbnail and three frames and 19 for the thumbnail alone. Every request
-succeeded, in about 2 s and 5,800 input tokens per video.
-
-| Difference | Ollama | Workers AI | Relay |
-| --- | --- | --- | --- |
-| Connection test | `GET /api/version`, `GET /api/tags` | None | Answers both itself, listing `clef` and `clef-flash` |
-| URL | `{URL}/v1/systemone` | `/accounts/{id}/ai/run/@cf/cloudflare/{model}` | Picks the URL from `model` |
-| Authentication | None | Bearer token | Adds `CLOUDFLARE_API_TOKEN` when set |
-| Images | Raw base64 | Data URL or `{content_type, base64}`, at most 4 | Tiles 5 or more images into one grid |
-| `keep_alive` | Accepted | Rejected (422) | Drops it |
-| Reply | `{"answers"}` or `{"error"}` | Wrapped in `{"result"}`; errors in `{"errors":[{"message"}]}` | Unwraps both |
-
 ## Adding a provider
 
 A new provider is a new adapter package that implements

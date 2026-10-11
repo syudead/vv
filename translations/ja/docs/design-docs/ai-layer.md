@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: d58eb90fa1d5975ee2bf1d6cfd0d33c66c4763f7382767f62d4affbd117e2a70
+sourceHash: 5e8490df6841fd8f23fa16faf1abad23554214251fb9c9ab82315af061ac3a68
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -59,19 +59,6 @@ Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 
 | --- | --- |
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` は 27B で、より正確) |
-
-## リレー経由の Workers AI {#workers-ai-through-a-relay}
-
-Ollama を動かせない場所で自動タグ付けを試すために、開発用のツール `scripts/clefrelay` が Ollama のアドレスで待ち受け、Ollama のプロバイダのリクエストを Cloudflare Workers AI 上の Clef に転送する ([workers-ai-relay.md](../how-to/workers-ai-relay.md))。VVMDM には Workers AI のプロバイダがなく、リレーも配布しない。Workers AI は 4 枚まで受け付けるので、リレーは 5 枚以上の画像を 1 つのグリッドに並べる。36 個の期待するタグを持つ 12 本のテスト動画で、clef-flash は 9 枚の画像の 3×3 グリッド 1 つで 5 個のタグを見逃した。サムネイルと 3 枚のフレームでは 6 個、サムネイルだけでは 19 個だった。リクエストはすべて成功し、動画 1 本あたり約 2 秒、約 5,800 の入力トークンだった。
-
-| 違い | Ollama | Workers AI | リレー |
-| --- | --- | --- | --- |
-| 接続テスト | `GET /api/version`、`GET /api/tags` | なし | どちらにも自身で答え、`clef` と `clef-flash` を一覧に返す |
-| URL | `{URL}/v1/systemone` | `/accounts/{id}/ai/run/@cf/cloudflare/{model}` | `model` から URL を選ぶ |
-| 認証 | なし | Bearer トークン | `CLOUDFLARE_API_TOKEN` が設定されていれば付ける |
-| 画像 | 生の base64 | データ URL または `{content_type, base64}`、最大 4 枚 | 5 枚以上の画像を 1 つのグリッドに並べる |
-| `keep_alive` | 受け付ける | 拒否する (422) | 取り除く |
-| 応答 | `{"answers"}` または `{"error"}` | `{"result"}` に包まれる。エラーは `{"errors":[{"message"}]}` に入る | どちらも包みを外す |
 
 ## プロバイダの追加 {#adding-a-provider}
 

@@ -13,5 +13,4 @@ steps themselves; the reasoning behind a decision belongs in `docs/design-docs/`
 - [Handle dependency updates (Renovate)](dependency-updates.md)
 - [Measure motion preview and seek thumbnail generation](preview-benchmark.md)
 - [Measure the tag admin screen at scale](tags-admin-benchmark.md)
-- [Try auto-tagging with Clef on Workers AI](workers-ai-relay.md)
 - [Work with the documentation site](docs-site.md)

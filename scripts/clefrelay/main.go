@@ -1,10 +1,18 @@
 // clefrelay は Ollama の判定 API（POST /v1/systemone）を受けて、Cloudflare Workers AI の
-// Clef（@cf/cloudflare/clef・@cf/cloudflare/clef-flash）へ中継する開発用の道具である。手順は
-// docs/how-to/workers-ai-relay.md にある。
+// Clef（@cf/cloudflare/clef・@cf/cloudflare/clef-flash）へ中継する開発用の道具である。
 //
 // Ollama を動かせない機械（Claude Code on the web のコンテナなど）で、製品の Ollama の
 // プロバイダ（internal/ollama）をそのまま使って自動タグ付けを試すためのもので、製品には
-// 入れない。Workers AI と Ollama の違いはここで吸収する。
+// 入れない。使い方:
+//
+//	CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay   # 127.0.0.1:11434 で待つ
+//
+// VVMDM の設定の Ollama は URL を http://127.0.0.1:11434、模型を clef-flash か clef にする。
+// 「Save and test connection」は中継までしか届かない。Workers AI まで届くかは自動タグ付けの
+// 「Test judging」で確かめる。トークンは CLOUDFLARE_API_TOKEN で渡す（プロキシが付ける
+// 環境では要らない）。
+//
+// Workers AI と Ollama の違いはここで吸収する。
 //
 //   - 接続の確かめ: GET /api/version と GET /api/tags に、Workers AI の Clef の模型を
 //     並べて答える（Workers AI へは問い合わせない）
