@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 0b9ae3d42f7125404c3a320dc1f0b783a7727618d7cd7c1cabcd55cbaf8c396d
+sourceHash: 4b3de4ee5977051b4ae1016be47795dcd4bc64fa5564ded86a9eb275bf25ac63
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
