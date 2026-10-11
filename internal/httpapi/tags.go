@@ -442,9 +442,14 @@ func toAPITagRef(ref domain.TagRef) gen.TagRef {
 // toAPIVideoTag は動画に付いたタグ1件を出所つきで応答の形にする。フォルダ由来だけで
 // 付いているタグも、そのタグの仮かどうかを出す（contracts/screen-api.md §0）。
 func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
-	return gen.VideoTag{
+	out := gen.VideoTag{
 		Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
 	}
+	if tag.Unconfirmed {
+		unconfirmed := true
+		out.Unconfirmed = &unconfirmed
+	}
+	return out
 }
 
 // normalizedTagNameOrRaw は writeTagNameTaken の比較に使う、要求で送られた

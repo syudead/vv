@@ -93,6 +93,12 @@ export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
+export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
+export type CheckResult = components["schemas"]["CheckResult"];
+export type OllamaSettings = components["schemas"]["OllamaSettings"];
+export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
+export type UpdateAutoTaggingSettings =
+  components["schemas"]["UpdateAutoTaggingSettingsRequest"];
 export type FolderWatch = components["schemas"]["FolderWatch"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
@@ -815,6 +821,122 @@ export function updateAutoImportSettings(
     body: JSON.stringify({ enabled }),
     signal,
   });
+}
+
+/**
+ * getAutoTaggingSettings は自動タグ付けの設定と、判定の待ち行列の件数を取得する
+ * （docs/design-docs/auto-tagging.md）。
+ */
+export function getAutoTaggingSettings(
+  signal?: AbortSignal,
+): Promise<AutoTaggingSettings> {
+  return request<AutoTaggingSettings>("/api/settings/auto-tagging", { signal });
+}
+
+/** updateAutoTaggingSettings は設定を保存し、保存後の状態を返す。判定は始めない。 */
+export function updateAutoTaggingSettings(
+  settings: UpdateAutoTaggingSettings,
+  signal?: AbortSignal,
+): Promise<AutoTaggingSettings> {
+  return request<AutoTaggingSettings>("/api/settings/auto-tagging", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/**
+ * getOllamaSettings は判定モデルを動かす Ollama の接続先を取得する。自動タグ付けの機能の
+ * 入切とは別の設定である（docs/design-docs/auto-tagging.md）。
+ */
+export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings> {
+  return request<OllamaSettings>("/api/settings/ollama", { signal });
+}
+
+/** updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値を返す。 */
+export function updateOllamaSettings(
+  settings: OllamaSettings,
+  signal?: AbortSignal,
+): Promise<OllamaSettings> {
+  return request<OllamaSettings>("/api/settings/ollama", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/**
+ * checkOllama は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は
+ * させないので数秒で終わる。接続先は送らない（サーバーは保存した設定だけを使う）。
+ */
+export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
+  return request<CheckResult>("/api/settings/ollama/check", {
+    method: "POST",
+    signal,
+  });
+}
+
+/**
+ * checkAutoTaggingClassifier は判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる。
+ * 模型の読み込みを含むので数分かかることがある。
+ */
+export function checkAutoTaggingClassifier(signal?: AbortSignal): Promise<CheckResult> {
+  return request<CheckResult>("/api/auto-tagging/check", { method: "POST", signal });
+}
+
+/** startAutoTagging はライブラリの動画を判定に回し、積んだ件数を返す。 */
+export async function startAutoTagging(
+  scope: AutoTaggingScope,
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await request<components["schemas"]["AutoTaggingQueued"]>(
+    "/api/auto-tagging/runs",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope }),
+      signal,
+    },
+  );
+  return result.queued;
+}
+
+/** autoTagVideo は動画 1 本を判定に回し、積んだか（判定中なら偽）を返す。 */
+export async function autoTagVideo(id: number, signal?: AbortSignal): Promise<boolean> {
+  const result = await request<components["schemas"]["AutoTagVideoResult"]>(
+    `/api/videos/${String(id)}/auto-tag`,
+    { method: "POST", signal },
+  );
+  return result.queued;
+}
+
+/**
+ * confirmVideoTag は動画に自動タグ付けが仮に付けたタグ（`VideoTag.unconfirmed`）を確定する
+ * （docs/design-docs/auto-tagging.md）。
+ */
+export async function confirmVideoTag(id: number, tagId: number): Promise<void> {
+  await settleVideoTag(id, tagId, "confirm");
+}
+
+/** rejectVideoTag は仮に付いたタグを外し、この動画には自動タグ付けで付け直させない。 */
+export async function rejectVideoTag(id: number, tagId: number): Promise<void> {
+  await settleVideoTag(id, tagId, "reject");
+}
+
+async function settleVideoTag(
+  id: number,
+  tagId: number,
+  action: "confirm" | "reject",
+): Promise<void> {
+  const response = await apiFetch(
+    `/api/videos/${String(id)}/tags/${String(tagId)}/${action}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /** listAPITokens は発行済みの API トークンを作成日時の新しい順で取得する。平文は含まない。 */

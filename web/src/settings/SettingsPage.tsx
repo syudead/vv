@@ -38,6 +38,8 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import AutoImportSection from "./AutoImportSection";
+import AutoTaggingSection from "./AutoTaggingSection";
+import OllamaSection from "./OllamaSection";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
 import APITokensSection from "./APITokensSection";
@@ -374,6 +376,8 @@ export default function SettingsPage() {
             })}
         </div>
       </PageSection>
+      <OllamaSection />
+      <AutoTaggingSection />
       <TranscodingSection />
       <APITokensSection />
       <NetworkSection />

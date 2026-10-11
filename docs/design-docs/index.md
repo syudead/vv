@@ -32,6 +32,8 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Playback quality](playback-quality.md)
 - [Seek sprite generation](seek-sprite-generation.md)
 - [Sidecar subtitle files](sidecar-subtitles.md)
+- [Auto-tagging with a decision model](auto-tagging.md)
+- [AI layer: classifier port and providers](ai-layer.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Screen text and formatting (i18n)](i18n.md)

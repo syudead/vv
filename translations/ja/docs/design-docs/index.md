@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 36c28cb0e89c933a60f12ec00b14852596ef850b9881aec756df9df02ee571ee
+sourceHash: 213e91f87adb1cab1a27d1b6af3e3852e7217a2e18347d3ee9ef3d56d95f0215
 ---
 
 # 設計文書 {#design-documents}
@@ -30,6 +30,8 @@ sourceHash: 36c28cb0e89c933a60f12ec00b14852596ef850b9881aec756df9df02ee571ee
 - [再生画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [隣の字幕ファイル](sidecar-subtitles.md)
+- [判定モデルによる自動タグ付け](auto-tagging.md)
+- [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [画面の文言と書式 (i18n)](i18n.md)

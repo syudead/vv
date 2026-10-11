@@ -184,6 +184,7 @@ const (
 	ErrorReasonApiTokenNameControlCharacters ErrorReason = "api_token_name_control_characters"
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
+	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
@@ -235,6 +236,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonApiTokenNameEmpty:
 		return true
 	case ErrorReasonApiTokenNameTooLong:
+		return true
+	case ErrorReasonAutoTaggingOff:
 		return true
 	case ErrorReasonCrossOrigin:
 		return true
@@ -671,6 +674,24 @@ func (e ScanStatus) Valid() bool {
 	case ScanStatusPartial:
 		return true
 	case ScanStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartAutoTaggingRequestScope.
+const (
+	StartAutoTaggingRequestScopeAll     StartAutoTaggingRequestScope = "all"
+	StartAutoTaggingRequestScopeMissing StartAutoTaggingRequestScope = "missing"
+)
+
+// Valid indicates whether the value is a known member of the StartAutoTaggingRequestScope enum.
+func (e StartAutoTaggingRequestScope) Valid() bool {
+	switch e {
+	case StartAutoTaggingRequestScopeAll:
+		return true
+	case StartAutoTaggingRequestScopeMissing:
 		return true
 	default:
 		return false
@@ -1124,6 +1145,53 @@ type AutoImportSettings struct {
 	Watch   FolderWatch `json:"watch"`
 }
 
+// AutoTagVideoResult defines model for AutoTagVideoResult.
+type AutoTagVideoResult struct {
+	// Queued 積んだか。判定中なら偽
+	Queued bool `json:"queued"`
+}
+
+// AutoTaggingQueue defines model for AutoTaggingQueue.
+type AutoTaggingQueue struct {
+	Done   int `json:"done"`
+	Failed int `json:"failed"`
+
+	// LastError 直近に失敗した判定の理由（英語。Ollama の応答を含むことがある）。失敗が無ければ省く
+	LastError *string `json:"lastError,omitempty"`
+	Queued    int     `json:"queued"`
+	Running   int     `json:"running"`
+}
+
+// AutoTaggingQueued defines model for AutoTaggingQueued.
+type AutoTaggingQueued struct {
+	// Queued 積んだ動画の件数
+	Queued int `json:"queued"`
+}
+
+// AutoTaggingSettings 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
+type AutoTaggingSettings struct {
+	// AfterImport 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false
+	AfterImport bool `json:"afterImport"`
+
+	// Enabled 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false
+	Enabled bool             `json:"enabled"`
+	Queue   AutoTaggingQueue `json:"queue"`
+
+	// TentativeThreshold タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+	TentativeThreshold float64 `json:"tentativeThreshold"`
+
+	// Threshold タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
+	Threshold float64 `json:"threshold"`
+}
+
+// CheckResult 確かめた結果。使えないことも 200 で返す
+type CheckResult struct {
+	Available bool `json:"available"`
+
+	// Message 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
+	Message *string `json:"message,omitempty"`
+}
+
 // CreateAPITokenRequest defines model for CreateAPITokenRequest.
 type CreateAPITokenRequest struct {
 	// Name 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
@@ -1510,6 +1578,15 @@ type NetworkSettings struct {
 	Port int `json:"port"`
 }
 
+// OllamaSettings Ollama の接続先（docs/design-docs/ai-layer.md）
+type OllamaSettings struct {
+	// Endpoint Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434
+	Endpoint string `json:"endpoint"`
+
+	// Model Ollama の模型名。保存値が無ければ clef-flash
+	Model string `json:"model"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -1761,6 +1838,14 @@ type SetupRequest struct {
 	Username string `json:"username"`
 }
 
+// StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
+type StartAutoTaggingRequest struct {
+	Scope StartAutoTaggingRequestScope `json:"scope"`
+}
+
+// StartAutoTaggingRequestScope defines model for StartAutoTaggingRequest.Scope.
+type StartAutoTaggingRequestScope string
+
 // SubtitleTrack defines model for SubtitleTrack.
 type SubtitleTrack struct {
 	// File 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う
@@ -1919,6 +2004,18 @@ type TranscodingSettings struct {
 // UpdateAutoImportSettingsRequest defines model for UpdateAutoImportSettingsRequest.
 type UpdateAutoImportSettingsRequest struct {
 	Enabled bool `json:"enabled"`
+}
+
+// UpdateAutoTaggingSettingsRequest defines model for UpdateAutoTaggingSettingsRequest.
+type UpdateAutoTaggingSettingsRequest struct {
+	AfterImport bool `json:"afterImport"`
+	Enabled     bool `json:"enabled"`
+
+	// TentativeThreshold 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+	TentativeThreshold float64 `json:"tentativeThreshold"`
+
+	// Threshold 0 より大きく 1 以下
+	Threshold float64 `json:"threshold"`
 }
 
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
@@ -2228,6 +2325,10 @@ type VideoTag struct {
 
 	// Tentative そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す
 	Tentative bool `json:"tentative"`
+
+	// Unconfirmed 自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+	// 返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
+	Unconfirmed *bool `json:"unconfirmed,omitempty"`
 }
 
 // VideoTagsAction defines model for VideoTagsAction.
@@ -2369,6 +2470,9 @@ type TagId = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
+
+// VideoTagId defines model for VideoTagId.
+type VideoTagId = int64
 
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
@@ -2729,6 +2833,9 @@ type LoginJSONRequestBody = LoginRequest
 // SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
 type SetupAccountJSONRequestBody = SetupRequest
 
+// StartAutoTaggingJSONRequestBody defines body for StartAutoTagging for application/json ContentType.
+type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
+
 // UpdateFavoritesJSONRequestBody defines body for UpdateFavorites for application/json ContentType.
 type UpdateFavoritesJSONRequestBody = FavoritesRequest
 
@@ -2747,8 +2854,14 @@ type StartScanJSONRequestBody = StartScanJSONBody
 // UpdateAutoImportSettingsJSONRequestBody defines body for UpdateAutoImportSettings for application/json ContentType.
 type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
 
+// UpdateAutoTaggingSettingsJSONRequestBody defines body for UpdateAutoTaggingSettings for application/json ContentType.
+type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
+
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
+
+// UpdateOllamaSettingsJSONRequestBody defines body for UpdateOllamaSettings for application/json ContentType.
+type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
@@ -2818,6 +2931,12 @@ type ServerInterface interface {
 	// SetupAccount 未設定のサーバーで最初のアカウントを作り、そのままログインする
 	// (POST /api/auth/setup)
 	SetupAccount(w http.ResponseWriter, r *http.Request)
+	// CheckAutoTaggingClassifier 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+	// (POST /api/auto-tagging/check)
+	CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request)
+	// StartAutoTagging ライブラリの動画を判定に回す
+	// (POST /api/auto-tagging/runs)
+	StartAutoTagging(w http.ResponseWriter, r *http.Request)
 	// ListDirectories フォルダ選択用の直下ディレクトリを返す
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -2881,12 +3000,27 @@ type ServerInterface interface {
 	// UpdateAutoImportSettings 自動の取り込みを入れる／切るを保存し、監視を張る／外す
 	// (PUT /api/settings/auto-import)
 	UpdateAutoImportSettings(w http.ResponseWriter, r *http.Request)
+	// GetAutoTaggingSettings 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
+	// (GET /api/settings/auto-tagging)
+	GetAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateAutoTaggingSettings 自動タグ付けの機能の設定を保存する
+	// (PUT /api/settings/auto-tagging)
+	UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
 	// UpdateNetworkSettings LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
 	// (PUT /api/settings/network)
 	UpdateNetworkSettings(w http.ResponseWriter, r *http.Request)
+	// GetOllamaSettings Ollama の接続先を返す
+	// (GET /api/settings/ollama)
+	GetOllamaSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateOllamaSettings Ollama の接続先を保存する
+	// (PUT /api/settings/ollama)
+	UpdateOllamaSettings(w http.ResponseWriter, r *http.Request)
+	// CheckOllama 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
+	// (POST /api/settings/ollama/check)
+	CheckOllama(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 	// (GET /api/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -2956,6 +3090,9 @@ type ServerInterface interface {
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// AutoTagVideo 動画 1 本を自動タグ付けの判定に回す
+	// (POST /api/videos/{id}/auto-tag)
+	AutoTagVideo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoDisplayName 動画の表示名を設定・解除する
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -2995,6 +3132,12 @@ type ServerInterface interface {
 	// GetVideoSubtitle 字幕ファイルを WebVTT にして返す
 	// (GET /api/videos/{id}/subtitles/{file})
 	GetVideoSubtitle(w http.ResponseWriter, r *http.Request, id VideoId, file string, params GetVideoSubtitleParams)
+	// ConfirmVideoTag 自動タグ付けが仮に付けたタグを確定する
+	// (POST /api/videos/{id}/tags/{tagId}/confirm)
+	ConfirmVideoTag(w http.ResponseWriter, r *http.Request, id VideoId, tagId VideoTagId)
+	// RejectVideoTag 自動タグ付けが仮に付けたタグを却下する
+	// (POST /api/videos/{id}/tags/{tagId}/reject)
+	RejectVideoTag(w http.ResponseWriter, r *http.Request, id VideoId, tagId VideoTagId)
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
@@ -3156,6 +3299,34 @@ func (siw *ServerInterfaceWrapper) SetupAccount(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetupAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckAutoTaggingClassifier operation middleware
+func (siw *ServerInterfaceWrapper) CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckAutoTaggingClassifier(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartAutoTagging operation middleware
+func (siw *ServerInterfaceWrapper) StartAutoTagging(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartAutoTagging(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4001,6 +4172,34 @@ func (siw *ServerInterfaceWrapper) UpdateAutoImportSettings(w http.ResponseWrite
 	handler.ServeHTTP(w, r)
 }
 
+// GetAutoTaggingSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetAutoTaggingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAutoTaggingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAutoTaggingSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAutoTaggingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNetworkSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -4020,6 +4219,48 @@ func (siw *ServerInterfaceWrapper) UpdateNetworkSettings(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateNetworkSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOllamaSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOllamaSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOllamaSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOllamaSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckOllama operation middleware
+func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckOllama(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4721,6 +4962,32 @@ func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// AutoTagVideo operation middleware
+func (siw *ServerInterfaceWrapper) AutoTagVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AutoTagVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoDisplayName operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r *http.Request) {
 
@@ -5161,6 +5428,76 @@ func (siw *ServerInterfaceWrapper) GetVideoSubtitle(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVideoSubtitle(w, r, id, file, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmVideoTag operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmVideoTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId VideoTagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmVideoTag(w, r, id, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectVideoTag operation middleware
+func (siw *ServerInterfaceWrapper) RejectVideoTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId VideoTagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectVideoTag(w, r, id, tagId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5729,6 +6066,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/auto-tag", wrapper.AutoTagVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/tags/{tagId}/confirm", wrapper.ConfirmVideoTag)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/tags/{tagId}/reject", wrapper.RejectVideoTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/open", wrapper.OpenVideoFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/preview", wrapper.GetVideoPreview)
@@ -5756,6 +6096,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
