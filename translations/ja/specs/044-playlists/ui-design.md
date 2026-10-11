@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: 1ecb22239ff620feb16778c4f79f49d79311598b9000d27b238e9d26debfd803
+sourceHash: 8bedac9226f8dafb32999d3b5d16c590bbcdd836ea3908a9249034279bad8b52
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -69,7 +69,7 @@ flowchart LR
 | `/playlists` のヘッダーの数 | 3 playlists | `playlists.count(count)`。「1 playlist」 |
 | New playlist のボタン、ダイアログのタイトル | New playlist | `playlists.new`、`playlists.newDialog.title` |
 | 名前の欄のラベル | Name | `playlists.nameLabel` |
-| 名前の欄のエラー | Use a name of 1 to 100 characters. | `playlists.nameRule`。送信を試みた後、前後の空白を除いた名前が空か 100 文字を超えるとき、`FieldError` として出す |
+| 名前の欄のエラー | Use a name of 1 to 100 characters. | `playlists.nameRule`。送信を試みたとき、前後の空白を除いた名前が空か、サーバーと同じくコードポイントで数えて 100 文字を超えるなら、`FieldError` として出す（R-11） |
 | 作成の操作。送信中 | Create; Creating… | `playlists.newDialog.submit`、`.submitting` |
 | 作成の失敗 | Couldn't create the playlist: {reason} | `playlists.newDialog.failed`。ダイアログの中の `destructive` の `Alert` |
 | プレイリストがないときのタイトル | No playlists yet | `playlists.empty.title` |
@@ -123,6 +123,8 @@ flowchart LR
 | プレイリストの終わりのラベル | End of playlist | `player.playlist.end` |
 | プレイリストの終わりの読み上げ | Playback finished. End of the playlist "{name}" | `player.playlist.endAnnouncement(name)`。`role="status"`、1 回 |
 | 再生中にプレイリストが消えた | This video is no longer in the playlist. Playback stops after it. | `player.playlist.gone`。トースト |
+| 再生できない項目を飛ばした | Skipped "{title}": it can't be played here. | `player.playlist.skipped(title)`。トースト（[再生できない項目](#unplayable-item)） |
+| 再生できない最後の項目 | Can't play "{title}". End of the playlist. | `player.playlist.skippedLast(title)`。トースト |
 
 「Item」は、プレイリストの中の動画またはグループを指す語であり、親 Issue の数がそれらを数えるのと同じである。まとめての追加のトーストは、お気に入りのトーストと同じく項目を数える。「Open」ではなく「Play from」とするのは、行を押すと再生が始まるからである（要件 6）。「Watch again」と「Up next」は今のキーを保つ。
 
@@ -148,11 +150,11 @@ flowchart LR
 
 ### 新しいプレイリスト {#new-playlist}
 
-「New playlist」は `FormDialog` を開く。それは 1 つの `Field` を持ち、その中身は `Label`「Name」と、ダイアログが開くとフォーカスを受ける `Input`（`maxLength` 100、`autoComplete="off"`）である。フッターは `Cancel` と `default` の「Create」である。
+「New playlist」は `FormDialog` を開く。それは 1 つの `Field` を持ち、その中身は `Label`「Name」と、ダイアログが開くとフォーカスを受ける `Input`（`autoComplete="off"`）である。入力に `maxLength` はない。HTML は UTF-16 の単位で数えるので、絵文字 100 個の名前は 50 個で止まるが、サーバーはコードポイントで数える（R-11）。代わりにダイアログは、検索欄と同じく、前後の空白を除いた名前をコードポイントで数える（`Array.from`）。フッターは `Cancel` と `default` の「Create」である。
 
 | 出来事 | 振る舞い |
 | --- | --- |
-| 前後の空白を除くと名前が空 | 「Create」は `submitDisabled` である。Enter か押下までは欄はエラーを出さず、その後は「Use a name of 1 to 100 characters.」がその `FieldError` になり、文字が変わるまで欄は `aria-invalid` である |
+| 前後の空白を除くと名前が空か、100 コードポイントを超える | 「Create」は有効のままで、所有者が打つ間、欄はエラーを出さない。Enter か押下は何も送らない。「Use a name of 1 to 100 characters.」が欄の `FieldError` になり、文字が変わるまで欄は `aria-invalid` である |
 | 送信 | `pending`: 両方のボタンを無効にし、`Spinner` 付きの「Creating…」。前後の空白を除いた名前を `POST /api/playlists` に送る |
 | `201` | ダイアログが閉じ、新しい行が表の一番上にあり、フォーカスはその名前のリンクに移る。トーストは出さない。行が結果である |
 | `400` | 欄の `FieldError` は「Use a name of 1 to 100 characters.」である。ダイアログは開いたままである |
@@ -205,7 +207,7 @@ stateDiagram-v2
 
 行のリンクを押すと、`state: { from: "/playlists/{id}", autoplay: true }` で `/videos/{videoId}?playlist={id}&item={itemId}` を開く。`videoId` は動画、またはグループの `openVideoId` である（[contracts/screen-api.md の Client use](contracts/screen-api.md#client-use)）。再生はその項目から始まる。ヘッダーの「Play」は最初の行に同じことをする。ライブラリのリスト表示の画質、サイズ、追加日の列は描かない。行は順番の中の項目であり、その 3 つは、どこから始めるかも何が残っているかも言わずに行を広げるだけだからである。
 
-ライブラリにあるが再生できない動画（`playable` が false）は、リンクを保ち、タイトルの下にリスト表示の行の警告の行（`text-xs text-warning`、lucide `AlertTriangle` `size-3`）を出すので、所有者は再生がそれを飛ばす前にそれに気づく。
+ライブラリにあるが再生できない動画（`playable` が false）は、リンクを保ち、タイトルの下にリスト表示の行の警告の行（`text-xs text-warning`、lucide `AlertTriangle` `size-3`）を出すので、所有者は再生がそれを飛ばす前にそれに気づく（[再生できない項目](#unplayable-item)）。
 
 ### 並べ替え {#reordering}
 
@@ -249,7 +251,7 @@ sequenceDiagram
 
 ### 名前の変更 {#renaming}
 
-「Rename…」は `FormDialog`「Rename playlist」を開く。ダイアログは [新しいプレイリスト](#new-playlist) の 1 つの `Field` を、今の名前を入れて文字を選択した状態で持ち、`default` の操作は「Save」である。名前の欄の規則は同じである。前後の空白を除いた文字が今の名前と等しい間も、「Save」は `submitDisabled` である。`200` ではダイアログが閉じ、見出しと `document.title` は前後の空白を除いた名前を出し、フォーカスは「More」に戻る。`404` は削除された状態を出す。失敗はダイアログの中に「Couldn't rename the playlist: {reason}」として留まる。
+「Rename…」は `FormDialog`「Rename playlist」を開く。ダイアログは [新しいプレイリスト](#new-playlist) の 1 つの `Field` を、今の名前を入れて文字を選択した状態で持ち、`default` の操作は「Save」である。名前の欄の規則は同じである。「Save」は、前後の空白を除いた文字が今の名前と等しい間だけ `submitDisabled` であり、これにはメッセージが要らない。`200` ではダイアログが閉じ、見出しと `document.title` は前後の空白を除いた名前を出し、フォーカスは「More」に戻る。`404` は削除された状態を出す。失敗はダイアログの中に「Couldn't rename the playlist: {reason}」として留まる。
 
 ### 削除 {#deleting}
 
@@ -316,10 +318,10 @@ flowchart LR
 | 部分 | 形 |
 | --- | --- |
 | ポップオーバー | `w-popover` の `Popover`。カードと行と動画の画面では起動部品の下に開き、選択バーでは `Add tag` と同じくその上（`side="top"`）に開く。Esc、外側の押下、結果の後に閉じる |
-| 欄 | プレースホルダーと名前が「Search or create a playlist」の `CommandInput`。ポップオーバーが開くとフォーカスを受ける。`maxLength` 100 |
+| 欄 | プレースホルダーと名前が「Search or create a playlist」の `CommandInput`。ポップオーバーが開くとフォーカスを受ける。`maxLength` はないので、下の長さの規則はサーバーと同じくコードポイントで数える |
 | 一覧 | 「Playlists」と名付けた `CommandList`、`shouldFilter={false}`: 前後の空白を除いた文字を、大文字小文字を区別せずに名前に含むプレイリストを、API の順（最後に変わったものが先）で、それぞれ lucide `ListVideo` 付きで並べる。文字がなければ、すべてのプレイリスト。最初の行が選択されているので、Enter はそれに働く |
 | 作成の行 | 前後の空白を除いた文字が空でなく、どのプレイリストの名前もそれにちょうど等しくない間、一致するものより前に、最初に出す。lucide `Plus` 付きで「Create "{name}"」と読める。一致するものがなければ、それが唯一の行である |
-| 打った名前が 100 文字を超える | 欄の下の理由の行「Use a name of up to 100 characters」。Enter も押下も働かない |
+| 打った名前が前後の空白を除いて 100 コードポイントを超える | 欄の下の理由の行「Use a name of up to 100 characters」。Enter も押下も働かない |
 | プレイリストも文字もない | 一覧の場所に「No playlists yet. Type a name to create one.」 |
 | 読み込み中 | 一覧の場所に「Loading…」。`GET /api/playlists` はポップオーバーが開くたびに読むので、ほかの画面で作ったプレイリストもそこにある |
 | 読み込みの失敗 | 一覧の場所に「Couldn't load the playlists」と `ghost` `sm` の「Retry」。欄はそれでも名前を受け、名前の上の Enter は作成する |
@@ -365,13 +367,25 @@ stateDiagram-v2
 | 部分 | 形 |
 | --- | --- |
 | プレイリストの行 | タイトルの上の 1 行で、タイトルのブロックの最初にあり、グループの行の形をとる: lucide `ListVideo`（`size-3.5`、`text-muted-foreground`）、プレイリストの名前（1 行、切り詰め、完全な名前を `title` に持つ）、`·`、`tabular-nums` の「2 / 7」。`text-xs`、`sm` から `text-sm`、`text-muted-foreground`。行は `/playlists/{id}` への `Link`（`state.from` を引き継ぐ）で、アクセシブルな名前は「Playlist "{name}", item 2 of 7. Open the playlist」である。`position` が 0（今の項目が隠れている）とき、行は名前だけを出す。動画がグループにも入っているとき、グループの行がその後に続くので、2 つの行はプレイリスト、グループ、タイトルの順に読める |
-| 矢印 | プレーヤーの端の矢印は、関連する動画の隣ではなく、`previousItem` と `nextItem`（隣の項目の最初の動画）に行く。隣の項目のない側は描かない。ツールチップと名前は「Previous item: {title}」と「Next item: {title}」である。移ると、`item` を手順の `itemId` にし、クエリを保ってその動画を開く。再生中か終了後の移動は再生を始め、一時停止中の移動は始めない。今と同じである |
+| 矢印 | プレーヤーの端の矢印は、関連する動画の隣ではなく、`previousItem` と `nextItem`（隣の項目の最初の動画）に行く。隣の項目のない側は描かない。ツールチップと名前は「Previous item: {title}」と「Next item: {title}」である。移ると、`item` を手順の `itemId` にし、クエリを保ってその動画を開く。再生中か終了後の移動は再生を始め、一時停止中の移動は始めない。今と同じである。プレーヤーがない状態の層の上にも描く（[再生できない項目](#unplayable-item)） |
 | 通知 | `next` のある動画の終わりに、グループの自動再生の通知をそのまま出す: 「Up next」、カウントダウン、`next.video` のサムネイルとタイトル、`Cancel` と `Play now`。そのリンクと進行は `/videos/{next.video.id}?playlist={id}&item={next.itemId}` を開く。動画は画面にあるものだが `item` が違う手順は、行に新しい位置を出して最初から再生をやり直す（R-7） |
 | 取り消した | 「Next video」= `next.video`、「Play next」、「Watch again」を持つ再生終了のレイヤー。グループの通知を取り消したときと同じ |
 | 次の動画が消えた | 再生を読み直す。新しい `next` があれば通知はそれでやり直し、なければプレイリストの終わりのレイヤーを出す |
 | プレイリストの終わり | `next` のない動画の終わりに: 再生終了のレイヤーの中央の `bg-navbar` の面に、上から（`gap-3`）、`text-xs font-semibold text-primary` のラベル「End of playlist」、2 行に制限した `text-base font-semibold` のプレイリストの名前、`secondary` の「Watch again」。何も進まず、カウントダウンも動かない（要件 9）。隠した読み上げが「Playback finished. End of the playlist "{name}"」を 1 回読む。`×` と Esc は、`state.from` であるプレイリストの画面に戻る |
 | 外れた | どの読み込みからの `404` でも: 行を描かず、矢印は再び関連する動画に従い、今の動画の後に通知もプレイリストの終わりのレイヤーも続かず、トースト「This video is no longer in the playlist. Playback stops after it.」を 1 回出す。URL はクエリを保つ。再読み込みすると読み直し、プレイリストが戻っていることもある |
 | 読み込み中 | 画面が開いてから最初の応答までは、行も矢印も描かない。行は来るときタイトルの上の `text-xs` の 1 行なので、タイトルのブロックはその場所を保つ |
+
+### 再生できない項目 {#unplayable-item}
+
+サーバーの `next` は次に表示する項目であり、その動画を再生できるかは見ない。また、プレーヤーを作らない動画は終わらない。そのため画面がそうした項目を自ら飛ばす。規則が対象とするのは、プレーヤーを作らず、待っても変わらない状態である。`ReadFailure`（プローブの失敗）、`Unplayable`（`playable` が false）、`MissingVideo` がそれにあたる。
+
+| 到着 | 振る舞い |
+| --- | --- |
+| `state` に `autoplay` がある: ヘッダーの「Play」、行の押下、通知による進行か「Play now」、「Play next」 | 再生の読み込みが応答すると、画面は `autoplay` を保って `next` を `replace` で開き、トースト「Skipped "{title}": it can't be played here.」を出す。`next` がなければ、画面は動画の状態の層に留まり、行はその位置を出し、トースト「Can't play "{title}". End of the playlist.」を出す |
+| `autoplay` がない: 一時停止中に矢印で移った、再読み込み、開いたリンク | 何も進まない。状態の層は今と同じく、所有者向けの再プローブとともに出る。プレイリストの矢印はその上に描かれたままなので、「Next item」で手で続けられる |
+| `ProcessingStages`（プローブ待ち） | 画面は今と同じく待つ。プローブが再生できる動画で終われば再生し、プローブが失敗すれば上の規則で項目を飛ばす |
+
+プレイリストの文脈では、再生の読み込みが応答していれば、プレーヤーの有無によらず矢印を描く。矢印が、終われない動画から先へ進む手段だからである。再生できない項目が続くときは 1 つずつ飛ばし、それぞれがトーストを出す。トーストは互いに置き換わるので、最後のものだけが残る。`/api/playlists/{id}/playback` とその順序の規則は変わらない。
 
 グループの項目のメンバーは、今のグループの通知と同じく、グループのメンバーをグループの終わりまで順に再生し、その後に次の項目を再生する。横の列の「Up next」のメンバーの一覧とその位置はグループのものを保ち、タイトルの上のプレイリストの行が、そのグループがどの項目かを言う。文脈が保たれる間、関連する動画の `nextId` は何にも使わない（R-7）。
 
