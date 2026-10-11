@@ -660,6 +660,8 @@ export const en = {
       // （specs/035-favorites/ui-design.md「Words」）。
       favorite: (title: string) => `Favorite "${title}"`,
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
+      // プレイリストに足す操作の読み上げ名（specs/044-playlists/ui-design.md「Words」）。
+      addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -719,6 +721,7 @@ export const en = {
       count: videos,
       select: (name: string) => `Select the group "${name}"`,
       favorite: (name: string) => `Favorite group "${name}"`,
+      addToPlaylist: (name: string) => `Add group "${name}" to a playlist`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -757,6 +760,7 @@ export const en = {
       favoritesAdded: (count: number) => `Added ${items(count)} to favorites`,
       favoritesRemoved: (count: number) => `Removed ${items(count)} from favorites`,
       favoritesFailed: (reason: string) => `Couldn't change the favorites: ${reason}`,
+      addToPlaylist: "Add to playlist",
       visibility: "Visibility",
       makePublic: "Make public",
       makePrivate: "Make private",
@@ -1523,6 +1527,25 @@ export const en = {
       failed: (reason: string) => `Couldn't delete the playlist: ${reason}`,
     },
     deleted: (name: string) => `Deleted "${name}"`,
+    // 動画とグループをプレイリストに足すピッカー（specs/044-playlists/ui-design.md
+    // 「Add to playlist」「Words」）。名前（利用者のデータ）はそのまま埋め込む。
+    add: {
+      label: "Add to playlist",
+      search: "Search or create a playlist",
+      list: "Playlists",
+      create: (name: string) => `Create "${name}"`,
+      none: "No playlists yet. Type a name to create one.",
+      nameTooLong: "Use a name of up to 100 characters",
+      loading: "Loading…",
+      loadFailed: "Couldn't load the playlists",
+      added: (count: number, name: string) => `Added ${items(count)} to "${name}"`,
+      existing: (count: number, name: string) =>
+        count === 1 ? `Already in "${name}"` : `${items(count)} already in "${name}"`,
+      partly: (added: number, existing: number, name: string) =>
+        `Added ${items(added)} to "${name}"; ${formatNumber(existing)} already there`,
+      nothing: "Nothing was added",
+      failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
+    },
   },
   tagName: {
     required: "Enter a name",
