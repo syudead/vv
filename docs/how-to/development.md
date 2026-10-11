@@ -98,15 +98,16 @@ with GitHub OIDC, so the repository needs no Codecov token, but it must be
 activated once on codecov.io by signing in with GitHub and installing the
 Codecov GitHub App. A failed upload does not fail the check.
 
-On each push to `main` the `go lint` and `web lint` groups also run
-`task quality-go` and `task quality-web`, which write the output of three tools
-under `reports/quality/`: the cyclomatic complexity of every Go function from
-gocyclo (pinned as a tool in `tools/go.mod`) and the duplicated code that jscpd
-finds, and the complexity of every Web function from the ESLint `complexity`
-rule. CI keeps them as the `quality-go` and `quality-web` artifacts for 90 days
+Beside the check groups, the `Quality` jobs run `task complexity-go`,
+`task complexity-web` and `task duplication` in parallel on every pull request
+and push to `main`. Each writes one tool's output under `reports/quality/`: the
+cyclomatic complexity of every Go function from gocyclo (pinned as a tool in
+`tools/go.mod`), that of every Web function from the ESLint `complexity` rule,
+and the duplicated code that jscpd finds. CI keeps each as an artifact of the
+same name for 90 days
 ([Test and CI quality monitoring](../design-docs/test-quality-monitoring.md));
-a pull request does not measure, and a failed measurement does not fail the
-check. `task quality-metrics` runs both on a local machine.
+a failed measure does not fail the run. `task quality-metrics` runs all three on
+a local machine.
 
 On the first day of each month the `Mutation testing` workflow
 ([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))

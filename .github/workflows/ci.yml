@@ -99,7 +99,6 @@ jobs:
             tools: true
             golangci: true
             go: lint
-            quality: go
           # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
           # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
           # internal/media のテストは ffmpeg と ffprobe が無いと飛ぶ（47 件）ので入れる。
@@ -114,7 +113,6 @@ jobs:
           - group: web lint
             tasks: fmt-check-web lint-web build-check-web
             web: true
-            quality: web
           - group: web test 1
             tasks: test-web-report -- --shard=1/3
             web: true
@@ -228,25 +226,6 @@ jobs:
           TASKS: ${{ matrix.tasks }}
         run: task $TASKS
 
-      # main への push では、複雑度と重複を測ってツールの出力をそのまま artifact に残す
-      # （quality: の組。task quality-go / quality-web）。集計も比較もせず、検査も落とさない。
-      # PR では測らず、lint の時間を増やさない。
-      - name: 品質の指標を測る
-        if: matrix.quality && github.event_name == 'push'
-        continue-on-error: true
-        env:
-          QUALITY: ${{ matrix.quality }}
-        run: task quality-$QUALITY
-
-      - name: 品質の指標を残す
-        if: ${{ !cancelled() && matrix.quality && github.event_name == 'push' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: quality-${{ matrix.quality }}
-          path: reports/quality/
-          if-no-files-found: ignore
-          retention-days: 90
-
       # テストが落ちた実行の結果こそ、不安定なテストを見つける材料になるので、
       # 失敗しても送る。Codecov が受け付けなくても、OIDC のトークンが取れなくても
       # （Action が例外で止まり fail_ci_if_error: false では防げない）検査自体は落とさない。
@@ -288,6 +267,71 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+
+  # 複雑度と重複を指標ごとに並列で測り、ツールの出力をそのまま artifact に残す
+  # （task complexity-go / complexity-web / duplication）。集計も比較もしない。
+  # 参考の出力なので、失敗しても CI は落とさず、必須チェックの Checks にも入れない。
+  quality:
+    name: Quality (${{ matrix.metric }})
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - metric: complexity-go
+            go: true
+          - metric: complexity-web
+            web: true
+          - metric: duplication
+            tools: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: matrix.go
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.web || matrix.tools
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ matrix.web && 'web/package-lock.json' || 'tools/package-lock.json' }}
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "task"
+
+      - name: Web依存を取得する
+        if: matrix.web
+        run: npm --prefix web ci
+
+      - name: Node開発ツールを取得する
+        if: matrix.tools
+        working-directory: tools
+        run: npm ci
+
+      - name: 測る
+        env:
+          METRIC: ${{ matrix.metric }}
+        run: task $METRIC
+
+      - name: 結果を残す
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.metric }}
+          path: reports/quality/${{ matrix.metric }}/
+          retention-days: 90
 
   # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
   # 文書だけの変更では文書検査をここで流す。
