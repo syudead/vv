@@ -190,8 +190,9 @@ and is read at its old position after the content is rescanned; a group item
 is left out after the folder is ungrouped and back after `auto`; same-path
 succession re-keys an item and, in a playlist holding both keys, keeps the
 earlier one; bundling two members that are both in a playlist leaves one
-bundle item at the earlier position, and bundling a non-representative member
-alone keeps its item under the bundle key; removing a member while others
+bundle item at the earlier position, and bundling when only a
+non-representative member is in a playlist keeps its item under the bundle
+key; removing a member while others
 remain leaves the item with the bundle and gives the member none; dissolving
 the bundle gives the item to the remaining member; positions are `0 … n-1`
 after every one of these; names of 0 and 101 characters after trimming are
