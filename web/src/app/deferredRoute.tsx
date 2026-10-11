@@ -17,6 +17,19 @@ export function matchesPath(pathname: string, path: string) {
   return normalized === target || normalized.startsWith(`${target}/`);
 }
 
+/**
+ * matchesExactPath は pathname が path そのもの（末尾の / は問わない）かを返す。下の場所に
+ * 別の画面がある一覧の route に使い、その下の場所を開いたときに一覧の部品を読まない。
+ */
+export function matchesExactPath(pathname: string, path: string) {
+  return pathname.toLowerCase().replace(/\/$/, "") === path.toLowerCase();
+}
+
+/** matchesBelowPath は pathname が path の下の場所（path そのものは含まない）かを返す。 */
+export function matchesBelowPath(pathname: string, path: string) {
+  return matchesPath(pathname, path) && !matchesExactPath(pathname, path);
+}
+
 /** RouteLoadFailed は画面の部品を読み込めなかったときに画面の代わりに出す。 */
 export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
   return (
@@ -44,10 +57,13 @@ export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
  * load イベントを遅らせないので、直接開いたときに画面が出るのは、import した
  * ときより数十ミリ秒遅れることがある。アプリの中で移ってきたときは、読み終えたところで
  * 画面を出す。読み込めなければ、空白にせず再読み込みを促す。
+ *
+ * path は文字列なら matchesPath で当て、関数ならそれで当てる。同じ接頭辞の下に別の画面が
+ * あるときは関数で分け、直接開いた 1 つの画面のほかの部品を待たない。
  */
 export async function deferredRoute(
   load: () => Promise<PageModule>,
-  path: string,
+  path: string | ((pathname: string) => boolean),
   reload: () => void = () => window.location.reload(),
 ): Promise<ComponentType> {
   let loaded: ComponentType | undefined;
@@ -55,7 +71,8 @@ export async function deferredRoute(
     loaded = (await load()).default;
     return loaded;
   };
-  if (matchesPath(window.location.pathname, path)) {
+  const pathname = window.location.pathname;
+  if (typeof path === "string" ? matchesPath(pathname, path) : path(pathname)) {
     // 失敗したときは描画の側で読み直し、それでも駄目なら失敗の表示を出す。
     await loadPage().catch(() => undefined);
   }
