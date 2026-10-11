@@ -7,6 +7,8 @@ import {
   type Page,
   test,
 } from "@playwright/test";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 // 名前付きプレイリストと連続再生（specs/044-playlists、親 #787、子 #903）の流れを、実サーバーと
 // 実メディアに通す。動画は run-e2e.mjs が generatePlaylistsFixtures で作る 3 秒の 5 本で、
@@ -80,6 +82,29 @@ async function waitForScan(request: APIRequestContext, scanId: number) {
       { timeout: 60_000 },
     )
     .toBe("done");
+}
+
+/**
+ * clearProgress はサーバーの DB から、ids の動画の再生位置と見終わったことの記録を消す。記録は
+ * 動画の内容に紐づき、登録フォルダを外しても残るので、CI のリトライが同じ DB でこのグループを
+ * 初めからやり直すと、前の試行で見終わったメンバー2・3 からグループの開始が変わってしまう。
+ * 見終わっていない状態へ戻す API は無いので、DB に直接書く。サーバーは WAL で開いているので、
+ * 別の接続から書いてよい。
+ */
+function clearProgress(ids: number[]) {
+  const runRoot = process.env.MDM_E2E_RUN_ROOT;
+  if (runRoot === undefined) throw new Error("MDM_E2E_RUN_ROOT is not configured");
+  // playwright.config.ts の MDM_DATA_DIR と internal/store/sqlite.go の DatabaseFileName。
+  const db = new DatabaseSync(path.join(runRoot, "data", "mdm.db"));
+  try {
+    db.exec("pragma busy_timeout = 5000");
+    db.prepare(
+      `delete from playback_progress where content_key in
+        (select content_key from videos where id in (${ids.map(() => "?").join(", ")}))`,
+    ).run(...ids);
+  } finally {
+    db.close();
+  }
 }
 
 /** readPlaylists は API からプレイリストを読み、名前から id を引けるようにする。 */
@@ -237,7 +262,9 @@ test.describe.serial("playlists", () => {
       )
       .toBe(true);
 
-    // メンバー1 を見終わったことにし、グループの項目がメンバー2 から始まるようにする（5）。
+    // 前の試行の記録を消してから、メンバー1 を見終わったことにし、グループの項目が
+    // メンバー2 から始まるようにする（5）。
+    clearProgress(titles.map((title) => video(title).id));
     const watched = await request.put(
       `/api/videos/${String(video(member1).id)}/progress`,
       { headers: mutationHeaders, data: { positionMs: 3000 } },
@@ -254,7 +281,12 @@ test.describe.serial("playlists", () => {
   });
 
   test.afterAll(async ({ request }) => {
-    for (const id of playlists.values()) {
+    // テストが id を読む前に止まっても作ったプレイリストを残さないよう、名前で探して消す。
+    // 残すと、CI のリトライでピッカーが同じ名前の「Create」を出さない。
+    await readPlaylists(request);
+    for (const name of [tonight, themed]) {
+      const id = playlists.get(name);
+      if (id === undefined) continue;
       const removed = await request.delete(`/api/playlists/${String(id)}`, {
         headers: mutationHeaders,
       });
