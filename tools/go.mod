@@ -4,6 +4,7 @@ go 1.27.1
 
 tool (
 	github.com/air-verse/air
+	github.com/fzipp/gocyclo/cmd/gocyclo
 	github.com/go-gremlins/gremlins/cmd/gremlins
 	github.com/golangci/golangci-lint/v2/cmd/golangci-lint
 	github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen

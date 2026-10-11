@@ -217,11 +217,22 @@ tasks:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
   quality-metrics:
-    desc: Measure cyclomatic complexity, duplication and CI durations, and print a Markdown summary (CI runs it weekly).
-    # 後ろの引数は scripts/qualitymetrics へ渡す（-ci-runs 0 で CI の所要時間を飛ばす、
-    # -history で履歴と比べて追記する）。web と tools の npm 依存を使う。
+    desc: Write the cyclomatic complexity of every function and the duplicated code under reports/quality/ (CI keeps them as an artifact).
+    # 集計はせず、各ツールの出力をそのまま残す。web と tools の npm 依存を使う。
+    vars:
+      GOCYCLO:
+        sh: go -C tools tool -n gocyclo
     cmds:
-      - go run ./scripts/qualitymetrics {{.CLI_ARGS}}
+      - mkdir -p reports/quality
+      # 生成コードとテストは手で書いたコードの複雑さではないので外す。
+      - '"{{.GOCYCLO}}" -avg -ignore "(^|/)(gen|extgen|node_modules|worktrees|reports|testdata|\.claude|\.local)/|_test\.go$" . > reports/quality/go-complexity.txt'
+      # complexity の上限を 0 にして、web/src のすべての関数の値を出させる。
+      - 'cd web && npx eslint --rule "complexity: [warn, 0]" --format json --output-file ../reports/quality/ts-complexity.json src'
+      - >-
+        node tools/node_modules/jscpd/bin/jscpd .
+        --format go,typescript,tsx,javascript
+        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,translations/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
+        --gitignore --reporters json --output reports/quality/jscpd --silent
 
   # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
   # 時間がかかるので task check には入れず、CI は月に 1 回流す

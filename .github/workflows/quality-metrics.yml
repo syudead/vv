@@ -1,15 +1,11 @@
-# 品質の指標（循環複雑度、重複、CI の所要時間）を main への push の CI が成功するたびに
-# 測り、quality-metrics ブランチの history.jsonl に積む。まとめは実行の Summary に出し、前回
-# からの差を示す。
-# カバレッジとテストごとの所要時間は Codecov が追う（ci.yml）。手元では task quality-metrics。
+# 循環複雑度（全関数）と重複コードを main への push ごとに測り、各ツールの出力を
+# artifact に残す（task quality-metrics）。集計も比較もしない。
+# カバレッジとテストごとの所要時間は Codecov が追う（ci.yml）。
 # 運用は docs/design-docs/test-quality-monitoring.md。
 name: Quality metrics
 
 on:
   # 文書だけの push はコードの指標を変えないので測らない（ci.yml の変更判定と同じ区分）。
-  # その commit の CI の終わりは、job の中で待つ（「この commit の CI を待つ」）。
-  # workflow_run で起動すると main の権限とキャッシュの範囲で checkout したコードを
-  # 動かすことになるので使わない。
   push:
     branches: [main]
     paths-ignore:
@@ -17,14 +13,14 @@ on:
       - "docs/**"
       - "specs/**"
   workflow_dispatch: {}
-  # 測る仕組みそのものか、それが使う道具（task、jscpd、eslint とその設定）を変えた
-  # PR では、履歴に積まずに流して確かめる。依存の更新で計測が壊れるのを PR で止める。
+  # 測る仕組みそのものか、それが使う道具（task、gocyclo、jscpd、eslint とその設定）を
+  # 変えた PR では流して確かめる。依存の更新で計測が壊れるのを PR で止める。
   pull_request:
     paths:
       - .github/workflows/quality-metrics.yml
-      - scripts/qualitymetrics/**
       - Taskfile.yml
       - mise.toml
+      - tools/go.mod
       - tools/package.json
       - tools/package-lock.json
       - web/package.json
@@ -34,64 +30,24 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: quality-metrics-${{ github.ref }}
-  # main では CI ごとに 1 行ずつ積むので、取り消さずに順に流し、履歴への push の衝突も
-  # 防ぐ。既定（single）は待ちを 1 つしか残さず間の commit が抜けるので、すべて待たせる。
-  cancel-in-progress: false
-  queue: max
-
 jobs:
-  # 計測は npm の依存のスクリプトと、PR が変えたコードを実行するので、書き込み権限を
-  # 持たせない。同じリポジトリからの依存更新の PR でも、トークンで書き込めないように。
+  # 計測は npm の依存のスクリプトと、PR が変えたコードを実行するので、読み取りだけにする。
   measure:
     name: Measure
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # CI の実行と job の所要時間を読む。
-      actions: read
-    outputs:
-      measured: ${{ steps.ci.outputs.ok }}
     steps:
-      # push と同時に測ると、その commit の CI の所要時間がまだ集計に入らず、次の commit の
-      # 計測に紛れ込む。この commit の CI が終わるまで待ち、成功したときだけ測る。
-      - name: この commit の CI を待つ
-        id: ci
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          if [ "$EVENT" != "push" ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          for _ in $(seq 80); do
-            state=$(gh run list --workflow ci.yml --commit "$SHA" --event push --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
-            case "$state" in
-              "completed success") echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
-              completed*) echo "CI が成功しなかったので測らない: $state"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0 ;;
-            esac
-            sleep 30
-          done
-          echo "CI が 40 分で終わらなかった"
-          exit 1
-
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: steps.ci.outputs.ok == 'true'
         with:
           persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.ci.outputs.ok == 'true'
         with:
           go-version-file: go.mod
           cache: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: steps.ci.outputs.ok == 'true'
         with:
           node-version: 24
           cache: npm
@@ -100,76 +56,23 @@ jobs:
             tools/package-lock.json
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        if: steps.ci.outputs.ok == 'true'
         with:
           install_args: "task"
 
       - name: Web依存を取得する
-        if: steps.ci.outputs.ok == 'true'
         run: npm --prefix web ci
 
       - name: Node開発ツールを取得する
-        if: steps.ci.outputs.ok == 'true'
         working-directory: tools
         run: npm ci
 
-      # 前回と比べるために履歴を読む（公開リポジトリなので認証なしで取れる）。
-      # 初回はブランチが無いので、比べずに測る。
-      - name: 履歴を取り出す
-        if: steps.ci.outputs.ok == 'true'
-        run: |
-          mkdir -p history
-          if git fetch --depth=1 origin quality-metrics; then
-            git show FETCH_HEAD:history.jsonl > history/history.jsonl
-          fi
-
       - name: 測る
-        if: steps.ci.outputs.ok == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: task quality-metrics -- -history history/history.jsonl -summary "$GITHUB_STEP_SUMMARY"
+        run: task quality-metrics
 
-      - name: 計測の詳細を残す
-        if: ${{ !cancelled() && steps.ci.outputs.ok == 'true' }}
+      - name: 計測の結果を残す
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-metrics
-          path: |
-            reports/quality-metrics.json
-            reports/eslint-complexity.json
-            reports/jscpd/jscpd-report.json
+          path: reports/quality/
           retention-days: 90
-
-  # 履歴への追記だけを書き込み権限で行う。npm もリポジトリのコードも実行せず、
-  # 計測が出した 1 行を quality-metrics ブランチの history.jsonl に足す。PR では動かない。
-  save:
-    name: Save history
-    needs: measure
-    if: github.event_name != 'pull_request' && needs.measure.outputs.measured == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: quality-metrics
-          path: measured
-
-      - name: 履歴に足す
-        env:
-          SHA: ${{ github.sha }}
-        run: |
-          if git fetch --depth=1 origin quality-metrics; then
-            git worktree add -B quality-metrics history FETCH_HEAD
-          else
-            git worktree add --orphan -b quality-metrics history
-          fi
-          cat measured/quality-metrics.json >> history/history.jsonl
-          cd history
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add history.jsonl
-          git commit -m "metrics: $(date -u +%F) ${SHA::8}"
-          git push origin HEAD:quality-metrics

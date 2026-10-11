@@ -1,43 +1,40 @@
 # Test and CI quality monitoring
 
-Each push to `main` measures the quality of the code, the tests and CI, and
-keeps the history; the measuring lives in [`ci.yml`](../../.github/workflows/ci.yml),
-[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml) and
-[`scripts/qualitymetrics`](../../scripts/qualitymetrics).
+CI sends coverage and test results to Codecov, and each push to `main` keeps
+the complexity of every function and the duplicated code as an artifact; the
+measuring lives in [`ci.yml`](../../.github/workflows/ci.yml),
+[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml) and the
+`quality-metrics` task in [`Taskfile.yml`](../../Taskfile.yml).
 
 The diagram shows where each measure goes and who reads it.
 
 ```mermaid
 flowchart LR
   push[Push to main] --> ci[CI test groups]
-  ci -->|run succeeded on main| qm[Quality metrics]
+  push --> qm[Quality metrics]
   pr[Pull request] --> ci
   ci -->|coverage, JUnit results| codecov[(Codecov)]
-  qm -->|one line per push| hist[(quality-metrics branch)]
+  qm -->|tool output| art[(Run artifact, 90 days)]
   codecov -->|changed-line coverage| prc[PR comment]
   prc --> author[PR author]
 ```
 
 ## Measures and where they are kept
 
-Each measure has one home, so a trend is read in one place.
+Each measure has one home, and each is the output of an existing tool.
 
 | Measure | Tool | Measured | Kept in |
 | --- | --- | --- | --- |
 | Line coverage, by `go` and `web` flag and by file | Go `-coverprofile`, Vitest v8 | Every push to `main` and every pull request | [Codecov](https://app.codecov.io/gh/syudead/vv) |
 | Duration and outcome of every test; flaky tests | JUnit from gotestsum, Vitest and Playwright | Same; E2E on pushes to `main` only | Codecov Test Analytics |
-| Cyclomatic complexity of every function | `go/ast` for Go, the ESLint `complexity` rule for Web | After each successful CI run on a push to `main` | `history.jsonl` on the `quality-metrics` branch |
-| Duplicated lines | jscpd | Same | Same |
-| CI duration, whole run and per job (p50, p90 of the last 20 successful runs) | GitHub API through `gh` | Same | Same |
+| Cyclomatic complexity of every Go function | gocyclo | Every push to `main` | `go-complexity.txt` in the `quality-metrics` artifact |
+| Cyclomatic complexity of every Web function | The ESLint `complexity` rule with a maximum of 0 | Same | `ts-complexity.json` in the same artifact |
+| Duplicated code, by location | jscpd | Same | `jscpd/jscpd-report.json` in the same artifact |
 
-## Measured after the push's own CI run
-
-`Quality metrics` starts on the push, waits for that commit's CI run, measures
-only when the run succeeded, and queues every waiting run instead of keeping
-one. Measured before its own CI run finished, a push would leave its CI
-durations to the next push; with one waiting run, a burst of merges would leave
-commits unmeasured. A `workflow_run` trigger would also wait for CI, but it runs
-the checked-out commit with the default branch's privileges and caches.
+The artifact keeps each tool's output as written, with the file and line of
+every function and clone; nothing is summarised, compared with an earlier push
+or kept beyond the 90 days of the artifact. CI durations are read on the Actions
+pages of the CI runs.
 
 ## Coverage informs a pull request and does not block it
 
@@ -49,14 +46,15 @@ fails when a behaviour breaks.
 
 ## Measures run with no write token
 
-The jobs that run npm dependencies or repository code hold read-only tokens;
-only `Save history`, which runs neither, writes the history. A
-same-repository dependency update would otherwise run its packages' install
-scripts with a token that can push to the repository.
+`Quality metrics` runs npm dependencies and repository code, so it holds a
+read-only token. A same-repository dependency update would otherwise run its
+packages' install scripts with a token that can push to the repository.
 
 | Rejected | Why |
 | --- | --- |
-| A weekly schedule | A week of pushes lands in one measurement, so a change is not tied to the push that caused it |
-| An Issue opened when a measure crosses a threshold | A count or a rounded mean names neither the function nor the pull request, so the Issue gave the maintainer nothing to decide on; rounding the mean also raised false regressions |
-| Failing CI on a coverage drop or a complexity rise | The baseline is days old; thresholds are tuned on the history first |
-| qlty as the single tool | It does not measure test durations, flaky tests or CI duration, and its lint layer repeats golangci-lint and ESLint |
+| A history of summarised measures on a `quality-metrics` branch, compared with the previous push | A count or a rounded mean names neither the function nor the pull request, and the history had no reader |
+| An Issue opened when a measure crosses a threshold | The Issue gave the maintainer nothing to decide on; rounding the mean also raised false regressions |
+| A complexity counter of the repository's own | gocyclo counts the same way and already ships with golangci-lint |
+| Collecting CI durations from the GitHub API | The Actions pages already show the duration of every run and job |
+| Failing CI on a coverage drop or a complexity rise | A required number invites code written for the number |
+| qlty as the single tool | It does not measure test durations or flaky tests, and its lint layer repeats golangci-lint and ESLint |
