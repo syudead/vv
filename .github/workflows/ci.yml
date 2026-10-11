@@ -102,9 +102,12 @@ jobs:
           # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
           # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
           # internal/media のテストは ffmpeg と ffprobe が無いと飛ぶ（47 件）ので入れる。
+          # go test は結果をキャッシュし、exec.LookPath で ffmpeg を探したことは結果の
+          # 鍵に入らない。ffmpeg の無い環境で「飛ばした」結果を使い回さないよう、
+          # ビルドキャッシュも ffmpeg のある環境の分として名前を分ける（test-media）。
           - group: go test
             tasks: test-go-report
-            go: test
+            go: test-media
             report: go
             ffmpeg: true
           - group: web lint
@@ -307,8 +310,8 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
-          restore-keys: go-test-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
+          key: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
+          restore-keys: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
       - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         if: needs.changes.outputs.code == 'false'
