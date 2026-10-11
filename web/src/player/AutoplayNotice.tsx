@@ -43,6 +43,7 @@ export function autoplayAnnouncement(title: string): UiText {
  */
 export default function AutoplayNotice({
   next,
+  to = `/videos/${String(next.id)}`,
   backTo,
   takeFocus,
   watchEvents,
@@ -52,6 +53,8 @@ export default function AutoplayNotice({
   onGone,
 }: {
   next: Video;
+  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所（ui-design.md「Notice」）。 */
+  to?: string;
   backTo: string;
   takeFocus: boolean;
   /** 変化の知らせを見張るか。`/api/events` は所有者だけのものなので、ゲストでは偽。 */
@@ -188,7 +191,7 @@ export default function AutoplayNotice({
           </span>
         </div>
         <Link
-          to={`/videos/${String(next.id)}`}
+          to={to}
           state={{ from: backTo }}
           aria-label={videoLinkLabel(next)}
           className="flex items-start gap-3 rounded-md"

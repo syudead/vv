@@ -563,7 +563,7 @@ export function memberLinkLabel(video: Video): string | UiText {
  * - 窓の大きさが変わったら、一覧の usePreviewCoordination と同じくループを解放し、
  *   帯から出たのと同じに戻す（ui-design.md「Responsive」）。
  */
-function useRelatedScrub(video: Video, preview: HoverPreview) {
+export function useRelatedScrub(video: Video, preview: HoverPreview) {
   const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;
   const scrub = useScrubPreview({
     video,

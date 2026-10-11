@@ -1,5 +1,6 @@
 import type { PlaylistItem } from "../api/playlists";
 import { formatDuration } from "../lib/format";
+import { itemStartVideoId, stepPath } from "./playlistPlayback";
 
 // プレイリストの画面が項目から決める規則（specs/044-playlists/ui-design.md「Playlist screen」）。
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
@@ -51,14 +52,10 @@ export interface PlayTarget {
  * （contracts/screen-api.md「Client use」）。中身の無い項目は null。
  */
 export function playTarget(playlistId: number, item: PlaylistItem): PlayTarget | null {
-  const videoId = item.kind === "group" ? item.group?.openVideoId : item.video?.id;
+  const videoId = itemStartVideoId(item);
   if (videoId === undefined) return null;
-  const params = new URLSearchParams({
-    playlist: String(playlistId),
-    item: String(item.id),
-  });
   return {
-    to: `/videos/${String(videoId)}?${params.toString()}`,
+    to: stepPath(playlistId, videoId, item.id),
     state: { from: playlistPath(playlistId), autoplay: true },
   };
 }
