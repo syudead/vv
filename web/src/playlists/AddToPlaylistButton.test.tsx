@@ -32,6 +32,8 @@ interface Server {
   failList?: boolean;
   /** POST …/items の応答を差し替える。 */
   addAnswer?: () => Response;
+  /** 与えると、POST はこれが解決するまで応答しない。 */
+  hold?: Promise<void>;
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -51,31 +53,47 @@ function install(playlists: PlaylistSummary[]): Server {
     if (method === "POST") {
       const body = JSON.parse(String(init?.body)) as unknown;
       server.posts.push({ path, body });
-      if (path === "/api/playlists") {
-        const created = playlist(90, (body as { name: string }).name.trim());
-        server.playlists = [created, ...server.playlists];
-        return Promise.resolve(json(created, 201));
-      }
-      if (server.addAnswer !== undefined) return Promise.resolve(server.addAnswer());
-      return Promise.resolve(json({ added: 1, existing: 0 }));
+      const answer = (): Response => {
+        if (path === "/api/playlists") {
+          const created = playlist(90, (body as { name: string }).name.trim());
+          server.playlists = [created, ...server.playlists];
+          return json(created, 201);
+        }
+        if (server.addAnswer !== undefined) return server.addAnswer();
+        return json({ added: 1, existing: 0 });
+      };
+      return (server.hold ?? Promise.resolve()).then(answer);
     }
     throw new Error(`unexpected request: ${method} ${path}`);
   });
   return server;
 }
 
-function renderButton() {
-  return render(
+function button(videoIds: number[]) {
+  return (
     <TooltipProvider>
       <ToastProvider>
         <AddToPlaylistButton
           variant="page"
           label={t.playlists.add.label}
-          videoIds={[7]}
+          videoIds={videoIds}
         />
       </ToastProvider>
-    </TooltipProvider>,
+    </TooltipProvider>
   );
+}
+
+function renderButton() {
+  return render(button([7]));
+}
+
+/** gate は、開けるまで POST の応答を止めておく門である。 */
+function gate(): { promise: Promise<void>; open: () => void } {
+  let open = () => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
 }
 
 function field() {
@@ -199,5 +217,70 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText("Couldn't load the playlists")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(optionNames()).toEqual(["Tonight"]));
+  });
+
+  it("作成を待つ間に送る動画が変わっても、押したときの動画を足す", async () => {
+    const server = install([]);
+    const held = gate();
+    server.hold = held.promise;
+    const user = userEvent.setup();
+    const view = renderButton();
+    await openPicker(user);
+    await screen.findByText("No playlists yet. Type a name to create one.");
+    await user.type(field(), "Tonight");
+    await user.keyboard("{Enter}");
+    view.rerender(button([7, 8]));
+    held.open();
+    expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
+    expect(server.posts).toEqual([
+      { path: "/api/playlists", body: { name: "Tonight" } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+    ]);
+  });
+
+  it("送っている間に閉じて開き直しても、前の返事は新しいピッカーを閉じず、トーストは出す", async () => {
+    const server = install([playlist(2, "Tonight"), playlist(1, "Anime")]);
+    const held = gate();
+    server.hold = held.promise;
+    const user = userEvent.setup();
+    renderButton();
+    await openPicker(user);
+    await user.click(await screen.findByRole("option", { name: "Tonight" }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const dialog = await openPicker(user);
+    await waitFor(() => expect(optionNames()).toEqual(["Tonight", "Anime"]));
+    // 前の送信を待つ印は、開き直したピッカーに残らない。
+    expect(
+      screen.getByRole("option", { name: "Anime" }).getAttribute("aria-disabled"),
+    ).not.toBe("true");
+    await user.type(field(), "Ani");
+
+    held.open();
+    expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
+    expect(screen.getByRole("dialog", { name: "Add to playlist" })).toBe(dialog);
+    expect(field()).toHaveProperty("value", "Ani");
+  });
+
+  it("送っている間に閉じて開き直したら、前の失敗は新しいピッカーに理由を出さない", async () => {
+    const server = install([playlist(2, "Tonight")]);
+    server.addAnswer = () => json({ code: "not_found", message: "not found" }, 404);
+    const held = gate();
+    server.hold = held.promise;
+    const user = userEvent.setup();
+    renderButton();
+    await openPicker(user);
+    await user.click(await screen.findByRole("option", { name: "Tonight" }));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    const dialog = await openPicker(user);
+    await waitFor(() => expect(optionNames()).toEqual(["Tonight"]));
+    held.open();
+    await held.promise;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(within(dialog).queryByText(/^Couldn't add to the playlist: /)).toBeNull();
+    expect(screen.getByRole("dialog", { name: "Add to playlist" })).toBe(dialog);
   });
 });

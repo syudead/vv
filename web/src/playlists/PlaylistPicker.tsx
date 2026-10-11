@@ -63,6 +63,9 @@ export default function PlaylistPicker({
   const [pending, setPending] = useState<Pending>(null);
   const [failure, setFailure] = useState<UiText | null>(null);
   const loadAbort = useRef<AbortController | null>(null);
+  // 開くたび・閉じるたびに進める。返事が来たときに数が変わっていれば、その送信は閉じた
+  // ピッカーのもので、開き直したピッカーを閉じたり理由を書き換えたりしてはいけない。
+  const session = useRef(0);
 
   const read = useCallback((quiet: boolean) => {
     loadAbort.current?.abort();
@@ -83,10 +86,15 @@ export default function PlaylistPicker({
   // 開くたびに読み直す（別の画面で作ったプレイリストもそこにある）。
   useEffect(() => {
     if (!open) return;
+    session.current += 1;
     setValue("");
     setFailure(null);
+    setPending(null);
     read(false);
-    return () => loadAbort.current?.abort();
+    return () => {
+      session.current += 1;
+      loadAbort.current?.abort();
+    };
   }, [open, read]);
 
   const trimmed = value.trim();
@@ -97,7 +105,11 @@ export default function PlaylistPicker({
   const showCreate = load.status !== "loading" && trimmed !== "" && !exact;
   const blocked = pending !== null || tooLong;
 
+  // 送るものは、この描画の props（videoIds・folders）で決まる。送っている間に選択が
+  // 変わっても、この呼び出しの値は変わらない。
   async function send(target: { id: number; name: string } | { create: string }) {
+    const mine = session.current;
+    const current = () => session.current === mine;
     setFailure(null);
     // 開いている間に選択が増えて上限を超えたら、送らずに理由を出す（「Favorite」と同じ）。
     if (videoIds.length + folders.length > maxVideoTagsSelection) {
@@ -108,14 +120,16 @@ export default function PlaylistPicker({
     try {
       const playlist = "id" in target ? target : await createPlaylist(target.create);
       const result = await addToPlaylist(playlist.id, videoIds, folders);
+      // 足したことは、ピッカーを閉じた後でもトーストで伝える。
       toast(resultText(result, playlist.name));
-      onOpenChange(false);
+      if (current()) onOpenChange(false);
     } catch (error: unknown) {
+      if (!current()) return;
       setFailure(w.failed(errorText(error)));
       // 途中で消されたプレイリストを除き、作った分を足すため、一覧を静かに読み直す。
       read(true);
     } finally {
-      setPending(null);
+      if (current()) setPending(null);
     }
   }
 

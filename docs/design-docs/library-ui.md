@@ -609,7 +609,9 @@ Subtitles use video.js's `vjs-text-track-display`
 Keyboard shortcuts work on the whole screen: video.js components stop key
 propagation, so keys are caught in the capture phase on `window`, passing
 through only keys that operate the focused button or slider. Space, F, M, C
-(subtitles), 0 and Esc are handled.
+(subtitles), 0 and Esc are handled. Keys pressed inside an open popover or
+menu, such as the playlist picker, belong to it: only Esc reaches the page,
+and it closes the popover, not the page.
 
 ### Group members
 
