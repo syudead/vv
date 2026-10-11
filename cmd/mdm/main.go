@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -36,6 +37,14 @@ import (
 // version はリリース名である。ビルド時に
 // -ldflags "-X main.version=…" で上書きできる。
 var version = domain.DefaultVersion
+
+// commit と builtAt は Go がコミット情報を埋められないビルド（.git を持ち込まない
+// Docker イメージ）向けの代わりである。-ldflags "-X main.commit=… -X main.builtAt=…"
+// で渡す。builtAt は RFC 3339 で、vcs.time と同じくコミットの時刻を表す。
+var (
+	commit  string
+	builtAt string
+)
 
 // shutdownGrace は停止指示を受けてから処理中の要求を待つ猶予である。
 const shutdownGrace = 10 * time.Second
@@ -558,26 +567,39 @@ func checkPreconditions(cfg Config) error {
 
 // buildInfo は稼働中のバイナリを特定するための情報を集める。
 // コミットと時刻はビルド時に Go が埋めるため、Taskfile に git の呼び出しは要らない。
+// Go が埋めていない項目だけ、ldflags で渡された commit／builtAt で補う。
 func buildInfo() domain.BuildInfo {
-	info := domain.BuildInfo{Version: version}
+	var settings []debug.BuildSetting
+	if read, ok := debug.ReadBuildInfo(); ok {
+		settings = read.Settings
+	}
+	return resolveBuildInfo(version, commit, builtAt, settings)
+}
+
+// resolveBuildInfo は buildInfo の組み立てを、ビルドに依らず確かめられるよう分けたものである。
+// 空の値や形式の合わない時刻は省く。
+func resolveBuildInfo(release, fallbackCommit, fallbackTime string, settings []debug.BuildSetting) domain.BuildInfo {
+	info := domain.BuildInfo{Version: release}
 	if info.Version == "" {
 		info.Version = domain.DefaultVersion
 	}
 
-	read, ok := debug.ReadBuildInfo()
-	if !ok {
-		return info
-	}
-
-	for _, setting := range read.Settings {
+	vcsCommit, vcsTime := "", ""
+	for _, setting := range settings {
 		switch setting.Key {
 		case "vcs.revision":
-			info.Commit = setting.Value
+			vcsCommit = setting.Value
 		case "vcs.time":
-			if at, err := time.Parse(time.RFC3339, setting.Value); err == nil {
-				info.BuiltAt = at
-			}
+			vcsTime = setting.Value
 		}
+	}
+	if vcsCommit == "" {
+		vcsCommit, vcsTime = fallbackCommit, fallbackTime
+	}
+
+	info.Commit = strings.TrimSpace(vcsCommit)
+	if at, err := time.Parse(time.RFC3339, strings.TrimSpace(vcsTime)); err == nil {
+		info.BuiltAt = at
 	}
 	return info
 }

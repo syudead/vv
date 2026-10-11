@@ -9,6 +9,9 @@ services:
       context: .
       args:
         VERSION: ${VV_VERSION:-dev}
+        # task up が git から求めて渡す。無ければ /api/health は commit / builtAt を省く。
+        COMMIT: ${VV_COMMIT:-}
+        BUILT_AT: ${VV_BUILT_AT:-}
     ports:
       # ホスト側の公開ポートだけを差し替えられる。コンテナ内は 8080 のまま。
       - "${MDM_HOST_PORT:-8080}:8080"
