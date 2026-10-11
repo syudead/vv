@@ -30,16 +30,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 計測は npm の依存のスクリプトと、PR が変えたコードを実行するので、書き込み権限を
+  # 持たせない。同じリポジトリからの依存更新の PR でも、トークンで書き込めないように。
   measure:
     name: Measure
     runs-on: ubuntu-latest
     permissions:
-      # 履歴を quality-metrics ブランチへ push する。
-      contents: write
+      contents: read
       # CI の実行と job の所要時間を読む。
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -65,31 +68,19 @@ jobs:
         working-directory: tools
         run: npm ci
 
-      # 履歴は版管理の main と混ぜないよう、専用のブランチに置く。初回はブランチを作る。
+      # 前回と比べるために履歴を読む（公開リポジトリなので認証なしで取れる）。
+      # 初回はブランチが無いので、比べずに測る。
       - name: 履歴を取り出す
         run: |
+          mkdir -p history
           if git fetch --depth=1 origin quality-metrics; then
-            git worktree add -B quality-metrics history FETCH_HEAD
-          else
-            git worktree add --orphan -b quality-metrics history
+            git show FETCH_HEAD:history.jsonl > history/history.jsonl
           fi
 
       - name: 測る
         env:
           GH_TOKEN: ${{ github.token }}
         run: task quality-metrics -- -history history/history.jsonl -summary "$GITHUB_STEP_SUMMARY"
-
-      - name: 履歴を保存する
-        if: github.event_name != 'pull_request'
-        working-directory: history
-        env:
-          SHA: ${{ github.sha }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add history.jsonl
-          git commit -m "metrics: $(date -u +%F) ${SHA::8}"
-          git push origin HEAD:quality-metrics
 
       - name: 計測の詳細を残す
         if: ${{ !cancelled() }}
@@ -101,3 +92,37 @@ jobs:
             reports/eslint-complexity.json
             reports/jscpd/jscpd-report.json
           retention-days: 90
+
+  # 履歴への追記だけを書き込み権限で行う。npm もリポジトリのコードも実行せず、
+  # 計測が出した 1 行を quality-metrics ブランチの history.jsonl に足す。PR では動かない。
+  save:
+    name: Save history
+    needs: measure
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-metrics
+          path: measured
+
+      - name: 履歴に足す
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          if git fetch --depth=1 origin quality-metrics; then
+            git worktree add -B quality-metrics history FETCH_HEAD
+          else
+            git worktree add --orphan -b quality-metrics history
+          fi
+          cat measured/quality-metrics.json >> history/history.jsonl
+          cd history
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history.jsonl
+          git commit -m "metrics: $(date -u +%F) ${SHA::8}"
+          git push origin HEAD:quality-metrics
