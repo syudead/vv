@@ -113,13 +113,11 @@ component_management:
         - web/src/i18n/**
 
 comment:
+  # 状態と同じく、4 回の送信が揃ってからコメントする（通知とは別の設定）。
+  after_n_builds: 4
   layout: "condensed_header, diff, flags, components, condensed_files"
   # コードを変えた PR には、カバレッジが変わらなくても flag と領域の表を出す。
   require_changes: false
-
-# 変更行のうちテストで通っていない行を、PR の差分に注釈で出す。
-github_checks:
-  annotations: true
 
 # 不安定なテスト（同じ commit で成否が変わるテスト）を見つけて、PR のコメントで知らせる。
 test_analytics:

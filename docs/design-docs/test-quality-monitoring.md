@@ -15,9 +15,7 @@ flowchart LR
   ci -->|coverage, JUnit results| codecov[(Codecov)]
   ci -->|quality jobs: tool output| art[(Run artifacts, 90 days)]
   codecov -->|coverage by flag and component, failed and flaky tests| prc[PR comment]
-  codecov -->|uncovered changed lines| ann[PR diff annotations]
   prc --> author[PR author]
-  ann --> author
 ```
 
 ## Measures and where they are kept
@@ -52,7 +50,6 @@ fails when a behaviour breaks.
 | Flags `go` (`cmd/`, `internal/`) and `web` (`web/src/`) | A project and a patch status per flag, so a drop names the side it happened on |
 | Components | Coverage by the layers of [ARCHITECTURE.md](../../ARCHITECTURE.md) and the directories of `web/src`, in the comment |
 | `require_changes: false` | The comment with the flag, component and file tables, even when coverage does not move |
-| `github_checks.annotations` | Changed lines that no test runs, marked in the diff |
 | `test_analytics.flake_detection` | Failed and flaky tests named in the comment |
 
 A run uploads coverage four times, once from `go test` and once from each of
@@ -60,8 +57,11 @@ the three Vitest shards, and Codecov waits for all four (`after_n_builds: 4`)
 before it comments or sets a status; with fewer it would compare a partial
 report. A flag whose upload is missing carries its last coverage forward
 instead of counting as zero. A newer push cancels a running CI run on a pull
-request but not on `main`, so every commit on `main` uploads its coverage and
-its E2E results, and a pull request always has a base to compare with.
+request; on `main` each commit runs in its own concurrency group, so no run is
+cancelled or replaced while it waits, every commit on `main` uploads its
+coverage and its E2E results, and a pull request always has a base to compare
+with. Codecov's line annotations in the diff are left off, because they do not
+work once flags or components are configured.
 
 | Rejected | Why |
 | --- | --- |

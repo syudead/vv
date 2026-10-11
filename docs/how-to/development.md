@@ -92,8 +92,8 @@ which also write coverage and JUnit test results under `reports/`. CI uploads
 them to [Codecov](https://app.codecov.io/gh/syudead/vv), together with the E2E
 results of a push to `main`, even when a test fails. On each pull request that
 changes code, Codecov comments the coverage by `go` and `web` flag, by component
-and by file, names failed and flaky tests, marks changed lines that no test runs
-and sets informational statuses per flag, without blocking the merge
+and by file, names failed and flaky tests and sets informational statuses per
+flag, without blocking the merge
 ([`.github/codecov.yml`](../../.github/codecov.yml)). A newer push cancels a
 running CI run on a pull request but not on `main`, so every commit on `main`
 reaches Codecov. The upload authenticates
