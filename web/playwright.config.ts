@@ -24,11 +24,18 @@ export default defineConfig({
   workers: 1,
   outputDir: path.join(webRoot, "test-results"),
   // CI では JUnit の結果も reports/ に書き、ci.yml が Codecov へ送る。
+  // includeRetries が無いと、リトライで通ったテストは成功だけが残り、不安定だと分からない。
   reporter: process.env.CI
     ? [
         ["html", { open: "never" }],
         ["list"],
-        ["junit", { outputFile: path.join(repoRoot, "reports", "e2e-junit.xml") }],
+        [
+          "junit",
+          {
+            outputFile: path.join(repoRoot, "reports", "e2e-junit.xml"),
+            includeRetries: true,
+          },
+        ],
       ]
     : "list",
   use: {
