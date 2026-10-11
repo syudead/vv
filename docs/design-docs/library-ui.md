@@ -365,7 +365,8 @@ state, so the heart stays nearest the corner
 ### List view and selection
 
 List view (library only) shows title, favorite (owner), add to playlist
-(owner), watched, duration, quality, size and date added. A group row uses the
+(owner, from `sm`; below it the card and the selection bar offer it), watched,
+duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
 title, `3 / 12` watched, total duration and size, empty quality
 ([017 UI design, List view row](../../specs/017-folder-groups/ui-design.md)).

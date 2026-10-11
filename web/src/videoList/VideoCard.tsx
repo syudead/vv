@@ -505,9 +505,9 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           <VideoFavorite video={video} variant="row" />
         </TableCell>
       )}
-      {/* 足す操作はお気に入りの列の直後の列（specs/044-playlists/ui-design.md）。 */}
+      {/* 足す操作はお気に入りの列の直後の列で、sm 未満では列ごと隠す（specs/044-playlists/ui-design.md）。 */}
       {owner && (
-        <TableCell className="w-8 px-0">
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToPlaylist video={video} variant="row" />
         </TableCell>
       )}

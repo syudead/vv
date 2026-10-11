@@ -255,12 +255,25 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
     ).toBeDefined();
     expect(trigger.className).toContain("size-6");
     expect(trigger.className).toContain("text-muted-foreground");
-    expect(
-      screen.getByRole("button", { name: 'Add group "series" to a playlist' }),
-    ).toBeDefined();
+    const groupCell = screen
+      .getByRole("button", { name: 'Add group "series" to a playlist' })
+      .closest("td") as HTMLElement;
     // 見出しの列の数は行と同じ。
-    const headCells = screen.getAllByRole("columnheader").length;
-    expect(trigger.closest("tr")?.children).toHaveLength(headCells);
+    const heads = screen.getAllByRole("columnheader");
+    const row = trigger.closest("tr") as HTMLElement;
+    expect(row.children).toHaveLength(heads.length);
+    // 360px で長さの列を表から押し出さないよう、sm 未満では見出しごと列を隠す
+    // （specs/044-playlists/ui-design.md「Add to playlist」）。
+    const head = heads[Array.from(row.children).indexOf(cell)] as HTMLElement;
+    for (const element of [cell, groupCell, head]) {
+      expect(element.className.split(" ")).toEqual(
+        expect.arrayContaining(["hidden", "sm:table-cell"]),
+      );
+    }
+    // お気に入りの列は sm 未満でも残る。
+    expect((cell.previousElementSibling as HTMLElement).className).not.toContain(
+      "hidden",
+    );
 
     await user.click(trigger);
     await choose(user);

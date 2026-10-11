@@ -319,7 +319,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         </TableCell>
       )}
       {owner && (
-        <TableCell className="w-8 px-0">
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
           <GroupAddToPlaylist group={group} variant="row" />
         </TableCell>
       )}
