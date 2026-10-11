@@ -9,6 +9,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import PlaylistPage from "./PlaylistPage";
+import { itemTitle } from "./playlistItems";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
@@ -66,6 +67,8 @@ const server = {
   items: [] as PlaylistItem[],
   getStatus: 200,
   getCalls: 0,
+  /** 置くと、GET は送られた時点の内容をこれが解けてから返す。 */
+  getHold: null as Promise<void> | null,
   moves: [] as { itemId: number; afterItemId: number | null }[],
   moveStatus: 204,
   removes: [] as number[],
@@ -81,16 +84,17 @@ function install() {
     const method = init?.method ?? "GET";
     if (url === "/api/playlists/7" && method === "GET") {
       server.getCalls += 1;
-      if (server.getStatus !== 200) return Promise.resolve(failure(server.getStatus));
-      return Promise.resolve(
-        json({
-          id: 7,
-          name: server.name,
-          itemCount: server.items.length,
-          updatedAt: "2026-09-01T00:00:00Z",
-          items: server.items,
-        }),
-      );
+      const response =
+        server.getStatus !== 200
+          ? failure(server.getStatus)
+          : json({
+              id: 7,
+              name: server.name,
+              itemCount: server.items.length,
+              updatedAt: "2026-09-01T00:00:00Z",
+              items: server.items,
+            });
+      return (server.getHold ?? Promise.resolve()).then(() => response);
     }
     const move = /^\/api\/playlists\/7\/items\/(\d+)\/move$/.exec(url);
     if (move !== null && method === "POST") {
@@ -165,6 +169,23 @@ function renderPage() {
   );
 }
 
+/** hold は GET の応答を止め、解く関数を返す。 */
+function hold(): () => void {
+  let release: () => void = () => undefined;
+  server.getHold = new Promise<void>((done) => {
+    release = done;
+  });
+  return () => {
+    server.getHold = null;
+    release();
+  };
+}
+
+/** serverNames は今のサーバーの並びを行の読み上げ名で返す。 */
+function serverNames(): string[] {
+  return server.items.map((item) => `Play from ${itemTitle(item)}`);
+}
+
 /** rowNames は表の行のリンクの読み上げ名を上から返す。 */
 function rowNames(): string[] {
   const table = screen.getByRole("table", { name: "Items" });
@@ -216,6 +237,7 @@ beforeEach(() => {
   ];
   server.getStatus = 200;
   server.getCalls = 0;
+  server.getHold = null;
   server.moves = [];
   server.moveStatus = 204;
   server.removes = [];
@@ -321,6 +343,60 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
       "Play from Series",
       "Play from Video 13",
     ]);
+  });
+
+  it("移動の 404 で読み直す間は次の移動を送らず、読んだ並びとサーバーの並びが合う", async () => {
+    layoutRows();
+    server.moveStatus = 404;
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+
+    const release = hold();
+    screen.getByRole("button", { name: 'Reorder "Video 11"' }).focus();
+    await user.keyboard("[Space]");
+    await user.keyboard("[ArrowDown]");
+    await user.keyboard("[Space]");
+    await waitFor(() => expect(server.getCalls).toBe(2));
+    server.moveStatus = 204;
+
+    // 読み直しが答える前に、もう 1 つ動かす。
+    screen.getByRole("button", { name: 'Reorder "Video 13"' }).focus();
+    await user.keyboard("[Space]");
+    await user.keyboard("[ArrowUp]");
+    await user.keyboard("[ArrowUp]");
+    await user.keyboard("[Space]");
+    expect(server.moves).toEqual([{ itemId: 1, afterItemId: 2 }]);
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(rowNames()).toEqual(serverNames()));
+    expect(server.moves).toEqual([{ itemId: 1, afterItemId: 2 }]);
+  });
+
+  it("移動の 404 の後の読み直しに失敗したら、Retry で読み直す", async () => {
+    layoutRows();
+    server.moveStatus = 404;
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+
+    server.getStatus = 500;
+    screen.getByRole("button", { name: 'Reorder "Video 11"' }).focus();
+    await user.keyboard("[Space]");
+    await user.keyboard("[ArrowDown]");
+    await user.keyboard("[Space]");
+
+    expect(await screen.findByText("Couldn't load the playlist")).toBeDefined();
+    expect(screen.queryByRole("table", { name: "Items" })).toBeNull();
+    server.getStatus = 200;
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Retry" }));
+    });
+    await screen.findByRole("table", { name: "Items" });
+    expect(rowNames()).toEqual(serverNames());
   });
 
   it("項目を外すとその行がなくなり、番号を詰めて、次の行の × へフォーカスを移す", async () => {
@@ -467,6 +543,32 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     await waitFor(() => expect(server.getCalls).toBe(2));
     await waitFor(() =>
       expect(rowNames()).toEqual(["Play from Video 11", "Play from Video 13"]),
+    );
+  });
+
+  it("読み直しの間に外せた項目は、古い応答でも行に戻さない", async () => {
+    server.removeStatus = 404;
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+
+    const release = hold();
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Series" from the playlist' }),
+    );
+    await waitFor(() => expect(server.getCalls).toBe(2));
+    server.removeStatus = 204;
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Video 13" from the playlist' }),
+    );
+    await waitFor(() => expect(rowNames()).not.toContain("Play from Video 13"));
+
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(rowNames()).toEqual(["Play from Video 11", "Play from Series"]),
     );
   });
 

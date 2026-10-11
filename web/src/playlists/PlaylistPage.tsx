@@ -92,6 +92,10 @@ const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
  * 開いたとき、移動か外すの `404` の後に読み、自分では取り直さない（research.md R-10）。
  * 並べ替えは置いたときに番号を変えてから `move` を 1 回送る。送る要求は置いた順に 1 つずつ
  * 送り、失敗したらサーバーが最後に認めた並びへ戻す（ui-design.md「Reordering」）。
+ *
+ * 読み直しは移動と同じ鎖に並べる。送った移動が答えるまで読まず、読み終えるまで次の移動を
+ * 送らないので、読んだ並びがどの移動より古いということがない。読み直しを決めた時点で
+ * 待っている移動は古い並びに対するものなので捨てる。
  */
 export default function PlaylistPage() {
   const params = useParams();
@@ -114,6 +118,8 @@ export default function PlaylistPage() {
   const moves = useRef<Promise<void>>(Promise.resolve());
   const generation = useRef(0);
   const fetching = useRef<AbortController | null>(null);
+  /** 読み直しを送った後に外せた項目。読んだ応答がその削除より古くても行に戻さない。 */
+  const removedSinceRead = useRef(new Set<number>());
   const titleRef = useRef<HTMLHeadingElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
   const removeButtons = useRef(new Map<number, HTMLButtonElement>());
@@ -123,36 +129,55 @@ export default function PlaylistPage() {
     setPage(next);
   }, []);
 
-  const load = useCallback(() => {
-    if (id === null) return;
+  const load = useCallback((): Promise<void> => {
+    if (id === null) return Promise.resolve();
     fetching.current?.abort();
     const controller = new AbortController();
     fetching.current = controller;
-    getPlaylist(id, controller.signal).then(
+    removedSinceRead.current = new Set();
+    return getPlaylist(id, controller.signal).then(
       (playlist) => {
         if (controller.signal.aborted) return;
         fetching.current = null;
         // 読み直した並びが新しい基準になる。待っている移動は古い並びに対するものなので捨てる。
         generation.current += 1;
-        confirmed.current = playlist.items;
-        showPage({ kind: "ready", name: playlist.name, items: playlist.items });
+        const items = playlist.items.filter(
+          (item) => !removedSinceRead.current.has(item.id),
+        );
+        confirmed.current = items;
+        showPage({ kind: "ready", name: playlist.name, items });
       },
       (error: unknown) => {
         if (isAborted(error) || controller.signal.aborted) return;
         fetching.current = null;
+        generation.current += 1;
         if (error instanceof RequestFailed && error.status === 404) {
           showPage({ kind: "gone" });
           return;
         }
-        // 読み直しの失敗では、今の行を残す。
-        if (pageRef.current.kind !== "ready") showPage({ kind: "failed" });
+        // 読み直しの失敗も読み込みの失敗として Retry を出す（ui-design.md「States」）。
+        // 古いかもしれない行を残すと、サーバーが退けた並びを認めたように見せる。
+        showPage({ kind: "failed" });
       },
     );
   }, [id, showPage]);
 
+  /** reread は待っている移動を捨て、送った移動が答えてから読み直す。 */
+  const reread = useCallback(() => {
+    generation.current += 1;
+    const ticket = generation.current;
+    moves.current = moves.current.then(() =>
+      ticket === generation.current ? load() : undefined,
+    );
+  }, [load]);
+
   useEffect(() => {
-    load();
-    return () => fetching.current?.abort();
+    void load();
+    return () => {
+      // 鎖で待っている移動と読み直しも、画面を離れたら送らない。
+      generation.current += 1;
+      fetching.current?.abort();
+    };
   }, [load]);
 
   const documentName = page.kind === "ready" ? page.name : t.playlists.documentTitle;
@@ -190,7 +215,7 @@ export default function PlaylistPage() {
 
   function retry() {
     showPage({ kind: "loading" });
-    load();
+    reread();
   }
 
   function dragEnd(event: DragEndEvent) {
@@ -210,11 +235,11 @@ export default function PlaylistPage() {
         confirmed.current = moveItem(confirmed.current, itemId, afterItemId);
       } catch (error) {
         if (ticket !== generation.current) return;
-        generation.current += 1;
         if (error instanceof RequestFailed && error.status === 404) {
-          load();
+          reread();
           return;
         }
+        generation.current += 1;
         setItems(confirmed.current);
         toast(t.playlists.item.moveFailed(errorText(error)));
       }
@@ -233,6 +258,7 @@ export default function PlaylistPage() {
     removePlaylistItem(id, item.id).then(
       () => {
         done();
+        removedSinceRead.current.add(item.id);
         const current = pageRef.current;
         if (current.kind !== "ready") return;
         const target = focusAfterRemove(current.items, item.id);
@@ -243,7 +269,7 @@ export default function PlaylistPage() {
       (error: unknown) => {
         done();
         if (error instanceof RequestFailed && error.status === 404) {
-          load();
+          reread();
           return;
         }
         toast(t.playlists.item.removeFailed(errorText(error)));
