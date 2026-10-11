@@ -100,6 +100,13 @@ function leftAsIs(count: number, kind: "confirmed" | "tentative"): string {
   });
 }
 
+function playlistCount(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} playlist`,
+    other: `${formatNumber(count)} playlists`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -1432,6 +1439,36 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
+  // プレイリスト（specs/044-playlists/ui-design.md「Words」）。
+  playlists: {
+    title: "Playlists",
+    documentTitle: "Playlists",
+    table: "Playlists",
+    columns: {
+      name: "Name",
+      items: "Items",
+      updated: "Updated",
+    },
+    // 一覧の行のリンクの読み上げ名（「Morning, 3 items」）。
+    rowLabel: (name: string, count: number) => `${name}, ${items(count)}`,
+    items,
+    count: playlistCount,
+    new: "New playlist",
+    newDialog: {
+      title: "New playlist",
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the playlist: ${reason}`,
+    },
+    nameLabel: "Name",
+    nameRule: "Use a name of 1 to 100 characters.",
+    empty: {
+      title: "No playlists yet",
+      description:
+        "Create a playlist, then add videos and groups to it from the library.",
+    },
+    loadFailed: "Couldn't load the playlists",
+  },
   tagName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
@@ -1482,6 +1519,7 @@ export const en = {
       folders: "Folders",
       tags: "Tags",
       history: "History",
+      playlists: "Playlists",
       duplicates: "Duplicates",
       settings: "Settings",
       login: "Sign in",

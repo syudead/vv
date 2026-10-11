@@ -96,6 +96,8 @@ describe("AuthGate", () => {
     ["/duplicates", "/login?next=%2Fduplicates"],
     ["/history", "/login?next=%2Fhistory"],
     ["/history?watch=watched", "/login?next=%2Fhistory%3Fwatch%3Dwatched"],
+    ["/playlists", "/login?next=%2Fplaylists"],
+    ["/playlists/7", "/login?next=%2Fplaylists%2F7"],
     ["/settings?tab=a", "/login?next=%2Fsettings%3Ftab%3Da"],
     ["/setup", "/"],
   ])("guest で %s を開くと %s へ置き換える", async (path, expected) => {
