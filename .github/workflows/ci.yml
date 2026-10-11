@@ -191,9 +191,11 @@ jobs:
         run: task $TASKS
 
       # テストが落ちた実行の結果こそ、不安定なテストを見つける材料になるので、
-      # 失敗しても送る。Codecov が受け付けなくても検査自体は落とさない。
+      # 失敗しても送る。Codecov が受け付けなくても、OIDC のトークンが取れなくても
+      # （Action が例外で止まり fail_ci_if_error: false では防げない）検査自体は落とさない。
       - name: テスト結果をCodecovへ送る
         if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           use_oidc: true
@@ -205,6 +207,7 @@ jobs:
 
       - name: カバレッジをCodecovへ送る
         if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           use_oidc: true
@@ -403,6 +406,7 @@ jobs:
       # 1 回のリトライで通ったテストも結果に残るので、不安定なテストが Codecov で見える。
       - name: テスト結果をCodecovへ送る
         if: ${{ !cancelled() }}
+        continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           use_oidc: true
