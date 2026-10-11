@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -38,7 +39,13 @@ import PlaylistLine from "./PlaylistLine";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio } from "./aspect";
-import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
+import {
+  autoplayRequested,
+  backTarget,
+  linkStateFrom,
+  resumePosition,
+  videoTrail,
+} from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
 import StallWarning from "./StallWarning";
@@ -62,6 +69,7 @@ import VideoPlayer, {
 import AutoTagButton from "./AutoTagButton";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
+import { usePreviousVideo } from "./usePreviousVideo";
 import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
 
@@ -90,6 +98,10 @@ export default function VideoPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
+  // 動画詳細画面の間で移ってきた道筋。最後が直前に見ていた動画である（issue 931）。
+  const trail = useMemo(() => videoTrail(location.state), [location.state]);
+  // この画面から別の動画へ移るリンクに載せる状態。
+  const linkState = useMemo(() => linkStateFrom(backTo, trail, id), [backTo, trail, id]);
   // ゲストには所有者のデータ（タグ・ファイルの場所・再生位置）と所有者だけの操作
   // （読み取りのやり直し・既定アプリで開く）を出さない
   // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
@@ -107,6 +119,7 @@ export default function VideoPage() {
   const {
     state: relatedState,
     retry: retryRelated,
+    loadMore: loadMoreRelated,
     rename: renameRelated,
     rethumb: rethumbRelated,
   } = useRelatedVideos(id);
@@ -181,13 +194,14 @@ export default function VideoPage() {
   }
 
   // 「次を再生」の自動再生は 1 回だけ使う。再読み込みや履歴の戻りで再生を始めない。
+  // 見てきた道筋は残す。
   useEffect(() => {
     if (!autoplayRequested(location.state)) return;
     void navigate(
       { pathname: location.pathname, search: location.search },
-      { replace: true, state: { from: backTo } },
+      { replace: true, state: { from: backTo, trail } },
     );
-  }, [backTo, location.pathname, location.search, location.state, navigate]);
+  }, [backTo, location.pathname, location.search, location.state, navigate, trail]);
 
   const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
 
@@ -313,22 +327,26 @@ export default function VideoPage() {
   }, [id, refresh]);
 
   // グループのメンバーなら、前後はグループの中の並びで、題名はメンバーの並びから引く
-  // （関連動画の items は同じグループのメンバーを含まない）。
+  // （関連動画の items は同じグループのメンバーを含まない）。グループに属さない動画の次は
+  // 関連動画の並びの先頭で、前は直前に見ていた動画である（issue 931）。
   const neighbors = related.kind === "ready" ? related.related : undefined;
   const group = neighbors?.group;
   const findVideo = (targetId: number) =>
     (group?.items ?? neighbors?.items)?.find((item) => item.id === targetId);
   const nextVideo =
     neighbors?.nextId !== undefined ? findVideo(neighbors.nextId) : undefined;
+  // 直前に見ていた動画は、まだ見られると確かめられたときだけ ‹ にする。
+  const previousVideo = usePreviousVideo(trail.at(-1));
 
   const playNext = () => {
     if (nextVideo === undefined) return;
     void navigate(`/videos/${String(nextVideo.id)}`, {
-      state: { from: backTo, autoplay: true },
+      state: { ...linkState, autoplay: true },
     });
   };
 
   // 左右の端の前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
+  const keepPlaying = status.playing || status.ended;
   const neighbor = (targetId: number | undefined) =>
     targetId === undefined
       ? undefined
@@ -336,9 +354,28 @@ export default function VideoPage() {
           title: findVideo(targetId)?.title,
           go: () =>
             void navigate(`/videos/${String(targetId)}`, {
-              state: { from: backTo, autoplay: status.playing || status.ended },
+              state: { ...linkState, autoplay: keepPlaying },
             }),
         };
+  // ‹ で直前の動画へ戻るときは、道筋からその動画を外す。もう一度 ‹ を押すとさらに前へ戻る。
+  const previousNeighbor =
+    neighbors === undefined
+      ? undefined
+      : group !== undefined
+        ? neighbor(neighbors.prevId)
+        : previousVideo === undefined
+          ? undefined
+          : {
+              title: previousVideo.title,
+              go: () =>
+                void navigate(`/videos/${String(previousVideo.id)}`, {
+                  state: {
+                    from: backTo,
+                    trail: trail.slice(0, -1),
+                    autoplay: keepPlaying,
+                  },
+                }),
+            };
 
   // --- プレイリストの文脈 ---
   // 文脈がある間は、矢印・予告・終わりが再生の応答に従い、関連動画の nextId・prevId は
@@ -361,7 +398,7 @@ export default function VideoPage() {
     inPlaylist && status.ended && playlist.settledKey !== playlistReadKey;
   const goStep = (step: PlaylistStep, autoplay: boolean) =>
     void navigate(stepPath(playlistId, step.video.id, step.itemId), {
-      state: { from: backTo, autoplay },
+      state: { ...linkState, autoplay },
     });
   const playlistNext = playback?.next;
   const playNextStep = () => {
@@ -436,7 +473,7 @@ export default function VideoPage() {
         key={`${pageKey}:${String(playlistNext.itemId)}:${String(playlist.settledKey)}`}
         next={playlistNext.video}
         to={stepPath(playlistId, playlistNext.video.id, playlistNext.itemId)}
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         watchEvents={owner}
         onCancel={cancelAutoplay}
@@ -451,7 +488,7 @@ export default function VideoPage() {
       <EndedOverlay
         next={playlistNext.video}
         to={stepPath(playlistId, playlistNext.video.id, playlistNext.itemId)}
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
         onPlayNext={playNextStep}
@@ -470,7 +507,7 @@ export default function VideoPage() {
       <AutoplayNotice
         key={`${String(id)}:${String(nextVideo.id)}`}
         next={nextVideo}
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         watchEvents={owner}
         onCancel={cancelAutoplay}
@@ -488,7 +525,7 @@ export default function VideoPage() {
             ? undefined
             : nextVideo
         }
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
         onPlayNext={playNext}
@@ -546,7 +583,7 @@ export default function VideoPage() {
     playlist.status === "ready" && playback !== undefined && inGroupItem
       ? (memberId) => ({
           to: stepPath(playlistId, memberId, playback.itemId),
-          state: { from: backTo, autoplay: status.playing || status.ended },
+          state: { ...linkState, autoplay: status.playing || status.ended },
         })
       : undefined;
   const skippedTitle =
@@ -570,11 +607,11 @@ export default function VideoPage() {
     toast(t.player.playlist.skipped(skippedTitle));
     void navigate(stepPath(playlistId, next.video.id, next.itemId), {
       replace: true,
-      state: { from: backTo, autoplay: true },
+      state: { ...linkState, autoplay: true },
     });
   }, [
     attempt.autoplay,
-    backTo,
+    linkState,
     navigate,
     pageKey,
     playback,
@@ -665,7 +702,7 @@ export default function VideoPage() {
               showPlayer &&
               !inPlaylist && (
                 <NeighborArrows
-                  previous={neighbor(neighbors?.prevId)}
+                  previous={previousNeighbor}
                   next={neighbor(neighbors?.nextId)}
                   visible={chromeVisible || status.ended}
                   container={fullscreenFrame}
@@ -706,13 +743,19 @@ export default function VideoPage() {
               )}
               <RelatedVideos
                 state={related}
-                backTo={backTo}
+                linkState={linkState}
                 onRetry={retryRelated}
+                onLoadMore={loadMoreRelated}
                 memberTarget={memberTarget}
               />
             </>
           ) : (
-            <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
+            <RelatedVideos
+              state={related}
+              linkState={linkState}
+              onRetry={retryRelated}
+              onLoadMore={loadMoreRelated}
+            />
           )
         }
       >

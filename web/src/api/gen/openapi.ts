@@ -248,15 +248,19 @@ export interface paths {
         };
         /**
          * 関連動画を返す
-         * @description 代表の所在と同じディレクトリ直下の動画を、ファイル名の自然順でこの動画より
-         *     後のもの、前のものの順に並べ、足りない分を追加日時の差が小さい順（差が同じなら
-         *     id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
-         *     順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
-         *     小さい方を先にする。
-         *     この動画がグループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本の
-         *     メンバーの窓を載せ、nextId・prevId をグループの中の並びにし、同じグループのメンバーを
-         *     除いてから並べる（specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外の
-         *     メンバーは `listVideoGroupMembers` で読む。
+         * @description 見る人に見せる動画を、この動画との近さの点が高い順に、`cursor` の後から最大 `limit` 件
+         *     返す。この動画自身、同じ動画の別バージョン（集まりの代表以外）、同じグループのメンバーは
+         *     含めない。点は映像の指紋で似た場面が共通する割合（満点 40）、タグの一致率（30）、題名・
+         *     ファイル名の数字を除いた語の重なり（25）、同じディレクトリの直下（20）、追加日時の近さ
+         *     （5）の合計で、同点なら追加日時の新しい方、それも同じなら id の大きい方を先にする
+         *     （docs/design-docs/related-videos.md）。件数に上限は無く、`nextCursor` を `cursor` に
+         *     渡して続きを読む。続きは返した位置より後の動画だけなので、読む間に動画が足されたり
+         *     消えたりしても、同じ動画が二重に出ない。
+         *     `cursor` を付けない最初の要求だけが `nextId`・`prevId`・`group` を持つ。この動画が
+         *     グループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を
+         *     載せ、nextId・prevId をグループの中の並びにする
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外のメンバーは
+         *     `listVideoGroupMembers` で読む。
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -2912,20 +2916,23 @@ export interface components {
         };
         RelatedVideos: {
             /**
-             * @description 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
-             *     並べ、上限を掛ける
+             * @description 関連動画の近さの順の 1 ページ。基準の動画がグループのメンバーなら、同じグループの
+             *     メンバーを除いてから並べる
              */
             items: components["schemas"]["Video"][];
+            /** @description 続きを読むときに `cursor` へ渡す値。並びの終わりまで返したら省く */
+            nextCursor?: string;
             /**
              * Format: int64
              * @description 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
-             *     そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
+             *     そうでなければ関連動画の並びの先頭。無ければ省く。`cursor` を付けた要求では省く
              */
             nextId?: number;
             /**
              * Format: int64
-             * @description 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
-             *     そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+             * @description グループの中の並びの前の動画（最初のメンバーでは省く）。グループに属さない動画では
+             *     省き、画面が直前に見ていた動画を前の動画にする。`cursor` を付けた要求では省く。
+             *     items に入るとは限らない
              */
             prevId?: number;
             group?: components["schemas"]["RelatedGroup"];
@@ -3582,7 +3589,12 @@ export interface operations {
     };
     getRelatedVideos: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 前の応答の `nextCursor`。省くと先頭から返す */
+                cursor?: string;
+                /** @description 返す件数の上限 */
+                limit?: number;
+            };
             header?: never;
             path: {
                 /** @description 動画の識別子 */

@@ -1,6 +1,6 @@
 ---
 source: specs/012-video-detail-ia/ui-design.md
-sourceHash: f69f0cdeafbd2c8b5e5270202b8b294e56fb8e87cb1fcec0037d5b774def33f8
+sourceHash: dee332adc099091e62d77eec8202003c0208e572d8cffe16e7b2dd2fa1419ac6
 ---
 
 # UI 設計: 動画詳細画面の情報構造 {#ui-design-information-architecture-of-the-video-detail-screen}
@@ -165,7 +165,7 @@ Tailwind の標準ブレークポイントだけを使い、切り替えは CSS 
 
 ### 前後の矢印 {#neighbor-arrows}
 
-- 前後の動画へ移動するハンドルは、プレーヤーの左右の端に接して置く。左 (lucide `ChevronLeft`) は同じフォルダの自然順で前の動画、右 (`ChevronRight`) は次の動画へ進む。
+- 前後の動画へ移動するハンドルは、プレーヤーの左右の端に接して置く。左 (lucide `ChevronLeft`) は直前に見た動画へ戻り、右 (`ChevronRight`) は関連動画の一覧の先頭へ進む ([関連動画、Previous and next video](../../docs/design-docs/related-videos.md#previous-and-next-video))。
 - 動画を隠さないよう幅を狭くし、押しやすいよう高さを持たせる。
 
   | 幅 | ハンドルの大きさ |

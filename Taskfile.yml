@@ -216,12 +216,38 @@ tasks:
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
+  # 複雑度と重複を、各ツールの出力のまま指標ごとに reports/quality/<指標>/ に残す。
+  # CI は指標ごとの job で並列に流し、artifact に残す（.github/workflows/ci.yml の quality）。
   quality-metrics:
-    desc: Measure cyclomatic complexity, duplication and CI durations, and print a Markdown summary (CI runs it weekly).
-    # 後ろの引数は scripts/qualitymetrics へ渡す（-ci-runs 0 で CI の所要時間を飛ばす、
-    # -history で履歴と比べて追記する）。web と tools の npm 依存を使う。
+    desc: Write the complexity of every function and the duplicated code under reports/quality/.
+    deps: [complexity-go, complexity-web, duplication]
+
+  complexity-go:
+    desc: Write the cyclomatic complexity of every Go function (gocyclo) to reports/quality/complexity-go/.
+    vars:
+      GOCYCLO:
+        sh: go -C tools tool -n gocyclo
     cmds:
-      - go run ./scripts/qualitymetrics {{.CLI_ARGS}}
+      - mkdir -p reports/quality/complexity-go
+      # 生成コードとテストは手で書いたコードの複雑さではないので外す。
+      - '"{{.GOCYCLO}}" -avg -ignore "(^|/)(gen|extgen|node_modules|worktrees|reports|testdata|\.claude|\.local)/|_test\.go$" . > reports/quality/complexity-go/gocyclo.txt'
+
+  complexity-web:
+    desc: Write the cyclomatic complexity of every Web function (the ESLint complexity rule) to reports/quality/complexity-web/.
+    cmds:
+      - mkdir -p reports/quality/complexity-web
+      # complexity の上限を 0 にして、web/src のすべての関数の値を出させる。
+      - 'cd web && npx eslint --rule "complexity: [warn, 0]" --format json --output-file ../reports/quality/complexity-web/eslint.json src'
+
+  duplication:
+    desc: Write the duplicated Go and Web code (jscpd) to reports/quality/duplication/.
+    # tools の npm 依存を使う。
+    cmds:
+      - >-
+        node tools/node_modules/jscpd/bin/jscpd .
+        --format go,typescript,tsx,javascript
+        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,translations/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
+        --gitignore --reporters json --output reports/quality/duplication --silent
 
   # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
   # 時間がかかるので task check には入れず、CI は月に 1 回流す

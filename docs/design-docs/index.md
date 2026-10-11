@@ -36,6 +36,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [AI layer: classifier port and providers](ai-layer.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
+- [Related videos and the previous and next video](related-videos.md)
 - [Screen text and formatting (i18n)](i18n.md)
 - [Web test levels](web-testing.md)
 - [Test and CI quality monitoring](test-quality-monitoring.md)

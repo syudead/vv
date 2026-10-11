@@ -91,9 +91,9 @@ function.
 
 | Read | Where the condition is today |
 | --- | --- |
-| `ListVideos`, `ListFolderVideos`, `DirectVideoPaths` | `locationScope.condition` in `listing.go` |
+| `ListVideos`, `ListFolderVideos` | `locationScope.condition` in `listing.go` |
 | `GetVideo` | `registeredVideoCondition` and the subquery in `videoColumns` in `videos.go` |
-| `VideosAddedNear`, `VideosByIDs` | `related.go` |
+| `RelatedCandidates`, `VideosByIDs` | `related.go` |
 | `FolderLocations`, `HasFolderLocations` | `folders.go` |
 
 The condition functions used by import, jobs and tag counts (`videos.go`,

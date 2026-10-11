@@ -189,7 +189,7 @@ type VideoCatalog interface {
 	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
-	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error)
+	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
 	// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す。
 	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
 	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error)

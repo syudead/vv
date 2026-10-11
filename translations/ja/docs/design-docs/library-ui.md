@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d6a86f56027141eeeb4204a0a55fc2150cfec241eb9324eded0bf112acacdb29
+sourceHash: 0b9ae3d42f7125404c3a320dc1f0b783a7727618d7cd7c1cabcd55cbaf8c396d
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -281,7 +281,7 @@ flowchart LR
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
 | タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
 | 公開範囲の切り替え | 錠か地球のアイコン付きの `Private` か `Public`。`role="switch"` を持つ `Button` で、タイトルのまとまりの下、情報の行の上に置く |
-| 関連動画 | 小さな見出しの下の素の行。周りにカードを置かない |
+| 関連動画 | 小さな見出しの下の素の行。周りにカードを置かず、近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md)) |
 | ゲスト | タグ、公開範囲の切り替え、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
 幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。

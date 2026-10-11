@@ -98,21 +98,16 @@ with GitHub OIDC, so the repository needs no Codecov token, but it must be
 activated once on codecov.io by signing in with GitHub and installing the
 Codecov GitHub App. A failed upload does not fail the check.
 
-After each successful CI run on a push to `main`, the `Quality metrics` workflow
-([`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml))
-runs `task quality-metrics`, which measures the cyclomatic complexity of every
-Go function (`go/ast`) and Web function (the ESLint `complexity` rule), the
-duplicated lines that jscpd finds, and the p50 and p90 durations of the last 20
-successful CI runs on `main` and of each of their jobs. It appends the
-measurement to `history.jsonl` on the `quality-metrics` branch, writes a
-Markdown table with the change since the previous push to the run's summary,
-and comments on the Issue labelled `quality-regression` when a measure got worse
-([Test and CI quality monitoring](../design-docs/test-quality-monitoring.md)).
-`task quality-metrics -- -ci-runs 0` measures the code alone on a local
-machine; the CI durations need `gh`. A pull request that changes the workflow,
-`scripts/qualitymetrics/` or a tool it uses (`Taskfile.yml`, `mise.toml`, the
-npm manifests of `tools/` and `web/`, `web/eslint.config.js`) runs it without
-saving the history.
+Beside the check groups, the `Quality` jobs run `task complexity-go`,
+`task complexity-web` and `task duplication` in parallel on every pull request
+and push to `main`. Each writes one tool's output under `reports/quality/`: the
+cyclomatic complexity of every Go function from gocyclo (pinned as a tool in
+`tools/go.mod`), that of every Web function from the ESLint `complexity` rule,
+and the duplicated code that jscpd finds. CI keeps each as an artifact of the
+same name for 90 days
+([Test and CI quality monitoring](../design-docs/test-quality-monitoring.md));
+a failed measure does not fail the run. `task quality-metrics` runs all three on
+a local machine.
 
 On the first day of each month the `Mutation testing` workflow
 ([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))

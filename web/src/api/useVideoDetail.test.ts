@@ -586,6 +586,43 @@ describe("useRelatedVideos", () => {
     expect(items()?.[1]).toBe(other);
   });
 
+  it("loadMore は続きを nextCursor の後から読み、まだ無い動画だけを後ろに足す（issue 931）", async () => {
+    const video = (id: number): Video => ({ ...done, id, title: `v${String(id)}` });
+    getRelatedVideos
+      .mockResolvedValueOnce({ items: [video(1), video(2)], nextId: 1, nextCursor: "c1" })
+      .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))
+      .mockResolvedValueOnce({ items: [video(2), video(3)], nextCursor: "c2" })
+      .mockResolvedValueOnce({ items: [video(4)] });
+    const { result } = renderHook(() => useRelatedVideos(7), { wrapper: OwnerAudience });
+    await act(async () => undefined);
+    const ids = () =>
+      result.current.state.kind === "ready"
+        ? result.current.state.related.items.map((item) => item.id)
+        : [];
+
+    // 失敗したら more が failed になり、もう一度 loadMore で読み直す。
+    act(() => result.current.loadMore());
+    expect(result.current.state).toMatchObject({ more: "loading" });
+    await act(async () => undefined);
+    expect(result.current.state).toMatchObject({ more: "failed" });
+    act(() => result.current.loadMore());
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(3, 7, expect.anything(), "c1");
+    expect(ids()).toEqual([1, 2, 3]);
+
+    act(() => result.current.loadMore());
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(4, 7, expect.anything(), "c2");
+    expect(ids()).toEqual([1, 2, 3, 4]);
+    // 最初のページの次の動画は残し、続きが無くなったら読まない。
+    expect(result.current.state).toMatchObject({ related: { nextId: 1 }, more: "idle" });
+    expect(
+      result.current.state.kind === "ready" && result.current.state.related.nextCursor,
+    ).toBeUndefined();
+    act(() => result.current.loadMore());
+    expect(getRelatedVideos).toHaveBeenCalledTimes(4);
+  });
+
   it("失敗したら retry で取り直す", async () => {
     getRelatedVideos
       .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))

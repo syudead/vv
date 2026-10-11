@@ -1792,16 +1792,20 @@ type RelatedVideos struct {
 	// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
 	Group *RelatedGroup `json:"group,omitempty"`
 
-	// Items 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
-	// 並べ、上限を掛ける
+	// Items 関連動画の近さの順の 1 ページ。基準の動画がグループのメンバーなら、同じグループの
+	// メンバーを除いてから並べる
 	Items []Video `json:"items"`
 
+	// NextCursor 続きを読むときに `cursor` へ渡す値。並びの終わりまで返したら省く
+	NextCursor *string `json:"nextCursor,omitempty"`
+
 	// NextId 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
-	// そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
+	// そうでなければ関連動画の並びの先頭。無ければ省く。`cursor` を付けた要求では省く
 	NextId *int64 `json:"nextId,omitempty"`
 
-	// PrevId 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
-	// そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+	// PrevId グループの中の並びの前の動画（最初のメンバーでは省く）。グループに属さない動画では
+	// 省き、画面が直前に見ていた動画を前の動画にする。`cursor` を付けた要求では省く。
+	// items に入るとは限らない
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
@@ -2897,6 +2901,15 @@ type GetVideoPreviewParams struct {
 	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
+// GetRelatedVideosParams defines parameters for GetRelatedVideos.
+type GetRelatedVideosParams struct {
+	// Cursor 前の応答の `nextCursor`。省くと先頭から返す
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 返す件数の上限
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetVideoSeekThumbnailParams defines parameters for GetVideoSeekThumbnail.
 type GetVideoSeekThumbnailParams struct {
 	// V 一覧・詳細が返したURLに含まれる内容由来の版
@@ -3313,7 +3326,7 @@ type ServerInterface interface {
 	PutVideoProgress(w http.ResponseWriter, r *http.Request, id VideoId)
 	// GetRelatedVideos 関連動画を返す
 	// (GET /api/videos/{id}/related)
-	GetRelatedVideos(w http.ResponseWriter, r *http.Request, id VideoId)
+	GetRelatedVideos(w http.ResponseWriter, r *http.Request, id VideoId, params GetRelatedVideosParams)
 	// GetVideoSeekThumbnail シーク用サムネイルのスプライトの配置情報を返す
 	// (GET /api/videos/{id}/seek-thumbnail)
 	GetVideoSeekThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoSeekThumbnailParams)
@@ -5684,8 +5697,37 @@ func (siw *ServerInterfaceWrapper) GetRelatedVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetRelatedVideosParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetRelatedVideos(w, r, id)
+		siw.Handler.GetRelatedVideos(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

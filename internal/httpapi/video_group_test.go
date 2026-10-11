@@ -122,8 +122,8 @@ func sameSet(a, b []int64) bool {
 	return slices.Equal(a, b)
 }
 
-// 受け入れ条件 17: グループに属さない動画の応答は今と同じで、group が無く、関連動画は
-// 同じフォルダと追加日時の近い動画から並ぶ（グループのメンバーも除かない）。
+// 受け入れ条件 17: グループに属さない動画の応答は group が無く、関連動画は近さの順に並ぶ
+// （グループのメンバーも除かない）。
 func TestVideoGroupAbsentForNonMember(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	solo := f.ids["solo"]
@@ -140,13 +140,15 @@ func TestVideoGroupAbsentForNonMember(t *testing.T) {
 	if _, ok := rawRelated["group"]; ok || related.Group != nil {
 		t.Errorf("関連動画の group = %+v, want 省略", related.Group)
 	}
-	// solo は登録フォルダ直下に1本だけで、追加日時は最後。差の小さい順に並ぶ。
+	// solo は登録フォルダ直下に1本だけで、題名・タグ・指紋の共通する動画が無い。追加日時の
+	// 近さだけで並び、同じ日なので追加日時の新しい順になる。
 	want := []int64{f.ids["p2"], f.ids["p1"], f.ids["ep10"], f.ids["ep2"], f.ids["ep1"]}
 	if got := videoIDs(related.Items); !slices.Equal(got, want) {
 		t.Errorf("関連動画 = %v, want %v", got, want)
 	}
-	if related.NextId != nil || related.PrevId != nil {
-		t.Errorf("前後 = %s・%s, want 省略", idPtrString(related.PrevId), idPtrString(related.NextId))
+	// 次の動画は関連動画の先頭で、前の動画は返さない（画面が見てきた順から決める）。
+	if idPtrString(related.NextId) != strconv.FormatInt(want[0], 10) || related.PrevId != nil {
+		t.Errorf("前後 = %s・%s, want 省略・%d", idPtrString(related.PrevId), idPtrString(related.NextId), want[0])
 	}
 }
 
@@ -195,12 +197,12 @@ func TestVideoGroupForGuest(t *testing.T) {
 	if _, ok := rawPair["group"]; ok || pair.Group != nil {
 		t.Errorf("ゲストの p1 の関連動画の group = %+v, want 省略", pair.Group)
 	}
-	if pair.NextId != nil || pair.PrevId != nil {
-		t.Errorf("ゲストの p1 の前後 = %s・%s, want 省略", idPtrString(pair.PrevId), idPtrString(pair.NextId))
-	}
-	// グループに属さない動画と同じく、追加日時の近い公開の動画から並ぶ（差が同じなら id の大きい方が先）。
+	// グループに属さない動画と同じく、公開の動画だけが近さの順に並び、次の動画はその先頭。
 	if got := videoIDs(pair.Items); !slices.Equal(got, []int64{f.ids["solo"], f.ids["ep2"], f.ids["ep1"]}) {
 		t.Errorf("ゲストの p1 の関連動画 = %v", got)
+	}
+	if idPtrString(pair.NextId) != strconv.FormatInt(f.ids["solo"], 10) || pair.PrevId != nil {
+		t.Errorf("ゲストの p1 の前後 = %s・%s, want 省略・solo", idPtrString(pair.PrevId), idPtrString(pair.NextId))
 	}
 
 	// 所有者には pair が2本のグループである。
@@ -238,7 +240,7 @@ func TestVideoGroupLargerThanRelatedLimit(t *testing.T) {
 		}
 		return result.ID
 	}
-	const size = domain.MaxRelatedVideos + 5
+	const size = 25
 	for i := range size {
 		members = append(members, add(fmt.Sprintf("big/%02d.mp4", i+1), i))
 	}
@@ -311,5 +313,42 @@ func TestListVideoGroupMembers(t *testing.T) {
 		if rec := f.env.get(videoPath(f.ids["ep1"])+"/group-members"+query, f.owner); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", query, rec.Code)
 		}
+	}
+}
+
+// 関連動画は近さの順に並び（issue 931）、ページを最後まで読むとこの動画以外のすべての動画が
+// 重複なく 1 回ずつ出る（受け入れ条件 3）。solo とタグを共有する ep1 が先頭に来る。
+func TestRelatedVideosRankAndPage(t *testing.T) {
+	f := newVideoGroupFixture(t)
+	solo := f.ids["solo"]
+	if _, _, err := f.env.db.Tags().AttachTagByID(context.Background(), []int64{solo}, f.manual); err != nil {
+		t.Fatal(err)
+	}
+
+	first, _ := getJSON[gen.RelatedVideos](t, f, relatedPath(solo)+"?limit=2", f.owner)
+	if len(first.Items) != 2 || first.Items[0].Id != f.ids["ep1"] || first.NextCursor == nil {
+		t.Fatalf("最初のページ = %v・%v, want ep1 が先頭で続きあり", videoIDs(first.Items), first.NextCursor)
+	}
+	if idPtrString(first.NextId) != strconv.FormatInt(f.ids["ep1"], 10) {
+		t.Errorf("nextId = %s, want ep1", idPtrString(first.NextId))
+	}
+	seen := videoIDs(first.Items)
+	cursor := *first.NextCursor
+	for range 5 {
+		page, raw := getJSON[gen.RelatedVideos](t, f, relatedPath(solo)+"?limit=2&cursor="+cursor, f.owner)
+		for _, key := range []string{"nextId", "prevId", "group"} {
+			if _, ok := raw[key]; ok {
+				t.Errorf("続きのページに %s がある", key)
+			}
+		}
+		seen = append(seen, videoIDs(page.Items)...)
+		if page.NextCursor == nil {
+			break
+		}
+		cursor = *page.NextCursor
+	}
+	want := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"], f.ids["p1"], f.ids["p2"]}
+	if len(seen) != len(want) || !sameSet(seen, want) {
+		t.Fatalf("読んだ動画 = %v, want 重複なく %v", seen, want)
 	}
 }

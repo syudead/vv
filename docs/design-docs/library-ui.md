@@ -452,7 +452,7 @@ flowchart LR
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
-| Related videos | Plain rows under a small heading, without a card around them |
+| Related videos | Plain rows under a small heading, without a card around them, ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in

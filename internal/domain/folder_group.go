@@ -267,3 +267,20 @@ func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators
 	}
 	return folderIndexLocation{}, false
 }
+
+type siblingEntry struct {
+	id   int64
+	name string
+}
+
+// compareSiblings は同じディレクトリの動画を全順序で比べる。ファイル名の
+// 自然順、次にバイト順、最後に id の小さい方を先にする。
+func compareSiblings(a, b siblingEntry) int {
+	if order := CompareNatural(a.name, b.name); order != 0 {
+		return order
+	}
+	if order := strings.Compare(a.name, b.name); order != 0 {
+		return order
+	}
+	return cmp.Compare(a.id, b.id)
+}

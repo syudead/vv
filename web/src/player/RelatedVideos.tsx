@@ -1,6 +1,7 @@
 import { Check, ImageOff } from "lucide-react";
 import {
   type PointerEvent,
+  type ReactNode,
   type Ref,
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import { Link } from "react-router";
 
 import { isAborted, listVideoGroupMembers, type Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
+import type { VideoLinkState } from "./pageDecisions";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -189,20 +191,23 @@ export type MemberTarget = (videoId: number) => { to: string; state: unknown };
  *
  * 関連動画が 0 件のときは見出しと並びを出さない（閉じる × は見出しの帯 VideoHeader にある）。
  * 各項目はサムネイル・長さ・題名だけで、追加日時などの文字は出さない。
- * リンクは最初の戻り先を引き継ぐ（plan の Structural Decisions 10）。
+ * リンクは最初の戻り先と見てきた動画を引き継ぐ（linkState。plan の Structural Decisions 10、
+ * issue 931）。並びは近さの順で件数に上限が無く、終わりに近づくと続きを読む（`onLoadMore`）。
  *
  * 基準の動画がグループのメンバーなら、列の上位に「続けて再生」としてメンバーの並びを
  * 出し、境目の下に関連動画を出す（specs/017-folder-groups/ui-design.md「Member list」）。
  */
 export default function RelatedVideos({
   state,
-  backTo,
+  linkState,
   onRetry,
+  onLoadMore,
   memberTarget,
 }: {
   state: RelatedState;
-  backTo: string;
+  linkState: VideoLinkState;
   onRetry: () => void;
+  onLoadMore: () => void;
   memberTarget?: MemberTarget;
 }) {
   if (state.kind === "ready" && state.related.group !== undefined) {
@@ -216,12 +221,17 @@ export default function RelatedVideos({
         offset={group.offset}
         total={group.total}
         items={state.related.items}
-        backTo={backTo}
+        linkState={linkState}
+        tail={<RelatedTail state={state} onLoadMore={onLoadMore} />}
         memberTarget={memberTarget}
       />
     );
   }
-  const empty = state.kind === "ready" && state.related.items.length === 0;
+  // 並びが空でも続きがあれば（読む間に先頭のページの動画がすべて消えた）、続きを読む目印を残す。
+  const empty =
+    state.kind === "ready" &&
+    state.related.items.length === 0 &&
+    state.related.nextCursor === undefined;
   return (
     <section
       aria-labelledby={empty ? undefined : "related-heading"}
@@ -257,11 +267,14 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "ready" && !empty && (
-        <ul className={cn("flex flex-col gap-3", scrollerClass)}>
-          {state.related.items.map((video) => (
-            <RelatedItem key={video.id} video={video} backTo={backTo} />
-          ))}
-        </ul>
+        <div data-related-scroller="" className={cn("flex flex-col", scrollerClass)}>
+          <ul className="flex flex-col gap-3">
+            {state.related.items.map((video) => (
+              <RelatedItem key={video.id} video={video} linkState={linkState} />
+            ))}
+          </ul>
+          <RelatedTail state={state} onLoadMore={onLoadMore} />
+        </div>
       )}
     </section>
   );
@@ -290,7 +303,8 @@ function GroupedRelated({
   offset,
   total,
   items,
-  backTo,
+  linkState,
+  tail,
   memberTarget,
 }: {
   currentId: number;
@@ -298,7 +312,9 @@ function GroupedRelated({
   offset: number;
   total: number;
   items: Video[];
-  backTo: string;
+  linkState: VideoLinkState;
+  /** 関連動画の並びの続きを読む目印（RelatedTail）。 */
+  tail: ReactNode;
   memberTarget: MemberTarget | undefined;
 }) {
   const wide = useWideScreen();
@@ -426,7 +442,7 @@ function GroupedRelated({
                 key={member.id}
                 video={member}
                 position={first + position + 1}
-                backTo={backTo}
+                linkState={linkState}
                 memberTarget={memberTarget}
               />
             ),
@@ -443,6 +459,7 @@ function GroupedRelated({
           ) : (
             <div ref={observe("after")} aria-hidden="true" className="h-px" />
           ))}
+        {items.length === 0 && tail}
         {items.length > 0 && (
           <>
             <div className="pt-5 pb-2">
@@ -454,9 +471,10 @@ function GroupedRelated({
               </h2>
               <ul className="flex flex-col gap-3">
                 {items.map((video) => (
-                  <RelatedItem key={video.id} video={video} backTo={backTo} />
+                  <RelatedItem key={video.id} video={video} linkState={linkState} />
                 ))}
               </ul>
+              {tail}
             </section>
           </>
         )}
@@ -470,12 +488,12 @@ function GroupedRelated({
  * 入れ物の中のスクロールでも、ページのスクロールでも同じに働く（交差は入れ物で切り取って
  * 判定される）。
  */
-function useInfiniteEdge(onEdge: (side: GroupSide) => void) {
+function useInfiniteEdge<Side extends string>(onEdge: (side: Side) => void) {
   const onEdgeRef = useRef(onEdge);
   useEffect(() => {
     onEdgeRef.current = onEdge;
   });
-  const observers = useRef(new Map<GroupSide, IntersectionObserver>());
+  const observers = useRef(new Map<Side, IntersectionObserver>());
   useEffect(() => {
     const current = observers.current;
     return () => {
@@ -484,7 +502,7 @@ function useInfiniteEdge(onEdge: (side: GroupSide) => void) {
     };
   }, []);
   return useCallback(
-    (side: GroupSide) => (element: HTMLDivElement | null) => {
+    (side: Side) => (element: HTMLDivElement | null) => {
       observers.current.get(side)?.disconnect();
       observers.current.delete(side);
       if (element === null || typeof IntersectionObserver === "undefined") return;
@@ -498,6 +516,41 @@ function useInfiniteEdge(onEdge: (side: GroupSide) => void) {
       observers.current.set(side, observer);
     },
     [],
+  );
+}
+
+/**
+ * RelatedTail は関連動画の並びの終わりに置く、続きを読む目印である（issue 931）。続きが
+ * あれば、目印が見えそうになったところで `onLoadMore` を呼ぶ。読んでいる間は行の形の
+ * 骨組みを出し、失敗したらやり直しのボタンにする。続きが無ければ何も出さない。
+ */
+function RelatedTail({
+  state,
+  onLoadMore,
+}: {
+  state: Extract<RelatedState, { kind: "ready" }>;
+  onLoadMore: () => void;
+}) {
+  const observe = useInfiniteEdge<"related">(onLoadMore);
+  if (state.related.nextCursor === undefined) return null;
+  if (state.more === "failed") {
+    return (
+      <GroupEdge label={t.common.retry} failed disabled={false} onClick={onLoadMore} />
+    );
+  }
+  return (
+    <>
+      {state.more === "loading" && (
+        <div aria-hidden="true" className="flex gap-3 pt-3">
+          <Skeleton className={cn("aspect-video shrink-0", thumbnailWidth)} />
+          <div className="flex flex-1 flex-col gap-2 pt-1">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+        </div>
+      )}
+      <div ref={observe("related")} aria-hidden="true" className="h-px" />
+    </>
   );
 }
 
@@ -627,19 +680,19 @@ export function useRelatedScrub(video: Video, preview: HoverPreview) {
 function MemberItem({
   video,
   position,
-  backTo,
+  linkState,
   memberTarget,
 }: {
   video: Video;
   position: number;
-  backTo: string;
+  linkState: VideoLinkState;
   memberTarget: MemberTarget | undefined;
 }) {
   const preview = useHoverPreview(video);
   const { scrub, release, setLink } = useRelatedScrub(video, preview);
   const target = memberTarget?.(video.id) ?? {
     to: `/videos/${String(video.id)}`,
-    state: { from: backTo },
+    state: linkState,
   };
   return (
     <li>
@@ -691,7 +744,7 @@ function CurrentMember({
   );
 }
 
-function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
+function RelatedItem({ video, linkState }: { video: Video; linkState: VideoLinkState }) {
   const preview = useHoverPreview(video);
   const { scrub, release, setLink } = useRelatedScrub(video, preview);
   return (
@@ -699,7 +752,7 @@ function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
       <Link
         ref={setLink}
         to={`/videos/${String(video.id)}`}
-        state={{ from: backTo }}
+        state={linkState}
         aria-label={videoLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
