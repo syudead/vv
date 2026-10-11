@@ -74,9 +74,9 @@ const (
 	// relatedDateHalfLife は日付の点が半分になる差の伸びである。1 年で満点の 1/4000 ほどになる。
 	relatedDateHalfLife = 30 * 24 * time.Hour
 	// relatedSceneMaxDistance は、2 つのコマを似た場面とみなすハミング距離の上限である
-	// （63 ビットのうち）。同じ動画の判定（FingerprintMatchMaxDistance）は中央値に掛けるが、
-	// ここはコマ 1 組ずつに掛けるので、偶然の一致を減らすよう狭くする。
-	relatedSceneMaxDistance = 8
+	// （63 ビットのうち）。同じ動画の判定と同じ FingerprintMatchMaxDistance を使い、
+	// 撮り方や画質の違う似た場面も拾う。
+	relatedSceneMaxDistance = FingerprintMatchMaxDistance
 )
 
 // For は ContentRelatedness の点の付け方を返す。

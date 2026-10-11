@@ -128,6 +128,10 @@ func TestContentRelatednessFingerprint(t *testing.T) {
 		// 同じ場面を逆の順で持つ（時刻が揃っていない）。1 ビットの違いは似た場面に入る。
 		{name: "same scenes at other times", other: sceneFingerprint(d, c^1, b, a), share: 1},
 		{name: "half of the scenes", other: sceneFingerprint(a, b, 0x5555_5555_5555_5555, 0x3333_3333_3333_3333), share: 0.5},
+		// 似た場面とみなすのはハミング距離 12 まで。a と 12 ビット違うコマ 3 枚は a と組になり、
+		// 13 ビット違うコマはどのコマとも組にならない。
+		{name: "12 bits apart", other: sceneFingerprint(a^0xfff, a^0xfff, a^0xfff), share: 4.0 / 7.0},
+		{name: "13 bits apart", other: sceneFingerprint(a^0x1fff, a^0x1fff, a^0x1fff), share: 0},
 		{name: "missing", other: nil, share: 0},
 		{name: "too few frames", other: sceneFingerprint(a, b), share: 0},
 		{name: "flat frames only", other: flat, share: 0},
