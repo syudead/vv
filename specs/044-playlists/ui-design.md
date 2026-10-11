@@ -499,9 +499,11 @@ With `?playlist=<id>&item=<itemId>` in the URL and the owner signed in, the
 page reads `GET /api/playlists/{id}/playback?item=&video=` when it opens, when
 the video ends, and when the notice finds its next video gone (R-6), and the
 response drives the parts below; `GET /api/playlists/{id}` is read alongside
-each of those reads for the [playlist panel](#playlist-panel). Without the
-query, or for a guest, the page is unchanged (requirement 8). The diagram
-shows the page's states while the context holds.
+each of those reads for the [playlist panel](#playlist-panel), and the pair
+is taken as one order only when the two responses carry the same
+`playlist.updatedAt` ([One order](#one-order)). Without the query, or for a
+guest, the page is unchanged (requirement 8). The diagram shows the page's
+states while the context holds.
 
 ```mermaid
 stateDiagram-v2
@@ -536,10 +538,11 @@ stateDiagram-v2
 
 The aside's first section while the context holds: the playlist's items in
 order, with the current item marked, read from `GET /api/playlists/{id}`
-alongside every playback read, so the panel and the server's `next` show the
-same order after a move or a remove in another tab (R-6, Edge Case). It does
-not refresh on its own between reads (R-10). The diagram shows the aside's
-sections in a playlist context.
+alongside every playback read and drawn only from a pair that agrees on the
+order ([One order](#one-order)), so the panel and the server's `next` show
+the same order after a move or a remove in another tab (R-6, Edge Case). It
+does not refresh on its own between reads (R-10). The diagram shows the
+aside's sections in a playlist context.
 
 ```mermaid
 flowchart TB
@@ -566,12 +569,30 @@ the progress bars' fill (`UI品質`, `視覚的な階層`).
 
 | State | Panel |
 | --- | --- |
-| Loading | While the playback read or the playlist read has not answered: a `Skeleton` line in the name's place with no count, and three skeleton rows (a `w-related-thumb` block and two lines), as the related videos load |
+| Loading | While the playback read or the playlist read has not answered, or the pair does not agree yet ([One order](#one-order)): a `Skeleton` line in the name's place with no count, and three skeleton rows (a `w-related-thumb` block and two lines), as the related videos load. A later pair that is being read again keeps the rows it replaces until it agrees |
 | Content | The heading, the rows and the current row in view |
 | Load failed | The playlist read failed and the playback read did not: the heading from the playback response's `playlist`, and in the list's place "Couldn't load the playlist" with a `ghost` `sm` "Retry" that reads the playlist again; the line, the arrows and the notice are unaffected |
 | Every item hidden | The heading with no count and no rows; the current video ends at the end-of-playlist layer, because the server's `next` is absent |
 | Dropped | A `404` from the playback read or the playlist read: the panel is not drawn, and the aside is the page's without the query |
 | Guest, no query | Not drawn |
+
+#### One order
+
+The two reads are independent requests, so a move or a remove in another
+tab that lands between them would leave the panel in one order and `next`,
+`position` and `count` in another. Both responses carry the playlist's
+`updatedAt` (`playlist.updatedAt` of the playback response, `updatedAt` of
+the playlist response), which every write of the name or the items sets
+([data-model.md, Migration](data-model.md#migration)), so the page uses the
+pair only when the two values are equal. When they differ, both are read
+again, until they agree or a third pair still differs; then the pair whose
+`updatedAt` is later stands for both parts (the panel from the playlist
+response, the line, the arrows and the notice from the playback response),
+and the next read, at the video's end, aligns them. A shared revision
+parameter or the items inside the playback response were rejected: the
+responses already carry the value that tells the two orders apart, and the
+API stays as [screen-api.md](contracts/screen-api.md) has it, so the playback
+route's implementation is unchanged.
 
 ### Unplayable item
 
