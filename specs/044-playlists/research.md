@@ -37,25 +37,26 @@ its old position again once the key resolves (R-4).
 ## R-2: Bundling and succession re-key every member's items and merge duplicates
 
 **Decision**: Same-path succession moves the `from` key's items to the `to`
-key. Bundling gives every member's items in each playlist one item under the
-bundle key, at the earliest of their positions; the members' own rows stay
-under their content keys, unresolvable while they are members. Removing the
-last-but-one member moves the bundle key's items to the remaining member.
-Whenever a re-key would put two items with one key in one playlist, the one
-at the earlier position stays
+key. Bundling moves every member's items to the bundle key; no row stays under
+a member's content key. Removing the last-but-one member moves the bundle
+key's items to the remaining member; removing a member while others remain
+leaves the items with the bundle. Whenever a move would put two items with
+one key in one playlist, the one at the earlier position stays and the
+playlist is renumbered
 ([data-model.md, Succession and bundling](data-model.md#succession-and-bundling)).
 
 | Option | Verdict |
 | --- | --- |
 | **Every member's items move to the bundle key** | Chosen |
 | Add `playlist_items` to `userDataTables`, which copies the representative's rows only | Rejected: an item of a non-representative member would vanish from the playlist when it is bundled, against the Edge Case "carried over to the bundle" |
+| Copy to the bundle key and keep the members' rows, as favorites do | Rejected: the hidden copies hold positions in the dense order (R-3), and an item the owner removed from the playlist would come back when its member leaves the bundle (requirement 5) |
 | Keep the later position on a duplicate | Rejected: the earlier one is where the owner first placed the video, and it keeps the list from jumping on a background rescan |
 
 **Rationale**: A favorite is one flag per bundle, so taking the
 representative's is a choice between equal values. A playlist item is a place
 in an order, and dropping a member's place loses something the owner put
-there. Leaving the members' own rows mirrors favorites: a member taken out of
-the bundle finds its old items again.
+there. A member taken out of a bundle that remains loses the item, because the
+item is the bundle's from the moment of bundling.
 
 ## R-3: Dense integer positions, reordered by "move after"
 
@@ -111,7 +112,9 @@ they already have.
 **Decision**: A playlist playback is the video page with `?playlist=<id>&item=<itemId>`.
 The page reads `GET /api/playlists/{id}/playback?item=&video=`
 ([contracts/screen-api.md, Playback](contracts/screen-api.md#get-apiplaylistsidplayback))
-when it opens and again when the video ends, before it shows the notice. The
+when it opens, again when the video ends, before it shows the notice, and
+once more when the notice finds its next video gone, so an item that became
+unplayable is skipped (Edge Case). The
 response gives the position among the shown items, the next video to play
 continuously, and the start video of the previous and next items. The order
 rules live in one `internal/domain` function
@@ -186,7 +189,8 @@ R-6 says.
 
 ## R-11: A playlist name is 1 to 100 characters after trimming; names may repeat
 
-**Decision**: The store trims the name; empty or longer than 100 characters is
+**Decision**: The store trims the name; empty or longer than 100 characters
+(counted in Unicode code points, as SQLite's `length()` counts) is
 `400 invalid_request`. Two playlists may share a name (Edge Case).
 `domain.ValidatePlaylistName` holds the rule.
 

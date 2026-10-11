@@ -58,17 +58,17 @@ Invariants (added to `internal/store/invariants_test.go`):
 ## Succession and bundling
 
 Every path below runs in the transaction that already re-keys the other user
-data, through one package-private helper `rekeyPlaylistItems(tx, from, to,
-keepFrom bool)`. In each playlist that ends up with two items of key `to`, the
+data, through one package-private helper `rekeyPlaylistItems(tx, from, to)`, which
+moves rows and never copies them. In each playlist that ends up with two items of key `to`, the
 one with the larger `position` is deleted, and the playlist is renumbered
 ([R-2](research.md#r-2-bundling-and-succession-re-key-every-members-items-and-merge-duplicates)).
 
 | Path | Change |
 | --- | --- |
 | `moveUserData` (same-path succession) | Items of `from` become items of `to` |
-| `VersionStore.Bundle` | For every member key absorbed into the bundle (its content key, or an absorbed bundle's key), its items are copied to the bundle key at their positions; content-key rows stay, an absorbed bundle's rows are moved |
+| `VersionStore.Bundle` | Items of every key absorbed into the bundle (a member's content key, or an absorbed bundle's key) move to the bundle key |
 | `VersionStore.Unbundle`, last-but-one member removed | The bundle key's items move to the remaining member's content key (where `replaceUserData` runs) |
-| `VersionStore.Unbundle`, other members remain | No change: the removed member's own rows resolve again |
+| `VersionStore.Unbundle`, other members remain | No change: the items stay with the bundle, and the removed member has none |
 | `MakeRepresentative` | No change: the bundle key stays |
 | Folder rename, move, dissolve | No change: the folder key no longer resolves, and resolves again when a group has it (R-4) |
 
@@ -82,7 +82,7 @@ one with the larger `position` is deleted, and the playlist is renumbered
 | `PlaylistAdd` | Input of `AddPlaylistItems`: `VideoIDs []int64`, `FolderPaths []string` (absolute) |
 | `PlaylistAdded` | `Added int`, `Existing int` (resolved but already in the playlist) |
 | `PlaylistStep` | `ItemID`, `Video Video`: a video to open and the item it belongs to |
-| `PlaylistPlayback` | `Playlist`, `ItemID`, `Position` (1-based among shown items), `Count`, `Next *PlaylistStep`, `PreviousItem *PlaylistStep`, `NextItem *PlaylistStep` |
+| `PlaylistPlayback` | `Playlist`, `ItemID`, `Position` (1-based among shown items; 0 when the current item is not shown), `Count`, `Next *PlaylistStep`, `PreviousItem *PlaylistStep`, `NextItem *PlaylistStep` |
 | `ErrPlaylistNotFound`, `ErrPlaylistItemNotFound` | `404 not_found` |
 
 ## Playback order
@@ -107,13 +107,19 @@ flowchart LR
 | --- | --- |
 | Current item is the last shown item, with no later member | `Next` absent: the end of the playlist (requirement 9) |
 | Current video is no longer a member of the current group item | As "no later member": the next shown item |
-| Current item is not shown (its video or group is gone) | Its position still orders it; the next shown item after it |
+| Current item is not shown (its video or group is gone) | `Position` 0; its place in the order still decides `Next`, `PreviousItem` and `NextItem` |
+| Current video also appears as another item (a video item and a member of a group item) | The `item` parameter decides the place; each item plays at its own place (Edge Case) |
 | Current item or playlist does not exist | `ErrPlaylistItemNotFound` / `ErrPlaylistNotFound` ([R-7](research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours)) |
 | `PreviousItem`, `NextItem` | The start video of the adjacent shown item: the video, or the group's `GroupOpenIndex` member |
 
-A group item plays its members in the group's order from the member it starts
-at to the last member (requirement 7); a member already watched after the start
-member is played too, as group autoplay does.
+A group item starts at the member `GroupOpenIndex` picks, the one the group
+card opens: the first member in progress, else the first not completed, else
+the first member when all are watched. It then plays the members in the
+group's order to the last one; a watched member after the start is played
+too, as group autoplay does (requirement 7). A fully watched group item is
+played from its first member rather than skipped, because requirement 7 makes
+the item start where opening the group does, and the group card replays a
+watched group from its first member.
 
 ## Store operations (`PlaylistStore`)
 

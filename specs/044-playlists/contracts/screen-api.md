@@ -87,8 +87,9 @@ PlaylistItemsAdded:
 
 | Condition | Response |
 | --- | --- |
-| Some ids or folders resolve | `200 PlaylistItemsAdded`; ids not in the library and folders not a group now count in neither number ([R-5](../research.md#r-5-one-owner-only-bulk-add-for-videos-and-groups-appended-in-request-order)) |
-| Both arrays empty, or over 20000 together | `400 invalid_request` |
+| Some ids or folders resolve | `200 PlaylistItemsAdded`; ids not in the library and folders not a group now count in neither number, and a repeated id or folder counts once ([R-5](../research.md#r-5-one-owner-only-bulk-add-for-videos-and-groups-appended-in-request-order)) |
+| Both arrays empty, or a `folders.path` that breaks the `FolderPath` rules | `400 invalid_request` |
+| Over 20000 distinct ids and folders together | `400 too_many_videos`, as `PUT /api/favorites` |
 | The playlist does not exist | `404 not_found` |
 
 ## `POST /api/playlists/{id}/items/{itemId}/move`
@@ -114,7 +115,7 @@ PlaylistPlayback:
   properties:
     playlist: { $ref: PlaylistSummary }
     itemId: { type: integer, format: int64 }
-    position: { type: integer }   # 1-based among shown items; the next shown item's place when the current one is hidden
+    position: { type: integer }   # 1-based among shown items; 0 when the current item is not shown (data-model.md, Playback order)
     count: { type: integer }
     next: { $ref: PlaylistStep }          # absent at the end of the playlist
     previousItem: { $ref: PlaylistStep }  # start of the previous shown item
@@ -137,6 +138,6 @@ PlaylistStep:
 | Screen | Calls |
 | --- | --- |
 | Playlists screen (`/playlists`) | `GET /api/playlists`, `POST /api/playlists` |
-| Playlist screen (`/playlists/{id}`) | `GET`, `PATCH`, `DELETE /api/playlists/{id}`; `move` and item `DELETE`. Play opens `/videos/{videoId}?playlist={id}&item={itemId}` with `autoplay`, where `videoId` is the video or the group's `openVideoId` |
+| Playlist screen (`/playlists/{id}`) | `GET`, `PATCH`, `DELETE /api/playlists/{id}`; `move` and item `DELETE`. Play opens `/videos/{videoId}?playlist={id}&item={itemId}` with `state: {from: "/playlists/{id}", autoplay: true}`, where `videoId` is the video or the group's `openVideoId` |
 | Add menu (card, selection bar, video page) | `GET /api/playlists` when opened; `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
-| Video page with `playlist` and `item` | `GET /api/playlists/{id}/playback` on open and when the video ends; moving to a step keeps `playlist` and sets `item` to the step's `itemId` |
+| Video page with `playlist` and `item`, owner only | `GET /api/playlists/{id}/playback` on open, when the video ends, and when the notice finds its next video gone; moving to a step keeps `playlist`, sets `item` to the step's `itemId`, and carries `state.from` over |

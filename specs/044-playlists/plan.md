@@ -173,7 +173,8 @@ flowchart LR
 `ValidatePlaylistName` in `internal/domain`, `PlaylistStore` with every
 operation except `PlaylistPlayback`, `rekeyPlaylistItems` in succession and
 bundling, the invariants, and both tables in ARCHITECTURE.md and
-running-vv.md ([data-model.md](data-model.md)).
+running-vv.md with their `translations/ja/` counterparts from
+`doc-translator` ([data-model.md](data-model.md)).
 
 **Dependencies**: None.
 
@@ -190,9 +191,12 @@ is left out after the folder is ungrouped and back after `auto`; same-path
 succession re-keys an item and, in a playlist holding both keys, keeps the
 earlier one; bundling two members that are both in a playlist leaves one
 bundle item at the earlier position, and bundling a non-representative member
-alone keeps its item; dissolving the bundle gives the item back to the
-remaining member; names of 0 and 101 characters after trimming are rejected
-and two playlists may share a name.
+alone keeps its item under the bundle key; removing a member while others
+remain leaves the item with the bundle and gives the member none; dissolving
+the bundle gives the item to the remaining member; positions are `0 … n-1`
+after every one of these; names of 0 and 101 characters after trimming are
+rejected, 100 Japanese characters are accepted, and two playlists may share a
+name.
 
 ### Add the playlist management routes to the screen API
 
@@ -206,9 +210,10 @@ bundles and successions.
 
 **Acceptance**: `task check` passes with no diff from `task generate`;
 handler tests show each status in the contract's tables: `201` on create,
-`400` on an empty name, `200` with `added` and `existing` on add, `204` then
-`404` on removing one item, `400` on moving an item after itself, `404` on a
-deleted playlist; a guest gets `401` on every route, and
+`400` on an empty name, `200` on rename with the trimmed name, `204` on
+delete, `200` on reading a playlist, `200` with `added` and `existing` on add,
+`400 too_many_videos` over 20000, `204` then `404` on removing one item, `400`
+on moving an item after itself, `404` on a deleted playlist; a guest gets `401` on every route, and
 `TestAccessClassificationMatchesOpenAPISecurity` passes.
 
 ### Answer a playlist's position and next video for the video page
@@ -229,7 +234,12 @@ video B: from A, `next` is member 2 and `nextItem` is member 2; from member 2,
 `next` is member 3; from member 3, `next` is B; from B, `next` is absent and
 `position` is 3 of 3; after moving B to the top, `next` from member 3 is
 absent; with A's file gone, `count` is 2 and `previousItem` from G is absent;
-a removed item and a deleted playlist answer `404`; a guest gets `401`.
+with a video V that is its own item and also a member of a group item G,
+playing V as G's member steps to G's next member and playing V's own item
+steps to the item after it, with different `position`; when the current item
+is hidden, `position` is 0 and `next` is the following shown item; a fully
+watched group item starts at its first member; a removed item and a deleted
+playlist answer `404`; a guest gets `401`.
 
 ### Add the playlists screen to the sidebar for the owner
 
@@ -263,10 +273,13 @@ interaction review against `ui-design.md` and the parent Issue's `UI品質`.
 `task check` passes; page tests show: items in the response's order with the
 watch state of each; moving an item by keyboard sends `move` with the item
 above its new place, and reloading shows the new order; removing an item takes
-its row away; deleting asks first, cancel changes nothing, confirm leaves for
-`/playlists`; an empty playlist has no play action and says how to add items;
-play opens `/videos/{id}?playlist=&item=` of the first item, with a group
-item opening its `openVideoId`; a `404` shows the playlist as gone.
+its row away; renaming sends the trimmed name and shows it as the heading, and
+an empty name cannot be sent; deleting asks first, cancel changes nothing,
+confirm leaves for `/playlists`; an empty playlist has no play action and says
+how to add items; play opens `/videos/{id}?playlist=&item=` of the first
+item, and play on the third row opens that item's video with `item` set to
+it, with a group item opening its `openVideoId` and `state.from` set to the
+playlist screen; a `404` shows the playlist as gone.
 
 ### Add videos and groups to a playlist from cards, the selection bar and the video page
 
@@ -307,12 +320,15 @@ page; Show, reorder and remove a playlist's items on the playlist screen; the
 interaction review against `ui-design.md` and the parent Issue's `UI品質`.
 `task check` passes; page tests show: with the query, the line shows the
 playlist name and `2 / 3`; at the end the playback is read again and the
-notice names its `next`; cancelling stops the advance; advancing opens the
+notice names its `next`; when the notice finds its next video gone, the
+playback is read again and the notice moves to the new `next`, or the
+end-of-playlist layer shows when there is none; cancelling stops the advance; advancing opens the
 next video with `item` set to its item; with no `next`, the end-of-playlist
 layer shows and nothing advances; the arrows open `previousItem` and
 `nextItem`; a `404` leaves the related videos' neighbours in charge and no
-notice after the end; without the query, a group member advances inside its
-group as before.
+notice after the end; a guest at `/videos/{id}?playlist=1&item=2` sends no
+playback request and sees no playlist line; without the query, a group member
+advances inside its group as before.
 
 ### Cover playlists in a browser test
 
@@ -328,7 +344,8 @@ one video added to two playlists is listed in both (acceptance criterion 1);
 adding it again leaves one item (2); a new order survives a reload and drives
 playback (3); removing an item leaves the video in the library with its
 favorite (4); video, group, video from the top advances through the group's
-unwatched members to the last video (5); cancelling the notice stays (6); the
+unwatched members to the last video (5), and starting from the middle item
+plays only the items after it; cancelling the notice stays (6); the
 last item ends with the end-of-playlist layer (7); opening the same video from
 the library advances inside its group (8); a guest sees no entry and
 `/playlists` shows the login page (9).
