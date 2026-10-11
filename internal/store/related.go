@@ -15,7 +15,8 @@ import (
 // RelatedCandidates は関連動画の近さを測る手がかりを、見る人に見せる動画すべてについて
 // 返す（issue 931）。見せる動画は一覧と同じで、見る人に見せてよい所在のある動画のうち、
 // 集まりの代表以外のバージョン（shownVideoCondition）を除く。基準の動画 selfID は、
-// 代表以外のバージョンでも見せてよければ含める。並べ方は internal/domain の RankRelated が
+// 代表以外のバージョンでも見せてよければ含め、その集まりの他のバージョン（代表を含む）は
+// 除く。並べ方は internal/domain の RankRelated が
 // 決める。
 //
 // 手がかりは代表の所在のパスと題名（表示名があればそれ）、追加日時、タグ、映像の指紋で
@@ -36,7 +37,11 @@ func (s *LibraryStore) RelatedCandidates(ctx context.Context, audience domain.Au
 		from videos`+representativeJoin(audience)+`
 		left join video_fingerprints f on f.content_key = videos.content_key and videos.content_key <> ''
 		where `+visibleVideoCondition("videos", audience)+`
-		  and (`+shownVideoCondition("videos", audience)+` or videos.id = ?)`, selfID)
+		  and (videos.id = ?1 or (`+shownVideoCondition("videos", audience)+`
+		  and not exists (select 1 from videos self
+		       join video_bundle_members sm on sm.content_key = self.content_key and self.content_key <> ''
+		       join video_bundle_members om on om.bundle_id = sm.bundle_id
+		      where self.id = ?1 and om.content_key = videos.content_key)))`, selfID)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read related video candidates: %w", err)
 	}

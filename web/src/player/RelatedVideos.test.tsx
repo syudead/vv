@@ -923,6 +923,40 @@ describe("関連動画の続き（issue 931）", () => {
     expect(onLoadMore).toHaveBeenCalledTimes(1);
   });
 
+  it("先頭のページが空でも続きがあれば、続きを読む", () => {
+    const onLoadMore = vi.fn();
+    renderList(
+      { kind: "ready", id: 1, related: { items: [], nextCursor: "c1" } },
+      onLoadMore,
+    );
+    reachEnd();
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("グループのメンバーで関連動画のページが空でも、続きがあれば続きを読む", () => {
+    const onLoadMore = vi.fn();
+    renderList(
+      {
+        kind: "ready",
+        id: 10,
+        related: {
+          items: [],
+          nextCursor: "c1",
+          group: {
+            folder: { rootId: 1, path: "show" },
+            name: "show",
+            items: [item(10), item(11)],
+            offset: 0,
+            total: 2,
+          },
+        },
+      },
+      onLoadMore,
+    );
+    reachEnd();
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
   it("続きが無ければ目印を置かない", () => {
     renderList({ kind: "ready", id: 1, related: { items: [item(2)] } });
     const edges = [...intersect.keys()].filter(

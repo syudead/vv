@@ -201,6 +201,14 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 	if slices.Contains(candidateIDs(candidates), b) {
 		t.Errorf("関連動画の候補に代表以外のバージョンがある: %+v", candidates)
 	}
+	// 代表以外のバージョン B を開いたときは、B 自身を含め、同じ集まりの代表 A と E は除く。
+	fromB, err := db.Library().RelatedCandidates(ctx, domain.AudienceOwner, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := candidateIDs(fromB); !slices.Contains(got, b) || slices.Contains(got, a) || slices.Contains(got, e) {
+		t.Errorf("B から見た関連動画の候補 = %v, want B を含み A・E を含まない", got)
+	}
 
 	// B を外すと同じ取引で索引を作り直し、B は B のフォルダに戻る。
 	if _, err := db.Versions().Unbundle(ctx, b); err != nil {

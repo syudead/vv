@@ -217,7 +217,11 @@ export default function RelatedVideos({
       />
     );
   }
-  const empty = state.kind === "ready" && state.related.items.length === 0;
+  // 並びが空でも続きがあれば（読む間に先頭のページの動画がすべて消えた）、続きを読む目印を残す。
+  const empty =
+    state.kind === "ready" &&
+    state.related.items.length === 0 &&
+    state.related.nextCursor === undefined;
   return (
     <section
       aria-labelledby={empty ? undefined : "related-heading"}
@@ -442,6 +446,7 @@ function GroupedRelated({
           ) : (
             <div ref={observe("after")} aria-hidden="true" className="h-px" />
           ))}
+        {items.length === 0 && tail}
         {items.length > 0 && (
           <>
             <div className="pt-5 pb-2">
