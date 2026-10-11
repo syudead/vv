@@ -1,6 +1,6 @@
 # Test and CI quality monitoring
 
-Every push to `main` measures the quality of the code, the tests and CI, keeps
+Each push to `main` measures the quality of the code, the tests and CI, keeps
 the history, and opens an Issue when a measure gets worse; the measuring lives
 in [`ci.yml`](../../.github/workflows/ci.yml),
 [`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml) and
@@ -11,7 +11,7 @@ The diagram shows where each measure goes and who reads it.
 ```mermaid
 flowchart LR
   push[Push to main] --> ci[CI test groups]
-  push --> qm[Quality metrics]
+  ci -->|run succeeded on main| qm[Quality metrics]
   pr[Pull request] --> ci
   ci -->|coverage, JUnit results| codecov[(Codecov)]
   qm -->|one line per push| hist[(quality-metrics branch)]
@@ -29,12 +29,17 @@ Each measure has one home, so a trend is read in one place.
 | --- | --- | --- | --- |
 | Line coverage, by `go` and `web` flag and by file | Go `-coverprofile`, Vitest v8 | Every push to `main` and every pull request | [Codecov](https://app.codecov.io/gh/syudead/vv) |
 | Duration and outcome of every test; flaky tests | JUnit from gotestsum, Vitest and Playwright | Same; E2E on pushes to `main` only | Codecov Test Analytics |
-| Cyclomatic complexity of every function | `go/ast` for Go, the ESLint `complexity` rule for Web | Every push to `main` that changes code | `history.jsonl` on the `quality-metrics` branch |
+| Cyclomatic complexity of every function | `go/ast` for Go, the ESLint `complexity` rule for Web | After each successful CI run on a push to `main` | `history.jsonl` on the `quality-metrics` branch |
 | Duplicated lines | jscpd | Same | Same |
 | CI duration, whole run and per job (p50, p90 of the last 20 successful runs) | GitHub API through `gh` | Same | Same |
 
-A push that changes only Markdown, `docs/` or `specs/` is not measured, the same
-split as the CI change filter.
+## Measured after the push's own CI run
+
+`Quality metrics` starts when the CI run of a push to `main` succeeds, measures
+that run's commit, and queues every waiting run instead of keeping one. Started
+on the push itself, it would read the CI durations before that push's own run
+finished and attribute the change to the next push; with one waiting run, a
+burst of merges would leave commits unmeasured.
 
 ## A measure that gets worse opens an Issue
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: cc9e74210674146caf0284d98fd9b7901ab30c5e44b902f80015b1532c8c2d48
+sourceHash: 1741cf9f8cf5fddcf76426242537bda8c6d3c5bcaa2ca531fb9d2b995c2a4643
 ---
 
 # 開発 {#development}
@@ -67,6 +67,6 @@ flowchart LR
 
 Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。Codecov はテスト結果から不安定なテストと遅いテストを報告し、変更された行のカバレッジを、プルリクエストをブロックせずにそのプルリクエストにコメントする（[`.github/codecov.yml`](../../.github/codecov.yml)）。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
 
-コードを変更する `main` へのプッシュのたびに、`Quality metrics` ワークフロー（[`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)）が `task quality-metrics` を実行する。これは、すべての Go の関数（`go/ast`）と Web の関数（ESLint の `complexity` ルール）の循環的複雑度、jscpd が見つける重複行、`main` での直近 20 回の成功した CI 実行とその各ジョブの所要時間の p50 と p90 を測定する。測定結果を `quality-metrics` ブランチの `history.jsonl` に追記し、前回のプッシュからの変化を載せた Markdown の表を実行のサマリーに書き出し、測定値が悪化したときは `quality-regression` ラベルの付いた Issue にコメントする（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。`task quality-metrics -- -ci-runs 0` はローカルマシンでコードだけを測定する。CI の所要時間には `gh` が必要だ。ワークフロー、`scripts/qualitymetrics/`、またはそれが使うツール（`Taskfile.yml`、`mise.toml`、`tools/` と `web/` の npm マニフェスト、`web/eslint.config.js`）を変更するプルリクエストは、履歴を保存せずにそれを実行する。
+`main` へのプッシュの CI 実行が成功するたびに、そのあとで `Quality metrics` ワークフロー（[`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)）が `task quality-metrics` を実行する。これは、すべての Go の関数（`go/ast`）と Web の関数（ESLint の `complexity` ルール）の循環的複雑度、jscpd が見つける重複行、`main` での直近 20 回の成功した CI 実行とその各ジョブの所要時間の p50 と p90 を測定する。測定結果を `quality-metrics` ブランチの `history.jsonl` に追記し、前回のプッシュからの変化を載せた Markdown の表を実行のサマリーに書き出し、測定値が悪化したときは `quality-regression` ラベルの付いた Issue にコメントする（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。`task quality-metrics -- -ci-runs 0` はローカルマシンでコードだけを測定する。CI の所要時間には `gh` が必要だ。ワークフロー、`scripts/qualitymetrics/`、またはそれが使うツール（`Taskfile.yml`、`mise.toml`、`tools/` と `web/` の npm マニフェスト、`web/eslint.config.js`）を変更するプルリクエストは、履歴を保存せずにそれを実行する。
 
 OpenAPI の契約が変わるときは、`api/openapi.yaml`（外部 API なら `api/external-v1.yaml`）を編集し、`task generate` を実行する。`internal/httpapi/gen/`、`internal/httpapi/extgen/`、`web/src/api/gen/` を直接編集してはならない。

@@ -98,7 +98,7 @@ with GitHub OIDC, so the repository needs no Codecov token, but it must be
 activated once on codecov.io by signing in with GitHub and installing the
 Codecov GitHub App. A failed upload does not fail the check.
 
-On every push to `main` that changes code, the `Quality metrics` workflow
+After each successful CI run on a push to `main`, the `Quality metrics` workflow
 ([`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml))
 runs `task quality-metrics`, which measures the cyclomatic complexity of every
 Go function (`go/ast`) and Web function (the ESLint `complexity` rule), the

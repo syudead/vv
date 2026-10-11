@@ -1,18 +1,18 @@
 ---
 source: docs/design-docs/test-quality-monitoring.md
-sourceHash: 5dc55f230cbec952c6ff90bd4c81fdc9f2da8e43d025c9629d08dbe03a42a6c6
+sourceHash: 83b71670ad5435ac88edb1d7b5f58462bc02ad0c036c1489e72661649b959400
 ---
 
 # テストと CI の品質監視 {#test-and-ci-quality-monitoring}
 
-`main` へのプッシュのたびに、コード、テスト、CI の品質を測定し、履歴を残し、測定値が悪化したときは Issue を開く。測定は [`ci.yml`](../../.github/workflows/ci.yml)、[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)、[`scripts/qualitymetrics`](../../scripts/qualitymetrics) にある。
+`main` への各プッシュで、コード、テスト、CI の品質を測定し、履歴を残し、測定値が悪化したときは Issue を開く。測定は [`ci.yml`](../../.github/workflows/ci.yml)、[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)、[`scripts/qualitymetrics`](../../scripts/qualitymetrics) にある。
 
 図は、各測定値の行き先と、それを読む人を示す。
 
 ```mermaid
 flowchart LR
   push[main へのプッシュ] --> ci[CI のテストグループ]
-  push --> qm[Quality metrics]
+  ci -->|main での実行が成功| qm[Quality metrics]
   pr[プルリクエスト] --> ci
   ci -->|カバレッジ、JUnit の結果| codecov[(Codecov)]
   qm -->|プッシュごとに 1 行| hist[(quality-metrics ブランチ)]
@@ -30,11 +30,13 @@ flowchart LR
 | --- | --- | --- | --- |
 | 行カバレッジ（`go` と `web` のフラグ別、ファイル別） | Go の `-coverprofile`、Vitest v8 | `main` へのすべてのプッシュとすべてのプルリクエスト | [Codecov](https://app.codecov.io/gh/syudead/vv) |
 | すべてのテストの所要時間と結果、不安定なテスト | gotestsum、Vitest、Playwright の JUnit | 同上。E2E は `main` へのプッシュのみ | Codecov Test Analytics |
-| すべての関数の循環的複雑度 | Go は `go/ast`、Web は ESLint の `complexity` ルール | コードを変更する `main` へのすべてのプッシュ | `quality-metrics` ブランチの `history.jsonl` |
+| すべての関数の循環的複雑度 | Go は `go/ast`、Web は ESLint の `complexity` ルール | `main` へのプッシュの CI 実行が成功したあと毎回 | `quality-metrics` ブランチの `history.jsonl` |
 | 重複行 | jscpd | 同上 | 同上 |
 | CI の所要時間（実行全体とジョブ別。直近 20 回の成功した実行の p50、p90） | `gh` を通した GitHub API | 同上 | 同上 |
 
-Markdown、`docs/`、`specs/` だけを変更するプッシュは測定しない。CI の変更フィルタと同じ分け方だ。
+## プッシュ自身の CI 実行のあとに測定する {#measured-after-the-pushs-own-ci-run}
+
+`Quality metrics` は、`main` へのプッシュの CI 実行が成功したときに始まり、その実行のコミットを測定し、待機中の実行を 1 つだけ残すのではなくすべてキューに入れる。プッシュそのものを契機に始めると、そのプッシュ自身の実行が終わる前に CI の所要時間を読み、変化を次のプッシュのものとしてしまう。待機中の実行が 1 つだけなら、マージが立て続けに起きたときに測定されないコミットが残る。
 
 ## 悪化した測定値は Issue を開く {#a-measure-that-gets-worse-opens-an-issue}
 
