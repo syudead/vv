@@ -40,7 +40,7 @@ func newPlaylistPlaybackFixture(t *testing.T) *playlistPlaybackFixture {
 	if _, err := playlists.AddPlaylistItems(ctx, f.id, domain.PlaylistAdd{VideoIDs: []int64{f.ids["p1"]}}); err != nil {
 		t.Fatal(err)
 	}
-	_, items, err := playlists.Playlist(ctx, f.id)
+	_, items, _, err := playlists.Playlist(ctx, f.id)
 	if err != nil {
 		t.Fatal(err)
 	}

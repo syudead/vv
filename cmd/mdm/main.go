@@ -357,6 +357,7 @@ func run(opts runOptions) error {
 		Tags:             db.Tags(),
 		Visibility:       db.Visibility(),
 		Favorites:        db.Favorites(),
+		Playlists:        db.Playlists(),
 		PlaylistPlayback: db.Playlists(),
 		WatchHistory:     playbackStore,
 		Overrides:        db.Overrides(),

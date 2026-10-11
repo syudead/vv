@@ -3,9 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -100,23 +100,22 @@ func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain
 // 結果に現れない。
 //
 // 一覧に載せるために要る。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
-// なる。
+// なる。鍵は JSON の配列 1 つで渡す（tagsByContentKeys と同じ）。鍵ごとに束縛変数を
+// 使うと、件数の上限が無いプレイリストの項目が SQLite の束縛変数の上限を超える。
 func (p *PlaybackStore) ProgressByContentKeys(
 	ctx context.Context, contentKeys []string,
 ) (map[string]domain.Progress, error) {
 	if len(contentKeys) == 0 {
 		return map[string]domain.Progress{}, nil
 	}
-
-	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(contentKeys)), ",")
-	args := make([]any, 0, len(contentKeys))
-	for _, key := range contentKeys {
-		args = append(args, key)
+	encoded, err := json.Marshal(contentKeys)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build content_key values: %w", err)
 	}
 
 	rows, err := p.sql.QueryContext(ctx, `
 		select content_key, position_ms, duration_ms, completed, updated_at
-		  from playback_progress where content_key in (`+placeholders+`)`, args...)
+		  from playback_progress where content_key in (select value from json_each(?))`, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read playback positions: %w", err)
 	}

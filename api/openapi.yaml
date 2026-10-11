@@ -1959,6 +1959,191 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/playlists:
+    get:
+      operationId: listPlaylists
+      summary: プレイリストを更新日時の新しい順に返す
+      description: |
+        所有者だけ。すべてのプレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に返す。
+        ページングは無い。`itemCount` は今見せる項目の数である
+        （specs/044-playlists/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: プレイリストの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistList"
+    post:
+      operationId: createPlaylist
+      summary: 空のプレイリストを作る
+      description: |
+        所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）でなければ 400
+        `invalid_request`。同じ名前のプレイリストがあってもよい（specs/044-playlists/research.md R-11）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistName"
+      responses:
+        "201":
+          description: 作ったプレイリスト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/playlists/{id}:
+    get:
+      operationId: getPlaylist
+      summary: プレイリスト 1 つと見せる項目を返す
+      description: |
+        所有者だけ。項目は位置の順で、今ライブラリの動画かグループに引ける項目だけを返す
+        （specs/044-playlists/research.md R-4）。`video` と `group` はライブラリの項目と同じく所有者の値
+        （`progress`・`watchState`・`watchedCount`・`favorite`）を持つ。無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+      responses:
+        "200":
+          description: プレイリスト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playlist"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: renamePlaylist
+      summary: プレイリストの名前を変える
+      description: |
+        所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
+        無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistName"
+      responses:
+        "200":
+          description: 名前を変えたあとのプレイリスト
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deletePlaylist
+      summary: プレイリストを消す
+      description: |
+        所有者だけ。項目も消える。動画・グループ、そのお気に入りと再生位置は変わらない。
+        無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+      responses:
+        "204":
+          description: 消した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/playlists/{id}/items:
+    post:
+      operationId: addPlaylistItems
+      summary: プレイリストの末尾に動画とグループを足す
+      description: |
+        所有者だけ。`videoIds` の動画、次に `folders` のグループを要求の順で末尾に足す
+        （specs/044-playlists/research.md R-5）。ライブラリに無い id、登録フォルダに無い `rootId`、
+        今グループでないフォルダはどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
+        あるものは `existing` に数え、何も変えない。両方が空なら 400 `invalid_request`、`folders` の
+        `path` が不正なら 400 `invalid_folder_path`、重複を除いた合計が 20000 を超えれば 400
+        `too_many_videos`（`PUT /api/favorites` と同じ上限）。プレイリストが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistItemsAdd"
+      responses:
+        "200":
+          description: 足した結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistItemsAdded"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/playlists/{id}/items/{itemId}:
+    delete:
+      operationId: removePlaylistItem
+      summary: プレイリストから項目を 1 つ外す
+      description: |
+        所有者だけ。残りの項目は詰め直す。動画・グループ、そのお気に入りと再生位置は変わらない。
+        プレイリストか項目が無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+        - $ref: "#/components/parameters/PlaylistItemId"
+      responses:
+        "204":
+          description: 外した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/playlists/{id}/items/{itemId}/move:
+    post:
+      operationId: movePlaylistItem
+      summary: プレイリストの項目 1 つを並べ替える
+      description: |
+        所有者だけ。項目を `afterItemId` の項目のすぐ後ろへ移す。`null` なら先頭へ移す
+        （specs/044-playlists/research.md R-3）。プレイリスト・項目・`afterItemId` の項目がそのプレイリストに
+        無ければ 404 `not_found`、`afterItemId` が `itemId` と同じなら 400 `invalid_request`。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+        - $ref: "#/components/parameters/PlaylistItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistItemMove"
+      responses:
+        "204":
+          description: 移した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/watch-history:
     get:
       operationId: listWatchHistory
@@ -2640,6 +2825,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    PlaylistItemId:
+      name: itemId
+      in: path
+      required: true
+      description: プレイリストの項目の識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     FolderPath:
       name: path
       in: query
@@ -3314,6 +3508,131 @@ components:
         appliedFolders:
           type: integer
           description: folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む）
+
+    PlaylistSummary:
+      type: object
+      required: [id, name, itemCount, updatedAt]
+      additionalProperties: false
+      description: プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい
+        itemCount:
+          type: integer
+          description: 今見せる項目の数（specs/044-playlists/research.md R-4）
+        updatedAt:
+          type: string
+          format: date-time
+          description: 名前か項目を最後に変えた時刻
+
+    PlaylistList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順）
+          items:
+            $ref: "#/components/schemas/PlaylistSummary"
+
+    Playlist:
+      type: object
+      required: [id, name, itemCount, updatedAt, items]
+      additionalProperties: false
+      description: プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 前後の空白を取り除いた 1〜100 文字の名前
+        itemCount:
+          type: integer
+          description: 今見せる項目の数
+        updatedAt:
+          type: string
+          format: date-time
+          description: 名前か項目を最後に変えた時刻
+        items:
+          type: array
+          description: 見せる項目を位置の順に並べたもの
+          items:
+            $ref: "#/components/schemas/PlaylistItem"
+
+    PlaylistItem:
+      type: object
+      required: [id, kind]
+      additionalProperties: false
+      description: プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 並べ替えと取り外しに使う項目の識別子
+        kind:
+          type: string
+          enum: [video, group]
+        video:
+          $ref: "#/components/schemas/Video"
+        group:
+          $ref: "#/components/schemas/LibraryGroup"
+
+    PlaylistName:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: プレイリストの名前。サーバーが前後の空白を取り除いてから長さを数える
+
+    PlaylistItemsAdd:
+      type: object
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          description: 足す動画の id
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        folders:
+          type: array
+          description: 足すグループのフォルダ（`PUT /api/favorites` と同じ形）
+          maxItems: 20000
+          items:
+            $ref: "#/components/schemas/VideoFolder"
+
+    PlaylistItemsAdded:
+      type: object
+      required: [added, existing]
+      additionalProperties: false
+      properties:
+        added:
+          type: integer
+          description: 末尾に足した項目の数
+        existing:
+          type: integer
+          description: 引けたが既にプレイリストにあった項目の数
+
+    PlaylistItemMove:
+      type: object
+      required: [afterItemId]
+      additionalProperties: false
+      properties:
+        afterItemId:
+          type: [integer, "null"]
+          format: int64
+          description: この項目のすぐ後ろへ移す。null は先頭へ移す
 
     VideoVisibilityResponse:
       type: object
@@ -4436,25 +4755,6 @@ components:
           description: 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う
         video:
           $ref: "#/components/schemas/Video"
-
-    PlaylistSummary:
-      type: object
-      description: プレイリスト 1 つの要約
-      required: [id, name, itemCount, updatedAt]
-      additionalProperties: false
-      properties:
-        id:
-          type: integer
-          format: int64
-        name:
-          type: string
-        itemCount:
-          type: integer
-          description: 見せる項目の数。動画やグループが今ライブラリに無い項目は数えない
-        updatedAt:
-          type: string
-          format: date-time
-          description: 名前か項目を最後に変えた時刻
 
     PlaylistStep:
       type: object

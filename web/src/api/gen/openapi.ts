@@ -1200,6 +1200,133 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/playlists": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * プレイリストを更新日時の新しい順に返す
+         * @description 所有者だけ。すべてのプレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に返す。
+         *     ページングは無い。`itemCount` は今見せる項目の数である
+         *     （specs/044-playlists/contracts/screen-api.md）。
+         */
+        get: operations["listPlaylists"];
+        put?: never;
+        /**
+         * 空のプレイリストを作る
+         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）でなければ 400
+         *     `invalid_request`。同じ名前のプレイリストがあってもよい（specs/044-playlists/research.md R-11）。
+         */
+        post: operations["createPlaylist"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playlists/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * プレイリスト 1 つと見せる項目を返す
+         * @description 所有者だけ。項目は位置の順で、今ライブラリの動画かグループに引ける項目だけを返す
+         *     （specs/044-playlists/research.md R-4）。`video` と `group` はライブラリの項目と同じく所有者の値
+         *     （`progress`・`watchState`・`watchedCount`・`favorite`）を持つ。無ければ 404 `not_found`。
+         */
+        get: operations["getPlaylist"];
+        put?: never;
+        post?: never;
+        /**
+         * プレイリストを消す
+         * @description 所有者だけ。項目も消える。動画・グループ、そのお気に入りと再生位置は変わらない。
+         *     無ければ 404 `not_found`。
+         */
+        delete: operations["deletePlaylist"];
+        options?: never;
+        head?: never;
+        /**
+         * プレイリストの名前を変える
+         * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
+         *     無ければ 404 `not_found`。
+         */
+        patch: operations["renamePlaylist"];
+        trace?: never;
+    };
+    "/api/playlists/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * プレイリストの末尾に動画とグループを足す
+         * @description 所有者だけ。`videoIds` の動画、次に `folders` のグループを要求の順で末尾に足す
+         *     （specs/044-playlists/research.md R-5）。ライブラリに無い id、登録フォルダに無い `rootId`、
+         *     今グループでないフォルダはどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
+         *     あるものは `existing` に数え、何も変えない。両方が空なら 400 `invalid_request`、`folders` の
+         *     `path` が不正なら 400 `invalid_folder_path`、重複を除いた合計が 20000 を超えれば 400
+         *     `too_many_videos`（`PUT /api/favorites` と同じ上限）。プレイリストが無ければ 404 `not_found`。
+         */
+        post: operations["addPlaylistItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playlists/{id}/items/{itemId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * プレイリストから項目を 1 つ外す
+         * @description 所有者だけ。残りの項目は詰め直す。動画・グループ、そのお気に入りと再生位置は変わらない。
+         *     プレイリストか項目が無ければ 404 `not_found`。
+         */
+        delete: operations["removePlaylistItem"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/playlists/{id}/items/{itemId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * プレイリストの項目 1 つを並べ替える
+         * @description 所有者だけ。項目を `afterItemId` の項目のすぐ後ろへ移す。`null` なら先頭へ移す
+         *     （specs/044-playlists/research.md R-3）。プレイリスト・項目・`afterItemId` の項目がそのプレイリストに
+         *     無ければ 404 `not_found`、`afterItemId` が `itemId` と同じなら 400 `invalid_request`。
+         */
+        post: operations["movePlaylistItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/watch-history": {
         parameters: {
             query?: never;
@@ -1963,6 +2090,75 @@ export interface components {
             /** @description folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む） */
             appliedFolders: number;
         };
+        /** @description プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md） */
+        PlaylistSummary: {
+            /** Format: int64 */
+            id: number;
+            /** @description 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい */
+            name: string;
+            /** @description 今見せる項目の数（specs/044-playlists/research.md R-4） */
+            itemCount: number;
+            /**
+             * Format: date-time
+             * @description 名前か項目を最後に変えた時刻
+             */
+            updatedAt: string;
+        };
+        PlaylistList: {
+            /** @description プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順） */
+            items: components["schemas"]["PlaylistSummary"][];
+        };
+        /** @description プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの */
+        Playlist: {
+            /** Format: int64 */
+            id: number;
+            /** @description 前後の空白を取り除いた 1〜100 文字の名前 */
+            name: string;
+            /** @description 今見せる項目の数 */
+            itemCount: number;
+            /**
+             * Format: date-time
+             * @description 名前か項目を最後に変えた時刻
+             */
+            updatedAt: string;
+            /** @description 見せる項目を位置の順に並べたもの */
+            items: components["schemas"]["PlaylistItem"][];
+        };
+        /** @description プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        PlaylistItem: {
+            /**
+             * Format: int64
+             * @description 並べ替えと取り外しに使う項目の識別子
+             */
+            id: number;
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+        };
+        PlaylistName: {
+            /** @description プレイリストの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+        };
+        PlaylistItemsAdd: {
+            /** @description 足す動画の id */
+            videoIds?: number[];
+            /** @description 足すグループのフォルダ（`PUT /api/favorites` と同じ形） */
+            folders?: components["schemas"]["VideoFolder"][];
+        };
+        PlaylistItemsAdded: {
+            /** @description 末尾に足した項目の数 */
+            added: number;
+            /** @description 引けたが既にプレイリストにあった項目の数 */
+            existing: number;
+        };
+        PlaylistItemMove: {
+            /**
+             * Format: int64
+             * @description この項目のすぐ後ろへ移す。null は先頭へ移す
+             */
+            afterItemId: number | null;
+        };
         VideoVisibilityResponse: {
             /** @description videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む） */
             applied: number;
@@ -2642,19 +2838,6 @@ export interface components {
             title: string;
             video?: components["schemas"]["Video"];
         };
-        /** @description プレイリスト 1 つの要約 */
-        PlaylistSummary: {
-            /** Format: int64 */
-            id: number;
-            name: string;
-            /** @description 見せる項目の数。動画やグループが今ライブラリに無い項目は数えない */
-            itemCount: number;
-            /**
-             * Format: date-time
-             * @description 名前か項目を最後に変えた時刻
-             */
-            updatedAt: string;
-        };
         /** @description 連続再生で開く動画 1 本と、それが属する項目 */
         PlaylistStep: {
             /** Format: int64 */
@@ -2803,6 +2986,8 @@ export interface components {
         TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
         FolderRootId: number;
+        /** @description プレイリストの項目の識別子 */
+        PlaylistItemId: number;
         /**
          * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
          *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
@@ -4636,6 +4821,217 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listPlaylists: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description プレイリストの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistList"];
+                };
+            };
+        };
+    };
+    createPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistName"];
+            };
+        };
+        responses: {
+            /** @description 作ったプレイリスト */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getPlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description プレイリスト */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Playlist"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deletePlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renamePlaylist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistName"];
+            };
+        };
+        responses: {
+            /** @description 名前を変えたあとのプレイリスト */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addPlaylistItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemsAdd"];
+            };
+        };
+        responses: {
+            /** @description 足した結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistItemsAdded"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    removePlaylistItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+                /** @description プレイリストの項目の識別子 */
+                itemId: components["parameters"]["PlaylistItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 外した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    movePlaylistItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+                /** @description プレイリストの項目の識別子 */
+                itemId: components["parameters"]["PlaylistItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaylistItemMove"];
+            };
+        };
+        responses: {
+            /** @description 移した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listWatchHistory: {
