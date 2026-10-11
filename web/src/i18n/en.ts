@@ -1258,6 +1258,22 @@ export const en = {
           : `Show ${formatNumber(count)} earlier videos`,
       moreFailed: "Couldn't load more of the group",
     },
+    // プレイリストの文脈で開いた動画ページ（specs/044-playlists/ui-design.md「Words」）。
+    // 名前と題名（利用者のデータ）はそのまま埋め込む。
+    playlist: {
+      line: (name: string, position: number, count: number) =>
+        position > 0
+          ? `Playlist "${name}", item ${formatNumber(position)} of ${formatNumber(count)}. Open the playlist`
+          : `Playlist "${name}". Open the playlist`,
+      previous: "Previous item",
+      next: "Next item",
+      end: "End of playlist",
+      endAnnouncement: (name: string) =>
+        `Playback finished. End of the playlist "${name}"`,
+      gone: "This video is no longer in the playlist. Playback stops after it.",
+      skipped: (title: string) => `Skipped "${title}": it can't be played here.`,
+      skippedLast: (title: string) => `Can't play "${title}". End of the playlist.`,
+    },
     facts: {
       label: "File details",
       duration: "Length",

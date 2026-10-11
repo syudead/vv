@@ -178,6 +178,13 @@ const scrollerClass =
 const thumbnailWidth = "w-related-thumb";
 
 /**
+ * MemberTarget はメンバーの行のリンク先である。省けば `/videos/{id}` を開き、戻り先だけを
+ * 引き継ぐ。プレイリストのグループの項目の中では、ページがプレイリストの文脈を保つ先を渡す
+ * （specs/044-playlists/ui-design.md「Video page in a playlist」の Aside）。
+ */
+export type MemberTarget = (videoId: number) => { to: string; state: unknown };
+
+/**
  * RelatedVideos は関連動画の列である（要件 15）。
  *
  * 関連動画が 0 件のときは見出しと並びを出さない（閉じる × は見出しの帯 VideoHeader にある）。
@@ -191,10 +198,12 @@ export default function RelatedVideos({
   state,
   backTo,
   onRetry,
+  memberTarget,
 }: {
   state: RelatedState;
   backTo: string;
   onRetry: () => void;
+  memberTarget?: MemberTarget;
 }) {
   if (state.kind === "ready" && state.related.group !== undefined) {
     const group = state.related.group;
@@ -208,6 +217,7 @@ export default function RelatedVideos({
         total={group.total}
         items={state.related.items}
         backTo={backTo}
+        memberTarget={memberTarget}
       />
     );
   }
@@ -281,6 +291,7 @@ function GroupedRelated({
   total,
   items,
   backTo,
+  memberTarget,
 }: {
   currentId: number;
   members: Video[];
@@ -288,6 +299,7 @@ function GroupedRelated({
   total: number;
   items: Video[];
   backTo: string;
+  memberTarget: MemberTarget | undefined;
 }) {
   const wide = useWideScreen();
   const [before, setBefore] = useState<Video[]>([]);
@@ -415,6 +427,7 @@ function GroupedRelated({
                 video={member}
                 position={first + position + 1}
                 backTo={backTo}
+                memberTarget={memberTarget}
               />
             ),
           )}
@@ -563,7 +576,7 @@ export function memberLinkLabel(video: Video): string | UiText {
  * - 窓の大きさが変わったら、一覧の usePreviewCoordination と同じくループを解放し、
  *   帯から出たのと同じに戻す（ui-design.md「Responsive」）。
  */
-function useRelatedScrub(video: Video, preview: HoverPreview) {
+export function useRelatedScrub(video: Video, preview: HoverPreview) {
   const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;
   const scrub = useScrubPreview({
     video,
@@ -615,19 +628,25 @@ function MemberItem({
   video,
   position,
   backTo,
+  memberTarget,
 }: {
   video: Video;
   position: number;
   backTo: string;
+  memberTarget: MemberTarget | undefined;
 }) {
   const preview = useHoverPreview(video);
   const { scrub, release, setLink } = useRelatedScrub(video, preview);
+  const target = memberTarget?.(video.id) ?? {
+    to: `/videos/${String(video.id)}`,
+    state: { from: backTo },
+  };
   return (
     <li>
       <Link
         ref={setLink}
-        to={`/videos/${String(video.id)}`}
-        state={{ from: backTo }}
+        to={target.to}
+        state={target.state}
         aria-label={memberLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}

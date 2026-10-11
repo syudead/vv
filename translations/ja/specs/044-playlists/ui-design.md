@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: c36cdd5ea5eedf38fb606a17a4e63a857bbcf285bd88e7a052660555d51bfe2d
+sourceHash: c25dbe3ba541d03a57aa6854e5af53aa0bcb801144d624db911a84074899920c
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -43,7 +43,7 @@ flowchart LR
   page -->|最後の項目が終わる| end[プレイリストの終わり]
 ```
 
-変わらないもの: 加える 1 つの操作を除くライブラリのカード、行、ツールバー、お気に入りのハート、グループのカード、フォルダの画面、`?playlist` のない動画の画面、サイドバーのほかの項目、ゲート。デザインシステムは変えない。下のどの部分もレジストリのコンポーネントかパターンであり、トークンは加えず、`web/src/theme/tokens.test.ts` のコントラストの組も何も増えない。
+変わらないもの: 加える 1 つの操作を除くライブラリのカード、行、ツールバー、お気に入りのハート、グループのカード、フォルダの画面、`?playlist` のない動画の画面、サイドバーのほかの項目、ゲート。下のどの部分もレジストリのコンポーネントかパターンであり、`web/src/theme/tokens.test.ts` のコントラストの組も何も増えない。デザインシステムはトークンを 1 つ得る: 間隔の段 `playlist-panel`（20rem）がプレイリストのパネルの一覧の高さの上限になる。閉じた間隔の尺度に `max-h-80` がないからである。パネルとプレイリストの行のアイコンは `size-4` で、グループの行のアイコンとメンバーの一覧の視聴済みの印と同じ大きさである。尺度に `size-3.5` がないからである。
 
 ## この形にした理由 {#why-this-shape}
 
@@ -373,8 +373,8 @@ stateDiagram-v2
 
 | 部分 | 形 |
 | --- | --- |
-| プレイリストの行 | タイトルの上の 1 行で、タイトルのブロックの最初にあり、グループの行の形をとる: lucide `ListVideo`（`size-3.5`、`text-muted-foreground`）、プレイリストの名前（1 行、切り詰め、完全な名前を `title` に持つ）、`·`、`tabular-nums` の「2 / 7」。`text-xs`、`sm` から `text-sm`、`text-muted-foreground`。行は `/playlists/{id}` への `Link`（`state.from` を引き継ぐ）で、アクセシブルな名前は「Playlist "{name}", item 2 of 7. Open the playlist」である。`position` が 0（今の項目が隠れている）とき、行は名前だけを出す。動画がグループにも入っているとき、グループの行がその後に続くので、2 つの行はプレイリスト、グループ、タイトルの順に読める |
-| 横の列 | まず[プレイリストのパネル](#playlist-panel)、次に、グループのメンバーならグループの「Up next」のメンバーの一覧、次に関連する動画。それぞれ、今メンバーの一覧が関連する動画から区切られているのと同じく、次のものから区切る |
+| プレイリストの行 | タイトルの上の 1 行で、タイトルのブロックの最初にあり、グループの行の形をとる: lucide `ListVideo`（`size-4`、`text-muted-foreground`）、プレイリストの名前（1 行、切り詰め、完全な名前を `title` に持つ）、`·`、`tabular-nums` の「2 / 7」。`text-xs`、`sm` から `text-sm`、`text-muted-foreground`。行は `/playlists/{id}` への `Link`（`state.from` を引き継ぐ）で、アクセシブルな名前は「Playlist "{name}", item 2 of 7. Open the playlist」である。`position` が 0（今の項目が隠れている）とき、行は名前だけを出す。動画がグループにも入っているとき、グループの行がその後に続くので、2 つの行はプレイリスト、グループ、タイトルの順に読める |
+| 横の列 | まず[プレイリストのパネル](#playlist-panel)、次に、グループのメンバーならグループの「Up next」のメンバーの一覧、次に関連する動画。それぞれ、今メンバーの一覧が関連する動画から区切られているのと同じく、次のものから区切る。グループの項目の中では、メンバーの行はパネルの行と同じく `state.from` と `autoplay` を持って `/videos/{memberId}?playlist={id}&item={the group item's itemId}` を開くので、プレイリストの行、パネル、順は続く。関連する動画の行は動画だけを開く |
 | 矢印 | プレーヤーの端の矢印は、関連する動画の隣ではなく、`previousItem` と `nextItem`（隣の項目の最初の動画）に行く。隣の項目のない側は描かない。ツールチップと名前は「Previous item: {title}」と「Next item: {title}」である。移ると、`item` を手順の `itemId` にし、クエリを保ってその動画を開く。再生中か終了後の移動は再生を始め、一時停止中の移動は始めない。今と同じである。プレーヤーがない状態の層の上にも描く（[再生できない項目](#unplayable-item)） |
 | 通知 | `next` のある動画の終わりに、グループの自動再生の通知をそのまま出す: 「Up next」、カウントダウン、`next.video` のサムネイルとタイトル、`Cancel` と `Play now`。そのリンクと進行は `/videos/{next.video.id}?playlist={id}&item={next.itemId}` を開く。動画は画面にあるものだが `item` が違う手順は、行に新しい位置を出して最初から再生をやり直す（R-7） |
 | 取り消した | 「Next video」= `next.video`、「Play next」、「Watch again」を持つ再生終了のレイヤー。グループの通知を取り消したときと同じ |
@@ -397,11 +397,11 @@ flowchart TB
 
 | 部分 | 形 |
 | --- | --- |
-| 見出しの行 | メンバーの一覧の見出しと同じく `flex items-baseline justify-between`: `h2`（`text-sm font-semibold`）は lucide `ListVideo`（`size-3.5`、`text-muted-foreground`）と 1 行のプレイリストの名前で、名前は切り詰め、完全な名前を `title` に持つ。名前は `/playlists/{id}` への `Link`（`state.from` を引き継ぎ、アクセシブルな名前は「Playlist "{name}". Open the playlist」）である。`lg` より狭いと、タイトルの上の行は 1 画面離れているからである。その右に、`text-xs text-muted-foreground tabular-nums` の「2 / 7」。`position` が 0 のときは何も出さない |
-| 行 | 見出しでラベル付けした `ul` で、行の間は `gap-3`、応答の順に項目ごとに 1 行（表示する項目だけなので、番号は `count` と一致する）。行はメンバーの一覧の行である: `w-5 text-right text-xs text-muted-foreground tabular-nums` の番号、`w-related-thumb` の `VideoThumbnail`（動画の画像か、グループの最初のメンバーの画像。`VideoThumbnailDuration`。動画またはグループが視聴の途中の間は `VideoThumbnailProgress`）、2 行に制限した `text-sm font-medium` のタイトル。タイトルは視聴済みのとき `text-muted-foreground` で、lucide `Check`（`size-3.5`、`text-success`、隠した「Watched」）を持つ。グループの項目はその名前を出し、その下に lucide `Folder`（`size-3`）と「12 videos」を持つ `text-xs text-muted-foreground` の行を出し、途中の間はチェックの場所に `text-xs text-muted-foreground tabular-nums` の「3 / 12」を出す。再生できない動画は、プレイリストの画面の行の警告の行をタイトルの下に保つ |
+| 見出しの行 | メンバーの一覧の見出しと同じく `flex items-baseline justify-between`: `h2`（`text-sm font-semibold`）は lucide `ListVideo`（`size-4`、`text-muted-foreground`）と 1 行のプレイリストの名前で、名前は切り詰め、完全な名前を `title` に持つ。名前は `/playlists/{id}` への `Link`（`state.from` を引き継ぎ、アクセシブルな名前は「Playlist "{name}". Open the playlist」）である。`lg` より狭いと、タイトルの上の行は 1 画面離れているからである。その右に、`text-xs text-muted-foreground tabular-nums` の「2 / 7」。`position` が 0 のときは何も出さない |
+| 行 | 見出しでラベル付けした `ul` で、行の間は `gap-3`、応答の順に項目ごとに 1 行（表示する項目だけなので、番号は `count` と一致する）。行はメンバーの一覧の行である: `w-5 text-right text-xs text-muted-foreground tabular-nums` の番号、`w-related-thumb` の `VideoThumbnail`（動画の画像か、グループの最初のメンバーの画像。`VideoThumbnailDuration`。動画またはグループが視聴の途中の間は `VideoThumbnailProgress`）、2 行に制限した `text-sm font-medium` のタイトル。タイトルは視聴済みのとき `text-muted-foreground` で、lucide `Check`（`size-4`、`text-success`、隠した「Watched」）を持つ。グループの項目はその名前を出し、その下に lucide `Folder`（`size-3`）と「12 videos」を持つ `text-xs text-muted-foreground` の行を出し、途中の間はチェックの場所に `text-xs text-muted-foreground tabular-nums` の「3 / 12」を出す。再生できない動画は、プレイリストの画面の行の警告の行をタイトルの下に保つ |
 | 行のリンク | 行は `/videos/{videoId}?playlist={id}&item={itemId}` への `Link`（関連する行と同じく `-m-1.5 p-1.5 rounded-lg hover:bg-accent`）で、`videoId` は動画か、グループの `openVideoId` である。`state.from` を引き継ぎ、`autoplay` は、矢印と同じく、画面の動画が再生中か終了後なら true、一時停止中なら false である。アクセシブルな名前は「Play from {title}」である。動画の項目の行は、関連する行と同じくホバーのプレビューを再生する。グループの項目の行は何も再生しない。プレビューは 1 つのメンバーのものになるが、行はグループのものだからである |
 | 今の行 | `id` が再生の応答の `itemId` である項目: リンクではなく、`aria-current="true"`、`border-l-2 border-primary bg-accent pl-1` で、メンバーの一覧の今の行と同じく、タイトルの前に隠した「Now playing」を持つ。ホバーの面は変わらない。グループのメンバーでは、今の行はグループの項目で、その「3 / 12」がグループの中のどこかを言い、下のメンバーの一覧がメンバーに印を付ける。`position` が 0 のとき、今の行はない |
-| 高さ | 一覧はどの幅でも `max-h-80 overflow-y-auto`（`scrollbar-on-hover`、`overscroll-contain`）である: 3 項目までのプレイリストは自身の高さをとり、それより長いものは 3 行と 4 行目の上部を出すので、切れた行が一覧はスクロールすると示す。この上限により、長いプレイリストの下でもメンバーの一覧と関連する動画に手が届く |
+| 高さ | 一覧はどの幅でも `max-h-playlist-panel overflow-y-auto`（`scrollbar-on-hover`、`overscroll-contain`）である: 3 項目までのプレイリストは自身の高さをとり、それより長いものは 3 行と 4 行目の上部を出すので、切れた行が一覧はスクロールすると示す。この上限により、長いプレイリストの下でもメンバーの一覧と関連する動画に手が届く |
 | スクロール | パネルが埋まったときと、`itemId` が変わるたびに、一覧自身の `scrollTop` を設定し、今の行がその上の行の下端とともに見えるようにするので、目は前に来たものと後に続くものを読む。どの幅でも、そのために画面と横の列が動くことはない（`scrollIntoView` はそれらを動かす。017 がメンバーの一覧のために `lg` の幅を読むのはそのためである）。`lg` では、パネルと、グループのメンバーなら「Up next」の見出しの行が列の上端に留まり、その下の行は今と同じく 1 つのコンテナの中でスクロールする |
 | 区切り | パネルとその後に続くものの間に、メンバーの一覧の区切りの間隔（上に `pt-5`、下に `pb-2`）で 1 つの `Separator` を置くので、3 つの区画は 1 つのリズムを保つ（`UI品質`、`余白のリズム`）。グループも関連する動画もないときは何も続かず、区切りは描かない |
 
@@ -451,7 +451,7 @@ flowchart TB
 
 | 幅 | レイアウト |
 | --- | --- |
-| 360px | サイドバーはドロワーである。プレイリスト一覧: ヘッダーはタイトル、数、「New playlist」を 1 行に持ち、ボタンの文字を保つ。表は Name と Items を出す。プレイリスト: ヘッダーは最大 2 行の名前、その下の数、行の終わりの「Play」と「More」である。行はハンドルと番号、`w-list-thumb` のサムネイル、最大 2 行のタイトル、長さ、`×` で、視聴済みの列はない。長いタイトルが `×` を行の外に押し出すことはない。ダイアログはダイアログ自身の余白で幅いっぱいに広がる。選択器のポップオーバーは `w-popover` で、ビューポートの中に収める。選択バーの「Add to playlist」は、「Favorite」と「Visibility」のある段か、その下の段の右端に、文字を欠かさずに置く。ライブラリのリスト表示の行にはプレイリストへの追加の列がないので、長さの列は表の中に収まる。そこからは選択バーが追加する。動画の画面: プレイリストの行はタイトルの上の `text-xs` である。通知と終わりのレイヤーは、今と同じくサムネイルを省く。横の列は事実の下にあり、上の境界線と `px-4` を持つ。プレイリストのパネルはその最初の区画で、行は関連する行の幅をとり、一覧は `max-h-80` より高くならず、画面が動かないまま中でスクロールし、その下にメンバーの一覧と関連する動画がある |
+| 360px | サイドバーはドロワーである。プレイリスト一覧: ヘッダーはタイトル、数、「New playlist」を 1 行に持ち、ボタンの文字を保つ。表は Name と Items を出す。プレイリスト: ヘッダーは最大 2 行の名前、その下の数、行の終わりの「Play」と「More」である。行はハンドルと番号、`w-list-thumb` のサムネイル、最大 2 行のタイトル、長さ、`×` で、視聴済みの列はない。長いタイトルが `×` を行の外に押し出すことはない。ダイアログはダイアログ自身の余白で幅いっぱいに広がる。選択器のポップオーバーは `w-popover` で、ビューポートの中に収める。選択バーの「Add to playlist」は、「Favorite」と「Visibility」のある段か、その下の段の右端に、文字を欠かさずに置く。ライブラリのリスト表示の行にはプレイリストへの追加の列がないので、長さの列は表の中に収まる。そこからは選択バーが追加する。動画の画面: プレイリストの行はタイトルの上の `text-xs` である。通知と終わりのレイヤーは、今と同じくサムネイルを省く。横の列は事実の下にあり、上の境界線と `px-4` を持つ。プレイリストのパネルはその最初の区画で、行は関連する行の幅をとり、一覧は `max-h-playlist-panel` より高くならず、画面が動かないまま中でスクロールし、その下にメンバーの一覧と関連する動画がある |
 | 768px | レールのサイドバー。プレイリスト一覧: Name、Items、Updated。プレイリスト: 視聴済みの列が行に加わる。ヘッダーの名前、数、2 つの操作は、名前が約 40 文字までなら 1 行に収まり、それより長い名前は操作の下に折り返す。選択バーは、1 つを選んでいるとき、1 行目に数と 5 つの操作、2 行目の右端に「Select all」と解除を持つ。2 つ以上なら、バーの規則が言うとおり、「Favorite」以降は 2 行目である。動画の画面: まだ 1 列。横の列は事実の下で `px-6` を持ち、パネルは 360px と同じである |
 | 1280px | プレイリスト一覧: 3 つの列で、名前が幅をとる。プレイリスト: 完全な行。ドラッグした行の影は、通り過ぎる行に対して見える。選択バーは 1 行である。動画の画面: 2 列。プレイリストの行は左の列のタイトルの上にあり、横の列（この幅では `w-detail-aside-wide`）はプレイリストのパネルで始まる。パネルの見出しと上限のある一覧は列の上端に留まり、メンバーの一覧と関連する動画はその下でスクロールする。1280×800 では、パネルはその下に少なくとも 3 つの関連する行を見える状態で残す |
 
