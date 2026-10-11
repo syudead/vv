@@ -114,6 +114,21 @@ machine; the CI durations need `gh`. A pull request that changes the workflow,
 npm manifests of `tools/` and `web/`, `web/eslint.config.js`) runs it without
 saving the history.
 
+On the first day of each month the `Mutation testing` workflow
+([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))
+measures whether the Go tests catch injected bugs. It runs
+`task mutation-go`, which runs gremlins (pinned as a tool in `tools/go.mod`) on
+`./internal/domain/...` and writes `reports/mutation/go/gremlins.json`. The
+workflow writes the test efficacy (killed mutants over killed and lived) and the
+mutant coverage to the run's summary and keeps the report as an artifact for 90
+days; a low score does not fail the run. `MUTATION_GO_DIR=./internal/other task
+mutation-go` measures another package tree, and arguments after `--` go to
+`gremlins unleash`. A pull request that changes the workflow runs it too. Web
+mutation testing with StrykerJS waits for a release of
+`@stryker-mutator/vitest-runner` that fixes
+[stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210):
+with Vitest 5 the runner filters out every test, so every mutant survives.
+
 When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit
 `internal/httpapi/gen/`, `internal/httpapi/extgen/` or `web/src/api/gen/`
