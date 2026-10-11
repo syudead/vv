@@ -1472,6 +1472,61 @@ export const en = {
         "Create a playlist, then add videos and groups to it from the library.",
     },
     loadFailed: "Couldn't load the playlists",
+    // プレイリストの画面（/playlists/{id}）。
+    detail: {
+      // 見出しの件数（「12 items · 1:32:10」）。長さの分からない項目があれば長さを省く。
+      count: (count: number, duration: string) =>
+        duration === "" ? items(count) : `${items(count)} · ${duration}`,
+      play: "Play",
+      playFor: (name: string) => `Play "${name}" from the top`,
+      rename: "Rename…",
+      delete: "Delete…",
+      table: "Items",
+      empty: {
+        title: "No items yet",
+        description:
+          "Add videos and groups with Add to playlist on a card, on the video page, or in the selection bar.",
+        action: "Open library",
+      },
+      gone: {
+        title: "This playlist no longer exists",
+        description: "It was deleted, maybe in another tab.",
+        action: "Back to playlists",
+      },
+      loadFailed: "Couldn't load the playlist",
+    },
+    item: {
+      playFrom: (title: string) => `Play from ${title}`,
+      reorder: (title: string) => `Reorder "${title}"`,
+      reorderInstructions:
+        "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
+      // dnd-kit の読み上げ（持ち上げ・移動・置く・取り消し）。位置は 1 始まり。
+      pickedUp: (title: string, position: number, count: number) =>
+        `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      movedTo: (title: string, position: number, count: number) =>
+        `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      dropped: (title: string, position: number, count: number) =>
+        `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+      remove: "Remove from playlist",
+      removeFor: (title: string) => `Remove "${title}" from the playlist`,
+      moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
+      removeFailed: (reason: string) => `Couldn't remove the item: ${reason}`,
+    },
+    renameDialog: {
+      title: "Rename playlist",
+      submit: "Save",
+      submitting: "Saving…",
+      failed: (reason: string) => `Couldn't rename the playlist: ${reason}`,
+    },
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      description: "The playlist is deleted. Its videos and groups stay in the library.",
+      submit: "Delete",
+      submitting: "Deleting…",
+      failed: (reason: string) => `Couldn't delete the playlist: ${reason}`,
+    },
+    deleted: (name: string) => `Deleted "${name}"`,
     // 動画とグループをプレイリストに足すピッカー（specs/044-playlists/ui-design.md
     // 「Add to playlist」「Words」）。名前（利用者のデータ）はそのまま埋め込む。
     add: {

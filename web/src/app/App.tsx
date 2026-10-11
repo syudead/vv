@@ -11,7 +11,7 @@ import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import { deferredRoute } from "./deferredRoute";
+import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から
 // 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。初回設定とログインの
@@ -26,9 +26,14 @@ const HistoryPage = await deferredRoute(
   () => import("../history/HistoryPage"),
   "/history",
 );
+// 一覧とプレイリスト 1 つの画面は同じ接頭辞なので、直接開いた方だけを待つ。
 const PlaylistsPage = await deferredRoute(
   () => import("../playlists/PlaylistsPage"),
-  "/playlists",
+  (pathname) => matchesExactPath(pathname, "/playlists"),
+);
+const PlaylistPage = await deferredRoute(
+  () => import("../playlists/PlaylistPage"),
+  (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
@@ -101,6 +106,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <PlaylistsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/playlists/:id"
+          element={
+            <AppShell>
+              <PlaylistPage />
             </AppShell>
           }
         />
