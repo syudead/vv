@@ -27,9 +27,15 @@ Each existing tag becomes one yes/no (`noul`) question, and a video is sent as
 its thumbnail image plus a JSON state with its title, file name and folder.
 
 Clef scores every question in one non-autoregressive pass and returns a
-probability per question, so one request answers up to 64 tags. A library
-with more tags is sent in batches of 64 with the same image. The question
-names the tag and lists its synonyms; tentative tags are not asked about.
+probability per question. A request carries 16 tags, and a library with more
+tags is sent in batches of 16 with the same image. The question names the tag
+and lists its synonyms; tentative tags are not asked about.
+
+Ollama accepts 64 questions per request, but 64 questions and a thumbnail make
+about 7,400 input tokens, and Clef-flash on a 15 GB CPU machine was killed for
+lack of memory. 16 questions make about 2,000 tokens and take about 130 s
+there. The image is processed again for every batch, so time per video grows
+with the number of tags.
 
 | Input | Source | When missing |
 | --- | --- | --- |
@@ -38,7 +44,7 @@ names the tag and lists its synonyms; tentative tags are not asked about.
 | `file_name`, `folder` | The representative location's path | Never missing |
 
 Reusing the existing thumbnail adds no ffmpeg work. On a 4-core CPU without a
-GPU, Clef-flash takes about 100 s per thumbnail and 25 s for text only; the
+GPU, Clef-flash took about 100 s per thumbnail and 25 s for text only with 9 tags; the
 published GPU latency is under 0.2 s.
 
 ## Tags it adds

@@ -24,9 +24,12 @@ const (
 	DefaultAutoTagThreshold = 0.8
 )
 
-// AutoTagMaxQuestions は判定モデルへの 1 回の問い合わせに載せられる質問の上限である
-// （Ollama の /v1/systemone の制限）。候補のタグがこれより多ければ分けて問い合わせる。
-const AutoTagMaxQuestions = 64
+// AutoTagMaxQuestions は判定モデルへの 1 回の問い合わせに載せる質問の数である。候補のタグが
+// これより多ければ分けて問い合わせる。Ollama の /v1/systemone は 64 問まで受け付けるが、
+// clef-flash は 64 問と画像で入力が約 7,400 トークンになり、メモリ 15GB の CPU 機では判定の
+// プロセスがメモリ不足で落ちた。16 問（約 2,000 トークン）なら収まる
+// （docs/design-docs/auto-tagging.md）。
+const AutoTagMaxQuestions = 16
 
 // autoTagMaxModelLength は模型名の長さの上限である。
 const autoTagMaxModelLength = 200
