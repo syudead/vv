@@ -177,18 +177,3 @@ func TestClassifyReportsUnreachableEndpoint(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
-
-// 確かめは保存した接続先に 1 問だけ送る。
-func TestCheckSendsOneQuestionToSavedEndpoint(t *testing.T) {
-	var questions int
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body requestBody
-		_ = json.NewDecoder(r.Body).Decode(&body)
-		questions += len(body.Questions)
-		_, _ = w.Write([]byte(`{"answers":{"check":{"type":"noul","noul":0.9}}}`))
-	}))
-	defer server.Close()
-	if err := New(at(server.URL)).Check(context.Background()); err != nil || questions != 1 {
-		t.Fatalf("Check = %v, questions = %d", err, questions)
-	}
-}

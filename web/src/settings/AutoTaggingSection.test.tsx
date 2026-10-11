@@ -52,6 +52,10 @@ describe("AutoTaggingSection", () => {
       return Promise.resolve(json(current));
     }
     if (url === URL) return Promise.resolve(json(current));
+    if (url === "/api/auto-tagging/check")
+      return Promise.resolve(
+        json({ available: false, message: "model 'clef' not found" }),
+      );
     if (url === "/api/auto-tagging/runs")
       return Promise.resolve(json({ queued: 4 }, 202));
     return Promise.reject(new Error(`unexpected request: ${url}`));
@@ -164,5 +168,19 @@ describe("AutoTaggingSection", () => {
       ([input]) => String(input) === "/api/auto-tagging/runs",
     );
     expect(JSON.parse(String(run?.[1]?.body))).toEqual({ scope: "missing" });
+  });
+
+  it("tests judging even while auto-tagging is off, and shows why it failed", async () => {
+    const user = userEvent.setup();
+    current = settings({ enabled: false });
+    render(<AutoTaggingSection />);
+    await user.click(await screen.findByRole("button", { name: "Test judging" }));
+    expect(
+      await screen.findByText("The classifier didn't answer: model 'clef' not found"),
+    ).toBeTruthy();
+    const check = fetchMock.mock.calls.find(
+      ([input]) => String(input) === "/api/auto-tagging/check",
+    );
+    expect(check?.[1]?.method).toBe("POST");
   });
 });

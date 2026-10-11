@@ -1,9 +1,10 @@
-import { CircleAlert, LoaderCircle } from "lucide-react";
+import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type AutoTaggingScope,
   type AutoTaggingSettings,
+  checkAutoTaggingClassifier,
   getAutoTaggingSettings,
   isAborted,
   startAutoTagging,
@@ -47,11 +48,18 @@ export function parseThreshold(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : null;
 }
 
+type CheckState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "ok" }
+  | { kind: "failed"; message: UiText };
+
 /**
  * AutoTaggingSection は設定の「Auto-tagging」区画である。機能の入切、取り込みのあとの
  * 自動の判定と 2 つの確率を設定し、機能が入ならライブラリの動画を判定に回す
  * （docs/design-docs/auto-tagging.md）。Ollama の接続先は OllamaSection が持つ。判定が
- * 待ち行列に残っている間は件数を読み直す。
+ * 待ち行列に残っている間は件数を読み直す。「Test judging」は判定の口に 1 問を判定させ、
+ * 機能の入切に関係なく使えるかを確かめる。
  */
 export default function AutoTaggingSection() {
   const text = t.settings.autoTagging;
@@ -61,6 +69,7 @@ export default function AutoTaggingSection() {
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
+  const [check, setCheck] = useState<CheckState>({ kind: "idle" });
   const [starting, setStarting] = useState<AutoTaggingScope | null>(null);
   const controller = useRef<AbortController | null>(null);
   const settingsRef = useRef(settings);
@@ -132,6 +141,21 @@ export default function AutoTaggingSection() {
       if (await persist()) toast(text.saved);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const runCheck = async () => {
+    if (check.kind === "checking") return;
+    setCheck({ kind: "checking" });
+    try {
+      const result = await checkAutoTaggingClassifier();
+      setCheck(
+        result.available
+          ? { kind: "ok" }
+          : { kind: "failed", message: text.checkFailed(result.message ?? "") },
+      );
+    } catch (failure) {
+      setCheck({ kind: "failed", message: text.checkFailed(errorText(failure)) });
     }
   };
 
@@ -251,7 +275,42 @@ export default function AutoTaggingSection() {
             )}
             {saving ? text.saving : text.save}
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void runCheck()}
+            aria-disabled={check.kind === "checking" || undefined}
+          >
+            {text.check}
+          </Button>
         </div>
+        {check.kind === "checking" && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
+            <LoaderCircle
+              aria-hidden="true"
+              className="size-4 animate-spin motion-reduce:animate-none"
+            />
+            {text.checking}
+          </p>
+        )}
+        {check.kind === "ok" && (
+          <p
+            role="status"
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
+            <CircleCheck aria-hidden="true" className="size-4" />
+            {text.checkOk}
+          </p>
+        )}
+        {check.kind === "failed" && (
+          <Alert variant="destructive">
+            <CircleAlert aria-hidden="true" />
+            <AlertTitle>{check.message}</AlertTitle>
+          </Alert>
+        )}
         {saveError !== null && (
           <Alert variant="destructive">
             <CircleAlert aria-hidden="true" />

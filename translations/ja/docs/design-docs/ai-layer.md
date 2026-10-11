@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: 33da269e4bf99938d13b88bc015e5493c9afd9383817406567f600191cd71c2b
+sourceHash: d58eb90fa1d5975ee2bf1d6cfd0d33c66c4763f7382767f62d4affbd117e2a70
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -14,7 +14,7 @@ flowchart LR
   ollama -->|読む| settings[(ollama.* の設定)]
   ollama -->|/v1/systemone| server[Ollama]
   conn[app.OllamaConnection] --> settings
-  conn -->|Check| ollama
+  conn -->|Check: バージョンとモデルの一覧| ollama
 ```
 
 ## ポート {#port}
@@ -44,7 +44,16 @@ flowchart LR
 
 Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 個の質問とサムネイルで入力は約 7,400 トークンになり、15 GB の CPU マシン上の Clef-flash はメモリ不足で強制終了された。16 個の質問では、サムネイルだけのとき約 2,000 トークンになる。画像はバッチごとに処理し直されるので、リクエスト 1 回あたりの時間は質問の数に応じて増える。GPU のない 4 コアの CPU では、質問が 9 個のとき、Clef-flash はサムネイル 1 枚に約 100 秒かかった。公表されている GPU での遅延は 0.2 秒未満だ。
 
-`app.OllamaConnection` は、Settings の Ollama (`/api/settings/ollama`、`/api/settings/ollama/check`) で、URL とモデルを保存し、接続テストを実行する。どの機能の設定とも別なので、それを使う機能がすべてオフの間も接続を設定してテストできる。テストは同じアダプタを通じて、保存した URL に質問を 1 つ送る。サーバーはリクエスト本文の URL には決してリクエストを送らない。そうしなければ、リクエストによってサーバーに到達可能な任意のアドレスを取得させ、その応答を表示させることができてしまう。
+`app.OllamaConnection` は、Settings の Ollama (`/api/settings/ollama`、`/api/settings/ollama/check`) で、URL とモデルを保存し、接続テストを実行する。どの機能の設定とも別なので、それを使う機能がすべてオフの間も接続を設定してテストできる。サーバーはリクエスト本文の URL には決してリクエストを送らない。そうしなければ、リクエストによってサーバーに到達可能な任意のアドレスを取得させ、その応答を表示させることができてしまう。
+
+テストは何を証明するかで分けるので、どの失敗もその原因を示し、接続テストはモデルが何に使われるかに依存しない。
+
+| テスト | 証明すること | リクエスト | 時間 |
+| --- | --- | --- | --- |
+| 接続 (Settings、Ollama) | URL で Ollama が動いていて、モデルを持っていること (タグのない名前は `:latest` を意味する) | `GET /api/version`、`GET /api/tags` | 数秒。モデルは読み込まない |
+| 判定 (Settings、Auto-tagging、"Test judging") | 分類器のポートが質問に確率で答えること | `app.Classifier` を通じた 1 つの質問 | モデルを読み込むので、最大で数分 |
+
+接続テストは、Ollama に到達できない、サーバーが Ollama ではない、モデルがない、のいずれかを報告する。判定テストはポートを使う機能に属するので、背後にどのプロバイダがあっても動く。
 
 | 設定 | 既定値 |
 | --- | --- |
@@ -57,6 +66,7 @@ Ollama を動かせない場所で自動タグ付けを試すために、開発�
 
 | 違い | Ollama | Workers AI | リレー |
 | --- | --- | --- | --- |
+| 接続テスト | `GET /api/version`、`GET /api/tags` | なし | どちらにも自身で答え、`clef` と `clef-flash` を一覧に返す |
 | URL | `{URL}/v1/systemone` | `/accounts/{id}/ai/run/@cf/cloudflare/{model}` | `model` から URL を選ぶ |
 | 認証 | なし | Bearer トークン | `CLOUDFLARE_API_TOKEN` が設定されていれば付ける |
 | 画像 | 生の base64 | データ URL または `{content_type, base64}`、最大 4 枚 | 5 枚以上の画像を 1 つのグリッドに並べる |
@@ -72,3 +82,4 @@ Ollama を動かせない場所で自動タグ付けを試すために、開発�
 | 機能がリクエストごとに URL とモデルを渡す | すべての機能がプロバイダの設定を読むことになり、プロバイダを変えるとすべての機能が変わる |
 | 機能が質問をプロバイダの上限に合わせて分割する | 上限は 1 つのプロバイダのメモリ使用量から来ており、別のプロバイダの上限は異なる |
 | Ollama の設定と接続テストを自動タグ付けのユースケースの中に置く | 分類器を使う 2 つ目の機能が自動タグ付けに依存することになる |
+| 1 つの質問を判定させて接続をテストする | モデルの読み込み中は数分かかり、読み込みのタイムアウトが接続の失敗に見え、判定できないモデル (一般的なチャットモデル) では必ず失敗する |

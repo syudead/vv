@@ -6,6 +6,8 @@
 // プロバイダ（internal/ollama）をそのまま使って自動タグ付けを試すためのもので、製品には
 // 入れない。Workers AI と Ollama の違いはここで吸収する。
 //
+//   - 接続の確かめ: GET /api/version と GET /api/tags に、Workers AI の Clef の模型を
+//     並べて答える（Workers AI へは問い合わせない）
 //   - URL: 模型ごとに /accounts/{id}/ai/run/@cf/cloudflare/{model}
 //   - 認証: CLOUDFLARE_API_TOKEN があれば Bearer で付ける（無ければ付けない。プロキシが
 //     付ける環境向け）
@@ -128,8 +130,25 @@ type workersResponse struct {
 	} `json:"errors"`
 }
 
+// relayVersion は GET /api/version に答える版である。製品の接続の確かめは空でない版を
+// Ollama の印とみなす。
+const relayVersion = "0.0.0-clefrelay"
+
+// models は Workers AI にある Clef の模型である。
+var models = []string{"clef", "clef-flash"}
+
 func newRelay(cfg config, client *http.Client) http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]string{"version": relayVersion})
+	})
+	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {
+		list := make([]map[string]string, len(models))
+		for i, m := range models {
+			list[i] = map[string]string{"name": m + ":latest", "model": m + ":latest"}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"models": list})
+	})
 	mux.HandleFunc("POST /v1/systemone", func(w http.ResponseWriter, r *http.Request) {
 		relay(w, r, cfg, client)
 	})
@@ -143,7 +162,7 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 		writeError(w, http.StatusBadRequest, "cannot read the request: "+err.Error())
 		return
 	}
-	model := strings.TrimSpace(in.Model)
+	model := strings.TrimSuffix(strings.TrimSpace(in.Model), ":latest")
 	if model != "clef" && model != "clef-flash" {
 		writeError(w, http.StatusBadRequest, fmt.Sprintf("model %q is not on Workers AI; use clef or clef-flash", in.Model))
 		return

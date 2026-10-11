@@ -137,7 +137,9 @@ func TestRelayPassesTheWorkersAIErrorText(t *testing.T) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
 		_, _ = io.WriteString(w, `{"errors":[{"message":"AiError: request exceeds the image count limit","code":5012}],"success":false,"result":{}}`)
 	})
-	err := classifier.Check(context.Background())
+	_, err := classifier.Classify(context.Background(), domain.ClassifierRequest{
+		Questions: []domain.ClassifierQuestion{{Key: "q", Text: "?"}},
+	})
 	if err == nil || !strings.Contains(err.Error(), "422") || !strings.Contains(err.Error(), "image count limit") {
 		t.Fatalf("err = %v", err)
 	}
@@ -147,7 +149,27 @@ func TestRelayRejectsAModelWorkersAIDoesNotHave(t *testing.T) {
 	classifier := relayTo(t, "llama3", func(http.ResponseWriter, *http.Request) {
 		t.Error("an unknown model reached Workers AI")
 	})
-	if err := classifier.Check(context.Background()); err == nil || !strings.Contains(err.Error(), "clef-flash") {
+	_, err := classifier.Classify(context.Background(), domain.ClassifierRequest{
+		Questions: []domain.ClassifierQuestion{{Key: "q", Text: "?"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "clef-flash") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// 製品の接続の確かめ（GET /api/version・/api/tags）は Workers AI へ問い合わせずに通り、
+// Clef 以外の模型は「模型が無い」になる。
+func TestRelayAnswersTheOllamaConnectionCheck(t *testing.T) {
+	for _, model := range []string{"clef", "clef-flash", "clef-flash:latest"} {
+		classifier := relayTo(t, model, func(http.ResponseWriter, *http.Request) {
+			t.Error("the connection check reached Workers AI")
+		})
+		if err := classifier.Check(context.Background()); err != nil {
+			t.Errorf("%s: %v", model, err)
+		}
+	}
+	classifier := relayTo(t, "llama3", func(http.ResponseWriter, *http.Request) {})
+	if err := classifier.Check(context.Background()); err == nil || !strings.Contains(err.Error(), "no model named") {
 		t.Fatalf("err = %v", err)
 	}
 }

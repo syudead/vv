@@ -164,7 +164,10 @@ startup.
 The Auto-tagging section of Settings (`/api/settings/auto-tagging`) holds
 whether the feature is used, automatic judging after import, the two
 probabilities and the queue counts. The provider's connection is a separate
-section and resource ([ai-layer.md](ai-layer.md#ollama-provider)).
+section and resource ([ai-layer.md](ai-layer.md#ollama-provider)). "Test
+judging" (`POST /api/auto-tagging/check`) asks the classifier port one
+question, whether the feature is on or off, to show that the provider can
+judge.
 
 Auto-tagging is optional and off by default. While "Use auto-tagging" is off:
 

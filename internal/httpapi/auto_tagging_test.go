@@ -13,11 +13,15 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// autoTagClassifier は判定モデルの代わりで、何にも当てはまらないと答える。
+// autoTagClassifier は判定モデルの代わりで、どの質問にも 0 と答える。
 type autoTagClassifier struct{}
 
-func (autoTagClassifier) Classify(context.Context, domain.ClassifierRequest) (map[string]float64, error) {
-	return map[string]float64{}, nil
+func (autoTagClassifier) Classify(_ context.Context, req domain.ClassifierRequest) (map[string]float64, error) {
+	out := map[string]float64{}
+	for _, q := range req.Questions {
+		out[q.Key] = 0
+	}
+	return out, nil
 }
 
 // ollamaProbe は接続の確かめの代わりで、呼ばれた回数を数え、err があれば失敗を返す。
@@ -145,16 +149,25 @@ func TestCheckOllama(t *testing.T) {
 	ok := newAutoTaggingFixture(t, ollamaProbe{checks: &checks})
 	rec := ok.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check",
 		body: `{"endpoint":"http://attacker.example","model":"clef"}`, cookies: []*http.Cookie{ok.owner}})
-	if got := decode[gen.OllamaCheck](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil || checks != 1 {
+	if got := decode[gen.CheckResult](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil || checks != 1 {
 		t.Fatalf("available check = %d %+v, checks = %d", rec.Code, got, checks)
 	}
 
 	down := newAutoTaggingFixture(t, ollamaProbe{err: errors.New("cannot reach Ollama at http://127.0.0.1:11434")})
 	rec = down.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check",
 		cookies: []*http.Cookie{down.owner}})
-	got := decode[gen.OllamaCheck](t, rec)
+	got := decode[gen.CheckResult](t, rec)
 	if rec.Code != http.StatusOK || got.Available || got.Message == nil || !strings.Contains(*got.Message, "cannot reach Ollama") {
 		t.Fatalf("unavailable check = %d %+v", rec.Code, got)
+	}
+}
+
+// 判定の確かめは機能が切でも 1 問を判定させ、答えが返れば使えると返す。
+func TestCheckAutoTaggingClassifier(t *testing.T) {
+	f := newAutoTaggingFixture(t, ollamaProbe{})
+	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/auto-tagging/check", cookies: []*http.Cookie{f.owner}})
+	if got := decode[gen.CheckResult](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil {
+		t.Fatalf("check = %d %+v", rec.Code, got)
 	}
 }
 
@@ -206,6 +219,7 @@ func TestAutoTaggingIsOwnerOnly(t *testing.T) {
 		{method: http.MethodPut, target: "/api/settings/ollama", body: `{"endpoint":"http://h","model":"m"}`},
 		{method: http.MethodPost, target: "/api/settings/ollama/check"},
 		{method: http.MethodPost, target: "/api/auto-tagging/runs", body: `{"scope":"all"}`},
+		{method: http.MethodPost, target: "/api/auto-tagging/check"},
 		{method: http.MethodPost, target: "/api/videos/1/auto-tag"},
 		{method: http.MethodPost, target: "/api/videos/1/tags/1/confirm"},
 		{method: http.MethodPost, target: "/api/videos/1/tags/1/reject"},

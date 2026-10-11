@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/workers-ai-relay.md
-sourceHash: c3e01283a817a749489fc539f753f8f0c729ab10ce35fd26ca7cfe4ec2858651
+sourceHash: d592d3a6290882309045e23e702e9912a85880614996940e5c03677e7ebba949
 ---
 
 # Workers AI の Clef で自動タグ付けを試す {#try-auto-tagging-with-clef-on-workers-ai}
@@ -30,12 +30,13 @@ flowchart LR
 
    ポート 11434 が使われているときは、`task clef-relay` に `-- -addr 127.0.0.1:11435` を渡す。
 2. VVMDM を起動し、所有者としてサインインする。
-3. Settings の Ollama で、URL を `http://127.0.0.1:11434` (または手順 1 のアドレス) のままにし、モデル `clef-flash` または `clef` を選び、**Save and test connection** を選ぶ。
-4. Settings で自動タグ付けをオンにし、いつもどおり動画にタグを付ける ([auto-tagging.md](../design-docs/auto-tagging.md))。
+3. Settings の Ollama で、URL を `http://127.0.0.1:11434` (または手順 1 のアドレス) のままにし、モデル `clef-flash` または `clef` を選び、**Save and test connection** を選ぶ。これはリレーにだけ届く。
+4. Settings の Auto-tagging で、**Test judging** を選ぶ。これは 1 つの質問をリレー経由で Workers AI に送る。
+5. 自動タグ付けをオンにし、いつもどおり動画にタグを付ける ([auto-tagging.md](../design-docs/auto-tagging.md))。
 
 ## 結果を確認する {#check-the-result}
 
-接続テストは成功を報告し、リレーはリクエストごとに 1 行を出力する。
+どちらのテストも成功を報告し、リレーは Workers AI へのリクエストごとに 1 行を出力する。
 
 ```text
 clefrelay: clef-flash 16 questions, 9→1 images, 3099 tokens, 1.459s
@@ -48,6 +49,6 @@ clefrelay: clef-flash 16 questions, 9→1 images, 3099 tokens, 1.459s
 | 症状 | 原因 | 対処 |
 | --- | --- | --- |
 | 接続テストが Ollama に到達できないと表示する | リレーが動いていない、または別のアドレスで待ち受けている | リレーを起動し、そのアドレスを Ollama の URL に使う |
-| `model "…" is not on Workers AI` | 保存したモデルが Clef のモデルではない | `clef-flash` または `clef` を選ぶ |
-| `ollama answered 401` または `403` | トークンがない、または Workers AI へのアクセス権がない | Workers AI へのアクセス権を持つトークンを `CLOUDFLARE_API_TOKEN` に設定する |
+| 接続テストがモデルがないと表示する | 保存したモデルが Clef のモデルではない | `clef-flash` または `clef` を選ぶ |
+| Test judging が `ollama answered 401` または `403` で失敗する | トークンがない、または Workers AI へのアクセス権がない | Workers AI へのアクセス権を持つトークンを `CLOUDFLARE_API_TOKEN` に設定する |
 | 起動時に `clefrelay: Account ID が無い` | `CLOUDFLARE_ACCOUNT_ID` が設定されていない | それを export するか、`-- -account <id>` を渡す |

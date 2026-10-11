@@ -36,14 +36,16 @@ flowchart LR
 2. Start VVMDM and sign in as the owner.
 3. In Settings, Ollama, keep the URL `http://127.0.0.1:11434` (or the address
    from step 1), choose the model `clef-flash` or `clef`, and select **Save and
-   test connection**.
-4. Turn auto-tagging on in Settings and tag videos as usual
+   test connection**. This reaches the relay only.
+4. In Settings, Auto-tagging, select **Test judging**. This sends one question
+   through the relay to Workers AI.
+5. Turn auto-tagging on and tag videos as usual
    ([auto-tagging.md](../design-docs/auto-tagging.md)).
 
 ## Check the result
 
-The connection test reports success, and the relay prints one line per
-request:
+Both tests report success, and the relay prints one line per request to
+Workers AI:
 
 ```text
 clefrelay: clef-flash 16 questions, 9→1 images, 3099 tokens, 1.459s
@@ -57,6 +59,6 @@ reject buttons.
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | The connection test says it cannot reach Ollama | The relay is not running, or listens on another address | Start the relay, and use its address as the Ollama URL |
-| `model "…" is not on Workers AI` | The saved model is not a Clef model | Choose `clef-flash` or `clef` |
-| `ollama answered 401` or `403` | The token is missing or lacks Workers AI access | Set `CLOUDFLARE_API_TOKEN` to a token with Workers AI access |
+| The connection test says the model is missing | The saved model is not a Clef model | Choose `clef-flash` or `clef` |
+| Test judging fails with `ollama answered 401` or `403` | The token is missing or lacks Workers AI access | Set `CLOUDFLARE_API_TOKEN` to a token with Workers AI access |
 | `clefrelay: Account ID が無い` on start | `CLOUDFLARE_ACCOUNT_ID` is unset | Export it, or pass `-- -account <id>` |

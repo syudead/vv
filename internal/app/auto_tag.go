@@ -14,6 +14,9 @@ import (
 // autoTagRetryDelay は、待ち行列からの取り出し自体が失敗したときに次に試すまでの間隔である。
 const autoTagRetryDelay = 5 * time.Second
 
+// classifierCheckTimeout は判定の確かめの上限時間である。模型の読み込みを含むので長めにとる。
+const classifierCheckTimeout = 5 * time.Minute
+
 // maxAutoTagErrorLength は残す失敗の理由の長さの上限である。
 const maxAutoTagErrorLength = 500
 
@@ -135,6 +138,26 @@ func (a *AutoTagger) SaveSettings(ctx context.Context, settings domain.AutoTagSe
 	}
 	a.Wake()
 	return a.Status(ctx)
+}
+
+// CheckClassifier は判定の口に短い質問を 1 つ判定させ、自動タグ付けに使えるか（答えが
+// 確率で返るか）を確かめる。所有者が求めたときだけ呼ばれ、機能の入切に関係なく確かめられる。
+// どの提供元が答えるかは知らない。模型の読み込みを含むので数分かかることがある。
+func (a *AutoTagger) CheckClassifier(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, classifierCheckTimeout)
+	defer cancel()
+	const key = "check"
+	probabilities, err := a.classifier.Classify(ctx, domain.ClassifierRequest{
+		Input:     domain.ClassifierInput{Facts: map[string]string{"title": "Classifier check"}},
+		Questions: []domain.ClassifierQuestion{{Key: key, Text: "Is this a check of the classifier?"}},
+	})
+	if err != nil {
+		return err
+	}
+	if _, ok := probabilities[key]; !ok {
+		return errors.New("the classifier did not answer the question")
+	}
+	return nil
 }
 
 // enabled は自動タグ付けの機能が入かを返す。

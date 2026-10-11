@@ -1703,7 +1703,7 @@ export const en = {
     ollama: {
       heading: "Ollama",
       description:
-        "Where VVMDM reaches the classifier model (Clef) in Ollama. Auto-tagging uses it; testing the connection works whether auto-tagging is on or off.",
+        "Where VVMDM reaches Ollama and which model it uses. Auto-tagging uses it; the test works whether auto-tagging is on or off.",
       endpoint: "Ollama URL",
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
       model: "Model",
@@ -1712,9 +1712,9 @@ export const en = {
       saving: "Saving…",
       saved: "Ollama settings saved",
       check: "Save and test connection",
-      checking: "Testing… Loading the model can take a few minutes.",
-      checkOk: "The classifier answered.",
-      checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,
+      checking: "Testing…",
+      checkOk: "Ollama is running and has the model.",
+      checkFailed: (reason: string) => `The connection test failed: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loading: "Loading the Ollama settings",
       loadFailed: (reason: string) => `Couldn't load the Ollama settings: ${reason}`,
@@ -1738,6 +1738,10 @@ export const en = {
       saving: "Saving…",
       saved: "Auto-tagging settings saved",
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      check: "Test judging",
+      checking: "Asking the classifier… Loading the model can take a few minutes.",
+      checkOk: "The classifier answered.",
+      checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,
       loading: "Loading the auto-tagging settings",
       loadFailed: (reason: string) =>
         `Couldn't load the auto-tagging settings: ${reason}`,

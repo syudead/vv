@@ -77,7 +77,7 @@ describe("OllamaSection", () => {
     await user.type(model, "clef");
     await user.click(screen.getByRole("button", { name: "Save and test connection" }));
     await screen.findByText(
-      "The classifier didn't answer: cannot reach Ollama at http://gpu:11434",
+      "The connection test failed: cannot reach Ollama at http://gpu:11434",
     );
     const urls = fetchMock.mock.calls.map(
       ([input, init]) => `${init?.method ?? "GET"} ${String(input)}`,
