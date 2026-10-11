@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 65e4b5a71fccc1cf185f8aaa244049366af7adb5875a5aa21808a125733b00a4
+sourceHash: d6a86f56027141eeeb4204a0a55fc2150cfec241eb9324eded0bf112acacdb29
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -223,9 +223,11 @@ flowchart LR
 
 グループは `GET /api/folders/{rootId}/group` で取得し直す。
 
+ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。状態を持たないので、ハートが角に最も近いままになる（[`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx)、[044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)）。
+
 ### リスト表示と選択 {#list-view-and-selection}
 
-リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
+リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
 
 選択はライブラリと所有者だけのものだ。チェックは、グリッドではホバーかフォーカスのときに（ホバーできない環境では常に）、リスト表示では常に薄く、選択中はすべての項目に表示する。グループのチェックが何を選ぶかは [017 UI 設計、Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) にある。
 
@@ -233,9 +235,9 @@ flowchart LR
 
 選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。デザインシステムのバー（`SelectionBar`、最大 `max-w-4xl`）は、操作名が収まらないときは 2 行目へ折り返す。
 
-項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
+項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Add to playlist`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
 
-詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar) にある。
+詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar)、`Favorite` と同じものを送る `Add to playlist` は [044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist) にある。
 
 `Favorite` は、選択したグループごとに、グループとして送るかを決める。
 
@@ -301,9 +303,9 @@ flowchart LR
 | 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているときにサムネイルの項目。右端に操作 |
 | 2 行目 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
 
-操作は、お気に入り、`Use current frame as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Use current frame as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。
+所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist` は同じ条件でその後に続く。
 
 ```mermaid
 flowchart LR
@@ -396,7 +398,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。
 
-キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。
+キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。プレイリストの選択器のような、開いているポップオーバーやメニューの中で押したキーはそれに属する。画面に届くのは Esc だけで、Esc は画面ではなくポップオーバーを閉じる。
 
 ### グループのメンバー {#group-members}
 
