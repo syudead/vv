@@ -216,6 +216,13 @@ tasks:
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
+  quality-metrics:
+    desc: Measure cyclomatic complexity, duplication and CI durations, and print a Markdown summary (CI runs it weekly).
+    # 後ろの引数は scripts/qualitymetrics へ渡す（-ci-runs 0 で CI の所要時間を飛ばす、
+    # -history で履歴と比べて追記する）。web と tools の npm 依存を使う。
+    cmds:
+      - go run ./scripts/qualitymetrics {{.CLI_ARGS}}
+
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
     cmds:

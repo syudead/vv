@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 722c7fde89f748ef03bcc8e929eee54f8fc5cc664ead4380319687a56efdb7cf
+sourceHash: 5bc889543ed0ce14e83473c8920f73e1626ca6707f0d85cfb41790ea141bb9af
 ---
 
 # 開発 {#development}
@@ -66,5 +66,7 @@ flowchart LR
 「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは決して実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。
 
 Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。Codecov はテスト結果から不安定なテストと遅いテストを報告し、変更された行のカバレッジを、プルリクエストをブロックせずにそのプルリクエストにコメントする（[`.github/codecov.yml`](../../.github/codecov.yml)）。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
+
+毎週月曜日に `Quality metrics` ワークフロー（[`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)）が `task quality-metrics` を実行する。これは、すべての Go の関数（`go/ast`）と Web の関数（ESLint の `complexity` ルール）の循環的複雑度、jscpd が見つける重複行、`main` での直近 20 回の成功した CI 実行とその各ジョブの所要時間の p50 と p90 を測定する。測定結果を `quality-metrics` ブランチの `history.jsonl` に追記し、前週からの変化を載せた Markdown の表を実行のサマリーに書き出す。`task quality-metrics -- -ci-runs 0` はローカルマシンでコードだけを測定する。CI の所要時間には `gh` が必要だ。ワークフローまたは `scripts/qualitymetrics/` を変更するプルリクエストは、履歴を保存せずにそれを実行する。
 
 OpenAPI の契約が変わるときは、`api/openapi.yaml`（外部 API なら `api/external-v1.yaml`）を編集し、`task generate` を実行する。`internal/httpapi/gen/`、`internal/httpapi/extgen/`、`web/src/api/gen/` を直接編集してはならない。

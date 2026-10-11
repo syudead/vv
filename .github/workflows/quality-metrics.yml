@@ -1,0 +1,95 @@
+# 品質の指標（循環複雑度、重複、CI の所要時間）を週に 1 回測り、quality-metrics
+# ブランチの history.jsonl に積む。まとめは実行の Summary に出し、前回からの差を示す。
+# カバレッジとテストごとの所要時間は Codecov が追う（ci.yml）。手元では task quality-metrics。
+name: Quality metrics
+
+on:
+  schedule:
+    # 毎週月曜 09:00（日本時間）。
+    - cron: "0 0 * * 1"
+  workflow_dispatch: {}
+  # 測る仕組みそのものを変えた PR では、履歴に積まずに流して確かめる。
+  pull_request:
+    paths:
+      - .github/workflows/quality-metrics.yml
+      - scripts/qualitymetrics/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-metrics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: Measure
+    runs-on: ubuntu-latest
+    permissions:
+      # 履歴を quality-metrics ブランチへ push する。
+      contents: write
+      # CI の実行と job の所要時間を読む。
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            tools/package-lock.json
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "task"
+
+      - name: Web依存を取得する
+        run: npm --prefix web ci
+
+      - name: Node開発ツールを取得する
+        working-directory: tools
+        run: npm ci
+
+      # 履歴は版管理の main と混ぜないよう、専用のブランチに置く。初回はブランチを作る。
+      - name: 履歴を取り出す
+        run: |
+          if git fetch --depth=1 origin quality-metrics; then
+            git worktree add -B quality-metrics history FETCH_HEAD
+          else
+            git worktree add --orphan -b quality-metrics history
+          fi
+
+      - name: 測る
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: task quality-metrics -- -history history/history.jsonl -summary "$GITHUB_STEP_SUMMARY"
+
+      - name: 履歴を保存する
+        if: github.event_name != 'pull_request'
+        working-directory: history
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add history.jsonl
+          git commit -m "metrics: $(date -u +%F) ${SHA::8}"
+          git push origin HEAD:quality-metrics
+
+      - name: 計測の詳細を残す
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-metrics
+          path: |
+            reports/quality-metrics.json
+            reports/eslint-complexity.json
+            reports/jscpd/jscpd-report.json
+          retention-days: 90
