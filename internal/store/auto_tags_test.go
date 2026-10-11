@@ -3,9 +3,12 @@ package store
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"reflect"
 	"slices"
 	"testing"
+
+	"github.com/pressly/goose/v3"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -443,5 +446,50 @@ func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
 	}
 	if applied < 4 {
 		t.Fatalf("AutoTagApplied の数 = %d", applied)
+	}
+}
+
+// 00036 まで適用したデータベース（video_tags.tentative を持たない）を最新まで上げても、付いていた
+// タグがそのまま読める。00036 を書き換えて列を足していた版では、適用済みのデータベースで列が
+// できず、タグの読み出しが失敗して画面からタグが消えた。
+func TestAutoTagSuggestionsMigrationKeepsTags(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := provider.UpTo(ctx, 36); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into tags (id, created_at) values (1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into tag_names (name, tag_id, canonical) values ('cat', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into video_tags (content_key, tag_id, created_at) values ('key-a', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.Up(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := tentativeOf(t, db, "key-a", 1); got != 0 {
+		t.Fatalf("移行のあとの tentative = %d, want 0", got)
+	}
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from auto_tag_rejections`).Scan(&count); err != nil {
+		t.Fatalf("auto_tag_rejections が無い: %v", err)
+	}
+	if _, err := provider.DownTo(ctx, 36); err != nil {
+		t.Fatal(err)
 	}
 }
