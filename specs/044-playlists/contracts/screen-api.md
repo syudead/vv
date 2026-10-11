@@ -70,6 +70,9 @@ serves the sidebar screen and the add menu.
 
 `200 Playlist`; `404 not_found`. `video` and `group` carry the owner's fields
 (`progress`, `watchState`, `watchedCount`, `favorite`), as library items do.
+The same response serves the playlist screen and the video page's playlist
+panel ([ui-design.md, Playlist panel](../ui-design.md#playlist-panel)); the
+panel needs nothing the screen does not.
 
 ## `POST /api/playlists/{id}/items`
 
@@ -140,4 +143,4 @@ PlaylistStep:
 | Playlists screen (`/playlists`) | `GET /api/playlists`, `POST /api/playlists` |
 | Playlist screen (`/playlists/{id}`) | `GET`, `PATCH`, `DELETE /api/playlists/{id}`; `move` and item `DELETE`. Play opens `/videos/{videoId}?playlist={id}&item={itemId}` with `state: {from: "/playlists/{id}", autoplay: true}`, where `videoId` is the video or the group's `openVideoId` |
 | Add menu (card, selection bar, video page) | `GET /api/playlists` when opened; `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
-| Video page with `playlist` and `item`, owner only | `GET /api/playlists/{id}/playback` on open, when the video ends, and when the notice finds its next video gone; moving to a step keeps `playlist`, sets `item` to the step's `itemId`, and carries `state.from` over |
+| Video page with `playlist` and `item`, owner only | `GET /api/playlists/{id}/playback` on open, when the video ends, and when the notice finds its next video gone; `GET /api/playlists/{id}` alongside each of those reads, for the aside's playlist panel ([ui-design.md, Playlist panel](../ui-design.md#playlist-panel)), so the panel and `next` show the same order. A `404` from either read drops the context. Moving to a step keeps `playlist`, sets `item` to the step's `itemId`, and carries `state.from` over |

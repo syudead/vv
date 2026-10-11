@@ -41,6 +41,8 @@ flowchart LR
   detail -->|More| manage[Rename, Delete]
   card[Card, row, video page, selection bar] -->|Add to playlist| picker[Playlist picker]
   picker -->|choose, create| toast[Result notice]
+  page --> panel[Aside: playlist panel]
+  panel -->|row| page
   page -->|video ends| notice[Autoplay notice]
   notice --> page
   page -->|last item ends| end[End of playlist]
@@ -100,12 +102,24 @@ does today (`UI品質`, `操作の優先度`: the same reach as the favorite).
 On the video page the playlist is one line above the title, in the group
 line's place and form, with the name and "2 / 7"; the arrows step between
 items, the autoplay notice is the group notice unchanged, and the end is the
-end-of-playback layer labelled "End of playlist" (R-7). The aside keeps the
-related videos and, inside a group item, the group's member list, which
-already shows what plays next within that item; a second list of the
-playlist's items in the aside is not required by requirement 8 and would sit
-beside the member list saying something different, so it is left out and
-listed as an open question in the PR.
+end-of-playback layer labelled "End of playlist" (R-7). The aside opens with
+a panel of the playlist's items, in the member list's row form with the
+current item marked, so the owner sees what played and what follows without
+leaving the page, as the panel of comparable players does; the line above the
+title gives the position, and the panel gives the order (the maintainer's
+decision on the first design's open question). Inside a group item the
+group's "Up next" member list keeps its place below the panel: the panel
+says which item the group is and what follows it, the member list says what
+plays next inside it, and the two read in the order of the lines above the
+title (playlist, then group). Nesting the member list inside the current
+group row was rejected because the member list reads beyond its window as
+it scrolls and a nested list would scroll inside a scrolling panel; dropping
+the member list in a playlist context was rejected because the member that
+plays next would then be in no list. The panel's list is capped in height
+and scrolls inside, so a long playlist does not push the member list and the
+related videos below the fold, and the panel holds no handle and no `×`:
+the playlist screen, one press away in the panel's heading, is where the
+order is changed.
 
 ## Words
 
@@ -173,6 +187,11 @@ the catalog's "1 item" / "N items" helper, and `videos` its "N videos".
 | Add failed | Couldn't add to the playlist: {reason} | `playlists.add.failed` |
 | Playlist line accessible name | Playlist "{name}", item 2 of 7. Open the playlist | `player.playlist.line(name, position, count)`; without the position part when `position` is 0 |
 | Playlist line position | 2 / 7 | `player.related.position(position, count)` |
+| Panel heading accessible name | Playlist "{name}". Open the playlist | `player.playlist.line(name, 0, count)`: the position is beside the heading, not in its name |
+| Panel heading count | 2 / 7 | `player.related.position(position, count)`, as the member list's heading; omitted when `position` is 0 |
+| Panel row accessible name | Play from {title} | `playlists.item.playFrom(title)`, as the playlist screen's rows; a group item uses the group name |
+| Panel current row | Now playing | `player.related.nowPlaying`, hidden, before the title, as the member list's current row |
+| Panel load failed | Couldn't load the playlist | `playlists.detail.loadFailed`; `Retry` is `common.retry` |
 | Arrow tooltips and accessible names | Previous item: {title}; Next item: {title} | `player.playlist.previous`, `player.playlist.next`, joined by `player.neighbors.withTitle` |
 | End-of-playlist label | End of playlist | `player.playlist.end` |
 | End-of-playlist announcement | Playback finished. End of the playlist "{name}" | `player.playlist.endAnnouncement(name)`; `role="status"`, once |
@@ -479,9 +498,10 @@ and is scanned for; the add control has no state and sits inside it.
 With `?playlist=<id>&item=<itemId>` in the URL and the owner signed in, the
 page reads `GET /api/playlists/{id}/playback?item=&video=` when it opens, when
 the video ends, and when the notice finds its next video gone (R-6), and the
-response drives the parts below. Without the query, or for a guest, the
-page is unchanged (requirement 8). The diagram shows the page's states while
-the context holds.
+response drives the parts below; `GET /api/playlists/{id}` is read alongside
+each of those reads for the [playlist panel](#playlist-panel). Without the
+query, or for a guest, the page is unchanged (requirement 8). The diagram
+shows the page's states while the context holds.
 
 ```mermaid
 stateDiagram-v2
@@ -503,13 +523,55 @@ stateDiagram-v2
 | Part | Form |
 | --- | --- |
 | Playlist line | One line above the title, first in the title block, in the group line's form: lucide `ListVideo` (`size-3.5`, `text-muted-foreground`), the playlist name (one line, truncated, full name in `title`), `·`, and "2 / 7" in `tabular-nums`; `text-xs`, `text-sm` from `sm`, `text-muted-foreground`. The line is a `Link` to `/playlists/{id}` (`state.from` carried over) with the accessible name "Playlist "{name}", item 2 of 7. Open the playlist". When `position` is 0 (the current item is hidden), the line shows the name alone. When the video is also in a group, the group line follows it, so the two lines read playlist then group then title |
+| Aside | The [playlist panel](#playlist-panel) first, then, for a group member, the group's "Up next" member list, then the related videos, each divided from the next as the member list is divided from the related videos today |
 | Arrows | The player's edge arrows go to `previousItem` and `nextItem` (the start video of the adjacent items) instead of the related videos' neighbours; a side with no adjacent item is not drawn. Tooltips and names are "Previous item: {title}" and "Next item: {title}". Moving opens that video with `item` set to the step's `itemId` and the query kept; playing or ended moves start playback, paused moves do not, as today. They are drawn over a state layer too, where the player is absent ([Unplayable item](#unplayable-item)) |
 | Notice | At the end of a video with `next`, the group autoplay notice unchanged: "Up next", the countdown, the thumbnail and title of `next.video`, `Cancel` and `Play now`. Its link and its advance open `/videos/{next.video.id}?playlist={id}&item={next.itemId}`; a step whose video is the one on the page but whose `item` differs restarts playback from the start with the new position on the line (R-7) |
 | Cancelled | The end-of-playback layer with "Next video" = `next.video`, "Play next" and "Watch again", as cancelling the group notice |
 | Next video gone | The playback is read again: with a new `next` the notice starts over with it, and with none the end-of-playlist layer shows |
 | End of playlist | At the end of a video with no `next`: the end-of-playback layer's centred `bg-navbar` surface with, from the top (`gap-3`), the label "End of playlist" in `text-xs font-semibold text-primary`, the playlist name in `text-base font-semibold` clamped to two lines, and the `secondary` "Watch again". Nothing advances and no countdown runs (requirement 9); the hidden announcement reads "Playback finished. End of the playlist "{name}"" once. `×` and Esc return to the playlist screen, which is `state.from` |
-| Dropped | A `404` from any read: the line is not drawn, the arrows follow the related videos again, no notice and no end-of-playlist layer follow the current video, and the toast "This video is no longer in the playlist. Playback stops after it." shows once. The URL keeps its query; a reload reads again and may find the playlist back |
-| Reading | Between the page opening and the first response, the line is not drawn and no arrows are drawn; the title block keeps its place, because the line, when it comes, is one `text-xs` row above the title |
+| Dropped | A `404` from any read, the playlist read included: the line and the panel are not drawn, the arrows follow the related videos again, no notice and no end-of-playlist layer follow the current video, and the toast "This video is no longer in the playlist. Playback stops after it." shows once. The URL keeps its query; a reload reads again and may find the playlist back |
+| Reading | Between the page opening and the first response, the line is not drawn and no arrows are drawn; the title block keeps its place, because the line, when it comes, is one `text-xs` row above the title. The panel's place in the aside is held by its loading form, so the related videos do not move when the panel fills |
+
+### Playlist panel
+
+The aside's first section while the context holds: the playlist's items in
+order, with the current item marked, read from `GET /api/playlists/{id}`
+alongside every playback read, so the panel and the server's `next` show the
+same order after a move or a remove in another tab (R-6, Edge Case). It does
+not refresh on its own between reads (R-10). The diagram shows the aside's
+sections in a playlist context.
+
+```mermaid
+flowchart TB
+  panel[Playlist panel: heading, rows] --- d1[Divider]
+  d1 --- members[Up next: the group's members, for a group member only]
+  members --- d2[Divider]
+  d2 --- related[Related videos]
+```
+
+| Part | Form |
+| --- | --- |
+| Heading row | `flex items-baseline justify-between`, as the member list's heading: the `h2` (`text-sm font-semibold`) is lucide `ListVideo` (`size-3.5`, `text-muted-foreground`) and the playlist name on one line, truncated, with the full name in `title`; the name is a `Link` to `/playlists/{id}` (`state.from` carried over, accessible name "Playlist "{name}". Open the playlist"), because below `lg` the line above the title is a screen away. To its right, "2 / 7" in `text-xs text-muted-foreground tabular-nums`; nothing when `position` is 0 |
+| Rows | A `ul` labelled by the heading, `gap-3` between rows, one per item in the response's order (shown items only, so the numbers match `count`). A row is the member list's row: the number in `w-5 text-right text-xs text-muted-foreground tabular-nums`, the `w-related-thumb` `VideoThumbnail` (the video's image, or a group's first member's; `VideoThumbnailDuration`; `VideoThumbnailProgress` while the video, or the group, is in progress) and the title in `text-sm font-medium` clamped to two lines, `text-muted-foreground` with lucide `Check` (`size-3.5`, `text-success`, hidden "Watched") when watched. A group item shows its name, under it the `text-xs text-muted-foreground` line with lucide `Folder` (`size-3`) and "12 videos", and "3 / 12" in `text-xs text-muted-foreground tabular-nums` in the check's place while in progress. An unplayable video keeps the playlist screen row's warning line under its title |
+| Row link | The row is a `Link` (`-m-1.5 p-1.5 rounded-lg hover:bg-accent`, as a related row) to `/videos/{videoId}?playlist={id}&item={itemId}`, `videoId` the video or the group's `openVideoId`, with `state.from` carried over and `autoplay` true when the page's video is playing or ended and false when paused, as the arrows. Its accessible name is "Play from {title}". A video item's row plays the hover preview as a related row does; a group item's row plays none, because the preview would be one member's and the row is the group's |
+| Current row | The item whose `id` is the playback response's `itemId`: not a link, `aria-current="true"`, `border-l-2 border-primary bg-accent pl-1`, with the hidden "Now playing" before the title, as the member list's current row; the hover surface does not change. For a group member the current row is the group item, its "3 / 12" says where in the group, and the member list below marks the member. When `position` is 0, no row is current |
+| Height | The list is `max-h-80 overflow-y-auto` (`scrollbar-on-hover`, `overscroll-contain`) at every width: a playlist of up to three items takes its own height, and a longer one shows three rows and the top of a fourth, so the cut row says the list scrolls. The cap keeps the member list and the related videos within reach under a long playlist |
+| Scrolling | When the panel fills and whenever `itemId` changes, the list's own `scrollTop` is set so the current row is in view with the bottom of the row above it, so the eye reads what came before and what follows; the page and the aside column never move for it, at any width (a `scrollIntoView` would move them, which is why 017 reads the `lg` width for the member list). At `lg`, the panel and, for a group member, the "Up next" heading line stay at the top of the column, and the rows under them scroll in one container as today |
+| Divider | One `Separator` between the panel and what follows, with the spacing of the member list's divider (`pt-5` above, `pb-2` below), so the three sections keep one rhythm (`UI品質`, `余白のリズム`). With no group and no related videos, nothing follows and no divider is drawn |
+
+The panel changes nothing: a move or a remove is done on the playlist
+screen, which the heading opens, so the panel holds no handle and no `×`,
+and nothing in it is drawn in `primary` except the current row's line and
+the progress bars' fill (`UI品質`, `視覚的な階層`).
+
+| State | Panel |
+| --- | --- |
+| Loading | While the playback read or the playlist read has not answered: a `Skeleton` line in the name's place with no count, and three skeleton rows (a `w-related-thumb` block and two lines), as the related videos load |
+| Content | The heading, the rows and the current row in view |
+| Load failed | The playlist read failed and the playback read did not: the heading from the playback response's `playlist`, and in the list's place "Couldn't load the playlist" with a `ghost` `sm` "Retry" that reads the playlist again; the line, the arrows and the notice are unaffected |
+| Every item hidden | The heading with no count and no rows; the current video ends at the end-of-playlist layer, because the server's `next` is absent |
+| Dropped | A `404` from the playback read or the playlist read: the panel is not drawn, and the aside is the page's without the query |
+| Guest, no query | Not drawn |
 
 ### Unplayable item
 
@@ -533,9 +595,10 @@ stays. `/api/playlists/{id}/playback` and its order rules are unchanged.
 
 A member of a group item plays the group's members in order to the group's
 end and then the next item, as the group notice does today; the aside's "Up
-next" member list and its position stay those of the group, and the playlist
-line above the title says which item the group is. The related videos'
-`nextId` is not used for anything while the context holds (R-7).
+next" member list and its position stay those of the group, below the
+[playlist panel](#playlist-panel), whose current row is the group item, and
+the playlist line above the title says which item the group is. The related
+videos' `nextId` is not used for anything while the context holds (R-7).
 
 ## Guest degradation
 
@@ -547,7 +610,7 @@ When drawing as a guest, the following are not shown. They are neither
 | Sidebar | "Playlists" | The top group stays "Library" and "Folders" |
 | `/playlists`, `/playlists/{id}` | The screens | The gate sends a guest to `/login?next=…` (acceptance criterion 9) |
 | Cards and rows, the video page's action group, the selection bar | "Add to playlist" | The response has no `favorite`, and the add control is drawn only where the heart is |
-| Video page with `?playlist=` | The playlist line, the arrows' playlist targets, the notice and the end layer of the playlist | No playback request is sent; the page plays the public video as it does without the query |
+| Video page with `?playlist=` | The playlist line, the playlist panel, the arrows' playlist targets, the notice and the end layer of the playlist | No playback or playlist request is sent; the page plays the public video as it does without the query |
 
 ## Responsive behaviour
 
@@ -558,9 +621,9 @@ and the notice already do.
 
 | Width | Layout |
 | --- | --- |
-| 360px | The sidebar is the drawer. Playlists: the header is the title, the count and "New playlist" on one row, with the button's text kept; the table shows Name and Items. Playlist: the header is the name on up to two lines, the count under it, and "Play" with "More" at the row's end; a row is the handle and number, the `w-list-thumb` thumbnail, the title on up to two lines, the length and the `×`, with no watched column; a long title never pushes the `×` out of the row. The dialogs span the width with the dialog's own margin. The picker popover is `w-popover`, kept inside the viewport. The selection bar's "Add to playlist" sits on the tier with "Favorite" and "Visibility" or the tier below, at the right end, with its text whole. Video page: the playlist line is `text-xs` above the title; the notice and the end layer omit the thumbnail as today |
-| 768px | The rail sidebar. Playlists: Name, Items and Updated. Playlist: the watched column joins the row; the header's name, count and the two actions fit one row for a name of up to about 40 characters, and a longer name wraps under the actions. The selection bar, with one item selected, holds the count and the five actions on the first row and "Select all" and clear at the right end of the second; with two or more, "Favorite" onward on the second row, as the bar's rules say |
-| 1280px | Playlists: the three columns with the names taking the width. Playlist: the full row; the dragged row's shadow is visible against the rows it passes. The selection bar is one row. Video page: two columns; the playlist line sits above the title in the left column and the aside is unchanged |
+| 360px | The sidebar is the drawer. Playlists: the header is the title, the count and "New playlist" on one row, with the button's text kept; the table shows Name and Items. Playlist: the header is the name on up to two lines, the count under it, and "Play" with "More" at the row's end; a row is the handle and number, the `w-list-thumb` thumbnail, the title on up to two lines, the length and the `×`, with no watched column; a long title never pushes the `×` out of the row. The dialogs span the width with the dialog's own margin. The picker popover is `w-popover`, kept inside the viewport. The selection bar's "Add to playlist" sits on the tier with "Favorite" and "Visibility" or the tier below, at the right end, with its text whole. Video page: the playlist line is `text-xs` above the title; the notice and the end layer omit the thumbnail as today; the aside is under the facts with its top border and `px-4`, and the playlist panel is its first section, with its rows the width of the related rows, its list no taller than `max-h-80` and scrolling inside while the page does not move, and the member list and the related videos below it |
+| 768px | The rail sidebar. Playlists: Name, Items and Updated. Playlist: the watched column joins the row; the header's name, count and the two actions fit one row for a name of up to about 40 characters, and a longer name wraps under the actions. The selection bar, with one item selected, holds the count and the five actions on the first row and "Select all" and clear at the right end of the second; with two or more, "Favorite" onward on the second row, as the bar's rules say. Video page: still one column; the aside under the facts with `px-6`, the panel as at 360px |
+| 1280px | Playlists: the three columns with the names taking the width. Playlist: the full row; the dragged row's shadow is visible against the rows it passes. The selection bar is one row. Video page: two columns; the playlist line sits above the title in the left column, and the aside (`w-detail-aside-wide` at this width) opens with the playlist panel, whose heading and capped list stay at the top of the column while the member list and the related videos scroll under them; at 1280×800 the panel leaves at least three related rows in view below it |
 
 ## Review criteria
 
@@ -637,7 +700,8 @@ empty playlist.
     next item's start video with the line's position one higher; the left
     arrow the previous; the first item has no left arrow and the last no
     right arrow. When the video is a group member, the group line follows the
-    playlist line and the aside's "Up next" is the group's member list.
+    playlist line, the panel's current row is the group item, and the aside's
+    "Up next" under the panel is the group's member list.
 11. **Direct playback unchanged**: opening the same group member from the
     library shows no playlist line, the arrows move within the group, and the
     notice at its end is the group's (acceptance criterion 8). Reordering the
@@ -654,7 +718,21 @@ empty playlist.
     row, video page or selection bar shows "Add to playlist", and a public
     video opened with `?playlist=1&item=2` plays with no playlist line and
     no playback request (acceptance criterion 9).
-14. **Failing examples** (`UI品質`): the playlists drawn as framed cards with
+14. **Playlist panel**: with the eight-item playlist playing its fifth item,
+    the aside opens with the playlist's name and "5 / 8" as a heading of the
+    related videos' size, and under it rows of the related videos' density,
+    with the fifth row marked by its left line and surface and not pressable;
+    the list shows three rows and the top of a fourth, is scrolled so the
+    fourth row's bottom edge and the fifth row are in view, and scrolls inside
+    itself while the page and the aside stay put at 360px and at 1280px.
+    Pressing the heading opens the playlist screen; pressing the seventh row
+    plays its item with the line reading "7 / 8" and the panel's mark on the
+    seventh row. Reordering the playlist in a second tab and letting the video
+    end redraws the panel in the new order. The panel holds no handle and no
+    `×`, and the member list and the related videos follow it after one
+    divider each (requirement 8, `UI品質`, `視覚的な階層`, `情報密度`,
+    `余白のリズム`).
+15. **Failing examples** (`UI品質`): the playlists drawn as framed cards with
     an icon where artwork would be; a row menu with rename and delete on the
     playlists screen; the playlist's count or the row numbers in the same
     size or weight as the name; a `default` play button on every row; the
@@ -664,5 +742,9 @@ empty playlist.
     resting card, or inside the heart's place with the heart moved; the
     picker as a menu of names with no field; a second "Tonight" offered as a
     create row; the playlist line in `text-base` or above the title in
-    `primary`; a countdown on the end-of-playlist layer; the playlist's
-    items drawn in the aside beside the group's member list.
+    `primary`; a countdown on the end-of-playlist layer; the playlist panel
+    drawn below the member list or the related videos, or with rows denser or
+    taller than the related rows; the panel grown to the playlist's whole
+    height; the current row drawn as a link or without its left line; a
+    handle or a `×` in the panel's rows; the panel scrolling the page to its
+    current row.
