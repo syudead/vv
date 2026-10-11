@@ -17,6 +17,10 @@ type AutoTagging interface {
 	Check(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
+	// ConfirmTag と RejectTag は動画に仮に付いたタグを確定・却下する。仮に付いていなければ
+	// domain.ErrNotFound。
+	ConfirmTag(ctx context.Context, videoID, tagID int64) error
+	RejectTag(ctx context.Context, videoID, tagID int64) error
 }
 
 // GetAutoTaggingSettings は自動タグ付けの設定と待ち行列の件数を返す。
@@ -42,23 +46,26 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	}
 	// すべての項目が必須なので、無いことを零値と区別して読む。
 	var body struct {
-		Enabled   *bool    `json:"enabled"`
-		Endpoint  *string  `json:"endpoint"`
-		Model     *string  `json:"model"`
-		Threshold *float64 `json:"threshold"`
+		Enabled            *bool    `json:"enabled"`
+		Endpoint           *string  `json:"endpoint"`
+		Model              *string  `json:"model"`
+		Threshold          *float64 `json:"threshold"`
+		TentativeThreshold *float64 `json:"tentativeThreshold"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.Enabled == nil || body.Endpoint == nil || body.Model == nil || body.Threshold == nil {
-		s.invalidRequest(w, "enabled, endpoint, model and threshold are required.")
+	if body.Enabled == nil || body.Endpoint == nil || body.Model == nil || body.Threshold == nil ||
+		body.TentativeThreshold == nil {
+		s.invalidRequest(w, "enabled, endpoint, model, threshold and tentativeThreshold are required.")
 		return
 	}
 	status, err := s.autoTagging.SaveSettings(r.Context(), domain.AutoTagSettings{
-		Enabled:   *body.Enabled,
-		Endpoint:  *body.Endpoint,
-		Model:     *body.Model,
-		Threshold: *body.Threshold,
+		Enabled:            *body.Enabled,
+		Endpoint:           *body.Endpoint,
+		Model:              *body.Model,
+		Threshold:          *body.Threshold,
+		TentativeThreshold: *body.TentativeThreshold,
 	})
 	if errors.Is(err, domain.ErrInvalidAutoTagSettings) {
 		s.invalidRequest(w, err.Error())
@@ -132,6 +139,40 @@ func (s *server) AutoTagVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 	writeJSON(w, http.StatusAccepted, gen.AutoTagVideoResult{Queued: queued}, s.logger)
 }
 
+// ConfirmVideoTag は動画に自動タグ付けが仮に付けたタグを確定する。
+func (s *server) ConfirmVideoTag(w http.ResponseWriter, r *http.Request, id gen.VideoId, tagID gen.VideoTagId) {
+	s.settleVideoTag(w, r, id, tagID, false)
+}
+
+// RejectVideoTag は動画に自動タグ付けが仮に付けたタグを外し、この動画には付け直さない。
+func (s *server) RejectVideoTag(w http.ResponseWriter, r *http.Request, id gen.VideoId, tagID gen.VideoTagId) {
+	s.settleVideoTag(w, r, id, tagID, true)
+}
+
+func (s *server) settleVideoTag(w http.ResponseWriter, r *http.Request, id, tagID int64, reject bool) {
+	if s.autoTagging == nil {
+		s.internalError(w, "Auto-tagging is not configured.", nil)
+		return
+	}
+	if _, ok := s.lookupVideo(w, r, id); !ok {
+		return
+	}
+	settle := s.autoTagging.ConfirmTag
+	if reject {
+		settle = s.autoTagging.RejectTag
+	}
+	err := settle(r.Context(), id, tagID)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFound(w, "This tag is not tentatively attached to the video.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not update the tag.", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func toAPIAutoTaggingSettings(status domain.AutoTagStatus) gen.AutoTaggingSettings {
 	queue := gen.AutoTaggingQueue{
 		Queued:  status.Counts.Queued,
@@ -144,10 +185,11 @@ func toAPIAutoTaggingSettings(status domain.AutoTagStatus) gen.AutoTaggingSettin
 		queue.LastError = &lastError
 	}
 	return gen.AutoTaggingSettings{
-		Enabled:   status.Settings.Enabled,
-		Endpoint:  status.Settings.Endpoint,
-		Model:     status.Settings.Model,
-		Threshold: status.Settings.Threshold,
-		Queue:     queue,
+		Enabled:            status.Settings.Enabled,
+		Endpoint:           status.Settings.Endpoint,
+		Model:              status.Settings.Model,
+		Threshold:          status.Settings.Threshold,
+		TentativeThreshold: status.Settings.TentativeThreshold,
+		Queue:              queue,
 	}
 }

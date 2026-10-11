@@ -600,6 +600,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/tags/{tagId}/confirm:
+    post:
+      operationId: confirmVideoTag
+      summary: 自動タグ付けが仮に付けたタグを確定する
+      description: |
+        動画に仮に付いたタグ（`VideoTag.unconfirmed`）を普通の付与にする。要求の本文は無い
+        （docs/design-docs/auto-tagging.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/VideoTagId"
+      responses:
+        "204":
+          description: 確定した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/tags/{tagId}/reject:
+    post:
+      operationId: rejectVideoTag
+      summary: 自動タグ付けが仮に付けたタグを却下する
+      description: |
+        動画に仮に付いたタグを外し、この動画にこのタグを自動タグ付けで付け直さない。要求の本文は
+        無い（docs/design-docs/auto-tagging.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/VideoTagId"
+      responses:
+        "204":
+          description: 却下した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/videos/{id}/open:
     post:
       operationId: openVideoFile
@@ -2674,6 +2710,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    VideoTagId:
+      name: tagId
+      in: path
+      required: true
+      description: 動画に付いたタグの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     TagId:
       name: id
       in: path
@@ -2979,7 +3024,7 @@ components:
 
     AutoTaggingSettings:
       type: object
-      required: [enabled, endpoint, model, threshold, queue]
+      required: [enabled, endpoint, model, threshold, tentativeThreshold, queue]
       additionalProperties: false
       description: 自動タグ付けの設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
       properties:
@@ -2995,7 +3040,11 @@ components:
         threshold:
           type: number
           format: double
-          description: タグを付けるのに要る確率。保存値が無ければ 0.8
+          description: タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
+        tentativeThreshold:
+          type: number
+          format: double
+          description: タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
         queue:
           $ref: "#/components/schemas/AutoTaggingQueue"
 
@@ -3018,7 +3067,7 @@ components:
 
     UpdateAutoTaggingSettingsRequest:
       type: object
-      required: [enabled, endpoint, model, threshold]
+      required: [enabled, endpoint, model, threshold, tentativeThreshold]
       additionalProperties: false
       properties:
         enabled:
@@ -3032,6 +3081,10 @@ components:
           type: number
           format: double
           description: 0 より大きく 1 以下
+        tentativeThreshold:
+          type: number
+          format: double
+          description: 0 より大きく threshold 以下。threshold と同じなら仮に付けない
 
     AutoTaggingCheck:
       type: object
@@ -3159,6 +3212,11 @@ components:
         tentative:
           type: boolean
           description: そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す
+        unconfirmed:
+          type: boolean
+          description: |
+            自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+            返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
 
     Tag:
       type: object

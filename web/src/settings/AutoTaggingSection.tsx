@@ -30,6 +30,7 @@ interface Draft {
   endpoint: string;
   model: string;
   threshold: string;
+  tentativeThreshold: string;
 }
 
 function toDraft(settings: AutoTaggingSettings): Draft {
@@ -38,6 +39,7 @@ function toDraft(settings: AutoTaggingSettings): Draft {
     endpoint: settings.endpoint,
     model: settings.model,
     threshold: String(settings.threshold),
+    tentativeThreshold: String(settings.tentativeThreshold),
   };
 }
 
@@ -104,6 +106,13 @@ export default function AutoTaggingSection() {
   }, [active, load]);
 
   const threshold = draft === null ? null : parseThreshold(draft.threshold);
+  const tentativeThreshold =
+    draft === null ? null : parseThreshold(draft.tentativeThreshold);
+  // 仮に付ける確率は、確定して付ける確率以下でなければならない。
+  const tentativeValid =
+    tentativeThreshold !== null &&
+    (threshold === null || tentativeThreshold <= threshold);
+  const valid = threshold !== null && tentativeThreshold !== null && tentativeValid;
 
   const dirty =
     draft !== null &&
@@ -111,11 +120,13 @@ export default function AutoTaggingSection() {
     (draft.enabled !== settings.enabled ||
       draft.endpoint !== settings.endpoint ||
       draft.model !== settings.model ||
-      threshold !== settings.threshold);
+      threshold !== settings.threshold ||
+      tentativeThreshold !== settings.tentativeThreshold);
 
   /** persist は下書きを保存する。保存できたら true を返す。 */
   const persist = async (): Promise<boolean> => {
-    if (draft === null || threshold === null) return false;
+    if (draft === null || threshold === null || tentativeThreshold === null || !valid)
+      return false;
     setSaveError(null);
     try {
       const saved = await updateAutoTaggingSettings({
@@ -123,6 +134,7 @@ export default function AutoTaggingSection() {
         endpoint: draft.endpoint,
         model: draft.model,
         threshold,
+        tentativeThreshold,
       });
       setSettings(saved);
       setDraft(toDraft(saved));
@@ -134,7 +146,7 @@ export default function AutoTaggingSection() {
   };
 
   const save = async () => {
-    if (draft === null || threshold === null || saving) return;
+    if (draft === null || !valid || saving) return;
     setSaving(true);
     try {
       if (await persist()) toast(text.saved);
@@ -147,7 +159,7 @@ export default function AutoTaggingSection() {
   const runCheck = async () => {
     if (draft === null || check.kind === "checking" || saving) return;
     if (dirty) {
-      if (threshold === null) return;
+      if (!valid) return;
       setSaving(true);
       const saved = await persist().finally(() => setSaving(false));
       if (!saved) return;
@@ -262,12 +274,30 @@ export default function AutoTaggingSection() {
           onChange={(event) => update({ threshold: event.target.value })}
         />
       </FormRow>
+      <FormRow
+        label={text.tentativeThreshold}
+        description={text.tentativeThresholdHint}
+        htmlFor="auto-tagging-tentative-threshold"
+      >
+        <Input
+          id="auto-tagging-tentative-threshold"
+          type="number"
+          inputMode="decimal"
+          min={0.01}
+          max={1}
+          step={0.05}
+          className="sm:w-16"
+          aria-invalid={!tentativeValid || undefined}
+          value={draft.tentativeThreshold}
+          onChange={(event) => update({ tentativeThreshold: event.target.value })}
+        />
+      </FormRow>
       <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             onClick={() => void save()}
-            aria-disabled={saving || threshold === null || undefined}
+            aria-disabled={saving || !valid || undefined}
           >
             {saving && (
               <LoaderCircle

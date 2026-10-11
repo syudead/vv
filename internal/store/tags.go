@@ -200,8 +200,8 @@ func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceID
 		return fmt.Errorf("cannot build tag ids: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		insert or ignore into video_tags (content_key, tag_id, created_at)
-		select content_key, ?, created_at from video_tags
+		insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
+		select content_key, ?, created_at, tentative from video_tags
 		 where tag_id in (select value from json_each(?))`,
 		targetID, string(encoded),
 	); err != nil {

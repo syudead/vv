@@ -100,6 +100,10 @@ type VideoTag struct {
 	// FromFolder は祖先のフォルダ名がこのタグの名前かシノニムに一致すること
 	// （017 の data-model.md §4）。
 	FromFolder bool
+	// Unconfirmed は、自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない
+	// 付与であること（docs/design-docs/auto-tagging.md）。フォルダ名からも付いていれば偽。
+	// タグそのものの仮の状態（TagRef.Tentative）とは別である。
+	Unconfirmed bool
 }
 
 // Tag は管理画面と候補に出す1件である（contracts/tags-api.md §1 の Tag）。

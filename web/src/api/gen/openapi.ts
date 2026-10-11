@@ -336,6 +336,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/tags/{tagId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 自動タグ付けが仮に付けたタグを確定する
+         * @description 動画に仮に付いたタグ（`VideoTag.unconfirmed`）を普通の付与にする。要求の本文は無い
+         *     （docs/design-docs/auto-tagging.md）。
+         */
+        post: operations["confirmVideoTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/tags/{tagId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 自動タグ付けが仮に付けたタグを却下する
+         * @description 動画に仮に付いたタグを外し、この動画にこのタグを自動タグ付けで付け直さない。要求の本文は
+         *     無い（docs/design-docs/auto-tagging.md）。
+         */
+        post: operations["rejectVideoTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/open": {
         parameters: {
             query?: never;
@@ -1845,9 +1887,14 @@ export interface components {
             model: string;
             /**
              * Format: double
-             * @description タグを付けるのに要る確率。保存値が無ければ 0.8
+             * @description タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
              */
             threshold: number;
+            /**
+             * Format: double
+             * @description タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+             */
+            tentativeThreshold: number;
             queue: components["schemas"]["AutoTaggingQueue"];
         };
         AutoTaggingQueue: {
@@ -1868,6 +1915,11 @@ export interface components {
              * @description 0 より大きく 1 以下
              */
             threshold: number;
+            /**
+             * Format: double
+             * @description 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+             */
+            tentativeThreshold: number;
         };
         AutoTaggingCheck: {
             available: boolean;
@@ -1935,6 +1987,11 @@ export interface components {
             fromFolder: boolean;
             /** @description そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す */
             tentative: boolean;
+            /**
+             * @description 自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+             *     返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
+             */
+            unconfirmed?: boolean;
         };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
@@ -2873,6 +2930,8 @@ export interface components {
         APITokenId: number;
         /** @description 視聴履歴の 1 件の識別子 */
         WatchHistoryEntryId: number;
+        /** @description 動画に付いたタグの識別子 */
+        VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
@@ -3328,6 +3387,56 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AutoTagVideoResult"];
                 };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    confirmVideoTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 動画に付いたタグの識別子 */
+                tagId: components["parameters"]["VideoTagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確定した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectVideoTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 動画に付いたタグの識別子 */
+                tagId: components["parameters"]["VideoTagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 却下した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];

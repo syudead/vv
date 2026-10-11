@@ -18,6 +18,8 @@ const (
 	autoTagEndpointKey  = "auto_tag.endpoint"
 	autoTagModelKey     = "auto_tag.model"
 	autoTagThresholdKey = "auto_tag.threshold"
+	// autoTagTentativeThresholdKey は仮に付けるのに要る確率のキーである。
+	autoTagTentativeThresholdKey = "auto_tag.tentative_threshold"
 )
 
 // AutoTagSettings は保存した自動タグ付けの設定を返す。行の無い項目は既定値
@@ -46,6 +48,16 @@ func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSett
 			settings.Threshold = threshold
 		}
 	}
+	if value, found, err = readSetting(ctx, s.db.sql, autoTagTentativeThresholdKey); err != nil {
+		return domain.AutoTagSettings{}, err
+	} else if found {
+		if threshold, err := strconv.ParseFloat(value, 64); err == nil {
+			settings.TentativeThreshold = threshold
+		}
+	}
+	// 仮の閾値だけが保存されていない（この版より前に保存した）ときなどに、確定の閾値を
+	// 越えないようにする。
+	settings.TentativeThreshold = min(settings.TentativeThreshold, settings.Threshold)
 	return settings, nil
 }
 
@@ -62,6 +74,7 @@ func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain
 		{autoTagEndpointKey, settings.Endpoint},
 		{autoTagModelKey, settings.Model},
 		{autoTagThresholdKey, strconv.FormatFloat(settings.Threshold, 'f', -1, 64)},
+		{autoTagTentativeThresholdKey, strconv.FormatFloat(settings.TentativeThreshold, 'f', -1, 64)},
 	}
 	now := time.Now().Unix()
 	for _, kv := range values {
@@ -192,10 +205,12 @@ func (s *AutoTagStore) Candidates(ctx context.Context) ([]domain.AutoTagCandidat
 	return candidates, nil
 }
 
-// Finish は判定中の行を終え、tagIDs のタグ（今もあるものだけ）をその内容の動画へ付ける。
+// Finish は判定中の行を終え、selection のタグ（今もあるもの）をその内容の動画へ付ける。
+// Confirmed は確定した付与として付け、仮に付いていれば確定する。Tentative は仮に付け、既に
+// 付いていれば（手で付けた分も）そのままにする。所有者がこの動画で却下したタグは付けない。
 // 行が判定中でなくなっていた（積み直された）なら何もしない。動画が消えていれば行を消す。
-// タグを付けた動画があれば、確定の後に domain.AutoTagApplied を発行する。
-func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, tagIDs []int64) error {
+// 確定の後に domain.AutoTagApplied を発行する。
+func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -221,14 +236,44 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, tagIDs []i
 	if err != nil {
 		return err
 	}
-
-	existing, _, err := existingTagIDs(ctx, tx, tagIDs)
+	keys, err := userKeysForVideoIDs(ctx, tx, []int64{videoID})
 	if err != nil {
 		return err
 	}
+	if len(keys) != 1 {
+		return fmt.Errorf("cannot find the user key of video %d", videoID)
+	}
+	userKey := keys[0]
+
 	now := time.Now()
-	for _, tagID := range existing {
+	confirmed, err := attachableAutoTags(ctx, tx, userKey, selection.Confirmed)
+	if err != nil {
+		return err
+	}
+	for _, tagID := range confirmed {
 		if _, err := attachTagToVideoIDs(ctx, tx, []int64{videoID}, tagID, now); err != nil {
+			return err
+		}
+	}
+	tentative, err := attachableAutoTags(ctx, tx, userKey, selection.Tentative)
+	if err != nil {
+		return err
+	}
+	var added bool
+	for _, tagID := range tentative {
+		result, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
+			values (?, ?, ?, 1)`, userKey, tagID, now.Unix())
+		if err != nil {
+			return fmt.Errorf("cannot add a tentative tag (tag=%d): %w", tagID, err)
+		}
+		if affected, err := result.RowsAffected(); err != nil {
+			return fmt.Errorf("cannot add a tentative tag (tag=%d): %w", tagID, err)
+		} else if affected > 0 {
+			added = true
+		}
+	}
+	if added {
+		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
 	}
@@ -244,6 +289,99 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, tagIDs []i
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
+	}
+	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
+	return nil
+}
+
+// attachableAutoTags は tagIDs のうち、今もあり、利用者データの鍵 userKey の動画で所有者が
+// 却下していないタグの id を渡した順で返す。
+func attachableAutoTags(ctx context.Context, tx *sql.Tx, userKey string, tagIDs []int64) ([]int64, error) {
+	existing, _, err := existingTagIDs(ctx, tx, tagIDs)
+	if err != nil || len(existing) == 0 {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `select tag_id from auto_tag_rejections where content_key = ?`, userKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the rejected tags: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	rejected := map[int64]bool{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("cannot read the rejected tags: %w", err)
+		}
+		rejected[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the rejected tags: %w", err)
+	}
+	var out []int64
+	for _, id := range existing {
+		if !rejected[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// ConfirmTentative は動画 videoID に仮に付いたタグ tagID を確定する。仮に付いていなければ
+// domain.ErrNotFound。確定の後に domain.AutoTagApplied を発行する。
+func (s *AutoTagStore) ConfirmTentative(ctx context.Context, videoID, tagID int64) error {
+	return s.settleTentative(ctx, videoID, tagID, false)
+}
+
+// RejectTentative は動画 videoID に仮に付いたタグ tagID を外し、この動画にこのタグを自動
+// タグ付けで付け直さないよう覚える。仮に付いていなければ domain.ErrNotFound。
+func (s *AutoTagStore) RejectTentative(ctx context.Context, videoID, tagID int64) error {
+	return s.settleTentative(ctx, videoID, tagID, true)
+}
+
+func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64, reject bool) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	keys, err := userKeysForVideoIDs(ctx, tx, []int64{videoID})
+	if err != nil {
+		return err
+	}
+	if len(keys) != 1 {
+		return domain.ErrNotFound
+	}
+	userKey := keys[0]
+	statement := `update video_tags set tentative = 0 where content_key = ? and tag_id = ? and tentative = 1`
+	if reject {
+		statement = `delete from video_tags where content_key = ? and tag_id = ? and tentative = 1`
+	}
+	result, err := tx.ExecContext(ctx, statement, userKey, tagID)
+	if err != nil {
+		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
+	} else if affected == 0 {
+		return domain.ErrNotFound
+	}
+	now := time.Now()
+	if reject {
+		if _, err := tx.ExecContext(ctx, `insert into auto_tag_rejections (content_key, tag_id, rejected_at)
+			values (?, ?, ?) on conflict (content_key, tag_id) do update set rejected_at = excluded.rejected_at`,
+			userKey, tagID, now.Unix()); err != nil {
+			return fmt.Errorf("cannot remember the rejected tag (tag=%d): %w", tagID, err)
+		}
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
+		return err
+	}
+	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
 	}
 	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
 	return nil

@@ -1334,6 +1334,9 @@ export const en = {
         `The tag "${name}" no longer exists, so the tags were reloaded`,
       attachFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
       detachFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
+      confirm: (name: string) => `Keep ${name} (suggested by auto-tagging)`,
+      reject: (name: string) => `Reject ${name} for this video`,
+      settleFailed: (reason: string) => `Couldn't update the suggested tag: ${reason}`,
     },
     autoTag: {
       run: "Suggest tags",
@@ -1705,9 +1708,12 @@ export const en = {
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
       model: "Model",
       modelHint: "clef-flash is fast; clef is larger and more accurate.",
-      threshold: "Minimum probability",
+      threshold: "Probability to add",
       thresholdHint:
         "A tag is added when the classifier's probability is at least this value (above 0, up to 1).",
+      tentativeThreshold: "Probability to suggest",
+      tentativeThresholdHint:
+        "Between this value and the one above, the tag is added as a suggestion to keep or reject on the video page. The same value as above turns suggestions off.",
       save: "Save",
       saving: "Saving…",
       saved: "Auto-tagging settings saved",

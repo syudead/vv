@@ -53,17 +53,18 @@ func TestAutoTaggingSettingsDefaultsAndSave(t *testing.T) {
 	}
 	got := decode[gen.AutoTaggingSettings](t, rec)
 	if got.Enabled || got.Endpoint != domain.DefaultAutoTagEndpoint || got.Model != domain.DefaultAutoTagModel ||
-		got.Threshold != domain.DefaultAutoTagThreshold || got.Queue != (gen.AutoTaggingQueue{}) {
+		got.Threshold != domain.DefaultAutoTagThreshold || got.TentativeThreshold != domain.DefaultAutoTagTentativeThreshold ||
+		got.Queue != (gen.AutoTaggingQueue{}) {
 		t.Fatalf("defaults = %+v", got)
 	}
 
 	res := f.send(http.MethodPut, "/api/settings/auto-tagging",
-		`{"enabled":true,"endpoint":"http://gpu:11434/","model":"clef","threshold":0.7}`)
+		`{"enabled":true,"endpoint":"http://gpu:11434/","model":"clef","threshold":0.7,"tentativeThreshold":0.4}`)
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
 	stored, err := f.env.db.Settings().AutoTagSettings(context.Background())
-	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://gpu:11434", Model: "clef", Threshold: 0.7}
+	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://gpu:11434", Model: "clef", Threshold: 0.7, TentativeThreshold: 0.4}
 	if err != nil || stored != want {
 		t.Fatalf("stored = %+v, %v", stored, err)
 	}
@@ -73,10 +74,11 @@ func TestAutoTaggingSettingsRejectInvalidBodies(t *testing.T) {
 	f := newAutoTaggingFixture(t, autoTagClassifier{})
 	for _, body := range []string{
 		`{}`,
-		`{"enabled":true,"endpoint":"http://h","model":"clef"}`,
-		`{"enabled":true,"endpoint":"ftp://h","model":"clef","threshold":0.5}`,
-		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0}`,
-		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0.5,"x":1}`,
+		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0.5}`,
+		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0.5,"tentativeThreshold":0.6}`,
+		`{"enabled":true,"endpoint":"ftp://h","model":"clef","threshold":0.5,"tentativeThreshold":0.3}`,
+		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0,"tentativeThreshold":0.3}`,
+		`{"enabled":true,"endpoint":"http://h","model":"clef","threshold":0.5,"tentativeThreshold":0.3,"x":1}`,
 	} {
 		if res := f.send(http.MethodPut, "/api/settings/auto-tagging", body); res.StatusCode != http.StatusBadRequest {
 			t.Errorf("body %s: status = %d", body, res.StatusCode)
@@ -138,8 +140,10 @@ func TestStartAutoTaggingValidatesScope(t *testing.T) {
 
 func TestAutoTagVideoNotFound(t *testing.T) {
 	f := newAutoTaggingFixture(t, autoTagClassifier{})
-	if res := f.send(http.MethodPost, "/api/videos/999/auto-tag", ""); res.StatusCode != http.StatusNotFound {
-		t.Fatalf("status = %d", res.StatusCode)
+	for _, target := range []string{"/api/videos/999/auto-tag", "/api/videos/999/tags/1/confirm", "/api/videos/999/tags/1/reject"} {
+		if res := f.send(http.MethodPost, target, ""); res.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status = %d", target, res.StatusCode)
+		}
 	}
 }
 
@@ -147,10 +151,12 @@ func TestAutoTaggingIsOwnerOnly(t *testing.T) {
 	f := newAutoTaggingFixture(t, autoTagClassifier{})
 	assertUnauthenticated(t, "GET", f.env.get("/api/settings/auto-tagging"))
 	for _, req := range []authRequest{
-		{method: http.MethodPut, target: "/api/settings/auto-tagging", body: `{"enabled":true,"endpoint":"http://h","model":"m","threshold":0.5}`},
+		{method: http.MethodPut, target: "/api/settings/auto-tagging", body: `{"enabled":true,"endpoint":"http://h","model":"m","threshold":0.5,"tentativeThreshold":0.3}`},
 		{method: http.MethodPost, target: "/api/settings/auto-tagging/check"},
 		{method: http.MethodPost, target: "/api/auto-tagging/runs", body: `{"scope":"all"}`},
 		{method: http.MethodPost, target: "/api/videos/1/auto-tag"},
+		{method: http.MethodPost, target: "/api/videos/1/tags/1/confirm"},
+		{method: http.MethodPost, target: "/api/videos/1/tags/1/reject"},
 	} {
 		assertUnauthenticated(t, req.method+" "+req.target, f.env.serve(req))
 	}

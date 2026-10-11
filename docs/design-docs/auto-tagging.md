@@ -72,18 +72,39 @@ per thumbnail with 9 tags; the published GPU latency is under 0.2 s.
 
 ## Tags it adds
 
-A tag is added when its probability is at least the threshold (0.8 by
-default), as an ordinary tag on the video; no tag is created.
+The probability decides how a tag is attached: at or above "Probability to
+add" (0.8 by default) as an ordinary tag, between "Probability to suggest"
+(0.5 by default) and that as a suggested (unconfirmed) tag, and below it not
+at all. No tag is created.
 
-Added tags are indistinguishable from tags the owner added, so the existing
-tag screens remove or merge them. The default threshold leans towards missing
-a tag rather than adding a wrong one: in a trial on 14 images, the one wrong
-tag had a probability between 0.5 and 0.8.
+```mermaid
+flowchart LR
+  p[Probability] --> add{0.8 or more?}
+  add -->|yes| ordinary[Ordinary tag]
+  add -->|no| suggest{0.5 or more?}
+  suggest -->|yes| suggested[Suggested tag]
+  suggest -->|no| none[Not added]
+```
+
+A suggested tag shows the tentative mark on cards and the video page, and the
+video page offers keep and reject in place of remove. Keeping it, adding the
+same tag by hand, or a later judgement at or above "Probability to add" turns
+it into an ordinary tag. Rejecting it removes it and records the tag for that
+video in `auto_tag_rejections`, so auto-tagging never adds it to that video
+again; adding it by hand still works. Setting both probabilities to the same
+value turns suggestions off.
+
+The middle band exists because the classifier's probabilities near the
+threshold are not reliable either way: in the trials, the one wrong tag and
+one right tag (the rocket in a three-scene video, 0.70) both fell between 0.5
+and 0.8. Suggested tags count in tag filters like ordinary ones, the same way
+tentative tags do.
 
 | Rejected | Why |
 | --- | --- |
 | Create tags from the model's suggestions | Clef only scores options it is given; it does not generate names |
-| Mark added tags as tentative | Tentative is a state of a newly created tag, and these tags already exist |
+| Mark the tag itself as tentative | Tentative is a state of a tag across all videos, and a suggestion is about one video |
+| One threshold | Tags near it are either dropped or added unchecked |
 
 ## Queue and when a video is judged
 
@@ -124,7 +145,7 @@ startup.
 
 ## Settings
 
-The owner sets the Ollama URL, the model, the threshold and automatic
+The owner sets the Ollama URL, the model, the two probabilities and automatic
 judging under Settings, Auto-tagging; "Save and test connection" saves the
 form and sends one question to the saved URL.
 
@@ -137,4 +158,5 @@ request could make the server fetch any reachable address and show the reply.
 | Tag new videos automatically | Off |
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` is 27B and more accurate) |
-| Minimum probability | 0.8 |
+| Probability to add | 0.8 |
+| Probability to suggest | 0.5 (the same value as "Probability to add" turns suggestions off) |

@@ -29,8 +29,12 @@ type AutoTagQueue interface {
 	// Subject は内容の動画を返す。無ければ domain.ErrNotFound。
 	Subject(ctx context.Context, contentKey string) (domain.Video, error)
 	Candidates(ctx context.Context) ([]domain.AutoTagCandidate, error)
-	// Finish は判定を終え、tagIDs のタグを付ける。
-	Finish(ctx context.Context, contentKey string, tagIDs []int64) error
+	// Finish は判定を終え、確定と仮のタグを付ける。
+	Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection) error
+	// ConfirmTentative と RejectTentative は動画に仮に付いたタグを確定・却下する。仮に付いて
+	// いなければ domain.ErrNotFound。
+	ConfirmTentative(ctx context.Context, videoID, tagID int64) error
+	RejectTentative(ctx context.Context, videoID, tagID int64) error
 	Fail(ctx context.Context, contentKey, reason string) error
 	RequeueRunning(ctx context.Context) (int, error)
 	Counts(ctx context.Context) (domain.AutoTagCounts, error)
@@ -184,6 +188,16 @@ func (a *AutoTagger) QueueLibrary(ctx context.Context, scope domain.AutoTagScope
 	return queued, nil
 }
 
+// ConfirmTag は動画に自動タグ付けが仮に付けたタグを確定する。
+func (a *AutoTagger) ConfirmTag(ctx context.Context, videoID, tagID int64) error {
+	return a.queue.ConfirmTentative(ctx, videoID, tagID)
+}
+
+// RejectTag は動画に自動タグ付けが仮に付けたタグを外し、この動画には付け直さない。
+func (a *AutoTagger) RejectTag(ctx context.Context, videoID, tagID int64) error {
+	return a.queue.RejectTentative(ctx, videoID, tagID)
+}
+
 // VideoImagesFinished は取り込みで動画のシーク用プレビューの段階が終わった（成否を問わない）
 // ことを受け取る。代表サムネイルはそれより前に終わっているので、判定に添える画像が揃っている。
 // 自動の判定が入なら、まだ判定していない動画を積む。
@@ -253,7 +267,7 @@ func (a *AutoTagger) Run(ctx context.Context) {
 // process は 1 件を判定し、結果を記録する。停止で途切れた判定は記録せず、次の起動で
 // Recover が積み直す。
 func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
-	tagIDs, err := a.decide(ctx, job)
+	selection, err := a.decide(ctx, job)
 	if ctx.Err() != nil {
 		return
 	}
@@ -268,37 +282,37 @@ func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
 		}
 		return
 	}
-	if err := a.queue.Finish(ctx, job.ContentKey, tagIDs); err != nil {
+	if err := a.queue.Finish(ctx, job.ContentKey, selection); err != nil {
 		a.logger.Error("cannot record the auto-tagging result", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 	}
 }
 
-// decide は動画の手がかりを判定モデルに渡し、付けるタグの id を返す。動画が消えていれば
-// 空を返す（Finish が行を消す）。
-func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) ([]int64, error) {
+// decide は動画の手がかりを判定モデルに渡し、確定と仮に付けるタグの id を返す。動画が
+// 消えていれば空を返す（Finish が行を消す）。
+func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.AutoTagSelection, error) {
+	var selection domain.AutoTagSelection
 	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {
-		return nil, err
+		return selection, err
 	}
 	video, err := a.queue.Subject(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
-		return nil, nil
+		return selection, nil
 	}
 	if err != nil {
-		return nil, err
+		return selection, err
 	}
 	candidates, err := a.queue.Candidates(ctx)
 	if err != nil {
-		return nil, err
+		return selection, err
 	}
 	if len(candidates) == 0 {
-		return nil, nil
+		return selection, nil
 	}
 
 	subject := domain.NewAutoTagSubject(video.Title, video.Path)
 	subject.Images = a.videoImages(job.ContentKey, video)
 
-	var selected []int64
 	for _, chunk := range domain.ChunkAutoTagCandidates(candidates) {
 		questions := make([]domain.AutoTagQuestion, len(chunk))
 		for i, candidate := range chunk {
@@ -311,11 +325,13 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) ([]int64
 			Questions: questions,
 		})
 		if err != nil {
-			return nil, err
+			return selection, err
 		}
-		selected = append(selected, domain.SelectAutoTags(chunk, probabilities, settings.Threshold)...)
+		chunkSelection := domain.SelectAutoTags(chunk, probabilities, settings)
+		selection.Confirmed = append(selection.Confirmed, chunkSelection.Confirmed...)
+		selection.Tentative = append(selection.Tentative, chunkSelection.Tentative...)
 	}
-	return selected, nil
+	return selection, nil
 }
 
 // videoImages は判定に添える画像（代表サムネイルと、動画全体から等間隔に選んだコマ）を

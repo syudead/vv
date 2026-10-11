@@ -72,7 +72,7 @@ func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	if got != domain.DefaultAutoTagSettings() {
 		t.Fatalf("既定値 = %+v", got)
 	}
-	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://gpu:11434", Model: "clef", Threshold: 0.65}
+	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://gpu:11434", Model: "clef", Threshold: 0.65, TentativeThreshold: 0.4}
 	if err := db.Settings().SaveAutoTagSettings(ctx, want); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestAutoTagQueueModes(t *testing.T) {
 		t.Fatalf("失敗した行を UnlessDone が積み直さなかった")
 	}
 	claimAutoTag(t, store)
-	if err := store.Finish(ctx, soloKey, nil); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}); err != nil {
 		t.Fatal(err)
 	}
 	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueUnlessDone); n != 0 {
@@ -185,7 +185,7 @@ func TestAutoTagFinishAttachesExistingTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
-	if err := store.Finish(ctx, soloKey, []int64{cat.ID, gone.ID}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID, gone.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := manualTagIDs(t, db, soloKey); !reflect.DeepEqual(got, []int64{cat.ID}) {
@@ -215,7 +215,7 @@ func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 	if _, err := store.RequeueRunning(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Finish(ctx, soloKey, []int64{cat.ID}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := manualTagIDs(t, db, soloKey); len(got) != 0 {
@@ -246,7 +246,7 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 	if _, err := store.Subject(ctx, soloKey); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("登録外の動画の Subject = %v", err)
 	}
-	if err := store.Finish(ctx, soloKey, nil); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}); err != nil {
 		t.Fatal(err)
 	}
 	if state := autoTagState(t, db, soloKey); state != "" {
@@ -317,7 +317,7 @@ func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 	job := claimAutoTag(t, store)
-	if err := store.Finish(ctx, job.ContentKey, []int64{cat.ID}); err != nil {
+	if err := store.Finish(ctx, job.ContentKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}); err != nil {
 		t.Fatal(err)
 	}
 	if tags := ownerVideo(t, db, p1).UserKey; len(manualTagIDs(t, db, tags)) != 1 {
@@ -332,5 +332,116 @@ func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("発行した変化 = %#v, want AutoTagApplied%v", recorder.events, want)
+	}
+}
+
+// tentativeOf は利用者データの鍵 key に付いたタグ tagID の仮の状態を返す。行が無ければ -1。
+func tentativeOf(t *testing.T, db *DB, key string, tagID int64) int {
+	t.Helper()
+	var tentative int
+	if err := db.sql.QueryRow(`select tentative from video_tags where content_key = ? and tag_id = ?`, key, tagID).
+		Scan(&tentative); err != nil {
+		return -1
+	}
+	return tentative
+}
+
+func finishSolo(t *testing.T, db *DB, ids map[string]int64, selection domain.AutoTagSelection) {
+	t.Helper()
+	ctx := context.Background()
+	store := db.AutoTags()
+	if _, err := store.QueueVideos(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, domain.AutoTagQueueAgain); err != nil {
+		t.Fatal(err)
+	}
+	job := claimAutoTag(t, store)
+	if err := store.Finish(ctx, job.ContentKey, selection); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 中間の帯のタグは仮に付き、動画のタグに Unconfirmed として出る。手で付けた分は仮にしない。
+func TestAutoTagFinishAttachesTentativeTags(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	solo := ids[fixturePath("/media/solo.mp4")]
+	soloKey := "key" + fixturePath("/media/solo.mp4")
+	cat, dog, manual := createTestTag(t, db, "cat"), createTestTag(t, db, "dog"), createTestTag(t, db, "manual")
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{solo}, manual.ID); err != nil {
+		t.Fatal(err)
+	}
+	finishSolo(t, db, ids, domain.AutoTagSelection{Confirmed: []int64{cat.ID}, Tentative: []int64{dog.ID, manual.ID}})
+
+	if tentativeOf(t, db, soloKey, cat.ID) != 0 || tentativeOf(t, db, soloKey, dog.ID) != 1 || tentativeOf(t, db, soloKey, manual.ID) != 0 {
+		t.Fatalf("tentative = cat %d, dog %d, manual %d",
+			tentativeOf(t, db, soloKey, cat.ID), tentativeOf(t, db, soloKey, dog.ID), tentativeOf(t, db, soloKey, manual.ID))
+	}
+	tags, err := db.Tags().TagsByContentKeys(ctx, []string{soloKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	unconfirmed := map[string]bool{}
+	for _, tag := range tags[soloKey] {
+		unconfirmed[tag.Name] = tag.Unconfirmed
+	}
+	if !reflect.DeepEqual(unconfirmed, map[string]bool{"cat": false, "dog": true, "manual": false}) {
+		t.Fatalf("unconfirmed = %v", unconfirmed)
+	}
+
+	// 次の判定で確率が上がれば確定し、手で付けても確定する。
+	finishSolo(t, db, ids, domain.AutoTagSelection{Confirmed: []int64{dog.ID}})
+	if got := tentativeOf(t, db, soloKey, dog.ID); got != 0 {
+		t.Fatalf("確率が上がった仮の付与が確定しない: %d", got)
+	}
+}
+
+// 確定すると普通の付与になり、却下すると外れて、次の判定でも付かない。
+func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	solo := ids[fixturePath("/media/solo.mp4")]
+	soloKey := "key" + fixturePath("/media/solo.mp4")
+	cat, dog := createTestTag(t, db, "cat"), createTestTag(t, db, "dog")
+	finishSolo(t, db, ids, domain.AutoTagSelection{Tentative: []int64{cat.ID, dog.ID}})
+	store := db.AutoTags()
+
+	if err := store.ConfirmTentative(ctx, solo, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := tentativeOf(t, db, soloKey, cat.ID); got != 0 {
+		t.Fatalf("確定後の tentative = %d", got)
+	}
+	if err := store.ConfirmTentative(ctx, solo, cat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("確定済みを確定した err = %v", err)
+	}
+	if err := store.RejectTentative(ctx, solo, dog.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := tentativeOf(t, db, soloKey, dog.ID); got != -1 {
+		t.Fatalf("却下したタグが残った: %d", got)
+	}
+	if err := store.RejectTentative(ctx, solo, cat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("確定したタグを却下できた err = %v", err)
+	}
+	finishSolo(t, db, ids, domain.AutoTagSelection{Confirmed: []int64{dog.ID}})
+	if got := tentativeOf(t, db, soloKey, dog.ID); got != -1 {
+		t.Fatalf("却下したタグを付け直した: %d", got)
+	}
+	// 手で付けるのは止めない。
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{solo}, dog.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := tentativeOf(t, db, soloKey, dog.ID); got != 0 {
+		t.Fatalf("手で付けたタグ = %d", got)
+	}
+	applied := 0
+	for _, e := range recorder.events {
+		if _, ok := e.(domain.AutoTagApplied); ok {
+			applied++
+		}
+	}
+	if applied < 4 {
+		t.Fatalf("AutoTagApplied の数 = %d", applied)
 	}
 }

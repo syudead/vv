@@ -22,6 +22,9 @@ const (
 	// DefaultAutoTagThreshold は付けるのに要る確率の既定値である。誤って付くタグを
 	// 少なくする側に寄せる。
 	DefaultAutoTagThreshold = 0.8
+	// DefaultAutoTagTentativeThreshold は仮に付けるのに要る確率の既定値である。これ以上で
+	// DefaultAutoTagThreshold 未満のタグは、所有者が確定か却下を選ぶ仮の付与になる。
+	DefaultAutoTagTentativeThreshold = 0.5
 )
 
 // AutoTagMaxQuestions は判定モデルへの 1 回の問い合わせに載せる質問の数である。候補のタグが
@@ -46,16 +49,20 @@ type AutoTagSettings struct {
 	Endpoint string
 	// Model は Ollama の模型名（clef か clef-flash）である。
 	Model string
-	// Threshold はタグを付けるのに要る確率（0 より大きく 1 以下）である。
+	// Threshold はタグを確定した付与として付けるのに要る確率（0 より大きく 1 以下）である。
 	Threshold float64
+	// TentativeThreshold はタグを仮に付けるのに要る確率（0 より大きく Threshold 以下）である。
+	// Threshold と同じなら仮の付与はしない。
+	TentativeThreshold float64
 }
 
 // DefaultAutoTagSettings は保存値が無いときの設定を返す。自動の判定は切である。
 func DefaultAutoTagSettings() AutoTagSettings {
 	return AutoTagSettings{
-		Endpoint:  DefaultAutoTagEndpoint,
-		Model:     DefaultAutoTagModel,
-		Threshold: DefaultAutoTagThreshold,
+		Endpoint:           DefaultAutoTagEndpoint,
+		Model:              DefaultAutoTagModel,
+		Threshold:          DefaultAutoTagThreshold,
+		TentativeThreshold: DefaultAutoTagTentativeThreshold,
 	}
 }
 
@@ -74,6 +81,9 @@ func NormalizeAutoTagSettings(s AutoTagSettings) (AutoTagSettings, error) {
 	}
 	if math.IsNaN(s.Threshold) || s.Threshold <= 0 || s.Threshold > 1 {
 		return AutoTagSettings{}, fmt.Errorf("%w: the threshold must be greater than 0 and at most 1", ErrInvalidAutoTagSettings)
+	}
+	if math.IsNaN(s.TentativeThreshold) || s.TentativeThreshold <= 0 || s.TentativeThreshold > s.Threshold {
+		return AutoTagSettings{}, fmt.Errorf("%w: the tentative threshold must be greater than 0 and at most the threshold", ErrInvalidAutoTagSettings)
 	}
 	return s, nil
 }
@@ -242,17 +252,28 @@ func ChunkAutoTagCandidates(candidates []AutoTagCandidate) [][]AutoTagCandidate 
 	return chunks
 }
 
-// SelectAutoTags は候補のうち、確率が閾値以上のタグの id を候補の順で返す。答えの無い
-// 候補は付けない。
-func SelectAutoTags(candidates []AutoTagCandidate, probabilities map[string]float64, threshold float64) []int64 {
-	var selected []int64
+// AutoTagSelection は判定の結果、付けるタグの id である。
+type AutoTagSelection struct {
+	// Confirmed は確率が Threshold 以上で、確定した付与として付けるタグである。
+	Confirmed []int64
+	// Tentative は確率が TentativeThreshold 以上 Threshold 未満で、仮に付けるタグである。
+	Tentative []int64
+}
+
+// SelectAutoTags は候補を確率で振り分け、候補の順で返す。答えの無い候補は付けない。
+func SelectAutoTags(candidates []AutoTagCandidate, probabilities map[string]float64, settings AutoTagSettings) AutoTagSelection {
+	var selection AutoTagSelection
 	for _, candidate := range candidates {
 		p, ok := probabilities[AutoTagQuestionKey(candidate.ID)]
-		if ok && !math.IsNaN(p) && p >= threshold {
-			selected = append(selected, candidate.ID)
+		switch {
+		case !ok || math.IsNaN(p):
+		case p >= settings.Threshold:
+			selection.Confirmed = append(selection.Confirmed, candidate.ID)
+		case p >= settings.TentativeThreshold:
+			selection.Tentative = append(selection.Tentative, candidate.ID)
 		}
 	}
-	return selected
+	return selection
 }
 
 // AutoTagApplied は判定で動画にタグが付いた（付かなかったことも含め判定が終わった）ことを

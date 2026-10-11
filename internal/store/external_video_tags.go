@@ -245,8 +245,9 @@ func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action doma
 		fallthrough
 	case domain.VideoTagsAdd:
 		if _, err := tx.ExecContext(ctx,
-			`insert or ignore into video_tags (content_key, tag_id, created_at)
-			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t`,
+			`insert into video_tags (content_key, tag_id, created_at)
+			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t where true
+			 on conflict (content_key, tag_id) do update set tentative = 0 where video_tags.tentative = 1`,
 			now.Unix(), string(encodedKeys), string(encodedTags),
 		); err != nil {
 			return nil, fmt.Errorf("cannot add the video tags: %w", err)

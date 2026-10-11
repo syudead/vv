@@ -18,7 +18,7 @@ type fakeAutoTagQueue struct {
 	queued     []string
 	videos     map[string]domain.Video
 	candidates []domain.AutoTagCandidate
-	finished   map[string][]int64
+	finished   map[string]domain.AutoTagSelection
 	failed     map[string]string
 	queuedIDs  []int64
 	modes      []domain.AutoTagQueueMode
@@ -28,7 +28,7 @@ type fakeAutoTagQueue struct {
 func newFakeAutoTagQueue() *fakeAutoTagQueue {
 	return &fakeAutoTagQueue{
 		videos:   map[string]domain.Video{},
-		finished: map[string][]int64{},
+		finished: map[string]domain.AutoTagSelection{},
 		failed:   map[string]string{},
 		done:     make(chan string, 10),
 	}
@@ -74,9 +74,12 @@ func (q *fakeAutoTagQueue) Candidates(context.Context) ([]domain.AutoTagCandidat
 	return q.candidates, nil
 }
 
-func (q *fakeAutoTagQueue) Finish(_ context.Context, key string, tagIDs []int64) error {
+func (q *fakeAutoTagQueue) ConfirmTentative(context.Context, int64, int64) error { return nil }
+func (q *fakeAutoTagQueue) RejectTentative(context.Context, int64, int64) error  { return nil }
+
+func (q *fakeAutoTagQueue) Finish(_ context.Context, key string, selection domain.AutoTagSelection) error {
 	q.mu.Lock()
-	q.finished[key] = tagIDs
+	q.finished[key] = selection
 	q.mu.Unlock()
 	q.done <- key
 	return nil
@@ -200,9 +203,11 @@ func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 		queue.candidates = append(queue.candidates, domain.AutoTagCandidate{ID: id, Name: "t"})
 	}
 	classifier := &fakeClassifier{answers: map[string]float64{
-		"tag_1": 0.95, "tag_2": 0.5, domain.AutoTagQuestionKey(domain.AutoTagMaxQuestions + 2): 0.9,
+		"tag_1": 0.95, "tag_2": 0.5, "tag_3": 0.3, domain.AutoTagQuestionKey(domain.AutoTagMaxQuestions + 2): 0.9,
 	}}
-	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{Endpoint: "http://o", Model: "clef-flash", Threshold: 0.8}}
+	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{
+		Endpoint: "http://o", Model: "clef-flash", Threshold: 0.8, TentativeThreshold: 0.5,
+	}}
 	images := &fakeImages{
 		thumbnails: map[string][]byte{"k1": []byte("thumb")},
 		frames:     map[string][][]byte{"k1": {[]byte("f1"), []byte("f2")}},
@@ -213,16 +218,17 @@ func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 	runAutoTagger(t, tagger)
 
 	waitAutoTagDone(t, queue)
-	if got := queue.finished["k1"]; !reflect.DeepEqual(got, []int64{1, domain.AutoTagMaxQuestions + 2}) {
+	want := domain.AutoTagSelection{Confirmed: []int64{1, domain.AutoTagMaxQuestions + 2}, Tentative: []int64{2}}
+	if got := queue.finished["k1"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("付けたタグ = %v", got)
 	}
 	if len(classifier.requests) != 2 {
 		t.Fatalf("問い合わせの回数 = %d", len(classifier.requests))
 	}
 	req := classifier.requests[0]
-	want := domain.AutoTagSubject{Title: "Kyoto", FileName: "bamboo.mp4", Folder: "/media/travel",
+	wantSubject := domain.AutoTagSubject{Title: "Kyoto", FileName: "bamboo.mp4", Folder: "/media/travel",
 		Images: [][]byte{[]byte("thumb"), []byte("f1"), []byte("f2")}}
-	if req.Endpoint != "http://o" || req.Model != "clef-flash" || !reflect.DeepEqual(req.Subject, want) {
+	if req.Endpoint != "http://o" || req.Model != "clef-flash" || !reflect.DeepEqual(req.Subject, wantSubject) {
 		t.Fatalf("問い合わせ = %+v", req)
 	}
 	if !slices.Equal(images.asked, []int{domain.AutoTagFrameCount}) {
@@ -309,14 +315,16 @@ func TestAutoTaggerSaveSettingsAndCheck(t *testing.T) {
 	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: classifier})
 	ctx := context.Background()
 
-	if _, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Endpoint: "nope", Model: "clef", Threshold: 0.5}); !errors.Is(err, domain.ErrInvalidAutoTagSettings) {
+	if _, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Endpoint: "nope", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.5}); !errors.Is(err, domain.ErrInvalidAutoTagSettings) {
 		t.Fatalf("err = %v", err)
 	}
-	status, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Enabled: true, Endpoint: "http://h:1/", Model: "clef", Threshold: 0.5})
+	status, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{
+		Enabled: true, Endpoint: "http://h:1/", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.3,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://h:1", Model: "clef", Threshold: 0.5}
+	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://h:1", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.3}
 	if status.Settings != want || status.Counts.Done != 1 {
 		t.Fatalf("status = %+v", status)
 	}

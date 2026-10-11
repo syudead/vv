@@ -132,6 +132,14 @@ export function tagsReflectChange(
  * 返す。この形だけを破線のチップにし、再生画面では × を出さない
  * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
  */
+/**
+ * showsTentative は目印（TentativeMark）を出すかである。仮のタグ（`tentative`）と、自動タグ付けが
+ * 仮に付けた付与（`unconfirmed`）のどちらにも出す（docs/design-docs/auto-tagging.md）。
+ */
+export function showsTentative(tag: VideoTag): boolean {
+  return tag.tentative || tag.unconfirmed === true;
+}
+
 export function isFolderOnly(tag: VideoTag): boolean {
   return tag.fromFolder && !tag.manual;
 }

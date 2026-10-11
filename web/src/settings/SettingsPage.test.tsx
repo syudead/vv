@@ -88,6 +88,7 @@ describe("SettingsPage", () => {
             endpoint: "http://127.0.0.1:11434",
             model: "clef-flash",
             threshold: 0.8,
+            tentativeThreshold: 0.5,
             queue: { queued: 0, running: 0, done: 0, failed: 0 },
           }),
         );

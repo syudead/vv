@@ -882,6 +882,33 @@ export async function autoTagVideo(id: number, signal?: AbortSignal): Promise<bo
   return result.queued;
 }
 
+/**
+ * confirmVideoTag は動画に自動タグ付けが仮に付けたタグ（`VideoTag.unconfirmed`）を確定する
+ * （docs/design-docs/auto-tagging.md）。
+ */
+export async function confirmVideoTag(id: number, tagId: number): Promise<void> {
+  await settleVideoTag(id, tagId, "confirm");
+}
+
+/** rejectVideoTag は仮に付いたタグを外し、この動画には自動タグ付けで付け直させない。 */
+export async function rejectVideoTag(id: number, tagId: number): Promise<void> {
+  await settleVideoTag(id, tagId, "reject");
+}
+
+async function settleVideoTag(
+  id: number,
+  tagId: number,
+  action: "confirm" | "reject",
+): Promise<void> {
+  const response = await apiFetch(
+    `/api/videos/${String(id)}/tags/${String(tagId)}/${action}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
+}
+
 /** listAPITokens は発行済みの API トークンを作成日時の新しい順で取得する。平文は含まない。 */
 export async function listAPITokens(signal?: AbortSignal): Promise<APIToken[]> {
   const list = await request<components["schemas"]["APITokenList"]>("/api/api-tokens", {

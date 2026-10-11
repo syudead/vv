@@ -108,7 +108,9 @@ func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagI
 	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
 		result, err := tx.ExecContext(ctx,
-			`insert or ignore into video_tags (content_key, tag_id, created_at) values (?, ?, ?)`,
+			// 自動タグ付けが仮に付けていたタグを手で付けると、確定する。
+			`insert into video_tags (content_key, tag_id, created_at) values (?, ?, ?)
+			 on conflict (content_key, tag_id) do update set tentative = 0 where video_tags.tentative = 1`,
 			key, tagID, now.Unix(),
 		)
 		if err != nil {
@@ -189,15 +191,15 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 			  join videos v on v.content_key = m.content_key and v.content_key <> ''
 			 where b.user_key in (select content_key from selected)
 		),
-		tagged(content_key, tag_id, manual, from_folder) as (
-			select vt.content_key, vt.tag_id, 1, 0 from video_tags vt
+		tagged(content_key, tag_id, manual, from_folder, unconfirmed) as (
+			select vt.content_key, vt.tag_id, 1, 0, vt.tentative from video_tags vt
 			 where vt.content_key in (select content_key from selected)
 			union all
-			select k.user_key, folder_tn.tag_id, 0, 1 from keyed_videos k
+			select k.user_key, folder_tn.tag_id, 0, 1, 0 from keyed_videos k
 			  join video_folder_names vfn on vfn.video_id = k.video_id
 			  join tag_names folder_tn on folder_tn.name = vfn.name
 		)
-		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder)
+		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder), min(t.unconfirmed)
 		  from tagged t
 		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
 		  join tags tg on tg.id = t.tag_id
@@ -212,7 +214,7 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 	for rows.Next() {
 		var key string
 		var tag domain.VideoTag
-		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Tentative, &tag.Manual, &tag.FromFolder); err != nil {
+		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Tentative, &tag.Manual, &tag.FromFolder, &tag.Unconfirmed); err != nil {
 			return nil, fmt.Errorf("cannot read item tags: %w", err)
 		}
 		out[key] = append(out[key], tag)

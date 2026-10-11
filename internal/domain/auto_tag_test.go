@@ -10,12 +10,12 @@ import (
 
 func TestNormalizeAutoTagSettings(t *testing.T) {
 	got, err := NormalizeAutoTagSettings(AutoTagSettings{
-		Enabled: true, Endpoint: " http://gpu.local:11434/ ", Model: " clef ", Threshold: 1,
+		Enabled: true, Endpoint: " http://gpu.local:11434/ ", Model: " clef ", Threshold: 1, TentativeThreshold: 0.6,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := AutoTagSettings{Enabled: true, Endpoint: "http://gpu.local:11434", Model: "clef", Threshold: 1}
+	want := AutoTagSettings{Enabled: true, Endpoint: "http://gpu.local:11434", Model: "clef", Threshold: 1, TentativeThreshold: 0.6}
 	if got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
@@ -76,11 +76,18 @@ func TestChunkAutoTagCandidates(t *testing.T) {
 	}
 }
 
-func TestSelectAutoTagsUsesThreshold(t *testing.T) {
-	candidates := []AutoTagCandidate{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}}
-	probabilities := map[string]float64{"tag_1": 0.8, "tag_2": 0.79, "tag_3": math.NaN()}
-	if got := SelectAutoTags(candidates, probabilities, 0.8); !reflect.DeepEqual(got, []int64{1}) {
-		t.Fatalf("got %v", got)
+func TestSelectAutoTagsSplitsByThresholds(t *testing.T) {
+	candidates := []AutoTagCandidate{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}, {ID: 6}}
+	probabilities := map[string]float64{"tag_1": 0.8, "tag_2": 0.79, "tag_3": 0.5, "tag_4": 0.49, "tag_5": math.NaN()}
+	settings := AutoTagSettings{Threshold: 0.8, TentativeThreshold: 0.5}
+	want := AutoTagSelection{Confirmed: []int64{1}, Tentative: []int64{2, 3}}
+	if got := SelectAutoTags(candidates, probabilities, settings); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	// 2 つの閾値が同じなら仮には付けない。
+	settings.TentativeThreshold = 0.8
+	if got := SelectAutoTags(candidates, probabilities, settings); len(got.Tentative) != 0 {
+		t.Fatalf("tentative = %v", got.Tentative)
 	}
 }
 

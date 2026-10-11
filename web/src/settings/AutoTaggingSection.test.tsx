@@ -23,6 +23,7 @@ function settings(change: Partial<AutoTaggingSettings> = {}): AutoTaggingSetting
     endpoint: "http://127.0.0.1:11434",
     model: "clef-flash",
     threshold: 0.8,
+    tentativeThreshold: 0.5,
     queue: { queued: 0, running: 0, done: 0, failed: 0 },
     ...change,
   };
@@ -105,7 +106,7 @@ describe("AutoTaggingSection", () => {
     await user.click(
       screen.getByRole("switch", { name: "Tag new videos automatically" }),
     );
-    const threshold = screen.getByLabelText("Minimum probability");
+    const threshold = screen.getByLabelText("Probability to add");
     await user.clear(threshold);
     await user.type(threshold, "0.6");
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -118,13 +119,14 @@ describe("AutoTaggingSection", () => {
       endpoint: "http://gpu:11434",
       model: "clef-flash",
       threshold: 0.6,
+      tentativeThreshold: 0.5,
     });
   });
 
   it("does not save an out-of-range threshold", async () => {
     const user = userEvent.setup();
     render(<AutoTaggingSection />);
-    const threshold = await screen.findByLabelText("Minimum probability");
+    const threshold = await screen.findByLabelText("Probability to add");
     await user.clear(threshold);
     await user.type(threshold, "2");
     expect(threshold.getAttribute("aria-invalid")).toBe("true");
@@ -151,6 +153,17 @@ describe("AutoTaggingSection", () => {
       ([input]) => String(input) === `${URL}/check`,
     );
     expect(check?.[1]?.body).toBeUndefined();
+  });
+
+  it("does not save a suggestion probability above the add probability", async () => {
+    const user = userEvent.setup();
+    render(<AutoTaggingSection />);
+    const tentative = await screen.findByLabelText("Probability to suggest");
+    await user.clear(tentative);
+    await user.type(tentative, "0.9");
+    expect(tentative.getAttribute("aria-invalid")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(saved).toBeUndefined();
   });
 
   it("shows why the connection test failed", async () => {

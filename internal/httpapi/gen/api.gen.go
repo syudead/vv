@@ -1185,7 +1185,10 @@ type AutoTaggingSettings struct {
 	Model string           `json:"model"`
 	Queue AutoTaggingQueue `json:"queue"`
 
-	// Threshold タグを付けるのに要る確率。保存値が無ければ 0.8
+	// TentativeThreshold タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+	TentativeThreshold float64 `json:"tentativeThreshold"`
+
+	// Threshold タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
 	Threshold float64 `json:"threshold"`
 }
 
@@ -2002,6 +2005,9 @@ type UpdateAutoTaggingSettingsRequest struct {
 	Endpoint string `json:"endpoint"`
 	Model    string `json:"model"`
 
+	// TentativeThreshold 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+	TentativeThreshold float64 `json:"tentativeThreshold"`
+
 	// Threshold 0 より大きく 1 以下
 	Threshold float64 `json:"threshold"`
 }
@@ -2313,6 +2319,10 @@ type VideoTag struct {
 
 	// Tentative そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す
 	Tentative bool `json:"tentative"`
+
+	// Unconfirmed 自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+	// 返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
+	Unconfirmed *bool `json:"unconfirmed,omitempty"`
 }
 
 // VideoTagsAction defines model for VideoTagsAction.
@@ -2454,6 +2464,9 @@ type TagId = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
+
+// VideoTagId defines model for VideoTagId.
+type VideoTagId = int64
 
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
@@ -3101,6 +3114,12 @@ type ServerInterface interface {
 	// GetVideoSubtitle 字幕ファイルを WebVTT にして返す
 	// (GET /api/videos/{id}/subtitles/{file})
 	GetVideoSubtitle(w http.ResponseWriter, r *http.Request, id VideoId, file string, params GetVideoSubtitleParams)
+	// ConfirmVideoTag 自動タグ付けが仮に付けたタグを確定する
+	// (POST /api/videos/{id}/tags/{tagId}/confirm)
+	ConfirmVideoTag(w http.ResponseWriter, r *http.Request, id VideoId, tagId VideoTagId)
+	// RejectVideoTag 自動タグ付けが仮に付けたタグを却下する
+	// (POST /api/videos/{id}/tags/{tagId}/reject)
+	RejectVideoTag(w http.ResponseWriter, r *http.Request, id VideoId, tagId VideoTagId)
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
@@ -5358,6 +5377,76 @@ func (siw *ServerInterfaceWrapper) GetVideoSubtitle(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ConfirmVideoTag operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmVideoTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId VideoTagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmVideoTag(w, r, id, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectVideoTag operation middleware
+func (siw *ServerInterfaceWrapper) RejectVideoTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "tagId" -------------
+	var tagId VideoTagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", r.PathValue("tagId"), &tagId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectVideoTag(w, r, id, tagId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetVideoThumbnail operation middleware
 func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *http.Request) {
 
@@ -5918,6 +6007,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/auto-tag", wrapper.AutoTagVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/tags/{tagId}/confirm", wrapper.ConfirmVideoTag)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/tags/{tagId}/reject", wrapper.RejectVideoTag)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/open", wrapper.OpenVideoFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/preview", wrapper.GetVideoPreview)
