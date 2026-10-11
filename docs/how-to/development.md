@@ -107,8 +107,10 @@ successful CI runs on `main` and of each of their jobs. It appends the
 measurement to `history.jsonl` on the `quality-metrics` branch and writes a
 Markdown table with the change since the previous week to the run's summary.
 `task quality-metrics -- -ci-runs 0` measures the code alone on a local
-machine; the CI durations need `gh`. A pull request that changes the workflow or
-`scripts/qualitymetrics/` runs it without saving the history.
+machine; the CI durations need `gh`. A pull request that changes the workflow,
+`scripts/qualitymetrics/` or a tool it uses (`Taskfile.yml`, the npm manifests
+of `tools/` and `web/`, `web/eslint.config.js`) runs it without saving the
+history.
 
 When the OpenAPI contract changes, edit `api/openapi.yaml` (or
 `api/external-v1.yaml` for the external API) and run `task generate`. Never edit

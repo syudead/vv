@@ -8,11 +8,18 @@ on:
     # 毎週月曜 09:00（日本時間）。
     - cron: "0 0 * * 1"
   workflow_dispatch: {}
-  # 測る仕組みそのものを変えた PR では、履歴に積まずに流して確かめる。
+  # 測る仕組みそのものか、それが使う道具（task、jscpd、eslint とその設定）を変えた
+  # PR では、履歴に積まずに流して確かめる。依存の更新で計測が壊れるのを PR で止める。
   pull_request:
     paths:
       - .github/workflows/quality-metrics.yml
       - scripts/qualitymetrics/**
+      - Taskfile.yml
+      - tools/package.json
+      - tools/package-lock.json
+      - web/package.json
+      - web/package-lock.json
+      - web/eslint.config.js
 
 permissions:
   contents: read
