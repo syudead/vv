@@ -116,7 +116,7 @@ func (s *PlaylistStore) RenamePlaylist(ctx context.Context, id int64, name strin
 		return domain.Playlist{}, fmt.Errorf("cannot rename the playlist: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `update playlists set name = ?, updated_at = ? where id = ?`,
+	result, err := tx.ExecContext(ctx, `update playlists set name = ?, updated_at = `+nextUpdatedAt+` where id = ?`,
 		name, playlistNow().UnixMilli(), id)
 	if err != nil {
 		return domain.Playlist{}, fmt.Errorf("cannot rename the playlist: %w", err)
@@ -384,8 +384,11 @@ func (s *PlaylistStore) RemovePlaylistItem(ctx context.Context, id, itemID int64
 
 // rekeyPlaylistItems は利用者データの鍵 from の動画の項目を鍵 to の項目へ付け替える
 // （data-model.md「Succession and bundling」、R-2）。行は写さずに移す。1 つのプレイリストに
-// 鍵 to の項目が 2 つになるときは位置の大きい方を消し、そのプレイリストを詰め直す。更新日時は
-// 利用者の変更ではないので進めない。
+// 鍵 to の項目が 2 つになるときは位置の大きい方を消し、そのプレイリストを詰め直す。
+//
+// 項目を消したプレイリストは並びが変わるので更新日時を進める。再生の応答とプレイリストの応答は
+// 更新日時が同じときだけ同じ並びとして使われる（ui-design.md「One order」）。鍵を付け替える
+// だけのプレイリストは並びも見える項目も変わらないので進めず、一覧の順を動かさない。
 func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error {
 	if from == "" || to == "" || from == to {
 		return nil
@@ -397,17 +400,29 @@ func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error 
 	if len(affected) == 0 {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `delete from playlist_items where content_key in (?1, ?2)
+	const duplicate = `content_key in (?1, ?2)
 		and exists (select 1 from playlist_items o where o.playlist_id = playlist_items.playlist_id
 			and o.content_key in (?1, ?2) and o.id <> playlist_items.id
-			and (o.position < playlist_items.position or (o.position = playlist_items.position and o.id < playlist_items.id)))`,
-		from, to); err != nil {
+			and (o.position < playlist_items.position or (o.position = playlist_items.position and o.id < playlist_items.id)))`
+	merged, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items where `+duplicate, from, to)
+	if err != nil {
+		return fmt.Errorf("cannot move the playlist items: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from playlist_items where `+duplicate, from, to); err != nil {
 		return fmt.Errorf("cannot move the playlist items: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `update playlist_items set content_key = ? where content_key = ?`, to, from); err != nil {
 		return fmt.Errorf("cannot move the playlist items: %w", err)
 	}
-	return renumberPlaylists(ctx, tx, affected)
+	if err := renumberPlaylists(ctx, tx, affected); err != nil {
+		return err
+	}
+	for _, id := range merged {
+		if err := touchPlaylist(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // renumberPlaylists は playlistIDs のプレイリストの項目の位置を、今の並び（位置、同じなら id）の
@@ -438,9 +453,14 @@ func ensurePlaylist(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// touchPlaylist はプレイリスト id の更新日時を今にする。
+// nextUpdatedAt は名前か項目を変えた後の playlists.updated_at である。今の時刻で、前の値より
+// 必ず進める。同じミリ秒に 2 度変わっても、時計が戻っても、変わる前と後の更新日時は違うので、
+// 応答の更新日時が同じなら同じ並びである（ui-design.md「One order」）。引数は今の Unix ms。
+const nextUpdatedAt = `max(?, updated_at + 1)`
+
+// touchPlaylist はプレイリスト id の更新日時を今に、前の値より必ず後へ進める。
 func touchPlaylist(ctx context.Context, tx *sql.Tx, id int64) error {
-	if _, err := tx.ExecContext(ctx, `update playlists set updated_at = ? where id = ?`,
+	if _, err := tx.ExecContext(ctx, `update playlists set updated_at = `+nextUpdatedAt+` where id = ?`,
 		playlistNow().UnixMilli(), id); err != nil {
 		return fmt.Errorf("cannot update the playlist: %w", err)
 	}

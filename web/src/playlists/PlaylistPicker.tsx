@@ -36,7 +36,8 @@ type Pending = { kind: "playlist"; id: number } | { kind: "create" } | null;
  * - 開くたびに `GET /api/playlists` を読み、打った文字を名前に含むものを API の順に出す。
  *   打った名前と同じ名前のプレイリストが無ければ、先頭に「Create "{name}"」の行を出す。
  * - 行を選ぶと `videoIds` と `folders` を `POST /api/playlists/{id}/items` で送る。作成の行は
- *   `POST /api/playlists` の後に、その新しいプレイリストへ足す。
+ *   `POST /api/playlists` の後に、その新しいプレイリストへ足す。足すのに失敗した後に同じ名前で
+ *   作成の行をもう一度選ぶと、作ったプレイリストへ足し直す。
  * - 結果はトースト 1 つで伝えて閉じる。失敗は開いたまま、入力の下に理由を出す。
  * - Esc はポップオーバーだけを閉じる。一覧の Esc（選択の解除）には「使った」と伝える。
  */
@@ -66,6 +67,9 @@ export default function PlaylistPicker({
   // 開くたび・閉じるたびに進める。返事が来たときに数が変わっていれば、その送信は閉じた
   // ピッカーのもので、開き直したピッカーを閉じたり理由を書き換えたりしてはいけない。
   const session = useRef(0);
+  // 作成の行で作れたが足せなかったプレイリスト。同じ名前でもう一度押したら、作り直さずに
+  // これへ足す。名前は重ねてよいので、作り直すと空のプレイリストが残る。
+  const created = useRef<PlaylistSummary | null>(null);
 
   const read = useCallback((quiet: boolean) => {
     loadAbort.current?.abort();
@@ -90,6 +94,7 @@ export default function PlaylistPicker({
     setValue("");
     setFailure(null);
     setPending(null);
+    created.current = null;
     read(false);
     return () => {
       session.current += 1;
@@ -105,6 +110,15 @@ export default function PlaylistPicker({
   const showCreate = load.status !== "loading" && trimmed !== "" && !exact;
   const blocked = pending !== null || tooLong;
 
+  /** createOnce は名前 name のプレイリストを作る。このピッカーで既に作っていればそれを返す。 */
+  async function createOnce(name: string): Promise<PlaylistSummary> {
+    const earlier = created.current;
+    if (earlier !== null && earlier.name === name) return earlier;
+    const playlist = await createPlaylist(name);
+    created.current = playlist;
+    return playlist;
+  }
+
   // 送るものは、この描画の props（videoIds・folders）で決まる。送っている間に選択が
   // 変わっても、この呼び出しの値は変わらない。
   async function send(target: { id: number; name: string } | { create: string }) {
@@ -118,7 +132,7 @@ export default function PlaylistPicker({
     }
     setPending("id" in target ? { kind: "playlist", id: target.id } : { kind: "create" });
     try {
-      const playlist = "id" in target ? target : await createPlaylist(target.create);
+      const playlist = "id" in target ? target : await createOnce(target.create);
       const result = await addToPlaylist(playlist.id, videoIds, folders);
       // 足したことは、ピッカーを閉じた後でもトーストで伝える。
       toast(resultText(result, playlist.name));

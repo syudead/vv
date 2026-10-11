@@ -208,6 +208,39 @@ describe("AddToPlaylistButton", () => {
     await waitFor(() => expect(reads()).toBe(2));
   });
 
+  it("作れたが足せなかったら、作成の行をもう一度選んでも作り直さず、作ったプレイリストへ足す", async () => {
+    const server = install([]);
+    const user = userEvent.setup();
+    renderButton();
+    const dialog = await openPicker(user);
+    await screen.findByText("No playlists yet. Type a name to create one.");
+    // 足すのに 1 度失敗させ、その後の静かな読み直しも失敗させて作成の行を残す。
+    let adds = 0;
+    server.addAnswer = () => {
+      adds += 1;
+      if (adds === 1) {
+        server.failList = true;
+        return json({ code: "internal", message: "boom" }, 500);
+      }
+      return json({ added: 1, existing: 0 });
+    };
+    await user.type(field(), "Weekend");
+    await user.keyboard("{Enter}");
+    expect(
+      await within(dialog).findByText(/^Couldn't add to the playlist: /),
+    ).toBeDefined();
+    await waitFor(() => expect(server.failList).toBe(false));
+    expect(optionNames()).toEqual(['Create "Weekend"']);
+
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText('Added 1 item to "Weekend"')).toBeDefined();
+    expect(server.posts).toEqual([
+      { path: "/api/playlists", body: { name: "Weekend" } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+    ]);
+  });
+
   it("一覧を読めなければ Retry を出し、押すと読み直す", async () => {
     const server = install([playlist(2, "Tonight")]);
     server.failList = true;

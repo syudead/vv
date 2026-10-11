@@ -96,10 +96,17 @@ const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
  * 読み直しは移動と同じ鎖に並べる。送った移動が答えるまで読まず、読み終えるまで次の移動を
  * 送らないので、読んだ並びがどの移動より古いということがない。読み直しを決めた時点で
  * 待っている移動は古い並びに対するものなので捨てる。
+ *
+ * React Router は `:id` だけが変わる移動で同じ部品を使い回すので、画面は経路の id ごとに
+ * 作り直す。前のプレイリストの名前・行・操作が、別の id と組み合わさって残らない。
  */
 export default function PlaylistPage() {
   const params = useParams();
-  const id = parseId(params.id);
+  return <PlaylistScreen key={params.id ?? ""} id={parseId(params.id)} />;
+}
+
+/** PlaylistScreen は経路の id 1 つのプレイリスト画面である。id が変われば作り直される。 */
+function PlaylistScreen({ id }: { id: number | null }) {
   const navigate = useNavigate();
   const toast = useToast();
   const [page, setPage] = useState<Page>(
@@ -179,6 +186,15 @@ export default function PlaylistPage() {
       fetching.current?.abort();
     };
   }, [load]);
+
+  /** 画面が出ている間だけ true。離れた後に答えた削除は、移った先の画面を動かさない。 */
+  const shown = useRef(true);
+  useEffect(() => {
+    shown.current = true;
+    return () => {
+      shown.current = false;
+    };
+  }, []);
 
   const documentName = page.kind === "ready" ? page.name : t.playlists.documentTitle;
   useEffect(() => {
@@ -286,12 +302,12 @@ export default function PlaylistPage() {
       () => {
         setDeleting(false);
         toast(t.playlists.deleted(name));
-        void navigate("/playlists");
+        if (shown.current) void navigate("/playlists");
       },
       (error: unknown) => {
         setDeleting(false);
         if (error instanceof RequestFailed && error.status === 404) {
-          void navigate("/playlists");
+          if (shown.current) void navigate("/playlists");
           return;
         }
         setDeleteFailure(t.playlists.deleteDialog.failed(errorText(error)));
