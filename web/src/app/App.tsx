@@ -30,6 +30,10 @@ const PlaylistsPage = await deferredRoute(
   () => import("../playlists/PlaylistsPage"),
   "/playlists",
 );
+const PlaylistPage = await deferredRoute(
+  () => import("../playlists/PlaylistPage"),
+  "/playlists",
+);
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
@@ -101,6 +105,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <PlaylistsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/playlists/:id"
+          element={
+            <AppShell>
+              <PlaylistPage />
             </AppShell>
           }
         />
