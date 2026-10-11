@@ -223,6 +223,35 @@ tasks:
     cmds:
       - go run ./scripts/qualitymetrics {{.CLI_ARGS}}
 
+  # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
+  # 時間がかかるので task check には入れず、CI は月に 1 回流す
+  # （.github/workflows/mutation-testing.yml）。スコアは参考値で、低くても失敗にしない。
+  # Web（StrykerJS）は、vitest-runner が Vitest 5 で検査を 1 件も流さない不具合
+  # （stryker-mutator/stryker-js#6210）の修正版が出てから足す。
+  mutation:
+    desc: Run mutation testing and write reports under reports/mutation/ (CI runs it monthly).
+    cmds:
+      - task: mutation-go
+
+  mutation-go:
+    desc: Run gremlins on the Go domain packages and write reports/mutation/go/gremlins.json.
+    # gremlins は 1 回に 1 つの根を受け取り、その下のパッケージを全部扱う。
+    # 根を足すときは、CI の所要時間（いまは 20 分ほどまで）を見て決める。
+    vars:
+      GREMLINS:
+        sh: go -C tools tool -n gremlins
+      MUTATION_GO_DIR: '{{.MUTATION_GO_DIR | default "./internal/domain"}}'
+    # gremlins は最初のカバレッジ計測にかかった時間から、変異ごとの待ち時間を決める。
+    # go test の結果がキャッシュから返ると計測が一瞬で終わり、全変異が TIMED OUT になる
+    # ので、キャッシュを使わせない。待ち時間は既定で計測時間の 3 倍だが、変異ごとに
+    # テストを組み直す時間を含めると足りず、無限ループでない変異まで TIMED OUT になる
+    # ので 10 倍にする。後ろの引数は gremlins unleash へ渡す（--workers 4 など）。
+    env:
+      GOFLAGS: -count=1
+    cmds:
+      - mkdir -p reports/mutation/go
+      - '"{{.GREMLINS}}" unleash --timeout-coefficient 10 --output reports/mutation/go/gremlins.json {{.CLI_ARGS}} {{.MUTATION_GO_DIR}}'
+
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
     cmds:

@@ -1,0 +1,87 @@
+# 変異テスト（mutation testing）を月に 1 回流し、テストが壊れたコードを見つけられるかを測る。
+# いまは Go だけで、gremlins が internal/domain を変異させる（task mutation-go）。
+# スコアは実行の Summary に出し、レポートは artifact に残す。参考値なので、スコアが
+# 低くても失敗にしない。手元では task mutation-go で同じものを流す。
+# Web（StrykerJS）は、vitest-runner が Vitest 5 で検査を 1 件も流さない不具合
+# （stryker-mutator/stryker-js#6210）の修正版が出てから足す。
+name: Mutation testing
+
+on:
+  schedule:
+    # 毎月 1 日 09:00（日本時間）。
+    - cron: "0 0 1 * *"
+  workflow_dispatch: {}
+  # 測る仕組みそのもの（このワークフロー）を変えた PR では流して確かめる。
+  # コードやテストの変更では流さない。
+  pull_request:
+    paths:
+      - .github/workflows/mutation-testing.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutation-testing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # リポジトリのコード（テスト）を実行するので、読み取りだけにする。
+  go:
+    name: Go (gremlins)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          install_args: "task"
+
+      - name: 変異テストを流す
+        run: task mutation-go
+
+      # gremlins の JSON にある検出率（test_efficacy、KILLED / (KILLED + LIVED)）と
+      # 変異の網羅率（mutations_coverage）を書く。どちらも百分率で入っている。
+      # TIMED OUT の数は集計の項に無いので、変異ごとの状態から数える。
+      - name: スコアを Summary に書く
+        if: ${{ !cancelled() }}
+        run: |
+          report=reports/mutation/go/gremlins.json
+          {
+            echo "## Go (gremlins)"
+            echo
+            if [ ! -f "$report" ]; then
+              echo "レポートがありません。"
+              exit 0
+            fi
+            jq -r '
+              "| 指標 | 値 |",
+              "| --- | --- |",
+              "| Test efficacy | \(.test_efficacy * 100 | round / 100)% |",
+              "| Mutant coverage | \(.mutations_coverage * 100 | round / 100)% |",
+              "| Killed | \(.mutants_killed) |",
+              "| Lived | \(.mutants_lived) |",
+              "| Not covered | \(.mutants_not_covered) |",
+              "| Timed out | \([.files[].mutations[] | select(.status == "TIMED OUT")] | length) |",
+              "| Not viable | \(.mutants_not_viable) |",
+              "| Elapsed | \(.elapsed_time | round)s |"
+            ' "$report"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: レポートを残す
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutation-go
+          path: reports/mutation/go/gremlins.json
+          retention-days: 90
