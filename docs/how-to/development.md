@@ -98,14 +98,16 @@ with GitHub OIDC, so the repository needs no Codecov token, but it must be
 activated once on codecov.io by signing in with GitHub and installing the
 Codecov GitHub App. A failed upload does not fail the check.
 
-Every Monday the `Quality metrics` workflow
+After each successful CI run on a push to `main`, the `Quality metrics` workflow
 ([`.github/workflows/quality-metrics.yml`](../../.github/workflows/quality-metrics.yml))
 runs `task quality-metrics`, which measures the cyclomatic complexity of every
 Go function (`go/ast`) and Web function (the ESLint `complexity` rule), the
 duplicated lines that jscpd finds, and the p50 and p90 durations of the last 20
 successful CI runs on `main` and of each of their jobs. It appends the
-measurement to `history.jsonl` on the `quality-metrics` branch and writes a
-Markdown table with the change since the previous week to the run's summary.
+measurement to `history.jsonl` on the `quality-metrics` branch, writes a
+Markdown table with the change since the previous push to the run's summary,
+and comments on the Issue labelled `quality-regression` when a measure got worse
+([Test and CI quality monitoring](../design-docs/test-quality-monitoring.md)).
 `task quality-metrics -- -ci-runs 0` measures the code alone on a local
 machine; the CI durations need `gh`. A pull request that changes the workflow,
 `scripts/qualitymetrics/` or a tool it uses (`Taskfile.yml`, `mise.toml`, the

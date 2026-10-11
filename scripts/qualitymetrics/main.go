@@ -1,5 +1,5 @@
 // qualitymetrics はコードとテストと CI の品質の指標を測り、Markdown のまとめを書く。
-// task quality-metrics の実体で、CI は週に 1 回流して履歴を quality-metrics ブランチに積む。
+// task quality-metrics の実体で、CI は main への push ごとに流して履歴を quality-metrics ブランチに積む。
 //
 // 測るもの:
 //   - 循環複雑度: Go は関数ごとに go/ast で数え、TS は eslint の complexity ルールで出す
@@ -47,6 +47,8 @@ type Entry struct {
 	Complexity  map[string]Complexity `json:"complexity"`
 	Duplication *Duplication          `json:"duplication,omitempty"`
 	CI          *CIDurations          `json:"ci,omitempty"`
+	// Regressions は前回より悪くなった指標。CI はこれが空でなければ Issue を起こす。
+	Regressions []string `json:"regressions,omitempty"`
 }
 
 // Complexity は 1 つの言語の関数ごとの循環複雑度のまとめ。
@@ -151,6 +153,9 @@ func run(root, historyPath, summaryPath string, ciRuns int, skipWeb bool) error 
 		if err != nil {
 			return err
 		}
+	}
+	if previous != nil {
+		entry.Regressions = regressions(entry, *previous)
 	}
 
 	out := os.Stdout
@@ -538,12 +543,57 @@ func gitHead(root string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// 悪化とみなす前回からの変化。push ごとに測るので、1 つの PR で起きる程度の変化を拾い、
+// 計測の揺れ（CI の所要時間）は拾わない値にしている
+// （docs/design-docs/test-quality-monitoring.md）。
+const (
+	complexityMeanRise = 0.1  // 関数の平均の循環複雑度
+	duplicationRise    = 0.2  // 重複行の割合（ポイント）
+	ciWallRiseRatio    = 0.2  // CI 全体の p90 の伸び（割合）
+	ciWallRiseSeconds  = 30.0 // かつ、その伸びの秒数
+)
+
+// regressions は前回より悪くなった指標を、人が読める 1 行ずつで返す。
+func regressions(now, prev Entry) []string {
+	var out []string
+	for _, lang := range []string{"go", "ts"} {
+		c, ok := now.Complexity[lang]
+		p, okPrev := prev.Complexity[lang]
+		if !ok || !okPrev || p.Functions == 0 {
+			continue
+		}
+		if c.OverLimit > p.OverLimit {
+			out = append(out, fmt.Sprintf("%s: functions over complexity %d went from %d to %d", lang, complexityLimit, p.OverLimit, c.OverLimit))
+		}
+		if c.Mean-p.Mean >= complexityMeanRise-1e-9 {
+			out = append(out, fmt.Sprintf("%s: mean complexity went from %.1f to %.1f", lang, p.Mean, c.Mean))
+		}
+	}
+	if d, p := now.Duplication, prev.Duplication; d != nil && p != nil && d.Percentage-p.Percentage >= duplicationRise-1e-9 {
+		out = append(out, fmt.Sprintf("duplicated lines went from %.2f%% to %.2f%%", p.Percentage, d.Percentage))
+	}
+	if c, p := now.CI, prev.CI; c != nil && p != nil && p.Wall.P90 > 0 {
+		rise := c.Wall.P90 - p.Wall.P90
+		if rise >= ciWallRiseSeconds && rise/p.Wall.P90 >= ciWallRiseRatio {
+			out = append(out, fmt.Sprintf("CI wall p90 went from %.0fs to %.0fs", p.Wall.P90, c.Wall.P90))
+		}
+	}
+	return out
+}
+
 // markdown は今回の値と、履歴の前回からの差を表にする。
 func markdown(e Entry, prev *Entry) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## Quality metrics (%s, %s)\n\n", e.Date, e.Commit)
 	if prev != nil {
 		fmt.Fprintf(&b, "Compared with %s (%s).\n\n", prev.Date, prev.Commit)
+	}
+	if len(e.Regressions) > 0 {
+		b.WriteString("Regressions:\n\n")
+		for _, r := range e.Regressions {
+			fmt.Fprintf(&b, "- %s\n", r)
+		}
+		b.WriteString("\n")
 	}
 	b.WriteString("| Metric | Value | Change |\n| --- | --- | --- |\n")
 	row := func(name string, now, before float64, ok bool, unit string) {

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
+sourceHash: 36c28cb0e89c933a60f12ec00b14852596ef850b9881aec756df9df02ee571ee
 ---
 
 # 設計文書 {#design-documents}
@@ -34,6 +34,7 @@ sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
+- [テストと CI の品質監視](test-quality-monitoring.md)
 - [VVMDM のブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
 - [シーク中のサムネイルプレビュー: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧でのホバー時の動画プレビュー: UI](../../specs/010-hover-video-preview/ui-design.md)
