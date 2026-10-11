@@ -44,5 +44,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     css: false,
+    // --coverage を付けたときだけ測る（task test-web-report）。生成した API の型と
+    // テスト用の部品は、測る対象から外す。
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/api/gen/**", "src/testing/**", "src/**/*.test.{ts,tsx}"],
+      reporter: ["lcovonly", "text-summary"],
+    },
   },
 });

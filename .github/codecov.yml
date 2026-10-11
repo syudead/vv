@@ -1,0 +1,30 @@
+# Codecov の設定。カバレッジとテスト結果は .github/workflows/ci.yml のテストの組が
+# 送る（task test-go-report / test-web-report と、main への push の E2E）。
+# いまは傾向を見る段階なので、PR の状態は情報として出すだけで、マージを止めない。
+coverage:
+  status:
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+comment:
+  layout: "condensed_header, diff, flags, files"
+  # カバレッジが変わらない PR にはコメントしない。
+  require_changes: true
+
+# レポートの中のパスをリポジトリのパスに揃える。vitest は web/ からの相対パス、
+# go test はモジュールの import パスで書く。
+fixes:
+  - "src/::web/src/"
+  - "github.com/syudead/vv/::"
+
+# 生成したコードは測る対象から外す（手で書いたテストで覆うものではない）。
+ignore:
+  - "internal/httpapi/gen/**"
+  - "internal/httpapi/extgen/**"
+  - "web/src/api/gen/**"
+  - "scripts/**"
+  - "tools/**"

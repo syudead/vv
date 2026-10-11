@@ -33,15 +33,20 @@ COPY web/embed.go web/
 # ここで入るのは web ステージが作ったものだけである。
 COPY --from=web /src/web/dist ./web/dist
 ARG VERSION=dev
+# ビルド元のコミットとその時刻（RFC 3339）。task up と CI が git から求めて渡す。
+# 渡さなければ空のままビルドし、/api/health は commit / builtAt を省く（契約上省略可）。
+# 値はこの段の最後でだけ使うので、変わっても go build の層しかやり直さない。
+ARG COMMIT=
+ARG BUILT_AT=
 ARG TARGETOS
 ARG TARGETARCH
 # CGO_ENABLED=0 を維持する（modernc.org/sqlite は CGO を必要としない）。
-# .dockerignore が .git を除くため、コミット情報の自動埋め込みは無効にする。
-# リリース名だけ ldflags で渡す（commit / builtAt は契約上省略可）。
+# .dockerignore が .git を除くので Go はコミット情報を読めない。-buildvcs=false で
+# その読み取りを止め、代わりに上の値を ldflags で渡す。
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
-    -ldflags "-s -w -X main.version=${VERSION}" \
+    -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.builtAt=${BUILT_AT}" \
     -o /out/mdm ./cmd/mdm
 
 # 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認が通る状態にする。

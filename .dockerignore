@@ -1,7 +1,7 @@
 # 許可リスト方式にする。いったん全部を除き、イメージのビルドに要るものだけを戻す。
 # 手元の .local/ や media/ などの大きなディレクトリを、ディレクトリを足すたびに
 # ここへ書き足さなくても context へ入らないようにするためである。
-# .git も除かれるので、Dockerfile では go build -buildvcs=false を指定している。
+# .git も除かれるので、Dockerfile はコミット情報をビルド引数で受け取る。
 *
 
 # 単一バイナリのビルドに要るもの（go build ./cmd/mdm が読むのは cmd/、internal/、
