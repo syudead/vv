@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/data-model.md
-sourceHash: 597afbf4e7ef43a82b5125706cb3b75c057c84435995537fdf8787fabc950667
+sourceHash: ee2ee2d9434688baa8238bfd8d837212ba6c8d24ce6d0b9eb0ad1778fe3c02f9
 ---
 
 # データモデル: 名前付きのプレイリストと連続再生 {#data-model-named-playlists-and-continuous-playback}
@@ -84,7 +84,7 @@ Down は両方のテーブルを削除する。どちらもユーザーデータ
 
 ## 再生の順序 {#playback-order}
 
-`domain.PlaylistPlaybackOf(items, current)` は、順に並んだ表示される項目 (グループの項目はそれぞれメンバーとその再生位置を持つ) と、今の項目と動画から決める。ストアはその入力を 1 つの読み取りトランザクションで読む。
+`domain.PlaylistPlaybackOf(items, current)` は、位置の順に並んだプレイリストのすべての項目 (それぞれ表示されるかどうかの印を持ち、表示されるグループの項目はメンバーとその再生位置も持つ) と、今の項目と動画から決める。隠れた項目も入力に残るので、今の項目が隠れても今の項目はその場所を保つ。ストアはその入力を 1 つの読み取りトランザクションで読む。
 
 ```mermaid
 flowchart LR
