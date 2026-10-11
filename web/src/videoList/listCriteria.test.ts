@@ -95,14 +95,14 @@ describe("parseListCriteria（URL の解釈）", () => {
   });
 
   it("読む並び順はメニューの種類と向きで表せる（ランダムと取り違えない）", () => {
-    for (const sort of videoSorts.filter((value) => isListSort(value))) {
-      const info = sortKindOf(sort);
-      expect(info.kind === "random").toBe(sort === "random");
-      if (sort !== "random") {
-        const direction = sortDirection(sort);
-        expect(direction).toBeDefined();
-        expect(withDirection(sort, direction === "asc" ? "desc" : "asc")).not.toBe(sort);
-      }
+    const sorts = videoSorts.filter((value) => isListSort(value));
+    for (const sort of sorts) {
+      expect(sortKindOf(sort).kind === "random").toBe(sort === "random");
+    }
+    for (const sort of sorts.filter((value) => value !== "random")) {
+      const direction = sortDirection(sort);
+      expect(direction).toBeDefined();
+      expect(withDirection(sort, direction === "asc" ? "desc" : "asc")).not.toBe(sort);
     }
   });
 

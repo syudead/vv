@@ -88,7 +88,7 @@ describe("ScanNoticeProvider", () => {
     await waitFor(() => expect(screen.getByTestId("tracking").textContent).toBe("7"));
 
     response = scan(7, "done");
-    await act(async () => first.rerender(<div>route replacement</div>));
+    first.rerender(<div>route replacement</div>);
     first.unmount();
     renderProvider();
 

@@ -1000,7 +1000,7 @@ describe("FolderPage", () => {
 
     const box = screen.getByRole("searchbox", { name: "Search in A" });
     await user.clear(box);
-    await waitFor(() => expect(screen.getByRole("link", { name: "x" })).toBeDefined());
+    expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
     expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
   });
 

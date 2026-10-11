@@ -34,6 +34,22 @@ linters:
     # 止める。コメントは AST の文字列リテラルではないので対象にならない。
     - gosmopolitan
 
+    # テストコードの質を見る。
+    #
+    # 補助関数が t.Helper() を呼ばないと、失敗の行がテスト本体でなく補助関数の
+    # 中を指す。
+    - thelper
+    # testing が用意する t.TempDir・t.Setenv・t.Chdir を使わずに os の関数で
+    # 一時ディレクトリや環境変数を作り、後始末が漏れる誤り。
+    # context.Background() を t.Context() に置き換える検査（context-background・
+    # context-todo）は既定のまま切っている。テストの約 900 箇所に及び、t.Context() は
+    # t.Cleanup の前に取り消されるので、後始末で文脈を使うテストの振る舞いが変わる。
+    - usetesting
+    # paralleltest と tparallel は有効にしない。t.Parallel() を呼ぶテストは無く、
+    # paralleltest は約 1,650 件を指摘する。テストは環境変数・パッケージ変数・
+    # 一時ディレクトリの SQLite などの共有状態に触れるものが多く、機械的に並列に
+    # できない。Go のパッケージは既にプロセスごとに並列に走る。
+
   settings:
     gosmopolitan:
       watch-for-scripts:

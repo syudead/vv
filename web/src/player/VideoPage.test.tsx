@@ -1207,11 +1207,10 @@ describe("VideoPage", () => {
           "/api/folders/1/grouping?path=series",
           { mode: "ungroup" },
         );
-        await waitFor(() =>
-          expect(
-            screen.getByRole("heading", { level: 1 }).previousElementSibling,
-          ).toBeNull(),
-        );
+        await waitFor(() => {
+          const heading = screen.getByRole("heading", { level: 1 });
+          expect(heading.previousElementSibling).toBeNull();
+        });
         await waitFor(() =>
           expect(screen.queryByRole("heading", { level: 2, name: "Up next" })).toBeNull(),
         );
@@ -1242,11 +1241,10 @@ describe("VideoPage", () => {
           "/api/folders/1/grouping/tag?path=series",
           undefined,
         );
-        await waitFor(() =>
-          expect(
-            screen.getByRole("heading", { level: 1 }).previousElementSibling,
-          ).toBeNull(),
-        );
+        await waitFor(() => {
+          const heading = screen.getByRole("heading", { level: 1 });
+          expect(heading.previousElementSibling).toBeNull();
+        });
       });
 
       it("タグ化の失敗をトーストで伝え、画面を変えない", async () => {

@@ -1,8 +1,10 @@
 import { fileURLToPath } from "node:url";
 import babelParser from "@babel/eslint-parser";
 import js from "@eslint/js";
+import vitest from "@vitest/eslint-plugin";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import reactHooks from "eslint-plugin-react-hooks";
+import testingLibrary from "eslint-plugin-testing-library";
 import globals from "globals";
 import designExceptions from "./design-exceptions.js";
 
@@ -260,4 +262,56 @@ export default [
     },
   },
   ...designSystemConfig(),
+  // テストコードの質を見る（docs/design-docs/web-testing.md）。両方の推奨設定から始め、
+  // 変える規則と外す規則は理由をここに書く。
+  {
+    files: testFiles,
+    plugins: vitest.configs.recommended.plugins,
+    rules: {
+      ...vitest.configs.recommended.rules,
+      // expectCatalogTextOnly のような expect で始まる補助関数も表明として数える。
+      "vitest/expect-expect": ["error", { assertFunctionNames: ["expect", "expect*"] }],
+      // Vitest の expect は 2 つ目の引数に失敗時の文言を取る。表の検査はその行の名前を渡す。
+      "vitest/valid-expect": ["error", { maxArgs: 2 }],
+    },
+  },
+  {
+    files: testFiles,
+    plugins: testingLibrary.configs["flat/react"].plugins,
+    rules: {
+      ...testingLibrary.configs["flat/react"].rules,
+      // 約 700 件（48 ファイル）。役割や名前を持たない構造（data-* の目印、フォーカスの
+      // 移動先、<video>、隣の要素）を確かめるテストが DOM を辿っており、役割の問い合わせ
+      // へ書き換えられない箇所が多い。書き換えは振る舞いを変えない大量の差分になる。
+      "testing-library/no-node-access": "off",
+      // no-node-access と同じ理由。container から引くのは data-* の目印やアイコンの
+      // クラスで、役割の問い合わせに置き換えられない。
+      "testing-library/no-container": "off",
+      // Vitest の globals を切っているので、Testing Library の自動の後片付けは動かない。
+      // 後片付けは vitest.setup.ts が明示的に呼び、テストの途中で描き直す前にも呼ぶ。
+      "testing-library/no-manual-cleanup": "off",
+      // 1 つのテストで何度も描くときは first・direct・loading のように場面の名前を付ける
+      // ほうが読める。また render を名前に含む補助関数（onClose を返す renderHeader など）
+      // まで描画の結果とみなして誤って指摘する。
+      "testing-library/render-result-naming-convention": "off",
+    },
+  },
+  {
+    // 本番の関数 setRenderedAudience（src/api/client.ts）を、名前に render を含むので
+    // 描画とみなして誤って指摘する。描画の補助関数の名前を列挙して判定を狭めると、補助
+    // 関数を足すたびに設定を直すことになるので、呼んでいる 2 ファイルでだけ切る。
+    files: ["src/api/serverEvents.test.ts", "src/player/VideoPage.test.tsx"],
+    rules: {
+      "testing-library/no-render-in-lifecycle": "off",
+    },
+  },
+  {
+    // 「画面のどこでも Space・0 がプレイヤーに効く」は、画面全体のキー操作が差し替えた
+    // プレイヤーの操作を受け取る effect を待つ目印を持たないので、何度押しても同じ結果に
+    // なる 0 を、効くまで waitFor の中で押し直す。その 1 件のためにこのファイルでだけ切る。
+    files: ["src/player/VideoPage.test.tsx"],
+    rules: {
+      "testing-library/no-wait-for-side-effects": "off",
+    },
+  },
 ];
