@@ -176,6 +176,53 @@ func (s *PlaylistStore) Playlist(ctx context.Context, id int64) (domain.Playlist
 	return playlist, items, nil
 }
 
+// PlaylistPlayback はプレイリスト id を項目 itemID の動画 videoID から再生しているときの、今の
+// 位置と次に開く動画を、最新の並びから返す（data-model.md「Playback order」、research.md R-6）。
+// 全項目（見せない項目も含む）と見せる項目の動画・グループを読み取り用の接続の同じ
+// スナップショットから読み、domain.PlaylistPlaybackOf に渡す。プレイリストが無ければ
+// domain.ErrPlaylistNotFound、項目がそのプレイリストに無ければ domain.ErrPlaylistItemNotFound。
+func (s *PlaylistStore) PlaylistPlayback(ctx context.Context, id, itemID, videoID int64) (domain.PlaylistPlayback, error) {
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.PlaylistPlayback{}, fmt.Errorf("cannot read the playlist playback: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	playlist, err := playlistSummary(ctx, tx, id)
+	if err != nil {
+		return domain.PlaylistPlayback{}, err
+	}
+	order, err := playlistItemOrder(ctx, tx, id)
+	if err != nil {
+		return domain.PlaylistPlayback{}, err
+	}
+	shown, err := shownPlaylistItems(ctx, tx, id)
+	if err != nil {
+		return domain.PlaylistPlayback{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.PlaylistPlayback{}, fmt.Errorf("cannot read the playlist playback: %w", err)
+	}
+
+	byID := make(map[int64]domain.PlaylistItem, len(shown))
+	for _, item := range shown {
+		byID[item.ID] = item
+	}
+	items := make([]domain.PlaylistItem, len(order))
+	for i, itemID := range order {
+		item, ok := byID[itemID]
+		if !ok {
+			item = domain.PlaylistItem{ID: itemID}
+		}
+		items[i] = item
+	}
+	playback, err := domain.PlaylistPlaybackOf(items, domain.PlaylistCurrent{ItemID: itemID, VideoID: videoID})
+	if err != nil {
+		return domain.PlaylistPlayback{}, err
+	}
+	playback.Playlist = playlist
+	return playback, nil
+}
+
 // AddPlaylistItems は add の動画とグループを、プレイリスト id の末尾に要求の順（動画、次に
 // フォルダ）で足す（R-5）。動画の id は利用者データの鍵へ引き直し（同じ集まりの id は 1 つの
 // 項目になる）、フォルダは domain.FolderKey で整えて今グループのものだけを使う（SetFavorites と

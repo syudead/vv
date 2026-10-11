@@ -348,9 +348,3 @@ func playlistNameMessage(problem domain.PlaylistNameProblem) string {
 		return "Invalid playlist name."
 	}
 }
-
-func toAPIPlaylistSummary(playlist domain.Playlist) gen.PlaylistSummary {
-	return gen.PlaylistSummary{
-		Id: playlist.ID, Name: playlist.Name, ItemCount: playlist.ItemCount, UpdatedAt: playlist.UpdatedAt,
-	}
-}

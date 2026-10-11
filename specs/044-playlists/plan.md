@@ -308,9 +308,12 @@ in the selection bar or on the video page.
 **Scope**: The playlist context hook on the video page: reading `playlist`
 and `item`, the playback response on open and at the end, the playlist line
 with name and position, the previous and next item arrows, the autoplay
-notice to `next` with cancel and play now, the end-of-playlist layer, keeping
-the query on every step, and dropping the context on `404`; the page without
-the query is unchanged
+notice to `next` with cancel and play now, the end-of-playlist layer, the
+aside's playlist panel read from `GET /api/playlists/{id}` alongside each
+playback read and drawn only from a pair with one `updatedAt`
+([ui-design.md, Playlist panel](ui-design.md#playlist-panel)), keeping the
+query on every step, and dropping the context on `404` from either read; the
+page without the query is unchanged
 ([R-6](research.md#r-6-the-server-answers-the-playlist-position-and-the-next-video-from-the-latest-order),
 [R-7](research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours)).
 
@@ -331,8 +334,16 @@ layer shows and nothing advances; the arrows open `previousItem` and
 restarts that video from the start with the new item's position on the line;
 a `404` leaves the related videos' neighbours in charge and no
 notice after the end; a guest at `/videos/{id}?playlist=1&item=2` sends no
-playback request and sees no playlist line; without the query, a group member
-advances inside its group as before.
+playback request, no playlist request and sees no playlist line and no
+panel; without the query, a group member advances inside its group as before;
+with the query, the aside opens with the playlist's name, `2 / 3` and one row
+per item, the current item's row is `aria-current` and not a link, and
+pressing another row opens its video with `item` set to that item; a pair of
+responses whose `updatedAt` differ is read again and the panel shows the
+order the agreeing pair returns; at the end, the panel's rows follow the
+order the re-read returns; a failed playlist read shows "Couldn't load the
+playlist" with Retry and leaves the line, the arrows and the notice as they
+are; a `404` from the playlist read drops the panel with the context.
 
 ### Cover playlists in a browser test
 

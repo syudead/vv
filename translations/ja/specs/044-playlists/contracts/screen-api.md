@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/contracts/screen-api.md
-sourceHash: f0710b29996dec22bd7d2ee3f76e5861292e0cd87cebea4f2555476acaf5d50f
+sourceHash: c9b19adb68390674e3ec94f46664d15728f7f3a6bf8de6e6e2678dbf63592572
 ---
 
 # 契約: プレイリストの画面の API {#contract-screen-api-for-playlists}
@@ -66,7 +66,7 @@ PlaylistName:
 
 ## `GET /api/playlists/{id}` {#get-apiplaylistsid}
 
-`200 Playlist`。`404 not_found`。`video` と `group` は、ライブラリの項目と同じく所有者のフィールド (`progress`、`watchState`、`watchedCount`、`favorite`) を持つ。
+`200 Playlist`。`404 not_found`。`video` と `group` は、ライブラリの項目と同じく所有者のフィールド (`progress`、`watchState`、`watchedCount`、`favorite`) を持つ。同じ応答が、プレイリストの画面と、動画の画面のプレイリストのパネル（[ui-design.md の Playlist panel](../ui-design.md#playlist-panel)）に使われる。パネルは、画面が必要としないものを何も必要としない。
 
 ## `POST /api/playlists/{id}/items` {#post-apiplaylistsiditems}
 
@@ -132,4 +132,4 @@ PlaylistStep:
 | プレイリストの一覧の画面 (`/playlists`) | `GET /api/playlists`、`POST /api/playlists` |
 | プレイリストの画面 (`/playlists/{id}`) | `GET`、`PATCH`、`DELETE /api/playlists/{id}`。`move` と項目の `DELETE`。再生は `state: {from: "/playlists/{id}", autoplay: true}` 付きで `/videos/{videoId}?playlist={id}&item={itemId}` を開く。`videoId` は動画か、グループの `openVideoId` である |
 | 追加メニュー (カード、選択バー、動画のページ) | 開いたときに `GET /api/playlists`。`POST /api/playlists/{id}/items`。メニューからプレイリストを作成するのは `POST /api/playlists` の後に追加である |
-| `playlist` と `item` 付きの動画のページ、所有者だけ | 開いたとき、動画が終わったとき、通知が次の動画がなくなったことに気づいたときに `GET /api/playlists/{id}/playback`。一歩へ移るときは `playlist` を保ち、`item` をその一歩の `itemId` にし、`state.from` を引き継ぐ |
+| `playlist` と `item` 付きの動画のページ、所有者だけ | 開いたとき、動画が終わったとき、通知が次の動画がなくなったことに気づいたときに `GET /api/playlists/{id}/playback`。それらの読み込みのそれぞれと並べて、横の列のプレイリストのパネル（[ui-design.md の Playlist panel](../ui-design.md#playlist-panel)）のために `GET /api/playlists/{id}` を読む。組は両方が同じ `updatedAt` を持つときだけ使い、異なるときは読み直すので（[ui-design.md の One order](../ui-design.md#one-order)）、パネルと `next` は同じ順を示す。どちらの読み込みからの `404` でも文脈を外す。一歩へ移るときは `playlist` を保ち、`item` をその一歩の `itemId` にし、`state.from` を引き継ぐ |

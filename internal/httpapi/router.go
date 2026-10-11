@@ -260,6 +260,8 @@ type Options struct {
 	Favorites Favorites
 	// Playlists はプレイリストの保存先。nilならプレイリストの経路は500を返す。
 	Playlists Playlists
+	// PlaylistPlayback はプレイリストの連続再生の読み出し先。nilなら連続再生の経路は500を返す。
+	PlaylistPlayback PlaylistPlaybackReader
 	// WatchHistory は視聴履歴の読みと削除の先。nilなら視聴履歴の経路は500を返す。
 	WatchHistory WatchHistory
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
@@ -342,14 +344,16 @@ type server struct {
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
-	watchHistory WatchHistory
-	overrides    OverrideStore
-	thumbnails   ThumbnailPicker
-	versions     VersionStore
-	folders      Folders
-	folderGroups FolderGroups
-	library      LibraryItems
-	transcoder   Transcoder
+	// playlistPlayback はプレイリストの連続再生の読み出し先（playlist_playback.go）。
+	playlistPlayback PlaylistPlaybackReader
+	watchHistory     WatchHistory
+	overrides        OverrideStore
+	thumbnails       ThumbnailPicker
+	versions         VersionStore
+	folders          Folders
+	folderGroups     FolderGroups
+	library          LibraryItems
+	transcoder       Transcoder
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
@@ -416,6 +420,7 @@ func NewRouter(opts Options) http.Handler {
 		visibility:        opts.Visibility,
 		favorites:         opts.Favorites,
 		playlists:         opts.Playlists,
+		playlistPlayback:  opts.PlaylistPlayback,
 		watchHistory:      opts.WatchHistory,
 		overrides:         opts.Overrides,
 		thumbnails:        opts.ThumbnailPicker,
