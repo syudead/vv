@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: b12125044441e34ab1137eee3a40fcc335f15abfdff6ec2a95cb05c5ce0eb3b2
+sourceHash: da056cb36bb51faf2dc207939adf2ec7bd15c67cf4ad0abac406bb70c89af6ee
 ---
 
 # アーキテクチャ {#architecture}
