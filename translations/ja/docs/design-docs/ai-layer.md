@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: 1d1c4d017abee97a78ddf84732e7a518b52a45633001eacc75561b91e34134d6
+sourceHash: 33da269e4bf99938d13b88bc015e5493c9afd9383817406567f600191cd71c2b
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -53,27 +53,15 @@ Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 
 
 ## リレー経由の Workers AI {#workers-ai-through-a-relay}
 
-Clef は Cloudflare Workers AI でも動く (`@cf/cloudflare/clef`、`@cf/cloudflare/clef-flash`)。VVMDM には Workers AI のプロバイダがない。Ollama を動かせない場所で自動タグ付けを試すために、`scripts/clefrelay` が Ollama のアドレスで待ち受け、Ollama のプロバイダのリクエストを転送する ([workers-ai-relay.md](../how-to/workers-ai-relay.md))。リレーは開発用のツールで、配布しない。
+Ollama を動かせない場所で自動タグ付けを試すために、開発用のツール `scripts/clefrelay` が Ollama のアドレスで待ち受け、Ollama のプロバイダのリクエストを Cloudflare Workers AI 上の Clef に転送する ([workers-ai-relay.md](../how-to/workers-ai-relay.md))。VVMDM には Workers AI のプロバイダがなく、リレーも配布しない。Workers AI は 4 枚まで受け付けるので、リレーは 5 枚以上の画像を 1 つのグリッドに並べる。36 個の期待するタグを持つ 12 本のテスト動画で、clef-flash は 9 枚の画像の 3×3 グリッド 1 つで 5 個のタグを見逃した。サムネイルと 3 枚のフレームでは 6 個、サムネイルだけでは 19 個だった。リクエストはすべて成功し、動画 1 本あたり約 2 秒、約 5,800 の入力トークンだった。
 
 | 違い | Ollama | Workers AI | リレー |
 | --- | --- | --- | --- |
 | URL | `{URL}/v1/systemone` | `/accounts/{id}/ai/run/@cf/cloudflare/{model}` | `model` から URL を選ぶ |
 | 認証 | なし | Bearer トークン | `CLOUDFLARE_API_TOKEN` が設定されていれば付ける |
-| 画像 | 生の base64、上限は確認されていない | データ URL または `{content_type, base64}`、最大 4 枚 | 5 枚以上の画像を 1 つのグリッドに並べる |
+| 画像 | 生の base64 | データ URL または `{content_type, base64}`、最大 4 枚 | 5 枚以上の画像を 1 つのグリッドに並べる |
 | `keep_alive` | 受け付ける | 拒否する (422) | 取り除く |
 | 応答 | `{"answers"}` または `{"error"}` | `{"result"}` に包まれる。エラーは `{"errors":[{"message"}]}` に入る | どちらも包みを外す |
-
-プロバイダの 9 枚の画像 (サムネイルと 8 枚のフレーム) を収める 5 つの方法を、実際の写真から作った 12 本の生成動画で、28 個のタグと 36 個の期待するタグを使い、既定の確率 (追加は 0.8、提案は 0.5) で比較した。数は「正しいもの / 誤ったもの」だ。
-
-| モデル | 送った画像 | 追加 | 提案 | 見逃し |
-| --- | --- | --- | --- | --- |
-| clef-flash | サムネイルだけ | 13 / 0 | 4 / 4 | 19 |
-| clef-flash | サムネイルと 3 枚のフレーム | 16 / 0 | 14 / 4 | 6 |
-| clef-flash | サムネイルと、フレームの 2×2 グリッド 2 つ | 17 / 0 | 13 / 4 | 6 |
-| clef-flash | 9 枚すべてを 1 つの 3×3 グリッドに | 19 / 0 | 12 / 6 | 5 |
-| clef | 9 枚すべてを 1 つの 3×3 グリッドに | 25 / 2 | 8 / 3 | 3 |
-
-誤ったタグの大半は、グレースケールの写真に付いた `black and white` だった。リレーは、見逃したタグが最も少なかったので 1 つのグリッドを使う。リクエストはすべて成功した。1 回のリクエストは 0.6 から 1.3 秒 (中央値) かかり、動画 1 本は 2 回のバッチで約 2 秒かかった。動画 1 本は約 5,800 の入力トークンを使い、これは掲載価格で clef-flash なら約 USD 0.0002、clef なら USD 0.0014 になる。Workers AI は 1 回のリクエストで 64 個の質問を受け付けた (約 8,800 トークン、2 秒)。それでもプロバイダは 16 個を送る。バッチの大きさは Ollama のプロバイダのものだからだ。
 
 ## プロバイダの追加 {#adding-a-provider}
 
