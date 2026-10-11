@@ -7,6 +7,13 @@ describe("playlistName", () => {
     expect(playlistName("  Morning  ")).toBe("Morning");
   });
 
+  it("サーバーと同じ Unicode White_Space を前後から取り除く", () => {
+    // U+0085 は White_Space だが trim() は残す。U+FEFF は trim() が取るが White_Space ではない。
+    expect(playlistName(`\u0085${"a".repeat(100)}\u0085`)).toBe("a".repeat(100));
+    expect(playlistName("　Morning ")).toBe("Morning");
+    expect(playlistName("﻿Morning﻿")).toBe("﻿Morning﻿");
+  });
+
   it("空白だけの名前は送らない", () => {
     expect(playlistName("")).toBeNull();
     expect(playlistName("   ")).toBeNull();
