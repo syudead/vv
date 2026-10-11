@@ -473,7 +473,7 @@ and is scanned for; the add control has no state and sits inside it.
 With `?playlist=<id>&item=<itemId>` in the URL and the owner signed in, the
 page reads `GET /api/playlists/{id}/playback?item=&video=` when it opens, when
 the video ends, and when the notice finds its next video gone (R-6), and the
-response drives the four parts below. Without the query, or for a guest, the
+response drives the parts below. Without the query, or for a guest, the
 page is unchanged (requirement 8). The diagram shows the page's states while
 the context holds.
 
