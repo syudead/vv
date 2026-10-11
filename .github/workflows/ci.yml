@@ -101,10 +101,12 @@ jobs:
             go: lint
           # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
           # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
+          # internal/media のテストは ffmpeg と ffprobe が無いと飛ぶ（47 件）ので入れる。
           - group: go test
             tasks: test-go-report
             go: test
             report: go
+            ffmpeg: true
           - group: web lint
             tasks: fmt-check-web lint-web build-check-web
             web: true
@@ -184,6 +186,37 @@ jobs:
         run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
         env:
           BASE: ${{ github.base_ref }}
+
+      # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
+      - name: runnerのイメージ版を調べる
+        id: image
+        if: matrix.ffmpeg
+        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: メディア処理コマンドのパッケージを復元する
+        id: ffmpeg-debs
+        if: matrix.ffmpeg
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ffmpeg-debs
+          key: ffmpeg-debs-${{ steps.image.outputs.version }}
+
+      - name: メディア処理コマンドを取得する
+        if: matrix.ffmpeg
+        env:
+          CACHE_HIT: ${{ steps.ffmpeg-debs.outputs.cache-hit }}
+        run: |
+          debs="$HOME/.cache/ffmpeg-debs"
+          if [ "$CACHE_HIT" != "true" ]; then
+            mkdir -p "$debs/partial"
+            sudo apt-get update
+            sudo apt-get install --yes --download-only --no-install-recommends \
+              -o Dir::Cache::archives="$debs" ffmpeg
+            sudo rm -rf "$debs/partial" "$debs/lock"
+            sudo chown -R "$USER" "$debs"
+          fi
+          if compgen -G "$debs/*.deb" > /dev/null; then sudo dpkg -i "$debs"/*.deb; fi
+          ffmpeg -version | head -n 1
 
       - name: 検査する
         env:
