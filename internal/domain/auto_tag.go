@@ -154,6 +154,31 @@ func SortAutoTagCandidates(candidates []AutoTagCandidate) {
 	})
 }
 
+// AutoTagFrameCount は判定に添えるシーク用プレビューのコマの数である。代表サムネイル
+// 1 枚だけでは動画の 1 場面しか見えないので、動画全体から等間隔に選んで添える。コマは
+// 長辺 320px 以下で、1 コマあたりの入力はサムネイルより小さい。
+const AutoTagFrameCount = 8
+
+// SpreadFrameIndexes は frameCount 個のコマから、全体に等間隔に n 個を選んだ番号を昇順で
+// 返す。各区間の中央のコマを選ぶ。frameCount が n 以下ならすべてを返す。
+func SpreadFrameIndexes(frameCount, n int) []int {
+	if frameCount <= 0 || n <= 0 {
+		return nil
+	}
+	if frameCount <= n {
+		indexes := make([]int, frameCount)
+		for i := range indexes {
+			indexes[i] = i
+		}
+		return indexes
+	}
+	indexes := make([]int, n)
+	for i := range indexes {
+		indexes[i] = (2*i + 1) * frameCount / (2 * n)
+	}
+	return indexes
+}
+
 // AutoTagSubject は判定に渡す動画の手がかりである。
 type AutoTagSubject struct {
 	// Title は有効な題名（表示名があればそれ）。
@@ -162,8 +187,9 @@ type AutoTagSubject struct {
 	FileName string
 	// Folder はファイルのあるフォルダのパス。
 	Folder string
-	// Thumbnail は代表サムネイルの JPEG。無ければ nil で、文字だけで判定する。
-	Thumbnail []byte
+	// Images は判定に添える JPEG で、代表サムネイル、続いて動画全体から等間隔に選んだ
+	// シーク用プレビューのコマの順に並ぶ。無ければ空で、文字だけで判定する。
+	Images [][]byte
 }
 
 // NewAutoTagSubject は動画の有効な題名と代表の所在のパスから手がかりを作る。パスの区切りは
@@ -192,7 +218,9 @@ func AutoTagQuestionKey(tagID int64) string {
 // AutoTagQuestionFor はタグ 1 つを質問の文にする。シノニムがあれば別名として添える。
 func AutoTagQuestionFor(candidate AutoTagCandidate) AutoTagQuestion {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Does the tag %q describe this video?", candidate.Name)
+	// 「この動画を表すか」と聞くと、動画の一部にだけ当てはまるタグの確率が下がった
+	// （docs/design-docs/auto-tagging.md）。どこか一部に当てはまれば付く聞き方にする。
+	fmt.Fprintf(&b, "Does %q appear in or apply to any part of this video?", candidate.Name)
 	if len(candidate.Synonyms) > 0 {
 		quoted := make([]string, len(candidate.Synonyms))
 		for i, synonym := range candidate.Synonyms {
@@ -200,7 +228,7 @@ func AutoTagQuestionFor(candidate AutoTagCandidate) AutoTagQuestion {
 		}
 		fmt.Fprintf(&b, " The tag is also known as %s.", strings.Join(quoted, ", "))
 	}
-	b.WriteString(" Judge from the thumbnail image if one is attached, and from the title, file name and folder.")
+	b.WriteString(" The images are the thumbnail and frames taken from across the video; a tag applies if it fits any of them, or the title, file name or folder.")
 	return AutoTagQuestion{Key: AutoTagQuestionKey(candidate.ID), Instructions: b.String()}
 }
 

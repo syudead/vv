@@ -12,13 +12,14 @@ import (
 // 長辺 640px の JPEG なので、通常はずっと小さい。
 const maxThumbnailBytes = 8 << 20
 
-// thumbnailSource は生成物の置き場から代表サムネイルの JPEG を読み、app.ThumbnailSource を満たす。
-type thumbnailSource struct {
+// videoImageSource は生成物の置き場から代表サムネイルとシーク用プレビューのコマを読み、
+// app.VideoImageSource を満たす。
+type videoImageSource struct {
 	artifacts *artifacts.Store
 }
 
 // ThumbnailJPEG は内容の代表サムネイルを読む。
-func (t thumbnailSource) ThumbnailJPEG(contentKey string) ([]byte, error) {
+func (t videoImageSource) ThumbnailJPEG(contentKey string) ([]byte, error) {
 	file, err := t.artifacts.ThumbnailFile(contentKey)
 	if err != nil {
 		return nil, err
@@ -32,4 +33,9 @@ func (t thumbnailSource) ThumbnailJPEG(contentKey string) ([]byte, error) {
 		return nil, errors.New("the thumbnail is too large")
 	}
 	return data, nil
+}
+
+// SeekFramesJPEG はシーク用プレビューから動画全体に等間隔に n コマを選んで読む。
+func (t videoImageSource) SeekFramesJPEG(contentKey string, n int) ([][]byte, error) {
+	return t.artifacts.SeekFrames(contentKey, n)
 }

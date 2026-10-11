@@ -259,13 +259,13 @@ func run(opts runOptions) error {
 		workers = append(workers, worker)
 		wakers[kind] = worker
 	}
-	// 自動タグ付け。取り込みで代表サムネイルの段階を終えた動画を、入なら判定に回す
+	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
 		Classifier: clef.New(),
-		Thumbnails: thumbnailSource{artifacts: artifactStore},
+		Images:     videoImageSource{artifacts: artifactStore},
 		Logger:     logger,
 	})
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
@@ -275,8 +275,8 @@ func run(opts runOptions) error {
 		Screen:           events.Handle,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
-		ThumbnailFinished: func(videoID int64) {
-			autoTagger.VideoThumbnailFinished(backgroundCtx, videoID)
+		ImagesFinished: func(videoID int64) {
+			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 		},
 	})
 	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。

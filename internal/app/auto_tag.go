@@ -47,9 +47,13 @@ type AutoTagClassifier interface {
 	Classify(ctx context.Context, req domain.AutoTagRequest) (map[string]float64, error)
 }
 
-// ThumbnailSource は代表サムネイルの JPEG を読む。無ければ誤りを返す。
-type ThumbnailSource interface {
+// VideoImageSource は判定に添える画像を生成物の置き場から読む。
+type VideoImageSource interface {
+	// ThumbnailJPEG は代表サムネイルの JPEG を読む。無ければ誤りを返す。
 	ThumbnailJPEG(contentKey string) ([]byte, error)
+	// SeekFramesJPEG はシーク用プレビューから動画全体に等間隔に n コマを選び、1 コマずつの
+	// JPEG にして時間の順に返す。無ければ誤りを返す。
+	SeekFramesJPEG(contentKey string, n int) ([][]byte, error)
 }
 
 // AutoTaggerOptions は自動タグ付けに必要な依存である。
@@ -57,7 +61,7 @@ type AutoTaggerOptions struct {
 	Queue      AutoTagQueue
 	Settings   AutoTagSettingsStore
 	Classifier AutoTagClassifier
-	Thumbnails ThumbnailSource
+	Images     VideoImageSource
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
@@ -68,7 +72,7 @@ type AutoTagger struct {
 	queue      AutoTagQueue
 	settings   AutoTagSettingsStore
 	classifier AutoTagClassifier
-	thumbnails ThumbnailSource
+	images     VideoImageSource
 	logger     *slog.Logger
 	wake       chan struct{}
 
@@ -86,7 +90,7 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 		queue:      opts.Queue,
 		settings:   opts.Settings,
 		classifier: opts.Classifier,
-		thumbnails: opts.Thumbnails,
+		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
 		// 容量 1 で、起こす知らせを 1 つだけ貯める。
 		wake: make(chan struct{}, 1),
@@ -180,9 +184,10 @@ func (a *AutoTagger) QueueLibrary(ctx context.Context, scope domain.AutoTagScope
 	return queued, nil
 }
 
-// VideoThumbnailFinished は取り込みで動画の代表サムネイルの段階が終わった（成否を問わない）
-// ことを受け取る。自動の判定が入なら、まだ判定していない動画を積む。
-func (a *AutoTagger) VideoThumbnailFinished(ctx context.Context, videoID int64) {
+// VideoImagesFinished は取り込みで動画のシーク用プレビューの段階が終わった（成否を問わない）
+// ことを受け取る。代表サムネイルはそれより前に終わっているので、判定に添える画像が揃っている。
+// 自動の判定が入なら、まだ判定していない動画を積む。
+func (a *AutoTagger) VideoImagesFinished(ctx context.Context, videoID int64) {
 	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {
 		a.logger.Warn("cannot read the auto-tagging settings", slog.Any("error", err))
@@ -291,16 +296,7 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) ([]int64
 	}
 
 	subject := domain.NewAutoTagSubject(video.Title, video.Path)
-	if video.HasThumbnail() && a.thumbnails != nil {
-		image, err := a.thumbnails.ThumbnailJPEG(job.ContentKey)
-		if err != nil {
-			// サムネイルが読めなくても、題名・ファイル名・フォルダだけで判定する。
-			a.logger.Warn("cannot read the thumbnail; judging from the text only",
-				slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		} else {
-			subject.Thumbnail = image
-		}
-	}
+	subject.Images = a.videoImages(job.ContentKey, video)
 
 	var selected []int64
 	for _, chunk := range domain.ChunkAutoTagCandidates(candidates) {
@@ -320,4 +316,32 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) ([]int64
 		selected = append(selected, domain.SelectAutoTags(chunk, probabilities, settings.Threshold)...)
 	}
 	return selected, nil
+}
+
+// videoImages は判定に添える画像（代表サムネイルと、動画全体から等間隔に選んだコマ）を
+// 読む。読めないものは飛ばし、題名・ファイル名・フォルダと読めた画像だけで判定する。
+func (a *AutoTagger) videoImages(contentKey string, video domain.Video) [][]byte {
+	if a.images == nil {
+		return nil
+	}
+	var images [][]byte
+	if video.HasThumbnail() {
+		image, err := a.images.ThumbnailJPEG(contentKey)
+		if err != nil {
+			a.logger.Warn("cannot read the thumbnail for auto-tagging",
+				slog.String("content_key", contentKey), slog.Any("error", err))
+		} else {
+			images = append(images, image)
+		}
+	}
+	if video.SeekThumbnailState == domain.SeekThumbnailDone {
+		frames, err := a.images.SeekFramesJPEG(contentKey, domain.AutoTagFrameCount)
+		if err != nil {
+			a.logger.Warn("cannot read the seek preview frames for auto-tagging",
+				slog.String("content_key", contentKey), slog.Any("error", err))
+		} else {
+			images = append(images, frames...)
+		}
+	}
+	return images
 }

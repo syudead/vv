@@ -12,7 +12,7 @@ back.
 
 ```mermaid
 flowchart LR
-  thumb[Thumbnail stage done] -->|auto-tagging on| queue[(auto_tag_queue)]
+  seek[Seek preview stage done] -->|auto-tagging on| queue[(auto_tag_queue)]
   owner[Owner] -->|Settings or video page| queue
   queue --> worker[Auto-tagging worker]
   worker --> clef[Ollama /v1/systemone]
@@ -24,28 +24,51 @@ flowchart LR
 ## Classifier request
 
 Each existing tag becomes one yes/no (`noul`) question, and a video is sent as
-its thumbnail image plus a JSON state with its title, file name and folder.
+its library thumbnail, 8 frames spread across the whole video, and a JSON
+state with its title, file name and folder.
 
-Clef scores every question in one non-autoregressive pass and returns a
-probability per question. A request carries 16 tags, and a library with more
-tags is sent in batches of 16 with the same image. The question names the tag
-and lists its synonyms; tentative tags are not asked about.
-
-Ollama accepts 64 questions per request, but 64 questions and a thumbnail make
-about 7,400 input tokens, and Clef-flash on a 15 GB CPU machine was killed for
-lack of memory. 16 questions make about 2,000 tokens and take about 130 s
-there. The image is processed again for every batch, so time per video grows
-with the number of tags.
+The thumbnail shows one scene, so a video whose scenes differ would only be
+judged on that one; the frames let the classifier see the rest. They are cut
+from the seek preview sheet the import already made, so no ffmpeg work is
+added, and at 320 px or less each frame costs fewer input tokens than the
+thumbnail.
 
 | Input | Source | When missing |
 | --- | --- | --- |
-| Image | The library thumbnail (640 px JPEG) the import already made | Text only; the thumbnail stage failed or the file is gone |
+| Images | The library thumbnail (640 px), then 8 frames at the middle of 8 equal parts of the seek preview | The images that can be read; text only when none can |
 | `title` | The display name, else the file title | Never missing |
 | `file_name`, `folder` | The representative location's path | Never missing |
 
-Reusing the existing thumbnail adds no ffmpeg work. On a 4-core CPU without a
-GPU, Clef-flash took about 100 s per thumbnail and 25 s for text only with 9 tags; the
-published GPU latency is under 0.2 s.
+Clef scores every question in one non-autoregressive pass and returns a
+probability per question. A request carries 16 tags, and a library with more
+tags is sent in batches of 16 with the same images. The question asks whether
+the tag appears in or applies to any part of the video, names its synonyms,
+and says the images come from across the video; tentative tags are not asked
+about.
+
+The wording decides whether frames help. On a 30 s video of a cat, a rocket
+and a cup of coffee, with the thumbnail showing the cat:
+
+| Images and question | cat | coffee | rocket | Unrelated tags |
+| --- | --- | --- | --- | --- |
+| Thumbnail, "appears in any part" | 0.96 | 0.01 | 0.00 | 0.02 or less |
+| Thumbnail and 8 frames, "describes this video" | 0.60 | 0.61 | 0.17 | 0.01 or less |
+| Thumbnail and 8 frames, "appears in any part" | 0.93 | 0.85 | 0.70 | 0.00 |
+
+Asking whether a tag describes the video makes the model weigh the whole
+video, so a tag that fits one scene falls below the threshold.
+
+Ollama accepts 64 questions per request, but 64 questions and a thumbnail make
+about 7,400 input tokens, and Clef-flash on a 15 GB CPU machine was killed for
+lack of memory. 16 questions make about 2,000 tokens with the thumbnail alone.
+The images are processed again for every batch, so time per video grows with
+the number of tags. On a 4-core CPU without a GPU, Clef-flash took about 100 s
+per thumbnail with 9 tags; the published GPU latency is under 0.2 s.
+
+| Rejected | Why |
+| --- | --- |
+| The thumbnail alone | It shows one scene, so tags for the rest of the video are missed |
+| The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 8 frames |
 
 ## Tags it adds
 
@@ -80,7 +103,7 @@ stateDiagram-v2
 
 | Trigger | Queues |
 | --- | --- |
-| Thumbnail stage finishes, "Tag new videos automatically" on | Videos with no row |
+| Seek preview stage finishes, "Tag new videos automatically" on | Videos with no row |
 | Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |

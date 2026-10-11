@@ -92,3 +92,21 @@ func TestAutoTagScope(t *testing.T) {
 		t.Fatal("QueueMode の写しが違う")
 	}
 }
+
+func TestSpreadFrameIndexes(t *testing.T) {
+	for _, tc := range []struct {
+		frames, n int
+		want      []int
+	}{
+		{81, 8, []int{5, 15, 25, 35, 45, 55, 65, 75}},
+		{150, 3, []int{25, 75, 125}},
+		{4, 8, []int{0, 1, 2, 3}},
+		{1, 8, []int{0}},
+		{0, 8, nil},
+		{81, 0, nil},
+	} {
+		if got := SpreadFrameIndexes(tc.frames, tc.n); !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("SpreadFrameIndexes(%d, %d) = %v, want %v", tc.frames, tc.n, got, tc.want)
+		}
+	}
+}

@@ -85,8 +85,8 @@ func (c *Client) Classify(ctx context.Context, req domain.AutoTagRequest) (map[s
 		Questions: make(map[string]question, len(req.Questions)),
 		KeepAlive: keepAlive,
 	}
-	if len(req.Subject.Thumbnail) > 0 {
-		body.Images = []string{base64.StdEncoding.EncodeToString(req.Subject.Thumbnail)}
+	for _, image := range req.Subject.Images {
+		body.Images = append(body.Images, base64.StdEncoding.EncodeToString(image))
 	}
 	for _, q := range req.Questions {
 		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Instructions}

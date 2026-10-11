@@ -28,7 +28,8 @@ func TestClassifySendsSystemOneRequest(t *testing.T) {
 	probabilities, err := New().Classify(context.Background(), domain.AutoTagRequest{
 		Endpoint: server.URL + "/",
 		Model:    "clef-flash",
-		Subject:  domain.AutoTagSubject{Title: "嵐山", FileName: "竹林.mp4", Folder: "/media/旅行", Thumbnail: []byte{0xff, 0xd8}},
+		Subject: domain.AutoTagSubject{Title: "嵐山", FileName: "竹林.mp4", Folder: "/media/旅行",
+			Images: [][]byte{{0xff, 0xd8}, {0xff, 0xd9}}},
 		Questions: []domain.AutoTagQuestion{
 			{Key: "tag_1", Instructions: "Is it travel?"},
 			{Key: "tag_2", Instructions: "Is it cooking?"},
@@ -48,7 +49,8 @@ func TestClassifySendsSystemOneRequest(t *testing.T) {
 		t.Errorf("state = %v", got["state"])
 	}
 	images, _ := got["images"].([]any)
-	if len(images) != 1 || images[0] != base64.StdEncoding.EncodeToString([]byte{0xff, 0xd8}) {
+	if len(images) != 2 || images[0] != base64.StdEncoding.EncodeToString([]byte{0xff, 0xd8}) ||
+		images[1] != base64.StdEncoding.EncodeToString([]byte{0xff, 0xd9}) {
 		t.Errorf("images = %v", got["images"])
 	}
 	questions, _ := got["questions"].(map[string]any)

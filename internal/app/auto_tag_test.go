@@ -138,14 +138,28 @@ func (c *fakeClassifier) Classify(_ context.Context, req domain.AutoTagRequest) 
 	return out, nil
 }
 
-type fakeThumbnails map[string][]byte
+// fakeImages は代表サムネイルとコマを内容ごとに持つ。無ければ誤りを返す。
+type fakeImages struct {
+	thumbnails map[string][]byte
+	frames     map[string][][]byte
+	asked      []int
+}
 
-func (f fakeThumbnails) ThumbnailJPEG(key string) ([]byte, error) {
-	data, ok := f[key]
+func (f *fakeImages) ThumbnailJPEG(key string) ([]byte, error) {
+	data, ok := f.thumbnails[key]
 	if !ok {
 		return nil, errors.New("no thumbnail")
 	}
 	return data, nil
+}
+
+func (f *fakeImages) SeekFramesJPEG(key string, n int) ([][]byte, error) {
+	f.asked = append(f.asked, n)
+	frames, ok := f.frames[key]
+	if !ok {
+		return nil, errors.New("no frames")
+	}
+	return frames, nil
 }
 
 func runAutoTagger(t *testing.T, tagger *AutoTagger) {
@@ -173,13 +187,14 @@ func waitAutoTagDone(t *testing.T, q *fakeAutoTagQueue) string {
 	}
 }
 
-// 確率が閾値以上のタグを付け、候補が上限を超えれば分けて問い合わせ、サムネイルと題名・
-// ファイル名・フォルダを渡す。
+// 確率が閾値以上のタグを付け、候補が上限を超えれば分けて問い合わせ、サムネイル・コマと
+// 題名・ファイル名・フォルダを渡す。
 func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1"}
 	queue.videos["k1"] = domain.Video{
 		Title: "Kyoto", Path: "/media/travel/bamboo.mp4", ThumbnailState: domain.ThumbnailStateDone,
+		SeekThumbnailState: domain.SeekThumbnailDone,
 	}
 	for id := int64(1); id <= domain.AutoTagMaxQuestions+2; id++ {
 		queue.candidates = append(queue.candidates, domain.AutoTagCandidate{ID: id, Name: "t"})
@@ -188,8 +203,12 @@ func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 		"tag_1": 0.95, "tag_2": 0.5, domain.AutoTagQuestionKey(domain.AutoTagMaxQuestions + 2): 0.9,
 	}}
 	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{Endpoint: "http://o", Model: "clef-flash", Threshold: 0.8}}
+	images := &fakeImages{
+		thumbnails: map[string][]byte{"k1": []byte("thumb")},
+		frames:     map[string][][]byte{"k1": {[]byte("f1"), []byte("f2")}},
+	}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: settings, Classifier: classifier, Thumbnails: fakeThumbnails{"k1": []byte("jpeg")},
+		Queue: queue, Settings: settings, Classifier: classifier, Images: images,
 	})
 	runAutoTagger(t, tagger)
 
@@ -201,9 +220,13 @@ func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 		t.Fatalf("問い合わせの回数 = %d", len(classifier.requests))
 	}
 	req := classifier.requests[0]
-	want := domain.AutoTagSubject{Title: "Kyoto", FileName: "bamboo.mp4", Folder: "/media/travel", Thumbnail: []byte("jpeg")}
+	want := domain.AutoTagSubject{Title: "Kyoto", FileName: "bamboo.mp4", Folder: "/media/travel",
+		Images: [][]byte{[]byte("thumb"), []byte("f1"), []byte("f2")}}
 	if req.Endpoint != "http://o" || req.Model != "clef-flash" || !reflect.DeepEqual(req.Subject, want) {
 		t.Fatalf("問い合わせ = %+v", req)
+	}
+	if !slices.Equal(images.asked, []int{domain.AutoTagFrameCount}) {
+		t.Fatalf("コマを読んだ回数と数 = %v", images.asked)
 	}
 }
 
@@ -218,7 +241,7 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	classifier := &fakeClassifier{err: errors.New("cannot reach Ollama")}
 	tagger := NewAutoTagger(AutoTaggerOptions{
 		Queue: queue, Settings: &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()},
-		Classifier: classifier, Thumbnails: fakeThumbnails{},
+		Classifier: classifier, Images: &fakeImages{},
 	})
 	runAutoTagger(t, tagger)
 
@@ -227,8 +250,8 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	if queue.failed["k1"] != "cannot reach Ollama" || queue.failed["k2"] != "cannot reach Ollama" {
 		t.Fatalf("失敗の記録 = %v", queue.failed)
 	}
-	if classifier.requests[0].Subject.Thumbnail != nil {
-		t.Fatal("サムネイルの無い動画に画像を渡した")
+	if classifier.requests[0].Subject.Images != nil {
+		t.Fatal("サムネイルもコマも無い動画に画像を渡した")
 	}
 }
 
@@ -259,12 +282,12 @@ func TestAutoTaggerQueuesAfterThumbnailOnlyWhenEnabled(t *testing.T) {
 	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
-	tagger.VideoThumbnailFinished(ctx, 5)
+	tagger.VideoImagesFinished(ctx, 5)
 	if len(queue.queuedIDs) != 0 {
 		t.Fatal("切なのに積んだ")
 	}
 	settings.settings.Enabled = true
-	tagger.VideoThumbnailFinished(ctx, 5)
+	tagger.VideoImagesFinished(ctx, 5)
 	if !slices.Equal(queue.queuedIDs, []int64{5}) || queue.modes[0] != domain.AutoTagQueueIfNew {
 		t.Fatalf("積んだ = %v, %v", queue.queuedIDs, queue.modes)
 	}
