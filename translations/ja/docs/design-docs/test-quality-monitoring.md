@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/test-quality-monitoring.md
-sourceHash: 83b71670ad5435ac88edb1d7b5f58462bc02ad0c036c1489e72661649b959400
+sourceHash: 707b8759b3d3dd6be42be405688bc5ab9a538bf4a5e5ef749735d7226460ae7c
 ---
 
 # テストと CI の品質監視 {#test-and-ci-quality-monitoring}
@@ -36,7 +36,7 @@ flowchart LR
 
 ## プッシュ自身の CI 実行のあとに測定する {#measured-after-the-pushs-own-ci-run}
 
-`Quality metrics` は、`main` へのプッシュの CI 実行が成功したときに始まり、その実行のコミットを測定し、待機中の実行を 1 つだけ残すのではなくすべてキューに入れる。プッシュそのものを契機に始めると、そのプッシュ自身の実行が終わる前に CI の所要時間を読み、変化を次のプッシュのものとしてしまう。待機中の実行が 1 つだけなら、マージが立て続けに起きたときに測定されないコミットが残る。
+`Quality metrics` はプッシュで始まり、そのコミットの CI 実行を待ち、実行が成功したときだけ測定し、待機中の実行を 1 つだけ残すのではなくすべてキューに入れる。自身の CI 実行が終わる前に測定すると、プッシュは自身の CI の所要時間を次のプッシュに残すことになる。待機中の実行が 1 つだけなら、マージが立て続けに起きたときに測定されないコミットが残る。`workflow_run` トリガーも CI を待つが、チェックアウトしたコミットをデフォルトブランチの権限とキャッシュで実行する。
 
 ## 悪化した測定値は Issue を開く {#a-measure-that-gets-worse-opens-an-issue}
 

@@ -35,11 +35,12 @@ Each measure has one home, so a trend is read in one place.
 
 ## Measured after the push's own CI run
 
-`Quality metrics` starts when the CI run of a push to `main` succeeds, measures
-that run's commit, and queues every waiting run instead of keeping one. Started
-on the push itself, it would read the CI durations before that push's own run
-finished and attribute the change to the next push; with one waiting run, a
-burst of merges would leave commits unmeasured.
+`Quality metrics` starts on the push, waits for that commit's CI run, measures
+only when the run succeeded, and queues every waiting run instead of keeping
+one. Measured before its own CI run finished, a push would leave its CI
+durations to the next push; with one waiting run, a burst of merges would leave
+commits unmeasured. A `workflow_run` trigger would also wait for CI, but it runs
+the checked-out commit with the default branch's privileges and caches.
 
 ## A measure that gets worse opens an Issue
 
