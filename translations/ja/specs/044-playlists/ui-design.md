@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: 0e1255fa80cfda11a5bf339481aa2b50e1faac6d29bc5a27378f9fbac5146e7b
+sourceHash: 1ecb22239ff620feb16778c4f79f49d79311598b9000d27b238e9d26debfd803
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -343,7 +343,7 @@ flowchart LR
 
 ## プレイリストの中の動画の画面 {#video-page-in-a-playlist}
 
-URL に `?playlist=<id>&item=<itemId>` があり、所有者がサインインしているとき、画面は開いたとき、動画が終わったとき、通知が次の動画が消えたことに気づいたときに `GET /api/playlists/{id}/playback?item=&video=` を読み（R-6）、応答が下の 4 つの部分を動かす。クエリがないとき、またはゲストには、画面は変わらない（要件 8）。図は、文脈が保たれる間の画面の状態を示す。
+URL に `?playlist=<id>&item=<itemId>` があり、所有者がサインインしているとき、画面は開いたとき、動画が終わったとき、通知が次の動画が消えたことに気づいたときに `GET /api/playlists/{id}/playback?item=&video=` を読み（R-6）、応答が下の部分を動かす。クエリがないとき、またはゲストには、画面は変わらない（要件 8）。図は、文脈が保たれる間の画面の状態を示す。
 
 ```mermaid
 stateDiagram-v2
