@@ -44,12 +44,20 @@ func addVideos(t *testing.T, db *DB, id int64, videoIDs ...int64) domain.Playlis
 
 func readPlaylist(t *testing.T, db *DB, id int64) (domain.Playlist, []domain.PlaylistItem) {
 	t.Helper()
-	playlist, items, err := db.Playlists().Playlist(context.Background(), id)
+	playlist, items, roots, err := db.Playlists().Playlist(context.Background(), id)
 	if err != nil {
 		t.Fatalf("プレイリスト %d を読めない: %v", id, err)
 	}
 	if playlist.ItemCount != len(items) {
 		t.Errorf("ItemCount = %d, 見せる項目 = %d", playlist.ItemCount, len(items))
+	}
+	// 登録フォルダは項目と同じスナップショットから読むので、見せるグループはどれもその下にある。
+	for _, item := range items {
+		if item.Group != nil {
+			if _, ok := domain.LocateFolder(roots, item.Group.Path); !ok {
+				t.Errorf("グループ %s が返した登録フォルダ %+v の下に無い", item.Group.Path, roots)
+			}
+		}
 	}
 	return playlist, items
 }
@@ -236,7 +244,7 @@ func TestPlaylistRemovesItemsAndPlaylists(t *testing.T) {
 	if err := db.Playlists().DeletePlaylist(ctx, id); !errors.Is(err, domain.ErrPlaylistNotFound) {
 		t.Errorf("消したプレイリストをもう一度 = %v", err)
 	}
-	if _, _, err := db.Playlists().Playlist(ctx, id); !errors.Is(err, domain.ErrPlaylistNotFound) {
+	if _, _, _, err := db.Playlists().Playlist(ctx, id); !errors.Is(err, domain.ErrPlaylistNotFound) {
 		t.Errorf("消したプレイリストを読む = %v", err)
 	}
 }

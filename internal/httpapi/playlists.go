@@ -26,9 +26,9 @@ type Playlists interface {
 	RenamePlaylist(ctx context.Context, id int64, name string) (domain.Playlist, error)
 	// DeletePlaylist はプレイリスト id とその項目を消す。無ければ domain.ErrPlaylistNotFound。
 	DeletePlaylist(ctx context.Context, id int64) error
-	// Playlist はプレイリスト id の要約と見せる項目を位置の順に返す。無ければ
-	// domain.ErrPlaylistNotFound。
-	Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, error)
+	// Playlist はプレイリスト id の要約と見せる項目を位置の順に、それらと同じ読み取りスナップショットの
+	// 登録フォルダの一覧とともに返す。無ければ domain.ErrPlaylistNotFound。
+	Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, []domain.MediaFolder, error)
 	// AddPlaylistItems は add の動画とグループをプレイリスト id の末尾に足す。
 	AddPlaylistItems(ctx context.Context, id int64, add domain.PlaylistAdd) (domain.PlaylistAdded, error)
 	// MovePlaylistItem は項目 itemID を項目 afterItemID のすぐ後ろ（nil なら先頭）へ移す。
@@ -129,34 +129,27 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 		return
 	}
 	ctx := r.Context()
-	playlist, items, err := s.playlists.Playlist(ctx, id)
+	playlist, items, roots, err := s.playlists.Playlist(ctx, id)
 	if err != nil {
 		s.writePlaylistError(w, err, "Could not load the playlist.")
 		return
 	}
 
 	var shown, tagged []domain.Video
-	hasGroup := false
 	for _, item := range items {
 		switch {
 		case item.Video != nil:
 			shown = append(shown, *item.Video)
 			tagged = append(tagged, *item.Video)
 		case item.Group != nil:
-			hasGroup = true
 			tagged = append(tagged, item.Group.Members...)
 		}
-	}
-	roots, err := s.playlistRoots(ctx, len(shown) > 0 || hasGroup)
-	if err != nil {
-		s.internalError(w, "Could not load the playlist.", err)
-		return
 	}
 	lookup := s.itemLookups(ctx, shown, tagged)
 	audience := audienceFrom(ctx)
 
 	out := gen.Playlist{
-		Id: playlist.ID, Name: playlist.Name, ItemCount: playlist.ItemCount, UpdatedAt: playlist.UpdatedAt,
+		Id: playlist.ID, Name: playlist.Name, ItemCount: playlist.ItemCount, UpdatedAt: playlist.UpdatedAt.UTC(),
 		Items: make([]gen.PlaylistItem, 0, len(items)),
 	}
 	for _, item := range items {
@@ -167,32 +160,17 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 		case item.Group != nil:
 			group, ok := lookup.group(ctx, audience, roots, *item.Group)
 			if !ok {
-				// 登録フォルダを項目と別に読むので、その間に解除された登録フォルダの下のグループは
-				// 引けない。次の読み出しでは保存層も見せないので、ここでも外す。
-				s.logger.Warn("playlist group is not under any media folder", "path", item.Group.Path)
-				continue
+				// 同じスナップショットの登録フォルダの下に無いグループは索引の不整合である。
+				// 黙って落とすと items が itemCount と食い違うので、要求を失敗させる（一覧と同じ）。
+				s.internalError(w, "Could not load the playlist.",
+					fmt.Errorf("group folder is not under any media folder: %s", item.Group.Path))
+				return
 			}
 			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindGroup, Group: &group})
 		}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
-}
-
-// playlistRoots は項目の所在とグループのフォルダを求めるための登録フォルダを返す。need が偽なら
-// 読まない。グループの項目を落とさないよう、読めなければ誤りにする。
-func (s *server) playlistRoots(ctx context.Context, need bool) ([]domain.MediaFolder, error) {
-	if !need {
-		return nil, nil
-	}
-	switch {
-	case s.folders != nil:
-		return s.folders.ListMediaFolders(ctx)
-	case s.mediaFolders != nil:
-		return s.mediaFolders.ListMediaFolders(ctx)
-	default:
-		return nil, errors.New("media folder queries are not configured")
-	}
 }
 
 // AddPlaylistItems はプレイリストの末尾に動画とグループを足す（POST /api/playlists/{id}/items、

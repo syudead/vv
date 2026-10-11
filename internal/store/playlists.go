@@ -154,26 +154,31 @@ func (s *PlaylistStore) DeletePlaylist(ctx context.Context, id int64) error {
 }
 
 // Playlist はプレイリスト id の要約と、見せる項目を位置の順に返す。動画とグループは所有者として
-// 読む。要約と項目は読み取り用の接続の同じスナップショットから返す。無ければ
-// domain.ErrPlaylistNotFound。
-func (s *PlaylistStore) Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, error) {
+// 読む。要約・項目・登録フォルダの一覧は読み取り用の接続の同じスナップショットから返すので、
+// グループのフォルダはどれも返す登録フォルダの下にあり、件数と項目が食い違わない
+// （domain.LibraryPage.Roots と同じ）。無ければ domain.ErrPlaylistNotFound。
+func (s *PlaylistStore) Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, []domain.MediaFolder, error) {
 	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.Playlist{}, nil, fmt.Errorf("cannot read the playlist: %w", err)
+		return domain.Playlist{}, nil, nil, fmt.Errorf("cannot read the playlist: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	playlist, err := playlistSummary(ctx, tx, id)
 	if err != nil {
-		return domain.Playlist{}, nil, err
+		return domain.Playlist{}, nil, nil, err
 	}
 	items, err := shownPlaylistItems(ctx, tx, id)
 	if err != nil {
-		return domain.Playlist{}, nil, err
+		return domain.Playlist{}, nil, nil, err
+	}
+	roots, err := listMediaFolders(ctx, tx)
+	if err != nil {
+		return domain.Playlist{}, nil, nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.Playlist{}, nil, fmt.Errorf("cannot read the playlist: %w", err)
+		return domain.Playlist{}, nil, nil, fmt.Errorf("cannot read the playlist: %w", err)
 	}
-	return playlist, items, nil
+	return playlist, items, roots, nil
 }
 
 // PlaylistPlayback はプレイリスト id を項目 itemID の動画 videoID から再生しているときの、今の
