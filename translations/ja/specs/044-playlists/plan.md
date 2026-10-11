@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/plan.md
-sourceHash: abc8c8c01c7bf47ea11d201b1f7cc2dedcac399520fc7d71381a8a91e77d92ef
+sourceHash: 1fba9789fc4d3deb3885213737394e3a793c3ad201901d556f467e96d790fe6a
 ---
 
 # 実装計画: 名前付きのプレイリストと連続再生 {#implementation-plan-named-playlists-and-continuous-playback}
@@ -194,11 +194,11 @@ flowchart LR
 
 ### 動画のページでプレイリストを連続再生する {#play-a-playlist-continuously-on-the-video-page}
 
-**範囲**: 動画のページのプレイリストの文脈のフック: `playlist` と `item` を読むこと、開いたときと終わったときの playback の応答、名前と位置を持つプレイリストの行、前と次の項目の矢印、キャンセルと今すぐ再生を持つ `next` への自動再生の通知、プレイリストの終わりのレイヤー、どの移動でもクエリを保つこと、`404` で文脈を捨てること。クエリのないページは変わらない ([R-6](research.md#r-6-the-server-answers-the-playlist-position-and-the-next-video-from-the-latest-order)、[R-7](research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours))。
+**範囲**: 動画のページのプレイリストの文脈のフック: `playlist` と `item` を読むこと、開いたときと終わったときの playback の応答、名前と位置を持つプレイリストの行、前と次の項目の矢印、キャンセルと今すぐ再生を持つ `next` への自動再生の通知、プレイリストの終わりのレイヤー、再生の読み込みのたびにそれと並べて `GET /api/playlists/{id}` から読み、1 つの `updatedAt` を持つ組からだけ描く横の列のプレイリストのパネル（[ui-design.md の Playlist panel](ui-design.md#playlist-panel)）、どの移動でもクエリを保つこと、どちらの読み込みからの `404` でも文脈を捨てること。クエリのないページは変わらない ([R-6](research.md#r-6-the-server-answers-the-playlist-position-and-the-next-video-from-the-latest-order)、[R-7](research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours))。
 
 **依存**: 動画のページのために、プレイリストの位置と次の動画を答える。プレイリストの画面で、プレイリストの項目を表示し、並べ替え、取り除く。`design` 段階の `ui-design.md`。
 
-**受け入れ**: この単位は画面を変えるので、`ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが必要である。`task check` が通る。ページテストが次を示す: クエリがあると、行はプレイリストの名前と `2 / 3` を示す。終わりで playback をもう一度読み、通知はその `next` を名指す。通知が次の動画がなくなったことに気づくと、playback をもう一度読み、通知は新しい `next` に移るか、それがなければプレイリストの終わりのレイヤーが表示される。キャンセルすると進行が止まる。進むと、`item` をその項目にして次の動画を開く。`next` がないと、プレイリストの終わりのレイヤーが表示され、何も進まない。矢印は `previousItem` と `nextItem` を開く。同じ動画の id で別の `item` を持つ一歩へ進むと、その動画を最初から再生し直し、行には新しい項目の位置が示される。`404` では関連動画の前後が進み先を決めたままになり、終わりの後に通知は出ない。`/videos/{id}?playlist=1&item=2` のゲストは playback の要求を送らず、プレイリストの行を見ない。クエリがなければ、グループのメンバーはこれまでどおりグループの中で進む。
+**受け入れ**: この単位は画面を変えるので、`ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが必要である。`task check` が通る。ページテストが次を示す: クエリがあると、行はプレイリストの名前と `2 / 3` を示す。終わりで playback をもう一度読み、通知はその `next` を名指す。通知が次の動画がなくなったことに気づくと、playback をもう一度読み、通知は新しい `next` に移るか、それがなければプレイリストの終わりのレイヤーが表示される。キャンセルすると進行が止まる。進むと、`item` をその項目にして次の動画を開く。`next` がないと、プレイリストの終わりのレイヤーが表示され、何も進まない。矢印は `previousItem` と `nextItem` を開く。同じ動画の id で別の `item` を持つ一歩へ進むと、その動画を最初から再生し直し、行には新しい項目の位置が示される。`404` では関連動画の前後が進み先を決めたままになり、終わりの後に通知は出ない。`/videos/{id}?playlist=1&item=2` のゲストは playback の要求もプレイリストの要求も送らず、プレイリストの行もパネルも見ない。クエリがなければ、グループのメンバーはこれまでどおりグループの中で進む。クエリがあると、横の列はプレイリストの名前、`2 / 3`、項目ごとに 1 つの行で開き、今の項目の行は `aria-current` でリンクではなく、別の行を押すと、`item` をその項目にしてその動画を開く。`updatedAt` が異なる応答の組は読み直され、パネルは一致する組が返す順を示す。終わりでは、パネルの行は読み直しが返す順に従う。プレイリストの読み込みが失敗すると「Couldn't load the playlist」と Retry を示し、行、矢印、通知はそのままにする。プレイリストの読み込みからの `404` は、文脈とともにパネルを捨てる。
 
 ### プレイリストをブラウザーテストで扱う {#cover-playlists-in-a-browser-test}
 
