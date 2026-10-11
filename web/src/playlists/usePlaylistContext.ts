@@ -130,10 +130,18 @@ export function usePlaylistContext({
           return;
         }
         if (playback.status === "rejected") {
-          // 一時的な失敗。前の応答があれば保ち、無ければパネルが Retry を出す。
+          // 一時的な失敗。前の応答があれば保ち、無ければパネルが Retry を出す。Retry の読みが
+          // 失敗したときは、パネルを読み込み中のまま残さず、もう一度 Retry を出す。
           commit((previous) =>
             previous?.playback !== undefined
-              ? { ...previous, settledKey: readKey }
+              ? {
+                  ...previous,
+                  panel:
+                    previous.panel.kind === "loading"
+                      ? { kind: "failed" }
+                      : previous.panel,
+                  settledKey: readKey,
+                }
               : {
                   key,
                   playlistId,
@@ -146,14 +154,21 @@ export function usePlaylistContext({
           return;
         }
         if (playlist.status === "rejected") {
-          commit((previous) => ({
-            key,
-            playlistId,
-            status: "ready",
-            playback: playback.value,
-            panel: previous?.panel.kind === "ready" ? previous.panel : { kind: "failed" },
-            settledKey: readKey,
-          }));
+          // 再生とパネルは 1 つの組で示す（One order）。前の組がそろっていればそれを保ち、
+          // 新しい再生の応答だけを古いパネルの並びと合わせない。前の組が無ければ、新しい
+          // 再生の応答に従い、パネルは Retry を出す。
+          commit((previous) =>
+            previous?.playback !== undefined && previous.panel.kind === "ready"
+              ? { ...previous, settledKey: readKey }
+              : {
+                  key,
+                  playlistId,
+                  status: "ready",
+                  playback: playback.value,
+                  panel: { kind: "failed" },
+                  settledKey: readKey,
+                },
+          );
           return;
         }
         const pair = { playback: playback.value, playlist: playlist.value };

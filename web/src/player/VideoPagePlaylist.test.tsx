@@ -554,6 +554,104 @@ describe("VideoPage のプレイリストの文脈", () => {
     await waitFor(() => expect(panelRows()).toHaveLength(3));
   });
 
+  it("Retry の再生の読みが失敗しても、パネルは読み込み中に留まらず Retry をもう一度出す", async () => {
+    server.playlist.mockImplementation(() =>
+      json({ code: "internal", message: "x" }, 500),
+    );
+    renderPage();
+    await within(await waitForPanel()).findByText("Couldn't load the playlist");
+    server.playback.mockImplementation(() =>
+      json({ code: "internal", message: "x" }, 500),
+    );
+    fireEvent.click(within(panel()).getByRole("button", { name: "Retry" }));
+    expect(await within(panel()).findByRole("button", { name: "Retry" })).toBeDefined();
+    expect(calls("/api/playlists/5/playback")).toBe(2);
+    // 行と矢印は前の再生の応答のまま。
+    expect((await line()).textContent).toBe("Tonight·2 / 3");
+    expect(screen.getByRole("button", { name: "Next item: third" })).toBeDefined();
+  });
+
+  it("終わりの読み直しでプレイリストだけが失敗すると、前の組（パネルと予告）をそろえて保つ", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    renderPage();
+    await line();
+    // 別の画面で並べ替えられたが、プレイリストの読みは一時的に失敗する。
+    server.playback.mockImplementation(() =>
+      json({
+        ...playbackFor(22, late),
+        next: step(24, fourth),
+        nextItem: step(24, fourth),
+      }),
+    );
+    server.playlist.mockImplementation(() =>
+      json({ code: "internal", message: "x" }, 500),
+    );
+    setStatus(true);
+    expect(await screen.findByText("Up next")).toBeDefined();
+    await waitFor(() => expect(calls("/api/playlists/5/playback")).toBe(2));
+    // 予告・矢印・パネルは同じ組（前の並び）に従う。
+    expect(screen.getByRole("link", { name: /^third/ }).getAttribute("href")).toBe(
+      "/videos/13?playlist=5&item=23",
+    );
+    expect(screen.getByRole("button", { name: "Next item: third" })).toBeDefined();
+    expect(panelRows().map((row) => rowTitle(row))).toEqual(["first", "second", "third"]);
+  });
+
+  it("読み直した並びで再生中の行の位置が変わると、一覧の scrollTop を合わせ直す", async () => {
+    // jsdom は配置を計算しないので、行の位置を兄弟の順から与える。
+    const top = vi
+      .spyOn(HTMLElement.prototype, "offsetTop", "get")
+      .mockImplementation(function (this: HTMLElement) {
+        return this.parentElement === null
+          ? 0
+          : Array.from(this.parentElement.children).indexOf(this) * 100;
+      });
+    const height = vi
+      .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+      .mockReturnValue(90);
+    try {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderPage();
+      await line();
+      const list = () =>
+        screen.getByRole("list", { name: 'Playlist "Tonight". Open the playlist' });
+      await waitFor(() => expect(list().scrollTop).toBe(60));
+      // 別の画面で second が最後へ動いた。再生中の項目（22）は同じ。
+      server.playback.mockImplementation(() =>
+        json({
+          ...playbackFor(22, late),
+          position: 3,
+          next: undefined,
+          nextItem: undefined,
+        }),
+      );
+      server.playlist.mockImplementation(() =>
+        json(
+          playlistOf(
+            [
+              [21, first],
+              [23, third],
+              [22, second],
+            ],
+            late,
+          ),
+        ),
+      );
+      setStatus(true);
+      await waitFor(() =>
+        expect(panelRows().map((row) => rowTitle(row))).toEqual([
+          "first",
+          "third",
+          "second",
+        ]),
+      );
+      expect(list().scrollTop).toBe(160);
+    } finally {
+      top.mockRestore();
+      height.mockRestore();
+    }
+  });
+
   it("クエリが無ければ、関連動画の前後と今までの終わりの層のまま", async () => {
     renderPage("/videos/12");
     await screen.findByRole("button", { name: "Next video: related-next" });
@@ -595,6 +693,41 @@ describe("VideoPage のプレイリストの文脈", () => {
     await waitFor(() => expect(location()).toBe("/videos/13?playlist=5&item=23"));
     await waitFor(() => expect(player().video.id).toBe(13));
     expect(player().autoplay).toBe(true);
+  });
+
+  it("飛ばした再生できない項目に自動再生でもう一度着くと、もう一度飛ばす", async () => {
+    server.videos.set(12, () =>
+      json({ ...second, probeState: "failed", playable: false }),
+    );
+    render(
+      <TooltipProvider>
+        <ToastProvider>
+          <MemoryRouter
+            initialEntries={[
+              {
+                pathname: "/videos/12",
+                search: "?playlist=5&item=22",
+                state: { from: "/playlists/5", autoplay: true },
+              },
+            ]}
+          >
+            <AudienceProvider audience="owner">
+              <LocationProbe />
+              <Routes>
+                <Route path="/videos/:id" element={<VideoPage />} />
+              </Routes>
+            </AudienceProvider>
+          </MemoryRouter>
+        </ToastProvider>
+      </TooltipProvider>,
+    );
+    await waitFor(() => expect(location()).toBe("/videos/13?playlist=5&item=23"));
+    await waitFor(() => expect(player().video.id).toBe(13));
+    // 再生中に前の矢印で戻ると、自動再生で着くので、もう一度飛ばす。
+    setStatus(false, true);
+    fireEvent.click(await screen.findByRole("button", { name: "Previous item: second" }));
+    await waitFor(() => expect(location()).toBe("/videos/13?playlist=5&item=23"));
+    expect(calls("/api/playlists/5/playback?item=22&video=12")).toBe(2);
   });
 
   it("再生できない項目に自動再生なしで着くと進まず、矢印を状態の層の上に出す", async () => {

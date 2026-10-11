@@ -143,10 +143,10 @@ function PanelRows({
 }) {
   const listRef = useRef<HTMLUListElement | null>(null);
   const currentRef = useRef<HTMLLIElement | null>(null);
-  const hasCurrent = items.some((item) => item.id === currentItemId);
+  const currentIndex = items.findIndex((item) => item.id === currentItemId);
 
-  // 埋まったときと再生中の項目が変わったときに、一覧の中だけを動かす。scrollIntoView は
-  // ページと aside の列も動かすので使わない。
+  // 埋まったとき、再生中の項目が変わったとき、読み直した並びで再生中の行の位置が変わったときに、
+  // 一覧の中だけを動かす。scrollIntoView はページと aside の列も動かすので使わない。
   useLayoutEffect(() => {
     const list = listRef.current;
     const current = currentRef.current;
@@ -157,7 +157,7 @@ function PanelRows({
         ? { top: previous.offsetTop, height: previous.offsetHeight }
         : null,
     );
-  }, [currentItemId, hasCurrent]);
+  }, [currentItemId, currentIndex]);
 
   return (
     <ul

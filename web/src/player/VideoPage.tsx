@@ -537,7 +537,12 @@ export default function VideoPage() {
       : undefined;
   const skippedTitle =
     video?.title ?? (currentItem === undefined ? "" : itemTitle(currentItem));
+  // 飛ばしたのは今の訪問の間だけ覚える。別の項目へ移れば忘れ、自動再生で同じ項目に
+  // 戻ったときにもう一度飛ばす（この効果より先に走る）。
   const skippedFor = useRef<string | null>(null);
+  useEffect(() => {
+    skippedFor.current = null;
+  }, [pageKey]);
   useEffect(() => {
     if (playlist.status !== "ready" || playback === undefined) return;
     if (!attempt.autoplay || !unplayableHere) return;
