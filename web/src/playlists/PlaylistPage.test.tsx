@@ -392,9 +392,7 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     expect(await screen.findByText("Couldn't load the playlist")).toBeDefined();
     expect(screen.queryByRole("table", { name: "Items" })).toBeNull();
     server.getStatus = 200;
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Retry" }));
-    });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByRole("table", { name: "Items" });
     expect(rowNames()).toEqual(serverNames());
   });
@@ -480,9 +478,9 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     await user.type(field, "  Evening  ");
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 1, name: "Evening" })).toBeDefined(),
-    );
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Evening" }),
+    ).toBeDefined();
     expect(server.renames).toEqual([{ name: "Evening" }]);
     expect(document.title).toBe("Evening");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -579,9 +577,7 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
 
     expect(await screen.findByText("Couldn't load the playlist")).toBeDefined();
     server.getStatus = 200;
-    await act(async () => {
-      await user.click(screen.getByRole("button", { name: "Retry" }));
-    });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("table", { name: "Items" })).toBeDefined();
   });
 

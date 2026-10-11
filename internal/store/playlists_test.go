@@ -556,7 +556,7 @@ func TestPlaylistsMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 36); err != nil {
+	if _, err := provider.UpTo(ctx, 38); err != nil {
 		t.Fatal(err)
 	}
 	countTables := func() int {
@@ -572,7 +572,7 @@ func TestPlaylistsMigration(t *testing.T) {
 		t.Fatalf("移行のあとの表が足りない")
 	}
 	assertPlaylistInvariant(t, db)
-	if _, err := provider.DownTo(ctx, 35); err != nil {
+	if _, err := provider.DownTo(ctx, 37); err != nil {
 		t.Fatal(err)
 	}
 	if n := countTables(); n != 0 {
