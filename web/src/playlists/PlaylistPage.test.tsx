@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryGroup, Video } from "../api/client";
@@ -76,6 +76,10 @@ const server = {
   renames: [] as unknown[],
   deletes: 0,
   deleteStatus: 204,
+  /** 置くと、DELETE はこれが解けてから答える。 */
+  deleteHold: null as Promise<void> | null,
+  /** プレイリスト 8 の GET。答えないまま止めておく。 */
+  otherGets: 0,
 };
 
 function install() {
@@ -131,11 +135,15 @@ function install() {
     }
     if (url === "/api/playlists/7" && method === "DELETE") {
       server.deletes += 1;
-      return Promise.resolve(
+      return (server.deleteHold ?? Promise.resolve()).then(() =>
         server.deleteStatus === 204
           ? new Response(null, { status: 204 })
           : failure(server.deleteStatus),
       );
+    }
+    if (url === "/api/playlists/8" && method === "GET") {
+      server.otherGets += 1;
+      return new Promise<Response>(() => undefined);
     }
     throw new Error(`unexpected request: ${method} ${url}`);
   });
@@ -152,11 +160,21 @@ function VideoProbe() {
   );
 }
 
+/** 経路の外から別の場所へ移る関数（id だけが変わる移動を試す）。 */
+let navigateTo: (to: string) => void = () => undefined;
+
+function NavigateProbe() {
+  const navigate = useNavigate();
+  navigateTo = (to) => void navigate(to);
+  return null;
+}
+
 function renderPage() {
   render(
     <MemoryRouter initialEntries={["/playlists/7"]}>
       <TooltipProvider>
         <ToastProvider>
+          <NavigateProbe />
           <Routes>
             <Route path="/playlists" element={<p>Playlists screen</p>} />
             <Route path="/playlists/:id" element={<PlaylistPage />} />
@@ -245,6 +263,8 @@ beforeEach(() => {
   server.renames = [];
   server.deletes = 0;
   server.deleteStatus = 204;
+  server.deleteHold = null;
+  server.otherGets = 0;
   install();
 });
 
@@ -512,6 +532,44 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     expect(await screen.findByText("Playlists screen")).toBeDefined();
     expect(server.deletes).toBe(1);
     expect(await screen.findByText('Deleted "Morning"')).toBeDefined();
+  });
+
+  it("別のプレイリストへ移ると、読み終えるまで前のプレイリストの名前と操作を出さない", async () => {
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+    expect(screen.getByRole("heading", { level: 1, name: "Morning" })).toBeDefined();
+
+    act(() => navigateTo("/playlists/8"));
+
+    await waitFor(() => expect(server.otherGets).toBe(1));
+    expect(screen.queryByRole("heading", { level: 1, name: "Morning" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "Items" })).toBeNull();
+  });
+
+  it("別のプレイリストへ移った後に答えた削除は、移った先の画面を離れない", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => undefined;
+    server.deleteHold = new Promise<void>((done) => {
+      release = done;
+    });
+    renderPage();
+    await screen.findByRole("table", { name: "Items" });
+    await user.click(screen.getByRole("button", { name: "More" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Morning"?' });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(server.deletes).toBe(1);
+
+    act(() => navigateTo("/playlists/8"));
+    await waitFor(() => expect(server.otherGets).toBe(1));
+    await act(async () => {
+      release();
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText('Deleted "Morning"')).toBeDefined();
+    expect(screen.queryByText("Playlists screen")).toBeNull();
   });
 
   it("404 ではプレイリストがなくなったことを示す", async () => {

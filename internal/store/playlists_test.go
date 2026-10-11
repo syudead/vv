@@ -540,6 +540,108 @@ func TestListPlaylistsByUpdatedAt(t *testing.T) {
 	}
 }
 
+// 同じミリ秒の変更でも、時計が戻っても、名前か項目を変えるたびに更新日時は前より進む。
+// 再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる（ui-design.md
+// 「One order」）。
+func TestPlaylistUpdatedAtAdvancesOnEveryChange(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+
+	id := createPlaylist(t, db, "朝")
+	addVideos(t, db, id, ids["a"], ids["b"])
+	last, items := readPlaylist(t, db, id)
+	advanced := func(what string) {
+		t.Helper()
+		now, _ := readPlaylist(t, db, id)
+		if !now.UpdatedAt.After(last.UpdatedAt) {
+			t.Errorf("%s: 更新日時 %v が前の %v より進まない", what, now.UpdatedAt, last.UpdatedAt)
+		}
+		last = now
+	}
+	if err := db.Playlists().MovePlaylistItem(ctx, id, items[1].ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	advanced("同じミリ秒の移動")
+	if err := db.Playlists().MovePlaylistItem(ctx, id, items[0].ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	advanced("同じミリ秒の 2 度目の移動")
+	clock = clock.Add(-time.Hour)
+	if _, err := db.Playlists().RenamePlaylist(ctx, id, "昼"); err != nil {
+		t.Fatal(err)
+	}
+	advanced("時計が戻った後の改名")
+	if err := db.Playlists().RemovePlaylistItem(ctx, id, items[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	advanced("時計が戻った後に外す")
+}
+
+// 束ねて項目が 1 つにまとまったプレイリストは更新日時が進み、鍵を付け替えただけのプレイリストは
+// 並びが変わらないので進まない（R-2、ui-design.md「One order」）。
+func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
+	db, ids := versionFixture(t)
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+
+	merged, moved := createPlaylist(t, db, "両方"), createPlaylist(t, db, "代表以外")
+	addVideos(t, db, merged, ids["a"], ids["b"])
+	addVideos(t, db, moved, ids["b"])
+	beforeMerged, _ := readPlaylist(t, db, merged)
+	beforeMoved, _ := readPlaylist(t, db, moved)
+
+	bundle(t, db, ids["a"], ids["a"], ids["b"])
+
+	if after, _ := readPlaylist(t, db, merged); !after.UpdatedAt.After(beforeMerged.UpdatedAt) {
+		t.Errorf("まとまったプレイリストの更新日時 = %v, want %v より後", after.UpdatedAt, beforeMerged.UpdatedAt)
+	}
+	if after, _ := readPlaylist(t, db, moved); !after.UpdatedAt.Equal(beforeMoved.UpdatedAt) {
+		t.Errorf("付け替えただけのプレイリストの更新日時 = %v, want %v のまま", after.UpdatedAt, beforeMoved.UpdatedAt)
+	}
+}
+
+// 後継で隠れていた項目が見えるようになったプレイリストは更新日時が進み、項目の鍵が変わらない
+// プレイリストは進まない（ui-design.md「One order」）。
+func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
+	db, a := taggedVideoFixture(t)
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+	d := upsertOne(t, db, listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4))
+	carried, untouched := createPlaylist(t, db, "前の中身"), createPlaylist(t, db, "別の動画")
+	addVideos(t, db, carried, a, d)
+	addVideos(t, db, untouched, d)
+
+	scan := startTestScan(t, db)
+	b := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-b", 2))
+	finishTestScan(t, db, scan, domain.ScanDone)
+	if got := playlistEntries(t, db, carried); !slices.Equal(got, videoEntries(d)) {
+		t.Fatalf("後継の前 = %v, want 前の中身の項目は隠れる", got)
+	}
+	beforeCarried, _ := readPlaylist(t, db, carried)
+	beforeUntouched, _ := readPlaylist(t, db, untouched)
+
+	probeDuration(t, db, b, 100_000)
+
+	afterCarried, _ := readPlaylist(t, db, carried)
+	if got := playlistEntries(t, db, carried); !slices.Equal(got, videoEntries(b, d)) {
+		t.Fatalf("後継の後 = %v", got)
+	}
+	if !afterCarried.UpdatedAt.After(beforeCarried.UpdatedAt) {
+		t.Errorf("項目が見えたプレイリストの更新日時 = %v, want %v より後", afterCarried.UpdatedAt, beforeCarried.UpdatedAt)
+	}
+	if after, _ := readPlaylist(t, db, untouched); !after.UpdatedAt.Equal(beforeUntouched.UpdatedAt) {
+		t.Errorf("項目の変わらないプレイリストの更新日時 = %v, want %v のまま", after.UpdatedAt, beforeUntouched.UpdatedAt)
+	}
+}
+
 // 移行は空の 2 表を作り、Down は表を落とす。
 func TestPlaylistsMigration(t *testing.T) {
 	db, err := Open(t.TempDir())

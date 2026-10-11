@@ -161,6 +161,11 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		return nil, fmt.Errorf("cannot read the succeeding video: %w", err)
 	}
 
+	// 付け替えで隠れていた項目が見えるようになったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, []string{oldKey, contentKey})
+	if err != nil {
+		return nil, err
+	}
 	bundle, bundled, err := bundleOf(ctx, tx, oldKey)
 	if err != nil {
 		return nil, err
@@ -198,6 +203,9 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		if err := rebuildFolderIndex(ctx, tx); err != nil {
 			return nil, err
 		}
+	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
+		return nil, err
 	}
 	return normalizeIDs(changed), nil
 }

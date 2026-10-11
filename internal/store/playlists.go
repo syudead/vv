@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -116,7 +118,7 @@ func (s *PlaylistStore) RenamePlaylist(ctx context.Context, id int64, name strin
 		return domain.Playlist{}, fmt.Errorf("cannot rename the playlist: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `update playlists set name = ?, updated_at = ? where id = ?`,
+	result, err := tx.ExecContext(ctx, `update playlists set name = ?, updated_at = `+nextUpdatedAt+` where id = ?`,
 		name, playlistNow().UnixMilli(), id)
 	if err != nil {
 		return domain.Playlist{}, fmt.Errorf("cannot rename the playlist: %w", err)
@@ -384,8 +386,11 @@ func (s *PlaylistStore) RemovePlaylistItem(ctx context.Context, id, itemID int64
 
 // rekeyPlaylistItems は利用者データの鍵 from の動画の項目を鍵 to の項目へ付け替える
 // （data-model.md「Succession and bundling」、R-2）。行は写さずに移す。1 つのプレイリストに
-// 鍵 to の項目が 2 つになるときは位置の大きい方を消し、そのプレイリストを詰め直す。更新日時は
-// 利用者の変更ではないので進めない。
+// 鍵 to の項目が 2 つになるときは位置の大きい方を消し、そのプレイリストを詰め直す。
+//
+// 更新日時はここでは進めない。付け替えと同じ取引で集まりや動画も変わり、見せる項目はその後で
+// 決まるので、呼び出し側が取引の初めに snapshotPlaylistShapes で形を読み、変更を終えてから
+// touchReshapedPlaylists で比べる。
 func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error {
 	if from == "" || to == "" || from == to {
 		return nil
@@ -408,6 +413,81 @@ func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error 
 		return fmt.Errorf("cannot move the playlist items: %w", err)
 	}
 	return renumberPlaylists(ctx, tx, affected)
+}
+
+// playlistShapes は、プレイリストの id ごとに、その全項目を位置の順に「項目の id と見せるか」で
+// 並べた形である。形が同じなら、見せる項目もその並びも同じである。
+type playlistShapes map[int64]string
+
+// snapshotPlaylistShapes は、鍵 keys のどれかの項目を持つプレイリストの今の形を読む。
+// 付け替えを含む取引の初め、集まりや動画を変える前に呼ぶ。
+func snapshotPlaylistShapes(ctx context.Context, tx *sql.Tx, keys []string) (playlistShapes, error) {
+	keys = slices.DeleteFunc(slices.Clone(keys), func(key string) bool { return key == "" })
+	shapes := playlistShapes{}
+	if len(keys) == 0 {
+		return shapes, nil
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	ids, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items
+		where content_key in (select value from json_each(?))`, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	for _, id := range ids {
+		shape, err := playlistShape(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		shapes[id] = shape
+	}
+	return shapes, nil
+}
+
+// touchReshapedPlaylists は、before に読んだプレイリストのうち形が変わったものの更新日時を
+// 進める。付け替えで隠れていた項目が見えた、見えていた項目が隠れた、重なった項目を消したときが
+// それにあたる。再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる
+// （ui-design.md「One order」）。鍵を付け替えただけで形が変わらないプレイリストは進めず、一覧の
+// 順を動かさない。取引の変更を終えてから呼ぶ。
+func touchReshapedPlaylists(ctx context.Context, tx *sql.Tx, before playlistShapes) error {
+	for _, id := range slices.Sorted(maps.Keys(before)) {
+		after, err := playlistShape(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if after == before[id] {
+			continue
+		}
+		if err := touchPlaylist(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// playlistShape はプレイリスト id の形（playlistShapes）を読む。
+func playlistShape(ctx context.Context, tx *sql.Tx, id int64) (string, error) {
+	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemShownCondition("i")+`
+		from playlist_items i where i.playlist_id = ? order by i.position, i.id`, id)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the playlist items: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var shape strings.Builder
+	for rows.Next() {
+		var itemID int64
+		var shown bool
+		if err := rows.Scan(&itemID, &shown); err != nil {
+			return "", fmt.Errorf("cannot read the playlist items: %w", err)
+		}
+		fmt.Fprintf(&shape, "%d:%t,", itemID, shown)
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("cannot read the playlist items: %w", err)
+	}
+	return shape.String(), nil
 }
 
 // renumberPlaylists は playlistIDs のプレイリストの項目の位置を、今の並び（位置、同じなら id）の
@@ -438,9 +518,14 @@ func ensurePlaylist(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// touchPlaylist はプレイリスト id の更新日時を今にする。
+// nextUpdatedAt は名前か項目を変えた後の playlists.updated_at である。今の時刻で、前の値より
+// 必ず進める。同じミリ秒に 2 度変わっても、時計が戻っても、変わる前と後の更新日時は違うので、
+// 応答の更新日時が同じなら同じ並びである（ui-design.md「One order」）。引数は今の Unix ms。
+const nextUpdatedAt = `max(?, updated_at + 1)`
+
+// touchPlaylist はプレイリスト id の更新日時を今に、前の値より必ず後へ進める。
 func touchPlaylist(ctx context.Context, tx *sql.Tx, id int64) error {
-	if _, err := tx.ExecContext(ctx, `update playlists set updated_at = ? where id = ?`,
+	if _, err := tx.ExecContext(ctx, `update playlists set updated_at = `+nextUpdatedAt+` where id = ?`,
 		playlistNow().UnixMilli(), id); err != nil {
 		return fmt.Errorf("cannot update the playlist: %w", err)
 	}
