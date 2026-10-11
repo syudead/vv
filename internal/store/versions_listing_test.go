@@ -194,12 +194,20 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 	if names := storedFolderNames(t, db); len(names[b]) != 0 || len(names[e]) != 0 {
 		t.Errorf("代表以外のバージョンにフォルダ名がある: %+v", names)
 	}
-	siblings, err := db.Library().DirectVideoPaths(ctx, domain.AudienceOwner, fixturePath("/media/B"))
+	candidates, err := db.Library().RelatedCandidates(ctx, domain.AudienceOwner, d)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(siblings) != 1 || siblings[0].VideoID != d {
-		t.Errorf("B の直下の動画 = %+v", siblings)
+	if slices.Contains(candidateIDs(candidates), b) {
+		t.Errorf("関連動画の候補に代表以外のバージョンがある: %+v", candidates)
+	}
+	// 代表以外のバージョン B を開いたときは、B 自身を含め、同じ集まりの代表 A と E は除く。
+	fromB, err := db.Library().RelatedCandidates(ctx, domain.AudienceOwner, b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := candidateIDs(fromB); !slices.Contains(got, b) || slices.Contains(got, a) || slices.Contains(got, e) {
+		t.Errorf("B から見た関連動画の候補 = %v, want B を含み A・E を含まない", got)
 	}
 
 	// B を外すと同じ取引で索引を作り直し、B は B のフォルダに戻る。

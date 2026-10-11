@@ -244,42 +244,19 @@ func TestRelatedAndGetVideoByAudience(t *testing.T) {
 	ctx := context.Background()
 	lib := db.Library()
 
-	siblings, err := lib.DirectVideoPaths(ctx, guest, fixturePath("/media/pub"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := siblingIDs(siblings), []int64{ids[fixturePath("/media/pub/a.mp4")]}; !slices.Equal(got, want) {
-		t.Errorf("ゲストの同じフォルダ = %v, want %v", got, want)
-	}
-	siblings, err = lib.DirectVideoPaths(ctx, owner, fixturePath("/media/pub"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(siblings) != 2 {
-		t.Errorf("所有者の同じフォルダ = %+v, want 2件", siblings)
-	}
-
-	self, err := lib.GetVideo(ctx, owner, ids[fixturePath("/media/f.mp4")])
-	if err != nil {
-		t.Fatal(err)
-	}
+	self := ids[fixturePath("/media/f.mp4")]
 	for audience, want := range map[domain.Audience][]int64{
-		guest: {ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")]},
+		guest: {ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")], self},
 		owner: {ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/b.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")],
-			ids[fixturePath("/media/pub/deep/d.mp4")], ids[fixturePath("/media/private/e.mp4")], ids[fixturePath("/media/g.mp4")]},
+			ids[fixturePath("/media/pub/deep/d.mp4")], ids[fixturePath("/media/private/e.mp4")], self, ids[fixturePath("/media/g.mp4")]},
 	} {
-		neighbors, err := lib.VideosAddedNear(ctx, audience, self.ID, self.AddedAt, 10)
+		candidates, err := lib.RelatedCandidates(ctx, audience, self)
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := make([]int64, 0, len(neighbors))
-		for _, neighbor := range neighbors {
-			got = append(got, neighbor.VideoID)
-		}
-		slices.Sort(got)
 		slices.Sort(want)
-		if !slices.Equal(got, want) {
-			t.Errorf("%s: VideosAddedNear = %v, want %v", audience, got, want)
+		if got := candidateIDs(candidates); !slices.Equal(got, want) {
+			t.Errorf("%s: RelatedCandidates = %v, want %v", audience, got, want)
 		}
 	}
 
@@ -541,11 +518,8 @@ func TestGuestReadsFailWhenVisibilityCannotBeRead(t *testing.T) {
 	if _, err := lib.HasFolderLocations(ctx, guest, fixturePath("/media")); err == nil {
 		t.Error("HasFolderLocations が成功した")
 	}
-	if _, err := lib.DirectVideoPaths(ctx, guest, fixturePath("/media/pub")); err == nil {
-		t.Error("DirectVideoPaths が成功した")
-	}
-	if _, err := lib.VideosAddedNear(ctx, guest, ids[fixturePath("/media/f.mp4")], fixedTime, 5); err == nil {
-		t.Error("VideosAddedNear が成功した")
+	if _, err := lib.RelatedCandidates(ctx, guest, ids[fixturePath("/media/f.mp4")]); err == nil {
+		t.Error("RelatedCandidates が成功した")
 	}
 	if _, err := lib.VideosByIDs(ctx, guest, []int64{ids[fixturePath("/media/pub/a.mp4")]}); err == nil {
 		t.Error("VideosByIDs が成功した")

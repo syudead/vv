@@ -260,9 +260,10 @@ The control bar keeps the look of the existing `.vv-video-player` rules
 ### Neighbor arrows
 
 - Handles for moving to the previous and next video sit flush against the left
-  and right edges of the player. The left one (lucide `ChevronLeft`) goes to the
-  previous video in natural order in the same folder; the right one
-  (`ChevronRight`) to the next.
+  and right edges of the player. The left one (lucide `ChevronLeft`) returns to
+  the video watched just before; the right one (`ChevronRight`) goes to the head
+  of the related list
+  ([Related videos, Previous and next video](../../docs/design-docs/related-videos.md#previous-and-next-video)).
 - They are narrow so as not to hide the video, and tall so they are easy to hit.
 
   | Width | Handle size |

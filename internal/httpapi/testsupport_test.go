@@ -323,6 +323,8 @@ type fakeCatalog struct {
 	related      domain.RelatedVideos
 	relatedErr   error
 	relatedAsked []int64
+	// relatedPages は RelatedVideos に渡されたページの指定を順に持つ。
+	relatedPages []domain.RelatedPage
 
 	// group は VideoGroup が返すグループ。grouped が false ならグループに属さない。
 	group    domain.VideoGroup
@@ -359,11 +361,12 @@ func (f *fakeCatalog) SeekThumbnailState(_ context.Context, video domain.Video) 
 	return domain.SeekThumbnailPending, nil
 }
 
-func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
+func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error) {
 	if err := requireOwner(audience); err != nil {
 		return domain.RelatedVideos{}, err
 	}
 	f.relatedAsked = append(f.relatedAsked, video.ID)
+	f.relatedPages = append(f.relatedPages, page)
 	return f.related, f.relatedErr
 }
 

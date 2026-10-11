@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -29,7 +30,13 @@ import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio } from "./aspect";
-import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
+import {
+  autoplayRequested,
+  backTarget,
+  linkStateFrom,
+  resumePosition,
+  videoTrail,
+} from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos from "./RelatedVideos";
 import StallWarning from "./StallWarning";
@@ -53,6 +60,7 @@ import VideoPlayer, {
 import AutoTagButton from "./AutoTagButton";
 import VideoTags from "./VideoTags";
 import VideoTitle from "./VideoTitle";
+import { usePreviousVideo } from "./usePreviousVideo";
 import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
 
@@ -81,6 +89,10 @@ export default function VideoPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
+  // 動画詳細画面の間で移ってきた道筋。最後が直前に見ていた動画である（issue 931）。
+  const trail = useMemo(() => videoTrail(location.state), [location.state]);
+  // この画面から別の動画へ移るリンクに載せる状態。
+  const linkState = useMemo(() => linkStateFrom(backTo, trail, id), [backTo, trail, id]);
   // ゲストには所有者のデータ（タグ・ファイルの場所・再生位置）と所有者だけの操作
   // （読み取りのやり直し・既定アプリで開く）を出さない
   // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
@@ -91,6 +103,7 @@ export default function VideoPage() {
   const {
     state: relatedState,
     retry: retryRelated,
+    loadMore: loadMoreRelated,
     rename: renameRelated,
     rethumb: rethumbRelated,
   } = useRelatedVideos(id);
@@ -155,13 +168,14 @@ export default function VideoPage() {
   }
 
   // 「次を再生」の自動再生は 1 回だけ使う。再読み込みや履歴の戻りで再生を始めない。
+  // 見てきた道筋は残す。
   useEffect(() => {
     if (!autoplayRequested(location.state)) return;
     void navigate(
       { pathname: location.pathname, search: location.search },
-      { replace: true, state: { from: backTo } },
+      { replace: true, state: { from: backTo, trail } },
     );
-  }, [backTo, location.pathname, location.search, location.state, navigate]);
+  }, [backTo, location.pathname, location.search, location.state, navigate, trail]);
 
   const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
 
@@ -285,22 +299,26 @@ export default function VideoPage() {
   }, [id, refresh]);
 
   // グループのメンバーなら、前後はグループの中の並びで、題名はメンバーの並びから引く
-  // （関連動画の items は同じグループのメンバーを含まない）。
+  // （関連動画の items は同じグループのメンバーを含まない）。グループに属さない動画の次は
+  // 関連動画の並びの先頭で、前は直前に見ていた動画である（issue 931）。
   const neighbors = related.kind === "ready" ? related.related : undefined;
   const group = neighbors?.group;
   const findVideo = (targetId: number) =>
     (group?.items ?? neighbors?.items)?.find((item) => item.id === targetId);
   const nextVideo =
     neighbors?.nextId !== undefined ? findVideo(neighbors.nextId) : undefined;
+  // 直前に見ていた動画は、まだ見られると確かめられたときだけ ‹ にする。
+  const previousVideo = usePreviousVideo(trail.at(-1));
 
   const playNext = () => {
     if (nextVideo === undefined) return;
     void navigate(`/videos/${String(nextVideo.id)}`, {
-      state: { from: backTo, autoplay: true },
+      state: { ...linkState, autoplay: true },
     });
   };
 
   // 左右の端の前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
+  const keepPlaying = status.playing || status.ended;
   const neighbor = (targetId: number | undefined) =>
     targetId === undefined
       ? undefined
@@ -308,9 +326,28 @@ export default function VideoPage() {
           title: findVideo(targetId)?.title,
           go: () =>
             void navigate(`/videos/${String(targetId)}`, {
-              state: { from: backTo, autoplay: status.playing || status.ended },
+              state: { ...linkState, autoplay: keepPlaying },
             }),
         };
+  // ‹ で直前の動画へ戻るときは、道筋からその動画を外す。もう一度 ‹ を押すとさらに前へ戻る。
+  const previousNeighbor =
+    neighbors === undefined
+      ? undefined
+      : group !== undefined
+        ? neighbor(neighbors.prevId)
+        : previousVideo === undefined
+          ? undefined
+          : {
+              title: previousVideo.title,
+              go: () =>
+                void navigate(`/videos/${String(previousVideo.id)}`, {
+                  state: {
+                    from: backTo,
+                    trail: trail.slice(0, -1),
+                    autoplay: keepPlaying,
+                  },
+                }),
+            };
 
   // 予告を取り消したら今の再生終了の層を出す。フォーカスが予告の中にあったなら、
   // 次の層の主な操作（「次を再生」）へ移す。
@@ -361,7 +398,7 @@ export default function VideoPage() {
       <AutoplayNotice
         key={`${String(id)}:${String(nextVideo.id)}`}
         next={nextVideo}
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         watchEvents={owner}
         onCancel={cancelAutoplay}
@@ -374,7 +411,7 @@ export default function VideoPage() {
     layer = (
       <EndedOverlay
         next={autoplayPhase === "gone" ? undefined : nextVideo}
-        backTo={backTo}
+        linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
         onPlayNext={playNext}
@@ -476,7 +513,7 @@ export default function VideoPage() {
             )}
             {showPlayer && (
               <NeighborArrows
-                previous={neighbor(neighbors?.prevId)}
+                previous={previousNeighbor}
                 next={neighbor(neighbors?.nextId)}
                 visible={chromeVisible || status.ended}
                 container={fullscreenFrame}
@@ -484,7 +521,14 @@ export default function VideoPage() {
             )}
           </div>
         }
-        aside={<RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />}
+        aside={
+          <RelatedVideos
+            state={related}
+            linkState={linkState}
+            onRetry={retryRelated}
+            onLoadMore={loadMoreRelated}
+          />
+        }
       >
         {detail.kind === "loading" && (
           <div aria-hidden="true" className="flex flex-col gap-3">

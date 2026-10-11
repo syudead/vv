@@ -187,8 +187,8 @@ Reads that go through it (R-3, R-4):
 | --- | --- |
 | `chosenLocationsCTE` | Applies the scope to the locations of `shown` videos, and changes the search expression to `exists (the expression is true on a registered location of some video in the same bundle)` (the video's own locations when it is in no bundle). `chosen.path` stays the smallest path among the video's own locations in scope |
 | `libraryItemsCTE`, `LibraryIDs`, `ListVideos`, `ListFolderVideos`, `CountVideos` | Follow, since they go through `chosen`. Tags, watch state, sort order and `total` are the shown video's values |
-| Videos directly in a folder and folder counts (`DirectVideoPaths` and folder-list counts in `folders.go`) | Count only the locations of `shown` videos. A folder holding only non-representative versions is a folder with no videos (Edge Case) |
-| `VideosAddedNear`, `VideosByIDs` (related) | Limited to `shown` videos |
+| Videos directly in a folder and folder counts (folder-list counts in `folders.go`) | Count only the locations of `shown` videos. A folder holding only non-representative versions is a folder with no videos (Edge Case) |
+| `RelatedCandidates`, `VideosByIDs` (related) | Limited to `shown` videos |
 | `folderIndexLocations` | Only the locations of `shown` videos as the owner sees them. `FolderIndexVersion = 2` |
 | `GetVideo`, `VideoLocations`, streaming, subtitles, `versions` | No change. Non-representative versions are returned too |
 

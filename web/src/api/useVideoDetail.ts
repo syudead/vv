@@ -298,11 +298,23 @@ export function useVideoDetail(id: number): {
 
 export type RelatedState =
   | { kind: "loading"; id: number }
-  | { kind: "ready"; id: number; related: RelatedVideos }
+  | {
+      kind: "ready";
+      id: number;
+      /** 読んだページを合わせた関連動画。`nextCursor` は最後に読んだページのもの。 */
+      related: RelatedVideos;
+      /** 続きのページの読み込み。省くと `idle`。 */
+      more?: "idle" | "loading" | "failed";
+    }
   | { kind: "failed"; id: number };
 
 /**
- * useRelatedVideos は関連動画を 1 回取得する。失敗したら `retry` で取り直せる。
+ * useRelatedVideos は関連動画の最初のページを取得する。失敗したら `retry` で取り直せる。
+ *
+ * `loadMore` は続きのページ（`nextCursor` の後）を読み、並びの後ろに足す（issue 931）。
+ * 読み込み中と続きが無いときは何もしない。すでにある動画は足さないので、読む間に並びが
+ * 変わっても同じ動画が二重に出ない。失敗したら `more` が `failed` になり、もう一度
+ * `loadMore` で読み直せる。
  *
  * `rename` は、基準の動画の表示名を保存した応答を、グループのメンバーの並びにある
  * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
@@ -312,34 +324,81 @@ export type RelatedState =
 export function useRelatedVideos(id: number): {
   state: RelatedState;
   retry: () => void;
+  loadMore: () => void;
   rename: (video: Video) => void;
   rethumb: (video: Video) => void;
 } {
   const [state, setState] = useState<RelatedState>({ kind: "loading", id });
   const [attempt, setAttempt] = useState(0);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+  const moreAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setState({ kind: "loading", id });
     if (!Number.isSafeInteger(id) || id < 1) {
-      setState({ kind: "ready", id, related: { items: [] } });
+      setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
       return;
     }
     const controller = new AbortController();
     void (async () => {
       try {
         const related = await getRelatedVideos(id, controller.signal);
-        setState({ kind: "ready", id, related });
+        setState({ kind: "ready", id, related, more: "idle" });
       } catch (failure) {
         if (isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
-          setState({ kind: "ready", id, related: { items: [] } });
+          setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
           return;
         }
         setState({ kind: "failed", id });
       }
     })();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      moreAbort.current?.abort();
+      moreAbort.current = null;
+    };
   }, [attempt, id]);
+
+  const loadMore = useCallback(() => {
+    const current = stateRef.current;
+    if (current.kind !== "ready" || current.more === "loading") return;
+    const cursor = current.related.nextCursor;
+    if (cursor === undefined) return;
+    const controller = new AbortController();
+    moreAbort.current = controller;
+    const loading = { ...current, more: "loading" as const };
+    stateRef.current = loading;
+    setState(loading);
+    getRelatedVideos(current.id, controller.signal, cursor).then(
+      (page) => {
+        if (controller.signal.aborted) return;
+        setState((previous) => {
+          if (previous.kind !== "ready" || previous.id !== current.id) return previous;
+          const seen = new Set(previous.related.items.map((item) => item.id));
+          const added = page.items.filter((item) => !seen.has(item.id));
+          const related: RelatedVideos = {
+            ...previous.related,
+            items: [...previous.related.items, ...added],
+          };
+          delete related.nextCursor;
+          if (page.nextCursor !== undefined) related.nextCursor = page.nextCursor;
+          return { ...previous, related, more: "idle" };
+        });
+      },
+      (failure: unknown) => {
+        if (controller.signal.aborted || isAborted(failure)) return;
+        setState((previous) =>
+          previous.kind === "ready" && previous.id === current.id
+            ? { ...previous, more: "failed" }
+            : previous,
+        );
+      },
+    );
+  }, []);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
   // patchMember は、グループのメンバーの並びにある基準の動画 video.id の項目を patch で
@@ -385,5 +444,5 @@ export function useRelatedVideos(id: number): {
       }),
     [patchMember],
   );
-  return { state, retry, rename, rethumb };
+  return { state, retry, loadMore, rename, rethumb };
 }

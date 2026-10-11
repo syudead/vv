@@ -3,9 +3,7 @@ package app
 import (
 	"context"
 	"log/slog"
-	"path/filepath"
 	"slices"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -28,8 +26,9 @@ type CatalogIngestStore interface {
 // 読み出しも見る人（domain.Audience）を取り、ゲストには公開の動画だけを返す
 // （specs/016-single-account-auth/data-model.md §3）。
 type CatalogIndexStore interface {
-	DirectVideoPaths(ctx context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error)
-	VideosAddedNear(ctx context.Context, audience domain.Audience, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
+	// RelatedCandidates は関連動画の近さを測る手がかりを、見る人に見せる動画すべてと基準の
+	// 動画 selfID について返す。
+	RelatedCandidates(ctx context.Context, audience domain.Audience, selfID int64) ([]domain.RelatedCandidate, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
 	// VideoGroup は動画 id が属するグループを、見る人に見せてよいメンバーだけで返す。
 	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
@@ -49,6 +48,8 @@ type CatalogOptions struct {
 	Index  CatalogIndexStore
 	Ingest CatalogIngestStore
 	Files  ArtifactFiles
+	// Scorer は関連動画の近さの付け方。nil なら domain.DefaultRelatedScorer を使う。
+	Scorer domain.RelatedScorer
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
@@ -59,6 +60,7 @@ type Catalog struct {
 	index  CatalogIndexStore
 	ingest CatalogIngestStore
 	files  ArtifactFiles
+	scorer domain.RelatedScorer
 	logger *slog.Logger
 }
 
@@ -68,7 +70,11 @@ func NewCatalog(opts CatalogOptions) *Catalog {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Catalog{index: opts.Index, ingest: opts.Ingest, files: opts.Files, logger: logger}
+	scorer := opts.Scorer
+	if scorer == nil {
+		scorer = domain.DefaultRelatedScorer
+	}
+	return &Catalog{index: opts.Index, ingest: opts.Ingest, files: opts.Files, scorer: scorer, logger: logger}
 }
 
 // PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
@@ -137,20 +143,25 @@ func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, vide
 	return c.index.VideoGroup(ctx, audience, video.ID, window)
 }
 
-// RelatedVideos は関連動画を返す順に並べる。
+// RelatedVideos は関連動画の 1 ページを返す（issue 931）。
 //
-// 並べ方は internal/domain の OrderRelated が決める。ここは、代表の所在の
-// ディレクトリ直下の動画と、追加日時の近い動画を読み、選ばれた動画の本体を
-// 引くだけである。どれも見る人（audience）として読むので、ゲストには公開の動画
-// だけが並ぶ。
+// 並べ方は internal/domain の RankRelated と、近さの付け方 scorer（既定は
+// domain.DefaultRelatedScorer）が決める。ここは、見る人に見せる動画すべての手がかりを読み、
+// 並べ、page の範囲の動画の本体を引くだけである。どれも見る人（audience）として読むので、
+// ゲストには公開の動画だけが並ぶ。基準の動画が手がかりに無ければ（読む間に消えた）、
+// 関連動画は空にする。
 //
 // 動画がグループのメンバーなら（specs/017-folder-groups/contracts/folder-groups-api.md §3）、
-// グループを載せ、前後をグループの中の並びにする。関連動画は、同じグループのメンバーを
-// OrderRelated の入力から先に除いてから並べるので、上限はその後に掛かり、大きなグループ
-// でも関連動画が残る。追加日時の近い動画は、除く本数を見込んで多めに読む。
-func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
-	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID,
-		domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true})
+// 同じグループのメンバーは並べる前に除く。最初のページだけがグループの窓を載せ、次と前の
+// 動画をグループの中の並びにする。グループに属さない動画の次の動画は、関連動画の並びの
+// 先頭である。前の動画は返さない（画面が見てきた順から決める）。
+func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error) {
+	first := page.After == nil
+	window := domain.GroupWindow{}
+	if first {
+		window = domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}
+	}
+	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, window)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
@@ -160,33 +171,44 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 			members[member] = struct{}{}
 		}
 	}
-	isMember := func(id int64) bool {
-		_, ok := members[id]
-		return ok
+
+	candidates, err := c.index.RelatedCandidates(ctx, audience, video.ID)
+	if err != nil {
+		return domain.RelatedVideos{}, err
+	}
+	var ranked []domain.RankedRelated
+	selfIndex := slices.IndexFunc(candidates, func(candidate domain.RelatedCandidate) bool {
+		return candidate.VideoID == video.ID
+	})
+	if selfIndex >= 0 {
+		self := candidates[selfIndex]
+		others := slices.DeleteFunc(slices.Clone(candidates), func(candidate domain.RelatedCandidate) bool {
+			_, member := members[candidate.VideoID]
+			return member
+		})
+		ranked = domain.RankRelated(c.scorer, self, others)
 	}
 
-	siblings, err := c.index.DirectVideoPaths(ctx, audience, filepath.Dir(video.Path))
+	shown, next := domain.PageRelated(ranked, page.After, page.Limit)
+	ids := make([]int64, 0, len(shown))
+	for _, item := range shown {
+		ids = append(ids, item.VideoID)
+	}
+	items, err := c.index.VideosByIDs(ctx, audience, ids)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	neighbors, err := c.index.VideosAddedNear(ctx, audience, video.ID, video.AddedAt, domain.MaxRelatedVideos+len(members))
-	if err != nil {
-		return domain.RelatedVideos{}, err
+	related := domain.RelatedVideos{Items: items, NextCursor: next}
+	if !first {
+		return related, nil
 	}
-	siblings = slices.DeleteFunc(slices.Clone(siblings), func(s domain.RelatedSibling) bool { return isMember(s.VideoID) })
-	neighbors = slices.DeleteFunc(slices.Clone(neighbors), func(n domain.RelatedNeighbor) bool { return isMember(n.VideoID) })
-
-	order := domain.OrderRelated(domain.RelatedSelf{VideoID: video.ID, Path: video.Path, AddedAt: video.AddedAt},
-		siblings, neighbors)
-	items, err := c.index.VideosByIDs(ctx, audience, order.IDs)
-	if err != nil {
-		return domain.RelatedVideos{}, err
+	if grouped {
+		related.PrevID, related.NextID = group.Neighbors(video.ID)
+		related.Group = &group
+	} else if len(ranked) > 0 {
+		related.NextID = ranked[0].VideoID
 	}
-	if !grouped {
-		return domain.RelatedVideos{Items: items, NextID: order.NextID, PrevID: order.PrevID}, nil
-	}
-	prev, next := group.Neighbors(video.ID)
-	return domain.RelatedVideos{Items: items, NextID: next, PrevID: prev, Group: &group}, nil
+	return related, nil
 }
 
 // RetryProbe は読み取りに失敗した動画を読み取り直す。状態を戻すこととジョブを

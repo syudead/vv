@@ -43,67 +43,13 @@ at `pending`.
 
 ## Related videos: `GET /api/videos/{id}/related`
 
-The response is 200 with `RelatedVideos`.
-
-```yaml
-RelatedVideos:
-  type: object
-  required: [items]
-  additionalProperties: false
-  properties:
-    items:
-      type: array
-      maxItems: 20
-      items: { $ref: "#/components/schemas/Video" }
-    nextId:
-      type: integer
-      format: int64
-      description: The next video in natural order in the same directory. Omitted when there is none
-    prevId:
-      type: integer
-      format: int64
-      description: |
-        The previous video in natural order in the same directory. Omitted when there is none. Not necessarily in items
-```
+The response is 200 with `RelatedVideos`, one page of every other video the
+viewer may see, ordered by closeness to this video. The order, the paging and
+the next and previous video are in
+[Related videos and the previous and next video](../../../docs/design-docs/related-videos.md);
+the schema is `RelatedVideos` in [api/openapi.yaml](../../../api/openapi.yaml).
 
 Each `Video` in `items` carries `progress`, as in the list.
-
-The order is as follows, up to 20 items:
-
-1. Videos directly in the same directory as the representative location that
-   come after this video in natural order of file name (`domain.CompareNatural`)
-2. Videos directly in the same directory that come before this video
-3. Videos not in 1 or 2, by the smallest difference in date added. On equal
-   differences, the larger `id` comes first
-
-Notes:
-
-- The order in 1 and 2 is total. When `CompareNatural` returns 0, the byte order
-  of the file name decides, and then the smaller `id` comes first.
-- A video with two locations in the same directory is sorted by the file name of
-  the location with the smaller path, and counts as one item.
-- This video's own file name used for the comparison in 1 and 2 is that of the
-  representative location.
-- This video itself is excluded, as are videos with no location under a
-  registered folder.
-- `nextId` is the `id` of the first item of 1, omitted when 1 is empty. The screen
-  uses it as "next video".
-- `prevId` is the `id` of the last item of 2 (right before this video), omitted
-  when 2 is empty. The screen uses it as "previous video" at the left end of the
-  player. 2 is in ascending order, so it can be cut at 20 items and not be in
-  `items`. The screen navigates by `id` only, and does not show a title it does
-  not know.
-  - Rejected: the screen treating `items[0]` as the next video. When 1 is empty,
-    `items[0]` is a preceding video or one with a close date added, which breaks
-    requirement 14 ("when there is no next video, only `もう一度見る`"). Related
-    video items also have no `location`, so the screen cannot compare directories
-    either.
-
-Errors:
-
-| Status | Situation | `code` |
-| --- | --- | --- |
-| 404 | Unknown id, or no location under a registered folder | `not_found` |
 
 ## Probe again: `POST /api/videos/{id}/probe`
 

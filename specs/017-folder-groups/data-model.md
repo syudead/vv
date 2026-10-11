@@ -86,7 +86,7 @@ below. The store only writes the result to the tables.
 | **Direct videos** `direct(D)` | Videos whose representative location's parent folder is `D`. Other locations of the same content are not counted (requirement 6) |
 | **Has a child folder** `hasChild(D)` | Some location (not only representative ones) is under a child folder of `D`. Derived from locations, as the folder screen's `folderCount`. Empty folders do not count |
 | **Becomes a group** | `len(direct(D)) >= 2`, and either `mode(D) = group_direct`, or there is no `mode(D)`, `hasChild(D)` is false, and `D` is not a registered folder itself |
-| **Order** | The same total order as `compareSiblings` (natural order of file names, byte order, `id`), compared as the current previous/next within the same folder (requirement 4). Only `direct(D)` is ordered: a video whose representative location is in another folder is in the current same-folder previous/next (`DirectVideoPaths`) but not in the group (requirement 6) |
+| **Order** | The total order `compareSiblings`: natural order of file names, then byte order, then `id` (requirement 4). Only `direct(D)` is ordered: a video whose representative location is in another folder is not in the group (requirement 6) |
 | **Name** | The folder's last segment, as `domain.FolderName` (requirement 5) |
 | **folderKey** | Drop the trailing separator from the path; on Windows, turn `/` into `\` and apply `LowerASCII`. Used both to match locations to overrides and as the overrides' primary key. The same separator and case rules as the registered folder checks (`registeredLocationCondition`, `LocateVideoFolder`) |
 

@@ -7,6 +7,7 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { t, type UiText } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Progress } from "../ui/shadcn/progress";
+import type { VideoLinkState } from "./pageDecisions";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
@@ -43,7 +44,7 @@ export function autoplayAnnouncement(title: string): UiText {
  */
 export default function AutoplayNotice({
   next,
-  backTo,
+  linkState,
   takeFocus,
   watchEvents,
   onCancel,
@@ -52,7 +53,8 @@ export default function AutoplayNotice({
   onGone,
 }: {
   next: Video;
-  backTo: string;
+  /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
+  linkState: VideoLinkState;
   takeFocus: boolean;
   /** 変化の知らせを見張るか。`/api/events` は所有者だけのものなので、ゲストでは偽。 */
   watchEvents: boolean;
@@ -189,7 +191,7 @@ export default function AutoplayNotice({
         </div>
         <Link
           to={`/videos/${String(next.id)}`}
-          state={{ from: backTo }}
+          state={linkState}
           aria-label={videoLinkLabel(next)}
           className="flex items-start gap-3 rounded-md"
         >

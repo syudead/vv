@@ -2,99 +2,89 @@ package store
 
 import (
 	"context"
-	"fmt"
+	"reflect"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-func siblingIDs(siblings []domain.RelatedSibling) []int64 {
-	ids := make([]int64, 0, len(siblings))
-	for _, sibling := range siblings {
-		ids = append(ids, sibling.VideoID)
+func candidateIDs(candidates []domain.RelatedCandidate) []int64 {
+	ids := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates {
+		ids = append(ids, candidate.VideoID)
 	}
 	slices.Sort(ids)
 	return ids
 }
 
-// 直下の動画だけを返し、孫のフォルダや別のフォルダの動画は混ざらない。同じ
-// 動画が同じフォルダに2つの所在を持っても、パスの小さい方の1件になる。
-func TestDirectVideoPathsReturnsDirectVideosOnce(t *testing.T) {
-	db, ids := folderFixture(t,
-		sampleFile(fixturePath("/media/show/ep 1.mp4"), "ep 1", "key-1", 1, 0),
-		sampleFile(fixturePath("/media/show/ep 10.mp4"), "ep 10", "key-10", 1, 0),
-		sampleFile(fixturePath("/media/show/ep 2.mp4"), "ep 2", "key-2", 1, 0),
-		sampleFile(fixturePath("/media/show/z copy.mp4"), "z copy", "key-2", 1, 0),
-		sampleFile(fixturePath("/media/show/sub/deep.mp4"), "deep", "key-deep", 1, 0),
-		sampleFile(fixturePath("/media/other/ep 3.mp4"), "ep 3", "key-3", 1, 0),
-		sampleFile(fixturePath("/media/showcase/ep 4.mp4"), "ep 4", "key-4", 1, 0),
-	)
-
-	siblings, err := db.Library().DirectVideoPaths(context.Background(), domain.AudienceOwner, fixturePath("/media/show"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []int64{ids[fixturePath("/media/show/ep 1.mp4")], ids[fixturePath("/media/show/ep 10.mp4")], ids[fixturePath("/media/show/ep 2.mp4")]}
-	slices.Sort(want)
-	if got := siblingIDs(siblings); !slices.Equal(got, want) {
-		t.Fatalf("ids = %v, want %v (%+v)", got, want, siblings)
-	}
-	for _, sibling := range siblings {
-		if sibling.VideoID == ids[fixturePath("/media/show/ep 2.mp4")] && sibling.Path != fixturePath("/media/show/ep 2.mp4") {
-			t.Fatalf("同じ動画の所在は小さいパスを使う: %q", sibling.Path)
+func candidateOf(t *testing.T, candidates []domain.RelatedCandidate, id int64) domain.RelatedCandidate {
+	t.Helper()
+	for _, candidate := range candidates {
+		if candidate.VideoID == id {
+			return candidate
 		}
 	}
-
-	// 並べると nextId が同じフォルダの後続の先頭を指し、最後のファイルでは省かれる。
-	self := domain.RelatedSelf{VideoID: ids[fixturePath("/media/show/ep 2.mp4")], Path: fixturePath("/media/show/ep 2.mp4")}
-	if order := domain.OrderRelated(self, siblings, nil); order.NextID != ids[fixturePath("/media/show/ep 10.mp4")] {
-		t.Fatalf("nextId = %d, want ep 10", order.NextID)
-	}
-	self = domain.RelatedSelf{VideoID: ids[fixturePath("/media/show/ep 10.mp4")], Path: fixturePath("/media/show/ep 10.mp4")}
-	if order := domain.OrderRelated(self, siblings, nil); order.NextID != 0 {
-		t.Fatalf("nextId = %d, want 省略", order.NextID)
-	}
+	t.Fatalf("候補に %d が無い: %+v", id, candidates)
+	return domain.RelatedCandidate{}
 }
 
-// 追加日時の前後それぞれ limit 件までを返す。自分自身と、登録フォルダの下に
+// 見せる動画すべての手がかりを返す。代表の所在のパス、表示名を優先した題名、追加日時、
+// 手で付けた（確定・仮）タグとフォルダ名から付いたタグ、指紋を持つ。登録フォルダの下に
 // 所在の無い動画は含めない。
-func TestVideosAddedNear(t *testing.T) {
-	db := migratedDB(t)
+func TestRelatedCandidates(t *testing.T) {
+	db, ids := folderFixture(t,
+		sampleFile(fixturePath("/media/cats/a.mp4"), "a", "key-a", 1, 0),
+		sampleFile(fixturePath("/media/cats/b.mp4"), "b", "key-b", 1, 0),
+		sampleFile(fixturePath("/media/other/c.mp4"), "c", "key-c", 1, 0),
+		sampleFile(fixturePath("/outside/d.mp4"), "d", "key-d", 1, 0),
+	)
 	ctx := context.Background()
-	base := time.Unix(1_757_000_000, 0)
-	add := func(path, key string, offset time.Duration) int64 {
-		t.Helper()
-		file := sampleFile(path, key, key, 1, 0)
-		file.AddedAt = base.Add(offset)
-		got, err := db.ScanIndex().UpsertVideo(ctx, file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return got.ID
-	}
-	self := add(fixturePath("/media/self.mp4"), "self", 0)
-	var before, after []int64
-	for i := 1; i <= 4; i++ {
-		before = append(before, add(fmt.Sprintf(fixturePath("/media/b%d.mp4"), i), fmt.Sprintf("b%d", i), -time.Duration(i)*time.Hour))
-		after = append(after, add(fmt.Sprintf(fixturePath("/media/a%d.mp4"), i), fmt.Sprintf("a%d", i), time.Duration(i)*time.Hour))
-	}
-	// 同じ秒に追加された動画は、id に関わらず差 0 として両側から拾える。
-	sameSecond := add(fixturePath("/media/same.mp4"), "same", 0)
-	add(fixturePath("/outside/unregistered.mp4"), "unregistered", time.Minute)
+	a, b, c := ids[fixturePath("/media/cats/a.mp4")], ids[fixturePath("/media/cats/b.mp4")], ids[fixturePath("/media/other/c.mp4")]
 
-	neighbors, err := db.Library().VideosAddedNear(ctx, domain.AudienceOwner, self, base, 3)
+	if _, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: a}}, domain.VideoTagsAdd, []string{"夜景"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: a}, {ID: c}}, domain.VideoTagsAdd, []string{"候補"}, true); err != nil {
+		t.Fatal(err)
+	}
+	// フォルダ名 cats と同じ名前のタグは、cats の下の動画に付いているものとして数える。
+	cats, err := db.Tags().CreateTag(ctx, "cats")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := make([]int64, 0, len(neighbors))
-	for _, neighbor := range neighbors {
-		got = append(got, neighbor.VideoID)
+	rebuildIndexForTest(t, db)
+	if _, err := db.Overrides().SetDisplayName(ctx, b, "表示名"); err != nil {
+		t.Fatal(err)
 	}
-	want := []int64{before[0], before[1], before[2], sameSecond, after[0], after[1]}
-	if !slices.Equal(got, want) {
-		t.Fatalf("neighbors = %v, want %v", got, want)
+	fingerprint := domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 1000,
+		Frames: []domain.FrameHash{{Hash: 1}, {Hash: 2}, {Hash: 3, Flat: true}}}
+	if _, err := db.sql.Exec(`insert into video_fingerprints (content_key, version, interval_ms, hashes, updated_at)
+		values ('key-c', ?, ?, ?, 1)`, fingerprint.Version, fingerprint.IntervalMs, fingerprint.Encode()); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := db.Library().RelatedCandidates(ctx, domain.AudienceOwner, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := candidateIDs(candidates), []int64{a, b, c}; !slices.Equal(got, want) {
+		t.Fatalf("ids = %v, want %v", got, want)
+	}
+	gotA := candidateOf(t, candidates, a)
+	if gotA.Path != fixturePath("/media/cats/a.mp4") || gotA.Title != "a" || gotA.AddedAt.IsZero() {
+		t.Errorf("a = %+v", gotA)
+	}
+	if len(gotA.TagIDs) != 3 || !slices.Contains(gotA.TagIDs, cats.ID) {
+		t.Errorf("a のタグ = %v, want 確定・仮・フォルダ名の 3 つ（cats=%d）", gotA.TagIDs, cats.ID)
+	}
+	gotB := candidateOf(t, candidates, b)
+	if gotB.Title != "表示名" || !slices.Equal(gotB.TagIDs, []int64{cats.ID}) || gotB.Fingerprint != nil {
+		t.Errorf("b = %+v", gotB)
+	}
+	gotC := candidateOf(t, candidates, c)
+	if len(gotC.TagIDs) != 1 || gotC.Fingerprint == nil || !reflect.DeepEqual(*gotC.Fingerprint, fingerprint) {
+		t.Errorf("c = %+v", gotC)
 	}
 }
 
