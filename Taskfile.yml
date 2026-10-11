@@ -216,9 +216,17 @@ tasks:
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
+  # 各ツールの出力を集計せずに reports/quality/ に残す。CI は main への push で
+  # go lint と web lint の組の中で流し、artifact に残す（.github/workflows/ci.yml）。
   quality-metrics:
-    desc: Write the cyclomatic complexity of every function and the duplicated code under reports/quality/ (CI keeps them as an artifact).
-    # 集計はせず、各ツールの出力をそのまま残す。web と tools の npm 依存を使う。
+    desc: Write the cyclomatic complexity of every function and the duplicated code under reports/quality/.
+    cmds:
+      - task: quality-go
+      - task: quality-web
+
+  quality-go:
+    desc: Write the complexity of every Go function (gocyclo) and the duplicated code (jscpd) under reports/quality/.
+    # jscpd は tools の npm 依存を使う。
     vars:
       GOCYCLO:
         sh: go -C tools tool -n gocyclo
@@ -226,13 +234,18 @@ tasks:
       - mkdir -p reports/quality
       # 生成コードとテストは手で書いたコードの複雑さではないので外す。
       - '"{{.GOCYCLO}}" -avg -ignore "(^|/)(gen|extgen|node_modules|worktrees|reports|testdata|\.claude|\.local)/|_test\.go$" . > reports/quality/go-complexity.txt'
-      # complexity の上限を 0 にして、web/src のすべての関数の値を出させる。
-      - 'cd web && npx eslint --rule "complexity: [warn, 0]" --format json --output-file ../reports/quality/ts-complexity.json src'
       - >-
         node tools/node_modules/jscpd/bin/jscpd .
         --format go,typescript,tsx,javascript
         --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,translations/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
         --gitignore --reporters json --output reports/quality/jscpd --silent
+
+  quality-web:
+    desc: Write the complexity of every Web function (the ESLint complexity rule) under reports/quality/.
+    cmds:
+      - mkdir -p reports/quality
+      # complexity の上限を 0 にして、web/src のすべての関数の値を出させる。
+      - 'cd web && npx eslint --rule "complexity: [warn, 0]" --format json --output-file ../reports/quality/ts-complexity.json src'
 
   # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
   # 時間がかかるので task check には入れず、CI は月に 1 回流す
