@@ -84,6 +84,10 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Codecov へ OIDC で送る（トークンを secret に置かない）。
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -95,21 +99,27 @@ jobs:
             tools: true
             golangci: true
             go: lint
+          # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
+          # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
           - group: go test
-            tasks: test-go
+            tasks: test-go-report
             go: test
+            report: go
           - group: web lint
             tasks: fmt-check-web lint-web build-check-web
             web: true
           - group: web test 1
-            tasks: test-web-unit -- --shard=1/3
+            tasks: test-web-report -- --shard=1/3
             web: true
+            report: web
           - group: web test 2
-            tasks: test-web-unit -- --shard=2/3
+            tasks: test-web-report -- --shard=2/3
             web: true
+            report: web
           - group: web test 3
-            tasks: test-web-unit -- --shard=3/3
+            tasks: test-web-report -- --shard=3/3
             web: true
+            report: web
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -179,6 +189,32 @@ jobs:
         env:
           TASKS: ${{ matrix.tasks }}
         run: task $TASKS
+
+      # テストが落ちた実行の結果こそ、不安定なテストを見つける材料になるので、
+      # 失敗しても送る。Codecov が受け付けなくても、OIDC のトークンが取れなくても
+      # （Action が例外で止まり fail_ci_if_error: false では防げない）検査自体は落とさない。
+      - name: テスト結果をCodecovへ送る
+        if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          report_type: test_results
+          files: reports/${{ matrix.report }}-junit.xml
+          disable_search: true
+          flags: ${{ matrix.report }}
+          fail_ci_if_error: false
+
+      - name: カバレッジをCodecovへ送る
+        if: ${{ !cancelled() && matrix.report }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          files: ${{ matrix.report == 'go' && 'reports/go-coverage.out' || 'reports/web-coverage/lcov.info' }}
+          disable_search: true
+          flags: ${{ matrix.report }}
+          fail_ci_if_error: false
 
       - name: golangci-lintのキャッシュを保存する
         if: matrix.golangci && github.event_name == 'push'
@@ -259,6 +295,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -363,6 +402,19 @@ jobs:
         env:
           E2E_FILES: ${{ matrix.files }}
         run: task test-e2e -- $E2E_FILES
+
+      # 1 回のリトライで通ったテストも結果に残るので、不安定なテストが Codecov で見える。
+      - name: テスト結果をCodecovへ送る
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          use_oidc: true
+          report_type: test_results
+          files: reports/e2e-junit.xml
+          disable_search: true
+          flags: e2e
+          fail_ci_if_error: false
 
       - name: 失敗時のPlaywright artefact
         if: failure()

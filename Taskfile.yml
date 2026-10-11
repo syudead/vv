@@ -184,6 +184,15 @@ tasks:
     cmds:
       - go test ./...
 
+  test-go-report:
+    desc: Run Go tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
+    vars:
+      GOTESTSUM:
+        sh: go -C tools tool -n gotestsum
+    cmds:
+      - mkdir -p reports
+      - '"{{.GOTESTSUM}}" --junitfile reports/go-junit.xml --format pkgname -- -coverprofile=reports/go-coverage.out ./...'
+
   test-web:
     desc: Run the Web build check and unit tests.
     # CI はビルド検査を 1 回だけ流し、vitest を組に分ける。後ろの引数は vitest へ渡す。
@@ -200,6 +209,12 @@ tasks:
     desc: Run the Web unit tests without the build check.
     cmds:
       - npm --prefix web run test:unit -- {{.CLI_ARGS}}
+
+  test-web-report:
+    desc: Run the Web unit tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
+    # 後ろの引数は vitest へ渡す（CI は --shard=1/3 などを付ける）。
+    cmds:
+      - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
