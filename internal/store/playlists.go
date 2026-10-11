@@ -37,10 +37,14 @@ func playlistItemVideoExpr(alias string) string {
 
 // playlistItemShownCondition は、プレイリストの項目（別名 alias）を見せるかの条件句である。
 // 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのフォルダの鍵が今
-// グループ（folder_groups.path_key）にあるとき見せる（R-4）。
+// グループ（folder_groups.path_key）にあり、所有者に見えるメンバーを持つとき見せる（R-4）。
+// メンバーの条件は loadGroups と同じで、メンバーを失ったグループの行が索引の作り直しまで
+// 残っても、件数と Playlist の項目が食い違わない。
 func playlistItemShownCondition(alias string) string {
-	return `((` + alias + `.folder_key is not null and exists (select 1 from folder_groups pg where pg.path_key = ` +
-		alias + `.folder_key)) or ` + playlistItemVideoExpr(alias) + ` is not null)`
+	return `((` + alias + `.folder_key is not null and exists (select 1 from folder_groups pg
+		join folder_group_members pgm on pgm.group_id = pg.id join videos pgv on pgv.id = pgm.video_id
+		where pg.path_key = ` + alias + `.folder_key and ` + visibleVideoCondition("pgv", domain.AudienceOwner) + `))
+		or ` + playlistItemVideoExpr(alias) + ` is not null)`
 }
 
 // playlistSummaryColumns は playlists（別名 p）の要約の列で、scanPlaylist が読む。
@@ -150,9 +154,10 @@ func (s *PlaylistStore) DeletePlaylist(ctx context.Context, id int64) error {
 }
 
 // Playlist はプレイリスト id の要約と、見せる項目を位置の順に返す。動画とグループは所有者として
-// 読む。無ければ domain.ErrPlaylistNotFound。
+// 読む。要約と項目は読み取り用の接続の同じスナップショットから返す。無ければ
+// domain.ErrPlaylistNotFound。
 func (s *PlaylistStore) Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, error) {
-	tx, err := s.sql.BeginTx(ctx, nil)
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.Playlist{}, nil, fmt.Errorf("cannot read the playlist: %w", err)
 	}
@@ -354,17 +359,17 @@ func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error 
 }
 
 // renumberPlaylists は playlistIDs のプレイリストの項目の位置を、今の並び（位置、同じなら id）の
-// まま 0 から詰め直す。
+// まま 0 から詰め直す。並びを先に読み切ってから書く。位置を相関副問い合わせで数える 1 文の
+// update は、同じ文で既に書き換えた行の位置を数えてしまい、位置が重なる。
 func renumberPlaylists(ctx context.Context, tx *sql.Tx, playlistIDs []int64) error {
-	encoded, err := json.Marshal(playlistIDs)
-	if err != nil {
-		return fmt.Errorf("cannot build playlist ids: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `update playlist_items set position = (select count(*) from playlist_items o
-		where o.playlist_id = playlist_items.playlist_id
-		  and (o.position < playlist_items.position or (o.position = playlist_items.position and o.id < playlist_items.id)))
-		where playlist_id in (select value from json_each(?))`, string(encoded)); err != nil {
-		return fmt.Errorf("cannot renumber the playlist: %w", err)
+	for _, id := range playlistIDs {
+		order, err := playlistItemOrder(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if err := writePlaylistOrder(ctx, tx, order); err != nil {
+			return err
+		}
 	}
 	return nil
 }

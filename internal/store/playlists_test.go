@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"maps"
 	"slices"
 	"strconv"
 	"strings"
@@ -237,6 +238,82 @@ func TestPlaylistRemovesItemsAndPlaylists(t *testing.T) {
 	}
 	if _, _, err := db.Playlists().Playlist(ctx, id); !errors.Is(err, domain.ErrPlaylistNotFound) {
 		t.Errorf("消したプレイリストを読む = %v", err)
+	}
+}
+
+// 並べ替えて項目 id と位置の順が食い違ったあとに外しても、残りは今の並びのまま 0 から重ならずに
+// 詰め直される。
+func TestPlaylistRemovesAfterAMove(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	id := createPlaylist(t, db, "並べ替えて外す")
+	addVideos(t, db, id, ids["a"], ids["b"], ids["c"])
+	items := playlistItemIDs(t, db, id)
+	a, b, c := items[0], items[1], items[2]
+	if err := db.Playlists().MovePlaylistItem(ctx, id, a, &c); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Playlists().RemovePlaylistItem(ctx, id, b); err != nil {
+		t.Fatal(err)
+	}
+	if got := playlistItemIDs(t, db, id); !slices.Equal(got, []int64{c, a}) {
+		t.Errorf("外したあと = %v, want %v", got, []int64{c, a})
+	}
+	rows, err := db.sql.Query(`select id, position from playlist_items where playlist_id = ? order by id`, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	positions := map[int64]int{}
+	for rows.Next() {
+		var itemID int64
+		var position int
+		if err := rows.Scan(&itemID, &position); err != nil {
+			t.Fatal(err)
+		}
+		positions[itemID] = position
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if want := map[int64]int{c: 0, a: 1}; !maps.Equal(positions, want) {
+		t.Errorf("位置 = %v, want %v", positions, want)
+	}
+}
+
+// グループの全メンバーが消え、フォルダの索引を作り直すまでグループの行だけが残っても、その項目は
+// 一覧の件数にも Playlist の項目にも入らない。
+func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	solo, show := ids[fixturePath("/media/solo.mp4")], fixturePath("/media/show")
+	id := createPlaylist(t, db, "空のグループ")
+	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{solo}, FolderPaths: []string{show}})
+	_, items := readPlaylist(t, db, id)
+	var members []int64
+	for _, video := range items[1].Group.Members {
+		members = append(members, video.ID)
+	}
+
+	if err := db.ScanIndex().DeleteVideos(ctx, members); err != nil {
+		t.Fatal(err)
+	}
+	var groups int
+	if err := db.sql.QueryRow(`select count(*) from folder_groups where path_key = ?`, domain.FolderKey(show)).Scan(&groups); err != nil {
+		t.Fatal(err)
+	}
+	if groups != 1 {
+		t.Fatalf("索引の作り直し前のグループの行 = %d, want 1", groups)
+	}
+	if got := playlistEntries(t, db, id); !slices.Equal(got, videoEntries(solo)) {
+		t.Errorf("メンバーが消えたあと = %v", got)
+	}
+	playlists, err := db.Playlists().ListPlaylists(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(playlists) != 1 || playlists[0].ItemCount != 1 {
+		t.Errorf("一覧 = %+v, want 見せる項目 1", playlists)
 	}
 }
 

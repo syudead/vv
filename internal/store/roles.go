@@ -72,7 +72,9 @@ type FavoriteStore struct{ sql *sql.DB }
 // 受け持つ（playlists.go、specs/044-playlists/data-model.md「Store operations」）。FavoriteStore と
 // 同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の型や通知には依存せず、ドメインイベントを
 // 発行しない。束ねと引き継ぎによる項目の付け替えは、それぞれの取引の中で rekeyPlaylistItems が行う。
-type PlaylistStore struct{ sql *sql.DB }
+// プレイリストの読み出しは要約と項目を同じスナップショットから返すため、TagStore と同じく
+// 書き込みの枠を取らない読み取り用の接続 read（deferred）で取引を開く。
+type PlaylistStore struct{ sql, read *sql.DB }
 
 // OverrideStore は動画の上書き（表示名）を、その内容の動画の全所在の照合用の鍵の
 // 書き直しと同じ取引で保存する（overrides.go、specs/029-video-overrides/data-model.md §3）。
@@ -100,7 +102,7 @@ func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}
 }
 func (db *DB) Favorites() *FavoriteStore       { return &FavoriteStore{sql: db.sql} }
-func (db *DB) Playlists() *PlaylistStore       { return &PlaylistStore{sql: db.sql} }
+func (db *DB) Playlists() *PlaylistStore       { return &PlaylistStore{sql: db.sql, read: db.read} }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
