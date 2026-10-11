@@ -506,6 +506,55 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(location()).toBe("/videos/13?playlist=5&item=23");
   });
 
+  it("グループの項目の中では、Up next のメンバーの行がプレイリストの文脈を保って開く", async () => {
+    const member1 = videoOf(41, "member-one");
+    const member3 = videoOf(43, "member-three");
+    const group = {
+      folder: { rootId: 1, path: "series" },
+      name: "series",
+      items: [member1, second, member3],
+      offset: 0,
+      total: 3,
+    };
+    // second は項目 22（グループ）の 2 番目のメンバーで、次は同じ項目の member-three。
+    server.videos.set(41, () => json(member1));
+    server.related.set(12, { items: [videoOf(31, "related-next")], group });
+    server.playback.mockImplementation(() =>
+      json({ ...playbackFor(22), next: step(22, member3) }),
+    );
+    renderPage();
+    await line();
+    const memberLink = await screen.findByRole("link", { name: /^member-three/ });
+    expect(memberLink.getAttribute("href")).toBe("/videos/43?playlist=5&item=22");
+    // 関連動画の行はプレイリストの外のまま。
+    expect(screen.getByRole("link", { name: /^related-next/ }).getAttribute("href")).toBe(
+      "/videos/31",
+    );
+    setStatus(false, true);
+    fireEvent.click(screen.getByRole("link", { name: /^member-one/ }));
+    expect(location()).toBe("/videos/41?playlist=5&item=22");
+    await waitFor(() =>
+      expect(calls("/api/playlists/5/playback?item=22&video=41")).toBe(1),
+    );
+    expect((await line()).textContent).toBe("Tonight·2 / 3");
+  });
+
+  it("単体の動画の項目では、メンバーの行は今までどおり動画だけを開く", async () => {
+    const group = {
+      folder: { rootId: 1, path: "series" },
+      name: "series",
+      items: [videoOf(41, "member-one"), second],
+      offset: 0,
+      total: 2,
+    };
+    server.related.set(12, { items: [], group });
+    renderPage();
+    await line();
+    expect(
+      (await screen.findByRole("link", { name: /^member-one/ })).getAttribute("href"),
+    ).toBe("/videos/41");
+  });
+
   it("2 つの応答の updatedAt が違うと両方を読み直し、パネルはそろった組の並びを出す", async () => {
     let reads = 0;
     server.playlist.mockImplementation(() => {

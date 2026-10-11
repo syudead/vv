@@ -40,7 +40,7 @@ import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio } from "./aspect";
 import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
-import RelatedVideos from "./RelatedVideos";
+import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
 import StallWarning from "./StallWarning";
 import {
   CreatingLine,
@@ -535,6 +535,19 @@ export default function VideoPage() {
     playlist.panel.kind === "ready"
       ? playlist.panel.playlist.items.find((item) => item.id === itemId)
       : undefined;
+  // グループの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じグループの項目の
+  // メンバーを開く（state はパネルの行と同じ）。項目がグループかは、パネルの並びか、次が同じ
+  // 項目の中にあることで分かる。単体の動画の項目では、メンバーは項目の外なので今までどおり。
+  const inGroupItem =
+    playback !== undefined &&
+    (currentItem?.kind === "group" || playback.next?.itemId === playback.itemId);
+  const memberTarget: MemberTarget | undefined =
+    playlist.status === "ready" && playback !== undefined && inGroupItem
+      ? (memberId) => ({
+          to: stepPath(playlistId, memberId, playback.itemId),
+          state: { from: backTo, autoplay: status.playing || status.ended },
+        })
+      : undefined;
   const skippedTitle =
     video?.title ?? (currentItem === undefined ? "" : itemTitle(currentItem));
   // 飛ばしたのは今の訪問の間だけ覚える。別の項目へ移れば忘れ、自動再生で同じ項目に
@@ -690,7 +703,12 @@ export default function VideoPage() {
                   <Separator decorative={false} />
                 </div>
               )}
-              <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
+              <RelatedVideos
+                state={related}
+                backTo={backTo}
+                onRetry={retryRelated}
+                memberTarget={memberTarget}
+              />
             </>
           ) : (
             <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
