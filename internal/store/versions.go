@@ -103,6 +103,11 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	}
 	slices.Sort(members)
 	members = slices.Compact(members)
+	// 項目がまとまった、見せるかが変わったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, absorbedKeys)
+	if err != nil {
+		return domain.VideoVersions{}, err
+	}
 
 	now := time.Now().Unix()
 	result, err := tx.ExecContext(ctx,
@@ -146,6 +151,9 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	}
 
 	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.VideoVersions{}, err
+	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return domain.VideoVersions{}, err
 	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
@@ -245,6 +253,11 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err != nil {
 		return domain.Video{}, err
 	}
+	// 項目が見せるかが変わったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, append(slices.Clone(members), bundle.userKey))
+	if err != nil {
+		return domain.Video{}, err
+	}
 
 	if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
@@ -278,6 +291,9 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	}
 
 	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.Video{}, err
+	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return domain.Video{}, err
 	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)

@@ -606,6 +606,42 @@ func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
 	}
 }
 
+// 後継で隠れていた項目が見えるようになったプレイリストは更新日時が進み、項目の鍵が変わらない
+// プレイリストは進まない（ui-design.md「One order」）。
+func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
+	db, a := taggedVideoFixture(t)
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+	d := upsertOne(t, db, listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4))
+	carried, untouched := createPlaylist(t, db, "前の中身"), createPlaylist(t, db, "別の動画")
+	addVideos(t, db, carried, a, d)
+	addVideos(t, db, untouched, d)
+
+	scan := startTestScan(t, db)
+	b := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-b", 2))
+	finishTestScan(t, db, scan, domain.ScanDone)
+	if got := playlistEntries(t, db, carried); !slices.Equal(got, videoEntries(d)) {
+		t.Fatalf("後継の前 = %v, want 前の中身の項目は隠れる", got)
+	}
+	beforeCarried, _ := readPlaylist(t, db, carried)
+	beforeUntouched, _ := readPlaylist(t, db, untouched)
+
+	probeDuration(t, db, b, 100_000)
+
+	afterCarried, _ := readPlaylist(t, db, carried)
+	if got := playlistEntries(t, db, carried); !slices.Equal(got, videoEntries(b, d)) {
+		t.Fatalf("後継の後 = %v", got)
+	}
+	if !afterCarried.UpdatedAt.After(beforeCarried.UpdatedAt) {
+		t.Errorf("項目が見えたプレイリストの更新日時 = %v, want %v より後", afterCarried.UpdatedAt, beforeCarried.UpdatedAt)
+	}
+	if after, _ := readPlaylist(t, db, untouched); !after.UpdatedAt.Equal(beforeUntouched.UpdatedAt) {
+		t.Errorf("項目の変わらないプレイリストの更新日時 = %v, want %v のまま", after.UpdatedAt, beforeUntouched.UpdatedAt)
+	}
+}
+
 // 移行は空の 2 表を作り、Down は表を落とす。
 func TestPlaylistsMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
