@@ -2089,6 +2089,48 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/playlists/{id}/playback:
+    get:
+      operationId: getPlaylistPlayback
+      summary: プレイリストから再生しているときの位置と次の動画を返す
+      description: |
+        所有者だけ。動画ページがプレイリスト `id` の項目 `item` の動画 `video` を再生しているときの、見せる
+        項目の中での位置と数、連続再生で次に開く動画（`next`）、前後の見せる項目の開始の動画
+        （`previousItem`・`nextItem`）を、その時点の並びから返す。グループの項目は、今の動画が
+        メンバーなら後ろのメンバーへ進み、最後のメンバーかメンバーでなくなっていれば次の見せる項目へ
+        進む。項目の開始の動画は、動画の項目ならその動画、グループの項目ならグループを開くときの
+        メンバー（`openVideoId`）である。今の項目が見せない項目なら `position` は 0 で、その位置の前後の
+        見せる項目から決める。プレイリストの終わりなら `next` は無い。`item` か `video` が無いか
+        整数でなければ 400 `invalid_request`、プレイリストか項目が無ければ 404 `not_found`
+        （specs/044-playlists/contracts/screen-api.md、data-model.md「Playback order」）。
+      parameters:
+        - $ref: "#/components/parameters/PlaylistId"
+        - name: item
+          in: query
+          required: true
+          description: 再生している項目の識別子
+          schema:
+            type: integer
+            format: int64
+        - name: video
+          in: query
+          required: true
+          description: 動画ページで開いている動画の識別子
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: 位置と次の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaylistPlayback"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/video-bundles:
     post:
       operationId: bundleVideos
@@ -2558,6 +2600,15 @@ components:
       in: path
       required: true
       description: API トークンの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    PlaylistId:
+      name: id
+      in: path
+      required: true
+      description: プレイリストの識別子
       schema:
         type: integer
         format: int64
@@ -4385,6 +4436,64 @@ components:
           description: 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う
         video:
           $ref: "#/components/schemas/Video"
+
+    PlaylistSummary:
+      type: object
+      description: プレイリスト 1 つの要約
+      required: [id, name, itemCount, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        itemCount:
+          type: integer
+          description: 見せる項目の数。動画やグループが今ライブラリに無い項目は数えない
+        updatedAt:
+          type: string
+          format: date-time
+          description: 名前か項目を最後に変えた時刻
+
+    PlaylistStep:
+      type: object
+      description: 連続再生で開く動画 1 本と、それが属する項目
+      required: [itemId, video]
+      additionalProperties: false
+      properties:
+        itemId:
+          type: integer
+          format: int64
+        video:
+          $ref: "#/components/schemas/Video"
+
+    PlaylistPlayback:
+      type: object
+      description: |
+        プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
+        「Playback order」）
+      required: [playlist, itemId, position, count]
+      additionalProperties: false
+      properties:
+        playlist:
+          $ref: "#/components/schemas/PlaylistSummary"
+        itemId:
+          type: integer
+          format: int64
+          description: 再生している項目
+        position:
+          type: integer
+          description: 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0
+        count:
+          type: integer
+          description: 見せる項目の数
+        next:
+          $ref: "#/components/schemas/PlaylistStep"
+        previousItem:
+          $ref: "#/components/schemas/PlaylistStep"
+        nextItem:
+          $ref: "#/components/schemas/PlaylistStep"
 
     ScanIssuePage:
       type: object

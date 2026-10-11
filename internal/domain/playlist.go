@@ -24,8 +24,9 @@ type Playlist struct {
 	UpdatedAt time.Time
 }
 
-// PlaylistItem はプレイリストの見せる項目 1 つである。Video と Group のどちらか一方だけを持ち、
-// どちらも所有者として読んだ値である。
+// PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video と Group のどちらか一方だけを持ち、
+// どちらも所有者として読んだ値である。見せない項目（PlaylistPlaybackOf の入力にだけ現れる）は
+// どちらも持たない。
 type PlaylistItem struct {
 	ID    int64
 	Video *Video
@@ -101,4 +102,118 @@ func ValidatePlaylistName(input string) (string, error) {
 		return "", &InvalidPlaylistNameError{Problem: PlaylistNameTooLong}
 	}
 	return trimmed, nil
+}
+
+// PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。
+type PlaylistStep struct {
+	ItemID int64
+	Video  Video
+}
+
+// PlaylistPlayback は動画ページがプレイリストから再生しているときの、今の位置と次に開く動画
+// である（specs/044-playlists/data-model.md「Playback order」）。Position は見せる項目の中での
+// 1 からの番号で、今の項目が見せない項目なら 0 である。Count は見せる項目の数である。Next は
+// 連続再生で次に開く動画で、プレイリストの終わりなら nil である。PreviousItem と NextItem は
+// 前後の見せる項目の開始の動画で、無ければ nil である。
+type PlaylistPlayback struct {
+	Playlist     Playlist
+	ItemID       int64
+	Position     int
+	Count        int
+	Next         *PlaylistStep
+	PreviousItem *PlaylistStep
+	NextItem     *PlaylistStep
+}
+
+// PlaylistCurrent は動画ページが今再生している項目と動画である。
+type PlaylistCurrent struct {
+	ItemID  int64
+	VideoID int64
+}
+
+// Shown は項目を見せるかを返す。プレイリストの順序の入力では、見せない項目（動画やグループが
+// 今ライブラリに引けない項目、research.md R-4）は Video も Group も持たない。
+func (i PlaylistItem) Shown() bool {
+	return i.Video != nil || i.Group != nil
+}
+
+// start は見せる項目を開いたときの動画である。動画の項目はその動画、グループの項目は
+// GroupOpenIndex が選んだメンバー（LibraryGroup.OpenVideoID）で、見つからなければ最初の
+// メンバーである。開く動画が無ければ nil である。
+func (i PlaylistItem) start() *PlaylistStep {
+	if i.Video != nil {
+		return &PlaylistStep{ItemID: i.ID, Video: *i.Video}
+	}
+	if i.Group == nil || len(i.Group.Members) == 0 {
+		return nil
+	}
+	member := i.Group.Members[0]
+	for _, candidate := range i.Group.Members {
+		if candidate.ID == i.Group.OpenVideoID {
+			member = candidate
+			break
+		}
+	}
+	return &PlaylistStep{ItemID: i.ID, Video: member}
+}
+
+// PlaylistPlaybackOf はプレイリストの全項目 items（見せない項目も含めて位置の順）と、今の項目と
+// 動画 current から、今の位置と次に開く動画を決める（specs/044-playlists/data-model.md
+// 「Playback order」、research.md R-6）。順序の規則はすべてここにある。
+//
+//   - グループの項目では、今の動画がそのメンバーなら、グループの並びで後ろのメンバーへ進む。
+//     開始より後ろの見終わったメンバーも再生する（要件 7）。後ろのメンバーが無いか、今の動画が
+//     もうメンバーでなければ、次の見せる項目へ進む。
+//   - 次の見せる項目の開始の動画は、動画の項目ならその動画、グループの項目なら GroupOpenIndex の
+//     メンバーである。全部見終わったグループは最初のメンバーから始まる。
+//   - 今の項目が見せない項目でも、その位置から Next・PreviousItem・NextItem を決め、Position は
+//     0 である。同じ動画が別の項目にもあるときは current.ItemID が位置を決める。
+//
+// 返す値の Playlist は埋めない（呼び出し側が埋める）。current.ItemID が items に無ければ
+// ErrPlaylistItemNotFound である。
+func PlaylistPlaybackOf(items []PlaylistItem, current PlaylistCurrent) (PlaylistPlayback, error) {
+	at := -1
+	for i, item := range items {
+		if item.ID == current.ItemID {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return PlaylistPlayback{}, ErrPlaylistItemNotFound
+	}
+
+	playback := PlaylistPlayback{ItemID: current.ItemID}
+	for i, item := range items {
+		if !item.Shown() {
+			continue
+		}
+		playback.Count++
+		if i == at {
+			playback.Position = playback.Count
+		}
+	}
+	for i := at - 1; i >= 0 && playback.PreviousItem == nil; i-- {
+		if items[i].Shown() {
+			playback.PreviousItem = items[i].start()
+		}
+	}
+	for i := at + 1; i < len(items) && playback.NextItem == nil; i++ {
+		if items[i].Shown() {
+			playback.NextItem = items[i].start()
+		}
+	}
+
+	playback.Next = playback.NextItem
+	if group := items[at].Group; group != nil {
+		for j, member := range group.Members {
+			if member.ID == current.VideoID {
+				if j+1 < len(group.Members) {
+					playback.Next = &PlaylistStep{ItemID: current.ItemID, Video: group.Members[j+1]}
+				}
+				break
+			}
+		}
+	}
+	return playback, nil
 }

@@ -1510,6 +1510,54 @@ type NetworkSettings struct {
 	Port int `json:"port"`
 }
 
+// PlaylistPlayback プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
+// 「Playback order」）
+type PlaylistPlayback struct {
+	// Count 見せる項目の数
+	Count int `json:"count"`
+
+	// ItemId 再生している項目
+	ItemId int64 `json:"itemId"`
+
+	// Next 連続再生で開く動画 1 本と、それが属する項目
+	Next *PlaylistStep `json:"next,omitempty"`
+
+	// NextItem 連続再生で開く動画 1 本と、それが属する項目
+	NextItem *PlaylistStep `json:"nextItem,omitempty"`
+
+	// Playlist プレイリスト 1 つの要約
+	Playlist PlaylistSummary `json:"playlist"`
+
+	// Position 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0
+	Position int `json:"position"`
+
+	// PreviousItem 連続再生で開く動画 1 本と、それが属する項目
+	PreviousItem *PlaylistStep `json:"previousItem,omitempty"`
+}
+
+// PlaylistStep 連続再生で開く動画 1 本と、それが属する項目
+type PlaylistStep struct {
+	ItemId int64 `json:"itemId"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video Video `json:"video"`
+}
+
+// PlaylistSummary プレイリスト 1 つの要約
+type PlaylistSummary struct {
+	Id int64 `json:"id"`
+
+	// ItemCount 見せる項目の数。動画やグループが今ライブラリに無い項目は数えない
+	ItemCount int    `json:"itemCount"`
+	Name      string `json:"name"`
+
+	// UpdatedAt 名前か項目を最後に変えた時刻
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -2364,6 +2412,9 @@ type FolderRootId = int64
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
 
+// PlaylistId defines model for PlaylistId.
+type PlaylistId = int64
+
 // TagId defines model for TagId.
 type TagId = int64
 
@@ -2522,6 +2573,15 @@ type ListLibraryIdsParams struct {
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
 type DeleteMediaFolderParams struct {
 	Version int64 `form:"version" json:"version"`
+}
+
+// GetPlaylistPlaybackParams defines parameters for GetPlaylistPlayback.
+type GetPlaylistPlaybackParams struct {
+	// Item 再生している項目の識別子
+	Item int64 `form:"item" json:"item"`
+
+	// Video 動画ページで開いている動画の識別子
+	Video int64 `form:"video" json:"video"`
 }
 
 // StartScanJSONBody defines parameters for StartScan.
@@ -2866,6 +2926,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetPlaylistPlayback プレイリストから再生しているときの位置と次の動画を返す
+	// (GET /api/playlists/{id}/playback)
+	GetPlaylistPlayback(w http.ResponseWriter, r *http.Request, id PlaylistId, params GetPlaylistPlaybackParams)
 	// StartScan 取り込みを開始する
 	// (POST /api/scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -3890,6 +3953,61 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlaylistPlayback operation middleware
+func (siw *ServerInterfaceWrapper) GetPlaylistPlayback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPlaylistPlaybackParams
+
+	// ------------- Required query parameter "item" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "item", r.URL.Query(), &params.Item, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "item"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "video" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "video", r.URL.Query(), &params.Video, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "video"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "video", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlaylistPlayback(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -5780,6 +5898,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history", wrapper.ListWatchHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history/dates", wrapper.ListWatchHistoryDates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history/{id}", wrapper.DeleteWatchHistoryEntry)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists/{id}/playback", wrapper.GetPlaylistPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)

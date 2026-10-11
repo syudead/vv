@@ -1276,6 +1276,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/playlists/{id}/playback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * プレイリストから再生しているときの位置と次の動画を返す
+         * @description 所有者だけ。動画ページがプレイリスト `id` の項目 `item` の動画 `video` を再生しているときの、見せる
+         *     項目の中での位置と数、連続再生で次に開く動画（`next`）、前後の見せる項目の開始の動画
+         *     （`previousItem`・`nextItem`）を、その時点の並びから返す。グループの項目は、今の動画が
+         *     メンバーなら後ろのメンバーへ進み、最後のメンバーかメンバーでなくなっていれば次の見せる項目へ
+         *     進む。項目の開始の動画は、動画の項目ならその動画、グループの項目ならグループを開くときの
+         *     メンバー（`openVideoId`）である。今の項目が見せない項目なら `position` は 0 で、その位置の前後の
+         *     見せる項目から決める。プレイリストの終わりなら `next` は無い。`item` か `video` が無いか
+         *     整数でなければ 400 `invalid_request`、プレイリストか項目が無ければ 404 `not_found`
+         *     （specs/044-playlists/contracts/screen-api.md、data-model.md「Playback order」）。
+         */
+        get: operations["getPlaylistPlayback"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-bundles": {
         parameters: {
             query?: never;
@@ -2614,6 +2642,44 @@ export interface components {
             title: string;
             video?: components["schemas"]["Video"];
         };
+        /** @description プレイリスト 1 つの要約 */
+        PlaylistSummary: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 見せる項目の数。動画やグループが今ライブラリに無い項目は数えない */
+            itemCount: number;
+            /**
+             * Format: date-time
+             * @description 名前か項目を最後に変えた時刻
+             */
+            updatedAt: string;
+        };
+        /** @description 連続再生で開く動画 1 本と、それが属する項目 */
+        PlaylistStep: {
+            /** Format: int64 */
+            itemId: number;
+            video: components["schemas"]["Video"];
+        };
+        /**
+         * @description プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
+         *     「Playback order」）
+         */
+        PlaylistPlayback: {
+            playlist: components["schemas"]["PlaylistSummary"];
+            /**
+             * Format: int64
+             * @description 再生している項目
+             */
+            itemId: number;
+            /** @description 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0 */
+            position: number;
+            /** @description 見せる項目の数 */
+            count: number;
+            next?: components["schemas"]["PlaylistStep"];
+            previousItem?: components["schemas"]["PlaylistStep"];
+            nextItem?: components["schemas"]["PlaylistStep"];
+        };
         ScanIssuePage: {
             /**
              * Format: int64
@@ -2729,6 +2795,8 @@ export interface components {
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description プレイリストの識別子 */
+        PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
         WatchHistoryEntryId: number;
         /** @description タグの識別子 */
@@ -4679,6 +4747,36 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPlaylistPlayback: {
+        parameters: {
+            query: {
+                /** @description 再生している項目の識別子 */
+                item: number;
+                /** @description 動画ページで開いている動画の識別子 */
+                video: number;
+            };
+            header?: never;
+            path: {
+                /** @description プレイリストの識別子 */
+                id: components["parameters"]["PlaylistId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 位置と次の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaylistPlayback"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
         };
     };
