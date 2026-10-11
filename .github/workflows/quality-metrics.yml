@@ -1,6 +1,6 @@
 # 品質の指標（循環複雑度、重複、CI の所要時間）を main への push の CI が成功するたびに
 # 測り、quality-metrics ブランチの history.jsonl に積む。まとめは実行の Summary に出し、前回
-# からの差を示す。前回より悪くなった指標があれば Issue（ラベル quality-regression）に書く。
+# からの差を示す。
 # カバレッジとテストごとの所要時間は Codecov が追う（ci.yml）。手元では task quality-metrics。
 # 運用は docs/design-docs/test-quality-monitoring.md。
 name: Quality metrics
@@ -140,7 +140,7 @@ jobs:
             reports/jscpd/jscpd-report.json
           retention-days: 90
 
-  # 履歴への追記と Issue だけを書き込み権限で行う。npm もリポジトリのコードも実行せず、
+  # 履歴への追記だけを書き込み権限で行う。npm もリポジトリのコードも実行せず、
   # 計測が出した 1 行を quality-metrics ブランチの history.jsonl に足す。PR では動かない。
   save:
     name: Save history
@@ -149,7 +149,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -174,26 +173,3 @@ jobs:
           git add history.jsonl
           git commit -m "metrics: $(date -u +%F) ${SHA::8}"
           git push origin HEAD:quality-metrics
-
-      # 悪化はラベル quality-regression の Issue 1 つにまとめる。開いていればコメントを足し、
-      # 無ければ作る。直すか、悪化を受け入れると決めたら人が閉じる。
-      - name: 悪化をIssueに書く
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.sha }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          if [ "$(jq '.regressions // [] | length' measured/quality-metrics.json)" = "0" ]; then
-            echo "悪化した指標は無い"
-            exit 0
-          fi
-          body=$(jq -r --arg sha "$SHA" --arg run "$RUN_URL" \
-            '"commit \($sha[0:8]) で、前回より悪くなった品質の指標があります（[計測の実行](\($run))）。\n\n" + (.regressions | map("- " + .) | join("\n"))' \
-            measured/quality-metrics.json)
-          gh label create quality-regression --color D93F0B --description "品質の指標が前回より悪くなった" --force
-          issue=$(gh issue list --label quality-regression --state open --json number --jq '.[0].number // empty')
-          if [ -n "$issue" ]; then
-            gh issue comment "$issue" --body "$body"
-          else
-            gh issue create --title "品質の指標が悪化した" --label quality-regression --body "$body"
-          fi

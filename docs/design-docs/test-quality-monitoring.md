@@ -1,8 +1,7 @@
 # Test and CI quality monitoring
 
-Each push to `main` measures the quality of the code, the tests and CI, keeps
-the history, and opens an Issue when a measure gets worse; the measuring lives
-in [`ci.yml`](../../.github/workflows/ci.yml),
+Each push to `main` measures the quality of the code, the tests and CI, and
+keeps the history; the measuring lives in [`ci.yml`](../../.github/workflows/ci.yml),
 [`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml) and
 [`scripts/qualitymetrics`](../../scripts/qualitymetrics).
 
@@ -15,9 +14,7 @@ flowchart LR
   pr[Pull request] --> ci
   ci -->|coverage, JUnit results| codecov[(Codecov)]
   qm -->|one line per push| hist[(quality-metrics branch)]
-  qm -->|worse than the previous push| issue[Issue: quality-regression]
   codecov -->|changed-line coverage| prc[PR comment]
-  issue --> maint[Maintainer]
   prc --> author[PR author]
 ```
 
@@ -42,24 +39,6 @@ durations to the next push; with one waiting run, a burst of merges would leave
 commits unmeasured. A `workflow_run` trigger would also wait for CI, but it runs
 the checked-out commit with the default branch's privileges and caches.
 
-## A measure that gets worse opens an Issue
-
-When a push is worse than the previous measured push by one of these amounts,
-the `Save history` job adds a comment to the open Issue labelled
-`quality-regression`, or opens one.
-
-| Measure | Worse means |
-| --- | --- |
-| Functions over complexity 15 (Go, Web) | One more than before |
-| Mean complexity (Go, Web) | Up by 0.1 |
-| Duplicated lines | Up by 0.2 percentage points |
-| CI whole-run p90 | Up by 20% and by 30 s |
-
-One PR moves the complexity and duplication values by about these amounts, so a
-regression points at a single push. The CI p90 needs both a ratio and seconds
-because a 20-run window drifts by a few seconds on its own. The maintainer
-closes the Issue after fixing the regression or accepting it.
-
 ## Coverage informs a pull request and does not block it
 
 Codecov comments the coverage of the changed lines on a pull request, and its
@@ -71,12 +50,13 @@ fails when a behaviour breaks.
 ## Measures run with no write token
 
 The jobs that run npm dependencies or repository code hold read-only tokens;
-only `Save history`, which runs neither, writes the history and the Issue. A
+only `Save history`, which runs neither, writes the history. A
 same-repository dependency update would otherwise run its packages' install
 scripts with a token that can push to the repository.
 
 | Rejected | Why |
 | --- | --- |
-| A weekly schedule | A week of pushes lands in one measurement, so a regression is not tied to the push that caused it |
+| A weekly schedule | A week of pushes lands in one measurement, so a change is not tied to the push that caused it |
+| An Issue opened when a measure crosses a threshold | A count or a rounded mean names neither the function nor the pull request, so the Issue gave the maintainer nothing to decide on; rounding the mean also raised false regressions |
 | Failing CI on a coverage drop or a complexity rise | The baseline is days old; thresholds are tuned on the history first |
 | qlty as the single tool | It does not measure test durations, flaky tests or CI duration, and its lint layer repeats golangci-lint and ESLint |

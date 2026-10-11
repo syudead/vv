@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/test-quality-monitoring.md
-sourceHash: 707b8759b3d3dd6be42be405688bc5ab9a538bf4a5e5ef749735d7226460ae7c
+sourceHash: ec1198ba0501528a748a517f1c02aba4bf2746ae0f1b1d43fe01f5c342fdf49f
 ---
 
 # テストと CI の品質監視 {#test-and-ci-quality-monitoring}
 
-`main` への各プッシュで、コード、テスト、CI の品質を測定し、履歴を残し、測定値が悪化したときは Issue を開く。測定は [`ci.yml`](../../.github/workflows/ci.yml)、[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)、[`scripts/qualitymetrics`](../../scripts/qualitymetrics) にある。
+`main` への各プッシュで、コード、テスト、CI の品質を測定し、履歴を残す。測定は [`ci.yml`](../../.github/workflows/ci.yml)、[`quality-metrics.yml`](../../.github/workflows/quality-metrics.yml)、[`scripts/qualitymetrics`](../../scripts/qualitymetrics) にある。
 
 図は、各測定値の行き先と、それを読む人を示す。
 
@@ -16,9 +16,7 @@ flowchart LR
   pr[プルリクエスト] --> ci
   ci -->|カバレッジ、JUnit の結果| codecov[(Codecov)]
   qm -->|プッシュごとに 1 行| hist[(quality-metrics ブランチ)]
-  qm -->|前回のプッシュより悪化| issue[Issue: quality-regression]
   codecov -->|変更行のカバレッジ| prc[PR コメント]
-  issue --> maint[メンテナー]
   prc --> author[PR の作成者]
 ```
 
@@ -38,29 +36,17 @@ flowchart LR
 
 `Quality metrics` はプッシュで始まり、そのコミットの CI 実行を待ち、実行が成功したときだけ測定し、待機中の実行を 1 つだけ残すのではなくすべてキューに入れる。自身の CI 実行が終わる前に測定すると、プッシュは自身の CI の所要時間を次のプッシュに残すことになる。待機中の実行が 1 つだけなら、マージが立て続けに起きたときに測定されないコミットが残る。`workflow_run` トリガーも CI を待つが、チェックアウトしたコミットをデフォルトブランチの権限とキャッシュで実行する。
 
-## 悪化した測定値は Issue を開く {#a-measure-that-gets-worse-opens-an-issue}
-
-プッシュが、前回測定したプッシュより次のいずれかの量だけ悪化したとき、`Save history` ジョブは `quality-regression` ラベルの付いた開いている Issue にコメントを追加するか、Issue を開く。
-
-| 測定値 | 悪化の基準 |
-| --- | --- |
-| 複雑度 15 を超える関数（Go、Web） | 前より 1 つ増える |
-| 複雑度の平均（Go、Web） | 0.1 上がる |
-| 重複行 | 0.2 パーセントポイント上がる |
-| CI の実行全体の p90 | 20% かつ 30 秒上がる |
-
-1 つの PR は複雑度と重複の値をおよそこの量だけ動かすので、悪化は 1 つのプッシュを指し示す。20 回の実行の窓はそれだけで数秒ずれるので、CI の p90 には比率と秒数の両方が要る。メンテナーは、悪化を直すか受け入れたあとで Issue を閉じる。
-
 ## カバレッジはプルリクエストに情報を示し、ブロックしない {#coverage-informs-a-pull-request-and-does-not-block-it}
 
 Codecov はプルリクエストに変更行のカバレッジをコメントし、そのステータスは情報提供のみだ（[`.github/codecov.yml`](../../.github/codecov.yml)）。必須のカバレッジの数値は数値のために書かれたテストを招く。[Web のテストレベル](web-testing.md)は、振る舞いが壊れたときに失敗する最も低いレベルを選ぶことで、それを排除している。
 
 ## 測定は書き込みトークンなしで動く {#measures-run-with-no-write-token}
 
-npm の依存やリポジトリのコードを実行するジョブは読み取り専用のトークンを持つ。どちらも実行しない `Save history` だけが、履歴と Issue を書き込む。そうしなければ、同じリポジトリからの依存の更新が、リポジトリにプッシュできるトークンでそのパッケージのインストールスクリプトを実行することになる。
+npm の依存やリポジトリのコードを実行するジョブは読み取り専用のトークンを持つ。どちらも実行しない `Save history` だけが、履歴を書き込む。そうしなければ、同じリポジトリからの依存の更新が、リポジトリにプッシュできるトークンでそのパッケージのインストールスクリプトを実行することになる。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
-| 週次のスケジュール | 1 週間分のプッシュが 1 回の測定にまとまるので、悪化がそれを起こしたプッシュに結び付かない |
+| 週次のスケジュール | 1 週間分のプッシュが 1 回の測定にまとまるので、変化がそれを起こしたプッシュに結び付かない |
+| 測定値がしきい値を超えたときに Issue を開く | 件数や丸めた平均は関数もプルリクエストも示さないので、Issue はメンテナーに判断の材料を何も与えなかった。平均を丸めたことで、誤った悪化も報告された |
 | カバレッジの低下や複雑度の上昇で CI を失敗させる | 基準値が数日前のものだ。しきい値はまず履歴で調整する |
 | qlty を唯一のツールにする | テストの所要時間、不安定なテスト、CI の所要時間を測定せず、その lint 層は golangci-lint と ESLint と重複する |
