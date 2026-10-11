@@ -1,9 +1,10 @@
-import { CheckCheck, Layers, Minus, Plus } from "lucide-react";
+import { CheckCheck, Layers, ListPlus, Minus, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { type FolderRef, maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
 import { t } from "../i18n";
+import PlaylistPicker from "../playlists/PlaylistPicker";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import { Separator } from "../ui/shadcn/separator";
@@ -68,6 +69,7 @@ export default function SelectionBar({
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [playlistOpen, setPlaylistOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
@@ -104,9 +106,15 @@ export default function SelectionBar({
     if (count === 0) {
       setAddOpen(false);
       setRemoveOpen(false);
+      setPlaylistOpen(false);
       setBundleOpen(false);
     }
   }, [count]);
+
+  // 「Add to playlist」は「Favorite」と同じ数で上限を判定する。開いている間に超えたら閉じる。
+  useEffect(() => {
+    if (favoriteOverLimit) setPlaylistOpen(false);
+  }, [favoriteOverLimit]);
 
   // ポップオーバーを開いたままの間に選択が増えて上限を超えたら、両方閉じる
   // （トリガを disabled にするだけでは、開いている最中の分は防げない。
@@ -192,6 +200,30 @@ export default function SelectionBar({
             {overLimitMessage()}
           </span>
         )}
+
+        {/* 「Favorite」の直後、「Visibility」の前。送るものは「Favorite」と同じで、結果の後も
+            選択は残す（specs/044-playlists/ui-design.md「Add to playlist」）。 */}
+        <Popover open={playlistOpen} onOpenChange={setPlaylistOpen}>
+          <WithTooltip label={t.library.selection.addToPlaylist}>
+            <PopoverTrigger asChild>
+              <SelectionAction
+                icon={<ListPlus aria-hidden="true" />}
+                label={t.library.selection.addToPlaylist}
+                disabled={favoriteOverLimit}
+                title={favoriteOverLimit ? overLimitMessage() : undefined}
+                aria-describedby={favoriteOverLimit ? favoriteOverLimitId : undefined}
+              />
+            </PopoverTrigger>
+          </WithTooltip>
+          <PlaylistPicker
+            open={playlistOpen}
+            onOpenChange={setPlaylistOpen}
+            videoIds={favoriteVideoIds}
+            folders={favoriteFolders}
+            side="top"
+            align="start"
+          />
+        </Popover>
 
         <VisibilityMenu
           selectedIds={selectedIds}

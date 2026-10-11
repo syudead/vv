@@ -672,6 +672,7 @@ export default function LibraryPage() {
               <TableHead className="w-list-thumb-cell" />
               <TableHead className="pr-4">{t.library.columns.title}</TableHead>
               {owner && <TableHead className="w-8" />}
+              {owner && <TableHead className="w-8" />}
               <TableHead className="hidden w-16 pr-4 sm:table-cell" />
               <TableHead className="w-list-number pr-4 text-right">
                 {t.library.columns.duration}

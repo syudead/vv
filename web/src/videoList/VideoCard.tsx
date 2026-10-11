@@ -24,6 +24,7 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
+import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
 import { Checkbox } from "../ui/shadcn/checkbox";
@@ -102,6 +103,26 @@ function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "ro
       label={t.list.card.favorite(video.title)}
       onToggle={() => updateFavorites([video.id], [], !favorite)}
       variant={variant}
+    />
+  );
+}
+
+/**
+ * VideoAddToPlaylist は動画のカード・行の「Add to playlist」である（所有者だけ。
+ * specs/044-playlists/ui-design.md「Add to playlist」）。ハートと同じところにだけ描く。
+ */
+function VideoAddToPlaylist({
+  video,
+  variant,
+}: {
+  video: Video;
+  variant: "card" | "row";
+}) {
+  return (
+    <AddToPlaylistButton
+      variant={variant}
+      label={t.list.card.addToPlaylist(video.title)}
+      videoIds={[video.id]}
     />
   );
 }
@@ -396,7 +417,9 @@ function VideoCard(props: VideoCardProps) {
           チェック → リンク → 付け外し → タグの行。ui-design.md「Placement」）。 */}
       {owner && (
         // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
+        // 足す操作はハートの左（specs/044-playlists/ui-design.md「Add to playlist」）。
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
+          <VideoAddToPlaylist video={video} variant="card" />
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
       )}
@@ -480,6 +503,12 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       {owner && (
         <TableCell className="w-8 px-0">
           <VideoFavorite video={video} variant="row" />
+        </TableCell>
+      )}
+      {/* 足す操作はお気に入りの列の直後の列（specs/044-playlists/ui-design.md）。 */}
+      {owner && (
+        <TableCell className="w-8 px-0">
+          <VideoAddToPlaylist video={video} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right sm:table-cell">
