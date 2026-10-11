@@ -2,7 +2,7 @@ import { Folder } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { VideoTag } from "../api/client";
-import { isFolderOnly } from "../api/tagOrder";
+import { isFolderOnly, showsTentative } from "../api/tagOrder";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { badgeVariants } from "../ui/shadcn/badge";
@@ -62,11 +62,11 @@ function chipClassName(pressable: boolean, shrink = false, folderOnly = false): 
 function chipLabel(tag: VideoTag, folderOnly: boolean): string {
   const row = t.library.tagRow;
   if (folderOnly) {
-    return tag.tentative
+    return showsTentative(tag)
       ? row.filterByFromFolderTentative(tag.name)
       : row.filterByFromFolder(tag.name);
   }
-  return tag.tentative ? row.filterByTentative(tag.name) : row.filterBy(tag.name);
+  return showsTentative(tag) ? row.filterByTentative(tag.name) : row.filterBy(tag.name);
 }
 
 /**
@@ -103,7 +103,7 @@ function TagChip({
     <>
       {folderOnly && <FolderMark />}
       <span className={cn("min-w-0", inList ? "break-all" : "truncate")}>{tag.name}</span>
-      {tag.tentative && <TentativeMark />}
+      {showsTentative(tag) && <TentativeMark />}
     </>
   );
   if (!pressable) {
@@ -111,7 +111,9 @@ function TagChip({
       <span title={tag.name} className={chipClassName(false, shrink, folderOnly)}>
         {content}
         {folderOnly && <span className="sr-only"> {t.library.tagRow.fromFolder}</span>}
-        {tag.tentative && <span className="sr-only"> {t.library.tagRow.tentative}</span>}
+        {showsTentative(tag) && (
+          <span className="sr-only"> {t.library.tagRow.tentative}</span>
+        )}
       </span>
     );
   }
@@ -294,7 +296,7 @@ export default function CardTagRow({
             <span key={tag.id} className={chipClassName(true, false, isFolderOnly(tag))}>
               {isFolderOnly(tag) && <FolderMark />}
               <span>{tag.name}</span>
-              {tag.tentative && <TentativeMark />}
+              {showsTentative(tag) && <TentativeMark />}
             </span>
           ))}
         </div>

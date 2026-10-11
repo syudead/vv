@@ -34,6 +34,22 @@ linters:
     # 止める。コメントは AST の文字列リテラルではないので対象にならない。
     - gosmopolitan
 
+    # テストコードの質を見る。
+    #
+    # 補助関数が t.Helper() を呼ばないと、失敗の行がテスト本体でなく補助関数の
+    # 中を指す。
+    - thelper
+    # testing が用意する t.TempDir・t.Setenv・t.Chdir を使わずに os の関数で
+    # 一時ディレクトリや環境変数を作り、後始末が漏れる誤り。
+    # context.Background() を t.Context() に置き換える検査（context-background・
+    # context-todo）は既定のまま切っている。テストの約 900 箇所に及び、t.Context() は
+    # t.Cleanup の前に取り消されるので、後始末で文脈を使うテストの振る舞いが変わる。
+    - usetesting
+    # paralleltest と tparallel は有効にしない。t.Parallel() を呼ぶテストは無く、
+    # paralleltest は約 1,650 件を指摘する。テストは環境変数・パッケージ変数・
+    # 一時ディレクトリの SQLite などの共有状態に触れるものが多く、機械的に並列に
+    # できない。Go のパッケージは既にプロセスごとに並列に走る。
+
   settings:
     gosmopolitan:
       watch-for-scripts:
@@ -43,7 +59,7 @@ linters:
       allow-time-local: true
     depguard:
       rules:
-        # cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} → internal/domain の
+        # cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} → internal/domain の
         # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
         # 他の internal パッケージにも依存してはならない。
         #
@@ -80,67 +96,72 @@ linters:
             - pkg: github.com/syudead/vv/internal/httpapi
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/store
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/media
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/artifacts
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/opener
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/mediafs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/jobs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/app
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/eventbus
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/password
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/desktop
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/watcher
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/ollama
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
 
         # アプリケーション層（internal/app）はユースケースだけを持つ。外部 I/O の
@@ -230,6 +251,11 @@ linters:
                 internal/app から internal/watcher を import してはならない。OS の変更通知はアダプタの仕事で、
                 アプリケーション層は必要な操作を自身の interface として宣言し、
                 実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/ollama
+              desc: >-
+                internal/app から internal/ollama を import してはならない。判定モデル（AI）の提供元は
+                差し替えられるアダプタで、機能は app.Classifier の口だけを使い、どの提供元かを知らない。
+                実装は cmd/mdm が渡す（docs/design-docs/ai-layer.md）。
 
         # internal/ の兄弟パッケージ（アダプタとアプリケーション層）は互いに
         # import しない。使う側が interface を宣言し、組み立ては cmd/mdm が行う。
@@ -250,6 +276,7 @@ linters:
             - "**/internal/password/*.go"
             - "**/internal/desktop/*.go"
             - "**/internal/watcher/*.go"
+            - "**/internal/ollama/*.go"
             - "!$test"
           deny:
             - pkg: github.com/syudead/vv/internal/app$
@@ -313,6 +340,11 @@ linters:
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
                 （ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: github.com/syudead/vv/internal/watcher$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/ollama$
               desc: >-
                 internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める

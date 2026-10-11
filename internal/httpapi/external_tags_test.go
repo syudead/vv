@@ -306,6 +306,7 @@ func TestExternalTagEditsMatchScreen(t *testing.T) {
 		externalBody                         any
 	}
 	build := func(t *testing.T) (mcpFixture, map[string]int64) {
+		t.Helper()
 		f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 		addTentativeTags(t, f, f.videoA, []string{"猫", "ねこ", "ネコ", "犬", "いぬ"})
 		ids := map[string]int64{}

@@ -1,8 +1,14 @@
-import { Folder, Plus, X } from "lucide-react";
+import { Check, Folder, Plus, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { RequestFailed, type TagRef, type VideoTag } from "../api/client";
+import {
+  confirmVideoTag,
+  rejectVideoTag,
+  RequestFailed,
+  type TagRef,
+  type VideoTag,
+} from "../api/client";
 import {
   attachVideoTagByID,
   attachVideoTagByName,
@@ -16,6 +22,7 @@ import {
   applyTagToTags,
   compareNatural,
   isFolderOnly,
+  showsTentative,
   tagsReflectChange,
 } from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
@@ -224,6 +231,40 @@ export default function VideoTags({
       .finally(() => setSubmitting(false));
   }
 
+  // 自動タグ付けが仮に付けたタグを確定・却下する。応答の後は動画を取り直し、取り直す前でも
+  // 確定は目印を消し、却下はチップを消す（docs/design-docs/auto-tagging.md）。
+  function settleTag(tag: VideoTag, action: "confirm" | "reject") {
+    setOpError(null);
+    setRemovingIds((current) => new Set(current).add(tag.id));
+    const settle = action === "confirm" ? confirmVideoTag : rejectVideoTag;
+    void settle(videoId, tag.id)
+      .then(() => {
+        setTags((current) =>
+          action === "confirm"
+            ? current.map((item) =>
+                item.id === tag.id ? { ...item, unconfirmed: false } : item,
+              )
+            : current.filter((item) => item.id !== tag.id),
+        );
+        onChanged?.();
+      })
+      .catch((error: unknown) => {
+        if (error instanceof RequestFailed && error.status === 404) {
+          // 別の画面で確定・却下された。取り直して今の状態を出す。
+          onStaleVideo();
+          return;
+        }
+        setOpError(t.player.tags.settleFailed(errorText(error)));
+      })
+      .finally(() => {
+        setRemovingIds((current) => {
+          const next = new Set(current);
+          next.delete(tag.id);
+          return next;
+        });
+      });
+  }
+
   function removeTag(tag: TagRef, index: number) {
     // 移す先は × を持つ（手で付けた）チップだけ。フォルダ名からだけ付いている
     // 破線のチップは × を持たないので飛ばす（017 の ui-design.md
@@ -314,16 +355,16 @@ export default function VideoTags({
                 <Link
                   to={`/?tag=${String(tag.id)}`}
                   aria-label={
-                    tag.tentative
+                    showsTentative(tag)
                       ? t.player.tags.filterByTentative(tag.name)
                       : t.player.tags.filterBy(tag.name)
                   }
                   className={cn(
                     "min-w-0 hover:text-primary",
-                    tag.tentative ? "inline-flex items-center gap-1" : "truncate",
+                    showsTentative(tag) ? "inline-flex items-center gap-1" : "truncate",
                   )}
                 >
-                  {tag.tentative ? (
+                  {showsTentative(tag) ? (
                     <>
                       <span className="min-w-0 truncate">{tag.name}</span>
                       <TentativeMark />
@@ -333,21 +374,53 @@ export default function VideoTags({
                   )}
                 </Link>
                 <span aria-hidden="true" className="ml-1.5 h-4 w-px shrink-0 bg-input" />
-                <Button
-                  ref={(node) => {
-                    if (node) buttonRefs.current.set(tag.id, node);
-                    else buttonRefs.current.delete(tag.id);
-                  }}
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t.player.tags.remove(tag.name)}
-                  disabled={removingIds.has(tag.id)}
-                  onClick={() => removeTag(tag, index)}
-                  // チップの高さ（h-6）に合わせた × の的。
-                  className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
-                >
-                  <X aria-hidden="true" />
-                </Button>
+                {tag.unconfirmed === true ? (
+                  // 自動タグ付けが仮に付けたタグは、外す × の代わりに確定（✓）と却下（×）を置く。
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.player.tags.confirm(tag.name)}
+                      title={t.player.tags.confirm(tag.name)}
+                      disabled={removingIds.has(tag.id)}
+                      onClick={() => settleTag(tag, "confirm")}
+                      className="size-6 rounded-none [&_svg]:size-3"
+                    >
+                      <Check aria-hidden="true" />
+                    </Button>
+                    <Button
+                      ref={(node) => {
+                        if (node) buttonRefs.current.set(tag.id, node);
+                        else buttonRefs.current.delete(tag.id);
+                      }}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t.player.tags.reject(tag.name)}
+                      title={t.player.tags.reject(tag.name)}
+                      disabled={removingIds.has(tag.id)}
+                      onClick={() => settleTag(tag, "reject")}
+                      className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    ref={(node) => {
+                      if (node) buttonRefs.current.set(tag.id, node);
+                      else buttonRefs.current.delete(tag.id);
+                    }}
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t.player.tags.remove(tag.name)}
+                    disabled={removingIds.has(tag.id)}
+                    onClick={() => removeTag(tag, index)}
+                    // チップの高さ（h-6）に合わせた × の的。
+                    className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                )}
               </Badge>
             )}
           </li>

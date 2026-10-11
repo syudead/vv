@@ -28,6 +28,7 @@ import (
 	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/mediafs"
+	"github.com/syudead/vv/internal/ollama"
 	"github.com/syudead/vv/internal/opener"
 	"github.com/syudead/vv/internal/scanner"
 	"github.com/syudead/vv/internal/store"
@@ -267,10 +268,30 @@ func run(opts runOptions) error {
 		workers = append(workers, worker)
 		wakers[kind] = worker
 	}
+	// 判定モデル（AI）の層。提供元のアダプタ（Ollama）が自分の接続先を設定から読み、機能へは
+	// app.Classifier の口だけを見せる（docs/design-docs/ai-layer.md）。別の提供元にするときは
+	// ここで差し替える。
+	classifier := ollama.New(settingsStore)
+	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
+	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
+	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
+	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
+		Queue:      db.AutoTags(),
+		Settings:   settingsStore,
+		Classifier: classifier,
+		Images:     videoImageSource{artifacts: artifactStore},
+		Logger:     logger,
+	})
+	if err := autoTagger.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
+	}
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
+		ImagesFinished: func(videoID int64) {
+			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
+		},
 	})
 	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
@@ -282,6 +303,7 @@ func run(opts runOptions) error {
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
+	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
 	// 猶予を越えたときも）、データベースを閉じる前に走査とワーカーを止める。止めずに
 	// 戻ると、始め直した走査やワーカーが閉じたデータベースへ書く。データベースを
@@ -383,6 +405,8 @@ func run(opts runOptions) error {
 		TranscodeSettings: transcodeSettings,
 		NetworkSettings:   networkSettings,
 		AutoImport:        autoImport,
+		AutoTagging:       autoTagger,
+		Ollama:            ollamaConnection,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

@@ -1,0 +1,189 @@
+# Auto-tagging with a decision model
+
+VVMDM asks a decision model which existing tags fit a video, and adds the tags
+whose probability reaches a threshold. The use case is
+[`internal/app/auto_tag.go`](../../internal/app/auto_tag.go) and the queue is
+[`internal/store/auto_tags.go`](../../internal/store/auto_tags.go). The model
+is reached through the classifier port, whose provider today is Cloudflare's
+Clef or Clef-flash in Ollama ([ai-layer.md](ai-layer.md)); auto-tagging does
+not know the provider.
+
+The diagram shows how a video reaches the classifier and how its tags come
+back.
+
+```mermaid
+flowchart LR
+  seek[Seek preview stage done] -->|feature and automatic judging on| queue[(auto_tag_queue)]
+  owner[Owner] -->|Settings or video page| queue
+  queue --> worker[Auto-tagging worker]
+  worker --> port[Classifier port]
+  port -->|probability per tag| worker
+  worker -->|tags at or above threshold| tags[(video_tags)]
+  tags --> screen[Video notice to screens]
+```
+
+## Classifier request
+
+Each candidate tag becomes one yes/no question, and a video is sent as its
+library thumbnail, 8 frames spread across the whole video, and the facts
+`title`, `file_name` and `folder`. All questions for a video go in one request
+to the port, which splits them as its provider needs.
+
+The thumbnail shows one scene, so a video whose scenes differ would only be
+judged on that one; the frames let the classifier see the rest. They are cut
+from the seek preview sheet the import already made, so no ffmpeg work is
+added, and at 320 px or less each frame costs fewer input tokens than the
+thumbnail.
+
+| Input | Source | When missing |
+| --- | --- | --- |
+| Images | The library thumbnail (640 px), then 8 frames at the middle of 8 equal parts of the seek preview | The images that can be read; text only when none can |
+| `title` | The display name, else the file title | Never missing |
+| `file_name` | The representative location's file name | Never missing |
+| `folder` | The representative location's folder relative to its media folder, with `/` separators (`trips/kyoto` for `/mnt/nas/videos/trips/kyoto/bamboo.mp4` in the media folder `/mnt/nas/videos`) | Empty for a video directly in the media folder |
+
+The candidates are the tags whose answer could still change the video's tags.
+Asking about the rest costs time on every request and cannot change the
+result.
+
+| Tag | Asked |
+| --- | --- |
+| Not on the video | Yes |
+| Suggested (unconfirmed) on the video | Yes; a later answer at or above "Probability to add" confirms it |
+| Already on the video as an ordinary tag | No |
+| Rejected for the video | No |
+| Tentative tag (a tag state, not a suggestion) | No |
+
+A version bundle's members share their tags, so attachments and rejections
+are those of the bundle.
+
+The question asks whether the tag appears in or applies to any part of the
+video, names its synonyms, and says the images come from across the video.
+
+The wording decides whether frames help. On a 30 s video of a cat, a rocket
+and a cup of coffee, with the thumbnail showing the cat:
+
+| Images and question | cat | coffee | rocket | Unrelated tags |
+| --- | --- | --- | --- | --- |
+| Thumbnail, "appears in any part" | 0.96 | 0.01 | 0.00 | 0.02 or less |
+| Thumbnail and 8 frames, "describes this video" | 0.60 | 0.61 | 0.17 | 0.01 or less |
+| Thumbnail and 8 frames, "appears in any part" | 0.93 | 0.85 | 0.70 | 0.00 |
+
+Asking whether a tag describes the video makes the model weigh the whole
+video, so a tag that fits one scene falls below the threshold.
+
+Time per video grows with the number of candidates; the Ollama provider's
+batches and measured times are in [ai-layer.md](ai-layer.md#ollama-provider).
+
+| Rejected | Why |
+| --- | --- |
+| The thumbnail alone | It shows one scene, so tags for the rest of the video are missed |
+| The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 8 frames |
+| The absolute folder path | The part above the media folder says nothing about the video, differs between machines and operating systems, and would reach a remote Ollama host |
+| Ask about every tag on every video | Tags already on the video or rejected for it cannot change, and each one adds time |
+
+## Tags it adds
+
+The probability decides how a tag is attached: at or above "Probability to
+add" (0.8 by default) as an ordinary tag, between "Probability to suggest"
+(0.5 by default) and that as a suggested (unconfirmed) tag, and below it not
+at all. No tag is created.
+
+```mermaid
+flowchart LR
+  p[Probability] --> add{0.8 or more?}
+  add -->|yes| ordinary[Ordinary tag]
+  add -->|no| suggest{0.5 or more?}
+  suggest -->|yes| suggested[Suggested tag]
+  suggest -->|no| none[Not added]
+```
+
+A suggested tag shows the tentative mark on cards and the video page, and the
+video page offers keep and reject in place of remove. Keeping it, adding the
+same tag by hand, or a later judgement at or above "Probability to add" turns
+it into an ordinary tag. Rejecting it removes it and records the tag for that
+video in `auto_tag_rejections`, so auto-tagging never adds it to that video
+again; adding it by hand still works. Setting both probabilities to the same
+value turns suggestions off.
+
+The middle band exists because the classifier's probabilities near the
+threshold are not reliable either way: in the trials, the one wrong tag and
+one right tag (the rocket in a three-scene video, 0.70) both fell between 0.5
+and 0.8. Suggested tags count in tag filters like ordinary ones, the same way
+tentative tags do.
+
+| Rejected | Why |
+| --- | --- |
+| Create tags from the model's suggestions | Clef only scores options it is given; it does not generate names |
+| Mark the tag itself as tentative | Tentative is a state of a tag across all videos, and a suggestion is about one video |
+| One threshold | Tags near it are either dropped or added unchecked |
+
+## Queue and when a video is judged
+
+Each video's content key has one row in `auto_tag_queue`, and the row stays
+`done` after judging so that automatic judging never repeats on that video.
+
+```mermaid
+stateDiagram-v2
+  [*] --> queued: added
+  queued --> running: worker claims
+  running --> done: answer recorded
+  running --> failed: classifier error
+  running --> queued: restart
+  failed --> queued: tag not yet tagged
+  done --> queued: tag all again, or the video page
+```
+
+| Trigger | Queues |
+| --- | --- |
+| Seek preview stage finishes, "Tag new videos automatically" on | Videos with no row |
+| Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
+| Settings, "Tag all videos again" | Every video not `running` |
+| Video page, "Suggest tags" | That video, unless `running` |
+
+Every trigger requires "Use auto-tagging" to be on; while it is off the
+Settings run buttons and the video page button are hidden, and the API refuses
+to queue with `409 auto_tagging_off`.
+
+Keeping `done` rows means a tag the owner removed is not added back by the
+next import of the same content. One worker judges one video at a time, so a
+slow CPU-only provider is not given parallel requests it cannot serve.
+
+## Failures
+
+A failed request marks the row `failed` with the provider's message and the
+worker moves on; nothing retries it until the owner queues it again.
+
+Ollama being stopped makes every queued video fail within seconds instead of
+blocking the queue, and the Settings page shows the count and the last
+message. A row still `running` at shutdown goes back to `queued` at the next
+startup.
+
+## Settings
+
+The Auto-tagging section of Settings (`/api/settings/auto-tagging`) holds
+whether the feature is used, automatic judging after import, the two
+probabilities and the queue counts. The provider's connection is a separate
+section and resource ([ai-layer.md](ai-layer.md#ollama-provider)). "Test
+judging" (`POST /api/auto-tagging/check`) asks the classifier port one
+question, whether the feature is on or off, to show that the provider can
+judge.
+
+Auto-tagging is optional and off by default. While "Use auto-tagging" is off:
+
+- the worker claims no queued video and never contacts the provider, and the
+  queued rows wait until the feature is turned on again;
+- nothing is queued, by import, Settings or the video page;
+- the video page has no "Suggest tags" button;
+- suggested tags already added can still be kept or rejected.
+
+| Setting | Default |
+| --- | --- |
+| Use auto-tagging | Off |
+| Tag new videos automatically | Off (has no effect while the feature is off) |
+| Probability to add | 0.8 |
+| Probability to suggest | 0.5 (the same value as "Probability to add" turns suggestions off) |
+
+| Rejected | Why |
+| --- | --- |
+| One form for the connection and the feature switch | Testing or changing the connection would mean editing the feature's settings, and turning the feature off would look like losing the connection |

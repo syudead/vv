@@ -89,57 +89,57 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 	other := int64(7_000)
 	for name, c := range map[string]struct {
 		// prepare は最初の変更、again は同じ値の書き直し、change は別の値への変更である。
-		prepare, again, change func(t *testing.T, db *DB, id int64) error
+		prepare, again, change func(db *DB, id int64) error
 	}{
 		"表示名": {
-			prepare: func(t *testing.T, db *DB, id int64) error {
+			prepare: func(db *DB, id int64) error {
 				_, err := db.Overrides().SetDisplayName(ctx, id, "名前")
 				return err
 			},
-			again: func(t *testing.T, db *DB, id int64) error {
+			again: func(db *DB, id int64) error {
 				_, err := db.Overrides().SetDisplayName(ctx, id, " 名前 ")
 				return err
 			},
-			change: func(t *testing.T, db *DB, id int64) error {
+			change: func(db *DB, id int64) error {
 				_, err := db.Overrides().SetDisplayName(ctx, id, "")
 				return err
 			},
 		},
 		"代表サムネイルの位置": {
-			prepare: func(t *testing.T, db *DB, id int64) error {
+			prepare: func(db *DB, id int64) error {
 				_, err := db.Overrides().SetThumbnailPosition(ctx, id, &position)
 				return err
 			},
-			again: func(t *testing.T, db *DB, id int64) error {
+			again: func(db *DB, id int64) error {
 				same := position
 				_, err := db.Overrides().SetThumbnailPosition(ctx, id, &same)
 				return err
 			},
-			change: func(t *testing.T, db *DB, id int64) error {
+			change: func(db *DB, id int64) error {
 				_, err := db.Overrides().SetThumbnailPosition(ctx, id, &other)
 				return err
 			},
 		},
 		"公開の設定": {
-			prepare: func(t *testing.T, db *DB, id int64) error {
+			prepare: func(db *DB, id int64) error {
 				_, err := db.Visibility().SetVideosPublic(ctx, []int64{id}, true)
 				return err
 			},
-			again: func(t *testing.T, db *DB, id int64) error {
+			again: func(db *DB, id int64) error {
 				_, err := db.Visibility().SetVideosPublic(ctx, []int64{id}, true)
 				return err
 			},
-			change: func(t *testing.T, db *DB, id int64) error {
+			change: func(db *DB, id int64) error {
 				_, err := db.Visibility().SetVideosPublic(ctx, []int64{id}, false)
 				return err
 			},
 		},
 		"タグ（画面）": {
-			prepare: func(t *testing.T, db *DB, id int64) error {
+			prepare: func(db *DB, id int64) error {
 				_, _, err := db.Tags().AttachTagByName(ctx, []int64{id}, "好き")
 				return err
 			},
-			again: func(t *testing.T, db *DB, id int64) error {
+			again: func(db *DB, id int64) error {
 				ref, _, err := db.Tags().AttachTagByName(ctx, []int64{id}, "好き")
 				if err != nil {
 					return err
@@ -147,7 +147,7 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 				_, _, err = db.Tags().AttachTagByID(ctx, []int64{id}, ref.ID)
 				return err
 			},
-			change: func(t *testing.T, db *DB, id int64) error {
+			change: func(db *DB, id int64) error {
 				ref, _, err := db.Tags().AttachTagByName(ctx, nil, "好き")
 				if err != nil {
 					return err
@@ -157,11 +157,11 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 			},
 		},
 		"タグ（外部連携の一括）": {
-			prepare: func(t *testing.T, db *DB, id int64) error {
+			prepare: func(db *DB, id int64) error {
 				_, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: id}}, domain.VideoTagsAdd, []string{"x", "y"}, false)
 				return err
 			},
-			again: func(t *testing.T, db *DB, id int64) error {
+			again: func(db *DB, id int64) error {
 				refs := []domain.VideoRef{{ID: id}}
 				if _, err := db.Tags().ApplyVideoTags(ctx, refs, domain.VideoTagsAdd, []string{"x"}, false); err != nil {
 					return err
@@ -172,7 +172,7 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 				_, err := db.Tags().ApplyVideoTags(ctx, refs, domain.VideoTagsRemove, []string{"z"}, false)
 				return err
 			},
-			change: func(t *testing.T, db *DB, id int64) error {
+			change: func(db *DB, id int64) error {
 				_, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: id}}, domain.VideoTagsReplace, []string{"x"}, false)
 				return err
 			},
@@ -185,20 +185,20 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 			addedAt := ownerVideo(t, db, untouched).AddedAt
 
 			start := time.Now()
-			if err := c.prepare(t, db, id); err != nil {
+			if err := c.prepare(db, id); err != nil {
 				t.Fatal(err)
 			}
 			assertEditedSince(t, db, id, start)
 			assertEditedAt(t, db, untouched, addedAt)
 
 			resetEditedAt(t, db)
-			if err := c.again(t, db, id); err != nil {
+			if err := c.again(db, id); err != nil {
 				t.Fatal(err)
 			}
 			assertEditedAt(t, db, id, staleEditedAt)
 
 			start = time.Now()
-			if err := c.change(t, db, id); err != nil {
+			if err := c.change(db, id); err != nil {
 				t.Fatal(err)
 			}
 			assertEditedSince(t, db, id, start)

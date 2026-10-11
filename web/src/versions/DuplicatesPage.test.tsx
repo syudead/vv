@@ -219,7 +219,9 @@ afterEach(() => {
 describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates page」）", () => {
   it("候補の組を 2 本の違い（解像度・コーデック・サイズ・場所）と共に並べる", async () => {
     renderPage();
-    expect(screen.getByRole("heading", { level: 1, name: "Possible duplicates" }));
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Possible duplicates" }),
+    ).toBeDefined();
     expect(document.title).toBe("Duplicates");
     expect(await screen.findByText("2 pairs")).toBeDefined();
 
@@ -482,7 +484,7 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     await emitServerEvent("scan", { id: 1, state: "running", status: "running" });
     await emitServerEvent("scan", { id: 1, state: "done", status: "done" });
 
-    await waitFor(() => expect(screen.getByText("新しい組")).toBeDefined());
+    expect(await screen.findByText("新しい組")).toBeDefined();
     expect(screen.queryByText("劇場版 720p")).toBeNull();
     expect(pairItems()).toHaveLength(2);
     expect(server.listCalls).toBe(2);

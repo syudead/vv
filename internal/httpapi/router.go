@@ -289,6 +289,10 @@ type Options struct {
 	// AutoImport は自動の取り込みの選択と監視の状態。nil なら /api/settings/auto-import は
 	// 500 を返す。
 	AutoImport AutoImportSettings
+	// AutoTagging は自動タグ付けの設定と判定の始め方。nil なら該当の経路は 500 を返す。
+	AutoTagging AutoTagging
+	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
+	Ollama OllamaConnection
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -358,6 +362,8 @@ type server struct {
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
 	autoImport        AutoImportSettings
+	autoTagging       AutoTagging
+	ollama            OllamaConnection
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -433,6 +439,8 @@ func NewRouter(opts Options) http.Handler {
 		transcodeSettings: opts.TranscodeSettings,
 		networkSettings:   opts.NetworkSettings,
 		autoImport:        opts.AutoImport,
+		autoTagging:       opts.AutoTagging,
+		ollama:            opts.Ollama,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,
@@ -551,7 +559,7 @@ func requiresJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/playlists":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists":
 			return true
 		}
 		// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
@@ -576,7 +584,8 @@ func requiresJSONBody(r *http.Request) bool {
 		}
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
-			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" {
+			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" ||
+			r.URL.Path == "/api/settings/auto-tagging" || r.URL.Path == "/api/settings/ollama" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {

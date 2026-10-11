@@ -315,6 +315,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/auto-tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画 1 本を自動タグ付けの判定に回す
+         * @description 判定を終えていても回し直す。判定中なら積まない（`queued` が偽）。要求の本文は無い
+         *     （docs/design-docs/auto-tagging.md）。
+         */
+        post: operations["autoTagVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/tags/{tagId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 自動タグ付けが仮に付けたタグを確定する
+         * @description 動画に仮に付いたタグ（`VideoTag.unconfirmed`）を普通の付与にする。要求の本文は無い
+         *     （docs/design-docs/auto-tagging.md）。
+         */
+        post: operations["confirmVideoTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/tags/{tagId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 自動タグ付けが仮に付けたタグを却下する
+         * @description 動画に仮に付いたタグを外し、この動画にこのタグを自動タグ付けで付け直さない。要求の本文は
+         *     無い（docs/design-docs/auto-tagging.md）。
+         */
+        post: operations["rejectVideoTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/open": {
         parameters: {
             query?: never;
@@ -832,6 +895,120 @@ export interface paths {
          */
         put: operations["updateAutoImportSettings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/ollama": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ollama の接続先を返す
+         * @description 判定モデル（Clef）を動かす Ollama の基底 URL と模型名。判定モデルを使う機能（自動タグ付け）の
+         *     設定とは別に持つ（docs/design-docs/ai-layer.md）。保存値が無ければ既定値を返す。
+         */
+        get: operations["getOllamaSettings"];
+        /** Ollama の接続先を保存する */
+        put: operations["updateOllamaSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/ollama/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
+         * @description `GET /api/version` と `GET /api/tags` だけで確かめ、判定はさせず模型も読み込まないので
+         *     数秒で終わる。判定に使えるかは `POST /api/auto-tagging/check` が確かめる
+         *     （docs/design-docs/ai-layer.md）。接続先は要求の本文から取らない（任意の URL へ
+         *     サーバーから要求を送らせないため）。要求の本文は無い。
+         */
+        post: operations["checkOllama"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/auto-tagging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
+         * @description 機能の入切（`enabled`、既定は切）、取り込みのあとの自動の判定、2 つの確率。接続先は
+         *     `/api/settings/ollama` が持つ（docs/design-docs/ai-layer.md）。
+         */
+        get: operations["getAutoTaggingSettings"];
+        /**
+         * 自動タグ付けの機能の設定を保存する
+         * @description 値を確かめて保存する。判定は始めない。`enabled` を入れると、積んであった判定を続きから
+         *     処理する。
+         */
+        put: operations["updateAutoTaggingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auto-tagging/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+         * @description 今の判定の提供元に短い質問を 1 つ判定させ、確率の答えが返るかを確かめる。機能の入切に
+         *     関係なく確かめられる。模型の読み込みを含むので数分かかることがある
+         *     （docs/design-docs/auto-tagging.md）。要求の本文は無い。
+         */
+        post: operations["checkAutoTaggingClassifier"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auto-tagging/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ライブラリの動画を判定に回す
+         * @description `missing` はまだ判定を終えていない動画（判定していない・失敗した）を、`all` は
+         *     判定中のもの以外のすべてを積む。積んだ件数を返す。
+         */
+        post: operations["startAutoTagging"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1899,6 +2076,71 @@ export interface components {
         UpdateAutoImportSettingsRequest: {
             enabled: boolean;
         };
+        /** @description 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md） */
+        AutoTaggingSettings: {
+            /** @description 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false */
+            enabled: boolean;
+            /** @description 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false */
+            afterImport: boolean;
+            /**
+             * Format: double
+             * @description タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
+             */
+            threshold: number;
+            /**
+             * Format: double
+             * @description タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+             */
+            tentativeThreshold: number;
+            queue: components["schemas"]["AutoTaggingQueue"];
+        };
+        /** @description Ollama の接続先（docs/design-docs/ai-layer.md） */
+        OllamaSettings: {
+            /** @description Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434 */
+            endpoint: string;
+            /** @description Ollama の模型名。保存値が無ければ clef-flash */
+            model: string;
+        };
+        AutoTaggingQueue: {
+            queued: number;
+            running: number;
+            done: number;
+            failed: number;
+            /** @description 直近に失敗した判定の理由（英語。Ollama の応答を含むことがある）。失敗が無ければ省く */
+            lastError?: string;
+        };
+        UpdateAutoTaggingSettingsRequest: {
+            enabled: boolean;
+            afterImport: boolean;
+            /**
+             * Format: double
+             * @description 0 より大きく 1 以下
+             */
+            threshold: number;
+            /**
+             * Format: double
+             * @description 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+             */
+            tentativeThreshold: number;
+        };
+        /** @description 確かめた結果。使えないことも 200 で返す */
+        CheckResult: {
+            available: boolean;
+            /** @description 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある） */
+            message?: string;
+        };
+        StartAutoTaggingRequest: {
+            /** @enum {string} */
+            scope: "missing" | "all";
+        };
+        AutoTaggingQueued: {
+            /** @description 積んだ動画の件数 */
+            queued: number;
+        };
+        AutoTagVideoResult: {
+            /** @description 積んだか。判定中なら偽 */
+            queued: boolean;
+        };
         /** @description 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。 */
         APIToken: {
             /** Format: int64 */
@@ -1948,6 +2190,11 @@ export interface components {
             fromFolder: boolean;
             /** @description そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す */
             tentative: boolean;
+            /**
+             * @description 自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+             *     返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
+             */
+            unconfirmed?: boolean;
         };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
@@ -2931,7 +3178,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2982,6 +3229,8 @@ export interface components {
         PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
         WatchHistoryEntryId: number;
+        /** @description 動画に付いたタグの識別子 */
+        VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
@@ -3417,6 +3666,90 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    autoTagVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 積んだかどうか */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTagVideoResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 自動タグ付けの機能が切（auto_tagging_off） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmVideoTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 動画に付いたタグの識別子 */
+                tagId: components["parameters"]["VideoTagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確定した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rejectVideoTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 動画に付いたタグの識別子 */
+                tagId: components["parameters"]["VideoTagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 却下した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     openVideoFile: {
@@ -4283,6 +4616,175 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getOllamaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaSettings"];
+                };
+            };
+        };
+    };
+    updateOllamaSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OllamaSettings"];
+            };
+        };
+        responses: {
+            /** @description 保存後の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OllamaSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    checkOllama: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確かめた結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getAutoTaggingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定と待ち行列の件数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTaggingSettings"];
+                };
+            };
+        };
+    };
+    updateAutoTaggingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateAutoTaggingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の設定と待ち行列の件数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTaggingSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    checkAutoTaggingClassifier: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確かめた結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    startAutoTagging: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartAutoTaggingRequest"];
+            };
+        };
+        responses: {
+            /** @description 積んだ件数 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutoTaggingQueued"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description 自動タグ付けの機能が切（auto_tagging_off） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listApiTokens: {

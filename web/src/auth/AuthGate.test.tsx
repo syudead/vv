@@ -105,13 +105,11 @@ describe("AuthGate", () => {
     renderGate(path);
 
     await waitFor(() => expect(currentLocation).toBe(expected));
-    if (expected === "/") {
-      expect(await screen.findByText("library as guest")).toBeDefined();
-    } else {
-      expect(
-        await screen.findByRole("heading", { level: 1, name: "Sign in" }),
-      ).toBeDefined();
-    }
+    const landing =
+      expected === "/"
+        ? await screen.findByText("library as guest")
+        : await screen.findByRole("heading", { level: 1, name: "Sign in" });
+    expect(landing).toBeDefined();
   });
 
   it.each([

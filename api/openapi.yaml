@@ -579,6 +579,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/videos/{id}/auto-tag:
+    post:
+      operationId: autoTagVideo
+      summary: 動画 1 本を自動タグ付けの判定に回す
+      description: |
+        判定を終えていても回し直す。判定中なら積まない（`queued` が偽）。要求の本文は無い
+        （docs/design-docs/auto-tagging.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "202":
+          description: 積んだかどうか
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTagVideoResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 自動タグ付けの機能が切（auto_tagging_off）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/videos/{id}/tags/{tagId}/confirm:
+    post:
+      operationId: confirmVideoTag
+      summary: 自動タグ付けが仮に付けたタグを確定する
+      description: |
+        動画に仮に付いたタグ（`VideoTag.unconfirmed`）を普通の付与にする。要求の本文は無い
+        （docs/design-docs/auto-tagging.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/VideoTagId"
+      responses:
+        "204":
+          description: 確定した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/tags/{tagId}/reject:
+    post:
+      operationId: rejectVideoTag
+      summary: 自動タグ付けが仮に付けたタグを却下する
+      description: |
+        動画に仮に付いたタグを外し、この動画にこのタグを自動タグ付けで付け直さない。要求の本文は
+        無い（docs/design-docs/auto-tagging.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/VideoTagId"
+      responses:
+        "204":
+          description: 却下した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/videos/{id}/open:
     post:
       operationId: openVideoFile
@@ -1431,6 +1494,147 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/settings/ollama:
+    get:
+      operationId: getOllamaSettings
+      summary: Ollama の接続先を返す
+      description: |
+        判定モデル（Clef）を動かす Ollama の基底 URL と模型名。判定モデルを使う機能（自動タグ付け）の
+        設定とは別に持つ（docs/design-docs/ai-layer.md）。保存値が無ければ既定値を返す。
+      responses:
+        "200":
+          description: 今の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaSettings"
+    put:
+      operationId: updateOllamaSettings
+      summary: Ollama の接続先を保存する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OllamaSettings"
+      responses:
+        "200":
+          description: 保存後の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/settings/ollama/check:
+    post:
+      operationId: checkOllama
+      summary: 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
+      description: |
+        `GET /api/version` と `GET /api/tags` だけで確かめ、判定はさせず模型も読み込まないので
+        数秒で終わる。判定に使えるかは `POST /api/auto-tagging/check` が確かめる
+        （docs/design-docs/ai-layer.md）。接続先は要求の本文から取らない（任意の URL へ
+        サーバーから要求を送らせないため）。要求の本文は無い。
+      responses:
+        "200":
+          description: 確かめた結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/settings/auto-tagging:
+    get:
+      operationId: getAutoTaggingSettings
+      summary: 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
+      description: |
+        機能の入切（`enabled`、既定は切）、取り込みのあとの自動の判定、2 つの確率。接続先は
+        `/api/settings/ollama` が持つ（docs/design-docs/ai-layer.md）。
+      responses:
+        "200":
+          description: 今の設定と待ち行列の件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTaggingSettings"
+    put:
+      operationId: updateAutoTaggingSettings
+      summary: 自動タグ付けの機能の設定を保存する
+      description: |
+        値を確かめて保存する。判定は始めない。`enabled` を入れると、積んであった判定を続きから
+        処理する。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAutoTaggingSettingsRequest"
+      responses:
+        "200":
+          description: 保存後の設定と待ち行列の件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTaggingSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auto-tagging/check:
+    post:
+      operationId: checkAutoTaggingClassifier
+      summary: 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
+      description: |
+        今の判定の提供元に短い質問を 1 つ判定させ、確率の答えが返るかを確かめる。機能の入切に
+        関係なく確かめられる。模型の読み込みを含むので数分かかることがある
+        （docs/design-docs/auto-tagging.md）。要求の本文は無い。
+      responses:
+        "200":
+          description: 確かめた結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/auto-tagging/runs:
+    post:
+      operationId: startAutoTagging
+      summary: ライブラリの動画を判定に回す
+      description: |
+        `missing` はまだ判定を終えていない動画（判定していない・失敗した）を、`all` は
+        判定中のもの以外のすべてを積む。積んだ件数を返す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAutoTaggingRequest"
+      responses:
+        "202":
+          description: 積んだ件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTaggingQueued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 自動タグ付けの機能が切（auto_tagging_off）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/api-tokens:
     get:
@@ -2807,6 +3011,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    VideoTagId:
+      name: tagId
+      in: path
+      required: true
+      description: 動画に付いたタグの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     TagId:
       name: id
       in: path
@@ -3119,6 +3332,116 @@ components:
         enabled:
           type: boolean
 
+    AutoTaggingSettings:
+      type: object
+      required: [enabled, afterImport, threshold, tentativeThreshold, queue]
+      additionalProperties: false
+      description: 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
+      properties:
+        enabled:
+          type: boolean
+          description: 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false
+        afterImport:
+          type: boolean
+          description: 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false
+        threshold:
+          type: number
+          format: double
+          description: タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
+        tentativeThreshold:
+          type: number
+          format: double
+          description: タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+        queue:
+          $ref: "#/components/schemas/AutoTaggingQueue"
+
+    OllamaSettings:
+      type: object
+      required: [endpoint, model]
+      additionalProperties: false
+      description: Ollama の接続先（docs/design-docs/ai-layer.md）
+      properties:
+        endpoint:
+          type: string
+          description: Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434
+        model:
+          type: string
+          description: Ollama の模型名。保存値が無ければ clef-flash
+
+    AutoTaggingQueue:
+      type: object
+      required: [queued, running, done, failed]
+      additionalProperties: false
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+        done:
+          type: integer
+        failed:
+          type: integer
+        lastError:
+          type: string
+          description: 直近に失敗した判定の理由（英語。Ollama の応答を含むことがある）。失敗が無ければ省く
+
+    UpdateAutoTaggingSettingsRequest:
+      type: object
+      required: [enabled, afterImport, threshold, tentativeThreshold]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        afterImport:
+          type: boolean
+        threshold:
+          type: number
+          format: double
+          description: 0 より大きく 1 以下
+        tentativeThreshold:
+          type: number
+          format: double
+          description: 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+
+    CheckResult:
+      type: object
+      description: 確かめた結果。使えないことも 200 で返す
+      required: [available]
+      additionalProperties: false
+      properties:
+        available:
+          type: boolean
+        message:
+          type: string
+          description: 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
+
+    StartAutoTaggingRequest:
+      type: object
+      required: [scope]
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          enum: [missing, all]
+
+    AutoTaggingQueued:
+      type: object
+      required: [queued]
+      additionalProperties: false
+      properties:
+        queued:
+          type: integer
+          description: 積んだ動画の件数
+
+    AutoTagVideoResult:
+      type: object
+      required: [queued]
+      additionalProperties: false
+      properties:
+        queued:
+          type: boolean
+          description: 積んだか。判定中なら偽
+
     APIToken:
       type: object
       required: [id, name, createdAt, lastUsedAt]
@@ -3207,6 +3530,11 @@ components:
         tentative:
           type: boolean
           description: そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す
+        unconfirmed:
+          type: boolean
+          description: |
+            自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
+            返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
 
     Tag:
       type: object
@@ -4994,3 +5322,4 @@ components:
         - representative_not_selected
         - not_bundled
         - listen_failed
+        - auto_tagging_off

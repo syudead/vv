@@ -99,3 +99,31 @@ func TestMarkdownShowsChangeFromThePreviousEntry(t *testing.T) {
 		}
 	}
 }
+
+func TestRegressionsFlagWorseMetricsOnly(t *testing.T) {
+	prev := Entry{
+		Complexity:  map[string]Complexity{"go": {Functions: 100, Mean: 4.3, OverLimit: 46}, "ts": {Functions: 50, Mean: 2.5, OverLimit: 40}},
+		Duplication: &Duplication{Percentage: 2.64},
+		CI:          &CIDurations{Runs: 20, Wall: Percentiles{P90: 300}},
+	}
+	now := Entry{
+		Complexity:  map[string]Complexity{"go": {Functions: 101, Mean: 4.4, OverLimit: 47}, "ts": {Functions: 50, Mean: 2.4, OverLimit: 39}},
+		Duplication: &Duplication{Percentage: 2.70},
+		CI:          &CIDurations{Runs: 20, Wall: Percentiles{P90: 330}},
+	}
+	got := regressions(now, prev)
+	want := []string{
+		"go: functions over complexity 15 went from 46 to 47",
+		"go: mean complexity went from 4.3 to 4.4",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("regressions = %q, want %q", got, want)
+	}
+
+	now.Duplication.Percentage = 2.90
+	now.CI.Wall.P90 = 400
+	got = regressions(now, prev)
+	if len(got) != 4 || got[2] != "duplicated lines went from 2.64% to 2.90%" || got[3] != "CI wall p90 went from 300s to 400s" {
+		t.Errorf("regressions = %q", got)
+	}
+}

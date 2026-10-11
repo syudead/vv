@@ -236,12 +236,19 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 			return fmt.Errorf("cannot move the %s values: %w", table, err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at)
-		select ?, tag_id, created_at from video_tags where content_key = ?`, to, from); err != nil {
+	if _, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
+		select ?, tag_id, created_at, tentative from video_tags where content_key = ?`, to, from); err != nil {
 		return fmt.Errorf("cannot move the video_tags values: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ?`, from); err != nil {
 		return fmt.Errorf("cannot move the video_tags values: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `insert or ignore into auto_tag_rejections (content_key, tag_id, rejected_at)
+		select ?, tag_id, rejected_at from auto_tag_rejections where content_key = ?`, to, from); err != nil {
+		return fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from auto_tag_rejections where content_key = ?`, from); err != nil {
+		return fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
 	}
 	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す（specs/043-watch-history/data-model.md）。
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {

@@ -152,7 +152,9 @@ describe("BundleDialog（specs/030-video-versions/ui-design.md「Bundle dialog�
   it("選んだ id ごとに動画を取り、選んだ順に代表の行を並べる", async () => {
     renderDialog({ videoIds: [2, 1, 3] });
     const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
-    expect(within(dialog).getByText(/^These 3 videos become versions of one video\./));
+    expect(
+      within(dialog).getByText(/^These 3 videos become versions of one video\./),
+    ).toBeDefined();
     const group = await within(dialog).findByRole("radiogroup", {
       name: "Representative",
     });

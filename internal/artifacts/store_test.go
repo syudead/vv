@@ -67,6 +67,7 @@ var spriteLayout = domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Co
 // sheetWriter は受け取ったディレクトリへ、1 コマ 32 × 18 のシートを sheets 枚書く
 // 生成の代わりである。
 func sheetWriter(t *testing.T, sheets int) func(string) error {
+	t.Helper()
 	return func(dir string) error {
 		for i := range sheets {
 			if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("%03d.jpg", i)), sheetJPEG(t, 320, 180), 0o644); err != nil {
@@ -283,21 +284,33 @@ func TestPreviewCompleteness(t *testing.T) {
 		complete bool
 	}{
 		{name: "揃っている", mutate: func(*testing.T, string, string) {}, complete: true},
-		{name: "MP4 が無い", mutate: func(t *testing.T, preview, _ string) { _ = os.Remove(preview) }},
-		{name: "manifest が無い", mutate: func(t *testing.T, _, manifest string) { _ = os.Remove(manifest) }},
-		{name: "MP4 が空", mutate: func(t *testing.T, preview, _ string) { writeFile(t, preview, nil) }},
-		{name: "大きさが違う", mutate: func(t *testing.T, preview, _ string) { writeFile(t, preview, []byte("short")) }},
+		{name: "MP4 が無い", mutate: func(_ *testing.T, preview, _ string) { _ = os.Remove(preview) }},
+		{name: "manifest が無い", mutate: func(_ *testing.T, _, manifest string) { _ = os.Remove(manifest) }},
+		{name: "MP4 が空", mutate: func(t *testing.T, preview, _ string) {
+			t.Helper()
+			writeFile(t, preview, nil)
+		}},
+		{name: "大きさが違う", mutate: func(t *testing.T, preview, _ string) {
+			t.Helper()
+			writeFile(t, preview, []byte("short"))
+		}},
 		{name: "manifest の大きさが違う", mutate: func(t *testing.T, _, manifest string) {
+			t.Helper()
 			writeFile(t, manifest, manifestFor(t, payload, 99))
 		}},
 		{name: "manifest の版が違う", mutate: func(t *testing.T, _, manifest string) {
+			t.Helper()
 			writeFile(t, manifest, []byte(`{"version":2,"size":11,"sha256":"`+hex.EncodeToString(make([]byte, 32))+`"}`))
 		}},
 		{name: "MP4 が空で manifest も大きさ 0", mutate: func(t *testing.T, preview, manifest string) {
+			t.Helper()
 			writeFile(t, preview, nil)
 			writeFile(t, manifest, manifestFor(t, nil, 0))
 		}},
-		{name: "manifest が壊れている", mutate: func(t *testing.T, _, manifest string) { writeFile(t, manifest, []byte("{")) }},
+		{name: "manifest が壊れている", mutate: func(t *testing.T, _, manifest string) {
+			t.Helper()
+			writeFile(t, manifest, []byte("{"))
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -675,14 +688,17 @@ func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 func TestPublishSeekSpriteReplacesIncompleteDirectory(t *testing.T) {
 	for name, prepare := range map[string]func(t *testing.T, root string){
 		"旧形式": func(t *testing.T, root string) {
+			t.Helper()
 			_, frame0, frame1, _, _ := existingLayout(root)
 			writeFile(t, frame0, []byte("frame0"))
 			writeFile(t, frame1, []byte("frame1"))
 		},
 		"配置情報が無い": func(t *testing.T, root string) {
+			t.Helper()
 			writeFile(t, filepath.Join(seekDirOf(root), "000.jpg"), []byte("partial"))
 		},
 		"配置情報が壊れている": func(t *testing.T, root string) {
+			t.Helper()
 			writeFile(t, filepath.Join(seekDirOf(root), "000.jpg"), sheetJPEG(t, 320, 180))
 			writeFile(t, filepath.Join(seekDirOf(root), "sprite.json"), []byte(`{"version":2}`))
 		},

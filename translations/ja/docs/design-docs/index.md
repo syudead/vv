@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
+sourceHash: 213e91f87adb1cab1a27d1b6af3e3852e7217a2e18347d3ee9ef3d56d95f0215
 ---
 
 # 設計文書 {#design-documents}
@@ -30,10 +30,13 @@ sourceHash: 4ddf31646bbf07ccd34746aefa6ed7b65ed5208aef6c15a29be85fdea8a22db2
 - [再生画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [隣の字幕ファイル](sidecar-subtitles.md)
+- [判定モデルによる自動タグ付け](auto-tagging.md)
+- [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
+- [テストと CI の品質監視](test-quality-monitoring.md)
 - [VVMDM のブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
 - [シーク中のサムネイルプレビュー: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧でのホバー時の動画プレビュー: UI](../../specs/010-hover-video-preview/ui-design.md)
