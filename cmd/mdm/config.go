@@ -25,6 +25,11 @@ const (
 	// ループバックとプライベートアドレス（defaultTrustedProxies）を信じ、none なら
 	// 転送ヘッダーを読まない。
 	envTrustedProxies = "MDM_TRUSTED_PROXIES"
+	// envClefAccountID と envClefAPIToken は、自動タグ付けの判定を Ollama の代わりに
+	// Cloudflare の Workers AI に送るときのアカウント ID と API トークンである。両方あれば
+	// 設定の Ollama の URL は使わない（docs/design-docs/auto-tagging.md）。
+	envClefAccountID = "MDM_CLEF_CLOUDFLARE_ACCOUNT_ID"
+	envClefAPIToken  = "MDM_CLEF_CLOUDFLARE_API_TOKEN"
 )
 
 // 既定値。すべて未設定でも起動できる。
@@ -66,6 +71,15 @@ type Config struct {
 	// TrustedProxies は MDM_TRUSTED_PROXIES を解釈したもの。空なら転送ヘッダーを読まない。
 	// 未設定なら defaultTrustedProxies になる。
 	TrustedProxies []netip.Prefix
+	// ClefAccountID と ClefAPIToken は Workers AI の認証で、両方あるか両方空である。
+	// 両方あれば自動タグ付けの判定を Workers AI に送る。
+	ClefAccountID string
+	ClefAPIToken  string
+}
+
+// UsesWorkersAI は自動タグ付けの判定を Workers AI に送るかを返す。
+func (c Config) UsesWorkersAI() bool {
+	return c.ClefAccountID != "" && c.ClefAPIToken != ""
 }
 
 // logLevels は受け付ける記録の詳細度である。
@@ -86,6 +100,9 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		Addr:     valueOr(getenv(envAddr), defaultAddr),
 		DataDir:  valueOr(getenv(envDataDir), defaultDataDir),
 		LogLevel: valueOr(getenv(envLogLevel), defaultLogLevel),
+
+		ClefAccountID: strings.TrimSpace(getenv(envClefAccountID)),
+		ClefAPIToken:  strings.TrimSpace(getenv(envClefAPIToken)),
 	}
 
 	var problems []error
@@ -105,6 +122,11 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		problems = append(problems, fmt.Errorf(
 			"%s=%q is not a known value (use debug, info, warn or error)",
 			envLogLevel, cfg.LogLevel))
+	}
+
+	if (cfg.ClefAccountID == "") != (cfg.ClefAPIToken == "") {
+		problems = append(problems, fmt.Errorf(
+			"%s and %s must be set together", envClefAccountID, envClefAPIToken))
 	}
 
 	proxies, proxyProblems := parseTrustedProxies(getenv(envTrustedProxies))
@@ -166,6 +188,8 @@ func (c Config) LogAttrs() []slog.Attr {
 		slog.String(envDataDir, c.DataDir),
 		slog.String(envLogLevel, c.LogLevel),
 		slog.String(envTrustedProxies, formatPrefixes(c.TrustedProxies)),
+		// トークンは記録しない。Workers AI を使うかだけを残す。
+		slog.Bool("clef_workers_ai", c.UsesWorkersAI()),
 	}
 }
 

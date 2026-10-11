@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: a62a871c50fa6c983a9527b5b8f859d8a93c82fafe58c042387060bf6c966229
+sourceHash: d8e6ea18e33e38cd27d4f591948093d91d6e846edc6463bc73ece6b2319f4d8c
 ---
 
 # Ollama 上の Clef 分類器による自動タグ付け {#auto-tagging-with-a-clef-classifier-in-ollama}
@@ -89,3 +89,22 @@ Ollama が止まっていると、キューを塞ぐ代わりに、キューに�
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` は 27B で、より正確) |
 | Minimum probability | 0.8 |
+
+## Ollama の代わりに Workers AI {#workers-ai-instead-of-ollama}
+
+`MDM_CLEF_CLOUDFLARE_ACCOUNT_ID` と `MDM_CLEF_CLOUDFLARE_API_TOKEN` の両方を設定すると、サーバーは接続テストを含むすべての分類器へのリクエストを Cloudflare Workers AI 上の Clef に送り、保存した Ollama の URL を無視する。
+
+用途は、クラウドの開発コンテナのように、CPU 上の Ollama では遅すぎて機能を試せないマシンだ。クライアントは [`internal/clef/workers_ai.go`](../../internal/clef/workers_ai.go) で、起動時のログは `clef_workers_ai` を記録するが、トークンは決して記録しない。
+
+| 項目 | Ollama | Workers AI |
+| --- | --- | --- |
+| URL | 保存した Ollama の URL + `/v1/systemone` | `https://api.cloudflare.com/client/v4/accounts/<account>/ai/run/@cf/cloudflare/<model>` |
+| 認証 | なし | `Authorization: Bearer <token>` |
+| 画像 | Base64 | Base64 の `data:image/jpeg` URL |
+| 回答 | `answers` | `result.answers` |
+| 表示するエラー | JSON 応答の `error` の文言 | JSON 応答の `errors[].message` の文言 |
+| タイムアウト | 10 分 | 2 分 |
+
+モデルの設定がモデルのパスを決めるので、`clef` か `clef-flash` でなければならない。Settings 画面には Ollama の URL が引き続き表示されるが、Workers AI を使う間は効果がない。
+
+これらの変数は Settings の項目ではなく起動時の設定なので、トークンがデータベースに保存されたり API から返されたりすることは決してない。2 つのうち一方だけを設定すると、起動はエラーで止まる。

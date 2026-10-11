@@ -115,3 +115,31 @@ request could make the server fetch any reachable address and show the reply.
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` is 27B and more accurate) |
 | Minimum probability | 0.8 |
+
+## Workers AI instead of Ollama
+
+With `MDM_CLEF_CLOUDFLARE_ACCOUNT_ID` and `MDM_CLEF_CLOUDFLARE_API_TOKEN`
+both set, the server sends every classifier request, the connection test
+included, to Clef on Cloudflare Workers AI and ignores the saved Ollama URL.
+
+The use case is a machine where Ollama on the CPU is too slow to try the
+feature, such as a cloud development container. The client is
+[`internal/clef/workers_ai.go`](../../internal/clef/workers_ai.go), and the
+startup log records `clef_workers_ai` but never the token.
+
+| Item | Ollama | Workers AI |
+| --- | --- | --- |
+| URL | Saved Ollama URL + `/v1/systemone` | `https://api.cloudflare.com/client/v4/accounts/<account>/ai/run/@cf/cloudflare/<model>` |
+| Authentication | None | `Authorization: Bearer <token>` |
+| Image | Base64 | Base64 `data:image/jpeg` URL |
+| Answers | `answers` | `result.answers` |
+| Error shown | The `error` text of a JSON reply | The `errors[].message` texts of a JSON reply |
+| Timeout | 10 minutes | 2 minutes |
+
+The model setting chooses the model path, so it must be `clef` or
+`clef-flash`. The Settings screen still shows the Ollama URL, which has no
+effect while Workers AI is used.
+
+The variables are startup settings rather than Settings fields, so the token
+is never stored in the database or returned by the API. Setting only one of
+the two stops startup with an error.

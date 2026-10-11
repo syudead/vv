@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 391e979585027dc0d5b5ad863f8e2820c933a07e53dadd9457e2989131b12f0f
+sourceHash: f114d0a22773ee1a1f17479f649478d93b1038c05b945c67a74a74a491b8f1f7
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -138,6 +138,7 @@ VVMDM は、動画の隣に置かれ、動画から拡張子を除いた名前�
 | `MDM_DATA_DIR` | `/data` | データベースと生成メディアの絶対パス |
 | `MDM_LOG_LEVEL` | `info` | `debug`、`info`、`warn`、`error` のいずれか |
 | `MDM_TRUSTED_PROXIES` | プライベートアドレス | 転送ヘッダーを信頼するリバースプロキシ。[ネットワークへの公開](#network-exposure)を参照 |
+| `MDM_CLEF_CLOUDFLARE_ACCOUNT_ID`、`MDM_CLEF_CLOUDFLARE_API_TOKEN` | 未設定 | 両方を設定すると、自動タグ付けは Ollama の代わりに Cloudflare Workers AI 上の Clef に問い合わせる。[自動タグ付け](../design-docs/auto-tagging.md#workers-ai-instead-of-ollama)を参照 |
 
 Docker Compose がコンテナにこれらを設定する。メディアフォルダは設定ファイルではなく Settings で管理する。不正な値はすべて、起動時にまとめて報告される。
 

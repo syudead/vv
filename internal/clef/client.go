@@ -26,9 +26,12 @@ const maxResponseBytes = 1 << 20
 // 処理する間に、模型を読み込み直さない。
 const keepAlive = "10m"
 
-// Client は Ollama の判定 API を呼ぶ。ゼロ値は使えず、New で作る。
+// Client は Ollama の判定 API を呼ぶ。NewWorkersAI で作ったものは Cloudflare の
+// Workers AI を呼ぶ。ゼロ値は使えず、New か NewWorkersAI で作る。
 type Client struct {
 	http *http.Client
+	// workersAI は Workers AI の問い合わせ先である。nil なら Ollama に問い合わせる。
+	workersAI *workersAITarget
 }
 
 // New は既定の HTTP クライアント（環境のプロキシ設定に従う）で Client を作る。
@@ -57,7 +60,7 @@ type requestBody struct {
 	State     subjectState        `json:"state"`
 	Images    []string            `json:"images,omitempty"`
 	Questions map[string]question `json:"questions"`
-	KeepAlive string              `json:"keep_alive"`
+	KeepAlive string              `json:"keep_alive,omitempty"`
 }
 
 type answer struct {
@@ -71,25 +74,18 @@ type responseBody struct {
 }
 
 // Classify は質問ごとに「はい」の確率を返す。答えの無い質問は結果に含めない。
+// Workers AI に向けた Client（NewWorkersAI）は req.Endpoint を使わない。
 func (c *Client) Classify(ctx context.Context, req domain.AutoTagRequest) (map[string]float64, error) {
 	if len(req.Questions) == 0 {
 		return map[string]float64{}, nil
 	}
-	body := requestBody{
-		Model: req.Model,
-		State: subjectState{
-			Title:    req.Subject.Title,
-			FileName: req.Subject.FileName,
-			Folder:   req.Subject.Folder,
-		},
-		Questions: make(map[string]question, len(req.Questions)),
-		KeepAlive: keepAlive,
+	if c.workersAI != nil {
+		return c.classifyWithWorkersAI(ctx, req)
 	}
+	body := newRequestBody(req)
+	body.KeepAlive = keepAlive
 	if len(req.Subject.Thumbnail) > 0 {
 		body.Images = []string{base64.StdEncoding.EncodeToString(req.Subject.Thumbnail)}
-	}
-	for _, q := range req.Questions {
-		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Instructions}
 	}
 	encoded, err := json.Marshal(body)
 	if err != nil {
@@ -121,22 +117,49 @@ func (c *Client) Classify(ctx context.Context, req domain.AutoTagRequest) (map[s
 		if decodeErr != nil || message == "" {
 			return nil, fmt.Errorf("ollama answered %d", resp.StatusCode)
 		}
-		if len(message) > 300 {
-			message = message[:300]
-		}
-		return nil, fmt.Errorf("ollama answered %d: %s", resp.StatusCode, message)
+		return nil, fmt.Errorf("ollama answered %d: %s", resp.StatusCode, truncate(message))
 	}
 	if decodeErr != nil {
 		return nil, fmt.Errorf("cannot read the classifier response: %w", decodeErr)
 	}
-	if decoded.Answers == nil {
+	return probabilitiesOf(decoded.Answers)
+}
+
+// newRequestBody は Ollama と Workers AI に共通の本文（模型・状態・質問）を作る。
+func newRequestBody(req domain.AutoTagRequest) requestBody {
+	body := requestBody{
+		Model: req.Model,
+		State: subjectState{
+			Title:    req.Subject.Title,
+			FileName: req.Subject.FileName,
+			Folder:   req.Subject.Folder,
+		},
+		Questions: make(map[string]question, len(req.Questions)),
+	}
+	for _, q := range req.Questions {
+		body.Questions[q.Key] = question{Type: "noul", Instructions: q.Instructions}
+	}
+	return body
+}
+
+// probabilitiesOf は答えから質問ごとの「はい」の確率を取り出す。
+func probabilitiesOf(answers map[string]answer) (map[string]float64, error) {
+	if answers == nil {
 		return nil, errors.New("the classifier response has no answers")
 	}
-	probabilities := make(map[string]float64, len(decoded.Answers))
-	for key, a := range decoded.Answers {
+	probabilities := make(map[string]float64, len(answers))
+	for key, a := range answers {
 		if a.Noul != nil {
 			probabilities[key] = *a.Noul
 		}
 	}
 	return probabilities, nil
+}
+
+// truncate は画面に出す誤りの文を 300 バイトまでに切る。
+func truncate(message string) string {
+	if len(message) > 300 {
+		return message[:300]
+	}
+	return message
 }

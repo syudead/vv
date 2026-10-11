@@ -261,10 +261,15 @@ func run(opts runOptions) error {
 	}
 	// 自動タグ付け。取り込みで代表サムネイルの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
+	// MDM_CLEF_CLOUDFLARE_* があれば、判定は設定の Ollama ではなく Workers AI に送る。
+	classifier := clef.New()
+	if cfg.UsesWorkersAI() {
+		classifier = clef.NewWorkersAI(clef.WorkersAIBaseURL, cfg.ClefAccountID, cfg.ClefAPIToken)
+	}
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
-		Classifier: clef.New(),
+		Classifier: classifier,
 		Thumbnails: thumbnailSource{artifacts: artifactStore},
 		Logger:     logger,
 	})

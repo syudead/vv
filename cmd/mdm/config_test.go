@@ -48,6 +48,33 @@ func TestLoadConfigReportsAllInvalidValuesAtOnce(t *testing.T) {
 	}
 }
 
+func TestLoadConfigReadsWorkersAICredentials(t *testing.T) {
+	cfg, err := LoadConfig(envFrom(map[string]string{
+		"MDM_CLEF_CLOUDFLARE_ACCOUNT_ID": " acct ", "MDM_CLEF_CLOUDFLARE_API_TOKEN": "token",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.UsesWorkersAI() || cfg.ClefAccountID != "acct" || cfg.ClefAPIToken != "token" {
+		t.Fatalf("Workers AI credentials were not applied: %+v", cfg)
+	}
+	for _, attr := range cfg.LogAttrs() {
+		if strings.Contains(attr.Value.String(), "token") {
+			t.Errorf("the API token is logged: %v", attr)
+		}
+	}
+	if cfg, err := LoadConfig(envFrom(nil)); err != nil || cfg.UsesWorkersAI() {
+		t.Fatalf("UsesWorkersAI without credentials = %v, %v", cfg.UsesWorkersAI(), err)
+	}
+}
+
+func TestLoadConfigRejectsHalfOfWorkersAICredentials(t *testing.T) {
+	_, err := LoadConfig(envFrom(map[string]string{"MDM_CLEF_CLOUDFLARE_API_TOKEN": "token"}))
+	if err == nil || !strings.Contains(err.Error(), "MDM_CLEF_CLOUDFLARE_ACCOUNT_ID") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestVerifyCreatesDataAndThumbnailDirectories(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "data", "nested")
 	cfg := Config{Addr: ":8080", DataDir: dataDir, LogLevel: "info"}
