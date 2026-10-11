@@ -18,11 +18,13 @@ type fakeAutoTagQueue struct {
 	queued     []string
 	videos     map[string]domain.Video
 	candidates []domain.AutoTagCandidate
-	finished   map[string]domain.AutoTagSelection
-	failed     map[string]string
-	queuedIDs  []int64
-	modes      []domain.AutoTagQueueMode
-	done       chan string
+	// candidatesFor は候補を聞かれた内容の鍵である。
+	candidatesFor []string
+	finished      map[string]domain.AutoTagSelection
+	failed        map[string]string
+	queuedIDs     []int64
+	modes         []domain.AutoTagQueueMode
+	done          chan string
 }
 
 func newFakeAutoTagQueue() *fakeAutoTagQueue {
@@ -70,7 +72,10 @@ func (q *fakeAutoTagQueue) Subject(_ context.Context, key string) (domain.Video,
 	return video, nil
 }
 
-func (q *fakeAutoTagQueue) Candidates(context.Context) ([]domain.AutoTagCandidate, error) {
+func (q *fakeAutoTagQueue) Candidates(_ context.Context, key string) ([]domain.AutoTagCandidate, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.candidatesFor = append(q.candidatesFor, key)
 	return q.candidates, nil
 }
 
@@ -117,24 +122,6 @@ func (s *fakeAutoTagSettings) SaveAutoTagSettings(_ context.Context, settings do
 	return nil
 }
 
-type fakeOllamaSettings struct {
-	mu       sync.Mutex
-	settings domain.OllamaSettings
-}
-
-func (s *fakeOllamaSettings) OllamaSettings(context.Context) (domain.OllamaSettings, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.settings, nil
-}
-
-func (s *fakeOllamaSettings) SaveOllamaSettings(_ context.Context, settings domain.OllamaSettings) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.settings = settings
-	return nil
-}
-
 // enabledAutoTagSettings は機能を入にした既定の設定である。
 func enabledAutoTagSettings() *fakeAutoTagSettings {
 	settings := domain.DefaultAutoTagSettings()
@@ -142,19 +129,15 @@ func enabledAutoTagSettings() *fakeAutoTagSettings {
 	return &fakeAutoTagSettings{settings: settings}
 }
 
-func defaultOllama() *fakeOllamaSettings {
-	return &fakeOllamaSettings{settings: domain.DefaultOllamaSettings()}
-}
-
 // fakeClassifier は質問の名前ごとに決めた確率を返し、受け取った問い合わせを覚える。
 type fakeClassifier struct {
 	mu       sync.Mutex
 	answers  map[string]float64
 	err      error
-	requests []domain.AutoTagRequest
+	requests []domain.ClassifierRequest
 }
 
-func (c *fakeClassifier) Classify(_ context.Context, req domain.AutoTagRequest) (map[string]float64, error) {
+func (c *fakeClassifier) Classify(_ context.Context, req domain.ClassifierRequest) (map[string]float64, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.requests = append(c.requests, req)
@@ -219,47 +202,50 @@ func waitAutoTagDone(t *testing.T, q *fakeAutoTagQueue) string {
 	}
 }
 
-// 確率が閾値以上のタグを付け、候補が上限を超えれば分けて問い合わせ、サムネイル・コマと
-// 題名・ファイル名・フォルダを渡す。
-func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
+// 確率が閾値以上のタグを付け、その動画の候補のすべての質問を 1 件の要求にして、サムネイル・
+// コマと題名・ファイル名・フォルダを渡す。分けて送るかは判定モデルのアダプタが決める。
+func TestAutoTaggerSelectsTags(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1"}
 	queue.videos["k1"] = domain.Video{
 		Title: "Kyoto", Path: "/media/travel/bamboo.mp4", ThumbnailState: domain.ThumbnailStateDone,
 		SeekThumbnailState: domain.SeekThumbnailDone,
 	}
-	for id := int64(1); id <= domain.AutoTagMaxQuestions+2; id++ {
+	for id := int64(1); id <= 40; id++ {
 		queue.candidates = append(queue.candidates, domain.AutoTagCandidate{ID: id, Name: "t"})
 	}
 	classifier := &fakeClassifier{answers: map[string]float64{
-		"tag_1": 0.95, "tag_2": 0.5, "tag_3": 0.3, domain.AutoTagQuestionKey(domain.AutoTagMaxQuestions + 2): 0.9,
+		"tag_1": 0.95, "tag_2": 0.5, "tag_3": 0.3, "tag_40": 0.9,
 	}}
 	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{
 		Enabled: true, Threshold: 0.8, TentativeThreshold: 0.5,
 	}}
-	ollama := &fakeOllamaSettings{settings: domain.OllamaSettings{Endpoint: "http://o", Model: "clef-flash"}}
 	images := &fakeImages{
 		thumbnails: map[string][]byte{"k1": []byte("thumb")},
 		frames:     map[string][][]byte{"k1": {[]byte("f1"), []byte("f2")}},
 	}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: settings, Ollama: ollama, Classifier: classifier, Images: images,
+		Queue: queue, Settings: settings, Classifier: classifier, Images: images,
 	})
 	runAutoTagger(t, tagger)
 
 	waitAutoTagDone(t, queue)
-	want := domain.AutoTagSelection{Confirmed: []int64{1, domain.AutoTagMaxQuestions + 2}, Tentative: []int64{2}}
+	want := domain.AutoTagSelection{Confirmed: []int64{1, 40}, Tentative: []int64{2}}
 	if got := queue.finished["k1"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("付けたタグ = %v", got)
 	}
-	if len(classifier.requests) != 2 {
-		t.Fatalf("問い合わせの回数 = %d", len(classifier.requests))
+	if len(classifier.requests) != 1 || len(classifier.requests[0].Questions) != 40 {
+		t.Fatalf("問い合わせ = %d 件", len(classifier.requests))
 	}
-	req := classifier.requests[0]
-	wantSubject := domain.AutoTagSubject{Title: "Kyoto", FileName: "bamboo.mp4", Folder: "/media/travel",
-		Images: [][]byte{[]byte("thumb"), []byte("f1"), []byte("f2")}}
-	if req.Endpoint != "http://o" || req.Model != "clef-flash" || !reflect.DeepEqual(req.Subject, wantSubject) {
-		t.Fatalf("問い合わせ = %+v", req)
+	if !slices.Equal(queue.candidatesFor, []string{"k1"}) {
+		t.Fatalf("候補を聞いた動画 = %v", queue.candidatesFor)
+	}
+	wantInput := domain.ClassifierInput{
+		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "/media/travel"},
+		Images: [][]byte{[]byte("thumb"), []byte("f1"), []byte("f2")},
+	}
+	if got := classifier.requests[0].Input; !reflect.DeepEqual(got, wantInput) {
+		t.Fatalf("入力 = %+v", got)
 	}
 	if !slices.Equal(images.asked, []int{domain.AutoTagFrameCount}) {
 		t.Fatalf("コマを読んだ回数と数 = %v", images.asked)
@@ -276,7 +262,7 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
 	classifier := &fakeClassifier{err: errors.New("cannot reach Ollama")}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: enabledAutoTagSettings(), Ollama: defaultOllama(),
+		Queue: queue, Settings: enabledAutoTagSettings(),
 		Classifier: classifier, Images: &fakeImages{},
 	})
 	runAutoTagger(t, tagger)
@@ -286,7 +272,7 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	if queue.failed["k1"] != "cannot reach Ollama" || queue.failed["k2"] != "cannot reach Ollama" {
 		t.Fatalf("失敗の記録 = %v", queue.failed)
 	}
-	if classifier.requests[0].Subject.Images != nil {
+	if classifier.requests[0].Input.Images != nil {
 		t.Fatal("サムネイルもコマも無い動画に画像を渡した")
 	}
 }
@@ -298,7 +284,7 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
 	classifier := &fakeClassifier{}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: enabledAutoTagSettings(), Ollama: defaultOllama(), Classifier: classifier,
+		Queue: queue, Settings: enabledAutoTagSettings(), Classifier: classifier,
 	})
 	runAutoTagger(t, tagger)
 	waitAutoTagDone(t, queue)
@@ -316,7 +302,7 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Ollama: defaultOllama(), Classifier: &fakeClassifier{}})
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
 	settings.settings.AfterImport = true
@@ -360,7 +346,7 @@ func TestAutoTaggerIdlesWhileOff(t *testing.T) {
 	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
 	classifier := &fakeClassifier{answers: map[string]float64{"tag_1": 0.9}}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Ollama: defaultOllama(), Classifier: classifier})
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: classifier})
 	runAutoTagger(t, tagger)
 
 	select {
@@ -381,7 +367,7 @@ func TestAutoTaggerIdlesWhileOff(t *testing.T) {
 // 機能の設定は確かめてから保存し、規則に合わなければ保存しない。
 func TestAutoTaggerSaveSettings(t *testing.T) {
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Ollama: defaultOllama(), Classifier: &fakeClassifier{}})
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
 	if _, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Threshold: 0.5, TentativeThreshold: 0.6}); !errors.Is(err, domain.ErrInvalidAutoTagSettings) {
@@ -397,28 +383,22 @@ func TestAutoTaggerSaveSettings(t *testing.T) {
 	}
 }
 
-// Ollama の接続先は整えて保存し、確かめは機能の入切に関係なく保存した接続先に問い合わせる。
-func TestAutoTaggerOllamaSettingsAndCheck(t *testing.T) {
-	ollama := defaultOllama()
+// 動画が判定の途中で消えれば、問い合わせずに終える。
+func TestAutoTaggerSkipsWhenCandidatesVanish(t *testing.T) {
+	queue := &vanishingQueue{fakeAutoTagQueue: newFakeAutoTagQueue()}
+	queue.queued = []string{"k1"}
+	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
 	classifier := &fakeClassifier{}
-	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: newFakeAutoTagQueue(), Settings: &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()},
-		Ollama: ollama, Classifier: classifier,
-	})
-	ctx := context.Background()
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: enabledAutoTagSettings(), Classifier: classifier})
+	runAutoTagger(t, tagger)
+	waitAutoTagDone(t, queue.fakeAutoTagQueue)
+	if len(classifier.requests) != 0 {
+		t.Fatalf("問い合わせた: %d", len(classifier.requests))
+	}
+}
 
-	if _, err := tagger.SaveOllamaSettings(ctx, domain.OllamaSettings{Endpoint: "nope", Model: "clef"}); !errors.Is(err, domain.ErrInvalidOllamaSettings) {
-		t.Fatalf("err = %v", err)
-	}
-	saved, err := tagger.SaveOllamaSettings(ctx, domain.OllamaSettings{Endpoint: "http://h:1/", Model: "clef"})
-	want := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef"}
-	if err != nil || saved != want || ollama.settings != want {
-		t.Fatalf("saved = %+v, %v", saved, err)
-	}
-	if err := tagger.Check(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if classifier.requests[0].Endpoint != "http://h:1" || classifier.requests[0].Model != "clef" {
-		t.Fatalf("確かめが保存した接続先を使わない: %+v", classifier.requests[0])
-	}
+type vanishingQueue struct{ *fakeAutoTagQueue }
+
+func (vanishingQueue) Candidates(context.Context, string) ([]domain.AutoTagCandidate, error) {
+	return nil, domain.ErrNotFound
 }

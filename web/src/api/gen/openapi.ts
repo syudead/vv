@@ -910,8 +910,8 @@ export interface paths {
         };
         /**
          * Ollama の接続先を返す
-         * @description 判定モデル（Clef）を動かす Ollama の基底 URL と模型名。自動タグ付けの機能の入切とは別に持つ
-         *     （docs/design-docs/auto-tagging.md）。保存値が無ければ既定値を返す。
+         * @description 判定モデル（Clef）を動かす Ollama の基底 URL と模型名。判定モデルを使う機能（自動タグ付け）の
+         *     設定とは別に持つ（docs/design-docs/ai-layer.md）。保存値が無ければ既定値を返す。
          */
         get: operations["getOllamaSettings"];
         /** Ollama の接続先を保存する */
@@ -955,7 +955,7 @@ export interface paths {
         /**
          * 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
          * @description 機能の入切（`enabled`、既定は切）、取り込みのあとの自動の判定、2 つの確率。接続先は
-         *     `/api/settings/ollama` が持つ（docs/design-docs/auto-tagging.md）。
+         *     `/api/settings/ollama` が持つ（docs/design-docs/ai-layer.md）。
          */
         get: operations["getAutoTaggingSettings"];
         /**
@@ -1916,7 +1916,7 @@ export interface components {
             tentativeThreshold: number;
             queue: components["schemas"]["AutoTaggingQueue"];
         };
-        /** @description Ollama の接続先（docs/design-docs/auto-tagging.md） */
+        /** @description Ollama の接続先（docs/design-docs/ai-layer.md） */
         OllamaSettings: {
             /** @description Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434 */
             endpoint: string;
@@ -1945,7 +1945,7 @@ export interface components {
              */
             tentativeThreshold: number;
         };
-        AutoTaggingCheck: {
+        OllamaCheck: {
             available: boolean;
             /** @description 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある） */
             message?: string;
@@ -4402,7 +4402,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AutoTaggingCheck"];
+                    "application/json": components["schemas"]["OllamaCheck"];
                 };
             };
             403: components["responses"]["Forbidden"];

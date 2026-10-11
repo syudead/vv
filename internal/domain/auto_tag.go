@@ -8,9 +8,10 @@ import (
 	"strings"
 )
 
-// 自動タグ付けは、動画のサムネイルと題名・ファイル名・パスを判定モデル（Ollama の Clef）に
-// 渡し、既存のタグごとに「当てはまる確率」を聞いて、閾値以上のタグを付ける
-// （docs/design-docs/auto-tagging.md）。タグを新しく作ることはしない。
+// 自動タグ付けは、動画のサムネイル・コマと題名・ファイル名・パスを判定モデルに渡し、既存の
+// タグごとに「当てはまる確率」を聞いて、閾値以上のタグを付ける
+// （docs/design-docs/auto-tagging.md）。タグを新しく作ることはしない。判定モデルとは
+// ClassifierRequest の形でだけやり取りし、どの提供元が答えるかは知らない。
 
 // 自動タグ付けの設定の既定値である。保存値が無いときに使う。
 const (
@@ -22,21 +23,14 @@ const (
 	DefaultAutoTagTentativeThreshold = 0.5
 )
 
-// AutoTagMaxQuestions は判定モデルへの 1 回の問い合わせに載せる質問の数である。候補のタグが
-// これより多ければ分けて問い合わせる。Ollama の /v1/systemone は 64 問まで受け付けるが、
-// clef-flash は 64 問と画像で入力が約 7,400 トークンになり、メモリ 15GB の CPU 機では判定の
-// プロセスがメモリ不足で落ちた。16 問（約 2,000 トークン）なら収まる
-// （docs/design-docs/auto-tagging.md）。
-const AutoTagMaxQuestions = 16
-
 // ErrInvalidAutoTagSettings は、自動タグ付けの設定の値が規則に合わないことを表す。
 var ErrInvalidAutoTagSettings = errors.New("invalid auto-tagging settings")
 
 // ErrAutoTaggingOff は、自動タグ付けの機能が切で、判定を始められないことを表す。
 var ErrAutoTaggingOff = errors.New("auto-tagging is turned off")
 
-// AutoTagSettings は自動タグ付けの機能の設定である。判定モデルへの接続先は OllamaSettings が
-// 持ち、ここには持たない。
+// AutoTagSettings は自動タグ付けの機能の設定である。判定モデルの提供元への接続先は
+// 持たない（提供元のアダプタが自分の設定として持つ）。
 type AutoTagSettings struct {
 	// Enabled は自動タグ付けの機能を使うかである。切なら判定を始めず、待ち行列から取り出さず、
 	// 判定モデルに接続しない。既定は切。
@@ -128,7 +122,8 @@ type AutoTagStatus struct {
 	Counts   AutoTagCounts
 }
 
-// AutoTagCandidate は判定に回す既存のタグ 1 つである。仮タグ（tentative）は含めない。
+// AutoTagCandidate は判定に回す既存のタグ 1 つである。仮タグ（tentative）、その動画に
+// 確定して付いているタグ、その動画で却下されたタグは含めない。
 type AutoTagCandidate struct {
 	ID   int64
 	Name string
@@ -181,6 +176,14 @@ type AutoTagSubject struct {
 	Images [][]byte
 }
 
+// ClassifierInput は手がかりを判定モデルに見せる形にする。
+func (s AutoTagSubject) ClassifierInput() ClassifierInput {
+	return ClassifierInput{
+		Facts:  map[string]string{"title": s.Title, "file_name": s.FileName, "folder": s.Folder},
+		Images: s.Images,
+	}
+}
+
 // NewAutoTagSubject は動画の有効な題名と代表の所在のパスから手がかりを作る。パスの区切りは
 // / と \ のどちらも受け付ける（Windows 版がある）。
 func NewAutoTagSubject(title, path string) AutoTagSubject {
@@ -191,21 +194,13 @@ func NewAutoTagSubject(title, path string) AutoTagSubject {
 	return AutoTagSubject{Title: title, FileName: name, Folder: folder}
 }
 
-// AutoTagQuestion は判定モデルへの、はい／いいえの質問 1 つである。
-type AutoTagQuestion struct {
-	// Key は答えを引き当てる名前である。
-	Key string
-	// Instructions は質問の文（英語）である。
-	Instructions string
-}
-
 // AutoTagQuestionKey はタグの id から質問の名前を作る。
 func AutoTagQuestionKey(tagID int64) string {
 	return fmt.Sprintf("tag_%d", tagID)
 }
 
 // AutoTagQuestionFor はタグ 1 つを質問の文にする。シノニムがあれば別名として添える。
-func AutoTagQuestionFor(candidate AutoTagCandidate) AutoTagQuestion {
+func AutoTagQuestionFor(candidate AutoTagCandidate) ClassifierQuestion {
 	var b strings.Builder
 	// 「この動画を表すか」と聞くと、動画の一部にだけ当てはまるタグの確率が下がった
 	// （docs/design-docs/auto-tagging.md）。どこか一部に当てはまれば付く聞き方にする。
@@ -218,17 +213,7 @@ func AutoTagQuestionFor(candidate AutoTagCandidate) AutoTagQuestion {
 		fmt.Fprintf(&b, " The tag is also known as %s.", strings.Join(quoted, ", "))
 	}
 	b.WriteString(" The images are the thumbnail and frames taken from across the video; a tag applies if it fits any of them, or the title, file name or folder.")
-	return AutoTagQuestion{Key: AutoTagQuestionKey(candidate.ID), Instructions: b.String()}
-}
-
-// ChunkAutoTagCandidates は候補を 1 回の問い合わせに載る大きさ（AutoTagMaxQuestions）に分ける。
-func ChunkAutoTagCandidates(candidates []AutoTagCandidate) [][]AutoTagCandidate {
-	var chunks [][]AutoTagCandidate
-	for start := 0; start < len(candidates); start += AutoTagMaxQuestions {
-		end := min(start+AutoTagMaxQuestions, len(candidates))
-		chunks = append(chunks, candidates[start:end])
-	}
-	return chunks
+	return ClassifierQuestion{Key: AutoTagQuestionKey(candidate.ID), Text: b.String()}
 }
 
 // AutoTagSelection は判定の結果、付けるタグの id である。
@@ -262,13 +247,3 @@ type AutoTagApplied struct {
 }
 
 func (AutoTagApplied) event() {}
-
-// AutoTagRequest は判定モデルへの問い合わせ 1 回分である。
-type AutoTagRequest struct {
-	// Endpoint と Model は問い合わせ先（設定の値）である。
-	Endpoint string
-	Model    string
-	Subject  AutoTagSubject
-	// Questions は 1 から AutoTagMaxQuestions 個の、はい／いいえの質問である。
-	Questions []AutoTagQuestion
-}

@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// Ollama の接続先の設定である。判定モデル（Clef）を使う機能（自動タグ付け）が共有し、機能の
-// 入切とは別に持つ（docs/design-docs/auto-tagging.md）。
+// Ollama の接続先の設定である。判定モデルの提供元 Ollama のアダプタ（internal/ollama）が
+// 読み、判定モデルを使う機能（自動タグ付け）の設定とは別に持つ（docs/design-docs/ai-layer.md）。
 
 const (
 	// DefaultOllamaEndpoint は Ollama が既定で待ち受ける場所である。

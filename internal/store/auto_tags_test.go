@@ -296,7 +296,7 @@ func TestAutoTagCandidates(t *testing.T) {
 		domain.VideoTagsAdd, []string{"tentative one"}, true); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.AutoTags().Candidates(ctx)
+	got, err := db.AutoTags().Candidates(ctx, "key"+fixturePath("/media/solo.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,6 +306,60 @@ func TestAutoTagCandidates(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("候補 = %+v, want %+v", got, want)
+	}
+}
+
+// その動画に確定して付いているタグと却下されたタグは聞かない。仮に付いているタグは聞く。
+// ほかの動画の付与と却下は関係しない。
+func TestAutoTagCandidatesExcludeAttachedAndRejected(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	store := db.AutoTags()
+	soloKey := "key" + fixturePath("/media/solo.mp4")
+	attached := createTestTag(t, db, "attached")
+	suggested := createTestTag(t, db, "suggested")
+	rejected := createTestTag(t, db, "rejected")
+	createTestTag(t, db, "fresh")
+	solo := ids[fixturePath("/media/solo.mp4")]
+	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil {
+		t.Fatal(err)
+	}
+	claimAutoTag(t, store)
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{
+		Confirmed: []int64{attached.ID}, Tentative: []int64{suggested.ID, rejected.ID},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RejectTentative(ctx, solo, rejected.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Candidates(ctx, soloKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, c := range got {
+		names = append(names, c.Name)
+	}
+	if !slices.Equal(names, []string{"fresh", "suggested"}) {
+		t.Fatalf("候補 = %v", names)
+	}
+
+	// 別の動画には、どのタグも聞く。
+	var otherKey string
+	if err := db.sql.QueryRowContext(ctx, `select content_key from videos where id <> ? and content_key <> '' limit 1`,
+		solo).Scan(&otherKey); err != nil {
+		t.Fatal(err)
+	}
+	others, err := store.Candidates(ctx, otherKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(others) != 4 {
+		t.Fatalf("別の動画の候補 = %+v", others)
+	}
+	if _, err := store.Candidates(ctx, "no such key"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("無い動画の候補 err = %v", err)
 	}
 }
 

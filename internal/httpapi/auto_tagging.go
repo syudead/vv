@@ -9,14 +9,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// AutoTagging は自動タグ付けの設定・確かめ・判定の始め方である。internal/app の *AutoTagger が
-// これを満たす（docs/design-docs/auto-tagging.md）。
+// AutoTagging は自動タグ付けの設定と判定の始め方である。internal/app の *AutoTagger が
+// これを満たす（docs/design-docs/auto-tagging.md）。判定モデルの接続先は OllamaConnection が
+// 持ち、ここには無い。
 type AutoTagging interface {
 	Status(ctx context.Context) (domain.AutoTagStatus, error)
 	SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error)
-	OllamaSettings(ctx context.Context) (domain.OllamaSettings, error)
-	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
-	Check(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
 	// ConfirmTag と RejectTag は動画に仮に付いたタグを確定・却下する。仮に付いていなければ
@@ -76,70 +74,6 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
-}
-
-// GetOllamaSettings は Ollama の接続先を返す。
-func (s *server) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
-	if s.autoTagging == nil {
-		s.internalError(w, "Ollama settings are not configured.", nil)
-		return
-	}
-	settings, err := s.autoTagging.OllamaSettings(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not read the Ollama settings.", err)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: settings.Endpoint, Model: settings.Model}, s.logger)
-}
-
-// UpdateOllamaSettings は Ollama の接続先を確かめて保存する。
-func (s *server) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
-	if s.autoTagging == nil {
-		s.internalError(w, "Ollama settings are not configured.", nil)
-		return
-	}
-	var body struct {
-		Endpoint *string `json:"endpoint"`
-		Model    *string `json:"model"`
-	}
-	if !s.readJSONBody(w, r, &body) {
-		return
-	}
-	if body.Endpoint == nil || body.Model == nil {
-		s.invalidRequest(w, "endpoint and model are required.")
-		return
-	}
-	saved, err := s.autoTagging.SaveOllamaSettings(r.Context(), domain.OllamaSettings{
-		Endpoint: *body.Endpoint, Model: *body.Model,
-	})
-	if errors.Is(err, domain.ErrInvalidOllamaSettings) {
-		s.invalidRequest(w, err.Error())
-		return
-	}
-	if err != nil {
-		s.internalError(w, "Could not save the Ollama settings.", err)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: saved.Endpoint, Model: saved.Model}, s.logger)
-}
-
-// CheckOllama は保存した接続先と模型で判定できるかを確かめる。使えないことは 200 の
-// available=false で返す。接続先は要求から取らず、保存した設定だけを使う。
-func (s *server) CheckOllama(w http.ResponseWriter, r *http.Request) {
-	if s.autoTagging == nil {
-		s.internalError(w, "Ollama settings are not configured.", nil)
-		return
-	}
-	err := s.autoTagging.Check(r.Context())
-	result := gen.AutoTaggingCheck{Available: err == nil}
-	if err != nil {
-		message := err.Error()
-		result.Message = &message
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, result, s.logger)
 }
 
 // StartAutoTagging はライブラリの動画を判定に回す。

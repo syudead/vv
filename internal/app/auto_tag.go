@@ -14,9 +14,6 @@ import (
 // autoTagRetryDelay は、待ち行列からの取り出し自体が失敗したときに次に試すまでの間隔である。
 const autoTagRetryDelay = 5 * time.Second
 
-// autoTagCheckTimeout は接続の確かめの上限時間である。模型の読み込みを含むので長めにとる。
-const autoTagCheckTimeout = 5 * time.Minute
-
 // maxAutoTagErrorLength は残す失敗の理由の長さの上限である。
 const maxAutoTagErrorLength = 500
 
@@ -28,7 +25,9 @@ type AutoTagQueue interface {
 	Claim(ctx context.Context) (domain.AutoTagJob, error)
 	// Subject は内容の動画を返す。無ければ domain.ErrNotFound。
 	Subject(ctx context.Context, contentKey string) (domain.Video, error)
-	Candidates(ctx context.Context) ([]domain.AutoTagCandidate, error)
+	// Candidates は内容の動画に聞くタグを返す。仮タグ、その動画に確定して付いているタグ、
+	// その動画で却下されたタグは含めない。
+	Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error)
 	// Finish は判定を終え、確定と仮のタグを付ける。
 	Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection) error
 	// ConfirmTentative と RejectTentative は動画に仮に付いたタグを確定・却下する。仮に付いて
@@ -46,17 +45,6 @@ type AutoTagSettingsStore interface {
 	SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error
 }
 
-// OllamaSettingsStore は Ollama の接続先の保存先である。internal/store の *SettingsStore が満たす。
-type OllamaSettingsStore interface {
-	OllamaSettings(ctx context.Context) (domain.OllamaSettings, error)
-	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
-}
-
-// AutoTagClassifier は判定モデルに質問ごとの「はい」の確率を聞く。internal/clef の *Client が満たす。
-type AutoTagClassifier interface {
-	Classify(ctx context.Context, req domain.AutoTagRequest) (map[string]float64, error)
-}
-
 // VideoImageSource は判定に添える画像を生成物の置き場から読む。
 type VideoImageSource interface {
 	// ThumbnailJPEG は代表サムネイルの JPEG を読む。無ければ誤りを返す。
@@ -68,22 +56,22 @@ type VideoImageSource interface {
 
 // AutoTaggerOptions は自動タグ付けに必要な依存である。
 type AutoTaggerOptions struct {
-	Queue      AutoTagQueue
-	Settings   AutoTagSettingsStore
-	Ollama     OllamaSettingsStore
-	Classifier AutoTagClassifier
+	Queue    AutoTagQueue
+	Settings AutoTagSettingsStore
+	// Classifier は判定モデルの口で、どの提供元かは知らない。
+	Classifier Classifier
 	Images     VideoImageSource
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
 
 // AutoTagger は動画を判定モデルに回し、確率が閾値以上の既存のタグを付ける
-// （docs/design-docs/auto-tagging.md）。判定は 1 件ずつ、待ち行列の順に行う。
+// （docs/design-docs/auto-tagging.md）。判定は 1 件ずつ、待ち行列の順に行う。判定モデルとは
+// Classifier の口でだけやり取りし、提供元（Ollama など）の接続先や制約は知らない。
 type AutoTagger struct {
 	queue      AutoTagQueue
 	settings   AutoTagSettingsStore
-	ollama     OllamaSettingsStore
-	classifier AutoTagClassifier
+	classifier Classifier
 	images     VideoImageSource
 	logger     *slog.Logger
 	wake       chan struct{}
@@ -101,7 +89,6 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 	return &AutoTagger{
 		queue:      opts.Queue,
 		settings:   opts.Settings,
-		ollama:     opts.Ollama,
 		classifier: opts.Classifier,
 		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
@@ -147,49 +134,6 @@ func (a *AutoTagger) SaveSettings(ctx context.Context, settings domain.AutoTagSe
 	}
 	a.Wake()
 	return a.Status(ctx)
-}
-
-// OllamaSettings は Ollama の接続先を返す。
-func (a *AutoTagger) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
-	return a.ollama.OllamaSettings(ctx)
-}
-
-// SaveOllamaSettings は接続先を確かめて保存し、保存後の値を返す。規則に合わなければ
-// domain.ErrInvalidOllamaSettings を包んだ誤りを返す。
-func (a *AutoTagger) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error) {
-	normalized, err := domain.NormalizeOllamaSettings(settings)
-	if err != nil {
-		return domain.OllamaSettings{}, err
-	}
-	a.saveMu.Lock()
-	err = a.ollama.SaveOllamaSettings(ctx, normalized)
-	a.saveMu.Unlock()
-	if err != nil {
-		return domain.OllamaSettings{}, err
-	}
-	return normalized, nil
-}
-
-// Check は保存した接続先と模型で、短い質問を 1 つ判定させて、使えるかを確かめる。使えなければ
-// 理由を包んだ誤りを返す。接続先は保存した設定だけから取り、呼び出し側が渡した URL へは要求を
-// 送らない。自動タグ付けの機能の入切には関係なく確かめられる。
-func (a *AutoTagger) Check(ctx context.Context) error {
-	ollama, err := a.ollama.OllamaSettings(ctx)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(ctx, autoTagCheckTimeout)
-	defer cancel()
-	_, err = a.classifier.Classify(ctx, domain.AutoTagRequest{
-		Endpoint: ollama.Endpoint,
-		Model:    ollama.Model,
-		Subject:  domain.NewAutoTagSubject("Connection check", "/videos/check.mp4"),
-		Questions: []domain.AutoTagQuestion{{
-			Key:          "check",
-			Instructions: "Is this a connection check?",
-		}},
-	})
-	return err
 }
 
 // enabled は自動タグ付けの機能が入かを返す。
@@ -368,10 +312,6 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 	if err != nil {
 		return selection, err
 	}
-	ollama, err := a.ollama.OllamaSettings(ctx)
-	if err != nil {
-		return selection, err
-	}
 	video, err := a.queue.Subject(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
 		return selection, nil
@@ -379,7 +319,10 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 	if err != nil {
 		return selection, err
 	}
-	candidates, err := a.queue.Candidates(ctx)
+	candidates, err := a.queue.Candidates(ctx, job.ContentKey)
+	if errors.Is(err, domain.ErrNotFound) {
+		return selection, nil
+	}
 	if err != nil {
 		return selection, err
 	}
@@ -390,24 +333,18 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 	subject := domain.NewAutoTagSubject(video.Title, video.Path)
 	subject.Images = a.videoImages(job.ContentKey, video)
 
-	for _, chunk := range domain.ChunkAutoTagCandidates(candidates) {
-		questions := make([]domain.AutoTagQuestion, len(chunk))
-		for i, candidate := range chunk {
-			questions[i] = domain.AutoTagQuestionFor(candidate)
-		}
-		probabilities, err := a.classifier.Classify(ctx, domain.AutoTagRequest{
-			Endpoint:  ollama.Endpoint,
-			Model:     ollama.Model,
-			Subject:   subject,
-			Questions: questions,
-		})
-		if err != nil {
-			return selection, err
-		}
-		chunkSelection := domain.SelectAutoTags(chunk, probabilities, settings)
-		selection.Confirmed = append(selection.Confirmed, chunkSelection.Confirmed...)
-		selection.Tentative = append(selection.Tentative, chunkSelection.Tentative...)
+	questions := make([]domain.ClassifierQuestion, len(candidates))
+	for i, candidate := range candidates {
+		questions[i] = domain.AutoTagQuestionFor(candidate)
 	}
+	probabilities, err := a.classifier.Classify(ctx, domain.ClassifierRequest{
+		Input:     subject.ClassifierInput(),
+		Questions: questions,
+	})
+	if err != nil {
+		return selection, err
+	}
+	selection = domain.SelectAutoTags(candidates, probabilities, settings)
 	return selection, nil
 }
 

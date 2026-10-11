@@ -72,24 +72,25 @@ func TestNewAutoTagSubjectSplitsPaths(t *testing.T) {
 
 func TestAutoTagQuestionForMentionsSynonyms(t *testing.T) {
 	q := AutoTagQuestionFor(AutoTagCandidate{ID: 7, Name: "cat", Synonyms: []string{"kitty", "猫"}})
-	if q.Key != "tag_7" {
+	if q.Key != "tag_7" || !strings.Contains(q.Text, "any part of this video") {
 		t.Errorf("key = %q", q.Key)
 	}
 	for _, part := range []string{`"cat"`, `"kitty", "猫"`} {
-		if !strings.Contains(q.Instructions, part) {
-			t.Errorf("instructions %q lacks %s", q.Instructions, part)
+		if !strings.Contains(q.Text, part) {
+			t.Errorf("text %q lacks %s", q.Text, part)
 		}
 	}
 }
 
-func TestChunkAutoTagCandidates(t *testing.T) {
-	candidates := make([]AutoTagCandidate, AutoTagMaxQuestions*2+1)
-	chunks := ChunkAutoTagCandidates(candidates)
-	if len(chunks) != 3 || len(chunks[0]) != AutoTagMaxQuestions || len(chunks[2]) != 1 {
-		t.Fatalf("chunk sizes = %d", len(chunks))
+func TestAutoTagSubjectClassifierInput(t *testing.T) {
+	subject := NewAutoTagSubject("Kyoto", "/media/travel/bamboo.mp4")
+	subject.Images = [][]byte{[]byte("thumb")}
+	want := ClassifierInput{
+		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "/media/travel"},
+		Images: [][]byte{[]byte("thumb")},
 	}
-	if ChunkAutoTagCandidates(nil) != nil {
-		t.Fatal("空の候補に塊ができた")
+	if got := subject.ClassifierInput(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
 	}
 }
 

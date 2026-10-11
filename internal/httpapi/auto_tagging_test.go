@@ -13,11 +13,24 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// autoTagClassifier は判定モデルの代わりで、err があれば失敗を返す。
-type autoTagClassifier struct{ err error }
+// autoTagClassifier は判定モデルの代わりで、何にも当てはまらないと答える。
+type autoTagClassifier struct{}
 
-func (c autoTagClassifier) Classify(context.Context, domain.AutoTagRequest) (map[string]float64, error) {
-	return map[string]float64{}, c.err
+func (autoTagClassifier) Classify(context.Context, domain.ClassifierRequest) (map[string]float64, error) {
+	return map[string]float64{}, nil
+}
+
+// ollamaProbe は接続の確かめの代わりで、呼ばれた回数を数え、err があれば失敗を返す。
+type ollamaProbe struct {
+	err    error
+	checks *int
+}
+
+func (p ollamaProbe) Check(context.Context) error {
+	if p.checks != nil {
+		*p.checks++
+	}
+	return p.err
 }
 
 type autoTaggingFixture struct {
@@ -25,16 +38,16 @@ type autoTaggingFixture struct {
 	owner *http.Cookie
 }
 
-// newAutoTaggingFixture は本物の保存先と app.AutoTagger で経路を組む。判定モデルだけが偽で、
-// 判定は動かさない（積むところまでを確かめる）。
-func newAutoTaggingFixture(t *testing.T, classifier app.AutoTagClassifier) *autoTaggingFixture {
+// newAutoTaggingFixture は本物の保存先と app.AutoTagger・app.OllamaConnection で経路を組む。
+// 判定モデルと接続の確かめだけが偽で、判定は動かさない（積むところまでを確かめる）。
+func newAutoTaggingFixture(t *testing.T, probe app.OllamaProbe) *autoTaggingFixture {
 	t.Helper()
 	f := &autoTaggingFixture{}
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		tagger := app.NewAutoTagger(app.AutoTaggerOptions{
-			Queue: db.AutoTags(), Settings: db.Settings(), Ollama: db.Settings(), Classifier: classifier, Logger: discardLogger(),
+			Queue: db.AutoTags(), Settings: db.Settings(), Classifier: autoTagClassifier{}, Logger: discardLogger(),
 		})
-		return Options{AutoTagging: tagger, Videos: db.Library()}
+		return Options{AutoTagging: tagger, Ollama: app.NewOllamaConnection(db.Settings(), probe), Videos: db.Library()}
 	})
 	f.owner = f.env.setup()
 	return f
@@ -55,7 +68,7 @@ func (f *autoTaggingFixture) send(method, target, body string) *http.Response {
 }
 
 func TestAutoTaggingSettingsDefaultsAndSave(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 
 	rec := f.env.get("/api/settings/auto-tagging", f.owner)
 	if rec.Code != http.StatusOK {
@@ -84,7 +97,7 @@ func TestAutoTaggingSettingsDefaultsAndSave(t *testing.T) {
 }
 
 func TestAutoTaggingSettingsRejectInvalidBodies(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 	for _, body := range []string{
 		`{}`,
 		`{"enabled":true,"afterImport":true,"threshold":0.5}`,
@@ -103,7 +116,7 @@ func TestAutoTaggingSettingsRejectInvalidBodies(t *testing.T) {
 }
 
 func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 
 	rec := f.env.get("/api/settings/ollama", f.owner)
 	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK ||
@@ -125,36 +138,21 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 	}
 }
 
-// recordingClassifier は問い合わせ先を覚え、err があれば失敗を返す。
-type recordingClassifier struct {
-	err       error
-	endpoints *[]string
-}
-
-func (c recordingClassifier) Classify(_ context.Context, req domain.AutoTagRequest) (map[string]float64, error) {
-	*c.endpoints = append(*c.endpoints, req.Endpoint)
-	return map[string]float64{}, c.err
-}
-
-// 確かめは保存した問い合わせ先にだけ送り、要求の本文の URL は使わない。機能が切でも確かめられる。
-func TestCheckOllamaUsesSavedEndpoint(t *testing.T) {
-	var endpoints []string
-	ok := newAutoTaggingFixture(t, recordingClassifier{endpoints: &endpoints})
+// 確かめは要求の本文を使わず（保存した接続先で確かめるのは判定モデルのアダプタの仕事）、
+// 機能が切でも確かめられる。使えないことは 200 の available=false で返す。
+func TestCheckOllama(t *testing.T) {
+	var checks int
+	ok := newAutoTaggingFixture(t, ollamaProbe{checks: &checks})
 	rec := ok.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check",
 		body: `{"endpoint":"http://attacker.example","model":"clef"}`, cookies: []*http.Cookie{ok.owner}})
-	if got := decode[gen.AutoTaggingCheck](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil {
-		t.Fatalf("available check = %d %+v", rec.Code, got)
-	}
-	if len(endpoints) != 1 || endpoints[0] != domain.DefaultOllamaEndpoint {
-		t.Fatalf("問い合わせ先 = %v", endpoints)
+	if got := decode[gen.OllamaCheck](t, rec); rec.Code != http.StatusOK || !got.Available || got.Message != nil || checks != 1 {
+		t.Fatalf("available check = %d %+v, checks = %d", rec.Code, got, checks)
 	}
 
-	down := newAutoTaggingFixture(t, recordingClassifier{
-		err: errors.New("cannot reach Ollama at http://127.0.0.1:11434"), endpoints: &endpoints,
-	})
+	down := newAutoTaggingFixture(t, ollamaProbe{err: errors.New("cannot reach Ollama at http://127.0.0.1:11434")})
 	rec = down.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/ollama/check",
 		cookies: []*http.Cookie{down.owner}})
-	got := decode[gen.AutoTaggingCheck](t, rec)
+	got := decode[gen.OllamaCheck](t, rec)
 	if rec.Code != http.StatusOK || got.Available || got.Message == nil || !strings.Contains(*got.Message, "cannot reach Ollama") {
 		t.Fatalf("unavailable check = %d %+v", rec.Code, got)
 	}
@@ -162,7 +160,7 @@ func TestCheckOllamaUsesSavedEndpoint(t *testing.T) {
 
 // 機能が切なら、判定に回す要求は 409 で断る（動画 1 本の経路も同じ誤りを同じ応答にする）。
 func TestAutoTaggingRefusesWhileOff(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 	for _, req := range []authRequest{
 		{method: http.MethodPost, target: "/api/auto-tagging/runs", body: `{"scope":"missing"}`},
 	} {
@@ -175,7 +173,7 @@ func TestAutoTaggingRefusesWhileOff(t *testing.T) {
 }
 
 func TestStartAutoTaggingValidatesScope(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 	f.turnOn(t)
 	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/auto-tagging/runs",
 		body: `{"scope":"missing"}`, cookies: []*http.Cookie{f.owner}})
@@ -190,7 +188,7 @@ func TestStartAutoTaggingValidatesScope(t *testing.T) {
 }
 
 func TestAutoTagVideoNotFound(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 	f.turnOn(t)
 	for _, target := range []string{"/api/videos/999/auto-tag", "/api/videos/999/tags/1/confirm", "/api/videos/999/tags/1/reject"} {
 		if res := f.send(http.MethodPost, target, ""); res.StatusCode != http.StatusNotFound {
@@ -200,7 +198,7 @@ func TestAutoTagVideoNotFound(t *testing.T) {
 }
 
 func TestAutoTaggingIsOwnerOnly(t *testing.T) {
-	f := newAutoTaggingFixture(t, autoTagClassifier{})
+	f := newAutoTaggingFixture(t, ollamaProbe{})
 	assertUnauthenticated(t, "GET", f.env.get("/api/settings/auto-tagging"))
 	assertUnauthenticated(t, "GET ollama", f.env.get("/api/settings/ollama"))
 	for _, req := range []authRequest{

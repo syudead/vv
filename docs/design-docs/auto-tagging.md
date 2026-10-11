@@ -1,11 +1,12 @@
-# Auto-tagging with a Clef classifier in Ollama
+# Auto-tagging with a decision model
 
-VVMDM asks a decision model running in Ollama (Cloudflare's Clef or
-Clef-flash) which existing tags fit a video, and adds the tags whose
-probability reaches a threshold. The use case is
-[`internal/app/auto_tag.go`](../../internal/app/auto_tag.go), the queue is
-[`internal/store/auto_tags.go`](../../internal/store/auto_tags.go), and the
-Ollama client is [`internal/clef`](../../internal/clef).
+VVMDM asks a decision model which existing tags fit a video, and adds the tags
+whose probability reaches a threshold. The use case is
+[`internal/app/auto_tag.go`](../../internal/app/auto_tag.go) and the queue is
+[`internal/store/auto_tags.go`](../../internal/store/auto_tags.go). The model
+is reached through the classifier port, whose provider today is Cloudflare's
+Clef or Clef-flash in Ollama ([ai-layer.md](ai-layer.md)); auto-tagging does
+not know the provider.
 
 The diagram shows how a video reaches the classifier and how its tags come
 back.
@@ -15,17 +16,18 @@ flowchart LR
   seek[Seek preview stage done] -->|feature and automatic judging on| queue[(auto_tag_queue)]
   owner[Owner] -->|Settings or video page| queue
   queue --> worker[Auto-tagging worker]
-  worker --> clef[Ollama /v1/systemone]
-  clef -->|probability per tag| worker
+  worker --> port[Classifier port]
+  port -->|probability per tag| worker
   worker -->|tags at or above threshold| tags[(video_tags)]
   tags --> screen[Video notice to screens]
 ```
 
 ## Classifier request
 
-Each existing tag becomes one yes/no (`noul`) question, and a video is sent as
-its library thumbnail, 8 frames spread across the whole video, and a JSON
-state with its title, file name and folder.
+Each candidate tag becomes one yes/no question, and a video is sent as its
+library thumbnail, 8 frames spread across the whole video, and the facts
+`title`, `file_name` and `folder`. All questions for a video go in one request
+to the port, which splits them as its provider needs.
 
 The thumbnail shows one scene, so a video whose scenes differ would only be
 judged on that one; the frames let the classifier see the rest. They are cut
@@ -39,12 +41,23 @@ thumbnail.
 | `title` | The display name, else the file title | Never missing |
 | `file_name`, `folder` | The representative location's path | Never missing |
 
-Clef scores every question in one non-autoregressive pass and returns a
-probability per question. A request carries 16 tags, and a library with more
-tags is sent in batches of 16 with the same images. The question asks whether
-the tag appears in or applies to any part of the video, names its synonyms,
-and says the images come from across the video; tentative tags are not asked
-about.
+The candidates are the tags whose answer could still change the video's tags.
+Asking about the rest costs time on every request and cannot change the
+result.
+
+| Tag | Asked |
+| --- | --- |
+| Not on the video | Yes |
+| Suggested (unconfirmed) on the video | Yes; a later answer at or above "Probability to add" confirms it |
+| Already on the video as an ordinary tag | No |
+| Rejected for the video | No |
+| Tentative tag (a tag state, not a suggestion) | No |
+
+A version bundle's members share their tags, so attachments and rejections
+are those of the bundle.
+
+The question asks whether the tag appears in or applies to any part of the
+video, names its synonyms, and says the images come from across the video.
 
 The wording decides whether frames help. On a 30 s video of a cat, a rocket
 and a cup of coffee, with the thumbnail showing the cat:
@@ -58,17 +71,14 @@ and a cup of coffee, with the thumbnail showing the cat:
 Asking whether a tag describes the video makes the model weigh the whole
 video, so a tag that fits one scene falls below the threshold.
 
-Ollama accepts 64 questions per request, but 64 questions and a thumbnail make
-about 7,400 input tokens, and Clef-flash on a 15 GB CPU machine was killed for
-lack of memory. 16 questions make about 2,000 tokens with the thumbnail alone.
-The images are processed again for every batch, so time per video grows with
-the number of tags. On a 4-core CPU without a GPU, Clef-flash took about 100 s
-per thumbnail with 9 tags; the published GPU latency is under 0.2 s.
+Time per video grows with the number of candidates; the Ollama provider's
+batches and measured times are in [ai-layer.md](ai-layer.md#ollama-provider).
 
 | Rejected | Why |
 | --- | --- |
 | The thumbnail alone | It shows one scene, so tags for the rest of the video are missed |
 | The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 8 frames |
+| Ask about every tag on every video | Tags already on the video or rejected for it cannot change, and each one adds time |
 
 ## Tags it adds
 
@@ -116,7 +126,7 @@ stateDiagram-v2
   [*] --> queued: added
   queued --> running: worker claims
   running --> done: answer recorded
-  running --> failed: Ollama error
+  running --> failed: classifier error
   running --> queued: restart
   failed --> queued: tag not yet tagged
   done --> queued: tag all again, or the video page
@@ -135,12 +145,12 @@ to queue with `409 auto_tagging_off`.
 
 Keeping `done` rows means a tag the owner removed is not added back by the
 next import of the same content. One worker judges one video at a time, so a
-slow CPU-only Ollama is not given parallel requests it cannot serve.
+slow CPU-only provider is not given parallel requests it cannot serve.
 
 ## Failures
 
-A failed request marks the row `failed` with Ollama's message and the worker
-moves on; nothing retries it until the owner queues it again.
+A failed request marks the row `failed` with the provider's message and the
+worker moves on; nothing retries it until the owner queues it again.
 
 Ollama being stopped makes every queued video fail within seconds instead of
 blocking the queue, and the Settings page shows the count and the last
@@ -149,39 +159,25 @@ startup.
 
 ## Settings
 
-The Ollama connection and the auto-tagging feature are separate settings, each
-with its own Settings section and API resource. The connection says where the
-classifier runs; the feature says whether VVMDM uses it.
-
-| Section | API | Holds |
-| --- | --- | --- |
-| Ollama | `/api/settings/ollama`, `/api/settings/ollama/check` | The Ollama URL and the model, and the connection test |
-| Auto-tagging | `/api/settings/auto-tagging` | Whether the feature is used, automatic judging after import, the two probabilities, the queue counts |
+The Auto-tagging section of Settings (`/api/settings/auto-tagging`) holds
+whether the feature is used, automatic judging after import, the two
+probabilities and the queue counts. The provider's connection is a separate
+section and resource ([ai-layer.md](ai-layer.md#ollama-provider)).
 
 Auto-tagging is optional and off by default. While "Use auto-tagging" is off:
 
-- the worker claims no queued video and never contacts Ollama, and the queued
-  rows wait until the feature is turned on again;
+- the worker claims no queued video and never contacts the provider, and the
+  queued rows wait until the feature is turned on again;
 - nothing is queued, by import, Settings or the video page;
 - the video page has no "Suggest tags" button;
 - suggested tags already added can still be kept or rejected.
 
-"Save and test connection" in the Ollama section saves the form and sends one
-question to the saved URL; it works whether the feature is on or off, so the
-connection can be tried before turning the feature on.
-
-The server only sends requests to the saved URL, never to one in a request
-body, and passes on only the error text of an Ollama JSON reply. Otherwise a
-request could make the server fetch any reachable address and show the reply.
-
-| Setting | Section | Default |
-| --- | --- | --- |
-| Ollama URL | Ollama | `http://127.0.0.1:11434` |
-| Model | Ollama | `clef-flash` (`clef` is 27B and more accurate) |
-| Use auto-tagging | Auto-tagging | Off |
-| Tag new videos automatically | Auto-tagging | Off (has no effect while the feature is off) |
-| Probability to add | Auto-tagging | 0.8 |
-| Probability to suggest | Auto-tagging | 0.5 (the same value as "Probability to add" turns suggestions off) |
+| Setting | Default |
+| --- | --- |
+| Use auto-tagging | Off |
+| Tag new videos automatically | Off (has no effect while the feature is off) |
+| Probability to add | 0.8 |
+| Probability to suggest | 0.5 (the same value as "Probability to add" turns suggestions off) |
 
 | Rejected | Why |
 | --- | --- |

@@ -1151,14 +1151,6 @@ type AutoTagVideoResult struct {
 	Queued bool `json:"queued"`
 }
 
-// AutoTaggingCheck defines model for AutoTaggingCheck.
-type AutoTaggingCheck struct {
-	Available bool `json:"available"`
-
-	// Message 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある）
-	Message *string `json:"message,omitempty"`
-}
-
 // AutoTaggingQueue defines model for AutoTaggingQueue.
 type AutoTaggingQueue struct {
 	Done   int `json:"done"`
@@ -1578,7 +1570,15 @@ type NetworkSettings struct {
 	Port int `json:"port"`
 }
 
-// OllamaSettings Ollama の接続先（docs/design-docs/auto-tagging.md）
+// OllamaCheck defines model for OllamaCheck.
+type OllamaCheck struct {
+	Available bool `json:"available"`
+
+	// Message 使えないときの理由（英語。Ollama が JSON で返した誤りの文を含むことがある）
+	Message *string `json:"message,omitempty"`
+}
+
+// OllamaSettings Ollama の接続先（docs/design-docs/ai-layer.md）
 type OllamaSettings struct {
 	// Endpoint Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434
 	Endpoint string `json:"endpoint"`

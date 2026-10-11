@@ -287,6 +287,8 @@ type Options struct {
 	AutoImport AutoImportSettings
 	// AutoTagging は自動タグ付けの設定と判定の始め方。nil なら該当の経路は 500 を返す。
 	AutoTagging AutoTagging
+	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
+	Ollama OllamaConnection
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -354,6 +356,7 @@ type server struct {
 	networkSettings   NetworkSettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	ollama            OllamaConnection
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -428,6 +431,7 @@ func NewRouter(opts Options) http.Handler {
 		networkSettings:   opts.NetworkSettings,
 		autoImport:        opts.AutoImport,
 		autoTagging:       opts.AutoTagging,
+		ollama:            opts.Ollama,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,

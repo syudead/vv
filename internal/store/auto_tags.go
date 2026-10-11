@@ -218,13 +218,31 @@ func (s *AutoTagStore) Subject(ctx context.Context, contentKey string) (domain.V
 	return getVideo(ctx, s.db.sql, domain.AudienceOwner, id)
 }
 
-// Candidates は判定に回す既存のタグを、仮タグを除いて名前の順で返す。
-func (s *AutoTagStore) Candidates(ctx context.Context) ([]domain.AutoTagCandidate, error) {
+// Candidates は内容の動画に聞く既存のタグを名前の順で返す。仮タグ、その動画（集まりの
+// メンバーなら集まり）に確定して付いているタグ、その動画で所有者が却下したタグは除く。
+// 仮に付いているタグは、判定し直して確定することがあるので含める。動画がライブラリに
+// 無ければ domain.ErrNotFound。
+func (s *AutoTagStore) Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error) {
+	videoID, err := videoIDForContent(ctx, s.db.sql, contentKey)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := userKeysForVideoIDs(ctx, s.db.sql, []int64{videoID})
+	if err != nil {
+		return nil, err
+	}
+	if len(keys) != 1 {
+		return nil, domain.ErrNotFound
+	}
 	rows, err := s.db.sql.QueryContext(ctx, `
 		select t.id, n.name, n.canonical from tags t
 		  join tag_names n on n.tag_id = t.id
 		 where t.tentative = 0
-		 order by t.id, n.canonical desc, n.name`)
+		   and not exists (select 1 from video_tags vt
+		                    where vt.content_key = ?1 and vt.tag_id = t.id and vt.tentative = 0)
+		   and not exists (select 1 from auto_tag_rejections r
+		                    where r.content_key = ?1 and r.tag_id = t.id)
+		 order by t.id, n.canonical desc, n.name`, keys[0])
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the tags: %w", err)
 	}

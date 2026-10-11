@@ -94,7 +94,7 @@ export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
-export type AutoTaggingCheck = components["schemas"]["AutoTaggingCheck"];
+export type OllamaCheck = components["schemas"]["OllamaCheck"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
@@ -871,8 +871,8 @@ export function updateOllamaSettings(
  * checkOllama は保存した接続先と模型で判定できるかを確かめる。接続先は送らない
  * （サーバーは保存した設定だけを使う）。
  */
-export function checkOllama(signal?: AbortSignal): Promise<AutoTaggingCheck> {
-  return request<AutoTaggingCheck>("/api/settings/ollama/check", {
+export function checkOllama(signal?: AbortSignal): Promise<OllamaCheck> {
+  return request<OllamaCheck>("/api/settings/ollama/check", {
     method: "POST",
     signal,
   });

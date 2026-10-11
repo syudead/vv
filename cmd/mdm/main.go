@@ -21,13 +21,13 @@ import (
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
-	"github.com/syudead/vv/internal/clef"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/mediafs"
+	"github.com/syudead/vv/internal/ollama"
 	"github.com/syudead/vv/internal/opener"
 	"github.com/syudead/vv/internal/scanner"
 	"github.com/syudead/vv/internal/store"
@@ -259,13 +259,17 @@ func run(opts runOptions) error {
 		workers = append(workers, worker)
 		wakers[kind] = worker
 	}
+	// 判定モデル（AI）の層。提供元のアダプタ（Ollama）が自分の接続先を設定から読み、機能へは
+	// app.Classifier の口だけを見せる（docs/design-docs/ai-layer.md）。別の提供元にするときは
+	// ここで差し替える。
+	classifier := ollama.New(settingsStore)
+	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
 	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
-		Ollama:     settingsStore,
-		Classifier: clef.New(),
+		Classifier: classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
 		Logger:     logger,
 	})
@@ -391,6 +395,7 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
+		Ollama:            ollamaConnection,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,
