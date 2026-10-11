@@ -100,9 +100,9 @@ func TestListDirectoriesRejectsInvalidPaths(t *testing.T) {
 		path string
 		want error
 	}{
-		"空":        {path: "", want: domain.ErrInvalidDirectoryPath},
-		"相対パス":     {path: filepath.Join("relative", "media"), want: domain.ErrInvalidDirectoryPath},
-		"存在しない":    {path: filepath.Join(root, "missing"), want: domain.ErrDirectoryNotFound},
+		"空":         {path: "", want: domain.ErrInvalidDirectoryPath},
+		"相対パス":      {path: filepath.Join("relative", "media"), want: domain.ErrInvalidDirectoryPath},
+		"存在しない":     {path: filepath.Join(root, "missing"), want: domain.ErrDirectoryNotFound},
 		"ディレクトリでない": {path: file, want: domain.ErrDirectoryNotFound},
 	} {
 		t.Run(name, func(t *testing.T) {

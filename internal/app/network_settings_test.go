@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"reflect"
@@ -13,14 +14,26 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// callTrace は待ち受けと保存先の呼び出しを 1 本の順序で記録する。
+type callTrace struct{ calls []string }
+
+func (c *callTrace) record(call string) {
+	if c != nil {
+		c.calls = append(c.calls, call)
+	}
+}
+
 // fakeNetworkSettingsStore は保存した値と、保存時の ctx が切れていたかを覚える。
+// trace があれば、失敗した保存の試みも含めて記録する。
 type fakeNetworkSettingsStore struct {
 	saved      []bool
 	saveErr    error
 	ctxErrSeen error
+	trace      *callTrace
 }
 
 func (f *fakeNetworkSettingsStore) SaveLANAccess(ctx context.Context, allowed bool) error {
+	f.trace.record(fmt.Sprintf("save %v", allowed))
 	f.ctxErrSeen = ctx.Err()
 	if f.saveErr != nil {
 		return f.saveErr
@@ -35,9 +48,11 @@ type fakeNetworkListener struct {
 	addr    string
 	reopens []string
 	failOn  map[string]error
+	trace   *callTrace
 }
 
 func (f *fakeNetworkListener) Reopen(addr string) error {
+	f.trace.record("reopen " + addr)
 	f.reopens = append(f.reopens, addr)
 	if err := f.failOn[addr]; err != nil {
 		return err
@@ -177,8 +192,9 @@ func TestNetworkSettingsSetLANAccessSwitchesListenerThenSaves(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			store := &fakeNetworkSettingsStore{}
-			listener := &fakeNetworkListener{addr: tc.startAddr}
+			trace := &callTrace{}
+			store := &fakeNetworkSettingsStore{trace: trace}
+			listener := &fakeNetworkListener{addr: tc.startAddr, trace: trace}
 			settings := NewNetworkSettings(NetworkSettingsOptions{
 				Store: store, Listener: listener, LANAccess: tc.initial,
 				Addresses: staticAddresses("192.168.1.10"), Logger: discardLogger(),
@@ -191,8 +207,10 @@ func TestNetworkSettingsSetLANAccessSwitchesListenerThenSaves(t *testing.T) {
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("SetLANAccess() = %+v, want %+v", got, want)
 			}
-			if !reflect.DeepEqual(listener.reopens, []string{tc.wantAddr}) {
-				t.Fatalf("reopens = %v, want [%s]", listener.reopens, tc.wantAddr)
+			// 待ち受けを開き直してから保存する。逆順だと開けなかったときに保存値と食い違う。
+			wantCalls := []string{"reopen " + tc.wantAddr, fmt.Sprintf("save %v", tc.allowed)}
+			if !reflect.DeepEqual(trace.calls, wantCalls) {
+				t.Fatalf("calls = %v, want %v", trace.calls, wantCalls)
 			}
 			if !reflect.DeepEqual(store.saved, []bool{tc.allowed}) {
 				t.Fatalf("saved = %v, want [%v]", store.saved, tc.allowed)
@@ -226,10 +244,12 @@ func TestNetworkSettingsSetLANAccessSameValueDoesNothing(t *testing.T) {
 
 func TestNetworkSettingsSetLANAccessKeepsSettingWhenListenFails(t *testing.T) {
 	listenErr := errors.New("address in use")
-	store := &fakeNetworkSettingsStore{}
+	trace := &callTrace{}
+	store := &fakeNetworkSettingsStore{trace: trace}
 	listener := &fakeNetworkListener{
 		addr:   "127.0.0.1:8080",
 		failOn: map[string]error{"0.0.0.0:8080": listenErr},
+		trace:  trace,
 	}
 	settings := NewNetworkSettings(NetworkSettingsOptions{
 		Store: store, Listener: listener, Addresses: staticAddresses("192.168.1.10"), Logger: discardLogger(),
@@ -238,8 +258,9 @@ func TestNetworkSettingsSetLANAccessKeepsSettingWhenListenFails(t *testing.T) {
 	if !errors.Is(err, domain.ErrListenFailed) || !errors.Is(err, listenErr) {
 		t.Fatalf("error = %v, want domain.ErrListenFailed wrapping %v", err, listenErr)
 	}
-	if len(store.saved) != 0 {
-		t.Fatalf("待ち受けを開けなかったのに保存した: %v", store.saved)
+	// 開けなかったら保存を試みない。
+	if want := []string{"reopen 0.0.0.0:8080"}; !reflect.DeepEqual(trace.calls, want) {
+		t.Fatalf("calls = %v, want %v", trace.calls, want)
 	}
 	want := domain.NetworkSettings{LANAccess: false, Port: 8080, Addresses: []string{}}
 	if current := settings.Current(); !reflect.DeepEqual(current, want) {
@@ -249,8 +270,9 @@ func TestNetworkSettingsSetLANAccessKeepsSettingWhenListenFails(t *testing.T) {
 
 func TestNetworkSettingsSetLANAccessRestoresListenerWhenSaveFails(t *testing.T) {
 	saveErr := errors.New("disk full")
-	store := &fakeNetworkSettingsStore{saveErr: saveErr}
-	listener := &fakeNetworkListener{addr: "127.0.0.1:8080"}
+	trace := &callTrace{}
+	store := &fakeNetworkSettingsStore{saveErr: saveErr, trace: trace}
+	listener := &fakeNetworkListener{addr: "127.0.0.1:8080", trace: trace}
 	settings := NewNetworkSettings(NetworkSettingsOptions{
 		Store: store, Listener: listener, Addresses: staticAddresses("192.168.1.10"), Logger: discardLogger(),
 	})
@@ -261,8 +283,10 @@ func TestNetworkSettingsSetLANAccessRestoresListenerWhenSaveFails(t *testing.T) 
 	if errors.Is(err, domain.ErrListenFailed) {
 		t.Fatalf("保存の失敗を待ち受けの失敗として返した: %v", err)
 	}
-	if !reflect.DeepEqual(listener.reopens, []string{"0.0.0.0:8080", "127.0.0.1:8080"}) {
-		t.Fatalf("reopens = %v, want the new address then the previous one", listener.reopens)
+	// 新しいアドレスで開き直し、保存に失敗してから元のアドレスへ戻す。
+	wantCalls := []string{"reopen 0.0.0.0:8080", "save true", "reopen 127.0.0.1:8080"}
+	if !reflect.DeepEqual(trace.calls, wantCalls) {
+		t.Fatalf("calls = %v, want %v", trace.calls, wantCalls)
 	}
 	if listener.addr != "127.0.0.1:8080" {
 		t.Fatalf("待ち受けが元のアドレスへ戻っていない: %s", listener.addr)
