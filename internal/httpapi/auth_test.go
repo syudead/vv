@@ -779,6 +779,7 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 		revoke func(t *testing.T, env *authEnv, server *httptest.Server, cookie *http.Cookie)
 	}{
 		{"ログアウト", func(t *testing.T, _ *authEnv, server *httptest.Server, cookie *http.Cookie) {
+			t.Helper()
 			req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/auth/logout", nil)
 			req.AddCookie(cookie)
 			resp, err := server.Client().Do(req)
@@ -791,6 +792,7 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 			}
 		}},
 		{"パスワードの再設定", func(t *testing.T, env *authEnv, _ *httptest.Server, _ *http.Cookie) {
+			t.Helper()
 			hash, err := password.Hash("a new password")
 			if err != nil {
 				t.Fatal(err)
@@ -800,6 +802,7 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 			}
 		}},
 		{"ユーザー名の変更", func(t *testing.T, env *authEnv, _ *httptest.Server, _ *http.Cookie) {
+			t.Helper()
 			if err := env.db.Auth().ChangeUsername(context.Background(), "renamed", env.clock()); err != nil {
 				t.Fatal(err)
 			}

@@ -635,7 +635,7 @@ describe("VideoTags", () => {
 
     // 2回目（作成を含む、最新の）GET が届いても、引き続き出ている。
     heldGetReleases[1]!();
-    await waitFor(() => expect(screen.getByTitle("新しいタグ")).toBeDefined());
+    expect(await screen.findByTitle("新しいタグ")).toBeDefined();
   });
 
   it("矢印キーで候補を選び、Enter で付けられる（キーボードだけ）", async () => {

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Link } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -103,17 +103,13 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
     // フォルダと設定の画面は使うときに読み込むので、出てくるのを待つ。
     await user.click(await screen.findByRole("link", { name: "設定へ" }));
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: "動画へ" })).toBeDefined(),
-    );
+    expect(await screen.findByRole("link", { name: "動画へ" })).toBeDefined();
     expect(screen.getByRole("button", { name: /^Scanning 4 of 10 videos done\./ })).toBe(
       indicator,
     );
 
     await user.click(screen.getByRole("link", { name: "動画へ" }));
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
-    );
+    expect(await screen.findByRole("link", { name: "ライブラリへ" })).toBeDefined();
     const playbackIndicator = screen.getByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
@@ -146,9 +142,7 @@ describe("App", () => {
     ).toBe("right");
 
     await user.click(screen.getByRole("link", { name: "動画へ" }));
-    await waitFor(() =>
-      expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
-    );
+    expect(await screen.findByRole("link", { name: "ライブラリへ" })).toBeDefined();
     expect(screen.getByText("route toast").textContent).toBe(toast.textContent);
     // 再生画面では上端の中央に出し、右上の閉じる × を覆わない。
     expect(toaster()?.getPropertyValue("--offset-top")).toBe("0.375rem");

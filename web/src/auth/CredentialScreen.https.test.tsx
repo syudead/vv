@@ -24,10 +24,10 @@ describe("HTTPS の接続", () => {
     expect(screen.queryByText(/encrypted/)).toBeNull();
     expect(screen.queryByText(/secure/)).toBeNull();
     expect(document.getElementById("connection-warning")).toBeNull();
-    expect(screen.getByLabelText("Username").getAttribute("aria-describedby")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Sign in" }).getAttribute("aria-describedby"),
-    ).toBeNull();
+    const username = screen.getByLabelText("Username");
+    expect(username.getAttribute("aria-describedby")).toBeNull();
+    const signIn = screen.getByRole("button", { name: "Sign in" });
+    expect(signIn.getAttribute("aria-describedby")).toBeNull();
   });
 
   it("初回設定画面に警告を出さない", () => {

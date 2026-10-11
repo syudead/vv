@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -43,8 +43,8 @@ function Harness({
 
 function setup(controls: PlayerControls | null = fakeControls()) {
   const onClose = vi.fn();
-  const view = render(<Harness controls={controls} onClose={onClose} />);
-  return { onClose, view, controls };
+  render(<Harness controls={controls} onClose={onClose} />);
+  return { onClose, controls };
 }
 
 describe("useKeyboardShortcuts", () => {
@@ -79,8 +79,8 @@ describe("useKeyboardShortcuts", () => {
 
   it("操作バーの部品が伝播を止めても、捕捉段階で受ける", () => {
     const controls = fakeControls();
-    const { view } = setup(controls);
-    const plain = view.getByTestId("plain");
+    setup(controls);
+    const plain = screen.getByTestId("plain");
     plain.addEventListener("keydown", (event) => event.stopPropagation());
     fireEvent.keyDown(plain, { key: "m" });
     expect(controls.toggleMute).toHaveBeenCalledTimes(1);
@@ -88,19 +88,19 @@ describe("useKeyboardShortcuts", () => {
 
   it("ボタンやリンクの上の Space では起きない", () => {
     const controls = fakeControls();
-    const { view } = setup(controls);
-    fireEvent.keyDown(view.getByRole("button"), { key: " " });
-    fireEvent.keyDown(view.getByRole("link"), { key: " " });
+    setup(controls);
+    fireEvent.keyDown(screen.getByRole("button"), { key: " " });
+    fireEvent.keyDown(screen.getByRole("link"), { key: " " });
     expect(controls.togglePlay).not.toHaveBeenCalled();
     // ボタンの上でも Space 以外のキーは効く。
-    fireEvent.keyDown(view.getByRole("button"), { key: "m" });
+    fireEvent.keyDown(screen.getByRole("button"), { key: "m" });
     expect(controls.toggleMute).toHaveBeenCalledTimes(1);
   });
 
   it("入力欄では起きない", () => {
     const controls = fakeControls();
-    const { view, onClose } = setup(controls);
-    const input = view.getByRole("textbox");
+    const { onClose } = setup(controls);
+    const input = screen.getByRole("textbox");
     for (const key of [" ", "ArrowRight", "f", "m", "c", "0", "Escape"]) {
       fireEvent.keyDown(input, { key });
     }

@@ -590,11 +590,9 @@ describe("SelectionBar", () => {
     expect(server.attached.get(2)?.has(1)).toBe(false);
     expect(server.attached.get(3)?.has(1)).toBe(false);
     // 外した後もポップオーバーは開いたまま、要約を取り直して残りの候補を見せる。
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("option", { name: "Drama, only some videos, 1 of 3" }),
-      ).toBeDefined(),
-    );
+    expect(
+      await screen.findByRole("option", { name: "Drama, only some videos, 1 of 3" }),
+    ).toBeDefined();
   });
 
   it("外すのに失敗すると、理由が出て選択とポップオーバーを保ったまま再試行できる", async () => {

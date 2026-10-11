@@ -306,11 +306,9 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
 
     // 続きが届くと読み込んだ行が増え、全部の状態は中間に戻る。
     await scrollToEnd(100);
-    await waitFor(() =>
-      expect(
-        screen.getByRole("checkbox", { name: "Select all 150 loaded tags" }),
-      ).toBeDefined(),
-    );
+    expect(
+      await screen.findByRole("checkbox", { name: "Select all 150 loaded tags" }),
+    ).toBeDefined();
     expect(within(bar).getByText("100 tags selected")).toBeDefined();
     expect(
       screen
