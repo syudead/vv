@@ -134,6 +134,10 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	if _, err := store.QueueVideos(ctx, []int64{first}, domain.AutoTagQueueIfNew); err != nil {
 		t.Fatal(err)
 	}
+	// 次の積みが同じミリ秒に入っても順が決まるよう、最初に積んだ行を前の時刻にする。
+	if _, err := db.sql.Exec(`update auto_tag_queue set queued_at = queued_at - 1000`); err != nil {
+		t.Fatal(err)
+	}
 	n, err := store.QueueLibrary(ctx, domain.AutoTagQueueUnlessDone)
 	if err != nil {
 		t.Fatal(err)
