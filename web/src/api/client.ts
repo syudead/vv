@@ -95,6 +95,7 @@ export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type AutoTaggingCheck = components["schemas"]["AutoTaggingCheck"];
+export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
   components["schemas"]["UpdateAutoTaggingSettingsRequest"];
@@ -846,11 +847,32 @@ export function updateAutoTaggingSettings(
 }
 
 /**
- * checkAutoTagging は保存した問い合わせ先と模型で判定できるかを確かめる。問い合わせ先は
- * 送らない（サーバーは保存した設定だけを使う）。
+ * getOllamaSettings は判定モデルを動かす Ollama の接続先を取得する。自動タグ付けの機能の
+ * 入切とは別の設定である（docs/design-docs/auto-tagging.md）。
  */
-export function checkAutoTagging(signal?: AbortSignal): Promise<AutoTaggingCheck> {
-  return request<AutoTaggingCheck>("/api/settings/auto-tagging/check", {
+export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings> {
+  return request<OllamaSettings>("/api/settings/ollama", { signal });
+}
+
+/** updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値を返す。 */
+export function updateOllamaSettings(
+  settings: OllamaSettings,
+  signal?: AbortSignal,
+): Promise<OllamaSettings> {
+  return request<OllamaSettings>("/api/settings/ollama", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/**
+ * checkOllama は保存した接続先と模型で判定できるかを確かめる。接続先は送らない
+ * （サーバーは保存した設定だけを使う）。
+ */
+export function checkOllama(signal?: AbortSignal): Promise<AutoTaggingCheck> {
+  return request<AutoTaggingCheck>("/api/settings/ollama/check", {
     method: "POST",
     signal,
   });

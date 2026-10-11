@@ -264,6 +264,7 @@ func run(opts runOptions) error {
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
+		Ollama:     settingsStore,
 		Classifier: clef.New(),
 		Images:     videoImageSource{artifacts: artifactStore},
 		Logger:     logger,

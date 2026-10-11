@@ -1,7 +1,7 @@
 import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
-import { autoTagVideo } from "../api/client";
+import { autoTagVideo, getAutoTaggingSettings, isAborted } from "../api/client";
 import { errorText, t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { useToast } from "../ui/Toast";
@@ -9,12 +9,25 @@ import { useToast } from "../ui/Toast";
 /**
  * AutoTagButton は動画ページで、この動画を自動タグ付けの判定に回す操作である
  * （docs/design-docs/auto-tagging.md）。判定は裏で進み、タグが付くと動画の知らせで
- * ページが読み直すので、ここでは積んだことだけを知らせる。
+ * ページが読み直すので、ここでは積んだことだけを知らせる。自動タグ付けの機能が切なら
+ * （設定を読めないときも）何も出さない。
  */
 export default function AutoTagButton({ videoId }: { videoId: number }) {
   const text = t.player.autoTag;
   const toast = useToast();
   const [pending, setPending] = useState(false);
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    getAutoTaggingSettings(abort.signal).then(
+      (settings) => setEnabled(settings.enabled),
+      (failure: unknown) => {
+        if (!isAborted(failure)) setEnabled(false);
+      },
+    );
+    return () => abort.abort();
+  }, []);
 
   const run = async () => {
     if (pending) return;
@@ -29,6 +42,7 @@ export default function AutoTagButton({ videoId }: { videoId: number }) {
     }
   };
 
+  if (!enabled) return null;
   return (
     <div>
       <Button

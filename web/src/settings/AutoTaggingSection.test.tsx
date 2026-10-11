@@ -19,9 +19,8 @@ function json(body: unknown, status = 200): Response {
 
 function settings(change: Partial<AutoTaggingSettings> = {}): AutoTaggingSettings {
   return {
-    enabled: false,
-    endpoint: "http://127.0.0.1:11434",
-    model: "clef-flash",
+    enabled: true,
+    afterImport: false,
     threshold: 0.8,
     tentativeThreshold: 0.5,
     queue: { queued: 0, running: 0, done: 0, failed: 0 },
@@ -53,10 +52,6 @@ describe("AutoTaggingSection", () => {
       return Promise.resolve(json(current));
     }
     if (url === URL) return Promise.resolve(json(current));
-    if (url === `${URL}/check`)
-      return Promise.resolve(
-        json({ available: false, message: "cannot reach Ollama at http://gpu:11434" }),
-      );
     if (url === "/api/auto-tagging/runs")
       return Promise.resolve(json({ queued: 4 }, 202));
     return Promise.reject(new Error(`unexpected request: ${url}`));
@@ -85,24 +80,33 @@ describe("AutoTaggingSection", () => {
 
   it("shows the stored settings, the queue counts and the last failure", async () => {
     render(<AutoTaggingSection />);
-    const endpoint = await screen.findByLabelText<HTMLInputElement>("Ollama URL");
-    expect(endpoint.value).toBe("http://127.0.0.1:11434");
-    expect(screen.getByLabelText<HTMLInputElement>("Model").value).toBe("clef-flash");
+    const enabled = await screen.findByRole("switch", { name: "Use auto-tagging" });
+    expect(enabled.getAttribute("aria-checked")).toBe("true");
     expect(
       screen
         .getByRole("switch", { name: "Tag new videos automatically" })
         .getAttribute("aria-checked"),
     ).toBe("false");
+    expect(screen.queryByLabelText("Ollama URL")).toBeNull();
     expect(screen.getByText("Waiting 0 · Tagging 0 · Done 3 · Failed 1")).toBeTruthy();
     expect(screen.getByText("model 'clef' not found")).toBeTruthy();
   });
 
+  it("hides the queue and the run buttons while auto-tagging is off", async () => {
+    current = settings({ enabled: false });
+    render(<AutoTaggingSection />);
+    await screen.findByRole("switch", { name: "Use auto-tagging" });
+    expect(
+      screen.queryByRole("button", { name: "Tag videos not yet tagged" }),
+    ).toBeNull();
+    expect(screen.queryByText(/^Waiting/)).toBeNull();
+  });
+
   it("saves the edited values", async () => {
     const user = userEvent.setup();
+    current = settings({ enabled: false });
     render(<AutoTaggingSection />);
-    const endpoint = await screen.findByLabelText("Ollama URL");
-    await user.clear(endpoint);
-    await user.type(endpoint, "http://gpu:11434");
+    await user.click(await screen.findByRole("switch", { name: "Use auto-tagging" }));
     await user.click(
       screen.getByRole("switch", { name: "Tag new videos automatically" }),
     );
@@ -116,11 +120,13 @@ describe("AutoTaggingSection", () => {
     );
     expect(saved).toEqual({
       enabled: true,
-      endpoint: "http://gpu:11434",
-      model: "clef-flash",
+      afterImport: true,
       threshold: 0.6,
       tentativeThreshold: 0.5,
     });
+    expect(
+      await screen.findByRole("button", { name: "Tag videos not yet tagged" }),
+    ).toBeTruthy();
   });
 
   it("does not save an out-of-range threshold", async () => {
@@ -134,27 +140,6 @@ describe("AutoTaggingSection", () => {
     expect(saved).toBeUndefined();
   });
 
-  it("saves unsaved edits before testing the connection", async () => {
-    const user = userEvent.setup();
-    render(<AutoTaggingSection />);
-    const model = await screen.findByLabelText("Model");
-    await user.clear(model);
-    await user.type(model, "clef");
-    await user.click(screen.getByRole("button", { name: "Save and test connection" }));
-    await screen.findByText(
-      "The classifier didn't answer: cannot reach Ollama at http://gpu:11434",
-    );
-    const urls = fetchMock.mock.calls.map(
-      ([input, init]) => `${init?.method ?? "GET"} ${String(input)}`,
-    );
-    expect(urls.indexOf(`PUT ${URL}`)).toBeLessThan(urls.indexOf(`POST ${URL}/check`));
-    expect((saved as { model: string }).model).toBe("clef");
-    const check = fetchMock.mock.calls.find(
-      ([input]) => String(input) === `${URL}/check`,
-    );
-    expect(check?.[1]?.body).toBeUndefined();
-  });
-
   it("does not save a suggestion probability above the add probability", async () => {
     const user = userEvent.setup();
     render(<AutoTaggingSection />);
@@ -164,19 +149,6 @@ describe("AutoTaggingSection", () => {
     expect(tentative.getAttribute("aria-invalid")).toBe("true");
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(saved).toBeUndefined();
-  });
-
-  it("shows why the connection test failed", async () => {
-    const user = userEvent.setup();
-    render(<AutoTaggingSection />);
-    await user.click(
-      await screen.findByRole("button", { name: "Save and test connection" }),
-    );
-    expect(
-      await screen.findByText(
-        "The classifier didn't answer: cannot reach Ollama at http://gpu:11434",
-      ),
-    ).toBeTruthy();
   });
 
   it("queues the videos not yet tagged", async () => {

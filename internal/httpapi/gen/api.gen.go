@@ -184,6 +184,7 @@ const (
 	ErrorReasonApiTokenNameControlCharacters ErrorReason = "api_token_name_control_characters"
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
+	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
@@ -235,6 +236,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonApiTokenNameEmpty:
 		return true
 	case ErrorReasonApiTokenNameTooLong:
+		return true
+	case ErrorReasonAutoTaggingOff:
 		return true
 	case ErrorReasonCrossOrigin:
 		return true
@@ -1173,17 +1176,14 @@ type AutoTaggingQueued struct {
 	Queued int `json:"queued"`
 }
 
-// AutoTaggingSettings 自動タグ付けの設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
+// AutoTaggingSettings 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
 type AutoTaggingSettings struct {
-	// Enabled 取り込みのあとに自動で判定するか。保存値が無ければ false
-	Enabled bool `json:"enabled"`
+	// AfterImport 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false
+	AfterImport bool `json:"afterImport"`
 
-	// Endpoint Ollama の基底 URL。保存値が無ければ http://127.0.0.1:11434
-	Endpoint string `json:"endpoint"`
-
-	// Model Ollama の模型名。保存値が無ければ clef-flash
-	Model string           `json:"model"`
-	Queue AutoTaggingQueue `json:"queue"`
+	// Enabled 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false
+	Enabled bool             `json:"enabled"`
+	Queue   AutoTaggingQueue `json:"queue"`
 
 	// TentativeThreshold タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
 	TentativeThreshold float64 `json:"tentativeThreshold"`
@@ -1576,6 +1576,15 @@ type NetworkSettings struct {
 
 	// Port 今の待ち受けのポート
 	Port int `json:"port"`
+}
+
+// OllamaSettings Ollama の接続先（docs/design-docs/auto-tagging.md）
+type OllamaSettings struct {
+	// Endpoint Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434
+	Endpoint string `json:"endpoint"`
+
+	// Model Ollama の模型名。保存値が無ければ clef-flash
+	Model string `json:"model"`
 }
 
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
@@ -1999,11 +2008,8 @@ type UpdateAutoImportSettingsRequest struct {
 
 // UpdateAutoTaggingSettingsRequest defines model for UpdateAutoTaggingSettingsRequest.
 type UpdateAutoTaggingSettingsRequest struct {
-	Enabled bool `json:"enabled"`
-
-	// Endpoint http か https の URL
-	Endpoint string `json:"endpoint"`
-	Model    string `json:"model"`
+	AfterImport bool `json:"afterImport"`
+	Enabled     bool `json:"enabled"`
 
 	// TentativeThreshold 0 より大きく threshold 以下。threshold と同じなら仮に付けない
 	TentativeThreshold float64 `json:"tentativeThreshold"`
@@ -2854,6 +2860,9 @@ type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
+// UpdateOllamaSettingsJSONRequestBody defines body for UpdateOllamaSettings for application/json ContentType.
+type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
+
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
@@ -2988,21 +2997,27 @@ type ServerInterface interface {
 	// UpdateAutoImportSettings 自動の取り込みを入れる／切るを保存し、監視を張る／外す
 	// (PUT /api/settings/auto-import)
 	UpdateAutoImportSettings(w http.ResponseWriter, r *http.Request)
-	// GetAutoTaggingSettings 自動タグ付けの設定と、判定の待ち行列の件数を返す
+	// GetAutoTaggingSettings 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
 	// (GET /api/settings/auto-tagging)
 	GetAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
-	// UpdateAutoTaggingSettings 自動タグ付けの設定を保存する
+	// UpdateAutoTaggingSettings 自動タグ付けの機能の設定を保存する
 	// (PUT /api/settings/auto-tagging)
 	UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
-	// CheckAutoTagging 保存した問い合わせ先と模型で判定できるかを確かめる
-	// (POST /api/settings/auto-tagging/check)
-	CheckAutoTagging(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
 	// UpdateNetworkSettings LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
 	// (PUT /api/settings/network)
 	UpdateNetworkSettings(w http.ResponseWriter, r *http.Request)
+	// GetOllamaSettings Ollama の接続先を返す
+	// (GET /api/settings/ollama)
+	GetOllamaSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateOllamaSettings Ollama の接続先を保存する
+	// (PUT /api/settings/ollama)
+	UpdateOllamaSettings(w http.ResponseWriter, r *http.Request)
+	// CheckOllama 保存した接続先と模型で判定できるかを確かめる
+	// (POST /api/settings/ollama/check)
+	CheckOllama(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 	// (GET /api/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -4168,20 +4183,6 @@ func (siw *ServerInterfaceWrapper) UpdateAutoTaggingSettings(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
-// CheckAutoTagging operation middleware
-func (siw *ServerInterfaceWrapper) CheckAutoTagging(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CheckAutoTagging(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetNetworkSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -4201,6 +4202,48 @@ func (siw *ServerInterfaceWrapper) UpdateNetworkSettings(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateNetworkSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOllamaSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOllamaSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOllamaSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOllamaSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckOllama operation middleware
+func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckOllama(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6036,9 +6079,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/auto-tagging/check", wrapper.CheckAutoTagging)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)

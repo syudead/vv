@@ -560,7 +560,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
 			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" ||
-			r.URL.Path == "/api/settings/auto-tagging" {
+			r.URL.Path == "/api/settings/auto-tagging" || r.URL.Path == "/api/settings/ollama" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {

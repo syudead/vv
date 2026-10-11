@@ -14,6 +14,8 @@ import (
 type AutoTagging interface {
 	Status(ctx context.Context) (domain.AutoTagStatus, error)
 	SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error)
+	OllamaSettings(ctx context.Context) (domain.OllamaSettings, error)
+	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
@@ -47,23 +49,20 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	// すべての項目が必須なので、無いことを零値と区別して読む。
 	var body struct {
 		Enabled            *bool    `json:"enabled"`
-		Endpoint           *string  `json:"endpoint"`
-		Model              *string  `json:"model"`
+		AfterImport        *bool    `json:"afterImport"`
 		Threshold          *float64 `json:"threshold"`
 		TentativeThreshold *float64 `json:"tentativeThreshold"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.Enabled == nil || body.Endpoint == nil || body.Model == nil || body.Threshold == nil ||
-		body.TentativeThreshold == nil {
-		s.invalidRequest(w, "enabled, endpoint, model, threshold and tentativeThreshold are required.")
+	if body.Enabled == nil || body.AfterImport == nil || body.Threshold == nil || body.TentativeThreshold == nil {
+		s.invalidRequest(w, "enabled, afterImport, threshold and tentativeThreshold are required.")
 		return
 	}
 	status, err := s.autoTagging.SaveSettings(r.Context(), domain.AutoTagSettings{
 		Enabled:            *body.Enabled,
-		Endpoint:           *body.Endpoint,
-		Model:              *body.Model,
+		AfterImport:        *body.AfterImport,
 		Threshold:          *body.Threshold,
 		TentativeThreshold: *body.TentativeThreshold,
 	})
@@ -79,11 +78,58 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
 }
 
-// CheckAutoTagging は保存した問い合わせ先と模型で判定できるかを確かめる。使えないことは 200 の
-// available=false で返す。問い合わせ先は要求から取らず、保存した設定だけを使う。
-func (s *server) CheckAutoTagging(w http.ResponseWriter, r *http.Request) {
+// GetOllamaSettings は Ollama の接続先を返す。
+func (s *server) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
-		s.internalError(w, "Auto-tagging is not configured.", nil)
+		s.internalError(w, "Ollama settings are not configured.", nil)
+		return
+	}
+	settings, err := s.autoTagging.OllamaSettings(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not read the Ollama settings.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: settings.Endpoint, Model: settings.Model}, s.logger)
+}
+
+// UpdateOllamaSettings は Ollama の接続先を確かめて保存する。
+func (s *server) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
+	if s.autoTagging == nil {
+		s.internalError(w, "Ollama settings are not configured.", nil)
+		return
+	}
+	var body struct {
+		Endpoint *string `json:"endpoint"`
+		Model    *string `json:"model"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.Endpoint == nil || body.Model == nil {
+		s.invalidRequest(w, "endpoint and model are required.")
+		return
+	}
+	saved, err := s.autoTagging.SaveOllamaSettings(r.Context(), domain.OllamaSettings{
+		Endpoint: *body.Endpoint, Model: *body.Model,
+	})
+	if errors.Is(err, domain.ErrInvalidOllamaSettings) {
+		s.invalidRequest(w, err.Error())
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not save the Ollama settings.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: saved.Endpoint, Model: saved.Model}, s.logger)
+}
+
+// CheckOllama は保存した接続先と模型で判定できるかを確かめる。使えないことは 200 の
+// available=false で返す。接続先は要求から取らず、保存した設定だけを使う。
+func (s *server) CheckOllama(w http.ResponseWriter, r *http.Request) {
+	if s.autoTagging == nil {
+		s.internalError(w, "Ollama settings are not configured.", nil)
 		return
 	}
 	err := s.autoTagging.Check(r.Context())
@@ -113,6 +159,10 @@ func (s *server) StartAutoTagging(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	queued, err := s.autoTagging.QueueLibrary(r.Context(), domain.AutoTagScope(*body.Scope))
+	if errors.Is(err, domain.ErrAutoTaggingOff) {
+		s.conflictReason(w, gen.ErrorReasonAutoTaggingOff, "Auto-tagging is turned off.")
+		return
+	}
 	if err != nil {
 		s.internalError(w, "Could not start auto-tagging.", err)
 		return
@@ -131,6 +181,10 @@ func (s *server) AutoTagVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 		return
 	}
 	queued, err := s.autoTagging.QueueVideo(r.Context(), id)
+	if errors.Is(err, domain.ErrAutoTaggingOff) {
+		s.conflictReason(w, gen.ErrorReasonAutoTaggingOff, "Auto-tagging is turned off.")
+		return
+	}
 	if err != nil {
 		s.internalError(w, "Could not start auto-tagging.", err)
 		return
@@ -186,8 +240,7 @@ func toAPIAutoTaggingSettings(status domain.AutoTagStatus) gen.AutoTaggingSettin
 	}
 	return gen.AutoTaggingSettings{
 		Enabled:            status.Settings.Enabled,
-		Endpoint:           status.Settings.Endpoint,
-		Model:              status.Settings.Model,
+		AfterImport:        status.Settings.AfterImport,
 		Threshold:          status.Settings.Threshold,
 		TentativeThreshold: status.Settings.TentativeThreshold,
 		Queue:              queue,

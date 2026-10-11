@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: 9b19d122a1fb240d3bccf54f64ef89cbcf7777ef4532dabaeded220f73c9b374
+sourceHash: 54a72bca72a57a89820cfbc25c1c1b3b2c918d46f3fae46cba0f369057cd7546
 ---
 
 # Ollama 上の Clef 分類器による自動タグ付け {#auto-tagging-with-a-clef-classifier-in-ollama}
@@ -11,7 +11,7 @@ VVMDM は、Ollama で動く判定モデル (Cloudflare の Clef または Clef-
 
 ```mermaid
 flowchart LR
-  seek[シーク用プレビュー段階の完了] -->|自動タグ付けがオン| queue[(auto_tag_queue)]
+  seek[シーク用プレビュー段階の完了] -->|機能と自動の判定がオン| queue[(auto_tag_queue)]
   owner[所有者] -->|Settings または動画ページ| queue
   queue --> worker[自動タグ付けのワーカー]
   worker --> clef[Ollama /v1/systemone]
@@ -96,6 +96,8 @@ stateDiagram-v2
 | Settings の "Tag all videos again" | `running` でないすべての動画 |
 | 動画ページの "Suggest tags" | その動画。`running` のときを除く |
 
+どのきっかけも "Use auto-tagging" がオンであることを必要とする。オフの間は Settings の実行ボタンと動画ページのボタンが隠れ、API は `409 auto_tagging_off` でキューへの追加を拒否する。
+
 `done` の行を残すので、所有者が外したタグは、同じ内容の次の取り込みで再び追加されない。1 つのワーカーが一度に 1 本の動画を判定するので、遅い CPU のみの Ollama に、処理できない並列リクエストを送らない。
 
 ## 失敗 {#failures}
@@ -106,14 +108,33 @@ Ollama が止まっていると、キューを塞ぐ代わりに、キューに�
 
 ## 設定 {#settings}
 
-所有者は Settings の Auto-tagging で、Ollama の URL、モデル、2 つの確率、自動の判定を設定する。"Save and test connection" はフォームを保存し、保存した URL に質問を 1 つ送る。
+Ollama への接続と自動タグ付けの機能は別々の設定で、それぞれが Settings の独自のセクションと API リソースを持つ。接続は分類器がどこで動くかを表し、機能は VVMDM がそれを使うかどうかを表す。
+
+| セクション | API | 持つもの |
+| --- | --- | --- |
+| Ollama | `/api/settings/ollama`、`/api/settings/ollama/check` | Ollama の URL とモデル、接続テスト |
+| Auto-tagging | `/api/settings/auto-tagging` | 機能を使うかどうか、取り込み後の自動の判定、2 つの確率、キューの件数 |
+
+自動タグ付けは任意で、既定ではオフだ。"Use auto-tagging" がオフの間は:
+
+- ワーカーはキューにある動画を取得せず、Ollama に接続しない。キューにある行は、機能が再びオンになるまで待つ。
+- 取り込み、Settings、動画ページのいずれからも、何もキューに入らない。
+- 動画ページに "Suggest tags" ボタンはない。
+- すでに付いた提案されたタグは、引き続き残すことも却下することもできる。
+
+Ollama セクションの "Save and test connection" はフォームを保存し、保存した URL に質問を 1 つ送る。機能がオンでもオフでも動くので、機能をオンにする前に接続を試せる。
 
 サーバーは保存した URL にだけリクエストを送り、リクエスト本文の URL には決して送らない。また、Ollama の JSON 応答のうちエラーの文言だけを伝える。そうしなければ、リクエストによってサーバーに到達可能な任意のアドレスを取得させ、その応答を表示させることができてしまう。
 
-| 設定 | 既定値 |
+| 設定 | セクション | 既定値 |
+| --- | --- | --- |
+| Ollama URL | Ollama | `http://127.0.0.1:11434` |
+| Model | Ollama | `clef-flash` (`clef` は 27B で、より正確) |
+| Use auto-tagging | Auto-tagging | オフ |
+| Tag new videos automatically | Auto-tagging | オフ (機能がオフの間は効果がない) |
+| Probability to add | Auto-tagging | 0.8 |
+| Probability to suggest | Auto-tagging | 0.5 ("Probability to add" と同じ値にすると提案はオフになる) |
+
+| 採用しなかった案 | 理由 |
 | --- | --- |
-| Tag new videos automatically | オフ |
-| Ollama URL | `http://127.0.0.1:11434` |
-| Model | `clef-flash` (`clef` は 27B で、より正確) |
-| Probability to add | 0.8 |
-| Probability to suggest | 0.5 ("Probability to add" と同じ値にすると提案はオフになる) |
+| 接続と機能のスイッチを 1 つのフォームにする | 接続のテストや変更が機能の設定の編集を意味し、機能をオフにすると接続を失ったように見える |

@@ -12,7 +12,7 @@ back.
 
 ```mermaid
 flowchart LR
-  seek[Seek preview stage done] -->|auto-tagging on| queue[(auto_tag_queue)]
+  seek[Seek preview stage done] -->|feature and automatic judging on| queue[(auto_tag_queue)]
   owner[Owner] -->|Settings or video page| queue
   queue --> worker[Auto-tagging worker]
   worker --> clef[Ollama /v1/systemone]
@@ -129,6 +129,10 @@ stateDiagram-v2
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
 
+Every trigger requires "Use auto-tagging" to be on; while it is off the
+Settings run buttons and the video page button are hidden, and the API refuses
+to queue with `409 auto_tagging_off`.
+
 Keeping `done` rows means a tag the owner removed is not added back by the
 next import of the same content. One worker judges one video at a time, so a
 slow CPU-only Ollama is not given parallel requests it cannot serve.
@@ -145,18 +149,40 @@ startup.
 
 ## Settings
 
-The owner sets the Ollama URL, the model, the two probabilities and automatic
-judging under Settings, Auto-tagging; "Save and test connection" saves the
-form and sends one question to the saved URL.
+The Ollama connection and the auto-tagging feature are separate settings, each
+with its own Settings section and API resource. The connection says where the
+classifier runs; the feature says whether VVMDM uses it.
+
+| Section | API | Holds |
+| --- | --- | --- |
+| Ollama | `/api/settings/ollama`, `/api/settings/ollama/check` | The Ollama URL and the model, and the connection test |
+| Auto-tagging | `/api/settings/auto-tagging` | Whether the feature is used, automatic judging after import, the two probabilities, the queue counts |
+
+Auto-tagging is optional and off by default. While "Use auto-tagging" is off:
+
+- the worker claims no queued video and never contacts Ollama, and the queued
+  rows wait until the feature is turned on again;
+- nothing is queued, by import, Settings or the video page;
+- the video page has no "Suggest tags" button;
+- suggested tags already added can still be kept or rejected.
+
+"Save and test connection" in the Ollama section saves the form and sends one
+question to the saved URL; it works whether the feature is on or off, so the
+connection can be tried before turning the feature on.
 
 The server only sends requests to the saved URL, never to one in a request
 body, and passes on only the error text of an Ollama JSON reply. Otherwise a
 request could make the server fetch any reachable address and show the reply.
 
-| Setting | Default |
+| Setting | Section | Default |
+| --- | --- | --- |
+| Ollama URL | Ollama | `http://127.0.0.1:11434` |
+| Model | Ollama | `clef-flash` (`clef` is 27B and more accurate) |
+| Use auto-tagging | Auto-tagging | Off |
+| Tag new videos automatically | Auto-tagging | Off (has no effect while the feature is off) |
+| Probability to add | Auto-tagging | 0.8 |
+| Probability to suggest | Auto-tagging | 0.5 (the same value as "Probability to add" turns suggestions off) |
+
+| Rejected | Why |
 | --- | --- |
-| Tag new videos automatically | Off |
-| Ollama URL | `http://127.0.0.1:11434` |
-| Model | `clef-flash` (`clef` is 27B and more accurate) |
-| Probability to add | 0.8 |
-| Probability to suggest | 0.5 (the same value as "Probability to add" turns suggestions off) |
+| One form for the connection and the feature switch | Testing or changing the connection would mean editing the feature's settings, and turning the feature off would look like losing the connection |

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"slices"
 	"strings"
 )
@@ -15,10 +14,6 @@ import (
 
 // 自動タグ付けの設定の既定値である。保存値が無いときに使う。
 const (
-	// DefaultAutoTagEndpoint は Ollama が既定で待ち受ける場所である。
-	DefaultAutoTagEndpoint = "http://127.0.0.1:11434"
-	// DefaultAutoTagModel は速さを優先した Clef の小さい版である。
-	DefaultAutoTagModel = "clef-flash"
 	// DefaultAutoTagThreshold は付けるのに要る確率の既定値である。誤って付くタグを
 	// 少なくする側に寄せる。
 	DefaultAutoTagThreshold = 0.8
@@ -34,21 +29,21 @@ const (
 // （docs/design-docs/auto-tagging.md）。
 const AutoTagMaxQuestions = 16
 
-// autoTagMaxModelLength は模型名の長さの上限である。
-const autoTagMaxModelLength = 200
-
 // ErrInvalidAutoTagSettings は、自動タグ付けの設定の値が規則に合わないことを表す。
 var ErrInvalidAutoTagSettings = errors.New("invalid auto-tagging settings")
 
-// AutoTagSettings は自動タグ付けの設定である。
+// ErrAutoTaggingOff は、自動タグ付けの機能が切で、判定を始められないことを表す。
+var ErrAutoTaggingOff = errors.New("auto-tagging is turned off")
+
+// AutoTagSettings は自動タグ付けの機能の設定である。判定モデルへの接続先は OllamaSettings が
+// 持ち、ここには持たない。
 type AutoTagSettings struct {
-	// Enabled は、取り込みで代表サムネイルの段階を終えた動画を自動で判定に回すかである。
-	// 切でも、所有者が画面から始める判定は動く。
+	// Enabled は自動タグ付けの機能を使うかである。切なら判定を始めず、待ち行列から取り出さず、
+	// 判定モデルに接続しない。既定は切。
 	Enabled bool
-	// Endpoint は Ollama の基底 URL（http か https）である。
-	Endpoint string
-	// Model は Ollama の模型名（clef か clef-flash）である。
-	Model string
+	// AfterImport は、取り込みでシーク用プレビューの段階を終えた動画を自動で判定に回すかである。
+	// Enabled が切なら効かない。
+	AfterImport bool
 	// Threshold はタグを確定した付与として付けるのに要る確率（0 より大きく 1 以下）である。
 	Threshold float64
 	// TentativeThreshold はタグを仮に付けるのに要る確率（0 より大きく Threshold 以下）である。
@@ -56,29 +51,17 @@ type AutoTagSettings struct {
 	TentativeThreshold float64
 }
 
-// DefaultAutoTagSettings は保存値が無いときの設定を返す。自動の判定は切である。
+// DefaultAutoTagSettings は保存値が無いときの設定を返す。機能も自動の判定も切である。
 func DefaultAutoTagSettings() AutoTagSettings {
 	return AutoTagSettings{
-		Endpoint:           DefaultAutoTagEndpoint,
-		Model:              DefaultAutoTagModel,
 		Threshold:          DefaultAutoTagThreshold,
 		TentativeThreshold: DefaultAutoTagTentativeThreshold,
 	}
 }
 
-// NormalizeAutoTagSettings は前後の空白と Endpoint の末尾の / を落とし、規則に合うかを
-// 確かめる。合わなければ ErrInvalidAutoTagSettings を包んだ誤りを返す。
-func NormalizeAutoTagSettings(s AutoTagSettings) (AutoTagSettings, error) {
-	s.Endpoint = strings.TrimRight(strings.TrimSpace(s.Endpoint), "/")
-	s.Model = strings.TrimSpace(s.Model)
-	parsed, err := url.Parse(s.Endpoint)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
-		return AutoTagSettings{}, fmt.Errorf("%w: the endpoint must be an http or https URL", ErrInvalidAutoTagSettings)
-	}
-	if s.Model == "" || len(s.Model) > autoTagMaxModelLength || strings.ContainsFunc(s.Model, isControlOrSpace) {
-		return AutoTagSettings{}, fmt.Errorf("%w: the model must be a model name", ErrInvalidAutoTagSettings)
-	}
+// ValidateAutoTagSettings は確率が規則に合うかを確かめる。合わなければ
+// ErrInvalidAutoTagSettings を包んだ誤りを返す。
+func ValidateAutoTagSettings(s AutoTagSettings) (AutoTagSettings, error) {
 	if math.IsNaN(s.Threshold) || s.Threshold <= 0 || s.Threshold > 1 {
 		return AutoTagSettings{}, fmt.Errorf("%w: the threshold must be greater than 0 and at most 1", ErrInvalidAutoTagSettings)
 	}
@@ -86,10 +69,6 @@ func NormalizeAutoTagSettings(s AutoTagSettings) (AutoTagSettings, error) {
 		return AutoTagSettings{}, fmt.Errorf("%w: the tentative threshold must be greater than 0 and at most the threshold", ErrInvalidAutoTagSettings)
 	}
 	return s, nil
-}
-
-func isControlOrSpace(r rune) bool {
-	return r <= ' ' || r == 0x7f
 }
 
 // AutoTagScope は所有者が始める判定の対象の選び方である。

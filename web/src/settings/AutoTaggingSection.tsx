@@ -1,10 +1,9 @@
-import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
+import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type AutoTaggingScope,
   type AutoTaggingSettings,
-  checkAutoTagging,
   getAutoTaggingSettings,
   isAborted,
   startAutoTagging,
@@ -27,8 +26,7 @@ const pollMs = 3000;
 /** Draft は画面で編集中の値である。閾値は入力の文字列のまま持つ。 */
 interface Draft {
   enabled: boolean;
-  endpoint: string;
-  model: string;
+  afterImport: boolean;
   threshold: string;
   tentativeThreshold: string;
 }
@@ -36,8 +34,7 @@ interface Draft {
 function toDraft(settings: AutoTaggingSettings): Draft {
   return {
     enabled: settings.enabled,
-    endpoint: settings.endpoint,
-    model: settings.model,
+    afterImport: settings.afterImport,
     threshold: String(settings.threshold),
     tentativeThreshold: String(settings.tentativeThreshold),
   };
@@ -50,17 +47,11 @@ export function parseThreshold(value: string): number | null {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 1 ? parsed : null;
 }
 
-type CheckState =
-  | { kind: "idle" }
-  | { kind: "checking" }
-  | { kind: "ok" }
-  | { kind: "failed"; message: UiText };
-
 /**
- * AutoTaggingSection は設定の「Auto-tagging」区画である。Ollama の判定モデル（Clef）の
- * 問い合わせ先・模型・閾値と、取り込みのあとの自動の判定を設定し、ライブラリの動画を
- * 判定に回す（docs/design-docs/auto-tagging.md）。判定が待ち行列に残っている間は件数を
- * 読み直す。
+ * AutoTaggingSection は設定の「Auto-tagging」区画である。機能の入切、取り込みのあとの
+ * 自動の判定と 2 つの確率を設定し、機能が入ならライブラリの動画を判定に回す
+ * （docs/design-docs/auto-tagging.md）。Ollama の接続先は OllamaSection が持つ。判定が
+ * 待ち行列に残っている間は件数を読み直す。
  */
 export default function AutoTaggingSection() {
   const text = t.settings.autoTagging;
@@ -70,7 +61,6 @@ export default function AutoTaggingSection() {
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
-  const [check, setCheck] = useState<CheckState>({ kind: "idle" });
   const [starting, setStarting] = useState<AutoTaggingScope | null>(null);
   const controller = useRef<AbortController | null>(null);
   const settingsRef = useRef(settings);
@@ -114,15 +104,6 @@ export default function AutoTaggingSection() {
     (threshold === null || tentativeThreshold <= threshold);
   const valid = threshold !== null && tentativeThreshold !== null && tentativeValid;
 
-  const dirty =
-    draft !== null &&
-    settings !== null &&
-    (draft.enabled !== settings.enabled ||
-      draft.endpoint !== settings.endpoint ||
-      draft.model !== settings.model ||
-      threshold !== settings.threshold ||
-      tentativeThreshold !== settings.tentativeThreshold);
-
   /** persist は下書きを保存する。保存できたら true を返す。 */
   const persist = async (): Promise<boolean> => {
     if (draft === null || threshold === null || tentativeThreshold === null || !valid)
@@ -131,8 +112,7 @@ export default function AutoTaggingSection() {
     try {
       const saved = await updateAutoTaggingSettings({
         enabled: draft.enabled,
-        endpoint: draft.endpoint,
-        model: draft.model,
+        afterImport: draft.afterImport,
         threshold,
         tentativeThreshold,
       });
@@ -152,28 +132,6 @@ export default function AutoTaggingSection() {
       if (await persist()) toast(text.saved);
     } finally {
       setSaving(false);
-    }
-  };
-
-  // サーバーは保存した設定でしか確かめないので、編集中の値があれば先に保存する。
-  const runCheck = async () => {
-    if (draft === null || check.kind === "checking" || saving) return;
-    if (dirty) {
-      if (!valid) return;
-      setSaving(true);
-      const saved = await persist().finally(() => setSaving(false));
-      if (!saved) return;
-    }
-    setCheck({ kind: "checking" });
-    try {
-      const result = await checkAutoTagging();
-      setCheck(
-        result.available
-          ? { kind: "ok" }
-          : { kind: "failed", message: text.checkFailed(result.message ?? "") },
-      );
-    } catch (failure) {
-      setCheck({ kind: "failed", message: text.checkFailed(errorText(failure)) });
     }
   };
 
@@ -232,28 +190,14 @@ export default function AutoTaggingSection() {
         />
       </FormRow>
       <FormRow
-        label={text.endpoint}
-        description={text.endpointHint}
-        htmlFor="auto-tagging-endpoint"
+        label={text.afterImport}
+        description={text.afterImportHint}
+        htmlFor="auto-tagging-after-import"
       >
-        <Input
-          id="auto-tagging-endpoint"
-          type="url"
-          className="sm:w-sm"
-          value={draft.endpoint}
-          onChange={(event) => update({ endpoint: event.target.value })}
-        />
-      </FormRow>
-      <FormRow
-        label={text.model}
-        description={text.modelHint}
-        htmlFor="auto-tagging-model"
-      >
-        <Input
-          id="auto-tagging-model"
-          className="sm:w-sm"
-          value={draft.model}
-          onChange={(event) => update({ model: event.target.value })}
+        <Switch
+          id="auto-tagging-after-import"
+          checked={draft.afterImport}
+          onCheckedChange={(checked) => update({ afterImport: checked })}
         />
       </FormRow>
       <FormRow
@@ -307,42 +251,7 @@ export default function AutoTaggingSection() {
             )}
             {saving ? text.saving : text.save}
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void runCheck()}
-            aria-disabled={check.kind === "checking" || undefined}
-          >
-            {text.check}
-          </Button>
         </div>
-        {check.kind === "checking" && (
-          <p
-            role="status"
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <LoaderCircle
-              aria-hidden="true"
-              className="size-4 animate-spin motion-reduce:animate-none"
-            />
-            {text.checking}
-          </p>
-        )}
-        {check.kind === "ok" && (
-          <p
-            role="status"
-            className="flex items-center gap-2 text-xs text-muted-foreground"
-          >
-            <CircleCheck aria-hidden="true" className="size-4" />
-            {text.checkOk}
-          </p>
-        )}
-        {check.kind === "failed" && (
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{check.message}</AlertTitle>
-          </Alert>
-        )}
         {saveError !== null && (
           <Alert variant="destructive">
             <CircleAlert aria-hidden="true" />
@@ -350,38 +259,40 @@ export default function AutoTaggingSection() {
           </Alert>
         )}
       </div>
-      <div className="flex flex-col gap-2">
-        <p role="status" className="text-sm text-muted-foreground">
-          {text.queue(queue.queued, queue.running, queue.done, queue.failed)}
-        </p>
-        {queue.lastError !== undefined && (
-          <Alert variant="warning" role="note">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{text.lastError}</AlertTitle>
-            <AlertDescription>
-              <p className="break-all">{queue.lastError}</p>
-            </AlertDescription>
-          </Alert>
-        )}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => void start("missing")}
-            aria-disabled={starting !== null || undefined}
-          >
-            {text.runMissing}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void start("all")}
-            aria-disabled={starting !== null || undefined}
-          >
-            {text.runAll}
-          </Button>
+      {settings.enabled && (
+        <div className="flex flex-col gap-2">
+          <p role="status" className="text-sm text-muted-foreground">
+            {text.queue(queue.queued, queue.running, queue.done, queue.failed)}
+          </p>
+          {queue.lastError !== undefined && (
+            <Alert variant="warning" role="note">
+              <CircleAlert aria-hidden="true" />
+              <AlertTitle>{text.lastError}</AlertTitle>
+              <AlertDescription>
+                <p className="break-all">{queue.lastError}</p>
+              </AlertDescription>
+            </Alert>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void start("missing")}
+              aria-disabled={starting !== null || undefined}
+            >
+              {text.runMissing}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void start("all")}
+              aria-disabled={starting !== null || undefined}
+            >
+              {text.runAll}
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
     </PageSection>
   );
 }

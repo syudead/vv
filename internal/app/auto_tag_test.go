@@ -117,6 +117,35 @@ func (s *fakeAutoTagSettings) SaveAutoTagSettings(_ context.Context, settings do
 	return nil
 }
 
+type fakeOllamaSettings struct {
+	mu       sync.Mutex
+	settings domain.OllamaSettings
+}
+
+func (s *fakeOllamaSettings) OllamaSettings(context.Context) (domain.OllamaSettings, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.settings, nil
+}
+
+func (s *fakeOllamaSettings) SaveOllamaSettings(_ context.Context, settings domain.OllamaSettings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.settings = settings
+	return nil
+}
+
+// enabledAutoTagSettings は機能を入にした既定の設定である。
+func enabledAutoTagSettings() *fakeAutoTagSettings {
+	settings := domain.DefaultAutoTagSettings()
+	settings.Enabled = true
+	return &fakeAutoTagSettings{settings: settings}
+}
+
+func defaultOllama() *fakeOllamaSettings {
+	return &fakeOllamaSettings{settings: domain.DefaultOllamaSettings()}
+}
+
 // fakeClassifier は質問の名前ごとに決めた確率を返し、受け取った問い合わせを覚える。
 type fakeClassifier struct {
 	mu       sync.Mutex
@@ -206,14 +235,15 @@ func TestAutoTaggerSelectsTagsAcrossChunks(t *testing.T) {
 		"tag_1": 0.95, "tag_2": 0.5, "tag_3": 0.3, domain.AutoTagQuestionKey(domain.AutoTagMaxQuestions + 2): 0.9,
 	}}
 	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{
-		Endpoint: "http://o", Model: "clef-flash", Threshold: 0.8, TentativeThreshold: 0.5,
+		Enabled: true, Threshold: 0.8, TentativeThreshold: 0.5,
 	}}
+	ollama := &fakeOllamaSettings{settings: domain.OllamaSettings{Endpoint: "http://o", Model: "clef-flash"}}
 	images := &fakeImages{
 		thumbnails: map[string][]byte{"k1": []byte("thumb")},
 		frames:     map[string][][]byte{"k1": {[]byte("f1"), []byte("f2")}},
 	}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: settings, Classifier: classifier, Images: images,
+		Queue: queue, Settings: settings, Ollama: ollama, Classifier: classifier, Images: images,
 	})
 	runAutoTagger(t, tagger)
 
@@ -246,7 +276,7 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
 	classifier := &fakeClassifier{err: errors.New("cannot reach Ollama")}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()},
+		Queue: queue, Settings: enabledAutoTagSettings(), Ollama: defaultOllama(),
 		Classifier: classifier, Images: &fakeImages{},
 	})
 	runAutoTagger(t, tagger)
@@ -268,7 +298,7 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
 	classifier := &fakeClassifier{}
 	tagger := NewAutoTagger(AutoTaggerOptions{
-		Queue: queue, Settings: &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}, Classifier: classifier,
+		Queue: queue, Settings: enabledAutoTagSettings(), Ollama: defaultOllama(), Classifier: classifier,
 	})
 	runAutoTagger(t, tagger)
 	waitAutoTagDone(t, queue)
@@ -281,18 +311,31 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	}
 }
 
-// 取り込みのあとの自動の判定は、入のときだけ、まだ判定していない動画を積む。
-func TestAutoTaggerQueuesAfterThumbnailOnlyWhenEnabled(t *testing.T) {
+// 取り込みのあとの自動の判定は、機能と自動の判定の両方が入のときだけ、まだ判定していない
+// 動画を積む。機能が切なら手動の判定も受け付けない。
+func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Ollama: defaultOllama(), Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
+	settings.settings.AfterImport = true
 	tagger.VideoImagesFinished(ctx, 5)
 	if len(queue.queuedIDs) != 0 {
-		t.Fatal("切なのに積んだ")
+		t.Fatal("機能が切なのに積んだ")
 	}
-	settings.settings.Enabled = true
+	if _, err := tagger.QueueVideo(ctx, 6); !errors.Is(err, domain.ErrAutoTaggingOff) {
+		t.Fatalf("QueueVideo err = %v", err)
+	}
+	if _, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); !errors.Is(err, domain.ErrAutoTaggingOff) {
+		t.Fatalf("QueueLibrary err = %v", err)
+	}
+	settings.settings = domain.AutoTagSettings{Enabled: true, Threshold: 0.8, TentativeThreshold: 0.5}
+	tagger.VideoImagesFinished(ctx, 5)
+	if len(queue.queuedIDs) != 0 {
+		t.Fatal("自動の判定が切なのに積んだ")
+	}
+	settings.settings.AfterImport = true
 	tagger.VideoImagesFinished(ctx, 5)
 	if !slices.Equal(queue.queuedIDs, []int64{5}) || queue.modes[0] != domain.AutoTagQueueIfNew {
 		t.Fatalf("積んだ = %v, %v", queue.queuedIDs, queue.modes)
@@ -308,30 +351,74 @@ func TestAutoTaggerQueuesAfterThumbnailOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
-// 設定は確かめてから保存し、規則に合わなければ保存しない。確かめは保存した設定で問い合わせる。
-func TestAutoTaggerSaveSettingsAndCheck(t *testing.T) {
+// 機能が切のあいだは待ち行列から取り出さず、判定モデルに問い合わせない。入にして保存すると
+// 積んであった判定を始める。
+func TestAutoTaggerIdlesWhileOff(t *testing.T) {
+	queue := newFakeAutoTagQueue()
+	queue.queued = []string{"k1"}
+	queue.videos["k1"] = domain.Video{Title: "a", Path: "/m/a.mp4"}
+	queue.candidates = []domain.AutoTagCandidate{{ID: 1, Name: "x"}}
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
-	classifier := &fakeClassifier{}
-	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: classifier})
+	classifier := &fakeClassifier{answers: map[string]float64{"tag_1": 0.9}}
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Ollama: defaultOllama(), Classifier: classifier})
+	runAutoTagger(t, tagger)
+
+	select {
+	case key := <-queue.done:
+		t.Fatalf("切なのに %s を判定した", key)
+	case <-time.After(100 * time.Millisecond):
+	}
+	on := domain.DefaultAutoTagSettings()
+	on.Enabled = true
+	if _, err := tagger.SaveSettings(context.Background(), on); err != nil {
+		t.Fatal(err)
+	}
+	if key := waitAutoTagDone(t, queue); key != "k1" {
+		t.Fatalf("判定した = %s", key)
+	}
+}
+
+// 機能の設定は確かめてから保存し、規則に合わなければ保存しない。
+func TestAutoTaggerSaveSettings(t *testing.T) {
+	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Ollama: defaultOllama(), Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
-	if _, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Endpoint: "nope", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.5}); !errors.Is(err, domain.ErrInvalidAutoTagSettings) {
+	if _, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{Threshold: 0.5, TentativeThreshold: 0.6}); !errors.Is(err, domain.ErrInvalidAutoTagSettings) {
 		t.Fatalf("err = %v", err)
 	}
-	status, err := tagger.SaveSettings(ctx, domain.AutoTagSettings{
-		Enabled: true, Endpoint: "http://h:1/", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.3,
-	})
+	want := domain.AutoTagSettings{Enabled: true, AfterImport: true, Threshold: 0.5, TentativeThreshold: 0.3}
+	status, err := tagger.SaveSettings(ctx, want)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://h:1", Model: "clef", Threshold: 0.5, TentativeThreshold: 0.3}
-	if status.Settings != want || status.Counts.Done != 1 {
+	if status.Settings != want || status.Counts.Done != 1 || settings.settings != want {
 		t.Fatalf("status = %+v", status)
+	}
+}
+
+// Ollama の接続先は整えて保存し、確かめは機能の入切に関係なく保存した接続先に問い合わせる。
+func TestAutoTaggerOllamaSettingsAndCheck(t *testing.T) {
+	ollama := defaultOllama()
+	classifier := &fakeClassifier{}
+	tagger := NewAutoTagger(AutoTaggerOptions{
+		Queue: newFakeAutoTagQueue(), Settings: &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()},
+		Ollama: ollama, Classifier: classifier,
+	})
+	ctx := context.Background()
+
+	if _, err := tagger.SaveOllamaSettings(ctx, domain.OllamaSettings{Endpoint: "nope", Model: "clef"}); !errors.Is(err, domain.ErrInvalidOllamaSettings) {
+		t.Fatalf("err = %v", err)
+	}
+	saved, err := tagger.SaveOllamaSettings(ctx, domain.OllamaSettings{Endpoint: "http://h:1/", Model: "clef"})
+	want := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef"}
+	if err != nil || saved != want || ollama.settings != want {
+		t.Fatalf("saved = %+v, %v", saved, err)
 	}
 	if err := tagger.Check(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if classifier.requests[0].Endpoint != "http://h:1" || classifier.requests[0].Model != "clef" || settings.settings != want {
-		t.Fatalf("確かめが保存した設定を使わない: %+v / %+v", classifier.requests[0], settings.settings)
+	if classifier.requests[0].Endpoint != "http://h:1" || classifier.requests[0].Model != "clef" {
+		t.Fatalf("確かめが保存した接続先を使わない: %+v", classifier.requests[0])
 	}
 }

@@ -12,70 +12,116 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けの設定のキーである（docs/design-docs/auto-tagging.md）。
+// 自動タグ付けと Ollama の設定のキーである（docs/design-docs/auto-tagging.md）。
 const (
-	autoTagEnabledKey   = "auto_tag.enabled"
-	autoTagEndpointKey  = "auto_tag.endpoint"
-	autoTagModelKey     = "auto_tag.model"
-	autoTagThresholdKey = "auto_tag.threshold"
-	// autoTagTentativeThresholdKey は仮に付けるのに要る確率のキーである。
+	// autoTagFeatureKey は自動タグ付けの機能を使うかで、"true" か "false"。行が無ければ切。
+	autoTagFeatureKey = "auto_tag.feature_enabled"
+	// autoTagAfterImportKey は取り込みのあとに自動で判定するかで、"true" か "false"。
+	autoTagAfterImportKey        = "auto_tag.after_import"
+	autoTagThresholdKey          = "auto_tag.threshold"
 	autoTagTentativeThresholdKey = "auto_tag.tentative_threshold"
+
+	ollamaEndpointKey = "ollama.endpoint"
+	ollamaModelKey    = "ollama.model"
+	// legacyOllamaEndpointKey と legacyOllamaModelKey は、接続先を自動タグ付けの設定と一緒に
+	// 持っていた版のキーである。新しいキーが無ければ読む。
+	legacyOllamaEndpointKey = "auto_tag.endpoint"
+	legacyOllamaModelKey    = "auto_tag.model"
 )
 
 // AutoTagSettings は保存した自動タグ付けの設定を返す。行の無い項目は既定値
-// （domain.DefaultAutoTagSettings）になる。読めない閾値も既定値に倒す。
+// （domain.DefaultAutoTagSettings）になる。読めない確率も既定値に倒す。
 func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSettings, error) {
 	settings := domain.DefaultAutoTagSettings()
-	value, found, err := readSetting(ctx, s.db.sql, autoTagEnabledKey)
-	if err != nil {
+	var err error
+	if settings.Enabled, err = readBoolSetting(ctx, s.db.sql, autoTagFeatureKey); err != nil {
 		return domain.AutoTagSettings{}, err
 	}
-	settings.Enabled = found && value == strconv.FormatBool(true)
-	if value, found, err = readSetting(ctx, s.db.sql, autoTagEndpointKey); err != nil {
+	if settings.AfterImport, err = readBoolSetting(ctx, s.db.sql, autoTagAfterImportKey); err != nil {
 		return domain.AutoTagSettings{}, err
-	} else if found {
-		settings.Endpoint = value
 	}
-	if value, found, err = readSetting(ctx, s.db.sql, autoTagModelKey); err != nil {
+	if settings.Threshold, err = readFloatSetting(ctx, s.db.sql, autoTagThresholdKey, settings.Threshold); err != nil {
 		return domain.AutoTagSettings{}, err
-	} else if found {
-		settings.Model = value
 	}
-	if value, found, err = readSetting(ctx, s.db.sql, autoTagThresholdKey); err != nil {
+	if settings.TentativeThreshold, err = readFloatSetting(ctx, s.db.sql, autoTagTentativeThresholdKey,
+		settings.TentativeThreshold); err != nil {
 		return domain.AutoTagSettings{}, err
-	} else if found {
-		if threshold, err := strconv.ParseFloat(value, 64); err == nil {
-			settings.Threshold = threshold
-		}
 	}
-	if value, found, err = readSetting(ctx, s.db.sql, autoTagTentativeThresholdKey); err != nil {
-		return domain.AutoTagSettings{}, err
-	} else if found {
-		if threshold, err := strconv.ParseFloat(value, 64); err == nil {
-			settings.TentativeThreshold = threshold
-		}
-	}
-	// 仮の閾値だけが保存されていない（この版より前に保存した）ときなどに、確定の閾値を
-	// 越えないようにする。
+	// 仮の確率だけが保存されていないときなどに、確定の確率を越えないようにする。
 	settings.TentativeThreshold = min(settings.TentativeThreshold, settings.Threshold)
 	return settings, nil
 }
 
 // SaveAutoTagSettings は自動タグ付けの設定を 1 つの取引で保存する。値は呼び出し側が
-// domain.NormalizeAutoTagSettings で確かめたものを渡す。
+// domain.ValidateAutoTagSettings で確かめたものを渡す。
 func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
+	return writeSettings(ctx, s.db.sql, [][2]string{
+		{autoTagFeatureKey, strconv.FormatBool(settings.Enabled)},
+		{autoTagAfterImportKey, strconv.FormatBool(settings.AfterImport)},
+		{autoTagThresholdKey, strconv.FormatFloat(settings.Threshold, 'f', -1, 64)},
+		{autoTagTentativeThresholdKey, strconv.FormatFloat(settings.TentativeThreshold, 'f', -1, 64)},
+	})
+}
+
+// OllamaSettings は保存した Ollama の接続先を返す。行が無ければ既定値
+// （domain.DefaultOllamaSettings）になる。
+func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
+	settings := domain.DefaultOllamaSettings()
+	for _, item := range []struct {
+		keys   []string
+		target *string
+	}{
+		{[]string{ollamaEndpointKey, legacyOllamaEndpointKey}, &settings.Endpoint},
+		{[]string{ollamaModelKey, legacyOllamaModelKey}, &settings.Model},
+	} {
+		for _, key := range item.keys {
+			value, found, err := readSetting(ctx, s.db.sql, key)
+			if err != nil {
+				return domain.OllamaSettings{}, err
+			}
+			if found {
+				*item.target = value
+				break
+			}
+		}
+	}
+	return settings, nil
+}
+
+// SaveOllamaSettings は Ollama の接続先を 1 つの取引で保存する。値は呼び出し側が
+// domain.NormalizeOllamaSettings で確かめたものを渡す。
+func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error {
+	return writeSettings(ctx, s.db.sql, [][2]string{
+		{ollamaEndpointKey, settings.Endpoint},
+		{ollamaModelKey, settings.Model},
+	})
+}
+
+func readBoolSetting(ctx context.Context, q *sql.DB, key string) (bool, error) {
+	value, found, err := readSetting(ctx, q, key)
+	return found && value == strconv.FormatBool(true), err
+}
+
+// readFloatSetting は数の設定を読む。行が無いか読めなければ fallback を返す。
+func readFloatSetting(ctx context.Context, q *sql.DB, key string, fallback float64) (float64, error) {
+	value, found, err := readSetting(ctx, q, key)
+	if err != nil || !found {
+		return fallback, err
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return fallback, nil
+	}
+	return parsed, nil
+}
+
+// writeSettings は複数の設定を 1 つの取引で保存する。
+func writeSettings(ctx context.Context, q *sql.DB, values [][2]string) error {
+	tx, err := q.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	values := [][2]string{
-		{autoTagEnabledKey, strconv.FormatBool(settings.Enabled)},
-		{autoTagEndpointKey, settings.Endpoint},
-		{autoTagModelKey, settings.Model},
-		{autoTagThresholdKey, strconv.FormatFloat(settings.Threshold, 'f', -1, 64)},
-		{autoTagTentativeThresholdKey, strconv.FormatFloat(settings.TentativeThreshold, 'f', -1, 64)},
-	}
 	now := time.Now().Unix()
 	for _, kv := range values {
 		if _, err := tx.ExecContext(ctx, `
@@ -86,7 +132,7 @@ func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("cannot save the auto-tagging settings: %w", err)
+		return fmt.Errorf("cannot save settings: %w", err)
 	}
 	return nil
 }

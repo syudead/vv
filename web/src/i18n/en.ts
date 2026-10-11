@@ -224,6 +224,8 @@ const errorReasons = {
   representative_not_selected: "Pick which video to show in the library.",
   not_bundled: "This video isn't bundled with others.",
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
+  auto_tagging_off:
+    "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -1698,16 +1700,34 @@ export const en = {
       /** 問題が道筋を持たないときに、{path} の代わりに入れる言葉。 */
       unknownPath: "a media folder",
     },
-    autoTagging: {
-      heading: "Auto-tagging",
+    ollama: {
+      heading: "Ollama",
       description:
-        "A classifier model running in Ollama (Clef) looks at each video's thumbnail, title, file name and folder, and adds the existing tags it judges likely. No new tags are created.",
-      enabled: "Tag new videos automatically",
-      enabledHint: "After a video is imported, ask the classifier for its tags.",
+        "Where VVMDM reaches the classifier model (Clef) in Ollama. Auto-tagging uses it; testing the connection works whether auto-tagging is on or off.",
       endpoint: "Ollama URL",
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
       model: "Model",
       modelHint: "clef-flash is fast; clef is larger and more accurate.",
+      save: "Save",
+      saving: "Saving…",
+      saved: "Ollama settings saved",
+      check: "Save and test connection",
+      checking: "Testing… Loading the model can take a few minutes.",
+      checkOk: "The classifier answered.",
+      checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      loading: "Loading the Ollama settings",
+      loadFailed: (reason: string) => `Couldn't load the Ollama settings: ${reason}`,
+    },
+    autoTagging: {
+      heading: "Auto-tagging",
+      description:
+        "Asks the classifier set under Ollama which existing tags fit each video, from its thumbnail, frames from across the video, title, file name and folder. No new tags are created.",
+      enabled: "Use auto-tagging",
+      enabledHint:
+        "Off: no video is sent to the classifier and the video page has no Suggest tags button. Suggested tags already added can still be kept or rejected.",
+      afterImport: "Tag new videos automatically",
+      afterImportHint: "After a video is imported, ask the classifier for its tags.",
       threshold: "Probability to add",
       thresholdHint:
         "A tag is added when the classifier's probability is at least this value (above 0, up to 1).",
@@ -1717,10 +1737,6 @@ export const en = {
       save: "Save",
       saving: "Saving…",
       saved: "Auto-tagging settings saved",
-      check: "Save and test connection",
-      checking: "Testing… Loading the model can take a few minutes.",
-      checkOk: "The classifier answered.",
-      checkFailed: (reason: string) => `The classifier didn't answer: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loading: "Loading the auto-tagging settings",
       loadFailed: (reason: string) =>

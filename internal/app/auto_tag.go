@@ -46,6 +46,12 @@ type AutoTagSettingsStore interface {
 	SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error
 }
 
+// OllamaSettingsStore は Ollama の接続先の保存先である。internal/store の *SettingsStore が満たす。
+type OllamaSettingsStore interface {
+	OllamaSettings(ctx context.Context) (domain.OllamaSettings, error)
+	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
+}
+
 // AutoTagClassifier は判定モデルに質問ごとの「はい」の確率を聞く。internal/clef の *Client が満たす。
 type AutoTagClassifier interface {
 	Classify(ctx context.Context, req domain.AutoTagRequest) (map[string]float64, error)
@@ -64,6 +70,7 @@ type VideoImageSource interface {
 type AutoTaggerOptions struct {
 	Queue      AutoTagQueue
 	Settings   AutoTagSettingsStore
+	Ollama     OllamaSettingsStore
 	Classifier AutoTagClassifier
 	Images     VideoImageSource
 	// Logger は nil なら slog の既定を使う。
@@ -75,6 +82,7 @@ type AutoTaggerOptions struct {
 type AutoTagger struct {
 	queue      AutoTagQueue
 	settings   AutoTagSettingsStore
+	ollama     OllamaSettingsStore
 	classifier AutoTagClassifier
 	images     VideoImageSource
 	logger     *slog.Logger
@@ -93,6 +101,7 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 	return &AutoTagger{
 		queue:      opts.Queue,
 		settings:   opts.Settings,
+		ollama:     opts.Ollama,
 		classifier: opts.Classifier,
 		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
@@ -123,34 +132,57 @@ func (a *AutoTagger) Status(ctx context.Context) (domain.AutoTagStatus, error) {
 }
 
 // SaveSettings は設定を確かめて保存し、保存後の状態を返す。規則に合わなければ
-// domain.ErrInvalidAutoTagSettings を包んだ誤りを返す。
+// domain.ErrInvalidAutoTagSettings を包んだ誤りを返す。機能を入れたときに待ち行列に残っていた
+// 判定を再開するため、保存のあとに判定の処理を起こす。
 func (a *AutoTagger) SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error) {
-	normalized, err := domain.NormalizeAutoTagSettings(settings)
+	validated, err := domain.ValidateAutoTagSettings(settings)
 	if err != nil {
 		return domain.AutoTagStatus{}, err
 	}
 	a.saveMu.Lock()
-	err = a.settings.SaveAutoTagSettings(ctx, normalized)
+	err = a.settings.SaveAutoTagSettings(ctx, validated)
 	a.saveMu.Unlock()
 	if err != nil {
 		return domain.AutoTagStatus{}, err
 	}
+	a.Wake()
 	return a.Status(ctx)
 }
 
-// Check は保存した問い合わせ先と模型で、短い質問を 1 つ判定させて、使えるかを確かめる。
-// 使えなければ理由を包んだ誤りを返す。問い合わせ先は保存した設定だけから取り、呼び出し側が
-// 渡した URL へは要求を送らない。
+// OllamaSettings は Ollama の接続先を返す。
+func (a *AutoTagger) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
+	return a.ollama.OllamaSettings(ctx)
+}
+
+// SaveOllamaSettings は接続先を確かめて保存し、保存後の値を返す。規則に合わなければ
+// domain.ErrInvalidOllamaSettings を包んだ誤りを返す。
+func (a *AutoTagger) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error) {
+	normalized, err := domain.NormalizeOllamaSettings(settings)
+	if err != nil {
+		return domain.OllamaSettings{}, err
+	}
+	a.saveMu.Lock()
+	err = a.ollama.SaveOllamaSettings(ctx, normalized)
+	a.saveMu.Unlock()
+	if err != nil {
+		return domain.OllamaSettings{}, err
+	}
+	return normalized, nil
+}
+
+// Check は保存した接続先と模型で、短い質問を 1 つ判定させて、使えるかを確かめる。使えなければ
+// 理由を包んだ誤りを返す。接続先は保存した設定だけから取り、呼び出し側が渡した URL へは要求を
+// 送らない。自動タグ付けの機能の入切には関係なく確かめられる。
 func (a *AutoTagger) Check(ctx context.Context) error {
-	settings, err := a.settings.AutoTagSettings(ctx)
+	ollama, err := a.ollama.OllamaSettings(ctx)
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, autoTagCheckTimeout)
 	defer cancel()
 	_, err = a.classifier.Classify(ctx, domain.AutoTagRequest{
-		Endpoint: settings.Endpoint,
-		Model:    settings.Model,
+		Endpoint: ollama.Endpoint,
+		Model:    ollama.Model,
 		Subject:  domain.NewAutoTagSubject("Connection check", "/videos/check.mp4"),
 		Questions: []domain.AutoTagQuestion{{
 			Key:          "check",
@@ -160,9 +192,21 @@ func (a *AutoTagger) Check(ctx context.Context) error {
 	return err
 }
 
+// enabled は自動タグ付けの機能が入かを返す。
+func (a *AutoTagger) enabled(ctx context.Context) (bool, error) {
+	settings, err := a.settings.AutoTagSettings(ctx)
+	return settings.Enabled, err
+}
+
 // QueueVideo は動画 1 本を判定に回す（判定を終えていても回し直す）。積んだら true を返す。
-// 登録フォルダの下に所在の無い動画や判定中の動画は積まない。
+// 登録フォルダの下に所在の無い動画や判定中の動画は積まない。機能が切なら
+// domain.ErrAutoTaggingOff。
 func (a *AutoTagger) QueueVideo(ctx context.Context, videoID int64) (bool, error) {
+	if on, err := a.enabled(ctx); err != nil {
+		return false, err
+	} else if !on {
+		return false, domain.ErrAutoTaggingOff
+	}
 	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain)
 	if err != nil {
 		return false, err
@@ -173,10 +217,16 @@ func (a *AutoTagger) QueueVideo(ctx context.Context, videoID int64) (bool, error
 	return queued > 0, nil
 }
 
-// QueueLibrary はライブラリの動画を scope に従って判定に回し、積んだ件数を返す。
+// QueueLibrary はライブラリの動画を scope に従って判定に回し、積んだ件数を返す。機能が切なら
+// domain.ErrAutoTaggingOff。
 func (a *AutoTagger) QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error) {
 	if !scope.Valid() {
 		return 0, fmt.Errorf("unknown auto-tagging scope %q", scope)
+	}
+	if on, err := a.enabled(ctx); err != nil {
+		return 0, err
+	} else if !on {
+		return 0, domain.ErrAutoTaggingOff
 	}
 	queued, err := a.queue.QueueLibrary(ctx, scope.QueueMode())
 	if err != nil {
@@ -200,14 +250,14 @@ func (a *AutoTagger) RejectTag(ctx context.Context, videoID, tagID int64) error 
 
 // VideoImagesFinished は取り込みで動画のシーク用プレビューの段階が終わった（成否を問わない）
 // ことを受け取る。代表サムネイルはそれより前に終わっているので、判定に添える画像が揃っている。
-// 自動の判定が入なら、まだ判定していない動画を積む。
+// 機能と取り込みのあとの自動の判定が入なら、まだ判定していない動画を積む。
 func (a *AutoTagger) VideoImagesFinished(ctx context.Context, videoID int64) {
 	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {
 		a.logger.Warn("cannot read the auto-tagging settings", slog.Any("error", err))
 		return
 	}
-	if !settings.Enabled {
+	if !settings.Enabled || !settings.AfterImport {
 		return
 	}
 	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueIfNew)
@@ -233,11 +283,34 @@ func (a *AutoTagger) Recover(ctx context.Context) error {
 }
 
 // Run は ctx が終わるまで判定を 1 件ずつ処理する。起動直後は知らせを待たずに 1 度
-// 待ち行列を見る。
+// 待ち行列を見る。機能が切のあいだは待ち行列から取り出さず、判定モデルに接続しない。積んで
+// あった判定は残り、機能を入れたとき（SaveSettings が起こす）に続きから処理する。
 func (a *AutoTagger) Run(ctx context.Context) {
 	for {
 		if ctx.Err() != nil {
 			return
+		}
+		on, err := a.enabled(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			a.logger.Error("cannot read the auto-tagging settings", slog.Any("error", err))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(autoTagRetryDelay):
+			}
+			continue
+		}
+		if !on {
+			// 切のあいだは、設定の保存（SaveSettings）に起こされるまで待つ。
+			select {
+			case <-ctx.Done():
+				return
+			case <-a.wake:
+			}
+			continue
 		}
 		job, err := a.queue.Claim(ctx)
 		switch {
@@ -295,6 +368,10 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 	if err != nil {
 		return selection, err
 	}
+	ollama, err := a.ollama.OllamaSettings(ctx)
+	if err != nil {
+		return selection, err
+	}
 	video, err := a.queue.Subject(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
 		return selection, nil
@@ -319,8 +396,8 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 			questions[i] = domain.AutoTagQuestionFor(candidate)
 		}
 		probabilities, err := a.classifier.Classify(ctx, domain.AutoTagRequest{
-			Endpoint:  settings.Endpoint,
-			Model:     settings.Model,
+			Endpoint:  ollama.Endpoint,
+			Model:     ollama.Model,
 			Subject:   subject,
 			Questions: questions,
 		})

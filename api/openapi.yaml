@@ -599,6 +599,12 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: 自動タグ付けの機能が切（auto_tagging_off）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/videos/{id}/tags/{tagId}/confirm:
     post:
@@ -1489,14 +1495,66 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/ollama:
+    get:
+      operationId: getOllamaSettings
+      summary: Ollama の接続先を返す
+      description: |
+        判定モデル（Clef）を動かす Ollama の基底 URL と模型名。自動タグ付けの機能の入切とは別に持つ
+        （docs/design-docs/auto-tagging.md）。保存値が無ければ既定値を返す。
+      responses:
+        "200":
+          description: 今の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaSettings"
+    put:
+      operationId: updateOllamaSettings
+      summary: Ollama の接続先を保存する
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OllamaSettings"
+      responses:
+        "200":
+          description: 保存後の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OllamaSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/settings/ollama/check:
+    post:
+      operationId: checkOllama
+      summary: 保存した接続先と模型で判定できるかを確かめる
+      description: |
+        保存した設定で短い質問を 1 つ判定させて確かめる。接続先は要求の本文から取らない
+        （任意の URL へサーバーから要求を送らせないため）。模型の読み込みを含むので数分かかる
+        ことがある。要求の本文は無い。
+      responses:
+        "200":
+          description: 確かめた結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoTaggingCheck"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/auto-tagging:
     get:
       operationId: getAutoTaggingSettings
-      summary: 自動タグ付けの設定と、判定の待ち行列の件数を返す
+      summary: 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
       description: |
-        Ollama の判定モデル（Clef）に動画のサムネイルと題名・ファイル名・フォルダを渡し、
-        既存のタグごとの確率が閾値以上のタグを付ける機能の設定である
-        （docs/design-docs/auto-tagging.md）。保存値が無い項目は既定値を返す。
+        機能の入切（`enabled`、既定は切）、取り込みのあとの自動の判定、2 つの確率。接続先は
+        `/api/settings/ollama` が持つ（docs/design-docs/auto-tagging.md）。
       responses:
         "200":
           description: 今の設定と待ち行列の件数
@@ -1506,10 +1564,10 @@ paths:
                 $ref: "#/components/schemas/AutoTaggingSettings"
     put:
       operationId: updateAutoTaggingSettings
-      summary: 自動タグ付けの設定を保存する
+      summary: 自動タグ付けの機能の設定を保存する
       description: |
-        値を確かめて保存する。判定は始めない。`enabled` が真なら、これ以降に取り込みで
-        代表サムネイルの段階を終えた動画を判定に回す。
+        値を確かめて保存する。判定は始めない。`enabled` を入れると、積んであった判定を続きから
+        処理する。
       requestBody:
         required: true
         content:
@@ -1525,24 +1583,6 @@ paths:
                 $ref: "#/components/schemas/AutoTaggingSettings"
         "400":
           $ref: "#/components/responses/InvalidRequest"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-
-  /api/settings/auto-tagging/check:
-    post:
-      operationId: checkAutoTagging
-      summary: 保存した問い合わせ先と模型で判定できるかを確かめる
-      description: |
-        保存した設定で短い質問を 1 つ判定させて確かめる。問い合わせ先は要求の本文から取らない
-        （任意の URL へサーバーから要求を送らせないため）。模型の読み込みを含むので数分かかる
-        ことがある。要求の本文は無い。
-      responses:
-        "200":
-          description: 確かめた結果
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AutoTaggingCheck"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -1570,6 +1610,12 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 自動タグ付けの機能が切（auto_tagging_off）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/api-tokens:
     get:
@@ -3024,19 +3070,16 @@ components:
 
     AutoTaggingSettings:
       type: object
-      required: [enabled, endpoint, model, threshold, tentativeThreshold, queue]
+      required: [enabled, afterImport, threshold, tentativeThreshold, queue]
       additionalProperties: false
-      description: 自動タグ付けの設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
+      description: 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md）
       properties:
         enabled:
           type: boolean
-          description: 取り込みのあとに自動で判定するか。保存値が無ければ false
-        endpoint:
-          type: string
-          description: Ollama の基底 URL。保存値が無ければ http://127.0.0.1:11434
-        model:
-          type: string
-          description: Ollama の模型名。保存値が無ければ clef-flash
+          description: 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false
+        afterImport:
+          type: boolean
+          description: 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false
         threshold:
           type: number
           format: double
@@ -3047,6 +3090,19 @@ components:
           description: タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
         queue:
           $ref: "#/components/schemas/AutoTaggingQueue"
+
+    OllamaSettings:
+      type: object
+      required: [endpoint, model]
+      additionalProperties: false
+      description: Ollama の接続先（docs/design-docs/auto-tagging.md）
+      properties:
+        endpoint:
+          type: string
+          description: Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434
+        model:
+          type: string
+          description: Ollama の模型名。保存値が無ければ clef-flash
 
     AutoTaggingQueue:
       type: object
@@ -3067,16 +3123,13 @@ components:
 
     UpdateAutoTaggingSettingsRequest:
       type: object
-      required: [enabled, endpoint, model, threshold, tentativeThreshold]
+      required: [enabled, afterImport, threshold, tentativeThreshold]
       additionalProperties: false
       properties:
         enabled:
           type: boolean
-        endpoint:
-          type: string
-          description: http か https の URL
-        model:
-          type: string
+        afterImport:
+          type: boolean
         threshold:
           type: number
           format: double
@@ -4840,3 +4893,4 @@ components:
         - representative_not_selected
         - not_bundled
         - listen_failed
+        - auto_tagging_off

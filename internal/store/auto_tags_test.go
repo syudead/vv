@@ -64,7 +64,7 @@ func claimAutoTag(t *testing.T, store *AutoTagStore) domain.AutoTagJob {
 	return job
 }
 
-// 保存値が無ければ既定値を返し、保存した値はそのまま読み戻せる。
+// 保存値が無ければ既定値を返し、保存した値はそのまま読み戻せる。機能の設定と接続先は別に持つ。
 func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -75,12 +75,38 @@ func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	if got != domain.DefaultAutoTagSettings() {
 		t.Fatalf("既定値 = %+v", got)
 	}
-	want := domain.AutoTagSettings{Enabled: true, Endpoint: "http://gpu:11434", Model: "clef", Threshold: 0.65, TentativeThreshold: 0.4}
+	want := domain.AutoTagSettings{Enabled: true, AfterImport: true, Threshold: 0.65, TentativeThreshold: 0.4}
 	if err := db.Settings().SaveAutoTagSettings(ctx, want); err != nil {
 		t.Fatal(err)
 	}
 	if got, err = db.Settings().AutoTagSettings(ctx); err != nil || got != want {
 		t.Fatalf("読み戻し = %+v, %v; want %+v", got, err, want)
+	}
+	if ollama, err := db.Settings().OllamaSettings(ctx); err != nil || ollama != domain.DefaultOllamaSettings() {
+		t.Fatalf("機能の設定が接続先を変えた: %+v, %v", ollama, err)
+	}
+}
+
+// 接続先は保存した値を読み戻し、新しいキーが無ければ前の版のキーを読む。
+func TestOllamaSettingsRoundTripAndLegacyKeys(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if err := writeSetting(ctx, db.sql, legacyOllamaEndpointKey, "http://old:1"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.Settings().OllamaSettings(ctx)
+	if err != nil || got != (domain.OllamaSettings{Endpoint: "http://old:1", Model: domain.DefaultOllamaModel}) {
+		t.Fatalf("前の版のキー = %+v, %v", got, err)
+	}
+	want := domain.OllamaSettings{Endpoint: "http://gpu:11434", Model: "clef"}
+	if err := db.Settings().SaveOllamaSettings(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = db.Settings().OllamaSettings(ctx); err != nil || got != want {
+		t.Fatalf("読み戻し = %+v, %v", got, err)
+	}
+	if auto, err := db.Settings().AutoTagSettings(ctx); err != nil || auto != domain.DefaultAutoTagSettings() {
+		t.Fatalf("接続先が機能の設定を変えた: %+v, %v", auto, err)
 	}
 }
 
