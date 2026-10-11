@@ -136,13 +136,15 @@ for one group (`GroupOpenIndex`).
 **Decision**: While the page has a playlist context, the arrows, the notice and
 the end-of-playback layer follow the playlist response, not `nextId` and
 `prevId` of the related videos. Without the context, the page is unchanged
-(requirement 8, acceptance criterion 8). When the playlist or the current item
+(requirement 8, acceptance criterion 8). A step that changes only `item`
+restarts playback as a change of video does. When the playlist or the current item
 is gone (`404`), the page drops the context and ends after the current video.
 
 | Option | Verdict |
 | --- | --- |
 | **Playlist response replaces the neighbours** | Chosen |
 | Group neighbours inside a group item, playlist neighbours at its edges | Rejected: two sources for one arrow; the playlist response already gives the next member inside a group item |
+| Treat a step to the same video as already there (only `item` changes) | Rejected: a video item followed by a group item that starts at the same video (Edge Case "a group member also added alone") would leave the ended player on screen; the page restarts playback whenever `item` changes, as it does when the video id changes |
 | On a removed current item, continue from its old position | Rejected: the position is gone with the item, and a guess can replay or skip items; the Edge Case stops on a deleted playlist the same way |
 
 ## R-8: Owner only through the existing rules

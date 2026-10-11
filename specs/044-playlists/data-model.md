@@ -87,9 +87,11 @@ one with the larger `position` is deleted, and the playlist is renumbered
 
 ## Playback order
 
-`domain.PlaylistPlaybackOf(items, current)` decides from the shown items in
-order, each with its members and their progress for a group item, and the
-current item and video. The store reads its inputs in one read transaction.
+`domain.PlaylistPlaybackOf(items, current)` decides from every item of the
+playlist in position order, each marked shown or not and, for a shown group
+item, with its members and their progress, and from the current item and
+video. A hidden item stays in the input so the current item keeps its place
+when it is hidden. The store reads its inputs in one read transaction.
 
 ```mermaid
 flowchart LR

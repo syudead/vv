@@ -238,7 +238,8 @@ absent; with A's file gone, `count` is 2 and `previousItem` from G is absent;
 with a video V that is its own item and also a member of a group item G,
 playing V as G's member steps to G's next member and playing V's own item
 steps to the item after it, with different `position`; when the current item
-is hidden, `position` is 0 and `next` is the following shown item; a fully
+is hidden (its group dissolved while playing), `position` is 0 and `next`,
+`previousItem` and `nextItem` are the shown items around its place; a fully
 watched group item starts at its first member; a removed item and a deleted
 playlist answer `404`; a guest gets `401`.
 
@@ -326,7 +327,9 @@ playback is read again and the notice moves to the new `next`, or the
 end-of-playlist layer shows when there is none; cancelling stops the advance; advancing opens the
 next video with `item` set to its item; with no `next`, the end-of-playlist
 layer shows and nothing advances; the arrows open `previousItem` and
-`nextItem`; a `404` leaves the related videos' neighbours in charge and no
+`nextItem`; advancing to a step with the same video id and another `item`
+restarts that video from the start with the new item's position on the line;
+a `404` leaves the related videos' neighbours in charge and no
 notice after the end; a guest at `/videos/{id}?playlist=1&item=2` sends no
 playback request and sees no playlist line; without the query, a group member
 advances inside its group as before.
