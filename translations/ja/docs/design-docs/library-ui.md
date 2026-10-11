@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 4beeb451474511cbbe9b3e099d87a713540ae4fa5920e85ce41b54d0bf959b0b
+sourceHash: d6a86f56027141eeeb4204a0a55fc2150cfec241eb9324eded0bf112acacdb29
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -227,7 +227,7 @@ flowchart LR
 
 ### リスト表示と選択 {#list-view-and-selection}
 
-リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加（所有者）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
+リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
 
 選択はライブラリと所有者だけのものだ。チェックは、グリッドではホバーかフォーカスのときに（ホバーできない環境では常に）、リスト表示では常に薄く、選択中はすべての項目に表示する。グループのチェックが何を選ぶかは [017 UI 設計、Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) にある。
 
@@ -398,7 +398,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。
 
-キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。
+キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。プレイリストの選択器のような、開いているポップオーバーやメニューの中で押したキーはそれに属する。画面に届くのは Esc だけで、Esc は画面ではなくポップオーバーを閉じる。
 
 ### グループのメンバー {#group-members}
 
