@@ -59,7 +59,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 		return adjust(Options{
 			Videos: library, Folders: library, Library: library, FolderGroups: db.FolderGroups(),
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
-			Favorites: db.Favorites(), Versions: db.Versions(),
+			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(),
 		})
 	})
 	db := f.env.db
