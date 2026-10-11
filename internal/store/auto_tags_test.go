@@ -269,6 +269,15 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
+	// 判定の手がかりは、代表の所在とそれを含む登録フォルダである。
+	var root string
+	if err := db.sql.QueryRow(`select path from media_folders order by length(path) desc limit 1`).Scan(&root); err != nil {
+		t.Fatal(err)
+	}
+	found, err := store.Subject(ctx, soloKey)
+	if err != nil || found.MediaFolder != root || found.Video.Path != fixturePath("/media/solo.mp4") {
+		t.Fatalf("Subject = %+v, %v (root %s)", found, err, root)
+	}
 	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}

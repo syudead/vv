@@ -39,7 +39,8 @@ thumbnail.
 | --- | --- | --- |
 | Images | The library thumbnail (640 px), then 8 frames at the middle of 8 equal parts of the seek preview | The images that can be read; text only when none can |
 | `title` | The display name, else the file title | Never missing |
-| `file_name`, `folder` | The representative location's path | Never missing |
+| `file_name` | The representative location's file name | Never missing |
+| `folder` | The representative location's folder relative to its media folder, with `/` separators (`trips/kyoto` for `/mnt/nas/videos/trips/kyoto/bamboo.mp4` in the media folder `/mnt/nas/videos`) | Empty for a video directly in the media folder |
 
 The candidates are the tags whose answer could still change the video's tags.
 Asking about the rest costs time on every request and cannot change the
@@ -78,6 +79,7 @@ batches and measured times are in [ai-layer.md](ai-layer.md#ollama-provider).
 | --- | --- |
 | The thumbnail alone | It shows one scene, so tags for the rest of the video are missed |
 | The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 8 frames |
+| The absolute folder path | The part above the media folder says nothing about the video, differs between machines and operating systems, and would reach a remote Ollama host |
 | Ask about every tag on every video | Tags already on the video or rejected for it cannot change, and each one adds time |
 
 ## Tags it adds

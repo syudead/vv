@@ -23,8 +23,9 @@ type AutoTagQueue interface {
 	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode) (int, error)
 	// Claim は積んだ順にいちばん古い判定を専有する。無ければ domain.ErrNoJob。
 	Claim(ctx context.Context) (domain.AutoTagJob, error)
-	// Subject は内容の動画を返す。無ければ domain.ErrNotFound。
-	Subject(ctx context.Context, contentKey string) (domain.Video, error)
+	// Subject は内容の動画と、その代表の所在を含む登録フォルダを返す。無ければ
+	// domain.ErrNotFound。
+	Subject(ctx context.Context, contentKey string) (domain.AutoTagVideo, error)
 	// Candidates は内容の動画に聞くタグを返す。仮タグ、その動画に確定して付いているタグ、
 	// その動画で却下されたタグは含めない。
 	Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error)
@@ -312,7 +313,7 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 	if err != nil {
 		return selection, err
 	}
-	video, err := a.queue.Subject(ctx, job.ContentKey)
+	found, err := a.queue.Subject(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
 		return selection, nil
 	}
@@ -330,7 +331,8 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 		return selection, nil
 	}
 
-	subject := domain.NewAutoTagSubject(video.Title, video.Path)
+	video := found.Video
+	subject := domain.NewAutoTagSubject(video.Title, found.MediaFolder, video.Path)
 	subject.Images = a.videoImages(job.ContentKey, video)
 
 	questions := make([]domain.ClassifierQuestion, len(candidates))

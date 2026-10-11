@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sync"
@@ -62,14 +63,15 @@ func (q *fakeAutoTagQueue) Claim(context.Context) (domain.AutoTagJob, error) {
 	return domain.AutoTagJob{ContentKey: key}, nil
 }
 
-func (q *fakeAutoTagQueue) Subject(_ context.Context, key string) (domain.Video, error) {
+// Subject は動画を返す。登録フォルダは /media とする。
+func (q *fakeAutoTagQueue) Subject(_ context.Context, key string) (domain.AutoTagVideo, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	video, ok := q.videos[key]
 	if !ok {
-		return domain.Video{}, domain.ErrNotFound
+		return domain.AutoTagVideo{}, domain.ErrNotFound
 	}
-	return video, nil
+	return domain.AutoTagVideo{Video: video, MediaFolder: filepath.FromSlash("/media")}, nil
 }
 
 func (q *fakeAutoTagQueue) Candidates(_ context.Context, key string) ([]domain.AutoTagCandidate, error) {
@@ -208,7 +210,7 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1"}
 	queue.videos["k1"] = domain.Video{
-		Title: "Kyoto", Path: "/media/travel/bamboo.mp4", ThumbnailState: domain.ThumbnailStateDone,
+		Title: "Kyoto", Path: filepath.FromSlash("/media/travel/bamboo.mp4"), ThumbnailState: domain.ThumbnailStateDone,
 		SeekThumbnailState: domain.SeekThumbnailDone,
 	}
 	for id := int64(1); id <= 40; id++ {
@@ -241,7 +243,7 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 		t.Fatalf("候補を聞いた動画 = %v", queue.candidatesFor)
 	}
 	wantInput := domain.ClassifierInput{
-		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "/media/travel"},
+		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "travel"},
 		Images: [][]byte{[]byte("thumb"), []byte("f1"), []byte("f2")},
 	}
 	if got := classifier.requests[0].Input; !reflect.DeepEqual(got, wantInput) {

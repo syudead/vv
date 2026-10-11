@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"math"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -58,13 +59,16 @@ func TestNormalizeOllamaSettings(t *testing.T) {
 	}
 }
 
-func TestNewAutoTagSubjectSplitsPaths(t *testing.T) {
+// フォルダは登録フォルダからの相対（区切りは /）で、登録フォルダより上は渡さない。
+func TestNewAutoTagSubjectUsesPathRelativeToMediaFolder(t *testing.T) {
+	root := filepath.FromSlash("/mnt/nas/videos")
 	for path, want := range map[string]AutoTagSubject{
-		"/media/旅行/京都/竹林.mp4":      {Title: "t", FileName: "竹林.mp4", Folder: "/media/旅行/京都"},
-		`D:\videos\kids\relay.mov`: {Title: "t", FileName: "relay.mov", Folder: `D:\videos\kids`},
-		"bare.mp4":                 {Title: "t", FileName: "bare.mp4"},
+		"/mnt/nas/videos/旅行/京都/竹林.mp4": {Title: "t", FileName: "竹林.mp4", Folder: "旅行/京都"},
+		"/mnt/nas/videos/bare.mp4":     {Title: "t", FileName: "bare.mp4"},
+		// 登録フォルダの外（呼び出し側の誤り）でも絶対パスは渡さない。
+		"/elsewhere/secret/x.mp4": {Title: "t", FileName: "x.mp4"},
 	} {
-		if got := NewAutoTagSubject("t", path); !reflect.DeepEqual(got, want) {
+		if got := NewAutoTagSubject("t", root, filepath.FromSlash(path)); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: got %+v, want %+v", path, got, want)
 		}
 	}
@@ -83,10 +87,10 @@ func TestAutoTagQuestionForMentionsSynonyms(t *testing.T) {
 }
 
 func TestAutoTagSubjectClassifierInput(t *testing.T) {
-	subject := NewAutoTagSubject("Kyoto", "/media/travel/bamboo.mp4")
+	subject := NewAutoTagSubject("Kyoto", filepath.FromSlash("/media"), filepath.FromSlash("/media/travel/bamboo.mp4"))
 	subject.Images = [][]byte{[]byte("thumb")}
 	want := ClassifierInput{
-		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "/media/travel"},
+		Facts:  map[string]string{"title": "Kyoto", "file_name": "bamboo.mp4", "folder": "travel"},
 		Images: [][]byte{[]byte("thumb")},
 	}
 	if got := subject.ClassifierInput(); !reflect.DeepEqual(got, want) {

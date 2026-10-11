@@ -208,14 +208,31 @@ func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
 	return domain.AutoTagJob{ContentKey: key}, nil
 }
 
-// Subject は内容の識別子の動画を所有者の見え方で返す。登録フォルダの下に所在を持つ動画が
-// 無ければ domain.ErrNotFound。
-func (s *AutoTagStore) Subject(ctx context.Context, contentKey string) (domain.Video, error) {
+// Subject は内容の識別子の動画を所有者の見え方で、代表の所在を含む登録フォルダ（入れ子なら
+// 最も深いもの）とともに返す。登録フォルダの下に所在を持つ動画が無ければ domain.ErrNotFound。
+func (s *AutoTagStore) Subject(ctx context.Context, contentKey string) (domain.AutoTagVideo, error) {
 	id, err := videoIDForContent(ctx, s.db.sql, contentKey)
 	if err != nil {
-		return domain.Video{}, err
+		return domain.AutoTagVideo{}, err
 	}
-	return getVideo(ctx, s.db.sql, domain.AudienceOwner, id)
+	video, err := getVideo(ctx, s.db.sql, domain.AudienceOwner, id)
+	if err != nil {
+		return domain.AutoTagVideo{}, err
+	}
+	folders, err := listMediaFolders(ctx, s.db.sql)
+	if err != nil {
+		return domain.AutoTagVideo{}, err
+	}
+	subject := domain.AutoTagVideo{Video: video}
+	for _, folder := range folders {
+		if domain.PathInsideRoot(folder.Path, video.Path) && len(folder.Path) > len(subject.MediaFolder) {
+			subject.MediaFolder = folder.Path
+		}
+	}
+	if subject.MediaFolder == "" {
+		return domain.AutoTagVideo{}, domain.ErrNotFound
+	}
+	return subject, nil
 }
 
 // Candidates は内容の動画に聞く既存のタグを名前の順で返す。仮タグ、その動画（集まりの

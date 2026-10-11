@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -163,13 +164,22 @@ func SpreadFrameIndexes(frameCount, n int) []int {
 	return indexes
 }
 
+// AutoTagVideo は判定する動画と、その代表の所在がある登録フォルダのパスである。
+type AutoTagVideo struct {
+	Video Video
+	// MediaFolder は Video.Path を含む登録フォルダのパス（入れ子なら最も深いもの）。
+	MediaFolder string
+}
+
 // AutoTagSubject は判定に渡す動画の手がかりである。
 type AutoTagSubject struct {
 	// Title は有効な題名（表示名があればそれ）。
 	Title string
 	// FileName はファイル名（拡張子を含む）。
 	FileName string
-	// Folder はファイルのあるフォルダのパス。
+	// Folder はファイルのあるフォルダの、登録フォルダからの相対パス（区切りは /）。登録
+	// フォルダの直下なら空。登録フォルダより上の部分は内容と関係が無く、環境で変わるので
+	// 渡さない。
 	Folder string
 	// Images は判定に添える JPEG で、代表サムネイル、続いて動画全体から等間隔に選んだ
 	// シーク用プレビューのコマの順に並ぶ。無ければ空で、文字だけで判定する。
@@ -184,14 +194,22 @@ func (s AutoTagSubject) ClassifierInput() ClassifierInput {
 	}
 }
 
-// NewAutoTagSubject は動画の有効な題名と代表の所在のパスから手がかりを作る。パスの区切りは
-// / と \ のどちらも受け付ける（Windows 版がある）。
-func NewAutoTagSubject(title, path string) AutoTagSubject {
-	folder, name := "", path
-	if i := strings.LastIndexAny(path, `/\`); i >= 0 {
-		folder, name = path[:i], path[i+1:]
+// NewAutoTagSubject は動画の有効な題名と、代表の所在のパスを登録フォルダ mediaFolder からの
+// 相対にした手がかりを作る。パスは動いている OS の規則で読む。所在が登録フォルダの下に
+// 無ければ（呼び出し側の誤り）、フォルダは空にして絶対パスを渡さない。
+func NewAutoTagSubject(title, mediaFolder, path string) AutoTagSubject {
+	subject := AutoTagSubject{Title: title, FileName: filepath.Base(path)}
+	if !PathInsideRoot(mediaFolder, path) {
+		return subject
 	}
-	return AutoTagSubject{Title: title, FileName: name, Folder: folder}
+	rel, err := filepath.Rel(filepath.Clean(mediaFolder), filepath.Clean(path))
+	if err != nil {
+		return subject
+	}
+	if dir := filepath.Dir(rel); dir != "." {
+		subject.Folder = filepath.ToSlash(dir)
+	}
+	return subject
 }
 
 // AutoTagQuestionKey はタグの id から質問の名前を作る。
