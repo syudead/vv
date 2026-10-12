@@ -8,6 +8,7 @@ import {
   FileClock,
   HardDrive,
   Image,
+  ImageUp,
   LoaderCircle,
   type LucideIcon,
   PencilLine,
@@ -38,6 +39,7 @@ import ActionButton from "./ActionButton";
 import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
 import EditEntry from "./thumbnailEdit/EditEntry";
+import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 
 /**
@@ -240,6 +242,10 @@ function DateFact({
  * ComfyUI でサムネイルを編集する入口を、プレイヤーが出ていなくても置き
  * （specs/046-thumbnail-image-upload/ui-design.md）、編集した画像がサムネイルの間は、位置の項目の
  * 代わりに生成した画像の項目を出す（specs/045-comfyui-thumbnails/ui-design.md）。
+ * 編集の入口の直後（「ファイルを開く」の前）には、プレイヤーが出ていなくても、手元の画像を
+ * サムネイルにする入口を置き、アップロードした画像がサムネイルの間はその項目を出す
+ * （specs/046-thumbnail-image-upload/ui-design.md）。サムネイルの操作は一度に 1 つで、どれかの
+ * 送信中はほかの操作を `aria-disabled` にする。
  *
  * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
  * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
@@ -284,6 +290,7 @@ export default function VideoFacts({
   useEffect(() => setFailure(null), [video.id]);
   const open = useOpenFileRequest(video.id, setFailure);
   const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
+  const upload = useThumbnailUpload(video.id, setFailure, onChanged, onStale);
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -331,10 +338,12 @@ export default function VideoFacts({
               }
             />
           )}
-          {owner && video.thumbnailImage === "generated" && (
-            <GeneratedThumbnailFact
+          {owner && video.thumbnailImage !== undefined && (
+            <ImageThumbnailFact
+              origin={video.thumbnailImage}
               url={video.thumbnailUrl}
               reverting={thumbnail.sending === "revert"}
+              locked={upload.sending}
               onRevert={() => thumbnail.send("revert")}
             />
           )}
@@ -345,6 +354,7 @@ export default function VideoFacts({
                 url={video.thumbnailUrl}
                 positionMs={video.thumbnailPositionMs}
                 clearing={thumbnail.sending === "clear"}
+                locked={upload.sending}
                 onClear={() => thumbnail.send(null)}
               />
             )}
@@ -378,6 +388,7 @@ export default function VideoFacts({
               <CaptureButton
                 capture={capture}
                 sending={thumbnail.sending === "capture"}
+                locked={upload.sending}
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
@@ -392,6 +403,13 @@ export default function VideoFacts({
                 onApplied={(applied, mark) => onChanged?.(applied, mark)}
                 onStale={onStale}
                 onEditingChange={onEditingChange}
+              />
+            )}
+            {owner && (
+              <UploadEntry
+                sending={upload.sending}
+                locked={thumbnail.sending !== null}
+                onFile={upload.upload}
               />
             )}
             {location?.openable === true && (
@@ -429,11 +447,14 @@ function ThumbnailFact({
   url,
   positionMs,
   clearing,
+  locked,
   onClear,
 }: {
   url: string | undefined;
   positionMs: number;
   clearing: boolean;
+  /** ほかのサムネイルの操作の送信中。× を押せなくする。 */
+  locked: boolean;
   onClear: () => void;
 }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
@@ -455,9 +476,9 @@ function ThumbnailFact({
       {formatDuration(positionMs)}
       <ActionButton
         label={t.player.facts.useAutomaticThumbnail}
-        aria-disabled={clearing || undefined}
+        aria-disabled={clearing || locked || undefined}
         onClick={() => {
-          if (!clearing) onClear();
+          if (!clearing && !locked) onClear();
         }}
         className="size-6 rounded-sm aria-disabled:cursor-default [&_svg]:size-3"
       >
@@ -475,43 +496,51 @@ function ThumbnailFact({
 }
 
 /**
- * GeneratedThumbnailFact は情報の行の項目で、適用した生成画像のサムネイルの小さな画像と、
- * コマから作るサムネイルへ戻す × を並べる（specs/045-comfyui-thumbnails/ui-design.md
- * 「Generated thumbnail item」）。画像は 1 つの位置から作ったものではないので時刻は出さない。
+ * ImageThumbnailFact は情報の行の項目で、適用した画像のサムネイルの小さな画像と、コマから作る
+ * サムネイルへ戻す × を並べる。生成した画像（specs/045-comfyui-thumbnails/ui-design.md
+ * 「Generated thumbnail item」）とアップロードした画像（specs/046-thumbnail-image-upload/
+ * ui-design.md「Uploaded thumbnail item」）は `origin` で切り替わり、違うのはアイコンと名前だけ
+ * である。画像は 1 つの位置から作ったものではないので時刻は出さない。
  */
-function GeneratedThumbnailFact({
+function ImageThumbnailFact({
+  origin,
   url,
   reverting,
+  locked,
   onRevert,
 }: {
+  origin: NonNullable<Video["thumbnailImage"]>;
   url: string | undefined;
   reverting: boolean;
+  /** ほかのサムネイルの操作の送信中。× を押せなくする。 */
+  locked: boolean;
   onRevert: () => void;
 }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
-  const text = t.player.thumbnailEdit;
+  const uploaded = origin === "uploaded";
+  const label = uploaded
+    ? t.player.thumbnailUpload.uploadedThumbnail
+    : t.player.thumbnailEdit.generatedThumbnail;
+  const Icon = uploaded ? ImageUp : WandSparkles;
   return (
-    <li
-      title={text.generatedThumbnail}
-      className="flex items-center gap-1.5 whitespace-nowrap"
-    >
-      <WandSparkles className="size-4 shrink-0" aria-hidden="true" />
+    <li title={label} className="flex items-center gap-1.5 whitespace-nowrap">
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
       <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
         {url !== undefined && url !== brokenUrl && (
           <img
             src={url}
-            alt={text.generatedThumbnail}
+            alt={label}
             onError={() => setBrokenUrl(url)}
             className="size-full object-cover"
           />
         )}
       </span>
-      <span className="sr-only">{text.generatedThumbnail}</span>
+      <span className="sr-only">{label}</span>
       <ActionButton
-        label={text.useFrameInstead}
-        aria-disabled={reverting || undefined}
+        label={t.player.thumbnailEdit.useFrameInstead}
+        aria-disabled={reverting || locked || undefined}
         onClick={() => {
-          if (!reverting) onRevert();
+          if (!reverting && !locked) onRevert();
         }}
         className="size-6 rounded-sm aria-disabled:cursor-default [&_svg]:size-3"
       >
@@ -536,19 +565,22 @@ function GeneratedThumbnailFact({
 function CaptureButton({
   capture,
   sending,
+  locked,
   onCapture,
 }: {
   capture: ThumbnailCapture;
   sending: boolean;
+  /** ほかのサムネイルの操作の送信中。押しても送らない。 */
+  locked: boolean;
   onCapture: (positionMs: number) => void;
 }) {
   const unavailable = !capture.enabled && !sending;
   return (
     <ActionButton
       label={t.player.facts.useCurrentFrame}
-      aria-disabled={unavailable || sending || undefined}
+      aria-disabled={unavailable || sending || locked || undefined}
       onClick={() => {
-        if (!capture.enabled || sending) return;
+        if (!capture.enabled || sending || locked) return;
         const positionMs = capture.positionMs();
         if (positionMs === null || !Number.isFinite(positionMs)) return;
         onCapture(Math.max(0, Math.round(positionMs)));
