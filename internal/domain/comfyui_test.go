@@ -7,7 +7,8 @@ import (
 
 func TestApplyComfyUISettingsUpdate(t *testing.T) {
 	key := func(s string) *string { return &s }
-	saved := ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1"}
+	model := func(m ComfyUIModel) *ComfyUIModel { return &m }
+	saved := ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: ComfyUIModelQwenImageEdit}
 	cases := []struct {
 		name    string
 		current ComfyUISettings
@@ -23,7 +24,7 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 			saved, nil},
 		{"空文字列のキーは消す", saved,
 			ComfyUISettingsUpdate{Provider: ComfyUISelfHosted, URL: "https://h", APIKey: key("")},
-			ComfyUISettings{Provider: ComfyUISelfHosted, URL: "https://h"}, nil},
+			ComfyUISettings{Provider: ComfyUISelfHosted, URL: "https://h", Model: ComfyUIModelQwenImageEdit}, nil},
 		{"Cloud は要求の URL を使わない", ComfyUISettings{URL: "http://old"},
 			ComfyUISettingsUpdate{Provider: ComfyUICloud, URL: "ftp://x", APIKey: key(" k2 ")},
 			ComfyUISettings{Provider: ComfyUICloud, URL: "http://old", APIKey: "k2"}, nil},
@@ -43,6 +44,14 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 			ComfyUISettingsUpdate{Provider: ComfyUICloud, APIKey: key("")}, ComfyUISettings{}, ErrComfyUIAPIKeyMissing},
 		{"キーに空白が入る", ComfyUISettings{},
 			ComfyUISettingsUpdate{Provider: ComfyUICloud, APIKey: key("a b")}, ComfyUISettings{}, ErrInvalidComfyUISettings},
+		{"モデルが無ければ保存済みのモデルを残す", saved,
+			ComfyUISettingsUpdate{Provider: ComfyUICloud},
+			saved, nil},
+		{"モデルを選ぶ", saved,
+			ComfyUISettingsUpdate{Provider: ComfyUICloud, Model: model(ComfyUIModelFlux2Klein)},
+			ComfyUISettings{Provider: ComfyUICloud, URL: "http://gpu:8188", APIKey: "k1", Model: ComfyUIModelFlux2Klein}, nil},
+		{"知らないモデル", saved,
+			ComfyUISettingsUpdate{Provider: ComfyUICloud, Model: model("sdxl")}, ComfyUISettings{}, ErrInvalidComfyUISettings},
 		{"知らない提供元", ComfyUISettings{},
 			ComfyUISettingsUpdate{Provider: "other", URL: "http://h"}, ComfyUISettings{}, ErrInvalidComfyUISettings},
 	}
@@ -57,5 +66,15 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 		if err != nil || got != c.want {
 			t.Errorf("%s: got %+v, %v; want %+v", c.name, got, err, c.want)
 		}
+	}
+}
+
+// モデルが保存されていなければ既定のモデルを使う。
+func TestComfyUISettingsEffectiveModel(t *testing.T) {
+	if got := (ComfyUISettings{}).EffectiveModel(); got != ComfyUIModelFlux2Klein {
+		t.Errorf("empty = %s", got)
+	}
+	if got := (ComfyUISettings{Model: ComfyUIModelQwenImageEdit}).EffectiveModel(); got != ComfyUIModelQwenImageEdit {
+		t.Errorf("qwen = %s", got)
 	}
 }

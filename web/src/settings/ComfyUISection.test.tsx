@@ -43,6 +43,7 @@ describe("ComfyUISection", () => {
         provider: body.provider as ComfyUISettings["provider"],
         url: (body.url as string | undefined) ?? current.url,
         apiKeySet,
+        model: (body.model as ComfyUISettings["model"] | undefined) ?? current.model,
       };
       return Promise.resolve(json(current));
     }
@@ -52,7 +53,7 @@ describe("ComfyUISection", () => {
   }
 
   beforeEach(() => {
-    current = { apiKeySet: false };
+    current = { apiKeySet: false, model: "flux2_klein_4b" };
     puts = [];
     checkResult = { available: true };
     toast.mockReset();
@@ -113,7 +114,9 @@ describe("ComfyUISection", () => {
     await user.type(key, "secret-key");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("ComfyUI settings saved"));
-    expect(puts).toEqual([{ provider: "cloud", apiKey: "secret-key" }]);
+    expect(puts).toEqual([
+      { provider: "cloud", apiKey: "secret-key", model: "flux2_klein_4b" },
+    ]);
     expect(screen.getByLabelText<HTMLInputElement>("API key").value).toBe("");
     expect(
       screen.getByText("A key is saved. Type a new one to replace it."),
@@ -123,7 +126,7 @@ describe("ComfyUISection", () => {
     // 空の欄のまま保存すれば apiKey を送らず、保存済みのキーを残す。
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(puts).toHaveLength(2));
-    expect(puts[1]).toEqual({ provider: "cloud" });
+    expect(puts[1]).toEqual({ provider: "cloud", model: "flux2_klein_4b" });
   });
 
   it("saves unsaved values before testing, and shows the result and its message", async () => {
@@ -142,7 +145,9 @@ describe("ComfyUISection", () => {
       ([input, init]) => `${init?.method ?? "GET"} ${String(input)}`,
     );
     expect(calls.indexOf(`PUT ${URL}`)).toBeLessThan(calls.indexOf(`POST ${URL}/check`));
-    expect(puts).toEqual([{ provider: "self_hosted", url: "http://gpu:8188" }]);
+    expect(puts).toEqual([
+      { provider: "self_hosted", url: "http://gpu:8188", model: "flux2_klein_4b" },
+    ]);
 
     checkResult = { available: true };
     await user.click(screen.getByRole("button", { name: "Save and test connection" }));
@@ -152,7 +157,12 @@ describe("ComfyUISection", () => {
 
   it("lists each missing file with its folder and download page, models first", async () => {
     const user = userEvent.setup();
-    current = { provider: "self_hosted", url: "http://127.0.0.1:8188", apiKeySet: false };
+    current = {
+      provider: "self_hosted",
+      url: "http://127.0.0.1:8188",
+      apiKeySet: false,
+      model: "flux2_klein_4b",
+    };
     checkResult = {
       available: false,
       message: "ComfyUI is missing 2 items",
@@ -209,13 +219,20 @@ describe("ComfyUISection", () => {
     await user.type(url, "http://new:8188");
     release();
     await waitFor(() => expect(toast).toHaveBeenCalledWith("ComfyUI settings saved"));
-    expect(puts).toEqual([{ provider: "self_hosted", url: "http://old:8188" }]);
+    expect(puts).toEqual([
+      { provider: "self_hosted", url: "http://old:8188", model: "flux2_klein_4b" },
+    ]);
     expect(url.value).toBe("http://new:8188");
   });
 
   it("drops a test result when a value changes while the test runs", async () => {
     const user = userEvent.setup();
-    current = { provider: "self_hosted", url: "http://old:8188", apiKeySet: false };
+    current = {
+      provider: "self_hosted",
+      url: "http://old:8188",
+      apiKeySet: false,
+      model: "flux2_klein_4b",
+    };
     let release: () => void = () => {};
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -247,15 +264,47 @@ describe("ComfyUISection", () => {
 
   it("forgets a Cloud key left over while My own ComfyUI is saved", async () => {
     const user = userEvent.setup();
-    current = { provider: "self_hosted", url: "http://127.0.0.1:8188", apiKeySet: true };
+    current = {
+      provider: "self_hosted",
+      url: "http://127.0.0.1:8188",
+      apiKeySet: true,
+      model: "flux2_klein_4b",
+    };
     renderSection();
     expect(await screen.findByText("A Comfy Cloud key is still saved.")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Forget the key" }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("Comfy Cloud key forgotten"));
     expect(puts).toEqual([
-      { provider: "self_hosted", url: "http://127.0.0.1:8188", apiKey: "" },
+      {
+        provider: "self_hosted",
+        url: "http://127.0.0.1:8188",
+        apiKey: "",
+        model: "flux2_klein_4b",
+      },
     ]);
     expect(screen.queryByText("A Comfy Cloud key is still saved.")).toBeNull();
+  });
+
+  it("shows the saved model and saves the one chosen", async () => {
+    const user = userEvent.setup();
+    current = {
+      provider: "cloud",
+      apiKeySet: true,
+      model: "flux2_klein_4b",
+    };
+    renderSection();
+    const qwen = await screen.findByRole("radio", { name: "Qwen-Image-Edit-2511" });
+    expect(
+      screen
+        .getByRole("radio", { name: "FLUX.2 [klein] 4B" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByRole("radiogroup", { name: "Model" })).toBeDefined();
+    await user.click(qwen);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("ComfyUI settings saved"));
+    expect(puts).toEqual([{ provider: "cloud", model: "qwen_image_edit_2511" }]);
+    expect(qwen.getAttribute("aria-checked")).toBe("true");
   });
 
   it("shows why the settings could not be loaded and retries", async () => {

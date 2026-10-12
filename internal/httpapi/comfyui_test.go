@@ -90,6 +90,25 @@ func TestComfyUISettingsSaveNeverReturnsKey(t *testing.T) {
 	}
 }
 
+// 保存前は既定のモデルを返し、選んだモデルを保存する。model を省いた保存はモデルを残す。
+func TestComfyUISettingsModel(t *testing.T) {
+	f := newComfyUIFixture(t, ollamaProbe{})
+	if got := decode[gen.ComfyUISettings](t, f.env.get("/api/settings/comfyui", f.owner)); got.Model != gen.Flux2Klein4b {
+		t.Fatalf("before save model = %q", got.Model)
+	}
+	if code, body := f.put(t, `{"provider":"cloud","apiKey":"k","model":"qwen_image_edit_2511"}`); code != http.StatusOK ||
+		!strings.Contains(body, `"model":"qwen_image_edit_2511"`) {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	if code, body := f.put(t, `{"provider":"cloud"}`); code != http.StatusOK ||
+		!strings.Contains(body, `"model":"qwen_image_edit_2511"`) {
+		t.Fatalf("PUT without model = %d %s", code, body)
+	}
+	if got := f.stored(t); got.Model != domain.ComfyUIModelQwenImageEdit {
+		t.Fatalf("stored = %+v", got)
+	}
+}
+
 // 契約の 400 の reason を返し、何も保存しない。
 func TestComfyUISettingsRejectsInvalidBodies(t *testing.T) {
 	f := newComfyUIFixture(t, ollamaProbe{})
@@ -104,6 +123,7 @@ func TestComfyUISettingsRejectsInvalidBodies(t *testing.T) {
 		{`{}`, ""},
 		{`{"provider":"other","url":"http://h"}`, ""},
 		{`{"provider":"cloud","apiKey":"k","extra":1}`, ""},
+		{`{"provider":"cloud","apiKey":"k","model":"sdxl"}`, ""},
 	} {
 		code, body := f.put(t, c.body)
 		if code != http.StatusBadRequest || !strings.Contains(body, string(gen.ErrorCodeInvalidRequest)) ||

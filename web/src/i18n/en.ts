@@ -21,6 +21,7 @@ type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
+type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -1991,6 +1992,17 @@ export const en = {
           hint: "Comfy's hosted service. Uses your API key and its credits.",
         },
       } satisfies Record<ComfyUIProvider, { label: string; hint: string }>,
+      model: "Model",
+      models: {
+        flux2_klein_4b: {
+          label: "FLUX.2 [klein] 4B",
+          hint: "Fast, and the best at removing captions. About 12 GB of model files.",
+        },
+        qwen_image_edit_2511: {
+          label: "Qwen-Image-Edit-2511",
+          hint: "Takes the colours and mood of a reference image well. About 31 GB of model files and a 24 GB GPU.",
+        },
+      } satisfies Record<ComfyUIModel, { label: string; hint: string }>,
       url: "ComfyUI URL",
       urlHint: "Where ComfyUI listens, for example http://127.0.0.1:8188.",
       apiKey: "API key",

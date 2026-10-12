@@ -84,6 +84,15 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 	}
 }
 
+// diffusionModelFor は接続先 conn で拡散モデルに代えて読ませるファイルを返す。差し替えは
+// 自前の ComfyUI で、差し替えられるモデルのときだけ効く。それ以外は空を返す。
+func (c *Client) diffusionModelFor(conn domain.ComfyUISettings) string {
+	if conn.Provider != domain.ComfyUISelfHosted || !presetFor(conn.EffectiveModel()).overridable {
+		return ""
+	}
+	return c.diffusionModel
+}
+
 // errAPIKeyRejected は Comfy Cloud が API キーを受け付けなかったことを表す。
 var errAPIKeyRejected = errors.New("the API key was rejected by Comfy Cloud; check the key under Settings")
 
@@ -112,7 +121,7 @@ func (c *Client) Check(ctx context.Context) error {
 		if !stats.valid() {
 			return fmt.Errorf("the server at %s is not ComfyUI (/system_stats has no system information)", settings.URL)
 		}
-		return c.checkRequired(ctx, settings.URL, "", name, c.diffusionModel)
+		return c.checkRequired(ctx, settings.URL, "", name, settings)
 	case domain.ComfyUICloud:
 		if settings.APIKey == "" {
 			return domain.ErrComfyUIAPIKeyMissing
@@ -124,17 +133,16 @@ func (c *Client) Check(ctx context.Context) error {
 		if jobs.Jobs == nil {
 			return fmt.Errorf("the server at %s is not Comfy Cloud (/jobs has no job list)", c.cloud)
 		}
-		return c.checkRequired(ctx, c.cloud, settings.APIKey, "Comfy Cloud", "")
+		return c.checkRequired(ctx, c.cloud, settings.APIKey, "Comfy Cloud", settings)
 	default:
 		return errors.New("no ComfyUI connection is saved; choose a provider and save it first")
 	}
 }
 
-// checkRequired は基底 URL base の GET /object_info を読み、埋め込んだワークフローの
-// ノードの型とモデルファイルがあるかを確かめる。diffusionModel が空でなければ拡散モデルは
-// そのファイルを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
-func (c *Client) checkRequired(ctx context.Context, base, apiKey, name, diffusionModel string) error {
-	required, err := workflowRequirement(diffusionModel)
+// checkRequired は基底 URL base の GET /object_info を読み、settings のモデルのワークフローの
+// ノードの型とモデルファイルがあるかを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
+func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string, settings domain.ComfyUISettings) error {
+	required, err := workflowRequirement(settings.EffectiveModel(), c.diffusionModelFor(settings))
 	if err != nil {
 		return err
 	}

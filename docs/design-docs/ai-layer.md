@@ -98,9 +98,27 @@ is separate from auto-tagging.
 | `comfyui.provider` | `self_hosted` or `cloud`; absent until the owner saves | Both |
 | `comfyui.url` | The base URL, normalized as `ollama.endpoint` is | Self-hosted |
 | `comfyui.api_key` | The Comfy Cloud API key | Comfy Cloud |
+| `comfyui.model` | The model the edit runs: `flux2_klein_4b` or `qwen_image_edit_2511`; absent means `flux2_klein_4b` | Both |
 
 Each provider keeps its own value when the owner switches to the other, so
 switching back does not ask for the URL or the key again.
+
+Each model has its own pair of bundled workflows, one without and one with
+`vv:reference`, and both pairs fill the same `vv:*` nodes. Only the
+instruction's input differs: `text` on FLUX.2 [klein]'s `CLIPTextEncode`,
+`prompt` on Qwen-Image-Edit's `TextEncodeQwenImageEditPlus`. A run takes the
+pair of the model saved when it starts.
+
+| Model | Strength | Model files | Time per edit on Comfy Cloud |
+| --- | --- | --- | --- |
+| FLUX.2 [klein] 4B fp8 (default) | Removes captions most reliably | About 12 GB | 8–16 s ([R-12](../../specs/045-comfyui-thumbnails/research.md#r-12-the-model-is-flux2-klein-4b-fp8)) |
+| Qwen-Image-Edit-2511 fp8mixed, Lightning 4-step LoRA | Takes the colours and mood of a reference image | About 31 GB | About 23 s, including uploads |
+
+The Qwen-Image-Edit time was measured with one synthetic frame, and a
+self-hosted ComfyUI needs a 24 GB GPU for it. The model's known weaknesses come
+from the POC: it misread a Japanese instruction once, and
+mosaicked a screen in the frame (R-12). The owner chooses the model in
+Settings, so the default stays the one that is best at the main case.
 
 The API key is write-only. `GET` answers `apiKeySet` and never the key, with
 `Cache-Control: no-store`. A `PUT` without `apiKey` keeps the saved key, and an
@@ -115,7 +133,7 @@ reader of the database
 | Comfy Cloud | `GET https://cloud.comfy.org/api/jobs?limit=1` with `X-API-Key` | Comfy Cloud cannot be reached, or answers `401` or `403` to the key |
 
 Once the provider answers, the test reads `GET /object_info` and checks the
-two workflows vv bundles in
+saved model's two workflows vv bundles in
 [`internal/comfyui/workflows`](../../internal/comfyui/workflows): every
 `class_type` they use must exist, and every model file a loader node names must
 be among that loader's options. The check answers unavailable with a `missing`

@@ -308,6 +308,40 @@ func TestStartWithDiffusionModelReplacesOnlyTheUNETLoaderFile(t *testing.T) {
 	}
 }
 
+// Qwen-Image-Edit を選ぶと、そのモデルのワークフローの組を使い、指示は prompt の入力に書く。
+// klein の拡散モデルの差し替えは効かない。
+func TestStartWithQwenUsesItsWorkflows(t *testing.T) {
+	f := newRunProvider(t, false)
+	client := NewWithOptions(fixedSettings{}, Options{DiffusionModel: "klein-4b-finetune.safetensors"})
+	conn := f.conn()
+	conn.Model = domain.ComfyUIModelQwenImageEdit
+	frame := pngOf(t, 8, 6, color.RGBA{R: 200, A: 255})
+	reference := pngOf(t, 4, 4, color.RGBA{B: 200, A: 255})
+	cases := []struct {
+		input    domain.ImageEditInput
+		workflow string
+	}{
+		{domain.ImageEditInput{Frame: frame, Instruction: "空を青くする"}, workflowQwenEdit},
+		{domain.ImageEditInput{Frame: frame, Reference: reference, Instruction: "空を青くする"}, workflowQwenEditReference},
+	}
+	for _, c := range cases {
+		if _, err := client.Start(context.Background(), conn, c.input); err != nil {
+			t.Fatalf("%s: Start = %v", c.workflow, err)
+		}
+		sent := f.prompts[len(f.prompts)-1]
+		want := embedded(t, c.workflow)
+		for _, title := range []string{titleFrame, titleMask, titleReference} {
+			if hasTitle(want, title) {
+				inputsOf(t, want, title)["image"] = inputsOf(t, sent, title)["image"]
+			}
+		}
+		inputsOf(t, want, titlePrompt)["prompt"] = "空を青くする"
+		if !reflect.DeepEqual(sent, want) {
+			t.Errorf("%s: the prompt differs from the bundled workflow beyond vv:* inputs", c.workflow)
+		}
+	}
+}
+
 // マスクが無ければ、コマと同じ大きさの真っ白な PNG を上げる。
 func TestStartWithoutMaskUploadsWhiteMaskOfFrameSize(t *testing.T) {
 	f := newRunProvider(t, false)

@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// workflowFiles は vv が用意する 2 つのワークフローである。ComfyUI の API 形式の JSON で、
+// workflowFiles は vv が用意するワークフローで、モデルごとに 2 つある。ComfyUI の API 形式の JSON で、
 // ここに埋め込んだファイルが正本である（specs/045-comfyui-thumbnails/contracts/workflow.md、
 // research.md R-2）。vv が埋めるノードは _meta.title の vv:* で見つける。
 //
@@ -18,14 +18,48 @@ import (
 var workflowFiles embed.FS
 
 const (
-	// workflowEdit は参考画像が無いときのワークフローである。
+	// workflowEdit は FLUX.2 [klein] の、参考画像が無いときのワークフローである。
 	workflowEdit = "workflows/thumbnail-edit.json"
-	// workflowEditReference は参考画像があるときのワークフローである。
+	// workflowEditReference は FLUX.2 [klein] の、参考画像があるときのワークフローである。
 	workflowEditReference = "workflows/thumbnail-edit-reference.json"
+	// workflowQwenEdit は Qwen-Image-Edit の、参考画像が無いときのワークフローである。
+	workflowQwenEdit = "workflows/thumbnail-edit-qwen.json"
+	// workflowQwenEditReference は Qwen-Image-Edit の、参考画像があるときのワークフローである。
+	workflowQwenEditReference = "workflows/thumbnail-edit-qwen-reference.json"
 )
 
-// workflowNames は埋め込んだワークフローの全部である。必要なファイルの確かめはこのすべてを見る。
-var workflowNames = []string{workflowEdit, workflowEditReference}
+// preset は 1 つのモデルで動かすワークフローの組と、そのローダーが読むファイルである。
+type preset struct {
+	// edit は参考画像が無いとき、editReference はあるときのワークフローである。
+	edit          string
+	editReference string
+	// files はワークフローのローダーが名指すファイルの全部で、接続のテストはこの順に挙げる。
+	files []requiredFile
+	// overridable は Options.DiffusionModel で拡散モデルを差し替えられるかである。差し替えは
+	// FLUX.2 [klein] の派生モデルを試すためのものなので、klein だけが持つ。
+	overridable bool
+}
+
+// presets はモデルごとのワークフローの組である。
+var presets = map[domain.ComfyUIModel]preset{
+	domain.ComfyUIModelFlux2Klein: {
+		edit: workflowEdit, editReference: workflowEditReference, files: requiredFiles, overridable: true,
+	},
+	domain.ComfyUIModelQwenImageEdit: {
+		edit: workflowQwenEdit, editReference: workflowQwenEditReference, files: qwenRequiredFiles,
+	},
+}
+
+// presetFor はモデル model のワークフローの組を返す。知らないモデルなら既定のモデルの組を返す。
+func presetFor(model domain.ComfyUIModel) preset {
+	if p, ok := presets[model]; ok {
+		return p
+	}
+	return presets[domain.ComfyUIModels[0]]
+}
+
+// workflowNames は埋め込んだワークフローの全部である。
+var workflowNames = []string{workflowEdit, workflowEditReference, workflowQwenEdit, workflowQwenEditReference}
 
 // workflowNode はワークフローの 1 つのノードである。
 type workflowNode struct {
@@ -54,9 +88,16 @@ func loadWorkflow(name string) (workflow, error) {
 
 // modelLoaders はモデルファイルを読むローダーノードの型と、ファイル名を受ける入力の名前である。
 var modelLoaders = map[string]string{
-	"UNETLoader": "unet_name",
-	"CLIPLoader": "clip_name",
-	"VAELoader":  "vae_name",
+	"UNETLoader":          "unet_name",
+	"CLIPLoader":          "clip_name",
+	"VAELoader":           "vae_name",
+	"LoraLoaderModelOnly": "lora_name",
+}
+
+// promptInputs は vv:prompt のノードの型と、指示の文を受ける入力の名前である。
+var promptInputs = map[string]string{
+	"CLIPTextEncode":              "text",
+	"TextEncodeQwenImageEditPlus": "prompt",
 }
 
 // diffusionLoader は拡散モデルを読むローダーの型である。Options.DiffusionModel はこの型の
@@ -71,8 +112,8 @@ type requiredFile struct {
 	source string
 }
 
-// requiredFiles はワークフローのローダーが名指すモデルファイルの全部である。ワークフローの
-// ローダーが名指すファイルはどれもここに載っている（workflows_test.go が確かめる）。
+// requiredFiles は FLUX.2 [klein] のワークフローのローダーが名指すモデルファイルの全部である。
+// ワークフローのローダーが名指すファイルはどれもここに載っている（workflows_test.go が確かめる）。
 var requiredFiles = []requiredFile{
 	{
 		name:   "flux-2-klein-4b-fp8.safetensors",
@@ -91,6 +132,30 @@ var requiredFiles = []requiredFile{
 	},
 }
 
+// qwenRequiredFiles は Qwen-Image-Edit のワークフローのローダーが名指すモデルファイルの全部である。
+var qwenRequiredFiles = []requiredFile{
+	{
+		name:   "qwen_image_edit_2511_fp8mixed.safetensors",
+		folder: "diffusion_models",
+		source: "https://huggingface.co/Comfy-Org/Qwen-Image-Edit_ComfyUI/tree/main/split_files/diffusion_models",
+	},
+	{
+		name:   "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+		folder: "text_encoders",
+		source: "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/tree/main/split_files/text_encoders",
+	},
+	{
+		name:   "qwen_image_vae.safetensors",
+		folder: "vae",
+		source: "https://huggingface.co/Comfy-Org/Qwen-Image_ComfyUI/tree/main/split_files/vae",
+	},
+	{
+		name:   "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+		folder: "loras",
+		source: "https://huggingface.co/lightx2v/Qwen-Image-Edit-2511-Lightning",
+	},
+}
+
 // requirement はワークフローが使うノードの型と、ローダーが名指すファイルである。
 type requirement struct {
 	// nodes はすべてのノードの型で、名前の順に並ぶ。
@@ -106,10 +171,10 @@ type loaderFile struct {
 	file   requiredFile
 }
 
-// requiredFilesFor は requiredFiles の拡散モデルを diffusionModel に代えた一覧を返す。
-// diffusionModel が空なら requiredFiles のままである。差し替えたファイルの入手先は分からない。
-func requiredFilesFor(diffusionModel string) []requiredFile {
-	files := slices.Clone(requiredFiles)
+// requiredFilesFor は base の拡散モデルを diffusionModel に代えた一覧を返す。
+// diffusionModel が空なら base のままである。差し替えたファイルの入手先は分からない。
+func requiredFilesFor(base []requiredFile, diffusionModel string) []requiredFile {
+	files := slices.Clone(base)
 	if diffusionModel == "" {
 		return files
 	}
@@ -121,14 +186,16 @@ func requiredFilesFor(diffusionModel string) []requiredFile {
 	return files
 }
 
-// workflowRequirement は埋め込んだワークフローの全部が使うノードの型とファイルを集める。
-// diffusionModel が空でなければ、拡散モデルのローダーはそのファイルを読むものとして扱う。
-// ローダーが requiredFiles に無いファイルを名指していれば誤りを返す。
-func workflowRequirement(diffusionModel string) (requirement, error) {
-	required := requiredFilesFor(diffusionModel)
+// workflowRequirement はモデル model の 2 つのワークフローが使うノードの型とファイルを集める。
+// diffusionModel が空でなければ、拡散モデルのローダーはそのファイルを読むものとして扱う
+// （呼び出し側は、差し替えられるモデルのときだけ渡す）。ローダーがそのモデルの必要なファイルに
+// 無いファイルを名指していれば誤りを返す。
+func workflowRequirement(model domain.ComfyUIModel, diffusionModel string) (requirement, error) {
+	p := presetFor(model)
+	required := requiredFilesFor(p.files, diffusionModel)
 	nodes := map[string]bool{}
 	var files []loaderFile
-	for _, name := range workflowNames {
+	for _, name := range []string{p.edit, p.editReference} {
 		w, err := loadWorkflow(name)
 		if err != nil {
 			return requirement{}, err
@@ -158,7 +225,7 @@ func workflowRequirement(diffusionModel string) (requirement, error) {
 		sorted = append(sorted, node)
 	}
 	sort.Strings(sorted)
-	// ファイルは requiredFiles（Required files の表）の順に並べる。
+	// ファイルは必要なファイルの表（Required files）の順に並べる。
 	ordered := make([]loaderFile, 0, len(files))
 	for _, f := range required {
 		for _, entry := range files {
