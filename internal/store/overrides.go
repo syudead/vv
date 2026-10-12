@@ -17,7 +17,8 @@ import (
 // 同じ取引でその内容の動画の全所在の title_key・search_key を書き直す。
 
 // overrideColumns は動画を返す読み出し（videoColumns・listColumns）の末尾に足す列で、
-// 並びは scanVideo と対応する。表示名・位置・改版番号の順である。有効な題名
+// 並びは scanVideo と対応する。表示名・位置・改版番号・適用した画像の改版番号
+// （specs/045-comfyui-thumbnails/data-model.md）の順である。有効な題名
 // （coalesce(display_name, 所在の題名)）は scanVideo が決める。内容の識別子が空の動画には
 // 結ばない。
 const overrideColumns = `(select ov.display_name from video_overrides ov
@@ -25,7 +26,9 @@ const overrideColumns = `(select ov.display_name from video_overrides ov
 	(select ov.thumbnail_position_ms from video_overrides ov
 		where ov.content_key = videos.content_key and videos.content_key <> '') as thumbnail_position_ms,
 	(select ov.thumbnail_revision from video_overrides ov
-		where ov.content_key = videos.content_key and videos.content_key <> '') as thumbnail_revision`
+		where ov.content_key = videos.content_key and videos.content_key <> '') as thumbnail_revision,
+	(select ti.revision from thumbnail_images ti
+		where ti.content_key = videos.content_key and videos.content_key <> '') as thumbnail_image_revision`
 
 // SetDisplayName は動画 videoID の表示名を name にし、有効な題名を含む動画を返す。name は
 // domain.NormalizeDisplayName で整え、空（空白だけを含む）なら解除する。規則に合わなければ
@@ -223,7 +226,8 @@ func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 //
 // 呼ぶのは internal/app の Ingest だけで、その位置（解除なら自動の位置）の画像を公開した
 // あと、生成の錠の中で呼ぶ。1 つの取引で、行を書き（位置も表示名も無くなれば消す）、位置を
-// 書くときは thumbnail_revision を「今のミリ秒時刻と前の値 + 1 の大きい方」にし、その内容の
+// 書くときは thumbnail_revision を「今のミリ秒時刻と前の値 + 1 の大きい方」にし、適用した画像の
+// 行（thumbnail_images）を消し、その内容の
 // 動画の thumbnail_state を done にして、代表サムネイルの代用（thumbnail_first_frame）と
 // 失敗（thumbnail_failed）の問題を消す。画像はもう置き場にあるので、残すと状態と画像が
 // 食い違う。
@@ -254,9 +258,15 @@ func (s *OverrideStore) SetThumbnailPosition(
 	if err := s.db.writeThumbnailPosition(ctx, tx, keys[0], positionMs, now); err != nil {
 		return domain.Video{}, err
 	}
-	// 同じ位置の指定し直しでも画像は作り直すが、更新日時は位置が変わったときだけ進める
-	// （research.md R-3）。
-	if positionChanged {
+	// 位置の画像を公開したので、適用した画像の行は同じ取引で消す
+	// （specs/045-comfyui-thumbnails/research.md R-10）。
+	imageRemoved, err := deleteThumbnailImage(ctx, tx, keys[0])
+	if err != nil {
+		return domain.Video{}, err
+	}
+	// 同じ位置の指定し直しでも画像は作り直すが、更新日時は位置か適用した画像が変わったときだけ
+	// 進める（research.md R-3）。
+	if positionChanged || imageRemoved {
 		if err := touchEditedAt(ctx, tx, keys, now); err != nil {
 			return domain.Video{}, err
 		}

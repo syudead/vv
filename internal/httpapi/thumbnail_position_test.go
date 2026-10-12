@@ -84,6 +84,34 @@ func (p *fakeThumbnailPicker) SetThumbnailPosition(
 	return saved, err
 }
 
+// RevertThumbnailImage は internal/app の Ingest.RevertThumbnailImage の代わりである。所在の
+// 確かめ直しと失敗は SetThumbnailPosition と同じで、生成は行わず、記録は本物の保存層に任せる。
+func (p *fakeThumbnailPicker) RevertThumbnailImage(
+	ctx context.Context, videoID int64, location, path string,
+) (domain.Video, error) {
+	video, err := p.db.Ingest().GetVideo(ctx, videoID)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	current, err := p.db.Ingest().ThumbnailSourceCurrent(ctx, videoID, video.ContentKey, location)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	p.mu.Lock()
+	if !current || p.stale {
+		p.mu.Unlock()
+		return domain.Video{}, domain.ErrMediaFileUnavailable
+	}
+	p.paths = append(p.paths, path)
+	p.locations = append(p.locations, location)
+	fail := p.fail
+	p.mu.Unlock()
+	if fail != nil {
+		return domain.Video{}, errors.Join(domain.ErrThumbnailFrameUnavailable, fail)
+	}
+	return p.db.Overrides().RevertThumbnailImage(ctx, videoID)
+}
+
 func (p *fakeThumbnailPicker) setAfterSet(hook func(videoID int64)) {
 	p.mu.Lock()
 	defer p.mu.Unlock()

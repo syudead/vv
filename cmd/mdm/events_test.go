@@ -96,6 +96,9 @@ func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.See
 	return false, nil
 }
 func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error { return nil }
+func (probeOnlyGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {
+	return image, nil
+}
 
 // emptyClaims は、取り出しが空振りしたことを知らせる待ち行列である。
 type emptyClaims struct {

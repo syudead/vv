@@ -205,7 +205,7 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 // assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる（guest-api.md §1）。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
-	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "favorite"} {
+	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "thumbnailGenerated", "favorite"} {
 		if value, ok := video[field]; ok {
 			t.Errorf("%s: ゲストの応答に %s = %s", label, field, value)
 		}
