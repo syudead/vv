@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/ui-design.md
-sourceHash: 868ecd1c74eb2dc69859ae1da9b2831aa1a90321b1ffd117d25e72b16c7c65c4
+sourceHash: a732df4c75bfdc21b6d23c992db10cd73192a5857523e90e515c04168b7994ac
 ---
 
 # UI デザイン: 動画のフレームを ComfyUI で編集してサムネイルにする {#ui-design-editing-a-video-frame-with-comfyui-into-the-thumbnail}
@@ -76,6 +76,7 @@ vv 自身のワークフローは三つの入力をすべて受け取るので�
 | プロバイダの選択肢のヒント | ComfyUI you run on this PC or another one. · Comfy's hosted service. Uses your API key and its credits. | |
 | URL の行 | ComfyUI URL | ヒント: `Where ComfyUI listens, for example http://127.0.0.1:8188.` |
 | API キーの行 | API key | 保存したキーがないときのヒント: `Create one in your Comfy Cloud account.` 保存したキーがあるとき: `A key is saved. Type a new one to replace it.` |
+| セルフホストのときに保存されているキー | A Comfy Cloud key is still saved. · Forget the key · Forgetting… | URL の行の下。成功時のトースト: `Comfy Cloud key forgotten` |
 | 保存 | Save · Saving… | 成功時のトースト: `ComfyUI settings saved` |
 | テスト | Save and test connection · Testing… | |
 | テストの成功 | Connected to ComfyUI. · Connected to Comfy Cloud. | 保存したプロバイダによる |
@@ -163,6 +164,7 @@ vv 自身のワークフローは三つの入力をすべて受け取るので�
 | Runs on | `RadioGroup`、二つの項目で各ラベルの下にヒント | 変えるとすぐに対応する行を下に表示する。`Save` まで何も保存しない |
 | ComfyUI URL | `Input type="url"`、`sm:w-sm` | `My own ComfyUI` のときのみ |
 | API key | `Input type="password"`、`sm:w-sm`、`autocomplete="off"` | `Comfy Cloud` のときのみ。読み込みの後も保存の後も常に空。ヒントがキーを保存済みかどうかを伝える (要件 2)。空の欄は保存したキーを保つ |
+| 保存されているキー (セルフホスト) | 控えめな行と `ghost` `sm` の `Forget the key` | 保存したプロバイダが `My own ComfyUI` で、キーが保存されている間のみ。今の値を `apiKey: ""` で保存し、これがキーを消す ([contracts/screen-api.md](contracts/screen-api.md#get-apisettingscomfyui-put-apisettingscomfyui))。キーをもう一度入力すれば戻るので、確認は求めない |
 | (操作) | `Save` (`default` `sm`)、`Save and test connection` (`outline` `sm`) | テスト結果の行と保存の失敗は Ollama の節に従う。スピナーかチェックのある控えめな状態の行、または `destructive` の `Alert` である。欠けているファイルは[欠けているファイル](#missing-files)に従う |
 
 ガイドのリンクは説明の後に、Transcoding の節の形で置く。
@@ -268,7 +270,13 @@ aside は上から下に次を持つ。`Instructions` (`Textarea`、四行で伸
 
 実行の領域は `role="status"` の領域なので、状態の変化が読み上げられる。経過時間は読み取りの間はページで毎秒進み、読み取りのたびにサーバーの `elapsedMs` を取る。そのため、読み取りの遅れより大きく後ろに飛ぶことは決してない。プロバイダがステップを報告しないときはバーを描かない。スピナーの隣の不確定のバーは同じことを二度言うことになる。
 
-`Cancel` はすぐにキャンセルする。そのとき領域は控えめな文字で `Cancelled. The thumbnail is unchanged.` を表示し、ビューは入力を保ったまま Compose に戻る。
+`Cancel` はキャンセルのリクエストを送り、ビューはそれが応答した状態に従う ([contracts/screen-api.md](contracts/screen-api.md#post-apithumbnail-editseditidcancel))。最後の読み取りから押すまでの間に実行が終わっているかもしれないからである。
+
+| 応答した状態 | ビュー |
+| --- | --- |
+| `cancelled` | 入力を保ったまま Compose。実行の領域は控えめな文字で `Cancelled. The thumbnail is unchanged.` を表示する |
+| `succeeded` | 実行がちょうど終わったかのように Compare。キャンセルされたとは何も伝えない |
+| `failed` | 失敗の `Alert` のある Compose ([失敗](#failure)) |
 
 ### 失敗 {#failure}
 
