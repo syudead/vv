@@ -53,11 +53,12 @@ func NormalizeOllamaSettings(s OllamaSettings) (OllamaSettings, error) {
 
 // normalizeBaseURL は前後の空白と末尾の / を落とし、利用者を含まない http か https の
 // 基底 URL（問い合わせと断片を持たない）かを返す。提供元の接続先に共通の規則である。
+// 経路はこの URL の後ろへ連ねるので、空の問い合わせや断片（末尾の ? や #）も受け付けない。
 func normalizeBaseURL(raw string) (string, bool) {
 	normalized := strings.TrimRight(strings.TrimSpace(raw), "/")
 	parsed, err := url.Parse(normalized)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		parsed.User != nil || strings.ContainsAny(normalized, "?#") {
 		return "", false
 	}
 	return normalized, true

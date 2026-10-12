@@ -49,7 +49,7 @@ func TestCheckSelfHostedSystemStats(t *testing.T) {
 		if r.Header.Get("X-API-Key") != "" {
 			t.Errorf("self-hosted request carried a key")
 		}
-		_, _ = w.Write([]byte(`{"system":{"os":"posix","comfyui_version":"0.3.60"},"devices":[]}`))
+		_, _ = w.Write([]byte(`{"system":{"os":"posix","python_version":"3.12.3","comfyui_version":"0.3.60"},"devices":[]}`))
 	})
 	settings := selfHosted(server.URL)
 	settings.settings.APIKey = "kept-for-cloud"
@@ -86,6 +86,15 @@ func TestCheckReportsWhyItFailed(t *testing.T) {
 	noSystem := serve(t, "/system_stats", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"version":"1"}`))
 	})
+	unrelatedSystem := serve(t, "/system_stats", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"system":{},"devices":[]}`))
+	})
+	noDevices := serve(t, "/system_stats", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"system":{"os":"posix","python_version":"3.12.3"}}`))
+	})
+	notJobs := serve(t, "/api/jobs", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{}`))
+	})
 	rejected := serve(t, "/api/jobs", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
@@ -98,6 +107,9 @@ func TestCheckReportsWhyItFailed(t *testing.T) {
 		{"JSON でない", New(selfHosted(html.URL)), "is not ComfyUI (/system_stats is not JSON)"},
 		{"経路が無い", New(selfHosted(notFound.URL)), "is not ComfyUI (/system_stats answered 404)"},
 		{"system が無い", New(selfHosted(noSystem.URL)), "is not ComfyUI (/system_stats has no system information)"},
+		{"system が ComfyUI のものでない", New(selfHosted(unrelatedSystem.URL)), "is not ComfyUI (/system_stats has no system information)"},
+		{"devices が無い", New(selfHosted(noDevices.URL)), "is not ComfyUI (/system_stats has no system information)"},
+		{"Cloud の一覧が無い", NewWithOptions(cloud("k"), Options{CloudBaseURL: notJobs.URL + "/api"}), "is not Comfy Cloud (/jobs has no job list)"},
 		{"キーが拒まれた", NewWithOptions(cloud("bad"), Options{CloudBaseURL: rejected.URL + "/api"}), "API key was rejected by Comfy Cloud"},
 		{"何も保存されていない", New(fixedSettings{}), "no ComfyUI connection is saved"},
 		{"Cloud のキーが無い", New(cloud("")), "Comfy Cloud needs an API key"},

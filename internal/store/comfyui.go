@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -15,25 +16,33 @@ const (
 )
 
 // ComfyUISettings は保存した ComfyUI の接続先を返す。何も保存されていなければ
-// Provider が空のゼロ値になる。
+// Provider が空のゼロ値になる。3 つのキーは 1 つの問い合わせで読み、同時の保存の前後の値が
+// 混ざらないようにする（SaveComfyUISettings は 3 つを 1 つの取引で書く）。
 func (s *SettingsStore) ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error) {
-	var provider string
-	var settings domain.ComfyUISettings
-	for _, item := range []struct {
-		key    string
-		target *string
-	}{
-		{comfyUIProviderKey, &provider},
-		{comfyUIURLKey, &settings.URL},
-		{comfyUIAPIKeyKey, &settings.APIKey},
-	} {
-		value, _, err := readSetting(ctx, s.db.sql, item.key)
-		if err != nil {
-			return domain.ComfyUISettings{}, err
-		}
-		*item.target = value
+	rows, err := s.db.sql.QueryContext(ctx, `select key, value from settings where key in (?, ?, ?)`,
+		comfyUIProviderKey, comfyUIURLKey, comfyUIAPIKeyKey)
+	if err != nil {
+		return domain.ComfyUISettings{}, fmt.Errorf("cannot read the ComfyUI settings: %w", err)
 	}
-	settings.Provider = domain.ComfyUIProvider(provider)
+	defer func() { _ = rows.Close() }()
+	var settings domain.ComfyUISettings
+	for rows.Next() {
+		var key, value string
+		if err := rows.Scan(&key, &value); err != nil {
+			return domain.ComfyUISettings{}, fmt.Errorf("cannot read the ComfyUI settings: %w", err)
+		}
+		switch key {
+		case comfyUIProviderKey:
+			settings.Provider = domain.ComfyUIProvider(value)
+		case comfyUIURLKey:
+			settings.URL = value
+		case comfyUIAPIKeyKey:
+			settings.APIKey = value
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return domain.ComfyUISettings{}, fmt.Errorf("cannot read the ComfyUI settings: %w", err)
+	}
 	return settings, nil
 }
 

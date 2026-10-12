@@ -81,14 +81,12 @@ func (c *Client) Check(ctx context.Context) error {
 
 	switch settings.Provider {
 	case domain.ComfyUISelfHosted:
-		var stats struct {
-			System *json.RawMessage `json:"system"`
-		}
+		var stats systemStats
 		name := "ComfyUI at " + settings.URL
 		if err := c.getJSON(ctx, settings.URL, "/system_stats", "", name, &stats); err != nil {
 			return err
 		}
-		if stats.System == nil {
+		if !stats.valid() {
 			return fmt.Errorf("the server at %s is not ComfyUI (/system_stats has no system information)", settings.URL)
 		}
 		return nil
@@ -96,11 +94,36 @@ func (c *Client) Check(ctx context.Context) error {
 		if settings.APIKey == "" {
 			return domain.ErrComfyUIAPIKeyMissing
 		}
-		var jobs map[string]json.RawMessage
-		return c.getJSON(ctx, c.cloud, "/jobs?limit=1", settings.APIKey, "Comfy Cloud", &jobs)
+		var jobs jobList
+		if err := c.getJSON(ctx, c.cloud, "/jobs?limit=1", settings.APIKey, "Comfy Cloud", &jobs); err != nil {
+			return err
+		}
+		if jobs.Jobs == nil {
+			return fmt.Errorf("the server at %s is not Comfy Cloud (/jobs has no job list)", c.cloud)
+		}
+		return nil
 	default:
 		return errors.New("no ComfyUI connection is saved; choose a provider and save it first")
 	}
+}
+
+// systemStats は ComfyUI の GET /system_stats の応答のうち、ComfyUI であることを見分ける部分である。
+// どの版の ComfyUI も system に os と python_version を、devices に装置の配列を返す。
+type systemStats struct {
+	System *struct {
+		OS            string `json:"os"`
+		PythonVersion string `json:"python_version"`
+	} `json:"system"`
+	Devices *[]json.RawMessage `json:"devices"`
+}
+
+func (s systemStats) valid() bool {
+	return s.System != nil && s.System.OS != "" && s.System.PythonVersion != "" && s.Devices != nil
+}
+
+// jobList は Comfy Cloud の GET /jobs の応答のうち、仕事の一覧である。空の一覧も一覧である。
+type jobList struct {
+	Jobs *[]json.RawMessage `json:"jobs"`
 }
 
 // getJSON は基底 URL base の path を GET し、200 の JSON を out に読む。apiKey が空でなければ
