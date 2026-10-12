@@ -61,9 +61,8 @@ adapter fills.
 
 **Decision**: Without painting, vv sends a mask covering the whole frame;
 without a reference image, vv runs the variant that has no `vv:reference`;
-with a painted mask and no instruction, vv sends a fixed default instruction
-that asks to remove what is under the mask and fill it to match the
-surroundings. The workflow composites the result onto the frame through the
+with a painted mask and no instruction, vv sends the default instruction
+"Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings." The workflow composites the result onto the frame through the
 mask, so pixels outside it stay unchanged (acceptance criterion 4).
 
 | Option | Verdict |
@@ -74,9 +73,12 @@ mask, so pixels outside it stay unchanged (acceptance criterion 4).
 | An empty instruction with a mask | Rejected: in the POC both models redrew the masked logo as it was (Edge Case "a painted area with an empty instruction") |
 
 **Rationale**: The POC confirmed the whole-frame mask and the composite (no
-pixel outside the mask changed in 9 masked runs). The default instruction was
-not run in the POC; the "Run a thumbnail edit" unit settles its wording
-against Comfy Cloud ([quickstart.md](quickstart.md)).
+pixel outside the mask changed in 9 masked runs). Two default instructions
+were then run on Comfy Cloud with klein 4B over four masks (a red logo on a
+street, a translucent logo on a sky, a Japanese telop and a two-line caption):
+both removed everything under every mask, and nothing changed beyond the
+mask's feathered edge. The chosen wording names text and logos, the Issue's
+main case, and still covers an object.
 
 ## R-4: An edit is an in-memory session per video, read by polling
 

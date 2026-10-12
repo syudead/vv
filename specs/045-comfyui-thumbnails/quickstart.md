@@ -28,7 +28,7 @@ Cloud saved.
 | Video page, guest session in another browser | No edit entry | 9 |
 | Remove the connection; open the video page | The entry is disabled and says Settings needs a connection | Requirement 14 |
 | Pause on a frame with captions; start an edit; type "Remove the captions"; run | The state moves through queued and running (Cloud: also preparing) with the elapsed time; the result appears next to the frame without the captions | 3, 5 |
-| Paint over the corner logo only; leave the instruction empty; run | The logo is gone and nothing outside the painted area changed; this settles the default instruction ([research.md R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)) | 4, Edge Case |
+| Paint over the corner logo only; leave the instruction empty; run | The logo is gone and nothing outside the painted area changed ([research.md R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)) | 4, Edge Case |
 | Attach a reference image; type "Use the colours of the reference"; run | The result takes the reference's colours | 4 |
 | Run, then cancel while queued or running | The run ends as cancelled; the thumbnail is unchanged | 7 |
 | Run, then close the tab; wait 5 minutes; reload | No edit is applied; the thumbnail is unchanged | Edge Case |

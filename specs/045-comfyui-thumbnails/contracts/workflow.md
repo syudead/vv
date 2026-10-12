@@ -28,10 +28,17 @@ this table.
 | Title | Node | vv writes |
 | --- | --- | --- |
 | `vv:frame` | `LoadImage` | `image`: the uploaded frame |
-| `vv:prompt` | `CLIPTextEncode` | `text`: the owner's instruction, or the default instruction when a mask is painted and the instruction is empty, or `""` |
+| `vv:prompt` | `CLIPTextEncode` | `text`: the owner's instruction; when it is empty and a mask is painted, the default instruction below; otherwise `""` |
 | `vv:mask` | `LoadImageMask` (`red` channel) | `image`: the uploaded mask, or a white mask of the frame's size |
 | `vv:reference` | `LoadImage` (reference variant only) | `image`: the uploaded reference image |
 | `vv:output` | `SaveImage` | Nothing; vv reads its first output image |
+
+The default instruction is fixed English text, sent whatever the owner's
+language:
+
+```text
+Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings.
+```
 
 The mask is a PNG of the frame's pixel size: painted pixels are opaque white,
 the rest opaque black. The diagram shows what the workflow does with the

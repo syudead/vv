@@ -9,8 +9,9 @@
 The owner saves a ComfyUI connection (self-hosted or Comfy Cloud) in
 Settings, then on the video page edits the current frame with text, a painted
 mask and a reference image, watches the run, compares the result with the
-frame, and applies it as the thumbnail. vv bundles the workflow and the model
-(FLUX.2 [klein] 4B), tells a self-hosted owner which model files are missing,
+frame, and applies it as the thumbnail. vv bundles the workflows and selects
+the model they run (FLUX.2 [klein] 4B); vv ships no model files, so it tells a
+self-hosted owner which ones are missing,
 holds each edit in memory for the page that started it, and keeps an applied
 image as user data that the thumbnail job republishes after any rescan.
 
@@ -278,8 +279,7 @@ after publishing restores the previous file.
 implementation for both providers: uploads, the workflow variant with `vv:*`
 inputs, neutral values and the default instruction, submit, the state
 mapping, cancel, the output fetch (Cloud's redirect without the key), and the
-failure reasons; the default instruction's wording is settled with the
-quickstart step on Comfy Cloud
+failure reasons
 ([contracts/workflow.md, Run, Run states and Failure reasons](contracts/workflow.md#run),
 [R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node),
 [R-5](research.md#r-5-provider-differences-stay-inside-the-adapter)).
@@ -291,7 +291,7 @@ each provider show: the submitted prompt is the embedded variant with only
 the `vv:*` inputs changed; a run with a reference uses the reference variant
 and one without it the other; an absent mask uploads an all-white PNG of the
 frame's size; a painted mask with an empty instruction sends the default
-instruction; every row of the Run states table maps to its
+instruction of the contract word for word; every row of the Run states table maps to its
 vv state; cancel while queued deletes from the queue and while running
 interrupts (self-hosted) or sends `POST /interrupt` (Cloud); Cloud's output is fetched from the redirect without
 `X-API-Key`; each row of the Failure reasons table is produced from its
