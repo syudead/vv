@@ -174,10 +174,11 @@ async function itemRows(page: Page): Promise<string[]> {
   );
 }
 
+/** openPlaylist は一覧のカード（名前と項目数が読み上げ名）を押して、そのプレイリストの画面を開く。 */
 async function openPlaylist(page: Page, name: string, count: string) {
   await page.goto("/playlists");
   await page
-    .getByRole("table", { name: "Playlists" })
+    .locator("article[data-playlist-id]")
     .getByRole("link", { name: `${name}, ${count}` })
     .click();
   await expect(page).toHaveURL(`/playlists/${String(playlistId(name))}`);

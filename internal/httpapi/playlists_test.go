@@ -351,3 +351,56 @@ func TestPlaylistsOwnerOnly(t *testing.T) {
 		t.Errorf("ゲストの要求のあと = %q・%v", read.Name, playlistItemNames(read))
 	}
 }
+
+// 一覧の要約は covers に、見せる項目の順で、動画の項目はその動画、グループの項目はそのカードの絵柄の
+// 先頭と同じメンバーのサムネイルを、サムネイル生成済みのものだけ持つ。空のプレイリストは空の配列で、
+// 作成の応答は covers を省く。
+func TestPlaylistListCovers(t *testing.T) {
+	f := newLibraryFixture(t)
+	empty := f.createPlaylist(t, "空")
+	if empty.Covers != nil {
+		t.Errorf("作成の応答の covers = %v, want 省く", *empty.Covers)
+	}
+	playlist := f.createPlaylist(t, "絵柄")
+	rec := f.playlistRequest(http.MethodPost, playlistPath(playlist.Id, "/items"), playlistAddBody(
+		[]int64{f.ids["solo"]}, gen.VideoFolder{RootId: f.rootID, Path: "show"},
+	), f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("追加: status = %d: %s", rec.Code, rec.Body)
+	}
+	rec = f.playlistRequest(http.MethodPost, playlistPath(playlist.Id, "/items"), playlistAddBody([]int64{f.ids["ep10"]}), f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("追加: status = %d: %s", rec.Code, rec.Body)
+	}
+	read := f.getPlaylist(t, playlist.Id)
+	group := read.Items[1].Group
+	if group == nil || len(group.Previews) == 0 {
+		t.Fatalf("グループの項目 = %+v", read.Items[1])
+	}
+
+	rec = f.env.get("/api/playlists", f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("一覧: status = %d: %s", rec.Code, rec.Body)
+	}
+	covers := map[int64][]gen.FolderPreview{}
+	for _, item := range decode[gen.PlaylistList](t, rec).Items {
+		if item.Covers == nil {
+			t.Fatalf("一覧の %q の covers が無い", item.Name)
+		}
+		covers[item.Id] = *item.Covers
+	}
+	if got := covers[empty.Id]; len(got) != 0 {
+		t.Errorf("空のプレイリストの covers = %v", got)
+	}
+	// solo にはサムネイルが無いので飛ばす。グループはカードの絵柄の先頭、ep10 はその動画。
+	ep10 := read.Items[2].Video
+	want := []gen.FolderPreview{group.Previews[0], {VideoId: ep10.Id, ThumbnailUrl: *ep10.ThumbnailUrl}}
+	if got := covers[playlist.Id]; len(got) != 2 || !samePreview(got[0], want[0]) || !samePreview(got[1], want[1]) {
+		t.Errorf("covers = %+v, want %+v", got, want)
+	}
+}
+
+// samePreview は差し込むサムネイルの動画と URL が同じかを返す（previewUrl はファイルの有無で変わるので見ない）。
+func samePreview(a, b gen.FolderPreview) bool {
+	return a.VideoId == b.VideoId && a.ThumbnailUrl == b.ThumbnailUrl
+}

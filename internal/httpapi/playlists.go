@@ -47,14 +47,19 @@ func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Playlist storage is not configured.", nil)
 		return
 	}
-	playlists, err := s.playlists.ListPlaylists(r.Context())
+	ctx := r.Context()
+	playlists, err := s.playlists.ListPlaylists(ctx)
 	if err != nil {
 		s.internalError(w, "Could not load the playlists.", err)
 		return
 	}
 	out := gen.PlaylistList{Items: make([]gen.PlaylistSummary, 0, len(playlists))}
 	for _, playlist := range playlists {
-		out.Items = append(out.Items, toAPIPlaylistSummary(playlist))
+		summary := toAPIPlaylistSummary(playlist)
+		// 一覧のカードの絵柄のサムネイル。previewUrl はグループのカードと同じ folderPreviews を通す。
+		covers := s.folderPreviews(ctx, previewVideos(playlist.Covers))
+		summary.Covers = &covers
+		out.Items = append(out.Items, summary)
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)

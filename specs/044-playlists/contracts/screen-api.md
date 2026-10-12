@@ -32,9 +32,10 @@ PlaylistSummary:
     name: { type: string }
     itemCount: { type: integer }        # shown items (R-4)
     updatedAt: { type: string, format: date-time }
+    covers: { type: array, maxItems: 4, items: { $ref: FolderPreview } }   # GET /api/playlists only; see below
 
 Playlist:
-  allOf: [PlaylistSummary]
+  allOf: [PlaylistSummary without covers]
   required: [items]
   properties:
     items: { type: array, items: { $ref: PlaylistItem } }   # position order, shown items only
@@ -57,6 +58,18 @@ PlaylistName:
 
 `200 {items: PlaylistSummary[]}`, `updatedAt` descending. No paging: the list
 serves the sidebar screen and the add menu.
+
+Each summary carries `covers`, the art of the playlists screen's card
+([ui-design.md, Playlists screen](../ui-design.md#playlists-screen)): the
+shown items in position order, each contributing one `FolderPreview`, a video
+item its video and a group item the first member in the group's order that
+has a thumbnail (the member its group card shows first), keeping only videos
+whose thumbnail is generated, up to four, in the shape and with the
+`previewUrl` rule of `LibraryGroup.previews`. An empty playlist, or one whose
+shown items have no thumbnails, has `covers: []`. The visibility rule is
+`itemCount`'s (R-4): a hidden item contributes nothing. `POST`, `PATCH`,
+`GET /api/playlists/{id}` and `PlaylistPlayback.playlist` omit `covers`; those
+screens have the items or need no art.
 
 ## `POST /api/playlists`, `PATCH /api/playlists/{id}`, `DELETE /api/playlists/{id}`
 

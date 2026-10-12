@@ -252,20 +252,26 @@ func (s *server) folderPreviews(ctx context.Context, videos []domain.Video) []ge
 	return previews
 }
 
+// previewVideos は保存層が集めた差し込むサムネイル（domain.FolderPreview）を、folderPreviews が
+// URL を組むのに使う動画の値に写す。フォルダカードとプレイリストの一覧のカードが使う。
+func previewVideos(previews []domain.FolderPreview) []domain.Video {
+	videos := make([]domain.Video, 0, len(previews))
+	for _, preview := range previews {
+		videos = append(videos, domain.Video{
+			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
+			ThumbnailPositionMs: preview.ThumbnailPositionMs, ThumbnailRevision: preview.ThumbnailRevision,
+		})
+	}
+	return videos
+}
+
 // apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
 // 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
 // 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
 // （contracts/guest-api.md §1）。まとめ方（grouping）は所有者にだけ載せる
 // （017 の contracts/folder-groups-api.md §1）。
 func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
-	videos := make([]domain.Video, 0, len(folder.Previews))
-	for _, preview := range folder.Previews {
-		videos = append(videos, domain.Video{
-			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
-			ThumbnailPositionMs: preview.ThumbnailPositionMs, ThumbnailRevision: preview.ThumbnailRevision,
-		})
-	}
-	previews := s.folderPreviews(ctx, videos)
+	previews := s.folderPreviews(ctx, previewVideos(folder.Previews))
 	out := gen.FolderSummary{
 		RootId:      folder.RootID,
 		Path:        folder.Path,

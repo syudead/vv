@@ -1475,13 +1475,7 @@ export const en = {
   playlists: {
     title: "Playlists",
     documentTitle: "Playlists",
-    table: "Playlists",
-    columns: {
-      name: "Name",
-      items: "Items",
-      updated: "Updated",
-    },
-    // 一覧の行のリンクの読み上げ名（「Morning, 3 items」）。
+    // 一覧のカードのリンクの読み上げ名（「Morning, 3 items」）。
     rowLabel: (name: string, count: number) => `${name}, ${items(count)}`,
     items,
     count: playlistCount,

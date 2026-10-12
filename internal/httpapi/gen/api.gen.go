@@ -1718,7 +1718,12 @@ type PlaylistStep struct {
 
 // PlaylistSummary プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
 type PlaylistSummary struct {
-	Id int64 `json:"id"`
+	// Covers 一覧のカードのフォルダの絵柄に差し込むサムネイル（`LibraryGroup.previews` と同じ形）。
+	// 見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
+	// 最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件。
+	// `GET /api/playlists` の要約にだけ入り、ほかの応答では省く
+	Covers *[]FolderPreview `json:"covers,omitempty"`
+	Id     int64            `json:"id"`
 
 	// ItemCount 今見せる項目の数（specs/044-playlists/research.md R-4）
 	ItemCount int `json:"itemCount"`

@@ -64,9 +64,15 @@ func scanPlaylist(row interface{ Scan(...any) error }) (domain.Playlist, error) 
 }
 
 // ListPlaylists はすべてのプレイリストを、更新日時の新しい順、同じなら id の大きい順に返す。
-// 項目の数は見せる項目の数である。
+// 項目の数は見せる項目の数で、Covers は一覧のカードの絵柄のサムネイル（playlistCovers）である。
+// 要約と絵柄は読み取り用の接続の同じスナップショットから読む。
 func (s *PlaylistStore) ListPlaylists(ctx context.Context) ([]domain.Playlist, error) {
-	rows, err := s.sql.QueryContext(ctx, `select `+playlistSummaryColumns+` from playlists p
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `select `+playlistSummaryColumns+` from playlists p
 		order by p.updated_at desc, p.id desc`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the playlists: %w", err)
@@ -83,7 +89,69 @@ func (s *PlaylistStore) ListPlaylists(ctx context.Context) ([]domain.Playlist, e
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the playlists: %w", err)
 	}
+	_ = rows.Close()
+	for i := range out {
+		covers, err := playlistCovers(ctx, tx, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Covers = covers
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cannot read the playlists: %w", err)
+	}
 	return out, nil
+}
+
+// playlistCoverVideoExpr は、プレイリストの項目（別名 alias）の絵柄に差し込む動画の id を返す式である。
+// 動画の項目は playlistItemVideoExpr の動画、グループの項目はそのグループの所有者に見えるメンバーの
+// うち並び（folder_group_members.position）の順で最初のサムネイル生成済みのもの。グループの項目は
+// playlistItemShownCondition と同じ条件（folder_groups.path_key にあり、見えるメンバーを持つ）で
+// 引くので、見せない項目は NULL になる。
+func playlistCoverVideoExpr(alias string) string {
+	return `(case when ` + alias + `.content_key is not null then ` + playlistItemVideoExpr(alias) + `
+		else (select pgv.id from folder_groups pg
+			join folder_group_members pgm on pgm.group_id = pg.id join videos pgv on pgv.id = pgm.video_id
+			where pg.path_key = ` + alias + `.folder_key and ` + visibleVideoCondition("pgv", domain.AudienceOwner) + `
+				and pgv.thumbnail_state = ? order by pgm.position limit 1) end)`
+}
+
+// playlistCovers はプレイリスト id の一覧のカードの絵柄に差し込むサムネイルを返す（domain.Playlist.Covers）。
+// 見せる項目を位置の順にたどり、項目ごとの動画（playlistCoverVideoExpr）のうちサムネイル生成済みの
+// ものだけを domain.MaxFolderPreviews 件まで取る。サムネイルの URL の版に使う位置と改版は
+// FolderLocations と同じく video_overrides から読む。
+func playlistCovers(ctx context.Context, tx *sql.Tx, id int64) ([]domain.FolderPreview, error) {
+	rows, err := tx.QueryContext(ctx, `select v.id, v.content_key, v.preview_state,
+			(select ov.thumbnail_position_ms from video_overrides ov where ov.content_key = v.content_key and v.content_key <> ''),
+			(select ov.thumbnail_revision from video_overrides ov where ov.content_key = v.content_key and v.content_key <> '')
+		from playlist_items i join videos v on v.id = `+playlistCoverVideoExpr("i")+`
+		where i.playlist_id = ? and v.thumbnail_state = ?
+		order by i.position, i.id limit ?`,
+		string(domain.ThumbnailStateDone), id, string(domain.ThumbnailStateDone), domain.MaxFolderPreviews)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlist covers: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	covers := []domain.FolderPreview{}
+	for rows.Next() {
+		var cover domain.FolderPreview
+		var preview string
+		var position, revision sql.NullInt64
+		if err := rows.Scan(&cover.VideoID, &cover.ContentKey, &preview, &position, &revision); err != nil {
+			return nil, fmt.Errorf("cannot read the playlist covers: %w", err)
+		}
+		cover.PreviewState = domain.PreviewState(preview)
+		if position.Valid {
+			ms := position.Int64
+			cover.ThumbnailPositionMs = &ms
+			cover.ThumbnailRevision = revision.Int64
+		}
+		covers = append(covers, cover)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the playlist covers: %w", err)
+	}
+	return covers, nil
 }
 
 // CreatePlaylist は名前 name（domain.ValidatePlaylistName で整える）の空のプレイリストを作る。

@@ -681,3 +681,92 @@ func TestPlaylistsMigration(t *testing.T) {
 		t.Errorf("Down のあとも %d 表が残った", n)
 	}
 }
+
+// 一覧の Covers は、見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
+// 最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件持つ。
+// 見せなくなった項目は飛ばし、空のプレイリストは空の配列になる（ui-design.md「Playlists screen」）。
+func TestListPlaylistsCovers(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	path := func(rel string) string { return fixturePath("/media/" + rel) }
+	show := path("show")
+	ep2, ep10 := ids[path("show/ep2.mp4")], ids[path("show/ep10.mp4")]
+	p2, x, solo, y := ids[path("pair/p2.mp4")], ids[path("mixed/x.mp4")], ids[path("solo.mp4")], ids[path("mixed/sub/y.mp4")]
+	for _, id := range []int64{ep2, ep10, x, solo, y} {
+		if err := db.Ingest().SetThumbnailState(ctx, id, domain.ThumbnailStateDone); err != nil {
+			t.Fatal(err)
+		}
+	}
+	position := int64(1500)
+	if _, err := db.Overrides().SetThumbnailPosition(ctx, solo, &position); err != nil {
+		t.Fatal(err)
+	}
+
+	empty := createPlaylist(t, db, "空")
+	id := createPlaylist(t, db, "絵柄")
+	// p2 にはサムネイルが無いので飛ばす。show はサムネイル生成済みのメンバーのうち並びの先頭。
+	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{p2}, FolderPaths: []string{show}})
+	addVideos(t, db, id, x, solo, y)
+
+	_, items := readPlaylist(t, db, id)
+	var member int64
+	for _, video := range items[1].Group.Members {
+		if video.HasThumbnail() {
+			member = video.ID
+			break
+		}
+	}
+	if member == 0 {
+		t.Fatal("グループにサムネイル生成済みのメンバーが無い")
+	}
+
+	covers := func() map[int64][]int64 {
+		t.Helper()
+		playlists, err := db.Playlists().ListPlaylists(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[int64][]int64{}
+		for _, playlist := range playlists {
+			if playlist.Covers == nil {
+				t.Errorf("プレイリスト %d の Covers が nil", playlist.ID)
+			}
+			videoIDs := []int64{}
+			for _, cover := range playlist.Covers {
+				videoIDs = append(videoIDs, cover.VideoID)
+				if cover.ContentKey == "" {
+					t.Errorf("動画 %d の content_key が空", cover.VideoID)
+				}
+				if cover.VideoID == solo && (cover.ThumbnailPositionMs == nil || *cover.ThumbnailPositionMs != position || cover.ThumbnailRevision == 0) {
+					t.Errorf("solo の位置と改版 = %v・%d", cover.ThumbnailPositionMs, cover.ThumbnailRevision)
+				}
+			}
+			out[playlist.ID] = videoIDs
+		}
+		return out
+	}
+	want := map[int64][]int64{empty: {}, id: {member, x, solo, y}}
+	if got := covers(); !maps.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("Covers = %v, want %v", got, want)
+	}
+
+	// 動画の場所が無くなった項目は飛ばし、次の項目が繰り上がる。4 件を超える分は入らない。
+	if err := db.ScanIndex().DeleteVideos(ctx, []int64{x}); err != nil {
+		t.Fatal(err)
+	}
+	want[id] = []int64{member, solo, y}
+	if got := covers(); !maps.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("x が消えたあとの Covers = %v, want %v", got, want)
+	}
+	addVideos(t, db, id, ep10, ep2)
+	want[id] = []int64{member, solo, y, ep10}
+	if got := covers(); !maps.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("5 件目を足したあとの Covers = %v, want %v", got, want)
+	}
+
+	// 一覧以外の読み出しは Covers を持たない。
+	playlist, _ := readPlaylist(t, db, id)
+	if playlist.Covers != nil {
+		t.Errorf("Playlist の Covers = %v, want nil", playlist.Covers)
+	}
+}
