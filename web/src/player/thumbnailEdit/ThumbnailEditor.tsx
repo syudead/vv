@@ -1,0 +1,710 @@
+import {
+  ImagePlus,
+  LoaderCircle,
+  Paintbrush,
+  Eraser,
+  Trash2,
+  Undo2,
+  X,
+} from "lucide-react";
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+
+import {
+  applyThumbnailEdit,
+  cancelThumbnailEdit,
+  discardThumbnailEdit,
+  getThumbnailEdit,
+  isAborted,
+  RequestFailed,
+  runThumbnailEdit,
+  type ThumbnailEdit,
+  type Video,
+} from "../../api/client";
+import { detailMark, type DetailMark } from "../../api/useVideoDetail";
+import { errorText, t, type UiText } from "../../i18n";
+import { formatDuration } from "../../lib/format";
+import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
+import { EditorDialog } from "../../ui/patterns/editor-dialog";
+import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
+import { Button } from "../../ui/shadcn/button";
+import { Field, FieldDescription, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
+import { Input } from "../../ui/shadcn/input";
+import { Progress } from "../../ui/shadcn/progress";
+import { Slider } from "../../ui/shadcn/slider";
+import { Spinner } from "../../ui/shadcn/spinner";
+import { Textarea } from "../../ui/shadcn/textarea";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
+import {
+  BRUSH_STEPS,
+  brushDiameter,
+  elapsedNow,
+  isRunning,
+  referenceAccepted,
+  runStateText,
+  shapeDiffers,
+  showsLongWait,
+} from "./editRules";
+import {
+  type EditorState,
+  editorReducer,
+  hasResult,
+  initialEditorState,
+  needsConfirmation,
+} from "./editSession";
+import CompareStage from "./CompareStage";
+import { buildMask, type Stroke } from "./mask";
+import PaintStage from "./PaintStage";
+
+/** 実行を見守る間に読む間隔と、それ以外（結果がある間・入力中）に読む間隔（ミリ秒）。 */
+const RUN_POLL_MS = 1000;
+const IDLE_POLL_MS = 60_000;
+
+const PROMPT_MAX = 4000;
+
+/** sessionEnded は要求の失敗がセッションの終わり（404 thumbnail_edit_not_found）かを返す。 */
+function sessionEnded(error: unknown): boolean {
+  return (
+    error instanceof RequestFailed &&
+    error.status === 404 &&
+    error.reason === "thumbnail_edit_not_found"
+  );
+}
+
+/** useNow は `active` の間、毎秒進む今の時刻を返す。 */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
+/**
+ * useSessionPolling はセッションを読み続ける。実行が進んでいる間は毎秒、それ以外は 60 秒ごと
+ * に読む。読み取りはページの生存の知らせを兼ね、5 分読まれないセッションはサーバーが終える
+ * （specs/045-comfyui-thumbnails/research.md R-4）。操作を送るときは `pause` で読みかけを
+ * 捨て、操作の前に送った読み取りの答えで見え方を戻さない。
+ */
+function useSessionPolling(
+  state: EditorState,
+  dispatch: (action: Parameters<typeof editorReducer>[1]) => void,
+): { pause: () => void } {
+  const epoch = useRef(0);
+  const controller = useRef<AbortController | null>(null);
+  // 読み取りが届かなかったときに、次の読み取りを仕掛け直すための数。
+  const [retry, setRetry] = useState(0);
+  const { session, ended } = state;
+  const running = isRunning(session.state);
+
+  useEffect(() => {
+    if (ended) return;
+    const sentEpoch = epoch.current;
+    const timer = window.setTimeout(
+      () => {
+        const request = new AbortController();
+        controller.current = request;
+        getThumbnailEdit(session.id, request.signal).then(
+          (next) => {
+            if (request.signal.aborted || epoch.current !== sentEpoch) return;
+            dispatch({ type: "read", session: next, at: Date.now() });
+          },
+          (error: unknown) => {
+            if (isAborted(error) || request.signal.aborted) return;
+            if (epoch.current !== sentEpoch) return;
+            if (sessionEnded(error)) dispatch({ type: "ended" });
+            // ほかの失敗（一時的に届かない）は、次の読み取りで確かめ直す。
+            else setRetry((count) => count + 1);
+          },
+        );
+      },
+      running ? RUN_POLL_MS : IDLE_POLL_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [dispatch, ended, running, session, state.receivedAt, retry]);
+
+  useEffect(() => () => controller.current?.abort(), []);
+
+  const pause = useCallback(() => {
+    epoch.current += 1;
+    controller.current?.abort();
+  }, []);
+  return { pause };
+}
+
+/**
+ * useDiscardOnLeave は、閉じる・適用するより前に編集画面が外れたとき（動画ページを離れた、
+ * ブラウザを閉じた）にセッションを捨てる。StrictMode の作り直しでは捨てない。
+ */
+function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
+  const pending = useRef<number | null>(null);
+  useEffect(() => {
+    if (pending.current !== null) {
+      window.clearTimeout(pending.current);
+      pending.current = null;
+    }
+    const discard = () => {
+      if (settled.current) return;
+      settled.current = true;
+      void discardThumbnailEdit(editId).catch(() => undefined);
+    };
+    window.addEventListener("pagehide", discard);
+    return () => {
+      window.removeEventListener("pagehide", discard);
+      pending.current = window.setTimeout(discard, 0);
+    };
+  }, [editId, settled]);
+}
+
+/**
+ * ThumbnailEditor は動画の 1 コマを ComfyUI で編集してサムネイルにする編集画面である
+ * （specs/045-comfyui-thumbnails/ui-design.md「Thumbnail editor」）。EditorDialog の段にコマと
+ * 塗りの層（Compose・Running）か、コマと生成した画像の比較（Compare）を出し、横の欄に指示・
+ * 参考画像・実行の状態、足に主な操作を置く。閉じる・捨てる・ページを離れるとセッションを
+ * 捨てる。適用したら応答の動画を `onApplied` へ渡す。
+ */
+export default function ThumbnailEditor({
+  edit,
+  positionMs,
+  onApplied,
+  onClosed,
+}: {
+  edit: ThumbnailEdit;
+  positionMs: number;
+  onApplied: (video: Video, mark: DetailMark) => void;
+  /** 編集画面を閉じた（セッションは捨てた、適用で終わった）。 */
+  onClosed: () => void;
+}) {
+  const text = t.player.thumbnailEdit;
+  const [state, dispatch] = useReducer(editorReducer, edit, (session) =>
+    initialEditorState(session, Date.now()),
+  );
+  const { session, view, ended } = state;
+  const editId = session.id;
+  const running = isRunning(session.state);
+  const polling = useSessionPolling(state, dispatch);
+  const settled = useRef(false);
+  useDiscardOnLeave(editId, settled);
+
+  const [prompt, setPrompt] = useState("");
+  const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [mode, setMode] = useState<Stroke["mode"]>("paint");
+  const [brushStep, setBrushStep] = useState(1);
+  const [reference, setReference] = useState<{ file: File; url: string } | null>(null);
+  const [referenceRefused, setReferenceRefused] = useState(false);
+  const [busy, setBusy] = useState<"generate" | "cancel" | "apply" | null>(null);
+  const [applyFailure, setApplyFailure] = useState<UiText | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [resultShape, setResultShape] = useState<{
+    url: string;
+    differs: boolean;
+  } | null>(null);
+  const instructions = useRef<HTMLTextAreaElement | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+  const now = useNow(running && !ended);
+
+  useEffect(
+    () => () => {
+      if (reference !== null) URL.revokeObjectURL(reference.url);
+    },
+    [reference],
+  );
+
+  const close = () => {
+    if (!settled.current) {
+      settled.current = true;
+      polling.pause();
+      void discardThumbnailEdit(editId).catch(() => undefined);
+    }
+    onClosed();
+  };
+
+  const requestClose = () => {
+    if (busy === "apply") return;
+    if (needsConfirmation(state)) setConfirming(true);
+    else close();
+  };
+
+  const ended404 = (error: unknown): boolean => {
+    if (!sessionEnded(error)) return false;
+    dispatch({ type: "ended" });
+    return true;
+  };
+
+  const generate = async () => {
+    if (busy !== null || ended || running) return;
+    polling.pause();
+    setBusy("generate");
+    setApplyFailure(null);
+    try {
+      const mask = await buildMask(strokes, session.frameWidth, session.frameHeight);
+      const next = await runThumbnailEdit(editId, {
+        prompt: prompt.trim() === "" ? undefined : prompt,
+        mask,
+        reference: reference?.file,
+      });
+      dispatch({ type: "started", session: next, at: Date.now() });
+    } catch (error) {
+      if (!ended404(error))
+        dispatch({
+          type: "rejected",
+          failure: { title: text.runFailed(errorText(error)) },
+        });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancel = async () => {
+    if (busy !== null || ended) return;
+    polling.pause();
+    setBusy("cancel");
+    try {
+      const next = await cancelThumbnailEdit(editId);
+      dispatch({ type: "read", session: next, at: Date.now() });
+    } catch (error) {
+      // 中止を送れなければ実行は進んだままで、次の読み取りが見え方を決める。
+      ended404(error);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const apply = async () => {
+    if (busy !== null || ended || !hasResult(state)) return;
+    polling.pause();
+    setBusy("apply");
+    setApplyFailure(null);
+    const mark = detailMark();
+    try {
+      const video = await applyThumbnailEdit(editId);
+      settled.current = true;
+      onApplied(video, mark);
+      onClosed();
+    } catch (error) {
+      setApplyFailure(text.applyFailed(errorText(error)));
+      if (
+        sessionEnded(error) ||
+        (error instanceof RequestFailed && error.reason === "content_changed")
+      ) {
+        settled.current = true;
+        dispatch({ type: "ended" });
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const chooseReference = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file === undefined) return;
+    if (!referenceAccepted(file)) {
+      setReferenceRefused(true);
+      return;
+    }
+    setReferenceRefused(false);
+    setReference({ file, url: URL.createObjectURL(file) });
+  };
+
+  const locked = running || ended || busy !== null || view === "compare";
+  const inputsLocked = running || ended || busy !== null || view === "compare";
+  const resultUrl = session.resultUrl;
+  const elapsedMs =
+    session.elapsedMs === undefined
+      ? undefined
+      : running
+        ? elapsedNow(session.elapsedMs, state.receivedAt, now)
+        : session.elapsedMs;
+
+  const stage =
+    view === "compare" && resultUrl !== undefined ? (
+      <CompareStage
+        frameUrl={session.frameUrl}
+        resultUrl={resultUrl}
+        aspect={session.frameWidth / session.frameHeight}
+        cropNote={resultShape?.url === resultUrl && resultShape.differs}
+        onResultSize={(width, height) =>
+          setResultShape({
+            url: resultUrl,
+            differs: shapeDiffers(session.frameWidth, session.frameHeight, width, height),
+          })
+        }
+      />
+    ) : (
+      <div className="flex size-full min-h-0 flex-col gap-3">
+        <div
+          role="toolbar"
+          aria-label={text.tools}
+          className="flex flex-wrap items-center gap-2"
+        >
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="default"
+            value={mode}
+            disabled={locked}
+            onValueChange={(value) => {
+              if (value === "paint" || value === "erase") setMode(value);
+            }}
+          >
+            <ToggleGroupItem value="paint">
+              <Paintbrush aria-hidden="true" />
+              {text.paint}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="erase">
+              <Eraser aria-hidden="true" />
+              {text.erase}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Slider
+            aria-label={text.brushSize}
+            min={0}
+            max={BRUSH_STEPS.length - 1}
+            step={1}
+            value={[brushStep]}
+            disabled={locked}
+            onValueChange={([value]) => setBrushStep(value ?? 1)}
+            className="w-zoom"
+          />
+          <ToolButton
+            label={text.undo}
+            disabled={locked || strokes.length === 0}
+            onClick={() => setStrokes((previous) => previous.slice(0, -1))}
+          >
+            <Undo2 aria-hidden="true" />
+          </ToolButton>
+          <ToolButton
+            label={text.clearPainting}
+            disabled={locked || strokes.length === 0}
+            onClick={() => setStrokes([])}
+          >
+            <Trash2 aria-hidden="true" />
+          </ToolButton>
+        </div>
+        <div className="flex min-h-0 flex-1">
+          <PaintStage
+            frameUrl={session.frameUrl}
+            frameWidth={session.frameWidth}
+            frameHeight={session.frameHeight}
+            strokes={strokes}
+            mode={mode}
+            brushSize={brushDiameter(brushStep, session.frameWidth, session.frameHeight)}
+            locked={locked}
+            onStroke={(stroke) => setStrokes((previous) => [...previous, stroke])}
+            onUndo={() => setStrokes((previous) => previous.slice(0, -1))}
+          />
+        </div>
+        <p className="text-sm text-muted-foreground">{text.paintingHint}</p>
+      </div>
+    );
+
+  const aside = (
+    <>
+      <Field>
+        <FieldLabel htmlFor="thumbnail-edit-instructions">{text.instructions}</FieldLabel>
+        <Textarea
+          id="thumbnail-edit-instructions"
+          ref={instructions}
+          rows={4}
+          maxLength={PROMPT_MAX}
+          placeholder={text.instructionsPlaceholder}
+          value={prompt}
+          disabled={inputsLocked}
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+        <FieldDescription>{text.instructionsHint}</FieldDescription>
+      </Field>
+      <Field>
+        <FieldTitle>{text.reference}</FieldTitle>
+        <Input
+          ref={fileInput}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="hidden"
+          onChange={chooseReference}
+        />
+        {reference === null ? (
+          <Button
+            variant="outline"
+            className="w-fit"
+            disabled={inputsLocked}
+            onClick={() => fileInput.current?.click()}
+          >
+            <ImagePlus aria-hidden="true" />
+            {text.addReference}
+          </Button>
+        ) : (
+          <div className="flex min-w-0 items-center gap-2">
+            <img
+              src={reference.url}
+              alt=""
+              className="h-16 w-auto shrink-0 rounded-sm object-contain"
+            />
+            <span className="min-w-0 flex-1 truncate text-sm">{reference.file.name}</span>
+            <ToolButton
+              label={text.removeReference}
+              size="icon-sm"
+              disabled={inputsLocked}
+              onClick={() => setReference(null)}
+            >
+              <X aria-hidden="true" />
+            </ToolButton>
+          </div>
+        )}
+        {referenceRefused && (
+          <Alert variant="destructive">
+            <AlertTitle>{text.referenceRefused}</AlertTitle>
+          </Alert>
+        )}
+        <FieldDescription>{text.referenceHint}</FieldDescription>
+      </Field>
+      <RunArea state={state} elapsedMs={elapsedMs} />
+      {ended ? (
+        <Alert variant="destructive">
+          <AlertTitle>
+            {applyFailure ?? t.errors.reason.thumbnail_edit_not_found}
+          </AlertTitle>
+        </Alert>
+      ) : (
+        applyFailure !== null && (
+          <Alert variant="destructive">
+            <AlertTitle>{applyFailure}</AlertTitle>
+          </Alert>
+        )
+      )}
+    </>
+  );
+
+  let footer: ReactNode;
+  if (view === "running") {
+    footer = (
+      <Button
+        variant="outline"
+        size="lg"
+        className="w-full"
+        disabled={ended}
+        aria-disabled={busy === "cancel" || undefined}
+        aria-busy={busy === "cancel" || undefined}
+        onClick={() => void cancel()}
+      >
+        {busy === "cancel" && <Spinner aria-hidden="true" role={undefined} />}
+        {text.cancel}
+      </Button>
+    );
+  } else if (view === "compare") {
+    footer = (
+      <>
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={ended}
+          aria-disabled={busy !== null || undefined}
+          aria-busy={busy === "apply" || undefined}
+          onClick={() => void apply()}
+        >
+          {busy === "apply" && (
+            <LoaderCircle
+              aria-hidden="true"
+              className="animate-spin motion-reduce:animate-none"
+            />
+          )}
+          {busy === "apply" ? text.applying : text.apply}
+        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="min-w-0 flex-1"
+            disabled={ended || busy !== null}
+            onClick={() => dispatch({ type: "change" })}
+          >
+            {text.changeAndGenerate}
+          </Button>
+          <Button
+            variant="ghost"
+            className="shrink-0"
+            disabled={ended || busy !== null}
+            onClick={close}
+          >
+            {text.discard}
+          </Button>
+        </div>
+      </>
+    );
+  } else {
+    footer = (
+      <>
+        {hasResult(state) && (
+          <Button
+            variant="ghost"
+            className="w-full"
+            disabled={busy !== null}
+            onClick={() => dispatch({ type: "showResult" })}
+          >
+            {text.showResult}
+          </Button>
+        )}
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={ended}
+          aria-disabled={busy !== null || undefined}
+          aria-busy={busy === "generate" || undefined}
+          onClick={() => void generate()}
+        >
+          {busy === "generate" && (
+            <LoaderCircle
+              aria-hidden="true"
+              className="animate-spin motion-reduce:animate-none"
+            />
+          )}
+          {state.ran ? text.generateAgain : text.generate}
+        </Button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <EditorDialog
+        open
+        onClose={requestClose}
+        title={text.title}
+        detail={text.frameAt(formatDuration(positionMs))}
+        closeLabel={text.close}
+        closeDisabled={busy === "apply"}
+        initialFocus={instructions}
+        stage={stage}
+        aside={aside}
+        footer={footer}
+      />
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={text.confirmTitle}
+        description={text.confirmDescription}
+        actionLabel={text.discard}
+        cancelLabel={text.keepEditing}
+        onConfirm={() => {
+          setConfirming(false);
+          close();
+        }}
+      />
+    </>
+  );
+}
+
+/** ToolButton は道具の行と参考画像の、名前をツールチップでも出すアイコンのボタンである。 */
+function ToolButton({
+  label,
+  size = "icon",
+  disabled,
+  onClick,
+  children,
+}: {
+  label: UiText;
+  size?: "icon" | "icon-sm";
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size={size}
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
+ * RunArea は横の欄の実行の状態である（ui-design「Running」「Failure」「Compare」）。状態の
+ * 変わり目を読み上げるよう role="status" の領域にし、失敗は Alert（role="alert"）で出す。
+ */
+function RunArea({
+  state,
+  elapsedMs,
+}: {
+  state: EditorState;
+  elapsedMs: number | undefined;
+}) {
+  const text = t.player.thumbnailEdit;
+  const { session, view, failure, cancelled, ended } = state;
+  const elapsed =
+    elapsedMs === undefined ? null : (
+      <span className="ml-auto text-muted-foreground tabular-nums">
+        <span className="sr-only">{text.elapsed} </span>
+        {formatDuration(elapsedMs)}
+      </span>
+    );
+  let status: ReactNode = null;
+  if (view === "running" && isRunning(session.state)) {
+    status = (
+      <>
+        <div className="flex items-center gap-2">
+          <Spinner aria-hidden="true" role={undefined} />
+          <span className="text-base font-medium">{runStateText(session.state)}</span>
+          {elapsed}
+        </div>
+        {session.progress !== undefined && (
+          <div className="flex flex-col gap-1">
+            <Progress
+              aria-label={text.progress}
+              value={session.progress.value}
+              max={session.progress.max}
+            />
+            <span className="text-sm text-muted-foreground">
+              {text.step(session.progress.value, session.progress.max)}
+            </span>
+          </div>
+        )}
+        {showsLongWait(session.state, elapsedMs ?? 0) && (
+          <p className="text-sm text-muted-foreground">{text.longWait}</p>
+        )}
+      </>
+    );
+  } else if (view === "compare") {
+    status = elapsed !== null && (
+      <div className="flex items-center text-sm">{elapsed}</div>
+    );
+  } else if (cancelled && !ended) {
+    status = <p className="text-sm text-muted-foreground">{text.cancelled}</p>;
+  }
+  return (
+    <>
+      <div role="status" className="flex flex-col gap-2 empty:hidden">
+        {status}
+      </div>
+      {view === "compose" && failure !== null && !ended && (
+        <Alert variant="destructive">
+          <AlertTitle>{failure.title}</AlertTitle>
+          {failure.message !== undefined && failure.message !== "" && (
+            <AlertDescription>{failure.message}</AlertDescription>
+          )}
+        </Alert>
+      )}
+    </>
+  );
+}

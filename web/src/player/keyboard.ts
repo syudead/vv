@@ -82,21 +82,25 @@ function isPopoverOpen(): boolean {
  * - 再生速度のメニューや吹き出し・メニューが開いているときの Esc は、それを閉じるだけにする。
  * - Esc で呼ぶのは `onClose` なので、呼び出し側が別の操作を渡せる。再生画面は自動再生の
  *   予告が出ている間、画面を閉じる代わりに予告の取り消しを渡す。
+ * - `suspended` の間はどのキーも受けない。画面全体を覆う編集画面（サムネイルの編集）が
+ *   開いている間で、Space は欄に入り、Esc は編集画面のものになる
+ *   （specs/045-comfyui-thumbnails/ui-design.md「Closing」）。
  */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,
   onClose: () => void,
+  suspended = false,
 ): void {
-  const latest = useRef({ controls, onClose });
+  const latest = useRef({ controls, onClose, suspended });
   // 描画を確定した時点で最新の値にする。useEffect だと、プレイヤーの操作を
   // 描いてから反映するまでの間の Esc が「プレイヤー無し」として画面を閉じる。
   useLayoutEffect(() => {
-    latest.current = { controls, onClose };
-  }, [controls, onClose]);
+    latest.current = { controls, onClose, suspended };
+  }, [controls, onClose, suspended]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || latest.current.suspended) return;
       const action = shortcutFor(event);
       if (action === null) return;
       const { controls: player, onClose: close } = latest.current;

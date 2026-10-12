@@ -9,6 +9,8 @@
 export interface PlayerControls {
   togglePlay(): void;
   play(): void;
+  /** pause は再生を止める。サムネイルの編集を始めるときに使う。 */
+  pause(): void;
   /** seekTo は論理上の再生位置を seconds 秒の位置にする。 */
   seekTo(seconds: number): void;
   /** restart は先頭から再生し直す。 */
@@ -74,6 +76,9 @@ export function createPlayerControls(
       else player.pause();
     },
     play,
+    pause() {
+      player.pause();
+    },
     seekTo(seconds) {
       player.currentTime(Math.max(0, seconds));
     },

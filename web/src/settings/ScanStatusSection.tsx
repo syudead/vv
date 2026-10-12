@@ -1,6 +1,4 @@
 import { CircleX, RefreshCw } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
-import { useLocation } from "react-router";
 
 import { scanErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -14,6 +12,7 @@ import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import ScanIssueList from "./ScanIssueList";
 import { useScanIssues } from "./useScanIssues";
+import { useSectionAnchor } from "./useSectionAnchor";
 
 function stateLabel(presentation: ScanPresentation): UiText | null {
   if (presentation.statusText !== null) return presentation.statusText;
@@ -40,8 +39,7 @@ function failureText(presentation: ScanPresentation): UiText {
  * ある（issue 830）。
  */
 export default function ScanStatusSection() {
-  const location = useLocation();
-  const anchor = useRef<HTMLDivElement>(null);
+  const anchor = useSectionAnchor("scan-status");
   const scan = useScan();
   const presentation = presentScan(scan);
   const text = t.settings.scanStatus;
@@ -54,28 +52,6 @@ export default function ScanStatusSection() {
     : scan.noMediaFolders
       ? text.needsMediaFolder
       : null;
-
-  useLayoutEffect(() => {
-    if (location.hash !== "#scan-status") return;
-    // 節の見出し（h2）は PageSection が描く。移ってきたときだけ focus できるようにして移す。
-    const focusHeading = () => {
-      const heading = anchor.current?.querySelector<HTMLHeadingElement>("h2");
-      if (heading === null || heading === undefined) return;
-      heading.tabIndex = -1;
-      heading.scrollIntoView?.({ block: "start" });
-      heading.focus();
-    };
-    focusHeading();
-    const raf = window.requestAnimationFrame(focusHeading);
-    const timers = [
-      window.setTimeout(focusHeading, 0),
-      window.setTimeout(focusHeading, 100),
-    ];
-    return () => {
-      window.cancelAnimationFrame(raf);
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [location.hash, location.key]);
 
   return (
     <div ref={anchor} id="scan-status">
