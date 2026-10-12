@@ -1,11 +1,11 @@
 ---
 source: specs/045-comfyui-thumbnails/contracts/screen-api.md
-sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
+sourceHash: 2bc9e1fe44ecc05f5a029110291dc4ccc86d83664a224cb0a9cb059ecf17a4ad
 ---
 
 # 契約: 画面の API の ComfyUI の設定、サムネイルの編集、適用した画像 {#contract-comfyui-settings-thumbnail-edits-and-the-applied-image-in-the-screen-api}
 
-正本: `api/openapi.yaml`。この文書は、この機能が加えるルートと `Video` のフィールド、そして振る舞いが変わる既存のルート 1 つを扱う。すべてのルートは所有者専用である: どれも `accessRoutes` に挙がっていないので、境界はゲストに `401` を返し (要件 14)、`TestAccessClassificationMatchesOpenAPISecurity` が各ルートの `security` を確かめる。エラーの本文は [023 error-api](../../023-english-i18n/contracts/error-api.md) に従う。この機能はコード `request_too_large` と `provider_failed`、および下の表が挙げる理由を加える。
+正本: `api/openapi.yaml`。この文書は、この機能が加えるルートと `Video` のフィールド、そして振る舞いが変わる既存のルート 1 つを扱う。すべてのルートは所有者専用である: どれも `accessRoutes` に挙がっていないので、境界はゲストに `401` を返し (要件 15)、`TestAccessClassificationMatchesOpenAPISecurity` が各ルートの `security` を確かめる。エラーの本文は [023 error-api](../../023-english-i18n/contracts/error-api.md) に従う。この機能はコード `provider_failed` と、下の表が挙げる理由を加える。
 
 ## `Video` の変更 {#video-change}
 
@@ -34,20 +34,18 @@ sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
 
 ## `POST /api/settings/comfyui/check` {#post-apisettingscomfyuicheck}
 
-`checkComfyUI`。[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter) のリクエストで保存した接続をテストし、`200` `CheckResult` (Ollama の確認が使うスキーマ) を返す。使用不可の結果の `message` は原因を挙げる: 届かない、ComfyUI ではない、キーが拒否された、または何も保存されていない (受け入れ条件 1)。
+`checkComfyUI`。[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter) のリクエストで保存した接続をテストし、`missing` で拡張した `200` `CheckResult` (Ollama の確認が使うスキーマ) を返す。使用不可の結果の `message` は原因を挙げる: 届かない、ComfyUI ではない、キーが拒否された、何も保存されていない、またはファイルが欠けている (受け入れ条件 1 と 2)。プロバイダーが応答するが、同梱のワークフローが必要とするものを欠くとき ([research.md R-13](../research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files))、`missing` が各項目を挙げる。
 
-## `GET`、`PUT`、`DELETE /api/settings/comfyui/workflow` {#get-put-delete-apisettingscomfyuiworkflow}
-
-`getThumbnailWorkflow`、`registerThumbnailWorkflow`、`removeThumbnailWorkflow`。`PUT` はワークフローの JSON を本文 (最大 1 MiB) として受け取り、`200` `{ inputs: { prompt, mask, reference }, workflow }` を返す。`GET` は同じもの、または `404 workflow_not_registered` を返す。`DELETE` は `204` を返す。
-
-| ステータス | `code` / 理由 | いつ |
+| `missing` の項目のフィールド | 型 | 意味 |
 | --- | --- | --- |
-| `400` | `invalid_request` / [workflow.md、Registration](workflow.md#registration) の理由の 1 つ | ワークフローが拒否された。理由がタイトルを持つときは `node` がそれを挙げる |
-| `413` | `request_too_large` | 1 MiB を超える |
+| `kind` | `node`、`model` | ノードの種類またはモデルのファイル |
+| `name` | string | ノードの `class_type` またはファイル名 |
+| `folder` | string | モデルのとき: ComfyUI の `models` の下のそのフォルダー |
+| `source` | string | モデルのとき: そのダウンロードのページ ([workflow.md、Required files](workflow.md#required-files)) |
 
 ## `GET /api/thumbnail-edits/readiness` {#get-apithumbnail-editsreadiness}
 
-`getThumbnailEditReadiness`。動画のページが入口を有効にするために必要なもの (要件 13): `{ connection: boolean, workflow: boolean, inputs }`。`connection` は設定が保存されていること (確認が通ったことではない) を意味し、`inputs` はワークフローがないときはない。
+`getThumbnailEditReadiness`。動画のページが入口を有効にするために必要なもの (要件 14): `{ connection: boolean }`。`connection` は設定が保存されていることを意味し、確認が通ったことではない。
 
 ## `POST /api/videos/{id}/thumbnail-edits` {#post-apivideosidthumbnail-edits}
 
@@ -57,7 +55,7 @@ sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
 | --- | --- | --- |
 | `400` | `invalid_request` / `thumbnail_position_out_of_range` | 位置の上書きと同じ |
 | `404` | `not_found` / `video_not_found`、`file_unavailable` | 位置の上書きと同じ |
-| `409` | `conflict` / `thumbnail_edit_not_ready` | 接続またはワークフローが保存されていない |
+| `409` | `conflict` / `thumbnail_edit_not_ready` | 接続が保存されていない |
 | `409` | `conflict` / `thumbnail_frame_unavailable` | `ffmpeg` がフレームを出さなかった |
 
 ## `ThumbnailEdit` {#thumbnailedit}
@@ -69,7 +67,6 @@ sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
 | `state` | [`ThumbnailEditState`](../data-model.md#edit-session) | 状態 |
 | `frameUrl` | string | `GET /api/thumbnail-edits/{editId}/frame`。PNG |
 | `frameWidth`、`frameHeight` | integer | フレームのピクセルの大きさ。マスクはこれに一致しなければならない |
-| `inputs` | object | ワークフローの省略可能な入力。今の実行または最後の実行のスナップショットから、なければ登録したワークフローから |
 | `elapsedMs` | integer | 実行を送信してからの時間。`ready` ではない |
 | `progress` | `{ value, max }` | ステップの進み具合。プロバイダーが何も出さなかったときはない |
 | `error` | `{ reason, message }` | `failed` のとき: [workflow.md、Failure reasons](workflow.md#failure-reasons) の理由と、プロバイダーが出したときはその文言 |
@@ -81,19 +78,18 @@ sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
 
 ## `POST /api/thumbnail-edits/{editId}/runs` {#post-apithumbnail-editseditidruns}
 
-`runThumbnailEdit`。`prompt` (テキスト、最大 4000 文字)、`mask` (PNG)、`reference` (PNG、JPEG または WebP、最大 20 MiB) を持つ `multipart/form-data` で、どれも省略できる。実行中の実行をキャンセルし、接続とワークフローのスナップショットを取り、プロンプトを送信したら `queued` の `202` `ThumbnailEdit` を返す。
+`runThumbnailEdit`。`prompt` (テキスト、最大 4000 文字)、`mask` (PNG)、`reference` (PNG、JPEG または WebP、最大 20 MiB) を持つ `multipart/form-data` で、どれも省略できる。実行中の実行をキャンセルし、接続のスナップショットを取り、ワークフローの種類を選び ([workflow.md、Workflows](workflow.md#workflows))、プロンプトを送信したら `queued` の `202` `ThumbnailEdit` を返す。
 
 | ステータス | `code` / 理由 | いつ |
 | --- | --- | --- |
-| `400` | `invalid_request` / `thumbnail_edit_input_unsupported`、`input` | ワークフローにノードのないパート (エッジケース) |
 | `400` | `invalid_request` / `thumbnail_edit_mask_invalid` | マスクがフレームの大きさの PNG ではない |
 | `400` | `invalid_request` / `thumbnail_edit_reference_invalid` | 参照がデコードできる画像ではない |
-| `409` | `conflict` / `thumbnail_edit_not_ready` | セッションの開始の後に設定が削除された |
+| `409` | `conflict` / `thumbnail_edit_not_ready` | セッションの開始の後に接続が削除された |
 | `502` | `provider_failed` / 失敗の理由 | アップロードまたは送信が失敗した。セッションは同じ理由で `failed` になる |
 
 ## `POST /api/thumbnail-edits/{editId}/cancel` {#post-apithumbnail-editseditidcancel}
 
-`cancelThumbnailEdit`。`cancelled` の `200` `ThumbnailEdit` を返し、進んでいる実行がないときは今の状態のものを返す。サムネイルは変わらない (受け入れ条件 6)。
+`cancelThumbnailEdit`。`cancelled` の `200` `ThumbnailEdit` を返し、進んでいる実行がないときは今の状態のものを返す。サムネイルは変わらない (受け入れ条件 7)。
 
 ## `POST /api/thumbnail-edits/{editId}/apply` {#post-apithumbnail-editseditidapply}
 
@@ -111,7 +107,7 @@ sourceHash: b614b8d2a9fc455659c5a07b23699d631aa9efc566274edf9586aa40373c5620
 
 ## `DELETE /api/videos/{id}/thumbnail-image` {#delete-apivideosidthumbnail-image}
 
-`revertThumbnailImage`。適用した画像を除き、フレームからサムネイルを作り直す (要件 12)。画像を適用していなかったときも `200` `Video` を返す。エラーは位置の上書きのものである。
+`revertThumbnailImage`。適用した画像を除き、フレームからサムネイルを作り直す (要件 13)。画像を適用していなかったときも `200` `Video` を返す。エラーは位置の上書きのものである。
 
 ## `PUT /api/videos/{id}/thumbnail-position` (変更) {#put-apivideosidthumbnail-position-changed}
 

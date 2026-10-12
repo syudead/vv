@@ -3,10 +3,10 @@
 Source of truth: `api/openapi.yaml`. This document covers the routes and the
 `Video` field this feature adds and the one existing route whose behaviour
 changes. Every route is owner only: none is listed in `accessRoutes`, so the
-boundary answers `401` to a guest (requirement 14), and
+boundary answers `401` to a guest (requirement 15), and
 `TestAccessClassificationMatchesOpenAPISecurity` checks the `security` of each.
 Error bodies follow [023 error-api](../../023-english-i18n/contracts/error-api.md);
-this feature adds the codes `request_too_large` and `provider_failed` and the
+this feature adds the code `provider_failed` and the
 reasons named in the tables below.
 
 ## `Video` change
@@ -40,28 +40,26 @@ reasons named in the tables below.
 
 `checkComfyUI`. Tests the saved connection with the requests in
 [R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter) and
-answers `200` `CheckResult` (the schema the Ollama check uses). The `message`
-of an unavailable result names the cause: not reachable, not ComfyUI, the key
-is rejected, or nothing is saved (acceptance criterion 1).
+answers `200` `CheckResult` (the schema the Ollama check uses), extended with
+`missing`. The `message` of an unavailable result names the cause: not
+reachable, not ComfyUI, the key is rejected, nothing is saved, or files are
+missing (acceptance criteria 1 and 2). When the provider answers but lacks
+what the bundled workflows need
+([research.md R-13](../research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)),
+`missing` lists each item.
 
-## `GET`, `PUT`, `DELETE /api/settings/comfyui/workflow`
-
-`getThumbnailWorkflow`, `registerThumbnailWorkflow`, `removeThumbnailWorkflow`.
-`PUT` takes the workflow JSON as the body (up to 1 MiB) and answers `200`
-`{ inputs: { prompt, mask, reference }, workflow }`; `GET` answers the same or
-`404 workflow_not_registered`; `DELETE` answers `204`.
-
-| Status | `code` / reason | When |
+| Field of a `missing` item | Type | Meaning |
 | --- | --- | --- |
-| `400` | `invalid_request` / one reason of [workflow.md, Registration](workflow.md#registration) | The workflow is rejected; `node` names the title when the reason has one |
-| `413` | `request_too_large` | Over 1 MiB |
+| `kind` | `node`, `model` | A node type or a model file |
+| `name` | string | The node's `class_type` or the file name |
+| `folder` | string | For a model: its folder under ComfyUI's `models` |
+| `source` | string | For a model: its download page ([workflow.md, Required files](workflow.md#required-files)) |
 
 ## `GET /api/thumbnail-edits/readiness`
 
 `getThumbnailEditReadiness`. What the video page needs to enable its entry
-(requirement 13): `{ connection: boolean, workflow: boolean, inputs }`, where
-`connection` means settings are saved (not that the check passed) and `inputs`
-is absent without a workflow.
+(requirement 14): `{ connection: boolean }`, where `connection` means
+settings are saved, not that the check passed.
 
 ## `POST /api/videos/{id}/thumbnail-edits`
 
@@ -73,7 +71,7 @@ ends first ([R-11](../research.md#r-11-a-new-session-replaces-the-previous-one-a
 | --- | --- | --- |
 | `400` | `invalid_request` / `thumbnail_position_out_of_range` | As the position override |
 | `404` | `not_found` / `video_not_found`, `file_unavailable` | As the position override |
-| `409` | `conflict` / `thumbnail_edit_not_ready` | No connection or no workflow saved |
+| `409` | `conflict` / `thumbnail_edit_not_ready` | No connection saved |
 | `409` | `conflict` / `thumbnail_frame_unavailable` | `ffmpeg` produced no frame |
 
 ## `ThumbnailEdit`
@@ -85,7 +83,6 @@ ends first ([R-11](../research.md#r-11-a-new-session-replaces-the-previous-one-a
 | `state` | [`ThumbnailEditState`](../data-model.md#edit-session) | The state |
 | `frameUrl` | string | `GET /api/thumbnail-edits/{editId}/frame`, the PNG |
 | `frameWidth`, `frameHeight` | integer | The frame's pixel size, which the mask must match |
-| `inputs` | object | The workflow's optional inputs, from the snapshot of the current or last run, else from the registered workflow |
 | `elapsedMs` | integer | Since the run was submitted; absent in `ready` |
 | `progress` | `{ value, max }` | Step progress; absent when the provider gave none |
 | `error` | `{ reason, message }` | In `failed`: a reason of [workflow.md, Failure reasons](workflow.md#failure-reasons) and the provider's text when it gave one |
@@ -102,22 +99,22 @@ result routes.
 
 `runThumbnailEdit`. `multipart/form-data` with `prompt` (text, up to 4000
 characters), `mask` (PNG) and `reference` (PNG, JPEG or WebP, up to 20 MiB),
-each optional. Cancels a running run, snapshots the connection and workflow,
-and answers `202` `ThumbnailEdit` in `queued` once the prompt is submitted.
+each optional. Cancels a running run, snapshots the connection, picks the
+workflow variant ([workflow.md, Workflows](workflow.md#workflows)), and
+answers `202` `ThumbnailEdit` in `queued` once the prompt is submitted.
 
 | Status | `code` / reason | When |
 | --- | --- | --- |
-| `400` | `invalid_request` / `thumbnail_edit_input_unsupported`, `input` | A part the workflow has no node for (Edge Case) |
 | `400` | `invalid_request` / `thumbnail_edit_mask_invalid` | The mask is not a PNG of the frame's size |
 | `400` | `invalid_request` / `thumbnail_edit_reference_invalid` | The reference is not a decodable image |
-| `409` | `conflict` / `thumbnail_edit_not_ready` | Settings were removed since the session started |
+| `409` | `conflict` / `thumbnail_edit_not_ready` | The connection was removed since the session started |
 | `502` | `provider_failed` / a failure reason | Upload or submit failed; the session goes to `failed` with the same reason |
 
 ## `POST /api/thumbnail-edits/{editId}/cancel`
 
 `cancelThumbnailEdit`. Answers `200` `ThumbnailEdit` in `cancelled`, or the
 current state when no run is in progress. The thumbnail does not change
-(acceptance criterion 6).
+(acceptance criterion 7).
 
 ## `POST /api/thumbnail-edits/{editId}/apply`
 
@@ -141,7 +138,7 @@ discard and when it unmounts.
 ## `DELETE /api/videos/{id}/thumbnail-image`
 
 `revertThumbnailImage`. Removes the applied image and rebuilds the thumbnail
-from the frame (requirement 12); answers `200` `Video`, also when no image was
+from the frame (requirement 13); answers `200` `Video`, also when no image was
 applied. Errors are those of the position override.
 
 ## `PUT /api/videos/{id}/thumbnail-position` (changed)

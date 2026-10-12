@@ -1,39 +1,67 @@
 ---
 source: specs/045-comfyui-thumbnails/contracts/workflow.md
-sourceHash: 4f9a341f752134066906d4f7000cb9d68fc3a0a0756923a1b2fad15f148af1e2
+sourceHash: 4fecd263e880182678d11bc154755bc498ba29a4ab76c1799914ab25825e370a
 ---
 
-# 契約: サムネイルのワークフローとその実行 {#contract-the-thumbnail-workflow-and-its-runs}
+# 契約: 同梱するサムネイルのワークフローとその実行 {#contract-the-bundled-thumbnail-workflow-and-its-runs}
 
-正本: 実装がこれを、所有者がワークフローの用意の仕方を読む `docs/how-to/comfyui-thumbnails.md` に移すまでは、この文書である。この文書は、vv が所有者の ComfyUI のワークフローに求めることと、vv が 1 回の実行をどう動かすかを扱う。決定は [research.md R-2](../research.md#r-2-named-nodes-in-the-owners-api-format-workflow-are-the-whole-contract)、[R-3](../research.md#r-3-absent-optional-inputs-get-a-neutral-value)、[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter) にある。
+正本: `internal/comfyui` に埋め込むワークフローのファイルができたらそれらであり、それまではこの文書とその隣の 2 つのファイル ([workflows/](workflows/)) である。この文書は、vv が同梱するワークフロー、セルフホストの ComfyUI がそれらを実行するのに必要なもの、vv が 1 回の実行をどう動かすかを扱う。決定は [research.md R-2](../research.md#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract)、[R-3](../research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)、[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter)、[R-12](../research.md#r-12-the-model-is-flux2-klein-4b-fp8)、[R-13](../research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files) にある。
 
-## ワークフローの形式 {#workflow-format}
+## ワークフロー {#workflows}
 
-ワークフローは ComfyUI の API 形式 (「Export (API)」) である: キーがノード id で、値が `class_type`、`inputs`、`_meta.title` を持つ JSON オブジェクトである。vv は `_meta.title` でノードを見つけ、この表の入力だけを書く。
+どちらのファイルも ComfyUI の API 形式である: キーがノード id で、値が `class_type`、`inputs`、`_meta.title` を持つ JSON オブジェクトである。これらはモデルの POC から来ており、Comfy Cloud で実行した。
 
-| タイトル | 必須 | ノード | vv が書くもの |
-| --- | --- | --- | --- |
-| `vv:frame` | はい | `image` 入力を持つ画像のローダー (`LoadImage`) | `image`: アップロードしたフレーム |
-| `vv:output` | はい | 画像を保存またはプレビューするノード (`SaveImage`、`PreviewImage`) | なし。vv はその最初の出力画像を読む |
-| `vv:prompt` | いいえ | 文字列の `prompt` または `text` 入力を持つノード | その入力 (両方あるときは `prompt`): 所有者のテキスト、または `""` |
-| `vv:mask` | いいえ | `image` 入力を持つ画像のローダー (`LoadImage`、`LoadImageMask`) | `image`: アップロードしたマスク、またはフレーム全体を覆うマスク |
-| `vv:reference` | いいえ | `image` 入力を持つ画像のローダー | `image`: アップロードした参照画像、またはフレーム |
-
-マスクはフレームのピクセルの大きさの PNG である: 塗ったピクセルは不透明な白、残りは不透明な黒である。ワークフローは、`red` チャンネルの `LoadImageMask`、または `LoadImage` と画像からマスクへのノードでそれを読む。
-
-## 登録 {#registration}
-
-`domain.ParseThumbnailWorkflow` はワークフローを受け入れるか、理由を 1 つ返す。
-
-| 状況 | 理由 |
+| ファイル | 使うとき |
 | --- | --- |
-| JSON オブジェクトではない、1 MiB より大きい、または `class_type` のないノードがある | `workflow_invalid` |
-| UI 形式 (最上位の `nodes` 配列) | `workflow_not_api_format` |
-| `vv:frame` または `vv:output` というタイトルのノードがない | `workflow_missing_node`、タイトル付き |
-| 1 つの `vv:*` のタイトルを持つノードが 2 つある | `workflow_duplicate_node`、タイトル付き |
-| 表が挙げる入力のない `vv:*` のノード | `workflow_node_input_missing`、タイトル付き |
+| [`workflows/thumbnail-edit.json`](workflows/thumbnail-edit.json) | 所有者が参照画像を添えなかった |
+| [`workflows/thumbnail-edit-reference.json`](workflows/thumbnail-edit-reference.json) | 所有者が参照画像を添えた |
 
-成功すると、API はワークフローが受け取る省略可能な入力 (`prompt`、`mask`、`reference`) を返す。登録は決して ComfyUI に接続しないので、接続が動く前にワークフローを登録できる。
+vv は入力を入れるノードを `_meta.title` で見つけ、この表の入力だけを書く。
+
+| タイトル | ノード | vv が書くもの |
+| --- | --- | --- |
+| `vv:frame` | `LoadImage` | `image`: アップロードしたフレーム |
+| `vv:prompt` | `CLIPTextEncode` | `text`: 所有者の指示。指示が空でマスクが塗られているときは下の既定の指示。それ以外は `""` |
+| `vv:mask` | `LoadImageMask` (`red` チャンネル) | `image`: アップロードしたマスク、またはフレームの大きさの白いマスク |
+| `vv:reference` | `LoadImage` (参照の種類のみ) | `image`: アップロードした参照画像 |
+| `vv:output` | `SaveImage` | なし。vv はその最初の出力画像を読む |
+
+既定の指示は固定の英語のテキストであり、所有者の言語にかかわらず送る:
+
+```text
+Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings.
+```
+
+マスクはフレームのピクセルの大きさの PNG である: 塗ったピクセルは不透明な白、残りは不透明な黒である。図は、ワークフローが入力で何をするかを示す。
+
+```mermaid
+flowchart LR
+  frame[vv:frame] --> scale[1 MP に縮尺]
+  ref[vv:reference] --> rscale[1 MP に縮尺]
+  scale --> model[klein 4B、4 ステップ]
+  rscale --> model
+  prompt[vv:prompt] --> model
+  mask[vv:mask] --> model
+  model --> back[フレームの大きさに縮尺]
+  back --> comp[マスクを通して合成]
+  frame --> comp
+  mask --> comp
+  comp --> out[vv:output]
+```
+
+合成は 8 px 広げてぼかしたマスクを使うので、編集は縁でなじみ、その外のピクセルはすべてフレームのものである (モデルの POC は 9 回の実行でマスクの外に変化がないことを測った)。出力は常にフレームの大きさを持つ。シードは 42 に固定なので、同じ入力は同じ結果を出し、所有者は別の結果を得るには指示を変える。
+
+## 必要なファイル {#required-files}
+
+セルフホストの ComfyUI にはカスタムノードは要らず、ワークフローが使うコアのノードを持つだけ新しいバージョンと、次のモデルのファイルだけが要る。Comfy Cloud はそれらを用意している。
+
+| ファイル | ComfyUI のフォルダー | 大きさ | 入手元 |
+| --- | --- | --- | --- |
+| `flux-2-klein-4b-fp8.safetensors` | `models/diffusion_models` | 4.07 GB | `huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8` |
+| `qwen_3_4b.safetensors` | `models/text_encoders` | 8.04 GB | `huggingface.co/Comfy-Org/z_image_turbo` (`split_files/text_encoders`) |
+| `flux2-vae.safetensors` | `models/vae` | 0.34 GB | `huggingface.co/Comfy-Org/flux2-dev` (`split_files/vae`) |
+
+接続のテストは、欠けているノードを「update ComfyUI」と共に、欠けているファイルをそのフォルダーと入手元と共に報告する。必要な VRAM は 8 から 12 GB と見積もり、測っていない。
 
 ## 実行 {#run}
 
@@ -46,7 +74,7 @@ sequenceDiagram
   participant C as ComfyUI
   P->>V: 実行の開始 (テキスト、マスク、参照)
   V->>C: フレーム、マスク、参照のアップロード
-  V->>C: POST /prompt (vv:* の入力を入れたワークフロー)
+  V->>C: POST /prompt (同梱のワークフロー、vv:* を入れたもの)
   C-->>V: prompt_id
   V-->>P: 202 queued
   loop every second
@@ -64,9 +92,9 @@ sequenceDiagram
 
 | vv の状態 | セルフホストの ComfyUI | Comfy Cloud |
 | --- | --- | --- |
-| `queued` | id が `queue_pending` にある | `submitted`、`queued_waiting`、`waiting_to_dispatch`、`pending` |
-| `preparing` | 報告されない | `preparing` |
-| `running` | id が `queue_running` にある | `executing`、`in_progress` |
+| `queued` | id が `queue_pending` にある | `submitted`、`preprocessing`、`queued_waiting`、`queued_limited`、`allocated`、`waiting_to_dispatch`、`pending` |
+| `preparing` | 報告されない | `preparing`、`pending_execution` |
+| `running` | id が `queue_running` にある | `executing`、`in_progress`、`executed` |
 | `succeeded` | `history/{id}` が `status.completed` と出力画像を持つ | `success`、`completed`、および出力画像 |
 | `failed` | `history/{id}` が `status_str: error` を持つ、または id が履歴のエントリなしにキューから消えた | `error`、`non_retryable_error`、`lost` |
 | `cancelled` | vv のキャンセルの後 | `cancel_requested`、`cancelled` |
@@ -83,4 +111,5 @@ sequenceDiagram
 | `workflow_rejected` | `POST /prompt` が `400` (`node_errors`) を返す。最初のノードのエラーのメッセージを引き渡す |
 | `run_failed` | プロバイダーが実行の失敗を報告する。実行のエラーのメッセージを引き渡す |
 | `no_output` | 実行は成功し、`vv:output` に画像がない |
+| `missing_models` | `POST /prompt` が、プロバイダーの持たないノードの種類またはモデルのファイルを挙げる。欠けている名前を引き渡す |
 | `timed_out` | 送信から 10 分後に終わりの状態にない |

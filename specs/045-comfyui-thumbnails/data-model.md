@@ -56,8 +56,6 @@ from `doc-translator`.
 | --- | --- |
 | `Video.ThumbnailImageRevision` | `int64`; 0 when no image is applied. The `thumbnailUrl` version becomes `<content key prefix>-g<revision>` when it is set, in place of the position's `-r<revision>` |
 | `ComfyUISettings` | `Provider` (`self_hosted` or `cloud`), `URL` (self-hosted only), `APIKey` (cloud only, never returned by the API) |
-| `ThumbnailWorkflow` | The workflow JSON as registered, and its `Inputs` (`Prompt`, `Mask`, `Reference` booleans) found by [contracts/workflow.md](contracts/workflow.md) |
-| `ParseThumbnailWorkflow([]byte) (ThumbnailWorkflow, error)` | The registration rule of contracts/workflow.md, as a pure function with one error value per reason |
 | `ThumbnailEditState` | `ready`, `queued`, `preparing`, `running`, `succeeded`, `failed`, `cancelled` ([Edit session](#edit-session)) |
 
 ## Settings
@@ -69,7 +67,6 @@ Saved in `settings` ([00017_settings.sql](../../internal/store/migrations/00017_
 | `comfyui.provider` | `self_hosted` or `cloud`; absent until saved |
 | `comfyui.url` | The self-hosted base URL, normalized like `ollama.endpoint` |
 | `comfyui.api_key` | The Comfy Cloud key ([R-9](research.md#r-9-the-api-key-is-write-only)) |
-| `comfyui.workflow` | The registered workflow JSON |
 
 ## Edit session
 
@@ -81,7 +78,7 @@ A session lives in memory in `app.ThumbnailEdits`, one per video
 | `ID` | Random, 128 bits, the route key |
 | `VideoID`, `ContentKey` | The video and its content when the session started |
 | `Frame` | The extracted PNG and its size ([R-8](research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)) |
-| `Run` | The current run: the settings and workflow snapshot, the provider's job id, the state, `StartedAt`, the optional step progress, the error reason |
+| `Run` | The current run: the connection snapshot, the workflow variant, the provider's job id, the state, `StartedAt`, the optional step progress, the error reason |
 | `Result` | The output image of the last run that succeeded |
 | `LastReadAt` | Updated on every read; 5 minutes without one ends the session |
 
@@ -112,8 +109,8 @@ Any state ends on discard, on expiry, when a new edit of the same video
 starts, and on a restart; a run in progress is cancelled at the provider first
 ([R-11](research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes)).
 `failed` carries one reason: `unreachable`, `unauthorized`,
-`insufficient_credits`, `workflow_rejected`, `run_failed`, `no_output` or
-`timed_out`.
+`insufficient_credits`, `missing_models`, `workflow_rejected`, `run_failed`,
+`no_output` or `timed_out`.
 
 ## What does not change
 

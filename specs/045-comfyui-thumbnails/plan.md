@@ -6,19 +6,20 @@
 
 ## Summary
 
-The owner saves a ComfyUI connection (self-hosted or Comfy Cloud) and one
-workflow in Settings, then on the video page edits the current frame with
-text, a painted mask and a reference image, watches the run, compares the
-result with the frame, and applies it as the thumbnail. vv drives the owner's
-workflow through nodes titled `vv:*`, holds each edit in memory for the page
-that started it, and keeps an applied image as user data that the thumbnail
-job republishes after any rescan.
+The owner saves a ComfyUI connection (self-hosted or Comfy Cloud) in
+Settings, then on the video page edits the current frame with text, a painted
+mask and a reference image, watches the run, compares the result with the
+frame, and applies it as the thumbnail. vv bundles the workflows and selects
+the model they run (FLUX.2 [klein] 4B); vv ships no model files, so it tells a
+self-hosted owner which ones are missing,
+holds each edit in memory for the page that started it, and keeps an applied
+image as user data that the thumbnail job republishes after any rescan.
 
 The diagram shows the parts this feature adds and what each one talks to.
 
 ```mermaid
 flowchart LR
-  settings[Settings section] -->|connection, workflow| api[Screen API]
+  settings[Settings section] -->|connection| api[Screen API]
   page[Video page edit] -->|edit, run, poll, apply| api
   api --> edits[app.ThumbnailEdits]
   api --> conn[app.ComfyUIConnection]
@@ -35,7 +36,8 @@ flowchart LR
 | Concern | Approach |
 | --- | --- |
 | Provider | An `ImageEditor` port and one `internal/comfyui` adapter for both providers ([R-1](research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers), [R-5](research.md#r-5-provider-differences-stay-inside-the-adapter)) |
-| Workflow | The owner's API-format workflow, inputs and output found by `vv:*` titles, absent inputs filled with neutral values ([R-2](research.md#r-2-named-nodes-in-the-owners-api-format-workflow-are-the-whole-contract), [R-3](research.md#r-3-absent-optional-inputs-get-a-neutral-value), [contracts/workflow.md](contracts/workflow.md)) |
+| Workflow and model | Two bundled API-format workflows (with and without a reference) on FLUX.2 [klein] 4B fp8, inputs found by `vv:*` titles, absent inputs filled with neutral values ([R-2](research.md#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract), [R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node), [R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8), [contracts/workflow.md](contracts/workflow.md)) |
+| Missing files | The connection test checks the workflows' nodes and model files through `/object_info` ([R-13](research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)) |
 | Edit and run | An in-memory session per video, polled by the page, ended by discard, expiry or a new edit; 10-minute run limit ([R-4](research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling), [R-11](research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes)) |
 | Frame | Extracted by the server at up to 2048 px ([R-8](research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)) |
 | Applied image | Fitted to the video's aspect, stored in `thumbnail_images`, republished by the thumbnail job ([R-6](research.md#r-6-the-applied-image-is-user-data-in-sqlite-the-thumbnail-file-is-rebuilt-from-it), [R-7](research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
@@ -44,14 +46,16 @@ flowchart LR
 | Routes | New owner-only routes for settings, edits and revert; the position override changed ([contracts/screen-api.md](contracts/screen-api.md)) |
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
-before the two screen units: the ComfyUI section in Settings, the edit entry
+before the two screen units: the ComfyUI section in Settings with the missing
+files, the edit entry
 next to the video page's thumbnail controls
 ([029 ui-design](../029-video-overrides/ui-design.md)), mask painting, the
 run's states and failures, the comparison with apply, run again and discard,
 and "use the frame instead".
 
-Out of scope, as the parent Issue says: batch generation, shipping or
-installing ComfyUI, models or workflows, replacing seek sprites, scrub frames
+Out of scope, as the parent Issue says: batch generation, shipping,
+downloading or installing ComfyUI or model files, the owner's own workflows or
+models and a choice of methods, replacing seek sprites, scrub frames
 or hover previews, a history of generated images, other providers, uploading
 an image made outside vv, and showing Comfy Cloud credits. The external API
 and MCP do not gain these routes, because the Issue asks only for the screen.
@@ -84,13 +88,16 @@ and MCP do not gain these routes, because the Issue asks only for the screen.
   images that are not artifacts (the frame and the result).
 - The e2e run starts a fake ComfyUI server; nothing in `web/e2e` fakes an
   outside service yet.
+- The first JSON assets embedded in a Go adapter (the two workflows,
+  [contracts/workflows/](contracts/workflows/)), whose model was chosen by a
+  model POC on Comfy Cloud ([R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8)).
 
 ## Constitution Check
 
 | Rule (source) | Verdict |
 | --- | --- |
 | Adapters import neither each other nor `internal/app`; `internal/app` imports no adapter (ARCHITECTURE.md, depguard) | Pass: `internal/comfyui` depends on `internal/domain` only and joins the adapter list in `.golangci.yml`; `internal/app` declares `ImageEditor` and the settings store interface |
-| The domain decides, the store enforces (ARCHITECTURE.md) | Pass: the workflow rule and settings normalization are pure functions in `internal/domain`; the apply order is in `internal/app` under the existing lock |
+| The domain decides, the store enforces (ARCHITECTURE.md) | Pass: settings normalization and the edit states are in `internal/domain`; the workflows and their check are the adapter's; the apply order is in `internal/app` under the existing lock |
 | One owner for generated files (ARCHITECTURE.md) | Pass: thumbnail files are still placed only by `internal/artifacts`; the applied image is a row, not a file ([R-6](research.md#r-6-the-applied-image-is-user-data-in-sqlite-the-thumbnail-file-is-rebuilt-from-it)) |
 | User data survives a rebuild (ARCHITECTURE.md) | Pass: `thumbnail_images` is keyed by content key with no foreign key, and joins the user-data list in ARCHITECTURE.md and running-vv.md |
 | Events after commit (ARCHITECTURE.md) | Pass: apply and revert publish the existing `VideoOverrideChanged` after commit; edit sessions publish nothing ([R-4](research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling)) |
@@ -115,13 +122,17 @@ specs/045-comfyui-thumbnails/
 ├── quickstart.md
 └── contracts/
     ├── screen-api.md
-    └── workflow.md
+    ├── workflow.md
+    └── workflows/
+        ├── thumbnail-edit.json
+        └── thumbnail-edit-reference.json
 ```
 
 `ui-design.md` is written by the `design` stage (the Issue has the `ui`
 label). `quickstart.md` exists because the automated checks run against a fake
-ComfyUI only. `contracts/workflow.md` is the owner-facing workflow contract
-until the how-to below takes it over.
+ComfyUI only. `contracts/workflow.md` and the two workflow files are the
+source until the files move into `internal/comfyui`; the owner-facing part
+(what a self-hosted ComfyUI needs) moves to the how-to below.
 
 ### Source Code
 
@@ -129,8 +140,8 @@ until the how-to below takes it over.
 
 | Boundary | What it owns in this feature |
 | --- | --- |
-| `internal/domain` | `ComfyUISettings`, `ThumbnailWorkflow` and its parser, the edit states and failure reasons, `Video.ThumbnailImageRevision` |
-| `internal/comfyui` (new) | The provider adapter: connection test, uploads, runs, states, cancel, output, WebSocket progress |
+| `internal/domain` | `ComfyUISettings`, the edit states and failure reasons, `Video.ThumbnailImageRevision` |
+| `internal/comfyui` (new) | The provider adapter: the embedded workflows, connection test with the required-files check, uploads, runs, states, cancel, output, WebSocket progress |
 | `internal/media` | `FrameAt` (PNG up to 2048 px) and `FitThumbnailImage` (fit to an aspect, JPEG) |
 | `internal/store` | The migration, the `comfyui.*` settings, `thumbnail_images` reads and writes, the join for `ThumbnailImageRevision` |
 | `internal/app` | `ComfyUIConnection`, `ThumbnailEdits`, `Ingest.ApplyThumbnailImage`, `Ingest.RevertThumbnailImage`, the thumbnail job's republish |
@@ -139,7 +150,8 @@ until the how-to below takes it over.
 | `web/e2e` | The fake ComfyUI and the browser test |
 | `docs/` | `ai-layer.md`, a new `docs/design-docs/thumbnail-editing.md`, a new `docs/how-to/comfyui-thumbnails.md`, `running-vv.md`, ARCHITECTURE.md |
 
-**New paths**: `internal/comfyui/`, `internal/domain/comfyui.go`,
+**New paths**: `internal/comfyui/` (with `internal/comfyui/workflows/`),
+`internal/domain/comfyui.go`,
 `internal/app/comfyui.go`, `internal/app/thumbnail_edits.go`,
 `internal/store/thumbnail_images.go`,
 `internal/store/migrations/00038_thumbnail_images.sql`,
@@ -150,8 +162,8 @@ until the how-to below takes it over.
 **Structure decision**: The edit on the video page is its own directory under
 `web/src/player/`, because the mask canvas, the run panel and the comparison
 are one flow that `VideoFacts` only opens. The fake ComfyUI serves the
-self-hosted routes from contracts/workflow.md, so the browser test exercises
-the real adapter.
+self-hosted routes from contracts/workflow.md, including `/object_info`, so
+the browser test exercises the real adapter.
 
 ## Implementation Work
 
@@ -160,10 +172,10 @@ wait for the `design` stage's `ui-design.md`.
 
 ```mermaid
 flowchart LR
-  conn[Connection API] --> wf[Workflow API]
+  conn[Connection API] --> files[Required files check]
   conn --> settings[Settings section]
-  wf --> settings
-  wf --> run[ComfyUI runs]
+  files --> settings
+  files --> run[ComfyUI runs]
   run --> ws[WebSocket progress]
   image[Applied image] --> edits[Edit sessions API]
   run --> edits
@@ -196,38 +208,42 @@ connection, a non-ComfyUI reply, a Cloud `401`, and nothing saved; a guest
 gets `401` on each route and
 `TestAccessClassificationMatchesOpenAPISecurity` passes.
 
-### Register a thumbnail workflow with nodes titled vv
+### Embed the workflows and report missing nodes and model files
 
-**Scope**: `ThumbnailWorkflow` and `ParseThumbnailWorkflow`, the
-`comfyui.workflow` setting, `GET`/`PUT`/`DELETE /api/settings/comfyui/workflow`
-and `GET /api/thumbnail-edits/readiness`, the client functions, and
-`docs/how-to/comfyui-thumbnails.md` written from
-[contracts/workflow.md, Workflow format and Registration](contracts/workflow.md#workflow-format)
-for the owner.
+**Scope**: The two workflows of [contracts/workflows/](contracts/workflows/)
+moved into `internal/comfyui/workflows/` and embedded, a test that each has
+the `vv:*` titles of [contracts/workflow.md](contracts/workflow.md#workflows),
+the required-files check of the connection test through `/object_info` with
+the `missing` list and its sources, `GET /api/thumbnail-edits/readiness`, the
+client functions, and `docs/how-to/comfyui-thumbnails.md` for the owner (the
+files a self-hosted ComfyUI needs and where they go, the Comfy Cloud key)
+([R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8), [R-13](research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files),
+[contracts/screen-api.md](contracts/screen-api.md#post-apisettingscomfyuicheck)).
 
 **Dependencies**: Save and test a ComfyUI connection through the screen API.
 
-**Acceptance**: `task check` and `task check-docs` pass; domain tests cover
-every row of the Registration table and report `prompt`, `mask` and
-`reference` for a workflow with all five titles and none for one with only
-`vv:frame` and `vv:output`; handler tests show `413` over 1 MiB, `404`
-before registration, `204` on delete, and `readiness` answering
-`connection` and `workflow` for each of the four combinations.
+**Acceptance**: `task check` and `task check-docs` pass with no diff from
+`task generate`; adapter tests against `httptest` fakes of `/object_info`
+show available when every node and file is listed, a `model` item with its
+folder and source for each file a loader lacks, a `node` item for each
+missing `class_type`, and the same check on Comfy Cloud's route; handler tests
+show `readiness` answering `connection` before and after a save.
 
-### Add the ComfyUI connection and workflow to Settings
+### Add the ComfyUI connection to Settings
 
 **Scope**: A ComfyUI section in Settings: provider choice, URL or API key
-(the key field shows only that a key is saved), save, test with its result,
-workflow file upload with the inputs it takes, removal, the catalog text, and
-a docs link to the how-to; layout and wording follow `ui-design.md`.
+(the key field shows only that a key is saved), save, test with its result
+and the missing nodes and files with their folders and sources, the catalog
+text, and a docs link to the how-to; layout and wording follow
+`ui-design.md`.
 
 **Dependencies**: Save and test a ComfyUI connection through the screen API;
-Register a thumbnail workflow with nodes titled vv.
+Embed the workflows and report missing nodes and model files.
 
 **Acceptance**: `task check` passes; page tests show the key is never put
-into the field after a save, the test result and its message, a rejected
-workflow's reason, and the optional inputs after a registration; the screen
-change gets a visual review against design-system.md in both themes.
+into the field after a save, the test result and its message, and each
+missing item with its folder and source; the screen change gets a visual
+review against design-system.md.
 
 ### Keep an applied thumbnail image across rescans and let the owner revert it
 
@@ -260,19 +276,22 @@ after publishing restores the previous file.
 ### Run a thumbnail workflow on ComfyUI and Comfy Cloud
 
 **Scope**: The `ImageEditor` port in `internal/app` and its `internal/comfyui`
-implementation for both providers: uploads, the workflow with `vv:*` inputs
-and neutral values, submit, the state mapping, cancel, the output fetch
-(Cloud's redirect without the key), and the failure reasons
+implementation for both providers: uploads, the workflow variant with `vv:*`
+inputs, neutral values and the default instruction, submit, the state
+mapping, cancel, the output fetch (Cloud's redirect without the key), and the
+failure reasons
 ([contracts/workflow.md, Run, Run states and Failure reasons](contracts/workflow.md#run),
-[R-3](research.md#r-3-absent-optional-inputs-get-a-neutral-value),
+[R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node),
 [R-5](research.md#r-5-provider-differences-stay-inside-the-adapter)).
 
-**Dependencies**: Register a thumbnail workflow with nodes titled vv.
+**Dependencies**: Embed the workflows and report missing nodes and model files.
 
 **Acceptance**: `task check` passes; adapter tests against `httptest` fakes of
-each provider show: the submitted prompt has only the `vv:*` inputs changed;
-an absent mask uploads an all-white PNG of the frame's size and an absent
-reference uploads the frame; every row of the Run states table maps to its
+each provider show: the submitted prompt is the embedded variant with only
+the `vv:*` inputs changed; a run with a reference uses the reference variant
+and one without it the other; an absent mask uploads an all-white PNG of the
+frame's size; a painted mask with an empty instruction sends the default
+instruction of the contract word for word; every row of the Run states table maps to its
 vv state; cancel while queued deletes from the queue and while running
 interrupts (self-hosted) or sends `POST /interrupt` (Cloud); Cloud's output is fetched from the redirect without
 `X-API-Key`; each row of the Failure reasons table is produced from its
@@ -314,15 +333,15 @@ owner revert it; Run a thumbnail workflow on ComfyUI and Comfy Cloud.
 every transition of the Edit session diagram; a session not read for 5
 minutes is cancelled at the provider and answers `404`; a run past 10 minutes
 fails as `timed_out`; a second edit of the same video cancels the first's run;
-settings changed during a run do not change the run's snapshot; handler tests
-show each status of the contract, a mask of the wrong size and a part the
-workflow cannot take answer `400` before anything is uploaded, and a guest
+a connection changed during a run does not change the run's snapshot;
+handler tests show each status of the contract, a mask of the wrong size
+answers `400` before anything is uploaded, and a guest
 gets `401` on each route.
 
 ### Edit the thumbnail from the video page
 
 **Scope**: The entry next to the thumbnail controls (disabled with the reason
-when `readiness` is not complete, absent for a guest), the edit view with the
+when no connection is saved, absent for a guest), the edit view with the
 frame, mask painting, the reference image, the prompt, the run state with
 elapsed time and progress, cancel, the side-by-side comparison with apply,
 run again and discard, discard on unmount, and "use the frame instead" while
@@ -332,25 +351,24 @@ run again and discard, discard on unmount, and "use the frame instead" while
 **Dependencies**: Serve thumbnail edit sessions on the screen API.
 
 **Acceptance**: `task check` passes; page tests show the entry disabled with
-the Settings reason for each incomplete `readiness`, painting and the
-reference disabled when `inputs` lacks them, the state label changing from
+the Settings reason without a connection, the state label changing from
 queued to preparing to running with the elapsed time, a progress bar only when
 `progress` is present, the failure reason's text, the result next to the
 frame, and that leaving the page calls discard; the screen change gets a
-visual review against design-system.md in both themes and at phone width.
+visual review against design-system.md at phone width.
 
 ### Cover thumbnail editing in a browser test with a fake ComfyUI
 
 **Scope**: `web/e2e/fake-comfyui.mjs`, a self-hosted ComfyUI fake that
-records the submitted prompt and answers a fixed image after a delay, started
+answers `/object_info` with the required nodes and files, records the
+submitted prompt and answers a fixed image after a delay, started
 by `run-e2e.mjs`, and `web/e2e/thumbnail-edit.e2e.ts`.
 
-**Dependencies**: Add the ComfyUI connection and workflow to Settings; Edit
-the thumbnail from the video page.
+**Dependencies**: Add the ComfyUI connection to Settings; Edit the thumbnail
+from the video page.
 
 **Acceptance**: `task test-e2e -- e2e/thumbnail-edit.e2e.ts` passes, showing:
-the owner saves the fake as the connection, tests it, registers a workflow,
-paints a mask, runs, sees the state change, applies; the library card and
+the owner saves the fake as the connection, tests it, paints a mask, runs, sees the state change, applies; the library card and
 the video page show the fake's image after a reload and after a full scan;
 "use the frame instead" restores the frame; a cancel and a discard leave the
 thumbnail unchanged; a guest sees no entry.

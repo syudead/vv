@@ -1,46 +1,85 @@
-# Contract: The thumbnail workflow and its runs
+# Contract: The bundled thumbnail workflow and its runs
 
-Source of truth: this document until the implementation moves it to
-`docs/how-to/comfyui-thumbnails.md`, where the owner reads how to prepare a
-workflow. It covers what vv requires of the owner's ComfyUI workflow and how
-vv drives one run. The decisions are in
-[research.md R-2](../research.md#r-2-named-nodes-in-the-owners-api-format-workflow-are-the-whole-contract),
-[R-3](../research.md#r-3-absent-optional-inputs-get-a-neutral-value) and
-[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter).
+Source of truth: the workflow files embedded in `internal/comfyui`, once they
+exist; until then this document and the two files beside it
+([workflows/](workflows/)). It covers the workflows vv ships, what a
+self-hosted ComfyUI needs to run them, and how vv drives one run. The
+decisions are in
+[research.md R-2](../research.md#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract),
+[R-3](../research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node),
+[R-5](../research.md#r-5-provider-differences-stay-inside-the-adapter),
+[R-12](../research.md#r-12-the-model-is-flux2-klein-4b-fp8) and
+[R-13](../research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files).
 
-## Workflow format
+## Workflows
 
-The workflow is ComfyUI's API format ("Export (API)"): a JSON object whose keys
-are node ids and whose values carry `class_type`, `inputs` and `_meta.title`.
-vv finds nodes by `_meta.title` and writes only the inputs in this table.
+Both files are ComfyUI's API format: a JSON object whose keys are node ids and
+whose values carry `class_type`, `inputs` and `_meta.title`. They come from the
+model POC and ran on Comfy Cloud.
 
-| Title | Required | Node | vv writes |
-| --- | --- | --- | --- |
-| `vv:frame` | Yes | An image loader with an `image` input (`LoadImage`) | `image`: the uploaded frame |
-| `vv:output` | Yes | A node that saves or previews images (`SaveImage`, `PreviewImage`) | Nothing; vv reads its first output image |
-| `vv:prompt` | No | A node with a string `prompt` or `text` input | That input (`prompt` when both exist): the owner's text, or `""` |
-| `vv:mask` | No | An image loader with an `image` input (`LoadImage`, `LoadImageMask`) | `image`: the uploaded mask, or a mask covering the whole frame |
-| `vv:reference` | No | An image loader with an `image` input | `image`: the uploaded reference image, or the frame |
+| File | Used when |
+| --- | --- |
+| [`workflows/thumbnail-edit.json`](workflows/thumbnail-edit.json) | The owner attached no reference image |
+| [`workflows/thumbnail-edit-reference.json`](workflows/thumbnail-edit-reference.json) | The owner attached a reference image |
+
+vv finds the nodes it fills by `_meta.title` and writes only the inputs in
+this table.
+
+| Title | Node | vv writes |
+| --- | --- | --- |
+| `vv:frame` | `LoadImage` | `image`: the uploaded frame |
+| `vv:prompt` | `CLIPTextEncode` | `text`: the owner's instruction; when it is empty and a mask is painted, the default instruction below; otherwise `""` |
+| `vv:mask` | `LoadImageMask` (`red` channel) | `image`: the uploaded mask, or a white mask of the frame's size |
+| `vv:reference` | `LoadImage` (reference variant only) | `image`: the uploaded reference image |
+| `vv:output` | `SaveImage` | Nothing; vv reads its first output image |
+
+The default instruction is fixed English text, sent whatever the owner's
+language:
+
+```text
+Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings.
+```
 
 The mask is a PNG of the frame's pixel size: painted pixels are opaque white,
-the rest opaque black. A workflow reads it with `LoadImageMask` on the `red`
-channel, or with `LoadImage` and an image-to-mask node.
+the rest opaque black. The diagram shows what the workflow does with the
+inputs.
 
-## Registration
+```mermaid
+flowchart LR
+  frame[vv:frame] --> scale[Scale to 1 MP]
+  ref[vv:reference] --> rscale[Scale to 1 MP]
+  scale --> model[klein 4B, 4 steps]
+  rscale --> model
+  prompt[vv:prompt] --> model
+  mask[vv:mask] --> model
+  model --> back[Scale to frame size]
+  back --> comp[Composite through mask]
+  frame --> comp
+  mask --> comp
+  comp --> out[vv:output]
+```
 
-`domain.ParseThumbnailWorkflow` accepts a workflow or answers one reason.
+The composite takes the mask grown by 8 px and blurred, so the edit blends at
+its edge, and every pixel outside it is the frame's (the model POC measured no
+change outside the mask in 9 runs). The output always has the frame's size.
+The seed is fixed at 42, so the same inputs give the same result and the owner
+changes the instruction to get another one.
 
-| Situation | Reason |
-| --- | --- |
-| Not a JSON object, larger than 1 MiB, or a node without `class_type` | `workflow_invalid` |
-| The UI format (a top-level `nodes` array) | `workflow_not_api_format` |
-| No node titled `vv:frame` or `vv:output` | `workflow_missing_node`, with the title |
-| Two nodes with one `vv:*` title | `workflow_duplicate_node`, with the title |
-| A `vv:*` node without the input the table names | `workflow_node_input_missing`, with the title |
+## Required files
 
-On success the API answers which optional inputs the workflow takes
-(`prompt`, `mask`, `reference`). Registration never contacts ComfyUI, so a
-workflow can be registered before the connection works.
+A self-hosted ComfyUI needs no custom nodes, only a version recent enough to
+have the core nodes the workflows use, and these model files. Comfy Cloud
+provides them.
+
+| File | ComfyUI folder | Size | Source |
+| --- | --- | --- | --- |
+| `flux-2-klein-4b-fp8.safetensors` | `models/diffusion_models` | 4.07 GB | `huggingface.co/black-forest-labs/FLUX.2-klein-4b-fp8` |
+| `qwen_3_4b.safetensors` | `models/text_encoders` | 8.04 GB | `huggingface.co/Comfy-Org/z_image_turbo` (`split_files/text_encoders`) |
+| `flux2-vae.safetensors` | `models/vae` | 0.34 GB | `huggingface.co/Comfy-Org/flux2-dev` (`split_files/vae`) |
+
+The connection test reports a missing node with "update ComfyUI" and a missing
+file with its folder and source. The VRAM need is estimated at 8 to 12 GB and
+was not measured.
 
 ## Run
 
@@ -53,7 +92,7 @@ sequenceDiagram
   participant C as ComfyUI
   P->>V: start run (text, mask, reference)
   V->>C: upload frame, mask, reference
-  V->>C: POST /prompt (workflow with vv:* inputs)
+  V->>C: POST /prompt (bundled workflow, vv:* filled)
   C-->>V: prompt_id
   V-->>P: 202 queued
   loop every second
@@ -74,9 +113,9 @@ them.
 
 | vv state | Self-hosted ComfyUI | Comfy Cloud |
 | --- | --- | --- |
-| `queued` | The id is in `queue_pending` | `submitted`, `queued_waiting`, `waiting_to_dispatch`, `pending` |
-| `preparing` | Not reported | `preparing` |
-| `running` | The id is in `queue_running` | `executing`, `in_progress` |
+| `queued` | The id is in `queue_pending` | `submitted`, `preprocessing`, `queued_waiting`, `queued_limited`, `allocated`, `waiting_to_dispatch`, `pending` |
+| `preparing` | Not reported | `preparing`, `pending_execution` |
+| `running` | The id is in `queue_running` | `executing`, `in_progress`, `executed` |
 | `succeeded` | `history/{id}` has `status.completed` and an output image | `success`, `completed`, and an output image |
 | `failed` | `history/{id}` has `status_str: error`, or the id has gone from the queue without a history entry | `error`, `non_retryable_error`, `lost` |
 | `cancelled` | After vv's cancel | `cancel_requested`, `cancelled` |
@@ -94,4 +133,5 @@ for the run's `prompt_id`, and is absent when no message arrived.
 | `workflow_rejected` | `POST /prompt` answers `400` (`node_errors`); the first node error's message is passed on |
 | `run_failed` | The provider reports the run failed; the execution error's message is passed on |
 | `no_output` | The run succeeded and `vv:output` has no image |
+| `missing_models` | `POST /prompt` names a node type or a model file the provider does not have; the missing names are passed on |
 | `timed_out` | No terminal state 10 minutes after submitting |
