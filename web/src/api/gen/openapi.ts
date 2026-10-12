@@ -726,13 +726,19 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画の1コマのサムネイルの編集を始める
-         * @description 所有者だけ。`positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした PNG として取り出し、
-         *     `ready` の編集のセッションを `201` で返す。同じ動画のセッションがあれば、その実行を ComfyUI で
-         *     中止してから終える。位置の誤りと所在の誤りは `PUT /api/videos/{id}/thumbnail-position` と同じで、
-         *     ComfyUI の接続先が保存されていなければ 409 `thumbnail_edit_not_ready`、コマを取り出せなければ
-         *     409 `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
-         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11）。
+         * 動画の1コマか今のサムネイルからサムネイルの編集を始める
+         * @description 所有者だけ。`source` が `frame` なら `positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした
+         *     PNG として取り出す。`thumbnail` なら今のサムネイルから始め、画像を適用していればその元の画像
+         *     （長辺最大 2048 px）を PNG にしたもの、なければ指定した位置のコマ、それも無ければサムネイル
+         *     ジョブと同じ自動の位置のコマ（そこで取れなければ先頭のコマ）を使う。`ready` の編集のセッションを
+         *     `201` で返し、セッションは始めた時点の画像を持ち続ける。同じ動画のセッションがあれば、その実行を
+         *     ComfyUI で中止してから終える。`frame` で `positionMs` が無いか尺の外なら 400
+         *     `thumbnail_position_out_of_range`、ほかの位置の誤りと所在の誤りは
+         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、ComfyUI の接続先が保存されていなければ 409
+         *     `thumbnail_edit_not_ready`、コマを取り出せないか保存した画像を読めなければ 409
+         *     `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11、
+         *     specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-4）。
          */
         post: operations["startThumbnailEdit"];
         delete?: never;
@@ -2461,12 +2467,19 @@ export interface components {
             connection: boolean;
         };
         StartThumbnailEditRequest: {
+            source: components["schemas"]["ThumbnailEditSource"];
             /**
              * Format: int64
-             * @description 編集するコマの位置（ミリ秒）。0 以上で尺未満
+             * @description `frame` のときだけ必須。編集するコマの位置（ミリ秒）。0 以上で尺未満。`thumbnail` では無視する
              */
-            positionMs: number;
+            positionMs?: number;
         };
+        /**
+         * @description 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+         *     （specs/046-thumbnail-image-upload/research.md R-4）
+         * @enum {string}
+         */
+        ThumbnailEditSource: "frame" | "thumbnail";
         RunThumbnailEditRequest: {
             /** @description 持ち主の指示。省けば、塗った範囲があるとき vv の既定の指示を送る */
             prompt?: string;
@@ -2497,6 +2510,13 @@ export interface components {
             /** Format: int64 */
             videoId: number;
             state: components["schemas"]["ThumbnailEditState"];
+            source: components["schemas"]["ThumbnailEditSource"];
+            /**
+             * Format: int64
+             * @description 画像がコマのとき、それを取った位置（ミリ秒。選んだ位置、指定した位置、自動の位置、先頭に
+             *     戻したときは 0）。保存した元の画像から始めたときは省く
+             */
+            positionMs?: number;
             /** @description コマの PNG（`GET /api/thumbnail-edits/{editId}/frame`） */
             frameUrl: string;
             /** @description コマの幅（px）。マスクはこの大きさで描く */

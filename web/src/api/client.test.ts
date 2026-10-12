@@ -443,6 +443,8 @@ describe("thumbnail edit API client", () => {
     id: "ab12",
     videoId: 7,
     state: "ready",
+    source: "frame",
+    positionMs: 1500,
     frameUrl: "/api/thumbnail-edits/ab12/frame",
     frameWidth: 4,
     frameHeight: 3,
@@ -455,7 +457,9 @@ describe("thumbnail edit API client", () => {
     vi.stubGlobal("fetch", fetch);
     const signal = new AbortController().signal;
 
-    await expect(startThumbnailEdit(7, 1500, signal)).resolves.toMatchObject({
+    await expect(
+      startThumbnailEdit(7, { source: "frame", positionMs: 1500 }, signal),
+    ).resolves.toMatchObject({
       id: "ab12",
     });
     await getThumbnailEdit("ab12", signal);
@@ -468,7 +472,11 @@ describe("thumbnail edit API client", () => {
         ["/api/thumbnail-edits/ab12/cancel", "POST"],
       ],
     );
-    expect(fetch.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ positionMs: 1500 }));
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ source: "frame", positionMs: 1500 }),
+    );
+    await startThumbnailEdit(7, { source: "thumbnail" }, signal);
+    expect(fetch.mock.calls[3]?.[1]?.body).toBe(JSON.stringify({ source: "thumbnail" }));
   });
 
   it("sends a run as multipart form data with only the given parts", async () => {

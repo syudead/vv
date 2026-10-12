@@ -116,13 +116,67 @@ func (f *fakeImageEditor) cancelled() []string {
 	return append([]string(nil), f.cancels...)
 }
 
-type fakeFrames struct{ frame domain.ThumbnailFrame }
+type fakeFrames struct {
+	mu    sync.Mutex
+	frame domain.ThumbnailFrame
+	// missing はコマが取れない位置である。
+	missing map[int64]bool
+	// auto は AutoThumbnailPositions が返す位置である。
+	auto []int64
+	// positions は FrameAt に渡された位置である。
+	positions []int64
+}
 
-func (f *fakeFrames) FrameAt(context.Context, string, int64) (domain.ThumbnailFrame, error) {
-	if f.frame.PNG == nil {
+func (f *fakeFrames) FrameAt(_ context.Context, _ string, positionMs int64) (domain.ThumbnailFrame, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.positions = append(f.positions, positionMs)
+	if f.frame.PNG == nil || f.missing[positionMs] {
 		return domain.ThumbnailFrame{}, errors.New("no frame")
 	}
 	return f.frame, nil
+}
+
+func (f *fakeFrames) AutoThumbnailPositions(int64) []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.auto...)
+}
+
+func (f *fakeFrames) extracted() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.positions...)
+}
+
+// fakeThumbnailImages は内容ごとに適用した画像（代表サムネイル image と元の画像 source）を持つ。
+type fakeThumbnailImages struct {
+	mu     sync.Mutex
+	image  map[string][]byte
+	source map[string][]byte
+	err    error
+}
+
+func (f *fakeThumbnailImages) ThumbnailImage(_ context.Context, contentKey string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.image[contentKey], f.err
+}
+
+func (f *fakeThumbnailImages) ThumbnailImageSource(_ context.Context, contentKey string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.source[contentKey], f.err
+}
+
+// set は内容 contentKey に適用した画像を置く。image が nil なら外す（元に戻す操作）。
+func (f *fakeThumbnailImages) set(contentKey string, image, source []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.image == nil {
+		f.image, f.source = map[string][]byte{}, map[string][]byte{}
+	}
+	f.image[contentKey], f.source[contentKey] = image, source
 }
 
 type fakeApplier struct {
@@ -157,6 +211,7 @@ type editsFixture struct {
 	applier  *fakeApplier
 	clock    *fakeClock
 	frames   *fakeFrames
+	images   *fakeThumbnailImages
 }
 
 func newEditsFixture(t *testing.T) *editsFixture {
@@ -166,10 +221,14 @@ func newEditsFixture(t *testing.T) *editsFixture {
 		settings: &fakeComfyUIStore{settings: domain.ComfyUISettings{Provider: domain.ComfyUISelfHosted, URL: "http://a:8188"}},
 		applier:  &fakeApplier{},
 		clock:    &fakeClock{now: time.Unix(1_700_000_000, 0)},
-		frames:   &fakeFrames{frame: domain.ThumbnailFrame{PNG: testPNG(t, 8, 6), Width: 8, Height: 6}},
+		frames: &fakeFrames{
+			frame: domain.ThumbnailFrame{PNG: testPNG(t, 8, 6), Width: 8, Height: 6}, auto: []int64{6_000, 0},
+		},
+		images: &fakeThumbnailImages{},
 	}
 	f.edits = NewThumbnailEdits(ThumbnailEditsOptions{
-		Settings: f.settings, Editor: f.editor, Frames: f.frames, Applier: f.applier, Now: f.clock.Now,
+		Settings: f.settings, Editor: f.editor, Frames: f.frames, Images: f.images, Applier: f.applier,
+		Now: f.clock.Now,
 	})
 	return f
 }
@@ -253,11 +312,16 @@ func editVideo(id int64) domain.Video {
 
 func (f *editsFixture) start(t *testing.T, videoID int64) domain.ThumbnailEdit {
 	t.Helper()
-	edit, err := f.edits.Start(context.Background(), editVideo(videoID), "/media/a.mp4", 1_000)
+	edit, err := f.edits.Start(context.Background(), editVideo(videoID), "/media/a.mp4", frameStart(1_000))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return edit
+}
+
+// frameStart は positionMs のコマから始める要求である。
+func frameStart(positionMs int64) domain.ThumbnailEditStart {
+	return domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromFrame, PositionMs: &positionMs}
 }
 
 func (f *editsFixture) run(t *testing.T, id string) domain.ThumbnailEdit {
@@ -956,16 +1020,16 @@ func TestThumbnailEditStartRejects(t *testing.T) {
 		{"no content", noKey, 0, domain.ErrNotFound},
 		{"past the end", editVideo(1), 60_000, domain.ErrThumbnailPositionOutOfRange},
 	} {
-		if _, err := f.edits.Start(ctx, c.video, "/a", c.position); !errors.Is(err, c.want) {
+		if _, err := f.edits.Start(ctx, c.video, "/a", frameStart(c.position)); !errors.Is(err, c.want) {
 			t.Errorf("%s: %v, want %v", c.name, err, c.want)
 		}
 	}
 	f.frames.frame = domain.ThumbnailFrame{}
-	if _, err := f.edits.Start(ctx, editVideo(1), "/a", 0); !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
+	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 		t.Errorf("no frame: %v", err)
 	}
 	f.settings.settings = domain.ComfyUISettings{}
-	if _, err := f.edits.Start(ctx, editVideo(1), "/a", 0); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
+	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
 		t.Errorf("no connection: %v", err)
 	}
 }

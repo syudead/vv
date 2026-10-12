@@ -54,18 +54,40 @@ func checkThumbnailEditReference(reference []byte) error {
 	return nil
 }
 
-// checkThumbnailEditImage は data が最後まで読める PNG・JPEG・WebP かを確かめる。どれも見出しで
-// 大きさを確かめてから最後まで読み、途中で切れた画像や壊れた画像は読めないものとする。
+// checkThumbnailEditImage は data が最後まで読める PNG・JPEG・WebP かを確かめる。
 func checkThumbnailEditImage(data []byte) error {
+	_, err := decodeThumbnailEditImage(data)
+	return err
+}
+
+// decodeThumbnailEditImage は data を PNG・JPEG・WebP として最後まで読む。どれも見出しで
+// 大きさを確かめてから最後まで読み、途中で切れた画像や壊れた画像は読めないものとする。
+func decodeThumbnailEditImage(data []byte) (image.Image, error) {
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg" && format != "webp") {
-		return errThumbnailEditImageUnreadable
+		return nil, errThumbnailEditImageUnreadable
 	}
 	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > thumbnailEditMaxPixels {
-		return errThumbnailEditImageUnreadable
+		return nil, errThumbnailEditImageUnreadable
 	}
-	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
-		return errThumbnailEditImageUnreadable
+	decoded, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, errThumbnailEditImageUnreadable
 	}
-	return nil
+	return decoded, nil
+}
+
+// thumbnailEditFrameFromImage は適用した画像 data（JPEG）を、編集の元にするコマ（PNG とその
+// 大きさ）にする（specs/046-thumbnail-image-upload/research.md R-4）。読めなければ誤りである。
+func thumbnailEditFrameFromImage(data []byte) (domain.ThumbnailFrame, error) {
+	decoded, err := decodeThumbnailEditImage(data)
+	if err != nil {
+		return domain.ThumbnailFrame{}, err
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, decoded); err != nil {
+		return domain.ThumbnailFrame{}, err
+	}
+	bounds := decoded.Bounds()
+	return domain.ThumbnailFrame{PNG: buf.Bytes(), Width: bounds.Dx(), Height: bounds.Dy()}, nil
 }

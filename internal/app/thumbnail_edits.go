@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -41,6 +42,18 @@ type ComfyUISettingsReader interface {
 // internal/media の *Assets が満たす。
 type ThumbnailFrameSource interface {
 	FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
+	// AutoThumbnailPositions は、位置を指定していない動画のサムネイルジョブがコマを取りに行く位置
+	// （ミリ秒）を、尺 durationMs（0 は不明）に対して試す順に返す（自動の位置、次に先頭。
+	// specs/046-thumbnail-image-upload/research.md R-4）。
+	AutoThumbnailPositions(durationMs int64) []int64
+}
+
+// ThumbnailImageReader は内容に適用した画像を読む。internal/store の *OverrideStore が満たす。
+// どちらも適用していなければ nil を返す。ThumbnailImageSource は元の画像（長辺最大 2048 px）で、
+// 元の画像を持たない古い行でも nil を返す（specs/046-thumbnail-image-upload/data-model.md）。
+type ThumbnailImageReader interface {
+	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
+	ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error)
 }
 
 // ThumbnailImageApplier は出どころ origin の画像を動画のサムネイルとして適用する。*Ingest が満たす。
@@ -57,6 +70,7 @@ type ThumbnailEditsOptions struct {
 	Settings ComfyUISettingsReader
 	Editor   ImageEditor
 	Frames   ThumbnailFrameSource
+	Images   ThumbnailImageReader
 	Applier  ThumbnailImageApplier
 	Logger   *slog.Logger
 	// Now は今の時刻を返す。nil なら time.Now。テストが進める。
@@ -68,6 +82,7 @@ type ThumbnailEdits struct {
 	settings ComfyUISettingsReader
 	editor   ImageEditor
 	frames   ThumbnailFrameSource
+	images   ThumbnailImageReader
 	applier  ThumbnailImageApplier
 	logger   *slog.Logger
 	now      func() time.Time
@@ -102,6 +117,10 @@ type thumbnailEditSession struct {
 	videoID    int64
 	contentKey string
 	frame      domain.ThumbnailFrame
+	// source はセッションを何から始めたか、positionMs は frame がコマのときにそれを取った位置
+	// （保存した元の画像なら nil）である。
+	source     domain.ThumbnailEditSource
+	positionMs *int64
 	ended      bool
 	lastReadAt time.Time
 	run        *thumbnailEditRun
@@ -138,6 +157,7 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 		settings: opts.Settings,
 		editor:   opts.Editor,
 		frames:   opts.Frames,
+		images:   opts.Images,
 		applier:  opts.Applier,
 		logger:   logger,
 		now:      now,
@@ -147,11 +167,16 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 	}
 }
 
-// Start は動画 video の positionMs の場面をファイル path から取り出し、ready のセッションを始める。
+// Start は動画 video の編集を、要求 start の画像から ready のセッションとして始める。画像は
+// 始めた時点のものをセッションが持ち続ける（specs/046-thumbnail-image-upload/research.md R-4）。
 // 同じ動画のセッションがあれば、その実行を提供元で中止してから終える（R-11）。接続先が保存されて
-// いなければ domain.ErrThumbnailEditNotReady、内容を読めていない動画は domain.ErrNotFound、位置は
-// domain.CheckThumbnailPosition の誤り、コマを取れなければ domain.ErrThumbnailFrameUnavailable を返す。
-func (e *ThumbnailEdits) Start(ctx context.Context, video domain.Video, path string, positionMs int64) (domain.ThumbnailEdit, error) {
+// いなければ domain.ErrThumbnailEditNotReady、内容を読めていない動画は domain.ErrNotFound、
+// コマの位置は domain.CheckThumbnailPosition の誤り（位置が無ければ
+// domain.ErrThumbnailPositionOutOfRange）、画像を用意できなければ
+// domain.ErrThumbnailFrameUnavailable を返す。path は動画のファイルである。
+func (e *ThumbnailEdits) Start(
+	ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart,
+) (domain.ThumbnailEdit, error) {
 	conn, err := e.settings.ComfyUISettings(ctx)
 	if err != nil {
 		return domain.ThumbnailEdit{}, err
@@ -162,23 +187,101 @@ func (e *ThumbnailEdits) Start(ctx context.Context, video domain.Video, path str
 	if video.ContentKey == "" {
 		return domain.ThumbnailEdit{}, domain.ErrNotFound
 	}
-	if err := domain.CheckThumbnailPosition(video, positionMs); err != nil {
-		return domain.ThumbnailEdit{}, err
-	}
-	frame, err := e.frames.FrameAt(ctx, path, positionMs)
+	image, err := e.startImage(ctx, video, path, start)
 	if err != nil {
-		return domain.ThumbnailEdit{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
+		return domain.ThumbnailEdit{}, err
 	}
 	id, err := newThumbnailEditID()
 	if err != nil {
 		return domain.ThumbnailEdit{}, err
 	}
 	session := &thumbnailEditSession{
-		id: id, videoID: video.ID, contentKey: video.ContentKey, frame: frame, lastReadAt: e.now(),
+		id: id, videoID: video.ID, contentKey: video.ContentKey, frame: image.frame,
+		source: start.Source, positionMs: image.positionMs, lastReadAt: e.now(),
 	}
 	view := e.view(session)
 	e.replace(ctx, session)
 	return view, nil
+}
+
+// thumbnailEditImage はセッションが始める画像と、それがコマならそれを取った位置である。
+type thumbnailEditImage struct {
+	frame      domain.ThumbnailFrame
+	positionMs *int64
+}
+
+// startImage は要求 start が指す画像を用意する。
+func (e *ThumbnailEdits) startImage(
+	ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart,
+) (thumbnailEditImage, error) {
+	switch start.Source {
+	case domain.ThumbnailEditFromFrame:
+		if start.PositionMs == nil {
+			return thumbnailEditImage{}, domain.ErrThumbnailPositionOutOfRange
+		}
+		if err := domain.CheckThumbnailPosition(video, *start.PositionMs); err != nil {
+			return thumbnailEditImage{}, err
+		}
+		return e.frameAt(ctx, path, *start.PositionMs)
+	case domain.ThumbnailEditFromThumbnail:
+		return e.currentThumbnail(ctx, video, path)
+	default:
+		return thumbnailEditImage{}, fmt.Errorf("unknown thumbnail edit source %q", start.Source)
+	}
+}
+
+// currentThumbnail は動画 video の今のサムネイルの画像を用意する（research.md R-4）。画像を
+// 適用していればその元の画像（無い古い行では代表サムネイル）を PNG にしたもの、なければ指定した
+// 位置のコマ、それも無ければサムネイルジョブと同じ規則（自動の位置、次に先頭）のコマである。
+func (e *ThumbnailEdits) currentThumbnail(
+	ctx context.Context, video domain.Video, path string,
+) (thumbnailEditImage, error) {
+	stored, err := e.storedThumbnailImage(ctx, video.ContentKey)
+	if err != nil {
+		return thumbnailEditImage{}, err
+	}
+	if stored != nil {
+		frame, err := thumbnailEditFrameFromImage(stored)
+		if err != nil {
+			return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
+		}
+		return thumbnailEditImage{frame: frame}, nil
+	}
+	if video.ThumbnailPositionMs != nil {
+		return e.frameAt(ctx, path, *video.ThumbnailPositionMs)
+	}
+	var durationMs int64
+	if video.DurationMs != nil {
+		durationMs = *video.DurationMs
+	}
+	var first error
+	for _, positionMs := range e.frames.AutoThumbnailPositions(durationMs) {
+		image, err := e.frameAt(ctx, path, positionMs)
+		if err == nil {
+			return image, nil
+		}
+		first = cmp.Or(first, err)
+	}
+	return thumbnailEditImage{}, cmp.Or(first, error(domain.ErrThumbnailFrameUnavailable))
+}
+
+// storedThumbnailImage は内容 contentKey に適用した画像の元の画像を返し、元の画像を持たない
+// 行では代表サムネイルを返す。適用していなければ nil である。
+func (e *ThumbnailEdits) storedThumbnailImage(ctx context.Context, contentKey string) ([]byte, error) {
+	source, err := e.images.ThumbnailImageSource(ctx, contentKey)
+	if err != nil || source != nil {
+		return source, err
+	}
+	return e.images.ThumbnailImage(ctx, contentKey)
+}
+
+// frameAt はファイル path の positionMs の場面のコマを取り出す。
+func (e *ThumbnailEdits) frameAt(ctx context.Context, path string, positionMs int64) (thumbnailEditImage, error) {
+	frame, err := e.frames.FrameAt(ctx, path, positionMs)
+	if err != nil {
+		return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
+	}
+	return thumbnailEditImage{frame: frame, positionMs: &positionMs}, nil
 }
 
 // replace は同じ動画のセッションを終えてから session を置き場に載せる。前のセッションは、その錠を
@@ -657,6 +760,7 @@ func (e *ThumbnailEdits) finish(run *thumbnailEditRun, state domain.ThumbnailEdi
 func (e *ThumbnailEdits) view(session *thumbnailEditSession) domain.ThumbnailEdit {
 	view := domain.ThumbnailEdit{
 		ID: session.id, VideoID: session.videoID, State: domain.ThumbnailEditReady,
+		Source: session.source, PositionMs: session.positionMs,
 		FrameWidth: session.frame.Width, FrameHeight: session.frame.Height,
 		HasResult: hasResult(session),
 	}

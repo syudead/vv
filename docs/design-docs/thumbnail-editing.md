@@ -1,6 +1,7 @@
 # Thumbnail editing sessions
 
-An edit of a video frame with ComfyUI is an in-memory session per video in
+An edit of a video frame or the current thumbnail with ComfyUI is an in-memory
+session per video in
 [`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go), served to the
 video page by the `/api/thumbnail-edits` routes
 ([contract](../../specs/045-comfyui-thumbnails/contracts/screen-api.md)).
@@ -12,6 +13,7 @@ flowchart LR
   page[Video page] -->|start, run, poll, apply| api[Screen API]
   api --> edits[app.ThumbnailEdits]
   edits -->|frame| media[internal/media]
+  edits -->|applied image| images[(thumbnail_images)]
   edits -->|connection snapshot| settings[(settings)]
   edits -->|ImageEditor port| comfy[internal/comfyui]
   edits -->|apply| ingest[app.Ingest]
@@ -82,6 +84,31 @@ has an image the apply can read.
 | --- | --- |
 | A job kind in the persistent queue | Its retries and `failed` records would outlive the page and show in the import issues |
 | Progress through `/api/events` | That stream carries committed domain events to every viewer; a run's state is one page's |
+
+## Edit source
+
+Starting an edit names its `source`: `frame`, the frame at the player's
+`positionMs`, or `thumbnail`, the current thumbnail
+([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)).
+`frame` without `positionMs` answers `400 thumbnail_position_out_of_range`, as
+a position outside the duration does. For `thumbnail`, the session's image is
+the first of these that exists:
+
+| Case | Image | `positionMs` |
+| --- | --- | --- |
+| An image is applied | The row's `source` decoded to PNG, or `image` in a row without `source` | Absent |
+| A position is recorded | The frame at that position | That position |
+| Neither | The frame at the thumbnail job's automatic position, or the first frame when that position yields none | The automatic position, or `0` |
+
+The automatic position and its first-frame fallback come from
+`media.AutoThumbnailPositions`, the one rule the thumbnail job and the edit
+both use, so the frame the owner edits is the one the thumbnail shows. A
+stored image that does not decode answers `409 thumbnail_frame_unavailable`,
+as a frame that cannot be extracted does. `frameWidth` and `frameHeight`
+describe the session's image whatever its source, and the mask is checked
+against that size. The session keeps the image in memory from the start, so a
+later upload, position change or revert does not change the edit in progress
+or what its runs send.
 
 ## A run uses the connection it started with
 
