@@ -185,38 +185,50 @@ func (s *server) DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request, ed
 // 参考画像は、それぞれの reason の 400 にする。
 func (s *server) readThumbnailEditRun(w http.ResponseWriter, r *http.Request) (domain.ThumbnailEditRunInput, bool) {
 	var input domain.ThumbnailEditRunInput
+	ok := s.readMultipart(w, r, thumbnailEditMaxRunBody, func(name string, part io.Reader) bool {
+		return s.readThumbnailEditPart(w, name, part, &input)
+	})
+	return input, ok
+}
+
+// readMultipart は要求の本文を multipart/form-data として、全体で maxBody バイトまで読み、部分ごとに
+// その名前と中身で readPart を呼ぶ。Content-Type が違うか形が壊れているか、同じ部分を 2 度送れば
+// 400 を書いて false を返す。readPart が false を返せば（応答は readPart が書く）そこでやめる。
+// サムネイルの編集の実行とアップロード（thumbnail_upload.go）が共有する。
+func (s *server) readMultipart(
+	w http.ResponseWriter, r *http.Request, maxBody int64, readPart func(name string, part io.Reader) bool,
+) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
 		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
-		return input, false
+		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, thumbnailEditMaxRunBody)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	reader, err := r.MultipartReader()
 	if err != nil {
 		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
-		return input, false
+		return false
 	}
 	seen := map[string]bool{}
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
-			break
+			return true
 		}
 		if err != nil {
 			s.invalidRequest(w, "The request body is not valid multipart/form-data.")
-			return input, false
+			return false
 		}
 		name := part.FormName()
 		if seen[name] {
 			s.invalidRequest(w, "Each part may be sent only once.")
-			return input, false
+			return false
 		}
 		seen[name] = true
-		if !s.readThumbnailEditPart(w, name, part, &input) {
-			return input, false
+		if !readPart(name, part) {
+			return false
 		}
 	}
-	return input, true
 }
 
 // readThumbnailEditPart は multipart の部分 part を名前 name に応じて input へ読む。

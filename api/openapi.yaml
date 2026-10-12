@@ -1181,6 +1181,45 @@ paths:
           $ref: "#/components/responses/Conflict"
 
   /api/videos/{id}/thumbnail-image:
+    post:
+      operationId: uploadThumbnailImage
+      summary: 手元の画像を動画のサムネイルにする
+      description: |
+        所有者だけ。`multipart/form-data` の `image`（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
+        受け取り、メモリに持ったまま最後まで読めるかを確かめて、生成した画像と同じ適用で動画の縦横比に
+        合わせた代表サムネイルにする。本文全体は部分の区切りと見出しのぶん 1 MiB 多くまで認める。応答は
+        公開が終わってから返し、形は `GET /api/videos/{id}` と同じ `Video` である（`thumbnailImage:
+        "uploaded"`、新しい版の `thumbnailUrl`）。記録した位置はそのまま残る。`image` が 64 MiB を越えるか
+        見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
+        PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
+        `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
+        別の内容になれば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
+        を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
+        上限に最後まで行う。確定後に `/api/events` の `video` が流れる
+        （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadThumbnailImageRequest"
+      responses:
+        "200":
+          description: 反映後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
     delete:
       operationId: revertThumbnailImage
       summary: 動画に適用したサムネイルの画像を外す
@@ -3892,6 +3931,16 @@ components:
           format: binary
           description: 参考画像（PNG・JPEG・WebP、20 MiB まで）。省けば参考画像の無いワークフローを使う
 
+    UploadThumbnailImageRequest:
+      type: object
+      additionalProperties: false
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+          description: サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+
     ThumbnailEditState:
       type: string
       description: 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -5918,6 +5967,8 @@ components:
         - thumbnail_edit_reference_invalid
         - thumbnail_edit_no_result
         - thumbnail_image_invalid
+        - thumbnail_upload_too_large
+        - thumbnail_upload_invalid
         - content_changed
         - unreachable
         - unauthorized

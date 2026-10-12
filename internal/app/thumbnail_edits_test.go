@@ -235,10 +235,16 @@ func truncatedPNG(t *testing.T, data []byte) []byte {
 // hugePNGHeader は、見出しだけが 100000×100000 を名乗る PNG を返す。
 func hugePNGHeader(t *testing.T) []byte {
 	t.Helper()
+	return pngHeaderSized(t, 100_000, 100_000)
+}
+
+// pngHeaderSized は、見出しだけが width×height を名乗る 1×1 の PNG を返す。
+func pngHeaderSized(t *testing.T, width, height uint32) []byte {
+	t.Helper()
 	data := testPNG(t, 1, 1)
 	ihdr := bytes.Index(data, []byte("IHDR"))
-	binary.BigEndian.PutUint32(data[ihdr+4:], 100_000)
-	binary.BigEndian.PutUint32(data[ihdr+8:], 100_000)
+	binary.BigEndian.PutUint32(data[ihdr+4:], width)
+	binary.BigEndian.PutUint32(data[ihdr+8:], height)
 	binary.BigEndian.PutUint32(data[ihdr+17:], crc32.ChecksumIEEE(data[ihdr:ihdr+17]))
 	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
 		t.Fatal(err)

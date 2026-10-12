@@ -297,6 +297,8 @@ type Options struct {
 	ComfyUI ComfyUIConnection
 	// ThumbnailEdits はサムネイルの編集のセッション。nil なら該当の経路は 500 を返す。
 	ThumbnailEdits ThumbnailEdits
+	// ThumbnailUploads は手元の画像のサムネイルへのアップロード。nil なら該当の経路は 500 を返す。
+	ThumbnailUploads ThumbnailUploads
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -370,6 +372,7 @@ type server struct {
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
+	thumbnailUploads  ThumbnailUploads
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -449,6 +452,7 @@ func NewRouter(opts Options) http.Handler {
 		ollama:            opts.Ollama,
 		comfyUI:           opts.ComfyUI,
 		thumbnailEdits:    opts.ThumbnailEdits,
+		thumbnailUploads:  opts.ThumbnailUploads,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,
@@ -758,6 +762,8 @@ const (
 	reasonThumbnailEditNoResult         = gen.ErrorReasonThumbnailEditNoResult
 	reasonThumbnailImageInvalid         = gen.ErrorReasonThumbnailImageInvalid
 	reasonContentChanged                = gen.ErrorReasonContentChanged
+	reasonThumbnailUploadTooLarge       = gen.ErrorReasonThumbnailUploadTooLarge
+	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

@@ -23,6 +23,9 @@ const thumbnailEditMaxPixels = 8192 * 8192
 // errThumbnailEditImageUnreadable は画像を最後まで読めないことを表す。
 var errThumbnailEditImageUnreadable = errors.New("the image cannot be decoded")
 
+// errImageTooManyPixels は画像の見出しが言う画素数が上限を越えることを表す。
+var errImageTooManyPixels = errors.New("the image has too many pixels")
+
 // checkThumbnailEditMask は、マスク mask が nil か、コマ frame と同じ大きさの、最後まで読める
 // PNG かを確かめる。
 func checkThumbnailEditMask(mask []byte, frame domain.ThumbnailFrame) error {
@@ -54,15 +57,28 @@ func checkThumbnailEditReference(reference []byte) error {
 	return nil
 }
 
-// checkThumbnailEditImage は data が最後まで読める PNG・JPEG・WebP かを確かめる。どれも見出しで
-// 大きさを確かめてから最後まで読み、途中で切れた画像や壊れた画像は読めないものとする。
+// checkThumbnailEditImage は data が最後まで読める、上限以下の PNG・JPEG・WebP かを確かめる。
 func checkThumbnailEditImage(data []byte) error {
+	if err := checkImage(data, thumbnailEditMaxPixels); err != nil {
+		return errThumbnailEditImageUnreadable
+	}
+	return nil
+}
+
+// checkImage は data が最後まで読める PNG・JPEG・WebP かを確かめる。どれも見出しで画素数が
+// maxPixels 以下かを確かめてから最後まで読み、途中で切れた画像や壊れた画像は読めないものとする。
+// 画素数が上限を越えれば errImageTooManyPixels、読めなければ errThumbnailEditImageUnreadable を
+// 返す。サムネイルの編集の画像とアップロードの画像（thumbnail_upload.go）が共有する。
+func checkImage(data []byte, maxPixels int64) error {
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg" && format != "webp") {
 		return errThumbnailEditImageUnreadable
 	}
-	if config.Width <= 0 || config.Height <= 0 || int64(config.Width)*int64(config.Height) > thumbnailEditMaxPixels {
+	if config.Width <= 0 || config.Height <= 0 {
 		return errThumbnailEditImageUnreadable
+	}
+	if int64(config.Width)*int64(config.Height) > maxPixels {
+		return errImageTooManyPixels
 	}
 	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
 		return errThumbnailEditImageUnreadable

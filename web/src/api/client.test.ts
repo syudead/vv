@@ -24,6 +24,7 @@ import {
   setVideoDisplayName,
   setVideoThumbnailPosition,
   revertThumbnailImage,
+  uploadThumbnailImage,
   startThumbnailEdit,
   getThumbnailEdit,
   runThumbnailEdit,
@@ -435,6 +436,41 @@ describe("revertThumbnailImage", () => {
       "/api/videos/7/thumbnail-image",
       expect.objectContaining({ method: "DELETE", signal }),
     );
+  });
+});
+
+describe("uploadThumbnailImage", () => {
+  it("POSTs the image as multipart form data and drops the list snapshot only on success", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const image = new File(["jpeg"], "photo.jpg", { type: "image/jpeg" });
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", reason: "thumbnail_upload_invalid" }, 400),
+    );
+    hold();
+    await expect(uploadThumbnailImage(7, image)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 7, thumbnailImage: "uploaded" }));
+    hold();
+    await expect(uploadThumbnailImage(7, image, signal)).resolves.toMatchObject({
+      id: 7,
+      thumbnailImage: "uploaded",
+    });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    const [path, init] = fetch.mock.calls[1] ?? [];
+    expect(path).toBe("/api/videos/7/thumbnail-image");
+    expect(init?.method).toBe("POST");
+    expect(init?.signal).toBe(signal);
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+    const sent = (init?.body as FormData).get("image");
+    expect(sent).toBeInstanceOf(File);
+    expect((sent as File).name).toBe("photo.jpg");
   });
 });
 
