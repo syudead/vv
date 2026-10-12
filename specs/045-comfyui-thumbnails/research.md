@@ -10,8 +10,9 @@ Parent Issue: #942. Inherited decisions:
 | The error shape and reason codes | [023 error-api](../023-english-i18n/contracts/error-api.md) |
 | Adding a dependency | [dependency-updates.md](../../docs/how-to/dependency-updates.md) |
 
-The ComfyUI facts below come from the Issue's POC (2026-10-12, Comfy Cloud),
-the Comfy Cloud API reference (`docs.comfy.org`) and ComfyUI's server routes.
+The ComfyUI facts below come from the Issue's POC and the model POC
+(2026-10-12, Comfy Cloud, 37 runs), the Comfy Cloud API reference
+(`docs.comfy.org`) and ComfyUI's server routes.
 This file records only the decisions this feature adds.
 
 ## R-1: An image-edit port in `internal/app`, one `internal/comfyui` adapter for both providers
@@ -34,50 +35,53 @@ the connection test, apart from the thumbnail feature, as
 thumbnail feature does not know which provider runs, and a third provider
 later is a new adapter.
 
-## R-2: Named nodes in the owner's API-format workflow are the whole contract
+## R-2: vv bundles the workflow; named nodes are its internal contract
 
-**Decision**: The owner registers one workflow exported in ComfyUI's API
-format. vv finds its inputs and output by node title (`_meta.title`):
-`vv:frame` and `vv:output` are required; `vv:prompt`, `vv:mask` and
-`vv:reference` are optional, and each one present enables that input on the
-video page ([contracts/workflow.md](contracts/workflow.md)). vv rewrites only
-those nodes' inputs and never edits another node.
-
-| Option | Verdict |
-| --- | --- |
-| **Titles `vv:*` on the owner's nodes** | Chosen: the POC ran this way |
-| Node ids entered in Settings | Rejected: ids change when the owner rebuilds the workflow, and the owner has to read the JSON to find them |
-| Find inputs by class (`LoadImage`, `CLIPTextEncode`) | Rejected: a workflow with two `LoadImage` nodes is ambiguous, and requirement 3 rules out assuming nodes |
-| A bundled default workflow | Rejected: the Issue's `対象外` excludes shipping workflows and models |
-| vv randomizes the sampler's seed on each run | Rejected: it assumes a sampler node; the owner changes the prompt to get a different result (requirement 9), and a workflow that wants a fresh seed uses a random-seed node |
-
-**Rationale**: Titles are visible and editable in ComfyUI's editor and survive
-an API-format export, so the owner prepares the workflow where it runs.
-Validation at registration answers the Edge Case "an input the workflow cannot
-take" before any run: the page disables a control whose node is absent.
-
-## R-3: Absent optional inputs get a neutral value
-
-**Decision**: When the workflow has `vv:mask` and the owner painted nothing,
-vv sends a mask covering the whole frame; when it has `vv:reference` and the
-owner attached nothing, vv sends the frame; when it has `vv:prompt` and the
-owner typed nothing, vv sends an empty string.
+**Decision**: vv ships the ComfyUI workflows it runs, embedded in
+`internal/comfyui`, in ComfyUI's API format. The owner neither registers nor
+edits a workflow and chooses no model (requirement 3). The adapter finds the
+nodes it fills by title (`_meta.title`): `vv:frame`, `vv:prompt`, `vv:mask`,
+`vv:reference` and `vv:output` ([contracts/workflow.md](contracts/workflow.md)).
+There are two variants, without and with `vv:reference`, and a run uses the
+one that matches whether the owner attached a reference image.
 
 | Option | Verdict |
 | --- | --- |
-| **Neutral values** | Chosen |
-| An empty (all-black) mask | Rejected: an inpainting workflow then repaints nothing, so a text-only edit returns the frame unchanged |
-| Remove the unused node before submitting | Rejected: the nodes downstream of it lose their input and the run fails validation |
-| Ask for one workflow per input combination | Rejected: requirement 3 asks for one registered workflow, and the owner would keep up to eight |
+| **Bundled workflows, two variants, `vv:*` titles** | Chosen |
+| The owner's own API-format workflow, registered in Settings | Rejected: few owners can build a workflow or pick a model, so the feature would go unused (the Issue's `背景`) |
+| One workflow, with the frame as the neutral reference | Rejected: in the POC the frame as its own reference stopped Qwen-Image-Edit from removing captions; the variant without the node removed them ([R-3](#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)) |
+| A choice of methods for different GPUs | Rejected: the chosen model is the lightest candidate and also the best at text removal ([R-12](#r-12-the-model-is-flux2-klein-4b-fp8)), so there is nothing to trade |
+| Node ids in Go code | Rejected: titles keep the workflow file editable in ComfyUI's editor when the model is changed later |
 
-**Rationale**: "Edit the whole frame" and "the frame is its own reference" are
-what an edit without that input means, so one workflow serves every
-combination requirement 5 allows.
+**Rationale**: Titles let a maintainer replace the workflow file without
+touching Go, and a test checks that each embedded workflow has the titles the
+adapter fills.
+
+## R-3: Absent inputs get a neutral value, or the variant without the node
+
+**Decision**: Without painting, vv sends a mask covering the whole frame;
+without a reference image, vv runs the variant that has no `vv:reference`;
+with a painted mask and no instruction, vv sends a fixed default instruction
+that asks to remove what is under the mask and fill it to match the
+surroundings. The workflow composites the result onto the frame through the
+mask, so pixels outside it stay unchanged (acceptance criterion 4).
+
+| Option | Verdict |
+| --- | --- |
+| **Whole-frame mask, no-reference variant, default instruction** | Chosen |
+| An empty (all-black) mask | Rejected: the workflow then repaints nothing, so a text-only edit returns the frame unchanged |
+| The frame as the neutral reference | Rejected: see [R-2](#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract) |
+| An empty instruction with a mask | Rejected: in the POC both models redrew the masked logo as it was (Edge Case "a painted area with an empty instruction") |
+
+**Rationale**: The POC confirmed the whole-frame mask and the composite (no
+pixel outside the mask changed in 9 masked runs). The default instruction was
+not run in the POC; the "Run a thumbnail edit" unit settles its wording
+against Comfy Cloud ([quickstart.md](quickstart.md)).
 
 ## R-4: An edit is an in-memory session per video, read by polling
 
 **Decision**: `app.ThumbnailEdits` holds one session per video in memory: the
-frame, the snapshot of the connection and workflow taken when a run starts,
+frame, the snapshot of the connection taken when a run starts,
 the run's state and the result image. The page reads the session every second
 while a run is in progress and every 60 seconds while a result waits. A session
 not read for 5 minutes is cancelled and dropped, and a restart drops all of
@@ -88,7 +92,7 @@ them ([data-model.md, Edit session](data-model.md#edit-session)).
 | **In-memory session, polling** | Chosen |
 | A job kind in the persistent queue | Rejected: a run belongs to an open page and must not be applied after a restart or after the owner leaves (Edge Cases); the queue's retry and `failed` records would show it in the import issues |
 | Progress through `/api/events` | Rejected: that stream carries domain events published after a store commit to every viewer; a run's state is one page's and is never committed |
-| Generate within one request, as the position override does | Rejected: a run takes 10–20 s and its preparation tens of seconds, and requirements 7 and 8 need the state and a cancel while it runs |
+| Generate within one request, as the position override does | Rejected: a run takes 10–20 s and its preparation tens of seconds, and requirements 8 and 9 need the state and a cancel while it runs |
 
 **Rationale**: Reads double as the page's heartbeat, so closing the browser
 ends the session within 5 minutes without a separate signal (Edge Case "leave
@@ -110,24 +114,27 @@ connects ([contracts/workflow.md, Run states](contracts/workflow.md#run-states))
 | Output | `GET /view` | `GET /view` answers a redirect to a signed URL, fetched without the key |
 | Cancel | `POST /queue` `{"delete":[id]}` while queued; `POST /interrupt` `{"prompt_id":id}` while running | `POST /queue` `{"delete":[id]}` while queued; `POST /interrupt` while running |
 | Connection test | `GET /system_stats` | `GET /jobs?limit=1`, which needs a valid key |
+| Required nodes and models | `GET /object_info` | `GET /object_info` |
 
 Comfy Cloud documents two state vocabularies: the API reference and the live
 service answer `submitted`, `queued_waiting`, `preparing`, `executing`,
 `success`, `error`, `non_retryable_error`, `lost`, `cancel_requested` and
 `cancelled`, while the published OpenAPI schema lists `waiting_to_dispatch`,
-`pending`, `in_progress` and `completed`. The adapter maps both
+`pending`, `in_progress` and `completed`, and the model POC also saw
+`preprocessing`, `queued_limited`, `allocated`, `pending_execution` and
+`executed` from the job status route. The adapter maps all of them
 ([contracts/workflow.md, Run states](contracts/workflow.md#run-states)), and a
 value in neither keeps the run's previous state until a known one arrives or
 the time limit ends it. Cloud's `POST /interrupt` stops every running job of
 the account, not one; vv sends it only when the run's own state is `running`,
 and the account's other running jobs are the owner's to restart. A self-hosted ComfyUI has no `preparing` state, which
-requirement 7 allows.
+requirement 8 allows.
 
 | Option | Verdict |
 | --- | --- |
 | **HTTP polling for the state, WebSocket for step progress only** | Chosen |
 | WebSocket for everything | Rejected: the POC could not reach Comfy Cloud's WebSocket, so the state must not depend on it |
-| HTTP only, no step progress | Rejected: requirement 7 asks for finer progress when the provider reports it, and ComfyUI reports steps only on the WebSocket |
+| HTTP only, no step progress | Rejected: requirement 8 asks for finer progress when the provider reports it, and ComfyUI reports steps only on the WebSocket |
 
 **Rationale**: A WebSocket that fails to connect leaves the progress absent,
 never fails the run. The Go dependency for it is `github.com/coder/websocket`,
@@ -144,7 +151,7 @@ stored image instead of extracting a frame when a row exists
 | Option | Verdict |
 | --- | --- |
 | **A blob table, republished by the thumbnail job** | Chosen |
-| Only the thumbnail file in `MDM_DATA_DIR/thumbnails` | Rejected: `RemoveContent` deletes it when the last video with the content goes, and the job would extract a frame when the content returns (requirement 11) |
+| Only the thumbnail file in `MDM_DATA_DIR/thumbnails` | Rejected: `RemoveContent` deletes it when the last video with the content goes, and the job would extract a frame when the content returns (requirement 12) |
 | A second file area for user images under `MDM_DATA_DIR` | Rejected: backup and recovery cover SQLite and treat the data directory's files as rebuildable ([running-vv.md, Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)); a new area changes that rule |
 
 **Rationale**: A fitted image is 50–150 KB, so one row per edited video keeps
@@ -182,8 +189,8 @@ shows that frame for painting, and the mask is a PNG of the same pixel size.
 | The 640 px thumbnail extraction | Rejected: an edit model loses the text it is asked to remove at that size |
 
 **Rationale**: 2048 px keeps a 4K frame's PNG under about 8 MB for the
-upload; the owner's workflow scales the input to its model's size, as the
-POC's `ImageScaleToTotalPixels` did.
+upload; the bundled workflow scales the input to about 1 megapixel for the
+model and scales the result back to the frame's size.
 
 ## R-9: The API key is write-only
 
@@ -235,3 +242,46 @@ no terminal state 10 minutes after it was submitted is cancelled and fails as
 **Rationale**: Ten minutes covers the POC's tens of seconds of preparation
 many times over, and a queued Comfy Cloud job past it is cancelled so it does
 not spend credits after the owner has gone.
+
+## R-12: The model is FLUX.2 [klein] 4B fp8
+
+**Decision**: The bundled workflows run FLUX.2 [klein] 4B, distilled, in fp8,
+with the `qwen_3_4b` text encoder and the `flux2-vae` VAE, in 4 steps on
+ComfyUI core nodes only. One method is offered; the owner chooses none
+(requirement 3).
+
+| Candidate | Verdict from the model POC |
+| --- | --- |
+| **FLUX.2 [klein] 4B fp8** | Chosen: removed burned-in Japanese and English captions most reliably and kept text that belongs to the scene; 8–16 s per run on Cloud; about 12.4 GB to download; Apache-2.0 |
+| Qwen-Image-Edit-2511 fp8mixed with the Lightning 4-step LoRA | Rejected: best at taking the mood of a reference image, but it misread a Japanese instruction and replaced a kitchen with a forest, and mosaicked a screen in the frame; about 31 GB to download and a 24 GB GPU |
+| FLUX.2 [klein] 9B | Rejected: non-commercial licence, grey noise on a 9:16 frame twice, over-edits |
+| FLUX.1 Kontext dev | Rejected: non-commercial licence, superseded by FLUX.2 [klein] |
+| Paid API nodes (FLUX.2 Pro, Nano Banana, Seedream, GPT Image) | Rejected: a self-hosted ComfyUI would need a second account and billing |
+
+**Rationale**: Removing captions and text is the Issue's main case, and the
+lightest candidate does it best, so a choice of methods for smaller GPUs has
+nothing to offer. Its known weakness is the reference image: it copies objects
+from the reference into the frame, which the Issue's `背景` records. Each case
+ran with one seed and was judged by eye.
+
+## R-13: The connection test checks the workflow's nodes and model files
+
+**Decision**: After the connection answers, the test reads `GET /object_info`
+and checks that every `class_type` in the bundled workflows exists and that
+every model file a loader node names is among that loader's options. The
+check answers unavailable with the missing nodes and files, and for each file
+its ComfyUI folder and its download page ([contracts/workflow.md, Required
+files](contracts/workflow.md#required-files)). A run whose submit answers a
+missing node or file fails as `missing_models` with the same list.
+
+| Option | Verdict |
+| --- | --- |
+| **Check in the connection test, from `/object_info`** | Chosen |
+| Download the files through ComfyUI | Rejected: ComfyUI's API has no route that installs a model, and the Issue's `対象外` excludes downloading from vv |
+| Check only when a run fails | Rejected: requirement 4 asks for the missing files when the connection is tested |
+
+**Rationale**: `/object_info` lists the files each loader can load on both
+providers, so one check covers a self-hosted ComfyUI without the model and a
+Comfy Cloud that has dropped it. A self-hosted ComfyUI older than the core
+nodes the workflow uses (`Flux2Scheduler`, `GetImageSize`) shows up as
+missing nodes, with "update ComfyUI" as the remedy.
