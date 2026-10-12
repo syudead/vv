@@ -110,7 +110,7 @@ The English is the draft the catalog takes; after implementation
 | Uploaded item | Uploaded thumbnail | Visually hidden label, `title` and image `alt` |
 | Uploaded item `×` | Use the frame instead | Shared with the generated item |
 | Edit entry, name and tooltip | Edit thumbnail with ComfyUI | Unchanged |
-| Source menu, frame item | Frame at {time} | `{time}` in the `formatDuration` format; `Frame on screen` and disabled when no frame is on screen |
+| Source menu, frame item | Frame at {time} | `{time}` in the `formatDuration` format, the position the item sends; `Frame on screen` and disabled when no frame is on screen |
 | Source menu, thumbnail item | Current thumbnail | With the small image of the thumbnail before it |
 | Start failed | Couldn't start editing the thumbnail: {reason} | Unchanged |
 
@@ -120,8 +120,7 @@ The English is the draft the catalog takes; after implementation
 | --- | --- | --- |
 | Editor detail, frame source | Frame at {time} | Unchanged |
 | Editor detail, thumbnail source with a frame | Current thumbnail, frame at {time} | The session's `positionMs` is present ([contracts/screen-api.md](contracts/screen-api.md#thumbnailedit-changed)) |
-| Editor detail, thumbnail source, uploaded image | Current thumbnail, uploaded image | The page's `thumbnailImage` when the edit started |
-| Editor detail, thumbnail source, generated image | Current thumbnail, generated image | As above |
+| Editor detail, thumbnail source, stored image | Current thumbnail, saved image | The session's `positionMs` is absent; the same text for an uploaded and a generated image, because the session does not say which one it froze |
 | Painting hint, thumbnail source | Paint over what to change. Leave it unpainted to change the whole image. | The frame source keeps `…the whole frame.` |
 | Comparison labels, thumbnail source | Thumbnail · Generated | The frame source keeps `Frame · Generated` |
 
@@ -221,7 +220,7 @@ flowchart LR
   press[Entry pressed] --> ready{Ready?}
   ready -->|no| pop[Read again; set-up popover]
   ready -->|yes| menu[Source menu opens]
-  menu -->|Frame at time| frame[Pause; start with source frame at the player's position]
+  menu -->|Frame at time| frame[Pause; start with source frame at the shown time]
   menu -->|Current thumbnail| thumb[Pause; start with source thumbnail]
   menu -->|Esc, outside| closed[Menu closes; nothing sent]
   frame --> open[Editor opens]
@@ -235,13 +234,13 @@ with two `DropdownMenuItem`s in this order:
 
 | Item | Leading | Text | Rule |
 | --- | --- | --- | --- |
-| Frame | lucide `Film` | `Frame at {time}` | `{time}` is the player's position when the menu opens, the position the capture button would send. When no frame is on screen (the capture button's conditions, [029, Capture button](../029-video-overrides/ui-design.md#capture-button)) the item reads `Frame on screen` and is disabled |
+| Frame | lucide `Film` | `Frame at {time}` | `{time}` is the player's position when the menu opens, the position the capture button would send at that moment. Choosing the item sends that position, not the player's position at the press, so the editor opens on the frame the item named even if playback went on while the menu was open. When no frame is on screen (the capture button's conditions, [029, Capture button](../029-video-overrides/ui-design.md#capture-button)) the item reads `Frame on screen` and is disabled |
 | Thumbnail | The small image of the current thumbnail (`thumbnailUrl`, `h-6`, the video's aspect, `rounded-sm`, `object-cover`), the same form as the row's thumbnail item | `Current thumbnail` | Always enabled. The image is what the edit starts from, whichever kind of thumbnail it is ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)) |
 
 The frame item comes first because it is what the entry did before and what
 an owner who has just paused on a frame wants. Choosing either item pauses
 playback, closes the menu, starts the edit with `source: "frame"` and the
-position, or `source: "thumbnail"` without one
+position the frame item shows, or `source: "thumbnail"` without one
 ([contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-edits-changed)),
 and spins the entry while the image is extracted, as the single press did in
 045. A failed start shows the information row's one failure line.
@@ -266,7 +265,7 @@ session's `source`:
 
 | Place | Frame source | Thumbnail source |
 | --- | --- | --- |
-| Band detail | `Frame at {time}` | `Current thumbnail, frame at {time}` when `positionMs` is present; otherwise `Current thumbnail, uploaded image` or `Current thumbnail, generated image` by the page's `thumbnailImage` when the edit started |
+| Band detail | `Frame at {time}` | `Current thumbnail, frame at {time}` when `positionMs` is present; otherwise `Current thumbnail, saved image`. Both come from the session's response alone ([contracts/screen-api.md](contracts/screen-api.md#client-use)), never from the page's `thumbnailImage`, which another tab may have changed before the session froze its image |
 | Stage in Compose | The frame (`frameUrl`), painted over | The thumbnail's image (`frameUrl`: the stored source, or the thumbnail's frame), painted over, at the same size rule; its pixel size is `frameWidth` × `frameHeight` as for a frame, so the brush steps and the mask are unchanged |
 | Painting hint | `…change the whole frame.` | `…change the whole image.` |
 | Compare, first box | Labelled `Frame`, `alt` `Frame` | Labelled `Thumbnail`, `alt` `Thumbnail`; the box is the video's shape, as the source already is (it was fitted on apply, [R-3](research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin)) |
@@ -276,7 +275,10 @@ session's `source`:
 The detail names the kind of image because the stage alone does not say
 whether the owner is looking at a frame or at a stored image, and an owner
 who meant to pick the frame should see at a glance that they picked the
-thumbnail. The editor's wording that says "frame" elsewhere (`The painting
+thumbnail. The detail does not tell an uploaded image from a generated one:
+the session's response names only its `source` and `positionMs`, and the
+page's `thumbnailImage` can be stale by the time the server freezes the image,
+so a label read from it could name the wrong kind. The editor's wording that says "frame" elsewhere (`The painting
 doesn't match the frame`) stays, because it is an error no owner reaches
 from the screen.
 
@@ -334,7 +336,8 @@ Judged by looking at the running screen in vv's one dark scheme
    (acceptance criterion 4). Starting an edit of the current thumbnail is two
    presses, the entry and the item, and the editor opens on the thumbnail's
    image (acceptance criterion 5); a frame edit is the same two presses as a
-   thumbnail edit and sends the position the capture button would.
+   thumbnail edit and sends the position its item shows, even when playback
+   went on while the menu was open.
 6. **Visible state**: while an upload sends, the entry spins and the capture
    and `×` are dimmed, so the owner sees that the row is busy and cannot
    send a second thumbnail; the item keeps the previous thumbnail until the

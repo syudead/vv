@@ -65,3 +65,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Hidden tags behind a card's `+N`, visible and pressable at any count: UI](../../specs/041-tag-overflow-list/ui-design.md)
 - [Auto-import of changed media folders (setting, problem notice, quiet result notice): UI](../../specs/042-folder-watch-import/ui-design.md)
 - [Watch history screen (day groups, removing one entry, clearing the history): UI](../../specs/043-watch-history/ui-design.md)
+- [Setting a local image as the thumbnail and editing the current thumbnail with ComfyUI (upload entry, uploaded item, source menu): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
