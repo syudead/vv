@@ -475,16 +475,25 @@ labels.
 
 | Row | Content |
 | --- | --- |
-| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated image is the thumbnail; actions at the right end |
+| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
 | Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
 The actions are favorite, `Add to playlist`, `Use current frame as thumbnail`,
-`Edit thumbnail with ComfyUI`, `Open file` and `Copy path`: icon-only ghost
-buttons with tooltips. The ComfyUI entry opens the thumbnail editor, an
-`EditorDialog` over the page, and is dimmed with a set-up popover until a
-ComfyUI connection is saved; while its generated image is the thumbnail, the
-thumbnail item shows that image with `Use the frame instead`
-([045 UI design](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)). Dates show the date only;
+`Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
+`Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
+thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
+popover until a ComfyUI connection is saved; while its generated image is the
+thumbnail, the thumbnail item shows that image with `Use the frame instead`
+([045 UI design](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)).
+The upload entry is the owner's even when the player is not shown, and does not
+depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
+refuses another type or a file over 64 MB on the failure line before sending
+anything, and spins while it sends. While an uploaded image is the thumbnail,
+the thumbnail item shows it with an `ImageUp` icon, the label
+`Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
+action sends at a time: while the capture, a `×` or the upload sends, the
+others are `aria-disabled`
+([046 UI design](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)). Dates show the date only;
 the time is in the `title` attribute and in a popover opened by pressing the
 date. No path appears under the title, because the breadcrumb already shows
 the location.
@@ -506,8 +515,8 @@ flowchart LR
 ```
 
 Updating the cached list means the library card has changed on return. The
-failure line sits directly below the first information row, like open and
-capture failures, with no toast.
+failure line sits directly below the first information row, like open,
+capture and upload failures, with no toast.
 
 ### Player states
 
