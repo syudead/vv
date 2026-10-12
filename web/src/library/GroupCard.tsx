@@ -9,6 +9,7 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Checkbox } from "../ui/shadcn/checkbox";
 import { TableCell, TableRow } from "../ui/shadcn/table";
@@ -103,6 +104,26 @@ function GroupFavorite({
       label={t.library.group.favorite(group.name)}
       onToggle={() => updateFavorites([], [groupRef(group)], !favorite)}
       variant={variant}
+    />
+  );
+}
+
+/**
+ * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
+ * specs/044-playlists/ui-design.md「Add to playlist」）。グループのフォルダを送る。
+ */
+function GroupAddToPlaylist({
+  group,
+  variant,
+}: {
+  group: LibraryGroup;
+  variant: "card" | "row";
+}) {
+  return (
+    <AddToPlaylistButton
+      variant={variant}
+      label={t.library.group.addToPlaylist(group.name)}
+      folders={[groupRef(group)]}
     />
   );
 }
@@ -216,6 +237,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
         <VideoThumbnailMark className="z-30">
+          <GroupAddToPlaylist group={group} variant="card" />
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}
@@ -294,6 +316,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       {owner && (
         <TableCell className="w-8 px-0">
           <GroupFavorite group={group} variant="row" />
+        </TableCell>
+      )}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <GroupAddToPlaylist group={group} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">

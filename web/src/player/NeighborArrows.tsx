@@ -22,10 +22,13 @@ export default function NeighborArrows({
   next,
   visible,
   container,
+  labels = { previous: t.player.neighbors.previous, next: t.player.neighbors.next },
 }: {
   previous: Neighbor | undefined;
   next: Neighbor | undefined;
   visible: boolean;
+  /** つまみの名前。プレイリストの文脈では「Previous item」「Next item」。 */
+  labels?: { previous: UiText; next: UiText };
   /** 全画面にしている入れ物。題名の吹き出しはその中に描かないと全画面の間に見えない。 */
   container: HTMLElement | null;
 }) {
@@ -34,7 +37,7 @@ export default function NeighborArrows({
       {previous !== undefined && (
         <Arrow
           side="left"
-          label={t.player.neighbors.previous}
+          label={labels.previous}
           neighbor={previous}
           visible={visible}
           container={container}
@@ -43,7 +46,7 @@ export default function NeighborArrows({
       {next !== undefined && (
         <Arrow
           side="right"
-          label={t.player.neighbors.next}
+          label={labels.next}
           neighbor={next}
           visible={visible}
           container={container}

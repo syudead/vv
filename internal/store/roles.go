@@ -68,6 +68,14 @@ type VisibilityStore struct{ sql *sql.DB }
 // ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない。
 type FavoriteStore struct{ sql *sql.DB }
 
+// PlaylistStore はプレイリストとその項目の作成・改名・削除・追加・並べ替え・取り外しと読み出しを
+// 受け持つ（playlists.go、specs/044-playlists/data-model.md「Store operations」）。FavoriteStore と
+// 同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の型や通知には依存せず、ドメインイベントを
+// 発行しない。束ねと引き継ぎによる項目の付け替えは、それぞれの取引の中で rekeyPlaylistItems が行う。
+// プレイリストの読み出しは要約と項目を同じスナップショットから返すため、TagStore と同じく
+// 書き込みの枠を取らない読み取り用の接続 read（deferred）で取引を開く。
+type PlaylistStore struct{ sql, read *sql.DB }
+
 // AutoTagStore は自動タグ付けの待ち行列（積む・専有する・終える・失敗にする・数える）と、
 // 判定の結果のタグの付与を受け持つ（auto_tags.go、docs/design-docs/auto-tagging.md）。
 // 付与は TagStore と同じ非公開の関数で行い、確定後に domain.AutoTagApplied を発行するため、
@@ -100,6 +108,7 @@ func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}
 }
 func (db *DB) Favorites() *FavoriteStore       { return &FavoriteStore{sql: db.sql} }
+func (db *DB) Playlists() *PlaylistStore       { return &PlaylistStore{sql: db.sql, read: db.read} }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }

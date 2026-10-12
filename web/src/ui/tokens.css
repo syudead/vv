@@ -170,6 +170,8 @@
   --spacing-neighbor-arrow-min-sm: 6rem;
   --spacing-control-bar-clearance: 3.5rem;
   --spacing-versions-popover: min(28rem, calc(100vw - 2rem));
+  /* 動画ページ: プレイリストのパネルの一覧の高さの上限（3 行と 4 行目の上端が見える） */
+  --spacing-playlist-panel: 20rem;
   /* 動画ページ: 公開の切り替えの左右の余白と、技術情報の項目の左右の余白 */
   --spacing-visibility-x: 0.625rem;
   --spacing-technical-x: 0.625rem;

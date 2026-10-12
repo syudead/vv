@@ -258,6 +258,10 @@ type Options struct {
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
 	Favorites Favorites
+	// Playlists はプレイリストの保存先。nilならプレイリストの経路は500を返す。
+	Playlists Playlists
+	// PlaylistPlayback はプレイリストの連続再生の読み出し先。nilなら連続再生の経路は500を返す。
+	PlaylistPlayback PlaylistPlaybackReader
 	// WatchHistory は視聴履歴の読みと削除の先。nilなら視聴履歴の経路は500を返す。
 	WatchHistory WatchHistory
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
@@ -343,14 +347,17 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	favorites    Favorites
-	watchHistory WatchHistory
-	overrides    OverrideStore
-	thumbnails   ThumbnailPicker
-	versions     VersionStore
-	folders      Folders
-	folderGroups FolderGroups
-	library      LibraryItems
-	transcoder   Transcoder
+	playlists    Playlists
+	// playlistPlayback はプレイリストの連続再生の読み出し先（playlist_playback.go）。
+	playlistPlayback PlaylistPlaybackReader
+	watchHistory     WatchHistory
+	overrides        OverrideStore
+	thumbnails       ThumbnailPicker
+	versions         VersionStore
+	folders          Folders
+	folderGroups     FolderGroups
+	library          LibraryItems
+	transcoder       Transcoder
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
@@ -418,6 +425,8 @@ func NewRouter(opts Options) http.Handler {
 		tags:              opts.Tags,
 		visibility:        opts.Visibility,
 		favorites:         opts.Favorites,
+		playlists:         opts.Playlists,
+		playlistPlayback:  opts.PlaylistPlayback,
 		watchHistory:      opts.WatchHistory,
 		overrides:         opts.Overrides,
 		thumbnails:        opts.ThumbnailPicker,
@@ -550,8 +559,20 @@ func requiresJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists":
 			return true
+		}
+		// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
+		// （specs/044-playlists/contracts/screen-api.md）。
+		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/playlists/"); ok {
+			segments := strings.Split(suffix, "/")
+			switch len(segments) {
+			case 2:
+				return segments[0] != "" && segments[1] == "items"
+			case 4:
+				return segments[0] != "" && segments[1] == "items" && segments[2] != "" && segments[3] == "move"
+			}
+			return false
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
 			rest, found := strings.CutSuffix(id, "/merge")
@@ -579,6 +600,10 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
 		}
 	case http.MethodPatch:
+		// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/playlists/"); ok {
+			return id != "" && !strings.Contains(id, "/")
+		}
 		// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
 		// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
 		// specs/036-tag-admin-scale/contracts/screen-api.md §1）。

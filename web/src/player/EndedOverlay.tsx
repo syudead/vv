@@ -22,12 +22,15 @@ import { Dimmed } from "./StatusOverlays";
  */
 export default function EndedOverlay({
   next,
+  to,
   linkState,
   takeFocus,
   onReplay,
   onPlayNext,
 }: {
   next: Video | undefined;
+  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所。 */
+  to?: string;
   /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
   linkState: VideoLinkState;
   takeFocus: boolean;
@@ -60,7 +63,7 @@ export default function EndedOverlay({
             {t.player.ended.next}
           </span>
           <Link
-            to={`/videos/${String(next.id)}`}
+            to={to ?? `/videos/${String(next.id)}`}
             state={linkState}
             aria-label={videoLinkLabel(next)}
             className="flex items-start gap-3 rounded-md"
