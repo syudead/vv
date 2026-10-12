@@ -41,11 +41,11 @@ flowchart LR
 
 ## 用途の狭い依存関係 {#dependencies-with-a-narrow-use}
 
-次の直接の依存関係は、それぞれ 1 つのアダプタだけが使う。Renovate はそのグループと一緒に更新する。表は、更新されたときに確かめることを示す。
+次の直接の依存関係は、それぞれ 1 つのアダプタが使う。Renovate はそれぞれが属するグループと一緒に更新する。表は、どれかが変わったときに確かめることを示す。
 
-| 依存関係 | 使う場所 | 更新時に確かめること |
+| 依存関係 | 使う側 | 更新時に確かめること |
 | --- | --- | --- |
-| `github.com/coder/websocket` | `internal/comfyui`。ComfyUI の実行のステップの進み具合に使う（[045 research、R-5](../../specs/045-comfyui-thumbnails/research.md#r-5-provider-differences-stay-inside-the-adapter)） | `go test ./internal/comfyui`。このモジュール自体は依存関係を持たないので、更新で依存関係は増えない |
+| `github.com/coder/websocket` | `internal/comfyui`。ComfyUI の実行のステップ進捗に使う（[045 research、R-5](../../specs/045-comfyui-thumbnails/research.md#r-5-provider-differences-stay-inside-the-adapter)） | `go test ./internal/comfyui`。このモジュールは自身の依存関係を持たないので、更新で依存関係は増えない |
 
 ## 同梱 FFmpeg のバージョンを上げる {#raise-the-bundled-ffmpeg-version}
 
