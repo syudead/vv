@@ -67,8 +67,8 @@ sequenceDiagram
 
 Uploads use names that start with `vv-` and a random part, with
 `overwrite=true` and `type=input`. vv does not delete them or the output from
-ComfyUI afterwards: neither provider offers a route for it on a self-hosted
-server.
+ComfyUI afterwards, because a self-hosted ComfyUI has no route that deletes
+them.
 
 ## Run states
 

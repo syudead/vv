@@ -54,7 +54,7 @@ from `doc-translator`.
 
 | Value | Content |
 | --- | --- |
-| `Video.ThumbnailImageRevision` | `int64`; 0 when no image is applied. The `thumbnailUrl` version becomes `<content key prefix>-g<revision>` when it is set, ahead of the position's `-r<revision>` |
+| `Video.ThumbnailImageRevision` | `int64`; 0 when no image is applied. The `thumbnailUrl` version becomes `<content key prefix>-g<revision>` when it is set, in place of the position's `-r<revision>` |
 | `ComfyUISettings` | `Provider` (`self_hosted` or `cloud`), `URL` (self-hosted only), `APIKey` (cloud only, never returned by the API) |
 | `ThumbnailWorkflow` | The workflow JSON as registered, and its `Inputs` (`Prompt`, `Mask`, `Reference` booleans) found by [contracts/workflow.md](contracts/workflow.md) |
 | `ParseThumbnailWorkflow([]byte) (ThumbnailWorkflow, error)` | The registration rule of contracts/workflow.md, as a pure function with one error value per reason |
@@ -98,9 +98,9 @@ stateDiagram-v2
   queued --> failed: error or 10 min
   preparing --> failed: error or 10 min
   running --> failed: error or 10 min
-  queued --> cancelled: cancel
-  preparing --> cancelled: cancel
-  running --> cancelled: cancel
+  queued --> cancelled: owner cancels
+  preparing --> cancelled: owner cancels
+  running --> cancelled: owner cancels
   succeeded --> queued: run again
   failed --> queued: run again
   cancelled --> queued: run again
