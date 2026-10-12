@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 9eaf2629c4c2c147d0ffb384555a5507e339e4b884e3ddabd57576a842079e43
+sourceHash: 4f30230eb5f5c1862fcdc4c689cd9c5086134d34ac33200df017f179a903fec0
 ---
 
 # 開発 {#development}
@@ -40,7 +40,7 @@ mise exec --command "task check"
 
 `task check` は、フォーマットの確認、静的解析、単体テスト、生成ファイルの確認、マイグレーションの確認、Windows のビルド確認を実行する。push の前には毎回、コードまたは設定の変更ならこれを、Markdown、`docs/`、`specs/` の変更なら `task check-docs` を実行する。実行を省くと、CI からフォーマットや lint の修正として戻ってきやすい。`task fmt` は Go と Web のソースを確認対象の形式に書き換える。
 
-lint の指摘はコードで直し、抑止しない。`task check` は、Go のソースに `//nolint` コメントが一つでもあると失敗し（`scripts/nolintguard`）、`web/` に `eslint-disable*` などのインラインの ESLint 設定コメントが一つでもあると失敗する（`linterOptions.noInlineConfig`）。
+lint の指摘はコードで直し、抑止しない。`task check` は、Go のソースに `//nolint` コメントが一つでもあると失敗し（`scripts/nolintguard`）、`web/` に `eslint-disable*` などのインラインの ESLint 設定コメントが一つでもあると失敗する（`linterOptions.noInlineConfig`）。変更は、追加する関数と複雑にする関数の複雑度を 25 以下に保ち、コードをコピーせずに共有する。Codex レビューは違反を指摘する（[複雑度と重複](../design-docs/complexity-and-duplication.md)）。
 
 ブラウザテストは別のコマンドだ。
 

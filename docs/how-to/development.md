@@ -47,7 +47,10 @@ checked format.
 Lint findings are fixed in the code, never silenced: `task check` fails on any
 `//nolint` comment in Go sources (`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
-(`linterOptions.noInlineConfig`).
+(`linterOptions.noInlineConfig`). A change keeps the functions it adds or makes
+more complex at complexity 25 or less and shares code instead of copying it;
+the Codex review raises a breach
+([Complexity and duplication](../design-docs/complexity-and-duplication.md)).
 
 Browser tests are a separate command:
 
