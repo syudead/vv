@@ -15,6 +15,7 @@ import {
   generateSearchFixtures,
   generateTagsFixtures,
   generateThumbnailEditFixtures,
+  generateThumbnailUploadFixtures,
 } from "./media-fixtures.mjs";
 import { FAKE_COMFYUI_PORT } from "./fake-comfyui.mjs";
 
@@ -35,6 +36,8 @@ const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
+// ページから上げる画像は動画のフォルダの外に置き、スキャンが拾わないようにする。
+const thumbnailUploadDir = path.join(runRoot, "thumbnail-uploads");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
 // 毎回ゼロからのコンパイルになる。既定の置き場（GOCACHE）が決まっていれば
 // それに従い（CI は setup-go が復元した場所を渡す）、無ければ作業ツリーの中の
@@ -63,6 +66,7 @@ function run() {
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
     generateThumbnailEditFixtures(thumbnailEditMediaDir);
+    generateThumbnailUploadFixtures(thumbnailUploadDir);
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -113,6 +117,7 @@ function run() {
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
           MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,
+          MDM_E2E_THUMBNAIL_UPLOAD_DIR: thumbnailUploadDir,
           MDM_E2E_COMFYUI_URL: `http://127.0.0.1:${String(FAKE_COMFYUI_PORT)}`,
         },
         stdio: "inherit",
