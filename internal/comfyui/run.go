@@ -116,8 +116,10 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き始める（research.md R-5）。
+	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き、提供元に登録されるのを
+	// 上限つきで待つ（research.md R-5）。
 	watch := c.watchProgress(ctx, target, clientID)
+	watch.waitReady(ctx)
 	id, err := target.submit(ctx, prompt, clientID)
 	if err != nil {
 		watch.stop()
@@ -149,13 +151,20 @@ func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous do
 // 実行中なら自前の ComfyUI に POST /interrupt {"prompt_id":id}、Comfy Cloud に POST /interrupt を
 // 送る。それより前なら POST /queue {"delete":[id]} で消し、読んでから消すまでに実行が
 // 始まっていれば、もう一度読んで実行中なら interrupt を送る（research.md R-5）。進み具合を
-// 読む WebSocket は閉じる。
+// 読む WebSocket は中止が済んだときだけ閉じ、失敗すれば実行は続きうるので開いたままにする。
 func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	target, err := c.target(job.Connection)
 	if err != nil {
 		return err
 	}
+	if err := c.cancel(ctx, target, job, previous); err != nil {
+		return err
+	}
 	c.dropProgress(job.ID, nil)
+	return nil
+}
+
+func (c *Client) cancel(ctx context.Context, target *target, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	state, _, err := target.state(ctx, job, previous)
 	if err != nil {
 		return err

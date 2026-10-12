@@ -23,6 +23,12 @@ import (
 // progressDialTimeout は WebSocket の接続の上限時間である。
 const progressDialTimeout = 30 * time.Second
 
+// progressReadyTimeout は POST /prompt を送る前に、WebSocket が提供元に登録されるのを待つ上限
+// 時間である。ComfyUI は接続を登録してから最初の status を送り、登録より前の progress は
+// どこにも届かないので、最初のメッセージを登録の印として待つ。届かなければ待たずに送り、
+// 進み具合は取りこぼしうるが実行は止めない。
+const progressReadyTimeout = 3 * time.Second
+
 // progressLifetime は 1 つの実行の WebSocket を開いておく上限時間である。編集のセッションが
 // 実行を止める 10 分（research.md R-11）より長くし、終わりを知らされなかった接続も閉じる。
 const progressLifetime = 15 * time.Minute
@@ -35,15 +41,46 @@ const maxProgressMessageBytes = 1 << 20
 // 接続は実行の id が決まる前に開くので、id で絞るのは読むときである。
 type progressWatch struct {
 	stop context.CancelFunc
+	// ready は接続が最初のメッセージを受けたか、接続できずに終わったときに閉じる。
+	ready     chan struct{}
+	readyOnce sync.Once
 
-	mu    sync.Mutex
-	steps map[string]domain.ImageEditProgress
+	mu     sync.Mutex
+	steps  map[string]domain.ImageEditProgress
+	closed bool
+}
+
+func (w *progressWatch) markReady() {
+	w.readyOnce.Do(func() { close(w.ready) })
+}
+
+// waitReady は WebSocket が登録されるか、つながらないと分かるか、progressReadyTimeout か
+// ctx が終わるまで待つ。
+func (w *progressWatch) waitReady(ctx context.Context) {
+	timer := time.NewTimer(progressReadyTimeout)
+	defer timer.Stop()
+	select {
+	case <-w.ready:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
 }
 
 func (w *progressWatch) record(id string, step domain.ImageEditProgress) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.steps[id] = step
+	if !w.closed {
+		w.steps[id] = step
+	}
+}
+
+// disconnect は接続が切れたときに進み具合を捨てる。以後の更新は届かないので、最後の値を
+// 今の進み具合として見せない。
+func (w *progressWatch) disconnect() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.closed = true
+	clear(w.steps)
 }
 
 func (w *progressWatch) step(id string) (domain.ImageEditProgress, bool) {
@@ -54,18 +91,20 @@ func (w *progressWatch) step(id string) (domain.ImageEditProgress, bool) {
 }
 
 // watchProgress は送り先 t の WebSocket に clientID で接続し、progress を読み始める。接続も
-// 読み取りも裏で行い、呼び出しを待たせない。実行は要求 ctx より長く続くので、ctx の取り消しは
+// 読み取りも裏で行う。登録を待つのは呼び出し側が waitReady で行う。実行は要求 ctx より長く続くので、ctx の取り消しは
 // 引き継がず、progressLifetime か stop で終わる。
 func (c *Client) watchProgress(ctx context.Context, t *target, clientID string) *progressWatch {
 	ctx, stop := context.WithTimeout(context.WithoutCancel(ctx), progressLifetime)
-	w := &progressWatch{stop: stop, steps: map[string]domain.ImageEditProgress{}}
+	w := &progressWatch{stop: stop, ready: make(chan struct{}), steps: map[string]domain.ImageEditProgress{}}
 	go c.readProgress(ctx, t.wsURL(clientID), w)
 	return w
 }
 
 // readProgress は WebSocket の url に接続し、ctx が終わるか接続が切れるまで progress を w に
-// 記録する。接続できなければ何もしない。
+// 記録する。接続できなければ何もしない。終わると w の進み具合を捨てる。
 func (c *Client) readProgress(ctx context.Context, wsURL string, w *progressWatch) {
+	defer w.markReady()
+	defer w.disconnect()
 	dialCtx, cancel := context.WithTimeout(ctx, progressDialTimeout)
 	conn, resp, err := websocket.Dial(dialCtx, wsURL, &websocket.DialOptions{HTTPClient: c.http})
 	cancel()
@@ -83,6 +122,8 @@ func (c *Client) readProgress(ctx context.Context, wsURL string, w *progressWatc
 		if err != nil {
 			return
 		}
+		// 最初のメッセージ（ComfyUI では登録後の status）が届けば、この clientId は登録済みである。
+		w.markReady()
 		if kind == websocket.MessageText {
 			if id, step, ok := progressOf(io.LimitReader(r, maxProgressMessageBytes)); ok {
 				w.record(id, step)
