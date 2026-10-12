@@ -50,7 +50,7 @@ func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 
 // ローダーが名指すファイルはどれも Required files の表にあり、表のファイルはどれも使われる。
 func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
-	required, err := workflowRequirement()
+	required, err := workflowRequirement("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,6 +69,28 @@ func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
 	}
 }
 
+// 拡散モデルを差し替えると、確かめるファイルはそのファイルに代わり、入手先は空になる。
+func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
+	required, err := workflowRequirement("klein-4b-finetune.safetensors")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range required.files {
+		names = append(names, f.file.name)
+	}
+	want := []string{"klein-4b-finetune.safetensors", "qwen_3_4b.safetensors", "flux2-vae.safetensors"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("files = %v, want %v", names, want)
+	}
+	if got := required.files[0].file; got.folder != "diffusion_models" || got.source != "" {
+		t.Errorf("replaced file = %+v", got)
+	}
+	if requiredFiles[0].name != "flux-2-klein-4b-fp8.safetensors" {
+		t.Errorf("requiredFiles was modified: %+v", requiredFiles[0])
+	}
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -83,7 +105,7 @@ func contains(list []string, s string) bool {
 // drop に挙げた型は省く。
 func objectInfoFor(t *testing.T, files []string, combo bool, drop ...string) []byte {
 	t.Helper()
-	required, err := workflowRequirement()
+	required, err := workflowRequirement("")
 	if err != nil {
 		t.Fatal(err)
 	}

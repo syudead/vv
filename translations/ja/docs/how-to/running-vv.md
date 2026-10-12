@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 2b21b55bc158d99b7535698c614dbc08f6a0794ace9ddc9301fb5d839e1fda89
+sourceHash: 27fec3975f8e3c077f5f9a608b46260b0d9542920f5055ae6c0161b835858f51
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -138,6 +138,7 @@ VVMDM は、動画の隣に置かれ、動画から拡張子を除いた名前�
 | `MDM_DATA_DIR` | `/data` | データベースと生成メディアの絶対パス |
 | `MDM_LOG_LEVEL` | `info` | `debug`、`info`、`warn`、`error` のいずれか |
 | `MDM_TRUSTED_PROXIES` | プライベートアドレス | 転送ヘッダーを信頼するリバースプロキシ。[ネットワークへの公開](#network-exposure)を参照 |
+| `MDM_COMFYUI_DIFFUSION_MODEL` | 空 | サムネイルの編集に、同梱のものの代わりに使う拡散モデルのファイル。[派生モデルを試す](comfyui-thumbnails.md#try-a-derived-model)を参照 |
 
 Docker Compose がコンテナにこれらを設定する。メディアフォルダは設定ファイルではなく Settings で管理する。不正な値はすべて、起動時にまとめて報告される。
 

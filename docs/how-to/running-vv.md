@@ -179,6 +179,7 @@ last choice, and a video with the same label starts with it turned on.
 | `MDM_DATA_DIR` | `/data` | Absolute path for the database and generated media |
 | `MDM_LOG_LEVEL` | `info` | `debug`, `info`, `warn` or `error` |
 | `MDM_TRUSTED_PROXIES` | private | Reverse proxies whose forwarding headers are trusted; see [Network exposure](#network-exposure) |
+| `MDM_COMFYUI_DIFFUSION_MODEL` | empty | Diffusion model file for thumbnail edits in place of the bundled one; see [Try a derived model](comfyui-thumbnails.md#try-a-derived-model) |
 
 Docker Compose sets these for the container. Media folders are managed in
 Settings, not in a configuration file. All invalid values are reported

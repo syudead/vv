@@ -25,6 +25,9 @@ const (
 	// ループバックとプライベートアドレス（defaultTrustedProxies）を信じ、none なら
 	// 転送ヘッダーを読まない。
 	envTrustedProxies = "MDM_TRUSTED_PROXIES"
+	// envComfyUIDiffusionModel は ComfyUI のワークフローに読ませる拡散モデルのファイル名である。
+	// 同じ構造の派生モデルを試すためのもので、空なら同梱のワークフローのファイルを使う。
+	envComfyUIDiffusionModel = "MDM_COMFYUI_DIFFUSION_MODEL"
 )
 
 // 既定値。すべて未設定でも起動できる。
@@ -66,6 +69,8 @@ type Config struct {
 	// TrustedProxies は MDM_TRUSTED_PROXIES を解釈したもの。空なら転送ヘッダーを読まない。
 	// 未設定なら defaultTrustedProxies になる。
 	TrustedProxies []netip.Prefix
+	// ComfyUIDiffusionModel は MDM_COMFYUI_DIFFUSION_MODEL の値である。空なら差し替えない。
+	ComfyUIDiffusionModel string
 }
 
 // logLevels は受け付ける記録の詳細度である。
@@ -86,6 +91,8 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		Addr:     valueOr(getenv(envAddr), defaultAddr),
 		DataDir:  valueOr(getenv(envDataDir), defaultDataDir),
 		LogLevel: valueOr(getenv(envLogLevel), defaultLogLevel),
+
+		ComfyUIDiffusionModel: strings.TrimSpace(getenv(envComfyUIDiffusionModel)),
 	}
 
 	var problems []error
@@ -166,6 +173,7 @@ func (c Config) LogAttrs() []slog.Attr {
 		slog.String(envDataDir, c.DataDir),
 		slog.String(envLogLevel, c.LogLevel),
 		slog.String(envTrustedProxies, formatPrefixes(c.TrustedProxies)),
+		slog.String(envComfyUIDiffusionModel, c.ComfyUIDiffusionModel),
 	}
 }
 

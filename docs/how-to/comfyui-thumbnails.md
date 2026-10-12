@@ -46,6 +46,23 @@ Cloud. The design is in
 
 Comfy Cloud provides the model files and nodes.
 
+## Try a derived model
+
+To try a fine-tune or merge of FLUX.2 [klein] 4B on your own ComfyUI, put its
+`.safetensors` file in `models/diffusion_models` and start VVMDM with its file
+name in `MDM_COMFYUI_DIFFUSION_MODEL`:
+
+```bash
+MDM_COMFYUI_DIFFUSION_MODEL=my-klein-4b-finetune.safetensors ./mdm
+```
+
+VVMDM then loads that file in place of `flux-2-klein-4b-fp8.safetensors` and
+keeps the text encoder, the VAE and the 4-step workflow, so the model must
+have the same architecture and be distilled like the original. The connection
+test checks for that file, without a download page. Comfy Cloud provides only
+its own models, so the variable is for your own ComfyUI. The Windows desktop
+app does not read it.
+
 ## Check the result
 
 The test answers "Connected to ComfyUI." or "Connected to Comfy Cloud.". If
