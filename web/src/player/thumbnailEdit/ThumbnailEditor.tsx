@@ -52,6 +52,7 @@ import {
   runStateText,
   shapeDiffers,
   showsLongWait,
+  sourceWords,
 } from "./editRules";
 import {
   type EditorState,
@@ -197,12 +198,10 @@ function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
  */
 export default function ThumbnailEditor({
   edit,
-  positionMs,
   onApplied,
   onClosed,
 }: {
   edit: ThumbnailEdit;
-  positionMs: number;
   onApplied: (video: Video, mark: DetailMark) => void;
   /** 編集画面を閉じた（セッションは捨てた、適用で終わった）。 */
   onClosed: () => void;
@@ -213,6 +212,8 @@ export default function ThumbnailEditor({
   );
   const { session, view, ended } = state;
   const editId = session.id;
+  // 始めた画像の元はセッションの応答だけで決まり、途中で変わらない。
+  const words = sourceWords(edit);
   const running = isRunning(session.state);
   const polling = useSessionPolling(state, dispatch);
   const settled = useRef(false);
@@ -360,6 +361,7 @@ export default function ThumbnailEditor({
       <CompareStage
         frameUrl={session.frameUrl}
         resultUrl={resultUrl}
+        sourceLabel={words.sourceLabel}
         aspect={session.frameWidth / session.frameHeight}
         cropNote={resultShape?.url === resultUrl && resultShape.differs}
         onResultSize={(width, height) =>
@@ -433,7 +435,7 @@ export default function ThumbnailEditor({
             onUndo={() => setStrokes((previous) => previous.slice(0, -1))}
           />
         </div>
-        <p className="text-sm text-muted-foreground">{text.paintingHint}</p>
+        <p className="text-sm text-muted-foreground">{words.paintingHint}</p>
       </div>
     );
 
@@ -610,7 +612,7 @@ export default function ThumbnailEditor({
         open
         onClose={requestClose}
         title={text.title}
-        detail={text.frameAt(formatDuration(positionMs))}
+        detail={words.detail}
         closeLabel={text.close}
         closeDisabled={busy === "apply"}
         initialFocus={instructions}

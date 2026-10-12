@@ -1,5 +1,6 @@
-import type { ThumbnailEditState } from "../../api/client";
+import type { ThumbnailEdit, ThumbnailEditState } from "../../api/client";
 import { t, type UiText } from "../../i18n";
+import { formatDuration } from "../../lib/format";
 
 // サムネイルの編集画面の規則（specs/045-comfyui-thumbnails/ui-design.md「Thumbnail editor」）。
 // 画面の部品から切り出し、論理のテストで確かめる（docs/design-docs/web-testing.md
@@ -19,6 +20,40 @@ export function isRunning(state: ThumbnailEditState): state is RunningState {
 /** runStateText は実行中の状態の文言である。 */
 export function runStateText(state: RunningState): UiText {
   return t.player.thumbnailEdit.states[state];
+}
+
+/** SourceWords は編集画面のうち、始めた画像の元で変わる文言である。 */
+export interface SourceWords {
+  /** 帯の詳細。 */
+  detail: UiText;
+  /** Compose の塗りのヒント。 */
+  paintingHint: UiText;
+  /** Compare の最初の箱の名前と `alt`。 */
+  sourceLabel: UiText;
+}
+
+/**
+ * sourceWords はセッションの応答の `source` と `positionMs` だけから、編集画面の文言を決める
+ * （specs/046-thumbnail-image-upload/ui-design.md「Thumbnail editor from the current
+ * thumbnail」）。ページの `thumbnailImage` は読まない。別のタブが変えた後に画像が固まることが
+ * あり、それから読むと違う種類を名指しうるからである。
+ */
+export function sourceWords(
+  edit: Pick<ThumbnailEdit, "source" | "positionMs">,
+): SourceWords {
+  const text = t.player.thumbnailEdit;
+  const time = edit.positionMs === undefined ? null : formatDuration(edit.positionMs);
+  if (edit.source === "thumbnail")
+    return {
+      detail: time === null ? text.thumbnailSavedImage : text.thumbnailFrameAt(time),
+      paintingHint: text.paintingHintImage,
+      sourceLabel: text.thumbnail,
+    };
+  return {
+    detail: text.frameAt(time ?? formatDuration(0)),
+    paintingHint: text.paintingHint,
+    sourceLabel: text.frame,
+  };
 }
 
 /** LONG_WAIT_MS を過ぎて待ち行列か準備中なら、長い待ちの説明を出す。 */
