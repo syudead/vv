@@ -66,7 +66,11 @@ but vv keeps the provider's job and retries the cancel on every sweep for up
 to an hour, even after the session ends. Until that cancel is confirmed, a new
 run of the same video is not submitted and fails as `unreachable` (`502
 provider_failed`), so an unconfirmed job is never replaced by one vv can no
-longer cancel.
+longer cancel. Only one retry of a job is in flight at a time, and a new run
+waits for any retry of its video's jobs to finish before it is submitted,
+because a late Comfy Cloud interrupt stops every running job of the account.
+Retries of different jobs run concurrently, so a sweep with many unconfirmed
+jobs still takes about one provider timeout.
 
 When the provider reports success, the read fetches the output. A fetch that
 does not arrive (`unreachable`, or a timeout) leaves the run in its state and
