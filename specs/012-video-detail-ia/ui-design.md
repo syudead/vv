@@ -58,10 +58,11 @@ Only Tailwind's default breakpoints are used, and the switching is CSS only
 - The player is `rounded-lg`, `overflow-hidden`, `bg-navbar`. Its width is
   limited so that a 16:9 video fits the screen height (a video wider than 16:9
   fits at its own ratio), with the existing
-  `max-w-[calc(max(100dvh-17rem,15rem)*16/9)]`. That height leaves room in the
-  left column for the band (`3.25rem`), the column's top and bottom padding, the
-  title and tags and the two information rows, so the left column normally does
-  not scroll (below `lg` the whole page scrolls, so it stays `12.25rem`). So that
+  `max-w-[calc(max(100dvh-8.25rem,15rem)*16/9)]`. That height leaves room in
+  the left column for the band (`3.25rem`), the column's top padding, the gap
+  and one line of the title, so a landscape video fills the column's width and
+  the tags and the two information rows are reached by scrolling the left
+  column (below `lg` the whole page scrolls, so it stays `12.25rem`). So that
   the player does not vanish in a short window, the height term never goes below
   `15rem` (the overflow then scrolls inside the left column). The left column's
   bottom padding is `pb-6`. A player that becomes narrower than the column at
