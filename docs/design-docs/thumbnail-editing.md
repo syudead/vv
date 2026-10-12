@@ -61,6 +61,13 @@ previous session under that session's lock before the new one becomes visible,
 so an apply or run already in progress on the previous session finishes first,
 and only ending a session removes it, so a removed session answers `404`.
 
+A cancel the provider does not confirm still shows the run as `cancelled`,
+but vv keeps the provider's job and retries the cancel on every sweep for up
+to an hour, even after the session ends. Until that cancel is confirmed, a new
+run of the same video is not submitted and fails as `unreachable` (`502
+provider_failed`), so an unconfirmed job is never replaced by one vv can no
+longer cancel.
+
 When the provider reports success, the read fetches the output. A fetch that
 does not arrive (`unreachable`, or a timeout) leaves the run in its state and
 the next read fetches again, within the 10-minute limit; an output that is

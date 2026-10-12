@@ -26,6 +26,10 @@ const thumbnailEditCloseTimeout = 10 * time.Second
 // thumbnailEditProviderTimeout は、状態の読み取り・中止・出力の取得の 1 回の上限である。
 const thumbnailEditProviderTimeout = 30 * time.Second
 
+// thumbnailEditCancelRetryLimit は、提供元が中止を受け付けなかった実行の中止を、片付けのたびに
+// やり直し続ける時間の上限である。
+const thumbnailEditCancelRetryLimit = time.Hour
+
 // ComfyUISettingsReader は ComfyUI の接続先を読む。internal/store の *SettingsStore が満たす。
 type ComfyUISettingsReader interface {
 	ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error)
@@ -68,6 +72,20 @@ type ThumbnailEdits struct {
 	mu      sync.Mutex
 	byID    map[string]*thumbnailEditSession
 	byVideo map[int64]string
+
+	// pendingMu は pending を守る。持ったまま他の錠を取らず、提供元にも問い合わせない。
+	pendingMu sync.Mutex
+	// pending は提供元が中止を受け付けなかった実行である。実行の id ごとに持ち、中止が済むまで
+	// 片付けのたびにやり直す。セッションが終わっても残る。
+	pending map[string]*thumbnailEditPendingCancel
+}
+
+// thumbnailEditPendingCancel は中止をやり直す実行である。
+type thumbnailEditPendingCancel struct {
+	videoID  int64
+	job      domain.ImageEditJob
+	state    domain.ThumbnailEditState
+	failedAt time.Time
 }
 
 // thumbnailEditSession は 1 つの編集のセッションである。mu が下の値を守る。
@@ -118,6 +136,7 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 		now:      now,
 		byID:     map[string]*thumbnailEditSession{},
 		byVideo:  map[int64]string{},
+		pending:  map[string]*thumbnailEditPendingCancel{},
 	}
 }
 
@@ -215,7 +234,8 @@ func (e *ThumbnailEdits) Result(ctx context.Context, id string) ([]byte, error) 
 }
 
 // StartRun は入力を確かめ、接続先の今の値をこの実行の写しにして提供元へ送る。進んでいる実行が
-// あれば先に中止する（R-11）。マスクと参考画像は何も上げる前に確かめ、合わなければ
+// あれば先に中止する（R-11）。この動画の前の実行の中止を提供元が受け付けていなければ、もう一度
+// 中止を試み、それでも済まなければ新しい実行を送らずに unreachable の failed にする。マスクと参考画像は何も上げる前に確かめ、合わなければ
 // domain.ErrThumbnailEditMaskInvalid か domain.ErrThumbnailEditReferenceInvalid を返す。接続先が
 // 消されていれば domain.ErrThumbnailEditNotReady である。提供元が受け付けなければセッションを
 // 同じ理由の failed にし、*domain.ImageEditError を返す。
@@ -238,8 +258,14 @@ func (e *ThumbnailEdits) StartRun(ctx context.Context, id string, input domain.T
 	if !conn.Saved() {
 		return domain.ThumbnailEdit{}, domain.ErrThumbnailEditNotReady
 	}
-	if session.run.inProgress() {
-		e.cancelRun(ctx, session)
+	if (session.run.inProgress() && !e.cancelRun(ctx, session)) || e.retryCancels(ctx, &session.videoID) > 0 {
+		failure := &domain.ImageEditError{
+			Reason: domain.ImageEditUnreachable, Message: "the previous run could not be cancelled at the provider",
+		}
+		now := e.now()
+		session.result = nil
+		session.run = &thumbnailEditRun{state: domain.ThumbnailEditFailed, submittedAt: now, endedAt: now, failure: failure}
+		return domain.ThumbnailEdit{}, failure
 	}
 	session.result = nil
 
@@ -332,8 +358,10 @@ func (e *ThumbnailEdits) Run(ctx context.Context) {
 }
 
 // Sweep は 5 分読まれないセッションを、進んでいる実行を中止してから終え（R-4）、送ってから 10 分
-// 終わらない実行を中止して timed_out で失敗させる（R-11）。
+// 終わらない実行を中止して timed_out で失敗させる（R-11）。提供元が中止を受け付けなかった実行の
+// 中止もやり直す。
 func (e *ThumbnailEdits) Sweep(ctx context.Context) {
+	defer e.retryCancels(ctx, nil)
 	for _, session := range e.sessions() {
 		session.mu.Lock()
 		switch {
@@ -347,8 +375,10 @@ func (e *ThumbnailEdits) Sweep(ctx context.Context) {
 	}
 }
 
-// Close は進んでいる実行を提供元で中止し、すべてのセッションを終える。
+// Close は進んでいる実行を提供元で中止し、すべてのセッションを終える。提供元が中止を受け付けて
+// いなかった実行の中止も最後に一度やり直す。
 func (e *ThumbnailEdits) Close(ctx context.Context) {
+	defer e.retryCancels(ctx, nil)
 	for _, session := range e.sessions() {
 		session.mu.Lock()
 		if !session.ended {
@@ -417,10 +447,27 @@ func (e *ThumbnailEdits) end(ctx context.Context, session *thumbnailEditSession)
 }
 
 // cancelRun は進んでいる実行を提供元で中止し、cancelled にする。提供元が中止を受け付けなくても
-// vv の側では中止したものとして扱う。ページを離れた要求の取り消しに引きずられないよう、ctx の
-// 取り消しは引き継がず、期限（止めるときの猶予）だけを引き継ぐ。
-func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSession) {
+// vv の側では中止したものとして扱うが、その実行は pending に残して片付けのたびに中止をやり直し、
+// false を返す。
+func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSession) bool {
 	run := session.run
+	err := e.cancelJob(ctx, run.job, run.state)
+	if err != nil {
+		e.logger.Warn("could not cancel a thumbnail edit run; retrying on the next sweep",
+			slog.Int64("video", session.videoID), slog.Any("error", err))
+		e.pendingMu.Lock()
+		e.pending[run.job.ID] = &thumbnailEditPendingCancel{
+			videoID: session.videoID, job: run.job, state: run.state, failedAt: e.now(),
+		}
+		e.pendingMu.Unlock()
+	}
+	e.finish(run, domain.ThumbnailEditCancelled, nil)
+	return err == nil
+}
+
+// cancelJob は実行 job を提供元で中止する。ページを離れた要求の取り消しに引きずられないよう、
+// ctx の取り消しは引き継がず、期限（止めるときの猶予）だけを引き継ぐ。
+func (e *ThumbnailEdits) cancelJob(ctx context.Context, job domain.ImageEditJob, state domain.ThumbnailEditState) error {
 	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), thumbnailEditProviderTimeout)
 	defer cancel()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -428,10 +475,39 @@ func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSe
 		cancelCtx, stop = context.WithDeadline(cancelCtx, deadline)
 		defer stop()
 	}
-	if err := e.editor.Cancel(cancelCtx, run.job, run.state); err != nil {
-		e.logger.Warn("could not cancel a thumbnail edit run", slog.Int64("video", session.videoID), slog.Any("error", err))
+	return e.editor.Cancel(cancelCtx, job, state)
+}
+
+// retryCancels は提供元が中止を受け付けなかった実行の中止をやり直し、まだ済んでいない数を返す。
+// videoID が nil でなければその動画の実行だけをやり直す。thumbnailEditCancelRetryLimit を過ぎた
+// 実行は記録に残して諦める。
+func (e *ThumbnailEdits) retryCancels(ctx context.Context, videoID *int64) int {
+	e.pendingMu.Lock()
+	var retries []*thumbnailEditPendingCancel
+	for _, pending := range e.pending {
+		if videoID == nil || pending.videoID == *videoID {
+			retries = append(retries, pending)
+		}
 	}
-	e.finish(run, domain.ThumbnailEditCancelled, nil)
+	e.pendingMu.Unlock()
+
+	remaining := 0
+	for _, pending := range retries {
+		err := e.cancelJob(ctx, pending.job, pending.state)
+		switch {
+		case err == nil:
+		case e.now().Sub(pending.failedAt) >= thumbnailEditCancelRetryLimit:
+			e.logger.Warn("gave up cancelling a thumbnail edit run", slog.Int64("video", pending.videoID), slog.Any("error", err))
+		default:
+			e.logger.Debug("could not cancel a thumbnail edit run", slog.Int64("video", pending.videoID), slog.Any("error", err))
+			remaining++
+			continue
+		}
+		e.pendingMu.Lock()
+		delete(e.pending, pending.job.ID)
+		e.pendingMu.Unlock()
+	}
+	return remaining
 }
 
 // checkTimeLimit は送ってから 10 分たっても終わらない実行を中止し、timed_out で失敗させる。
