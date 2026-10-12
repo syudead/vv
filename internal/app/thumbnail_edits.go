@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -25,6 +26,10 @@ const thumbnailEditCloseTimeout = 10 * time.Second
 
 // thumbnailEditProviderTimeout は、状態の読み取り・中止・出力の取得の 1 回の上限である。
 const thumbnailEditProviderTimeout = 30 * time.Second
+
+// thumbnailEditCancelRetryLimit は、提供元が中止を受け付けなかった実行の中止を、片付けのたびに
+// やり直し続ける時間の上限である。
+const thumbnailEditCancelRetryLimit = time.Hour
 
 // ComfyUISettingsReader は ComfyUI の接続先を読む。internal/store の *SettingsStore が満たす。
 type ComfyUISettingsReader interface {
@@ -68,6 +73,23 @@ type ThumbnailEdits struct {
 	mu      sync.Mutex
 	byID    map[string]*thumbnailEditSession
 	byVideo map[int64]string
+
+	// pendingMu は pending を守る。持ったまま他の錠を取らず、提供元にも問い合わせない。
+	pendingMu sync.Mutex
+	// pending は提供元が中止を受け付けなかった実行である。実行の id ごとに持ち、中止が済むまで
+	// 片付けのたびにやり直す。セッションが終わっても残る。
+	pending map[string]*thumbnailEditPendingCancel
+}
+
+// thumbnailEditPendingCancel は中止をやり直す実行である。
+type thumbnailEditPendingCancel struct {
+	videoID  int64
+	job      domain.ImageEditJob
+	state    domain.ThumbnailEditState
+	failedAt time.Time
+	// attempt は、ある呼び出しが中止をやり直している間だけ nil でなく、やり直しが終わると閉じる。
+	// pendingMu が守る。
+	attempt chan struct{}
 }
 
 // thumbnailEditSession は 1 つの編集のセッションである。mu が下の値を守る。
@@ -118,6 +140,7 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 		now:      now,
 		byID:     map[string]*thumbnailEditSession{},
 		byVideo:  map[int64]string{},
+		pending:  map[string]*thumbnailEditPendingCancel{},
 	}
 }
 
@@ -215,7 +238,8 @@ func (e *ThumbnailEdits) Result(ctx context.Context, id string) ([]byte, error) 
 }
 
 // StartRun は入力を確かめ、接続先の今の値をこの実行の写しにして提供元へ送る。進んでいる実行が
-// あれば先に中止する（R-11）。マスクと参考画像は何も上げる前に確かめ、合わなければ
+// あれば先に中止する（R-11）。この動画の前の実行の中止を提供元が受け付けていなければ、片付けが
+// やり直している最中ならその終わりを待ってから、もう一度中止を試み、それでも済まなければ新しい実行を送らずに unreachable の failed にする。マスクと参考画像は何も上げる前に確かめ、合わなければ
 // domain.ErrThumbnailEditMaskInvalid か domain.ErrThumbnailEditReferenceInvalid を返す。接続先が
 // 消されていれば domain.ErrThumbnailEditNotReady である。提供元が受け付けなければセッションを
 // 同じ理由の failed にし、*domain.ImageEditError を返す。
@@ -238,8 +262,14 @@ func (e *ThumbnailEdits) StartRun(ctx context.Context, id string, input domain.T
 	if !conn.Saved() {
 		return domain.ThumbnailEdit{}, domain.ErrThumbnailEditNotReady
 	}
-	if session.run.inProgress() {
-		e.cancelRun(ctx, session)
+	if (session.run.inProgress() && !e.cancelRun(ctx, session)) || e.retryCancels(ctx, &session.videoID, true) > 0 {
+		failure := &domain.ImageEditError{
+			Reason: domain.ImageEditUnreachable, Message: "the previous run could not be cancelled at the provider",
+		}
+		now := e.now()
+		session.result = nil
+		session.run = &thumbnailEditRun{state: domain.ThumbnailEditFailed, submittedAt: now, endedAt: now, failure: failure}
+		return domain.ThumbnailEdit{}, failure
 	}
 	session.result = nil
 
@@ -332,8 +362,10 @@ func (e *ThumbnailEdits) Run(ctx context.Context) {
 }
 
 // Sweep は 5 分読まれないセッションを、進んでいる実行を中止してから終え（R-4）、送ってから 10 分
-// 終わらない実行を中止して timed_out で失敗させる（R-11）。
+// 終わらない実行を中止して timed_out で失敗させる（R-11）。提供元が中止を受け付けなかった実行の
+// 中止もやり直す。
 func (e *ThumbnailEdits) Sweep(ctx context.Context) {
+	defer e.retryCancels(ctx, nil, false)
 	for _, session := range e.sessions() {
 		session.mu.Lock()
 		switch {
@@ -347,8 +379,10 @@ func (e *ThumbnailEdits) Sweep(ctx context.Context) {
 	}
 }
 
-// Close は進んでいる実行を提供元で中止し、すべてのセッションを終える。
+// Close は進んでいる実行を提供元で中止し、すべてのセッションを終える。提供元が中止を受け付けて
+// いなかった実行の中止も最後に一度やり直す。
 func (e *ThumbnailEdits) Close(ctx context.Context) {
+	defer e.retryCancels(ctx, nil, false)
 	for _, session := range e.sessions() {
 		session.mu.Lock()
 		if !session.ended {
@@ -417,10 +451,27 @@ func (e *ThumbnailEdits) end(ctx context.Context, session *thumbnailEditSession)
 }
 
 // cancelRun は進んでいる実行を提供元で中止し、cancelled にする。提供元が中止を受け付けなくても
-// vv の側では中止したものとして扱う。ページを離れた要求の取り消しに引きずられないよう、ctx の
-// 取り消しは引き継がず、期限（止めるときの猶予）だけを引き継ぐ。
-func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSession) {
+// vv の側では中止したものとして扱うが、その実行は pending に残して片付けのたびに中止をやり直し、
+// false を返す。
+func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSession) bool {
 	run := session.run
+	err := e.cancelJob(ctx, run.job, run.state)
+	if err != nil {
+		e.logger.Warn("could not cancel a thumbnail edit run; retrying on the next sweep",
+			slog.Int64("video", session.videoID), slog.Any("error", err))
+		e.pendingMu.Lock()
+		e.pending[run.job.ID] = &thumbnailEditPendingCancel{
+			videoID: session.videoID, job: run.job, state: run.state, failedAt: e.now(),
+		}
+		e.pendingMu.Unlock()
+	}
+	e.finish(run, domain.ThumbnailEditCancelled, nil)
+	return err == nil
+}
+
+// cancelJob は実行 job を提供元で中止する。ページを離れた要求の取り消しに引きずられないよう、
+// ctx の取り消しは引き継がず、期限（止めるときの猶予）だけを引き継ぐ。
+func (e *ThumbnailEdits) cancelJob(ctx context.Context, job domain.ImageEditJob, state domain.ThumbnailEditState) error {
 	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), thumbnailEditProviderTimeout)
 	defer cancel()
 	if deadline, ok := ctx.Deadline(); ok {
@@ -428,10 +479,95 @@ func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSe
 		cancelCtx, stop = context.WithDeadline(cancelCtx, deadline)
 		defer stop()
 	}
-	if err := e.editor.Cancel(cancelCtx, run.job, run.state); err != nil {
-		e.logger.Warn("could not cancel a thumbnail edit run", slog.Int64("video", session.videoID), slog.Any("error", err))
+	return e.editor.Cancel(cancelCtx, job, state)
+}
+
+// retryCancels は提供元が中止を受け付けなかった実行の中止をやり直し、まだ済んでいない数を返す。
+// videoID が nil でなければその動画の実行だけをやり直す。thumbnailEditCancelRetryLimit を過ぎた
+// 実行は記録に残して諦める。別々の実行は同時にやり直し、1 つの実行のやり直しは一度に 1 つだけに
+// する（Comfy Cloud の POST /interrupt はアカウントの実行中の仕事をすべて止めるので、遅れて届いた
+// やり直しが、その後に送った新しい実行を止めうる）。ほかの呼び出しがやり直している実行は、wait なら
+// その終わりを待ってから、まだ残っていれば自分でやり直し、wait でなければ飛ばす。待つ間に ctx が
+// 終われば、その実行は済んでいないものとして数える。
+func (e *ThumbnailEdits) retryCancels(ctx context.Context, videoID *int64, wait bool) int {
+	tried := map[string]bool{}
+	remaining := 0
+	for {
+		claimed, busy := e.claimCancels(videoID, tried)
+		remaining += e.attemptCancels(ctx, claimed)
+		if !wait || len(busy) == 0 {
+			if len(claimed) == 0 {
+				return remaining
+			}
+			continue
+		}
+		for _, done := range busy {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				return remaining + len(busy)
+			}
+		}
 	}
-	e.finish(run, domain.ThumbnailEditCancelled, nil)
+}
+
+// claimCancels は、やり直す実行のうち、ほかの呼び出しがやり直しておらず tried に無いものを
+// 自分のものにして返す。ほかの呼び出しがやり直している実行は、その終わりを知らせる channel で返す。
+func (e *ThumbnailEdits) claimCancels(videoID *int64, tried map[string]bool) ([]*thumbnailEditPendingCancel, []chan struct{}) {
+	e.pendingMu.Lock()
+	defer e.pendingMu.Unlock()
+	var claimed []*thumbnailEditPendingCancel
+	var busy []chan struct{}
+	for id, pending := range e.pending {
+		switch {
+		case videoID != nil && pending.videoID != *videoID:
+		case pending.attempt != nil:
+			busy = append(busy, pending.attempt)
+		case !tried[id]:
+			tried[id] = true
+			pending.attempt = make(chan struct{})
+			claimed = append(claimed, pending)
+		}
+	}
+	return claimed, busy
+}
+
+// attemptCancels は claimed の実行の中止を同時にやり直し、まだ済んでいない数を返す。
+func (e *ThumbnailEdits) attemptCancels(ctx context.Context, claimed []*thumbnailEditPendingCancel) int {
+	var wg sync.WaitGroup
+	var remaining atomic.Int64
+	for _, pending := range claimed {
+		wg.Go(func() {
+			if !e.attemptCancel(ctx, pending) {
+				remaining.Add(1)
+			}
+		})
+	}
+	wg.Wait()
+	return int(remaining.Load())
+}
+
+// attemptCancel は claimCancels で自分のものにした実行の中止を一度やり直し、済んだか諦めたなら
+// pending から外して true を返す。終わったら、待っている呼び出しに知らせる。
+func (e *ThumbnailEdits) attemptCancel(ctx context.Context, pending *thumbnailEditPendingCancel) bool {
+	err := e.cancelJob(ctx, pending.job, pending.state)
+	resolved := true
+	switch {
+	case err == nil:
+	case e.now().Sub(pending.failedAt) >= thumbnailEditCancelRetryLimit:
+		e.logger.Warn("gave up cancelling a thumbnail edit run", slog.Int64("video", pending.videoID), slog.Any("error", err))
+	default:
+		e.logger.Debug("could not cancel a thumbnail edit run", slog.Int64("video", pending.videoID), slog.Any("error", err))
+		resolved = false
+	}
+	e.pendingMu.Lock()
+	if resolved {
+		delete(e.pending, pending.job.ID)
+	}
+	close(pending.attempt)
+	pending.attempt = nil
+	e.pendingMu.Unlock()
+	return resolved
 }
 
 // checkTimeLimit は送ってから 10 分たっても終わらない実行を中止し、timed_out で失敗させる。

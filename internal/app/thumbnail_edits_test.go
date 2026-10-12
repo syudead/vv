@@ -29,16 +29,28 @@ type fakeImageEditor struct {
 	failure   *domain.ImageEditError
 	readJobs  []domain.ImageEditJob
 	cancels   []string
-	output    []byte
-	outputErr error
-	outputs   int
-	progress  *domain.ImageEditProgress
+	cancelErr error
+	// cancelHold が正なら、次の cancelHold 回の Cancel は、cancelEntered に実行の id を送ってから
+	// cancelRelease が閉じるまで返らない。
+	cancelHold    int
+	cancelEntered chan string
+	cancelRelease chan struct{}
+	// cancelsActive は返っていない Cancel の数、startsWhileCancelling はその間に来た Start の数である。
+	cancelsActive         int
+	startsWhileCancelling int
+	output                []byte
+	outputErr             error
+	outputs               int
+	progress              *domain.ImageEditProgress
 }
 
 func (f *fakeImageEditor) Start(_ context.Context, conn domain.ComfyUISettings, input domain.ImageEditInput) (domain.ImageEditJob, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.starts = append(f.starts, input)
+	if f.cancelsActive > 0 {
+		f.startsWhileCancelling++
+	}
 	if f.startErr != nil {
 		return domain.ImageEditJob{}, f.startErr
 	}
@@ -56,9 +68,22 @@ func (f *fakeImageEditor) State(_ context.Context, job domain.ImageEditJob, _ do
 
 func (f *fakeImageEditor) Cancel(_ context.Context, job domain.ImageEditJob, _ domain.ThumbnailEditState) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.cancels = append(f.cancels, job.ID)
-	return nil
+	f.cancelsActive++
+	hold := f.cancelHold > 0
+	if hold {
+		f.cancelHold--
+	}
+	err := f.cancelErr
+	f.mu.Unlock()
+	if hold {
+		f.cancelEntered <- job.ID
+		<-f.cancelRelease
+	}
+	f.mu.Lock()
+	f.cancelsActive--
+	f.mu.Unlock()
+	return err
 }
 
 func (f *fakeImageEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error) {
@@ -154,6 +179,22 @@ func testPNG(t *testing.T, width, height int) []byte {
 
 // testWebP は 1×1 の可逆の WebP である。
 var testWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
+
+// corruptWebP は、RIFF とチャンクの長さも VP8L の見出しも正しいまま、画像の符号だけが壊れた
+// WebP である。チャンクの並びと見出しを見るだけでは見分けられない。
+func corruptWebP() []byte {
+	data := append([]byte(nil), testWebP...)
+	data[26] = 0
+	return data
+}
+
+// shortWebP は、VP8L の符号が途中で終わり、RIFF とチャンクの長さをその短さに合わせた WebP である。
+func shortWebP() []byte {
+	payload := testWebP[20:27]
+	data := []byte("RIFF\x14\x00\x00\x00WEBPVP8L\x07\x00\x00\x00")
+	data = append(data, payload...)
+	return append(data, 0)
+}
 
 func testJPEG(t *testing.T) []byte {
 	t.Helper()
@@ -422,6 +463,30 @@ func TestThumbnailEditOutputFetchRetries(t *testing.T) {
 }
 
 // 出力が読めない画像なら、succeeded にせず no_output で failed にする。
+// 提供元の WebP の出力は、最後まで読めれば適用できる結果になり、符号が壊れていれば no_output になる。
+func TestThumbnailEditWebPOutput(t *testing.T) {
+	for name, c := range map[string]struct {
+		output []byte
+		want   domain.ThumbnailEditState
+	}{
+		"valid":   {testWebP, domain.ThumbnailEditSucceeded},
+		"corrupt": {corruptWebP(), domain.ThumbnailEditFailed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newEditsFixture(t)
+			id := f.start(t, 1).ID
+			f.run(t, id)
+			f.editor.output = c.output
+			f.editor.set(domain.ThumbnailEditSucceeded, nil)
+			edit := f.get(t, id)
+			wantState(t, edit, c.want)
+			if edit.HasResult != (c.want == domain.ThumbnailEditSucceeded) {
+				t.Fatalf("edit = %+v", edit)
+			}
+		})
+	}
+}
+
 func TestThumbnailEditUndecodableOutput(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -637,6 +702,8 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 		{"forged WebP header", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x05\x00\x00\x00WEBPx")}, domain.ErrThumbnailEditReferenceInvalid},
 		{"truncated WebP reference", domain.ThumbnailEditRunInput{Reference: testWebP[:len(testWebP)-6]}, domain.ErrThumbnailEditReferenceInvalid},
 		{"WebP without an image", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x0c\x00\x00\x00WEBPEXIF\x00\x00\x00\x00")}, domain.ErrThumbnailEditReferenceInvalid},
+		{"WebP with a corrupt bitstream", domain.ThumbnailEditRunInput{Reference: corruptWebP()}, domain.ErrThumbnailEditReferenceInvalid},
+		{"WebP whose bitstream ends early", domain.ThumbnailEditRunInput{Reference: shortWebP()}, domain.ErrThumbnailEditReferenceInvalid},
 		{"reference too large to decode", domain.ThumbnailEditRunInput{Reference: hugePNGHeader(t)}, domain.ErrThumbnailEditReferenceInvalid},
 	} {
 		if _, err := f.edits.StartRun(context.Background(), id, c.input); !errors.Is(err, c.want) {
@@ -659,6 +726,189 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 	f.settings.settings = domain.ComfyUISettings{}
 	if _, err := f.edits.StartRun(context.Background(), id, domain.ThumbnailEditRunInput{}); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
 		t.Fatalf("without a connection: %v", err)
+	}
+}
+
+// 提供元が中止を受け付けなければ、画面には cancelled を返すが、実行は追い続けて片付けのたびに
+// 中止をやり直す。中止が済むまで、その動画の新しい実行は送らずに unreachable で失敗させる。
+func TestThumbnailEditFailedCancelIsRetried(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	id := f.start(t, 1).ID
+	f.run(t, id)
+	f.editor.set(domain.ThumbnailEditRunning, nil)
+	f.get(t, id)
+	f.editor.mu.Lock()
+	f.editor.cancelErr = errors.New("the status endpoint timed out")
+	f.editor.mu.Unlock()
+
+	edit, err := f.edits.Cancel(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantState(t, edit, domain.ThumbnailEditCancelled)
+
+	_, err = f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
+	var failure *domain.ImageEditError
+	if !errors.As(err, &failure) || failure.Reason != domain.ImageEditUnreachable {
+		t.Fatalf("a run while job-1 may still be active = %v", err)
+	}
+	if len(f.editor.starts) != 1 {
+		t.Fatalf("a replacement was submitted while job-1 was unconfirmed: %d starts", len(f.editor.starts))
+	}
+	wantState(t, f.get(t, id), domain.ThumbnailEditFailed)
+	if got := f.editor.cancelled(); len(got) != 2 || got[1] != "job-1" {
+		t.Fatalf("cancels = %v, want job-1 twice", got)
+	}
+
+	f.edits.Sweep(ctx)
+	if got := f.editor.cancelled(); len(got) != 3 || got[2] != "job-1" {
+		t.Fatalf("cancels after the sweep = %v", got)
+	}
+	f.editor.mu.Lock()
+	f.editor.cancelErr = nil
+	f.editor.mu.Unlock()
+	f.edits.Sweep(ctx)
+	f.edits.Sweep(ctx)
+	if got := f.editor.cancelled(); len(got) != 4 {
+		t.Fatalf("cancels after the confirmed cancel = %v, want no more retries", got)
+	}
+
+	edit = f.run(t, id)
+	wantState(t, edit, domain.ThumbnailEditQueued)
+	if len(f.editor.starts) != 2 {
+		t.Fatalf("starts = %d, want the run submitted once job-1 is cancelled", len(f.editor.starts))
+	}
+}
+
+// 片付けがある実行の中止をやり直している間は、同じ動画の新しい実行を送らない。Comfy Cloud の
+// interrupt はアカウントの実行中の仕事をすべて止めるので、遅れて届いた片付けのやり直しが新しい
+// 実行を止めうる。StartRun は片付けのやり直しの終わりを待ち、同じ実行を重ねて中止しない。
+func TestThumbnailEditRunWaitsForInFlightCancelRetry(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	id := f.start(t, 1).ID
+	f.run(t, id)
+	f.editor.set(domain.ThumbnailEditRunning, nil)
+	f.get(t, id)
+	f.editor.mu.Lock()
+	f.editor.cancelErr = errors.New("the status endpoint timed out")
+	f.editor.mu.Unlock()
+	if _, err := f.edits.Cancel(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+
+	f.editor.mu.Lock()
+	f.editor.cancelErr = nil
+	f.editor.cancelHold = 1
+	f.editor.cancelEntered = make(chan string, 1)
+	f.editor.cancelRelease = make(chan struct{})
+	f.editor.mu.Unlock()
+	swept := make(chan struct{})
+	go func() {
+		defer close(swept)
+		f.edits.Sweep(ctx)
+	}()
+	if got := <-f.editor.cancelEntered; got != "job-1" {
+		t.Fatalf("the sweep retried %s", got)
+	}
+
+	type result struct {
+		edit domain.ThumbnailEdit
+		err  error
+	}
+	ran := make(chan result, 1)
+	go func() {
+		edit, err := f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
+		ran <- result{edit, err}
+	}()
+	select {
+	case r := <-ran:
+		close(f.editor.cancelRelease)
+		<-swept
+		t.Fatalf("the run returned while the sweep was still cancelling job-1: %+v, %v", r.edit, r.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(f.editor.cancelRelease)
+	<-swept
+	r := <-ran
+	if r.err != nil {
+		t.Fatal(r.err)
+	}
+	wantState(t, r.edit, domain.ThumbnailEditQueued)
+	f.editor.mu.Lock()
+	defer f.editor.mu.Unlock()
+	if f.editor.startsWhileCancelling != 0 || len(f.editor.starts) != 2 {
+		t.Fatalf("starts = %d, while a cancel was in flight = %d", len(f.editor.starts), f.editor.startsWhileCancelling)
+	}
+	if got := f.editor.cancels; len(got) != 2 {
+		t.Fatalf("cancels = %v, want job-1 cancelled once by the sweep after the first attempt", got)
+	}
+}
+
+// 片付けは、別々の実行の中止を同時にやり直す。1 つずつ待つと、届かない提供元の実行が多いほど
+// 次の片付け（読まれないセッションと時間切れの実行）が遅れる。
+func TestThumbnailEditSweepRetriesCancelsConcurrently(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	f.editor.mu.Lock()
+	f.editor.cancelErr = errors.New("unreachable")
+	f.editor.mu.Unlock()
+	for _, videoID := range []int64{1, 2} {
+		id := f.start(t, videoID).ID
+		f.run(t, id)
+		f.edits.Discard(ctx, id)
+	}
+
+	f.editor.mu.Lock()
+	f.editor.cancelErr = nil
+	f.editor.cancelHold = 2
+	f.editor.cancelEntered = make(chan string, 2)
+	f.editor.cancelRelease = make(chan struct{})
+	f.editor.mu.Unlock()
+	swept := make(chan struct{})
+	go func() {
+		defer close(swept)
+		f.edits.Sweep(ctx)
+	}()
+	for range 2 {
+		select {
+		case <-f.editor.cancelEntered:
+		case <-time.After(5 * time.Second):
+			close(f.editor.cancelRelease)
+			<-swept
+			t.Fatal("the sweep retried one cancel at a time")
+		}
+	}
+	close(f.editor.cancelRelease)
+	<-swept
+	f.edits.Sweep(ctx)
+	if got := f.editor.cancelled(); len(got) != 4 {
+		t.Fatalf("cancels = %v, want each job retried once and then none", got)
+	}
+}
+
+// 終えたセッションの実行も中止をやり直し、1 時間たっても済まなければ諦める。
+func TestThumbnailEditFailedCancelGivesUp(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	id := f.start(t, 1).ID
+	f.run(t, id)
+	f.editor.mu.Lock()
+	f.editor.cancelErr = errors.New("unreachable")
+	f.editor.mu.Unlock()
+	f.edits.Discard(ctx, id)
+	f.wantEnded(t, id)
+
+	f.edits.Sweep(ctx)
+	if got := f.editor.cancelled(); len(got) != 2 {
+		t.Fatalf("cancels = %v, want a retry after the discard", got)
+	}
+	f.clock.Advance(thumbnailEditCancelRetryLimit)
+	f.edits.Sweep(ctx)
+	f.edits.Sweep(ctx)
+	if got := f.editor.cancelled(); len(got) != 3 {
+		t.Fatalf("cancels = %v, want one last retry and then none", got)
 	}
 }
 

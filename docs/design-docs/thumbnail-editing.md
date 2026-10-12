@@ -61,6 +61,17 @@ previous session under that session's lock before the new one becomes visible,
 so an apply or run already in progress on the previous session finishes first,
 and only ending a session removes it, so a removed session answers `404`.
 
+A cancel the provider does not confirm still shows the run as `cancelled`,
+but vv keeps the provider's job and retries the cancel on every sweep for up
+to an hour, even after the session ends. Until that cancel is confirmed, a new
+run of the same video is not submitted and fails as `unreachable` (`502
+provider_failed`), so an unconfirmed job is never replaced by one vv can no
+longer cancel. Only one retry of a job is in flight at a time, and a new run
+waits for any retry of its video's jobs to finish before it is submitted,
+because a late Comfy Cloud interrupt stops every running job of the account.
+Retries of different jobs run concurrently, so a sweep with many unconfirmed
+jobs still takes about one provider timeout.
+
 When the provider reports success, the read fetches the output. A fetch that
 does not arrive (`unreachable`, or a timeout) leaves the run in its state and
 the next read fetches again, within the 10-minute limit; an output that is
@@ -83,12 +94,13 @@ session cancels the run in progress before it submits.
 ## Inputs are checked before anything is uploaded
 
 The mask must be a PNG of the frame's pixel size and the reference a PNG, JPEG
-or WebP of at most 20 MiB; either failing answers `400` with no upload. PNG and
-JPEG are decoded to the end, so a truncated file fails here, and an image over
-8192 × 8192 pixels counts as unreadable so that a forged header cannot make the
-decode allocate without bound. The standard library has no WebP decoder and
-the Plan adds no dependency for one, so a WebP passes when every RIFF chunk is
-complete and its `VP8 ` or `VP8L` chunk has a valid header. The
+or WebP of at most 20 MiB; either failing answers `400` with no upload. Each
+is decoded to the end, so a truncated or corrupt file fails here, and an image
+over 8192 × 8192 pixels counts as unreadable so that a forged header cannot
+make the decode allocate without bound. WebP is decoded with
+`golang.org/x/image/webp`, which reads still images only, so an animated WebP
+is refused. The provider's output passes the same check before the run
+succeeds, and applying a WebP output converts it to PNG for ffmpeg. The
 frame is extracted by the server at the video's size, its long side capped at
 2048 px
 ([R-8](../../specs/045-comfyui-thumbnails/research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)),

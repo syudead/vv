@@ -49,7 +49,7 @@ func (s *SettingsStore) ComfyUISettings(ctx context.Context) (domain.ComfyUISett
 // SaveComfyUISettings は ComfyUI の接続先を 1 つの取引で保存する。値は呼び出し側が
 // domain.ApplyComfyUISettingsUpdate で整えたものを渡す。
 func (s *SettingsStore) SaveComfyUISettings(ctx context.Context, settings domain.ComfyUISettings) error {
-	return writeSettings(ctx, s.db.sql, [][2]string{
+	return writeSettings(ctx, s.db.sql, []settingValue{
 		{comfyUIProviderKey, string(settings.Provider)},
 		{comfyUIURLKey, settings.URL},
 		{comfyUIAPIKeyKey, settings.APIKey},

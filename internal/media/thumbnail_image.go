@@ -8,10 +8,12 @@ import (
 	"image"
 	_ "image/gif"  // 適用する画像の形式として読めるようにする。
 	_ "image/jpeg" // 同上。
-	_ "image/png"  // 同上。ComfyUI の出力は PNG である。
+	"image/png"    // 同上。ComfyUI の出力は PNG である。
 	"math"
 	"os/exec"
 	"strconv"
+
+	_ "golang.org/x/image/webp" // 同上。参考画像と同じく、提供元の出力に WebP を受け付ける。
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -28,10 +30,19 @@ const thumbnailLongSide = 640
 // 画像自身の縦横比を保ち、長辺を 640px にする。品質は抽出したサムネイル（thumbnailArgs）と
 // 同じ -q:v 4 である。
 //
-// data を画像として読めなければ domain.ErrThumbnailImageInvalid を返す。
+// data を画像として読めなければ domain.ErrThumbnailImageInvalid を返す。WebP は Go で読んだ画像を
+// PNG にして ffmpeg へ渡し、ffmpeg の WebP の読み手の有無に左右されないようにする。
 func FitThumbnailImage(ctx context.Context, data []byte, aspect float64) ([]byte, error) {
-	if _, _, err := image.Decode(bytes.NewReader(data)); err != nil {
+	img, format, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
 		return nil, errors.Join(domain.ErrThumbnailImageInvalid, err)
+	}
+	if format == "webp" {
+		var buf bytes.Buffer
+		if err := png.Encode(&buf, img); err != nil {
+			return nil, fmt.Errorf("cannot convert the WebP thumbnail image to PNG: %w", err)
+		}
+		data = buf.Bytes()
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
