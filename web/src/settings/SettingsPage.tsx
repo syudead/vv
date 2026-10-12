@@ -39,6 +39,7 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import AutoImportSection from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
+import ComfyUISection from "./ComfyUISection";
 import OllamaSection from "./OllamaSection";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
@@ -378,6 +379,7 @@ export default function SettingsPage() {
       </PageSection>
       <OllamaSection />
       <AutoTaggingSection />
+      <ComfyUISection />
       <TranscodingSection />
       <APITokensSection />
       <NetworkSection />
