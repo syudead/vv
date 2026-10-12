@@ -29,7 +29,7 @@ interface Video {
   probeState: string;
   thumbnailState: string;
   thumbnailUrl?: string;
-  thumbnailGenerated?: boolean;
+  thumbnailImage?: "generated" | "uploaded";
 }
 
 interface RecordedPrompt {
@@ -263,7 +263,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await expect(section.getByText("Connected to ComfyUI.")).toBeVisible();
 
     const before = await readVideo(request);
-    expect(before.thumbnailGenerated).not.toBe(true);
+    expect(before.thumbnailImage).toBeUndefined();
     const entry = await openVideo(page);
     const editor = await startEdit(entry);
 
@@ -303,7 +303,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await expect(generated).toBeVisible();
     await expect.poll(() => thumbnailKind(generated)).toBe("generated");
     const applied = await readVideo(request);
-    expect(applied.thumbnailGenerated).toBe(true);
+    expect(applied.thumbnailImage).toBe("generated");
     expect(applied.thumbnailUrl).not.toBe(before.thumbnailUrl);
 
     await page.reload();
@@ -316,7 +316,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
     expect(scan.status()).toBe(202);
     await waitForScan(request, ((await scan.json()) as { id: number }).id);
-    expect((await readVideo(request)).thumbnailGenerated).toBe(true);
+    expect((await readVideo(request)).thumbnailImage).toBe("generated");
     await expectLibraryThumbnail(page, request, "generated");
     await page.goto(`/videos/${String(target().id)}`);
     await expect
@@ -333,7 +333,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await expect(page.getByRole("img", { name: "Generated thumbnail" })).toBeVisible();
     await page.getByRole("button", { name: "Use the frame instead" }).click();
     await expect(page.getByRole("img", { name: "Generated thumbnail" })).toHaveCount(0);
-    expect((await readVideo(request)).thumbnailGenerated).not.toBe(true);
+    expect((await readVideo(request)).thumbnailImage).toBeUndefined();
     await expectLibraryThumbnail(page, request, "frame");
   });
 
@@ -341,7 +341,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
   test("実行の中止と結果の破棄ではサムネイルが変わらない", async ({ page, request }) => {
     test.setTimeout(90_000);
     const before = await readVideo(request);
-    expect(before.thumbnailGenerated).not.toBe(true);
+    expect(before.thumbnailImage).toBeUndefined();
 
     // 中止: 実行中のうちに中止する。
     await setTiming(request, { queuedMs: 500, runningMs: 60_000 });
@@ -358,7 +358,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await editor.getByRole("button", { name: "Close" }).click();
     await expect(editor).toBeHidden();
     let after = await readVideo(request);
-    expect(after.thumbnailGenerated).not.toBe(true);
+    expect(after.thumbnailImage).toBeUndefined();
     expect(after.thumbnailUrl).toBe(before.thumbnailUrl);
 
     // 破棄: 結果が出てから捨てる。
@@ -371,7 +371,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await editor.getByRole("button", { name: "Discard" }).click();
     await expect(editor).toBeHidden();
     after = await readVideo(request);
-    expect(after.thumbnailGenerated).not.toBe(true);
+    expect(after.thumbnailImage).toBeUndefined();
     expect(after.thumbnailUrl).toBe(before.thumbnailUrl);
     await expect(page.getByRole("img", { name: "Generated thumbnail" })).toHaveCount(0);
     await expectLibraryThumbnail(page, request, "frame");

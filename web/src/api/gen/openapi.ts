@@ -704,7 +704,7 @@ export interface paths {
          * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
          *     `thumbnailPositionMs` があればその場面、無ければ自動の位置で作る。画像を適用していなくても
          *     作り直して 200 を返す。応答は生成が終わってから返し、形は `GET /api/videos/{id}` と同じ
-         *     `Video` である（`thumbnailGenerated` は無く、新しい版の `thumbnailUrl`）。誤りは
+         *     `Video` である（`thumbnailImage` は無く、新しい版の `thumbnailUrl`）。誤りは
          *     `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
          *     `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
          *     404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる
@@ -3045,7 +3045,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -3067,10 +3067,12 @@ export interface components {
              */
             thumbnailPositionMs?: number;
             /**
-             * @description 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
-             *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+             * @description 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+             *     `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+             *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+             * @enum {string}
              */
-            thumbnailGenerated?: boolean;
+            thumbnailImage?: "generated" | "uploaded";
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */

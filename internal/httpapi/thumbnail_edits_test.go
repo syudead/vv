@@ -109,14 +109,17 @@ type editApplier struct {
 	db *store.DB
 }
 
-func (e editApplier) ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error) {
+func (e editApplier) ApplyThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
+) (domain.Video, error) {
 	e.f.mu.Lock()
 	err := e.f.applyErr
 	e.f.mu.Unlock()
 	if err != nil {
 		return domain.Video{}, err
 	}
-	return e.db.Ingest().ApplyThumbnailImage(ctx, videoID, contentKey, image)
+	return e.db.Ingest().ApplyThumbnailImage(ctx, videoID, contentKey,
+		domain.AppliedThumbnailImage{Image: image, Source: image, Origin: origin})
 }
 
 func editPNG(width, height int) []byte {
@@ -361,7 +364,7 @@ func TestApplyThumbnailEdit(t *testing.T) {
 
 	rec := f.editRequest(http.MethodPost, id, "/apply", f.owner)
 	video := decode[gen.Video](t, rec)
-	if rec.Code != http.StatusOK || video.Id != f.ids["a"] || video.ThumbnailGenerated == nil || !*video.ThumbnailGenerated || video.Location == nil {
+	if rec.Code != http.StatusOK || video.Id != f.ids["a"] || video.ThumbnailImage == nil || *video.ThumbnailImage != gen.Generated || video.Location == nil {
 		t.Fatalf("apply = %d %s", rec.Code, rec.Body)
 	}
 	check("ended", f.editRequest(http.MethodGet, id, "", f.owner),

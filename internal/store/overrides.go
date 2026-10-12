@@ -18,7 +18,8 @@ import (
 
 // overrideColumns は動画を返す読み出し（videoColumns・listColumns）の末尾に足す列で、
 // 並びは scanVideo と対応する。表示名・位置・改版番号・適用した画像の改版番号
-// （specs/045-comfyui-thumbnails/data-model.md）の順である。有効な題名
+// （specs/045-comfyui-thumbnails/data-model.md）・適用した画像の出どころ
+// （specs/046-thumbnail-image-upload/data-model.md）の順である。有効な題名
 // （coalesce(display_name, 所在の題名)）は scanVideo が決める。内容の識別子が空の動画には
 // 結ばない。
 const overrideColumns = `(select ov.display_name from video_overrides ov
@@ -28,7 +29,9 @@ const overrideColumns = `(select ov.display_name from video_overrides ov
 	(select ov.thumbnail_revision from video_overrides ov
 		where ov.content_key = videos.content_key and videos.content_key <> '') as thumbnail_revision,
 	(select ti.revision from thumbnail_images ti
-		where ti.content_key = videos.content_key and videos.content_key <> '') as thumbnail_image_revision`
+		where ti.content_key = videos.content_key and videos.content_key <> '') as thumbnail_image_revision,
+	(select ti.origin from thumbnail_images ti
+		where ti.content_key = videos.content_key and videos.content_key <> '') as thumbnail_image_origin`
 
 // SetDisplayName は動画 videoID の表示名を name にし、有効な題名を含む動画を返す。name は
 // domain.NormalizeDisplayName で整え、空（空白だけを含む）なら解除する。規則に合わなければ

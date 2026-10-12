@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -200,33 +201,65 @@ func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 }
 
 // assertThumbnailImageInvariant は thumbnail_images の行の不変条件を確かめる
-// （specs/045-comfyui-thumbnails/data-model.md の Rules）。空の content_key の行と空の画像の行は
-// 無い（書く側が拒む）。
+// （specs/045-comfyui-thumbnails/data-model.md、specs/046-thumbnail-image-upload/data-model.md の
+// Rules）。空の content_key の行、空の画像の行、空の元の画像の行（null は許す）、出どころが
+// generated・uploaded のどちらでもない行は無い（書く側が拒む）。
 func assertThumbnailImageInvariant(t *testing.T, db *DB) {
 	t.Helper()
-
-	var present int
-	if err := db.sql.QueryRow(
-		`select count(*) from sqlite_master where type = 'table' and name = 'thumbnail_images'`,
-	).Scan(&present); err != nil {
-		t.Fatalf("適用した画像の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	violations, err := thumbnailImageViolations(db)
+	if err != nil {
+		t.Fatalf("適用した画像の不変条件を検査できない: %v", err)
 	}
-	if present == 0 {
-		return
+	for _, violation := range violations {
+		t.Errorf("thumbnail_images に%s", violation)
+	}
+}
+
+// thumbnailImageViolations は thumbnail_images の不変条件に反する行を数え、反した条件ごとに
+// 1 つの説明を返す。表や列が無い（down migration の検査の途中）なら、その条件は数えない。
+func thumbnailImageViolations(db *DB) ([]string, error) {
+	columns, err := thumbnailImageColumns(db)
+	if err != nil {
+		return nil, err
 	}
 
-	for name, condition := range map[string]string{
-		"空の content_key の行": `content_key = ''`,
-		"空の画像の行":            `length(image) = 0`,
+	var violations []string
+	for _, check := range []struct{ name, column, condition string }{
+		{"空の content_key の行", "content_key", `content_key = ''`},
+		{"空の画像の行", "image", `length(image) = 0`},
+		{"空の元の画像の行", "source", `source is not null and length(source) = 0`},
+		{"出どころが未知の行", "origin", `origin not in ('generated', 'uploaded')`},
 	} {
+		if !columns[check.column] {
+			continue
+		}
 		var count int
-		if err := db.sql.QueryRow(`select count(*) from thumbnail_images where ` + condition).Scan(&count); err != nil {
-			t.Fatalf("適用した画像の不変条件を検査できない: %v", err)
+		if err := db.sql.QueryRow(`select count(*) from thumbnail_images where ` + check.condition).Scan(&count); err != nil {
+			return nil, err
 		}
 		if count != 0 {
-			t.Errorf("thumbnail_images に%sが %d 行ある", name, count)
+			violations = append(violations, fmt.Sprintf("%sが %d 行ある", check.name, count))
 		}
 	}
+	return violations, nil
+}
+
+// thumbnailImageColumns は thumbnail_images の列名を返す。表が無ければ空である。
+func thumbnailImageColumns(db *DB) (map[string]bool, error) {
+	rows, err := db.sql.Query(`select name from pragma_table_info('thumbnail_images')`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		columns[name] = true
+	}
+	return columns, rows.Err()
 }
 
 // assertVideoEditInvariant は video_edits の行の不変条件を確かめる

@@ -43,10 +43,13 @@ type ThumbnailFrameSource interface {
 	FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
 }
 
-// ThumbnailImageApplier は画像を動画のサムネイルとして適用する。*Ingest が満たす。動画が消えたか
-// 別の内容を持てば domain.ErrContentChanged、画像を読めなければ domain.ErrThumbnailImageInvalid を返す。
+// ThumbnailImageApplier は出どころ origin の画像を動画のサムネイルとして適用する。*Ingest が満たす。
+// 動画が消えたか別の内容を持てば domain.ErrContentChanged、画像を読めなければ
+// domain.ErrThumbnailImageInvalid を返す。
 type ThumbnailImageApplier interface {
-	ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
+	ApplyThumbnailImage(
+		ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
+	) (domain.Video, error)
 }
 
 // ThumbnailEditsOptions は ThumbnailEdits を組み立てる部品である。
@@ -316,7 +319,8 @@ func (e *ThumbnailEdits) Apply(ctx context.Context, id string) (domain.Video, er
 	if !hasResult(session) {
 		return domain.Video{}, domain.ErrThumbnailEditNoResult
 	}
-	video, err := e.applier.ApplyThumbnailImage(ctx, session.videoID, session.contentKey, session.result)
+	video, err := e.applier.ApplyThumbnailImage(
+		ctx, session.videoID, session.contentKey, session.result, domain.ThumbnailImageGenerated)
 	if errors.Is(err, domain.ErrContentChanged) {
 		e.end(ctx, session)
 		return domain.Video{}, err

@@ -566,7 +566,7 @@ export async function setVideoThumbnailPosition(
 /**
  * revertThumbnailImage は動画に適用したサムネイルの画像を外し、代表サムネイルを
  * `thumbnailPositionMs` の場面（無ければ自動の位置）のコマから作り直す。画像を適用していなくても
- * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailGenerated` が
+ * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailImage` が
  * 無く、新しい版の `thumbnailUrl` が反映済みである
  * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
  *

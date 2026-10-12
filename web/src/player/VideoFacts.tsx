@@ -331,7 +331,7 @@ export default function VideoFacts({
               }
             />
           )}
-          {owner && video.thumbnailGenerated === true && (
+          {owner && video.thumbnailImage === "generated" && (
             <GeneratedThumbnailFact
               url={video.thumbnailUrl}
               reverting={thumbnail.sending === "revert"}
@@ -339,7 +339,7 @@ export default function VideoFacts({
             />
           )}
           {owner &&
-            video.thumbnailGenerated !== true &&
+            video.thumbnailImage === undefined &&
             video.thumbnailPositionMs !== undefined && (
               <ThumbnailFact
                 url={video.thumbnailUrl}

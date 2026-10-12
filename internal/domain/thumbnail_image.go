@@ -26,3 +26,31 @@ func ThumbnailImageAspect(video Video) float64 {
 	}
 	return 0
 }
+
+// ThumbnailImageOrigin は適用した画像の出どころである（specs/046-thumbnail-image-upload/data-model.md、
+// research.md R-5）。thumbnail_images.origin に書き、所有者の応答の thumbnailImage になる。
+type ThumbnailImageOrigin string
+
+const (
+	// ThumbnailImageGenerated は ComfyUI の編集結果を適用した画像である。
+	ThumbnailImageGenerated ThumbnailImageOrigin = "generated"
+	// ThumbnailImageUploaded は所有者がアップロードした画像である。
+	ThumbnailImageUploaded ThumbnailImageOrigin = "uploaded"
+)
+
+// Valid は出どころが既知の値かを返す。
+func (o ThumbnailImageOrigin) Valid() bool {
+	return o == ThumbnailImageGenerated || o == ThumbnailImageUploaded
+}
+
+// AppliedThumbnailImage は適用する画像の行（thumbnail_images）に書く内容である
+// （specs/046-thumbnail-image-upload/data-model.md、research.md R-3）。
+type AppliedThumbnailImage struct {
+	// Image は動画の縦横比に合わせた長辺 640 px の JPEG で、公開する代表サムネイルと同じバイト列。
+	Image []byte
+	// Source は Image と同じ切り抜きで長辺を最大 2048 px にした JPEG で、今のサムネイルからの
+	// 編集の元になる。
+	Source []byte
+	// Origin は画像の出どころである。
+	Origin ThumbnailImageOrigin
+}

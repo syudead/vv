@@ -39,11 +39,14 @@ type IngestStore interface {
 	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
 	// （specs/029-video-overrides/data-model.md §3）。
 	SetThumbnailPosition(ctx context.Context, videoID int64, positionMs *int64) (domain.Video, error)
-	// ApplyThumbnailImage は内容 contentKey の動画 videoID に適用した画像 image を記録し、同じ取引で
-	// その内容の動画の thumbnail_state を done にする。動画が無いか内容が違えば
-	// domain.ErrContentChanged で、何も書かない。画像を公開したあと、生成の錠の中で呼ぶ
-	// （specs/045-comfyui-thumbnails/data-model.md）。
-	ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
+	// ApplyThumbnailImage は内容 contentKey の動画 videoID に適用した画像 image（代表サムネイル・
+	// 元の画像・出どころ）を記録し、同じ取引でその内容の動画の thumbnail_state を done にする。
+	// 動画が無いか内容が違えば domain.ErrContentChanged で、何も書かない。画像を公開したあと、
+	// 生成の錠の中で呼ぶ（specs/045-comfyui-thumbnails/data-model.md、
+	// specs/046-thumbnail-image-upload/data-model.md）。
+	ApplyThumbnailImage(
+		ctx context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
+	) (domain.Video, error)
 	// RevertThumbnailImage は動画 videoID の内容に適用した画像の行を消し、同じ取引でその内容の
 	// 動画の thumbnail_state を done にする。コマを公開したあと、生成の錠の中で呼ぶ。
 	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
@@ -111,6 +114,10 @@ type Generator interface {
 	// FitThumbnailImage は所有者が適用する画像 image を動画の表示上の縦横比 aspect（0 は不明）に
 	// 合わせた代表サムネイルの JPEG を返す。読めない画像は domain.ErrThumbnailImageInvalid。
 	FitThumbnailImage(ctx context.Context, image []byte, aspect float64) ([]byte, error)
+	// FitThumbnailSource は image を FitThumbnailImage と同じ切り抜きで長辺最大 2048px にした
+	// JPEG を返す（specs/046-thumbnail-image-upload/research.md R-3）。読めない画像は
+	// domain.ErrThumbnailImageInvalid。
+	FitThumbnailSource(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 }
 
 // IngestOptions は取り込みの組み立てに必要な依存である。
@@ -450,18 +457,20 @@ func (i *Ingest) replaceThumbnailWithFrame(
 	return saved, nil
 }
 
-// ApplyThumbnailImage は、所有者が編集した画像 image を動画 videoID の代表サムネイルにする
-// （specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-7・R-10）。contentKey は
-// 編集を始めたときの動画の内容である。
+// ApplyThumbnailImage は、出どころ origin の画像 image を動画 videoID の代表サムネイルにする
+// （specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-7・R-10、
+// specs/046-thumbnail-image-upload/research.md R-3）。contentKey は編集やアップロードを始めた
+// ときの動画の内容である。
 //
 // 生成の錠の中で動画を読み直し、動画が無いか内容が contentKey でなければ何も書かずに
-// domain.ErrContentChanged を返す。画像は動画の表示上の縦横比に合わせ（読めなければ
-// domain.ErrThumbnailImageInvalid）、今の代表サムネイルを写してから公開し、1 つの取引で
-// 画像の行を書いて、その内容の動画の thumbnail_state を done にする。公開に失敗すれば画像の行も
+// domain.ErrContentChanged を返す。画像は動画の表示上の縦横比に合わせた長辺 640px の代表
+// サムネイルと長辺最大 2048px の元の画像にし（読めなければ domain.ErrThumbnailImageInvalid）、
+// 今の代表サムネイルを写してから代表サムネイルを公開し、1 つの取引で画像の行（代表サムネイル・
+// 元の画像・出どころ）を書いて、その内容の動画の thumbnail_state を done にする。公開に失敗すれば画像の行も
 // ファイルも元のまま、記録に失敗すれば写した前のファイルへ戻す。位置の指定と同じ錠の中で
 // 行うので、あとで確定した方が残る。
 func (i *Ingest) ApplyThumbnailImage(
-	ctx context.Context, videoID int64, contentKey string, image []byte,
+	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
 	if contentKey == "" {
 		return domain.Video{}, domain.ErrContentChanged
@@ -478,7 +487,7 @@ func (i *Ingest) ApplyThumbnailImage(
 		if video.ContentKey != contentKey {
 			return false, domain.ErrContentChanged
 		}
-		fitted, err := i.generator.FitThumbnailImage(ctx, image, domain.ThumbnailImageAspect(video))
+		applied, err := i.fitThumbnailImage(ctx, image, video, origin)
 		if err != nil {
 			return false, err
 		}
@@ -487,12 +496,12 @@ func (i *Ingest) ApplyThumbnailImage(
 			return false, err
 		}
 		if err := i.files.PublishThumbnail(contentKey, func(output string) error {
-			return writeThumbnailImage(output, fitted)
+			return writeThumbnailImage(output, applied.Image)
 		}); err != nil {
 			discard()
 			return false, err
 		}
-		recorded, err := i.store.ApplyThumbnailImage(ctx, videoID, contentKey, fitted)
+		recorded, err := i.store.ApplyThumbnailImage(ctx, videoID, contentKey, applied)
 		if err != nil {
 			return true, errors.Join(err, restore())
 		}
@@ -504,6 +513,23 @@ func (i *Ingest) ApplyThumbnailImage(
 		return domain.Video{}, err
 	}
 	return saved, nil
+}
+
+// fitThumbnailImage は画像 image を動画 video の表示上の縦横比に合わせ、記録する行の内容
+// （代表サムネイル・元の画像・出どころ origin）にする。
+func (i *Ingest) fitThumbnailImage(
+	ctx context.Context, image []byte, video domain.Video, origin domain.ThumbnailImageOrigin,
+) (domain.AppliedThumbnailImage, error) {
+	aspect := domain.ThumbnailImageAspect(video)
+	fitted, err := i.generator.FitThumbnailImage(ctx, image, aspect)
+	if err != nil {
+		return domain.AppliedThumbnailImage{}, err
+	}
+	source, err := i.generator.FitThumbnailSource(ctx, image, aspect)
+	if err != nil {
+		return domain.AppliedThumbnailImage{}, err
+	}
+	return domain.AppliedThumbnailImage{Image: fitted, Source: source, Origin: origin}, nil
 }
 
 // writeThumbnailImage は適用した画像 image を一時置き場のパス output へ書く。

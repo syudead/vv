@@ -9,11 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 適用したサムネイルの画像の取り消しと、thumbnailGenerated・thumbnailUrl の版
-// （specs/045-comfyui-thumbnails/contracts/screen-api.md）は、本物の認証・保存層で確かめる。
+// 適用したサムネイルの画像の取り消しと、thumbnailImage・thumbnailUrl の版
+// （specs/045-comfyui-thumbnails/contracts/screen-api.md、
+// specs/046-thumbnail-image-upload/contracts/screen-api.md）は、本物の認証・保存層で確かめる。
 // 画像の生成だけを fakeThumbnailPicker が代わりにする。
 
 func (f *guestFixture) revertThumbnailImage(name string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -22,36 +24,44 @@ func (f *guestFixture) revertThumbnailImage(name string, cookies ...*http.Cookie
 	})
 }
 
-// applyImage は動画 name に画像を適用したことを保存層へ直接記録する（適用の経路は編集の
+// applyImage は動画 name に生成画像を適用したことを保存層へ直接記録する（適用の経路は編集の
 // セッションのユニットが作る）。
 func (f *guestFixture) applyImage(t *testing.T, name string) {
+	t.Helper()
+	f.applyImageOf(t, name, domain.ThumbnailImageGenerated)
+}
+
+// applyImageOf は動画 name に出どころ origin の画像を適用したことを保存層へ直接記録する。
+func (f *guestFixture) applyImageOf(t *testing.T, name string, origin domain.ThumbnailImageOrigin) {
 	t.Helper()
 	ctx := context.Background()
 	video, err := f.env.db.Ingest().GetVideo(ctx, f.ids[name])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.env.db.Ingest().ApplyThumbnailImage(ctx, video.ID, video.ContentKey, []byte("jpeg")); err != nil {
+	if _, err := f.env.db.Ingest().ApplyThumbnailImage(ctx, video.ID, video.ContentKey, domain.AppliedThumbnailImage{
+		Image: []byte("jpeg"), Source: []byte("source"), Origin: origin,
+	}); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// 画像を適用すると、所有者の応答に thumbnailGenerated が入り、thumbnailUrl の版が
-// `-g<改版番号>` になる。ゲストは同じ URL を受け取り、thumbnailGenerated を受け取らない。
-// 取り消し（DELETE）は 200 で thumbnailGenerated の無い Video を返し、URL が元に戻る。
+// 画像を適用すると、所有者の応答に thumbnailImage: "generated" が入り、thumbnailUrl の版が
+// `-g<改版番号>` になる。ゲストは同じ URL を受け取り、thumbnailImage を受け取らない。
+// 取り消し（DELETE）は 200 で thumbnailImage の無い Video を返し、URL が元に戻る。
 // 画像が無くても 200 である。
 func TestRevertThumbnailImage(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
 	original := decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner))
-	if original.ThumbnailGenerated != nil {
-		t.Fatalf("前提: thumbnailGenerated = %v", *original.ThumbnailGenerated)
+	if original.ThumbnailImage != nil {
+		t.Fatalf("前提: thumbnailImage = %v", *original.ThumbnailImage)
 	}
 
 	f.applyImage(t, "a")
 	applied := decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner))
-	if applied.ThumbnailGenerated == nil || !*applied.ThumbnailGenerated {
-		t.Errorf("適用後の thumbnailGenerated = %v", applied.ThumbnailGenerated)
+	if applied.ThumbnailImage == nil || *applied.ThumbnailImage != gen.Generated {
+		t.Errorf("適用後の thumbnailImage = %v", applied.ThumbnailImage)
 	}
 	appliedURL := thumbnailURLOf(applied)
 	if appliedURL == thumbnailURLOf(original) || !strings.Contains(appliedURL, "-g") {
@@ -76,9 +86,9 @@ func TestRevertThumbnailImage(t *testing.T) {
 		t.Fatalf("取り消し: status = %d: %s", rec.Code, rec.Body)
 	}
 	reverted := decode[gen.Video](t, rec)
-	if reverted.ThumbnailGenerated != nil || thumbnailURLOf(reverted) != thumbnailURLOf(original) {
-		t.Errorf("取り消しの応答: thumbnailGenerated = %v, thumbnailUrl = %q, want %q",
-			reverted.ThumbnailGenerated, thumbnailURLOf(reverted), thumbnailURLOf(original))
+	if reverted.ThumbnailImage != nil || thumbnailURLOf(reverted) != thumbnailURLOf(original) {
+		t.Errorf("取り消しの応答: thumbnailImage = %v, thumbnailUrl = %q, want %q",
+			reverted.ThumbnailImage, thumbnailURLOf(reverted), thumbnailURLOf(original))
 	}
 	if reverted.Location == nil || len(reverted.Tags) != 1 {
 		t.Errorf("取り消しの応答が詳細と同じ形でない: %+v", reverted)
@@ -86,6 +96,16 @@ func TestRevertThumbnailImage(t *testing.T) {
 
 	if rec := f.revertThumbnailImage("a", f.owner); rec.Code != http.StatusOK {
 		t.Errorf("画像の無い取り消し: status = %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// アップロードした画像を適用していれば、所有者の応答の thumbnailImage は "uploaded" になる。
+func TestThumbnailImageOriginUploaded(t *testing.T) {
+	f := newGuestFixture(t, true)
+	f.applyImageOf(t, "a", domain.ThumbnailImageUploaded)
+	video := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner))
+	if video.ThumbnailImage == nil || *video.ThumbnailImage != gen.Uploaded {
+		t.Fatalf("thumbnailImage = %v, want uploaded", video.ThumbnailImage)
 	}
 }
 
@@ -103,7 +123,7 @@ func TestRevertThumbnailImageRejects(t *testing.T) {
 		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailFrameUnavailable,
 	})
 	after := decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner))
-	if after.ThumbnailGenerated == nil || !*after.ThumbnailGenerated {
+	if after.ThumbnailImage == nil || *after.ThumbnailImage != gen.Generated {
 		t.Errorf("生成の失敗で画像が外れた")
 	}
 	f.thumbnails.setFail(nil)
