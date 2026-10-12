@@ -53,14 +53,14 @@ func New(settings SettingsSource) *Client {
 
 // NewWithOptions は opts で差し替えた Client を作る。
 func NewWithOptions(settings SettingsSource, opts Options) *Client {
-	client := opts.HTTPClient
-	if client == nil {
-		client = &http.Client{
-			// 転送先へ API キーを持ち出さないよう、確かめでは転送に従わない。転送の応答は
-			// ComfyUI でない応答として扱う。
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-		}
+	client := &http.Client{}
+	if opts.HTTPClient != nil {
+		copied := *opts.HTTPClient
+		client = &copied
 	}
+	// 転送先へ API キーを持ち出さないよう、転送には自分では従わない。確かめは転送の応答を
+	// ComfyUI でない応答として扱い、出力の取得は転送先をキーを付けずに取り直す。
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	cloud := opts.CloudBaseURL
 	if cloud == "" {
 		cloud = CloudBaseURL

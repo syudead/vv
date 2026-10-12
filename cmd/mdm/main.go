@@ -40,6 +40,9 @@ import (
 // -ldflags "-X main.version=…" で上書きできる。
 var version = domain.DefaultVersion
 
+// ComfyUI のアダプタは画像編集のポートを満たす。サムネイルの編集のセッションがこの口で使う。
+var _ app.ImageEditor = (*comfyui.Client)(nil)
+
 // commit と builtAt は Go がコミット情報を埋められないビルド（.git を持ち込まない
 // Docker イメージ）向けの代わりである。-ldflags "-X main.commit=… -X main.builtAt=…"
 // で渡す。builtAt は RFC 3339 で、vcs.time と同じくコミットの時刻を表す。
