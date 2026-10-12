@@ -42,6 +42,9 @@ file into a handbook.
 - When writing or changing a Plan and its artifacts, follow
   [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
 - Prefer focused, reviewable changes with automated checks.
+- Keep each function a change adds or makes more complex at complexity 25 or
+  less, and share code instead of copying it; the commands that check this are
+  in [complexity-and-duplication.md](docs/design-docs/complexity-and-duplication.md).
 - Before every push, run `task check` when any path outside `*.md`, `docs/`
   and `specs/` changed, and `task check-docs` when any path inside them
   changed (both for a mixed change). Fix formatting failures with `task fmt`.
@@ -79,3 +82,12 @@ file into a handbook.
   separate PR. On the integration PR, fix only blocking review findings and
   list the rest for the maintainer
   ([integrate](.agents/skills/issue-handoff/references/integrate.md#review-of-the-integration-pr)).
+
+## Review guidelines
+
+- Treat as P1 a function the change adds or makes more complex whose
+  complexity goes over 25 (gocyclo for Go; ESLint `complexity` with
+  `variant: "modified"` for `web/src`), and code the change copies from
+  elsewhere instead of sharing it. Tests, generated code and code the change
+  only moves are exempt
+  ([complexity-and-duplication.md](docs/design-docs/complexity-and-duplication.md)).
