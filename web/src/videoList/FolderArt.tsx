@@ -14,6 +14,21 @@ import { cn } from "../lib/cn";
 // 共有する（どちらの画面にも属さないので videoList に置く）。
 
 /**
+ * sheetKeys は差し込む 1 枚ごとの React の key である。動画の id を基にし、同じ動画が
+ * 2 度目以降に出たときだけ出た回数を足す。プレイリストの絵柄（covers）は動画の項目と、
+ * 並びの先頭が同じ動画のグループの項目とで同じ動画を 2 度持てる。重ならない限り key は
+ * 動画の id のままなので、再取得で並びが変わっても同じ 1 枚の要素を保つ。
+ */
+function sheetKeys(previews: readonly FolderPreview[]): string[] {
+  const seen = new Map<number, number>();
+  return previews.map(({ videoId }) => {
+    const count = seen.get(videoId) ?? 0;
+    seen.set(videoId, count + 1);
+    return count === 0 ? String(videoId) : `${String(videoId)}:${String(count)}`;
+  });
+}
+
+/**
  * sheetLayout は差し込むサムネイルの位置（背板に対する %）と傾き（度）である。
  * 件数ごとに左右へ均等に広げ、奇数番目をわずかに高く置く。前板が無いので、
  * 束が背板の上下の中央に来る高さに置く（ui-design.md）。
@@ -148,6 +163,7 @@ export default function FolderArt({
   onPreviewStart?: (id: number) => void;
 }) {
   const shown = previews.slice(0, 4);
+  const keys = sheetKeys(shown);
   const layout = sheetLayout[shown.length] ?? [];
   // 取り込み後の再取得で件数が減って範囲外になった位置は、どの1枚にも当たらない。
   const [front, setFront] = useState<number | null>(null);
@@ -215,7 +231,7 @@ export default function FolderArt({
           const isFront = front === index;
           return (
             <div
-              key={preview.videoId}
+              key={keys[index]}
               data-folder-preview=""
               data-folder-front={isFront ? "" : undefined}
               className={cn(

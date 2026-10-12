@@ -66,8 +66,8 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`,
 `detail-aside`, `detail-aside-wide`, `list-aside`, `list-aside-max`,
 `related-thumb`, `neighbor-arrow`,
 `neighbor-arrow-min`, `neighbor-arrow-min-sm`, `control-bar-clearance`,
-`versions-popover`, `visibility-x`, `technical-x`, `issue-list`,
-`folder-list`. The video page's player frame uses `player-width`,
+`versions-popover`, `playlist-panel`, `visibility-x`, `technical-x`,
+`issue-list`, `folder-list`. The video page's player frame uses `player-width`,
 `player-height` and their `-lg` forms with `aspect-player`; they read the
 video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 (`w-1/2`), `full`, `auto` and the container widths (`max-w-md`) are allowed.

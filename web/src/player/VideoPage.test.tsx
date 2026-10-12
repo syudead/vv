@@ -2249,6 +2249,78 @@ describe("VideoPage", () => {
     });
   });
 
+  describe("プレイリストに足す（specs/044-playlists/ui-design.md「Add to playlist」）", () => {
+    const owned: Video = { ...video, favorite: false };
+
+    it("お気に入りの直後、撮るボタンの前に置き、選ぶとこの動画の id を送る", async () => {
+      server.videos.set(7, [
+        {
+          ...owned,
+          group: {
+            folder: { rootId: 1, path: "series" },
+            name: "series",
+            position: 1,
+            count: 3,
+          },
+        },
+      ]);
+      const bodies: unknown[] = [];
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url.startsWith("/api/playlists?")) {
+          return Promise.resolve(
+            json({
+              items: [
+                {
+                  id: 5,
+                  name: "Tonight",
+                  itemCount: 1,
+                  updatedAt: "2026-10-01T00:00:00Z",
+                },
+              ],
+              total: 1,
+              version: "1",
+            }),
+          );
+        }
+        if (url === "/api/playlists/5/items") {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(json({ added: 1, existing: 0 }));
+        }
+        return answered!(input, init);
+      });
+      renderPage();
+      await ready();
+      // グループの行には置かず、情報の行の一群に 1 つだけ。
+      const buttons = screen.getAllByRole("button", { name: "Add to playlist" });
+      expect(buttons).toHaveLength(1);
+      const add = buttons[0]!;
+      const favorite = screen.getByRole("button", { name: "Favorite" });
+      expect(favorite.nextElementSibling).toBe(add);
+      expect(add.nextElementSibling).toBe(
+        screen.getByRole("button", { name: "Use current frame as thumbnail" }),
+      );
+
+      fireEvent.click(add);
+      fireEvent.click(await screen.findByRole("option", { name: "Tonight" }));
+      expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
+      expect(bodies).toEqual([{ videoIds: [7], folders: [] }]);
+    });
+
+    it("ゲストには出さず、プレイリストを読まない（受け入れ条件 9）", async () => {
+      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("button", { name: "Add to playlist" })).toBeNull();
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).startsWith("/api/playlists"),
+        ),
+      ).toBe(false);
+    });
+  });
+
   describe("表示名（specs/029-video-overrides/ui-design.md「Title editing」）", () => {
     const fileTitle = "テスト動画";
     const named: Video = {

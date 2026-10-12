@@ -82,7 +82,14 @@ single round.
    child needed: `task check`, `task check-docs`, `task test-e2e` (for every
    feature, not only `ui`; when the host cannot run a browser, say so in the
    body instead of passing it over), and `task docs-build` when the feature
-   changed `docs/` or `specs/`. Then walk every acceptance criterion of the
+   changed `docs/` or `specs/`. Before `task test-e2e`, check the free space
+   on the checkout's file system (`df -Pk .`): e2e builds the binaries,
+   generates its media and starts Chromium, and fails in ways that look like
+   test failures (a link error, `net::ERR_INSUFFICIENT_RESOURCES`) when the
+   disk is nearly full. Below 10 GB free, remove the worktrees and build
+   output you made and no longer need; if it is still below 10 GB, stop and
+   report the shortage instead of running e2e or counting it as passed. Then
+   walk every acceptance criterion of the
    parent Issue and point at the test or the code path that satisfies it. A
    failing check or an unmet criterion is a defect to fix in this sweep,
    whatever its size, unless the fix needs a requester decision or an approved

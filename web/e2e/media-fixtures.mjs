@@ -638,3 +638,44 @@ export function generateHistoryFixtures(root) {
     ]);
   }
 }
+
+/**
+ * generatePlaylistsFixtures は、プレイリストの流れ（specs/044-playlists、子 #903）を
+ * 確かめるための動画を作る（web/e2e/playlists.e2e.ts）。登録フォルダの直下の 2 本は
+ * グループにならない単体の動画で、「プレイリストのグループ」の 3 本はグループになる。
+ * 連続再生で何本も最後まで見るので 3 秒と短くし、中身で同じ動画とみなされないよう
+ * 色合いを変える。
+ */
+export const PLAYLIST_VIDEOS = ["プレイリスト動画A", "プレイリスト動画B"];
+export const PLAYLIST_GROUP = "プレイリストのグループ";
+export const PLAYLIST_GROUP_MEMBERS = [
+  "プレイリストのメンバー1",
+  "プレイリストのメンバー2",
+  "プレイリストのメンバー3",
+];
+
+export function generatePlaylistsFixtures(root) {
+  const group = path.join(root, PLAYLIST_GROUP);
+  mkdirSync(group, { recursive: true });
+  const clip = (file, hue) =>
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=15:duration=3",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      file,
+    ]);
+
+  for (const [index, name] of PLAYLIST_VIDEOS.entries()) {
+    clip(path.join(root, `${name}.mp4`), 30 + index * 70);
+  }
+  for (const [index, name] of PLAYLIST_GROUP_MEMBERS.entries()) {
+    clip(path.join(group, `${name}.mp4`), 190 + index * 60);
+  }
+}

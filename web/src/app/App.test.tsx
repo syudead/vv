@@ -225,6 +225,7 @@ describe("App", () => {
       "Library",
       "Folders",
       "History",
+      "Playlists",
       "Tags",
       "Duplicates",
       "Settings",

@@ -299,8 +299,12 @@ export default [
   {
     // 本番の関数 setRenderedAudience（src/api/client.ts）を、名前に render を含むので
     // 描画とみなして誤って指摘する。描画の補助関数の名前を列挙して判定を狭めると、補助
-    // 関数を足すたびに設定を直すことになるので、呼んでいる 2 ファイルでだけ切る。
-    files: ["src/api/serverEvents.test.ts", "src/player/VideoPage.test.tsx"],
+    // 関数を足すたびに設定を直すことになるので、呼んでいる 3 ファイルでだけ切る。
+    files: [
+      "src/api/serverEvents.test.ts",
+      "src/player/VideoPage.test.tsx",
+      "src/player/VideoPagePlaylist.test.tsx",
+    ],
     rules: {
       "testing-library/no-render-in-lifecycle": "off",
     },
