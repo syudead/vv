@@ -9,6 +9,7 @@ import {
   runStateText,
   shapeDiffers,
   showsLongWait,
+  sourceWords,
 } from "./editRules";
 
 describe("editRules", () => {
@@ -65,5 +66,23 @@ describe("editRules", () => {
     expect(fitBox(1600, 600, 2)).toEqual({ width: 1200, height: 600 });
     expect(fitBox(320, 600, 16 / 9)).toEqual({ width: 320, height: 180 });
     expect(fitBox(0, 600, 16 / 9)).toEqual({ width: 0, height: 0 });
+  });
+
+  it("編集画面の文言を応答の source と positionMs だけから決める", () => {
+    expect(sourceWords({ source: "frame", positionMs: 83_456 })).toEqual({
+      detail: "Frame at 1:23",
+      paintingHint:
+        "Paint over what to change. Leave it unpainted to change the whole frame.",
+      sourceLabel: "Frame",
+    });
+    expect(sourceWords({ source: "thumbnail", positionMs: 83_456 })).toEqual({
+      detail: "Current thumbnail, frame at 1:23",
+      paintingHint:
+        "Paint over what to change. Leave it unpainted to change the whole image.",
+      sourceLabel: "Thumbnail",
+    });
+    expect(sourceWords({ source: "thumbnail" }).detail).toBe(
+      "Current thumbnail, saved image",
+    );
   });
 });

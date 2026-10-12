@@ -1,10 +1,10 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
-import { t } from "../../i18n";
+import { t, type UiText } from "../../i18n";
 import { fitBox } from "./editRules";
 
 /**
- * CompareStage はコマと生成した画像を、動画の形で同じ大きさの箱に並べる（ui-design
+ * CompareStage は始めた画像（コマか今のサムネイル、名前は `sourceLabel`）と生成した画像を、動画の形で同じ大きさの箱に並べる（ui-design
  * 「Compare」）。md 未満は縦に積み、コマを上にする（並べ方は CSS が決め、ここは並んだ向きを
  * 読んで箱の大きさを測るだけ）。箱は名前と注記の分を除いた段に収まるいちばん大きな大きさで、
  * 名前は箱のすぐ上に置く。生成した画像はサムネイルと同じく箱を覆うように切り抜いて出し、
@@ -13,12 +13,15 @@ import { fitBox } from "./editRules";
 export default function CompareStage({
   frameUrl,
   resultUrl,
+  sourceLabel,
   aspect,
   cropNote,
   onResultSize,
 }: {
   frameUrl: string;
   resultUrl: string;
+  /** 最初の箱の名前と `alt`（`Frame` か `Thumbnail`）。 */
+  sourceLabel: UiText;
   aspect: number;
   cropNote: boolean;
   onResultSize: (width: number, height: number) => void;
@@ -67,10 +70,10 @@ export default function CompareStage({
       <div ref={group} className="flex flex-col gap-4 md:flex-row">
         <figure className="flex flex-col gap-1">
           <figcaption ref={label} className="text-sm text-muted-foreground">
-            {text.frame}
+            {sourceLabel}
           </figcaption>
           <div className="overflow-hidden rounded-sm" style={size}>
-            <img src={frameUrl} alt={text.frame} className="size-full object-cover" />
+            <img src={frameUrl} alt={sourceLabel} className="size-full object-cover" />
           </div>
         </figure>
         <figure className="flex flex-col gap-1">

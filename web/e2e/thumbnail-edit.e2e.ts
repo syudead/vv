@@ -171,10 +171,15 @@ async function openVideo(page: Page): Promise<Locator> {
   return entry;
 }
 
-/** startEdit は入口を押し、編集画面がコマを出すまで待つ。 */
+/** startEdit は入口を押してメニューからコマを選び、編集画面がコマを出すまで待つ。 */
 async function startEdit(entry: Locator): Promise<Locator> {
   const page = entry.page();
+  // コマの項目は画面にコマがあるとき（キャプチャのボタンが押せるとき）だけ押せる。
+  await expect(
+    page.getByRole("button", { name: "Use current frame as thumbnail" }),
+  ).not.toHaveAttribute("aria-disabled", "true", { timeout: 30_000 });
   await entry.click();
+  await page.getByRole("menuitem", { name: /^Frame at / }).click();
   const editor = page.getByRole("dialog", { name: "Edit thumbnail" });
   await expect(editor).toBeVisible();
   await expect(editor.getByRole("img", { name: "Painted area" })).toBeVisible();
