@@ -62,15 +62,15 @@ func (s *OverrideStore) ApplyThumbnailImage(
 	); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot save the thumbnail image: %w", err)
 	}
-	return s.finishThumbnailImageChange(ctx, tx, videoID, contentKey, true, now)
+	return s.finishThumbnailImageChange(ctx, tx, videoID, contentKey, now)
 }
 
 // RevertThumbnailImage は動画 videoID の内容に適用した画像の行を消し、反映後の動画を返す。
 //
 // 呼ぶのは internal/app の Ingest だけで、位置（無ければ自動の位置）のコマを公開したあと、
 // 生成の錠の中で呼ぶ。1 つの取引で、行を消し、その内容の動画の thumbnail_state を done にして
-// 代表サムネイルの代用と失敗の問題を消す。更新日時は行を消したときだけ進める。画像を適用して
-// いなくても成功する。
+// 代表サムネイルの代用と失敗の問題を消し、更新日時を進める。画像を適用していなくても成功し、
+// コマを作り直したので更新日時を進める（specs/045-comfyui-thumbnails/data-model.md の Rules）。
 //
 // videoID は content_key へ引き直し、引けなければ domain.ErrNotFound にする。確定後に
 // domain.VideoOverrideChanged を発行し、問題を消したときは domain.ScanChanged も発行する。
@@ -88,22 +88,19 @@ func (s *OverrideStore) RevertThumbnailImage(ctx context.Context, videoID int64)
 	if len(keys) == 0 {
 		return domain.Video{}, domain.ErrNotFound
 	}
-	removed, err := deleteThumbnailImage(ctx, tx, keys[0])
-	if err != nil {
+	if _, err := deleteThumbnailImage(ctx, tx, keys[0]); err != nil {
 		return domain.Video{}, err
 	}
-	return s.finishThumbnailImageChange(ctx, tx, videoID, keys[0], removed, time.Now())
+	return s.finishThumbnailImageChange(ctx, tx, videoID, keys[0], time.Now())
 }
 
 // finishThumbnailImageChange は適用・取り消しの取引の残り（更新日時、thumbnail_state と問題、
-// 確定、知らせ）を行う。edited が偽なら更新日時を進めない。
+// 確定、知らせ）を行う。
 func (s *OverrideStore) finishThumbnailImageChange(
-	ctx context.Context, tx *sql.Tx, videoID int64, key string, edited bool, now time.Time,
+	ctx context.Context, tx *sql.Tx, videoID int64, key string, now time.Time,
 ) (domain.Video, error) {
-	if edited {
-		if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
-			return domain.Video{}, err
-		}
+	if err := touchEditedAt(ctx, tx, []string{key}, now); err != nil {
+		return domain.Video{}, err
 	}
 	issuesCleared, err := markThumbnailDoneForContent(ctx, tx, key, now)
 	if err != nil {

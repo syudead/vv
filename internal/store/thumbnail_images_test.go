@@ -142,7 +142,7 @@ func TestThumbnailPositionAndAppliedImage(t *testing.T) {
 	}
 }
 
-// 取り消しは行を消して位置を残し、done にする。画像が無くても成功し、更新日時は進めない。
+// 取り消しは行を消して位置を残し、done にする。画像が無くても成功し、どちらでも更新日時を進める。
 func TestRevertThumbnailImage(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -172,8 +172,8 @@ func TestRevertThumbnailImage(t *testing.T) {
 	if _, err := db.Ingest().RevertThumbnailImage(context.Background(), id); err != nil {
 		t.Fatalf("画像の無い取り消し: %v", err)
 	}
-	if editedAtOf(t, db, "key-alpha") != 1 {
-		t.Fatal("何も外さない取り消しで更新日時が進んだ")
+	if editedAtOf(t, db, "key-alpha") == 1 {
+		t.Fatal("画像の無い取り消しで更新日時が進まない")
 	}
 	if _, err := db.Ingest().RevertThumbnailImage(context.Background(), 9999); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("無い動画: err = %v", err)

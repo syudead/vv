@@ -336,3 +336,22 @@ func TestIngestThumbnailRepublishesAppliedImage(t *testing.T) {
 		t.Fatalf("代用 = %v", store.thumbnailSubstitutions)
 	}
 }
+
+// 元の動画が読めなくなっていても、画像を適用した内容の job はその画像を公開し直す。
+func TestIngestThumbnailRepublishesAppliedImageWithoutSource(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.images["a"] = []byte("fitted:edited")
+	generator := &fakeGenerator{thumbnailDir: t.TempDir(), sourceErr: domain.ErrMediaFileUnavailable}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.Thumbnail(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(generator.published["a"], []byte("fitted:edited")) {
+		t.Fatalf("公開 = %q", generator.published["a"])
+	}
+	if !slices.Equal(store.thumbnailSubstitutions, []domain.Substitution{domain.SubstitutionNone}) {
+		t.Fatalf("代用 = %v", store.thumbnailSubstitutions)
+	}
+}

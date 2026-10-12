@@ -250,8 +250,18 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	if !current {
 		return nil
 	}
-	if err := i.generator.CheckSource(job.LocationPath); err != nil {
-		return err
+	// 元の動画を読むのはコマを取るときだけである。適用した画像は元の動画が読めなくても
+	// 公開し直すので（specs/045-comfyui-thumbnails/data-model.md の Rules）、読めないことは
+	// 錠の中で画像の行が無いと分かったときに返す。
+	sourceErr := i.generator.CheckSource(job.LocationPath)
+	if sourceErr != nil {
+		image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
+		if err != nil {
+			return err
+		}
+		if image == nil {
+			return sourceErr
+		}
 	}
 	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
 	// 生成物の削除と直列にする。別の種類の生成は待たない。
@@ -275,6 +285,10 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
 			if err != nil {
 				return false, err
+			}
+			if image == nil && sourceErr != nil {
+				// 錠を待つ間に画像が取り消された。読めない元の動画からはコマを取れない。
+				return false, sourceErr
 			}
 			if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
 				if image != nil {
