@@ -37,10 +37,11 @@ export function DetailPage({ header, media, aside, children }: DetailPageProps) 
         </div>
         <div className="flex w-full flex-col gap-5 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6">
           {/* 列の端にあるフォーカスの輪が切れないよう、スクロールする列は輪の分だけ外へ広げて
-              内側に余白を取る（-mx-1 と px-1）。 */}
+              内側に余白を取る（-mx-1 と px-1）。列を位置の基準にし（lg:relative）、中の
+              absolute の要素（読み上げ用の sr-only など）が列の外を基準にページを伸ばさないようにする。 */}
           <div
             data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
+            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
           >
             {media}
             <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
