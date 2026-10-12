@@ -55,8 +55,9 @@ branch. `plan-to-issues` produces no PR.
    [briefs.md](briefs.md). Concurrent implementation workers never share a
    checkout. On Claude, start each with `isolation: "worktree"`. Where the
    host has no such isolation (Codex), create one first with
-   `git worktree add <path> origin/<feature>` per child and put its path in
-   the brief's `Checkout:` slot. Either way, remove the worktree as
+   `git worktree add .claude/worktrees/codex-<child> origin/<feature>` per
+   child (under `.claude/worktrees/`, so the cleanup below finds it) and put
+   its path in the brief's `Checkout:` slot. Either way, remove the worktree as
    [Worktrees and disk space](#worktrees-and-disk-space) says. Without
    either, run implementation workers one at a time. Each worker creates its
    own sub-branch, does the stage's work and checks, commits, pushes, opens
@@ -187,10 +188,11 @@ worktree only when the worker changed nothing, so a worker that pushed, or
 that stopped with a merge or checkout half done, leaves its worktree and its
 `worktree-agent-*` branch behind. The orchestrator removes them.
 
-**Remove a worker's worktree once you have acted on its return**: for `DONE`,
-`FIXED` or `CLEAN` with a PR, after that PR merges (or is left as `FOREIGN`);
-for any other return, at once. No later worker reuses it: every worker starts
-fresh from `origin`. The Agent result names the worktree path and branch; for
+**Remove a worker's worktree as soon as it returns**, whatever its `STATUS`.
+What it made is the branch it pushed, and no later worker reuses its
+worktree: every worker, including the next fixer on the same PR, starts fresh
+from `origin`. Waiting for the PR to merge would keep the integrate worker's
+worktree forever, because the integration PR is not merged here. The Agent result names the worktree path and branch; for
 Codex they are the ones you created. First confirm that nothing the worker
 made is lost:
 

@@ -68,8 +68,8 @@ skill; follow them even when reading something yourself looks quicker.
 5. **One worker per unit of work.** A new stage, a new review round, and the
    integration refresh each get a fresh worker. Children whose dependencies
    are done are implemented by concurrent workers, each in its own worktree.
-   The orchestrator removes each worker's worktree once it has acted on the
-   return, and checks the free disk space before starting a worker
+   The orchestrator removes each worker's worktree as soon as the worker
+   returns, and checks the free disk space before starting a worker
    ([references/loop.md, Worktrees and disk space](references/loop.md#worktrees-and-disk-space)).
 
 ## Workers
