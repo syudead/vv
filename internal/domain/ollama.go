@@ -39,17 +39,28 @@ func DefaultOllamaSettings() OllamaSettings {
 // NormalizeOllamaSettings は前後の空白と Endpoint の末尾の / を落とし、規則に合うかを確かめる。
 // 合わなければ ErrInvalidOllamaSettings を包んだ誤りを返す。
 func NormalizeOllamaSettings(s OllamaSettings) (OllamaSettings, error) {
-	s.Endpoint = strings.TrimRight(strings.TrimSpace(s.Endpoint), "/")
-	s.Model = strings.TrimSpace(s.Model)
-	parsed, err := url.Parse(s.Endpoint)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
-		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	endpoint, ok := normalizeBaseURL(s.Endpoint)
+	if !ok {
 		return OllamaSettings{}, fmt.Errorf("%w: the endpoint must be an http or https URL", ErrInvalidOllamaSettings)
 	}
+	s.Endpoint = endpoint
+	s.Model = strings.TrimSpace(s.Model)
 	if s.Model == "" || len(s.Model) > ollamaMaxModelLength || strings.ContainsFunc(s.Model, isControlOrSpace) {
 		return OllamaSettings{}, fmt.Errorf("%w: the model must be a model name", ErrInvalidOllamaSettings)
 	}
 	return s, nil
+}
+
+// normalizeBaseURL は前後の空白と末尾の / を落とし、利用者を含まない http か https の
+// 基底 URL（問い合わせと断片を持たない）かを返す。提供元の接続先に共通の規則である。
+func normalizeBaseURL(raw string) (string, bool) {
+	normalized := strings.TrimRight(strings.TrimSpace(raw), "/")
+	parsed, err := url.Parse(normalized)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", false
+	}
+	return normalized, true
 }
 
 func isControlOrSpace(r rune) bool {

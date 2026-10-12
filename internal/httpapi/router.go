@@ -289,6 +289,8 @@ type Options struct {
 	AutoTagging AutoTagging
 	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
 	Ollama OllamaConnection
+	// ComfyUI は画像編集の提供元 ComfyUI の接続先と確かめ。nil なら該当の経路は 500 を返す。
+	ComfyUI ComfyUIConnection
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -357,6 +359,7 @@ type server struct {
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
 	ollama            OllamaConnection
+	comfyUI           ComfyUIConnection
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -432,6 +435,7 @@ func NewRouter(opts Options) http.Handler {
 		autoImport:        opts.AutoImport,
 		autoTagging:       opts.AutoTagging,
 		ollama:            opts.Ollama,
+		comfyUI:           opts.ComfyUI,
 		transcodeStarts:   newTranscodeStarts(),
 		artifacts:         opts.Artifacts,
 		catalog:           opts.Catalog,
@@ -564,7 +568,8 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
 			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" ||
-			r.URL.Path == "/api/settings/auto-tagging" || r.URL.Path == "/api/settings/ollama" {
+			r.URL.Path == "/api/settings/auto-tagging" || r.URL.Path == "/api/settings/ollama" ||
+			r.URL.Path == "/api/settings/comfyui" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
@@ -710,6 +715,8 @@ const (
 	reasonRepresentativeNotSelected     = gen.ErrorReasonRepresentativeNotSelected
 	reasonNotBundled                    = gen.ErrorReasonNotBundled
 	reasonListenFailed                  = gen.ErrorReasonListenFailed
+	reasonComfyUIURLInvalid             = gen.ErrorReasonComfyuiUrlInvalid
+	reasonComfyUIAPIKeyMissing          = gen.ErrorReasonComfyuiApiKeyMissing
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

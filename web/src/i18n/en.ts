@@ -226,6 +226,8 @@ const errorReasons = {
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
   auto_tagging_off:
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
+  comfyui_url_invalid: "Enter the ComfyUI address as an http or https URL.",
+  comfyui_api_key_missing: "Enter your Comfy Cloud API key.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
