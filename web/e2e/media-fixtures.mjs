@@ -638,3 +638,28 @@ export function generateHistoryFixtures(root) {
     ]);
   }
 }
+
+/**
+ * generateThumbnailEditFixtures は、ComfyUI でコマを編集してサムネイルにする流れ
+ * （specs/045-comfyui-thumbnails、子 #960）を確かめる動画を1本作る（web/e2e/thumbnail-edit.e2e.ts）。
+ * 偽の ComfyUI が返す一色の画像と見分けられるよう、色の混ざった testsrc2 のままにし、
+ * ほかの動画と同じ中身とみなされないよう長さと色合いを変える。
+ */
+export const THUMBNAIL_EDIT_VIDEO = "サムネイル編集の確認";
+
+export function generateThumbnailEditFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=15:duration=12",
+    "-vf",
+    "hue=h=200",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${THUMBNAIL_EDIT_VIDEO}.mp4`),
+  ]);
+}
