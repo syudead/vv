@@ -157,7 +157,7 @@
   --spacing-menu: 11rem;
   /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方 */
   --spacing-detail-aside: 20rem;
-  --spacing-detail-aside-wide: 24rem;
+  --spacing-detail-aside-wide: 20rem;
   /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に
      貼り付けたときの高さの上限（それより高ければ欄の中で動かす）。lg から */
   --spacing-list-aside: 11rem;
