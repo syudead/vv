@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: f2e73f02f2cf0e3b83947dc2561bbb7551eb341968f83ba06dc907812e26eff4
+sourceHash: ba7ad389c41c37d784dea305fa3f34f55530a1eba9b9607ace74034c3fc45dc8
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -46,6 +46,7 @@ flowchart LR
 | 依存関係 | 使う側 | 更新時に確かめること |
 | --- | --- | --- |
 | `github.com/coder/websocket` | `internal/comfyui`。ComfyUI の実行のステップ進捗に使う（[045 research、R-5](../../specs/045-comfyui-thumbnails/research.md#r-5-provider-differences-stay-inside-the-adapter)） | `go test ./internal/comfyui`。このモジュールは自身の依存関係を持たないので、更新で依存関係は増えない |
+| `golang.org/x/image` | `internal/app` と `internal/media`。サムネイル編集の参照画像と出力を検査し、適用する WebP を収める WebP デコーダーに使う（[thumbnail-editing.md](../design-docs/thumbnail-editing.md#inputs-are-checked-before-anything-is-uploaded)） | `go test ./internal/app ./internal/media`。インポートするのは `webp` パッケージだけである |
 
 ## 同梱 FFmpeg のバージョンを上げる {#raise-the-bundled-ffmpeg-version}
 
