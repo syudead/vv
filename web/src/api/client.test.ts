@@ -23,6 +23,13 @@ import {
   getCurrentScan,
   setVideoDisplayName,
   setVideoThumbnailPosition,
+  revertThumbnailImage,
+  startThumbnailEdit,
+  getThumbnailEdit,
+  runThumbnailEdit,
+  cancelThumbnailEdit,
+  applyThumbnailEdit,
+  discardThumbnailEdit,
   listVideoVersions,
   bundleVideos,
   makeRepresentativeVersion,
@@ -401,6 +408,114 @@ describe("setVideoThumbnailPosition", () => {
     hold();
     await setVideoThumbnailPosition(7, 1_000);
     expect(takeListSnapshot(key)).toBeUndefined();
+  });
+});
+
+describe("revertThumbnailImage", () => {
+  it("DELETE で送り、成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "conflict", reason: "thumbnail_frame_unavailable" }, 409),
+    );
+    hold();
+    await expect(revertThumbnailImage(7)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 7 }));
+    hold();
+    await expect(revertThumbnailImage(7, signal)).resolves.toMatchObject({ id: 7 });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/videos/7/thumbnail-image",
+      expect.objectContaining({ method: "DELETE", signal }),
+    );
+  });
+});
+
+describe("thumbnail edit API client", () => {
+  const edit = {
+    id: "ab12",
+    videoId: 7,
+    state: "ready",
+    frameUrl: "/api/thumbnail-edits/ab12/frame",
+    frameWidth: 4,
+    frameHeight: 3,
+  };
+
+  it("starts, reads and cancels a session with the contract's routes", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(edit)));
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    await expect(startThumbnailEdit(7, 1500, signal)).resolves.toMatchObject({
+      id: "ab12",
+    });
+    await getThumbnailEdit("ab12", signal);
+    await cancelThumbnailEdit("ab12", signal);
+
+    expect(fetch.mock.calls.map(([path, init]) => [path, init?.method ?? "GET"])).toEqual(
+      [
+        ["/api/videos/7/thumbnail-edits", "POST"],
+        ["/api/thumbnail-edits/ab12", "GET"],
+        ["/api/thumbnail-edits/ab12/cancel", "POST"],
+      ],
+    );
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ positionMs: 1500 }));
+  });
+
+  it("sends a run as multipart form data with only the given parts", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(jsonResponse({ ...edit, state: "queued" }));
+    vi.stubGlobal("fetch", fetch);
+    const mask = new Blob(["png"], { type: "image/png" });
+
+    await expect(
+      runThumbnailEdit("ab12", { prompt: "remove the logo", mask }),
+    ).resolves.toMatchObject({
+      state: "queued",
+    });
+    const [path, init] = fetch.mock.calls[0] ?? [];
+    expect(path).toBe("/api/thumbnail-edits/ab12/runs");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+    const form = init?.body as FormData;
+    expect(form.get("prompt")).toBe("remove the logo");
+    expect(form.get("mask")).toBeInstanceOf(Blob);
+    expect(form.has("reference")).toBe(false);
+  });
+
+  it("drops the list snapshot after an apply and discards with keepalive", async () => {
+    const key = { query: "old" };
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: 7 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: "not_found", reason: "thumbnail_edit_not_found" }, 404),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(applyThumbnailEdit("ab12")).resolves.toMatchObject({ id: 7 });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    await expect(discardThumbnailEdit("ab12")).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/thumbnail-edits/ab12",
+      expect.objectContaining({ method: "DELETE", keepalive: true }),
+    );
+    await expect(discardThumbnailEdit("ab12")).rejects.toMatchObject({
+      reason: "thumbnail_edit_not_found",
+    });
   });
 });
 

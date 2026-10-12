@@ -47,7 +47,10 @@ checked format.
 Lint findings are fixed in the code, never silenced: `task check` fails on any
 `//nolint` comment in Go sources (`scripts/nolintguard`) and on any
 `eslint-disable*` or other inline ESLint configuration comment in `web/`
-(`linterOptions.noInlineConfig`).
+(`linterOptions.noInlineConfig`). A change keeps the functions it adds or makes
+more complex at complexity 25 or less and shares code instead of copying it;
+the Codex review raises a breach
+([Complexity and duplication](../design-docs/complexity-and-duplication.md)).
 
 Browser tests are a separate command:
 
@@ -91,10 +94,11 @@ The Go and Vitest test groups run the same tests as `task test-go` and
 which also write coverage and JUnit test results under `reports/`. CI uploads
 them to [Codecov](https://app.codecov.io/gh/syudead/vv), together with the E2E
 results of a push to `main`, even when a test fails. On each pull request that
-changes code, Codecov comments the coverage by `go` and `web` flag, by component
-and by file, names failed and flaky tests and sets informational statuses per
-flag, without blocking the merge
-([`.github/codecov.yml`](../../.github/codecov.yml)). A newer push cancels a
+changes code, Codecov comments the coverage of the changed lines, names failed
+and flaky tests and sets an informational patch status per `go` and `web` flag,
+without blocking the merge
+([`.github/codecov.yml`](../../.github/codecov.yml)); coverage by flag and by
+component is on the Flags and Components pages of Codecov. A newer push cancels a
 running CI run on a pull request but not on `main`, so every commit on `main`
 reaches Codecov. The upload authenticates
 with GitHub OIDC, so the repository needs no Codecov token, but it must be
@@ -116,11 +120,11 @@ On the first day of each month the `Mutation testing` workflow
 ([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))
 measures whether the Go tests catch injected bugs. It runs
 `task mutation-go`, which runs gremlins (pinned as a tool in `tools/go.mod`) on
-`./internal/domain/...` and writes `reports/mutation/go/gremlins.json`. The
-workflow writes the test efficacy (killed mutants over killed and lived) and the
-mutant coverage to the run's summary and keeps the report as an artifact for 90
-days; a low score does not fail the run. `MUTATION_GO_DIR=./internal/other task
-mutation-go` measures another package tree, and arguments after `--` go to
+`./internal/domain/...` and writes `reports/mutation/go/gremlins.json`, the
+place and outcome of every mutant. The workflow keeps that report as it is, as
+an artifact for 90 days; mutants that the tests miss do not fail the run.
+`MUTATION_GO_DIR=./internal/other task mutation-go` measures another package
+tree, and arguments after `--` go to
 `gremlins unleash`. A pull request that changes the workflow runs it too. Web
 mutation testing with StrykerJS waits for a release of
 `@stryker-mutator/vitest-runner` that fixes

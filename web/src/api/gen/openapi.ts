@@ -677,11 +677,64 @@ export interface paths {
          *     409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
          *     尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
          *     どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
-         *     最後に記録した位置の画像が残る。確定後に `/api/events` の `video` が流れる
+         *     最後に記録した位置の画像が残る。適用した画像があれば同じ取引で外す
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。確定後に `/api/events` の `video` が流れる
          *     （specs/029-video-overrides/contracts/screen-api.md §2）。
          */
         put: operations["setVideoThumbnailPosition"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/thumbnail-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 動画に適用したサムネイルの画像を外す
+         * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
+         *     `thumbnailPositionMs` があればその場面、無ければ自動の位置で作る。画像を適用していなくても
+         *     作り直して 200 を返す。応答は生成が終わってから返し、形は `GET /api/videos/{id}` と同じ
+         *     `Video` である（`thumbnailGenerated` は無く、新しい版の `thumbnailUrl`）。誤りは
+         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
+         *     `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
+         *     404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        delete: operations["revertThumbnailImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/thumbnail-edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画の1コマのサムネイルの編集を始める
+         * @description 所有者だけ。`positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした PNG として取り出し、
+         *     `ready` の編集のセッションを `201` で返す。同じ動画のセッションがあれば、その実行を ComfyUI で
+         *     中止してから終える。位置の誤りと所在の誤りは `PUT /api/videos/{id}/thumbnail-position` と同じで、
+         *     ComfyUI の接続先が保存されていなければ 409 `thumbnail_edit_not_ready`、コマを取り出せなければ
+         *     409 `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11）。
+         */
+        post: operations["startThumbnailEdit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -944,6 +997,231 @@ export interface paths {
          *     サーバーから要求を送らせないため）。要求の本文は無い。
          */
         post: operations["checkOllama"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/comfyui": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ComfyUI の接続先を返す
+         * @description サムネイルの編集に使う ComfyUI の接続先（自前の ComfyUI か Comfy Cloud）。サムネイルの編集の
+         *     機能とは別に持つ（docs/design-docs/ai-layer.md）。API キーは返さず、保存されているかを
+         *     `apiKeySet` で返す。何も保存されていなければ `provider` を省いた `200` を返す。
+         *     `Cache-Control: no-store` を付ける
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        get: operations["getComfyUISettings"];
+        /**
+         * ComfyUI の接続先を保存する
+         * @description `apiKey` が無ければ保存済みのキーを残し、`""` なら消す。`self_hosted` で正しい http か
+         *     https の URL が無ければ `400` `invalid_request`・reason `comfyui_url_invalid`、`cloud` で
+         *     キーが保存も送信もされていなければ reason `comfyui_api_key_missing` を返し、保存しない。
+         *     `cloud` では `url` を使わず、保存済みの URL を残す
+         *     （specs/045-comfyui-thumbnails/research.md R-9）。
+         */
+        put: operations["updateComfyUISettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/comfyui/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 保存した接続先に ComfyUI が応えるかを確かめる
+         * @description 自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
+         *     `X-API-Key` を付けて確かめる。応えたら `GET /object_info` を読み、vv のワークフローの
+         *     ノードの型とローダーが名指すモデルファイルがあるかを確かめ、足りなければ `available: false`
+         *     と `missing` を返す（R-13）。使えないときの `message` は、届かない、ComfyUI でない、キーが
+         *     拒まれた、何も保存されていない、ファイルが足りないを区別する。接続先は要求の本文から取らない
+         *     （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い
+         *     （specs/045-comfyui-thumbnails/research.md R-5）。
+         */
+        post: operations["checkComfyUI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * サムネイルの編集を始められるかを返す
+         * @description 動画のページが編集の入口を有効にするために読む。`connection` は ComfyUI の接続先が保存されて
+         *     いることで、接続テストに通ったことではない
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        get: operations["getThumbnailEditReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * サムネイルの編集のセッションの今の状態を返す
+         * @description 実行が進んでいれば ComfyUI の状態を読み、成功していれば出力を取ってから返す。読み取りはページの
+         *     生存の知らせを兼ね、5 分読まれないセッションは実行を中止して終わる。送ってから 10 分終わらない
+         *     実行は中止して `failed`（`timed_out`）にする。終わったセッションは 404
+         *     `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-11）。
+         */
+        get: operations["getThumbnailEdit"];
+        put?: never;
+        post?: never;
+        /**
+         * サムネイルの編集のセッションを捨てる
+         * @description 実行が進んでいれば ComfyUI で中止してからセッションを捨て、`204` を返す。終わったセッションや
+         *     無いセッションでも `204` である。サムネイルは変わらない。画面は破棄とページを離れるときに呼ぶ。
+         */
+        delete: operations["discardThumbnailEdit"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}/frame": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 編集するコマの PNG を返す
+         * @description セッションを始めたときに取り出したコマ。大きさは `ThumbnailEdit` の `frameWidth`・`frameHeight`
+         *     で、マスクはこの大きさで描く。読み取りはページの生存の知らせを兼ねる。終わったセッションは 404
+         *     `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける。
+         */
+        get: operations["getThumbnailEditFrame"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 成功した実行の出力の画像を返す
+         * @description `succeeded` のときの ComfyUI の出力の画像そのもの（適用で動画の縦横比に合わせる前）。成功した
+         *     実行が無ければ 409 `thumbnail_edit_no_result`、終わったセッションは 404 `thumbnail_edit_not_found`。
+         *     `Cache-Control: no-store` を付ける。
+         */
+        get: operations["getThumbnailEditResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * サムネイルの編集を ComfyUI で実行する
+         * @description `multipart/form-data` の `prompt`（4000 文字まで）、`mask`（コマの大きさの PNG）、`reference`
+         *     （PNG・JPEG・WebP、20 MiB まで）を受け取る。どれも省略できる。進んでいる実行があれば中止し、
+         *     今の接続先をこの実行の写しにして、入力を上げてワークフローを送り、`202` で `queued` のセッションを
+         *     返す。マスクがコマの大きさの PNG でなければ 400 `thumbnail_edit_mask_invalid`、参考画像を読めなければ
+         *     400 `thumbnail_edit_reference_invalid` を、何も上げる前に返す。接続先が消されていれば 409
+         *     `thumbnail_edit_not_ready`。上げるか送るのに失敗すれば 502 `provider_failed` と失敗の理由
+         *     （`unreachable` など）を返し、セッションは同じ理由の `failed` になる
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、contracts/workflow.md）。
+         */
+        post: operations["runThumbnailEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 進んでいる実行を中止する
+         * @description 要求の本文は無い。進んでいる実行を ComfyUI で中止して `cancelled` を返す。進んでいなければ今の
+         *     状態を返す。サムネイルは変わらない。終わったセッションは 404 `thumbnail_edit_not_found`。
+         */
+        post: operations["cancelThumbnailEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/{editId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 成功した実行の画像をサムネイルにする
+         * @description 要求の本文は無い。出力を動画の縦横比に合わせて代表サムネイルとして適用し、セッションを終えて
+         *     `GET /api/videos/{id}` と同じ形の `Video` を返す。`succeeded` でなければ 409
+         *     `thumbnail_edit_no_result`、動画が消えたか別の内容を持てば 409 `content_changed`（セッションは
+         *     終わる）、画像を読めなければ 409 `thumbnail_image_invalid` を返す。確定後に `/api/events` の
+         *     `video` が流れる（specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-10）。
+         */
+        post: operations["applyThumbnailEdit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2110,6 +2388,26 @@ export interface components {
             /** @description Ollama の模型名。保存値が無ければ clef-flash */
             model: string;
         };
+        /**
+         * @description ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+         * @enum {string}
+         */
+        ComfyUIProvider: "self_hosted" | "cloud";
+        /** @description ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない */
+        ComfyUISettings: {
+            provider?: components["schemas"]["ComfyUIProvider"];
+            /** @description 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く */
+            url?: string;
+            /** @description Comfy Cloud の API キーが保存されているか */
+            apiKeySet: boolean;
+        };
+        UpdateComfyUISettingsRequest: {
+            provider: components["schemas"]["ComfyUIProvider"];
+            /** @description `self_hosted` のとき必須。http か https の基底 URL */
+            url?: string;
+            /** @description Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す */
+            apiKey?: string;
+        };
         AutoTaggingQueue: {
             queued: number;
             running: number;
@@ -2136,6 +2434,87 @@ export interface components {
         CheckResult: {
             available: boolean;
             /** @description 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある） */
+            message?: string;
+            /** @description ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル */
+            missing?: components["schemas"]["ComfyUIMissingItem"][];
+        };
+        /** @description ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13） */
+        ComfyUIMissingItem: {
+            /** @enum {string} */
+            kind: "node" | "model";
+            /** @description ノードの `class_type` かファイル名 */
+            name: string;
+            /** @description モデルファイルだけ。ComfyUI の `models` の下のフォルダ */
+            folder?: string;
+            /** @description モデルファイルだけ。入手先のページの URL */
+            source?: string;
+        };
+        ThumbnailEditReadiness: {
+            /** @description ComfyUI の接続先が保存されているか（テストに通ったかではない） */
+            connection: boolean;
+        };
+        StartThumbnailEditRequest: {
+            /**
+             * Format: int64
+             * @description 編集するコマの位置（ミリ秒）。0 以上で尺未満
+             */
+            positionMs: number;
+        };
+        RunThumbnailEditRequest: {
+            /** @description 持ち主の指示。省けば、塗った範囲があるとき vv の既定の指示を送る */
+            prompt?: string;
+            /**
+             * Format: binary
+             * @description コマと同じ大きさの PNG。塗った画素が不透明な白、残りが不透明な黒。省けばコマ全体
+             */
+            mask?: string;
+            /**
+             * Format: binary
+             * @description 参考画像（PNG・JPEG・WebP、20 MiB まで）。省けば参考画像の無いワークフローを使う
+             */
+            reference?: string;
+        };
+        /**
+         * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+         * @enum {string}
+         */
+        ThumbnailEditState: "ready" | "queued" | "preparing" | "running" | "succeeded" | "failed" | "cancelled";
+        /**
+         * @description 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+         * @enum {string}
+         */
+        ThumbnailEditFailure: "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ThumbnailEdit: {
+            /** @description セッションの識別子 */
+            id: string;
+            /** Format: int64 */
+            videoId: number;
+            state: components["schemas"]["ThumbnailEditState"];
+            /** @description コマの PNG（`GET /api/thumbnail-edits/{editId}/frame`） */
+            frameUrl: string;
+            /** @description コマの幅（px）。マスクはこの大きさで描く */
+            frameWidth: number;
+            /** @description コマの高さ（px） */
+            frameHeight: number;
+            /**
+             * Format: int64
+             * @description 実行を送ってからの時間（ミリ秒）。終わった実行では終わった時点で止まる。`ready` では省く
+             */
+            elapsedMs?: number;
+            progress?: components["schemas"]["ThumbnailEditProgress"];
+            error?: components["schemas"]["ThumbnailEditError"];
+            /** @description `succeeded` のときだけ。出力の画像（`GET /api/thumbnail-edits/{editId}/result`） */
+            resultUrl?: string;
+        };
+        /** @description 提供元が報告したステップの進み具合。報告が無ければ省く */
+        ThumbnailEditProgress: {
+            value: number;
+            max: number;
+        };
+        /** @description `failed` のときだけ。失敗の理由と、提供元が渡した文 */
+        ThumbnailEditError: {
+            reason: components["schemas"]["ThumbnailEditFailure"];
+            /** @description 提供元の文（ノードの誤り、実行の誤り、足りない名前）。無ければ省く */
             message?: string;
         };
         StartAutoTaggingRequest: {
@@ -2659,7 +3038,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -2680,6 +3059,11 @@ export interface components {
              * @description 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
              */
             thumbnailPositionMs?: number;
+            /**
+             * @description 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
+             *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+             */
+            thumbnailGenerated?: boolean;
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */
@@ -2743,7 +3127,10 @@ export interface components {
             thumbnailState: "pending" | "done" | "failed";
             /** @enum {string} */
             previewState: "pending" | "done" | "failed";
-            /** @description thumbnailState = done のときだけ入る */
+            /**
+             * @description thumbnailState = done のときだけ入る。版は内容鍵の先頭で、位置の指定中は `-r<改版番号>`、
+             *     適用した画像の表示中は `-g<改版番号>` が付く（ゲストにも同じ文字列）
+             */
             thumbnailUrl?: string;
             /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す */
             previewUrl?: string;
@@ -3193,7 +3580,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -3206,7 +3593,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3245,8 +3632,19 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description 画像編集の提供元（ComfyUI）が入力の受け取りか実行の受け付けに失敗した */
+        ProviderFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
+        /** @description サムネイルの編集のセッションの識別子 */
+        ThumbnailEditId: string;
         /** @description 動画の識別子 */
         VideoId: number;
         /** @description メディアフォルダの識別子 */
@@ -4285,6 +4683,63 @@ export interface operations {
             409: components["responses"]["Conflict"];
         };
     };
+    revertThumbnailImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartThumbnailEditRequest"];
+            };
+        };
+        responses: {
+            /** @description 始めたセッション */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
     listVideoVersions: {
         parameters: {
             query?: never;
@@ -4716,6 +5171,275 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
+        };
+    };
+    getComfyUISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComfyUISettings"];
+                };
+            };
+        };
+    };
+    updateComfyUISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateComfyUISettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComfyUISettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    checkComfyUI: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確かめた結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getThumbnailEditReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 編集の準備の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEditReadiness"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description セッションの今の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    discardThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 捨てた */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getThumbnailEditFrame: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description コマの画像 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getThumbnailEditResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 出力の画像 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/*": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    runThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["RunThumbnailEditRequest"];
+            };
+        };
+        responses: {
+            /** @description 送った実行 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["ProviderFailed"];
+        };
+    };
+    cancelThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description セッションの今の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyThumbnailEdit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description サムネイルの編集のセッションの識別子 */
+                editId: components["parameters"]["ThumbnailEditId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getAutoTaggingSettings: {

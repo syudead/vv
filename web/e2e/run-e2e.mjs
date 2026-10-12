@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -14,7 +14,9 @@ import {
   generateScanProgressFixtures,
   generateSearchFixtures,
   generateTagsFixtures,
+  generateThumbnailEditFixtures,
 } from "./media-fixtures.mjs";
+import { FAKE_COMFYUI_PORT } from "./fake-comfyui.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
@@ -32,6 +34,7 @@ const historyMediaDir = path.join(runRoot, "history-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
+const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
 // 毎回ゼロからのコンパイルになる。既定の置き場（GOCACHE）が決まっていれば
 // それに従い（CI は setup-go が復元した場所を渡す）、無ければ作業ツリーの中の
@@ -40,6 +43,14 @@ const goCache = process.env.GOCACHE ?? path.join(repoRoot, ".local", "go-build")
 
 function run() {
   mkdirSync(outputDir, { recursive: true });
+  // 偽の ComfyUI（thumbnail-edit.e2e.ts の接続先）は別のプロセスで動かす。Playwright を
+  // spawnSync で待つ間、このプロセスは要求に答えられないためである。標準入力が閉じると
+  // 終わるので、このプロセスが落ちても残らない。
+  const fakeComfyUI = spawn(
+    process.execPath,
+    [path.join(webRoot, "e2e", "fake-comfyui.mjs")],
+    { stdio: ["pipe", "inherit", "inherit"] },
+  );
   try {
     generateMediaFixtures(mediaDir);
     generateFolderFixtures(foldersMediaDir);
@@ -51,6 +62,7 @@ function run() {
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
+    generateThumbnailEditFixtures(thumbnailEditMediaDir);
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -100,6 +112,8 @@ function run() {
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
+          MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,
+          MDM_E2E_COMFYUI_URL: `http://127.0.0.1:${String(FAKE_COMFYUI_PORT)}`,
         },
         stdio: "inherit",
       },
@@ -107,6 +121,7 @@ function run() {
     if (test.error !== undefined) throw test.error;
     return test.status ?? 1;
   } finally {
+    fakeComfyUI.kill();
     rmSync(runRoot, { recursive: true, force: true });
   }
 }

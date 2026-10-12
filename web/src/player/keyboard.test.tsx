@@ -9,6 +9,7 @@ function fakeControls(overrides: Partial<PlayerControls> = {}): PlayerControls {
   return {
     togglePlay: vi.fn(),
     play: vi.fn(),
+    pause: vi.fn(),
     seekTo: vi.fn(),
     restart: vi.fn(),
     toggleMute: vi.fn(),
@@ -25,11 +26,13 @@ function fakeControls(overrides: Partial<PlayerControls> = {}): PlayerControls {
 function Harness({
   controls,
   onClose,
+  suspended = false,
 }: {
   controls: PlayerControls | null;
   onClose: () => void;
+  suspended?: boolean;
 }) {
-  useKeyboardShortcuts(controls, onClose);
+  useKeyboardShortcuts(controls, onClose, suspended);
   return (
     <div>
       <button type="button">ボタン</button>
@@ -53,6 +56,23 @@ describe("useKeyboardShortcuts", () => {
       configurable: true,
       value: null,
     });
+  });
+
+  it("止めている間（サムネイルの編集画面が開いている間）は、Space も Esc も受けない", () => {
+    const controls = fakeControls();
+    const onClose = vi.fn();
+    const view = render(<Harness controls={controls} onClose={onClose} suspended />);
+    const space = fireEvent.keyDown(screen.getByTestId("plain"), { key: " " });
+    const escape = fireEvent.keyDown(screen.getByTestId("plain"), { key: "Escape" });
+    expect(controls.togglePlay).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // 既定の動作（欄への入力、編集画面の Esc）を止めない。
+    expect(space).toBe(true);
+    expect(escape).toBe(true);
+
+    view.rerender(<Harness controls={controls} onClose={onClose} />);
+    fireEvent.keyDown(screen.getByTestId("plain"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("Space・F・M・C・0 がそれぞれの操作を起こし、←/→ では何もしない", () => {

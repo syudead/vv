@@ -96,6 +96,9 @@ describe("SettingsPage", () => {
             queue: { queued: 0, running: 0, done: 0, failed: 0 },
           }),
         );
+      // 「ComfyUI」区画は ComfyUISection.test.tsx が確かめる。ここでは何も保存されていない。
+      if (String(input) === "/api/settings/comfyui")
+        return Promise.resolve(json({ apiKeySet: false }));
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({

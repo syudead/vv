@@ -55,7 +55,7 @@ func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSett
 // SaveAutoTagSettings は自動タグ付けの設定を 1 つの取引で保存する。値は呼び出し側が
 // domain.ValidateAutoTagSettings で確かめたものを渡す。
 func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error {
-	return writeSettings(ctx, s.db.sql, [][2]string{
+	return writeSettings(ctx, s.db.sql, []settingValue{
 		{autoTagFeatureKey, strconv.FormatBool(settings.Enabled)},
 		{autoTagAfterImportKey, strconv.FormatBool(settings.AfterImport)},
 		{autoTagThresholdKey, strconv.FormatFloat(settings.Threshold, 'f', -1, 64)},
@@ -91,7 +91,7 @@ func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettin
 // SaveOllamaSettings は Ollama の接続先を 1 つの取引で保存する。値は呼び出し側が
 // domain.NormalizeOllamaSettings で確かめたものを渡す。
 func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error {
-	return writeSettings(ctx, s.db.sql, [][2]string{
+	return writeSettings(ctx, s.db.sql, []settingValue{
 		{ollamaEndpointKey, settings.Endpoint},
 		{ollamaModelKey, settings.Model},
 	})
@@ -115,20 +115,27 @@ func readFloatSetting(ctx context.Context, q *sql.DB, key string, fallback float
 	return parsed, nil
 }
 
-// writeSettings は複数の設定を 1 つの取引で保存する。
-func writeSettings(ctx context.Context, q *sql.DB, values [][2]string) error {
+// settingValue は保存する設定の 1 つである。キーと値を別のフィールドに持ち、誤りの文に入れる
+// キーが値（Comfy Cloud の API キーなど）と同じ配列の要素にならないようにする。
+type settingValue struct {
+	key   string
+	value string
+}
+
+// writeSettings は複数の設定を 1 つの取引で保存する。誤りの文にはキーだけを入れ、値は入れない。
+func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error {
 	tx, err := q.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := time.Now().Unix()
-	for _, kv := range values {
+	for _, setting := range values {
 		if _, err := tx.ExecContext(ctx, `
 			insert into settings (key, value, updated_at) values (?, ?, ?)
 			on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at`,
-			kv[0], kv[1], now); err != nil {
-			return fmt.Errorf("cannot save setting %s: %w", kv[0], err)
+			setting.key, setting.value, now); err != nil {
+			return fmt.Errorf("cannot save setting %s: %w", setting.key, err)
 		}
 	}
 	if err := tx.Commit(); err != nil {

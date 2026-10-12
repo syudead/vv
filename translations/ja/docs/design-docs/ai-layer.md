@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: 5e8490df6841fd8f23fa16faf1abad23554214251fb9c9ab82315af061ac3a68
+sourceHash: c449c687225b0ca5bc3d93393f99c259c95e0f6e34559963065a6316a8bcfc14
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -59,6 +59,31 @@ Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 
 | --- | --- |
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` は 27B で、より正確) |
+
+## 画像編集のプロバイダ {#image-edit-provider}
+
+[`internal/comfyui`](../../internal/comfyui) は画像編集のプロバイダだ。1 つのアダプタがセルフホストの ComfyUI と Comfy Cloud の両方を扱い、両者の違いはこのパッケージの中に閉じ込める ([045 research R-1、R-5](../../specs/045-comfyui-thumbnails/research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers))。`internal/app` は自身が使うインターフェースを宣言し、`cmd/mdm` がアダプタを渡す。depguard は `internal/app` がアダプタを import しないようにする。
+
+`app.ComfyUIConnection` は、`/api/settings/comfyui` と `/api/settings/comfyui/check` で、接続を保存し、接続テストを実行する。`app.OllamaConnection` が自動タグ付けと別であるように、プロバイダを使うサムネイルの機能とは別だ。
+
+| 設定 | 持つもの | 使うもの |
+| --- | --- | --- |
+| `comfyui.provider` | `self_hosted` または `cloud`。所有者が保存するまではない | 両方 |
+| `comfyui.url` | ベース URL。`ollama.endpoint` と同じように正規化する | セルフホスト |
+| `comfyui.api_key` | Comfy Cloud の API キー | Comfy Cloud |
+
+所有者がもう一方のプロバイダに切り替えても、それぞれのプロバイダは自身の値を保持するので、元に戻しても URL やキーを再び求めない。
+
+API キーは書き込み専用だ。`GET` は `apiKeySet` を答え、キーは決して答えない。`Cache-Control: no-store` を付ける。`apiKey` のない `PUT` は保存済みのキーを保持し、空文字列はキーを消す。キーは平文で保存する。暗号化の鍵は同じデータフォルダに置かれることになるので、暗号化してもデータベースを読む者から何も守れない ([R-9](../../specs/045-comfyui-thumbnails/research.md#r-9-the-api-key-is-write-only))。
+
+| 接続テスト | リクエスト | 利用できないと判断する条件 |
+| --- | --- | --- |
+| セルフホスト | 保存した URL への `GET /system_stats` | URL に到達できない、または応答が ComfyUI のシステム情報ではない |
+| Comfy Cloud | `X-API-Key` を付けた `GET https://cloud.comfy.org/api/jobs?limit=1` | Comfy Cloud に到達できない、またはキーに対して `401` か `403` を返す |
+
+プロバイダが応答すると、テストは `GET /object_info` を読み、vv が [`internal/comfyui/workflows`](../../internal/comfyui/workflows) に同梱する 2 つのワークフローを確認する。ワークフローが使うすべての `class_type` が存在しなければならず、ローダーノードが指定するすべてのモデルファイルがそのローダーの選択肢に含まれていなければならない。確認は `missing` の一覧を付けて利用できないと答える。一覧には、各モデルファイルをその `models` 以下のフォルダとダウンロードページとともに並べ、続いて欠けている各ノードの型を並べる。ノードの型の対処は ComfyUI の更新だ ([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files))。ワークフローの正は埋め込んだファイルだ。所有者向けの手順は [comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md) にある。`GET /api/thumbnail-edits/readiness` は接続が保存されているかを答える。動画ページが編集を有効にするのに必要なのはこの情報だ。このエンドポイントはテストを実行しない。
+
+テストは、何も保存されていないときもそれを報告する。原因ごとに別のメッセージがあり、どのメッセージも応答の本文を含まない。テストはリダイレクトをたどらないので、キーが別のホストに送られることはない。Ollama と同じく、サーバーは保存した接続にのみリクエストを送り、リクエスト本文の URL には決して送らない。
 
 ## プロバイダの追加 {#adding-a-provider}
 

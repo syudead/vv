@@ -319,7 +319,7 @@ to pick, what goes in each slot and what must not is in
 
 | Layer | What it is | Registry |
 | --- | --- | --- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
 | Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
 | States | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data | `registry:ui`, one item each |
 
@@ -363,6 +363,15 @@ aspect ratio from the frame at run time and must be resolved on the element,
 not on `:root`.
 `DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
 `table` item.
+
+`EditorDialog` is a `Dialog` that fills the viewport for a task on one image,
+such as painting over a video frame and comparing the result with it: a header
+band, a `stage` for the image and an `aside` for the inputs, whose `footer`
+holds the main actions. Below `lg` the stage is the named step `editor-stage`
+high (about 45% of the viewport's height). `Dialog` stops at `max-w-lg`, which
+leaves a 16:9 frame about 290 px tall at 1280 px, too small to paint on or to
+compare two images; `FormDialog` stays the dialog for a form
+([045 UI design, Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)).
 
 The showcase (`/design-system`) renders every example block, the list page in
 each of its states, and the dialogs behind their buttons, so the maintainer

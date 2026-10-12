@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for AuthSessionState.
@@ -29,6 +30,42 @@ func (e AuthSessionState) Valid() bool {
 	case Owner:
 		return true
 	case SetupRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComfyUIMissingItemKind.
+const (
+	Model ComfyUIMissingItemKind = "model"
+	Node  ComfyUIMissingItemKind = "node"
+)
+
+// Valid indicates whether the value is a known member of the ComfyUIMissingItemKind enum.
+func (e ComfyUIMissingItemKind) Valid() bool {
+	switch e {
+	case Model:
+		return true
+	case Node:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ComfyUIProvider.
+const (
+	Cloud      ComfyUIProvider = "cloud"
+	SelfHosted ComfyUIProvider = "self_hosted"
+)
+
+// Valid indicates whether the value is a known member of the ComfyUIProvider enum.
+func (e ComfyUIProvider) Valid() bool {
+	switch e {
+	case Cloud:
+		return true
+	case SelfHosted:
 		return true
 	default:
 		return false
@@ -76,22 +113,22 @@ func (e EncoderFallbackReason) Valid() bool {
 
 // Defines values for EncoderUnavailableReason.
 const (
-	CheckFailed    EncoderUnavailableReason = "check_failed"
-	EncoderMissing EncoderUnavailableReason = "encoder_missing"
-	TimedOut       EncoderUnavailableReason = "timed_out"
-	UnsupportedOs  EncoderUnavailableReason = "unsupported_os"
+	EncoderUnavailableReasonCheckFailed    EncoderUnavailableReason = "check_failed"
+	EncoderUnavailableReasonEncoderMissing EncoderUnavailableReason = "encoder_missing"
+	EncoderUnavailableReasonTimedOut       EncoderUnavailableReason = "timed_out"
+	EncoderUnavailableReasonUnsupportedOs  EncoderUnavailableReason = "unsupported_os"
 )
 
 // Valid indicates whether the value is a known member of the EncoderUnavailableReason enum.
 func (e EncoderUnavailableReason) Valid() bool {
 	switch e {
-	case CheckFailed:
+	case EncoderUnavailableReasonCheckFailed:
 		return true
-	case EncoderMissing:
+	case EncoderUnavailableReasonEncoderMissing:
 		return true
-	case TimedOut:
+	case EncoderUnavailableReasonTimedOut:
 		return true
-	case UnsupportedOs:
+	case EncoderUnavailableReasonUnsupportedOs:
 		return true
 	default:
 		return false
@@ -116,6 +153,7 @@ const (
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
+	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
@@ -160,6 +198,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeProbeNotFailed:
 		return true
+	case ErrorCodeProviderFailed:
+		return true
 	case ErrorCodeScanInProgress:
 		return true
 	case ErrorCodeTagMergeRequired:
@@ -185,6 +225,9 @@ const (
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
 	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
+	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
+	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
+	ErrorReasonContentChanged                ErrorReason = "content_changed"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
@@ -195,13 +238,16 @@ const (
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonFolderNotGroup                ErrorReason = "folder_not_group"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
+	ErrorReasonInsufficientCredits           ErrorReason = "insufficient_credits"
 	ErrorReasonInvalidCursor                 ErrorReason = "invalid_cursor"
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
 	ErrorReasonListenFailed                  ErrorReason = "listen_failed"
 	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
+	ErrorReasonMissingModels                 ErrorReason = "missing_models"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
+	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
 	ErrorReasonNotFolderGroup                ErrorReason = "not_folder_group"
@@ -211,21 +257,32 @@ const (
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
 	ErrorReasonRepresentativeNotSelected     ErrorReason = "representative_not_selected"
 	ErrorReasonRootGroupNotTaggable          ErrorReason = "root_group_not_taggable"
+	ErrorReasonRunFailed                     ErrorReason = "run_failed"
 	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
 	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
 	ErrorReasonSubtitleUnavailable           ErrorReason = "subtitle_unavailable"
 	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
 	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
+	ErrorReasonThumbnailEditMaskInvalid      ErrorReason = "thumbnail_edit_mask_invalid"
+	ErrorReasonThumbnailEditNoResult         ErrorReason = "thumbnail_edit_no_result"
+	ErrorReasonThumbnailEditNotFound         ErrorReason = "thumbnail_edit_not_found"
+	ErrorReasonThumbnailEditNotReady         ErrorReason = "thumbnail_edit_not_ready"
+	ErrorReasonThumbnailEditReferenceInvalid ErrorReason = "thumbnail_edit_reference_invalid"
 	ErrorReasonThumbnailFrameUnavailable     ErrorReason = "thumbnail_frame_unavailable"
+	ErrorReasonThumbnailImageInvalid         ErrorReason = "thumbnail_image_invalid"
 	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
+	ErrorReasonTimedOut                      ErrorReason = "timed_out"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
+	ErrorReasonUnauthorized                  ErrorReason = "unauthorized"
+	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
+	ErrorReasonWorkflowRejected              ErrorReason = "workflow_rejected"
 )
 
 // Valid indicates whether the value is a known member of the ErrorReason enum.
@@ -238,6 +295,12 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonApiTokenNameTooLong:
 		return true
 	case ErrorReasonAutoTaggingOff:
+		return true
+	case ErrorReasonComfyuiApiKeyMissing:
+		return true
+	case ErrorReasonComfyuiUrlInvalid:
+		return true
+	case ErrorReasonContentChanged:
 		return true
 	case ErrorReasonCrossOrigin:
 		return true
@@ -259,6 +322,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonGuestFilterNotAllowed:
 		return true
+	case ErrorReasonInsufficientCredits:
+		return true
 	case ErrorReasonInvalidCursor:
 		return true
 	case ErrorReasonInvalidFolderPath:
@@ -269,9 +334,13 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonMergeSameTag:
 		return true
+	case ErrorReasonMissingModels:
+		return true
 	case ErrorReasonNameIsSynonym:
 		return true
 	case ErrorReasonNameIsTag:
+		return true
+	case ErrorReasonNoOutput:
 		return true
 	case ErrorReasonNoScan:
 		return true
@@ -291,6 +360,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonRootGroupNotTaggable:
 		return true
+	case ErrorReasonRunFailed:
+		return true
 	case ErrorReasonSearchTooLong:
 		return true
 	case ErrorReasonSeekPreviewGenerating:
@@ -303,9 +374,23 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonTagNameTooLong:
 		return true
+	case ErrorReasonThumbnailEditMaskInvalid:
+		return true
+	case ErrorReasonThumbnailEditNoResult:
+		return true
+	case ErrorReasonThumbnailEditNotFound:
+		return true
+	case ErrorReasonThumbnailEditNotReady:
+		return true
+	case ErrorReasonThumbnailEditReferenceInvalid:
+		return true
 	case ErrorReasonThumbnailFrameUnavailable:
 		return true
+	case ErrorReasonThumbnailImageInvalid:
+		return true
 	case ErrorReasonThumbnailPositionOutOfRange:
+		return true
+	case ErrorReasonTimedOut:
 		return true
 	case ErrorReasonTooFewVideos:
 		return true
@@ -317,9 +402,15 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonTranscodeUnavailable:
 		return true
+	case ErrorReasonUnauthorized:
+		return true
+	case ErrorReasonUnreachable:
+		return true
 	case ErrorReasonUsernameLength:
 		return true
 	case ErrorReasonVideoNotFound:
+		return true
+	case ErrorReasonWorkflowRejected:
 		return true
 	default:
 		return false
@@ -803,6 +894,75 @@ func (e TagSort) Valid() bool {
 	}
 }
 
+// Defines values for ThumbnailEditFailure.
+const (
+	ThumbnailEditFailureInsufficientCredits ThumbnailEditFailure = "insufficient_credits"
+	ThumbnailEditFailureMissingModels       ThumbnailEditFailure = "missing_models"
+	ThumbnailEditFailureNoOutput            ThumbnailEditFailure = "no_output"
+	ThumbnailEditFailureRunFailed           ThumbnailEditFailure = "run_failed"
+	ThumbnailEditFailureTimedOut            ThumbnailEditFailure = "timed_out"
+	ThumbnailEditFailureUnauthorized        ThumbnailEditFailure = "unauthorized"
+	ThumbnailEditFailureUnreachable         ThumbnailEditFailure = "unreachable"
+	ThumbnailEditFailureWorkflowRejected    ThumbnailEditFailure = "workflow_rejected"
+)
+
+// Valid indicates whether the value is a known member of the ThumbnailEditFailure enum.
+func (e ThumbnailEditFailure) Valid() bool {
+	switch e {
+	case ThumbnailEditFailureInsufficientCredits:
+		return true
+	case ThumbnailEditFailureMissingModels:
+		return true
+	case ThumbnailEditFailureNoOutput:
+		return true
+	case ThumbnailEditFailureRunFailed:
+		return true
+	case ThumbnailEditFailureTimedOut:
+		return true
+	case ThumbnailEditFailureUnauthorized:
+		return true
+	case ThumbnailEditFailureUnreachable:
+		return true
+	case ThumbnailEditFailureWorkflowRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ThumbnailEditState.
+const (
+	ThumbnailEditStateCancelled ThumbnailEditState = "cancelled"
+	ThumbnailEditStateFailed    ThumbnailEditState = "failed"
+	ThumbnailEditStatePreparing ThumbnailEditState = "preparing"
+	ThumbnailEditStateQueued    ThumbnailEditState = "queued"
+	ThumbnailEditStateReady     ThumbnailEditState = "ready"
+	ThumbnailEditStateRunning   ThumbnailEditState = "running"
+	ThumbnailEditStateSucceeded ThumbnailEditState = "succeeded"
+)
+
+// Valid indicates whether the value is a known member of the ThumbnailEditState enum.
+func (e ThumbnailEditState) Valid() bool {
+	switch e {
+	case ThumbnailEditStateCancelled:
+		return true
+	case ThumbnailEditStateFailed:
+		return true
+	case ThumbnailEditStatePreparing:
+		return true
+	case ThumbnailEditStateQueued:
+		return true
+	case ThumbnailEditStateReady:
+		return true
+	case ThumbnailEditStateRunning:
+		return true
+	case ThumbnailEditStateSucceeded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -1208,6 +1368,40 @@ type CheckResult struct {
 
 	// Message 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
 	Message *string `json:"message,omitempty"`
+
+	// Missing ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル
+	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
+}
+
+// ComfyUIMissingItem ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13）
+type ComfyUIMissingItem struct {
+	// Folder モデルファイルだけ。ComfyUI の `models` の下のフォルダ
+	Folder *string                `json:"folder,omitempty"`
+	Kind   ComfyUIMissingItemKind `json:"kind"`
+
+	// Name ノードの `class_type` かファイル名
+	Name string `json:"name"`
+
+	// Source モデルファイルだけ。入手先のページの URL
+	Source *string `json:"source,omitempty"`
+}
+
+// ComfyUIMissingItemKind defines model for ComfyUIMissingItem.Kind.
+type ComfyUIMissingItemKind string
+
+// ComfyUIProvider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+type ComfyUIProvider string
+
+// ComfyUISettings ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない
+type ComfyUISettings struct {
+	// ApiKeySet Comfy Cloud の API キーが保存されているか
+	ApiKeySet bool `json:"apiKeySet"`
+
+	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+	Provider *ComfyUIProvider `json:"provider,omitempty"`
+
+	// Url 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く
+	Url *string `json:"url,omitempty"`
 }
 
 // CreateAPITokenRequest defines model for CreateAPITokenRequest.
@@ -1538,7 +1732,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1635,7 +1829,7 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1720,7 +1914,7 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video Video `json:"video"`
@@ -1833,6 +2027,18 @@ type RenameTagRequest struct {
 type RootFolderListing struct {
 	// Folders 登録済みメディアフォルダ。名前の自然順
 	Folders []FolderSummary `json:"folders"`
+}
+
+// RunThumbnailEditRequest defines model for RunThumbnailEditRequest.
+type RunThumbnailEditRequest struct {
+	// Mask コマと同じ大きさの PNG。塗った画素が不透明な白、残りが不透明な黒。省けばコマ全体
+	Mask *openapi_types.File `json:"mask,omitempty"`
+
+	// Prompt 持ち主の指示。省けば、塗った範囲があるとき vv の既定の指示を送る
+	Prompt *string `json:"prompt,omitempty"`
+
+	// Reference 参考画像（PNG・JPEG・WebP、20 MiB まで）。省けば参考画像の無いワークフローを使う
+	Reference *openapi_types.File `json:"reference,omitempty"`
 }
 
 // Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、 どちらもこの1つを読む
@@ -2008,6 +2214,12 @@ type StartAutoTaggingRequest struct {
 // StartAutoTaggingRequestScope defines model for StartAutoTaggingRequest.Scope.
 type StartAutoTaggingRequestScope string
 
+// StartThumbnailEditRequest defines model for StartThumbnailEditRequest.
+type StartThumbnailEditRequest struct {
+	// PositionMs 編集するコマの位置（ミリ秒）。0 以上で尺未満
+	PositionMs int64 `json:"positionMs"`
+}
+
 // SubtitleTrack defines model for SubtitleTrack.
 type SubtitleTrack struct {
 	// File 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う
@@ -2133,6 +2345,64 @@ type TagRef struct {
 // （specs/036-tag-admin-scale/data-model.md §0・§2）
 type TagSort string
 
+// ThumbnailEdit defines model for ThumbnailEdit.
+type ThumbnailEdit struct {
+	// ElapsedMs 実行を送ってからの時間（ミリ秒）。終わった実行では終わった時点で止まる。`ready` では省く
+	ElapsedMs *int64 `json:"elapsedMs,omitempty"`
+
+	// Error `failed` のときだけ。失敗の理由と、提供元が渡した文
+	Error *ThumbnailEditError `json:"error,omitempty"`
+
+	// FrameHeight コマの高さ（px）
+	FrameHeight int `json:"frameHeight"`
+
+	// FrameUrl コマの PNG（`GET /api/thumbnail-edits/{editId}/frame`）
+	FrameUrl string `json:"frameUrl"`
+
+	// FrameWidth コマの幅（px）。マスクはこの大きさで描く
+	FrameWidth int `json:"frameWidth"`
+
+	// Id セッションの識別子
+	Id string `json:"id"`
+
+	// Progress 提供元が報告したステップの進み具合。報告が無ければ省く
+	Progress *ThumbnailEditProgress `json:"progress,omitempty"`
+
+	// ResultUrl `succeeded` のときだけ。出力の画像（`GET /api/thumbnail-edits/{editId}/result`）
+	ResultUrl *string `json:"resultUrl,omitempty"`
+
+	// State 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+	State   ThumbnailEditState `json:"state"`
+	VideoId int64              `json:"videoId"`
+}
+
+// ThumbnailEditError `failed` のときだけ。失敗の理由と、提供元が渡した文
+type ThumbnailEditError struct {
+	// Message 提供元の文（ノードの誤り、実行の誤り、足りない名前）。無ければ省く
+	Message *string `json:"message,omitempty"`
+
+	// Reason 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+	Reason ThumbnailEditFailure `json:"reason"`
+}
+
+// ThumbnailEditFailure 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+type ThumbnailEditFailure string
+
+// ThumbnailEditProgress 提供元が報告したステップの進み具合。報告が無ければ省く
+type ThumbnailEditProgress struct {
+	Max   int `json:"max"`
+	Value int `json:"value"`
+}
+
+// ThumbnailEditReadiness defines model for ThumbnailEditReadiness.
+type ThumbnailEditReadiness struct {
+	// Connection ComfyUI の接続先が保存されているか（テストに通ったかではない）
+	Connection bool `json:"connection"`
+}
+
+// ThumbnailEditState 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+type ThumbnailEditState string
+
 // ThumbnailPositionUpdate defines model for ThumbnailPositionUpdate.
 type ThumbnailPositionUpdate struct {
 	// PositionMs 代表サムネイルにする場面の位置（ミリ秒）。null は解除して自動の位置に戻す
@@ -2180,6 +2450,18 @@ type UpdateAutoTaggingSettingsRequest struct {
 	Threshold float64 `json:"threshold"`
 }
 
+// UpdateComfyUISettingsRequest defines model for UpdateComfyUISettingsRequest.
+type UpdateComfyUISettingsRequest struct {
+	// ApiKey Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す
+	ApiKey *string `json:"apiKey,omitempty"`
+
+	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+	Provider ComfyUIProvider `json:"provider"`
+
+	// Url `self_hosted` のとき必須。http か https の基底 URL
+	Url *string `json:"url,omitempty"`
+}
+
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
 type UpdateMediaFolderRequest struct {
 	Path    string `json:"path"`
@@ -2222,7 +2504,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2314,11 +2596,16 @@ type Video struct {
 	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
 	Tags []VideoTag `json:"tags"`
 
+	// ThumbnailGenerated 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
+	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+	ThumbnailGenerated *bool `json:"thumbnailGenerated,omitempty"`
+
 	// ThumbnailPositionMs 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
 	ThumbnailPositionMs *int64              `json:"thumbnailPositionMs,omitempty"`
 	ThumbnailState      VideoThumbnailState `json:"thumbnailState"`
 
-	// ThumbnailUrl thumbnailState = done のときだけ入る
+	// ThumbnailUrl thumbnailState = done のときだけ入る。版は内容鍵の先頭で、位置の指定中は `-r<改版番号>`、
+	// 適用した画像の表示中は `-g<改版番号>` が付く（ゲストにも同じ文字列）
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
 
 	// Title 有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名
@@ -2597,7 +2884,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -2636,6 +2923,9 @@ type PlaylistItemId = int64
 // TagId defines model for TagId.
 type TagId = int64
 
+// ThumbnailEditId defines model for ThumbnailEditId.
+type ThumbnailEditId = string
+
 // VideoId defines model for VideoId.
 type VideoId = int64
 
@@ -2656,6 +2946,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// ProviderFailed defines model for ProviderFailed.
+type ProviderFailed = Error
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
 type GetAuthSessionParams struct {
@@ -3064,6 +3357,9 @@ type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
 // UpdateAutoTaggingSettingsJSONRequestBody defines body for UpdateAutoTaggingSettings for application/json ContentType.
 type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 
+// UpdateComfyUISettingsJSONRequestBody defines body for UpdateComfyUISettings for application/json ContentType.
+type UpdateComfyUISettingsJSONRequestBody = UpdateComfyUISettingsRequest
+
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
@@ -3091,6 +3387,9 @@ type MergeTagJSONRequestBody = MergeTagRequest
 // AddTagSynonymJSONRequestBody defines body for AddTagSynonym for application/json ContentType.
 type AddTagSynonymJSONRequestBody = AddTagSynonymRequest
 
+// RunThumbnailEditMultipartRequestBody defines body for RunThumbnailEdit for multipart/form-data ContentType.
+type RunThumbnailEditMultipartRequestBody = RunThumbnailEditRequest
+
 // DismissVersionCandidateJSONRequestBody defines body for DismissVersionCandidate for application/json ContentType.
 type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 
@@ -3111,6 +3410,9 @@ type SetVideoDisplayNameJSONRequestBody = DisplayNameUpdate
 
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
+
+// StartThumbnailEditJSONRequestBody defines body for StartThumbnailEdit for application/json ContentType.
+type StartThumbnailEditJSONRequestBody = StartThumbnailEditRequest
 
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
@@ -3240,6 +3542,15 @@ type ServerInterface interface {
 	// UpdateAutoTaggingSettings 自動タグ付けの機能の設定を保存する
 	// (PUT /api/settings/auto-tagging)
 	UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
+	// GetComfyUISettings ComfyUI の接続先を返す
+	// (GET /api/settings/comfyui)
+	GetComfyUISettings(w http.ResponseWriter, r *http.Request)
+	// UpdateComfyUISettings ComfyUI の接続先を保存する
+	// (PUT /api/settings/comfyui)
+	UpdateComfyUISettings(w http.ResponseWriter, r *http.Request)
+	// CheckComfyUI 保存した接続先に ComfyUI が応えるかを確かめる
+	// (POST /api/settings/comfyui/check)
+	CheckComfyUI(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
@@ -3300,6 +3611,30 @@ type ServerInterface interface {
 	// AddTagSynonym 名前をidのタグのシノニムにする
 	// (POST /api/tags/{id}/synonyms)
 	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// GetThumbnailEditReadiness サムネイルの編集を始められるかを返す
+	// (GET /api/thumbnail-edits/readiness)
+	GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request)
+	// DiscardThumbnailEdit サムネイルの編集のセッションを捨てる
+	// (DELETE /api/thumbnail-edits/{editId})
+	DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// GetThumbnailEdit サムネイルの編集のセッションの今の状態を返す
+	// (GET /api/thumbnail-edits/{editId})
+	GetThumbnailEdit(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// ApplyThumbnailEdit 成功した実行の画像をサムネイルにする
+	// (POST /api/thumbnail-edits/{editId}/apply)
+	ApplyThumbnailEdit(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// CancelThumbnailEdit 進んでいる実行を中止する
+	// (POST /api/thumbnail-edits/{editId}/cancel)
+	CancelThumbnailEdit(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// GetThumbnailEditFrame 編集するコマの PNG を返す
+	// (GET /api/thumbnail-edits/{editId}/frame)
+	GetThumbnailEditFrame(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// GetThumbnailEditResult 成功した実行の出力の画像を返す
+	// (GET /api/thumbnail-edits/{editId}/result)
+	GetThumbnailEditResult(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
+	// RunThumbnailEdit サムネイルの編集を ComfyUI で実行する
+	// (POST /api/thumbnail-edits/{editId}/runs)
+	RunThumbnailEdit(w http.ResponseWriter, r *http.Request, editId ThumbnailEditId)
 	// ListVersionCandidates 「同じ動画かもしれない」候補の一覧を返す
 	// (GET /api/version-candidates)
 	ListVersionCandidates(w http.ResponseWriter, r *http.Request)
@@ -3375,6 +3710,12 @@ type ServerInterface interface {
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
+	// StartThumbnailEdit 動画の1コマのサムネイルの編集を始める
+	// (POST /api/videos/{id}/thumbnail-edits)
+	StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id VideoId)
+	// RevertThumbnailImage 動画に適用したサムネイルの画像を外す
+	// (DELETE /api/videos/{id}/thumbnail-image)
+	RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoThumbnailPosition 動画の代表サムネイルの位置を設定・解除する
 	// (PUT /api/videos/{id}/thumbnail-position)
 	SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -4723,6 +5064,48 @@ func (siw *ServerInterfaceWrapper) UpdateAutoTaggingSettings(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// GetComfyUISettings operation middleware
+func (siw *ServerInterfaceWrapper) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetComfyUISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateComfyUISettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateComfyUISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckComfyUI operation middleware
+func (siw *ServerInterfaceWrapper) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckComfyUI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetNetworkSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetNetworkSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -5229,6 +5612,202 @@ func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AddTagSynonym(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetThumbnailEditReadiness operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnailEditReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DiscardThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DiscardThumbnailEdit(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnailEdit(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) ApplyThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyThumbnailEdit(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) CancelThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelThumbnailEdit(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetThumbnailEditFrame operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnailEditFrame(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnailEditFrame(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetThumbnailEditResult operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnailEditResult(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnailEditResult(w, r, editId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RunThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) RunThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "editId" -------------
+	var editId ThumbnailEditId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "editId", r.PathValue("editId"), &editId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "editId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RunThumbnailEdit(w, r, editId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6101,6 +6680,58 @@ func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// StartThumbnailEdit operation middleware
+func (siw *ServerInterfaceWrapper) StartThumbnailEdit(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartThumbnailEdit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevertThumbnailImage operation middleware
+func (siw *ServerInterfaceWrapper) RevertThumbnailImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevertThumbnailImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoThumbnailPosition operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request) {
 
@@ -6634,6 +7265,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)
@@ -6651,6 +7284,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/thumbnail-edits/readiness", wrapper.GetThumbnailEditReadiness)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/thumbnail-edits/{editId}", wrapper.DiscardThumbnailEdit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/thumbnail-edits/{editId}", wrapper.GetThumbnailEdit)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/frame", wrapper.GetThumbnailEditFrame)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/result", wrapper.GetThumbnailEditResult)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/runs", wrapper.RunThumbnailEdit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/cancel", wrapper.CancelThumbnailEdit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/apply", wrapper.ApplyThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)

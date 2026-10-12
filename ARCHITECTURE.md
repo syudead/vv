@@ -67,7 +67,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
 | Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama` | Talking to the outside world | Each other and `internal/app` |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -140,9 +140,10 @@ visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
-public flags, favorites, playlist items and owner edits are keyed by values a rescan reproduces (the content
-key, a version bundle's key, a folder's absolute path), never by `videos.id`,
-and carry no foreign key to `videos`. Which tables are rebuildable is in
+public flags, favorites, playlist items, owner edits and applied thumbnail
+images are keyed by values a rescan reproduces (the content key, a version
+bundle's key, a folder's absolute path), never by `videos.id`, and carry no
+foreign key to `videos`. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations
@@ -175,6 +176,7 @@ from SQLite, never from the filesystem.
 | External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md), [mcp.md](specs/026-external-api/contracts/mcp.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`, `OllamaConnection`), `internal/ollama` | The AI layer: a task-agnostic classifier port, and the Ollama provider behind it with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | Argon2id hashing in PHC strings | [016 data-model](specs/016-single-account-auth/data-model.md) |

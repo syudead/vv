@@ -11,14 +11,16 @@ import {
   LoaderCircle,
   type LucideIcon,
   PencilLine,
+  WandSparkles,
   X,
 } from "lucide-react";
-import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   isAborted,
   openVideoFile,
   RequestFailed,
+  revertThumbnailImage,
   setVideoThumbnailPosition,
   type Video,
 } from "../api/client";
@@ -31,10 +33,11 @@ import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
+import ActionButton from "./ActionButton";
 import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
+import EditEntry from "./thumbnailEdit/EditEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 
 /**
@@ -79,8 +82,10 @@ function useOpenFileRequest(
 }
 
 /**
- * useThumbnailPosition は代表サムネイルの位置の指定と解除を送る
- * （specs/029-video-overrides/ui-design.md「Thumbnail fact」）。送信中は次の要求を送らない。
+ * useThumbnailPosition は代表サムネイルの位置の指定と解除（specs/029-video-overrides/ui-design.md
+ * 「Thumbnail fact」）と、適用した画像からコマへの戻し（`revert`、
+ * specs/045-comfyui-thumbnails/ui-design.md「Generated thumbnail item」）を送る。送信中は次の
+ * 要求を送らない。
  * 始めるときに `report(null)`、失敗したときにその文言を `report` へ渡し、`404`
  * （`video_not_found`・`file_unavailable`）では `onStale` で動画を取り直させる。
  * 成功したら応答の動画を、送る直前に取った detailMark と一緒に `onChanged` で渡す。
@@ -91,10 +96,10 @@ function useThumbnailPosition(
   onChanged: ((video: Video, mark: DetailMark) => void) | undefined,
   onStale: (() => void) | undefined,
 ): {
-  sending: "capture" | "clear" | null;
-  send: (positionMs: number | null) => void;
+  sending: "capture" | "clear" | "revert" | null;
+  send: (positionMs: number | null | "revert") => void;
 } {
-  const [sending, setSending] = useState<"capture" | "clear" | null>(null);
+  const [sending, setSending] = useState<"capture" | "clear" | "revert" | null>(null);
   // 同じ瞬間の二度押しも止めるため、状態とは別に持つ。
   const busy = useRef(false);
   const request = useRef<AbortController | null>(null);
@@ -108,15 +113,20 @@ function useThumbnailPosition(
     [videoId],
   );
 
-  const send = (positionMs: number | null) => {
+  const send = (positionMs: number | null | "revert") => {
     if (busy.current) return;
     busy.current = true;
     const controller = new AbortController();
     request.current = controller;
     const mark = detailMark();
     report(null);
-    setSending(positionMs === null ? "clear" : "capture");
-    setVideoThumbnailPosition(videoId, positionMs, controller.signal)
+    setSending(
+      positionMs === "revert" ? "revert" : positionMs === null ? "clear" : "capture",
+    );
+    (positionMs === "revert"
+      ? revertThumbnailImage(videoId, controller.signal)
+      : setVideoThumbnailPosition(videoId, positionMs, controller.signal)
+    )
       .then(
         (video) => {
           if (controller.signal.aborted) return;
@@ -140,12 +150,14 @@ function useThumbnailPosition(
 }
 
 /**
- * ThumbnailCapture は「今の場面を代表サムネイルにする」ボタンに渡すプレイヤーの状態である。
- * `enabled` は押せるか、`positionMs` は押した瞬間の論理上の再生位置（ミリ秒）を返す。
+ * ThumbnailCapture は「今の場面を代表サムネイルにする」ボタンと編集の入口に渡すプレイヤーの
+ * 状態である。`enabled` は押せるか、`positionMs` は押した瞬間の論理上の再生位置（ミリ秒）を
+ * 返す。`pause` は再生を止める（編集を始めるとき）。
  */
 export interface ThumbnailCapture {
   enabled: boolean;
   positionMs: () => number | null;
+  pause: () => void;
 }
 
 function Fact({
@@ -224,7 +236,9 @@ function DateFact({
  *
  * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の項目の後ろにその画像・位置・
  * 解除の × を置き、`capture` があれば右端の操作の先頭近くに「今の場面を代表サムネイルにする」
- * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。
+ * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。その直後に
+ * ComfyUI でサムネイルを編集する入口を置き、編集した画像がサムネイルの間は、位置の項目の
+ * 代わりに生成した画像の項目を出す（specs/045-comfyui-thumbnails/ui-design.md）。
  *
  * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
  * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
@@ -246,6 +260,7 @@ export default function VideoFacts({
   onStale,
   onFavorite,
   versions,
+  onEditingChange,
 }: {
   video: Video;
   owner?: boolean;
@@ -261,6 +276,8 @@ export default function VideoFacts({
     onReplace: (video: Video, mark: DetailMark) => void;
     onRefresh: () => void;
   };
+  /** サムネイルの編集画面を開いた・閉じた。 */
+  onEditingChange?: (open: boolean) => void;
 }) {
   const [failure, setFailure] = useState<UiText | null>(null);
   useEffect(() => setFailure(null), [video.id]);
@@ -314,14 +331,23 @@ export default function VideoFacts({
               }
             />
           )}
-          {owner && video.thumbnailPositionMs !== undefined && (
-            <ThumbnailFact
+          {owner && video.thumbnailGenerated === true && (
+            <GeneratedThumbnailFact
               url={video.thumbnailUrl}
-              positionMs={video.thumbnailPositionMs}
-              clearing={thumbnail.sending === "clear"}
-              onClear={() => thumbnail.send(null)}
+              reverting={thumbnail.sending === "revert"}
+              onRevert={() => thumbnail.send("revert")}
             />
           )}
+          {owner &&
+            video.thumbnailGenerated !== true &&
+            video.thumbnailPositionMs !== undefined && (
+              <ThumbnailFact
+                url={video.thumbnailUrl}
+                positionMs={video.thumbnailPositionMs}
+                clearing={thumbnail.sending === "clear"}
+                onClear={() => thumbnail.send(null)}
+              />
+            )}
         </ul>
         {hasActions && (
           <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
@@ -355,6 +381,16 @@ export default function VideoFacts({
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
+            {owner && capture !== undefined && (
+              <EditEntry
+                videoId={video.id}
+                capture={capture}
+                report={setFailure}
+                onApplied={(applied, mark) => onChanged?.(applied, mark)}
+                onStale={onStale}
+                onEditingChange={onEditingChange}
+              />
+            )}
             {location?.openable === true && (
               <ActionButton label={f.openFile} onClick={open}>
                 <ExternalLink aria-hidden="true" />
@@ -379,34 +415,6 @@ export default function VideoFacts({
       )}
       <TechnicalLine summary={technical} />
     </div>
-  );
-}
-
-/**
- * ActionButton は情報の行の右端の、アイコンだけの操作である。お気に入り（Toggle の `sm`）と
- * 同じ大きさ（`icon-sm`）にそろえ、名前をツールチップでも出す。
- */
-function ActionButton({
-  label,
-  className,
-  children,
-  ...props
-}: ComponentProps<typeof Button> & { label: UiText }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={label}
-          className={cn("text-muted-foreground", className)}
-          {...props}
-        >
-          {children}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -451,6 +459,60 @@ function ThumbnailFact({
         className="size-6 rounded-sm aria-disabled:cursor-default [&_svg]:size-3"
       >
         {clearing ? (
+          <LoaderCircle
+            className="animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+        ) : (
+          <X aria-hidden="true" />
+        )}
+      </ActionButton>
+    </li>
+  );
+}
+
+/**
+ * GeneratedThumbnailFact は情報の行の項目で、適用した生成画像のサムネイルの小さな画像と、
+ * コマから作るサムネイルへ戻す × を並べる（specs/045-comfyui-thumbnails/ui-design.md
+ * 「Generated thumbnail item」）。画像は 1 つの位置から作ったものではないので時刻は出さない。
+ */
+function GeneratedThumbnailFact({
+  url,
+  reverting,
+  onRevert,
+}: {
+  url: string | undefined;
+  reverting: boolean;
+  onRevert: () => void;
+}) {
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  const text = t.player.thumbnailEdit;
+  return (
+    <li
+      title={text.generatedThumbnail}
+      className="flex items-center gap-1.5 whitespace-nowrap"
+    >
+      <WandSparkles className="size-4 shrink-0" aria-hidden="true" />
+      <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
+        {url !== undefined && url !== brokenUrl && (
+          <img
+            src={url}
+            alt={text.generatedThumbnail}
+            onError={() => setBrokenUrl(url)}
+            className="size-full object-cover"
+          />
+        )}
+      </span>
+      <span className="sr-only">{text.generatedThumbnail}</span>
+      <ActionButton
+        label={text.useFrameInstead}
+        aria-disabled={reverting || undefined}
+        onClick={() => {
+          if (!reverting) onRevert();
+        }}
+        className="size-6 rounded-sm aria-disabled:cursor-default [&_svg]:size-3"
+      >
+        {reverting ? (
           <LoaderCircle
             className="animate-spin motion-reduce:animate-none"
             aria-hidden="true"

@@ -475,11 +475,16 @@ labels.
 
 | Row | Content |
 | --- | --- |
-| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set; actions at the right end |
+| First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated image is the thumbnail; actions at the right end |
 | Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
 The actions are favorite, `Add to playlist`, `Use current frame as thumbnail`,
-`Open file` and `Copy path`: icon-only ghost buttons with tooltips. Dates show the date only;
+`Edit thumbnail with ComfyUI`, `Open file` and `Copy path`: icon-only ghost
+buttons with tooltips. The ComfyUI entry opens the thumbnail editor, an
+`EditorDialog` over the page, and is dimmed with a set-up popover until a
+ComfyUI connection is saved; while its generated image is the thumbnail, the
+thumbnail item shows that image with `Use the frame instead`
+([045 UI design](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)). Dates show the date only;
 the time is in the `title` attribute and in a popover opened by pressing the
 date. No path appears under the title, because the breadcrumb already shows
 the location.
