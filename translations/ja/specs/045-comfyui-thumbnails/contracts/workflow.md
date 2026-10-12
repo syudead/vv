@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/contracts/workflow.md
-sourceHash: f7d02ecf71aa0c394b68aed3db06a0e9f8bd2b06ae363d8dee5fc84791fece85
+sourceHash: 4fecd263e880182678d11bc154755bc498ba29a4ab76c1799914ab25825e370a
 ---
 
 # 契約: 同梱するサムネイルのワークフローとその実行 {#contract-the-bundled-thumbnail-workflow-and-its-runs}
@@ -21,10 +21,16 @@ vv は入力を入れるノードを `_meta.title` で見つけ、この表の�
 | タイトル | ノード | vv が書くもの |
 | --- | --- | --- |
 | `vv:frame` | `LoadImage` | `image`: アップロードしたフレーム |
-| `vv:prompt` | `CLIPTextEncode` | `text`: 所有者の指示、マスクが塗られていて指示が空のときは既定の指示、または `""` |
+| `vv:prompt` | `CLIPTextEncode` | `text`: 所有者の指示。指示が空でマスクが塗られているときは下の既定の指示。それ以外は `""` |
 | `vv:mask` | `LoadImageMask` (`red` チャンネル) | `image`: アップロードしたマスク、またはフレームの大きさの白いマスク |
 | `vv:reference` | `LoadImage` (参照の種類のみ) | `image`: アップロードした参照画像 |
 | `vv:output` | `SaveImage` | なし。vv はその最初の出力画像を読む |
+
+既定の指示は固定の英語のテキストであり、所有者の言語にかかわらず送る:
+
+```text
+Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings.
+```
 
 マスクはフレームのピクセルの大きさの PNG である: 塗ったピクセルは不透明な白、残りは不透明な黒である。図は、ワークフローが入力で何をするかを示す。
 

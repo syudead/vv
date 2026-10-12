@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/plan.md
-sourceHash: f80e179c1c98d2f4bfda5efee704c89f41293a9a0c5857ebc41542c97c7d0186
+sourceHash: fb7ed13fdc87d7b964773f21cbb4ef91297b0094e62a93ee5e7381723f0f2e4d
 ---
 
 # 実装計画: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#implementation-plan-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -11,7 +11,7 @@ sourceHash: f80e179c1c98d2f4bfda5efee704c89f41293a9a0c5857ebc41542c97c7d0186
 
 ## 概要 {#summary}
 
-所有者は Settings で ComfyUI の接続 (セルフホストまたは Comfy Cloud) を保存し、それから動画のページで今のフレームをテキスト、塗ったマスク、参照画像で編集し、実行を見守り、結果をフレームと比べ、サムネイルとして適用する。vv はワークフローとモデル (FLUX.2 [klein] 4B) を同梱し、セルフホストの所有者にどのモデルのファイルが欠けているかを伝え、各編集をそれを始めたページのためにメモリに保持し、適用した画像を、どの再スキャンの後にもサムネイルのジョブが公開し直すユーザーデータとして保持する。
+所有者は Settings で ComfyUI の接続 (セルフホストまたは Comfy Cloud) を保存し、それから動画のページで今のフレームをテキスト、塗ったマスク、参照画像で編集し、実行を見守り、結果をフレームと比べ、サムネイルとして適用する。vv はワークフローを同梱し、それらが実行するモデル (FLUX.2 [klein] 4B) を選ぶ。vv はモデルのファイルを同梱しないので、セルフホストの所有者にどれが欠けているかを伝え、各編集をそれを始めたページのためにメモリに保持し、適用した画像を、どの再スキャンの後にもサムネイルのジョブが公開し直すユーザーデータとして保持する。
 
 図は、この機能が加える部分と、それぞれがやり取りする相手を示す。
 
@@ -181,11 +181,11 @@ flowchart LR
 
 ### ComfyUI と Comfy Cloud でサムネイルのワークフローを実行する {#run-a-thumbnail-workflow-on-comfyui-and-comfy-cloud}
 
-**範囲**: `internal/app` の `ImageEditor` ポートと、両方のプロバイダーに対するその `internal/comfyui` の実装: アップロード、`vv:*` の入力、中立の値、既定の指示を入れたワークフローの種類、送信、状態の対応付け、キャンセル、出力の取得 (キーなしでの Cloud のリダイレクト)、失敗の理由。既定の指示の文言は Comfy Cloud でのクイックスタートの手順で決める ([contracts/workflow.md、Run、Run states と Failure reasons](contracts/workflow.md#run)、[R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)、[R-5](research.md#r-5-provider-differences-stay-inside-the-adapter))。
+**範囲**: `internal/app` の `ImageEditor` ポートと、両方のプロバイダーに対するその `internal/comfyui` の実装: アップロード、`vv:*` の入力、中立の値、既定の指示を入れたワークフローの種類、送信、状態の対応付け、キャンセル、出力の取得 (キーなしでの Cloud のリダイレクト)、失敗の理由 ([contracts/workflow.md、Run、Run states と Failure reasons](contracts/workflow.md#run)、[R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)、[R-5](research.md#r-5-provider-differences-stay-inside-the-adapter))。
 
 **依存**: ワークフローを埋め込み、欠けているノードとモデルのファイルを報告する。
 
-**受け入れ**: `task check` が通る。各プロバイダーの `httptest` の偽物に対するアダプターのテストが次を示す: 送信したプロンプトは埋め込んだ種類であり、変わるのは `vv:*` の入力だけである。参照のある実行は参照の種類を、参照のない実行はもう一方を使う。マスクがないときはフレームの大きさの全面が白い PNG をアップロードする。塗ったマスクがあり指示が空のときは既定の指示を送る。Run states の表のすべての行がその vv の状態に対応する。キャンセルは、待機中ならキューから削除し、実行中なら中断する (セルフホスト) か `POST /interrupt` を送る (Cloud)。Cloud の出力はリダイレクトから `X-API-Key` なしで取得する。Failure reasons の表の各行が、そのプロバイダーの応答から生まれる。
+**受け入れ**: `task check` が通る。各プロバイダーの `httptest` の偽物に対するアダプターのテストが次を示す: 送信したプロンプトは埋め込んだ種類であり、変わるのは `vv:*` の入力だけである。参照のある実行は参照の種類を、参照のない実行はもう一方を使う。マスクがないときはフレームの大きさの全面が白い PNG をアップロードする。塗ったマスクがあり指示が空のときは契約の既定の指示を一字一句そのまま送る。Run states の表のすべての行がその vv の状態に対応する。キャンセルは、待機中ならキューから削除し、実行中なら中断する (セルフホスト) か `POST /interrupt` を送る (Cloud)。Cloud の出力はリダイレクトから `X-API-Key` なしで取得する。Failure reasons の表の各行が、そのプロバイダーの応答から生まれる。
 
 ### ComfyUI の WebSocket からステップの進み具合を報告する {#report-step-progress-from-the-comfyui-websocket}
 

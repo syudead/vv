@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/quickstart.md
-sourceHash: bf2e2a24fa6ad59b1570951c9e2b0566792cdbc2c2c4d97fa4d90b7f969acc9d
+sourceHash: 12964c5d1425460b3db1f47d4818b0f39122e7887c2dbf3325cc874fafa2e0f0
 ---
 
 # クイックスタート: 実際の ComfyUI に対してサムネイルを編集する {#quickstart-edit-a-thumbnail-against-a-real-comfyui}
@@ -24,7 +24,7 @@ sourceHash: bf2e2a24fa6ad59b1570951c9e2b0566792cdbc2c2c4d97fa4d90b7f969acc9d
 | 動画のページ、別のブラウザーのゲストのセッション | 編集の入口がない | 9 |
 | 接続を削除し、動画のページを開く | 入口は無効で、Settings に接続が必要だと示す | 要件 14 |
 | 字幕のあるフレームで一時停止し、編集を始め、「Remove the captions」と入力し、実行する | 状態は経過時間付きで queued と running を経る (Cloud: preparing も)。字幕のない結果がフレームの隣に現れる | 3、5 |
-| 隅のロゴの上だけを塗り、指示を空のままにし、実行する | ロゴが消え、塗った範囲の外は何も変わっていない。これで既定の指示が決まる ([research.md R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)) | 4、エッジケース |
+| 隅のロゴの上だけを塗り、指示を空のままにし、実行する | ロゴが消え、塗った範囲の外は何も変わっていない ([research.md R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)) | 4、エッジケース |
 | 参照画像を添え、「Use the colours of the reference」と入力し、実行する | 結果は参照の色を取り入れる | 4 |
 | 実行し、待機中か実行中にキャンセルする | 実行は cancelled として終わる。サムネイルは変わらない | 7 |
 | 実行し、タブを閉じ、5 分待ち、再読み込みする | 編集は適用されない。サムネイルは変わらない | エッジケース |

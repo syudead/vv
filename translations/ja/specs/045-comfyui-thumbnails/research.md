@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/research.md
-sourceHash: 7aeec06017baf28f23ecd0f4b2e76ad1f15fc2a737b58e211a5f099dbea982db
+sourceHash: 7b0c21593d3500ff4d8f0f40cff92286ef78297ca31d3a7cecc3ff9152a1af66
 ---
 
 # 調査: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#research-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -46,7 +46,7 @@ sourceHash: 7aeec06017baf28f23ecd0f4b2e76ad1f15fc2a737b58e211a5f099dbea982db
 
 ## R-3: ない入力は中立の値を得るか、そのノードのない種類を使う {#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node}
 
-**決定**: 塗りがないとき、vv はフレーム全体を覆うマスクを送る。参照画像がないとき、vv は `vv:reference` のない種類を実行する。マスクが塗られていて指示がないとき、vv は、マスクの下にあるものを除き、周りに合わせて埋めるよう求める固定の既定の指示を送る。ワークフローは結果をマスクを通してフレームに合成するので、その外のピクセルは変わらない (受け入れ条件 4)。
+**決定**: 塗りがないとき、vv はフレーム全体を覆うマスクを送る。参照画像がないとき、vv は `vv:reference` のない種類を実行する。マスクが塗られていて指示がないとき、vv は既定の指示 "Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings." を送る。ワークフローは結果をマスクを通してフレームに合成するので、その外のピクセルは変わらない (受け入れ条件 4)。
 
 | 案 | 判定 |
 | --- | --- |
@@ -55,7 +55,7 @@ sourceHash: 7aeec06017baf28f23ecd0f4b2e76ad1f15fc2a737b58e211a5f099dbea982db
 | フレームを中立の参照にする | 不採用: [R-2](#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract) を参照 |
 | マスクがあり、指示が空 | 不採用: POC では、両方のモデルがマスクしたロゴを元のとおりに描き直した (エッジケース「塗った範囲があり、指示が空」) |
 
-**理由**: POC はフレーム全体のマスクと合成を確かめた (マスクを使った 9 回の実行で、マスクの外のピクセルは 1 つも変わらなかった)。既定の指示は POC で実行しておらず、「Run a thumbnail edit」の単位が Comfy Cloud に対してその文言を決める ([quickstart.md](quickstart.md))。
+**理由**: POC はフレーム全体のマスクと合成を確かめた (マスクを使った 9 回の実行で、マスクの外のピクセルは 1 つも変わらなかった)。その後、2 つの既定の指示を Comfy Cloud で klein 4B により 4 つのマスク (通りの上の赤いロゴ、空の上の半透明のロゴ、日本語のテロップ、2 行の字幕) に対して実行した: どちらもすべてのマスクの下にあるものをすべて除き、マスクのぼかした縁より外は何も変わらなかった。選んだ文言は Issue の主な場合であるテキストとロゴを名指しし、それでも物体も扱う。
 
 ## R-4: 編集は動画ごとのメモリ上のセッションであり、ポーリングで読む {#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling}
 
