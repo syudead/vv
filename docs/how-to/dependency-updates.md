@@ -44,6 +44,15 @@ The exclusion uses `matchDepNames`, not `matchPackageNames`, because the mise
 manager names `go` as `golang/go` and `node` as `nodejs`, while the dependency
 name is shared by both managers.
 
+## Dependencies with a narrow use
+
+These direct dependencies serve one adapter each. Renovate updates them with
+their group; the table says what to check when one changes.
+
+| Dependency | Used by | Check on an update |
+| --- | --- | --- |
+| `github.com/coder/websocket` | `internal/comfyui`, for the step progress of a ComfyUI run ([045 research, R-5](../../specs/045-comfyui-thumbnails/research.md#r-5-provider-differences-stay-inside-the-adapter)) | `go test ./internal/comfyui`; the module has no dependencies of its own, so an update adds none |
+
 ## Raise the bundled FFmpeg version
 
 The Windows zip bundles Gyan.dev's essentials build
