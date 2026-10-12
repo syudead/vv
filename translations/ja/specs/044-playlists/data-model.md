@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/data-model.md
-sourceHash: 20b6fbd73abdae9ef95e71d870a954fdf87e668e67c3cfeb646a8370bcdb30ec
+sourceHash: 0c7a71ec2820a136ef3c7e43c0c615e11cbadb2ee91a76e60302cecad4364a9a
 ---
 
 # データモデル: 名前付きのプレイリストと連続再生 {#data-model-named-playlists-and-continuous-playback}
@@ -19,7 +19,7 @@ sourceHash: 20b6fbd73abdae9ef95e71d870a954fdf87e668e67c3cfeb646a8370bcdb30ec
 
 ## マイグレーション {#migration}
 
-`00036_playlists.sql` (`main` の最後のマイグレーションは `00035_watch_history_title_key.sql`。実装するときに番号を確かめる)。
+`00036_playlists.sql` (`main` の最後のマイグレーションは `00035_watch_history_title_key.sql`。実装するときに番号を確かめる)。後のマイグレーション `00039_playlists_order_idx.sql` が、`ListPlaylists` の順と cursor である `playlists (updated_at desc, id desc)` に `playlists_order_idx` を加えるので、ページはすべてのプレイリストを走査して並べ替えない。
 
 ```sql
 -- User data (specs/044-playlists/research.md R-1). No foreign key to the library.
@@ -74,7 +74,7 @@ Down は両方のテーブルを削除する。どちらもユーザーデータ
 | 値 | 内容 |
 | --- | --- |
 | `Playlist` | `ID`、`Name`、`ItemCount` (表示される項目)、`UpdatedAt`、`Covers []FolderPreview` (一覧のカードの絵。`ListPlaylists` だけが埋め、ほかでは nil) |
-| `PlaylistPage` | `ListPlaylists` の 1 ページ: `Items []Playlist`、`Total` (ページングによらないすべてのプレイリスト)、`NextCursor` (最後のページでは空) |
+| `PlaylistPage` | `ListPlaylists` の 1 ページ: `Items []Playlist`、`Total` (ページングによらないすべてのプレイリスト)、`NextCursor` (最後のページでは空)、`Version` (一覧の順。数とすべての `updated_at` の和から作る不透明な文字列である。作成、削除、名前の変更、項目の変更で変わるので、後のページで異なる `Version` を見たクライアントは最初のページから一覧を読み直す。[contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists)) |
 | `PlaylistCursor`、`EncodePlaylistCursor`、`DecodePlaylistCursor` | ページの最後のプレイリストを `UpdatedAtMs` と `ID` で表し、`WatchHistoryCursor` と同じく包む (URL セーフな base64 の JSON)。読めない cursor は `ErrInvalidCursor` である |
 | `PlaylistItem` | `ID` と、`Video *Video` か `Group *LibraryGroup` のどちらか。どちらも所有者として読む |
 | `ValidatePlaylistName(string) (string, error)` | トリムする。空か 100 文字を超えると `*InvalidPlaylistNameError` ([R-11](research.md#r-11-a-playlist-name-is-1-to-100-characters-after-trimming-names-may-repeat)) |
@@ -117,7 +117,7 @@ flowchart LR
 
 | 操作 | 規則 |
 | --- | --- |
-| `ListPlaylists(cursor, limit)` | 1 つの `PlaylistPage`: `cursor` より後のプレイリスト (空なら最初のページ) を、`updated_at` の降順、次に `id` の降順で最大 `limit` 個返す (`ListWatchHistory` と同じく、`NextCursor` が続くかを知るために 1 行多く読む)。表示される項目の数と、返したページの分だけ `Covers` を持つ: 位置の順の最初の表示される項目で、動画の項目はその動画、グループの項目はグループの順でサムネイルを持つ最初のメンバーであり、サムネイルを生成済みの動画だけを最大 `MaxFolderPreviews` まで持つ ([contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists))。`Total`、要約、covers は 1 つの読み取りトランザクションで読む。読めない cursor は `ErrInvalidCursor` である |
+| `ListPlaylists(cursor, limit)` | 1 つの `PlaylistPage`: `cursor` より後のプレイリスト (空なら最初のページ) を、`updated_at` の降順、次に `id` の降順で最大 `limit` 個返す (`ListWatchHistory` と同じく、`NextCursor` が続くかを知るために 1 行多く読む)。表示される項目の数と、返したページの分だけ `Covers` を持つ: 位置の順の最初の表示される項目で、動画の項目はその動画、グループの項目はグループの順でサムネイルを持つ最初のメンバーであり、サムネイルを生成済みの動画だけを最大 `MaxFolderPreviews` まで持つ ([contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists))。`Total`、`Version`、要約、covers は 1 つの読み取りトランザクションで読む。読めない cursor は `ErrInvalidCursor` である |
 | `CreatePlaylist(name)` | 検証した名前。空のプレイリスト |
 | `RenamePlaylist(id, name)` | ないときは `ErrPlaylistNotFound` |
 | `DeletePlaylist(id)` | 項目は連鎖して消える。ないときは `ErrPlaylistNotFound` |

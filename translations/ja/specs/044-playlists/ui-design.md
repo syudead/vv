@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: c9efd6fdbba69c96a8ed53bd29aa33ba68fbcc3c01fae78275ac431c0be5183a
+sourceHash: 5d19e8065150518c677c0fbc78b063b8a7dc1e3d00a967b60926594b50f50989
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -161,7 +161,9 @@ flowchart LR
 
 ### ページング {#paging}
 
-グリッドはライブラリのグリッドと同じに読み込む: 最初に `GET /api/playlists` から 60 個の最初のページを読み、グリッドの後の 1 ピクセルの番兵がビューポートから 600px 以内に来ると（`IntersectionObserver`、`rootMargin: 600px`）、応答の `nextCursor` から次のページを読んでカードに追加する。オブザーバーはページごとにつなぎ直すので、まだ番兵に届くビューポートはスクロールなしで続くページを読み込む。グリッドにすでにあるプレイリストを後のページがもう一度返したとき（所有者がページを送る間に変わった）は、`id` で 1 つだけ残す。ヘッダーの数は応答の `total` なので、ページを読み込んでも増えない。作成の後、新しいプレイリストが最初に来るので、画面は最初のページを読み直し、読み込んだページの代わりにそれを出す。その後は、所有者がスクロールするにつれて番兵が残りをもう一度読み込む。
+グリッドはライブラリのグリッドと同じに読み込む: 最初に `GET /api/playlists` から 60 個の最初のページを読み、グリッドの後の 1 ピクセルの番兵がビューポートから 600px 以内に来ると（`IntersectionObserver`、`rootMargin: 600px`）、応答の `nextCursor` から次のページを読んでカードに追加する。オブザーバーはページごとにつなぎ直すので、まだ番兵に届くビューポートはスクロールなしで続くページを読み込む。ヘッダーの数は応答の `total` なので、ページを読み込んでも増えない。
+
+順は最後の変更によるので、所有者がページを送る間に変わったプレイリストは cursor より前に移り、飛ばされる（[contracts/screen-api.md の `GET /api/playlists`](contracts/screen-api.md#get-apiplaylists)）。次のページの `version` が読み込んだページのものと異なるとき、画面はそのページを捨て、読み込んだページの代わりに最初のページを読み直す。作成の後も、新しいプレイリストが最初に来るので、同じようにする。その最初のページを読み込む間、読み込んだカードは残り、`LoadMoreRow` が回る。失敗したときは、カードは残り、`LoadMoreRow` が「Couldn't load the playlists」と、最初のページを読み直す `Retry` を出す。最初のページを出すと、オブザーバーをつなぎ直すので、番兵は所有者がスクロールするにつれて残りを読み込み、まだ見えているときはすぐに読み込む。
 
 ### 新しいプレイリスト {#new-playlist}
 
@@ -202,7 +204,7 @@ stateDiagram-v2
 | 空 | lucide `ListVideo`、「No playlists yet」、「Create a playlist, then add videos and groups to it from the library.」、`default` `sm` の操作「New playlist」を持つ `EmptyState`。操作は同じダイアログを開く。ヘッダーのボタンは描かないので、その範囲の `default` のボタンは 1 つである |
 | 内容 | グリッド。ヘッダーの数と「New playlist」 |
 | 続きの読み込み中 | グリッド、その後に `LoadMoreRow` の `Spinner` の行「Loading…」（[ページング](#paging)） |
-| 続きの読み込みの失敗 | 保ったグリッド、その後に `LoadMoreRow` の `destructive` の `Alert`「Couldn't load more: {reason}」と、同じページをもう一度求める `Retry` |
+| 続きの読み込みの失敗 | 保ったグリッド、その後に `LoadMoreRow` の `destructive` の `Alert`「Couldn't load more: {reason}」と、同じページをもう一度求める `Retry`。失敗した読み込みが最初のページの読み直し（[Paging](#paging)）だったときは、`Alert` は「Couldn't load the playlists」と読め、`Retry` は最初のページをもう一度読む |
 | 作成中 | 変わらないグリッドの上の、`pending` の形のダイアログ |
 
 最初のページは、画面が開いたときと作成の後に読む。プレイリストから戻ると読み直す（`Link` がルートを離れ、画面が再びマウントされる）。開いている間に自分から更新はしない（R-10）。
