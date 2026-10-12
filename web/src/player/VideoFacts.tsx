@@ -237,7 +237,8 @@ function DateFact({
  * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の項目の後ろにその画像・位置・
  * 解除の × を置き、`capture` があれば右端の操作の先頭近くに「今の場面を代表サムネイルにする」
  * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。その直後に
- * ComfyUI でサムネイルを編集する入口を置き、編集した画像がサムネイルの間は、位置の項目の
+ * ComfyUI でサムネイルを編集する入口を、プレイヤーが出ていなくても置き
+ * （specs/046-thumbnail-image-upload/ui-design.md）、編集した画像がサムネイルの間は、位置の項目の
  * 代わりに生成した画像の項目を出す（specs/045-comfyui-thumbnails/ui-design.md）。
  *
  * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
@@ -302,8 +303,7 @@ export default function VideoFacts({
     });
   };
 
-  const hasActions =
-    location !== undefined || (owner && capture !== undefined) || favorite !== undefined;
+  const hasActions = location !== undefined || owner || favorite !== undefined;
 
   return (
     <div className="flex flex-col gap-3 border-t border-border pt-3">
@@ -381,10 +381,13 @@ export default function VideoFacts({
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
-            {owner && capture !== undefined && (
+            {/* 今のサムネイルの編集はプレイヤーに依らないので、プレイヤーが出ていない動画にも
+                置く（specs/046-thumbnail-image-upload/ui-design.md）。 */}
+            {owner && (
               <EditEntry
                 videoId={video.id}
                 capture={capture}
+                thumbnailUrl={video.thumbnailUrl}
                 report={setFailure}
                 onApplied={(applied, mark) => onChanged?.(applied, mark)}
                 onStale={onStale}
