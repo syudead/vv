@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/plan.md
-sourceHash: 29032ccba152edab224a03d3b88ed1cb7f01538ba1b87d70249278048c0bd698
+sourceHash: f80e179c1c98d2f4bfda5efee704c89f41293a9a0c5857ebc41542c97c7d0186
 ---
 
 # 実装計画: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#implementation-plan-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -11,13 +11,13 @@ sourceHash: 29032ccba152edab224a03d3b88ed1cb7f01538ba1b87d70249278048c0bd698
 
 ## 概要 {#summary}
 
-所有者は Settings で ComfyUI の接続 (セルフホストまたは Comfy Cloud) とワークフローを 1 つ保存し、それから動画のページで今のフレームをテキスト、塗ったマスク、参照画像で編集し、実行を見守り、結果をフレームと比べ、サムネイルとして適用する。vv は `vv:*` というタイトルのノードを通じて所有者のワークフローを動かし、各編集をそれを始めたページのためにメモリに保持し、適用した画像を、どの再スキャンの後にもサムネイルのジョブが公開し直すユーザーデータとして保持する。
+所有者は Settings で ComfyUI の接続 (セルフホストまたは Comfy Cloud) を保存し、それから動画のページで今のフレームをテキスト、塗ったマスク、参照画像で編集し、実行を見守り、結果をフレームと比べ、サムネイルとして適用する。vv はワークフローとモデル (FLUX.2 [klein] 4B) を同梱し、セルフホストの所有者にどのモデルのファイルが欠けているかを伝え、各編集をそれを始めたページのためにメモリに保持し、適用した画像を、どの再スキャンの後にもサムネイルのジョブが公開し直すユーザーデータとして保持する。
 
 図は、この機能が加える部分と、それぞれがやり取りする相手を示す。
 
 ```mermaid
 flowchart LR
-  settings[Settings の節] -->|接続、ワークフロー| api[画面の API]
+  settings[Settings の節] -->|接続| api[画面の API]
   page[動画のページの編集] -->|編集、実行、ポーリング、適用| api
   api --> edits[app.ThumbnailEdits]
   api --> conn[app.ComfyUIConnection]
@@ -34,7 +34,8 @@ flowchart LR
 | 関心事 | 方針 |
 | --- | --- |
 | プロバイダー | `ImageEditor` ポートと、両方のプロバイダーに対する 1 つの `internal/comfyui` アダプター ([R-1](research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers)、[R-5](research.md#r-5-provider-differences-stay-inside-the-adapter)) |
-| ワークフロー | 所有者の API 形式のワークフロー。入力と出力は `vv:*` のタイトルで見つけ、ない入力は中立の値で埋める ([R-2](research.md#r-2-named-nodes-in-the-owners-api-format-workflow-are-the-whole-contract)、[R-3](research.md#r-3-absent-optional-inputs-get-a-neutral-value)、[contracts/workflow.md](contracts/workflow.md)) |
+| ワークフローとモデル | FLUX.2 [klein] 4B fp8 の上の、同梱する 2 つの API 形式のワークフロー (参照ありと参照なし)。入力は `vv:*` のタイトルで見つけ、ない入力は中立の値で埋める ([R-2](research.md#r-2-vv-bundles-the-workflow-named-nodes-are-its-internal-contract)、[R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)、[R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8)、[contracts/workflow.md](contracts/workflow.md)) |
+| 欠けているファイル | 接続のテストが `/object_info` を通じてワークフローのノードとモデルのファイルを確かめる ([R-13](research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)) |
 | 編集と実行 | 動画ごとのメモリ上のセッション。ページがポーリングし、破棄、期限切れ、新しい編集で終わる。実行の上限は 10 分 ([R-4](research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling)、[R-11](research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes)) |
 | フレーム | サーバーが最大 2048 px で取り出す ([R-8](research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)) |
 | 適用した画像 | 動画の縦横比に合わせ、`thumbnail_images` に保存し、サムネイルのジョブが公開し直す ([R-6](research.md#r-6-the-applied-image-is-user-data-in-sqlite-the-thumbnail-file-is-rebuilt-from-it)、[R-7](research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
@@ -42,9 +43,9 @@ flowchart LR
 | API キー | 書き込み専用 ([R-9](research.md#r-9-the-api-key-is-write-only)) |
 | ルート | 設定、編集、元に戻す操作のための所有者専用の新しいルート。位置の上書きは変わる ([contracts/screen-api.md](contracts/screen-api.md)) |
 
-Issue には `ui` ラベルがあるので、2 つの画面の単位より前に `design` 段階が `ui-design.md` を書く: Settings の ComfyUI の節、動画のページのサムネイルの操作部品の隣の編集の入口 ([029 ui-design](../029-video-overrides/ui-design.md))、マスクの塗り、実行の状態と失敗、適用、再実行、破棄を持つ比較、「use the frame instead」である。
+Issue には `ui` ラベルがあるので、2 つの画面の単位より前に `design` 段階が `ui-design.md` を書く: 欠けているファイルを示す Settings の ComfyUI の節、動画のページのサムネイルの操作部品の隣の編集の入口 ([029 ui-design](../029-video-overrides/ui-design.md))、マスクの塗り、実行の状態と失敗、適用、再実行、破棄を持つ比較、「use the frame instead」である。
 
-親 Issue のとおり範囲外のもの: 一括の生成、ComfyUI、モデル、ワークフローの同梱やインストール、シーク用のスプライト、スクラブのフレーム、ホバーのプレビューの置き換え、生成した画像の履歴、ほかのプロバイダー、vv の外で作った画像のアップロード、Comfy Cloud のクレジットの表示。Issue は画面だけを求めているので、外部 API と MCP にはこれらのルートは加わらない。
+親 Issue のとおり範囲外のもの: 一括の生成、ComfyUI やモデルのファイルの同梱、ダウンロード、インストール、所有者自身のワークフローやモデルと手法の選択肢、シーク用のスプライト、スクラブのフレーム、ホバーのプレビューの置き換え、生成した画像の履歴、ほかのプロバイダー、vv の外で作った画像のアップロード、Comfy Cloud のクレジットの表示。Issue は画面だけを求めているので、外部 API と MCP にはこれらのルートは加わらない。
 
 ## 技術的な文脈 {#technical-context}
 
@@ -68,13 +69,14 @@ Issue には `ui` ラベルがあるので、2 つの画面の単位より前に
 - vv が保存する最初の外向きの資格情報 ([R-9](research.md#r-9-the-api-key-is-write-only))。
 - `multipart/form-data` を受け取り、成果物ではない画像 (フレームと結果) を返す最初の画面の API のルート。
 - e2e の実行は偽の ComfyUI サーバーを起動する。`web/e2e` にはまだ外部のサービスを偽装するものはない。
+- Go のアダプターに埋め込む最初の JSON の資産 (2 つのワークフロー、[contracts/workflows/](contracts/workflows/))。そのモデルは Comfy Cloud でのモデルの POC で選んだ ([R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8))。
 
 ## Constitution Check {#constitution-check}
 
 | 規則 (出典) | 判定 |
 | --- | --- |
 | アダプターは互いにも `internal/app` にも依存せず、`internal/app` はアダプターに依存しない (ARCHITECTURE.md、depguard) | 適合: `internal/comfyui` は `internal/domain` だけに依存し、`.golangci.yml` のアダプターの一覧に加わる。`internal/app` が `ImageEditor` と設定のストアのインターフェースを宣言する |
-| ドメインが決め、ストアが強制する (ARCHITECTURE.md) | 適合: ワークフローの規則と設定の正規化は `internal/domain` の純粋な関数である。適用の順序は既存のロックの下で `internal/app` にある |
+| ドメインが決め、ストアが強制する (ARCHITECTURE.md) | 適合: 設定の正規化と編集の状態は `internal/domain` にある。ワークフローとその確認はアダプターのものである。適用の順序は既存のロックの下で `internal/app` にある |
 | 生成ファイルの所有者は 1 つ (ARCHITECTURE.md) | 適合: サムネイルのファイルは今までどおり `internal/artifacts` だけが置く。適用した画像はファイルではなく行である ([R-6](research.md#r-6-the-applied-image-is-user-data-in-sqlite-the-thumbnail-file-is-rebuilt-from-it)) |
 | ユーザーデータは作り直しの後も残る (ARCHITECTURE.md) | 適合: `thumbnail_images` は内容の鍵をキーにして外部キーを持たず、ARCHITECTURE.md と running-vv.md のユーザーデータの一覧に加わる |
 | コミット後のイベント (ARCHITECTURE.md) | 適合: 適用と元に戻す操作はコミットの後に既存の `VideoOverrideChanged` を発行する。編集のセッションは何も発行しない ([R-4](research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling)) |
@@ -99,10 +101,13 @@ specs/045-comfyui-thumbnails/
 ├── quickstart.md
 └── contracts/
     ├── screen-api.md
-    └── workflow.md
+    ├── workflow.md
+    └── workflows/
+        ├── thumbnail-edit.json
+        └── thumbnail-edit-reference.json
 ```
 
-`ui-design.md` は `design` 段階が書く (Issue に `ui` ラベルがある)。自動の検査は偽の ComfyUI に対してしか実行しないので、`quickstart.md` がある。`contracts/workflow.md` は、下の手順書が引き継ぐまで、所有者に向けたワークフローの契約である。
+`ui-design.md` は `design` 段階が書く (Issue に `ui` ラベルがある)。自動の検査は偽の ComfyUI に対してしか実行しないので、`quickstart.md` がある。`contracts/workflow.md` と 2 つのワークフローのファイルは、ファイルが `internal/comfyui` に移るまで正本である。所有者に向けた部分 (セルフホストの ComfyUI に必要なもの) は下の手順書に移る。
 
 ### ソースコード {#source-code}
 
@@ -110,8 +115,8 @@ specs/045-comfyui-thumbnails/
 
 | 境界 | この機能で受け持つもの |
 | --- | --- |
-| `internal/domain` | `ComfyUISettings`、`ThumbnailWorkflow` とそのパーサー、編集の状態と失敗の理由、`Video.ThumbnailImageRevision` |
-| `internal/comfyui` (新規) | プロバイダーのアダプター: 接続のテスト、アップロード、実行、状態、キャンセル、出力、WebSocket の進み具合 |
+| `internal/domain` | `ComfyUISettings`、編集の状態と失敗の理由、`Video.ThumbnailImageRevision` |
+| `internal/comfyui` (新規) | プロバイダーのアダプター: 埋め込んだワークフロー、必要なファイルの確認を含む接続のテスト、アップロード、実行、状態、キャンセル、出力、WebSocket の進み具合 |
 | `internal/media` | `FrameAt` (最大 2048 px の PNG) と `FitThumbnailImage` (縦横比に合わせる、JPEG) |
 | `internal/store` | マイグレーション、`comfyui.*` の設定、`thumbnail_images` の読み書き、`ThumbnailImageRevision` のための結合 |
 | `internal/app` | `ComfyUIConnection`、`ThumbnailEdits`、`Ingest.ApplyThumbnailImage`、`Ingest.RevertThumbnailImage`、サムネイルのジョブの公開し直し |
@@ -120,9 +125,9 @@ specs/045-comfyui-thumbnails/
 | `web/e2e` | 偽の ComfyUI とブラウザーテスト |
 | `docs/` | `ai-layer.md`、新しい `docs/design-docs/thumbnail-editing.md`、新しい `docs/how-to/comfyui-thumbnails.md`、`running-vv.md`、ARCHITECTURE.md |
 
-**新しいパス**: `internal/comfyui/`、`internal/domain/comfyui.go`、`internal/app/comfyui.go`、`internal/app/thumbnail_edits.go`、`internal/store/thumbnail_images.go`、`internal/store/migrations/00038_thumbnail_images.sql`、`internal/httpapi/comfyui.go`、`internal/httpapi/thumbnail_edits.go`、`web/src/settings/ComfyUISection.tsx`、`web/src/player/thumbnailEdit/`、`web/e2e/fake-comfyui.mjs`、`web/e2e/thumbnail-edit.e2e.ts`。
+**新しいパス**: `internal/comfyui/` (`internal/comfyui/workflows/` を含む)、`internal/domain/comfyui.go`、`internal/app/comfyui.go`、`internal/app/thumbnail_edits.go`、`internal/store/thumbnail_images.go`、`internal/store/migrations/00038_thumbnail_images.sql`、`internal/httpapi/comfyui.go`、`internal/httpapi/thumbnail_edits.go`、`web/src/settings/ComfyUISection.tsx`、`web/src/player/thumbnailEdit/`、`web/e2e/fake-comfyui.mjs`、`web/e2e/thumbnail-edit.e2e.ts`。
 
-**構成の決定**: 動画のページの編集は `web/src/player/` の下の独自のディレクトリにする。マスクのキャンバス、実行のパネル、比較は `VideoFacts` が開くだけの 1 つの流れだからである。偽の ComfyUI は contracts/workflow.md のセルフホストのルートを提供するので、ブラウザーテストは実際のアダプターを動かす。
+**構成の決定**: 動画のページの編集は `web/src/player/` の下の独自のディレクトリにする。マスクのキャンバス、実行のパネル、比較は `VideoFacts` が開くだけの 1 つの流れだからである。偽の ComfyUI は contracts/workflow.md のセルフホストのルートを `/object_info` も含めて提供するので、ブラウザーテストは実際のアダプターを動かす。
 
 ## 実装作業 {#implementation-work}
 
@@ -130,10 +135,10 @@ specs/045-comfyui-thumbnails/
 
 ```mermaid
 flowchart LR
-  conn[接続の API] --> wf[ワークフローの API]
+  conn[接続の API] --> files[必要なファイルの確認]
   conn --> settings[Settings の節]
-  wf --> settings
-  wf --> run[ComfyUI の実行]
+  files --> settings
+  files --> run[ComfyUI の実行]
   run --> ws[WebSocket の進み具合]
   image[適用した画像] --> edits[編集のセッションの API]
   run --> edits
@@ -150,21 +155,21 @@ flowchart LR
 
 **受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: 保存したキーは `apiKeySet: true` として返り、本文には決して入らない。`apiKey` のない `PUT` はキーを保ち、`""` は消す。契約の `400` の各理由。`httptest` サーバーに対するアダプターのテストが次を示す: 確認はセルフホストの `/system_stats` で使用可能となり、拒否された接続、ComfyUI ではない応答、Cloud の `401`、何も保存されていないときは、それぞれ別のメッセージで使用不可となる。ゲストは各ルートで `401` を受け取り、`TestAccessClassificationMatchesOpenAPISecurity` が通る。
 
-### vv というタイトルのノードを持つサムネイルのワークフローを登録する {#register-a-thumbnail-workflow-with-nodes-titled-vv}
+### ワークフローを埋め込み、欠けているノードとモデルのファイルを報告する {#embed-the-workflows-and-report-missing-nodes-and-model-files}
 
-**範囲**: `ThumbnailWorkflow` と `ParseThumbnailWorkflow`、`comfyui.workflow` の設定、`GET`/`PUT`/`DELETE /api/settings/comfyui/workflow` と `GET /api/thumbnail-edits/readiness`、クライアントの関数、そして所有者のために [contracts/workflow.md、Workflow format と Registration](contracts/workflow.md#workflow-format) から書く `docs/how-to/comfyui-thumbnails.md`。
+**範囲**: `internal/comfyui/workflows/` に移して埋め込む [contracts/workflows/](contracts/workflows/) の 2 つのワークフロー、各ワークフローが [contracts/workflow.md](contracts/workflow.md#workflows) の `vv:*` のタイトルを持つことのテスト、`missing` の一覧とその入手元を返す、`/object_info` を通じた接続のテストの必要なファイルの確認、`GET /api/thumbnail-edits/readiness`、クライアントの関数、所有者のための `docs/how-to/comfyui-thumbnails.md` (セルフホストの ComfyUI に必要なファイルとその置き場所、Comfy Cloud のキー) ([R-12](research.md#r-12-the-model-is-flux2-klein-4b-fp8)、[R-13](research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)、[contracts/screen-api.md](contracts/screen-api.md#post-apisettingscomfyuicheck))。
 
 **依存**: 画面の API で ComfyUI の接続を保存し、テストする。
 
-**受け入れ**: `task check` と `task check-docs` が通る。ドメインのテストが Registration の表のすべての行を覆い、5 つのタイトルをすべて持つワークフローには `prompt`、`mask`、`reference` を、`vv:frame` と `vv:output` だけを持つものには何も報告しない。ハンドラーのテストが次を示す: 1 MiB を超えると `413`、登録の前は `404`、削除で `204`、`readiness` は 4 つの組み合わせのそれぞれで `connection` と `workflow` を返す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。`/object_info` の `httptest` の偽物に対するアダプターのテストが次を示す: すべてのノードとファイルが挙がっているときは使用可能。ローダーに欠ける各ファイルについて、そのフォルダーと入手元を持つ `model` の項目。欠ける各 `class_type` について `node` の項目。Comfy Cloud のルートでの同じ確認。ハンドラーのテストが、保存の前と後で `readiness` が `connection` を返すことを示す。
 
-### ComfyUI の接続とワークフローを Settings に加える {#add-the-comfyui-connection-and-workflow-to-settings}
+### ComfyUI の接続を Settings に加える {#add-the-comfyui-connection-to-settings}
 
-**範囲**: Settings の ComfyUI の節: プロバイダーの選択、URL または API キー (キーの欄はキーが保存されていることだけを示す)、保存、テストとその結果、ワークフローのファイルのアップロードとそれが受け取る入力、削除、カタログの文言、手順書への文書のリンク。レイアウトと文言は `ui-design.md` に従う。
+**範囲**: Settings の ComfyUI の節: プロバイダーの選択、URL または API キー (キーの欄はキーが保存されていることだけを示す)、保存、テストとその結果、および欠けているノードとファイルとそのフォルダーと入手元、カタログの文言、手順書への文書のリンク。レイアウトと文言は `ui-design.md` に従う。
 
-**依存**: 画面の API で ComfyUI の接続を保存し、テストする。vv というタイトルのノードを持つサムネイルのワークフローを登録する。
+**依存**: 画面の API で ComfyUI の接続を保存し、テストする。ワークフローを埋め込み、欠けているノードとモデルのファイルを報告する。
 
-**受け入れ**: `task check` が通る。ページテストが次を示す: 保存の後にキーが欄に入ることはない。テストの結果とそのメッセージ。拒否されたワークフローの理由。登録の後の省略できる入力。画面の変更は、両方のテーマで design-system.md に照らした見た目のレビューを受ける。
+**受け入れ**: `task check` が通る。ページテストが次を示す: 保存の後にキーが欄に入ることはない。テストの結果とそのメッセージ。欠けている各項目とそのフォルダーと入手元。画面の変更は、design-system.md に照らした見た目のレビューを受ける。
 
 ### 適用したサムネイルの画像を再スキャンの後も保ち、所有者が元に戻せるようにする {#keep-an-applied-thumbnail-image-across-rescans-and-let-the-owner-revert-it}
 
@@ -176,11 +181,11 @@ flowchart LR
 
 ### ComfyUI と Comfy Cloud でサムネイルのワークフローを実行する {#run-a-thumbnail-workflow-on-comfyui-and-comfy-cloud}
 
-**範囲**: `internal/app` の `ImageEditor` ポートと、両方のプロバイダーに対するその `internal/comfyui` の実装: アップロード、`vv:*` の入力と中立の値を入れたワークフロー、送信、状態の対応付け、キャンセル、出力の取得 (キーなしでの Cloud のリダイレクト)、失敗の理由 ([contracts/workflow.md、Run、Run states と Failure reasons](contracts/workflow.md#run)、[R-3](research.md#r-3-absent-optional-inputs-get-a-neutral-value)、[R-5](research.md#r-5-provider-differences-stay-inside-the-adapter))。
+**範囲**: `internal/app` の `ImageEditor` ポートと、両方のプロバイダーに対するその `internal/comfyui` の実装: アップロード、`vv:*` の入力、中立の値、既定の指示を入れたワークフローの種類、送信、状態の対応付け、キャンセル、出力の取得 (キーなしでの Cloud のリダイレクト)、失敗の理由。既定の指示の文言は Comfy Cloud でのクイックスタートの手順で決める ([contracts/workflow.md、Run、Run states と Failure reasons](contracts/workflow.md#run)、[R-3](research.md#r-3-absent-inputs-get-a-neutral-value-or-the-variant-without-the-node)、[R-5](research.md#r-5-provider-differences-stay-inside-the-adapter))。
 
-**依存**: vv というタイトルのノードを持つサムネイルのワークフローを登録する。
+**依存**: ワークフローを埋め込み、欠けているノードとモデルのファイルを報告する。
 
-**受け入れ**: `task check` が通る。各プロバイダーの `httptest` の偽物に対するアダプターのテストが次を示す: 送信したプロンプトで変わるのは `vv:*` の入力だけである。マスクがないときはフレームの大きさの全面が白い PNG をアップロードし、参照がないときはフレームをアップロードする。Run states の表のすべての行がその vv の状態に対応する。キャンセルは、待機中ならキューから削除し、実行中なら中断する (セルフホスト) か `POST /interrupt` を送る (Cloud)。Cloud の出力はリダイレクトから `X-API-Key` なしで取得する。Failure reasons の表の各行が、そのプロバイダーの応答から生まれる。
+**受け入れ**: `task check` が通る。各プロバイダーの `httptest` の偽物に対するアダプターのテストが次を示す: 送信したプロンプトは埋め込んだ種類であり、変わるのは `vv:*` の入力だけである。参照のある実行は参照の種類を、参照のない実行はもう一方を使う。マスクがないときはフレームの大きさの全面が白い PNG をアップロードする。塗ったマスクがあり指示が空のときは既定の指示を送る。Run states の表のすべての行がその vv の状態に対応する。キャンセルは、待機中ならキューから削除し、実行中なら中断する (セルフホスト) か `POST /interrupt` を送る (Cloud)。Cloud の出力はリダイレクトから `X-API-Key` なしで取得する。Failure reasons の表の各行が、そのプロバイダーの応答から生まれる。
 
 ### ComfyUI の WebSocket からステップの進み具合を報告する {#report-step-progress-from-the-comfyui-websocket}
 
@@ -196,20 +201,20 @@ flowchart LR
 
 **依存**: 適用したサムネイルの画像を再スキャンの後も保ち、所有者が元に戻せるようにする。ComfyUI と Comfy Cloud でサムネイルのワークフローを実行する。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。偽の `ImageEditor` と偽の時計を使うアプリのテストが次を示す: Edit session の図のすべての遷移。5 分間読まれなかったセッションはプロバイダーでキャンセルされ、`404` を返す。10 分を過ぎた実行は `timed_out` として失敗する。同じ動画の 2 つ目の編集は最初の編集の実行をキャンセルする。実行中に変えた設定は実行のスナップショットを変えない。ハンドラーのテストが次を示す: 契約の各ステータス。大きさの誤ったマスクと、ワークフローが受け取れないパートは、何もアップロードする前に `400` を返す。ゲストは各ルートで `401` を受け取る。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。偽の `ImageEditor` と偽の時計を使うアプリのテストが次を示す: Edit session の図のすべての遷移。5 分間読まれなかったセッションはプロバイダーでキャンセルされ、`404` を返す。10 分を過ぎた実行は `timed_out` として失敗する。同じ動画の 2 つ目の編集は最初の編集の実行をキャンセルする。実行中に変えた接続は実行のスナップショットを変えない。ハンドラーのテストが次を示す: 契約の各ステータス。大きさの誤ったマスクは、何もアップロードする前に `400` を返す。ゲストは各ルートで `401` を受け取る。
 
 ### 動画のページからサムネイルを編集する {#edit-the-thumbnail-from-the-video-page}
 
-**範囲**: サムネイルの操作部品の隣の入口 (`readiness` がそろっていないときは理由付きで無効、ゲストにはない)、フレーム、マスクの塗り、参照画像、プロンプトを持つ編集の表示、経過時間と進み具合付きの実行の状態、キャンセル、適用、再実行、破棄を持つ並べた比較、アンマウント時の破棄、`thumbnailGenerated` の間の「use the frame instead」。カタログの文言。レイアウトと操作は `ui-design.md` に従う。
+**範囲**: サムネイルの操作部品の隣の入口 (接続が保存されていないときは理由付きで無効、ゲストにはない)、フレーム、マスクの塗り、参照画像、プロンプトを持つ編集の表示、経過時間と進み具合付きの実行の状態、キャンセル、適用、再実行、破棄を持つ並べた比較、アンマウント時の破棄、`thumbnailGenerated` の間の「use the frame instead」。カタログの文言。レイアウトと操作は `ui-design.md` に従う。
 
 **依存**: 画面の API でサムネイルの編集のセッションを提供する。
 
-**受け入れ**: `task check` が通る。ページテストが次を示す: そろっていない `readiness` のそれぞれで入口が Settings の理由付きで無効になる。`inputs` にないときは塗りと参照が無効になる。状態のラベルが経過時間付きで待機中から準備中、実行中に変わる。`progress` があるときだけ進み具合のバーが出る。失敗の理由の文言。フレームの隣の結果。ページを離れると破棄を呼ぶ。画面の変更は、両方のテーマとスマートフォンの幅で design-system.md に照らした見た目のレビューを受ける。
+**受け入れ**: `task check` が通る。ページテストが次を示す: 接続がないときに入口が Settings の理由付きで無効になる。状態のラベルが経過時間付きで待機中から準備中、実行中に変わる。`progress` があるときだけ進み具合のバーが出る。失敗の理由の文言。フレームの隣の結果。ページを離れると破棄を呼ぶ。画面の変更は、スマートフォンの幅で design-system.md に照らした見た目のレビューを受ける。
 
 ### 偽の ComfyUI でサムネイルの編集をブラウザーテストで覆う {#cover-thumbnail-editing-in-a-browser-test-with-a-fake-comfyui}
 
-**範囲**: `web/e2e/fake-comfyui.mjs` (送信されたプロンプトを記録し、遅延の後に固定の画像を返すセルフホストの ComfyUI の偽物で、`run-e2e.mjs` が起動する) と `web/e2e/thumbnail-edit.e2e.ts`。
+**範囲**: `web/e2e/fake-comfyui.mjs` (`/object_info` に必要なノードとファイルを返し、送信されたプロンプトを記録し、遅延の後に固定の画像を返すセルフホストの ComfyUI の偽物で、`run-e2e.mjs` が起動する) と `web/e2e/thumbnail-edit.e2e.ts`。
 
-**依存**: ComfyUI の接続とワークフローを Settings に加える。動画のページからサムネイルを編集する。
+**依存**: ComfyUI の接続を Settings に加える。動画のページからサムネイルを編集する。
 
-**受け入れ**: `task test-e2e -- e2e/thumbnail-edit.e2e.ts` が通り、次を示す: 所有者が偽物を接続として保存し、テストし、ワークフローを登録し、マスクを塗り、実行し、状態の変化を見て、適用する。ライブラリのカードと動画のページは、再読み込みの後と全体のスキャンの後に偽物の画像を示す。「use the frame instead」はフレームを戻す。キャンセルと破棄はサムネイルを変えない。ゲストには入口が見えない。
+**受け入れ**: `task test-e2e -- e2e/thumbnail-edit.e2e.ts` が通り、次を示す: 所有者が偽物を接続として保存し、テストし、マスクを塗り、実行し、状態の変化を見て、適用する。ライブラリのカードと動画のページは、再読み込みの後と全体のスキャンの後に偽物の画像を示す。「use the frame instead」はフレームを戻す。キャンセルと破棄はサムネイルを変えない。ゲストには入口が見えない。

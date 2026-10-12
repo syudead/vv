@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/data-model.md
-sourceHash: 624df15b8e41d1b72d4cceee08931066b149741520faa6dee2c1067b9b093fff
+sourceHash: a992d92dcc1bc89b1d96a76216db3f072c3ba0eb8936b94e5c020f385475a102
 ---
 
 # データモデル: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#data-model-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -47,8 +47,6 @@ sourceHash: 624df15b8e41d1b72d4cceee08931066b149741520faa6dee2c1067b9b093fff
 | --- | --- |
 | `Video.ThumbnailImageRevision` | `int64`。画像を適用していないときは 0。設定されているとき、`thumbnailUrl` のバージョンは、位置の `-r<revision>` の代わりに `<content key prefix>-g<revision>` になる |
 | `ComfyUISettings` | `Provider` (`self_hosted` または `cloud`)、`URL` (セルフホストのみ)、`APIKey` (cloud のみ、API は決して返さない) |
-| `ThumbnailWorkflow` | 登録したとおりのワークフローの JSON と、[contracts/workflow.md](contracts/workflow.md) によって見つけたその `Inputs` (`Prompt`、`Mask`、`Reference` の真偽値) |
-| `ParseThumbnailWorkflow([]byte) (ThumbnailWorkflow, error)` | contracts/workflow.md の登録の規則。理由ごとに 1 つのエラー値を持つ純粋な関数 |
 | `ThumbnailEditState` | `ready`、`queued`、`preparing`、`running`、`succeeded`、`failed`、`cancelled` ([Edit session](#edit-session)) |
 
 ## 設定 {#settings}
@@ -60,7 +58,6 @@ sourceHash: 624df15b8e41d1b72d4cceee08931066b149741520faa6dee2c1067b9b093fff
 | `comfyui.provider` | `self_hosted` または `cloud`。保存するまではない |
 | `comfyui.url` | セルフホストのベース URL。`ollama.endpoint` と同じく正規化する |
 | `comfyui.api_key` | Comfy Cloud のキー ([R-9](research.md#r-9-the-api-key-is-write-only)) |
-| `comfyui.workflow` | 登録したワークフローの JSON |
 
 ## 編集のセッション {#edit-session}
 
@@ -71,7 +68,7 @@ sourceHash: 624df15b8e41d1b72d4cceee08931066b149741520faa6dee2c1067b9b093fff
 | `ID` | 無作為な 128 ビット。ルートのキー |
 | `VideoID`、`ContentKey` | セッションを始めたときの動画とその内容 |
 | `Frame` | 取り出した PNG とその大きさ ([R-8](research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)) |
-| `Run` | 今の実行: 設定とワークフローのスナップショット、プロバイダーのジョブ id、状態、`StartedAt`、省略できるステップの進み具合、エラーの理由 |
+| `Run` | 今の実行: 接続のスナップショット、ワークフローの種類、プロバイダーのジョブ id、状態、`StartedAt`、省略できるステップの進み具合、エラーの理由 |
 | `Result` | 最後に成功した実行の出力画像 |
 | `LastReadAt` | 読み取りのたびに更新する。読み取りのない 5 分でセッションは終わる |
 
@@ -98,7 +95,7 @@ stateDiagram-v2
   ready --> [*]: 破棄または期限切れ
 ```
 
-どの状態も、破棄、期限切れ、同じ動画の新しい編集の開始、再起動で終わる。進んでいる実行は先にプロバイダーでキャンセルする ([R-11](research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes))。`failed` は理由を 1 つ持つ: `unreachable`、`unauthorized`、`insufficient_credits`、`workflow_rejected`、`run_failed`、`no_output`、`timed_out` のいずれかである。
+どの状態も、破棄、期限切れ、同じ動画の新しい編集の開始、再起動で終わる。進んでいる実行は先にプロバイダーでキャンセルする ([R-11](research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes))。`failed` は理由を 1 つ持つ: `unreachable`、`unauthorized`、`insufficient_credits`、`missing_models`、`workflow_rejected`、`run_failed`、`no_output`、`timed_out` のいずれかである。
 
 ## 変わらないもの {#what-does-not-change}
 
