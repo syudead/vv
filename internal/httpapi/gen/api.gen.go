@@ -35,6 +35,24 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for ComfyUIProvider.
+const (
+	Cloud      ComfyUIProvider = "cloud"
+	SelfHosted ComfyUIProvider = "self_hosted"
+)
+
+// Valid indicates whether the value is a known member of the ComfyUIProvider enum.
+func (e ComfyUIProvider) Valid() bool {
+	switch e {
+	case Cloud:
+		return true
+	case SelfHosted:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EncoderAvailabilityState.
 const (
 	EncoderAvailabilityStateAvailable   EncoderAvailabilityState = "available"
@@ -185,6 +203,8 @@ const (
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
 	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
+	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
+	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
 	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
 	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
 	ErrorReasonDisplayNameControlCharacters  ErrorReason = "display_name_control_characters"
@@ -238,6 +258,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonApiTokenNameTooLong:
 		return true
 	case ErrorReasonAutoTaggingOff:
+		return true
+	case ErrorReasonComfyuiApiKeyMissing:
+		return true
+	case ErrorReasonComfyuiUrlInvalid:
 		return true
 	case ErrorReasonCrossOrigin:
 		return true
@@ -1192,6 +1216,21 @@ type CheckResult struct {
 	Message *string `json:"message,omitempty"`
 }
 
+// ComfyUIProvider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+type ComfyUIProvider string
+
+// ComfyUISettings ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない
+type ComfyUISettings struct {
+	// ApiKeySet Comfy Cloud の API キーが保存されているか
+	ApiKeySet bool `json:"apiKeySet"`
+
+	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+	Provider *ComfyUIProvider `json:"provider,omitempty"`
+
+	// Url 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く
+	Url *string `json:"url,omitempty"`
+}
+
 // CreateAPITokenRequest defines model for CreateAPITokenRequest.
 type CreateAPITokenRequest struct {
 	// Name 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
@@ -2020,6 +2059,18 @@ type UpdateAutoTaggingSettingsRequest struct {
 
 	// Threshold 0 より大きく 1 以下
 	Threshold float64 `json:"threshold"`
+}
+
+// UpdateComfyUISettingsRequest defines model for UpdateComfyUISettingsRequest.
+type UpdateComfyUISettingsRequest struct {
+	// ApiKey Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す
+	ApiKey *string `json:"apiKey,omitempty"`
+
+	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+	Provider ComfyUIProvider `json:"provider"`
+
+	// Url `self_hosted` のとき必須。http か https の基底 URL
+	Url *string `json:"url,omitempty"`
 }
 
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
@@ -2870,6 +2921,9 @@ type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
 // UpdateAutoTaggingSettingsJSONRequestBody defines body for UpdateAutoTaggingSettings for application/json ContentType.
 type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 
+// UpdateComfyUISettingsJSONRequestBody defines body for UpdateComfyUISettings for application/json ContentType.
+type UpdateComfyUISettingsJSONRequestBody = UpdateComfyUISettingsRequest
+
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
@@ -3019,6 +3073,15 @@ type ServerInterface interface {
 	// UpdateAutoTaggingSettings 自動タグ付けの機能の設定を保存する
 	// (PUT /api/settings/auto-tagging)
 	UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request)
+	// GetComfyUISettings ComfyUI の接続先を返す
+	// (GET /api/settings/comfyui)
+	GetComfyUISettings(w http.ResponseWriter, r *http.Request)
+	// UpdateComfyUISettings ComfyUI の接続先を保存する
+	// (PUT /api/settings/comfyui)
+	UpdateComfyUISettings(w http.ResponseWriter, r *http.Request)
+	// CheckComfyUI 保存した接続先に ComfyUI が応えるかを確かめる
+	// (POST /api/settings/comfyui/check)
+	CheckComfyUI(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings LAN からの接続の許可と、許可中に開けるアドレスを返す
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
@@ -4204,6 +4267,48 @@ func (siw *ServerInterfaceWrapper) UpdateAutoTaggingSettings(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateAutoTaggingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetComfyUISettings operation middleware
+func (siw *ServerInterfaceWrapper) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetComfyUISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateComfyUISettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateComfyUISettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CheckComfyUI operation middleware
+func (siw *ServerInterfaceWrapper) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckComfyUI(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6141,6 +6246,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/ollama", wrapper.UpdateOllamaSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/ollama/check", wrapper.CheckOllama)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)

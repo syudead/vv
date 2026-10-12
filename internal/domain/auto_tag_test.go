@@ -47,6 +47,8 @@ func TestNormalizeOllamaSettings(t *testing.T) {
 		"http 以外":  func(s *OllamaSettings) { s.Endpoint = "ftp://host" },
 		"ホスト無し":    func(s *OllamaSettings) { s.Endpoint = "http://" },
 		"資格情報つき":   func(s *OllamaSettings) { s.Endpoint = "http://u:p@host" },
+		"空の問い合わせ":  func(s *OllamaSettings) { s.Endpoint = "http://host?" },
+		"空の断片":     func(s *OllamaSettings) { s.Endpoint = "http://host#" },
 		"空の模型名":    func(s *OllamaSettings) { s.Model = " " },
 		"空白を含む模型名": func(s *OllamaSettings) { s.Model = "clef flash" },
 		"長すぎる模型名":  func(s *OllamaSettings) { s.Model = strings.Repeat("m", ollamaMaxModelLength+1) },

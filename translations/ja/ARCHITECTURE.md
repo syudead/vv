@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: b12125044441e34ab1137eee3a40fcc335f15abfdff6ec2a95cb05c5ce0eb3b2
+sourceHash: 57f375bde3130a276528bbf111a0b75f4003ed9dfb1f689f52b339fc5e3bd81b
 ---
 
 # アーキテクチャ {#architecture}
@@ -61,7 +61,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
 | アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
-| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama` | 外部とのやり取り | 互いと `internal/app` |
+| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama`、`comfyui` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
 `internal/app` は、ストレージ、`ffmpeg`、生成ファイルに、自身が宣言するインターフェースを通してのみ到達する。そのため単体テストは SQLite、`ffmpeg`、HTTP サーバーなしで動く。
@@ -118,6 +118,7 @@ flowchart LR
 | 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`、`OllamaConnection`)、`internal/ollama` | AI 層。タスクに依存しない分類器のポートと、その背後にある Ollama のプロバイダおよびその接続設定 | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
