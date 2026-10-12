@@ -227,16 +227,16 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
   `大きなグループ`). The related videos response carries only a window of up to
   100 members around the current one (contracts/folder-groups-api.md §3);
   the list reads the rest with `GET /api/videos/{id}/group-members`, 100 at a
-  time (issue 674, "Reading beyond the window" below). Each row has the density of the current related video rows
-  (thumbnail `w-40`, duration badge, title `text-sm font-medium`, `gap-3`
-  between rows, hover `bg-hover-wash`) (`UI品質` "information density"), plus:
+  time (issue 674, "Reading beyond the window" below). Each member is a card
+  like the related videos' (the thumbnail with the duration badge, the title in
+  `text-sm font-medium` under it, hover `bg-hover-wash`; [Library UI, Video page](../../docs/design-docs/library-ui.md)), plus:
 
 | Member | Form |
 | --- | --- |
-| Every row | The order number at the start (left of the thumbnail) in `w-5 text-right text-xs text-fg-muted tabular-nums`, so the current position and the remainder read without counting |
+| Every card | The order number at the thumbnail's top left (`VideoThumbnailMark`, `text-xs tabular-nums` on `bg-overlay`), so the current position and the remainder read without counting |
 | Watched | Title in `text-fg-muted`, with lucide `Check` (`size-3.5`, `text-success`) to its right. A visually hidden `視聴済み` is read; the icon is `aria-hidden` |
 | Partly watched | The same bottom progress bar as now |
-| **Currently playing** | Not a link: a row with `aria-current="true"`, surface `bg-active-wash`, and `border-l-2 border-accent` on the left (the left edge of the row's `-m-1.5 p-1.5` outline). A visually hidden `再生中` precedes the title. It is not interactive, so the hover surface does not change |
+| **Currently playing** | Not a link: a card with `aria-current="true"`, surface `bg-accent` and `ring-2 ring-primary ring-inset` around the card's `-m-1.5 p-1.5` outline. A visually hidden `再生中` precedes the title. It is not interactive, so the hover surface does not change |
 
 - **Divider**: one `border-t border-border` line between the member list and
   the related videos, with `pt-5` and `pb-2` around it (one step larger than the

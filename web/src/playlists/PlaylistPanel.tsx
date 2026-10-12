@@ -4,10 +4,12 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import type { PlaylistItem } from "../api/playlists";
-import { formatNumber, t } from "../i18n";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, unplayableText } from "../lib/format";
 import {
+  CardNumber,
+  cardListClass,
   useRelatedScrub,
   VideoThumbnail as RelatedThumbnail,
 } from "../player/RelatedVideos";
@@ -25,12 +27,11 @@ import { itemStartVideoId, panelScrollTop, stepPath } from "./playlistPlayback";
 import type { PlaylistPanelState } from "./usePlaylistContext";
 
 const headingId = "playlist-panel-heading";
-const thumbnailWidth = "w-related-thumb";
 
 /**
  * PlaylistPanel は動画ページの aside の先頭に置く、プレイリストの項目の並びである
- * （specs/044-playlists/ui-design.md「Playlist panel」）。行はメンバー一覧の行と同じ形で、
- * 再生中の項目はリンクにせず左の線と面で示す。一覧は高さを抑えて中だけスクロールし、
+ * （specs/044-playlists/ui-design.md「Playlist panel」）。項目は続けて再生と同じカードで、
+ * 何本目かをサムネイルの左上に重ね、再生中の項目はリンクにせず枠と面で示す。一覧は高さを抑えて中だけスクロールし、
  * 再生中の行を一覧自身の `scrollTop` で見える位置に置く（ページと aside の列は動かさない）。
  * 並べ替えと外す操作はプレイリストの画面にあり、ここには置かない。
  */
@@ -63,7 +64,8 @@ export default function PlaylistPanel({
     <section
       aria-labelledby={shownName === undefined ? undefined : headingId}
       data-playlist-panel=""
-      className="flex shrink-0 flex-col gap-3"
+      // 広い画面の右の列は画面の右端まで伸びるので、右の余白は区切りの側が持つ（下の並びと揃える）。
+      className="flex shrink-0 flex-col gap-3 lg:pr-3"
     >
       <div className="flex items-baseline justify-between gap-3">
         {shownName === undefined ? (
@@ -95,14 +97,15 @@ export default function PlaylistPanel({
         )}
       </div>
       {panel.kind === "loading" && (
-        <ul aria-hidden="true" className="flex flex-col gap-3">
+        <ul
+          aria-hidden="true"
+          className={cn(cardListClass, "max-h-playlist-panel overflow-hidden")}
+        >
           {Array.from({ length: 3 }, (_, index) => (
-            <li key={index} className="flex gap-3">
-              <Skeleton className={cn("aspect-video shrink-0", thumbnailWidth)} />
-              <div className="flex flex-1 flex-col gap-2 pt-1">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
+            <li key={index} className="flex flex-col gap-2">
+              <Skeleton className="aspect-video w-full" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
             </li>
           ))}
         </ul>
@@ -165,15 +168,16 @@ function PanelRows({
       aria-labelledby={headingId}
       data-playlist-panel-list=""
       // 行の hover の面と輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
-      className="relative -mx-1.5 flex max-h-playlist-panel flex-col gap-3 overflow-y-auto overscroll-contain scrollbar-on-hover px-1.5 py-1.5"
+      className={cn(
+        cardListClass,
+        "relative -mx-1.5 max-h-playlist-panel overflow-y-auto overscroll-contain scrollbar-on-hover px-1.5 py-1.5",
+      )}
     >
       {items.map((item, index) =>
         item.id === currentItemId ? (
           <li key={item.id} ref={currentRef} aria-current="true">
-            {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
-            <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-primary bg-accent p-1.5 pl-1">
-              <RowNumber position={index + 1} />
-              <ItemThumbnail item={item} />
+            <div className="-m-1.5 flex flex-col gap-2 rounded-lg bg-accent p-1.5 ring-2 ring-primary ring-inset">
+              <ItemThumbnail item={item} position={index + 1} />
               <span className="sr-only">{t.player.related.nowPlaying}</span>
               <ItemText item={item} />
             </div>
@@ -209,15 +213,14 @@ function PanelRow({
   const videoId = itemStartVideoId(item);
   const content = (
     <>
-      <RowNumber position={position} />
-      <ItemThumbnail item={item} />
+      <ItemThumbnail item={item} position={position} />
       <ItemText item={item} />
     </>
   );
   if (videoId === undefined) {
     return (
       <li>
-        <div className="flex gap-3">{content}</div>
+        <div className="flex flex-col gap-2">{content}</div>
       </li>
     );
   }
@@ -231,7 +234,7 @@ function PanelRow({
         to={to}
         state={state}
         label={label}
-        number={<RowNumber position={position} />}
+        position={position}
         text={<ItemText item={item} />}
       />
     );
@@ -242,7 +245,7 @@ function PanelRow({
         to={to}
         state={state}
         aria-label={label}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex flex-col gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
         {content}
       </Link>
@@ -250,20 +253,20 @@ function PanelRow({
   );
 }
 
-/** VideoRow は動画の項目の行で、関連動画の行と同じく hover のプレビューとスクラブを持つ。 */
+/** VideoRow は動画の項目のカードで、関連動画のカードと同じく hover のプレビューとスクラブを持つ。 */
 function VideoRow({
   video,
   to,
   state,
   label,
-  number,
+  position,
   text,
 }: {
   video: Video;
   to: string;
   state: { from: string; autoplay: boolean };
   label: string;
-  number: ReactNode;
+  position: number;
   text: ReactNode;
 }) {
   const preview = useHoverPreview(video);
@@ -277,14 +280,13 @@ function VideoRow({
         aria-label={label}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex flex-col gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
-        {number}
         <RelatedThumbnail
           video={video}
-          className={thumbnailWidth}
           preview={preview}
           scrub={scrub}
+          marks={<CardNumber position={position} />}
         />
         {text}
       </Link>
@@ -292,22 +294,15 @@ function VideoRow({
   );
 }
 
-/** 並びの番号。メンバー一覧と同じく、サムネイルの左に置く。 */
-function RowNumber({ position }: { position: number }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="w-5 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums"
-    >
-      {formatNumber(position)}
-    </span>
-  );
-}
-
-/** ItemThumbnail は再生中の行とグループの行のサムネイルである（プレビューは流さない）。 */
-function ItemThumbnail({ item }: { item: PlaylistItem }) {
+/**
+ * ItemThumbnail は再生中のカードとグループのカードのサムネイルである（プレビューは流さない）。
+ * 何本目かを左上に重ねる。
+ */
+function ItemThumbnail({ item, position }: { item: PlaylistItem; position: number }) {
   if (item.kind === "video" && item.video !== undefined) {
-    return <RelatedThumbnail video={item.video} className={thumbnailWidth} />;
+    return (
+      <RelatedThumbnail video={item.video} marks={<CardNumber position={position} />} />
+    );
   }
   const group = item.group;
   const thumbnailUrl = group?.previews[0]?.thumbnailUrl;
@@ -317,7 +312,7 @@ function ItemThumbnail({ item }: { item: PlaylistItem }) {
     ? Math.min((group.watchedCount ?? 0) / group.videoCount, 1)
     : 0;
   return (
-    <VideoThumbnail className={cn("shrink-0", thumbnailWidth)}>
+    <VideoThumbnail className="shrink-0">
       {thumbnailUrl !== undefined && <VideoThumbnailImage src={thumbnailUrl} />}
       {duration !== "" && (
         <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
@@ -330,6 +325,7 @@ function ItemThumbnail({ item }: { item: PlaylistItem }) {
           aria-label={t.library.group.watchedRatio}
         />
       )}
+      <CardNumber position={position} />
     </VideoThumbnail>
   );
 }

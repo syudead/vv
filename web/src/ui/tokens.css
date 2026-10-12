@@ -155,14 +155,15 @@
   --spacing-combobox-panel-max: 40vh;
   /* メニュー（DropdownMenu）の最小幅 */
   --spacing-menu: 11rem;
-  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方 */
-  --spacing-detail-aside: 20rem;
-  --spacing-detail-aside-wide: 20rem;
+  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方。
+     動画ページでは中のカードの幅（256px）に左右の余白を足した幅 */
+  --spacing-detail-aside: 18rem;
+  --spacing-detail-aside-wide: 18rem;
   /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に
      貼り付けたときの高さの上限（それより高ければ欄の中で動かす）。lg から */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
-  /* 動画ページ: 関連動画の行のサムネイルの幅、前後の動画へのつまみの幅と最小の高さ（狭い幅と
+  /* 動画ページ: 行のサムネイルの幅（設計の見本の行）、前後の動画へのつまみの幅と最小の高さ（狭い幅と
      sm 以上）、状態の層の下に操作バーの分だけ空ける余白、バージョンの一覧の幅 */
   --spacing-related-thumb: 10rem;
   --spacing-neighbor-arrow: 1.75rem;
@@ -170,8 +171,9 @@
   --spacing-neighbor-arrow-min-sm: 6rem;
   --spacing-control-bar-clearance: 3.5rem;
   --spacing-versions-popover: min(28rem, calc(100vw - 2rem));
-  /* 動画ページ: プレイリストのパネルの一覧の高さの上限（3 行と 4 行目の上端が見える） */
-  --spacing-playlist-panel: 20rem;
+  /* 動画ページ: プレイリストのパネルの一覧の高さの上限（カード 2 枚と 3 枚目の上端が見える。
+     低い画面では列の半分ほどに抑え、下の続けて再生と関連動画に届くようにする） */
+  --spacing-playlist-panel: min(28rem, 45dvh);
   /* 動画ページ: 公開の切り替えの左右の余白と、技術情報の項目の左右の余白 */
   --spacing-visibility-x: 0.625rem;
   --spacing-technical-x: 0.625rem;

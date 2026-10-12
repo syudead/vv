@@ -33,6 +33,7 @@ import {
   VideoThumbnail as Thumbnail,
   VideoThumbnailDuration,
   VideoThumbnailImage,
+  VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 
@@ -59,9 +60,12 @@ export function VideoThumbnail({
   className,
   preview,
   scrub,
+  marks,
 }: {
   video: Video;
   className?: string;
+  /** 角に重ねる印（何本目か）。続けて再生とプレイリストのカードが渡す。 */
+  marks?: ReactNode;
   /** マウスを乗せたときの一覧用プレビュー。関連動画の列だけが渡す。 */
   preview?: HoverPreview;
   /** スクラブの帯。関連動画の列のリンクだけが渡す。 */
@@ -139,6 +143,7 @@ export function VideoThumbnail({
           />
         </span>
       )}
+      {marks}
       {/* 帯は長さの表示とバーより前に置く（R-5）。 */}
       {scrub !== undefined && <ScrubBand scrub={scrub} />}
     </Thumbnail>
@@ -176,16 +181,19 @@ const scrollerClass =
   // だけ内側に余白を取る。右は画面の端に接するので、見出しの帯の × と揃う余白（pr-3）を取る。
   "lg:-ml-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
 
-/** 関連動画の行のサムネイルの幅。 */
-const thumbnailWidth = "w-related-thumb";
+/**
+ * 右の列の並び（関連動画・続けて再生・プレイリスト）は、どれもライブラリと同じカード
+ * （サムネイルの下に名前）で並べる。広い画面の右の列では 1 列、積む幅では列の数を増やす。
+ */
+export const cardListClass =
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
 
 /**
- * 関連動画はライブラリと同じカード（サムネイルの下に名前）で並べ、名前に列の幅を使わせる。
- * 広い画面の右の列では 1 列、積む幅では列の数を増やす。続けて再生のメンバーの並びは、
- * 何本目かと今の行を示す横長の行のままにする。
+ * 区切りの見出しの行。広い画面では、自分の区切りの中身が見えている間だけ並びの入れ物の上に
+ * 留まる（続けて再生が流れ終わると、関連動画の見出しに入れ替わる）。
  */
-const relatedListClass =
-  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
+const stickyHeadingClass =
+  "flex items-baseline justify-between gap-3 bg-background pb-3 lg:sticky lg:-top-1.5 lg:z-30 lg:-mx-1.5 lg:-mt-1.5 lg:px-1.5 lg:pt-1.5";
 
 /**
  * MemberTarget はメンバーの行のリンク先である。省けば `/videos/{id}` を開き、戻り先だけを
@@ -252,7 +260,7 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "loading" && (
-        <ul aria-hidden="true" className={cn(relatedListClass, "lg:pr-3")}>
+        <ul aria-hidden="true" className={cn(cardListClass, "lg:pr-3")}>
           {Array.from({ length: 6 }, (_, index) => (
             <li key={index}>
               <RelatedCardSkeleton />
@@ -272,7 +280,7 @@ export default function RelatedVideos({
 
       {state.kind === "ready" && !empty && (
         <div data-related-scroller="" className={cn("flex flex-col", scrollerClass)}>
-          <ul className={relatedListClass}>
+          <ul className={cardListClass}>
             {state.related.items.map((video) => (
               <RelatedItem key={video.id} video={video} linkState={linkState} />
             ))}
@@ -402,78 +410,82 @@ function GroupedRelated({
   return (
     <section
       aria-labelledby="group-heading"
-      className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
+      className="flex flex-col lg:min-h-0 lg:flex-1"
     >
-      <div className="flex items-baseline justify-between gap-3 lg:pr-3">
-        <h2 id="group-heading" className="text-sm font-semibold">
-          {t.player.related.group}
-        </h2>
-        {index >= 0 && (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {t.player.related.position(first + index + 1, total)}
-          </span>
-        )}
-      </div>
       <div
         ref={scrollerRef}
         data-related-scroller=""
         className={cn("flex flex-col", scrollerClass)}
       >
-        {first > 0 &&
-          (wide && failed !== "before" ? (
-            <div ref={observe("before")} aria-hidden="true" className="h-px" />
-          ) : (
-            <GroupEdge
-              label={
-                failed === "before" ? t.common.retry : t.player.related.earlier(first)
-              }
-              failed={failed === "before"}
-              disabled={loading === "before"}
-              onClick={() => load("before")}
-            />
-          ))}
-        <ul className="flex flex-col gap-3">
-          {shown.map((member, position) =>
-            member.id === currentId ? (
-              <CurrentMember
-                key={member.id}
-                ref={currentRef}
-                video={member}
-                position={first + position + 1}
+        <div className="flex flex-col">
+          <div className={stickyHeadingClass}>
+            <h2 id="group-heading" className="text-sm font-semibold">
+              {t.player.related.group}
+            </h2>
+            {index >= 0 && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {t.player.related.position(first + index + 1, total)}
+              </span>
+            )}
+          </div>
+          {first > 0 &&
+            (wide && failed !== "before" ? (
+              <div ref={observe("before")} aria-hidden="true" className="h-px" />
+            ) : (
+              <GroupEdge
+                label={
+                  failed === "before" ? t.common.retry : t.player.related.earlier(first)
+                }
+                failed={failed === "before"}
+                disabled={loading === "before"}
+                onClick={() => load("before")}
+              />
+            ))}
+          <ul className={cardListClass}>
+            {shown.map((member, position) =>
+              member.id === currentId ? (
+                <CurrentMember
+                  key={member.id}
+                  ref={currentRef}
+                  video={member}
+                  position={first + position + 1}
+                />
+              ) : (
+                <MemberItem
+                  key={member.id}
+                  video={member}
+                  position={first + position + 1}
+                  linkState={linkState}
+                  memberTarget={memberTarget}
+                />
+              ),
+            )}
+          </ul>
+          {end < total &&
+            (failed === "after" ? (
+              <GroupEdge
+                label={t.common.retry}
+                failed
+                disabled={loading === "after"}
+                onClick={() => load("after")}
               />
             ) : (
-              <MemberItem
-                key={member.id}
-                video={member}
-                position={first + position + 1}
-                linkState={linkState}
-                memberTarget={memberTarget}
-              />
-            ),
-          )}
-        </ul>
-        {end < total &&
-          (failed === "after" ? (
-            <GroupEdge
-              label={t.common.retry}
-              failed
-              disabled={loading === "after"}
-              onClick={() => load("after")}
-            />
-          ) : (
-            <div ref={observe("after")} aria-hidden="true" className="h-px" />
-          ))}
+              <div ref={observe("after")} aria-hidden="true" className="h-px" />
+            ))}
+        </div>
         {items.length === 0 && tail}
         {items.length > 0 && (
           <>
             <div className="pt-5 pb-2">
               <Separator decorative={false} />
             </div>
-            <section aria-labelledby="related-heading" className="flex flex-col gap-3">
-              <h2 id="related-heading" className="text-sm font-semibold">
-                {t.player.related.heading}
-              </h2>
-              <ul className={relatedListClass}>
+            <section aria-labelledby="related-heading" className="flex flex-col">
+              <div className={stickyHeadingClass}>
+                <h2 id="related-heading" className="text-sm font-semibold">
+                  {t.player.related.heading}
+                </h2>
+              </div>
+              <ul className={cardListClass}>
                 {items.map((video) => (
                   <RelatedItem key={video.id} video={video} linkState={linkState} />
                 ))}
@@ -578,15 +590,17 @@ function GroupEdge({
   );
 }
 
-/** 並びの番号。今の位置と残りが数えなくても分かるよう、サムネイルの左に置く。 */
-function MemberNumber({ position }: { position: number }) {
+/**
+ * CardNumber はカードのサムネイルの左上に重ねる並びの番号である。今の位置と残りが数えなくても
+ * 分かるようにする。続けて再生とプレイリストのカードが使う。
+ */
+export function CardNumber({ position }: { position: number }) {
   return (
-    <span
-      aria-hidden="true"
-      className="w-5 shrink-0 pt-0.5 text-right text-xs text-muted-foreground tabular-nums"
-    >
-      {formatNumber(position)}
-    </span>
+    <VideoThumbnailMark corner="top-start" aria-hidden="true">
+      <span className="rounded-sm bg-overlay px-1.5 text-xs text-foreground tabular-nums">
+        {formatNumber(position)}
+      </span>
+    </VideoThumbnailMark>
   );
 }
 
@@ -703,14 +717,13 @@ function MemberItem({
         aria-label={memberLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex flex-col gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
-        <MemberNumber position={position} />
         <VideoThumbnail
           video={video}
-          className={thumbnailWidth}
           preview={preview}
           scrub={scrub}
+          marks={<CardNumber position={position} />}
         />
         <MemberTitle video={video} />
       </Link>
@@ -718,7 +731,10 @@ function MemberItem({
   );
 }
 
-/** CurrentMember は今見ているメンバーの行である。押せないので、リンクにせず hover でも変えない。 */
+/**
+ * CurrentMember は今見ているメンバーのカードである。押せないので、リンクにせず hover でも
+ * 変えない。枠と面で今の位置を示す。
+ */
 function CurrentMember({
   ref,
   video,
@@ -730,12 +746,10 @@ function CurrentMember({
 }) {
   const watched = video.progress?.completed === true;
   return (
-    // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。
-    <li ref={ref} aria-current="true" className="scroll-my-6">
-      {/* 左の線の太さの分だけ左の余白を減らし、番号とサムネイルの位置を他の行とそろえる。 */}
-      <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-primary bg-accent p-1.5 pl-1">
-        <MemberNumber position={position} />
-        <VideoThumbnail video={video} className={thumbnailWidth} />
+    // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。上は留まる見出しの分を足す。
+    <li ref={ref} aria-current="true" className="scroll-mt-12 scroll-mb-6">
+      <div className="-m-1.5 flex flex-col gap-2 rounded-lg bg-accent p-1.5 ring-2 ring-primary ring-inset">
+        <VideoThumbnail video={video} marks={<CardNumber position={position} />} />
         <span className="sr-only">{t.player.related.nowPlaying}</span>
         <MemberTitle video={video} />
         {watched && <span className="sr-only">{t.player.related.watched}</span>}

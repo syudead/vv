@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { cn } from "@/lib/cn";
 
 import { DensityProvider } from "./density";
 
@@ -20,13 +22,28 @@ export interface DetailPageProps {
   aside?: ReactNode;
   /** メディアの下の中身: 題名・タグ・情報の行。 */
   children: ReactNode;
+  /**
+   * 主領域の中身（メディアとその下）の幅の上限（lg 以上）。メディアが高さで止まって列より細い
+   * とき、中身をこの幅にして列の中央に置き、余りを左右に均等に分ける。
+   */
+  contentClassName?: string;
+  /** ページの根に渡す style。contentClassName が読む CSS 変数を置く。 */
+  style?: CSSProperties;
 }
 
-export function DetailPage({ header, media, aside, children }: DetailPageProps) {
+export function DetailPage({
+  header,
+  media,
+  aside,
+  children,
+  contentClassName,
+  style,
+}: DetailPageProps) {
   return (
     <DensityProvider density="viewing">
       <div
         data-slot="detail-page"
+        style={style}
         className="flex flex-col bg-background pb-16 lg:min-h-0 lg:flex-1 lg:pb-0"
       >
         <div
@@ -43,8 +60,13 @@ export function DetailPage({ header, media, aside, children }: DetailPageProps) 
             data-slot="detail-page-main"
             className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
           >
-            {media}
-            <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
+            <div
+              data-slot="detail-page-content"
+              className={cn("flex flex-col gap-5 lg:mx-auto lg:w-full", contentClassName)}
+            >
+              {media}
+              <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
+            </div>
           </div>
           {/* 広い画面の情報欄は画面の右端まで寄せ（lg:-mr-6 と lg:pr-0）、中でスクロールする並びの
               スクロールバーを画面の端に出す。右の余白は並びの側が持つ。 */}

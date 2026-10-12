@@ -634,6 +634,10 @@ export default function VideoPage() {
     // 広い画面はページを画面の高さに留め、左右の列がそれぞれ中でスクロールする。
     <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <DetailPage
+        // 広い画面では、プレイヤーが高さで止まって左の列より細いとき、プレイヤーと題名・情報を
+        // プレイヤーの幅にそろえて列の中央に置く。幅は動画の比率から決まるので、比率を渡す。
+        style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
+        contentClassName="lg:max-w-player-width-lg"
         header={<VideoHeader folder={video?.folder} onClose={close} />}
         media={
           <div
@@ -646,9 +650,9 @@ export default function VideoPage() {
             // src/ui/tokens.css）も使うので、変数として子孫へ渡す。
             // 広い画面では、題名の 1 行までが左の列に収まる高さを上限にし、横長の動画は列の幅
             // いっぱいまで広げる。タグと情報の行は列をスクロールして見る。上限で列より細く
-            // なったときは、題名と左端をそろえるため左に寄せる。
+            // なったときは、中身ごと列の中央に置く（DetailPage の contentClassName）。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:ml-0 lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
               全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
@@ -737,7 +741,7 @@ export default function VideoPage() {
                 related.related.group === undefined &&
                 related.related.items.length === 0
               ) && (
-                <div className="shrink-0 pt-5 pb-2">
+                <div className="shrink-0 pt-5 pb-2 lg:pr-3">
                   <Separator decorative={false} />
                 </div>
               )}
