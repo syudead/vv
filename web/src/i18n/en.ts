@@ -20,6 +20,7 @@ type FolderWatchProblem = NonNullable<components["schemas"]["FolderWatch"]["prob
 type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
+type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -226,8 +227,8 @@ const errorReasons = {
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
   auto_tagging_off:
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
-  comfyui_url_invalid: "Enter the ComfyUI address as an http or https URL.",
-  comfyui_api_key_missing: "Enter your Comfy Cloud API key.",
+  comfyui_url_invalid: "Enter an http or https URL",
+  comfyui_api_key_missing: "Enter the Comfy Cloud API key",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -1760,6 +1761,50 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+    },
+    comfyui: {
+      heading: "ComfyUI",
+      description:
+        "Where VVMDM sends a video frame to edit it into a thumbnail. VVMDM brings the workflow; a ComfyUI you run yourself needs the model files listed after a test.",
+      guide: "How to set up ComfyUI",
+      opensInNewTab: "(opens in a new tab)",
+      provider: "Runs on",
+      providers: {
+        self_hosted: {
+          label: "My own ComfyUI",
+          hint: "ComfyUI you run on this PC or another one.",
+        },
+        cloud: {
+          label: "Comfy Cloud",
+          hint: "Comfy's hosted service. Uses your API key and its credits.",
+        },
+      } satisfies Record<ComfyUIProvider, { label: string; hint: string }>,
+      url: "ComfyUI URL",
+      urlHint: "Where ComfyUI listens, for example http://127.0.0.1:8188.",
+      apiKey: "API key",
+      apiKeyHint: "Create one in your Comfy Cloud account.",
+      apiKeySavedHint: "A key is saved. Type a new one to replace it.",
+      keyStillSaved: "A Comfy Cloud key is still saved.",
+      forgetKey: "Forget the key",
+      forgetting: "Forgetting…",
+      keyForgotten: "Comfy Cloud key forgotten",
+      save: "Save",
+      saving: "Saving…",
+      saved: "ComfyUI settings saved",
+      check: "Save and test connection",
+      checking: "Testing…",
+      checkOk: {
+        self_hosted: "Connected to ComfyUI.",
+        cloud: "Connected to Comfy Cloud.",
+      } satisfies Record<ComfyUIProvider, string>,
+      checkFailed: (reason: string) => `The connection test failed: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      missingHeading: "ComfyUI is missing what the thumbnail edit needs:",
+      putIn: (folder: string) => `put it in ${folder}`,
+      download: "Download",
+      updateForNode: "Update ComfyUI to get this node",
+      loading: "Loading the ComfyUI settings",
+      loadFailed: (reason: string) => `Couldn't load the ComfyUI settings: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",
