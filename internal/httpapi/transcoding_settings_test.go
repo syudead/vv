@@ -155,9 +155,9 @@ func fallbackReason(reason gen.EncoderFallbackReason) *gen.EncoderFallbackReason
 func linuxCheckedEncoders() []gen.EncoderAvailability {
 	return []gen.EncoderAvailability{
 		{Encoder: gen.VideoEncoderNvenc, State: gen.EncoderAvailabilityStateAvailable},
-		{Encoder: gen.VideoEncoderQsv, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.EncoderMissing)},
-		{Encoder: gen.VideoEncoderVaapi, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.CheckFailed)},
-		{Encoder: gen.VideoEncoderVideotoolbox, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.UnsupportedOs)},
+		{Encoder: gen.VideoEncoderQsv, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.EncoderUnavailableReasonEncoderMissing)},
+		{Encoder: gen.VideoEncoderVaapi, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.EncoderUnavailableReasonCheckFailed)},
+		{Encoder: gen.VideoEncoderVideotoolbox, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.EncoderUnavailableReasonUnsupportedOs)},
 	}
 }
 
@@ -191,7 +191,7 @@ func TestGetTranscodingSettingsWhileChecking(t *testing.T) {
 
 	checking := gen.EncoderAvailability{State: gen.EncoderAvailabilityStateChecking}
 	encoders := []gen.EncoderAvailability{checking, checking, checking,
-		{Encoder: gen.VideoEncoderVideotoolbox, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.UnsupportedOs)}}
+		{Encoder: gen.VideoEncoderVideotoolbox, State: gen.EncoderAvailabilityStateUnavailable, Reason: unavailableReason(gen.EncoderUnavailableReasonUnsupportedOs)}}
 	for i, encoder := range []gen.VideoEncoder{gen.VideoEncoderNvenc, gen.VideoEncoderQsv, gen.VideoEncoderVaapi} {
 		encoders[i].Encoder = encoder
 	}

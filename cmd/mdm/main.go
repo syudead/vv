@@ -279,7 +279,13 @@ func run(opts runOptions) error {
 	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
 	// 画像編集の提供元 ComfyUI（自前か Comfy Cloud）。アダプタが自分の接続先を設定から読む
 	// （docs/design-docs/ai-layer.md）。
-	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyui.New(settingsStore))
+	comfyUIClient := comfyui.New(settingsStore)
+	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
+	// サムネイルの編集のセッション。メモリにだけ持ち、適用は取り込みと同じ生成の錠の中で行う
+	// （docs/design-docs/thumbnail-editing.md）。
+	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
+		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Applier: ingest, Logger: logger,
+	})
 	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
@@ -311,6 +317,8 @@ func run(opts runOptions) error {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
+	// 読まれないセッションと時間切れの実行を片付け、止めるときは進んでいる実行を中止する。
+	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
 	// 猶予を越えたときも）、データベースを閉じる前に走査とワーカーを止める。止めずに
 	// 戻ると、始め直した走査やワーカーが閉じたデータベースへ書く。データベースを
@@ -413,6 +421,7 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
+		ThumbnailEdits:    thumbnailEdits,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,
