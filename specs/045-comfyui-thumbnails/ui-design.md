@@ -131,6 +131,7 @@ The English is the draft the catalog takes; after implementation
 | Provider option hints | ComfyUI you run on this PC or another one. · Comfy's hosted service. Uses your API key and its credits. | |
 | URL row | ComfyUI URL | Hint: `Where ComfyUI listens, for example http://127.0.0.1:8188.` |
 | API key row | API key | Hint without a saved key: `Create one in your Comfy Cloud account.` With a saved key: `A key is saved. Type a new one to replace it.` |
+| Saved key while self-hosted | A Comfy Cloud key is still saved. · Forget the key · Forgetting… | Under the URL row; toast on success: `Comfy Cloud key forgotten` |
 | Save | Save · Saving… | Toast on success: `ComfyUI settings saved` |
 | Test | Save and test connection · Testing… | |
 | Test passed | Connected to ComfyUI. · Connected to Comfy Cloud. | By the saved provider |
@@ -232,6 +233,7 @@ values first, because the server tests only the saved connection.
 | Runs on | `RadioGroup`, two items with a hint under each label | Changing it shows the matching row below at once; nothing is saved until `Save` |
 | ComfyUI URL | `Input type="url"`, `sm:w-sm` | Only for `My own ComfyUI` |
 | API key | `Input type="password"`, `sm:w-sm`, `autocomplete="off"` | Only for `Comfy Cloud`. Always empty after load and after a save; the hint says whether a key is saved (requirement 2). An empty field keeps the saved key |
+| Saved key (self-hosted) | A muted line and a `ghost` `sm` `Forget the key` | Only while `My own ComfyUI` is the saved provider and a key is saved. It saves the current values with `apiKey: ""`, which clears the key ([contracts/screen-api.md](contracts/screen-api.md#get-apisettingscomfyui-put-apisettingscomfyui)); no confirmation, because typing the key again restores it |
 | (actions) | `Save` (`default` `sm`), `Save and test connection` (`outline` `sm`) | The test result lines and the save failure follow the Ollama section: a muted status line with a spinner or a check, or a `destructive` `Alert`; missing files follow [Missing files](#missing-files) |
 
 The guide link follows the description, in the Transcoding section's form.
@@ -380,9 +382,15 @@ server's `elapsedMs` on each read, so it never jumps backwards by more than the
 read's delay. When the provider reports no steps, no bar is drawn: an
 indeterminate bar next to a spinner would say the same thing twice.
 
-`Cancel` cancels at once; the area then shows `Cancelled. The thumbnail is
-unchanged.` in muted text, and the view returns to Compose with the inputs
-kept.
+`Cancel` sends the cancel request and the view follows the state it answers
+([contracts/screen-api.md](contracts/screen-api.md#post-apithumbnail-editseditidcancel)),
+because the run may have ended between the last read and the press:
+
+| Answered state | The view |
+| --- | --- |
+| `cancelled` | Compose with the inputs kept; the run area shows `Cancelled. The thumbnail is unchanged.` in muted text |
+| `succeeded` | Compare, as if the run had just finished; nothing says it was cancelled |
+| `failed` | Compose with the failure `Alert` ([Failure](#failure)) |
 
 ### Failure
 
