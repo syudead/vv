@@ -27,13 +27,14 @@ type runProvider struct {
 	cloud  bool
 	prefix string // Comfy Cloud なら "/api"
 
-	mu       sync.Mutex
-	uploads  map[string][]byte // 上げた名前ごとの中身
-	fields   []map[string]string
-	prompts  []map[string]any
-	posts    []recorded
-	keys     []string // 受けた要求の X-API-Key
-	handlers map[string]http.HandlerFunc
+	mu        sync.Mutex
+	uploads   map[string][]byte // 上げた名前ごとの中身
+	fields    []map[string]string
+	prompts   []map[string]any
+	clientIDs []string // POST /prompt の client_id
+	posts     []recorded
+	keys      []string // 受けた要求の X-API-Key
+	handlers  map[string]http.HandlerFunc
 }
 
 type recorded struct {
@@ -73,6 +74,18 @@ func (f *runProvider) handle(path string, handler http.HandlerFunc) {
 
 func (f *runProvider) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, f.prefix)
+	if path == "/ws" {
+		// WebSocket は X-API-Key ではなく token の問い合わせでキーを渡すので、キーの記録に入れない。
+		// 差し替えが無ければ接続を拒む。
+		f.mu.Lock()
+		handler, ok := f.handlers[path]
+		f.mu.Unlock()
+		if !ok {
+			handler = statusHandler(http.StatusNotFound, "")
+		}
+		handler(w, r)
+		return
+	}
 	f.mu.Lock()
 	f.keys = append(f.keys, r.Header.Get("X-API-Key"))
 	handler, ok := f.handlers[path]
@@ -86,7 +99,8 @@ func (f *runProvider) serve(w http.ResponseWriter, r *http.Request) {
 		f.upload(w, r)
 	case r.Method == http.MethodPost && path == "/prompt":
 		var body struct {
-			Prompt map[string]any `json:"prompt"`
+			Prompt   map[string]any `json:"prompt"`
+			ClientID string         `json:"client_id"`
 		}
 		decoder := json.NewDecoder(r.Body)
 		decoder.UseNumber()
@@ -95,6 +109,7 @@ func (f *runProvider) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		f.mu.Lock()
 		f.prompts = append(f.prompts, body.Prompt)
+		f.clientIDs = append(f.clientIDs, body.ClientID)
 		f.mu.Unlock()
 		_, _ = w.Write([]byte(`{"prompt_id":"run-1","number":1,"node_errors":{}}`))
 	case r.Method == http.MethodPost:

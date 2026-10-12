@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -36,6 +37,10 @@ type Client struct {
 	settings SettingsSource
 	http     *http.Client
 	cloud    string
+
+	// progressMu は progress を守る。progress は実行の id ごとの、進み具合を読む WebSocket である。
+	progressMu sync.Mutex
+	progress   map[string]*progressWatch
 }
 
 // Options は Client の差し替えられる部分である。テストが使う。
@@ -65,7 +70,7 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 	if cloud == "" {
 		cloud = CloudBaseURL
 	}
-	return &Client{settings: settings, http: client, cloud: strings.TrimRight(cloud, "/")}
+	return &Client{settings: settings, http: client, cloud: strings.TrimRight(cloud, "/"), progress: map[string]*progressWatch{}}
 }
 
 // errAPIKeyRejected は Comfy Cloud が API キーを受け付けなかったことを表す。

@@ -49,7 +49,8 @@ const (
 // Start は入力を上げ、vv のワークフローの vv:* の入力だけを書き換えて POST /prompt で送る。
 // 参考画像があれば参考画像ありの版を、なければもう一方を使う。マスクが無ければコマの大きさの
 // 真っ白なマスクを、塗ったマスクで指示が空なら DefaultInstruction を送る（research.md R-3）。
-// 上げたファイルと出力は ComfyUI から消さない（contracts/workflow.md の Run）。
+// 上げたファイルと出力は ComfyUI から消さない（contracts/workflow.md の Run）。送る前に、
+// ステップの進み具合を読む WebSocket を同じ client_id で開き始める（Progress）。
 func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input domain.ImageEditInput) (domain.ImageEditJob, error) {
 	target, err := c.target(conn)
 	if err != nil {
@@ -111,22 +112,36 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err := prompt.setInput(titlePrompt, "text", instruction); err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	id, err := target.submit(ctx, prompt)
+	clientID, err := newClientID()
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
+	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き、提供元に登録されるのを
+	// 上限つきで待つ（research.md R-5）。
+	watch := c.watchProgress(ctx, target, clientID)
+	watch.waitReady(ctx)
+	id, err := target.submit(ctx, prompt, clientID)
+	if err != nil {
+		watch.stop()
+		return domain.ImageEditJob{}, err
+	}
+	c.keepProgress(id, watch)
 	return domain.ImageEditJob{Connection: conn, ID: id, Output: output}, nil
 }
 
 // State は実行の状態を読む。自前の ComfyUI は GET /queue の後に GET /history/{id}、Comfy Cloud は
 // GET /job/{id}/status を読み、contracts/workflow.md の Run states の表で vv の状態に対応させる。
-// どちらの表にも無い値なら previous を返す（research.md R-5）。
+// どちらの表にも無い値なら previous を返す（research.md R-5）。終わった実行の WebSocket は閉じる。
 func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	target, err := c.target(job.Connection)
 	if err != nil {
 		return previous, nil, err
 	}
-	return target.state(ctx, job, previous)
+	state, failure, err := target.state(ctx, job, previous)
+	if err == nil && state.Terminal() {
+		c.dropProgress(job.ID, nil)
+	}
+	return state, failure, err
 }
 
 // Cancel は実行を中止する。前に読んだ状態は古いことがあるので、送る要求を選ぶ直前に提供元の
@@ -135,12 +150,21 @@ func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous do
 // アカウントの実行中の仕事をすべて止めるので、終わった実行のために送ると別の実行を止めてしまう。
 // 実行中なら自前の ComfyUI に POST /interrupt {"prompt_id":id}、Comfy Cloud に POST /interrupt を
 // 送る。それより前なら POST /queue {"delete":[id]} で消し、読んでから消すまでに実行が
-// 始まっていれば、もう一度読んで実行中なら interrupt を送る（research.md R-5）。
+// 始まっていれば、もう一度読んで実行中なら interrupt を送る（research.md R-5）。進み具合を
+// 読む WebSocket は中止が済んだときだけ閉じ、失敗すれば実行は続きうるので開いたままにする。
 func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	target, err := c.target(job.Connection)
 	if err != nil {
 		return err
 	}
+	if err := c.cancel(ctx, target, job, previous); err != nil {
+		return err
+	}
+	c.dropProgress(job.ID, nil)
+	return nil
+}
+
+func (c *Client) cancel(ctx context.Context, target *target, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	state, _, err := target.state(ctx, job, previous)
 	if err != nil {
 		return err
@@ -354,12 +378,13 @@ func (t *target) upload(ctx context.Context, name string, data []byte) (string, 
 	return uploaded.Name, nil
 }
 
-// submit は prompt を POST /prompt で送り、prompt_id を返す。400 はノードの誤りから
+// submit は prompt を POST /prompt で送り、prompt_id を返す。clientID は進み具合を読む WebSocket の
+// clientId で、ComfyUI はその実行のメッセージをこの接続へ送る。400 はノードの誤りから
 // workflow_rejected か missing_models に、クレジットを名指す誤りは insufficient_credits にする。
-func (t *target) submit(ctx context.Context, prompt promptGraph) (string, error) {
+func (t *target) submit(ctx context.Context, prompt promptGraph, clientID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
-	data, err := json.Marshal(map[string]any{"prompt": prompt})
+	data, err := json.Marshal(map[string]any{"prompt": prompt, "client_id": clientID})
 	if err != nil {
 		return "", err
 	}
