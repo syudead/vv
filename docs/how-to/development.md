@@ -91,10 +91,11 @@ The Go and Vitest test groups run the same tests as `task test-go` and
 which also write coverage and JUnit test results under `reports/`. CI uploads
 them to [Codecov](https://app.codecov.io/gh/syudead/vv), together with the E2E
 results of a push to `main`, even when a test fails. On each pull request that
-changes code, Codecov comments the coverage by `go` and `web` flag, by component
-and by file, names failed and flaky tests and sets informational statuses per
-flag, without blocking the merge
-([`.github/codecov.yml`](../../.github/codecov.yml)). A newer push cancels a
+changes code, Codecov comments the coverage of the changed lines, names failed
+and flaky tests and sets an informational patch status per `go` and `web` flag,
+without blocking the merge
+([`.github/codecov.yml`](../../.github/codecov.yml)); coverage by flag and by
+component is on the Flags and Components pages of Codecov. A newer push cancels a
 running CI run on a pull request but not on `main`, so every commit on `main`
 reaches Codecov. The upload authenticates
 with GitHub OIDC, so the repository needs no Codecov token, but it must be

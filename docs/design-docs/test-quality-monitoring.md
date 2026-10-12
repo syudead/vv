@@ -14,7 +14,8 @@ flowchart LR
   pr[Pull request] --> ci
   ci -->|coverage, JUnit results| codecov[(Codecov)]
   ci -->|quality jobs: tool output| art[(Run artifacts, 90 days)]
-  codecov -->|coverage by flag and component, failed and flaky tests| prc[PR comment]
+  codecov -->|changed-line coverage, failed and flaky tests| prc[PR comment]
+  codecov -->|coverage by flag and component| pages[Codecov Flags and Components pages]
   prc --> author[PR author]
 ```
 
@@ -47,10 +48,16 @@ fails when a behaviour breaks.
 
 | Codecov setting | What a pull request gets |
 | --- | --- |
-| Flags `go` (`cmd/`, `internal/`) and `web` (`web/src/`) | A project and a patch status per flag, so a drop names the side it happened on |
-| Components | Coverage by the layers of [ARCHITECTURE.md](../../ARCHITECTURE.md) and the directories of `web/src`, in the comment |
-| `require_changes: false` | The comment with the flag, component and file tables, even when coverage does not move |
+| Flags `go` (`cmd/`, `internal/`) and `web` (`web/src/`) | A patch status per flag, so a drop names the side it happened on; coverage per flag on Codecov's Flags page |
+| Components | Coverage by the layers of [ARCHITECTURE.md](../../ARCHITECTURE.md) and the directories of `web/src`, on Codecov's Components page |
 | `test_analytics.flake_detection` | Failed and flaky tests named in the comment |
+
+The repository is on Codecov's free Developer plan, which Codecov treats as its
+Team tier. On that tier the pull request comment has a fixed form (the
+changed-line coverage, the test results and the files with uncovered changed
+lines) and ignores `comment.layout`, and only patch statuses are set, never
+project ones. The configuration therefore sets neither, and the flag and
+component tables are read on Codecov's pages.
 
 A run uploads coverage four times, once from `go test` and once from each of
 the three Vitest shards, and Codecov waits for all four (`after_n_builds: 4`)
@@ -72,7 +79,7 @@ work once flags or components are configured.
 | The measures at the end of the lint groups, on `main` only | They ran one after another and lengthened the lint groups; parallel jobs add no time, so pull requests are measured too |
 | Collecting CI durations from the GitHub API | The Actions pages already show the duration of every run and job |
 | Failing CI on a coverage drop or a complexity rise | A required number invites code written for the number |
-| A comment only when coverage changes | The comment then rarely appeared, and the flag and component tables with it |
+| A comment layout with flag and component tables, and project statuses | The Developer plan's comment has a fixed form and the plan sets patch statuses only; the Pro plan that allows both is paid |
 | Cancelling a running `main` run on a newer push | The cancelled commit's coverage and E2E results never reached Codecov, and later pull requests lost their base |
 | Bundle Analysis and E2E coverage | Neither has a reader yet; each is a new measure, not a fix of the existing ones |
 | qlty as the single tool | It does not measure test durations or flaky tests, and its lint layer repeats golangci-lint and ESLint |
