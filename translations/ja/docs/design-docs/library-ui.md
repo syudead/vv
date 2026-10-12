@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 4b3de4ee5977051b4ae1016be47795dcd4bc64fa5564ded86a9eb275bf25ac63
+sourceHash: c8e40acf1e3de01e49a8a0326ea3f2aa68ff743d0edc58b08c14ed8eb1433a02
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -300,10 +300,10 @@ flowchart LR
 
 | 行 | 内容 |
 | --- | --- |
-| 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているときにサムネイルの項目。右端に操作 |
+| 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているか、生成された画像がサムネイルであるときにサムネイルの項目。右端に操作 |
 | 2 行目 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
 
-操作は、お気に入り、`Add to playlist`、`Use current frame as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
 所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist` は同じ条件でその後に続く。
 

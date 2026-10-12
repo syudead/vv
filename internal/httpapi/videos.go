@@ -160,7 +160,8 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 // forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
 // 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
 // （contracts/guest-api.md §1、親 Issue 要件 18）。ファイル名由来の題名・表示名・代表サムネイルの
-// 位置も出さず、ゲストは title で表示名だけを受け取る（specs/029-video-overrides/contracts/screen-api.md §0）。
+// 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る
+// （specs/029-video-overrides/contracts/screen-api.md §0）。
 // 所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
@@ -174,6 +175,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.FileTitle = nil
 	video.DisplayName = nil
 	video.ThumbnailPositionMs = nil
+	video.ThumbnailGenerated = nil
 	video.Favorite = nil
 	return video
 }
@@ -490,6 +492,11 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
 	}
+	// 適用した画像の有無も所有者の応答にだけ入る（specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+	if video.ThumbnailImageRevision != 0 {
+		generated := true
+		out.ThumbnailGenerated = &generated
+	}
 	if video.DurationMs != nil {
 		out.DurationMs = video.DurationMs
 	}
@@ -570,13 +577,17 @@ func previewURL(video domain.Video) string {
 }
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
-// 内容が変われば URL も変わる。所有者が位置を指定していれば、版に改版番号を
-// 足して `<内容鍵の先頭>-r<改版番号>` にし、位置を記録し直すたびに URL を変える
-// （specs/029-video-overrides/research.md R-6）。ゲストにも渡る URL なので、位置の値は
-// 入れない。
+// 内容が変われば URL も変わる。所有者が画像を適用していれば、版に画像の改版番号を
+// 足して `<内容鍵の先頭>-g<改版番号>` にする（specs/045-comfyui-thumbnails/data-model.md）。
+// 適用していなくて位置を指定していれば、位置の改版番号を足して `<内容鍵の先頭>-r<改版番号>`
+// にし、位置を記録し直すたびに URL を変える（specs/029-video-overrides/research.md R-6）。
+// ゲストにも渡る URL なので、位置の値は入れない。
 func thumbnailURL(video domain.Video) string {
 	version := thumbnailVersion(video.ContentKey)
-	if video.ThumbnailPositionMs != nil {
+	switch {
+	case video.ThumbnailImageRevision != 0:
+		version += "-g" + strconv.FormatInt(video.ThumbnailImageRevision, 10)
+	case video.ThumbnailPositionMs != nil:
 		version += "-r" + strconv.FormatInt(video.ThumbnailRevision, 10)
 	}
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/thumbnail?v=" + version

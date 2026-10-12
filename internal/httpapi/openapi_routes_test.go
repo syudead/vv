@@ -68,14 +68,16 @@ var (
 	openAPIPath      = regexp.MustCompile(`^  (/\S+):`)
 	openAPIMethod    = regexp.MustCompile(`^    (get|post|put|delete|patch):`)
 	openAPIHasBody   = regexp.MustCompile(`^      requestBody:`)
+	openAPIMultipart = regexp.MustCompile(`^          multipart/form-data:`)
 	openAPIMethodSet = map[string]string{
 		"get": http.MethodGet, "post": http.MethodPost, "put": http.MethodPut,
 		"delete": http.MethodDelete, "patch": http.MethodPatch,
 	}
 )
 
-// openAPIOperations は api/openapi.yaml の操作を、本文を持つものと持たないものに
-// 分けて返す。YAML ライブラリを足さずに済ませるため、この文書の固定した字下げを
+// openAPIOperations は api/openapi.yaml の操作を、JSON の本文を持つものとそれ以外に
+// 分けて返す。multipart/form-data の本文（runThumbnailEdit）は JSON の本文の検証に
+// かけないので、本文を持たないものの側に入れる。YAML ライブラリを足さずに済ませるため、この文書の固定した字下げを
 // 読む。字下げが変わって何も拾えなくなった場合は、呼び出し側が失敗させる。
 func openAPIOperations(t *testing.T) (withBody, withoutBody []operation) {
 	t.Helper()
@@ -113,6 +115,11 @@ func openAPIOperationsIn(t *testing.T, file, base string) (withBody, withoutBody
 		if openAPIHasBody.MatchString(line) && current.method != "" && !seen[current] {
 			seen[current] = true
 			withBody = append(withBody, current)
+			continue
+		}
+		if openAPIMultipart.MatchString(line) && len(withBody) > 0 && withBody[len(withBody)-1] == current {
+			withBody = withBody[:len(withBody)-1]
+			withoutBody = append(withoutBody, current)
 		}
 	}
 	flush()

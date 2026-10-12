@@ -260,6 +260,7 @@ func previewVideos(previews []domain.FolderPreview) []domain.Video {
 		videos = append(videos, domain.Video{
 			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
 			ThumbnailPositionMs: preview.ThumbnailPositionMs, ThumbnailRevision: preview.ThumbnailRevision,
+			ThumbnailImageRevision: preview.ThumbnailImageRevision,
 		})
 	}
 	return videos

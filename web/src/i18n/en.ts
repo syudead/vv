@@ -20,6 +20,7 @@ type FolderWatchProblem = NonNullable<components["schemas"]["FolderWatch"]["prob
 type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
+type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -145,6 +146,7 @@ const errorCodes = {
   invalid_credentials: "The username or password is incorrect.",
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
   account_already_configured: "The account is already set up.",
+  provider_failed: "ComfyUI couldn't start the edit.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -233,6 +235,25 @@ const errorReasons = {
   listen_failed: "vv couldn't change who can connect, so the previous setting is kept.",
   auto_tagging_off:
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
+  comfyui_url_invalid: "Enter an http or https URL",
+  comfyui_api_key_missing: "Enter the Comfy Cloud API key",
+  thumbnail_edit_not_found:
+    "This edit has ended, because it was opened again elsewhere or left idle. Close it and start again.",
+  thumbnail_edit_not_ready: "ComfyUI isn't set up",
+  thumbnail_edit_mask_invalid: "The painting doesn't match the frame",
+  thumbnail_edit_reference_invalid: "The reference image can't be read",
+  thumbnail_edit_no_result: "There is no generated image yet",
+  thumbnail_image_invalid: "The generated image can't be read",
+  content_changed: "The video changed while you were editing",
+  unreachable: "ComfyUI can't be reached",
+  unauthorized: "Comfy Cloud rejected the API key",
+  insufficient_credits: "Comfy Cloud has no credits left",
+  missing_models:
+    "ComfyUI is missing files the edit needs; test the connection in Settings to see which",
+  workflow_rejected: "ComfyUI rejected the workflow",
+  run_failed: "The edit failed in ComfyUI",
+  no_output: "ComfyUI returned no image",
+  timed_out: "No result after 10 minutes",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -404,6 +425,7 @@ export const en = {
         detailPage: "Detail page",
         centeredForm: "Centered form",
         dialogs: "Form dialog and confirm dialog",
+        editorDialog: "Editor dialog",
         groupedList: "Grouped list",
         listState: (state: string) => `List page: ${state}`,
       },
@@ -539,6 +561,13 @@ export const en = {
       today: "Today",
       yesterday: "Yesterday",
       removeEntry: "Remove from history",
+      editImage: "Edit image",
+      editImageDetail: "Frame at 1:02",
+      editImageStage: "Image",
+      editImageNotes: "Instructions",
+      editImageNotesHint: "Optional: what to change in the image.",
+      editImageApply: "Apply",
+      close: "Close",
     },
   },
   app: {
@@ -1302,6 +1331,66 @@ export const en = {
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
     },
+    // ComfyUI でコマを編集してサムネイルにする入口・編集画面・生成した画像の項目
+    // （specs/045-comfyui-thumbnails/ui-design.md「Words」の Video page）。
+    thumbnailEdit: {
+      entry: "Edit thumbnail with ComfyUI",
+      setupTitle: "Set up ComfyUI first",
+      setupBody: "Save a ComfyUI connection in Settings.",
+      openSettings: "Open Settings",
+      startFailed: (reason: string) => `Couldn't start editing the thumbnail: ${reason}`,
+      title: "Edit thumbnail",
+      frameAt: (time: string) => `Frame at ${time}`,
+      close: "Close",
+      tools: "Painting tools",
+      paint: "Paint",
+      erase: "Erase",
+      brushSize: "Brush size",
+      undo: "Undo",
+      clearPainting: "Clear painting",
+      paintedArea: "Painted area",
+      paintingHint:
+        "Paint over what to change. Leave it unpainted to change the whole frame.",
+      instructions: "Instructions",
+      instructionsPlaceholder: "For example: remove the caption at the bottom",
+      instructionsHint: "Optional when you paint: the painted area is then cleaned up.",
+      reference: "Reference image",
+      addReference: "Add image…",
+      removeReference: "Remove reference image",
+      referenceHint:
+        "Its colours and mood are used, and its objects may be copied. PNG, JPEG or WebP, up to 20 MB.",
+      referenceRefused: "Choose a PNG, JPEG or WebP image up to 20 MB.",
+      generate: "Generate",
+      generateAgain: "Generate again",
+      states: {
+        queued: "Waiting in the queue",
+        preparing: "Preparing",
+        running: "Generating",
+      },
+      step: (value: number, max: number) =>
+        `Step ${formatNumber(value)} of ${formatNumber(max)}`,
+      progress: "Progress",
+      elapsed: "Elapsed",
+      longWait: "The first run can take a minute while ComfyUI loads its models.",
+      cancel: "Cancel",
+      cancelled: "Cancelled. The thumbnail is unchanged.",
+      runFailed: (reason: string) => `Couldn't generate the image: ${reason}`,
+      frame: "Frame",
+      generated: "Generated",
+      cropNote: "Cropped to the video's shape, as the thumbnail will be.",
+      apply: "Use as thumbnail",
+      applying: "Applying…",
+      changeAndGenerate: "Change and generate again",
+      discard: "Discard",
+      showResult: "Show result",
+      applyFailed: (reason: string) => `Couldn't use the image: ${reason}`,
+      confirmTitle: "Discard this edit?",
+      confirmDescription:
+        "The run is cancelled and the generated image is lost. The thumbnail stays as it is.",
+      keepEditing: "Keep editing",
+      generatedThumbnail: "Generated thumbnail",
+      useFrameInstead: "Use the frame instead",
+    },
     versions: {
       count: (count: number) =>
         selectPlural(count, {
@@ -1884,6 +1973,50 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+    },
+    comfyui: {
+      heading: "ComfyUI",
+      description:
+        "Where VVMDM sends a video frame to edit it into a thumbnail. VVMDM brings the workflow; a ComfyUI you run yourself needs the model files listed after a test.",
+      guide: "How to set up ComfyUI",
+      opensInNewTab: "(opens in a new tab)",
+      provider: "Runs on",
+      providers: {
+        self_hosted: {
+          label: "My own ComfyUI",
+          hint: "ComfyUI you run on this PC or another one.",
+        },
+        cloud: {
+          label: "Comfy Cloud",
+          hint: "Comfy's hosted service. Uses your API key and its credits.",
+        },
+      } satisfies Record<ComfyUIProvider, { label: string; hint: string }>,
+      url: "ComfyUI URL",
+      urlHint: "Where ComfyUI listens, for example http://127.0.0.1:8188.",
+      apiKey: "API key",
+      apiKeyHint: "Create one in your Comfy Cloud account.",
+      apiKeySavedHint: "A key is saved. Type a new one to replace it.",
+      keyStillSaved: "A Comfy Cloud key is still saved.",
+      forgetKey: "Forget the key",
+      forgetting: "Forgetting…",
+      keyForgotten: "Comfy Cloud key forgotten",
+      save: "Save",
+      saving: "Saving…",
+      saved: "ComfyUI settings saved",
+      check: "Save and test connection",
+      checking: "Testing…",
+      checkOk: {
+        self_hosted: "Connected to ComfyUI.",
+        cloud: "Connected to Comfy Cloud.",
+      } satisfies Record<ComfyUIProvider, string>,
+      checkFailed: (reason: string) => `The connection test failed: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      missingHeading: "ComfyUI is missing what the thumbnail edit needs:",
+      putIn: (folder: string) => `put it in ${folder}`,
+      download: "Download",
+      updateForNode: "Update ComfyUI to get this node",
+      loading: "Loading the ComfyUI settings",
+      loadFailed: (reason: string) => `Couldn't load the ComfyUI settings: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",

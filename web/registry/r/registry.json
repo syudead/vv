@@ -707,6 +707,19 @@
       ]
     },
     {
+      "name": "editor-dialog",
+      "type": "registry:ui",
+      "title": "EditorDialog",
+      "description": "Full-viewport dialog skeleton for a task on one image: header band, stage, aside with a footer of main actions. Uses dialog.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#editor-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/editor-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "page-header",
       "type": "registry:ui",
       "title": "PageHeader",
@@ -1009,6 +1022,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/confirm-dialog-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "editor-dialog-example",
+      "type": "registry:block",
+      "title": "Editor dialog example",
+      "description": "A working image editor with an instructions field and one main action.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#editor-dialog (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/editor-dialog-example.tsx",
           "type": "registry:component"
         }
       ]

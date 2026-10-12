@@ -79,6 +79,62 @@ uses the port, so it works with whatever provider is behind it.
 | Ollama URL | `http://127.0.0.1:11434` |
 | Model | `clef-flash` (`clef` is 27B and more accurate) |
 
+## Image-edit provider
+
+[`internal/comfyui`](../../internal/comfyui) is the provider for image edits.
+One adapter serves both a self-hosted ComfyUI and Comfy Cloud, and keeps the
+differences between them inside the package
+([045 research R-1, R-5](../../specs/045-comfyui-thumbnails/research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers)).
+`internal/app` declares the interfaces it uses, and `cmd/mdm` passes the
+adapter in; depguard keeps `internal/app` from importing it.
+
+`app.ComfyUIConnection` saves the connection and runs the connection test,
+under `/api/settings/comfyui` and `/api/settings/comfyui/check`. It is separate
+from the thumbnail feature that uses the provider, as `app.OllamaConnection`
+is separate from auto-tagging.
+
+| Setting | Holds | Used by |
+| --- | --- | --- |
+| `comfyui.provider` | `self_hosted` or `cloud`; absent until the owner saves | Both |
+| `comfyui.url` | The base URL, normalized as `ollama.endpoint` is | Self-hosted |
+| `comfyui.api_key` | The Comfy Cloud API key | Comfy Cloud |
+
+Each provider keeps its own value when the owner switches to the other, so
+switching back does not ask for the URL or the key again.
+
+The API key is write-only. `GET` answers `apiKeySet` and never the key, with
+`Cache-Control: no-store`. A `PUT` without `apiKey` keeps the saved key, and an
+empty string clears it. The key is stored as plain text: an encryption key
+would sit in the same data folder, so encrypting would protect nothing from a
+reader of the database
+([R-9](../../specs/045-comfyui-thumbnails/research.md#r-9-the-api-key-is-write-only)).
+
+| Connection test | Request | Unavailable when |
+| --- | --- | --- |
+| Self-hosted | `GET /system_stats` at the saved URL | The URL cannot be reached, or the reply is not ComfyUI's system information |
+| Comfy Cloud | `GET https://cloud.comfy.org/api/jobs?limit=1` with `X-API-Key` | Comfy Cloud cannot be reached, or answers `401` or `403` to the key |
+
+Once the provider answers, the test reads `GET /object_info` and checks the
+two workflows vv bundles in
+[`internal/comfyui/workflows`](../../internal/comfyui/workflows): every
+`class_type` they use must exist, and every model file a loader node names must
+be among that loader's options. The check answers unavailable with a `missing`
+list: each model file with its folder under `models` and its download page,
+then each missing node type, whose remedy is to update ComfyUI
+([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)).
+The embedded files are the source of truth for the workflows; the steps for an
+owner are in
+[comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md).
+`GET /api/thumbnail-edits/readiness` answers whether a connection is saved,
+which is what the video page needs to enable the edit; it does not run the
+test.
+
+The test also reports when nothing is saved. Each cause has its own message,
+and no message carries the body of the reply. The test does not follow
+redirects, so the key is never sent to another host. As with Ollama, the server
+sends requests only to the saved connection, never to a URL from a request
+body.
+
 ## Adding a provider
 
 A new provider is a new adapter package that implements

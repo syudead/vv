@@ -29,6 +29,8 @@ type FolderLocation struct {
 	// 改版番号である（Video の同名の項目と同じ。サムネイルの URL の版に使う）。
 	ThumbnailPositionMs *int64
 	ThumbnailRevision   int64
+	// ThumbnailImageRevision は適用したサムネイルの画像の改版番号である（Video の同名の項目）。
+	ThumbnailImageRevision int64
 }
 
 // FolderPreview はフォルダカードに差し込むサムネイル1件である。
@@ -38,8 +40,9 @@ type FolderPreview struct {
 	PreviewState PreviewState
 	// ThumbnailPositionMs と ThumbnailRevision はサムネイルの URL の版に使う
 	// （FolderLocation の同名の項目）。
-	ThumbnailPositionMs *int64
-	ThumbnailRevision   int64
+	ThumbnailPositionMs    *int64
+	ThumbnailRevision      int64
+	ThumbnailImageRevision int64
 }
 
 // FolderSummary はフォルダカード1枚分の集計である。
@@ -308,6 +311,7 @@ func (f *folderAccumulator) addVideo(location FolderLocation) {
 		f.previews = append(f.previews, FolderPreview{
 			VideoID: location.VideoID, ContentKey: location.ContentKey, PreviewState: location.PreviewState,
 			ThumbnailPositionMs: location.ThumbnailPositionMs, ThumbnailRevision: location.ThumbnailRevision,
+			ThumbnailImageRevision: location.ThumbnailImageRevision,
 		})
 	}
 }

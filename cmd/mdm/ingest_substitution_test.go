@@ -35,6 +35,9 @@ func (substitutingGenerator) SeekSprite(context.Context, string, string, domain.
 	return false, nil
 }
 func (substitutingGenerator) Preview(context.Context, string, string, int64) error { return nil }
+func (substitutingGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {
+	return image, nil
+}
 
 // 代表サムネイルを先頭のコマで代用しただけの取り込みは done のまま、代用の本数が 1 に
 // なり、問題の一覧にその動画の種類が出る（specs/024-import-progress/research.md R-7、

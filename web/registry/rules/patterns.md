@@ -22,11 +22,13 @@ sample text and data with the screen's own, keeping the structure.
 | Exists only to submit one form (sign-in, first setup)      | `CenteredForm`   | `centered-form`    | `centered-form-example`    |
 | Asks for a few values without leaving the current screen   | `FormDialog`     | `form-dialog`      | `form-dialog-example`      |
 | Asks the viewer to confirm an action that cannot be undone | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
+| Works on one image that needs the whole window             | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
 
 The states of a list or table are shown in `list-states-example`.
 
 Do not nest skeletons, and do not put a skeleton inside a `PageSection` or a
-dialog. When no skeleton fits, add one to the design system first, with its
+dialog; the one exception is the `ConfirmDialog` an `EditorDialog` opens before
+closing. When no skeleton fits, add one to the design system first, with its
 example block and a section here.
 
 ## Shared rules
@@ -179,6 +181,32 @@ closes the dialog when the request succeeds. Show a failure as a
 `destructive` `Alert` in `children` and keep the dialog open.
 `actionDisabled` holds the action back until the dialog has what it needs,
 such as the count of affected videos.
+
+## Editor dialog
+
+Item `editor-dialog`. `EditorDialog` is a modal `Dialog` that fills the
+viewport edge to edge on `bg-background`. A header band `navbar` high with a
+bottom border holds the title, a muted detail after it and the close `×` (a
+`ghost` `icon-sm` `Button`). Under it sit a `stage` and an `aside`:
+
+| Width      | Layout                                                                                                                                                                            |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | The stage fills the rest; the aside is a column `detail-aside` wide (`detail-aside-wide` from `xl`) with a left border, scrolling on its own, and its `footer` sits at its bottom |
+| Below `lg` | The stage sits under the band, `editor-stage` high (about 45% of the viewport); the aside follows it, the body scrolls as one, and the `footer` sticks to the viewport's bottom   |
+
+| Slot     | Put in it                                                                                                             | Never                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| `stage`  | The image being worked on, fitted to the stage; the stage centres it on `bg-muted` with `p-4`                         | Text fields or long text       |
+| `aside`  | The inputs, top to bottom in the order they are filled, each with at most one short hint, then the status of the work | The main actions               |
+| `footer` | The main actions, the one `default` first and as wide as the aside                                                    | More than one `default` button |
+
+Esc and the `×` call `onClose`; the screen closes the dialog itself, or first
+asks with a `ConfirmDialog` when closing would lose work. An Esc that cancels
+an IME composition does not close it. On close the focus returns to the element
+that had it before, and `initialFocus` names the element focused on open.
+
+Use it for a task on one image that needs the whole window, such as painting
+over a video frame or comparing two images. A form stays a `FormDialog`.
 
 ## Sections
 

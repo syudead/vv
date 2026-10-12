@@ -559,8 +559,13 @@ export default function VideoPage() {
             statusLayer === null &&
             !status.ended,
           positionMs: () => controls?.positionMs() ?? null,
+          pause: () => controls?.pause(),
         }
       : undefined;
+
+  // サムネイルの編集画面が開いている間は、この画面のキーを効かせない。Space は欄に入り、
+  // Esc は編集画面のものになる（specs/045-comfyui-thumbnails/ui-design.md「Closing」）。
+  const [editingThumbnail, setEditingThumbnail] = useState(false);
 
   // --- 再生できない項目 ---
   // 再生のできない状態（読み取りの失敗・再生できない・動画が無い）は終わらないので、
@@ -626,6 +631,7 @@ export default function VideoPage() {
   useKeyboardShortcuts(
     showPlayer ? controls : null,
     noticeShown ? cancelAutoplay : close,
+    editingThumbnail,
   );
 
   return (
@@ -847,6 +853,7 @@ export default function VideoPage() {
                 rethumbRelated(saved);
               }}
               onStale={() => void refresh()}
+              onEditingChange={setEditingThumbnail}
               // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
               // （specs/035-favorites/ui-design.md「Video page」）。
               onFavorite={setFavorite}

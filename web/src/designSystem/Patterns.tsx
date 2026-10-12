@@ -5,6 +5,7 @@ import { AdminTablePageExample } from "./blocks/admin-table-page-example";
 import { CenteredFormExample } from "./blocks/centered-form-example";
 import { ConfirmDialogExample } from "./blocks/confirm-dialog-example";
 import { DetailPageExample } from "./blocks/detail-page-example";
+import { EditorDialogExample } from "./blocks/editor-dialog-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
@@ -153,6 +154,15 @@ export default function Patterns() {
         <div className="flex flex-wrap gap-2 p-4">
           <FormDialogExample />
           <ConfirmDialogExample />
+        </div>
+      </Pattern>
+      <Pattern
+        id="editor-dialog"
+        name={p.names.editorDialog}
+        items={["editor-dialog", "editor-dialog-example"]}
+      >
+        <div className="flex flex-wrap gap-2 p-4">
+          <EditorDialogExample />
         </div>
       </Pattern>
     </div>

@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: da056cb36bb51faf2dc207939adf2ec7bd15c67cf4ad0abac406bb70c89af6ee
+sourceHash: dc9da72e9cc19353a15b143c7ca69230812e1dcbef9958e0c5a9523ecfd64af2
 ---
 
 # アーキテクチャ {#architecture}
@@ -61,7 +61,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
 | アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
-| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama` | 外部とのやり取り | 互いと `internal/app` |
+| アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama`、`comfyui` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
 `internal/app` は、ストレージ、`ffmpeg`、生成ファイルに、自身が宣言するインターフェースを通してのみ到達する。そのため単体テストは SQLite、`ffmpeg`、HTTP サーバーなしで動く。
@@ -97,7 +97,7 @@ flowchart LR
 
 **生成ファイルの担当は 1 つ。** サムネイル、シーク用スプライト、ホバーのプレビューを配置し、公開し、開き、削除するのは `internal/artifacts` だけである。ファイルは完成して初めて見えるようになり (`.tmp` の下で生成し、名前を変えて所定の位置に置く)、削除されるのは、その内容を参照する最後の動画がなくなったときだけである。
 
-**ユーザーデータは再構築後も残る。** 再生位置、視聴履歴、タグ、公開フラグ、お気に入り、プレイリストの項目、所有者の編集は、再スキャンで再現される値 (内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス) をキーとし、`videos.id` をキーにすることは決してなく、`videos` への外部キーを持たない。どのテーブルが再構築できるかは [データと復旧](docs/how-to/running-vv.md#data-and-recovery) にある。
+**ユーザーデータは再構築後も残る。** 再生位置、視聴履歴、タグ、公開フラグ、お気に入り、プレイリストの項目、所有者の編集、適用したサムネイル画像は、再スキャンで再現される値 (内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス) をキーとし、`videos.id` をキーにすることは決してなく、`videos` への外部キーを持たない。どのテーブルが再構築できるかは [データと復旧](docs/how-to/running-vv.md#data-and-recovery) にある。
 
 **どの読み取りも閲覧者を知っている。** 動画、所在、フォルダを返すストアの読み取りはそれぞれ `domain.Audience` を受け取り、そのゼロ値はゲストである。HTTP 層はすべてのリクエストを、ルーティングの前に最も外側の層で、パスによって bearer、誰でも、ゲストも可、所有者のみに分類し、`api/openapi.yaml` の各操作の `security` と一致させる (Go のテストがそれを確認する)。非表示の動画は、存在しない動画と同じ `404` を返す ([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md))。
 
@@ -118,6 +118,7 @@ flowchart LR
 | 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`、`OllamaConnection`)、`internal/ollama` | AI 層。タスクに依存しない分類器のポートと、その背後にある Ollama のプロバイダおよびその接続設定 | [ai-layer.md](docs/design-docs/ai-layer.md) |
+| `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
