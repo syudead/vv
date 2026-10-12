@@ -57,6 +57,21 @@ function draftOf(settings: ComfyUISettings): Draft {
   };
 }
 
+/**
+ * afterSave は保存の応答を受けた後の下書きを返す。送った後に値が変わっていなければ保存後の値に
+ * 戻す。変わっていれば送った後の編集を残し、キーの欄は送ったキーのままのときだけ空にする。
+ */
+function afterSave(current: Draft, sent: Draft, saved: ComfyUISettings): Draft {
+  if (
+    current.provider === sent.provider &&
+    current.url === sent.url &&
+    current.apiKey === sent.apiKey
+  ) {
+    return draftOf(saved);
+  }
+  return current.apiKey === sent.apiKey ? { ...current, apiKey: "" } : current;
+}
+
 /** bodyOf は下書きを保存の要求にする。キーの欄が空なら `apiKey` を省き、保存済みのキーを残す。 */
 function bodyOf(draft: Draft): UpdateComfyUISettings {
   const body: UpdateComfyUISettings = { provider: draft.provider };
@@ -90,6 +105,8 @@ export default function ComfyUISection() {
   const [saveError, setSaveError] = useState<UiText | null>(null);
   const [check, setCheck] = useState<CheckState>({ kind: "idle" });
   const controller = useRef<AbortController | null>(null);
+  // 値を変えるたびに進める。テストは始めた時の値と同じ間だけ結果を出す。
+  const edits = useRef(0);
 
   const load = useCallback(async () => {
     controller.current?.abort();
@@ -122,13 +139,18 @@ export default function ComfyUISection() {
 
   const busy = saving || forgetting;
 
-  /** persist は要求を保存する。保存できたら保存後の値を返し、入力欄のキーを空に戻す。 */
-  const persist = async (body: UpdateComfyUISettings): Promise<boolean> => {
+  /**
+   * persist は下書き sent から作った要求を保存する。保存できたら保存後の値を受け取り、入力欄の
+   * キーを空に戻す。保存の間に変えた値は残す（afterSave）。
+   */
+  const persist = async (sent: Draft, body: UpdateComfyUISettings): Promise<boolean> => {
     setSaveError(null);
     try {
       const saved = await updateComfyUISettings(body);
       setSettings(saved);
-      setDraft(draftOf(saved));
+      setDraft((current) =>
+        current === null ? current : afterSave(current, sent, saved),
+      );
       return true;
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
@@ -140,7 +162,7 @@ export default function ComfyUISection() {
     if (draft === null || busy) return;
     setSaving(true);
     try {
-      if (await persist(bodyOf(draft))) toast(text.saved);
+      if (await persist(draft, bodyOf(draft))) toast(text.saved);
     } finally {
       setSaving(false);
     }
@@ -151,7 +173,8 @@ export default function ComfyUISection() {
     if (draft === null || busy) return;
     setForgetting(true);
     try {
-      if (await persist({ ...bodyOf(draft), apiKey: "" })) toast(text.keyForgotten);
+      if (await persist(draft, { ...bodyOf(draft), apiKey: "" }))
+        toast(text.keyForgotten);
     } finally {
       setForgetting(false);
     }
@@ -160,16 +183,19 @@ export default function ComfyUISection() {
   // サーバーは保存した接続先でしか確かめないので、編集中の値があれば先に保存する。
   const runCheck = async () => {
     if (draft === null || check.kind === "checking" || busy) return;
+    const edit = edits.current;
     let provider: Provider = settings?.provider ?? draft.provider;
     if (dirty) {
       setSaving(true);
-      const saved = await persist(bodyOf(draft)).finally(() => setSaving(false));
-      if (!saved) return;
+      const saved = await persist(draft, bodyOf(draft)).finally(() => setSaving(false));
+      // 保存の間に値が変わったら、保存した値を確かめても今の値には当たらない。
+      if (!saved || edit !== edits.current) return;
       provider = draft.provider;
     }
     setCheck({ kind: "checking" });
     try {
       const result = await checkComfyUI();
+      if (edit !== edits.current) return;
       if (result.available) {
         setCheck({ kind: "ok", provider });
       } else if (result.missing !== undefined && result.missing.length > 0) {
@@ -178,15 +204,18 @@ export default function ComfyUISection() {
         setCheck({ kind: "failed", message: text.checkFailed(result.message ?? "") });
       }
     } catch (failure) {
+      if (edit !== edits.current) return;
       setCheck({ kind: "failed", message: text.checkFailed(errorText(failure)) });
     }
   };
 
   // 値を変えたら前のテスト結果は今の値に当たらないので消す（ui-design.md States）。
+  // 確かめている途中なら、その結果も捨てて次のテストを受け付ける。
   const update = (change: Partial<Draft>) => {
+    edits.current += 1;
     setDraft((current) => (current === null ? current : { ...current, ...change }));
     setSaveError(null);
-    setCheck((current) => (current.kind === "checking" ? current : { kind: "idle" }));
+    setCheck({ kind: "idle" });
   };
 
   const description = (

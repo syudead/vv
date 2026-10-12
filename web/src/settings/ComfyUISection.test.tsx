@@ -159,6 +159,60 @@ describe("ComfyUISection", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("keeps values typed while a save is still on its way", async () => {
+    const user = userEvent.setup();
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input) === URL && init?.method === "PUT") await held;
+      return route(input, init);
+    });
+    render(<ComfyUISection />);
+    const url = await screen.findByLabelText<HTMLInputElement>("ComfyUI URL");
+    await user.type(url, "http://old:8188");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.clear(url);
+    await user.type(url, "http://new:8188");
+    release();
+    await waitFor(() => expect(toast).toHaveBeenCalledWith("ComfyUI settings saved"));
+    expect(puts).toEqual([{ provider: "self_hosted", url: "http://old:8188" }]);
+    expect(url.value).toBe("http://new:8188");
+  });
+
+  it("drops a test result when a value changes while the test runs", async () => {
+    const user = userEvent.setup();
+    current = { provider: "self_hosted", url: "http://old:8188", apiKeySet: false };
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    fetchMock.mockImplementation(async (input, init) => {
+      if (String(input) === `${URL}/check`) await held;
+      return route(input, init);
+    });
+    render(<ComfyUISection />);
+    await user.click(
+      await screen.findByRole("button", { name: "Save and test connection" }),
+    );
+    expect(await screen.findByText("Testing…")).toBeDefined();
+    const url = screen.getByLabelText<HTMLInputElement>("ComfyUI URL");
+    await user.clear(url);
+    await user.type(url, "http://new:8188");
+    expect(screen.queryByText("Testing…")).toBeNull();
+    release();
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.filter(([input]) => String(input) === `${URL}/check`),
+      ).toHaveLength(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Connected to ComfyUI.")).toBeNull();
+    const test = screen.getByRole("button", { name: "Save and test connection" });
+    expect(test.hasAttribute("aria-disabled")).toBe(false);
+  });
+
   it("forgets a Cloud key left over while My own ComfyUI is saved", async () => {
     const user = userEvent.setup();
     current = { provider: "self_hosted", url: "http://127.0.0.1:8188", apiKeySet: true };
