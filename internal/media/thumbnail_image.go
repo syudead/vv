@@ -138,8 +138,10 @@ func fitThumbnailSize(aspect float64) (width, height int) {
 }
 
 // fitThumbnailSourceSize は width×height の画像を縦横比 aspect（0 以下は画像自身の比率）に中央で
-// 切り抜き、長辺が 2048px を超えれば 2048px に縮めた大きさを返す。拡大はしない。辺は偶数に
-// 丸める（fitThumbnailSize と同じ）。
+// 切り抜き、長辺が 2048px を超えれば 2048px に縮めた大きさを返す。拡大はしないので、辺は
+// 切り抜いた大きさを超えない偶数に切り下げる（fitThumbnailSize と同じく偶数にする）。2px に
+// 満たない辺は 1px にする。その大きさでは aspect を表せないので、元の画像は画像の画素を拡大せず
+// そのまま残す。
 func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	w, h := float64(width), float64(height)
 	if aspect > 0 && w/h > aspect {
@@ -150,10 +152,17 @@ func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	if long := math.Max(w, h); long > thumbnailSourceLongSide {
 		w, h = w*thumbnailSourceLongSide/long, h*thumbnailSourceLongSide/long
 	}
-	even := func(value float64) int {
-		return max(int(math.Round(value/2))*2, 2)
+	return evenAtMost(w), evenAtMost(h)
+}
+
+// evenAtMost は value を超えない最大の偶数を返す。value が 2 に満たなければ 1 を返す。
+// 浮動小数の誤差で整数をわずかに下回った値は、その整数として扱う。
+func evenAtMost(value float64) int {
+	side := int(math.Floor(value + 1e-9))
+	if side < 2 {
+		return 1
 	}
-	return even(w), even(h)
+	return side &^ 1
 }
 
 // FitThumbnailImage は FitThumbnailImage を呼ぶ。
