@@ -267,6 +267,35 @@ func assertKeys(t *testing.T, f *runProvider) {
 	}
 }
 
+// DiffusionModel を渡すと、UNETLoader の unet_name だけをそのファイルに代えて送る。
+func TestStartWithDiffusionModelReplacesOnlyTheUNETLoaderFile(t *testing.T) {
+	f := newRunProvider(t, false)
+	client := NewWithOptions(fixedSettings{}, Options{DiffusionModel: " klein-4b-finetune.safetensors "})
+	frame := pngOf(t, 8, 6, color.RGBA{R: 200, A: 255})
+	if _, err := client.Start(context.Background(), f.conn(), domain.ImageEditInput{Frame: frame}); err != nil {
+		t.Fatalf("Start = %v", err)
+	}
+	sent := f.prompts[len(f.prompts)-1]
+	want := embedded(t, workflowEdit)
+	for id, node := range sent {
+		n := node.(map[string]any)
+		if n["class_type"] != "UNETLoader" {
+			continue
+		}
+		inputs := n["inputs"].(map[string]any)
+		if inputs["unet_name"] != "klein-4b-finetune.safetensors" {
+			t.Errorf("unet_name = %v", inputs["unet_name"])
+		}
+		want[id].(map[string]any)["inputs"].(map[string]any)["unet_name"] = "klein-4b-finetune.safetensors"
+	}
+	for _, title := range []string{titleFrame, titleMask} {
+		inputsOf(t, want, title)["image"] = inputsOf(t, sent, title)["image"]
+	}
+	if !reflect.DeepEqual(sent, want) {
+		t.Errorf("the prompt differs from the bundled workflow beyond vv:* inputs and unet_name")
+	}
+}
+
 // マスクが無ければ、コマと同じ大きさの真っ白な PNG を上げる。
 func TestStartWithoutMaskUploadsWhiteMaskOfFrameSize(t *testing.T) {
 	f := newRunProvider(t, false)

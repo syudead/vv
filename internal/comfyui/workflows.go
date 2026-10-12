@@ -59,6 +59,10 @@ var modelLoaders = map[string]string{
 	"VAELoader":  "vae_name",
 }
 
+// diffusionLoader は拡散モデルを読むローダーの型である。Options.DiffusionModel はこの型の
+// ローダーが読むファイルを差し替える。
+const diffusionLoader = "UNETLoader"
+
 // requiredFile はワークフローが読むモデルファイルの 1 つと、その置き場所と入手先である
 // （contracts/workflow.md の Required files、research.md R-12）。
 type requiredFile struct {
@@ -102,9 +106,26 @@ type loaderFile struct {
 	file   requiredFile
 }
 
+// requiredFilesFor は requiredFiles の拡散モデルを diffusionModel に代えた一覧を返す。
+// diffusionModel が空なら requiredFiles のままである。差し替えたファイルの入手先は分からない。
+func requiredFilesFor(diffusionModel string) []requiredFile {
+	files := slices.Clone(requiredFiles)
+	if diffusionModel == "" {
+		return files
+	}
+	for i, f := range files {
+		if f.folder == "diffusion_models" {
+			files[i] = requiredFile{name: diffusionModel, folder: f.folder}
+		}
+	}
+	return files
+}
+
 // workflowRequirement は埋め込んだワークフローの全部が使うノードの型とファイルを集める。
+// diffusionModel が空でなければ、拡散モデルのローダーはそのファイルを読むものとして扱う。
 // ローダーが requiredFiles に無いファイルを名指していれば誤りを返す。
-func workflowRequirement() (requirement, error) {
+func workflowRequirement(diffusionModel string) (requirement, error) {
+	required := requiredFilesFor(diffusionModel)
 	nodes := map[string]bool{}
 	var files []loaderFile
 	for _, name := range workflowNames {
@@ -119,11 +140,14 @@ func workflowRequirement() (requirement, error) {
 				continue
 			}
 			value, _ := node.Inputs[input].(string)
-			index := slices.IndexFunc(requiredFiles, func(f requiredFile) bool { return f.name == value })
+			if diffusionModel != "" && node.ClassType == diffusionLoader {
+				value = diffusionModel
+			}
+			index := slices.IndexFunc(required, func(f requiredFile) bool { return f.name == value })
 			if index < 0 {
 				return requirement{}, fmt.Errorf("the bundled workflow %s loads %q, which is not a required file", name, value)
 			}
-			entry := loaderFile{loader: node.ClassType, input: input, file: requiredFiles[index]}
+			entry := loaderFile{loader: node.ClassType, input: input, file: required[index]}
 			if !slices.Contains(files, entry) {
 				files = append(files, entry)
 			}
@@ -136,7 +160,7 @@ func workflowRequirement() (requirement, error) {
 	sort.Strings(sorted)
 	// ファイルは requiredFiles（Required files の表）の順に並べる。
 	ordered := make([]loaderFile, 0, len(files))
-	for _, f := range requiredFiles {
+	for _, f := range required {
 		for _, entry := range files {
 			if entry.file.name == f.name {
 				ordered = append(ordered, entry)

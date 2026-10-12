@@ -64,6 +64,11 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
+	if c.diffusionModel != "" {
+		if err := prompt.setLoaderInput(diffusionLoader, c.diffusionModel); err != nil {
+			return domain.ImageEditJob{}, err
+		}
+	}
 	output, err := prompt.nodeID(titleOutput)
 	if err != nil {
 		return domain.ImageEditJob{}, err
@@ -836,6 +841,27 @@ func (g promptGraph) setInput(title, input string, value any) error {
 		return fmt.Errorf("the bundled workflow's %s node has no inputs", title)
 	}
 	inputs[input] = value
+	return nil
+}
+
+// setLoaderInput は型 class のローダーノードすべての、ファイル名を受ける入力を file にする。
+func (g promptGraph) setLoaderInput(class, file string) error {
+	input := modelLoaders[class]
+	found := false
+	for id := range g {
+		if g.classType(id) != class {
+			continue
+		}
+		inputs, ok := g[id]["inputs"].(map[string]any)
+		if !ok {
+			return fmt.Errorf("the bundled workflow's %s node has no inputs", class)
+		}
+		inputs[input] = file
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("the bundled workflow has no %s node", class)
+	}
 	return nil
 }
 

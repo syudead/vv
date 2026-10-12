@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/comfyui-thumbnails.md
-sourceHash: 85a082b60966fd2c7d72d1577bf438ba1d6d91320ce8225dfe35eaa9c789898e
+sourceHash: 57bbed127cf7ebf6c35d2cb2540d9460f38499f78295d94a27ee7f657568a009
 ---
 
 # サムネイルの編集のために ComfyUI を準備する {#set-up-comfyui-for-thumbnail-edits}
@@ -37,6 +37,16 @@ sourceHash: 85a082b60966fd2c7d72d1577bf438ba1d6d91320ce8225dfe35eaa9c789898e
 2. VVMDM で Settings を開き、ComfyUI のセクションで "Comfy Cloud" を選び、キーを貼り付けて "Save and test connection" を選ぶ。VVMDM はキーを二度と表示しない。変えるには新しいキーを入力する。
 
 モデルファイルとノードは Comfy Cloud が用意する。
+
+## 派生モデルを試す {#try-a-derived-model}
+
+FLUX.2 [klein] 4B のファインチューンやマージを自分の ComfyUI で試すには、その `.safetensors` ファイルを `models/diffusion_models` に置き、そのファイル名を `MDM_COMFYUI_DIFFUSION_MODEL` に設定して VVMDM を起動する:
+
+```bash
+MDM_COMFYUI_DIFFUSION_MODEL=my-klein-4b-finetune.safetensors ./mdm
+```
+
+すると VVMDM は `flux-2-klein-4b-fp8.safetensors` の代わりにそのファイルを読み込み、テキストエンコーダー、VAE、4 ステップのワークフローはそのまま使う。そのため、モデルは元のモデルと同じアーキテクチャで、元のモデルと同じように蒸留されていなければならない。接続テストはそのファイルの有無を、ダウンロードページなしで確認する。Comfy Cloud は自身のモデルしか提供しないので、この変数は自分の ComfyUI 用だ。Windows のデスクトップアプリはこの変数を読まない。
 
 ## 結果を確認する {#check-the-result}
 

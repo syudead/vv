@@ -37,6 +37,9 @@ type Client struct {
 	settings SettingsSource
 	http     *http.Client
 	cloud    string
+	// diffusionModel は埋め込んだワークフローの拡散モデルのファイル名に代えて読ませるファイルである。
+	// 空なら埋め込んだファイルのままにする。
+	diffusionModel string
 
 	// progressMu は progress を守る。progress は実行の id ごとの、進み具合を読む WebSocket である。
 	progressMu sync.Mutex
@@ -49,6 +52,10 @@ type Options struct {
 	HTTPClient *http.Client
 	// CloudBaseURL は Comfy Cloud の基底 URL である。空なら CloudBaseURL を使う。
 	CloudBaseURL string
+	// DiffusionModel は UNETLoader に読ませる拡散モデルのファイル名である。空なら埋め込んだ
+	// ワークフローのファイル（flux-2-klein-4b-fp8.safetensors）を使う。同じ構造の派生モデルを
+	// 試すための差し替えで、テキストエンコーダ・VAE・手順の数は変えない。
+	DiffusionModel string
 }
 
 // New は既定の HTTP クライアント（環境のプロキシ設定に従う）で Client を作る。
@@ -70,7 +77,10 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 	if cloud == "" {
 		cloud = CloudBaseURL
 	}
-	return &Client{settings: settings, http: client, cloud: strings.TrimRight(cloud, "/"), progress: map[string]*progressWatch{}}
+	return &Client{
+		settings: settings, http: client, cloud: strings.TrimRight(cloud, "/"),
+		diffusionModel: strings.TrimSpace(opts.DiffusionModel), progress: map[string]*progressWatch{},
+	}
 }
 
 // errAPIKeyRejected は Comfy Cloud が API キーを受け付けなかったことを表す。
@@ -122,7 +132,7 @@ func (c *Client) Check(ctx context.Context) error {
 // checkRequired は基底 URL base の GET /object_info を読み、埋め込んだワークフローの
 // ノードの型とモデルファイルがあるかを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
 func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string) error {
-	required, err := workflowRequirement()
+	required, err := workflowRequirement(c.diffusionModel)
 	if err != nil {
 		return err
 	}

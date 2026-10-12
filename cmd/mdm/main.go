@@ -279,7 +279,7 @@ func run(opts runOptions) error {
 	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
 	// 画像編集の提供元 ComfyUI（自前か Comfy Cloud）。アダプタが自分の接続先を設定から読む
 	// （docs/design-docs/ai-layer.md）。
-	comfyUIClient := comfyui.New(settingsStore)
+	comfyUIClient := comfyui.NewWithOptions(settingsStore, comfyui.Options{DiffusionModel: cfg.ComfyUIDiffusionModel})
 	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyUIClient)
 	// サムネイルの編集のセッション。メモリにだけ持ち、適用は取り込みと同じ生成の錠の中で行う
 	// （docs/design-docs/thumbnail-editing.md）。
