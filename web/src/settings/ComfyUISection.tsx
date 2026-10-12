@@ -29,6 +29,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import { COMFYUI_GUIDE_URL } from "./docsLinks";
+import { useSectionAnchor } from "./useSectionAnchor";
 
 type Provider = UpdateComfyUISettings["provider"];
 
@@ -93,8 +94,20 @@ function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[]
  * の接続先（自前か Comfy Cloud か）を保存し、つながるかと、vv のワークフローに足りないノード
  * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない
  * （specs/045-comfyui-thumbnails/ui-design.md、research.md R-9）。
+ *
+ * 区画は `/settings#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
+ * 移る（ui-design.md「Video page: edit entry」）。
  */
 export default function ComfyUISection() {
+  const anchor = useSectionAnchor("comfyui");
+  return (
+    <div ref={anchor} id="comfyui">
+      <ComfyUISectionBody />
+    </div>
+  );
+}
+
+function ComfyUISectionBody() {
   const text = t.settings.comfyui;
   const toast = useToast();
   const [settings, setSettings] = useState<ComfyUISettings | null>(null);

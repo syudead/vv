@@ -32,6 +32,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `detail-page-example`      | Block         | Copy to start a detail page                                                  |
 | `dialog`                   | Component     | A modal form or long choice                                                  |
 | `dropdown-menu`            | Component     | Actions or one choice from a few, from a button                              |
+| `editor-dialog`            | Page skeleton | A task on one image that needs the whole window                              |
+| `editor-dialog-example`    | Block         | Copy to start an editor dialog                                               |
 | `empty`                    | Component     | The empty state of a list or section                                         |
 | `empty-state`              | State         | Nothing to show, and the action that fills it                                |
 | `error-state`              | State         | The body failed to load, with Retry                                          |

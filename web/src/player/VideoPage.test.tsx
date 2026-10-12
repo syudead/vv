@@ -136,6 +136,7 @@ function fakeControls(): PlayerControls {
   return {
     togglePlay: vi.fn(),
     play: vi.fn(),
+    pause: vi.fn(),
     seekTo: vi.fn(),
     restart: vi.fn(),
     toggleMute: vi.fn(),

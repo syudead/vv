@@ -1,9 +1,18 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CheckResult, ComfyUISettings } from "../api/client";
 import ComfyUISection from "./ComfyUISection";
+
+function renderSection(path = "/settings") {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <ComfyUISection />
+    </MemoryRouter>,
+  );
+}
 
 const toast = vi.fn();
 vi.mock("../ui/Toast", () => ({ useToast: () => toast }));
@@ -56,8 +65,31 @@ describe("ComfyUISection", () => {
     vi.unstubAllGlobals();
   });
 
+  it("is where /settings#comfyui leads: the section heading takes the focus", async () => {
+    renderSection("/settings#comfyui");
+    await screen.findByLabelText("ComfyUI URL");
+    const heading = screen.getByRole("heading", { level: 2, name: "ComfyUI" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
+  it("keeps the focus on the heading when the settings arrive after the anchor's last retry", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    fetchMock.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    renderSection("/settings#comfyui");
+    const heading = screen.getByRole("heading", { level: 2, name: "ComfyUI" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    answer(json(current));
+    await screen.findByLabelText("ComfyUI URL");
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { level: 2, name: "ComfyUI" }),
+    );
+  });
+
   it("starts on My own ComfyUI with an empty URL when nothing is saved", async () => {
-    render(<ComfyUISection />);
+    renderSection();
     const url = await screen.findByLabelText<HTMLInputElement>("ComfyUI URL");
     expect(url.value).toBe("");
     expect(
@@ -71,7 +103,7 @@ describe("ComfyUISection", () => {
 
   it("never puts the API key back into the field, before or after a save", async () => {
     const user = userEvent.setup();
-    render(<ComfyUISection />);
+    renderSection();
     await user.click(await screen.findByRole("radio", { name: "Comfy Cloud" }));
     const key = screen.getByLabelText<HTMLInputElement>("API key");
     expect(key.type).toBe("password");
@@ -100,7 +132,7 @@ describe("ComfyUISection", () => {
       available: false,
       message: "cannot reach ComfyUI at http://gpu:8188",
     };
-    render(<ComfyUISection />);
+    renderSection();
     await user.type(await screen.findByLabelText("ComfyUI URL"), "http://gpu:8188");
     await user.click(screen.getByRole("button", { name: "Save and test connection" }));
     await screen.findByText(
@@ -134,7 +166,7 @@ describe("ComfyUISection", () => {
         },
       ],
     };
-    render(<ComfyUISection />);
+    renderSection();
     await user.click(
       await screen.findByRole("button", { name: "Save and test connection" }),
     );
@@ -169,7 +201,7 @@ describe("ComfyUISection", () => {
       if (String(input) === URL && init?.method === "PUT") await held;
       return route(input, init);
     });
-    render(<ComfyUISection />);
+    renderSection();
     const url = await screen.findByLabelText<HTMLInputElement>("ComfyUI URL");
     await user.type(url, "http://old:8188");
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -192,7 +224,7 @@ describe("ComfyUISection", () => {
       if (String(input) === `${URL}/check`) await held;
       return route(input, init);
     });
-    render(<ComfyUISection />);
+    renderSection();
     await user.click(
       await screen.findByRole("button", { name: "Save and test connection" }),
     );
@@ -216,7 +248,7 @@ describe("ComfyUISection", () => {
   it("forgets a Cloud key left over while My own ComfyUI is saved", async () => {
     const user = userEvent.setup();
     current = { provider: "self_hosted", url: "http://127.0.0.1:8188", apiKeySet: true };
-    render(<ComfyUISection />);
+    renderSection();
     expect(await screen.findByText("A Comfy Cloud key is still saved.")).toBeDefined();
     await user.click(screen.getByRole("button", { name: "Forget the key" }));
     await waitFor(() => expect(toast).toHaveBeenCalledWith("Comfy Cloud key forgotten"));
@@ -234,7 +266,7 @@ describe("ComfyUISection", () => {
         ? Promise.resolve(json({ code: "internal", message: "boom" }, 500))
         : route(input, init),
     );
-    render(<ComfyUISection />);
+    renderSection();
     expect(await screen.findByText(/Couldn't load the ComfyUI settings/)).toBeDefined();
     fail = false;
     await user.click(screen.getByRole("button", { name: "Retry" }));
