@@ -43,10 +43,12 @@ flowchart LR
 | API key | Write-only ([R-9](research.md#r-9-the-api-key-is-write-only)) |
 | Routes | New owner-only routes for settings, edits and revert; the position override changed ([contracts/screen-api.md](contracts/screen-api.md)) |
 
-The Issue has no `ui` label, so no `design` stage runs: the two screen units
-build from the design system and the video page's existing thumbnail controls
-([029 ui-design](../029-video-overrides/ui-design.md)), and each owes a visual
-review.
+The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
+before the two screen units: the ComfyUI section in Settings, the edit entry
+next to the video page's thumbnail controls
+([029 ui-design](../029-video-overrides/ui-design.md)), mask painting, the
+run's states and failures, the comparison with apply, run again and discard,
+and "use the frame instead".
 
 Out of scope, as the parent Issue says: batch generation, shipping or
 installing ComfyUI, models or workflows, replacing seek sprites, scrub frames
@@ -116,7 +118,8 @@ specs/045-comfyui-thumbnails/
     └── workflow.md
 ```
 
-`quickstart.md` exists because the automated checks run against a fake
+`ui-design.md` is written by the `design` stage (the Issue has the `ui`
+label). `quickstart.md` exists because the automated checks run against a fake
 ComfyUI only. `contracts/workflow.md` is the owner-facing workflow contract
 until the how-to below takes it over.
 
@@ -152,7 +155,8 @@ the real adapter.
 
 ## Implementation Work
 
-The diagram shows which units have to land first.
+The diagram shows which units have to land first. The two screen units also
+wait for the `design` stage's `ui-design.md`.
 
 ```mermaid
 flowchart LR
@@ -215,7 +219,7 @@ before registration, `204` on delete, and `readiness` answering
 **Scope**: A ComfyUI section in Settings: provider choice, URL or API key
 (the key field shows only that a key is saved), save, test with its result,
 workflow file upload with the inputs it takes, removal, the catalog text, and
-a docs link to the how-to.
+a docs link to the how-to; layout and wording follow `ui-design.md`.
 
 **Dependencies**: Save and test a ComfyUI connection through the screen API;
 Register a thumbnail workflow with nodes titled vv.
@@ -322,7 +326,8 @@ when `readiness` is not complete, absent for a guest), the edit view with the
 frame, mask painting, the reference image, the prompt, the run state with
 elapsed time and progress, cancel, the side-by-side comparison with apply,
 run again and discard, discard on unmount, and "use the frame instead" while
-`thumbnailGenerated`; the catalog text.
+`thumbnailGenerated`; the catalog text; layout and interaction follow
+`ui-design.md`.
 
 **Dependencies**: Serve thumbnail edit sessions on the screen API.
 
