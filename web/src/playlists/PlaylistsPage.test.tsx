@@ -34,8 +34,10 @@ const server = {
   items: [] as PlaylistSummary[],
   /** 1 ページの件数。items がこれより多ければ nextCursor（次の先頭の位置）を返す。 */
   pageSize: 60,
+  /** 一覧の版。items を変えるたびに進める。 */
+  version: 1,
   listStatus: 200,
-  /** 続きのページ（cursor 付き）の要求だけを失敗にする状態。 */
+  /** 続きのページ（cursor 付き）の要求だけを失敗にする状態。0 なら応答を返さない。 */
   moreStatus: 200,
   listCalls: 0,
   /** 一覧の要求の URL。 */
@@ -60,6 +62,9 @@ function install() {
           json({ code: "internal", message: "x" }, server.listStatus),
         );
       }
+      if (cursor !== null && server.moreStatus === 0) {
+        return new Promise<Response>(() => {});
+      }
       if (cursor !== null && server.moreStatus !== 200) {
         return Promise.resolve(
           json({ code: "internal", message: "x" }, server.moreStatus),
@@ -71,6 +76,7 @@ function install() {
         json({
           items: server.items.slice(start, end),
           total: server.items.length,
+          version: String(server.version),
           ...(end < server.items.length ? { nextCursor: String(end) } : {}),
         }),
       );
@@ -94,6 +100,7 @@ function install() {
       };
       server.nextId += 1;
       server.items = [created, ...server.items];
+      server.version += 1;
       return Promise.resolve(json(created, 201));
     }
     throw new Error(`unexpected request: ${method} ${url}`);
@@ -156,6 +163,7 @@ beforeEach(() => {
     playlist(2, "Empty one", 0),
   ];
   server.pageSize = 60;
+  server.version = 1;
   server.listStatus = 200;
   server.moreStatus = 200;
   server.listCalls = 0;
@@ -435,6 +443,91 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
       "/api/playlists?cursor=2&limit=60",
     ]);
     expect(document.querySelector('[data-slot="load-more-row"]')).toBeNull();
+  });
+
+  it("続きのページの version が違えば足さず、最初のページから読み直して置き換える", async () => {
+    server.items = [1, 2, 3, 4, 5].map((id) => playlist(id, `P${String(id)}`, id));
+    server.pageSize = 2;
+    renderPage();
+    await findCards();
+    expect(cardNames()).toEqual(["P1, 1 item", "P2, 2 items"]);
+
+    // 2 ページ目を読む前に P5 が変わって先頭へ動いた。元の cursor の次からは P5 は返らない。
+    const [moved] = server.items.splice(4, 1);
+    server.items = [moved as PlaylistSummary, ...server.items];
+    server.version += 1;
+
+    reachEnd();
+    await waitFor(() => expect(cardNames()).toEqual(["P5, 5 items", "P1, 1 item"]));
+    expect(server.listUrls).toEqual([
+      "/api/playlists?limit=60",
+      "/api/playlists?cursor=2&limit=60",
+      "/api/playlists?limit=60",
+    ]);
+    expect(screen.getByText("5 playlists")).toBeDefined();
+
+    // 読み直した後は見張りが付け直され、続きは新しい並びで足される。
+    reachEnd();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    expect(cardNames()).toEqual([
+      "P5, 5 items",
+      "P1, 1 item",
+      "P2, 2 items",
+      "P3, 3 items",
+    ]);
+    reachEnd();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    expect(cardNames()[4]).toBe("P4, 4 items");
+  });
+
+  it("作ると読んでいた続きを打ち切って最初のページを読み直し、失敗したら Retry の行を出し、Retry は最初のページを読み直す", async () => {
+    const user = userEvent.setup();
+    server.items = [1, 2, 3, 4].map((id) => playlist(id, `P${String(id)}`, id));
+    server.pageSize = 2;
+    renderPage();
+    await findCards();
+
+    // 2 ページ目の要求は応答が返らないまま、プレイリストを作る。
+    server.moreStatus = 0;
+    reachEnd();
+    expect(server.listUrls[1]).toBe("/api/playlists?cursor=2&limit=60");
+    server.listStatus = 500;
+    await user.click(screen.getByRole("button", { name: "New playlist" }));
+    const dialog = await screen.findByRole("dialog", { name: "New playlist" });
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Name" }),
+      "Evening{Enter}",
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // 読み直しは最初のページを求め、失敗したら今のカードを残して Retry の行を出す。
+    const row = await screen.findByText("Couldn't load the playlists");
+    expect(row.closest('[data-slot="load-more-row"]')?.getAttribute("data-state")).toBe(
+      "failed",
+    );
+    expect(server.listUrls[2]).toBe("/api/playlists?limit=60");
+    expect(cardNames()).toEqual(["Evening, 0 items", "P1, 1 item", "P2, 2 items"]);
+    expect(screen.getByText("5 playlists")).toBeDefined();
+    expect(server.listUrls).toHaveLength(3);
+
+    // Retry は最初のページを読み直して置き換え、見張りが付け直されて続きが読める。
+    server.listStatus = 200;
+    server.moreStatus = 200;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(document.querySelector('[data-slot="load-more-row"]')).toBeNull(),
+    );
+    expect(server.listUrls[3]).toBe("/api/playlists?limit=60");
+    expect(cardNames()).toEqual(["Evening, 0 items", "P1, 1 item"]);
+    reachEnd();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    expect(server.listUrls[4]).toBe("/api/playlists?cursor=2&limit=60");
+    expect(cardNames()).toEqual([
+      "Evening, 0 items",
+      "P1, 1 item",
+      "P2, 2 items",
+      "P3, 3 items",
+    ]);
   });
 
   it("疑似ロケールではカタログの文言だけを描く", async () => {

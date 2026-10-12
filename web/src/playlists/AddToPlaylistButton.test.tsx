@@ -51,7 +51,7 @@ function install(playlists: PlaylistSummary[]): Server {
         return Promise.resolve(json({ code: "internal", message: "boom" }, 500));
       }
       return Promise.resolve(
-        json({ items: server.playlists, total: server.playlists.length }),
+        json({ items: server.playlists, total: server.playlists.length, version: "1" }),
       );
     }
     if (method === "POST") {

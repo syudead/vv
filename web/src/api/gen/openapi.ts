@@ -1392,7 +1392,10 @@ export interface paths {
          * プレイリストを更新日時の新しい順に返す
          * @description 所有者だけ。プレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に、`cursor` の
          *     次から最大 `limit` 件返す。続きがあれば `nextCursor` を入れ、`total` はページングとは独立に
-         *     全部の数を返す。`covers` は返したページの分だけ作る。`cursor` が読めなければ 400
+         *     全部の数を返す。`version` は一覧の版で、プレイリストを作る・消す・変えるたびに変わる。
+         *     ページを読んでいる間に変わったプレイリストは前のページの側へ動いて `cursor` の次からは
+         *     返らないので、クライアントは `version` が最初のページと違えば最初のページから読み直す。
+         *     `covers` は返したページの分だけ作る。`cursor` が読めなければ 400
          *     `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。`itemCount` は今見せる
          *     項目の数である（specs/044-playlists/contracts/screen-api.md）。
          */
@@ -2369,6 +2372,11 @@ export interface components {
             items: components["schemas"]["PlaylistSummary"][];
             /** @description 全部のプレイリストの数。ページングとは独立に返る */
             total: number;
+            /**
+             * @description 一覧の版。プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な文字列。
+             *     ページごとの値が最初のページと違えば、並びが変わっているので最初のページから読み直す
+             */
+            version: string;
             /** @description 次のページの取得に渡す。続きがあるときだけ入る */
             nextCursor?: string;
         };

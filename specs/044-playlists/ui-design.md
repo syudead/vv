@@ -267,12 +267,20 @@ The grid loads as the library grid does: the first page of 60 from
 within 600px of the viewport (`IntersectionObserver`, `rootMargin: 600px`),
 the next page from the response's `nextCursor`, appended to the cards. The
 observer is attached again after each page, so a viewport that still reaches
-the sentinel loads the following page without a scroll. A playlist already in
-the grid that a later page returns again (it changed while the owner paged)
-is kept once, by `id`. The count in the header is the response's `total`, so
-it does not grow as pages load. After a create the screen reads the first page
-again and shows it in place of the loaded pages, as the new playlist is first;
-the sentinel then loads the rest again as the owner scrolls.
+the sentinel loads the following page without a scroll. The count in the
+header is the response's `total`, so it does not grow as pages load.
+
+The order is by last change, so a playlist changed while the owner pages
+moves ahead of the cursor and would be skipped
+([contracts/screen-api.md, `GET /api/playlists`](contracts/screen-api.md#get-apiplaylists)).
+When a next page's `version` differs from the loaded pages', the screen drops
+that page and reads the first page again in place of the loaded pages; after
+a create it does the same, as the new playlist is first. While that first
+page loads, the loaded cards stay and the `LoadMoreRow` spins; when it fails,
+the cards stay and the `LoadMoreRow` shows "Couldn't load the playlists" with
+`Retry`, which reads the first page again. Once the first page is shown, the
+observer is attached again, so the sentinel loads the rest as the owner
+scrolls, or at once when it is still in view.
 
 ### New playlist
 
@@ -318,7 +326,7 @@ stateDiagram-v2
 | Empty | `EmptyState` with lucide `ListVideo`, "No playlists yet", "Create a playlist, then add videos and groups to it from the library." and the `default` `sm` action "New playlist", which opens the same dialog; the header's button is not drawn, so the area has one `default` button |
 | Content | The grid; the header's count and "New playlist" |
 | Loading more | The grid, then the `LoadMoreRow` `Spinner` row "Loading…" ([Paging](#paging)) |
-| Load more failed | The grid kept, then the `LoadMoreRow` `destructive` `Alert` "Couldn't load more: {reason}" with `Retry`, which requests the same page again |
+| Load more failed | The grid kept, then the `LoadMoreRow` `destructive` `Alert` "Couldn't load more: {reason}" with `Retry`, which requests the same page again; when the failed read was the first page again ([Paging](#paging)), the `Alert` reads "Couldn't load the playlists" and `Retry` reads the first page again |
 | Creating | The dialog in its `pending` form over the unchanged grid |
 
 The first page is read when the screen opens and after a create; returning

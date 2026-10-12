@@ -35,10 +35,16 @@ type Playlist struct {
 // PlaylistPage はプレイリストの一覧の 1 ページである。Items は (updated_at desc, id desc) の順、
 // Total はページングとは独立な全部のプレイリストの数、NextCursor は続きがあるときだけ空でない
 // （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
+//
+// Version は一覧の並びの版で、プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な
+// 文字列である。並びは updated_at の新しい順なので、ページを読んでいる間に変わったプレイリストは
+// 前のページの側へ動き、カーソルの次からは二度と返らない。クライアントはページごとの Version を
+// 最初のページのものと比べ、違えば最初のページから読み直す。
 type PlaylistPage struct {
 	Items      []Playlist
 	Total      int
 	NextCursor string
+	Version    string
 }
 
 // PlaylistCursor はプレイリストの一覧のカーソルの中身で、前のページの最後のプレイリストの

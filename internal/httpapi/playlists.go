@@ -72,7 +72,9 @@ func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request, params ge
 		s.internalError(w, "Could not load the playlists.", err)
 		return
 	}
-	out := gen.PlaylistList{Items: make([]gen.PlaylistSummary, 0, len(page.Items)), Total: page.Total}
+	out := gen.PlaylistList{
+		Items: make([]gen.PlaylistSummary, 0, len(page.Items)), Total: page.Total, Version: page.Version,
+	}
 	for _, playlist := range page.Items {
 		summary := toAPIPlaylistSummary(playlist)
 		// 一覧のカードの絵柄のサムネイル。previewUrl はグループのカードと同じ folderPreviews を通す。

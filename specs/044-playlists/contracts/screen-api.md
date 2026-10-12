@@ -39,6 +39,7 @@ PlaylistList:
   properties:
     items: { type: array, items: { $ref: PlaylistSummary } }   # one page, updatedAt desc then id desc
     total: { type: integer }        # every playlist, independent of paging
+    version: { type: string }       # opaque; changes with any create, delete, rename or item change
     nextCursor: { type: string }    # only while more follow
 
 Playlist:
@@ -68,12 +69,18 @@ Query: `cursor` (the previous response's `nextCursor`, opaque) and `limit`
 
 `200 PlaylistList`: the playlists after `cursor`, `updatedAt` descending,
 then `id` descending, `limit` of them at most; `nextCursor` only while more
-follow, and `total` the number of every playlist, independent of paging. The
-cursor names the last playlist of its page (`updatedAt`, `id`), so a playlist
-changed while the owner pages comes back on an earlier page and the client
-drops the repeat by `id`; the order is otherwise stable. An unreadable
-`cursor` is `400 invalid_cursor`; a `limit` out of range is
-`400 invalid_request`.
+follow, `total` the number of every playlist, independent of paging, and
+`version`, an opaque token of the list's order. The cursor names the last
+playlist of its page (`updatedAt`, `id`). A playlist changed while the owner
+pages moves above the cursor and is never returned after it, so the server
+derives `version` from the count of playlists and the sum of every
+`updated_at`, which a create, a delete, a rename or an item change always
+alters (`updated_at` strictly advances on every change, within one
+millisecond too), and the client compares each page's `version` with its
+first page's: when they differ, it reads the list again from the first page
+instead of appending. Pages with one `version` share one order, so they
+neither overlap nor skip. An unreadable `cursor` is `400 invalid_cursor`; a
+`limit` out of range is `400 invalid_request`.
 
 Each summary carries `covers`, computed for the returned page only, the art
 of the playlists screen's card
@@ -170,7 +177,7 @@ PlaylistStep:
 
 | Screen | Calls |
 | --- | --- |
-| Playlists screen (`/playlists`) | `GET /api/playlists` with the default `limit`, then with each `nextCursor` as the grid's end comes into view ([ui-design.md, Paging](../ui-design.md#paging)); `POST /api/playlists` |
+| Playlists screen (`/playlists`) | `GET /api/playlists` with the default `limit`, then with each `nextCursor` as the grid's end comes into view; a page whose `version` differs from the loaded pages' is dropped and the first page is read again in place of them ([ui-design.md, Paging](../ui-design.md#paging)); `POST /api/playlists` |
 | Playlist screen (`/playlists/{id}`) | `GET`, `PATCH`, `DELETE /api/playlists/{id}`; `move` and item `DELETE`. Play opens `/videos/{videoId}?playlist={id}&item={itemId}` with `state: {from: "/playlists/{id}", autoplay: true}`, where `videoId` is the video or the group's `openVideoId` |
-| Add menu (card, selection bar, video page) | `GET /api/playlists` with `limit=200` when opened, followed through `nextCursor` until the last page, because the menu filters the whole list by name on the client (`covers` of these pages go unused; a parameter to omit them was not added, as the menu's pages are few); `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
+| Add menu (card, selection bar, video page) | `GET /api/playlists` with `limit=200` when opened, followed through `nextCursor` until the last page, because the menu filters the whole list by name on the client (`covers` of these pages go unused; a parameter to omit them was not added, as the menu's pages are few); when a page's `version` differs from the first page's, the traversal starts over from the first page, up to three times, and then fails rather than show a list with a gap; `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
 | Video page with `playlist` and `item`, owner only | `GET /api/playlists/{id}/playback` on open, when the video ends, and when the notice finds its next video gone; `GET /api/playlists/{id}` alongside each of those reads, for the aside's playlist panel ([ui-design.md, Playlist panel](../ui-design.md#playlist-panel)); the pair is used only when both carry the same `updatedAt`, and is read again when they differ ([ui-design.md, One order](../ui-design.md#one-order)), so the panel and `next` show the same order. A `404` from either read drops the context. Moving to a step keeps `playlist`, sets `item` to the step's `itemId`, and carries `state.from` over |

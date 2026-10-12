@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,8 +67,9 @@ func scanPlaylist(row interface{ Scan(...any) error }) (domain.Playlist, error) 
 // ListPlaylists はプレイリストを、更新日時の新しい順、同じなら id の大きい順に、cursor の次から
 // limit 件返す。cursor が空なら先頭から。読めない cursor は domain.ErrInvalidCursor。項目の数は
 // 見せる項目の数で、Covers は返したページのプレイリストにだけ作る一覧のカードの絵柄の
-// サムネイル（playlistCovers）である。Total は全部のプレイリストの数で、要約・絵柄・Total は
-// 読み取り用の接続の同じスナップショットから読む。
+// サムネイル（playlistCovers）である。Total は全部のプレイリストの数、Version は一覧の版
+// （playlistListVersion）で、要約・絵柄・Total・Version は読み取り用の接続の同じスナップショットから
+// 読む。並びとカーソルは playlists_order_idx（00039）で引く。
 func (s *PlaylistStore) ListPlaylists(ctx context.Context, cursor string, limit int) (domain.PlaylistPage, error) {
 	limit = max(1, limit)
 	var conditions []string
@@ -77,8 +79,10 @@ func (s *PlaylistStore) ListPlaylists(ctx context.Context, cursor string, limit 
 		if err != nil {
 			return domain.PlaylistPage{}, err
 		}
-		conditions = append(conditions, `(p.updated_at < ? or (p.updated_at = ? and p.id < ?))`)
-		args = append(args, after.UpdatedAtMs, after.UpdatedAtMs, after.ID)
+		// 行の値の比較（listing.go の cursorCondition と同じ形）。or で書くと SQLite は
+		// playlists_order_idx を先頭から読むが、この形なら索引をカーソルの位置から引く。
+		conditions = append(conditions, `(p.updated_at, p.id) < (?, ?)`)
+		args = append(args, after.UpdatedAtMs, after.ID)
 	}
 	// 1 件多く読んで、続きがあるかを知る。
 	args = append(args, limit+1)
@@ -89,9 +93,12 @@ func (s *PlaylistStore) ListPlaylists(ctx context.Context, cursor string, limit 
 	}
 	defer func() { _ = tx.Rollback() }()
 	page := domain.PlaylistPage{Items: []domain.Playlist{}}
-	if err := tx.QueryRowContext(ctx, `select count(*) from playlists`).Scan(&page.Total); err != nil {
+	var updatedAtSum int64
+	if err := tx.QueryRowContext(ctx, `select count(*), coalesce(sum(updated_at), 0) from playlists`).Scan(
+		&page.Total, &updatedAtSum); err != nil {
 		return domain.PlaylistPage{}, fmt.Errorf("cannot read the playlists: %w", err)
 	}
+	page.Version = playlistListVersion(page.Total, updatedAtSum)
 	rows, err := tx.QueryContext(ctx, `select `+playlistSummaryColumns+` from playlists p`+whereClause(conditions)+`
 		order by p.updated_at desc, p.id desc limit ?`, args...)
 	if err != nil {
@@ -127,6 +134,14 @@ func (s *PlaylistStore) ListPlaylists(ctx context.Context, cursor string, limit 
 		return domain.PlaylistPage{}, fmt.Errorf("cannot read the playlists: %w", err)
 	}
 	return page, nil
+}
+
+// playlistListVersion は一覧の版である（domain.PlaylistPage.Version）。プレイリストの数と全部の
+// updated_at の和から作る。名前か項目の変更は nextUpdatedAt でその行の updated_at を必ず進めるので
+// 和が変わり、作る・消すは数が変わる。同じミリ秒の変更も、最大値では見分けられないが和では
+// 見分けられる。中身はクライアントが比べるだけで、解釈しない。
+func playlistListVersion(total int, updatedAtSum int64) string {
+	return strconv.Itoa(total) + "." + strconv.FormatInt(updatedAtSum, 10)
 }
 
 // playlistCoverVideoExpr は、プレイリストの項目（別名 alias）の絵柄に差し込む動画の id を返す式である。

@@ -153,8 +153,9 @@ func TestPlaylistCreateRenameAndList(t *testing.T) {
 	}
 }
 
-// 一覧は limit 件ずつ返し、続きがあるときだけ nextCursor を入れ、total はどのページでも全部の数。
-// limit の範囲外は 400 invalid_request、読めない cursor は 400 invalid_cursor
+// 一覧は limit 件ずつ返し、続きがあるときだけ nextCursor を入れ、total はどのページでも全部の数、
+// version はどのページでも同じで、プレイリストが変わると変わる。limit の範囲外は 400
+// invalid_request、読めない cursor は 400 invalid_cursor
 // （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
 func TestPlaylistListPaging(t *testing.T) {
 	f := newLibraryFixture(t)
@@ -164,6 +165,7 @@ func TestPlaylistListPaging(t *testing.T) {
 	}
 
 	var got []int64
+	var version string
 	query := "?limit=2"
 	for pages := 0; ; pages++ {
 		rec := f.env.get("/api/playlists"+query, f.owner)
@@ -174,6 +176,10 @@ func TestPlaylistListPaging(t *testing.T) {
 		if list.Total != 3 {
 			t.Errorf("ページ %d の total = %d, want 3", pages, list.Total)
 		}
+		if list.Version == "" || (pages > 0 && list.Version != version) {
+			t.Errorf("ページ %d の version = %q, 1 ページ目 = %q", pages, list.Version, version)
+		}
+		version = list.Version
 		for _, item := range list.Items {
 			if item.Covers == nil {
 				t.Errorf("ページ %d の %q に covers が無い", pages, item.Name)
@@ -196,6 +202,10 @@ func TestPlaylistListPaging(t *testing.T) {
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("ページを結んだ id = %v, want %v", got, want)
+	}
+	f.createPlaylist(t, "d")
+	if changed := decode[gen.PlaylistList](t, f.env.get("/api/playlists?limit=2", f.owner)); changed.Version == version {
+		t.Errorf("作ったあとも version が同じ: %q", changed.Version)
 	}
 
 	for label, query := range map[string]string{"limit 0": "?limit=0", "limit 201": "?limit=201"} {

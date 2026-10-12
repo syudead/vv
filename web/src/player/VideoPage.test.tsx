@@ -2279,6 +2279,8 @@ describe("VideoPage", () => {
                   updatedAt: "2026-10-01T00:00:00Z",
                 },
               ],
+              total: 1,
+              version: "1",
             }),
           );
         }

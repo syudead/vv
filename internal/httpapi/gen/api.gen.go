@@ -1678,6 +1678,10 @@ type PlaylistList struct {
 
 	// Total 全部のプレイリストの数。ページングとは独立に返る
 	Total int `json:"total"`
+
+	// Version 一覧の版。プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な文字列。
+	// ページごとの値が最初のページと違えば、並びが変わっているので最初のページから読み直す
+	Version string `json:"version"`
 }
 
 // PlaylistName defines model for PlaylistName.

@@ -103,6 +103,8 @@ function install(items: LibraryItem[]): { adds: AddBody[] } {
           items: [
             { id: 5, name: "Tonight", itemCount: 0, updatedAt: "2026-10-01T00:00:00Z" },
           ],
+          total: 1,
+          version: "1",
         }),
       );
     }

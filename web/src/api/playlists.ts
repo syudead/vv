@@ -54,19 +54,42 @@ export function listPlaylists({
 }
 
 /**
+ * 辿っている間に一覧が変わり続けたときに、listAllPlaylists が最初のページから読み直す回数の上限。
+ * 変わるのは所有者の操作だけなので、普段は 0 回か 1 回で済む。
+ */
+export const MAX_LIST_RESTARTS = 3;
+
+/**
  * listAllPlaylists はプレイリストの全部を、`nextCursor` が尽きるまで最大の件数（MAX_PAGE_SIZE）の
  * ページで辿って取得する。名前で選ぶ「Add to playlist」のピッカーのように、一覧の全部を手元で
  * 絞る所が使う。
+ *
+ * 並びは更新日時の新しい順なので、辿っている間に変わったプレイリストは前のページの側へ動き、
+ * カーソルの次からは返らない。応答の `version` が最初のページと違えばそれが起きたので、最初の
+ * ページから読み直す（contracts/screen-api.md「GET /api/playlists」）。MAX_LIST_RESTARTS 回
+ * 読み直しても揃わなければ、欠けた一覧を返さずに失敗にする。
  */
 export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
-  const items: PlaylistSummary[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await listPlaylists({ cursor, limit: MAX_PAGE_SIZE, signal });
-    items.push(...page.items);
-    cursor = page.nextCursor;
-  } while (cursor !== undefined);
-  return items;
+  for (let restarts = 0; ; restarts++) {
+    const items: PlaylistSummary[] = [];
+    let cursor: string | undefined;
+    let version: string | undefined;
+    let changed = false;
+    do {
+      const page = await listPlaylists({ cursor, limit: MAX_PAGE_SIZE, signal });
+      version ??= page.version;
+      if (page.version !== version) {
+        changed = true;
+        break;
+      }
+      items.push(...page.items);
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    if (!changed) return items;
+    if (restarts >= MAX_LIST_RESTARTS) {
+      throw new Error("The playlists kept changing while they were being listed.");
+    }
+  }
 }
 
 /**
