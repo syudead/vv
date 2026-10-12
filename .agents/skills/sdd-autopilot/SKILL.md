@@ -68,6 +68,9 @@ skill; follow them even when reading something yourself looks quicker.
 5. **One worker per unit of work.** A new stage, a new review round, and the
    integration refresh each get a fresh worker. Children whose dependencies
    are done are implemented by concurrent workers, each in its own worktree.
+   The orchestrator removes each worker's worktree as soon as the worker
+   returns, and checks the free disk space before starting a worker
+   ([references/loop.md, Worktrees and disk space](references/loop.md#worktrees-and-disk-space)).
 
 ## Workers
 
@@ -126,6 +129,8 @@ report to the maintainer when:
   [references/loop.md, Drive a feature PR to merge](references/loop.md#drive-a-feature-pr-to-merge)
 - a required GitHub capability is missing, or the stage selection would stop
   and ask
+- the free disk space stays below the threshold after removing finished
+  worktrees
 
 Revising an approved artifact is outside this skill. The stage selection
 never re-runs a stage whose artifact exists, so it does not notice that, for

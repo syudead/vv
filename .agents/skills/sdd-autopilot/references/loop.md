@@ -50,12 +50,15 @@ expected.
 Stages `plan`, `design` and implementation each produce one PR to the feature
 branch. `plan-to-issues` produces no PR.
 
-1. Start a fresh stage worker with the brief for that stage from
+1. Check the free disk space ([Worktrees and disk space](#worktrees-and-disk-space)),
+   then start a fresh stage worker with the brief for that stage from
    [briefs.md](briefs.md). Concurrent implementation workers never share a
    checkout. On Claude, start each with `isolation: "worktree"`. Where the
    host has no such isolation (Codex), create one first with
-   `git worktree add <path> origin/<feature>` per child and put its path in
-   the brief's `Checkout:` slot; remove it after the PR merges. Without
+   `git worktree add .claude/worktrees/codex-<child> origin/<feature>` per
+   child (under `.claude/worktrees/`, so the cleanup below finds it) and put
+   its path in the brief's `Checkout:` slot. Either way, remove the worktree as
+   [Worktrees and disk space](#worktrees-and-disk-space) says. Without
    either, run implementation workers one at a time. Each worker creates its
    own sub-branch, does the stage's work and checks, commits, pushes, opens
    the PR, and returns `DONE` with the PR number.
@@ -158,7 +161,9 @@ as `DONE` if it is picked again, and you close it then.
    to step 4. Do not repeat checks, review, or fixer work on the updated
    integration PR head.
 4. The **pre-merge sweep**, once per integration PR: when it has no
-   sweep comment ([Derive the state](#derive-the-state)), start a fresh stage worker with the sweep
+   sweep comment ([Derive the state](#derive-the-state)), remove every finished worker's
+   worktree and check that the free space meets the e2e threshold
+   ([Worktrees and disk space](#worktrees-and-disk-space)), then start a fresh stage worker with the sweep
    brief from [briefs.md](briefs.md). It runs the
    [pre-merge sweep](../../issue-handoff/references/integrate.md#pre-merge-sweep):
    every check on the feature head, the acceptance-criterion walk, and the
@@ -172,6 +177,59 @@ as `DONE` if it is picked again, and you close it then.
    conflict-free and mergeable. If branch protection blocks it, stop and
    report the blocker without rerunning checks or review. Do not merge it.
    Report the integration PR link to the maintainer, and stop.
+
+## Worktrees and disk space
+
+Every worker runs in its own worktree, and most of them install the
+dependencies there (`npm ci` in `web/`, `tools/` and `docs-site/`) and build
+the Go binaries and the e2e media. One worktree grows to several GB, and a
+feature starts dozens of workers. Claude's `isolation: "worktree"` removes a
+worktree only when the worker changed nothing, so a worker that pushed, or
+that stopped with a merge or checkout half done, leaves its worktree and its
+`worktree-agent-*` branch behind. The orchestrator removes them.
+
+**Remove a worker's worktree as soon as it returns**, whatever its `STATUS`.
+What it made is the branch it pushed, and no later worker reuses its
+worktree: every worker, including the next fixer on the same PR, starts fresh
+from `origin`. Waiting for the PR to merge would keep the integrate worker's
+worktree forever, because the integration PR is not merged here. The Agent result names the worktree path and branch; for
+Codex they are the ones you created. First confirm that nothing the worker
+made is lost:
+
+```sh
+git -C <path> fetch origin
+git -C <path> branch -r --contains HEAD   # must list a remote branch
+```
+
+When `HEAD` is on a remote branch, uncommitted changes in the worktree are an
+abandoned step, not the worker's result (workers return only what they
+pushed). Remove it with `git worktree remove --force <path>` and
+`git branch -D <branch>`, then `git worktree prune`. When `HEAD` is on no
+remote branch, keep the worktree and name its path in the final report.
+
+At the start of every iteration, apply the same rule to every worktree under
+`.claude/worktrees/` (`git worktree list`) that does not belong to a worker
+still running in this session. After a restart none is running, so this
+also clears what an earlier session left.
+
+**Check the free space** on the repository's file system
+(`df -Pk <repository root>`, the `Available` column) before starting a
+worker. Below 5 GB, remove the finished workers' worktrees first; if it is
+still below 5 GB, stop and report. The pre-merge sweep runs `task test-e2e`,
+which builds the binaries, generates the e2e media and starts Chromium, so it
+needs 10 GB: below that after the cleanup, stop and report instead of
+starting it. Its worker checks again before running e2e
+([integrate.md](../../issue-handoff/references/integrate.md#pre-merge-sweep)).
+
+The download caches are already shared: npm's cache (`~/.npm`), Go's module
+cache and build cache (`go env GOMODCACHE GOCACHE`) live in the user's home,
+not in the worktree, so a second `npm ci` or `go build` does not download or
+recompile what an earlier worker did. What each worktree holds on its own is
+`node_modules/`, `web/dist/`, the e2e build output and the test results.
+They are not shared on purpose: a worktree on another commit may need other
+dependency versions, and a shared `node_modules/` would let one worker's
+`npm ci` break another's run. Removing finished worktrees is what keeps the
+disk in bounds.
 
 ## Waiting
 
