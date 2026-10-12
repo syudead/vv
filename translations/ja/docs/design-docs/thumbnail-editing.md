@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: fa66ad339a7b568d6330875c90784b8d3a635774b09ef7d887857b2757127554
+sourceHash: bc2ebec9a964bc8b5b3a6b681767bcbb593a103eb16919ad8822b8244cd8cf28
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
@@ -67,3 +67,13 @@ stateDiagram-v2
 ## 適用は生成のロックを通る {#applying-goes-through-the-generation-lock}
 
 適用は結果を `Ingest.ApplyThumbnailImage` に渡し、これが内容のサムネイル生成のロックの中で結果を収まる大きさに合わせて公開するので、適用、元に戻す操作、位置の上書きのうち最後に確定したものが勝つ ([R-10](../../specs/045-comfyui-thumbnails/research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock))。セッションは、適用が成功した後と、動画がなくなったか別の内容を持つときの `content_changed` の後に終了し、デコードできない結果ではセッションが残るので、所有者は再実行できる。
+
+適用は、`thumbnail_state` を `done` にするトランザクションの中で `thumbnail_images` の行を 1 つ書く ([データモデル](../../specs/046-thumbnail-image-upload/data-model.md))。
+
+| 列 | 内容 |
+| --- | --- |
+| `image` | 動画の縦横比に合わせた 640 px の JPEG。サムネイルのファイルはここから公開する |
+| `source` | 同じ切り抜きを長辺 2048 px 以下にした JPEG で、現在のサムネイルから始める編集に使う ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin))。マイグレーション `00041` より前に書かれた行では null |
+| `origin` | 編集の結果なら `generated`、アップロードした画像なら `uploaded`。所有者の `Video` はこれを `thumbnailImage` として返す ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+
+位置の変更と元に戻す操作は行全体を削除する。サムネイルのジョブは `image` を公開し直し、`source` は決して読まない。
