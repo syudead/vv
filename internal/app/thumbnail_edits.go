@@ -1,15 +1,11 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"image"
-	_ "image/jpeg" // 参考画像の形式として読めるようにする。
-	"image/png"
 	"log/slog"
 	"sync"
 	"time"
@@ -164,22 +160,31 @@ func (e *ThumbnailEdits) Start(ctx context.Context, video domain.Video, path str
 		id: id, videoID: video.ID, contentKey: video.ContentKey, frame: frame, lastReadAt: e.now(),
 	}
 	view := e.view(session)
+	e.replace(ctx, session)
+	return view, nil
+}
 
-	e.mu.Lock()
-	previous := e.byID[e.byVideo[video.ID]]
-	if previous != nil {
-		delete(e.byID, previous.id)
-	}
-	e.byID[id] = session
-	e.byVideo[video.ID] = id
-	e.mu.Unlock()
-
-	if previous != nil {
+// replace は同じ動画のセッションを終えてから session を置き場に載せる。前のセッションは、その錠を
+// 取って end で終える（置き場から外すのは end だけなので、acquire は外れたセッションを受け付けない）。
+// 前のセッションで進んでいた適用や実行の要求は、新しいセッションが見える前に終わる。錠を待つ間に
+// 別の Start が載せたセッションも同じように終える。
+func (e *ThumbnailEdits) replace(ctx context.Context, session *thumbnailEditSession) {
+	for {
+		e.mu.Lock()
+		previous := e.byID[e.byVideo[session.videoID]]
+		if previous == nil {
+			e.byID[session.id] = session
+			e.byVideo[session.videoID] = session.id
+			e.mu.Unlock()
+			return
+		}
+		e.mu.Unlock()
 		previous.mu.Lock()
-		e.end(ctx, previous)
+		if !previous.ended {
+			e.end(ctx, previous)
+		}
 		previous.mu.Unlock()
 	}
-	return view, nil
 }
 
 // Get はセッションの今の姿を返す。実行が進んでいれば提供元の状態を読み、成功していれば出力を
@@ -473,13 +478,7 @@ func (e *ThumbnailEdits) refresh(ctx context.Context, session *thumbnailEditSess
 	}
 	switch state {
 	case domain.ThumbnailEditSucceeded:
-		output, err := e.editor.Output(readCtx, run.job)
-		if err != nil {
-			e.finish(run, domain.ThumbnailEditFailed, asImageEditError(err))
-			return
-		}
-		session.result = output
-		e.finish(run, domain.ThumbnailEditSucceeded, nil)
+		e.fetchOutput(readCtx, session)
 	case domain.ThumbnailEditFailed:
 		if failure == nil {
 			failure = &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
@@ -490,6 +489,32 @@ func (e *ThumbnailEdits) refresh(ctx context.Context, session *thumbnailEditSess
 	default:
 		run.state = state
 	}
+}
+
+// fetchOutput は成功した実行の出力を取り、最後まで読める画像なら succeeded にする。届かなかった
+// （unreachable か、理由の無い誤り）ときは前の状態のままにし、次の読み取りで取り直す。取り直しは
+// 実行の 10 分の上限までである。出力が無いか読めない画像なら no_output、ほかの理由はその理由で
+// failed にする。
+func (e *ThumbnailEdits) fetchOutput(ctx context.Context, session *thumbnailEditSession) {
+	run := session.run
+	output, err := e.editor.Output(ctx, run.job)
+	if err != nil {
+		var failure *domain.ImageEditError
+		if !errors.As(err, &failure) || failure.Reason == domain.ImageEditUnreachable {
+			e.logger.Debug("could not fetch a thumbnail edit output", slog.Int64("video", session.videoID), slog.Any("error", err))
+			return
+		}
+		e.finish(run, domain.ThumbnailEditFailed, failure)
+		return
+	}
+	if err := checkThumbnailEditImage(output); err != nil {
+		e.finish(run, domain.ThumbnailEditFailed, &domain.ImageEditError{
+			Reason: domain.ImageEditNoOutput, Message: "the output image cannot be decoded",
+		})
+		return
+	}
+	session.result = output
+	e.finish(run, domain.ThumbnailEditSucceeded, nil)
 }
 
 // finish は実行を終わった状態 state にする。
@@ -531,51 +556,6 @@ func (e *ThumbnailEdits) view(session *thumbnailEditSession) domain.ThumbnailEdi
 // hasResult はセッションに適用できる画像があるかを返す。
 func hasResult(session *thumbnailEditSession) bool {
 	return session.run != nil && session.run.state == domain.ThumbnailEditSucceeded && session.result != nil
-}
-
-// asImageEditError は提供元の誤り err を失敗の理由にする。理由を持たなければ run_failed である。
-func asImageEditError(err error) *domain.ImageEditError {
-	var failure *domain.ImageEditError
-	if errors.As(err, &failure) {
-		return failure
-	}
-	return &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
-}
-
-// checkThumbnailEditMask は、マスク mask が nil か、コマ frame と同じ大きさの PNG かを確かめる。
-func checkThumbnailEditMask(mask []byte, frame domain.ThumbnailFrame) error {
-	if mask == nil {
-		return nil
-	}
-	config, err := png.DecodeConfig(bytes.NewReader(mask))
-	if err != nil || config.Width != frame.Width || config.Height != frame.Height {
-		return domain.ErrThumbnailEditMaskInvalid
-	}
-	return nil
-}
-
-// checkThumbnailEditReference は、参考画像 reference が nil か、上限以下の PNG・JPEG・WebP かを
-// 確かめる。WebP は標準ライブラリで読めないので、RIFF の見出しで見分ける。
-func checkThumbnailEditReference(reference []byte) error {
-	if reference == nil {
-		return nil
-	}
-	if len(reference) == 0 || len(reference) > domain.ThumbnailEditMaxReferenceBytes {
-		return domain.ErrThumbnailEditReferenceInvalid
-	}
-	if isWebP(reference) {
-		return nil
-	}
-	_, format, err := image.DecodeConfig(bytes.NewReader(reference))
-	if err != nil || (format != "png" && format != "jpeg") {
-		return domain.ErrThumbnailEditReferenceInvalid
-	}
-	return nil
-}
-
-// isWebP は data が WebP の RIFF の見出しで始まるかを返す。
-func isWebP(data []byte) bool {
-	return len(data) > 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP"
 }
 
 // newThumbnailEditID は 128 ビットの乱数のセッションの識別子を返す。

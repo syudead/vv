@@ -84,7 +84,7 @@ func (e editEditor) Cancel(context.Context, domain.ImageEditJob, domain.Thumbnai
 }
 
 func (e editEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error) {
-	return []byte("\x89PNG\r\n\x1a\nresult"), nil
+	return editPNG(4, 4), nil
 }
 
 type editFrames struct{ f *editFakes }
@@ -346,7 +346,7 @@ func TestApplyThumbnailEdit(t *testing.T) {
 	}
 
 	result := f.editRequest(http.MethodGet, id, "/result", f.owner)
-	if result.Code != http.StatusOK || result.Header().Get("Content-Type") != "image/png" || !strings.HasSuffix(result.Body.String(), "result") {
+	if result.Code != http.StatusOK || result.Header().Get("Content-Type") != "image/png" || !bytes.Equal(result.Body.Bytes(), editPNG(4, 4)) {
 		t.Fatalf("result = %d %v", result.Code, result.Header())
 	}
 

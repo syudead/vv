@@ -56,7 +56,16 @@ first. A submitted run with no terminal state 10 minutes later is cancelled and
 fails as `timed_out`
 ([R-11](../../specs/045-comfyui-thumbnails/research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes)).
 A background sweep every 30 seconds applies both limits to sessions nobody
-reads, and every request applies them to its own session.
+reads, and every request applies them to its own session. A new edit ends the
+previous session under that session's lock before the new one becomes visible,
+so an apply or run already in progress on the previous session finishes first,
+and only ending a session removes it, so a removed session answers `404`.
+
+When the provider reports success, the read fetches the output. A fetch that
+does not arrive (`unreachable`, or a timeout) leaves the run in its state and
+the next read fetches again, within the 10-minute limit; an output that is
+missing or does not decode fails the run as `no_output`, so `succeeded` always
+has an image the apply can read.
 
 | Rejected | Why |
 | --- | --- |
@@ -74,7 +83,12 @@ session cancels the run in progress before it submits.
 ## Inputs are checked before anything is uploaded
 
 The mask must be a PNG of the frame's pixel size and the reference a PNG, JPEG
-or WebP of at most 20 MiB; either failing answers `400` with no upload. The
+or WebP of at most 20 MiB; either failing answers `400` with no upload. PNG and
+JPEG are decoded to the end, so a truncated file fails here, and an image over
+8192 × 8192 pixels counts as unreadable so that a forged header cannot make the
+decode allocate without bound. The standard library has no WebP decoder and
+the Plan adds no dependency for one, so a WebP passes when every RIFF chunk is
+complete and its `VP8 ` or `VP8L` chunk has a valid header. The
 frame is extracted by the server at the video's size, its long side capped at
 2048 px
 ([R-8](../../specs/045-comfyui-thumbnails/research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)),

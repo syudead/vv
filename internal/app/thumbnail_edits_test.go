@@ -3,8 +3,11 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
+	"hash/crc32"
 	"image"
+	"image/jpeg"
 	"image/png"
 	"strconv"
 	"sync"
@@ -28,6 +31,7 @@ type fakeImageEditor struct {
 	cancels   []string
 	output    []byte
 	outputErr error
+	outputs   int
 	progress  *domain.ImageEditProgress
 }
 
@@ -60,6 +64,7 @@ func (f *fakeImageEditor) Cancel(_ context.Context, job domain.ImageEditJob, _ d
 func (f *fakeImageEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.outputs++
 	return f.output, f.outputErr
 }
 
@@ -96,9 +101,16 @@ func (f *fakeFrames) FrameAt(context.Context, string, int64) (domain.ThumbnailFr
 type fakeApplier struct {
 	err     error
 	applied [][]byte
+	// entered と release があれば、適用はそこで止まり、release が閉じるまで返らない。
+	entered chan struct{}
+	release chan struct{}
 }
 
 func (f *fakeApplier) ApplyThumbnailImage(_ context.Context, videoID int64, _ string, image []byte) (domain.Video, error) {
+	if f.entered != nil {
+		close(f.entered)
+		<-f.release
+	}
 	if f.err != nil {
 		return domain.Video{}, f.err
 	}
@@ -118,7 +130,7 @@ type editsFixture struct {
 func newEditsFixture(t *testing.T) *editsFixture {
 	t.Helper()
 	f := &editsFixture{
-		editor:   &fakeImageEditor{output: []byte("result")},
+		editor:   &fakeImageEditor{output: testPNG(t, 8, 6)},
 		settings: &fakeComfyUIStore{settings: domain.ComfyUISettings{Provider: domain.ComfyUISelfHosted, URL: "http://a:8188"}},
 		applier:  &fakeApplier{},
 		clock:    &fakeClock{now: time.Unix(1_700_000_000, 0)},
@@ -137,6 +149,53 @@ func testPNG(t *testing.T, width, height int) []byte {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
+}
+
+// testWebP は 1×1 の可逆の WebP である。
+var testWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
+
+func testJPEG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 7)
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// truncatedJPEG は、見出しは読めるが走査の途中で切れた JPEG を返す。
+func truncatedJPEG(t *testing.T) []byte {
+	t.Helper()
+	data := testJPEG(t)
+	return data[:len(data)-len(data)/4]
+}
+
+// truncatedPNG は data の IDAT の途中から後を切り落とした PNG を返す。見出しは読める。
+func truncatedPNG(t *testing.T, data []byte) []byte {
+	t.Helper()
+	at := bytes.Index(data, []byte("IDAT"))
+	if at < 0 {
+		t.Fatal("no IDAT")
+	}
+	return data[:at+8]
+}
+
+// hugePNGHeader は、見出しだけが 100000×100000 を名乗る PNG を返す。
+func hugePNGHeader(t *testing.T) []byte {
+	t.Helper()
+	data := testPNG(t, 1, 1)
+	ihdr := bytes.Index(data, []byte("IHDR"))
+	binary.BigEndian.PutUint32(data[ihdr+4:], 100_000)
+	binary.BigEndian.PutUint32(data[ihdr+8:], 100_000)
+	binary.BigEndian.PutUint32(data[ihdr+17:], crc32.ChecksumIEEE(data[ihdr:ihdr+17]))
+	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func editVideo(id int64) domain.Video {
@@ -215,12 +274,12 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 	if later := f.get(t, edit.ID); *later.Elapsed != 6*time.Second {
 		t.Errorf("the elapsed time of an ended run moved: %v", *later.Elapsed)
 	}
-	if result, err := f.edits.Result(context.Background(), edit.ID); err != nil || string(result) != "result" {
+	if result, err := f.edits.Result(context.Background(), edit.ID); err != nil || !bytes.Equal(result, f.editor.output) {
 		t.Fatalf("Result = %q, %v", result, err)
 	}
 
 	video, err := f.edits.Apply(context.Background(), edit.ID)
-	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || string(f.applier.applied[0]) != "result" {
+	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || !bytes.Equal(f.applier.applied[0], f.editor.output) {
 		t.Fatalf("Apply = %+v, %v, applied %q", video, err, f.applier.applied)
 	}
 	f.wantEnded(t, edit.ID)
@@ -331,6 +390,53 @@ func TestThumbnailEditOutputFailure(t *testing.T) {
 	}
 }
 
+// 出力が届かなければ前の状態のまま次の読み取りで取り直し、取れたら succeeded になる。
+func TestThumbnailEditOutputFetchRetries(t *testing.T) {
+	for name, fetchErr := range map[string]error{
+		"unreachable": &domain.ImageEditError{Reason: domain.ImageEditUnreachable, Message: "cannot reach ComfyUI"},
+		"timeout":     context.DeadlineExceeded,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newEditsFixture(t)
+			id := f.start(t, 1).ID
+			f.run(t, id)
+			f.editor.set(domain.ThumbnailEditRunning, nil)
+			f.get(t, id)
+			f.editor.outputErr = fetchErr
+			f.editor.set(domain.ThumbnailEditSucceeded, nil)
+			edit := f.get(t, id)
+			wantState(t, edit, domain.ThumbnailEditRunning)
+			if edit.Error != nil || edit.HasResult {
+				t.Fatalf("after a failed fetch = %+v", edit)
+			}
+
+			f.editor.outputErr = nil
+			edit = f.get(t, id)
+			wantState(t, edit, domain.ThumbnailEditSucceeded)
+			if !edit.HasResult || f.editor.outputs != 2 {
+				t.Fatalf("after the retry = %+v, fetches %d", edit, f.editor.outputs)
+			}
+		})
+	}
+}
+
+// 出力が読めない画像なら、succeeded にせず no_output で failed にする。
+func TestThumbnailEditUndecodableOutput(t *testing.T) {
+	f := newEditsFixture(t)
+	id := f.start(t, 1).ID
+	f.run(t, id)
+	f.editor.output = []byte("<html>bad gateway</html>")
+	f.editor.set(domain.ThumbnailEditSucceeded, nil)
+	edit := f.get(t, id)
+	wantState(t, edit, domain.ThumbnailEditFailed)
+	if edit.Error == nil || edit.Error.Reason != domain.ImageEditNoOutput || edit.HasResult {
+		t.Fatalf("edit = %+v", edit)
+	}
+	if _, err := f.edits.Result(context.Background(), id); !errors.Is(err, domain.ErrThumbnailEditNoResult) {
+		t.Fatalf("Result = %v", err)
+	}
+}
+
 // 5 分読まれないセッションは、提供元で実行を中止してから終わる。片付けでも、次の読み取りでも同じ。
 func TestThumbnailEditIdleExpiry(t *testing.T) {
 	for _, sweep := range []bool{true, false} {
@@ -416,6 +522,53 @@ func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	wantState(t, f.get(t, other), domain.ThumbnailEditReady)
 }
 
+// 同じ動画の新しい編集は、1 つ目で進んでいる適用が終わるまで載らない。1 つ目の id は、その後
+// どの要求にも 404 である。
+func TestThumbnailEditSecondEditWaitsForApply(t *testing.T) {
+	f := newEditsFixture(t)
+	first := f.start(t, 1).ID
+	f.run(t, first)
+	f.editor.set(domain.ThumbnailEditSucceeded, nil)
+	f.get(t, first)
+	f.applier.entered = make(chan struct{})
+	f.applier.release = make(chan struct{})
+
+	applied := make(chan error, 1)
+	go func() {
+		_, err := f.edits.Apply(context.Background(), first)
+		applied <- err
+	}()
+	<-f.applier.entered
+	started := make(chan domain.ThumbnailEdit, 1)
+	go func() {
+		started <- f.start(t, 1)
+	}()
+
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		f.edits.mu.Lock()
+		active := f.edits.byVideo[1]
+		f.edits.mu.Unlock()
+		if active != first {
+			t.Fatalf("the second edit %s became active while the first was applying", active)
+		}
+		select {
+		case <-started:
+			t.Fatal("the second edit started while the first was applying")
+		default:
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	close(f.applier.release)
+	if err := <-applied; err != nil {
+		t.Fatalf("Apply = %v", err)
+	}
+	second := <-started
+	f.wantEnded(t, first)
+	wantState(t, f.get(t, second.ID), domain.ThumbnailEditReady)
+}
+
 // 実行中に新しい実行を始めると、今の実行を中止してから送る。
 func TestThumbnailEditRunAgainCancelsRunningRun(t *testing.T) {
 	f := newEditsFixture(t)
@@ -466,7 +619,8 @@ func TestThumbnailEditRunKeepsConnectionSnapshot(t *testing.T) {
 func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
-	webp := append([]byte("RIFF\x10\x00\x00\x00WEBPVP8 "), make([]byte, 8)...)
+	mask := testPNG(t, 8, 6)
+	reference := testPNG(t, 64, 48)
 	for _, c := range []struct {
 		name  string
 		input domain.ThumbnailEditRunInput
@@ -476,6 +630,13 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 		{"mask that is not a PNG", domain.ThumbnailEditRunInput{Mask: []byte("jpeg")}, domain.ErrThumbnailEditMaskInvalid},
 		{"reference that is not an image", domain.ThumbnailEditRunInput{Reference: []byte("text")}, domain.ErrThumbnailEditReferenceInvalid},
 		{"reference that is too large", domain.ThumbnailEditRunInput{Reference: make([]byte, domain.ThumbnailEditMaxReferenceBytes+1)}, domain.ErrThumbnailEditReferenceInvalid},
+		{"truncated mask", domain.ThumbnailEditRunInput{Mask: truncatedPNG(t, mask)}, domain.ErrThumbnailEditMaskInvalid},
+		{"truncated PNG reference", domain.ThumbnailEditRunInput{Reference: truncatedPNG(t, reference)}, domain.ErrThumbnailEditReferenceInvalid},
+		{"truncated JPEG reference", domain.ThumbnailEditRunInput{Reference: truncatedJPEG(t)}, domain.ErrThumbnailEditReferenceInvalid},
+		{"forged WebP header", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x05\x00\x00\x00WEBPx")}, domain.ErrThumbnailEditReferenceInvalid},
+		{"truncated WebP reference", domain.ThumbnailEditRunInput{Reference: testWebP[:len(testWebP)-6]}, domain.ErrThumbnailEditReferenceInvalid},
+		{"WebP without an image", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x0c\x00\x00\x00WEBPEXIF\x00\x00\x00\x00")}, domain.ErrThumbnailEditReferenceInvalid},
+		{"reference too large to decode", domain.ThumbnailEditRunInput{Reference: hugePNGHeader(t)}, domain.ErrThumbnailEditReferenceInvalid},
 	} {
 		if _, err := f.edits.StartRun(context.Background(), id, c.input); !errors.Is(err, c.want) {
 			t.Errorf("%s: err = %v, want %v", c.name, err, c.want)
@@ -486,11 +647,13 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 	}
 	wantState(t, f.get(t, id), domain.ThumbnailEditReady)
 
-	edit, err := f.edits.StartRun(context.Background(), id, domain.ThumbnailEditRunInput{Mask: testPNG(t, 8, 6), Reference: webp})
-	if err != nil {
-		t.Fatal(err)
+	for name, reference := range map[string][]byte{"PNG": reference, "JPEG": testJPEG(t), "WebP": testWebP} {
+		edit, err := f.edits.StartRun(context.Background(), id, domain.ThumbnailEditRunInput{Mask: mask, Reference: reference})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		wantState(t, edit, domain.ThumbnailEditQueued)
 	}
-	wantState(t, edit, domain.ThumbnailEditQueued)
 
 	f.settings.settings = domain.ComfyUISettings{}
 	if _, err := f.edits.StartRun(context.Background(), id, domain.ThumbnailEditRunInput{}); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
