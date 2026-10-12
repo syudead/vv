@@ -38,7 +38,8 @@ type Client struct {
 	http     *http.Client
 	cloud    string
 	// diffusionModel は埋め込んだワークフローの拡散モデルのファイル名に代えて読ませるファイルである。
-	// 空なら埋め込んだファイルのままにする。
+	// 空なら埋め込んだファイルのままにする。Comfy Cloud は自身のモデルしか持たないので、自前の
+	// ComfyUI のときだけ使う。
 	diffusionModel string
 
 	// progressMu は progress を守る。progress は実行の id ごとの、進み具合を読む WebSocket である。
@@ -54,7 +55,7 @@ type Options struct {
 	CloudBaseURL string
 	// DiffusionModel は UNETLoader に読ませる拡散モデルのファイル名である。空なら埋め込んだ
 	// ワークフローのファイル（flux-2-klein-4b-fp8.safetensors）を使う。同じ構造の派生モデルを
-	// 試すための差し替えで、テキストエンコーダ・VAE・手順の数は変えない。
+	// 試すための差し替えで、テキストエンコーダ・VAE・手順の数は変えない。自前の ComfyUI だけに効く。
 	DiffusionModel string
 }
 
@@ -111,7 +112,7 @@ func (c *Client) Check(ctx context.Context) error {
 		if !stats.valid() {
 			return fmt.Errorf("the server at %s is not ComfyUI (/system_stats has no system information)", settings.URL)
 		}
-		return c.checkRequired(ctx, settings.URL, "", name)
+		return c.checkRequired(ctx, settings.URL, "", name, c.diffusionModel)
 	case domain.ComfyUICloud:
 		if settings.APIKey == "" {
 			return domain.ErrComfyUIAPIKeyMissing
@@ -123,16 +124,17 @@ func (c *Client) Check(ctx context.Context) error {
 		if jobs.Jobs == nil {
 			return fmt.Errorf("the server at %s is not Comfy Cloud (/jobs has no job list)", c.cloud)
 		}
-		return c.checkRequired(ctx, c.cloud, settings.APIKey, "Comfy Cloud")
+		return c.checkRequired(ctx, c.cloud, settings.APIKey, "Comfy Cloud", "")
 	default:
 		return errors.New("no ComfyUI connection is saved; choose a provider and save it first")
 	}
 }
 
 // checkRequired は基底 URL base の GET /object_info を読み、埋め込んだワークフローの
-// ノードの型とモデルファイルがあるかを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
-func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string) error {
-	required, err := workflowRequirement(c.diffusionModel)
+// ノードの型とモデルファイルがあるかを確かめる。diffusionModel が空でなければ拡散モデルは
+// そのファイルを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
+func (c *Client) checkRequired(ctx context.Context, base, apiKey, name, diffusionModel string) error {
+	required, err := workflowRequirement(diffusionModel)
 	if err != nil {
 		return err
 	}

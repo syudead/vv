@@ -64,7 +64,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	if c.diffusionModel != "" {
+	if c.diffusionModel != "" && conn.Provider == domain.ComfyUISelfHosted {
 		if err := prompt.setLoaderInput(diffusionLoader, c.diffusionModel); err != nil {
 			return domain.ImageEditJob{}, err
 		}

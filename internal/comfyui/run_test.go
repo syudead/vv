@@ -267,8 +267,20 @@ func assertKeys(t *testing.T, f *runProvider) {
 	}
 }
 
-// DiffusionModel を渡すと、UNETLoader の unet_name だけをそのファイルに代えて送る。
+// DiffusionModel を渡すと、自前の ComfyUI へは UNETLoader の unet_name だけをそのファイルに代えて
+// 送り、Comfy Cloud へは埋め込んだワークフローのまま送る。
 func TestStartWithDiffusionModelReplacesOnlyTheUNETLoaderFile(t *testing.T) {
+	cloud := newRunProvider(t, true)
+	cloudClient := NewWithOptions(fixedSettings{}, Options{CloudBaseURL: cloud.server.URL + "/api", DiffusionModel: "klein-4b-finetune.safetensors"})
+	if _, err := cloudClient.Start(context.Background(), cloud.conn(), domain.ImageEditInput{Frame: pngOf(t, 8, 6, color.White)}); err != nil {
+		t.Fatalf("Start on Cloud = %v", err)
+	}
+	for _, node := range cloud.prompts[len(cloud.prompts)-1] {
+		if n := node.(map[string]any); n["class_type"] == "UNETLoader" && n["inputs"].(map[string]any)["unet_name"] != "flux-2-klein-4b-fp8.safetensors" {
+			t.Errorf("Cloud unet_name = %v, want the bundled file", n["inputs"].(map[string]any)["unet_name"])
+		}
+	}
+
 	f := newRunProvider(t, false)
 	client := NewWithOptions(fixedSettings{}, Options{DiffusionModel: " klein-4b-finetune.safetensors "})
 	frame := pngOf(t, 8, 6, color.RGBA{R: 200, A: 255})
