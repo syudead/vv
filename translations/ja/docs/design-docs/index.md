@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: fb8ca503d9ae31ac771f749f64be373ef90c07d028823c396c891d9f3ca088ec
+sourceHash: 513b3826dc4607af103bbceabeb74ab5fc75da657155a011b0ba0eb393dfd1df
 ---
 
 # 設計文書 {#design-documents}
@@ -32,6 +32,7 @@ sourceHash: fb8ca503d9ae31ac771f749f64be373ef90c07d028823c396c891d9f3ca088ec
 - [隣の字幕ファイル](sidecar-subtitles.md)
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
+- [サムネイル編集のセッション](thumbnail-editing.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [関連動画と前後の動画](related-videos.md)
