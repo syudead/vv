@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/contracts/screen-api.md
-sourceHash: c9b19adb68390674e3ec94f46664d15728f7f3a6bf8de6e6e2678dbf63592572
+sourceHash: 29972b5d51b2f03e59f8275f95848cd5c4fe9f7a8c7ba8bee3c1b5850870af03
 ---
 
 # 契約: プレイリストの画面の API {#contract-screen-api-for-playlists}
@@ -31,9 +31,10 @@ PlaylistSummary:
     name: { type: string }
     itemCount: { type: integer }        # shown items (R-4)
     updatedAt: { type: string, format: date-time }
+    covers: { type: array, maxItems: 4, items: { $ref: FolderPreview } }   # GET /api/playlists only; see below
 
 Playlist:
-  allOf: [PlaylistSummary]
+  allOf: [PlaylistSummary without covers]
   required: [items]
   properties:
     items: { type: array, items: { $ref: PlaylistItem } }   # position order, shown items only
@@ -55,6 +56,8 @@ PlaylistName:
 ## `GET /api/playlists` {#get-apiplaylists}
 
 `200 {items: PlaylistSummary[]}`、`updatedAt` の降順。ページングはない: 一覧はサイドバーの画面と追加メニューに使う。
+
+各要約は、プレイリスト一覧の画面のカードの絵（[ui-design.md の Playlists screen](../ui-design.md#playlists-screen)）である `covers` を持つ。位置の順の表示される項目がそれぞれ 1 つの `FolderPreview` を出す。動画の項目はその動画を、グループの項目はグループの順でサムネイルを持つ最初のメンバー（そのグループのカードが最初に出すメンバー）を出す。サムネイルを生成済みの動画だけを残し、最大 4 つで、形と `previewUrl` の規則は `LibraryGroup.previews` のものである。空のプレイリスト、または表示される項目がサムネイルを持たないプレイリストは `covers: []` を持つ。見える規則は `itemCount` のもの（R-4）である: 隠れた項目は何も出さない。`POST`、`PATCH`、`GET /api/playlists/{id}`、`PlaylistPlayback.playlist` は `covers` を省く。それらの画面は項目を持つか、絵を必要としない。
 
 ## `POST /api/playlists`、`PATCH /api/playlists/{id}`、`DELETE /api/playlists/{id}` {#post-apiplaylists-patch-apiplaylistsid-delete-apiplaylistsid}
 

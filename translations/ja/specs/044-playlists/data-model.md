@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/data-model.md
-sourceHash: ee2ee2d9434688baa8238bfd8d837212ba6c8d24ce6d0b9eb0ad1778fe3c02f9
+sourceHash: cde47ceb246f02d2fa612bc2620c63f9c25a311ea36e731690a1e3d9096e02b4
 ---
 
 # データモデル: 名前付きのプレイリストと連続再生 {#data-model-named-playlists-and-continuous-playback}
@@ -73,7 +73,7 @@ Down は両方のテーブルを削除する。どちらもユーザーデータ
 
 | 値 | 内容 |
 | --- | --- |
-| `Playlist` | `ID`、`Name`、`ItemCount` (表示される項目)、`UpdatedAt` |
+| `Playlist` | `ID`、`Name`、`ItemCount` (表示される項目)、`UpdatedAt`、`Covers []FolderPreview` (一覧のカードの絵。`ListPlaylists` だけが埋め、ほかでは nil) |
 | `PlaylistItem` | `ID` と、`Video *Video` か `Group *LibraryGroup` のどちらか。どちらも所有者として読む |
 | `ValidatePlaylistName(string) (string, error)` | トリムする。空か 100 文字を超えると `*InvalidPlaylistNameError` ([R-11](research.md#r-11-a-playlist-name-is-1-to-100-characters-after-trimming-names-may-repeat)) |
 | `PlaylistAdd` | `AddPlaylistItems` の入力: `VideoIDs []int64`、`FolderPaths []string` (絶対パス) |
@@ -115,7 +115,7 @@ flowchart LR
 
 | 操作 | 規則 |
 | --- | --- |
-| `ListPlaylists` | すべてのプレイリスト。`updated_at` の降順、次に `id` の降順で、表示される項目の数を持つ |
+| `ListPlaylists` | すべてのプレイリスト。`updated_at` の降順、次に `id` の降順で、表示される項目の数と `Covers` を持つ: 位置の順の最初の表示される項目で、動画の項目はその動画、グループの項目はグループの順でサムネイルを持つ最初のメンバーであり、サムネイルを生成済みの動画だけを最大 `MaxFolderPreviews` まで持つ ([contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists))。要約と同じ 1 つの読み取りトランザクションで読む |
 | `CreatePlaylist(name)` | 検証した名前。空のプレイリスト |
 | `RenamePlaylist(id, name)` | ないときは `ErrPlaylistNotFound` |
 | `DeletePlaylist(id)` | 項目は連鎖して消える。ないときは `ErrPlaylistNotFound` |
