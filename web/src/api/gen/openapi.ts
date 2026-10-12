@@ -994,12 +994,36 @@ export interface paths {
         /**
          * 保存した接続先に ComfyUI が応えるかを確かめる
          * @description 自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
-         *     `X-API-Key` を付けて確かめる。使えないときの `message` は、届かない、ComfyUI でない、キーが
-         *     拒まれた、何も保存されていないを区別する。接続先は要求の本文から取らない（任意の URL へ
-         *     サーバーから要求を送らせないため）。要求の本文は無い
+         *     `X-API-Key` を付けて確かめる。応えたら `GET /object_info` を読み、vv のワークフローの
+         *     ノードの型とローダーが名指すモデルファイルがあるかを確かめ、足りなければ `available: false`
+         *     と `missing` を返す（R-13）。使えないときの `message` は、届かない、ComfyUI でない、キーが
+         *     拒まれた、何も保存されていない、ファイルが足りないを区別する。接続先は要求の本文から取らない
+         *     （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い
          *     （specs/045-comfyui-thumbnails/research.md R-5）。
          */
         post: operations["checkComfyUI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/thumbnail-edits/readiness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * サムネイルの編集を始められるかを返す
+         * @description 動画のページが編集の入口を有効にするために読む。`connection` は ComfyUI の接続先が保存されて
+         *     いることで、接続テストに通ったことではない
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        get: operations["getThumbnailEditReadiness"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2053,6 +2077,23 @@ export interface components {
             available: boolean;
             /** @description 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある） */
             message?: string;
+            /** @description ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル */
+            missing?: components["schemas"]["ComfyUIMissingItem"][];
+        };
+        /** @description ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13） */
+        ComfyUIMissingItem: {
+            /** @enum {string} */
+            kind: "node" | "model";
+            /** @description ノードの `class_type` かファイル名 */
+            name: string;
+            /** @description モデルファイルだけ。ComfyUI の `models` の下のフォルダ */
+            folder?: string;
+            /** @description モデルファイルだけ。入手先のページの URL */
+            source?: string;
+        };
+        ThumbnailEditReadiness: {
+            /** @description ComfyUI の接続先が保存されているか（テストに通ったかではない） */
+            connection: boolean;
         };
         StartAutoTaggingRequest: {
             /** @enum {string} */
@@ -4582,6 +4623,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getThumbnailEditReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 編集の準備の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEditReadiness"];
                 };
             };
             403: components["responses"]["Forbidden"];

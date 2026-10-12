@@ -35,6 +35,24 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for ComfyUIMissingItemKind.
+const (
+	Model ComfyUIMissingItemKind = "model"
+	Node  ComfyUIMissingItemKind = "node"
+)
+
+// Valid indicates whether the value is a known member of the ComfyUIMissingItemKind enum.
+func (e ComfyUIMissingItemKind) Valid() bool {
+	switch e {
+	case Model:
+		return true
+	case Node:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComfyUIProvider.
 const (
 	Cloud      ComfyUIProvider = "cloud"
@@ -1214,7 +1232,26 @@ type CheckResult struct {
 
 	// Message 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
 	Message *string `json:"message,omitempty"`
+
+	// Missing ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル
+	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
 }
+
+// ComfyUIMissingItem ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13）
+type ComfyUIMissingItem struct {
+	// Folder モデルファイルだけ。ComfyUI の `models` の下のフォルダ
+	Folder *string                `json:"folder,omitempty"`
+	Kind   ComfyUIMissingItemKind `json:"kind"`
+
+	// Name ノードの `class_type` かファイル名
+	Name string `json:"name"`
+
+	// Source モデルファイルだけ。入手先のページの URL
+	Source *string `json:"source,omitempty"`
+}
+
+// ComfyUIMissingItemKind defines model for ComfyUIMissingItem.Kind.
+type ComfyUIMissingItemKind string
 
 // ComfyUIProvider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
 type ComfyUIProvider string
@@ -2013,6 +2050,12 @@ type TagRef struct {
 // createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
 // （specs/036-tag-admin-scale/data-model.md §0・§2）
 type TagSort string
+
+// ThumbnailEditReadiness defines model for ThumbnailEditReadiness.
+type ThumbnailEditReadiness struct {
+	// Connection ComfyUI の接続先が保存されているか（テストに通ったかではない）
+	Connection bool `json:"connection"`
+}
 
 // ThumbnailPositionUpdate defines model for ThumbnailPositionUpdate.
 type ThumbnailPositionUpdate struct {
@@ -3142,6 +3185,9 @@ type ServerInterface interface {
 	// AddTagSynonym 名前をidのタグのシノニムにする
 	// (POST /api/tags/{id}/synonyms)
 	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// GetThumbnailEditReadiness サムネイルの編集を始められるかを返す
+	// (GET /api/thumbnail-edits/readiness)
+	GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request)
 	// ListVersionCandidates 「同じ動画かもしれない」候補の一覧を返す
 	// (GET /api/version-candidates)
 	ListVersionCandidates(w http.ResponseWriter, r *http.Request)
@@ -4833,6 +4879,20 @@ func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// GetThumbnailEditReadiness operation middleware
+func (siw *ServerInterfaceWrapper) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetThumbnailEditReadiness(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListVersionCandidates operation middleware
 func (siw *ServerInterfaceWrapper) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 
@@ -6249,6 +6309,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/comfyui", wrapper.GetComfyUISettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/comfyui", wrapper.UpdateComfyUISettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/settings/comfyui/check", wrapper.CheckComfyUI)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/thumbnail-edits/readiness", wrapper.GetThumbnailEditReadiness)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)

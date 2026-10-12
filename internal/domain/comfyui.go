@@ -85,3 +85,49 @@ func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsU
 	}
 	return next, nil
 }
+
+// ComfyUIMissingKind は接続先に足りないものの種類である。
+type ComfyUIMissingKind string
+
+const (
+	// ComfyUIMissingNode は vv のワークフローが使うノードの型（class_type）が無いことを表す。
+	ComfyUIMissingNode ComfyUIMissingKind = "node"
+	// ComfyUIMissingModel はローダーノードが読むモデルファイルが無いことを表す。
+	ComfyUIMissingModel ComfyUIMissingKind = "model"
+)
+
+// ComfyUIMissingItem は接続先に足りないノードかモデルファイルの 1 つである。Folder と Source は
+// モデルファイルだけが持ち、ComfyUI の models の下の置き場所と入手先のページである
+// （specs/045-comfyui-thumbnails/research.md R-13）。
+type ComfyUIMissingItem struct {
+	Kind   ComfyUIMissingKind
+	Name   string
+	Folder string
+	Source string
+}
+
+// ComfyUIMissingError は、接続先は応えたが vv のワークフローに要るノードかモデルファイルが
+// 足りないことを表す。Items は足りないものの一覧で、空ではない。
+type ComfyUIMissingError struct {
+	Items []ComfyUIMissingItem
+}
+
+// Error は足りないものの数と直し方を述べる。名前は Items で返すので文には入れない。
+func (e *ComfyUIMissingError) Error() string {
+	nodes, models := 0, 0
+	for _, item := range e.Items {
+		if item.Kind == ComfyUIMissingNode {
+			nodes++
+		} else {
+			models++
+		}
+	}
+	parts := make([]string, 0, 2)
+	if models > 0 {
+		parts = append(parts, fmt.Sprintf("%d model file(s) are missing; download each into its folder", models))
+	}
+	if nodes > 0 {
+		parts = append(parts, fmt.Sprintf("%d node type(s) are missing; update ComfyUI", nodes))
+	}
+	return "ComfyUI is missing files the thumbnail workflows need: " + strings.Join(parts, ", and ")
+}

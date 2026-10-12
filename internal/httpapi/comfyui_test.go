@@ -135,9 +135,60 @@ func TestCheckComfyUI(t *testing.T) {
 	}
 }
 
+// 足りないノードとモデルファイルは missing に挙げ、モデルにだけフォルダと入手先を付ける。
+func TestCheckComfyUIListsMissingItems(t *testing.T) {
+	missing := &domain.ComfyUIMissingError{Items: []domain.ComfyUIMissingItem{
+		{Kind: domain.ComfyUIMissingNode, Name: "Flux2Scheduler"},
+		{Kind: domain.ComfyUIMissingModel, Name: "flux2-vae.safetensors", Folder: "vae", Source: "https://example.test/vae"},
+	}}
+	f := newComfyUIFixture(t, ollamaProbe{err: missing})
+	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/settings/comfyui/check",
+		cookies: []*http.Cookie{f.owner}})
+	got := decode[gen.CheckResult](t, rec)
+	if rec.Code != http.StatusOK || got.Available || got.Message == nil || *got.Message != missing.Error() ||
+		got.Missing == nil || len(*got.Missing) != 2 {
+		t.Fatalf("check = %d %s", rec.Code, rec.Body)
+	}
+	node, model := (*got.Missing)[0], (*got.Missing)[1]
+	if node.Kind != gen.Node || node.Name != "Flux2Scheduler" || node.Folder != nil || node.Source != nil {
+		t.Errorf("node = %+v", node)
+	}
+	if model.Kind != gen.Model || model.Name != "flux2-vae.safetensors" || model.Folder == nil || *model.Folder != "vae" ||
+		model.Source == nil || *model.Source != "https://example.test/vae" {
+		t.Errorf("model = %+v", model)
+	}
+}
+
+// readiness の connection は保存の前は false、保存の後は true である。確かめは呼ばない。
+func TestThumbnailEditReadinessFollowsSavedConnection(t *testing.T) {
+	var checks int
+	f := newComfyUIFixture(t, ollamaProbe{checks: &checks, err: errors.New("unreachable")})
+	readiness := func() gen.ThumbnailEditReadiness {
+		t.Helper()
+		rec := f.env.get("/api/thumbnail-edits/readiness", f.owner)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("readiness = %d %s", rec.Code, rec.Body)
+		}
+		return decode[gen.ThumbnailEditReadiness](t, rec)
+	}
+	if readiness().Connection {
+		t.Fatal("connection before any save")
+	}
+	if code, body := f.put(t, `{"provider":"self_hosted","url":"http://gpu:8188"}`); code != http.StatusOK {
+		t.Fatalf("PUT = %d %s", code, body)
+	}
+	if !readiness().Connection {
+		t.Fatal("no connection after a save")
+	}
+	if checks != 0 {
+		t.Errorf("readiness ran the connection test %d time(s)", checks)
+	}
+}
+
 func TestComfyUISettingsAreOwnerOnly(t *testing.T) {
 	f := newComfyUIFixture(t, ollamaProbe{})
 	assertUnauthenticated(t, "GET comfyui", f.env.get("/api/settings/comfyui"))
+	assertUnauthenticated(t, "GET readiness", f.env.get("/api/thumbnail-edits/readiness"))
 	for _, req := range []authRequest{
 		{method: http.MethodPut, target: "/api/settings/comfyui", body: `{"provider":"self_hosted","url":"http://h"}`},
 		{method: http.MethodPost, target: "/api/settings/comfyui/check"},

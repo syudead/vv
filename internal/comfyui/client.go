@@ -22,6 +22,10 @@ const checkTimeout = 15 * time.Second
 // maxResponseBytes は確かめで読む応答の上限である。
 const maxResponseBytes = 1 << 20
 
+// maxObjectInfoBytes は GET /object_info の応答の上限である。すべてのノードの定義を返すので、
+// カスタムノードの多い ComfyUI では数 MB になる。
+const maxObjectInfoBytes = 64 << 20
+
 // SettingsSource は保存された接続先を読む。internal/store の *SettingsStore が満たす。
 type SettingsSource interface {
 	ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error)
@@ -67,10 +71,13 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 // errAPIKeyRejected は Comfy Cloud が API キーを受け付けなかったことを表す。
 var errAPIKeyRejected = errors.New("the API key was rejected by Comfy Cloud; check the key under Settings")
 
-// Check は保存した接続先に ComfyUI が応えるかを確かめる。自前の ComfyUI は保存した URL の
-// GET /system_stats、Comfy Cloud は GET /jobs?limit=1 に X-API-Key を付けて問い合わせる
-// （research.md R-5）。使えなければ、何も保存されていない・つながらない・ComfyUI でない・
-// キーが拒まれたのどれかを述べた誤りを返す。接続先は保存した設定だけから取る。
+// Check は保存した接続先に ComfyUI が応え、vv のワークフローに要るものが揃っているかを
+// 確かめる。自前の ComfyUI は保存した URL の GET /system_stats、Comfy Cloud は
+// GET /jobs?limit=1 に X-API-Key を付けて問い合わせる（research.md R-5）。応えたら
+// GET /object_info を読み、ワークフローのノードの型とローダーが名指すモデルファイルが
+// あるかを確かめる（R-13）。使えなければ、何も保存されていない・つながらない・ComfyUI でない・
+// キーが拒まれたのどれかを述べた誤りか、足りないものを挙げた *domain.ComfyUIMissingError を
+// 返す。接続先は保存した設定だけから取る。
 func (c *Client) Check(ctx context.Context) error {
 	settings, err := c.settings.ComfyUISettings(ctx)
 	if err != nil {
@@ -83,28 +90,45 @@ func (c *Client) Check(ctx context.Context) error {
 	case domain.ComfyUISelfHosted:
 		var stats systemStats
 		name := "ComfyUI at " + settings.URL
-		if err := c.getJSON(ctx, settings.URL, "/system_stats", "", name, &stats); err != nil {
+		if err := c.getJSON(ctx, settings.URL, "/system_stats", "", name, maxResponseBytes, &stats); err != nil {
 			return err
 		}
 		if !stats.valid() {
 			return fmt.Errorf("the server at %s is not ComfyUI (/system_stats has no system information)", settings.URL)
 		}
-		return nil
+		return c.checkRequired(ctx, settings.URL, "", name)
 	case domain.ComfyUICloud:
 		if settings.APIKey == "" {
 			return domain.ErrComfyUIAPIKeyMissing
 		}
 		var jobs jobList
-		if err := c.getJSON(ctx, c.cloud, "/jobs?limit=1", settings.APIKey, "Comfy Cloud", &jobs); err != nil {
+		if err := c.getJSON(ctx, c.cloud, "/jobs?limit=1", settings.APIKey, "Comfy Cloud", maxResponseBytes, &jobs); err != nil {
 			return err
 		}
 		if jobs.Jobs == nil {
 			return fmt.Errorf("the server at %s is not Comfy Cloud (/jobs has no job list)", c.cloud)
 		}
-		return nil
+		return c.checkRequired(ctx, c.cloud, settings.APIKey, "Comfy Cloud")
 	default:
 		return errors.New("no ComfyUI connection is saved; choose a provider and save it first")
 	}
+}
+
+// checkRequired は基底 URL base の GET /object_info を読み、埋め込んだワークフローの
+// ノードの型とモデルファイルがあるかを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
+func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string) error {
+	required, err := workflowRequirement()
+	if err != nil {
+		return err
+	}
+	var info objectInfo
+	if err := c.getJSON(ctx, base, "/object_info", apiKey, name, maxObjectInfoBytes, &info); err != nil {
+		return err
+	}
+	if items := required.missing(info); len(items) > 0 {
+		return &domain.ComfyUIMissingError{Items: items}
+	}
+	return nil
 }
 
 // systemStats は ComfyUI の GET /system_stats の応答のうち、ComfyUI であることを見分ける部分である。
@@ -126,10 +150,10 @@ type jobList struct {
 	Jobs *[]json.RawMessage `json:"jobs"`
 }
 
-// getJSON は基底 URL base の path を GET し、200 の JSON を out に読む。apiKey が空でなければ
-// X-API-Key に付ける。name はつながらないときの誤りに入れる相手の名前である。応答の本文そのものは、問い合わせ先が ComfyUI でないときに別の
+// getJSON は基底 URL base の path を GET し、200 の JSON を最大 limit バイトまで out に読む。
+// apiKey が空でなければ X-API-Key に付ける。name はつながらないときの誤りに入れる相手の名前である。応答の本文そのものは、問い合わせ先が ComfyUI でないときに別の
 // サービスの中身を画面へ写すことになるので誤りに含めない。
-func (c *Client) getJSON(ctx context.Context, base, path, apiKey, name string, out any) error {
+func (c *Client) getJSON(ctx context.Context, base, path, apiKey, name string, limit int64, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path, nil)
 	if err != nil {
 		return fmt.Errorf("cannot build the request to %s: %w", name, err)
@@ -149,7 +173,7 @@ func (c *Client) getJSON(ctx context.Context, base, path, apiKey, name string, o
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("the server at %s is not ComfyUI (%s answered %d)", base, route, resp.StatusCode)
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(out); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, limit)).Decode(out); err != nil {
 		return fmt.Errorf("the server at %s is not ComfyUI (%s is not JSON)", base, route)
 	}
 	return nil

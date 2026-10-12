@@ -75,14 +75,54 @@ func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, comfyUISettingsBody(saved), s.logger)
 }
 
-// CheckComfyUI は保存した接続先に ComfyUI が応えるかを確かめる。使えないことは 200 の
-// available=false で返す。接続先は要求から取らず、保存した設定だけを使う。
+// CheckComfyUI は保存した接続先に ComfyUI が応え、vv のワークフローに要るノードとモデル
+// ファイルが揃っているかを確かめる。使えないことは 200 の available=false で返し、足りない
+// ものは missing に挙げる（specs/045-comfyui-thumbnails/research.md R-13）。接続先は要求から
+// 取らず、保存した設定だけを使う。
 func (s *server) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
 		return
 	}
-	s.writeCheckResult(w, s.comfyUI.Check(r.Context()))
+	err := s.comfyUI.Check(r.Context())
+	var missing *domain.ComfyUIMissingError
+	if !errors.As(err, &missing) {
+		s.writeCheckResult(w, err)
+		return
+	}
+	message := err.Error()
+	items := make([]gen.ComfyUIMissingItem, 0, len(missing.Items))
+	for _, item := range missing.Items {
+		body := gen.ComfyUIMissingItem{Kind: gen.ComfyUIMissingItemKind(item.Kind), Name: item.Name}
+		if item.Folder != "" {
+			folder := item.Folder
+			body.Folder = &folder
+		}
+		if item.Source != "" {
+			source := item.Source
+			body.Source = &source
+		}
+		items = append(items, body)
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.CheckResult{Available: false, Message: &message, Missing: &items}, s.logger)
+}
+
+// GetThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを返す。connection は
+// 接続先が保存されていることで、テストに通ったことではない（要件 14、
+// specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request) {
+	if s.comfyUI == nil {
+		s.internalError(w, "ComfyUI settings are not configured.", nil)
+		return
+	}
+	settings, err := s.comfyUI.Settings(r.Context())
+	if err != nil {
+		s.internalError(w, "Could not read the ComfyUI settings.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.ThumbnailEditReadiness{Connection: settings.Saved()}, s.logger)
 }
 
 // comfyUISettingsBody は接続先を応答の形にする。API キーは入れない。
