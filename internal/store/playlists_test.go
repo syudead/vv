@@ -28,6 +28,23 @@ func createPlaylist(t *testing.T, db *DB, name string) int64 {
 	return playlist.ID
 }
 
+// listPlaylists は一覧の全部を、最大の件数のページで NextCursor が尽きるまで辿って読む。
+func listPlaylists(ctx context.Context, db *DB) ([]domain.Playlist, error) {
+	var items []domain.Playlist
+	cursor := ""
+	for {
+		page, err := db.Playlists().ListPlaylists(ctx, cursor, domain.MaxLimit)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, page.Items...)
+		if page.NextCursor == "" {
+			return items, nil
+		}
+		cursor = page.NextCursor
+	}
+}
+
 func addToPlaylist(t *testing.T, db *DB, id int64, add domain.PlaylistAdd) domain.PlaylistAdded {
 	t.Helper()
 	added, err := db.Playlists().AddPlaylistItems(context.Background(), id, add)
@@ -316,7 +333,7 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 	if got := playlistEntries(t, db, id); !slices.Equal(got, videoEntries(solo)) {
 		t.Errorf("メンバーが消えたあと = %v", got)
 	}
-	playlists, err := db.Playlists().ListPlaylists(ctx)
+	playlists, err := listPlaylists(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -355,7 +372,7 @@ func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	if got := playlistEntries(t, db, id); !slices.Equal(got, videoEntries(x, back, y)) {
 		t.Errorf("グループ化を解いたあと = %v", got)
 	}
-	playlists, err := db.Playlists().ListPlaylists(ctx)
+	playlists, err := listPlaylists(ctx, db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,7 +526,7 @@ func TestListPlaylistsByUpdatedAt(t *testing.T) {
 	first, second, third := createPlaylist(t, db, "1"), createPlaylist(t, db, "2"), createPlaylist(t, db, "3")
 	order := func() []int64 {
 		t.Helper()
-		playlists, err := db.Playlists().ListPlaylists(ctx)
+		playlists, err := listPlaylists(ctx, db)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -537,6 +554,129 @@ func TestListPlaylistsByUpdatedAt(t *testing.T) {
 	}
 	if got := order(); !slices.Equal(got, []int64{second, first, third}) {
 		t.Errorf("改名したあと = %v", got)
+	}
+}
+
+// 一覧は cursor の次から limit 件を返し、続きがあるときだけ NextCursor を持つ。同じ更新日時の
+// プレイリストもページの境で重ならず漏れず、Total はどのページでも全部の数で、Covers は返した
+// ページの分だけ埋まる。読めない cursor は ErrInvalidCursor（contracts/screen-api.md
+// 「GET /api/playlists」）。
+func TestListPlaylistsPaged(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+
+	// 同じ時刻に 3 つ、1 秒後に 2 つ。並びは [e d c b a]。
+	a, b, c := createPlaylist(t, db, "a"), createPlaylist(t, db, "b"), createPlaylist(t, db, "c")
+	clock = clock.Add(time.Second)
+	d, e := createPlaylist(t, db, "d"), createPlaylist(t, db, "e")
+	addVideos(t, db, e, ids["a"])
+
+	var got []int64
+	cursor := ""
+	for pages := 0; ; pages++ {
+		page, err := db.Playlists().ListPlaylists(ctx, cursor, 2)
+		if err != nil {
+			t.Fatalf("ページ %d: %v", pages, err)
+		}
+		if page.Total != 5 {
+			t.Errorf("ページ %d の Total = %d, want 5", pages, page.Total)
+		}
+		for _, playlist := range page.Items {
+			if playlist.Covers == nil {
+				t.Errorf("プレイリスト %d の Covers が nil", playlist.ID)
+			}
+			got = append(got, playlist.ID)
+		}
+		if page.NextCursor == "" {
+			if len(page.Items) != 1 {
+				t.Errorf("最後のページ = %d 件, want 1", len(page.Items))
+			}
+			break
+		}
+		if len(page.Items) != 2 {
+			t.Errorf("ページ %d = %d 件, want 2", pages, len(page.Items))
+		}
+		cursor = page.NextCursor
+		if pages > 5 {
+			t.Fatal("ページが終わらない")
+		}
+	}
+	if want := []int64{e, d, c, b, a}; !slices.Equal(got, want) {
+		t.Errorf("ページを結んだ並び = %v, want %v", got, want)
+	}
+
+	whole, err := db.Playlists().ListPlaylists(ctx, "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if whole.NextCursor != "" || len(whole.Items) != 5 {
+		t.Errorf("ちょうど全件のページ = %d 件, NextCursor %q", len(whole.Items), whole.NextCursor)
+	}
+	if _, err := db.Playlists().ListPlaylists(ctx, "not-a-cursor", 2); !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Errorf("読めないカーソル = %v, want ErrInvalidCursor", err)
+	}
+}
+
+// 一覧の Version はどのページでも同じで、プレイリストを作る・名前か項目を変える・消すたびに
+// 変わる。同じミリ秒に別のプレイリストを変えても変わる。何も変わらない操作（既にある動画を
+// 足す）では変わらない。ページを読んでいる間に変わったプレイリストはカーソルの次からは返らないので、
+// クライアントはこれを比べて最初のページから読み直す（contracts/screen-api.md「GET /api/playlists」）。
+func TestListPlaylistsVersion(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	clock := time.UnixMilli(1_000_000)
+	previous := playlistNow
+	playlistNow = func() time.Time { return clock }
+	t.Cleanup(func() { playlistNow = previous })
+
+	version := func(cursor string) string {
+		t.Helper()
+		page, err := db.Playlists().ListPlaylists(ctx, cursor, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return page.Version
+	}
+	empty := version("")
+	first, second := createPlaylist(t, db, "1"), createPlaylist(t, db, "2")
+	created := version("")
+	if created == empty {
+		t.Errorf("作ったあとも版が同じ: %q", created)
+	}
+	firstPage, err := db.Playlists().ListPlaylists(ctx, "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := version(firstPage.NextCursor); got != created {
+		t.Errorf("2 ページ目の版 = %q, 1 ページ目 = %q", got, created)
+	}
+
+	// 同じミリ秒に、既に最大の更新日時を持つものとは別のプレイリストを変える。
+	addVideos(t, db, first, ids["a"])
+	added := version("")
+	if added == created {
+		t.Errorf("同じミリ秒に項目を足したあとも版が同じ: %q", added)
+	}
+	addVideos(t, db, first, ids["a"])
+	if got := version(""); got != added {
+		t.Errorf("既にある動画を足しただけで版が変わった: %q -> %q", added, got)
+	}
+	if _, err := db.Playlists().RenamePlaylist(ctx, second, "二"); err != nil {
+		t.Fatal(err)
+	}
+	renamed := version("")
+	if renamed == added {
+		t.Errorf("改名したあとも版が同じ: %q", renamed)
+	}
+	if err := db.Playlists().DeletePlaylist(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if got := version(""); got == renamed {
+		t.Errorf("消したあとも版が同じ: %q", got)
 	}
 }
 
@@ -722,7 +862,7 @@ func TestListPlaylistsCovers(t *testing.T) {
 
 	covers := func() map[int64][]int64 {
 		t.Helper()
-		playlists, err := db.Playlists().ListPlaylists(ctx)
+		playlists, err := listPlaylists(ctx, db)
 		if err != nil {
 			t.Fatal(err)
 		}

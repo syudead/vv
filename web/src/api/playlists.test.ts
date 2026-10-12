@@ -7,7 +7,9 @@ import {
   deletePlaylist,
   getPlaylist,
   getPlaylistPlayback,
+  listAllPlaylists,
   listPlaylists,
+  MAX_LIST_RESTARTS,
   movePlaylistItem,
   removePlaylistItem,
   renamePlaylist,
@@ -35,19 +37,90 @@ afterEach(() => {
 const summary = { id: 3, name: "朝", itemCount: 0, updatedAt: "2026-10-11T00:00:00Z" };
 
 describe("playlists API", () => {
-  it("listPlaylists・getPlaylist は一覧と 1 つを取り、一覧は items を返す", async () => {
+  it("listPlaylists・getPlaylist は 1 ページと 1 つを取り、一覧は limit と cursor を付ける", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(json({ items: [summary] }))
+      .mockResolvedValueOnce(
+        json({ items: [summary], total: 2, version: "2.1", nextCursor: "c1" }),
+      )
+      .mockResolvedValueOnce(json({ items: [], total: 2, version: "2.1" }))
       .mockResolvedValueOnce(json({ ...summary, items: [] }));
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(await listPlaylists()).toEqual([summary]);
+    expect(await listPlaylists()).toEqual({
+      items: [summary],
+      total: 2,
+      version: "2.1",
+      nextCursor: "c1",
+    });
+    expect(await listPlaylists({ cursor: "c1", limit: 10 })).toEqual({
+      items: [],
+      total: 2,
+      version: "2.1",
+    });
     expect(await getPlaylist(3)).toEqual({ ...summary, items: [] });
     expect(sent(fetchMock).map(({ url, method }) => [url, method])).toEqual([
-      ["/api/playlists", "GET"],
+      ["/api/playlists?limit=60", "GET"],
+      ["/api/playlists?cursor=c1&limit=10", "GET"],
       ["/api/playlists/3", "GET"],
     ]);
+  });
+
+  it("listAllPlaylists は nextCursor が尽きるまで最大の件数のページを辿り、全部を 1 つにする", async () => {
+    const other = { ...summary, id: 4, name: "夜" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json({ items: [summary], total: 2, version: "2.1", nextCursor: "c1" }),
+      )
+      .mockResolvedValueOnce(json({ items: [other], total: 2, version: "2.1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listAllPlaylists()).toEqual([summary, other]);
+    expect(sent(fetchMock).map(({ url }) => url)).toEqual([
+      "/api/playlists?limit=200",
+      "/api/playlists?cursor=c1&limit=200",
+    ]);
+  });
+
+  it("listAllPlaylists は version が最初のページと違うページを捨て、最初のページから読み直す", async () => {
+    // 1 ページ目の後に「夜」が変わって先頭へ動いた。2 ページ目は version が違うので、読み直した
+    // 一覧には「夜」が先頭に入り、何も欠けない。
+    const other = { ...summary, id: 4, name: "夜" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json({ items: [summary], total: 2, version: "2.1", nextCursor: "c1" }),
+      )
+      .mockResolvedValueOnce(json({ items: [], total: 2, version: "2.2" }))
+      .mockResolvedValueOnce(
+        json({ items: [other], total: 2, version: "2.2", nextCursor: "c2" }),
+      )
+      .mockResolvedValueOnce(json({ items: [summary], total: 2, version: "2.2" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await listAllPlaylists()).toEqual([other, summary]);
+    expect(sent(fetchMock).map(({ url }) => url)).toEqual([
+      "/api/playlists?limit=200",
+      "/api/playlists?cursor=c1&limit=200",
+      "/api/playlists?limit=200",
+      "/api/playlists?cursor=c2&limit=200",
+    ]);
+  });
+
+  it("listAllPlaylists は一覧が変わり続けたら、欠けた一覧を返さずに失敗する", async () => {
+    let calls = 0;
+    const fetchMock = vi.fn<typeof fetch>(() => {
+      calls += 1;
+      // どの読み直しでも 2 ページ目の version が 1 ページ目と違う。
+      return Promise.resolve(
+        json({ items: [summary], total: 2, version: String(calls), nextCursor: "c" }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listAllPlaylists()).rejects.toThrow(/kept changing/);
+    expect(calls).toBe(2 * (MAX_LIST_RESTARTS + 1));
   });
 
   it("createPlaylist・renamePlaylist は名前を JSON で送り、400 を RequestFailed で返す", async () => {

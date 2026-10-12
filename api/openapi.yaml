@@ -2185,9 +2185,28 @@ paths:
       operationId: listPlaylists
       summary: プレイリストを更新日時の新しい順に返す
       description: |
-        所有者だけ。すべてのプレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に返す。
-        ページングは無い。`itemCount` は今見せる項目の数である
-        （specs/044-playlists/contracts/screen-api.md）。
+        所有者だけ。プレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に、`cursor` の
+        次から最大 `limit` 件返す。続きがあれば `nextCursor` を入れ、`total` はページングとは独立に
+        全部の数を返す。`version` は一覧の版で、プレイリストを作る・消す・変えるたびに変わる。
+        ページを読んでいる間に変わったプレイリストは前のページの側へ動いて `cursor` の次からは
+        返らないので、クライアントは `version` が最初のページと違えば最初のページから読み直す。
+        `covers` は返したページの分だけ作る。`cursor` が読めなければ 400
+        `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。`itemCount` は今見せる
+        項目の数である（specs/044-playlists/contracts/screen-api.md）。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
       responses:
         "200":
           description: プレイリストの一覧
@@ -2195,6 +2214,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PlaylistList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
     post:
       operationId: createPlaylist
       summary: 空のプレイリストを作る
@@ -3886,14 +3907,25 @@ components:
 
     PlaylistList:
       type: object
-      required: [items]
+      required: [items, total, version]
       additionalProperties: false
       properties:
         items:
           type: array
-          description: プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順）
+          description: プレイリストの要約の 1 ページ。`updatedAt` の新しい順（同じなら id の大きい順）
           items:
             $ref: "#/components/schemas/PlaylistSummary"
+        total:
+          type: integer
+          description: 全部のプレイリストの数。ページングとは独立に返る
+        version:
+          type: string
+          description: |
+            一覧の版。プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な文字列。
+            ページごとの値が最初のページと違えば、並びが変わっているので最初のページから読み直す
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。続きがあるときだけ入る
 
     Playlist:
       type: object

@@ -16,6 +16,9 @@ This file covers only the tables, values and rules this feature adds.
 
 `00036_playlists.sql` (the last migration on `main` is
 `00035_watch_history_title_key.sql`; confirm the number when implementing).
+A later migration, `00039_playlists_order_idx.sql`, adds
+`playlists_order_idx` on `playlists (updated_at desc, id desc)`, the order and
+cursor of `ListPlaylists`, so a page does not scan and sort every playlist.
 
 ```sql
 -- User data (specs/044-playlists/research.md R-1). No foreign key to the library.
@@ -77,6 +80,8 @@ one with the larger `position` is deleted, and the playlist is renumbered
 | Value | Content |
 | --- | --- |
 | `Playlist` | `ID`, `Name`, `ItemCount` (shown items), `UpdatedAt`, `Covers []FolderPreview` (the list card's art, filled by `ListPlaylists` only; nil elsewhere) |
+| `PlaylistPage` | One page of `ListPlaylists`: `Items []Playlist`, `Total` (every playlist, independent of paging), `NextCursor` (empty on the last page), `Version` (the list's order, an opaque string from the count and the sum of every `updated_at`; it changes with any create, delete, rename or item change, so a client that sees a different `Version` on a later page reads the list again from the first page, [contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists)) |
+| `PlaylistCursor`, `EncodePlaylistCursor`, `DecodePlaylistCursor` | The last playlist of a page as `UpdatedAtMs` and `ID`, wrapped like `WatchHistoryCursor` (JSON in URL-safe base64); an unreadable cursor is `ErrInvalidCursor` |
 | `PlaylistItem` | `ID`, and one of `Video *Video` or `Group *LibraryGroup`, both read as the owner |
 | `ValidatePlaylistName(string) (string, error)` | Trims; empty or over 100 characters is `*InvalidPlaylistNameError` ([R-11](research.md#r-11-a-playlist-name-is-1-to-100-characters-after-trimming-names-may-repeat)) |
 | `PlaylistAdd` | Input of `AddPlaylistItems`: `VideoIDs []int64`, `FolderPaths []string` (absolute) |
@@ -130,7 +135,7 @@ A new role type `PlaylistStore`, holding only the `sql` connection like
 
 | Operation | Rule |
 | --- | --- |
-| `ListPlaylists` | All playlists, `updated_at` descending, then `id` descending, with the shown item count and `Covers`: the first shown items in position order, a video item's video or a group item's first member in group order with a thumbnail, only videos with a generated thumbnail, up to `MaxFolderPreviews` ([contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists)); read in one read transaction with the summaries |
+| `ListPlaylists(cursor, limit)` | One `PlaylistPage`: the playlists after `cursor` (the first page when empty), `updated_at` descending, then `id` descending, `limit` of them at most (one more row is read to know whether a `NextCursor` follows, as `ListWatchHistory` does), with the shown item count and, for the returned page only, `Covers`: the first shown items in position order, a video item's video or a group item's first member in group order with a thumbnail, only videos with a generated thumbnail, up to `MaxFolderPreviews` ([contracts/screen-api.md](contracts/screen-api.md#get-apiplaylists)); `Total`, `Version`, the summaries and the covers are read in one read transaction; an unreadable cursor is `ErrInvalidCursor` |
 | `CreatePlaylist(name)` | Validated name; empty playlist |
 | `RenamePlaylist(id, name)` | `ErrPlaylistNotFound` when absent |
 | `DeletePlaylist(id)` | Items cascade; `ErrPlaylistNotFound` when absent |

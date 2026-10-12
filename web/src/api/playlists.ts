@@ -1,4 +1,11 @@
-import { apiFetch, type FolderRef, request, toRequestFailed } from "./client";
+import {
+  apiFetch,
+  type FolderRef,
+  MAX_PAGE_SIZE,
+  PAGE_SIZE,
+  request,
+  toRequestFailed,
+} from "./client";
 import type { components } from "./gen/openapi";
 
 // プレイリストの画面 API（specs/044-playlists/contracts/screen-api.md「Client use」）。
@@ -21,12 +28,68 @@ function playlistItemPath(id: number, itemId: number): string {
   return `${playlistPath(id)}/items/${String(itemId)}`;
 }
 
-/** listPlaylists はプレイリストを更新日時の新しい順に取得する（GET /api/playlists）。 */
-export async function listPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
-  const list = await request<components["schemas"]["PlaylistList"]>("/api/playlists", {
-    signal,
-  });
-  return list.items;
+export type PlaylistList = components["schemas"]["PlaylistList"];
+
+export interface ListPlaylistsParams {
+  /** 前回の応答の `nextCursor`。中身は解釈しない。 */
+  cursor?: string;
+  /** 1 ページの件数。省けばライブラリの一覧と同じ 60 件。 */
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * listPlaylists はプレイリストを更新日時の新しい順に 1 ページ取得する（GET /api/playlists）。
+ * 続きがあれば `nextCursor` が入り、`total` はページングとは独立な全部の数である。
+ */
+export function listPlaylists({
+  cursor,
+  limit = PAGE_SIZE,
+  signal,
+}: ListPlaylistsParams = {}): Promise<PlaylistList> {
+  const params = new URLSearchParams();
+  if (cursor !== undefined) params.set("cursor", cursor);
+  params.set("limit", String(limit));
+  return request<PlaylistList>(`/api/playlists?${params.toString()}`, { signal });
+}
+
+/**
+ * 辿っている間に一覧が変わり続けたときに、listAllPlaylists が最初のページから読み直す回数の上限。
+ * 変わるのは所有者の操作だけなので、普段は 0 回か 1 回で済む。
+ */
+export const MAX_LIST_RESTARTS = 3;
+
+/**
+ * listAllPlaylists はプレイリストの全部を、`nextCursor` が尽きるまで最大の件数（MAX_PAGE_SIZE）の
+ * ページで辿って取得する。名前で選ぶ「Add to playlist」のピッカーのように、一覧の全部を手元で
+ * 絞る所が使う。
+ *
+ * 並びは更新日時の新しい順なので、辿っている間に変わったプレイリストは前のページの側へ動き、
+ * カーソルの次からは返らない。応答の `version` が最初のページと違えばそれが起きたので、最初の
+ * ページから読み直す（contracts/screen-api.md「GET /api/playlists」）。MAX_LIST_RESTARTS 回
+ * 読み直しても揃わなければ、欠けた一覧を返さずに失敗にする。
+ */
+export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
+  for (let restarts = 0; ; restarts++) {
+    const items: PlaylistSummary[] = [];
+    let cursor: string | undefined;
+    let version: string | undefined;
+    let changed = false;
+    do {
+      const page = await listPlaylists({ cursor, limit: MAX_PAGE_SIZE, signal });
+      version ??= page.version;
+      if (page.version !== version) {
+        changed = true;
+        break;
+      }
+      items.push(...page.items);
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    if (!changed) return items;
+    if (restarts >= MAX_LIST_RESTARTS) {
+      throw new Error("The playlists kept changing while they were being listed.");
+    }
+  }
 }
 
 /**

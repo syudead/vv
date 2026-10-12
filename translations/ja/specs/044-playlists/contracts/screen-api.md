@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/contracts/screen-api.md
-sourceHash: 29972b5d51b2f03e59f8275f95848cd5c4fe9f7a8c7ba8bee3c1b5850870af03
+sourceHash: 37c212bbdb29742d13c58a9d2c93713ca00a966830c1164aa40091ffd8dd6122
 ---
 
 # 契約: プレイリストの画面の API {#contract-screen-api-for-playlists}
@@ -11,7 +11,7 @@ sourceHash: 29972b5d51b2f03e59f8275f95848cd5c4fe9f7a8c7ba8bee3c1b5850870af03
 
 | ルート | 目的 |
 | --- | --- |
-| `GET /api/playlists` | プレイリストの一覧 |
+| `GET /api/playlists` | プレイリストの一覧の 1 ページ |
 | `POST /api/playlists` | 1 つ作成する |
 | `GET /api/playlists/{id}` | 1 つのプレイリストと、その表示される項目 |
 | `PATCH /api/playlists/{id}` | 名前を変える |
@@ -32,6 +32,14 @@ PlaylistSummary:
     itemCount: { type: integer }        # shown items (R-4)
     updatedAt: { type: string, format: date-time }
     covers: { type: array, maxItems: 4, items: { $ref: FolderPreview } }   # GET /api/playlists only; see below
+
+PlaylistList:
+  required: [items, total]
+  properties:
+    items: { type: array, items: { $ref: PlaylistSummary } }   # one page, updatedAt desc then id desc
+    total: { type: integer }        # every playlist, independent of paging
+    version: { type: string }       # opaque; changes with any create, delete, rename or item change
+    nextCursor: { type: string }    # only while more follow
 
 Playlist:
   allOf: [PlaylistSummary without covers]
@@ -55,9 +63,11 @@ PlaylistName:
 
 ## `GET /api/playlists` {#get-apiplaylists}
 
-`200 {items: PlaylistSummary[]}`、`updatedAt` の降順。ページングはない: 一覧はサイドバーの画面と追加メニューに使う。
+クエリ: `cursor` (前の応答の `nextCursor`、中身は不透明) と `limit` (1 から 200、既定は 60)。ライブラリの一覧のページングのパラメータである。
 
-各要約は、プレイリスト一覧の画面のカードの絵（[ui-design.md の Playlists screen](../ui-design.md#playlists-screen)）である `covers` を持つ。位置の順の表示される項目がそれぞれ 1 つの `FolderPreview` を出す。動画の項目はその動画を、グループの項目はグループの順でサムネイルを持つ最初のメンバー（そのグループのカードが最初に出すメンバー）を出す。サムネイルを生成済みの動画だけを残し、最大 4 つで、形と `previewUrl` の規則は `LibraryGroup.previews` のものである。空のプレイリスト、または表示される項目がサムネイルを持たないプレイリストは `covers: []` を持つ。見える規則は `itemCount` のもの（R-4）である: 隠れた項目は何も出さない。`POST`、`PATCH`、`GET /api/playlists/{id}`、`PlaylistPlayback.playlist` は `covers` を省く。それらの画面は項目を持つか、絵を必要としない。
+`200 PlaylistList`: `cursor` より後のプレイリストを、`updatedAt` の降順、次に `id` の降順で、最大 `limit` 個返す。`nextCursor` は続きがある間だけ返し、`total` はページングによらないすべてのプレイリストの数であり、`version` は一覧の順を表す不透明なトークンである。cursor はそのページの最後のプレイリスト (`updatedAt`、`id`) を指す。所有者がページを送る間に変わったプレイリストは cursor より上に移り、cursor より後には決して返らないので、サーバーは `version` をプレイリストの数とすべての `updated_at` の和から導く。この 2 つは作成、削除、名前の変更、項目の変更で必ず変わる (`updated_at` は変更のたびに、1 ミリ秒の内でも、厳密に進む)。クライアントは各ページの `version` を最初のページのものと比べ、異なるときは、追加する代わりに最初のページから一覧を読み直す。同じ `version` のページは同じ順を共有するので、重なることも飛ばすこともない。読めない `cursor` は `400 invalid_cursor` であり、範囲外の `limit` は `400 invalid_request` である。
+
+各要約は、返したページの分だけ計算される、プレイリスト一覧の画面のカードの絵（[ui-design.md の Playlists screen](../ui-design.md#playlists-screen)）である `covers` を持つ。位置の順の表示される項目がそれぞれ 1 つの `FolderPreview` を出す。動画の項目はその動画を、グループの項目はグループの順でサムネイルを持つ最初のメンバー（そのグループのカードが最初に出すメンバー）を出す。サムネイルを生成済みの動画だけを残し、最大 4 つで、形と `previewUrl` の規則は `LibraryGroup.previews` のものである。空のプレイリスト、または表示される項目がサムネイルを持たないプレイリストは `covers: []` を持つ。見える規則は `itemCount` のもの（R-4）である: 隠れた項目は何も出さない。`POST`、`PATCH`、`GET /api/playlists/{id}`、`PlaylistPlayback.playlist` は `covers` を省く。それらの画面は項目を持つか、絵を必要としない。
 
 ## `POST /api/playlists`、`PATCH /api/playlists/{id}`、`DELETE /api/playlists/{id}` {#post-apiplaylists-patch-apiplaylistsid-delete-apiplaylistsid}
 
@@ -132,7 +142,7 @@ PlaylistStep:
 
 | 画面 | 呼び出し |
 | --- | --- |
-| プレイリストの一覧の画面 (`/playlists`) | `GET /api/playlists`、`POST /api/playlists` |
+| プレイリストの一覧の画面 (`/playlists`) | 既定の `limit` で `GET /api/playlists`、その後、グリッドの末尾が見えてくるたびにそれぞれの `nextCursor` で読む。`version` が読み込んだページのものと異なるページは捨て、それらの代わりに最初のページを読み直す ([ui-design.md の Paging](../ui-design.md#paging))。`POST /api/playlists` |
 | プレイリストの画面 (`/playlists/{id}`) | `GET`、`PATCH`、`DELETE /api/playlists/{id}`。`move` と項目の `DELETE`。再生は `state: {from: "/playlists/{id}", autoplay: true}` 付きで `/videos/{videoId}?playlist={id}&item={itemId}` を開く。`videoId` は動画か、グループの `openVideoId` である |
-| 追加メニュー (カード、選択バー、動画のページ) | 開いたときに `GET /api/playlists`。`POST /api/playlists/{id}/items`。メニューからプレイリストを作成するのは `POST /api/playlists` の後に追加である |
+| 追加メニュー (カード、選択バー、動画のページ) | 開いたときに `limit=200` で `GET /api/playlists` を読み、最後のページまで `nextCursor` を辿る。メニューは一覧全体を名前でクライアント側で絞るからである (これらのページの `covers` は使わない。メニューのページは少ないので、それを省くパラメータは加えなかった)。ページの `version` が最初のページのものと異なるときは、最初のページから辿り直す。辿り直しは 3 回までで、その後は欠けのある一覧を出さずに失敗する。`POST /api/playlists/{id}/items`。メニューからプレイリストを作成するのは `POST /api/playlists` の後に追加である |
 | `playlist` と `item` 付きの動画のページ、所有者だけ | 開いたとき、動画が終わったとき、通知が次の動画がなくなったことに気づいたときに `GET /api/playlists/{id}/playback`。それらの読み込みのそれぞれと並べて、横の列のプレイリストのパネル（[ui-design.md の Playlist panel](../ui-design.md#playlist-panel)）のために `GET /api/playlists/{id}` を読む。組は両方が同じ `updatedAt` を持つときだけ使い、異なるときは読み直すので（[ui-design.md の One order](../ui-design.md#one-order)）、パネルと `next` は同じ順を示す。どちらの読み込みからの `404` でも文脈を外す。一歩へ移るときは `playlist` を保ち、`item` をその一歩の `itemId` にし、`state.from` を引き継ぐ |

@@ -235,10 +235,12 @@ to the playlist.
 
 A `ListPage` with no toolbar, no band, no aside and no selection bar. The
 header is the `PageHeader` title "Playlists" (`text-xl font-semibold`), the
-count "3 playlists" and, in `actions`, the one `default` `sm` button "New
-playlist" (lucide `Plus`). The body is one `CardGrid` (`size` 1, the library's
-default card width; the screen has no zoom control) or one state block; the
-header stays where it is in every state.
+count "3 playlists" (the response's `total`, every playlist, not only the
+loaded ones) and, in `actions`, the one `default` `sm` button "New playlist"
+(lucide `Plus`). The body is one `CardGrid` (`size` 1, the library's default
+card width; the screen has no zoom control) followed by the `LoadMoreRow`
+while a next page loads or failed, or one state block; the header stays where
+it is in every state.
 
 Each card is `PlaylistCard`, the library group card
 ([017 UI design, Group card](../017-folder-groups/ui-design.md#group-card))
@@ -257,6 +259,28 @@ does not have.
 
 Two playlists may share a name (R-11); two cards with the same name are told
 apart by their art, counts and dates, and nothing merges them.
+
+### Paging
+
+The grid loads as the library grid does: the first page of 60 from
+`GET /api/playlists`, then, when the one-pixel sentinel after the grid comes
+within 600px of the viewport (`IntersectionObserver`, `rootMargin: 600px`),
+the next page from the response's `nextCursor`, appended to the cards. The
+observer is attached again after each page, so a viewport that still reaches
+the sentinel loads the following page without a scroll. The count in the
+header is the response's `total`, so it does not grow as pages load.
+
+The order is by last change, so a playlist changed while the owner pages
+moves ahead of the cursor and would be skipped
+([contracts/screen-api.md, `GET /api/playlists`](contracts/screen-api.md#get-apiplaylists)).
+When a next page's `version` differs from the loaded pages', the screen drops
+that page and reads the first page again in place of the loaded pages; after
+a create it does the same, as the new playlist is first. While that first
+page loads, the loaded cards stay and the `LoadMoreRow` spins; when it fails,
+the cards stay and the `LoadMoreRow` shows "Couldn't load the playlists" with
+`Retry`, which reads the first page again. Once the first page is shown, the
+observer is attached again, so the sentinel loads the rest as the owner
+scrolls, or at once when it is still in view.
 
 ### New playlist
 
@@ -289,6 +313,10 @@ stateDiagram-v2
   LoadFailed --> Loading: Retry
   Empty --> Content: New playlist, 201
   Content --> Content: New playlist, 201
+  Content --> LoadingMore: sentinel in view, nextCursor
+  LoadingMore --> Content: next page appended
+  LoadingMore --> LoadMoreFailed: request failed
+  LoadMoreFailed --> LoadingMore: Retry
 ```
 
 | State | What the screen shows |
@@ -297,10 +325,12 @@ stateDiagram-v2
 | Load failed | `ErrorState` with "Couldn't load the playlists" and `Retry` |
 | Empty | `EmptyState` with lucide `ListVideo`, "No playlists yet", "Create a playlist, then add videos and groups to it from the library." and the `default` `sm` action "New playlist", which opens the same dialog; the header's button is not drawn, so the area has one `default` button |
 | Content | The grid; the header's count and "New playlist" |
+| Loading more | The grid, then the `LoadMoreRow` `Spinner` row "Loading…" ([Paging](#paging)) |
+| Load more failed | The grid kept, then the `LoadMoreRow` `destructive` `Alert` "Couldn't load more: {reason}" with `Retry`, which requests the same page again; when the failed read was the first page again ([Paging](#paging)), the `Alert` reads "Couldn't load the playlists" and `Retry` reads the first page again |
 | Creating | The dialog in its `pending` form over the unchanged grid |
 
-The list is read when the screen opens and after a create; returning from a
-playlist re-reads it (the `Link` leaves the route and the screen mounts
+The first page is read when the screen opens and after a create; returning
+from a playlist re-reads it (the `Link` leaves the route and the screen mounts
 again). It does not refresh on its own while open (R-10).
 
 ## Playlist screen
@@ -485,7 +515,7 @@ flowchart LR
 | Create row | Shown first, before the matches, while the trimmed text is not empty and no playlist's name equals it exactly; it reads "Create "{name}"" with lucide `Plus`. With no match it is the only row |
 | Typed name over 100 code points after trimming | The reason line "Use a name of up to 100 characters" under the field; neither Enter nor a press acts |
 | No playlists and no text | "No playlists yet. Type a name to create one." in place of the list |
-| Loading | "Loading…" in place of the list; `GET /api/playlists` is read each time the popover opens, so a playlist made on another screen is there |
+| Loading | "Loading…" in place of the list; `GET /api/playlists` is read each time the popover opens, followed through `nextCursor` to the last page so the name filter sees every playlist ([contracts/screen-api.md, Client use](contracts/screen-api.md#client-use)), and a playlist made on another screen is there |
 | Load failed | "Couldn't load the playlists" with a `ghost` `sm` "Retry" in place of the list; the field still takes a name, and Enter on a name creates |
 | Choosing a playlist | `POST /api/playlists/{id}/items` with the place's `videoIds` and `folders`; the row shows a `Spinner` in place of its icon until the response |
 | Creating | `POST /api/playlists` with the trimmed name, then the add to the new playlist; "Create "{name}"" shows the `Spinner` |
