@@ -25,8 +25,8 @@ flag_management:
     # 送信が欠けた回（取り消し、送信の失敗）は、前回の値を引き継いで全体が下がって
     # 見えないようにする。
     carryforward: true
-  # 状態はカバレッジを送る go と web にだけ付ける。e2e はテスト結果だけを送る flag で、
-  # 既定の規則に状態を置くと、カバレッジの無い codecov/patch/e2e まで出る。
+  # 状態はカバレッジを送る go と web にだけ付ける。既定の規則に置くと、テスト結果だけに
+  # flag を付けた送信があったとき、カバレッジの無い flag の状態まで出る。
   individual_flags:
     - name: go
       paths:
