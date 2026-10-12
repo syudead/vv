@@ -52,7 +52,7 @@ gains two fields; its states and their transitions are unchanged.
 | Field | Meaning |
 | --- | --- |
 | `Source` | `frame` or `thumbnail`: what the owner chose |
-| `PositionMs` | The frame's position when the image is a frame (chosen, recorded or automatic); absent when it is a stored source |
+| `PositionMs` | The position the frame was taken at when the image is a frame (chosen, recorded, automatic, or `0` after the first-frame fallback); absent when it is a stored source |
 
 The session's `Frame` holds the chosen image whichever its source, and the
 mask is checked against its size as before.

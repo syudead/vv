@@ -36,7 +36,7 @@ flowchart LR
 | Concern | Approach |
 | --- | --- |
 | Upload | One owner-only multipart route, applied within the request through the same apply as a generated image ([R-1](research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image), [contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-image)) |
-| What is accepted | PNG, JPEG or still WebP up to 64 MiB and 120 megapixels, one decode at a time ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)) |
+| What is accepted | PNG, JPEG or still WebP up to 64 MiB and 120 megapixels; one upload at a time decodes its original, in the check and in the apply's fits ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)) |
 | Re-editing | The row keeps the applied image's source at up to 2048 px and its origin ([R-3](research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin), [data-model.md](data-model.md)) |
 | Edit source | `source` on starting an edit: the frame on screen, or the current thumbnail ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)) |
 | Naming the image | `thumbnailImage` (`generated` or `uploaded`) replaces `thumbnailGenerated` ([R-5](research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
@@ -76,8 +76,8 @@ previews.
   ([data-model.md, Migration](data-model.md#migration)); no new Go or Web
   dependency.
 - The first route that decodes an image over 64 megapixels in the Go process:
-  a 120-megapixel PNG decodes to 480 MB, so the upload check runs one at a
-  time ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)).
+  a 120-megapixel PNG decodes to 480 MB, so one upload at a time runs the
+  check and the apply's two fits, which decode the original again ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)).
 - The e2e run needs a PNG, a JPEG and a WebP to upload; ffmpeg builds may
   lack libwebp, so the WebP is a checked-in fixture file.
 
@@ -123,9 +123,9 @@ from an uploaded photo are checked by a person.
 | Boundary | What it owns in this feature |
 | --- | --- |
 | `internal/domain` | The upload limits and their errors, `ThumbnailImageOrigin`, `Video.ThumbnailImageOrigin`, the edit source |
-| `internal/media` | `FitThumbnailSource` (fit to the aspect at up to 2048 px) and the automatic thumbnail position for a frame-based source |
+| `internal/media` | `FitThumbnailSource` (fit to the aspect at up to 2048 px) and the thumbnail job's frame rule (the automatic position, then the first frame) for a frame-based source |
 | `internal/store` | The migration, the `source` and `origin` columns, reading the source |
-| `internal/app` | The upload check under one mutex, `Ingest.ApplyThumbnailImage` writing the source and origin, `ThumbnailEdits.Start` with a source |
+| `internal/app` | The upload check, the upload gate held for the check and for the apply's fits, `Ingest.ApplyThumbnailImage` writing the source and origin, `ThumbnailEdits.Start` with a source |
 | `internal/httpapi`, `api/openapi.yaml` | The upload route, the changed start route, the `Video` field, the multipart reader shared with the run route |
 | `web/src/api`, `web/src/player`, `web/src/i18n` | The client functions, the upload entry and item, the edit source choice, the catalog text |
 | `web/e2e` | The upload fixtures and the browser test |
@@ -187,11 +187,14 @@ is applied.
 ### Upload an image as the video's thumbnail through the screen API
 
 **Scope**: `POST /api/videos/{id}/thumbnail-image` with its multipart reading
-shared with the run route, the limits and errors in `internal/domain`, the
-upload check (format, still WebP, size, pixel cap, decoded to the end) under
-one mutex in `internal/app`, the apply with origin `uploaded` inside the
+shared with the run route (64 MiB for the `image` part, 1 MiB more for the
+body), the limits and errors in `internal/domain`, the upload check (format,
+still WebP, size, pixel cap, decoded to the end) in `internal/app`, the
+process-wide upload gate held for the check and again, inside the generation
+lock, for the apply's two fits, the apply with origin `uploaded` inside the
 generation lock with the content key read at the start of the request, the
-client function, and the "Uploaded images" section of thumbnail-editing.md
+check and the apply under a five-minute context detached from the client's
+cancellation once the body has arrived, the client function, and the "Uploaded images" section of thumbnail-editing.md
 ([R-1](research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image),
 [R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time),
 [contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-image)).
@@ -202,21 +205,26 @@ client function, and the "Uploaded images" section of thumbnail-editing.md
 `task generate`; handler tests show a PNG, a JPEG and a WebP each answer `200`
 with `thumbnailImage: "uploaded"` and a new `thumbnailUrl` version, a text
 file, a truncated JPEG and an animated WebP answer `400
-thumbnail_upload_invalid`, a body over 64 MiB and an image whose header says
-12000 × 11000 answer `400 thumbnail_upload_too_large` with `limit`, nothing is
+thumbnail_upload_invalid`, an `image` part over 64 MiB and an image whose
+header says 12000 × 11000 answer `400 thumbnail_upload_too_large` with
+`limit`, an `image` part of exactly 64 MiB is not refused for its size, a
+client that disconnects after sending the whole body still gets the
+thumbnail applied, nothing is
 written in any `400`, a video whose content changed between the read and the
 lock answers `409 content_changed`, a guest gets `401`, and
-`TestAccessClassificationMatchesOpenAPISecurity` passes; app tests show a
-second upload waits for the first's check and an upload that waits on the
-lock behind a position change still wins.
+`TestAccessClassificationMatchesOpenAPISecurity` passes; app tests with a
+blocking fake fitter show a second upload's check waits while the first is
+fitting and a second upload's fit waits while the first is checked, an upload
+waiting on its video's lock does not hold the gate, and an upload that waits
+on the lock behind a position change still wins.
 
 ### Start a thumbnail edit from the current thumbnail
 
 **Scope**: `source` and the optional `positionMs` of
 `POST /api/videos/{id}/thumbnail-edits`, `ThumbnailEdits.Start` taking the
 row's source (or `image` for a row without one) as a PNG, or extracting the
-frame at the recorded position or the automatic position exposed by
-`internal/media`, `source` and `positionMs` in `ThumbnailEdit`, the client
+frame at the recorded position, or by the thumbnail job's rule exposed by
+`internal/media` (the automatic position, then the first frame), `source` and `positionMs` in `ThumbnailEdit`, the client
 function, and the "Edit source" section of thumbnail-editing.md
 ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame),
 [contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-edits-changed)).
@@ -228,7 +236,9 @@ function, and the "Edit source" section of thumbnail-editing.md
 applied image answers `ready` with the stored source's pixel size and
 `positionMs` absent, and the frame route serves a PNG; `thumbnail` with a
 position and no image extracts at that position and answers it; `thumbnail`
-with neither extracts at the automatic position of the video's duration;
+with neither extracts at the automatic position of the video's duration and
+answers it, and when no frame comes from that position extracts the first
+frame and answers `positionMs: 0`;
 `frame` without `positionMs` answers `400`; a revert after the session
 started leaves the session's image unchanged and the run still uses it;
 handler tests show each status of the contract and a guest's `401`.

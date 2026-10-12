@@ -18,7 +18,11 @@ This file records only the decisions this feature adds.
 `Ingest.ApplyThumbnailImage` with origin `uploaded`, inside the generation
 lock, with the video's content key read at the start of the request. Nothing
 touches the disk before the fitted image is published, and the request
-answers the `Video` once the thumbnail is in place.
+answers the `Video` once the thumbnail is in place. The request's context is
+used only to read the body: once the body has arrived in full, the check and
+the apply run under a context detached from the client's cancellation and
+bounded at five minutes, so a page that goes away does not abort an upload it
+finished sending, and server shutdown waits for that handler as for any other.
 
 | Option | Verdict |
 | --- | --- |
@@ -31,16 +35,27 @@ content check, the fit, the stash and publish, the row, the event. Reading the
 content key before the body arrives and passing it to the apply answers the
 edge case "the video is gone or its location holds other content" the way the
 edit session does, and the lock makes the upload, a position change and a
-generated image's apply "last confirmed wins".
+generated image's apply "last confirmed wins". The apply's fits and store
+writes take the context they are given and stop when it is cancelled, so
+running them under the request's context would drop an upload whose page
+closed after sending it; the five-minute bound covers waiting for the upload
+gate ([R-2](#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))
+and the generation lock, and the two fits of at most 60 seconds each.
 
 ## R-2: An upload is a PNG, JPEG or still WebP of at most 64 MiB and 120 megapixels, decoded one at a time
 
-**Decision**: The upload must be a PNG, JPEG or WebP of at most 64 MiB whose
-header says at most 120 million pixels, and it is decoded to the end before
-anything is applied; a failure anywhere answers `400` with
+**Decision**: The `image` part must be a PNG, JPEG or WebP of at most 64 MiB
+whose header says at most 120 million pixels, and it is decoded to the end
+before anything is applied; a failure anywhere answers `400` with
 `thumbnail_upload_too_large` (bytes or pixels, with `limit`) or
 `thumbnail_upload_invalid` (not one of the formats, truncated, corrupt or
-animated). One upload is decoded at a time per process.
+animated). The 64 MiB applies to the part; the whole body may be 1 MiB larger
+for the multipart boundaries and part headers, as the run route's body limit
+adds room to its parts' limits. One process-wide upload gate admits one
+upload at a time to every step that decodes the original: the check, and
+again, inside the generation lock, the apply's two fits (Go decodes a WebP to
+hand ffmpeg a PNG, and ffmpeg decodes the image for each fit). An upload never
+holds the gate while it waits for the lock.
 
 | Option | Verdict |
 | --- | --- |
@@ -53,7 +68,15 @@ animated). One upload is decoded at a time per process.
 and the few images over it (scans, panoramas) are the "extreme" case the Issue
 allows refusing with a reason. A 120-megapixel PNG decodes to 480 MB and a
 JPEG to 180 MB, which is why only one upload is decoded at a time; the
-reference image and the provider's output keep their limits.
+reference image and the provider's output keep their limits. A gate around
+the check alone would not bound memory: the apply's fits decode the original
+again, outside the check, and the generation lock is per content key, so two
+uploads to different videos could fit at once, or one could fit while the
+next is checked. Taking the gate after the lock, and releasing it between the
+check and the lock, means an upload waiting behind a thumbnail job of its own
+video does not stop uploads to other videos. The generated image's apply does
+not take the gate; its input is the provider's output, already bounded by the
+edit's checks.
 
 ## R-3: The row keeps the applied image's source at up to 2048 px and its origin
 
@@ -82,8 +105,11 @@ row written before this feature has no source; an edit then starts from its
 **Decision**: Starting an edit takes a `source`: `frame`, with the player's
 `positionMs` as today, or `thumbnail`. For `thumbnail`, the session's image is
 the row's source when an image is applied, otherwise the frame at the
-recorded position, otherwise the frame at the automatic position
-`internal/media` uses for the thumbnail. The session holds the image in
+recorded position, otherwise the frame the thumbnail job takes with no
+recorded position: the one at the automatic position `internal/media` uses,
+or the first frame when that position yields none, as `media.Thumbnail` falls
+back. The session's `positionMs` is the position the frame was actually taken
+at, `0` after the fallback. The session holds the image in
 memory from then on, so a later upload, position change or revert does not
 change the edit in progress, and its apply is the last confirmed operation.
 
@@ -98,6 +124,7 @@ flowchart LR
   row -->|no| set{Position set?}
   set -->|yes| at[Frame at position]
   set -->|no| auto[Frame at automatic position]
+  auto -->|no frame there| first[First frame]
 ```
 
 | Option | Verdict |
@@ -109,8 +136,12 @@ flowchart LR
 
 **Rationale**: The session already keeps its image in memory and the
 workflows' `vv:frame` takes any PNG, so a stored source enters the run exactly
-as an extracted frame does. The automatic position is the rule the thumbnail
-job applies, so the frame the owner edits is the one the thumbnail shows.
+as an extracted frame does. The automatic position and its first-frame
+fallback are the rule the thumbnail job applies, so the frame the owner edits
+is the one the thumbnail shows; extracting at the automatic position alone
+would answer `thumbnail_frame_unavailable` for exactly the videos whose
+thumbnail is the first frame. `internal/media` keeps the automatic position
+and the fallback in one place that both the thumbnail job and the edit use.
 
 ## R-5: `thumbnailImage` names the applied image's origin in place of `thumbnailGenerated`
 
