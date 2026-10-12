@@ -139,6 +139,7 @@ const errorCodes = {
   invalid_credentials: "The username or password is incorrect.",
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
   account_already_configured: "The account is already set up.",
+  provider_failed: "ComfyUI couldn't start the edit.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -229,6 +230,23 @@ const errorReasons = {
     "Auto-tagging is turned off. Turn it on under Settings, Auto-tagging.",
   comfyui_url_invalid: "Enter an http or https URL",
   comfyui_api_key_missing: "Enter the Comfy Cloud API key",
+  thumbnail_edit_not_found:
+    "This edit has ended, because it was opened again elsewhere or left idle. Close it and start again.",
+  thumbnail_edit_not_ready: "ComfyUI isn't set up",
+  thumbnail_edit_mask_invalid: "The painting doesn't match the frame",
+  thumbnail_edit_reference_invalid: "The reference image can't be read",
+  thumbnail_edit_no_result: "There is no generated image yet",
+  thumbnail_image_invalid: "The generated image can't be read",
+  content_changed: "The video changed while you were editing",
+  unreachable: "ComfyUI can't be reached",
+  unauthorized: "Comfy Cloud rejected the API key",
+  insufficient_credits: "Comfy Cloud has no credits left",
+  missing_models:
+    "ComfyUI is missing files the edit needs; test the connection in Settings to see which",
+  workflow_rejected: "ComfyUI rejected the workflow",
+  run_failed: "The edit failed in ComfyUI",
+  no_output: "ComfyUI returned no image",
+  timed_out: "No result after 10 minutes",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

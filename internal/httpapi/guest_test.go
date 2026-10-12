@@ -52,6 +52,8 @@ type guestFixture struct {
 	transcode *fakeTranscoder
 	// thumbnails は代表サムネイルの位置の設定先の代わりである（video_overrides_test.go）。
 	thumbnails *fakeThumbnailPicker
+	// edits はサムネイルの編集のセッションで、提供元・コマ・適用だけが偽である（thumbnail_edits_test.go）。
+	edits *editFakes
 }
 
 const guestSecretTag = "秘密の名前"
@@ -66,6 +68,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		library := db.Library()
 		f.thumbnails = &fakeThumbnailPicker{db: db}
+		f.edits = newEditFakes(db)
 		return Options{
 			Videos:     library,
 			Folders:    library,
@@ -82,6 +85,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。
 			ThumbnailPicker: f.thumbnails,
+			ThumbnailEdits:  f.edits.edits,
 			Catalog:         app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
 			Artifacts:       artifacts,
 			Transcoder:      f.transcode,

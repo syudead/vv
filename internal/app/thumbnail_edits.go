@@ -1,0 +1,588 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"image"
+	_ "image/jpeg" // 参考画像の形式として読めるようにする。
+	"image/png"
+	"log/slog"
+	"sync"
+	"time"
+
+	"github.com/syudead/vv/internal/domain"
+)
+
+// サムネイルの編集のセッション（specs/045-comfyui-thumbnails/data-model.md の Edit session、
+// research.md R-4・R-8・R-10・R-11、docs/design-docs/thumbnail-editing.md）。動画ごとに 1 つを
+// メモリに持ち、画面が読むたびに提供元の状態を問い合わせる。イベントは出さない。
+
+// thumbnailEditSweepInterval は、読まれないセッションと時間切れの実行を探す間隔である。
+const thumbnailEditSweepInterval = 30 * time.Second
+
+// thumbnailEditCloseTimeout は、止めるときに進んでいる実行を中止して回る時間の上限である。
+const thumbnailEditCloseTimeout = 10 * time.Second
+
+// thumbnailEditProviderTimeout は、状態の読み取り・中止・出力の取得の 1 回の上限である。
+const thumbnailEditProviderTimeout = 30 * time.Second
+
+// ComfyUISettingsReader は ComfyUI の接続先を読む。internal/store の *SettingsStore が満たす。
+type ComfyUISettingsReader interface {
+	ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error)
+}
+
+// ThumbnailFrameSource は動画のファイル path の positionMs の場面を、長辺を動画の長辺
+// （上限 domain.ThumbnailFrameMaxSide）にした PNG で取り出す（research.md R-8）。
+// internal/media の *Assets が満たす。
+type ThumbnailFrameSource interface {
+	FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
+}
+
+// ThumbnailImageApplier は画像を動画のサムネイルとして適用する。*Ingest が満たす。動画が消えたか
+// 別の内容を持てば domain.ErrContentChanged、画像を読めなければ domain.ErrThumbnailImageInvalid を返す。
+type ThumbnailImageApplier interface {
+	ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
+}
+
+// ImageEditProgressSource は、ImageEditor が実行のステップの進み具合も報告できるときに満たす
+// 追加の口である。報告が無ければ ok が false である（research.md R-5）。
+type ImageEditProgressSource interface {
+	Progress(job domain.ImageEditJob) (progress domain.ImageEditProgress, ok bool)
+}
+
+// ThumbnailEditsOptions は ThumbnailEdits を組み立てる部品である。
+type ThumbnailEditsOptions struct {
+	Settings ComfyUISettingsReader
+	Editor   ImageEditor
+	Frames   ThumbnailFrameSource
+	Applier  ThumbnailImageApplier
+	Logger   *slog.Logger
+	// Now は今の時刻を返す。nil なら time.Now。テストが進める。
+	Now func() time.Time
+}
+
+// ThumbnailEdits は動画ごとに 1 つの編集のセッションをメモリに持つ。再起動ですべて消える。
+type ThumbnailEdits struct {
+	settings ComfyUISettingsReader
+	editor   ImageEditor
+	progress ImageEditProgressSource
+	frames   ThumbnailFrameSource
+	applier  ThumbnailImageApplier
+	logger   *slog.Logger
+	now      func() time.Time
+
+	// mu は byID と byVideo を守る。セッションの mu を持ったまま取ってよいが、逆はしない。
+	mu      sync.Mutex
+	byID    map[string]*thumbnailEditSession
+	byVideo map[int64]string
+}
+
+// thumbnailEditSession は 1 つの編集のセッションである。mu が下の値を守る。
+type thumbnailEditSession struct {
+	mu         sync.Mutex
+	id         string
+	videoID    int64
+	contentKey string
+	frame      domain.ThumbnailFrame
+	ended      bool
+	lastReadAt time.Time
+	run        *thumbnailEditRun
+	result     []byte
+}
+
+// thumbnailEditRun はセッションの今の実行である。送るのに失敗した実行は job を持たず、failed である。
+type thumbnailEditRun struct {
+	job         domain.ImageEditJob
+	submitted   bool
+	state       domain.ThumbnailEditState
+	submittedAt time.Time
+	endedAt     time.Time
+	progress    *domain.ImageEditProgress
+	failure     *domain.ImageEditError
+}
+
+// inProgress は提供元で実行が進んでいるかを返す。
+func (r *thumbnailEditRun) inProgress() bool {
+	return r != nil && r.submitted && !r.state.Terminal()
+}
+
+// NewThumbnailEdits は編集のセッションの置き場を組み立てる。
+func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	now := opts.Now
+	if now == nil {
+		now = time.Now
+	}
+	progress, _ := opts.Editor.(ImageEditProgressSource)
+	return &ThumbnailEdits{
+		settings: opts.Settings,
+		editor:   opts.Editor,
+		progress: progress,
+		frames:   opts.Frames,
+		applier:  opts.Applier,
+		logger:   logger,
+		now:      now,
+		byID:     map[string]*thumbnailEditSession{},
+		byVideo:  map[int64]string{},
+	}
+}
+
+// Start は動画 video の positionMs の場面をファイル path から取り出し、ready のセッションを始める。
+// 同じ動画のセッションがあれば、その実行を提供元で中止してから終える（R-11）。接続先が保存されて
+// いなければ domain.ErrThumbnailEditNotReady、内容を読めていない動画は domain.ErrNotFound、位置は
+// domain.CheckThumbnailPosition の誤り、コマを取れなければ domain.ErrThumbnailFrameUnavailable を返す。
+func (e *ThumbnailEdits) Start(ctx context.Context, video domain.Video, path string, positionMs int64) (domain.ThumbnailEdit, error) {
+	conn, err := e.settings.ComfyUISettings(ctx)
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	if !conn.Saved() {
+		return domain.ThumbnailEdit{}, domain.ErrThumbnailEditNotReady
+	}
+	if video.ContentKey == "" {
+		return domain.ThumbnailEdit{}, domain.ErrNotFound
+	}
+	if err := domain.CheckThumbnailPosition(video, positionMs); err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	frame, err := e.frames.FrameAt(ctx, path, positionMs)
+	if err != nil {
+		return domain.ThumbnailEdit{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
+	}
+	id, err := newThumbnailEditID()
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	session := &thumbnailEditSession{
+		id: id, videoID: video.ID, contentKey: video.ContentKey, frame: frame, lastReadAt: e.now(),
+	}
+	view := e.view(session)
+
+	e.mu.Lock()
+	previous := e.byID[e.byVideo[video.ID]]
+	if previous != nil {
+		delete(e.byID, previous.id)
+	}
+	e.byID[id] = session
+	e.byVideo[video.ID] = id
+	e.mu.Unlock()
+
+	if previous != nil {
+		previous.mu.Lock()
+		e.end(ctx, previous)
+		previous.mu.Unlock()
+	}
+	return view, nil
+}
+
+// Get はセッションの今の姿を返す。実行が進んでいれば提供元の状態を読み、成功していれば出力を
+// 取る。読み取りはページの生存の知らせを兼ねる（R-4）。終わったセッションは
+// domain.ErrThumbnailEditNotFound である。
+func (e *ThumbnailEdits) Get(ctx context.Context, id string) (domain.ThumbnailEdit, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	defer session.mu.Unlock()
+	e.refresh(ctx, session)
+	return e.view(session), nil
+}
+
+// Frame はセッションのコマの PNG を返す。
+func (e *ThumbnailEdits) Frame(ctx context.Context, id string) ([]byte, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	defer session.mu.Unlock()
+	return session.frame.PNG, nil
+}
+
+// Result は成功した実行の出力の画像を返す。無ければ domain.ErrThumbnailEditNoResult である。
+func (e *ThumbnailEdits) Result(ctx context.Context, id string) ([]byte, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	defer session.mu.Unlock()
+	if !hasResult(session) {
+		return nil, domain.ErrThumbnailEditNoResult
+	}
+	return session.result, nil
+}
+
+// StartRun は入力を確かめ、接続先の今の値をこの実行の写しにして提供元へ送る。進んでいる実行が
+// あれば先に中止する（R-11）。マスクと参考画像は何も上げる前に確かめ、合わなければ
+// domain.ErrThumbnailEditMaskInvalid か domain.ErrThumbnailEditReferenceInvalid を返す。接続先が
+// 消されていれば domain.ErrThumbnailEditNotReady である。提供元が受け付けなければセッションを
+// 同じ理由の failed にし、*domain.ImageEditError を返す。
+func (e *ThumbnailEdits) StartRun(ctx context.Context, id string, input domain.ThumbnailEditRunInput) (domain.ThumbnailEdit, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	defer session.mu.Unlock()
+	if err := checkThumbnailEditMask(input.Mask, session.frame); err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	if err := checkThumbnailEditReference(input.Reference); err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	conn, err := e.settings.ComfyUISettings(ctx)
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	if !conn.Saved() {
+		return domain.ThumbnailEdit{}, domain.ErrThumbnailEditNotReady
+	}
+	if session.run.inProgress() {
+		e.cancelRun(ctx, session)
+	}
+	session.result = nil
+
+	job, err := e.editor.Start(ctx, conn, domain.ImageEditInput{
+		Frame: session.frame.PNG, Mask: input.Mask, Reference: input.Reference, Instruction: input.Instruction,
+	})
+	now := e.now()
+	if err != nil {
+		failure := &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
+		if !errors.As(err, &failure) {
+			e.logger.Warn("could not start a thumbnail edit run", slog.Any("error", err))
+		}
+		session.run = &thumbnailEditRun{state: domain.ThumbnailEditFailed, submittedAt: now, endedAt: now, failure: failure}
+		return domain.ThumbnailEdit{}, err
+	}
+	session.run = &thumbnailEditRun{job: job, submitted: true, state: domain.ThumbnailEditQueued, submittedAt: now}
+	return e.view(session), nil
+}
+
+// Cancel は進んでいる実行を提供元で中止し、cancelled にする。進んでいなければ今の姿を返す。
+// サムネイルは変えない。
+func (e *ThumbnailEdits) Cancel(ctx context.Context, id string) (domain.ThumbnailEdit, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return domain.ThumbnailEdit{}, err
+	}
+	defer session.mu.Unlock()
+	if session.run.inProgress() {
+		e.cancelRun(ctx, session)
+	}
+	return e.view(session), nil
+}
+
+// Apply は成功した実行の画像をサムネイルとして適用し、セッションを終える（R-10）。succeeded で
+// なければ domain.ErrThumbnailEditNoResult で、セッションは残る。動画が消えたか別の内容を持てば
+// domain.ErrContentChanged でセッションを終え、画像を読めなければ domain.ErrThumbnailImageInvalid
+// でセッションは残る。
+func (e *ThumbnailEdits) Apply(ctx context.Context, id string) (domain.Video, error) {
+	session, err := e.acquire(ctx, id)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	defer session.mu.Unlock()
+	if !hasResult(session) {
+		return domain.Video{}, domain.ErrThumbnailEditNoResult
+	}
+	video, err := e.applier.ApplyThumbnailImage(ctx, session.videoID, session.contentKey, session.result)
+	if errors.Is(err, domain.ErrContentChanged) {
+		e.end(ctx, session)
+		return domain.Video{}, err
+	}
+	if err != nil {
+		return domain.Video{}, err
+	}
+	e.end(ctx, session)
+	return video, nil
+}
+
+// Discard は進んでいる実行を提供元で中止し、セッションを捨てる。終わったセッションでも成功する。
+func (e *ThumbnailEdits) Discard(ctx context.Context, id string) {
+	e.mu.Lock()
+	session := e.byID[id]
+	e.mu.Unlock()
+	if session == nil {
+		return
+	}
+	session.mu.Lock()
+	defer session.mu.Unlock()
+	if !session.ended {
+		e.end(ctx, session)
+	}
+}
+
+// Run は ctx が終わるまで、読まれないセッションと時間切れの実行を一定の間隔で片付ける。ctx が
+// 終わったら、進んでいる実行を提供元で中止してすべてのセッションを終える。
+func (e *ThumbnailEdits) Run(ctx context.Context) {
+	ticker := time.NewTicker(thumbnailEditSweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), thumbnailEditCloseTimeout)
+			e.Close(closeCtx)
+			cancel()
+			return
+		case <-ticker.C:
+			e.Sweep(ctx)
+		}
+	}
+}
+
+// Sweep は 5 分読まれないセッションを、進んでいる実行を中止してから終え（R-4）、送ってから 10 分
+// 終わらない実行を中止して timed_out で失敗させる（R-11）。
+func (e *ThumbnailEdits) Sweep(ctx context.Context) {
+	for _, session := range e.sessions() {
+		session.mu.Lock()
+		switch {
+		case session.ended:
+		case e.idle(session):
+			e.end(ctx, session)
+		default:
+			e.checkTimeLimit(ctx, session)
+		}
+		session.mu.Unlock()
+	}
+}
+
+// Close は進んでいる実行を提供元で中止し、すべてのセッションを終える。
+func (e *ThumbnailEdits) Close(ctx context.Context) {
+	for _, session := range e.sessions() {
+		session.mu.Lock()
+		if !session.ended {
+			e.end(ctx, session)
+		}
+		session.mu.Unlock()
+	}
+}
+
+// sessions は今あるセッションの写しを返す。
+func (e *ThumbnailEdits) sessions() []*thumbnailEditSession {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	sessions := make([]*thumbnailEditSession, 0, len(e.byID))
+	for _, session := range e.byID {
+		sessions = append(sessions, session)
+	}
+	return sessions
+}
+
+// acquire はセッション id の錠を取り、読んだ時刻を今にして返す。無いか、終わったか、5 分読まれて
+// いなければ domain.ErrThumbnailEditNotFound を返す。読まれていなかったセッションはここで終える。
+func (e *ThumbnailEdits) acquire(ctx context.Context, id string) (*thumbnailEditSession, error) {
+	e.mu.Lock()
+	session := e.byID[id]
+	e.mu.Unlock()
+	if session == nil {
+		return nil, domain.ErrThumbnailEditNotFound
+	}
+	session.mu.Lock()
+	if session.ended {
+		session.mu.Unlock()
+		return nil, domain.ErrThumbnailEditNotFound
+	}
+	if e.idle(session) {
+		e.end(ctx, session)
+		session.mu.Unlock()
+		return nil, domain.ErrThumbnailEditNotFound
+	}
+	session.lastReadAt = e.now()
+	return session, nil
+}
+
+// idle はセッションが 5 分読まれていないかを返す。
+func (e *ThumbnailEdits) idle(session *thumbnailEditSession) bool {
+	return e.now().Sub(session.lastReadAt) >= domain.ThumbnailEditIdleLimit
+}
+
+// end は進んでいる実行を提供元で中止し、セッションを置き場から外して終える。セッションの錠を
+// 持って呼ぶ。
+func (e *ThumbnailEdits) end(ctx context.Context, session *thumbnailEditSession) {
+	if session.run.inProgress() {
+		e.cancelRun(ctx, session)
+	}
+	session.ended = true
+	session.frame = domain.ThumbnailFrame{}
+	session.result = nil
+	e.mu.Lock()
+	if e.byID[session.id] == session {
+		delete(e.byID, session.id)
+	}
+	if e.byVideo[session.videoID] == session.id {
+		delete(e.byVideo, session.videoID)
+	}
+	e.mu.Unlock()
+}
+
+// cancelRun は進んでいる実行を提供元で中止し、cancelled にする。提供元が中止を受け付けなくても
+// vv の側では中止したものとして扱う。ページを離れた要求の取り消しに引きずられないよう、ctx の
+// 取り消しは引き継がず、期限（止めるときの猶予）だけを引き継ぐ。
+func (e *ThumbnailEdits) cancelRun(ctx context.Context, session *thumbnailEditSession) {
+	run := session.run
+	cancelCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), thumbnailEditProviderTimeout)
+	defer cancel()
+	if deadline, ok := ctx.Deadline(); ok {
+		var stop context.CancelFunc
+		cancelCtx, stop = context.WithDeadline(cancelCtx, deadline)
+		defer stop()
+	}
+	if err := e.editor.Cancel(cancelCtx, run.job, run.state); err != nil {
+		e.logger.Warn("could not cancel a thumbnail edit run", slog.Int64("video", session.videoID), slog.Any("error", err))
+	}
+	e.finish(run, domain.ThumbnailEditCancelled, nil)
+}
+
+// checkTimeLimit は送ってから 10 分たっても終わらない実行を中止し、timed_out で失敗させる。
+// 時間切れなら true を返す。
+func (e *ThumbnailEdits) checkTimeLimit(ctx context.Context, session *thumbnailEditSession) bool {
+	run := session.run
+	if !run.inProgress() || e.now().Sub(run.submittedAt) < domain.ThumbnailEditRunLimit {
+		return false
+	}
+	e.cancelRun(ctx, session)
+	e.finish(run, domain.ThumbnailEditFailed, &domain.ImageEditError{
+		Reason: domain.ImageEditTimedOut, Message: "no result 10 minutes after the run was submitted",
+	})
+	return true
+}
+
+// refresh は進んでいる実行の状態を提供元から読み、成功していれば出力を取る。状態を読めないときは
+// 前の状態のままにし、次の読み取りで読み直す。
+func (e *ThumbnailEdits) refresh(ctx context.Context, session *thumbnailEditSession) {
+	run := session.run
+	if !run.inProgress() || e.checkTimeLimit(ctx, session) {
+		return
+	}
+	readCtx, cancel := context.WithTimeout(ctx, thumbnailEditProviderTimeout)
+	defer cancel()
+	state, failure, err := e.editor.State(readCtx, run.job, run.state)
+	if err != nil {
+		e.logger.Debug("could not read a thumbnail edit run", slog.Int64("video", session.videoID), slog.Any("error", err))
+		return
+	}
+	if e.progress != nil {
+		if progress, ok := e.progress.Progress(run.job); ok {
+			run.progress = &progress
+		}
+	}
+	switch state {
+	case domain.ThumbnailEditSucceeded:
+		output, err := e.editor.Output(readCtx, run.job)
+		if err != nil {
+			e.finish(run, domain.ThumbnailEditFailed, asImageEditError(err))
+			return
+		}
+		session.result = output
+		e.finish(run, domain.ThumbnailEditSucceeded, nil)
+	case domain.ThumbnailEditFailed:
+		if failure == nil {
+			failure = &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
+		}
+		e.finish(run, domain.ThumbnailEditFailed, failure)
+	case domain.ThumbnailEditCancelled:
+		e.finish(run, domain.ThumbnailEditCancelled, nil)
+	default:
+		run.state = state
+	}
+}
+
+// finish は実行を終わった状態 state にする。
+func (e *ThumbnailEdits) finish(run *thumbnailEditRun, state domain.ThumbnailEditState, failure *domain.ImageEditError) {
+	run.state = state
+	run.failure = failure
+	run.endedAt = e.now()
+}
+
+// view はセッションの今の姿を返す。セッションの錠を持って呼ぶ。
+func (e *ThumbnailEdits) view(session *thumbnailEditSession) domain.ThumbnailEdit {
+	view := domain.ThumbnailEdit{
+		ID: session.id, VideoID: session.videoID, State: domain.ThumbnailEditReady,
+		FrameWidth: session.frame.Width, FrameHeight: session.frame.Height,
+		HasResult: hasResult(session),
+	}
+	run := session.run
+	if run == nil {
+		return view
+	}
+	view.State = run.state
+	end := e.now()
+	if run.state.Terminal() {
+		end = run.endedAt
+	}
+	elapsed := max(end.Sub(run.submittedAt), 0)
+	view.Elapsed = &elapsed
+	if run.progress != nil {
+		progress := *run.progress
+		view.Progress = &progress
+	}
+	if run.failure != nil {
+		failure := *run.failure
+		view.Error = &failure
+	}
+	return view
+}
+
+// hasResult はセッションに適用できる画像があるかを返す。
+func hasResult(session *thumbnailEditSession) bool {
+	return session.run != nil && session.run.state == domain.ThumbnailEditSucceeded && session.result != nil
+}
+
+// asImageEditError は提供元の誤り err を失敗の理由にする。理由を持たなければ run_failed である。
+func asImageEditError(err error) *domain.ImageEditError {
+	var failure *domain.ImageEditError
+	if errors.As(err, &failure) {
+		return failure
+	}
+	return &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
+}
+
+// checkThumbnailEditMask は、マスク mask が nil か、コマ frame と同じ大きさの PNG かを確かめる。
+func checkThumbnailEditMask(mask []byte, frame domain.ThumbnailFrame) error {
+	if mask == nil {
+		return nil
+	}
+	config, err := png.DecodeConfig(bytes.NewReader(mask))
+	if err != nil || config.Width != frame.Width || config.Height != frame.Height {
+		return domain.ErrThumbnailEditMaskInvalid
+	}
+	return nil
+}
+
+// checkThumbnailEditReference は、参考画像 reference が nil か、上限以下の PNG・JPEG・WebP かを
+// 確かめる。WebP は標準ライブラリで読めないので、RIFF の見出しで見分ける。
+func checkThumbnailEditReference(reference []byte) error {
+	if reference == nil {
+		return nil
+	}
+	if len(reference) == 0 || len(reference) > domain.ThumbnailEditMaxReferenceBytes {
+		return domain.ErrThumbnailEditReferenceInvalid
+	}
+	if isWebP(reference) {
+		return nil
+	}
+	_, format, err := image.DecodeConfig(bytes.NewReader(reference))
+	if err != nil || (format != "png" && format != "jpeg") {
+		return domain.ErrThumbnailEditReferenceInvalid
+	}
+	return nil
+}
+
+// isWebP は data が WebP の RIFF の見出しで始まるかを返す。
+func isWebP(data []byte) bool {
+	return len(data) > 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WEBP"
+}
+
+// newThumbnailEditID は 128 ビットの乱数のセッションの識別子を返す。
+func newThumbnailEditID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", fmt.Errorf("cannot make a thumbnail edit id: %w", err)
+	}
+	return hex.EncodeToString(raw[:]), nil
+}

@@ -100,6 +100,9 @@ export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];
 export type ThumbnailEditReadiness = components["schemas"]["ThumbnailEditReadiness"];
+export type ThumbnailEdit = components["schemas"]["ThumbnailEdit"];
+export type ThumbnailEditState = components["schemas"]["ThumbnailEditState"];
+export type ThumbnailEditFailure = components["schemas"]["ThumbnailEditFailure"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
   components["schemas"]["UpdateAutoTaggingSettingsRequest"];
@@ -955,6 +958,124 @@ export function getThumbnailEditReadiness(
   signal?: AbortSignal,
 ): Promise<ThumbnailEditReadiness> {
   return request<ThumbnailEditReadiness>("/api/thumbnail-edits/readiness", { signal });
+}
+
+/**
+ * startThumbnailEdit は動画の `positionMs`（ミリ秒）の場面で、サムネイルの編集のセッションを始める。
+ * 同じ動画のセッションがあれば、サーバーがその実行を中止して終える。応答は `ready` のセッションで、
+ * `frameUrl` がコマの PNG、`frameWidth`・`frameHeight` がマスクを描く大きさである
+ * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ */
+export function startThumbnailEdit(
+  videoId: number,
+  positionMs: number,
+  signal?: AbortSignal,
+): Promise<ThumbnailEdit> {
+  return request<ThumbnailEdit>(`/api/videos/${String(videoId)}/thumbnail-edits`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionMs }),
+    signal,
+  });
+}
+
+/** thumbnailEditPath はセッション `editId` の経路である。 */
+function thumbnailEditPath(editId: string, suffix = ""): string {
+  return `/api/thumbnail-edits/${encodeURIComponent(editId)}${suffix}`;
+}
+
+/**
+ * getThumbnailEdit はセッションの今の状態を取得する。読み取りはページの生存の知らせを兼ね、5 分
+ * 読まれないセッションは終わる。`succeeded` なら `resultUrl` が出力の画像である。終わった
+ * セッションは 404 `thumbnail_edit_not_found` で失敗する。
+ */
+export function getThumbnailEdit(
+  editId: string,
+  signal?: AbortSignal,
+): Promise<ThumbnailEdit> {
+  return request<ThumbnailEdit>(thumbnailEditPath(editId), { signal });
+}
+
+/** ThumbnailEditRun は 1 回の実行の入力である。どれも省ける。 */
+export interface ThumbnailEditRun {
+  /** 指示の文（4000 文字まで）。 */
+  prompt?: string;
+  /** コマと同じ大きさの PNG。塗った画素が不透明な白、残りが不透明な黒。 */
+  mask?: Blob;
+  /** 参考画像（PNG・JPEG・WebP、20 MiB まで）。 */
+  reference?: Blob;
+}
+
+/**
+ * runThumbnailEdit は入力を `multipart/form-data` で送って実行を始め、`queued` のセッションを返す。
+ * 進んでいる実行があればサーバーが中止する。マスクがコマの大きさでなければ 400
+ * `thumbnail_edit_mask_invalid`、ComfyUI が受け付けなければ 502 `provider_failed` で失敗する。
+ * Content-Type はブラウザが境界とともに付けるので、ここでは付けない。
+ */
+export function runThumbnailEdit(
+  editId: string,
+  run: ThumbnailEditRun,
+  signal?: AbortSignal,
+): Promise<ThumbnailEdit> {
+  const form = new FormData();
+  if (run.prompt !== undefined) {
+    form.append("prompt", run.prompt);
+  }
+  if (run.mask !== undefined) {
+    form.append("mask", run.mask, "mask.png");
+  }
+  if (run.reference !== undefined) {
+    form.append("reference", run.reference, "reference");
+  }
+  return request<ThumbnailEdit>(thumbnailEditPath(editId, "/runs"), {
+    method: "POST",
+    body: form,
+    signal,
+  });
+}
+
+/**
+ * cancelThumbnailEdit は進んでいる実行を中止し、`cancelled`（進んでいなければ今の状態）を返す。
+ * サムネイルは変わらない。
+ */
+export function cancelThumbnailEdit(
+  editId: string,
+  signal?: AbortSignal,
+): Promise<ThumbnailEdit> {
+  return request<ThumbnailEdit>(thumbnailEditPath(editId, "/cancel"), {
+    method: "POST",
+    signal,
+  });
+}
+
+/**
+ * applyThumbnailEdit は成功した実行の画像をサムネイルにし、`getVideo` と同じ形の動画を返す。
+ * セッションは終わる。成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
+ */
+export async function applyThumbnailEdit(
+  editId: string,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(thumbnailEditPath(editId, "/apply"), {
+    method: "POST",
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
+ * discardThumbnailEdit は進んでいる実行を中止してセッションを捨てる。終わったセッションでも
+ * 成功する。ページを離れるときにも送れるよう keepalive を付ける。
+ */
+export async function discardThumbnailEdit(editId: string): Promise<void> {
+  const response = await apiFetch(thumbnailEditPath(editId), {
+    method: "DELETE",
+    keepalive: true,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /**

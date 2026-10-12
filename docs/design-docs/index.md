@@ -34,6 +34,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Sidecar subtitle files](sidecar-subtitles.md)
 - [Auto-tagging with a decision model](auto-tagging.md)
 - [AI layer: classifier port and providers](ai-layer.md)
+- [Thumbnail editing sessions](thumbnail-editing.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Related videos and the previous and next video](related-videos.md)
