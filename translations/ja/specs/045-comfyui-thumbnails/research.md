@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/research.md
-sourceHash: 4110c68b8446c4e757e3c109ba1b94410badf1bc262c16922d17f89225b3707e
+sourceHash: cb59d5a41bc1f070dc8a4099dec6de66cfb7c241e8c3e648826cf41469fc621c
 ---
 
 # 調査: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#research-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -80,10 +80,10 @@ sourceHash: 4110c68b8446c4e757e3c109ba1b94410badf1bc262c16922d17f89225b3707e
 | 認証 | なし | `X-API-Key` ヘッダー。WebSocket は `token` クエリパラメーター |
 | 状態 | `GET /queue` (待機中または実行中)、次に `GET /history/{id}` | `GET /job/{id}/status` |
 | 出力 | `GET /view` | `GET /view` は署名付き URL へのリダイレクトを返し、それをキーなしで取得する |
-| キャンセル | 待機中は `POST /queue` `{"delete":[id]}`、実行中は `POST /interrupt` `{"prompt_id":id}` | `POST /queue` `{"delete":[id]}` |
+| キャンセル | 待機中は `POST /queue` `{"delete":[id]}`、実行中は `POST /interrupt` `{"prompt_id":id}` | 待機中は `POST /queue` `{"delete":[id]}`、実行中は `POST /interrupt` |
 | 接続のテスト | `GET /system_stats` | 有効なキーを必要とする `GET /jobs?limit=1` |
 
-Cloud の状態は次のように対応する: `submitted`、`queued_waiting` → `queued`。`preparing` → `preparing`。`executing` → `running`。`success` → `succeeded`。`error`、`non_retryable_error`、`lost` → `failed`。`cancel_requested`、`cancelled` → `cancelled`。セルフホストの ComfyUI には `preparing` の状態がなく、要件 7 はそれを許す。
+Comfy Cloud は 2 つの状態の語彙を文書にしている: API リファレンスと稼働中のサービスは `submitted`、`queued_waiting`、`preparing`、`executing`、`success`、`error`、`non_retryable_error`、`lost`、`cancel_requested`、`cancelled` を返し、公開されている OpenAPI スキーマは `waiting_to_dispatch`、`pending`、`in_progress`、`completed` を挙げる。アダプターは両方を対応付け ([contracts/workflow.md、Run states](contracts/workflow.md#run-states))、どちらにもない値では、既知の値が届くか時間の上限が実行を終えるまで、実行の前の状態を保つ。Cloud の `POST /interrupt` は 1 つではなくアカウントの実行中のジョブをすべて止める。vv は実行自身の状態が `running` のときだけそれを送り、アカウントのほかの実行中のジョブを再開するのは所有者である。セルフホストの ComfyUI には `preparing` の状態がなく、要件 7 はそれを許す。
 
 | 案 | 判定 |
 | --- | --- |

@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/data-model.md
-sourceHash: 50bed29ba8490a9c70e78ce07b445cf3b0eaa6ee2434e5757e39f85dae8c90d4
+sourceHash: 624df15b8e41d1b72d4cceee08931066b149741520faa6dee2c1067b9b093fff
 ---
 
 # データモデル: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#data-model-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -30,10 +30,10 @@ sourceHash: 50bed29ba8490a9c70e78ce07b445cf3b0eaa6ee2434e5757e39f85dae8c90d4
 
 | 規則 | 強制する場所 |
 | --- | --- |
-| 適用は、生成のロックの中でこの順に、行を書き、サムネイルのファイルを公開し、その内容を持つすべての動画の `thumbnail_state` を `done` にし、そのサムネイルのスキャンの問題を消す | `app.Ingest.ApplyThumbnailImage`、`OverrideStore` |
+| 適用は、生成のロックの中で、今のサムネイルのファイルを退避し、新しいファイルを公開し、それから 1 つのトランザクションで行を書き、その内容を持つすべての動画の `thumbnail_state` を `done` にし、そのサムネイルのスキャンの問題を消す。公開に失敗すると両方の側を元のままにし、トランザクションに失敗すると退避したファイルを戻す | `app.Ingest.ApplyThumbnailImage` (`SetThumbnailPosition` と同じく `StashThumbnail`)、`OverrideStore` |
 | セッションの id を持つ動画がセッションの内容の鍵を持たないとき、適用は `content_changed` で失敗する | `app.Ingest.ApplyThumbnailImage` がロックの中で動画を読み直す |
 | サムネイルの位置の設定は行を削除する | 同じトランザクションの中の `OverrideStore.SetThumbnailPosition` |
-| 元に戻す操作は行を削除し、`thumbnail_position_ms` から、それが null のときは自動の規則でフレームを公開する | `app.Ingest.RevertThumbnailImage` |
+| 元に戻す操作は行を削除し、`thumbnail_position_ms` から、それが null のときは自動の規則でフレームを公開する。退避、公開、記録、復元の順は同じである | `app.Ingest.RevertThumbnailImage` |
 | サムネイルのジョブは、行があるときは行の `image` を公開し、ないときはフレームを取り出す | `app.Ingest.Thumbnail` |
 | 画像を適用している間も `video_overrides` は位置を保つ | [R-10](research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock) |
 | すべての適用と元に戻す操作は `domain.VideoOverrideChanged` を発行し、動画の編集時刻 (`touchEditedAt`) を進める | `OverrideStore` |

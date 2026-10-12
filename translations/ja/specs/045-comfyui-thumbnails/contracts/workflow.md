@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/contracts/workflow.md
-sourceHash: 0c4e62bd47a7a46d6db7c71262a697e7d3ee6472105049dc51c45c88837a8ef4
+sourceHash: 4f9a341f752134066906d4f7000cb9d68fc3a0a0756923a1b2fad15f148af1e2
 ---
 
 # 契約: サムネイルのワークフローとその実行 {#contract-the-thumbnail-workflow-and-its-runs}
@@ -64,10 +64,10 @@ sequenceDiagram
 
 | vv の状態 | セルフホストの ComfyUI | Comfy Cloud |
 | --- | --- | --- |
-| `queued` | id が `queue_pending` にある | `submitted`、`queued_waiting` |
+| `queued` | id が `queue_pending` にある | `submitted`、`queued_waiting`、`waiting_to_dispatch`、`pending` |
 | `preparing` | 報告されない | `preparing` |
-| `running` | id が `queue_running` にある | `executing` |
-| `succeeded` | `history/{id}` が `status.completed` と出力画像を持つ | `success` と出力画像 |
+| `running` | id が `queue_running` にある | `executing`、`in_progress` |
+| `succeeded` | `history/{id}` が `status.completed` と出力画像を持つ | `success`、`completed`、および出力画像 |
 | `failed` | `history/{id}` が `status_str: error` を持つ、または id が履歴のエントリなしにキューから消えた | `error`、`non_retryable_error`、`lost` |
 | `cancelled` | vv のキャンセルの後 | `cancel_requested`、`cancelled` |
 
