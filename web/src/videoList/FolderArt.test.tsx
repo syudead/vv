@@ -93,3 +93,22 @@ describe("FolderArt の一覧のプレビューの調整", () => {
     expect(videos()).toBe(0);
   });
 });
+
+describe("FolderArt の同じ動画を 2 度持つ絵柄", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("同じ動画の 1 枚を重ねて出し、React の key の重複を出さない", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const sheet = (videoId: number): FolderPreview => ({
+      videoId,
+      thumbnailUrl: `/api/videos/${String(videoId)}/thumbnail?v=x`,
+    });
+    const view = render(<FolderArt previews={[sheet(1), sheet(2), sheet(1)]} />);
+    view.rerender(<FolderArt previews={[sheet(1), sheet(1), sheet(2)]} />);
+
+    expect(view.container.querySelectorAll("[data-folder-preview]")).toHaveLength(3);
+    expect(error).not.toHaveBeenCalled();
+  });
+});
