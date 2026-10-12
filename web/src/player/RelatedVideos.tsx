@@ -180,6 +180,14 @@ const scrollerClass =
 const thumbnailWidth = "w-related-thumb";
 
 /**
+ * 関連動画はライブラリと同じカード（サムネイルの下に名前）で並べ、名前に列の幅を使わせる。
+ * 広い画面の右の列では 1 列、積む幅では列の数を増やす。続けて再生のメンバーの並びは、
+ * 何本目かと今の行を示す横長の行のままにする。
+ */
+const relatedListClass =
+  "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
+
+/**
  * MemberTarget はメンバーの行のリンク先である。省けば `/videos/{id}` を開き、戻り先だけを
  * 引き継ぐ。プレイリストのグループの項目の中では、ページがプレイリストの文脈を保つ先を渡す
  * （specs/044-playlists/ui-design.md「Video page in a playlist」の Aside）。
@@ -244,14 +252,10 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "loading" && (
-        <ul aria-hidden="true" className="flex flex-col gap-3">
+        <ul aria-hidden="true" className={relatedListClass}>
           {Array.from({ length: 6 }, (_, index) => (
-            <li key={index} className="flex gap-3">
-              <Skeleton className={cn("aspect-video shrink-0", thumbnailWidth)} />
-              <div className="flex flex-1 flex-col gap-2 pt-1">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
+            <li key={index}>
+              <RelatedCardSkeleton />
             </li>
           ))}
         </ul>
@@ -268,7 +272,7 @@ export default function RelatedVideos({
 
       {state.kind === "ready" && !empty && (
         <div data-related-scroller="" className={cn("flex flex-col", scrollerClass)}>
-          <ul className="flex flex-col gap-3">
+          <ul className={relatedListClass}>
             {state.related.items.map((video) => (
               <RelatedItem key={video.id} video={video} linkState={linkState} />
             ))}
@@ -469,7 +473,7 @@ function GroupedRelated({
               <h2 id="related-heading" className="text-sm font-semibold">
                 {t.player.related.heading}
               </h2>
-              <ul className="flex flex-col gap-3">
+              <ul className={relatedListClass}>
                 {items.map((video) => (
                   <RelatedItem key={video.id} video={video} linkState={linkState} />
                 ))}
@@ -541,12 +545,8 @@ function RelatedTail({
   return (
     <>
       {state.more === "loading" && (
-        <div aria-hidden="true" className="flex gap-3 pt-3">
-          <Skeleton className={cn("aspect-video shrink-0", thumbnailWidth)} />
-          <div className="flex flex-1 flex-col gap-2 pt-1">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-          </div>
+        <div aria-hidden="true" className="pt-4">
+          <RelatedCardSkeleton />
         </div>
       )}
       <div ref={observe("related")} aria-hidden="true" className="h-px" />
@@ -756,11 +756,11 @@ function RelatedItem({ video, linkState }: { video: Video; linkState: VideoLinkS
         aria-label={videoLinkLabel(video)}
         onPointerEnter={preview.onPointerEnter}
         onPointerLeave={release}
-        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-accent"
+        className="-m-1.5 flex flex-col gap-2 rounded-lg p-1.5 transition-colors hover:bg-accent"
       >
         <VideoThumbnail
           video={video}
-          className={thumbnailWidth}
+          className="w-full"
           preview={preview}
           scrub={scrub}
         />
@@ -769,5 +769,16 @@ function RelatedItem({ video, linkState }: { video: Video; linkState: VideoLinkS
         </span>
       </Link>
     </li>
+  );
+}
+
+/** RelatedCardSkeleton は、読み込み中の関連動画のカードの形である。 */
+function RelatedCardSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <Skeleton className="aspect-video w-full" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-2/3" />
+    </div>
   );
 }

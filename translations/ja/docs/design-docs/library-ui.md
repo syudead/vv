@@ -1,10 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-<<<<<<< HEAD
-sourceHash: 2747f2a22a659eb4c7e08150109f0b2a7bd4fc5578b19758c079937cadb6f729
-=======
-sourceHash: 4b3de4ee5977051b4ae1016be47795dcd4bc64fa5564ded86a9eb275bf25ac63
->>>>>>> origin/main
+sourceHash: b6fa7bdb349d9b11f103789640af1665a0303f4e5750a71f35085ab3c5b67259
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -285,7 +281,7 @@ flowchart LR
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
 | タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
 | 公開範囲の切り替え | 錠か地球のアイコン付きの `Private` か `Public`。`role="switch"` を持つ `Button` で、タイトルのまとまりの下、情報の行の上に置く |
-| 関連動画 | 小さな見出しの下の素の行。周りにカードを置かず、近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md)) |
+| 関連動画 | 小さな見出しの下のライブラリ形式のカード（サムネイルと、その下に最大 2 行の名前）。右の列では 1 列、ページが縦に積まれるときは 2 か 3 列で、近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md))。`Up next` のメンバー一覧は番号付きの行のままだ |
 | ゲスト | タグ、公開範囲の切り替え、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
 幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。
