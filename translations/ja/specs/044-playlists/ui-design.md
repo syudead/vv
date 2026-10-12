@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: f18153a2f618fc3922150a15643e48dd023d98c9e6d2f2bb183dfc217dbeb7d9
+sourceHash: c9efd6fdbba69c96a8ed53bd29aa33ba68fbcc3c01fae78275ac431c0be5183a
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -143,7 +143,7 @@ flowchart LR
 
 ## プレイリスト一覧の画面 {#playlists-screen}
 
-ツールバー、帯、横の列、選択バーのない `ListPage` である。ヘッダーは、`PageHeader` のタイトル「Playlists」（`text-xl font-semibold`）、数「3 playlists」、そして `actions` の中の唯一の `default` `sm` のボタン「New playlist」（lucide `Plus`）である。本体は 1 つの `CardGrid`（`size` 1、ライブラリの既定のカード幅。画面に拡大縮小の操作はない）か 1 つの状態のブロックである。ヘッダーはどの状態でもその場所に留まる。
+ツールバー、帯、横の列、選択バーのない `ListPage` である。ヘッダーは、`PageHeader` のタイトル「Playlists」（`text-xl font-semibold`）、数「3 playlists」（応答の `total` で、読み込んだものだけでなくすべてのプレイリストの数）、そして `actions` の中の唯一の `default` `sm` のボタン「New playlist」（lucide `Plus`）である。本体は、1 つの `CardGrid`（`size` 1、ライブラリの既定のカード幅。画面に拡大縮小の操作はない）と、次のページを読み込む間か読み込みに失敗したときにその後に続く `LoadMoreRow` であるか、1 つの状態のブロックである。ヘッダーはどの状態でもその場所に留まる。
 
 各カードは `PlaylistCard` で、ライブラリのグループのカード（[017 UI 設計の Group card](../017-folder-groups/ui-design.md#group-card)）のグループの値をプレイリストの値に置き換えたものであり、プレイリストが持たないものは何も持たない。
 
@@ -158,6 +158,10 @@ flowchart LR
 | それ以外 | チェックボックス、お気に入りや追加の印、進み具合、タグの行、カードのメニューはない。プレイリストはどれも持たず、カードの唯一の操作は開くことである |
 
 2 つのプレイリストが名前を共有することがある（R-11）。同じ名前の 2 つのカードは絵、数、日付で見分け、何もそれらをまとめない。
+
+### ページング {#paging}
+
+グリッドはライブラリのグリッドと同じに読み込む: 最初に `GET /api/playlists` から 60 個の最初のページを読み、グリッドの後の 1 ピクセルの番兵がビューポートから 600px 以内に来ると（`IntersectionObserver`、`rootMargin: 600px`）、応答の `nextCursor` から次のページを読んでカードに追加する。オブザーバーはページごとにつなぎ直すので、まだ番兵に届くビューポートはスクロールなしで続くページを読み込む。グリッドにすでにあるプレイリストを後のページがもう一度返したとき（所有者がページを送る間に変わった）は、`id` で 1 つだけ残す。ヘッダーの数は応答の `total` なので、ページを読み込んでも増えない。作成の後、新しいプレイリストが最初に来るので、画面は最初のページを読み直し、読み込んだページの代わりにそれを出す。その後は、所有者がスクロールするにつれて番兵が残りをもう一度読み込む。
 
 ### 新しいプレイリスト {#new-playlist}
 
@@ -185,6 +189,10 @@ stateDiagram-v2
   LoadFailed --> Loading: Retry
   Empty --> Content: New playlist、201
   Content --> Content: New playlist、201
+  Content --> LoadingMore: 番兵が見える、nextCursor
+  LoadingMore --> Content: 次のページを追加
+  LoadingMore --> LoadMoreFailed: 要求が失敗
+  LoadMoreFailed --> LoadingMore: Retry
 ```
 
 | 状態 | 画面が出すもの |
@@ -193,9 +201,11 @@ stateDiagram-v2
 | 読み込みの失敗 | 「Couldn't load the playlists」と `Retry` を持つ `ErrorState` |
 | 空 | lucide `ListVideo`、「No playlists yet」、「Create a playlist, then add videos and groups to it from the library.」、`default` `sm` の操作「New playlist」を持つ `EmptyState`。操作は同じダイアログを開く。ヘッダーのボタンは描かないので、その範囲の `default` のボタンは 1 つである |
 | 内容 | グリッド。ヘッダーの数と「New playlist」 |
+| 続きの読み込み中 | グリッド、その後に `LoadMoreRow` の `Spinner` の行「Loading…」（[ページング](#paging)） |
+| 続きの読み込みの失敗 | 保ったグリッド、その後に `LoadMoreRow` の `destructive` の `Alert`「Couldn't load more: {reason}」と、同じページをもう一度求める `Retry` |
 | 作成中 | 変わらないグリッドの上の、`pending` の形のダイアログ |
 
-一覧は、画面が開いたときと作成の後に読む。プレイリストから戻ると読み直す（`Link` がルートを離れ、画面が再びマウントされる）。開いている間に自分から更新はしない（R-10）。
+最初のページは、画面が開いたときと作成の後に読む。プレイリストから戻ると読み直す（`Link` がルートを離れ、画面が再びマウントされる）。開いている間に自分から更新はしない（R-10）。
 
 ## プレイリストの画面 {#playlist-screen}
 
@@ -334,7 +344,7 @@ flowchart LR
 | 作成の行 | 前後の空白を除いた文字が空でなく、どのプレイリストの名前もそれにちょうど等しくない間、一致するものより前に、最初に出す。lucide `Plus` 付きで「Create "{name}"」と読める。一致するものがなければ、それが唯一の行である |
 | 打った名前が前後の空白を除いて 100 コードポイントを超える | 欄の下の理由の行「Use a name of up to 100 characters」。Enter も押下も働かない |
 | プレイリストも文字もない | 一覧の場所に「No playlists yet. Type a name to create one.」 |
-| 読み込み中 | 一覧の場所に「Loading…」。`GET /api/playlists` はポップオーバーが開くたびに読むので、ほかの画面で作ったプレイリストもそこにある |
+| 読み込み中 | 一覧の場所に「Loading…」。`GET /api/playlists` はポップオーバーが開くたびに読み、名前の絞り込みがすべてのプレイリストを見るように、最後のページまで `nextCursor` を辿る（[contracts/screen-api.md の Client use](contracts/screen-api.md#client-use)）。ほかの画面で作ったプレイリストもそこにある |
 | 読み込みの失敗 | 一覧の場所に「Couldn't load the playlists」と `ghost` `sm` の「Retry」。欄はそれでも名前を受け、名前の上の Enter は作成する |
 | プレイリストを選ぶ | その場所の `videoIds` と `folders` で `POST /api/playlists/{id}/items`。応答まで、行はアイコンの場所に `Spinner` を出す |
 | 作成 | 前後の空白を除いた名前で `POST /api/playlists`、次に新しいプレイリストへの追加。「Create "{name}"」が `Spinner` を出す |
