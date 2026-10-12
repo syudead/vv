@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const commonInput = [
   "-f",
@@ -662,6 +663,69 @@ export function generateThumbnailEditFixtures(root) {
     "+faststart",
     path.join(root, `${THUMBNAIL_EDIT_VIDEO}.mp4`),
   ]);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc=size=320x180:rate=15:duration=4",
+    "-vf",
+    "hue=h=320",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${THUMBNAIL_EDIT_NEIGHBOR}.mp4`),
+  ]);
+}
+
+/**
+ * THUMBNAIL_EDIT_NEIGHBOR は generateThumbnailEditFixtures が同じフォルダに置く2本目の動画で、
+ * 関連動画にサムネイル編集の動画を出す（specs/046-thumbnail-image-upload、子 #988）。
+ * 同じ中身とみなされないよう、元の映像と長さを変える。
+ */
+export const THUMBNAIL_EDIT_NEIGHBOR = "サムネイル編集の隣の動画";
+
+/**
+ * THUMBNAIL_UPLOADS は、手元の画像をサムネイルにする流れ（specs/046-thumbnail-image-upload、
+ * 子 #988）でページから上げる画像である。どれも一色で、色は互いにも偽の ComfyUI の出力の色
+ * （fake-comfyui.mjs の OUTPUT_COLOR）とも離す。PNG は縦長にして、動画の形に切り抜かれる
+ * ことを確かめる。
+ */
+export const THUMBNAIL_UPLOADS = {
+  png: { file: "thumbnail-upload.png", color: [0, 200, 0], width: 300, height: 400 },
+  jpeg: { file: "thumbnail-upload.jpg", color: [0, 90, 255], width: 640, height: 360 },
+  webp: { file: "thumbnail-upload.webp", color: [255, 200, 0], width: 480, height: 270 },
+};
+
+/**
+ * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS の画像を root に置く。PNG と JPEG は
+ * ffmpeg で作り、WebP はチェックイン済みの e2e/fixtures/thumbnail-upload.webp を写す。
+ * ffmpeg のビルドに libwebp が無いことがあるためである（specs/046-thumbnail-image-upload/plan.md）。
+ */
+export function generateThumbnailUploadFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  const solid = ({ color, width, height }) =>
+    `color=c=0x${color.map((value) => value.toString(16).padStart(2, "0")).join("")}:s=${String(width)}x${String(height)}`;
+  for (const upload of [THUMBNAIL_UPLOADS.png, THUMBNAIL_UPLOADS.jpeg]) {
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      solid(upload),
+      "-frames:v",
+      "1",
+      ...(upload === THUMBNAIL_UPLOADS.jpeg ? ["-q:v", "2"] : []),
+      path.join(root, upload.file),
+    ]);
+  }
+  copyFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+      THUMBNAIL_UPLOADS.webp.file,
+    ),
+    path.join(root, THUMBNAIL_UPLOADS.webp.file),
+  );
 }
 
 /**
