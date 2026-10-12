@@ -1,6 +1,6 @@
 ---
 source: specs/044-playlists/ui-design.md
-sourceHash: 5d19e8065150518c677c0fbc78b063b8a7dc1e3d00a967b60926594b50f50989
+sourceHash: af1f46c84a3fde0b92d24678bf31cf08a4a3ee32d7688d47dc46410445ac52c6
 ---
 
 # UI 設計: 名前付きのプレイリストと連続再生 {#ui-design-named-playlists-and-continuous-playback}
@@ -414,18 +414,18 @@ flowchart TB
 | 部分 | 形 |
 | --- | --- |
 | 見出しの行 | メンバーの一覧の見出しと同じく `flex items-baseline justify-between`: `h2`（`text-sm font-semibold`）は lucide `ListVideo`（`size-4`、`text-muted-foreground`）と 1 行のプレイリストの名前で、名前は切り詰め、完全な名前を `title` に持つ。名前は `/playlists/{id}` への `Link`（`state.from` を引き継ぎ、アクセシブルな名前は「Playlist "{name}". Open the playlist」）である。`lg` より狭いと、タイトルの上の行は 1 画面離れているからである。その右に、`text-xs text-muted-foreground tabular-nums` の「2 / 7」。`position` が 0 のときは何も出さない |
-| 行 | 見出しでラベル付けした `ul` で、行の間は `gap-3`、応答の順に項目ごとに 1 行（表示する項目だけなので、番号は `count` と一致する）。行はメンバーの一覧の行である: `w-5 text-right text-xs text-muted-foreground tabular-nums` の番号、`w-related-thumb` の `VideoThumbnail`（動画の画像か、グループの最初のメンバーの画像。`VideoThumbnailDuration`。動画またはグループが視聴の途中の間は `VideoThumbnailProgress`）、2 行に制限した `text-sm font-medium` のタイトル。タイトルは視聴済みのとき `text-muted-foreground` で、lucide `Check`（`size-4`、`text-success`、隠した「Watched」）を持つ。グループの項目はその名前を出し、その下に lucide `Folder`（`size-3`）と「12 videos」を持つ `text-xs text-muted-foreground` の行を出し、途中の間はチェックの場所に `text-xs text-muted-foreground tabular-nums` の「3 / 12」を出す。再生できない動画は、プレイリストの画面の行の警告の行をタイトルの下に保つ |
+| 行 | 見出しでラベル付けした `ul` で、行の間は `gap-3`、応答の順に項目ごとに 1 行（表示する項目だけなので、番号は `count` と一致する）。項目はメンバーの一覧のカードである: サムネイルの左上の番号、`VideoThumbnail`（動画の画像か、グループの最初のメンバーの画像。`VideoThumbnailDuration`。動画またはグループが視聴の途中の間は `VideoThumbnailProgress`）、その下に 2 行に制限した `text-sm font-medium` のタイトル。タイトルは視聴済みのとき `text-muted-foreground` で、lucide `Check`（`size-4`、`text-success`、隠した「Watched」）を持つ。グループの項目はその名前を出し、その下に lucide `Folder`（`size-3`）と「12 videos」を持つ `text-xs text-muted-foreground` の行を出し、途中の間はチェックの場所に `text-xs text-muted-foreground tabular-nums` の「3 / 12」を出す。再生できない動画は、プレイリストの画面の行の警告の行をタイトルの下に保つ |
 | 行のリンク | 行は `/videos/{videoId}?playlist={id}&item={itemId}` への `Link`（関連する行と同じく `-m-1.5 p-1.5 rounded-lg hover:bg-accent`）で、`videoId` は動画か、グループの `openVideoId` である。`state.from` を引き継ぎ、`autoplay` は、矢印と同じく、画面の動画が再生中か終了後なら true、一時停止中なら false である。アクセシブルな名前は「Play from {title}」である。動画の項目の行は、関連する行と同じくホバーのプレビューを再生する。グループの項目の行は何も再生しない。プレビューは 1 つのメンバーのものになるが、行はグループのものだからである |
-| 今の行 | `id` が再生の応答の `itemId` である項目: リンクではなく、`aria-current="true"`、`border-l-2 border-primary bg-accent pl-1` で、メンバーの一覧の今の行と同じく、タイトルの前に隠した「Now playing」を持つ。ホバーの面は変わらない。グループのメンバーでは、今の行はグループの項目で、その「3 / 12」がグループの中のどこかを言い、下のメンバーの一覧がメンバーに印を付ける。`position` が 0 のとき、今の行はない |
-| 高さ | 一覧はどの幅でも `max-h-playlist-panel overflow-y-auto`（`scrollbar-on-hover`、`overscroll-contain`）である: 3 項目までのプレイリストは自身の高さをとり、それより長いものは 3 行と 4 行目の上部を出すので、切れた行が一覧はスクロールすると示す。この上限により、長いプレイリストの下でもメンバーの一覧と関連する動画に手が届く |
-| スクロール | パネルが埋まったときと、`itemId` が変わるたびに、一覧自身の `scrollTop` を設定し、今の行がその上の行の下端とともに見えるようにするので、目は前に来たものと後に続くものを読む。どの幅でも、そのために画面と横の列が動くことはない（`scrollIntoView` はそれらを動かす。017 がメンバーの一覧のために `lg` の幅を読むのはそのためである）。`lg` では、パネルと、グループのメンバーなら「Up next」の見出しの行が列の上端に留まり、その下の行は今と同じく 1 つのコンテナの中でスクロールする |
+| 今の行 | `id` が再生の応答の `itemId` である項目: リンクではなく、`aria-current="true"`、`ring-2 ring-primary ring-inset bg-accent` で、メンバーの一覧の今の行と同じく、タイトルの前に隠した「Now playing」を持つ。ホバーの面は変わらない。グループのメンバーでは、今の行はグループの項目で、その「3 / 12」がグループの中のどこかを言い、下のメンバーの一覧がメンバーに印を付ける。`position` が 0 のとき、今の行はない |
+| 高さ | `lg` 未満では、一覧は `max-h-playlist-panel overflow-y-auto`（`scrollbar-on-hover`、`overscroll-contain`）である: 2 項目までのプレイリストは自身の高さをとり、それより長いものは 2 枚のカードと 3 枚目の上部を出す（低いウィンドウではウィンドウの高さの半分まで）ので、切れたカードが一覧はスクロールすると示し、メンバーの一覧と関連する動画に手が届いたままになる。`lg` では一覧に上限はない: パネル、メンバーの一覧、関連する動画は、横の列の中の 1 つのコンテナでスクロールする |
+| スクロール | パネルが埋まったときと、`itemId` が変わるたびに、今のカードを、その上のカードの下端とともに見えるようにするので、目は前に来たものと後に続くものを読む: `lg` 未満では一覧自身の `scrollTop` で、`lg` では共有のコンテナの `scrollTop` で、パネルの見出しの高さを差し引いて見えるようにする。画面と横の列がそのために動くことはない（`scrollIntoView` はそれらを動かす）。グループのメンバーでは、代わりにメンバーの一覧が今のカードをコンテナの中央へ動かす。`lg` では、各セクションの見出しは、そのセクションが見えている間だけ上端に留まる |
 | 区切り | パネルとその後に続くものの間に、メンバーの一覧の区切りの間隔（上に `pt-5`、下に `pb-2`）で 1 つの `Separator` を置くので、3 つの区画は 1 つのリズムを保つ（`UI品質`、`余白のリズム`）。グループも関連する動画もないときは何も続かず、区切りは描かない |
 
 パネルは何も変えない: 移動や削除は見出しが開くプレイリストの画面でするので、パネルはハンドルも `×` も持たず、その中で `primary` で描くのは、今の行の線と進捗バーの塗りだけである（`UI品質`、`視覚的な階層`）。
 
 | 状態 | パネル |
 | --- | --- |
-| 読み込み中 | 再生の読み込みかプレイリストの読み込みが応答していない間、または組がまだ一致しない間（[1 つの順](#one-order)）: 名前の場所に `Skeleton` の行を置いて数は出さず、3 つのスケルトンの行（`w-related-thumb` のブロックと 2 つの行）を置く。関連する動画の読み込みと同じである。読み直している後の組は、一致するまで、置き換える行を保つ |
+| 読み込み中 | 再生の読み込みかプレイリストの読み込みが応答していない間、または組がまだ一致しない間（[1 つの順](#one-order)）: 名前の場所に `Skeleton` の行を置いて数は出さず、3 つのスケルトンのカード（16:9 のブロックと 2 つの行）を置く。関連する動画の読み込みと同じである。読み直している後の組は、一致するまで、置き換える行を保つ |
 | 内容 | 見出し、行、見える位置にある今の行 |
 | 読み込みの失敗 | プレイリストの読み込みが失敗し、再生の読み込みは失敗しなかった: 再生の応答の `playlist` からの見出しと、一覧の場所に「Couldn't load the playlist」と、プレイリストを読み直す `ghost` `sm` の「Retry」。プレイリストの行、矢印、通知は影響を受けない |
 | すべての項目が隠れている | 数も行もない見出し。サーバーの `next` がないので、今の動画はプレイリストの終わりのレイヤーで終わる |

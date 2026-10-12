@@ -217,7 +217,7 @@ criterion 7).
 - Not shown for videos without a display name. Not shown to guests (guest
   responses have no `displayName` or `fileTitle`).
 - The height budget of the left column on wide screens (`lg` and above; the
-  player's `max-w-[calc(max(100dvh-17rem,15rem)*…)]`) does not change. In a
+  player's `max-w-[calc(max(100dvh-8.25rem,15rem)*…)]`) does not change. In a
   window where this line makes the column overflow, the left column scrolls, as
   with the group name line (012 "`lg` (1024px) and above").
 

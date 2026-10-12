@@ -382,6 +382,26 @@ test.describe("live MP4 playback", () => {
     }
   });
 
+  test("広い画面では左の列の中身が長くても、ページ全体はスクロールしない（1280・1920px）", async ({
+    page,
+  }) => {
+    // 左の列の下の方にある absolute の要素（読み上げ用の sr-only など）が列の外を基準に
+    // すると、列はスクロールしてもページが伸び、余計なスクロールバーと余白が出る。
+    for (const viewport of [
+      { width: 1280, height: 720 },
+      { width: 1920, height: 950 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.goto(`/videos/${String(video("direct").id)}`);
+      await expect(page.locator('[data-slot="detail-page-main"]')).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+        )
+        .toBe(0);
+    }
+  });
+
   test("タッチ端末は映像をタップして再生・一時停止する", async ({ browser }) => {
     const context = await browser.newContext({
       hasTouch: true,

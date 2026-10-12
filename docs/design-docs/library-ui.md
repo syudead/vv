@@ -452,7 +452,7 @@ flowchart LR
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
-| Related videos | Plain rows under a small heading, without a card around them, ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
+| Right column | Up to three sections, the playlist panel, `Up next` (a group's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
 | Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
@@ -460,8 +460,8 @@ Width variations stay in CSS, as in
 
 | Width | Layout |
 | --- | --- |
-| `lg` and above | The page keeps the viewport's height; the left column scrolls on its own and the related list scrolls under its fixed heading. The right column is `detail-aside` wide, `detail-aside-wide` from `xl`. The player's height leaves room for the title, tags and both information rows |
-| Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the related list keep side padding |
+| `lg` and above | The page keeps the viewport's height and the left column scrolls on its own. The right column is `detail-aside` wide (the card width plus its padding) and reaches the window's right edge, so its scrollbar sits at the edge. The playlist panel, `Up next` and related videos scroll in one container, and each section's heading stays at the top only while its section is in view. The player's height leaves room for one line of the title, so a landscape video fills the column's width. Its width also stops at the video's own display width (never below 60rem) and at 100rem, so a large window does not stretch a small video; when a limit stops it first, the player, title and information take the player's width and sit in the middle of the column. The tags and information rows are reached by scrolling the column |
+| Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the right column's sections keep side padding, and the cards form a grid of two columns from `sm` and three from `md` |
 | Below `md` | The breadcrumb shows only its last segment |
 
 The player frame takes its size from the named steps `player-width`,

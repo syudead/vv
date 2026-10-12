@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
+
+import { cn } from "@/lib/cn";
 
 import { DensityProvider } from "./density";
 
@@ -20,13 +22,28 @@ export interface DetailPageProps {
   aside?: ReactNode;
   /** メディアの下の中身: 題名・タグ・情報の行。 */
   children: ReactNode;
+  /**
+   * 主領域の中身（メディアとその下）の幅の上限（lg 以上）。メディアが高さで止まって列より細い
+   * とき、中身をこの幅にして列の中央に置き、余りを左右に均等に分ける。
+   */
+  contentClassName?: string;
+  /** ページの根に渡す style。contentClassName が読む CSS 変数を置く。 */
+  style?: CSSProperties;
 }
 
-export function DetailPage({ header, media, aside, children }: DetailPageProps) {
+export function DetailPage({
+  header,
+  media,
+  aside,
+  children,
+  contentClassName,
+  style,
+}: DetailPageProps) {
   return (
     <DensityProvider density="viewing">
       <div
         data-slot="detail-page"
+        style={style}
         className="flex flex-col bg-background pb-16 lg:min-h-0 lg:flex-1 lg:pb-0"
       >
         <div
@@ -37,18 +54,26 @@ export function DetailPage({ header, media, aside, children }: DetailPageProps) 
         </div>
         <div className="flex w-full flex-col gap-5 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6">
           {/* 列の端にあるフォーカスの輪が切れないよう、スクロールする列は輪の分だけ外へ広げて
-              内側に余白を取る（-mx-1 と px-1）。 */}
+              内側に余白を取る（-mx-1 と px-1）。列を位置の基準にし（lg:relative）、中の
+              absolute の要素（読み上げ用の sr-only など）が列の外を基準にページを伸ばさないようにする。 */}
           <div
             data-slot="detail-page-main"
-            className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
+            className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
           >
-            {media}
-            <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
+            <div
+              data-slot="detail-page-content"
+              className={cn("flex flex-col gap-5 lg:mx-auto lg:w-full", contentClassName)}
+            >
+              {media}
+              <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
+            </div>
           </div>
+          {/* 広い画面の情報欄は画面の右端まで寄せ（lg:-mr-6 と lg:pr-0）、中でスクロールする並びの
+              スクロールバーを画面の端に出す。右の余白は並びの側が持つ。 */}
           {aside && (
             <aside
               data-slot="detail-page-aside"
-              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:border-t-0 lg:border-l lg:pt-6 lg:pl-5 xl:w-detail-aside-wide"
+              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:-mr-6 lg:border-t-0 lg:border-l lg:pt-6 lg:pr-0 lg:pl-5 xl:w-detail-aside-wide"
             >
               {aside}
             </aside>

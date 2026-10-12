@@ -38,7 +38,7 @@ import PlaylistEndOverlay from "./PlaylistEndOverlay";
 import PlaylistLine from "./PlaylistLine";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
-import { playerAspectRatio } from "./aspect";
+import { playerAspectRatio, playerNativeWidth } from "./aspect";
 import {
   autoplayRequested,
   backTarget,
@@ -446,6 +446,7 @@ export default function VideoPage() {
 
   const showPlayer = playable && detail.kind === "ready";
   const aspect = playerAspectRatio(video, mediaAspect);
+  const nativeWidth = playerNativeWidth(video);
   const chromeVisible = !status.playing || status.userActive;
   let layer: ReactNode = statusLayer;
   // プレイリストの文脈では、次の動画があれば予告を、無ければ終わりの層を出す
@@ -640,6 +641,18 @@ export default function VideoPage() {
     // 広い画面はページを画面の高さに留め、左右の列がそれぞれ中でスクロールする。
     <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <DetailPage
+        // 広い画面では、プレイヤーが高さか幅の上限で止まって左の列より細いとき、プレイヤーと
+        // 題名・情報をプレイヤーの幅にそろえて列の中央に置く。幅は動画の比率と元の表示幅から
+        // 決まる（大きな画面で小さな動画を引き延ばしすぎない）ので、両方を渡す。
+        style={
+          {
+            "--vv-video-aspect": String(aspect),
+            ...(nativeWidth === undefined
+              ? {}
+              : { "--vv-video-width": `${String(nativeWidth)}px` }),
+          } as CSSProperties
+        }
+        contentClassName="lg:max-w-player-width-lg"
         header={<VideoHeader folder={video?.folder} onClose={close} />}
         media={
           <div
@@ -650,11 +663,11 @@ export default function VideoPage() {
             // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
             // 比率はシークのプレビューと枠の大きさの段（player-width・player-height、
             // src/ui/tokens.css）も使うので、変数として子孫へ渡す。
-            // 広い画面では、題名・タグ・情報の 2 行までが左の列に収まる高さを上限にし、ふだんは
-            // 列をスクロールさせない。上限で列より細くなったときは、題名と左端をそろえるため
-            // 左に寄せる。
+            // 広い画面では、題名の 1 行までが左の列に収まる高さを上限にし、横長の動画は列の幅
+            // いっぱいまで広げる。タグと情報の行は列をスクロールして見る。上限で列より細く
+            // なったときは、中身ごと列の中央に置く（DetailPage の contentClassName）。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:ml-0 lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
               全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
@@ -719,42 +732,50 @@ export default function VideoPage() {
         }
         aside={
           inPlaylist ? (
-            <>
-              <PlaylistPanel
-                playlistId={playlistId}
-                panel={playlist.panel}
-                name={playback?.playlist.name}
-                position={playback?.position ?? 0}
-                count={playback?.count ?? 0}
-                currentItemId={
-                  playback === undefined
-                    ? itemId
-                    : playback.position > 0
-                      ? playback.itemId
-                      : undefined
-                }
-                backTo={backTo}
-                autoplay={status.playing || status.ended}
-                onRetry={playlist.retry}
-              />
-              {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
-              {!(
-                related.kind === "ready" &&
-                related.related.group === undefined &&
-                related.related.items.length === 0
-              ) && (
-                <div className="shrink-0 pt-5 pb-2">
-                  <Separator decorative={false} />
-                </div>
-              )}
-              <RelatedVideos
-                state={related}
-                linkState={linkState}
-                onRetry={retryRelated}
-                onLoadMore={loadMoreRelated}
-                memberTarget={memberTarget}
-              />
-            </>
+            <RelatedVideos
+              state={related}
+              linkState={linkState}
+              onRetry={retryRelated}
+              onLoadMore={loadMoreRelated}
+              memberTarget={memberTarget}
+              // プレイリストのパネルは続けて再生・関連動画と同じ入れ物の先頭に置き、一緒に
+              // スクロールさせる（広い画面）。
+              leading={
+                <>
+                  <PlaylistPanel
+                    playlistId={playlistId}
+                    panel={playlist.panel}
+                    name={playback?.playlist.name}
+                    position={playback?.position ?? 0}
+                    count={playback?.count ?? 0}
+                    currentItemId={
+                      playback === undefined
+                        ? itemId
+                        : playback.position > 0
+                          ? playback.itemId
+                          : undefined
+                    }
+                    backTo={backTo}
+                    autoplay={status.playing || status.ended}
+                    onRetry={playlist.retry}
+                    // 続けて再生があるときは、そちらが今のメンバーへ動かす。
+                    scrollToCurrent={
+                      !(related.kind === "ready" && related.related.group !== undefined)
+                    }
+                  />
+                  {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
+                  {!(
+                    related.kind === "ready" &&
+                    related.related.group === undefined &&
+                    related.related.items.length === 0
+                  ) && (
+                    <div className="shrink-0 pt-5 pb-2">
+                      <Separator decorative={false} />
+                    </div>
+                  )}
+                </>
+              }
+            />
           ) : (
             <RelatedVideos
               state={related}

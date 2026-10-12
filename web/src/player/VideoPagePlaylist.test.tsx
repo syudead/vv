@@ -491,7 +491,8 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(within(panel()).getByText("2 / 3")).toBeDefined();
     // aside の先頭はパネルで、その後に関連動画が続く。
     const aside = document.querySelector('[data-slot="detail-page-aside"]');
-    expect(aside?.firstElementChild).toBe(panel());
+    // パネルは右の列の並びの入れ物（続けて再生・関連動画と同じ入れ物）の先頭にある。
+    expect(aside?.firstElementChild?.firstElementChild).toBe(panel());
     const rows = panelRows();
     expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([
       null,
