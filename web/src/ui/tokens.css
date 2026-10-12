@@ -271,15 +271,18 @@
  * 題名・タグ・情報の行が画面に収まる高さ（12.25rem を引く）。lg からは見出しの帯と題名の 1 行だけが
  * 収まる高さ（8.25rem を引き、15rem を下回らない）にし、プレイヤーを左の列の幅いっぱいまで広げる。
  * 幅の上限はその高さに動画の比率（16:9 より細いときは 16:9）を掛けた値で、比率は実行時に枠が
- * `--vv-video-aspect` として持つ。値が要素の変数を読むので、:root の変数にせず実用クラスへ
- * 直に書き込む（inline）。
+ * `--vv-video-aspect` として持つ。lg からは、大きな画面で引き延ばしすぎないよう、さらに
+ * 動画の元の表示幅（`--vv-video-width`。小さな動画でも 60rem までは広げる）と 100rem を
+ * 上限にする。値が要素の変数を読むので、:root の変数にせず実用クラスへ直に書き込む（inline）。
  */
 @theme inline {
   --spacing-player-height: calc(100dvh - 12.25rem);
   --spacing-player-height-lg: max(100dvh - 8.25rem, 15rem);
   --spacing-player-width: calc((100dvh - 12.25rem) * max(var(--vv-video-aspect), 16 / 9));
-  --spacing-player-width-lg: calc(
-    max(100dvh - 8.25rem, 15rem) * max(var(--vv-video-aspect), 16 / 9)
+  --spacing-player-width-lg: min(
+    calc(max(100dvh - 8.25rem, 15rem) * max(var(--vv-video-aspect), 16 / 9)),
+    100rem,
+    max(60rem, var(--vv-video-width, 100rem))
   );
   --aspect-player: var(--vv-video-aspect);
 }

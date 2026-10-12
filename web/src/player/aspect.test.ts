@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultAspectRatio, frameAspectRatio, playerAspectRatio } from "./aspect";
+import {
+  defaultAspectRatio,
+  frameAspectRatio,
+  playerAspectRatio,
+  playerNativeWidth,
+} from "./aspect";
 
 describe("frameAspectRatio", () => {
   it("横長・縦長・正方形の比率をそのまま返す", () => {
@@ -36,5 +41,19 @@ describe("playerAspectRatio", () => {
   it("表示比率が無い既存の動画は解像度の比を使う", () => {
     expect(playerAspectRatio({ width: 1080, height: 1920 }, null)).toBeCloseTo(9 / 16);
     expect(playerAspectRatio(undefined, null)).toBe(defaultAspectRatio);
+  });
+});
+
+describe("playerNativeWidth", () => {
+  it("表示比率があれば高さに掛けた幅（画素の縦横比を反映）を返す", () => {
+    expect(
+      playerNativeWidth({ width: 720, height: 576, displayAspectRatio: 4 / 3 }),
+    ).toBe(768);
+  });
+
+  it("表示比率が無ければ解像度の幅、分からなければ undefined を返す", () => {
+    expect(playerNativeWidth({ width: 1280, height: 720 })).toBe(1280);
+    expect(playerNativeWidth({ width: 0, height: 720 })).toBeUndefined();
+    expect(playerNativeWidth(undefined)).toBeUndefined();
   });
 });

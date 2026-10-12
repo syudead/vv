@@ -38,7 +38,7 @@ import PlaylistEndOverlay from "./PlaylistEndOverlay";
 import PlaylistLine from "./PlaylistLine";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
-import { playerAspectRatio } from "./aspect";
+import { playerAspectRatio, playerNativeWidth } from "./aspect";
 import {
   autoplayRequested,
   backTarget,
@@ -446,6 +446,7 @@ export default function VideoPage() {
 
   const showPlayer = playable && detail.kind === "ready";
   const aspect = playerAspectRatio(video, mediaAspect);
+  const nativeWidth = playerNativeWidth(video);
   const chromeVisible = !status.playing || status.userActive;
   let layer: ReactNode = statusLayer;
   // プレイリストの文脈では、次の動画があれば予告を、無ければ終わりの層を出す
@@ -640,9 +641,17 @@ export default function VideoPage() {
     // 広い画面はページを画面の高さに留め、左右の列がそれぞれ中でスクロールする。
     <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <DetailPage
-        // 広い画面では、プレイヤーが高さで止まって左の列より細いとき、プレイヤーと題名・情報を
-        // プレイヤーの幅にそろえて列の中央に置く。幅は動画の比率から決まるので、比率を渡す。
-        style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
+        // 広い画面では、プレイヤーが高さか幅の上限で止まって左の列より細いとき、プレイヤーと
+        // 題名・情報をプレイヤーの幅にそろえて列の中央に置く。幅は動画の比率と元の表示幅から
+        // 決まる（大きな画面で小さな動画を引き延ばしすぎない）ので、両方を渡す。
+        style={
+          {
+            "--vv-video-aspect": String(aspect),
+            ...(nativeWidth === undefined
+              ? {}
+              : { "--vv-video-width": `${String(nativeWidth)}px` }),
+          } as CSSProperties
+        }
         contentClassName="lg:max-w-player-width-lg"
         header={<VideoHeader folder={video?.folder} onClose={close} />}
         media={

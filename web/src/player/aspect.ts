@@ -38,3 +38,21 @@ export function playerAspectRatio(
     return frameAspectRatio(video.displayAspectRatio, 1);
   return frameAspectRatio(video?.width, video?.height);
 }
+
+/**
+ * playerNativeWidth は、広い画面でプレイヤーの幅の上限に使う動画の元の表示幅（px）を返す。
+ * 解析が記録した表示の比率（画素の縦横比を反映済み）があれば高さに掛け、無ければ解像度の幅を
+ * 使う。分からなければ undefined（上限は全体の上限だけになる）。
+ */
+export function playerNativeWidth(
+  video: Pick<Video, "width" | "height" | "displayAspectRatio"> | undefined,
+): number | undefined {
+  const width = video?.width;
+  const height = video?.height;
+  if (height !== undefined && video?.displayAspectRatio !== undefined) {
+    const shown = height * video.displayAspectRatio;
+    if (Number.isFinite(shown) && shown > 0) return Math.round(shown);
+  }
+  if (width === undefined || !Number.isFinite(width) || width <= 0) return undefined;
+  return width;
+}

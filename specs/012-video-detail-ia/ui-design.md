@@ -62,11 +62,16 @@ Only Tailwind's default breakpoints are used, and the switching is CSS only
   the left column for the band (`3.25rem`), the column's top padding, the gap
   and one line of the title, so a landscape video fills the column's width and
   the tags and the two information rows are reached by scrolling the left
-  column (below `lg` the whole page scrolls, so it stays `12.25rem`). So that
+  column (below `lg` the whole page scrolls, so it stays `12.25rem`). At `lg`
+  the width also stops at the video's own display width (`--vv-video-width`,
+  never below `60rem`) and at `100rem`, so a large window does not stretch a
+  small video. So that
   the player does not vanish in a short window, the height term never goes below
   `15rem` (the overflow then scrolls inside the left column). The left column's
   bottom padding is `pb-6`. A player that becomes narrower than the column at
-  this limit aligns left, flush with the title (`lg:ml-0`). Its height follows
+  any of these limits sits in the middle of the left column, and the title and
+  information take the player's width under it (`DetailPage`'s
+  `contentClassName`). Its height follows
   the video's aspect ratio (16:9 while the resolution is unknown; extreme ratios
   are clamped to 9:16–21:9) and grows up to the height that fits the screen. A
   portrait video is shown centred in the frame with side margins, and the
