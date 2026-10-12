@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/ui-design.md
-sourceHash: 6453132bd50f8865119207e06d590f15cd4870732518e27350f7cfb91bd5bbb4
+sourceHash: ee80bdd71cb725b4eac4764cbde312ffc27cebce00aa696d8c2244d754166678
 ---
 
 # UI 設計: 動画のフレームを ComfyUI で編集してサムネイルにする {#ui-design-editing-a-video-frame-with-comfyui-into-the-thumbnail}
@@ -114,7 +114,7 @@ flowchart LR
 | 比較のラベル | Frame · Generated | |
 | 切り抜きの注記 | Cropped to the video's shape, as the thumbnail will be. | 結果の形が動画の形と違うときだけ |
 | 比較の操作 | Use as thumbnail · Applying… · Change and generate again · Discard | |
-| 結果に戻る | Show result | 結果がある間の Compose の表示で |
+| 結果に戻る | Show result | セッションがまだ `succeeded` の間の Compose で |
 | 適用の失敗 | Couldn't use the image: {reason} | |
 | 編集の終了 | This edit has ended, because it was opened again elsewhere or left idle. Close it and start again. | `thumbnail_edit_not_found` のとき |
 | 閉じるときの確認 | Discard this edit? · The run is cancelled and the generated image is lost. The thumbnail stays as it is. · Keep editing · Discard | |
@@ -238,7 +238,7 @@ stateDiagram-v2
   Running --> Compare: 成功
   Running --> Compose: 失敗または取り消し
   Compare --> Compose: Change and generate again
-  Compose --> Compare: Show result
+  Compose --> Compare: Show result、その後の実行なし
   Compare --> [*]: Use as thumbnail
   Compare --> [*]: Discard
   Compose --> [*]: Close
@@ -258,7 +258,7 @@ stateDiagram-v2
 | Clear painting | すべてのストロークを消す |
 | 送る形 | フレームのピクセルの大きさの PNG で、塗ったピクセルは白、残りは黒 ([contracts/workflow.md](contracts/workflow.md#workflow-format))。何も塗っていないときは何も送らない |
 
-aside は上から下へ次を持つ: `Instructions` (4 行で伸びる `Textarea` とその `Label`)。`Reference image` (`outline` `default` の `Button` としての `Add image…`、または選んだ後は、`h-16` の画像とそのファイル名と `ghost` `icon-sm` の `×`) とそのヒント。そして実行の領域。フッターは `Generate` (`default`、`lg`、aside の全幅) を持ち、前の結果がある間はその上に `Show result` (`ghost`) を持つ。
+aside は上から下へ次を持つ: `Instructions` (4 行で伸びる `Textarea` とその `Label`)。`Reference image` (`outline` `default` の `Button` としての `Add image…`、または選んだ後は、`h-16` の画像とそのファイル名と `ghost` `icon-sm` の `×`) とそのヒント。そして実行の領域。フッターは `Generate` (`default`、`lg`、aside の全幅) を持ち、セッションがまだ `succeeded` の間はその上に `Show result` (`ghost`) を持つ: 所有者が Compare から `Change and generate again` で戻り、まだ実行を始めていない間である。実行が始まると、前の結果は画面から完全に消える。適用は `succeeded` のセッションしか受け付けず ([contracts/screen-api.md](contracts/screen-api.md#post-apithumbnail-editseditidapply))、失敗した実行や取り消した実行が、適用できない画像を画面に残すことは決してあってはならないからである。
 
 ワークフローが受け取らない入力は無効 (`opacity-50`) になり、その下に `Input not taken` の行を `text-sm text-muted-foreground` で持つ。`vv:mask` がなければ、ツールの行は無効になり、ステージはストロークを受け付けない。ほかの種類の参照ファイルや 20 MB を超える参照ファイルは、何かを送る前に、aside の中の `destructive` の `Alert` で拒否する。
 

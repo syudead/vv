@@ -161,7 +161,7 @@ The English is the draft the catalog takes; after implementation
 | Comparison labels | Frame · Generated | |
 | Crop note | Cropped to the video's shape, as the thumbnail will be. | Only when the result's shape differs from the video's |
 | Comparison actions | Use as thumbnail · Applying… · Change and generate again · Discard | |
-| Back to the result | Show result | In the compose view while a result exists |
+| Back to the result | Show result | In Compose while the session is still `succeeded` |
 | Apply failed | Couldn't use the image: {reason} | |
 | Edit ended | This edit has ended, because it was opened again elsewhere or left idle. Close it and start again. | On `thumbnail_edit_not_found` |
 | Close confirmation | Discard this edit? · The run is cancelled and the generated image is lost. The thumbnail stays as it is. · Keep editing · Discard | |
@@ -313,7 +313,7 @@ stateDiagram-v2
   Running --> Compare: succeeded
   Running --> Compose: failed or cancelled
   Compare --> Compose: Change and generate again
-  Compose --> Compare: Show result
+  Compose --> Compare: Show result, no run since
   Compare --> [*]: Use as thumbnail
   Compare --> [*]: Discard
   Compose --> [*]: Close
@@ -344,7 +344,13 @@ growing, with its `Label`); `Reference image` (`Add image…` as an `outline`
 `default` `Button`, or once chosen, the image at `h-16` with its file name and a
 `ghost` `icon-sm` `×`), with its hint; and the run area. Its footer holds
 `Generate` (`default`, `lg`, the full width of the aside), and `Show result`
-(`ghost`) above it while an earlier result exists.
+(`ghost`) above it while the session is still `succeeded`: the owner came back
+from Compare with `Change and generate again` and has not started a run. Once
+a run starts, the earlier result is gone from the screen for good, because
+apply takes only a `succeeded` session
+([contracts/screen-api.md](contracts/screen-api.md#post-apithumbnail-editseditidapply))
+and a failed or cancelled run must never leave an image on screen that cannot
+be applied.
 
 An input the workflow does not take is disabled (`opacity-50`) with its
 `Input not taken` line under it in `text-sm text-muted-foreground`. Without
