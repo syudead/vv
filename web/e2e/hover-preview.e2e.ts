@@ -123,12 +123,23 @@ async function liveRegionSnapshot(page: Page) {
   );
 }
 
+// Bounds the Tab presses by the page's focusable elements rather than a fixed
+// count, so adding controls to a card does not make a reachable target fail.
+// It waits for the target first so the count covers the rendered page.
 async function tabTo(page: Page, target: ReturnType<Page["locator"]>) {
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  await target.waitFor({ state: "attached" });
+  const limit =
+    (await page.evaluate(
+      () =>
+        document.querySelectorAll(
+          'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable="true"]',
+        ).length,
+    )) + 1;
+  for (let attempt = 0; attempt < limit; attempt += 1) {
     await page.keyboard.press("Tab");
     if (await target.evaluate((element) => element === document.activeElement)) return;
   }
-  throw new Error("target was not reachable with Tab");
+  throw new Error(`target was not reachable with Tab within ${limit} presses`);
 }
 
 async function snapshot(directory: string): Promise<Map<string, string>> {

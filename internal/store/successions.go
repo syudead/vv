@@ -161,6 +161,11 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		return nil, fmt.Errorf("cannot read the succeeding video: %w", err)
 	}
 
+	// 付け替えで隠れていた項目が見えるようになったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, []string{oldKey, contentKey})
+	if err != nil {
+		return nil, err
+	}
 	bundle, bundled, err := bundleOf(ctx, tx, oldKey)
 	if err != nil {
 		return nil, err
@@ -199,6 +204,9 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 			return nil, err
 		}
 	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
+		return nil, err
+	}
 	return normalizeIDs(changed), nil
 }
 
@@ -223,7 +231,8 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴を鍵 to へ付け替える。
+// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストの項目を
+// 鍵 to へ付け替える。
 // 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits"} {
@@ -253,7 +262,8 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
 		return fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
-	return nil
+	// プレイリストの項目は移し、同じプレイリストで重なれば前の位置を残す（specs/044-playlists/research.md R-2）。
+	return rekeyPlaylistItems(ctx, tx, from, to)
 }
 
 // moveDismissals は「違う動画」の組の鍵 from を to に付け替える。組は並べ直し、重複は 1 つにし、

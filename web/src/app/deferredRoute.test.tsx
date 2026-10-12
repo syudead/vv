@@ -2,7 +2,12 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deferredRoute, matchesPath } from "./deferredRoute";
+import {
+  deferredRoute,
+  matchesBelowPath,
+  matchesExactPath,
+  matchesPath,
+} from "./deferredRoute";
 
 function Page() {
   return <p>読み込んだ画面</p>;
@@ -14,6 +19,18 @@ describe("matchesPath", () => {
     expect(matchesPath("/Folders/1/a", "/folders")).toBe(true);
     expect(matchesPath("/tagsx", "/tags")).toBe(false);
     expect(matchesPath("/", "/tags")).toBe(false);
+  });
+});
+
+describe("matchesExactPath と matchesBelowPath", () => {
+  it("一覧と、その下の画面を分けて当てる", () => {
+    expect(matchesExactPath("/Playlists", "/playlists")).toBe(true);
+    expect(matchesExactPath("/playlists/", "/playlists")).toBe(true);
+    expect(matchesExactPath("/playlists/7", "/playlists")).toBe(false);
+    expect(matchesBelowPath("/playlists/7", "/playlists")).toBe(true);
+    expect(matchesBelowPath("/playlists", "/playlists")).toBe(false);
+    expect(matchesBelowPath("/playlists/", "/playlists")).toBe(false);
+    expect(matchesBelowPath("/playlistsx/7", "/playlists")).toBe(false);
   });
 });
 
@@ -29,6 +46,14 @@ describe("deferredRoute", () => {
 
     expect(screen.getByText("読み込んだ画面")).toBeDefined();
     expect(load).toHaveBeenCalledTimes(1);
+  });
+
+  it("当てる関数が外れる画面は、起動時に読み込まない", async () => {
+    window.history.replaceState({}, "", "/playlists/7");
+    const load = vi.fn(() => Promise.resolve({ default: Page }));
+    await deferredRoute(load, (pathname) => matchesExactPath(pathname, "/playlists"));
+
+    expect(load).not.toHaveBeenCalled();
   });
 
   it("アプリの中で移ってきたときは、読み込みが済んだところで画面を出す", async () => {

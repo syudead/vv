@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -190,6 +191,30 @@ func TestProgressByContentKeys(t *testing.T) {
 	}
 	if len(empty) != 0 {
 		t.Errorf("空の指定で %d 件返った", len(empty))
+	}
+}
+
+// 件数の上限が無いプレイリストの詳細が引くので、SQLite の束縛変数の上限（32766）を超える鍵でも
+// 引ける。
+func TestProgressByContentKeysBeyondVariableLimit(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	if _, err := db.Playback().SaveProgress(ctx, "key-last", domain.EvaluateProgress(1000, 600_000), nil); err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, 0, 40_001)
+	for i := range 40_000 {
+		keys = append(keys, fmt.Sprintf("key-%d", i))
+	}
+	keys = append(keys, "key-last")
+
+	got, err := db.Playback().ProgressByContentKeys(ctx, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if progress, ok := got["key-last"]; !ok || progress.PositionMs != 1000 {
+		t.Errorf("key-last = %+v, %v; want position 1000", progress, ok)
 	}
 }
 

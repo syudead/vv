@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 513b3826dc4607af103bbceabeb74ab5fc75da657155a011b0ba0eb393dfd1df
+sourceHash: 0a72445eff1b16187205d2bb6f613c10696fcfc0fae5af8f138b8b41660ed937
 ---
 
 # 設計文書 {#design-documents}
@@ -39,6 +39,7 @@ sourceHash: 513b3826dc4607af103bbceabeb74ab5fc75da657155a011b0ba0eb393dfd1df
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
 - [テストと CI の品質監視](test-quality-monitoring.md)
+- [複雑度と重複](complexity-and-duplication.md)
 - [VVMDM のブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
 - [シーク中のサムネイルプレビュー: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧でのホバー時の動画プレビュー: UI](../../specs/010-hover-video-preview/ui-design.md)

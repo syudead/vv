@@ -194,19 +194,17 @@ func TestWatchHistoryMigrationBackfills(t *testing.T) {
 	db, provider := migrateTo(t, 33)
 	ctx := context.Background()
 	execSQL(t, db, `insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media"))
-	ids := upsertAll(t, db,
+	upsertAll(t, db,
 		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 1),
 		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 2),
 		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 3),
 		listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4),
 	)
-	a, b := ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]
-	// Bundle は今の読み出しで動画を返し、後の移行（00040）の表も読む。その間だけ空の表を置く。
-	execSQL(t, db, `create table thumbnail_images (content_key text primary key, revision integer)`)
-	if _, err := db.Versions().Bundle(ctx, []int64{a, b}, a); err != nil {
-		t.Fatal(err)
-	}
-	execSQL(t, db, `drop table thumbnail_images`)
+	// 束ねる操作は今のスキーマ（版 33 に無い表）を使うので、集まりの行を直接書く。
+	execSQL(t, db, `insert into video_bundles (user_key, representative_key, created_at, updated_at)
+		values ('bundle:1', 'key-a', 1, 1)`)
+	execSQL(t, db, `insert into video_bundle_members (content_key, bundle_id, added_at)
+		values ('key-a', 1, 1), ('key-b', 1, 1)`)
 	var bundleKey string
 	if err := db.sql.QueryRow(`select user_key from video_bundles`).Scan(&bundleKey); err != nil {
 		t.Fatal(err)

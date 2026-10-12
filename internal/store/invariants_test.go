@@ -38,6 +38,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTentativeTagInvariant(t, db)
 		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
+		assertPlaylistInvariant(t, db)
 	})
 	return db
 }
@@ -444,5 +445,61 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertPlaylistInvariant はプレイリストの不変条件を確かめる（specs/044-playlists/data-model.md
+// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 で、folder_key は domain.FolderKey(folder_key)
+// と等しい（整えた鍵しか書かない）。
+func assertPlaylistInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'playlist_items'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("プレイリストの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	rows, err := db.sql.Query(`select playlist_id, count(*), min(position), max(position), count(distinct position)
+		from playlist_items group by playlist_id`)
+	if err != nil {
+		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, count, low, high, distinct int64
+		if err := rows.Scan(&id, &count, &low, &high, &distinct); err != nil {
+			t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+		}
+		if low != 0 || high != count-1 || distinct != count {
+			t.Errorf("プレイリスト %d の位置が 0 … %d に詰まっていない（min %d、max %d、異なる位置 %d）",
+				id, count-1, low, high, distinct)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	}
+	_ = rows.Close()
+
+	keys, err := db.sql.Query(`select folder_key from playlist_items where folder_key is not null`)
+	if err != nil {
+		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = keys.Close() }()
+	for keys.Next() {
+		var key string
+		if err := keys.Scan(&key); err != nil {
+			t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+		}
+		if folded := domain.FolderKey(key); folded != key {
+			t.Errorf("playlist_items の folder_key %q が FolderKey %q と違う", key, folded)
+		}
+	}
+	if err := keys.Err(); err != nil {
+		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
 	}
 }

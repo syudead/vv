@@ -561,6 +561,24 @@ func (e LibraryItemKind) Valid() bool {
 	}
 }
 
+// Defines values for PlaylistItemKind.
+const (
+	PlaylistItemKindGroup PlaylistItemKind = "group"
+	PlaylistItemKindVideo PlaylistItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the PlaylistItemKind enum.
+func (e PlaylistItemKind) Valid() bool {
+	switch e {
+	case PlaylistItemKindGroup:
+		return true
+	case PlaylistItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ProbeErrorCode.
 const (
 	ProbeErrorCodeFileUnavailable  ProbeErrorCode = "file_unavailable"
@@ -1781,6 +1799,146 @@ type OllamaSettings struct {
 	Model string `json:"model"`
 }
 
+// Playlist プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの
+type Playlist struct {
+	Id int64 `json:"id"`
+
+	// ItemCount 今見せる項目の数
+	ItemCount int `json:"itemCount"`
+
+	// Items 見せる項目を位置の順に並べたもの
+	Items []PlaylistItem `json:"items"`
+
+	// Name 前後の空白を取り除いた 1〜100 文字の名前
+	Name string `json:"name"`
+
+	// UpdatedAt 名前か項目を最後に変えた時刻
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// PlaylistItem プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る
+type PlaylistItem struct {
+	// Group グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+	// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+	// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+	// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	Group *LibraryGroup `json:"group,omitempty"`
+
+	// Id 並べ替えと取り外しに使う項目の識別子
+	Id   int64            `json:"id"`
+	Kind PlaylistItemKind `json:"kind"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// PlaylistItemKind defines model for PlaylistItem.Kind.
+type PlaylistItemKind string
+
+// PlaylistItemMove defines model for PlaylistItemMove.
+type PlaylistItemMove struct {
+	// AfterItemId この項目のすぐ後ろへ移す。null は先頭へ移す
+	AfterItemId *int64 `json:"afterItemId"`
+}
+
+// PlaylistItemsAdd defines model for PlaylistItemsAdd.
+type PlaylistItemsAdd struct {
+	// Folders 足すグループのフォルダ（`PUT /api/favorites` と同じ形）
+	Folders *[]VideoFolder `json:"folders,omitempty"`
+
+	// VideoIds 足す動画の id
+	VideoIds *[]int64 `json:"videoIds,omitempty"`
+}
+
+// PlaylistItemsAdded defines model for PlaylistItemsAdded.
+type PlaylistItemsAdded struct {
+	// Added 末尾に足した項目の数
+	Added int `json:"added"`
+
+	// Existing 引けたが既にプレイリストにあった項目の数
+	Existing int `json:"existing"`
+}
+
+// PlaylistList defines model for PlaylistList.
+type PlaylistList struct {
+	// Items プレイリストの要約の 1 ページ。`updatedAt` の新しい順（同じなら id の大きい順）
+	Items []PlaylistSummary `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 全部のプレイリストの数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// Version 一覧の版。プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な文字列。
+	// ページごとの値が最初のページと違えば、並びが変わっているので最初のページから読み直す
+	Version string `json:"version"`
+}
+
+// PlaylistName defines model for PlaylistName.
+type PlaylistName struct {
+	// Name プレイリストの名前。サーバーが前後の空白を取り除いてから長さを数える
+	Name string `json:"name"`
+}
+
+// PlaylistPlayback プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
+// 「Playback order」）
+type PlaylistPlayback struct {
+	// Count 見せる項目の数
+	Count int `json:"count"`
+
+	// ItemId 再生している項目
+	ItemId int64 `json:"itemId"`
+
+	// Next 連続再生で開く動画 1 本と、それが属する項目
+	Next *PlaylistStep `json:"next,omitempty"`
+
+	// NextItem 連続再生で開く動画 1 本と、それが属する項目
+	NextItem *PlaylistStep `json:"nextItem,omitempty"`
+
+	// Playlist プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+	Playlist PlaylistSummary `json:"playlist"`
+
+	// Position 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0
+	Position int `json:"position"`
+
+	// PreviousItem 連続再生で開く動画 1 本と、それが属する項目
+	PreviousItem *PlaylistStep `json:"previousItem,omitempty"`
+}
+
+// PlaylistStep 連続再生で開く動画 1 本と、それが属する項目
+type PlaylistStep struct {
+	ItemId int64 `json:"itemId"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video Video `json:"video"`
+}
+
+// PlaylistSummary プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+type PlaylistSummary struct {
+	// Covers 一覧のカードのフォルダの絵柄に差し込むサムネイル（`LibraryGroup.previews` と同じ形）。
+	// 見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
+	// 最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件。
+	// `GET /api/playlists` の要約にだけ入り、ほかの応答では省く
+	Covers *[]FolderPreview `json:"covers,omitempty"`
+	Id     int64            `json:"id"`
+
+	// ItemCount 今見せる項目の数（specs/044-playlists/research.md R-4）
+	ItemCount int `json:"itemCount"`
+
+	// Name 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい
+	Name string `json:"name"`
+
+	// UpdatedAt 名前か項目を最後に変えた時刻
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -2756,6 +2914,12 @@ type FolderRootId = int64
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
 
+// PlaylistId defines model for PlaylistId.
+type PlaylistId = int64
+
+// PlaylistItemId defines model for PlaylistItemId.
+type PlaylistItemId = int64
+
 // TagId defines model for TagId.
 type TagId = int64
 
@@ -2923,6 +3087,24 @@ type ListLibraryIdsParams struct {
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
 type DeleteMediaFolderParams struct {
 	Version int64 `form:"version" json:"version"`
+}
+
+// ListPlaylistsParams defines parameters for ListPlaylists.
+type ListPlaylistsParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPlaylistPlaybackParams defines parameters for GetPlaylistPlayback.
+type GetPlaylistPlaybackParams struct {
+	// Item 再生している項目の識別子
+	Item int64 `form:"item" json:"item"`
+
+	// Video 動画ページで開いている動画の識別子
+	Video int64 `form:"video" json:"video"`
 }
 
 // StartScanJSONBody defines parameters for StartScan.
@@ -3154,6 +3336,18 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// CreatePlaylistJSONRequestBody defines body for CreatePlaylist for application/json ContentType.
+type CreatePlaylistJSONRequestBody = PlaylistName
+
+// RenamePlaylistJSONRequestBody defines body for RenamePlaylist for application/json ContentType.
+type RenamePlaylistJSONRequestBody = PlaylistName
+
+// AddPlaylistItemsJSONRequestBody defines body for AddPlaylistItems for application/json ContentType.
+type AddPlaylistItemsJSONRequestBody = PlaylistItemsAdd
+
+// MovePlaylistItemJSONRequestBody defines body for MovePlaylistItem for application/json ContentType.
+type MovePlaylistItemJSONRequestBody = PlaylistItemMove
+
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
 
@@ -3300,6 +3494,33 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// ListPlaylists プレイリストを更新日時の新しい順に返す
+	// (GET /api/playlists)
+	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
+	// CreatePlaylist 空のプレイリストを作る
+	// (POST /api/playlists)
+	CreatePlaylist(w http.ResponseWriter, r *http.Request)
+	// DeletePlaylist プレイリストを消す
+	// (DELETE /api/playlists/{id})
+	DeletePlaylist(w http.ResponseWriter, r *http.Request, id PlaylistId)
+	// GetPlaylist プレイリスト 1 つと見せる項目を返す
+	// (GET /api/playlists/{id})
+	GetPlaylist(w http.ResponseWriter, r *http.Request, id PlaylistId)
+	// RenamePlaylist プレイリストの名前を変える
+	// (PATCH /api/playlists/{id})
+	RenamePlaylist(w http.ResponseWriter, r *http.Request, id PlaylistId)
+	// AddPlaylistItems プレイリストの末尾に動画とグループを足す
+	// (POST /api/playlists/{id}/items)
+	AddPlaylistItems(w http.ResponseWriter, r *http.Request, id PlaylistId)
+	// RemovePlaylistItem プレイリストから項目を 1 つ外す
+	// (DELETE /api/playlists/{id}/items/{itemId})
+	RemovePlaylistItem(w http.ResponseWriter, r *http.Request, id PlaylistId, itemId PlaylistItemId)
+	// MovePlaylistItem プレイリストの項目 1 つを並べ替える
+	// (POST /api/playlists/{id}/items/{itemId}/move)
+	MovePlaylistItem(w http.ResponseWriter, r *http.Request, id PlaylistId, itemId PlaylistItemId)
+	// GetPlaylistPlayback プレイリストから再生しているときの位置と次の動画を返す
+	// (GET /api/playlists/{id}/playback)
+	GetPlaylistPlayback(w http.ResponseWriter, r *http.Request, id PlaylistId, params GetPlaylistPlaybackParams)
 	// StartScan 取り込みを開始する
 	// (POST /api/scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -4415,6 +4636,295 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPlaylists operation middleware
+func (siw *ServerInterfaceWrapper) ListPlaylists(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlaylistsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPlaylists(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePlaylist operation middleware
+func (siw *ServerInterfaceWrapper) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePlaylist(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePlaylist operation middleware
+func (siw *ServerInterfaceWrapper) DeletePlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePlaylist(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlaylist operation middleware
+func (siw *ServerInterfaceWrapper) GetPlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlaylist(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenamePlaylist operation middleware
+func (siw *ServerInterfaceWrapper) RenamePlaylist(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenamePlaylist(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddPlaylistItems operation middleware
+func (siw *ServerInterfaceWrapper) AddPlaylistItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddPlaylistItems(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemovePlaylistItem operation middleware
+func (siw *ServerInterfaceWrapper) RemovePlaylistItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId PlaylistItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemovePlaylistItem(w, r, id, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MovePlaylistItem operation middleware
+func (siw *ServerInterfaceWrapper) MovePlaylistItem(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "itemId" -------------
+	var itemId PlaylistItemId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "itemId", r.PathValue("itemId"), &itemId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "itemId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MovePlaylistItem(w, r, id, itemId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlaylistPlayback operation middleware
+func (siw *ServerInterfaceWrapper) GetPlaylistPlayback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PlaylistId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPlaylistPlaybackParams
+
+	// ------------- Required query parameter "item" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "item", r.URL.Query(), &params.Item, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "item"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "item", Err: err})
+		}
+		return
+	}
+
+	// ------------- Required query parameter "video" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "video", r.URL.Query(), &params.Video, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "video"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "video", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlaylistPlayback(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6809,10 +7319,19 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists", wrapper.ListPlaylists)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/playlists", wrapper.CreatePlaylist)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/playlists/{id}", wrapper.DeletePlaylist)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists/{id}", wrapper.GetPlaylist)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/playlists/{id}", wrapper.RenamePlaylist)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/playlists/{id}/items", wrapper.AddPlaylistItems)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/playlists/{id}/items/{itemId}", wrapper.RemovePlaylistItem)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/playlists/{id}/items/{itemId}/move", wrapper.MovePlaylistItem)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history", wrapper.ClearWatchHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history", wrapper.ListWatchHistory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/watch-history/dates", wrapper.ListWatchHistoryDates)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/watch-history/{id}", wrapper.DeleteWatchHistoryEntry)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists/{id}/playback", wrapper.GetPlaylistPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)

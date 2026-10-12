@@ -101,6 +101,13 @@ function leftAsIs(count: number, kind: "confirmed" | "tentative"): string {
   });
 }
 
+function playlistCount(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} playlist`,
+    other: `${formatNumber(count)} playlists`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -684,6 +691,8 @@ export const en = {
       // （specs/035-favorites/ui-design.md「Words」）。
       favorite: (title: string) => `Favorite "${title}"`,
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
+      // プレイリストに足す操作の読み上げ名（specs/044-playlists/ui-design.md「Words」）。
+      addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -743,6 +752,7 @@ export const en = {
       count: videos,
       select: (name: string) => `Select the group "${name}"`,
       favorite: (name: string) => `Favorite group "${name}"`,
+      addToPlaylist: (name: string) => `Add group "${name}" to a playlist`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -781,6 +791,7 @@ export const en = {
       favoritesAdded: (count: number) => `Added ${items(count)} to favorites`,
       favoritesRemoved: (count: number) => `Removed ${items(count)} from favorites`,
       favoritesFailed: (reason: string) => `Couldn't change the favorites: ${reason}`,
+      addToPlaylist: "Add to playlist",
       visibility: "Visibility",
       makePublic: "Make public",
       makePrivate: "Make private",
@@ -1278,6 +1289,22 @@ export const en = {
           : `Show ${formatNumber(count)} earlier videos`,
       moreFailed: "Couldn't load more of the group",
     },
+    // プレイリストの文脈で開いた動画ページ（specs/044-playlists/ui-design.md「Words」）。
+    // 名前と題名（利用者のデータ）はそのまま埋め込む。
+    playlist: {
+      line: (name: string, position: number, count: number) =>
+        position > 0
+          ? `Playlist "${name}", item ${formatNumber(position)} of ${formatNumber(count)}. Open the playlist`
+          : `Playlist "${name}". Open the playlist`,
+      previous: "Previous item",
+      next: "Next item",
+      end: "End of playlist",
+      endAnnouncement: (name: string) =>
+        `Playback finished. End of the playlist "${name}"`,
+      gone: "This video is no longer in the playlist. Playback stops after it.",
+      skipped: (title: string) => `Skipped "${title}": it can't be played here.`,
+      skippedLast: (title: string) => `Can't play "${title}". End of the playlist.`,
+    },
     facts: {
       label: "File details",
       duration: "Length",
@@ -1533,6 +1560,104 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
+  // プレイリスト（specs/044-playlists/ui-design.md「Words」）。
+  playlists: {
+    title: "Playlists",
+    documentTitle: "Playlists",
+    // 一覧のカードのリンクの読み上げ名（「Morning, 3 items」）。
+    rowLabel: (name: string, count: number) => `${name}, ${items(count)}`,
+    items,
+    count: playlistCount,
+    new: "New playlist",
+    newDialog: {
+      title: "New playlist",
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the playlist: ${reason}`,
+    },
+    nameLabel: "Name",
+    nameRule: "Use a name of 1 to 100 characters.",
+    empty: {
+      title: "No playlists yet",
+      description:
+        "Create a playlist, then add videos and groups to it from the library.",
+    },
+    loadFailed: "Couldn't load the playlists",
+    // プレイリストの画面（/playlists/{id}）。
+    detail: {
+      // 見出しの件数（「12 items · 1:32:10」）。長さの分からない項目があれば長さを省く。
+      count: (count: number, duration: string) =>
+        duration === "" ? items(count) : `${items(count)} · ${duration}`,
+      play: "Play",
+      playFor: (name: string) => `Play "${name}" from the top`,
+      rename: "Rename…",
+      delete: "Delete…",
+      table: "Items",
+      empty: {
+        title: "No items yet",
+        description:
+          "Add videos and groups with Add to playlist on a card, on the video page, or in the selection bar.",
+        action: "Open library",
+      },
+      gone: {
+        title: "This playlist no longer exists",
+        description: "It was deleted, maybe in another tab.",
+        action: "Back to playlists",
+      },
+      loadFailed: "Couldn't load the playlist",
+    },
+    item: {
+      playFrom: (title: string) => `Play from ${title}`,
+      reorder: (title: string) => `Reorder "${title}"`,
+      reorderInstructions:
+        "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
+      // dnd-kit の読み上げ（持ち上げ・移動・置く・取り消し）。位置は 1 始まり。
+      pickedUp: (title: string, position: number, count: number) =>
+        `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      movedTo: (title: string, position: number, count: number) =>
+        `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      dropped: (title: string, position: number, count: number) =>
+        `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
+      cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+      remove: "Remove from playlist",
+      removeFor: (title: string) => `Remove "${title}" from the playlist`,
+      moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
+      removeFailed: (reason: string) => `Couldn't remove the item: ${reason}`,
+    },
+    renameDialog: {
+      title: "Rename playlist",
+      submit: "Save",
+      submitting: "Saving…",
+      failed: (reason: string) => `Couldn't rename the playlist: ${reason}`,
+    },
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      description: "The playlist is deleted. Its videos and groups stay in the library.",
+      submit: "Delete",
+      submitting: "Deleting…",
+      failed: (reason: string) => `Couldn't delete the playlist: ${reason}`,
+    },
+    deleted: (name: string) => `Deleted "${name}"`,
+    // 動画とグループをプレイリストに足すピッカー（specs/044-playlists/ui-design.md
+    // 「Add to playlist」「Words」）。名前（利用者のデータ）はそのまま埋め込む。
+    add: {
+      label: "Add to playlist",
+      search: "Search or create a playlist",
+      list: "Playlists",
+      create: (name: string) => `Create "${name}"`,
+      none: "No playlists yet. Type a name to create one.",
+      nameTooLong: "Use a name of up to 100 characters",
+      loading: "Loading…",
+      loadFailed: "Couldn't load the playlists",
+      added: (count: number, name: string) => `Added ${items(count)} to "${name}"`,
+      existing: (count: number, name: string) =>
+        count === 1 ? `Already in "${name}"` : `${items(count)} already in "${name}"`,
+      partly: (added: number, existing: number, name: string) =>
+        `Added ${items(added)} to "${name}"; ${formatNumber(existing)} already there`,
+      nothing: "Nothing was added",
+      failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
+    },
+  },
   tagName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
@@ -1583,6 +1708,7 @@ export const en = {
       folders: "Folders",
       tags: "Tags",
       history: "History",
+      playlists: "Playlists",
       duplicates: "Duplicates",
       settings: "Settings",
       login: "Sign in",

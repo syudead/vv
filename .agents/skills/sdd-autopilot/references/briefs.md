@@ -90,7 +90,8 @@ Feature branch: <feature>   Feature directory: <dir>
 Procedure: the "Pre-merge sweep" section of
   .agents/skills/issue-handoff/references/integrate.md, once.
 Run every check it lists on origin/<feature> and walk the parent's acceptance
-criteria. Collect the backlog (the integration PR body's remaining risks, the
+criteria. Check the free disk space before e2e as the section says; when it
+stays short, return BLOCKED naming it instead of skipping e2e. Collect the backlog (the integration PR body's remaining risks, the
 merged feature PRs' deferred items, unresolved threads on #<pr>), verify each,
 and pick only what the section's criteria say is worth fixing now, at most
 five. Resolve the threads on #<pr> whose fix PR has merged, as the section

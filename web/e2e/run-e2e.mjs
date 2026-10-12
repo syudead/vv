@@ -9,6 +9,7 @@ import {
   generateGuestFixtures,
   generateHistoryFixtures,
   generateMediaFixtures,
+  generatePlaylistsFixtures,
   generateScanIssueFixtures,
   generateScanProgressFixtures,
   generateSearchFixtures,
@@ -30,6 +31,7 @@ const foldersSearchMediaDir = path.join(runRoot, "folders-search-media");
 const tagsMediaDir = path.join(runRoot, "tags-media");
 const guestMediaDir = path.join(runRoot, "guest-media");
 const historyMediaDir = path.join(runRoot, "history-media");
+const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
@@ -57,6 +59,7 @@ function run() {
     generateTagsFixtures(tagsMediaDir);
     generateGuestFixtures(guestMediaDir);
     generateHistoryFixtures(historyMediaDir);
+    generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
     generateThumbnailEditFixtures(thumbnailEditMediaDir);
@@ -106,6 +109,7 @@ function run() {
           MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
           MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
+          MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
           MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,

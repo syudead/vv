@@ -29,6 +29,7 @@ import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
@@ -362,6 +363,15 @@ export default function VideoFacts({
                   await onFavorite?.(!favorite);
                 }}
                 onFailed={(reason) => setFailure(f.favoriteFailed(reason))}
+              />
+            )}
+            {/* お気に入りの直後に置く。ハートと同じく所有者にだけ出る
+                （specs/044-playlists/ui-design.md「Add to playlist」）。 */}
+            {favorite !== undefined && (
+              <AddToPlaylistButton
+                variant="page"
+                label={t.playlists.add.label}
+                videoIds={[video.id]}
               />
             )}
             {owner && capture !== undefined && (

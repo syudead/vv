@@ -23,11 +23,20 @@ function isEditable(element: Element): boolean {
 const spaceOwners =
   "button, a[href], summary, [role='button'], [role='link'], [role='slider'], [role='checkbox'], [role='switch'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'], [role='tab']";
 
+/**
+ * 吹き出し（Radix の Popover）やメニューの中身。中にフォーカスがある間のキーはその部品の
+ * もので、再生を操作しない（例: 「Add to playlist」のピッカーの Retry や行の上で M を押しても
+ * 消音しない）。Esc だけは通し、`isPopoverOpen` の判定で画面を閉じないようにする。
+ */
+const popperContent = "[data-radix-popper-content-wrapper]";
+
 /** shortcutFor は押されたキーが起こす操作を返す。この画面が扱わないキーは null。 */
 export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
   if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return null;
   const target = event.target instanceof Element ? event.target : null;
   if (target !== null && isEditable(target)) return null;
+  const inPopover = target?.closest(popperContent) != null;
+  if (inPopover && event.key !== "Escape" && event.key !== "Esc") return null;
 
   switch (event.key) {
     case " ":

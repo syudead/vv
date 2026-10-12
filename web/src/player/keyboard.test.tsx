@@ -236,6 +236,38 @@ describe("useKeyboardShortcuts", () => {
     }
   });
 
+  it("吹き出しの中（ピッカーの行や Retry）のキーは再生を操作しない", () => {
+    const controls = fakeControls();
+    const { onClose } = setup(controls);
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-radix-popper-content-wrapper", "");
+    const content = document.createElement("div");
+    content.setAttribute("role", "dialog");
+    content.tabIndex = -1;
+    const retry = document.createElement("button");
+    retry.textContent = "Retry";
+    content.append(retry);
+    wrapper.append(content);
+    document.body.append(wrapper);
+    try {
+      for (const target of [content, retry]) {
+        for (const key of [" ", "f", "m", "c", "0"]) {
+          fireEvent.keyDown(target, { key });
+        }
+      }
+      expect(controls.togglePlay).not.toHaveBeenCalled();
+      expect(controls.toggleFullscreen).not.toHaveBeenCalled();
+      expect(controls.toggleMute).not.toHaveBeenCalled();
+      expect(controls.toggleSubtitles).not.toHaveBeenCalled();
+      expect(controls.seekTo).not.toHaveBeenCalled();
+      // Esc は吹き出しに任せ、画面も閉じない。
+      fireEvent.keyDown(retry, { key: "Escape" });
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      wrapper.remove();
+    }
+  });
+
   it("プレイヤーが無いときは再生の操作をしない", () => {
     setup(null);
     expect(() => fireEvent.keyDown(document.body, { key: " " })).not.toThrow();
