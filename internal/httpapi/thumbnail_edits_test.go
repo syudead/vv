@@ -83,6 +83,10 @@ func (e editEditor) Cancel(context.Context, domain.ImageEditJob, domain.Thumbnai
 	return nil
 }
 
+func (e editEditor) Progress(domain.ImageEditJob) *domain.ImageEditProgress {
+	return nil
+}
+
 func (e editEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error) {
 	return editPNG(4, 4), nil
 }

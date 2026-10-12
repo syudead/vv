@@ -68,13 +68,14 @@ func (f *fakeImageEditor) Output(context.Context, domain.ImageEditJob) ([]byte, 
 	return f.output, f.outputErr
 }
 
-func (f *fakeImageEditor) Progress(domain.ImageEditJob) (domain.ImageEditProgress, bool) {
+func (f *fakeImageEditor) Progress(domain.ImageEditJob) *domain.ImageEditProgress {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.progress == nil {
-		return domain.ImageEditProgress{}, false
+		return nil
 	}
-	return *f.progress, true
+	progress := *f.progress
+	return &progress
 }
 
 func (f *fakeImageEditor) set(state domain.ThumbnailEditState, failure *domain.ImageEditError) {

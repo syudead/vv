@@ -44,12 +44,6 @@ type ThumbnailImageApplier interface {
 	ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
 }
 
-// ImageEditProgressSource は、ImageEditor が実行のステップの進み具合も報告できるときに満たす
-// 追加の口である。報告が無ければ ok が false である（research.md R-5）。
-type ImageEditProgressSource interface {
-	Progress(job domain.ImageEditJob) (progress domain.ImageEditProgress, ok bool)
-}
-
 // ThumbnailEditsOptions は ThumbnailEdits を組み立てる部品である。
 type ThumbnailEditsOptions struct {
 	Settings ComfyUISettingsReader
@@ -65,7 +59,6 @@ type ThumbnailEditsOptions struct {
 type ThumbnailEdits struct {
 	settings ComfyUISettingsReader
 	editor   ImageEditor
-	progress ImageEditProgressSource
 	frames   ThumbnailFrameSource
 	applier  ThumbnailImageApplier
 	logger   *slog.Logger
@@ -116,11 +109,9 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 	if now == nil {
 		now = time.Now
 	}
-	progress, _ := opts.Editor.(ImageEditProgressSource)
 	return &ThumbnailEdits{
 		settings: opts.Settings,
 		editor:   opts.Editor,
-		progress: progress,
 		frames:   opts.Frames,
 		applier:  opts.Applier,
 		logger:   logger,
@@ -471,10 +462,8 @@ func (e *ThumbnailEdits) refresh(ctx context.Context, session *thumbnailEditSess
 		e.logger.Debug("could not read a thumbnail edit run", slog.Int64("video", session.videoID), slog.Any("error", err))
 		return
 	}
-	if e.progress != nil {
-		if progress, ok := e.progress.Progress(run.job); ok {
-			run.progress = &progress
-		}
+	if progress := e.editor.Progress(run.job); progress != nil {
+		run.progress = progress
 	}
 	switch state {
 	case domain.ThumbnailEditSucceeded:

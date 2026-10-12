@@ -56,12 +56,6 @@ type ThumbnailEditRunInput struct {
 	Reference   []byte
 }
 
-// ImageEditProgress は提供元が報告した実行のステップの進み具合で、Max のうち Value まで進んだ。
-type ImageEditProgress struct {
-	Value int
-	Max   int
-}
-
 // ThumbnailEdit は画面へ返す編集のセッションの今の姿である（contracts/screen-api.md の
 // ThumbnailEdit）。Elapsed は実行を送ってからの時間で、ready では nil である。終わった実行では
 // 終わった時点で止まる。Progress は提供元が報告したときだけ、Error は failed のときだけ持つ。
