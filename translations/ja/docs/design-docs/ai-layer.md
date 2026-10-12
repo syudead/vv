@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: 047c30ac2b40d9f8671b669ce99b1164c1fc55bfb49043eeb6d10c9fd79fd299
+sourceHash: c449c687225b0ca5bc3d93393f99c259c95e0f6e34559963065a6316a8bcfc14
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -80,6 +80,8 @@ API キーは書き込み専用だ。`GET` は `apiKeySet` を答え、キーは
 | --- | --- | --- |
 | セルフホスト | 保存した URL への `GET /system_stats` | URL に到達できない、または応答が ComfyUI のシステム情報ではない |
 | Comfy Cloud | `X-API-Key` を付けた `GET https://cloud.comfy.org/api/jobs?limit=1` | Comfy Cloud に到達できない、またはキーに対して `401` か `403` を返す |
+
+プロバイダが応答すると、テストは `GET /object_info` を読み、vv が [`internal/comfyui/workflows`](../../internal/comfyui/workflows) に同梱する 2 つのワークフローを確認する。ワークフローが使うすべての `class_type` が存在しなければならず、ローダーノードが指定するすべてのモデルファイルがそのローダーの選択肢に含まれていなければならない。確認は `missing` の一覧を付けて利用できないと答える。一覧には、各モデルファイルをその `models` 以下のフォルダとダウンロードページとともに並べ、続いて欠けている各ノードの型を並べる。ノードの型の対処は ComfyUI の更新だ ([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files))。ワークフローの正は埋め込んだファイルだ。所有者向けの手順は [comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md) にある。`GET /api/thumbnail-edits/readiness` は接続が保存されているかを答える。動画ページが編集を有効にするのに必要なのはこの情報だ。このエンドポイントはテストを実行しない。
 
 テストは、何も保存されていないときもそれを報告する。原因ごとに別のメッセージがあり、どのメッセージも応答の本文を含まない。テストはリダイレクトをたどらないので、キーが別のホストに送られることはない。Ollama と同じく、サーバーは保存した接続にのみリクエストを送り、リクエスト本文の URL には決して送らない。
 

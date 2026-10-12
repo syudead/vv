@@ -98,6 +98,8 @@ export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
 export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
+export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];
+export type ThumbnailEditReadiness = components["schemas"]["ThumbnailEditReadiness"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
   components["schemas"]["UpdateAutoTaggingSettingsRequest"];
@@ -933,14 +935,26 @@ export function updateComfyUISettings(
 }
 
 /**
- * checkComfyUI は保存した接続先に ComfyUI が応えるかを確かめる。接続先は送らない（サーバーは
- * 保存した設定だけを使う）。
+ * checkComfyUI は保存した接続先に ComfyUI が応え、vv のワークフローに要るノードとモデル
+ * ファイルが揃っているかを確かめる。足りなければ `missing` に `ComfyUIMissingItem` が並ぶ。
+ * 接続先は送らない（サーバーは保存した設定だけを使う）。
  */
 export function checkComfyUI(signal?: AbortSignal): Promise<CheckResult> {
   return request<CheckResult>("/api/settings/comfyui/check", {
     method: "POST",
     signal,
   });
+}
+
+/**
+ * getThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを取得する。
+ * `connection` は接続先が保存されていることで、テストに通ったことではない
+ * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ */
+export function getThumbnailEditReadiness(
+  signal?: AbortSignal,
+): Promise<ThumbnailEditReadiness> {
+  return request<ThumbnailEditReadiness>("/api/thumbnail-edits/readiness", { signal });
 }
 
 /**

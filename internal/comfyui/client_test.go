@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	pathpkg "path"
 	"strings"
 	"testing"
 
@@ -28,11 +29,25 @@ func cloud(key string) fixedSettings {
 	return fixedSettings{settings: domain.ComfyUISettings{Provider: domain.ComfyUICloud, APIKey: key}}
 }
 
-// serve は 1 つの経路だけに答える偽の提供元を立てる。ほかの経路は失敗にする。
+// serve は 1 つの経路と、その隣の /object_info に答える偽の提供元を立てる。/object_info は
+// ワークフローに要るものをすべて持つ。ほかの経路は失敗にする。
 func serve(t *testing.T, path string, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
+	info := fullObjectInfo(t)
+	return serveRoutes(t, map[string]http.HandlerFunc{
+		path: handler,
+		strings.TrimSuffix(path, pathpkg.Base(path)) + "object_info": func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write(info)
+		},
+	})
+}
+
+// serveRoutes は routes の経路にだけ GET で答える偽の提供元を立てる。ほかの要求は失敗にする。
+func serveRoutes(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != path {
+		handler, ok := routes[r.URL.Path]
+		if r.Method != http.MethodGet || !ok {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 			return

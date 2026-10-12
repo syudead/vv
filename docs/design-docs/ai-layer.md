@@ -114,6 +114,21 @@ reader of the database
 | Self-hosted | `GET /system_stats` at the saved URL | The URL cannot be reached, or the reply is not ComfyUI's system information |
 | Comfy Cloud | `GET https://cloud.comfy.org/api/jobs?limit=1` with `X-API-Key` | Comfy Cloud cannot be reached, or answers `401` or `403` to the key |
 
+Once the provider answers, the test reads `GET /object_info` and checks the
+two workflows vv bundles in
+[`internal/comfyui/workflows`](../../internal/comfyui/workflows): every
+`class_type` they use must exist, and every model file a loader node names must
+be among that loader's options. The check answers unavailable with a `missing`
+list: each model file with its folder under `models` and its download page,
+then each missing node type, whose remedy is to update ComfyUI
+([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)).
+The embedded files are the source of truth for the workflows; the steps for an
+owner are in
+[comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md).
+`GET /api/thumbnail-edits/readiness` answers whether a connection is saved,
+which is what the video page needs to enable the edit; it does not run the
+test.
+
 The test also reports when nothing is saved. Each cause has its own message,
 and no message carries the body of the reply. The test does not follow
 redirects, so the key is never sent to another host. As with Ollama, the server

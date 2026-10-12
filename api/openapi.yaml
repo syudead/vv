@@ -1646,9 +1646,11 @@ paths:
       summary: 保存した接続先に ComfyUI が応えるかを確かめる
       description: |
         自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
-        `X-API-Key` を付けて確かめる。使えないときの `message` は、届かない、ComfyUI でない、キーが
-        拒まれた、何も保存されていないを区別する。接続先は要求の本文から取らない（任意の URL へ
-        サーバーから要求を送らせないため）。要求の本文は無い
+        `X-API-Key` を付けて確かめる。応えたら `GET /object_info` を読み、vv のワークフローの
+        ノードの型とローダーが名指すモデルファイルがあるかを確かめ、足りなければ `available: false`
+        と `missing` を返す（R-13）。使えないときの `message` は、届かない、ComfyUI でない、キーが
+        拒まれた、何も保存されていない、ファイルが足りないを区別する。接続先は要求の本文から取らない
+        （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い
         （specs/045-comfyui-thumbnails/research.md R-5）。
       responses:
         "200":
@@ -1657,6 +1659,24 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CheckResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/thumbnail-edits/readiness:
+    get:
+      operationId: getThumbnailEditReadiness
+      summary: サムネイルの編集を始められるかを返す
+      description: |
+        動画のページが編集の入口を有効にするために読む。`connection` は ComfyUI の接続先が保存されて
+        いることで、接続テストに通ったことではない
+        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 編集の準備の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThumbnailEditReadiness"
         "403":
           $ref: "#/components/responses/Forbidden"
 
@@ -3314,6 +3334,39 @@ components:
         message:
           type: string
           description: 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある）
+        missing:
+          type: array
+          description: ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル
+          items:
+            $ref: "#/components/schemas/ComfyUIMissingItem"
+
+    ComfyUIMissingItem:
+      type: object
+      required: [kind, name]
+      additionalProperties: false
+      description: ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13）
+      properties:
+        kind:
+          type: string
+          enum: [node, model]
+        name:
+          type: string
+          description: ノードの `class_type` かファイル名
+        folder:
+          type: string
+          description: モデルファイルだけ。ComfyUI の `models` の下のフォルダ
+        source:
+          type: string
+          description: モデルファイルだけ。入手先のページの URL
+
+    ThumbnailEditReadiness:
+      type: object
+      required: [connection]
+      additionalProperties: false
+      properties:
+        connection:
+          type: boolean
+          description: ComfyUI の接続先が保存されているか（テストに通ったかではない）
 
     StartAutoTaggingRequest:
       type: object

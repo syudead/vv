@@ -9,3 +9,7 @@ export const HARDWARE_ENCODING_GUIDE_URL =
 /** EXTERNAL_API_GUIDE_URL は docs/how-to/external-api.md（外部連携 API と MCP の使い方）である。 */
 export const EXTERNAL_API_GUIDE_URL =
   "https://syudead.github.io/vv/docs/how-to/external-api";
+
+/** COMFYUI_GUIDE_URL は docs/how-to/comfyui-thumbnails.md（サムネイルの編集のための ComfyUI の用意）である。 */
+export const COMFYUI_GUIDE_URL =
+  "https://syudead.github.io/vv/docs/how-to/comfyui-thumbnails";
