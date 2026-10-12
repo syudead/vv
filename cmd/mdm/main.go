@@ -284,7 +284,8 @@ func run(opts runOptions) error {
 	// サムネイルの編集のセッション。メモリにだけ持ち、適用は取り込みと同じ生成の錠の中で行う
 	// （docs/design-docs/thumbnail-editing.md）。
 	thumbnailEdits := app.NewThumbnailEdits(app.ThumbnailEditsOptions{
-		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Applier: ingest, Logger: logger,
+		Settings: settingsStore, Editor: comfyUIClient, Frames: media.NewAssets(), Images: db.Overrides(),
+		Applier: ingest, Logger: logger,
 	})
 	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。

@@ -990,20 +990,29 @@ export function getThumbnailEditReadiness(
 }
 
 /**
- * startThumbnailEdit は動画の `positionMs`（ミリ秒）の場面で、サムネイルの編集のセッションを始める。
+ * ThumbnailEditStart は編集を何から始めるかである。`frame` は選んだ位置 `positionMs`（ミリ秒）の
+ * コマ、`thumbnail` は今のサムネイルである
+ * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+ */
+export type ThumbnailEditStart =
+  { source: "frame"; positionMs: number } | { source: "thumbnail" };
+
+/**
+ * startThumbnailEdit は `start` が指す画像から、動画のサムネイルの編集のセッションを始める。
  * 同じ動画のセッションがあれば、サーバーがその実行を中止して終える。応答は `ready` のセッションで、
- * `frameUrl` がコマの PNG、`frameWidth`・`frameHeight` がマスクを描く大きさである
- * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * `frameUrl` が始めた画像の PNG、`frameWidth`・`frameHeight` がマスクを描く大きさ、`source` と
+ * `positionMs` がその画像の元である（specs/045-comfyui-thumbnails/contracts/screen-api.md、
+ * specs/046-thumbnail-image-upload/contracts/screen-api.md）。
  */
 export function startThumbnailEdit(
   videoId: number,
-  positionMs: number,
+  start: ThumbnailEditStart,
   signal?: AbortSignal,
 ): Promise<ThumbnailEdit> {
   return request<ThumbnailEdit>(`/api/videos/${String(videoId)}/thumbnail-edits`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ positionMs }),
+    body: JSON.stringify(start),
     signal,
   });
 }

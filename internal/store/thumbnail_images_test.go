@@ -377,3 +377,43 @@ func TestThumbnailImageSourcesMigration(t *testing.T) {
 		t.Fatalf("Down のあとの行の画像 = %x", image)
 	}
 }
+
+// 今の代表サムネイルの選び方は、適用した画像の元の画像（無い行では代表サムネイル）と指定した位置を
+// 1 つの文で読む（specs/046-thumbnail-image-upload/research.md R-4）。
+func TestCurrentThumbnailSelection(t *testing.T) {
+	db, ids := overrideFixture(t)
+	ctx := context.Background()
+	id := ids[fixturePath("/media/alpha.mp4")]
+	read := func() domain.CurrentThumbnailSelection {
+		t.Helper()
+		selection, err := db.Overrides().CurrentThumbnailSelection(ctx, "key-alpha")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return selection
+	}
+
+	if got := read(); got.Image != nil || got.PositionMs != nil {
+		t.Fatalf("何も無い内容の選び方 = %+v", got)
+	}
+	position := int64(12_000)
+	if _, err := db.Ingest().SetThumbnailPosition(ctx, id, &position); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got.Image != nil || got.PositionMs == nil || *got.PositionMs != position {
+		t.Fatalf("位置だけの選び方 = %+v", got)
+	}
+	applyThumbnailImage(t, db, id, "key-alpha", []byte("jpeg-640"))
+	if got := read(); !bytes.Equal(got.Image, []byte("source:jpeg-640")) || got.PositionMs == nil {
+		t.Fatalf("画像を適用した選び方 = %+v", got)
+	}
+	if _, err := db.sql.Exec(`update thumbnail_images set source = null where content_key = 'key-alpha'`); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); !bytes.Equal(got.Image, []byte("jpeg-640")) {
+		t.Fatalf("元の画像を持たない行の選び方 = %+v", got)
+	}
+	if got, err := db.Overrides().CurrentThumbnailSelection(ctx, ""); err != nil || got.Image != nil || got.PositionMs != nil {
+		t.Fatalf("内容の無い選び方 = %+v, %v", got, err)
+	}
+}
