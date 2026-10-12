@@ -153,7 +153,7 @@ export function VideoThumbnail({
 /** 広い画面（`lg` 以上）。左右の列がそれぞれ中でスクロールする幅である。 */
 const wideScreen = "(min-width: 64rem)";
 
-function isWideScreen(): boolean {
+export function isWideScreen(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(wideScreen).matches;
 }
 
@@ -175,11 +175,14 @@ function useWideScreen(): boolean {
   return wide;
 }
 
-/** 関連動画の並びの入れ物。広い画面では並びだけを中でスクロールさせる。 */
+/**
+ * 右の列の並びの入れ物。プレイリスト・続けて再生・関連動画を 1 つに入れ、広い画面では
+ * この入れ物の中だけをスクロールさせる。中の位置（offsetTop）の基準にもする（lg:relative）。
+ */
 const scrollerClass =
   // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、左と上ははみ出す分
   // だけ内側に余白を取る。右は画面の端に接するので、見出しの帯の × と揃う余白（pr-3）を取る。
-  "lg:-ml-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
+  "flex flex-col lg:relative lg:-ml-1.5 lg:min-h-0 lg:flex-1 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
 
 /**
  * 右の列の並び（関連動画・続けて再生・プレイリスト）は、どれもライブラリと同じカード
@@ -192,7 +195,7 @@ export const cardListClass =
  * 区切りの見出しの行。広い画面では、自分の区切りの中身が見えている間だけ並びの入れ物の上に
  * 留まる（続けて再生が流れ終わると、関連動画の見出しに入れ替わる）。
  */
-const stickyHeadingClass =
+export const stickyHeadingClass =
   "flex items-baseline justify-between gap-3 bg-background pb-3 lg:sticky lg:-top-1.5 lg:z-30 lg:-mx-1.5 lg:-mt-1.5 lg:px-1.5 lg:pt-1.5";
 
 /**
@@ -214,6 +217,37 @@ export type MemberTarget = (videoId: number) => { to: string; state: unknown };
  * 出し、境目の下に関連動画を出す（specs/017-folder-groups/ui-design.md「Member list」）。
  */
 export default function RelatedVideos({
+  state,
+  linkState,
+  onRetry,
+  onLoadMore,
+  memberTarget,
+  leading,
+}: {
+  state: RelatedState;
+  linkState: VideoLinkState;
+  onRetry: () => void;
+  onLoadMore: () => void;
+  memberTarget?: MemberTarget;
+  /** 並びの入れ物の先頭に置く区切り（プレイリストのパネルと境目）。同じ入れ物でスクロールする。 */
+  leading?: ReactNode;
+}) {
+  return (
+    <div data-related-scroller="" className={scrollerClass}>
+      {leading}
+      <RelatedSections
+        state={state}
+        linkState={linkState}
+        onRetry={onRetry}
+        onLoadMore={onLoadMore}
+        memberTarget={memberTarget}
+      />
+    </div>
+  );
+}
+
+/** RelatedSections は、並びの入れ物の中の続けて再生と関連動画の区切りである。 */
+function RelatedSections({
   state,
   linkState,
   onRetry,
@@ -251,16 +285,18 @@ export default function RelatedVideos({
   return (
     <section
       aria-labelledby={empty ? undefined : "related-heading"}
-      className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
+      className="flex flex-col"
     >
       {!empty && (
-        <h2 id="related-heading" className="text-sm font-semibold">
-          {t.player.related.heading}
-        </h2>
+        <div className={stickyHeadingClass}>
+          <h2 id="related-heading" className="text-sm font-semibold">
+            {t.player.related.heading}
+          </h2>
+        </div>
       )}
 
       {state.kind === "loading" && (
-        <ul aria-hidden="true" className={cn(cardListClass, "lg:pr-3")}>
+        <ul aria-hidden="true" className={cardListClass}>
           {Array.from({ length: 6 }, (_, index) => (
             <li key={index}>
               <RelatedCardSkeleton />
@@ -279,14 +315,14 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "ready" && !empty && (
-        <div data-related-scroller="" className={cn("flex flex-col", scrollerClass)}>
+        <>
           <ul className={cardListClass}>
             {state.related.items.map((video) => (
               <RelatedItem key={video.id} video={video} linkState={linkState} />
             ))}
           </ul>
           <RelatedTail state={state} onLoadMore={onLoadMore} />
-        </div>
+        </>
       )}
     </section>
   );
@@ -343,7 +379,10 @@ function GroupedRelated({
   const end = offset + members.length + after.length;
   const index = shown.findIndex((member) => member.id === currentId);
   const currentRef = useRef<HTMLLIElement | null>(null);
-  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  // 並びの入れ物は親（RelatedVideos）が持つ。区切りの根から辿って使う。
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const scrollerOf = () =>
+    sectionRef.current?.closest<HTMLElement>("[data-related-scroller]") ?? null;
   const loadingRef = useRef(false);
   const abort = useRef<AbortController | null>(null);
   // 前を読み足す直前の入れ物の高さ。読み足した後、見ている行が動かないよう補う。
@@ -369,7 +408,7 @@ function GroupedRelated({
           setLoading(null);
           if (side === "before") {
             heightBeforePrepend.current = isWideScreen()
-              ? (scrollerRef.current?.scrollHeight ?? null)
+              ? (scrollerOf()?.scrollHeight ?? null)
               : null;
             setBefore((previous) => [...page.items, ...previous]);
           } else {
@@ -390,7 +429,7 @@ function GroupedRelated({
   // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
   useLayoutEffect(() => {
     const height = heightBeforePrepend.current;
-    const scroller = scrollerRef.current;
+    const scroller = scrollerOf();
     heightBeforePrepend.current = null;
     if (height === null || scroller === null) return;
     scroller.scrollTop += scroller.scrollHeight - height;
@@ -404,97 +443,89 @@ function GroupedRelated({
   // プレイヤーが画面の上から消えるので、動かさない（Edge Case「大きなグループ」）。
   useLayoutEffect(() => {
     if (!isWideScreen()) return;
-    currentRef.current?.scrollIntoView?.({ block: "nearest" });
+    // 上にプレイリストの区切りがあっても前後のメンバーが見えるよう、入れ物の中ほどに置く。
+    currentRef.current?.scrollIntoView?.({ block: "center" });
   }, [currentId]);
 
   return (
-    <section
-      aria-labelledby="group-heading"
-      className="flex flex-col lg:min-h-0 lg:flex-1"
-    >
-      <div
-        ref={scrollerRef}
-        data-related-scroller=""
-        className={cn("flex flex-col", scrollerClass)}
-      >
-        <div className="flex flex-col">
-          <div className={stickyHeadingClass}>
-            <h2 id="group-heading" className="text-sm font-semibold">
-              {t.player.related.group}
-            </h2>
-            {index >= 0 && (
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {t.player.related.position(first + index + 1, total)}
-              </span>
-            )}
-          </div>
-          {first > 0 &&
-            (wide && failed !== "before" ? (
-              <div ref={observe("before")} aria-hidden="true" className="h-px" />
-            ) : (
-              <GroupEdge
-                label={
-                  failed === "before" ? t.common.retry : t.player.related.earlier(first)
-                }
-                failed={failed === "before"}
-                disabled={loading === "before"}
-                onClick={() => load("before")}
-              />
-            ))}
-          <ul className={cardListClass}>
-            {shown.map((member, position) =>
-              member.id === currentId ? (
-                <CurrentMember
-                  key={member.id}
-                  ref={currentRef}
-                  video={member}
-                  position={first + position + 1}
-                />
-              ) : (
-                <MemberItem
-                  key={member.id}
-                  video={member}
-                  position={first + position + 1}
-                  linkState={linkState}
-                  memberTarget={memberTarget}
-                />
-              ),
-            )}
-          </ul>
-          {end < total &&
-            (failed === "after" ? (
-              <GroupEdge
-                label={t.common.retry}
-                failed
-                disabled={loading === "after"}
-                onClick={() => load("after")}
-              />
-            ) : (
-              <div ref={observe("after")} aria-hidden="true" className="h-px" />
-            ))}
+    <section ref={sectionRef} aria-labelledby="group-heading" className="flex flex-col">
+      <div className="flex flex-col">
+        <div className={stickyHeadingClass}>
+          <h2 id="group-heading" className="text-sm font-semibold">
+            {t.player.related.group}
+          </h2>
+          {index >= 0 && (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {t.player.related.position(first + index + 1, total)}
+            </span>
+          )}
         </div>
-        {items.length === 0 && tail}
-        {items.length > 0 && (
-          <>
-            <div className="pt-5 pb-2">
-              <Separator decorative={false} />
-            </div>
-            <section aria-labelledby="related-heading" className="flex flex-col">
-              <div className={stickyHeadingClass}>
-                <h2 id="related-heading" className="text-sm font-semibold">
-                  {t.player.related.heading}
-                </h2>
-              </div>
-              <ul className={cardListClass}>
-                {items.map((video) => (
-                  <RelatedItem key={video.id} video={video} linkState={linkState} />
-                ))}
-              </ul>
-              {tail}
-            </section>
-          </>
-        )}
+        {first > 0 &&
+          (wide && failed !== "before" ? (
+            <div ref={observe("before")} aria-hidden="true" className="h-px" />
+          ) : (
+            <GroupEdge
+              label={
+                failed === "before" ? t.common.retry : t.player.related.earlier(first)
+              }
+              failed={failed === "before"}
+              disabled={loading === "before"}
+              onClick={() => load("before")}
+            />
+          ))}
+        <ul className={cardListClass}>
+          {shown.map((member, position) =>
+            member.id === currentId ? (
+              <CurrentMember
+                key={member.id}
+                ref={currentRef}
+                video={member}
+                position={first + position + 1}
+              />
+            ) : (
+              <MemberItem
+                key={member.id}
+                video={member}
+                position={first + position + 1}
+                linkState={linkState}
+                memberTarget={memberTarget}
+              />
+            ),
+          )}
+        </ul>
+        {end < total &&
+          (failed === "after" ? (
+            <GroupEdge
+              label={t.common.retry}
+              failed
+              disabled={loading === "after"}
+              onClick={() => load("after")}
+            />
+          ) : (
+            <div ref={observe("after")} aria-hidden="true" className="h-px" />
+          ))}
       </div>
+      {items.length === 0 && tail}
+      {items.length > 0 && (
+        <>
+          <div className="pt-5 pb-2">
+            <Separator decorative={false} />
+          </div>
+          <section aria-labelledby="related-heading" className="flex flex-col">
+            <div className={stickyHeadingClass}>
+              <h2 id="related-heading" className="text-sm font-semibold">
+                {t.player.related.heading}
+              </h2>
+            </div>
+            <ul className={cardListClass}>
+              {items.map((video) => (
+                <RelatedItem key={video.id} video={video} linkState={linkState} />
+              ))}
+            </ul>
+            {tail}
+          </section>
+        </>
+      )}
     </section>
   );
 }

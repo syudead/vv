@@ -723,42 +723,50 @@ export default function VideoPage() {
         }
         aside={
           inPlaylist ? (
-            <>
-              <PlaylistPanel
-                playlistId={playlistId}
-                panel={playlist.panel}
-                name={playback?.playlist.name}
-                position={playback?.position ?? 0}
-                count={playback?.count ?? 0}
-                currentItemId={
-                  playback === undefined
-                    ? itemId
-                    : playback.position > 0
-                      ? playback.itemId
-                      : undefined
-                }
-                backTo={backTo}
-                autoplay={status.playing || status.ended}
-                onRetry={playlist.retry}
-              />
-              {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
-              {!(
-                related.kind === "ready" &&
-                related.related.group === undefined &&
-                related.related.items.length === 0
-              ) && (
-                <div className="shrink-0 pt-5 pb-2 lg:pr-3">
-                  <Separator decorative={false} />
-                </div>
-              )}
-              <RelatedVideos
-                state={related}
-                linkState={linkState}
-                onRetry={retryRelated}
-                onLoadMore={loadMoreRelated}
-                memberTarget={memberTarget}
-              />
-            </>
+            <RelatedVideos
+              state={related}
+              linkState={linkState}
+              onRetry={retryRelated}
+              onLoadMore={loadMoreRelated}
+              memberTarget={memberTarget}
+              // プレイリストのパネルは続けて再生・関連動画と同じ入れ物の先頭に置き、一緒に
+              // スクロールさせる（広い画面）。
+              leading={
+                <>
+                  <PlaylistPanel
+                    playlistId={playlistId}
+                    panel={playlist.panel}
+                    name={playback?.playlist.name}
+                    position={playback?.position ?? 0}
+                    count={playback?.count ?? 0}
+                    currentItemId={
+                      playback === undefined
+                        ? itemId
+                        : playback.position > 0
+                          ? playback.itemId
+                          : undefined
+                    }
+                    backTo={backTo}
+                    autoplay={status.playing || status.ended}
+                    onRetry={playlist.retry}
+                    // 続けて再生があるときは、そちらが今のメンバーへ動かす。
+                    scrollToCurrent={
+                      !(related.kind === "ready" && related.related.group !== undefined)
+                    }
+                  />
+                  {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
+                  {!(
+                    related.kind === "ready" &&
+                    related.related.group === undefined &&
+                    related.related.items.length === 0
+                  ) && (
+                    <div className="shrink-0 pt-5 pb-2">
+                      <Separator decorative={false} />
+                    </div>
+                  )}
+                </>
+              }
+            />
           ) : (
             <RelatedVideos
               state={related}

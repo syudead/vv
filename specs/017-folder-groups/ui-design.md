@@ -244,12 +244,14 @@ The right column (below under `lg`) when `RelatedVideos.group` exists
   `関連動画` (the current heading), then the current related videos (which do
   not include members of the same group; contracts/folder-groups-api.md, [Groups of videos and related videos](contracts/folder-groups-api.md#groups-of-videos-and-related-videos)).
   With 0 related videos, neither the divider nor the `関連動画` heading appears.
-- Scrolling at `lg` and up: as in 012, the column's first heading line (here
-  `続けて再生`) stays at the top, and everything below it (member list →
-  divider → `関連動画` → related videos) scrolls inside one container. When the
+- Scrolling at `lg` and up: everything in the column (a playlist's panel when
+  there is one → member list → divider → `関連動画` → related videos) scrolls
+  inside one container, and each section's heading (`続けて再生`, `関連動画`)
+  stays at the top only while its section is in view. When the
   page opens (including moving to another member),
-  `scrollIntoView({ block: "nearest" })` scrolls only the container so the
-  current member's row is visible in it (Edge Case `大きなグループ`, acceptance
+  `scrollIntoView({ block: "center" })` scrolls only the container so the
+  current member's card sits in its middle, with the cards before and after it
+  in view (Edge Case `大きなグループ`, acceptance
   criterion `数百本`). The page and the left column do not move. Under `lg` the
   page does not move (the player would leave the top of the screen).
 - **Reading beyond the window**: the order numbers and `3 / 12` count in the

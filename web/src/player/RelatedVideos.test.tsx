@@ -319,7 +319,7 @@ describe("RelatedVideos", () => {
       const scrolled: Element[] = [];
       const original = Element.prototype.scrollIntoView;
       Element.prototype.scrollIntoView = function (this: Element, options) {
-        expect(options).toEqual({ block: "nearest" });
+        expect(options).toEqual({ block: "center" });
         scrolled.push(this);
       };
       try {
