@@ -1,6 +1,6 @@
 ---
 source: specs/046-thumbnail-image-upload/data-model.md
-sourceHash: 900de13bfe4227b468ce61c47aa636581f354e79415719cce451f94634bed7ca
+sourceHash: a02b1866061c6af8a038c5e2004388019e42d6fbeba89582a53e95c6a269a0c1
 ---
 
 # データモデル: ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する {#data-model-set-a-local-image-as-the-thumbnail-and-edit-the-current-thumbnail-with-comfyui}
@@ -49,7 +49,7 @@ sourceHash: 900de13bfe4227b468ce61c47aa636581f354e79415719cce451f94634bed7ca
 | フィールド | 意味 |
 | --- | --- |
 | `Source` | `frame` または `thumbnail`: 所有者が選んだもの |
-| `PositionMs` | 画像がフレームのときのフレームの位置 (選んだもの、記録したもの、自動のもの)。保存した元画像のときはない |
+| `PositionMs` | 画像がフレームのときにフレームを取り出した位置 (選んだもの、記録したもの、自動のもの、または最初のフレームへの代替の後の `0`)。保存した元画像のときはない |
 
 セッションの `Frame` は、元が何であれ選んだ画像を保持し、マスクは今までどおりその大きさに対して確認する。
 

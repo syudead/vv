@@ -1,6 +1,6 @@
 ---
 source: specs/046-thumbnail-image-upload/contracts/screen-api.md
-sourceHash: 4e2276000e090915a86db8859463c49808b496adc460d55d4934e17acbe7d11a
+sourceHash: 6e355ac32cab2455f2d1788abfefde55ec267c4ad33aaeadd5391a1018a6ece7
 ---
 
 # 契約: サムネイルの画像のアップロードと、今のサムネイルからの編集の開始 {#contract-uploading-a-thumbnail-image-and-starting-an-edit-from-the-current-thumbnail}
@@ -43,13 +43,13 @@ sequenceDiagram
 
 | ステータス | `code` / 理由 | いつ |
 | --- | --- | --- |
-| `400` | `invalid_request` / `thumbnail_upload_too_large` | 本文が 64 MiB を超える、またはヘッダーが 120 メガピクセルを超えると示す。`limit` が超えた上限を持つ |
+| `400` | `invalid_request` / `thumbnail_upload_too_large` | `image` パートが 64 MiB を超える (multipart の枠組みのため、本文全体は最大 1 MiB 大きくてよい)、またはヘッダーが 120 メガピクセルを超えると示す。`limit` が超えた上限を持つ |
 | `400` | `invalid_request` / `thumbnail_upload_invalid` | PNG、JPEG、WebP ではない、アニメーションの WebP、または最後までデコードできないファイル |
 | `404` | `not_found` / `video_not_found` | その動画がない |
 | `409` | `conflict` / `content_changed` | 動画がなくなった、またはリクエストの開始時と別の内容を持つ |
 | `409` | `conflict` / `thumbnail_image_invalid` | ffmpeg が画像を合わせ込めなかった |
 
-どのエラーでも何も書かない。本文がすべて届く前に切れたリクエストは適用しない。本文が届いた後は、ページがなくなっても適用は完了する。
+どのエラーでも何も書かない。本文がすべて届く前に切れたリクエストは適用しない。本文が届いた後は、確認と適用は、クライアントのキャンセルから切り離され 5 分を上限とするコンテキストの下で実行するので、ページがなくなっても完了する ([R-1](../research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image))。
 
 ## `POST /api/videos/{id}/thumbnail-edits` (変更) {#post-apivideosidthumbnail-edits-changed}
 
@@ -60,7 +60,7 @@ sequenceDiagram
 | `source` | 本文 | `frame`、`thumbnail` | はい | 編集が何から始まるか |
 | `positionMs` | 本文 | integer | `frame` のとき | 今までどおりフレームの位置。`thumbnail` では無視する |
 
-**応答**: 今までどおり `ready` の `ThumbnailEdit` とともに `201`。`thumbnail` では、セッションの画像は、画像を適用しているときは保存した元画像、そうでなければ記録した位置のフレーム、それもなければ自動の位置のフレームである。`frameUrl`、`frameWidth`、`frameHeight` は元が何であれその画像を表し、マスクはその大きさに合わなければならない。
+**応答**: 今までどおり `ready` の `ThumbnailEdit` とともに `201`。`thumbnail` では、セッションの画像は、画像を適用しているときは保存した元画像、そうでなければ記録した位置のフレーム、それもなければ自動の位置のフレーム、その位置からフレームが得られないときは、サムネイルのジョブと同じく最初のフレームである。`frameUrl`、`frameWidth`、`frameHeight` は元が何であれその画像を表し、マスクはその大きさに合わなければならない。
 
 | ステータス | `code` / 理由 | いつ |
 | --- | --- | --- |
@@ -72,7 +72,7 @@ sequenceDiagram
 | フィールド | 型 | 意味 |
 | --- | --- | --- |
 | `source` | `frame`、`thumbnail` | セッションが何から始まったか |
-| `positionMs` | integer | 画像がフレームのときのフレームの位置 (選んだもの、記録したもの、自動のもの)。保存した元画像のときはない |
+| `positionMs` | integer | 画像がフレームのときにフレームを取り出した位置 (選んだもの、記録したもの、自動のもの、または最初のフレームへの代替の後の `0`)。保存した元画像のときはない |
 
 ほかのフィールドは変わらない。
 

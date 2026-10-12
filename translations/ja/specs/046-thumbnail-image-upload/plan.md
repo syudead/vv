@@ -1,6 +1,6 @@
 ---
 source: specs/046-thumbnail-image-upload/plan.md
-sourceHash: 197bbbb040caa212a4d2242216743b85704fab8da4da68bdfc9effb2f932f75a
+sourceHash: defe55fc058282c769b8fab3a9f0ae5b13bd84ff77d25861c8eaef2485cf606a
 ---
 
 # 実装計画: ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する {#implementation-plan-set-a-local-image-as-the-thumbnail-and-edit-the-current-thumbnail-with-comfyui}
@@ -31,7 +31,7 @@ flowchart LR
 | 関心事 | 方針 |
 | --- | --- |
 | アップロード | 所有者専用の multipart のルートを 1 つ。生成した画像と同じ適用によって、リクエストの中で適用する ([R-1](research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-image)) |
-| 受け付けるもの | 64 MiB と 120 メガピクセルまでの PNG、JPEG、静止画の WebP。デコードは一度に 1 つ ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)) |
+| 受け付けるもの | 64 MiB と 120 メガピクセルまでの PNG、JPEG、静止画の WebP。一度に 1 つのアップロードが、確認と適用の合わせ込みでその元画像をデコードする ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)) |
 | 再編集 | 行は、適用した画像の最大 2048 px の元画像とその出どころを保持する ([R-3](research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin)、[data-model.md](data-model.md)) |
 | 編集の元 | 編集の開始時の `source`: 画面上のフレーム、または今のサムネイル ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)) |
 | 画像の呼び方 | `thumbnailImage` (`generated` または `uploaded`) が `thumbnailGenerated` を置き換える ([R-5](research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
@@ -60,7 +60,7 @@ Issue には `ui` ラベルがあるので、2 つの画面の単位より前に
 **この機能に固有の文脈**:
 
 - マイグレーションを 1 つ、`00041_thumbnail_image_sources.sql` ([data-model.md、Migration](data-model.md#migration))。新しい Go と Web の依存はない。
-- Go のプロセスで 64 メガピクセルを超える画像をデコードする最初のルート: 120 メガピクセルの PNG は 480 MB にデコードされるので、アップロードの確認は一度に 1 つずつ実行する ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))。
+- Go のプロセスで 64 メガピクセルを超える画像をデコードする最初のルート: 120 メガピクセルの PNG は 480 MB にデコードされるので、確認と、元画像をもう一度デコードする適用の 2 回の合わせ込みは、一度に 1 つのアップロードずつ実行する ([R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))。
 - e2e の実行には、アップロードする PNG、JPEG、WebP が必要である。ffmpeg のビルドには libwebp がないことがあるので、WebP はチェックインしたフィクスチャのファイルにする。
 
 ## Constitution Check {#constitution-check}
@@ -102,9 +102,9 @@ specs/046-thumbnail-image-upload/
 | 境界 | この機能で受け持つもの |
 | --- | --- |
 | `internal/domain` | アップロードの上限とそのエラー、`ThumbnailImageOrigin`、`Video.ThumbnailImageOrigin`、編集の元 |
-| `internal/media` | `FitThumbnailSource` (最大 2048 px で縦横比に合わせる) と、フレームに基づく元画像のためのサムネイルの自動の位置 |
+| `internal/media` | `FitThumbnailSource` (最大 2048 px で縦横比に合わせる) と、フレームに基づく元画像のためのサムネイルのジョブのフレームの規則 (自動の位置、次に最初のフレーム) |
 | `internal/store` | マイグレーション、`source` と `origin` の列、元画像の読み取り |
-| `internal/app` | 1 つのミューテックスの下でのアップロードの確認、元画像と出どころを書く `Ingest.ApplyThumbnailImage`、元を受け取る `ThumbnailEdits.Start` |
+| `internal/app` | アップロードの確認、確認と適用の合わせ込みのあいだ保持するアップロードのゲート、元画像と出どころを書く `Ingest.ApplyThumbnailImage`、元を受け取る `ThumbnailEdits.Start` |
 | `internal/httpapi`、`api/openapi.yaml` | アップロードのルート、変わる開始のルート、`Video` のフィールド、実行のルートと共有する multipart の読み取り |
 | `web/src/api`、`web/src/player`、`web/src/i18n` | クライアントの関数、アップロードの入口と項目、編集の元の選択、カタログの文言 |
 | `web/e2e` | アップロードのフィクスチャとブラウザーテスト |
@@ -138,19 +138,19 @@ flowchart LR
 
 ### 画面の API で画像を動画のサムネイルとしてアップロードする {#upload-an-image-as-the-videos-thumbnail-through-the-screen-api}
 
-**範囲**: `POST /api/videos/{id}/thumbnail-image` と、実行のルートと共有するその multipart の読み取り、`internal/domain` の上限とエラー、`internal/app` の 1 つのミューテックスの下でのアップロードの確認 (形式、静止画の WebP、大きさ、ピクセルの上限、最後までのデコード)、リクエストの開始時に読んだ内容の鍵による、生成のロックの中での出どころ `uploaded` の適用、クライアントの関数、thumbnail-editing.md の「Uploaded images」の節 ([R-1](research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)、[contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-image))。
+**範囲**: `POST /api/videos/{id}/thumbnail-image` と、実行のルートと共有するその multipart の読み取り (`image` パートに 64 MiB、本文にはそれより 1 MiB 多く)、`internal/domain` の上限とエラー、`internal/app` のアップロードの確認 (形式、静止画の WebP、大きさ、ピクセルの上限、最後までのデコード)、確認のあいだと、生成のロックの中で再び適用の 2 回の合わせ込みのあいだ保持するプロセス全体のアップロードのゲート、リクエストの開始時に読んだ内容の鍵による、生成のロックの中での出どころ `uploaded` の適用、本文が届いた後にクライアントのキャンセルから切り離した 5 分のコンテキストの下での確認と適用、クライアントの関数、thumbnail-editing.md の「Uploaded images」の節 ([R-1](research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[R-2](research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)、[contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-image))。
 
 **依存**: 再編集のために、適用した画像の元画像と出どころを保持する。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: PNG、JPEG、WebP はそれぞれ `thumbnailImage: "uploaded"` と新しい `thumbnailUrl` のバージョンを持つ `200` を返す。テキストのファイル、途中で切れた JPEG、アニメーションの WebP は `400 thumbnail_upload_invalid` を返す。64 MiB を超える本文と、ヘッダーが 12000 × 11000 と示す画像は `limit` を持つ `400 thumbnail_upload_too_large` を返す。どの `400` でも何も書かない。読み取りとロックの間に内容が変わった動画は `409 content_changed` を返す。ゲストは `401` を受け取る。`TestAccessClassificationMatchesOpenAPISecurity` が通る。アプリのテストが次を示す: 2 つ目のアップロードは 1 つ目の確認を待つ。位置の変更の後ろでロックを待つアップロードは、それでも勝つ。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: PNG、JPEG、WebP はそれぞれ `thumbnailImage: "uploaded"` と新しい `thumbnailUrl` のバージョンを持つ `200` を返す。テキストのファイル、途中で切れた JPEG、アニメーションの WebP は `400 thumbnail_upload_invalid` を返す。64 MiB を超える `image` パートと、ヘッダーが 12000 × 11000 と示す画像は `limit` を持つ `400 thumbnail_upload_too_large` を返す。ちょうど 64 MiB の `image` パートは大きさのために拒否されない。本文をすべて送った後に切断したクライアントでも、サムネイルは適用される。どの `400` でも何も書かない。読み取りとロックの間に内容が変わった動画は `409 content_changed` を返す。ゲストは `401` を受け取る。`TestAccessClassificationMatchesOpenAPISecurity` が通る。ブロックする偽の合わせ込み器を使うアプリのテストが次を示す: 1 つ目が合わせ込みをしている間、2 つ目のアップロードの確認は待ち、1 つ目が確認されている間、2 つ目のアップロードの合わせ込みは待つ。動画のロックを待っているアップロードはゲートを保持しない。位置の変更の後ろでロックを待つアップロードは、それでも勝つ。
 
 ### 今のサムネイルからサムネイルの編集を始める {#start-a-thumbnail-edit-from-the-current-thumbnail}
 
-**範囲**: `POST /api/videos/{id}/thumbnail-edits` の `source` と省略できる `positionMs`、行の元画像 (元画像のない行では `image`) を PNG として受け取るか、記録した位置または `internal/media` が公開する自動の位置でフレームを取り出す `ThumbnailEdits.Start`、`ThumbnailEdit` の `source` と `positionMs`、クライアントの関数、thumbnail-editing.md の「Edit source」の節 ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)、[contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-edits-changed))。
+**範囲**: `POST /api/videos/{id}/thumbnail-edits` の `source` と省略できる `positionMs`、行の元画像 (元画像のない行では `image`) を PNG として受け取るか、記録した位置で、または `internal/media` が公開するサムネイルのジョブの規則 (自動の位置、次に最初のフレーム) でフレームを取り出す `ThumbnailEdits.Start`、`ThumbnailEdit` の `source` と `positionMs`、クライアントの関数、thumbnail-editing.md の「Edit source」の節 ([R-4](research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)、[contracts/screen-api.md](contracts/screen-api.md#post-apivideosidthumbnail-edits-changed))。
 
 **依存**: 再編集のために、適用した画像の元画像と出どころを保持する。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。偽のフレームの供給元を使うアプリのテストが次を示す: 画像を適用しているときの `thumbnail` は、保存した元画像のピクセルの大きさを持ち `positionMs` のない `ready` を返し、フレームのルートは PNG を返す。位置があり画像のない `thumbnail` はその位置で取り出し、その位置を返す。どちらもない `thumbnail` は動画の長さに対する自動の位置で取り出す。`positionMs` のない `frame` は `400` を返す。セッションの開始後の元に戻す操作はセッションの画像を変えず、実行はその画像を使い続ける。ハンドラーのテストが契約の各ステータスとゲストの `401` を示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。偽のフレームの供給元を使うアプリのテストが次を示す: 画像を適用しているときの `thumbnail` は、保存した元画像のピクセルの大きさを持ち `positionMs` のない `ready` を返し、フレームのルートは PNG を返す。位置があり画像のない `thumbnail` はその位置で取り出し、その位置を返す。どちらもない `thumbnail` は動画の長さに対する自動の位置で取り出してその位置を返し、その位置からフレームが得られないときは最初のフレームを取り出して `positionMs: 0` を返す。`positionMs` のない `frame` は `400` を返す。セッションの開始後の元に戻す操作はセッションの画像を変えず、実行はその画像を使い続ける。ハンドラーのテストが契約の各ステータスとゲストの `401` を示す。
 
 ### 動画のページからサムネイルの画像をアップロードする {#upload-a-thumbnail-image-from-the-video-page}
 
