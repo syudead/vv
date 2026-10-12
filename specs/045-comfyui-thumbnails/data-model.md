@@ -38,10 +38,10 @@ belongs to one content.
 
 | Rule | Enforced in |
 | --- | --- |
-| Applying writes the row, publishes the thumbnail file, sets `thumbnail_state` to `done` for every video with the content and clears its thumbnail scan issues, in that order inside the generation lock | `app.Ingest.ApplyThumbnailImage`, `OverrideStore` |
+| Applying, inside the generation lock, stashes the current thumbnail file, publishes the new one, then in one transaction writes the row, sets `thumbnail_state` to `done` for every video with the content and clears its thumbnail scan issues; a failed publish leaves both sides as they were, and a failed transaction restores the stashed file | `app.Ingest.ApplyThumbnailImage` (`StashThumbnail`, as `SetThumbnailPosition` does), `OverrideStore` |
 | Applying fails with `content_changed` when no video with the session's id has the session's content key | `app.Ingest.ApplyThumbnailImage` re-reads the video inside the lock |
 | Setting a thumbnail position deletes the row | `OverrideStore.SetThumbnailPosition` in the same transaction |
-| Reverting deletes the row and publishes a frame from `thumbnail_position_ms`, or by the automatic rule when it is null | `app.Ingest.RevertThumbnailImage` |
+| Reverting deletes the row and publishes a frame from `thumbnail_position_ms`, or by the automatic rule when it is null, with the same stash, publish, record and restore order | `app.Ingest.RevertThumbnailImage` |
 | The thumbnail job publishes the row's `image` when a row exists, and extracts a frame otherwise | `app.Ingest.Thumbnail` |
 | `video_overrides` keeps its position while an image is applied | [R-10](research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock) |
 | Every apply and revert publishes `domain.VideoOverrideChanged` and advances the video's edited time (`touchEditedAt`) | `OverrideStore` |

@@ -249,7 +249,9 @@ bytes; apply for a content key no video has answers `content_changed` and
 writes nothing; a position set after apply removes the row and the file is that
 frame; revert after a position returns to that position's frame, and without
 one to the automatic frame; an apply that waits on the lock behind a position
-change still wins.
+change still wins; a publish that fails during apply or revert leaves the
+row, `thumbnailUrl` and the file unchanged, and a store write that fails
+after publishing restores the previous file.
 
 ### Run a thumbnail workflow on ComfyUI and Comfy Cloud
 
@@ -268,7 +270,7 @@ each provider show: the submitted prompt has only the `vv:*` inputs changed;
 an absent mask uploads an all-white PNG of the frame's size and an absent
 reference uploads the frame; every row of the Run states table maps to its
 vv state; cancel while queued deletes from the queue and while running
-interrupts (self-hosted); Cloud's output is fetched from the redirect without
+interrupts (self-hosted) or sends `POST /interrupt` (Cloud); Cloud's output is fetched from the redirect without
 `X-API-Key`; each row of the Failure reasons table is produced from its
 provider reply.
 

@@ -74,10 +74,10 @@ them.
 
 | vv state | Self-hosted ComfyUI | Comfy Cloud |
 | --- | --- | --- |
-| `queued` | The id is in `queue_pending` | `submitted`, `queued_waiting` |
+| `queued` | The id is in `queue_pending` | `submitted`, `queued_waiting`, `waiting_to_dispatch`, `pending` |
 | `preparing` | Not reported | `preparing` |
-| `running` | The id is in `queue_running` | `executing` |
-| `succeeded` | `history/{id}` has `status.completed` and an output image | `success` and an output image |
+| `running` | The id is in `queue_running` | `executing`, `in_progress` |
+| `succeeded` | `history/{id}` has `status.completed` and an output image | `success`, `completed`, and an output image |
 | `failed` | `history/{id}` has `status_str: error`, or the id has gone from the queue without a history entry | `error`, `non_retryable_error`, `lost` |
 | `cancelled` | After vv's cancel | `cancel_requested`, `cancelled` |
 

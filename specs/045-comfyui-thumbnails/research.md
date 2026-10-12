@@ -108,13 +108,19 @@ connects ([contracts/workflow.md, Run states](contracts/workflow.md#run-states))
 | Authentication | None | `X-API-Key` header; WebSocket `token` query parameter |
 | State | `GET /queue` (pending or running), then `GET /history/{id}` | `GET /job/{id}/status` |
 | Output | `GET /view` | `GET /view` answers a redirect to a signed URL, fetched without the key |
-| Cancel | `POST /queue` `{"delete":[id]}` while queued; `POST /interrupt` `{"prompt_id":id}` while running | `POST /queue` `{"delete":[id]}` |
+| Cancel | `POST /queue` `{"delete":[id]}` while queued; `POST /interrupt` `{"prompt_id":id}` while running | `POST /queue` `{"delete":[id]}` while queued; `POST /interrupt` while running |
 | Connection test | `GET /system_stats` | `GET /jobs?limit=1`, which needs a valid key |
 
-Cloud states map as `submitted`, `queued_waiting` → `queued`; `preparing` →
-`preparing`; `executing` → `running`; `success` → `succeeded`; `error`,
-`non_retryable_error`, `lost` → `failed`; `cancel_requested`, `cancelled` →
-`cancelled`. A self-hosted ComfyUI has no `preparing` state, which
+Comfy Cloud documents two state vocabularies: the API reference and the live
+service answer `submitted`, `queued_waiting`, `preparing`, `executing`,
+`success`, `error`, `non_retryable_error`, `lost`, `cancel_requested` and
+`cancelled`, while the published OpenAPI schema lists `waiting_to_dispatch`,
+`pending`, `in_progress` and `completed`. The adapter maps both
+([contracts/workflow.md, Run states](contracts/workflow.md#run-states)), and a
+value in neither keeps the run's previous state until a known one arrives or
+the time limit ends it. Cloud's `POST /interrupt` stops every running job of
+the account, not one; vv sends it only when the run's own state is `running`,
+and the account's other running jobs are the owner's to restart. A self-hosted ComfyUI has no `preparing` state, which
 requirement 7 allows.
 
 | Option | Verdict |
