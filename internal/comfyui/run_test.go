@@ -396,6 +396,8 @@ func TestStateCloud(t *testing.T) {
 		{"success", historyWithImage, domain.ThumbnailEditSucceeded, "", ""},
 		{"completed", historyWithImage, domain.ThumbnailEditSucceeded, "", ""},
 		{"success", `{"run-1":{"outputs":{}}}`, domain.ThumbnailEditFailed, domain.ImageEditNoOutput, ""},
+		// 状態が success でも履歴の項目がまだ無ければ、失敗にせず前の状態を保つ。
+		{"success", `{}`, domain.ThumbnailEditRunning, "", ""},
 		{"error", `{"run-1":{"outputs":{},"status":{"status_str":"error","messages":[["execution_error",{"exception_type":"RuntimeError","exception_message":"boom"}]]}}}`, domain.ThumbnailEditFailed, domain.ImageEditRunFailed, "boom"},
 		{"non_retryable_error", `{}`, domain.ThumbnailEditFailed, domain.ImageEditRunFailed, ""},
 		{"lost", `{}`, domain.ThumbnailEditFailed, domain.ImageEditRunFailed, ""},
@@ -420,28 +422,81 @@ func cloudJob(f *runProvider) domain.ImageEditJob {
 	return j
 }
 
-// 待ち行列にある間の中止は待ち行列から消し、実行中は自前が prompt_id を付けて interrupt し、
-// Cloud は POST /interrupt を送る。
+// sequence は GET に bodies を順に返し（最後のものを繰り返す）、POST は偽物の記録に回す。
+func (f *runProvider) sequence(path string, bodies ...string) {
+	var mu sync.Mutex
+	f.handle(path, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			body, _ := io.ReadAll(r.Body)
+			f.mu.Lock()
+			f.posts = append(f.posts, recorded{path: path, body: string(body)})
+			f.mu.Unlock()
+			return
+		}
+		mu.Lock()
+		body := bodies[0]
+		if len(bodies) > 1 {
+			bodies = bodies[1:]
+		}
+		mu.Unlock()
+		_, _ = w.Write([]byte(body))
+	})
+}
+
+const (
+	pendingQueue = `{"queue_running":[],"queue_pending":[[2,"run-1",{},{},["99"]]]}`
+	runningQueue = `{"queue_running":[[1,"run-1",{},{},["99"]]],"queue_pending":[]}`
+)
+
+// 中止は提供元の今の状態で要求を選ぶ。待ち行列にある間は待ち行列から消し、実行中は自前が
+// prompt_id を付けて interrupt し、Cloud は POST /interrupt を送る。前に読んだ状態が古くても、
+// 終わった実行には何も送らず（Cloud の interrupt が別の実行を止めないため）、消す間に始まった
+// 実行は interrupt で止める。
 func TestCancel(t *testing.T) {
 	cases := []struct {
-		cloud bool
-		state domain.ThumbnailEditState
-		path  string
-		body  string
+		name     string
+		cloud    bool
+		previous domain.ThumbnailEditState
+		states   []string // 自前は GET /queue、Cloud は GET /job/{id}/status の応答の順
+		history  string
+		want     []recorded
 	}{
-		{false, domain.ThumbnailEditQueued, "/queue", `{"delete":["run-1"]}`},
-		{false, domain.ThumbnailEditRunning, "/interrupt", `{"prompt_id":"run-1"}`},
-		{true, domain.ThumbnailEditQueued, "/queue", `{"delete":["run-1"]}`},
-		{true, domain.ThumbnailEditPreparing, "/queue", `{"delete":["run-1"]}`},
-		{true, domain.ThumbnailEditRunning, "/interrupt", `{}`},
+		{"自前の待ち行列", false, domain.ThumbnailEditQueued, []string{pendingQueue, emptyQueue}, `{}`,
+			[]recorded{{"/queue", `{"delete":["run-1"]}`}}},
+		{"自前の実行中", false, domain.ThumbnailEditRunning, []string{runningQueue}, "",
+			[]recorded{{"/interrupt", `{"prompt_id":"run-1"}`}}},
+		{"自前で消す間に始まった", false, domain.ThumbnailEditQueued, []string{pendingQueue, runningQueue}, "",
+			[]recorded{{"/queue", `{"delete":["run-1"]}`}, {"/interrupt", `{"prompt_id":"run-1"}`}}},
+		{"自前で前の状態より先に始まっていた", false, domain.ThumbnailEditQueued, []string{runningQueue}, "",
+			[]recorded{{"/interrupt", `{"prompt_id":"run-1"}`}}},
+		{"自前で前の状態より先に終わっていた", false, domain.ThumbnailEditRunning, []string{emptyQueue}, historyWithImage, nil},
+		{"Cloud の待ち行列", true, domain.ThumbnailEditQueued, []string{`{"status":"queued_waiting"}`, `{"status":"cancelled"}`}, "",
+			[]recorded{{"/queue", `{"delete":["run-1"]}`}}},
+		{"Cloud の準備中", true, domain.ThumbnailEditPreparing, []string{`{"status":"preparing"}`, `{"status":"cancelled"}`}, "",
+			[]recorded{{"/queue", `{"delete":["run-1"]}`}}},
+		{"Cloud の実行中", true, domain.ThumbnailEditRunning, []string{`{"status":"executing"}`}, "",
+			[]recorded{{"/interrupt", `{}`}}},
+		{"Cloud で消す間に始まった", true, domain.ThumbnailEditPreparing, []string{`{"status":"preparing"}`, `{"status":"executing"}`}, "",
+			[]recorded{{"/queue", `{"delete":["run-1"]}`}, {"/interrupt", `{}`}}},
+		{"Cloud で前の状態より先に終わっていた", true, domain.ThumbnailEditRunning, []string{`{"status":"success"}`}, historyWithImage, nil},
+		{"Cloud で前の状態より先に失敗していた", true, domain.ThumbnailEditRunning, []string{`{"status":"error"}`}, `{}`, nil},
+		{"Cloud の表に無い値は前の状態で選ぶ", true, domain.ThumbnailEditRunning, []string{`{"status":"something_new"}`}, "",
+			[]recorded{{"/interrupt", `{}`}}},
 	}
 	for _, c := range cases {
 		f := newRunProvider(t, c.cloud)
-		if err := f.client().Cancel(context.Background(), cloudJob(f), c.state); err != nil {
-			t.Fatalf("%v %s: Cancel = %v", c.cloud, c.state, err)
+		if c.cloud {
+			f.sequence("/job/run-1/status", c.states...)
+			f.handle("/history_v2/run-1", jsonHandler(c.history))
+		} else {
+			f.sequence("/queue", c.states...)
+			f.handle("/history/run-1", jsonHandler(c.history))
 		}
-		if len(f.posts) != 1 || f.posts[0].path != c.path || f.posts[0].body != c.body {
-			t.Errorf("cloud=%v %s: posts = %+v, want %s %s", c.cloud, c.state, f.posts, c.path, c.body)
+		if err := f.client().Cancel(context.Background(), cloudJob(f), c.previous); err != nil {
+			t.Fatalf("%s: Cancel = %v", c.name, err)
+		}
+		if !reflect.DeepEqual(f.posts, c.want) {
+			t.Errorf("%s: posts = %+v, want %+v", c.name, f.posts, c.want)
 		}
 		assertKeys(t, f)
 	}

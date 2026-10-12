@@ -16,9 +16,10 @@ type ImageEditor interface {
 	// State は実行の状態を返す。提供元の状態が既知のどれにも当たらなければ previous を返す。
 	// failed のときは理由を *domain.ImageEditError で添える。
 	State(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error)
-	// Cancel は実行を中止する。state はその実行の今の状態で、running なら実行を止め、
-	// それより前なら待ち行列から消す。
-	Cancel(ctx context.Context, job domain.ImageEditJob, state domain.ThumbnailEditState) error
+	// Cancel は実行を中止する。提供元の今の状態を読み直し、running なら実行を止め、
+	// それより前なら待ち行列から消し、終わっていれば何もしない。previous は最後に読んだ状態で、
+	// 提供元の状態が既知のどれにも当たらないときに使う。
+	Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error
 	// Output は成功した実行の出力の画像を返す。
 	Output(ctx context.Context, job domain.ImageEditJob) ([]byte, error)
 }

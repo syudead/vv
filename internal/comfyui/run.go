@@ -126,29 +126,42 @@ func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous do
 	if err != nil {
 		return previous, nil, err
 	}
-	if target.cloud {
-		return target.cloudState(ctx, job, previous)
-	}
-	return target.selfHostedState(ctx, job, previous)
+	return target.state(ctx, job, previous)
 }
 
-// Cancel は実行を中止する。待ち行列にある間（state が running でない）は POST /queue
-// {"delete":[id]} で消す。実行中は自前の ComfyUI に POST /interrupt {"prompt_id":id} を送る。
-// Comfy Cloud の POST /interrupt はアカウントの実行中の仕事をすべて止めるので、state が
-// running のときだけ送る（research.md R-5）。
-func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, state domain.ThumbnailEditState) error {
+// Cancel は実行を中止する。前に読んだ状態は古いことがあるので、送る要求を選ぶ直前に提供元の
+// 今の状態を読み直す。previous は最後に読んだ状態で、提供元が表に無い値を返したときに使う。
+// 終わった実行（succeeded・failed・cancelled）には何も送らない。Comfy Cloud の POST /interrupt は
+// アカウントの実行中の仕事をすべて止めるので、終わった実行のために送ると別の実行を止めてしまう。
+// 実行中なら自前の ComfyUI に POST /interrupt {"prompt_id":id}、Comfy Cloud に POST /interrupt を
+// 送る。それより前なら POST /queue {"delete":[id]} で消し、読んでから消すまでに実行が
+// 始まっていれば、もう一度読んで実行中なら interrupt を送る（research.md R-5）。
+func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	target, err := c.target(job.Connection)
 	if err != nil {
 		return err
 	}
-	if state == domain.ThumbnailEditRunning {
-		var body any = map[string]string{"prompt_id": job.ID}
-		if target.cloud {
-			body = struct{}{}
-		}
-		return target.postJSON(ctx, "/interrupt", body, nil)
+	state, _, err := target.state(ctx, job, previous)
+	if err != nil {
+		return err
 	}
-	return target.postJSON(ctx, "/queue", map[string][]string{"delete": {job.ID}}, nil)
+	switch state {
+	case domain.ThumbnailEditSucceeded, domain.ThumbnailEditFailed, domain.ThumbnailEditCancelled:
+		return nil
+	case domain.ThumbnailEditRunning:
+		return target.interrupt(ctx, job.ID)
+	}
+	if err := target.postJSON(ctx, "/queue", map[string][]string{"delete": {job.ID}}, nil); err != nil {
+		return err
+	}
+	after, _, err := target.state(ctx, job, state)
+	if err != nil {
+		return err
+	}
+	if after == domain.ThumbnailEditRunning {
+		return target.interrupt(ctx, job.ID)
+	}
+	return nil
 }
 
 // Output は vv:output の最初の画像を GET /view で取る。Comfy Cloud は署名付き URL への転送を
@@ -422,6 +435,24 @@ func (t *target) view(ctx context.Context, path string) ([]byte, error) {
 	return data, nil
 }
 
+// state は実行の状態を接続先に合う経路で読む。
+func (t *target) state(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
+	if t.cloud {
+		return t.cloudState(ctx, job, previous)
+	}
+	return t.selfHostedState(ctx, job, previous)
+}
+
+// interrupt は実行中の実行 id を止める。自前の ComfyUI は prompt_id で名指し、その実行が
+// 実行中のときだけ止まる。Comfy Cloud は実行を名指せない。
+func (t *target) interrupt(ctx context.Context, id string) error {
+	var body any = map[string]string{"prompt_id": id}
+	if t.cloud {
+		body = struct{}{}
+	}
+	return t.postJSON(ctx, "/interrupt", body, nil)
+}
+
 // selfHostedState は自前の ComfyUI の実行の状態を読む。待ち行列を先に見て、無ければ履歴を見る。
 func (t *target) selfHostedState(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	var queue struct {
@@ -474,6 +505,11 @@ func (t *target) cloudState(ctx context.Context, job domain.ImageEditJob, previo
 		entry, err := t.history(ctx, job.ID)
 		if err != nil {
 			return previous, nil, err
+		}
+		if entry == nil {
+			// 状態が success になってから履歴の項目ができるまでの間は、出力がまだ読めない。
+			// 失敗にせず前の状態を保ち、次の読み取りで確かめる（終わらなければ時間の上限が止める）。
+			return previous, nil, nil
 		}
 		return succeededOrNoOutput(entry, job.Output)
 	case domain.ThumbnailEditFailed:
