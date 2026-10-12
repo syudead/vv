@@ -336,6 +336,8 @@ type fakeGenerator struct {
 	// fitErr は FitThumbnailImage が返す誤り。aspects はそれに渡された縦横比である。
 	fitErr  error
 	aspects []float64
+	// fitImages は FitThumbnailImage に渡された画像（文字列にしたもの）。
+	fitImages []string
 	// publishErr があれば代表サムネイルの公開は書いたあとにそれを返す（公開の失敗）。
 	publishErr error
 	// thumbnailDir があれば、代表サムネイルの書き出し先をその下の実在するパスにする。
@@ -476,12 +478,15 @@ func (f *fakeGenerator) FitThumbnailSource(_ context.Context, image []byte, _ fl
 	return append([]byte("source:"), image...), nil
 }
 
-// FitThumbnailImage は "fitted:" を前に付けた画像を返す。
+// FitThumbnailImage は "fitted:" を前に付けた画像を返す。gate は "fit:<画像>" で呼ぶ。
 func (f *fakeGenerator) FitThumbnailImage(_ context.Context, image []byte, aspect float64) ([]byte, error) {
 	f.record("fit")
 	f.mu.Lock()
 	f.aspects = append(f.aspects, aspect)
+	f.fitImages = append(f.fitImages, string(image))
 	f.mu.Unlock()
+	// 画像ごとに止めておけるよう、合わせる画像を名前に添えて gate を通る。
+	f.pass("fit:" + string(image))
 	if f.fitErr != nil {
 		return nil, f.fitErr
 	}

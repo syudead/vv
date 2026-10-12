@@ -290,6 +290,8 @@ const (
 	ErrorReasonThumbnailFrameUnavailable     ErrorReason = "thumbnail_frame_unavailable"
 	ErrorReasonThumbnailImageInvalid         ErrorReason = "thumbnail_image_invalid"
 	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
+	ErrorReasonThumbnailUploadInvalid        ErrorReason = "thumbnail_upload_invalid"
+	ErrorReasonThumbnailUploadTooLarge       ErrorReason = "thumbnail_upload_too_large"
 	ErrorReasonTimedOut                      ErrorReason = "timed_out"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
@@ -407,6 +409,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonThumbnailImageInvalid:
 		return true
 	case ErrorReasonThumbnailPositionOutOfRange:
+		return true
+	case ErrorReasonThumbnailUploadInvalid:
+		return true
+	case ErrorReasonThumbnailUploadTooLarge:
 		return true
 	case ErrorReasonTimedOut:
 		return true
@@ -2558,6 +2564,12 @@ type UpdateTranscodingSettingsRequest struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
+type UploadThumbnailImageRequest struct {
+	// Image サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+	Image openapi_types.File `json:"image"`
+}
+
 // VersionCandidate 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
 type VersionCandidate struct {
 	// Distance 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている）
@@ -3499,6 +3511,9 @@ type PutVideoProgressJSONRequestBody = ProgressUpdate
 // StartThumbnailEditJSONRequestBody defines body for StartThumbnailEdit for application/json ContentType.
 type StartThumbnailEditJSONRequestBody = StartThumbnailEditRequest
 
+// UploadThumbnailImageMultipartRequestBody defines body for UploadThumbnailImage for multipart/form-data ContentType.
+type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
+
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
 
@@ -3801,6 +3816,9 @@ type ServerInterface interface {
 	// RevertThumbnailImage 動画に適用したサムネイルの画像を外す
 	// (DELETE /api/videos/{id}/thumbnail-image)
 	RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
+	// UploadThumbnailImage 手元の画像を動画のサムネイルにする
+	// (POST /api/videos/{id}/thumbnail-image)
+	UploadThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoThumbnailPosition 動画の代表サムネイルの位置を設定・解除する
 	// (PUT /api/videos/{id}/thumbnail-position)
 	SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -6817,6 +6835,32 @@ func (siw *ServerInterfaceWrapper) RevertThumbnailImage(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// UploadThumbnailImage operation middleware
+func (siw *ServerInterfaceWrapper) UploadThumbnailImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadThumbnailImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoThumbnailPosition operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request) {
 
@@ -7351,6 +7395,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)

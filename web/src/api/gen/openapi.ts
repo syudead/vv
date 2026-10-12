@@ -698,7 +698,22 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * 手元の画像を動画のサムネイルにする
+         * @description 所有者だけ。`multipart/form-data` の `image`（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
+         *     受け取り、メモリに持ったまま最後まで読めるかを確かめて、生成した画像と同じ適用で動画の縦横比に
+         *     合わせた代表サムネイルにする。本文全体は部分の区切りと見出しのぶん 1 MiB 多くまで認める。応答は
+         *     公開が終わってから返し、形は `GET /api/videos/{id}` と同じ `Video` である（`thumbnailImage:
+         *     "uploaded"`、新しい版の `thumbnailUrl`）。記録した位置はそのまま残る。`image` が 64 MiB を越えるか
+         *     見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
+         *     PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
+         *     `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
+         *     別の内容になれば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
+         *     を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
+         *     上限に最後まで行う。確定後に `/api/events` の `video` が流れる
+         *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
+         */
+        post: operations["uploadThumbnailImage"];
         /**
          * 動画に適用したサムネイルの画像を外す
          * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
@@ -2494,6 +2509,13 @@ export interface components {
              */
             reference?: string;
         };
+        UploadThumbnailImageRequest: {
+            /**
+             * Format: binary
+             * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+             */
+            image: string;
+        };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
          * @enum {string}
@@ -3622,7 +3644,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -4694,6 +4716,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ThumbnailPositionUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    uploadThumbnailImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadThumbnailImageRequest"];
             };
         };
         responses: {

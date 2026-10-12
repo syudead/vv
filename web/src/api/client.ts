@@ -585,6 +585,33 @@ export async function revertThumbnailImage(
 }
 
 /**
+ * uploadThumbnailImage は手元の画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
+ * `multipart/form-data` の `image` で送り、動画のサムネイルにする。応答は公開が終わってから返り、
+ * `getVideo` と同じ形の動画で、`thumbnailImage: "uploaded"` と新しい版の `thumbnailUrl` が反映済み
+ * である。上限を越えれば 400 `thumbnail_upload_too_large`、読めなければ 400
+ * `thumbnail_upload_invalid` で失敗する
+ * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。Content-Type はブラウザが境界と
+ * ともに付けるので、ここでは付けない。
+ *
+ * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
+ */
+export async function uploadThumbnailImage(
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const form = new FormData();
+  form.append("image", image, image instanceof File ? image.name : "image");
+  const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
  */

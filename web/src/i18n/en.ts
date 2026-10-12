@@ -245,6 +245,9 @@ const errorReasons = {
   thumbnail_edit_reference_invalid: "The reference image can't be read",
   thumbnail_edit_no_result: "There is no generated image yet",
   thumbnail_image_invalid: "The generated image can't be read",
+  thumbnail_upload_too_large: "The image is too large: up to 64 MB and 120 megapixels.",
+  thumbnail_upload_invalid:
+    "The file isn't a PNG, JPEG or still WebP, or it can't be read.",
   content_changed: "The video changed while you were editing",
   unreachable: "ComfyUI can't be reached",
   unauthorized: "Comfy Cloud rejected the API key",

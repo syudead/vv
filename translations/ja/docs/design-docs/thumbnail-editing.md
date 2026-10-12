@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: 1373c3eecd48e6659b615556231e94003be4990d516050d24236893a35c29579
+sourceHash: acdc8796002cd8168faba302949e213c13a392bb1f46bac156517a96e30be09d
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
@@ -90,3 +90,36 @@ stateDiagram-v2
 | `origin` | 編集の結果なら `generated`、アップロードした画像なら `uploaded`。所有者の `Video` はこれを `thumbnailImage` として返す ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
 
 位置の変更と元に戻す操作は行全体を削除する。サムネイルのジョブは `image` を公開し直し、`source` は決して読まない。
+
+## アップロードした画像 {#uploaded-images}
+
+`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[契約](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image))。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、`image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
+
+下のゲートが制限するのはデコードで、メモリに保持する本文ではない。本文を読む前に、ルートは上限 65 MiB の本文 4 つ分にあたるプロセス全体の予算から本文のサイズを取り、応答するまでそれを保持する。サイズは、`Content-Length` が上限以内ならその値、そうでなければ上限だ。予算を使い切っていたリクエストは、本文を読む前に、クライアントのコンテキストの下でそこで待つ。
+
+検査は、編集の画像の検査をピクセルの上限を大きくして使うものだ ([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))。
+
+| 上限 | アップロード | 編集の参照画像 |
+| --- | --- | --- |
+| バイト数 | パートは 64 MiB。本文はマルチパートの枠のために 1 MiB 大きくてよい | 20 MiB |
+| ヘッダーのピクセル数 | 1 億 2000 万。`limit` を付けて `thumbnail_upload_too_large` として拒否する | 8192 × 8192。読めないものとして拒否する |
+| 形式 | 最後までデコードする PNG、JPEG、静止画の WebP。アニメーション WebP は `VP8X` ヘッダーで拒否する | 同じ |
+
+1 億 2000 万ピクセルの PNG はデコードすると 480 MB になるので、プロセス全体で 1 つのアップロードのゲートが、元の画像をデコードする各段階に一度に 1 つのアップロードだけを通す。図は、アップロードがゲートを保持する時点を示す。
+
+```mermaid
+sequenceDiagram
+  participant U as アップロード
+  participant G as アップロードのゲート
+  participant L as 生成のロック
+  U->>G: 取得
+  U->>U: 検査
+  U->>G: 解放
+  U->>L: 動画の内容をロック
+  U->>G: 取得
+  U->>U: 640 px と 2048 px に合わせる
+  U->>G: 解放
+  U->>L: 公開、記録、ロック解除
+```
+
+自分の動画のロックを待つアップロードはゲートを保持しないので、他の動画へのアップロードを止めない。生成した画像の適用はゲートを取らない。その入力はプロバイダの出力で、編集の検査ですでに制限されている。ロックはアップロードを位置の変更や生成した画像の適用と順序付け、最後に確定したものが残る。

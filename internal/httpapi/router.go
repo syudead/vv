@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -297,6 +299,8 @@ type Options struct {
 	ComfyUI ComfyUIConnection
 	// ThumbnailEdits はサムネイルの編集のセッション。nil なら該当の経路は 500 を返す。
 	ThumbnailEdits ThumbnailEdits
+	// ThumbnailUploads は手元の画像のサムネイルへのアップロード。nil なら該当の経路は 500 を返す。
+	ThumbnailUploads ThumbnailUploads
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -370,6 +374,9 @@ type server struct {
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
+	thumbnailUploads  ThumbnailUploads
+	// thumbnailUploadBuffers はアップロードの本文が同時に占めるメモリの枠である（thumbnail_upload.go）。
+	thumbnailUploadBuffers *semaphore.Weighted
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -422,47 +429,49 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:             opts.Build,
-		pinger:            opts.Pinger,
-		videos:            opts.Videos,
-		playback:          opts.Playback,
-		scans:             opts.Scans,
-		mediaFolders:      opts.MediaFolders,
-		tags:              opts.Tags,
-		visibility:        opts.Visibility,
-		favorites:         opts.Favorites,
-		playlists:         opts.Playlists,
-		playlistPlayback:  opts.PlaylistPlayback,
-		watchHistory:      opts.WatchHistory,
-		overrides:         opts.Overrides,
-		thumbnails:        opts.ThumbnailPicker,
-		versions:          opts.Versions,
-		folders:           opts.Folders,
-		folderGroups:      opts.FolderGroups,
-		library:           opts.Library,
-		transcoder:        opts.Transcoder,
-		transcodeProbes:   opts.TranscodeProbes,
-		transcodeSettings: opts.TranscodeSettings,
-		networkSettings:   opts.NetworkSettings,
-		autoImport:        opts.AutoImport,
-		autoTagging:       opts.AutoTagging,
-		ollama:            opts.Ollama,
-		comfyUI:           opts.ComfyUI,
-		thumbnailEdits:    opts.ThumbnailEdits,
-		transcodeStarts:   newTranscodeStarts(),
-		artifacts:         opts.Artifacts,
-		catalog:           opts.Catalog,
-		opener:            opts.Opener,
-		files:             opts.Files,
-		subtitles:         opts.Subtitles,
-		events:            opts.Events,
-		logger:            logger,
-		auth:              opts.Auth,
-		apiTokens:         opts.APITokens,
-		externalVideos:    opts.ExternalVideos,
-		sessions:          newSessionLedger(opts.SessionRecheck, logger),
-		guests:            newGuestLedger(),
-		now:               opts.Now,
+		build:                  opts.Build,
+		pinger:                 opts.Pinger,
+		videos:                 opts.Videos,
+		playback:               opts.Playback,
+		scans:                  opts.Scans,
+		mediaFolders:           opts.MediaFolders,
+		tags:                   opts.Tags,
+		visibility:             opts.Visibility,
+		favorites:              opts.Favorites,
+		playlists:              opts.Playlists,
+		playlistPlayback:       opts.PlaylistPlayback,
+		watchHistory:           opts.WatchHistory,
+		overrides:              opts.Overrides,
+		thumbnails:             opts.ThumbnailPicker,
+		versions:               opts.Versions,
+		folders:                opts.Folders,
+		folderGroups:           opts.FolderGroups,
+		library:                opts.Library,
+		transcoder:             opts.Transcoder,
+		transcodeProbes:        opts.TranscodeProbes,
+		transcodeSettings:      opts.TranscodeSettings,
+		networkSettings:        opts.NetworkSettings,
+		autoImport:             opts.AutoImport,
+		autoTagging:            opts.AutoTagging,
+		ollama:                 opts.Ollama,
+		comfyUI:                opts.ComfyUI,
+		thumbnailEdits:         opts.ThumbnailEdits,
+		thumbnailUploads:       opts.ThumbnailUploads,
+		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
+		transcodeStarts:        newTranscodeStarts(),
+		artifacts:              opts.Artifacts,
+		catalog:                opts.Catalog,
+		opener:                 opts.Opener,
+		files:                  opts.Files,
+		subtitles:              opts.Subtitles,
+		events:                 opts.Events,
+		logger:                 logger,
+		auth:                   opts.Auth,
+		apiTokens:              opts.APITokens,
+		externalVideos:         opts.ExternalVideos,
+		sessions:               newSessionLedger(opts.SessionRecheck, logger),
+		guests:                 newGuestLedger(),
+		now:                    opts.Now,
 		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
 		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}
@@ -758,6 +767,8 @@ const (
 	reasonThumbnailEditNoResult         = gen.ErrorReasonThumbnailEditNoResult
 	reasonThumbnailImageInvalid         = gen.ErrorReasonThumbnailImageInvalid
 	reasonContentChanged                = gen.ErrorReasonContentChanged
+	reasonThumbnailUploadTooLarge       = gen.ErrorReasonThumbnailUploadTooLarge
+	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
