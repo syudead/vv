@@ -143,6 +143,11 @@ type Ingest struct {
 	files     ArtifactStore
 	publisher Publisher
 	artifacts *artifacts
+	// uploads はアップロードの元の画像を読む手順（確かめと適用の 2 回の合わせ）を 1 件ずつにする
+	// プロセス全体の門である（thumbnail_upload.go）。
+	uploads uploadGate
+	// checkUpload はアップロードの画像を確かめる。テストが止めておく偽物に替える。
+	checkUpload func(image []byte) error
 }
 
 // NewIngest は取り込みを組み立てる。
@@ -152,11 +157,13 @@ func NewIngest(opts IngestOptions) *Ingest {
 		logger = slog.Default()
 	}
 	return &Ingest{
-		store:     opts.Store,
-		generator: opts.Generator,
-		files:     opts.Artifacts,
-		publisher: opts.Publisher,
-		artifacts: newArtifacts(opts.Store, opts.Artifacts, logger),
+		store:       opts.Store,
+		generator:   opts.Generator,
+		files:       opts.Artifacts,
+		publisher:   opts.Publisher,
+		artifacts:   newArtifacts(opts.Store, opts.Artifacts, logger),
+		uploads:     newUploadGate(),
+		checkUpload: checkThumbnailUpload,
 	}
 }
 
@@ -468,7 +475,7 @@ func (i *Ingest) replaceThumbnailWithFrame(
 // 今の代表サムネイルを写してから代表サムネイルを公開し、1 つの取引で画像の行（代表サムネイル・
 // 元の画像・出どころ）を書いて、その内容の動画の thumbnail_state を done にする。公開に失敗すれば画像の行も
 // ファイルも元のまま、記録に失敗すれば写した前のファイルへ戻す。位置の指定と同じ錠の中で
-// 行うので、あとで確定した方が残る。
+// 行うので、あとで確定した方が残る。錠を待つ間に ctx が終われば、何も書かずに ctx の誤りを返す。
 func (i *Ingest) ApplyThumbnailImage(
 	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
@@ -476,7 +483,7 @@ func (i *Ingest) ApplyThumbnailImage(
 		return domain.Video{}, domain.ErrContentChanged
 	}
 	var saved domain.Video
-	err := i.artifacts.generate(ctx, contentKey, artifactThumbnail, func() (bool, error) {
+	err := i.artifacts.generateContext(ctx, contentKey, artifactThumbnail, func() (bool, error) {
 		video, err := i.store.GetVideo(ctx, videoID)
 		if errors.Is(err, domain.ErrNotFound) {
 			return false, domain.ErrContentChanged
@@ -516,10 +523,19 @@ func (i *Ingest) ApplyThumbnailImage(
 }
 
 // fitThumbnailImage は画像 image を動画 video の表示上の縦横比に合わせ、記録する行の内容
-// （代表サムネイル・元の画像・出どころ origin）にする。
+// （代表サムネイル・元の画像・出どころ origin）にする。アップロードした画像は、2 回の合わせの
+// 間アップロードの門を持つ（specs/046-thumbnail-image-upload/research.md R-2）。生成した画像は
+// 門を取らない。
 func (i *Ingest) fitThumbnailImage(
 	ctx context.Context, image []byte, video domain.Video, origin domain.ThumbnailImageOrigin,
 ) (domain.AppliedThumbnailImage, error) {
+	if origin == domain.ThumbnailImageUploaded {
+		release, err := i.uploads.acquire(ctx)
+		if err != nil {
+			return domain.AppliedThumbnailImage{}, err
+		}
+		defer release()
+	}
 	aspect := domain.ThumbnailImageAspect(video)
 	fitted, err := i.generator.FitThumbnailImage(ctx, image, aspect)
 	if err != nil {

@@ -425,6 +425,8 @@ func run(opts runOptions) error {
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,
+		// 手元の画像のアップロードは、生成した画像と同じ取り込みの適用で代表サムネイルにする。
+		ThumbnailUploads: ingest,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

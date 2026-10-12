@@ -160,3 +160,61 @@ An apply writes one `thumbnail_images` row in the transaction that sets
 
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
+
+## Uploaded images
+
+`POST /api/videos/{id}/thumbnail-image` makes an image from the owner's device
+the thumbnail through the same `Ingest.ApplyThumbnailImage`, with origin
+`uploaded`
+([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image),
+[contract](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image)).
+It needs no ComfyUI connection and holds no session. The route reads the
+video's content key before the body, holds the `image` part in memory and
+writes nothing to disk before the fitted image is published, so a request cut
+off before its body arrives leaves nothing behind. Once the body has arrived,
+the check and the apply run under a context detached from the client and
+bounded at five minutes, so a page that goes away does not abort an upload it
+finished sending. The five minutes also bound the wait for the generation
+lock: an apply whose context ends while it waits gives up its place and writes
+nothing, and the lock keeps its order for the others.
+
+The gate below bounds the decodes, not the bodies held in memory. Before it
+reads a body, the route takes the body's size from a process-wide budget of
+four bodies at the 65 MiB limit, and keeps it until it has answered. The size
+is the `Content-Length` when that is within the limit, and the limit
+otherwise. A request that finds the budget used up waits there, under the
+client's context, before reading its body.
+
+The check is the edit's image check with a larger pixel cap
+([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)):
+
+| Limit | Upload | Edit reference |
+| --- | --- | --- |
+| Bytes | 64 MiB for the part; the body may be 1 MiB larger for the multipart framing | 20 MiB |
+| Pixels in the header | 120 million, refused as `thumbnail_upload_too_large` with `limit` | 8192 × 8192, refused as unreadable |
+| Formats | PNG, JPEG, still WebP decoded to the end; an animated WebP is refused by its `VP8X` header | The same |
+
+A 120-megapixel PNG decodes to 480 MB, so one process-wide upload gate admits
+one upload at a time to each step that decodes the original. The diagram shows
+when an upload holds the gate.
+
+```mermaid
+sequenceDiagram
+  participant U as Upload
+  participant G as Upload gate
+  participant L as Generation lock
+  U->>G: acquire
+  U->>U: check
+  U->>G: release
+  U->>L: lock the video's content
+  U->>G: acquire
+  U->>U: fit 640 px and 2048 px
+  U->>G: release
+  U->>L: publish, record, unlock
+```
+
+An upload waiting on its own video's lock does not hold the gate, so it does
+not stop uploads to other videos. A generated image's apply does not take the
+gate; its input is the provider's output, already bounded by the edit's
+checks. The lock orders an upload with a position change and a generated
+image's apply, and the one confirmed last stays.

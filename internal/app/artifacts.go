@@ -59,6 +59,31 @@ func (a *artifacts) lockGeneration(contentKey string, kind artifactKind) func() 
 	}
 }
 
+// lockGenerationContext は lockGeneration と同じ錠を取るが、取れる前に ctx が終われば待つのを
+// やめて ctx の誤りを返す。錠の順番には lockGeneration と同じく並ぶので、先に待っている生成や位置の
+// 指定との前後は変わらない。待つのをやめたあとで錠が取れたら、背後ですぐに外す。取れたときに ctx が
+// 終わっていれば、錠を外して ctx の誤りを返す。
+func (a *artifacts) lockGenerationContext(ctx context.Context, contentKey string, kind artifactKind) (func(), error) {
+	acquired := make(chan func(), 1)
+	go func() {
+		acquired <- a.lockGeneration(contentKey, kind)
+	}()
+	select {
+	case unlock := <-acquired:
+		if err := ctx.Err(); err != nil {
+			unlock()
+			return nil, err
+		}
+		return unlock, nil
+	case <-ctx.Done():
+		go func() {
+			unlock := <-acquired
+			unlock()
+		}()
+		return nil, ctx.Err()
+	}
+}
+
 // generate は、生成（既存のファイルの採用を含む）から完了の記録までの run を
 // 同じ内容の削除と重ならないように行う。run が後始末を求めたら、錠を外して
 // から参照の無くなった生成物を消す。後始末は削除として専有の錠で行うので、
@@ -66,8 +91,26 @@ func (a *artifacts) lockGeneration(contentKey string, kind artifactKind) func() 
 func (a *artifacts) generate(
 	ctx context.Context, contentKey string, kind artifactKind, run func() (cleanup bool, err error),
 ) error {
+	return a.runGeneration(ctx, contentKey, a.lockGeneration(contentKey, kind), run)
+}
+
+// generateContext は generate と同じだが、錠を待つ間に ctx が終われば run を行わずに ctx の誤りを
+// 返す（lockGenerationContext）。期限のある要求の中の適用が、錠を待って期限を越えないようにする。
+func (a *artifacts) generateContext(
+	ctx context.Context, contentKey string, kind artifactKind, run func() (cleanup bool, err error),
+) error {
+	unlock, err := a.lockGenerationContext(ctx, contentKey, kind)
+	if err != nil {
+		return err
+	}
+	return a.runGeneration(ctx, contentKey, unlock, run)
+}
+
+// runGeneration は取った錠 unlock の中で run を行い、外してから、run が求めれば後始末をする。
+func (a *artifacts) runGeneration(
+	ctx context.Context, contentKey string, unlock func(), run func() (cleanup bool, err error),
+) error {
 	cleanup, err := func() (bool, error) {
-		unlock := a.lockGeneration(contentKey, kind)
 		defer unlock()
 		return run()
 	}()
