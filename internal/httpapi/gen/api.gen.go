@@ -1044,6 +1044,24 @@ func (e VideoSeekThumbnailState) Valid() bool {
 	}
 }
 
+// Defines values for VideoThumbnailImage.
+const (
+	Generated VideoThumbnailImage = "generated"
+	Uploaded  VideoThumbnailImage = "uploaded"
+)
+
+// Valid indicates whether the value is a known member of the VideoThumbnailImage enum.
+func (e VideoThumbnailImage) Valid() bool {
+	switch e {
+	case Generated:
+		return true
+	case Uploaded:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoThumbnailState.
 const (
 	VideoThumbnailStateDone    VideoThumbnailState = "done"
@@ -1756,7 +1774,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1853,7 +1871,7 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1938,7 +1956,7 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video Video `json:"video"`
@@ -2531,7 +2549,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2623,9 +2641,10 @@ type Video struct {
 	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
 	Tags []VideoTag `json:"tags"`
 
-	// ThumbnailGenerated 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
-	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）
-	ThumbnailGenerated *bool `json:"thumbnailGenerated,omitempty"`
+	// ThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+	// `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+	// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+	ThumbnailImage *VideoThumbnailImage `json:"thumbnailImage,omitempty"`
 
 	// ThumbnailPositionMs 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
 	ThumbnailPositionMs *int64              `json:"thumbnailPositionMs,omitempty"`
@@ -2670,6 +2689,11 @@ type VideoProbeState string
 // 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
 // 失敗し、再試行の上限に達した
 type VideoSeekThumbnailState string
+
+// VideoThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+// `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+type VideoThumbnailImage string
 
 // VideoThumbnailState defines model for Video.ThumbnailState.
 type VideoThumbnailState string
@@ -2911,7 +2935,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`

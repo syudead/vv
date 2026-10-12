@@ -48,6 +48,10 @@ func (frameGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float
 	return append([]byte("fitted:"), image...), nil
 }
 
+func (frameGenerator) FitThumbnailSource(_ context.Context, image []byte, _ float64) ([]byte, error) {
+	return append([]byte("source:"), image...), nil
+}
+
 type thumbnailImageFixture struct {
 	ctx       context.Context
 	t         *testing.T
@@ -198,6 +202,15 @@ func (f *thumbnailImageFixture) storedImage() []byte {
 	return image
 }
 
+func (f *thumbnailImageFixture) storedSource() []byte {
+	f.t.Helper()
+	source, err := f.db.Ingest().ThumbnailImageSource(f.ctx, thumbnailImageKey)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return source
+}
+
 func thumbnailURLString(video gen.Video) string {
 	if video.ThumbnailUrl == nil {
 		return ""
@@ -211,7 +224,7 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	f := newThumbnailImageFixture(t)
 	before := thumbnailURLString(f.video())
 
-	saved, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited"))
+	saved, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited"), domain.ThumbnailImageGenerated)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,12 +234,15 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	if got := f.thumbnailBytes(); got != "fitted:edited" || !bytes.Equal(f.storedImage(), []byte(got)) {
 		t.Fatalf("ファイル = %q, 行 = %q", got, f.storedImage())
 	}
+	if got := f.storedSource(); string(got) != "source:edited" {
+		t.Fatalf("元の画像 = %q", got)
+	}
 	applied := f.video()
 	if after := thumbnailURLString(applied); after == before || after == "" {
 		t.Fatalf("thumbnailUrl = %q, 前 = %q", after, before)
 	}
-	if applied.ThumbnailGenerated == nil || !*applied.ThumbnailGenerated {
-		t.Fatalf("thumbnailGenerated = %v", applied.ThumbnailGenerated)
+	if applied.ThumbnailImage == nil || *applied.ThumbnailImage != gen.Generated {
+		t.Fatalf("thumbnailImage = %v", applied.ThumbnailImage)
 	}
 
 	// 動画の行を消すと、参照の無くなった生成物も消える。
@@ -240,10 +256,11 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	}
 
 	f.videoID = f.scanAndGenerate()
+	// 代表サムネイルの仕事は行の image を公開し直し、元の画像は使わない。
 	if got := f.thumbnailBytes(); got != "fitted:edited" {
 		t.Fatalf("取り込み直したあとの代表サムネイル = %q, want 適用した画像", got)
 	}
-	if again := f.video(); again.ThumbnailGenerated == nil || thumbnailURLString(again) != thumbnailURLString(applied) {
+	if again := f.video(); again.ThumbnailImage == nil || thumbnailURLString(again) != thumbnailURLString(applied) {
 		t.Fatalf("取り込み直したあとの thumbnailUrl = %q, want %q", thumbnailURLString(again), thumbnailURLString(applied))
 	}
 }
@@ -252,25 +269,25 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 // あればその場面のコマへ、無ければ自動の位置のコマへ戻す。
 func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 	f := newThumbnailImageFixture(t)
-	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited")); err != nil {
+	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
 	}
 
 	moved := f.decodeVideo(f.serve(http.MethodPut, f.videoPath("/thumbnail-position"), `{"positionMs":12000}`))
-	if moved.ThumbnailGenerated != nil || f.storedImage() != nil {
-		t.Fatalf("位置の設定で画像が外れない: thumbnailGenerated = %v", moved.ThumbnailGenerated)
+	if moved.ThumbnailImage != nil || f.storedImage() != nil || f.storedSource() != nil {
+		t.Fatalf("位置の設定で画像が外れない: thumbnailImage = %v", moved.ThumbnailImage)
 	}
 	if got := f.thumbnailBytes(); got != "frame:12000" {
 		t.Fatalf("位置の設定のあとの代表サムネイル = %q", got)
 	}
 
 	// 位置があるときの取り消しは、その場面のコマへ戻す。
-	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("again")); err != nil {
+	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("again"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
 	}
 	reverted := f.decodeVideo(f.serve(http.MethodDelete, f.videoPath("/thumbnail-image"), ""))
-	if reverted.ThumbnailGenerated != nil || f.storedImage() != nil || f.thumbnailBytes() != "frame:12000" {
-		t.Fatalf("取り消し: thumbnailGenerated = %v, 代表サムネイル = %q", reverted.ThumbnailGenerated, f.thumbnailBytes())
+	if reverted.ThumbnailImage != nil || f.storedImage() != nil || f.storedSource() != nil || f.thumbnailBytes() != "frame:12000" {
+		t.Fatalf("取り消し: thumbnailImage = %v, 代表サムネイル = %q", reverted.ThumbnailImage, f.thumbnailBytes())
 	}
 	if reverted.ThumbnailPositionMs == nil || *reverted.ThumbnailPositionMs != 12_000 {
 		t.Fatalf("取り消しで位置が消えた: %v", reverted.ThumbnailPositionMs)
@@ -278,7 +295,7 @@ func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 
 	// 位置が無いときの取り消しは、自動の位置のコマへ戻す。
 	f.decodeVideo(f.serve(http.MethodPut, f.videoPath("/thumbnail-position"), `{"positionMs":null}`))
-	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("third")); err != nil {
+	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("third"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
 	}
 	f.decodeVideo(f.serve(http.MethodDelete, f.videoPath("/thumbnail-image"), ""))
@@ -292,7 +309,7 @@ func TestApplyThumbnailImageToGoneContentWritesNothing(t *testing.T) {
 	f := newThumbnailImageFixture(t)
 	before := thumbnailURLString(f.video())
 
-	_, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, "ffffffffff:9", []byte("edited"))
+	_, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, "ffffffffff:9", []byte("edited"), domain.ThumbnailImageGenerated)
 	if !errors.Is(err, domain.ErrContentChanged) {
 		t.Fatalf("err = %v, want ErrContentChanged", err)
 	}

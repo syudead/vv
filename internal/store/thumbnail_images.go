@@ -15,22 +15,28 @@ import (
 // 再スキャン・取り込み直しを越えて残る。代表サムネイルのファイルは internal/app の Ingest が
 // この行から公開し直す。
 
-// ApplyThumbnailImage は、内容 contentKey の動画 videoID の代表サムネイルとして画像 image
-// （動画の縦横比に合わせた JPEG）を記録し、反映後の動画を返す。
+// ApplyThumbnailImage は、内容 contentKey の動画 videoID の代表サムネイルとして画像 image を
+// 記録し、反映後の動画を返す。image.Image は動画の縦横比に合わせた JPEG、image.Source は同じ
+// 切り抜きの長辺最大 2048 px の JPEG、image.Origin はその出どころである
+// （specs/046-thumbnail-image-upload/data-model.md、research.md R-3・R-5）。
 //
 // 呼ぶのは internal/app の Ingest だけで、同じ画像を公開したあと、生成の錠の中で呼ぶ。1 つの
-// 取引で、行を書き（改版番号は video_overrides.thumbnail_revision と同じ規則）、その内容の動画の
-// thumbnail_state を done にして代表サムネイルの代用と失敗の問題を消し、更新日時を進める。
-// video_overrides の位置は残す（R-10）。
+// 取引で、行（画像・元の画像・出どころ。改版番号は video_overrides.thumbnail_revision と同じ規則）
+// を書き、その内容の動画の thumbnail_state を done にして代表サムネイルの代用と失敗の問題を消し、
+// 更新日時を進める。video_overrides の位置は残す（specs/045-comfyui-thumbnails/research.md R-10）。
 //
-// videoID の動画が無いか、登録フォルダの下に所在が無いか、内容が contentKey でなければ
-// domain.ErrContentChanged で、何も書かない。確定後に domain.VideoOverrideChanged を発行し、
-// 問題を消したときは domain.ScanChanged も発行する。
+// 画像か元の画像が空か、出どころが既知の値でなければ誤りで、何も書かない。videoID の動画が
+// 無いか、登録フォルダの下に所在が無いか、内容が contentKey でなければ domain.ErrContentChanged
+// で、何も書かない。確定後に domain.VideoOverrideChanged を発行し、問題を消したときは
+// domain.ScanChanged も発行する。
 func (s *OverrideStore) ApplyThumbnailImage(
-	ctx context.Context, videoID int64, contentKey string, image []byte,
+	ctx context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
 ) (domain.Video, error) {
-	if contentKey == "" || len(image) == 0 {
+	if contentKey == "" || len(image.Image) == 0 || len(image.Source) == 0 {
 		return domain.Video{}, errors.New("cannot apply an empty thumbnail image")
+	}
+	if !image.Origin.Valid() {
+		return domain.Video{}, fmt.Errorf("cannot apply a thumbnail image of origin %q", image.Origin)
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -55,10 +61,12 @@ func (s *OverrideStore) ApplyThumbnailImage(
 	}
 	revision := s.db.nextThumbnailRevision(now, previous.Int64)
 	if _, err := tx.ExecContext(ctx,
-		`insert into thumbnail_images (content_key, image, revision, applied_at) values (?, ?, ?, ?)
+		`insert into thumbnail_images (content_key, image, source, origin, revision, applied_at)
+		 values (?, ?, ?, ?, ?, ?)
 		 on conflict (content_key) do update set
-		     image = excluded.image, revision = excluded.revision, applied_at = excluded.applied_at`,
-		contentKey, image, revision, now.UnixMilli(),
+		     image = excluded.image, source = excluded.source, origin = excluded.origin,
+		     revision = excluded.revision, applied_at = excluded.applied_at`,
+		contentKey, image.Image, image.Source, string(image.Origin), revision, now.UnixMilli(),
 	); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot save the thumbnail image: %w", err)
 	}
@@ -136,6 +144,23 @@ func (s *OverrideStore) ThumbnailImage(ctx context.Context, contentKey string) (
 	return image, nil
 }
 
+// ThumbnailImageSource は内容 contentKey に適用した画像の元の画像（長辺最大 2048 px の JPEG。
+// specs/046-thumbnail-image-upload/research.md R-3）を返す。適用していないか、元の画像を持たない
+// 行（specs/046-thumbnail-image-upload の移行より前に書いた行）なら nil を返す。
+func (s *OverrideStore) ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error) {
+	var source []byte
+	err := s.db.sql.QueryRowContext(ctx,
+		`select source from thumbnail_images where content_key = ? and content_key <> ''`, contentKey,
+	).Scan(&source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the thumbnail image source: %w", err)
+	}
+	return source, nil
+}
+
 // deleteThumbnailImage は内容 key に適用した画像の行を消し、消したかを返す。
 func deleteThumbnailImage(ctx context.Context, tx *sql.Tx, key string) (bool, error) {
 	result, err := tx.ExecContext(ctx, `delete from thumbnail_images where content_key = ?`, key)
@@ -149,12 +174,12 @@ func deleteThumbnailImage(ctx context.Context, tx *sql.Tx, key string) (bool, er
 	return removed > 0, nil
 }
 
-// ApplyThumbnailImage・RevertThumbnailImage・ThumbnailImage は OverrideStore の同名の操作と
-// 同じである。代表サムネイルの生成と記録を受け持つ internal/app の Ingest が、取り込みの
-// 保存先（app.IngestStore）として呼ぶ。
+// ApplyThumbnailImage・RevertThumbnailImage・ThumbnailImage・ThumbnailImageSource は
+// OverrideStore の同名の操作と同じである。代表サムネイルの生成と記録を受け持つ internal/app の
+// Ingest が、取り込みの保存先（app.IngestStore）として呼ぶ。
 
 func (s *IngestStore) ApplyThumbnailImage(
-	ctx context.Context, videoID int64, contentKey string, image []byte,
+	ctx context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
 ) (domain.Video, error) {
 	return (&OverrideStore{db: s.db}).ApplyThumbnailImage(ctx, videoID, contentKey, image)
 }
@@ -165,4 +190,8 @@ func (s *IngestStore) RevertThumbnailImage(ctx context.Context, videoID int64) (
 
 func (s *IngestStore) ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error) {
 	return (&OverrideStore{db: s.db}).ThumbnailImage(ctx, contentKey)
+}
+
+func (s *IngestStore) ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error) {
+	return (&OverrideStore{db: s.db}).ThumbnailImageSource(ctx, contentKey)
 }

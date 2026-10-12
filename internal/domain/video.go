@@ -239,6 +239,9 @@ type Video struct {
 	// （specs/045-comfyui-thumbnails/data-model.md）。適用していなければ 0。設定されていれば
 	// thumbnailUrl の版は位置の改版番号の代わりにこれを使う。
 	ThumbnailImageRevision int64
+	// ThumbnailImageOrigin は適用した画像の出どころ（thumbnail_images.origin。
+	// specs/046-thumbnail-image-upload/data-model.md）。適用していなければ空である。
+	ThumbnailImageOrigin ThumbnailImageOrigin
 }
 
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。

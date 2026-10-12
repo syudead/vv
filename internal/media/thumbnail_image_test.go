@@ -18,9 +18,14 @@ import (
 
 func squarePNG(t *testing.T, size int) []byte {
 	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	for y := range size {
-		for x := range size {
+	return rectPNG(t, size, size)
+}
+
+func rectPNG(t *testing.T, width, height int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := range height {
+		for x := range width {
 			img.Set(x, y, color.RGBA{R: uint8(x), G: uint8(y), B: 128, A: 255})
 		}
 	}
@@ -94,6 +99,63 @@ func TestFitThumbnailSize(t *testing.T) {
 		width, height := fitThumbnailSize(tc.aspect)
 		if width != tc.width || height != tc.height {
 			t.Errorf("fitThumbnailSize(%v) = %dx%d, want %dx%d", tc.aspect, width, height, tc.width, tc.height)
+		}
+	}
+}
+
+// 元の画像は代表サムネイルと同じく動画の縦横比に中央で切り抜き、長辺を最大 2048px にする。
+// 小さい画像は拡大しない（specs/046-thumbnail-image-upload/research.md R-3）。
+func TestFitThumbnailSource(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		width, height         int
+		aspect                float64
+		wantWidth, wantHeight int
+	}{
+		{name: "16:9 の動画に 4000×3000", width: 4000, height: 3000, aspect: 16.0 / 9.0, wantWidth: 2048, wantHeight: 1152},
+		{name: "16:9 の動画に 1280×720", width: 1280, height: 720, aspect: 16.0 / 9.0, wantWidth: 1280, wantHeight: 720},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fitted, err := FitThumbnailSource(context.Background(), rectPNG(t, tc.width, tc.height), tc.aspect)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, err := jpeg.DecodeConfig(bytes.NewReader(fitted))
+			if err != nil {
+				t.Fatalf("JPEG として読めない: %v", err)
+			}
+			if config.Width != tc.wantWidth || config.Height != tc.wantHeight {
+				t.Fatalf("大きさ = %dx%d, want %dx%d", config.Width, config.Height, tc.wantWidth, tc.wantHeight)
+			}
+		})
+	}
+}
+
+func TestFitThumbnailSourceRejectsUndecodableData(t *testing.T) {
+	_, err := FitThumbnailSource(context.Background(), []byte("not an image"), 16.0/9.0)
+	if !errors.Is(err, domain.ErrThumbnailImageInvalid) {
+		t.Fatalf("err = %v, want ErrThumbnailImageInvalid", err)
+	}
+}
+
+func TestFitThumbnailSourceSize(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		aspect        float64
+		wantW, wantH  int
+	}{
+		{width: 4000, height: 3000, aspect: 16.0 / 9.0, wantW: 2048, wantH: 1152},
+		{width: 1280, height: 720, aspect: 16.0 / 9.0, wantW: 1280, wantH: 720},
+		{width: 1000, height: 1000, aspect: 16.0 / 9.0, wantW: 1000, wantH: 562},
+		{width: 3000, height: 4000, aspect: 9.0 / 16.0, wantW: 1152, wantH: 2048},
+		{width: 1920, height: 1080, aspect: 9.0 / 16.0, wantW: 608, wantH: 1080},
+		{width: 5000, height: 2500, aspect: 0, wantW: 2048, wantH: 1024},
+		{width: 640, height: 480, aspect: 0, wantW: 640, wantH: 480},
+	} {
+		w, h := fitThumbnailSourceSize(tc.width, tc.height, tc.aspect)
+		if w != tc.wantW || h != tc.wantH {
+			t.Errorf("fitThumbnailSourceSize(%d, %d, %v) = %dx%d, want %dx%d",
+				tc.width, tc.height, tc.aspect, w, h, tc.wantW, tc.wantH)
 		}
 	}
 }

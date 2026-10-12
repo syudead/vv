@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -127,12 +128,16 @@ func (f *fakeFrames) FrameAt(context.Context, string, int64) (domain.ThumbnailFr
 type fakeApplier struct {
 	err     error
 	applied [][]byte
+	// origins は適用に渡された出どころである。
+	origins []domain.ThumbnailImageOrigin
 	// entered と release があれば、適用はそこで止まり、release が閉じるまで返らない。
 	entered chan struct{}
 	release chan struct{}
 }
 
-func (f *fakeApplier) ApplyThumbnailImage(_ context.Context, videoID int64, _ string, image []byte) (domain.Video, error) {
+func (f *fakeApplier) ApplyThumbnailImage(
+	_ context.Context, videoID int64, _ string, image []byte, origin domain.ThumbnailImageOrigin,
+) (domain.Video, error) {
 	if f.entered != nil {
 		close(f.entered)
 		<-f.release
@@ -141,6 +146,7 @@ func (f *fakeApplier) ApplyThumbnailImage(_ context.Context, videoID int64, _ st
 		return domain.Video{}, f.err
 	}
 	f.applied = append(f.applied, image)
+	f.origins = append(f.origins, origin)
 	return domain.Video{ID: videoID}, nil
 }
 
@@ -323,6 +329,9 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 	video, err := f.edits.Apply(context.Background(), edit.ID)
 	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || !bytes.Equal(f.applier.applied[0], f.editor.output) {
 		t.Fatalf("Apply = %+v, %v, applied %q", video, err, f.applier.applied)
+	}
+	if !slices.Equal(f.applier.origins, []domain.ThumbnailImageOrigin{domain.ThumbnailImageGenerated}) {
+		t.Fatalf("出どころ = %v, want generated", f.applier.origins)
 	}
 	f.wantEnded(t, edit.ID)
 	if len(f.editor.cancelled()) != 0 {

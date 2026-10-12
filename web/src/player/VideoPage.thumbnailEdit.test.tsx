@@ -346,7 +346,7 @@ describe("VideoPage thumbnail edit", () => {
     server.apply.mockReturnValueOnce(
       json({
         ...video,
-        thumbnailGenerated: true,
+        thumbnailImage: "generated",
         thumbnailUrl: "/api/videos/7/thumbnail?v=g2",
       }),
     );

@@ -117,3 +117,16 @@ revert and position override confirmed last wins
 The session ends after a successful apply and after `content_changed`, when
 the video is gone or holds other content; an undecodable result keeps the
 session so the owner can run again.
+
+An apply writes one `thumbnail_images` row in the transaction that sets
+`thumbnail_state` to `done`
+([data model](../../specs/046-thumbnail-image-upload/data-model.md)):
+
+| Column | Content |
+| --- | --- |
+| `image` | The 640 px JPEG fitted to the video's aspect; the thumbnail file is published from it |
+| `source` | The same crop with its long side at most 2048 px, as a JPEG, for an edit that starts from the current thumbnail ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin)); null in rows written before migration `00041` |
+| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage` ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+
+A position change and a revert delete the whole row. The thumbnail job
+republishes `image` and never reads `source`.

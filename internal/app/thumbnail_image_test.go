@@ -28,12 +28,12 @@ func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 	store.order = generator
 	ingest, _ := newTestIngest(store, generator)
 
-	saved, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"))
+	saved, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"), domain.ThumbnailImageGenerated)
 	if err != nil {
 		t.Fatal(err)
 	}
 	calls, removed := generator.snapshot()
-	if want := []string{"fit", "publish-thumbnail", "apply-image"}; !slices.Equal(calls, want) {
+	if want := []string{"fit", "fit-source", "publish-thumbnail", "apply-image"}; !slices.Equal(calls, want) {
 		t.Fatalf("呼び出し = %v, want %v", calls, want)
 	}
 	if got := generator.stashCalls(); !slices.Equal(got, []string{"stash", "discard"}) {
@@ -45,11 +45,34 @@ func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 	if !bytes.Equal(store.images["a"], []byte("fitted:edited")) || !bytes.Equal(generator.published["a"], store.images["a"]) {
 		t.Fatalf("記録 = %q, 公開 = %q", store.images["a"], generator.published["a"])
 	}
-	if saved.ThumbnailImageRevision == 0 || saved.ThumbnailState != domain.ThumbnailStateDone {
+	if saved.ThumbnailImageRevision == 0 || saved.ThumbnailState != domain.ThumbnailStateDone ||
+		saved.ThumbnailImageOrigin != domain.ThumbnailImageGenerated {
 		t.Fatalf("返した動画 = %+v", saved)
+	}
+	// 元の画像と出どころも、代表サムネイルと同じ 1 回の記録で書く（specs/046-thumbnail-image-upload R-3）。
+	row := store.rows["a"]
+	if !bytes.Equal(row.Image, []byte("fitted:edited")) || !bytes.Equal(row.Source, []byte("source:edited")) ||
+		row.Origin != domain.ThumbnailImageGenerated {
+		t.Fatalf("記録した行 = %q / %q / %q", row.Image, row.Source, row.Origin)
 	}
 	if len(removed) != 0 {
 		t.Fatalf("参照のある生成物を消した: %v", removed)
+	}
+}
+
+// アップロードした画像の出どころは uploaded として記録する。
+func TestApplyThumbnailImageRecordsOrigin(t *testing.T) {
+	video := sizedVideo(1, "a", 1920, 1080)
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{thumbnailDir: t.TempDir()}
+	ingest, _ := newTestIngest(store, generator)
+
+	saved, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("photo"), domain.ThumbnailImageUploaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.rows["a"].Origin != domain.ThumbnailImageUploaded || saved.ThumbnailImageOrigin != domain.ThumbnailImageUploaded {
+		t.Fatalf("出どころ = %q / %q", store.rows["a"].Origin, saved.ThumbnailImageOrigin)
 	}
 }
 
@@ -60,7 +83,7 @@ func TestApplyThumbnailImageUnknownSize(t *testing.T) {
 	generator := &fakeGenerator{thumbnailDir: t.TempDir()}
 	ingest, _ := newTestIngest(store, generator)
 
-	if _, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited")); err != nil {
+	if _, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(generator.aspects, []float64{0}) {
@@ -85,7 +108,7 @@ func TestApplyThumbnailImageContentChanged(t *testing.T) {
 			generator := &fakeGenerator{recordPublish: true, thumbnailDir: t.TempDir()}
 			ingest, _ := newTestIngest(store, generator)
 
-			_, err := ingest.ApplyThumbnailImage(context.Background(), tc.videoID, tc.key, []byte("edited"))
+			_, err := ingest.ApplyThumbnailImage(context.Background(), tc.videoID, tc.key, []byte("edited"), domain.ThumbnailImageGenerated)
 			if !errors.Is(err, domain.ErrContentChanged) {
 				t.Fatalf("err = %v, want ErrContentChanged", err)
 			}
@@ -106,7 +129,7 @@ func TestApplyThumbnailImageInvalid(t *testing.T) {
 	generator := &fakeGenerator{recordPublish: true, fitErr: domain.ErrThumbnailImageInvalid}
 	ingest, _ := newTestIngest(store, generator)
 
-	_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("broken"))
+	_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("broken"), domain.ThumbnailImageGenerated)
 	if !errors.Is(err, domain.ErrThumbnailImageInvalid) {
 		t.Fatalf("err = %v", err)
 	}
@@ -124,7 +147,7 @@ func TestApplyThumbnailImageFailures(t *testing.T) {
 		generator := &fakeGenerator{thumbnailDir: t.TempDir(), publishErr: errors.New("disk full")}
 		ingest, _ := newTestIngest(store, generator)
 
-		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"))
+		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"), domain.ThumbnailImageGenerated)
 		if !errors.Is(err, generator.publishErr) {
 			t.Fatalf("err = %v", err)
 		}
@@ -145,7 +168,7 @@ func TestApplyThumbnailImageFailures(t *testing.T) {
 		generator := &fakeGenerator{thumbnailDir: t.TempDir()}
 		ingest, _ := newTestIngest(store, generator)
 
-		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"))
+		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"), domain.ThumbnailImageGenerated)
 		if !errors.Is(err, store.applyImageErr) {
 			t.Fatalf("err = %v", err)
 		}
@@ -285,7 +308,7 @@ func TestApplyThumbnailImageWaitingBehindPositionWins(t *testing.T) {
 	<-hold.started["thumbnail-at"]
 	applied := make(chan error, 1)
 	go func() {
-		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"))
+		_, err := ingest.ApplyThumbnailImage(context.Background(), video.ID, "a", []byte("edited"), domain.ThumbnailImageGenerated)
 		applied <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -300,7 +323,7 @@ func TestApplyThumbnailImageWaitingBehindPositionWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls, _ := generator.snapshot()
-	want := []string{"thumbnail-at", "publish-thumbnail", "set-position", "fit", "publish-thumbnail", "apply-image"}
+	want := []string{"thumbnail-at", "publish-thumbnail", "set-position", "fit", "fit-source", "publish-thumbnail", "apply-image"}
 	if !slices.Equal(calls, want) {
 		t.Fatalf("呼び出し = %v, want %v", calls, want)
 	}
