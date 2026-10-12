@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -18,6 +20,17 @@ import (
 // thumbnailUploadMaxBody はアップロードの要求の本文全体の上限である。image 部分の上限に、部分の
 // 区切りと見出しのぶんの 1 MiB を足す。
 const thumbnailUploadMaxBody = domain.ThumbnailUploadMaxBytes + 1<<20
+
+// thumbnailUploadBufferBudget は、読んでいる途中か読み終えて確かめと適用を待つアップロードの本文が
+// プロセス全体で同時に占めてよいバイト数である。本文の上限 4 件ぶんで、要求の数が増えても受け取った
+// 画像のメモリはこれを越えない。読む画像を 1 件ずつにする門（internal/app の uploadGate）とは別で、
+// 錠を待つアップロードが他の動画のアップロードを止めないよう、門より広くしてある。
+const thumbnailUploadBufferBudget = 4 * thumbnailUploadMaxBody
+
+// newThumbnailUploadBuffers はアップロードの本文のメモリの枠を作る。
+func newThumbnailUploadBuffers() *semaphore.Weighted {
+	return semaphore.NewWeighted(thumbnailUploadBufferBudget)
+}
 
 // thumbnailUploadTimeout は、本文が届き終わったあとの確かめと適用の時間の上限である。門と生成の錠を
 // 待つ時間と、最大 60 秒の合わせ 2 回が収まる（R-1）。
@@ -45,6 +58,13 @@ func (s *server) UploadThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	if !ok {
 		return
 	}
+	// 本文を読む前に、本文が占めうるぶんをメモリの枠から取り、応答を書き終えるまで持つ。枠が空くのを
+	// 待つ間にページが去れば何もしない。
+	weight := thumbnailUploadWeight(r)
+	if err := s.thumbnailUploadBuffers.Acquire(r.Context(), weight); err != nil {
+		return
+	}
+	defer s.thumbnailUploadBuffers.Release(weight)
 	image, ok := s.readThumbnailUpload(w, r)
 	if !ok {
 		return
@@ -60,11 +80,23 @@ func (s *server) UploadThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	s.writeVideoDetail(w, r, saved)
 }
 
+// thumbnailUploadWeight は要求 r の本文がメモリの枠から取るバイト数である。Content-Length が本文の
+// 上限以下ならその長さ（本文はそれより長く読めない）、無いか上限を越えれば本文の上限とする。
+func thumbnailUploadWeight(r *http.Request) int64 {
+	if r.ContentLength > 0 && r.ContentLength <= thumbnailUploadMaxBody {
+		return r.ContentLength
+	}
+	return thumbnailUploadMaxBody
+}
+
 // readThumbnailUpload はアップロードの要求の multipart/form-data から image を読む。image が無いか
-// ほかの部分を送れば 400、image が上限を越えれば 400 thumbnail_upload_too_large である。
+// ほかの部分を送れば 400、image か本文全体が上限を越えれば 400 thumbnail_upload_too_large である。
 func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	var image []byte
-	ok := s.readMultipart(w, r, thumbnailUploadMaxBody, func(name string, part io.Reader) bool {
+	tooLarge := func() {
+		s.thumbnailUploadError(w, &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxBytes})
+	}
+	ok := s.readMultipart(w, r, thumbnailUploadMaxBody, tooLarge, func(name string, part io.Reader) bool {
 		if name != "image" {
 			s.invalidRequest(w, "Only image may be sent.")
 			return false

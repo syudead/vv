@@ -288,6 +288,49 @@ func TestUploadAfterPositionChangeWins(t *testing.T) {
 	}
 }
 
+// 自分の動画の錠を待つ間に期限が来たアップロードは、錠が空くのを待たずに期限の誤りを返し、
+// 何も書かない。待つのをやめたあとも錠は空き、後の位置の指定とアップロードは進む。
+func TestUploadWaitingOnLockStopsAtDeadline(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	hold := newHoldGeneration("thumbnail-at")
+	generator := &fakeGenerator{gate: hold.gate, thumbnailDir: t.TempDir()}
+	ingest, _ := newTestIngest(store, generator)
+	ingest.checkUpload = newUploadChecks().check
+
+	position := make(chan error, 1)
+	go func() {
+		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000))
+		position <- err
+	}()
+	<-hold.started["thumbnail-at"]
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := ingest.UploadThumbnailImage(ctx, video.ID, "a", []byte("photo"))
+		done <- err
+	}()
+	if err := waitJob(t, done); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v", err)
+	}
+	if fitted(generator, "photo") || store.rows["a"].Image != nil {
+		t.Fatalf("期限を越えたアップロードが書いた: %+v", store.rows["a"])
+	}
+
+	close(hold.release["thumbnail-at"])
+	if err := waitJob(t, position); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitJob(t, uploadAsync(ingest, video.ID, "a", "later")); err != nil {
+		t.Fatal(err)
+	}
+	if store.rows["a"].Origin != domain.ThumbnailImageUploaded {
+		t.Fatalf("行 = %+v", store.rows["a"])
+	}
+}
+
 // 門を待つ間に文脈が終われば、その誤りを返して何もしない。
 func TestUploadGateHonoursContext(t *testing.T) {
 	gate := newUploadGate()

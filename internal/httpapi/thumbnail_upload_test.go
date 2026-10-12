@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
@@ -391,4 +392,92 @@ func TestUploadThumbnailImageIsOwnerOnly(t *testing.T) {
 	f := newGuestFixture(t, true)
 	assertUnauthenticated(t, "Cookie なし", f.upload(t, "a", uploadTestPNG(t)))
 	f.assertNothingWritten(t, "ゲスト")
+}
+
+// image 部分の外で本文全体が上限を越えても（ここでは最初の区切りの前の長い前置き）、
+// 400 thumbnail_upload_too_large に image の上限を添え、何も書かない。
+func TestUploadThumbnailImageBodyOverLimitOutsideImage(t *testing.T) {
+	f := newGuestFixture(t, true)
+	line := strings.Repeat("x", 1022) + "\r\n"
+	preamble := strings.Repeat(line, int(thumbnailUploadMaxBody)/len(line)+2)
+	body, contentType := uploadBody(t, uploadTestPNG(t))
+	rec := f.uploadWith(context.Background(), "a", io.MultiReader(strings.NewReader(preamble), body), contentType, f.owner)
+	assertErrorBody(t, "前置きで越える本文", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		reason: reasonThumbnailUploadTooLarge, limit: domain.ThumbnailUploadMaxBytes,
+	})
+	f.assertNothingWritten(t, "前置きで越える本文")
+}
+
+// 長さの分からない本文は 1 件で本文の上限ぶんの枠を取るので、確かめと適用を待つ件数が枠を
+// 使い切っている間、次の 1 件は本文を読まずに待つ。1 件が終われば次が進む。
+func TestUploadThumbnailImageBodyBudget(t *testing.T) {
+	f := newGuestFixture(t, true)
+	started := make(chan struct{}, 8)
+	release := make(chan struct{}, 8)
+	f.uploads.set(func(u *uploadFakes) {
+		u.before = func() {
+			started <- struct{}{}
+			<-release
+		}
+	})
+	send := func() <-chan int {
+		done := make(chan int, 1)
+		body, contentType := uploadBody(t, uploadTestPNG(t))
+		go func() {
+			// MultiReader で包むと、要求は長さの分からない本文になる。
+			done <- f.uploadWith(context.Background(), "a", io.MultiReader(body), contentType, f.owner).Code
+		}()
+		return done
+	}
+	waitStarted := func(label string) {
+		t.Helper()
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			t.Fatalf("%s: アップロードが本文を読み終えない", label)
+		}
+	}
+
+	var done []<-chan int
+	for range thumbnailUploadBufferBudget / thumbnailUploadMaxBody {
+		done = append(done, send())
+		waitStarted("枠の中")
+	}
+	done = append(done, send())
+	select {
+	case <-started:
+		t.Fatal("枠を越えるアップロードが本文を読んだ")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	release <- struct{}{}
+	waitStarted("枠が空いたあと")
+	for range done[1:] {
+		release <- struct{}{}
+	}
+	for _, d := range done {
+		if code := <-d; code != http.StatusOK {
+			t.Errorf("status = %d", code)
+		}
+	}
+}
+
+// 本文が枠から取るのは、上限以下の Content-Length ならその長さ、無いか上限を越えれば本文の上限である。
+func TestThumbnailUploadWeight(t *testing.T) {
+	for _, tc := range []struct {
+		length int64
+		want   int64
+	}{
+		{length: 1024, want: 1024},
+		{length: thumbnailUploadMaxBody, want: thumbnailUploadMaxBody},
+		{length: thumbnailUploadMaxBody + 1, want: thumbnailUploadMaxBody},
+		{length: -1, want: thumbnailUploadMaxBody},
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/", nil)
+		r.ContentLength = tc.length
+		if got := thumbnailUploadWeight(r); got != tc.want {
+			t.Errorf("Content-Length %d: weight = %d, want %d", tc.length, got, tc.want)
+		}
+	}
 }

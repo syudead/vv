@@ -144,7 +144,16 @@ writes nothing to disk before the fitted image is published, so a request cut
 off before its body arrives leaves nothing behind. Once the body has arrived,
 the check and the apply run under a context detached from the client and
 bounded at five minutes, so a page that goes away does not abort an upload it
-finished sending.
+finished sending. The five minutes also bound the wait for the generation
+lock: an apply whose context ends while it waits gives up its place and writes
+nothing, and the lock keeps its order for the others.
+
+The gate below bounds the decodes, not the bodies held in memory. Before it
+reads a body, the route takes the body's size from a process-wide budget of
+four bodies at the 65 MiB limit, and keeps it until it has answered. The size
+is the `Content-Length` when that is within the limit, and the limit
+otherwise. A request that finds the budget used up waits there, under the
+client's context, before reading its body.
 
 The check is the edit's image check with a larger pixel cap
 ([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)):

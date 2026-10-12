@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/semaphore"
+
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -373,6 +375,8 @@ type server struct {
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
+	// thumbnailUploadBuffers はアップロードの本文が同時に占めるメモリの枠である（thumbnail_upload.go）。
+	thumbnailUploadBuffers *semaphore.Weighted
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -425,48 +429,49 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:             opts.Build,
-		pinger:            opts.Pinger,
-		videos:            opts.Videos,
-		playback:          opts.Playback,
-		scans:             opts.Scans,
-		mediaFolders:      opts.MediaFolders,
-		tags:              opts.Tags,
-		visibility:        opts.Visibility,
-		favorites:         opts.Favorites,
-		playlists:         opts.Playlists,
-		playlistPlayback:  opts.PlaylistPlayback,
-		watchHistory:      opts.WatchHistory,
-		overrides:         opts.Overrides,
-		thumbnails:        opts.ThumbnailPicker,
-		versions:          opts.Versions,
-		folders:           opts.Folders,
-		folderGroups:      opts.FolderGroups,
-		library:           opts.Library,
-		transcoder:        opts.Transcoder,
-		transcodeProbes:   opts.TranscodeProbes,
-		transcodeSettings: opts.TranscodeSettings,
-		networkSettings:   opts.NetworkSettings,
-		autoImport:        opts.AutoImport,
-		autoTagging:       opts.AutoTagging,
-		ollama:            opts.Ollama,
-		comfyUI:           opts.ComfyUI,
-		thumbnailEdits:    opts.ThumbnailEdits,
-		thumbnailUploads:  opts.ThumbnailUploads,
-		transcodeStarts:   newTranscodeStarts(),
-		artifacts:         opts.Artifacts,
-		catalog:           opts.Catalog,
-		opener:            opts.Opener,
-		files:             opts.Files,
-		subtitles:         opts.Subtitles,
-		events:            opts.Events,
-		logger:            logger,
-		auth:              opts.Auth,
-		apiTokens:         opts.APITokens,
-		externalVideos:    opts.ExternalVideos,
-		sessions:          newSessionLedger(opts.SessionRecheck, logger),
-		guests:            newGuestLedger(),
-		now:               opts.Now,
+		build:                  opts.Build,
+		pinger:                 opts.Pinger,
+		videos:                 opts.Videos,
+		playback:               opts.Playback,
+		scans:                  opts.Scans,
+		mediaFolders:           opts.MediaFolders,
+		tags:                   opts.Tags,
+		visibility:             opts.Visibility,
+		favorites:              opts.Favorites,
+		playlists:              opts.Playlists,
+		playlistPlayback:       opts.PlaylistPlayback,
+		watchHistory:           opts.WatchHistory,
+		overrides:              opts.Overrides,
+		thumbnails:             opts.ThumbnailPicker,
+		versions:               opts.Versions,
+		folders:                opts.Folders,
+		folderGroups:           opts.FolderGroups,
+		library:                opts.Library,
+		transcoder:             opts.Transcoder,
+		transcodeProbes:        opts.TranscodeProbes,
+		transcodeSettings:      opts.TranscodeSettings,
+		networkSettings:        opts.NetworkSettings,
+		autoImport:             opts.AutoImport,
+		autoTagging:            opts.AutoTagging,
+		ollama:                 opts.Ollama,
+		comfyUI:                opts.ComfyUI,
+		thumbnailEdits:         opts.ThumbnailEdits,
+		thumbnailUploads:       opts.ThumbnailUploads,
+		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
+		transcodeStarts:        newTranscodeStarts(),
+		artifacts:              opts.Artifacts,
+		catalog:                opts.Catalog,
+		opener:                 opts.Opener,
+		files:                  opts.Files,
+		subtitles:              opts.Subtitles,
+		events:                 opts.Events,
+		logger:                 logger,
+		auth:                   opts.Auth,
+		apiTokens:              opts.APITokens,
+		externalVideos:         opts.ExternalVideos,
+		sessions:               newSessionLedger(opts.SessionRecheck, logger),
+		guests:                 newGuestLedger(),
+		now:                    opts.Now,
 		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
 		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}

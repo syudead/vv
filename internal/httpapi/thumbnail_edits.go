@@ -185,7 +185,7 @@ func (s *server) DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request, ed
 // 参考画像は、それぞれの reason の 400 にする。
 func (s *server) readThumbnailEditRun(w http.ResponseWriter, r *http.Request) (domain.ThumbnailEditRunInput, bool) {
 	var input domain.ThumbnailEditRunInput
-	ok := s.readMultipart(w, r, thumbnailEditMaxRunBody, func(name string, part io.Reader) bool {
+	ok := s.readMultipart(w, r, thumbnailEditMaxRunBody, nil, func(name string, part io.Reader) bool {
 		return s.readThumbnailEditPart(w, name, part, &input)
 	})
 	return input, ok
@@ -193,10 +193,13 @@ func (s *server) readThumbnailEditRun(w http.ResponseWriter, r *http.Request) (d
 
 // readMultipart は要求の本文を multipart/form-data として、全体で maxBody バイトまで読み、部分ごとに
 // その名前と中身で readPart を呼ぶ。Content-Type が違うか形が壊れているか、同じ部分を 2 度送れば
-// 400 を書いて false を返す。readPart が false を返せば（応答は readPart が書く）そこでやめる。
-// サムネイルの編集の実行とアップロード（thumbnail_upload.go）が共有する。
+// 400 を書いて false を返す。部分の区切りや見出しを読む間に本文全体が maxBody を越えたときは、
+// tooLarge があればそれが応答を書き、無ければ形の誤りと同じ 400 にする。readPart が false を返せば
+// （応答は readPart が書く）そこでやめる。サムネイルの編集の実行とアップロード（thumbnail_upload.go）が
+// 共有する。
 func (s *server) readMultipart(
-	w http.ResponseWriter, r *http.Request, maxBody int64, readPart func(name string, part io.Reader) bool,
+	w http.ResponseWriter, r *http.Request, maxBody int64, tooLarge func(),
+	readPart func(name string, part io.Reader) bool,
 ) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
@@ -214,6 +217,11 @@ func (s *server) readMultipart(
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
 			return true
+		}
+		var bodyTooLarge *http.MaxBytesError
+		if errors.As(err, &bodyTooLarge) && tooLarge != nil {
+			tooLarge()
+			return false
 		}
 		if err != nil {
 			s.invalidRequest(w, "The request body is not valid multipart/form-data.")
