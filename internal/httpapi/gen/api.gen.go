@@ -1596,7 +1596,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -2158,7 +2158,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2250,11 +2250,16 @@ type Video struct {
 	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
 	Tags []VideoTag `json:"tags"`
 
+	// ThumbnailGenerated 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
+	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+	ThumbnailGenerated *bool `json:"thumbnailGenerated,omitempty"`
+
 	// ThumbnailPositionMs 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
 	ThumbnailPositionMs *int64              `json:"thumbnailPositionMs,omitempty"`
 	ThumbnailState      VideoThumbnailState `json:"thumbnailState"`
 
-	// ThumbnailUrl thumbnailState = done のときだけ入る
+	// ThumbnailUrl thumbnailState = done のときだけ入る。版は内容鍵の先頭で、位置の指定中は `-r<改版番号>`、
+	// 適用した画像の表示中は `-g<改版番号>` が付く（ゲストにも同じ文字列）
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
 
 	// Title 有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名
@@ -2533,7 +2538,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -3263,6 +3268,9 @@ type ServerInterface interface {
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
+	// RevertThumbnailImage 動画に適用したサムネイルの画像を外す
+	// (DELETE /api/videos/{id}/thumbnail-image)
+	RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoThumbnailPosition 動画の代表サムネイルの位置を設定・解除する
 	// (PUT /api/videos/{id}/thumbnail-position)
 	SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -5756,6 +5764,32 @@ func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// RevertThumbnailImage operation middleware
+func (siw *ServerInterfaceWrapper) RevertThumbnailImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevertThumbnailImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoThumbnailPosition operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request) {
 
@@ -6289,6 +6323,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)

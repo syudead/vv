@@ -16,9 +16,10 @@ import (
 // research.md R-8・R-10）。1つの取引で済むので internal/app は通さず、
 // internal/store の *OverrideStore を直接呼ぶ。
 //
-// 代表サムネイルの位置の設定・解除（contracts/screen-api.md §2、research.md R-4・R-8・R-11）は、
-// 画像の生成と記録を取り込みの job と同じ生成の錠の中で行うので、internal/app の
-// *Ingest（ThumbnailPicker）を呼ぶ。
+// 代表サムネイルの位置の設定・解除（contracts/screen-api.md §2、research.md R-4・R-8・R-11）と、
+// 適用した画像の取り消し（specs/045-comfyui-thumbnails/contracts/screen-api.md）は、画像の生成と
+// 記録を取り込みの job と同じ生成の錠の中で行うので、internal/app の *Ingest（ThumbnailPicker）を
+// 呼ぶ。
 
 // OverrideStore は動画の上書きの保存先である。internal/store の *OverrideStore が
 // これを満たす。
@@ -100,6 +101,11 @@ type ThumbnailPicker interface {
 	SetThumbnailPosition(
 		ctx context.Context, videoID int64, location, path string, positionMs *int64,
 	) (domain.Video, error)
+	// RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルを path の記録した
+	// 位置（無ければ自動の位置）の場面で作り直して公開し、反映後の動画を返す。location と誤りは
+	// SetThumbnailPosition と同じである。画像を適用していなくても作り直して成功する
+	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+	RevertThumbnailImage(ctx context.Context, videoID int64, location, path string) (domain.Video, error)
 }
 
 // SetVideoThumbnailPosition は動画の代表サムネイルの位置を設定・解除する
@@ -153,6 +159,36 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 	}
 
 	saved, err := s.thumbnails.SetThumbnailPosition(r.Context(), id, location, path, positionMs)
+	if err != nil {
+		s.thumbnailPositionError(w, video, err)
+		return
+	}
+	s.writeVideoDetail(w, r, saved)
+}
+
+// RevertThumbnailImage は動画に適用したサムネイルの画像を外し、コマから作り直す
+// （DELETE /api/videos/{id}/thumbnail-image）。応答は画像の生成が終わってから返す。
+func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+	if s.thumbnails == nil {
+		s.internalError(w, "Thumbnail generation is not configured.", nil)
+		return
+	}
+	video, ok := s.lookupVideo(w, r, id)
+	if !ok {
+		return
+	}
+	if s.files == nil {
+		s.internalError(w, "Media file access is not configured.", nil)
+		return
+	}
+	// 読む元は位置の設定（SetVideoThumbnailPosition）と同じ規則で決める。
+	location, path, ok := s.resolveMediaFile(r, video)
+	if !ok {
+		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+		return
+	}
+
+	saved, err := s.thumbnails.RevertThumbnailImage(r.Context(), id, location, path)
 	if err != nil {
 		s.thumbnailPositionError(w, video, err)
 		return

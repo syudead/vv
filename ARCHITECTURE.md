@@ -140,9 +140,9 @@ visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
-public flags, favorites and owner edits are keyed by values a rescan reproduces (the content
-key, a version bundle's key, a folder's absolute path), never by `videos.id`,
-and carry no foreign key to `videos`. Which tables are rebuildable is in
+public flags, favorites, owner edits and applied thumbnail images are keyed by
+values a rescan reproduces (the content key, a version bundle's key, a folder's
+absolute path), never by `videos.id`, and carry no foreign key to `videos`. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations

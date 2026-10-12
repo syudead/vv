@@ -559,6 +559,27 @@ export async function setVideoThumbnailPosition(
 }
 
 /**
+ * revertThumbnailImage は動画に適用したサムネイルの画像を外し、代表サムネイルを
+ * `thumbnailPositionMs` の場面（無ければ自動の位置）のコマから作り直す。画像を適用していなくても
+ * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailGenerated` が
+ * 無く、新しい版の `thumbnailUrl` が反映済みである
+ * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ *
+ * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
+ */
+export async function revertThumbnailImage(
+  id: number,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
+    method: "DELETE",
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
  */

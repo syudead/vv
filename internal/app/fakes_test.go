@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -61,6 +64,13 @@ type fakeIngestStore struct {
 	positions []*int64
 	// setPositionErr があれば SetThumbnailPosition は記録せずにそれを返す。
 	setPositionErr error
+	// images は内容ごとに適用した画像（thumbnail_images の行）である。applyImageErr・
+	// revertImageErr があれば、ApplyThumbnailImage・RevertThumbnailImage は記録せずにそれを返す。
+	images         map[string][]byte
+	applyImageErr  error
+	revertImageErr error
+	// imageRevision は適用のたびに増やす改版番号。
+	imageRevision int64
 	// sourceChecks は ThumbnailSourceCurrent の呼び出しで、sourceLocations はそれに渡された所在。
 	// staleSourceAt が正なら、その回目の呼び出しから所在が別の内容へ付け替わったと答える。
 	sourceChecks    int
@@ -76,7 +86,9 @@ type fakeIngestStore struct {
 }
 
 func newFakeIngestStore(videos ...domain.Video) *fakeIngestStore {
-	store := &fakeIngestStore{videos: map[int64]domain.Video{}, referenced: map[string]bool{}}
+	store := &fakeIngestStore{
+		videos: map[int64]domain.Video{}, referenced: map[string]bool{}, images: map[string][]byte{},
+	}
 	for _, video := range videos {
 		store.videos[video.ID] = video
 		store.referenced[video.ContentKey] = true
@@ -200,6 +212,7 @@ func (f *fakeIngestStore) SetThumbnailPosition(
 	if f.order != nil {
 		f.order.record("set-position")
 	}
+	delete(f.images, video.ContentKey)
 	for id, other := range f.videos {
 		if other.ContentKey != video.ContentKey {
 			continue
@@ -211,9 +224,76 @@ func (f *fakeIngestStore) SetThumbnailPosition(
 		} else {
 			other.ThumbnailRevision = 0
 		}
+		other.ThumbnailImageRevision = 0
 		f.videos[id] = other
 	}
 	return f.videos[videoID], nil
+}
+
+// ApplyThumbnailImage は画像の行を書き、その内容の動画を done にする。動画が無いか内容が
+// 違えば domain.ErrContentChanged を返す。order が nil でなければ記録を生成の呼び出しと同じ列へ
+// 書く。
+func (f *fakeIngestStore) ApplyThumbnailImage(
+	_ context.Context, videoID int64, contentKey string, image []byte,
+) (domain.Video, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	video, ok := f.videos[videoID]
+	if !ok || f.gone || video.ContentKey != contentKey {
+		return domain.Video{}, domain.ErrContentChanged
+	}
+	if f.applyImageErr != nil {
+		return domain.Video{}, f.applyImageErr
+	}
+	f.images[contentKey] = append([]byte(nil), image...)
+	f.imageRevision++
+	if f.order != nil {
+		f.order.record("apply-image")
+	}
+	f.setImageRevision(contentKey, f.imageRevision)
+	return f.videos[videoID], nil
+}
+
+// RevertThumbnailImage は画像の行を消し、その内容の動画を done にする。
+func (f *fakeIngestStore) RevertThumbnailImage(_ context.Context, videoID int64) (domain.Video, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	video, ok := f.videos[videoID]
+	if !ok || f.gone {
+		return domain.Video{}, domain.ErrNotFound
+	}
+	if f.revertImageErr != nil {
+		return domain.Video{}, f.revertImageErr
+	}
+	delete(f.images, video.ContentKey)
+	if f.order != nil {
+		f.order.record("revert-image")
+	}
+	f.setImageRevision(video.ContentKey, 0)
+	return f.videos[videoID], nil
+}
+
+// setImageRevision は内容 key の動画を done にし、画像の改版番号を revision にする。f.mu を
+// 持って呼ぶ。
+func (f *fakeIngestStore) setImageRevision(key string, revision int64) {
+	for id, other := range f.videos {
+		if other.ContentKey != key {
+			continue
+		}
+		other.ThumbnailState = domain.ThumbnailStateDone
+		other.ThumbnailImageRevision = revision
+		f.videos[id] = other
+	}
+}
+
+func (f *fakeIngestStore) ThumbnailImage(_ context.Context, contentKey string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	image, ok := f.images[contentKey]
+	if !ok {
+		return nil, nil
+	}
+	return append([]byte(nil), image...), nil
 }
 
 func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domain.Job) (bool, error) {
@@ -244,6 +324,16 @@ type fakeGenerator struct {
 	recordPublish bool
 	// positions は ThumbnailAt に渡された位置。
 	positions []int64
+	// fitErr は FitThumbnailImage が返す誤り。aspects はそれに渡された縦横比である。
+	fitErr  error
+	aspects []float64
+	// publishErr があれば代表サムネイルの公開は書いたあとにそれを返す（公開の失敗）。
+	publishErr error
+	// thumbnailDir があれば、代表サムネイルの書き出し先をその下の実在するパスにする。
+	// 空なら書き出せない決め打ちのパスを渡す。
+	thumbnailDir string
+	// published は内容ごとに公開した代表サムネイルの中身（書き出し先にあったもの）。
+	published map[string][]byte
 	// firstFrame と fullDecode は、代表サムネイルとシーク用サムネイルの生成が返す代用。
 	firstFrame bool
 	fullDecode bool
@@ -339,13 +429,45 @@ func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) er
 }
 
 func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) error) error {
-	if err := write("tmp/thumbnail/" + contentKey); err != nil {
+	output := "tmp/thumbnail/" + contentKey
+	if f.thumbnailDir != "" {
+		output = filepath.Join(f.thumbnailDir, contentKey+".jpg")
+	}
+	if err := write(output); err != nil {
 		return err
+	}
+	if f.publishErr != nil {
+		return f.publishErr
+	}
+	if f.thumbnailDir != "" {
+		// 偽物のコマの生成は何も書かないので、無ければ空の中身として扱う。
+		data, err := os.ReadFile(output)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		f.mu.Lock()
+		if f.published == nil {
+			f.published = map[string][]byte{}
+		}
+		f.published[contentKey] = data
+		f.mu.Unlock()
 	}
 	if f.recordPublish {
 		f.record("publish-thumbnail")
 	}
 	return nil
+}
+
+// FitThumbnailImage は "fitted:" を前に付けた画像を返す。
+func (f *fakeGenerator) FitThumbnailImage(_ context.Context, image []byte, aspect float64) ([]byte, error) {
+	f.record("fit")
+	f.mu.Lock()
+	f.aspects = append(f.aspects, aspect)
+	f.mu.Unlock()
+	if f.fitErr != nil {
+		return nil, f.fitErr
+	}
+	return append([]byte("fitted:"), image...), nil
 }
 
 func (f *fakeGenerator) StashThumbnail(string) (func() error, func(), error) {
