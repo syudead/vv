@@ -470,9 +470,9 @@ export default function VideoPage() {
             // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
             // 比率はシークのプレビューと枠の大きさの段（player-width・player-height、
             // src/ui/tokens.css）も使うので、変数として子孫へ渡す。
-            // 広い画面では、題名・タグ・情報の 2 行までが左の列に収まる高さを上限にし、ふだんは
-            // 列をスクロールさせない。上限で列より細くなったときは、題名と左端をそろえるため
-            // 左に寄せる。
+            // 広い画面では、題名の 1 行までが左の列に収まる高さを上限にし、横長の動画は列の幅
+            // いっぱいまで広げる。タグと情報の行は列をスクロールして見る。上限で列より細く
+            // なったときは、題名と左端をそろえるため左に寄せる。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
             className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:ml-0 lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
           >

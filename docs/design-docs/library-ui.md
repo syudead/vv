@@ -451,7 +451,7 @@ Width variations stay in CSS, as in
 
 | Width | Layout |
 | --- | --- |
-| `lg` and above | The page keeps the viewport's height; the left column scrolls on its own and the related list scrolls under its fixed heading. The right column is `detail-aside` wide, `detail-aside-wide` from `xl`. The player's height leaves room for the title, tags and both information rows |
+| `lg` and above | The page keeps the viewport's height; the left column scrolls on its own and the related list scrolls under its fixed heading. The right column is `detail-aside` wide, `detail-aside-wide` from `xl`. The player's height leaves room for one line of the title, so a landscape video fills the column's width; the tags and information rows are reached by scrolling the column |
 | Below `lg` | Everything stacks and the page scrolls as one under the sticky band. The player runs edge to edge directly under the band; the text below it and the related list keep side padding |
 | Below `md` | The breadcrumb shows only its last segment |
 
