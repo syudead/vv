@@ -54,3 +54,15 @@ type AppliedThumbnailImage struct {
 	// Origin は画像の出どころである。
 	Origin ThumbnailImageOrigin
 }
+
+// CurrentThumbnailSelection は内容の今の代表サムネイルの選び方である。今のサムネイルからの編集が
+// 始める画像を決める（specs/046-thumbnail-image-upload/research.md R-4）。適用した画像と指定した
+// 位置は同じ時点のもので、並行するアップロード・位置の変更・元に戻す操作の途中の組み合わせには
+// ならない。
+type CurrentThumbnailSelection struct {
+	// Image は適用した画像の元の画像で、元の画像を持たない古い行では代表サムネイルである。
+	// 画像を適用していなければ nil である。
+	Image []byte
+	// PositionMs は指定した代表サムネイルの位置で、指定していなければ nil である。
+	PositionMs *int64
+}

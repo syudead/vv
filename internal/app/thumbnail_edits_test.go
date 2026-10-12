@@ -149,24 +149,36 @@ func (f *fakeFrames) extracted() []int64 {
 	return append([]int64(nil), f.positions...)
 }
 
-// fakeThumbnailImages は内容ごとに適用した画像（代表サムネイル image と元の画像 source）を持つ。
+// fakeThumbnailImages は内容ごとに適用した画像（代表サムネイル image と元の画像 source）と
+// 指定した位置を持つ。
 type fakeThumbnailImages struct {
-	mu     sync.Mutex
-	image  map[string][]byte
-	source map[string][]byte
-	err    error
+	mu       sync.Mutex
+	image    map[string][]byte
+	source   map[string][]byte
+	position map[string]*int64
+	err      error
 }
 
-func (f *fakeThumbnailImages) ThumbnailImage(_ context.Context, contentKey string) ([]byte, error) {
+func (f *fakeThumbnailImages) CurrentThumbnailSelection(
+	_ context.Context, contentKey string,
+) (domain.CurrentThumbnailSelection, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.image[contentKey], f.err
+	image := f.source[contentKey]
+	if image == nil {
+		image = f.image[contentKey]
+	}
+	return domain.CurrentThumbnailSelection{Image: image, PositionMs: f.position[contentKey]}, f.err
 }
 
-func (f *fakeThumbnailImages) ThumbnailImageSource(_ context.Context, contentKey string) ([]byte, error) {
+// setPosition は内容 contentKey に指定した位置を置く。nil なら解除する。
+func (f *fakeThumbnailImages) setPosition(contentKey string, positionMs *int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.source[contentKey], f.err
+	if f.position == nil {
+		f.position = map[string]*int64{}
+	}
+	f.position[contentKey] = positionMs
 }
 
 // set は内容 contentKey に適用した画像を置く。image が nil なら外す（元に戻す操作）。

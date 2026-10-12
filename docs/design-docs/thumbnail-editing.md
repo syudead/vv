@@ -108,7 +108,10 @@ as a frame that cannot be extracted does. `frameWidth` and `frameHeight`
 describe the session's image whatever its source, and the mask is checked
 against that size. The session keeps the image in memory from the start, so a
 later upload, position change or revert does not change the edit in progress
-or what its runs send.
+or what its runs send. The applied image and the recorded position are read
+together in one query, not from the video the request read first, so an upload,
+position change or revert that commits meanwhile yields the thumbnail before or
+after it, never a mix of the two.
 
 ## A run uses the connection it started with
 

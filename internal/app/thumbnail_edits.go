@@ -48,12 +48,11 @@ type ThumbnailFrameSource interface {
 	AutoThumbnailPositions(durationMs int64) []int64
 }
 
-// ThumbnailImageReader は内容に適用した画像を読む。internal/store の *OverrideStore が満たす。
-// どちらも適用していなければ nil を返す。ThumbnailImageSource は元の画像（長辺最大 2048 px）で、
-// 元の画像を持たない古い行でも nil を返す（specs/046-thumbnail-image-upload/data-model.md）。
+// ThumbnailImageReader は内容の今の代表サムネイルの選び方（適用した画像の元の画像、元の画像を
+// 持たない古い行では代表サムネイル、と指定した位置）を、同じ時点のものとして読む
+// （specs/046-thumbnail-image-upload/research.md R-4）。internal/store の *OverrideStore が満たす。
 type ThumbnailImageReader interface {
-	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
-	ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error)
+	CurrentThumbnailSelection(ctx context.Context, contentKey string) (domain.CurrentThumbnailSelection, error)
 }
 
 // ThumbnailImageApplier は出どころ origin の画像を動画のサムネイルとして適用する。*Ingest が満たす。
@@ -233,22 +232,24 @@ func (e *ThumbnailEdits) startImage(
 // currentThumbnail は動画 video の今のサムネイルの画像を用意する（research.md R-4）。画像を
 // 適用していればその元の画像（無い古い行では代表サムネイル）を PNG にしたもの、なければ指定した
 // 位置のコマ、それも無ければサムネイルジョブと同じ規則（自動の位置、次に先頭）のコマである。
+// 画像と位置は video ではなく保存先から同じ時点のものとして読み、video を読んだあとの変更と
+// 混ざらないようにする。
 func (e *ThumbnailEdits) currentThumbnail(
 	ctx context.Context, video domain.Video, path string,
 ) (thumbnailEditImage, error) {
-	stored, err := e.storedThumbnailImage(ctx, video.ContentKey)
+	selection, err := e.images.CurrentThumbnailSelection(ctx, video.ContentKey)
 	if err != nil {
 		return thumbnailEditImage{}, err
 	}
-	if stored != nil {
-		frame, err := thumbnailEditFrameFromImage(stored)
+	if selection.Image != nil {
+		frame, err := thumbnailEditFrameFromImage(selection.Image)
 		if err != nil {
 			return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
 		}
 		return thumbnailEditImage{frame: frame}, nil
 	}
-	if video.ThumbnailPositionMs != nil {
-		return e.frameAt(ctx, path, *video.ThumbnailPositionMs)
+	if selection.PositionMs != nil {
+		return e.frameAt(ctx, path, *selection.PositionMs)
 	}
 	var durationMs int64
 	if video.DurationMs != nil {
@@ -263,16 +264,6 @@ func (e *ThumbnailEdits) currentThumbnail(
 		first = cmp.Or(first, err)
 	}
 	return thumbnailEditImage{}, cmp.Or(first, error(domain.ErrThumbnailFrameUnavailable))
-}
-
-// storedThumbnailImage は内容 contentKey に適用した画像の元の画像を返し、元の画像を持たない
-// 行では代表サムネイルを返す。適用していなければ nil である。
-func (e *ThumbnailEdits) storedThumbnailImage(ctx context.Context, contentKey string) ([]byte, error) {
-	source, err := e.images.ThumbnailImageSource(ctx, contentKey)
-	if err != nil || source != nil {
-		return source, err
-	}
-	return e.images.ThumbnailImage(ctx, contentKey)
 }
 
 // frameAt はファイル path の positionMs の場面のコマを取り出す。

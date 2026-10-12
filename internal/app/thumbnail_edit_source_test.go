@@ -69,7 +69,7 @@ func TestThumbnailEditStartFromFrameNeedsPosition(t *testing.T) {
 func TestThumbnailEditStartFromStoredSource(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
-	video.ThumbnailPositionMs = ms(12_000)
+	f.images.setPosition(video.ContentKey, ms(12_000))
 	f.images.set(video.ContentKey, testPNG(t, 4, 3), testJPEG(t))
 
 	edit := f.startFrom(t, video, thumbnailStart)
@@ -119,11 +119,13 @@ func TestThumbnailEditStartFromUnreadableStoredImage(t *testing.T) {
 	}
 }
 
-// 画像を適用しておらず位置を指定していれば、その位置で取り出してその位置を返す。
+// 画像を適用しておらず位置を指定していれば、その位置で取り出してその位置を返す。位置は保存先から
+// 画像と同じ時点のものを読み、要求が先に読んだ動画の古い位置は使わない。
 func TestThumbnailEditStartFromRecordedPosition(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
-	video.ThumbnailPositionMs = ms(12_000)
+	video.ThumbnailPositionMs = ms(3_000)
+	f.images.setPosition(video.ContentKey, ms(12_000))
 
 	edit := f.startFrom(t, video, thumbnailStart)
 	wantSource(t, edit, domain.ThumbnailEditFromThumbnail, ms(12_000))
